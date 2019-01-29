@@ -201,6 +201,7 @@ COMMON_PROTO_SRCS = [
     "protobuf/cluster.proto",
     "protobuf/debug.proto",
     "protobuf/device_properties.proto",
+    "protobuf/graph_debug_info.proto",
     "protobuf/queue_runner.proto",
     "protobuf/rewriter_config.proto",
     "protobuf/tensor_bundle.proto",
@@ -1961,6 +1962,14 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/platform/default/build_config:cuda",
+    ],
+)
+
+cc_library(
+    name = "rocm",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:rocm",
     ],
 )
 

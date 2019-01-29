@@ -1580,8 +1580,32 @@ XlaOp Min(const XlaOp& lhs, const XlaOp& rhs,
 XlaOp And(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions = {});
 
+// Overload to call And with 3 or more operands.  We need the following somewhat
+// convoluted overload set to disambiguate with the overload that takes the
+// `broadcast_dimensions` optional param.
+inline XlaOp And(const XlaOp& op1, const XlaOp& op2, const XlaOp& op3) {
+  return And(op1, And(op2, op3));
+}
+template <typename... XlaOpTs>
+XlaOp And(const XlaOp& op1, const XlaOp& op2, const XlaOp& op3,
+          const XlaOpTs&... operands) {
+  return And(op1, And(op2, And(op3, operands...)));
+}
+
 XlaOp Or(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+
+// Overload to call Or with 3 or more operands.  As with `And`, we need the
+// following complicated overload set to handle the default arg in the `Or`
+// overload above.
+inline XlaOp Or(const XlaOp& op1, const XlaOp& op2, const XlaOp& op3) {
+  return Or(op1, Or(op2, op3));
+}
+template <typename... XlaOpTs>
+XlaOp Or(const XlaOp& op1, const XlaOp& op2, const XlaOp& op3,
+         const XlaOpTs&... operands) {
+  return Or(op1, Or(op2, Or(op3, operands...)));
+}
 
 XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions = {});

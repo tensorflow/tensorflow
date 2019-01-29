@@ -25,6 +25,13 @@ StreamExecutorFactory* MakeCUDAExecutorImplementation() {
   return &instance;
 }
 
+// -- ROCm
+
+StreamExecutorFactory* MakeROCMExecutorImplementation() {
+  static StreamExecutorFactory instance;
+  return &instance;
+}
+
 // -- OpenCL
 
 StreamExecutorFactory* MakeOpenCLExecutorImplementation() {

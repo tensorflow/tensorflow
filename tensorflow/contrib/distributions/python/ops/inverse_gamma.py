@@ -249,9 +249,9 @@ class InverseGamma(distribution.Distribution):
       `self.allow_nan_stats` is `False`, an exception will be raised rather
       than returning `NaN`.""")
   def _variance(self):
-    var = (math_ops.square(self.rate)
-           / math_ops.square(self.concentration - 1.)
-           / (self.concentration - 2.))
+    var = (
+        math_ops.square(self.rate) / math_ops.squared_difference(
+            self.concentration, 1.) / (self.concentration - 2.))
     if self.allow_nan_stats:
       nan = array_ops.fill(
           self.batch_shape_tensor(),

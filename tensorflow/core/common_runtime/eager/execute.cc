@@ -744,7 +744,7 @@ bool IsPinnableOp(const string& op_type) {
   static const gtl::FlatSet<string>* unpinnable_ops = new gtl::FlatSet<string>({
       "RandomUniform",
       "RandomUniformInt",
-      "RandomNormal",
+      "RandomStandardNormal",
       "StatelessRandomUniform",
       "StatelessRandomUniformInt",
       "StatelessRandomNormal",
@@ -764,7 +764,7 @@ bool IsPinnableOp(const string& op_type) {
 Status MaybeUpdateOpDevice(EagerOperation* op) {
   EagerContext* ctx = op->EagerContext();
   bool all_inputs_eligible_for_cpu_pinning =
-      ctx->PinSmallOpsToCPU() && IsPinnableOp(op->Name());
+      ctx->PinSmallOpsToCPU() && !op->is_function() && IsPinnableOp(op->Name());
   Device* op_device = op->Device() == nullptr ? ctx->HostCPU() : op->Device();
   for (int i = 0; i < op->Inputs().size(); ++i) {
     TensorHandle* tensor_handle = op->Inputs()[i];

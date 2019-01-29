@@ -159,7 +159,6 @@ py_library(
         ":regularizers",
         ":saving",
         "//tensorflow/python/data",
-        "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/training/checkpointable:data_structures",
         "//tensorflow/tools/docs:doc_controls",
@@ -483,6 +482,18 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+)
+
+tf_py_test(
+    name = "tensorflow_op_layer_test",
+    size = "medium",
+    srcs = ["layers/tensorflow_op_layer_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 3,
 )
 
 tf_py_test(

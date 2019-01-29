@@ -158,7 +158,8 @@ class _EagerContext(threading.local):
 
 
 ContextSwitch = collections.namedtuple(
-    "ContextSwitch", ["is_building_function", "enter_context_fn"])
+    "ContextSwitch", ["is_building_function", "enter_context_fn",
+                      "device_stack"])
 
 
 # `_ContextSwitchStack` is a `threading.local` to match the semantics of
@@ -175,9 +176,10 @@ class _ContextSwitchStack(threading.local):
       # across threads, since (1) `enable_eager_execution` modifies a
       # process-level flag (`default_execution_mode`) and (2) `__init__` is
       # called each time a threading.local object is used in a separate thread.
-      self.push(is_building_function=False, enter_context_fn=eager_mode)
+      self.push(is_building_function=False, enter_context_fn=eager_mode,
+                device_stack=None)
 
-  def push(self, is_building_function, enter_context_fn):
+  def push(self, is_building_function, enter_context_fn, device_stack):
     """Push metadata about a context switch onto the stack.
 
     A context switch can take any one of the two forms: installing a graph as
@@ -188,10 +190,14 @@ class _ContextSwitchStack(threading.local):
       is_building_function: (bool.) Whether the context is building a function.
       enter_context_fn: (function.) A callable that executes the context switch.
         For example, `graph.as_default` or `eager_mode`.
+      device_stack: If applicable, the device function stack for this
+        graph. When breaking out of graphs in init_scope, the innermost nonempty
+        device stack is used. Eager contexts put `None` here and the value is
+        never used.
     """
 
     self.stack.append(
-        ContextSwitch(is_building_function, enter_context_fn))
+        ContextSwitch(is_building_function, enter_context_fn, device_stack))
 
   def pop(self):
     """Pop the stack."""
@@ -442,7 +448,7 @@ class Context(object):
       # Entering graph mode does not provide us with sufficient information to
       # record a context switch; graph-based context switches are only logged
       # when a graph is registered as the default graph.
-      self.context_switches.push(False, eager_mode)
+      self.context_switches.push(False, eager_mode, None)
     try:
       yield
     finally:

@@ -26,7 +26,7 @@ namespace grappler {
 // nodes to decrease the amount of operations needed to perform a computation.
 class Remapper : public GraphOptimizer {
  public:
-  explicit Remapper(RewriterConfig::Toggle opt_level) : opt_level_(opt_level) {}
+  explicit Remapper(RewriterConfig::Toggle opt_level) {}
 
   ~Remapper() override {}
 
@@ -37,9 +37,6 @@ class Remapper : public GraphOptimizer {
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimized_graph, double result) override;
-
- private:
-  RewriterConfig::Toggle opt_level_;
 };
 
 }  // end namespace grappler

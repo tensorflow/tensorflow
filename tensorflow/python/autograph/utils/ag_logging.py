@@ -117,6 +117,13 @@ def has_verbosity(level):
   return get_verbosity() >= level
 
 
+def error(level, msg, *args, **kwargs):
+  if has_verbosity(level):
+    logging.error(msg, *args, **kwargs)
+    if echo_log_to_stdout:
+      print(msg % args)
+
+
 def log(level, msg, *args, **kwargs):
   if has_verbosity(level):
     logging.info(msg, *args, **kwargs)

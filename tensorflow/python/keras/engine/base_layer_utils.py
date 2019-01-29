@@ -237,8 +237,7 @@ def create_keras_history(tensors):
   This method checks to see if a Tensor in `tensors` is missing Keras metadata
   and has its origin in a Keras `Input` Layer. If so, this method will replace
   the raw TensorFlow Operations that created this tensor with
-  `TensorFlowOpLayer`
-  instances that create identical operations.
+  `TensorFlowOpLayer` instances that create identical operations.
 
   Any Tensors not originating from a Keras `Input` Layer will be treated as
   constants when constructing `TensorFlowOpLayer` instances.
@@ -247,17 +246,7 @@ def create_keras_history(tensors):
     tensors: A structure of Tensors, some of which come from raw TensorFlow
       operations and need to have Keras metadata assigned to them.
   """
-
-  try:
-    _create_keras_history_helper(tensors, set())
-  except AttributeError:
-    # This can happen with sublayers inside of layers in the Functional API.
-    # The error occurs when a Functional Model is running in V2 function
-    # mode and a non-Keras Tensor is passed as an input to a sublayer inside
-    # of another layer.
-    # TODO(omalleyt): Only run `create_keras_history` during Functional API
-    # creation phase.
-    pass
+  _create_keras_history_helper(tensors, set())
 
 
 def _create_keras_history_helper(tensors, processed_ops=None):
@@ -265,8 +254,8 @@ def _create_keras_history_helper(tensors, processed_ops=None):
 
   Arguments:
     tensors: A structure of Tensors for which to create Keras metadata.
-    processed_ops: TensorFlow operations that have already been wrapped in
-      `TensorFlowOpLayer` instances.
+    processed_ops: Set. TensorFlow operations that have already been wrapped
+      in `TensorFlowOpLayer` instances.
 
   Returns:
     The updated set of TensorFlow Operations that have been wrapped
@@ -287,7 +276,7 @@ def _create_keras_history_helper(tensors, processed_ops=None):
       constants = {}
       layer_inputs = []
       for i, op_input in enumerate(op_inputs):
-        if uses_keras_input_layers(op_input):
+        if uses_keras_history(op_input):
           layer_inputs.append(op_input)
         else:
           # Treat any value not originating from a `keras.Input` as
@@ -306,33 +295,76 @@ def _create_keras_history_helper(tensors, processed_ops=None):
   return processed_ops
 
 
-def uses_keras_input_layers(tensors):
-  """Checks if at least one Tensor in `tensors` originates from a Keras `Input`.
-
-  If so, the Functional API is being used.
+def needs_keras_history(tensors):
+  """Check if any Tensors need to be wrapped in TensorFlowOpLayers.
 
   Arguments:
     tensors: An arbitrary nested structure of Tensors.
 
   Returns:
-    Bool, whether at least one Tensor originates from a Keras `Input`.
+    Bool, whether at least one Tensor needs to be wrapped.
+  """
+  input_tensors = nest.flatten(tensors)
+  if all(
+      getattr(tensor, '_keras_history', None) is not None
+      for tensor in input_tensors):
+    # KerasHistory already set.
+    return False
+  return uses_keras_history(tensors)
+
+
+def uses_keras_history(tensors):
+  """Check if at least one Tensor originates from a `keras.Input`.
+
+  This is `True` if at least one Tensor has its origin in a `keras.Input`.
+  Any Tensor that originates from a `keras.Input` will have a dependency
+  Tensor with a `_keras_history` attribute attached. Tensors that have
+  already been checked to not originate from a `keras.Input`
+  are marked as `_keras_history_checked`.
+
+  Arguments:
+    tensors: An arbitrary nested structure of Tensors.
+
+  Returns:
+    Bool, whether at least one Tensor originates from a `keras.Input`.
   """
   checked_tensors = set()
-  input_tensors = nest.flatten(tensors)
+  tensors_to_check = nest.flatten(tensors)
 
-  while input_tensors:
-    if any(
-        getattr(tensor, '_keras_history', None) is not None
-        for tensor in input_tensors):
-      return True
-    checked_tensors.update(input_tensors)
-    new_input_tensors = set()
-    for tensor in input_tensors:
+  while tensors_to_check:
+    new_tensors_to_check = set()
+    for tensor in tensors_to_check:
+      if getattr(tensor, '_keras_history_checked', None) is not None:
+        continue
+      if getattr(tensor, '_keras_history', None) is not None:
+        return True
+
       try:
-        new_input_tensors.update(tensor.op.inputs)
+        new_tensors_to_check.update(tensor.op.inputs)
       except AttributeError:
-        # In case `tensor` is a Variable created in an Eager
-        # context
+        # In case `tensor` is a Variable created in an Eager context.
         pass
-    input_tensors = list(new_input_tensors - checked_tensors)
+
+    checked_tensors.update(tensors_to_check)
+    tensors_to_check = list(new_tensors_to_check - checked_tensors)
+
+  # Mark that these Tensors have been checked once for `_keras_history`,
+  # and should not be checked again for performance reasons.
+  mark_checked(tensors)
   return False
+
+
+def mark_checked(tensors):
+  """Marks that these Tensors should not be tracked.
+
+  This prevents Layers from attempting to create TensorFlowOpLayers
+  for these Tensors.
+
+  Arguments:
+    tensors: An arbitrary structure of Tensors.
+  """
+
+  def _mark_checked(tensor):
+    tensor._keras_history_checked = True  # pylint: disable=protected-access
+
+  nest.map_structure(_mark_checked, tensors)

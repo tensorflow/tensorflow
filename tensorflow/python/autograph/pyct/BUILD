@@ -24,6 +24,7 @@ py_library(
         "ast_util.py",
         "cfg.py",
         "compiler.py",
+        "errors.py",
         "inspect_utils.py",
         "origin_info.py",
         "parser.py",

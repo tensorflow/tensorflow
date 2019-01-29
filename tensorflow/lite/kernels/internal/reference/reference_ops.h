@@ -1688,6 +1688,54 @@ inline void SubWithActivation(const ArithmeticParams& params,
   }
 }
 
+inline void Sub16(const ArithmeticParams& params,
+                  const RuntimeShape& input1_shape, const int16_t* input1_data,
+                  const RuntimeShape& input2_shape, const int16_t* input2_data,
+                  const RuntimeShape& output_shape, int16_t* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Sub/Int16");
+  const int input1_shift = params.input1_shift;
+  const int flat_size =
+      MatchingFlatSize(output_shape, input1_shape, input2_shape);
+  const int16 output_activation_min = params.quantized_activation_min;
+  const int16 output_activation_max = params.quantized_activation_max;
+
+  TFLITE_DCHECK(input1_shift == 0 || params.input2_shift == 0);
+  TFLITE_DCHECK_LE(input1_shift, 0);
+  TFLITE_DCHECK_LE(params.input2_shift, 0);
+  const int16* not_shift_input = input1_shift == 0 ? input1_data : input2_data;
+  const int16* shift_input = input1_shift == 0 ? input2_data : input1_data;
+  const int input_right_shift =
+      input1_shift == 0 ? -params.input2_shift : -input1_shift;
+
+  if (input1_shift == 0) {
+    // F0 uses 0 integer bits, range [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+    for (int i = 0; i < flat_size; ++i) {
+      F0 input_ready_scaled = F0::FromRaw(not_shift_input[i]);
+      F0 scaled_input = F0::FromRaw(
+          gemmlowp::RoundingDivideByPOT(shift_input[i], input_right_shift));
+      F0 result = SaturatingSub(input_ready_scaled, scaled_input);
+      const int16 raw_output = result.raw();
+      const int16 clamped_output = std::min(
+          output_activation_max, std::max(output_activation_min, raw_output));
+      output_data[i] = clamped_output;
+    }
+  } else {
+    // F0 uses 0 integer bits, range [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+    for (int i = 0; i < flat_size; ++i) {
+      F0 input_ready_scaled = F0::FromRaw(not_shift_input[i]);
+      F0 scaled_input = F0::FromRaw(
+          gemmlowp::RoundingDivideByPOT(shift_input[i], input_right_shift));
+      F0 result = SaturatingSub(scaled_input, input_ready_scaled);
+      const int16 raw_output = result.raw();
+      const int16 clamped_output = std::min(
+          output_activation_max, std::max(output_activation_min, raw_output));
+      output_data[i] = clamped_output;
+    }
+  }
+}
+
 template <typename Scalar>
 inline void Concatenation(const ConcatenationParams& params,
                           const RuntimeShape* const* input_shapes,

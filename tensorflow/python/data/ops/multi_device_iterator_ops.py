@@ -158,9 +158,7 @@ class MultiDeviceIterator(object):
       # TODO(b/121378567): Get rid of this shared_name hack.
       shared_name = ""
       if context.executing_eagerly():
-        # Ensure a unique name when eager execution is enabled to avoid spurious
-        # sharing issues.
-        shared_name += str(ops.uid())
+        shared_name = context.shared_name()
       self._multi_device_iterator_resource = (
           gen_dataset_ops.multi_device_iterator(
               devices=self._devices,

@@ -2081,7 +2081,7 @@ class RootMeanSquaredError(Mean):
     y_pred = math_ops.cast(y_pred, self._dtype)
     y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
         y_pred, y_true, sample_weight)
-    error_sq = math_ops.square(y_pred - y_true)
+    error_sq = math_ops.squared_difference(y_pred, y_true)
     return super(RootMeanSquaredError, self).update_state(
         error_sq, sample_weight=sample_weight)
 

@@ -305,9 +305,15 @@ class Base(gast.NodeTransformer):
     return self._local_scope_state[-1].get(name, default)
 
   def debug_print(self, node):
-    """Helper method useful for debugging."""
+    """Helper method useful for debugging. Prints the AST."""
     if __debug__:
       print(pretty_printer.fmt(node))
+    return node
+
+  def debug_print_src(self, node):
+    """Helper method useful for debugging. Prints the AST as code."""
+    if __debug__:
+      print(compiler.ast_to_source(node))
     return node
 
   def create_assignment(self, target, expression):
