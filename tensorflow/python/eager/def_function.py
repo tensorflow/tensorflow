@@ -658,8 +658,7 @@ class Function(object):
     return self._descriptor_cache[instance]
 
 
-# In TensorFlow 1.x, exported as tf.contrib.eager.function
-@tf_export("function", v1=[])
+@tf_export("function")
 def function(func=None,
              input_signature=None,
              autograph=True,

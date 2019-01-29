@@ -1261,6 +1261,10 @@ tf_module {
     argspec: "args=[\'fn\', \'elems\', \'initializer\', \'parallel_iterations\', \'back_prop\', \'swap_memory\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\', \'False\', \'None\'], "
   }
   member_method {
+    name: "function"
+    argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'experimental_autograph_options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\'], "
+  }
+  member_method {
     name: "gather"
     argspec: "args=[\'params\', \'indices\', \'validate_indices\', \'name\', \'axis\', \'batch_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'0\'], "
   }
