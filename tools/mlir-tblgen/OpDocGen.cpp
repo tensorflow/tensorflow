@@ -34,11 +34,12 @@ using namespace mlir;
 
 using mlir::tblgen::Operator;
 
-// Emit the description by first aligning the text to the left per line (e.g.,
-// removing the minimum indentation across the block) and then indenting by 4.
-// This follows from the expectation that the description in the tablegen file
-// is already formatted in a way the user wanted but has some additional
-// indenting due to being nested in the op definition.
+// Emit the description by aligning the text to the left per line (e.g.,
+// removing the minimum indentation across the block).
+//
+// This expects that the description in the tablegen file is already formatted
+// in a way the user wanted but has some additional indenting due to being
+// nested in the op definition.
 static void emitDescription(StringRef description, raw_ostream &os) {
   // Determine the minimum number of spaces in a line.
   size_t min_indent = -1;
@@ -68,7 +69,7 @@ static void emitDescription(StringRef description, raw_ostream &os) {
       if (printed)
         os << "\n";
     } else {
-      os.indent(4) << split.first.substr(min_indent) << "\n";
+      os << split.first.substr(min_indent) << "\n";
       printed = true;
     }
     remaining = split.second;
@@ -90,8 +91,8 @@ static void emitOpDoc(const RecordKeeper &recordKeeper, raw_ostream &os) {
 
     // Emit summary & description of operator.
     if (op.hasSummary())
-      os << "\n" << op.getSummary();
-    os << "\n";
+      os << "\n" << op.getSummary() << "\n";
+    os << "\n### Description:\n";
     if (op.hasDescription())
       emitDescription(op.getDescription(), os);
 
@@ -101,7 +102,7 @@ static void emitOpDoc(const RecordKeeper &recordKeeper, raw_ostream &os) {
     for (auto operand : op.getOperands()) {
       os << "1. ";
       if (operand.name && !operand.name->getValue().empty())
-        os << operand.name->getAsUnquotedString() << ": ";
+        os << "`" << operand.name->getAsUnquotedString() << "`: ";
       else
         os << "&laquo;unnamed&raquo;: ";
       os << operand.defInit->getAsUnquotedString();
@@ -113,13 +114,27 @@ static void emitOpDoc(const RecordKeeper &recordKeeper, raw_ostream &os) {
     // info. This should be improved.
     os << "\n### Attributes:\n";
     for (auto namedAttr : op.getAttributes()) {
-      os << "- " << namedAttr.getName() << ": ";
+      os << "- `" << namedAttr.getName() << "`: ";
       if (namedAttr.attr.isDerivedAttr())
         os << "derived";
       else
         os << namedAttr.attr.getTableGenDefName();
       os << "\n";
     }
+
+    // Emit results.
+    os << "\n### Results:\n";
+    for (unsigned i = 0, e = op.getNumResults(); i < e; ++i) {
+      os << "1. ";
+      auto name = op.getResultName(i);
+      if (name.empty())
+        os << "&laquo;unnamed&raquo;: ";
+      else
+        os << "`" << name << "`: ";
+      os << op.getResultType(i).getTableGenDefName();
+      os << "\n";
+    }
+
     os << "\n";
   }
 }

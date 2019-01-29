@@ -352,10 +352,10 @@ class Op<string mnemonic, list<OpProperty> props = []> {
   string opName = mnemonic;
 
   // One-line human-readable description of what the op does.
-  string summary = ?;
+  string summary = "";
 
   // Additional, longer human-readable description of what the op does.
-  string description = ?;
+  string description = "";
 
   // Dag containting the arguments of the op. Default to 0 arguments.
   dag arguments = (ins);
