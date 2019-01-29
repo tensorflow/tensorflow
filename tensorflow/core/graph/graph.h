@@ -202,7 +202,6 @@ class Node {
 
   WhileContext* while_ctx() const { return while_ctx_; }
   void set_while_ctx(WhileContext* while_ctx) {
-    DCHECK(IsExit());
     DCHECK(while_ctx_ == nullptr);
     while_ctx_ = while_ctx;
   }
@@ -287,11 +286,8 @@ class Node {
   // field and reclaim that memory.
   Graph* graph_;
 
-  // Set if this is an exit node of a while loop with an associated
-  // WhileContext. Otherwise null. (This is only set for exit nodes because
-  // they're the first nodes of a loop encountered while creating the gradient
-  // graph. Exit nodes that are part of while loop gradient graphs will not have
-  // this set.)
+  // Set if this is a node of a while loop with an associated
+  // WhileContext. Otherwise null.
   WhileContext* while_ctx_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Node);

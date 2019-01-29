@@ -242,7 +242,7 @@ Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
 
     // Set while_ctx for all nodes created during the while
     for (int id = next_id; id < final_while_id; ++id) {
-        scope.graph()->FindNodeId(id)->set_while_ctx(while_ctx);
+      scope.graph()->FindNodeId(id)->set_while_ctx(while_ctx);
     }
   }
   return Status::OK();
