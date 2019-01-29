@@ -4770,5 +4770,73 @@ INSTANTIATE_TEST_SUITE_P(
     DotOfGatherSimplificationTestInstantiation, DotOfGatherSimplificationTest,
     ::testing::ValuesIn(DotOfGatherPositiveNegativeTests()));
 
+TEST_F(AlgebraicSimplifierTest, TupleReduceReshape) {
+  const char* hlo_string = R"(
+HloModule module
+
+reducer {
+  parameter.1 = f32[] parameter(0)
+  parameter.3 = f32[] parameter(2)
+  add.2 = f32[] add(parameter.1, parameter.3)
+  parameter.0 = f32[] parameter(1)
+  parameter.2 = f32[] parameter(3)
+  add.3 = f32[] add(parameter.0, parameter.2)
+  ROOT tuple.4 = (f32[], f32[]) tuple(add.2, add.3)
+}
+
+ENTRY entry {
+  parameter.6 = (f32[], f32[]) parameter(0)
+  get-tuple-element.10 = f32[] get-tuple-element(parameter.6), index=0
+  get-tuple-element.11 = f32[] get-tuple-element(parameter.6), index=1
+  constant = f32[] constant(0)
+  ROOT reduce = (f32[], f32[]) reduce(get-tuple-element.10, get-tuple-element.11, constant, constant), dimensions={}, to_apply=reducer
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Tuple(
+                        m::Reshape(m::GetTupleElement(m::Parameter(), 0)),
+                        m::Reshape(m::GetTupleElement(m::Parameter(), 1)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, TupleReduceBroadcast) {
+  const char* hlo_string = R"(
+HloModule module
+
+reducer {
+  parameter.1 = f32[] parameter(0)
+  parameter.3 = f32[] parameter(2)
+  mul.2 = f32[] add(parameter.1, parameter.3)
+  parameter.0 = f32[] parameter(1)
+  parameter.2 = f32[] parameter(3)
+  add.3 = f32[] add(parameter.0, parameter.2)
+  ROOT tuple.4 = (f32[], f32[]) tuple(mul.2, add.3)
+}
+
+ENTRY entry {
+  parameter.6 = (f32[0, 10, 10], f32[0, 10, 10]) parameter(0)
+  get-tuple-element.10 = f32[0, 10, 10] get-tuple-element(parameter.6), index=0
+  get-tuple-element.11 = f32[0, 10, 10] get-tuple-element(parameter.6), index=1
+  constant.0 = f32[] constant(0)
+  constant.1 = f32[] constant(1)
+  ROOT reduce = (f32[10, 10], f32[10, 10]) reduce(get-tuple-element.10, get-tuple-element.11, constant.0, constant.1), dimensions={0}, to_apply=reducer
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Tuple(m::Broadcast(m::ConstantScalar(0)),
+                                        m::Broadcast(m::ConstantScalar(1)))));
+}
+
 }  // namespace
 }  // namespace xla

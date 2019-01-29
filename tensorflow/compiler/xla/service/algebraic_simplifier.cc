@@ -2714,28 +2714,72 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   return Status::OK();
 }
 
-Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
-  // TODO(b/112040122): Most of those optimizations can be done for multi-output
-  // reduces.
-  if (reduce->shape().IsTuple()) {
-    return Status::OK();
-  }
+Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
+  HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
+  bool multi_output_reduce = reduce->shape().IsTuple();
 
-  auto arg = reduce->mutable_operand(0);
-  auto init_value = reduce->mutable_operand(1);
+  // For tuple reduce, we require all reduce shapes to be the same, up to the
+  // element types, so we can just the first operand and the first result as a
+  // representative.
+  auto arg = reduce->inputs()[0];
+  auto init_value = reduce->init_values()[0];
+  const Shape& reduce_result_shape =
+      multi_output_reduce ? reduce->shape().tuple_shapes(0) : reduce->shape();
+
   absl::Span<const int64> dimensions(reduce->dimensions());
   HloComputation* function = reduce->to_apply();
   if (ShapeUtil::IsZeroElementArray(arg->shape()) ||
-      ShapeUtil::IsZeroElementArray(reduce->shape())) {
-    return ReplaceWithNewInstruction(
-        reduce,
-        HloInstruction::CreateBroadcast(reduce->shape(), init_value, {}));
+      ShapeUtil::IsZeroElementArray(reduce_result_shape)) {
+    if (multi_output_reduce) {
+      std::vector<HloInstruction*> broadcast_inits;
+      int64 inputs = reduce->input_count();
+      for (int64 i = 0; i < inputs; ++i) {
+        broadcast_inits.push_back(computation_->AddInstruction(
+            HloInstruction::CreateBroadcast(reduce->shape().tuple_shapes(i),
+                                            reduce->init_values()[i], {})));
+      }
+      return ReplaceWithNewInstruction(
+          reduce, HloInstruction::CreateTuple(broadcast_inits));
+    } else {
+      return ReplaceWithNewInstruction(
+          reduce,
+          HloInstruction::CreateBroadcast(reduce_result_shape, init_value, {}));
+    }
+  }
+
+  // If the reduction results in the same number of elements, then the only
+  // possible side effect would be a reshape. Since the init_value is an
+  // identity of the reduction function, we can therefore replace the reduce
+  // with a simple reshape, ignoring the reduction function completely.
+  if (ShapeUtil::ElementsIn(reduce_result_shape) ==
+      ShapeUtil::ElementsIn(arg->shape())) {
+    if (multi_output_reduce) {
+      std::vector<HloInstruction*> reshaped_args;
+      int64 inputs = reduce->input_count();
+      for (int64 i = 0; i < inputs; ++i) {
+        reshaped_args.push_back(
+            computation_->AddInstruction(HloInstruction::CreateReshape(
+                reduce->shape().tuple_shapes(i), reduce->inputs()[i])));
+      }
+      return ReplaceWithNewInstruction(
+          reduce, HloInstruction::CreateTuple(reshaped_args));
+    } else {
+      return ReplaceWithNewInstruction(
+          reduce, HloInstruction::CreateReshape(reduce_result_shape, arg));
+    }
+  }
+
+  // TODO(b/112040122): Most of those optimizations below can be done for
+  // multi-output reduces.
+  if (multi_output_reduce) {
+    return Status::OK();
   }
 
   // A Transpose feeding a reduce can simply permute the reduction dimensions
   // field if the output of the reduce is a vector or scalar. Higher ranked
   // result may require a transpose of the output.
-  if (reduce->shape().rank() <= 1 && arg->opcode() == HloOpcode::kTranspose) {
+  if (reduce_result_shape.rank() <= 1 &&
+      arg->opcode() == HloOpcode::kTranspose) {
     auto transpose_dimensions = arg->dimensions();
     std::vector<int64> new_reduce_dimensions;
     for (auto dim : dimensions) {
@@ -2743,18 +2787,8 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
     }
     return ReplaceWithNewInstruction(
         reduce, HloInstruction::CreateReduce(
-                    reduce->shape(), arg->mutable_operand(0), init_value,
+                    reduce_result_shape, arg->mutable_operand(0), init_value,
                     new_reduce_dimensions, function));
-  }
-
-  // If the reduction results in the same number of elements, then the only
-  // possible side effect would be a reshape. Since the init_value is an
-  // identity of the reduction function, we can therefore replace the reduce
-  // with a simple reshape, ignoring the reduction function completely.
-  if (ShapeUtil::ElementsIn(reduce->shape()) ==
-      ShapeUtil::ElementsIn(arg->shape())) {
-    return ReplaceWithNewInstruction(
-        reduce, HloInstruction::CreateReshape(reduce->shape(), arg));
   }
 
   // If a reduce feeds a reduce with the same computation and initial value,
@@ -2782,9 +2816,9 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
     std::merge(arg_dims.begin(), arg_dims.end(), reduce_dims.begin(),
                reduce_dims.end(), std::back_inserter(new_dimensions));
     return ReplaceWithNewInstruction(
-        reduce,
-        HloInstruction::CreateReduce(reduce->shape(), arg->mutable_operand(0),
-                                     init_value, new_dimensions, function));
+        reduce, HloInstruction::CreateReduce(
+                    reduce_result_shape, arg->mutable_operand(0), init_value,
+                    new_dimensions, function));
   }
 
   // A reshape that collapses multiple dimensions into a dimension being
@@ -2827,7 +2861,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
       }
       return ReplaceWithNewInstruction(
           reduce, HloInstruction::CreateReduce(
-                      reduce->shape(), arg->mutable_operand(0), init_value,
+                      reduce_result_shape, arg->mutable_operand(0), init_value,
                       new_reduce_dimensions, function));
     }
   }
@@ -2842,11 +2876,11 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
     HloInstruction* old_reduce = nullptr;
     for (HloInstruction* operand : arg->operands()) {
       HloInstruction* new_reduce = computation_->AddInstruction(
-          HloInstruction::CreateReduce(reduce->shape(), operand, init_value,
+          HloInstruction::CreateReduce(reduce_result_shape, operand, init_value,
                                        reduce->dimensions(), function));
       if (old_reduce != nullptr) {
         new_reduce = computation_->AddInstruction(HloInstruction::CreateMap(
-            reduce->shape(), {old_reduce, new_reduce}, function));
+            reduce_result_shape, {old_reduce, new_reduce}, function));
       }
       old_reduce = new_reduce;
     }
