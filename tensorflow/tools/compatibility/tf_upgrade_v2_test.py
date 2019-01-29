@@ -467,6 +467,49 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       self.assertIn("%s requires manual check" % ns, errors[0])
       self.assertIn("loss_reduction has been changed", report)
 
+  def testExtractGlimpse(self):
+    text = ("tf.image.extract_glimpse(x, size, off, False, "
+            "False, False, name=\"foo\")\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.image.extract_glimpse(x, size, off, False, "
+        "False, 'uniform' if (False) else 'gaussian', name=\"foo\")\n",
+    )
+
+    text = ("tf.image.extract_glimpse(x, size, off, centered=False, "
+            "normalized=False, uniform_noise=True if uniform_noise else "
+            "False, name=\"foo\")\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.image.extract_glimpse(x, size, off, centered=False, "
+        "normalized=False, noise='uniform' if (True if uniform_noise else "
+        "False) else 'gaussian', name=\"foo\")\n",
+    )
+
+    text = ("tf.image.extract_glimpse(x,\n"
+            "                         size,\n"
+            "                         off,\n"
+            "                         centered=True,\n"
+            "                         normalized=True, # Stuff before\n"
+            "                         uniform_noise=False,\n"
+            "                         name=\"foo\")# Stuff after\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text, "tf.image.extract_glimpse(x,\n"
+        "                         size,\n"
+        "                         off,\n"
+        "                         centered=True,\n"
+        "                         normalized=True, # Stuff before\n"
+        "                         noise='uniform' if (False) else 'gaussian',\n"
+        "                         name=\"foo\")# Stuff after\n")
+
+    text = "tf.image.extract_glimpse(x)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, text)
+    self.assertEqual(errors, [])
+
   def testDropout(self):
     text = "tf.nn.dropout(x, keep_prob, name=\"foo\")\n"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
