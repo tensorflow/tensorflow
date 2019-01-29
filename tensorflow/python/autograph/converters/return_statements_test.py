@@ -187,6 +187,16 @@ class SingleReturnTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 2)
     self.assertTransformedEquivalent(test_fn, 4)
 
+  def test_null_return(self):
+
+    def test_fn(n):
+      if n > 4:
+        return
+      return
+
+    self.assertTransformedEquivalent(test_fn, 4)
+    self.assertTransformedEquivalent(test_fn, 5)
+
 
 if __name__ == '__main__':
   test.main()
