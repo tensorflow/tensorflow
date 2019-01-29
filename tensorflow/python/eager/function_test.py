@@ -112,6 +112,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       t = constant_op.constant(1.0)
       self.assertAllEqual(add(t, t).numpy(), 2.0)
 
+  def testNoHash(self):
+
+    @def_function.function()
+    def f(_):
+      return 1.0
+
+    with self.assertRaisesRegexp(TypeError, 'set'):
+      f(set([]))
+
   def testFuncName(self):
 
     @function.defun_with_attributes(attributes={'func_name': 'multiply'})
