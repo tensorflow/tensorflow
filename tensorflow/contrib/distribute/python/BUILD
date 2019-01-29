@@ -566,6 +566,7 @@ py_library(
 distribute_py_test(
     name = "keras_test",
     srcs = ["keras_test.py"],
+    full_precision = True,
     main = "keras_test.py",
     shard_count = 16,
     tags = [
