@@ -89,6 +89,8 @@ bool CanDedupControlWithRegularInput(const MutableGraphView& graph,
 bool CanDedupControlWithRegularInput(const MutableGraphView& graph,
                                      absl::string_view control_node_name) {
   NodeDef* control_node = graph.GetNode(control_node_name);
+  DCHECK(control_node != nullptr)
+      << "Didn't find a node for control dependency: " << control_node_name;
   return CanDedupControlWithRegularInput(graph, *control_node);
 }
 
