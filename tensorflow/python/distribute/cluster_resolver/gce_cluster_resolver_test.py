@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for GceClusterResolver."""
+"""Tests for GCEClusterResolver."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.distribute.cluster_resolver import GceClusterResolver
+from tensorflow.python.distribute.cluster_resolver import GCEClusterResolver
 from tensorflow.python.distribute.cluster_resolver import UnionClusterResolver
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
@@ -27,7 +27,7 @@ from tensorflow.python.training import server_lib
 mock = test.mock
 
 
-class GceClusterResolverTest(test.TestCase):
+class GCEClusterResolverTest(test.TestCase):
 
   def _verifyClusterSpecEquality(self, cluster_spec, expected_proto):
     self.assertProtoEquals(expected_proto, cluster_spec.as_cluster_def())
@@ -121,7 +121,7 @@ class GceClusterResolverTest(test.TestCase):
     return self.standard_mock_service_client(mock_instance_group, mock_instance)
 
   def testSimpleSuccessfulRetrieval(self):
-    gce_cluster_resolver = GceClusterResolver(
+    gce_cluster_resolver = GCEClusterResolver(
         project='test-project',
         zone='us-east1-d',
         instance_group='test-instance-group',
@@ -136,7 +136,7 @@ class GceClusterResolverTest(test.TestCase):
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
 
   def testMasterRetrieval(self):
-    gce_cluster_resolver = GceClusterResolver(
+    gce_cluster_resolver = GCEClusterResolver(
         project='test-project',
         zone='us-east1-d',
         instance_group='test-instance-group',
@@ -153,7 +153,7 @@ class GceClusterResolverTest(test.TestCase):
         {'name': 'instance3', 'ip': '10.3.4.5'},
     ]
 
-    gce_cluster_resolver = GceClusterResolver(
+    gce_cluster_resolver = GCEClusterResolver(
         project='test-project',
         zone='us-east1-d',
         instance_group='test-instance-group',
@@ -172,7 +172,7 @@ class GceClusterResolverTest(test.TestCase):
         {'name': 'instance3', 'ip': '10.3.4.5'},
     ]
 
-    gce_cluster_resolver = GceClusterResolver(
+    gce_cluster_resolver = GCEClusterResolver(
         project='test-project',
         zone='us-east1-d',
         instance_group='test-instance-group',
@@ -196,7 +196,7 @@ class GceClusterResolverTest(test.TestCase):
         {'name': 'instance3', 'ip': '10.3.4.5'},
     ]
 
-    gce_cluster_resolver = GceClusterResolver(
+    gce_cluster_resolver = GCEClusterResolver(
         project='test-project',
         zone='us-east1-d',
         instance_group='test-instance-group',
@@ -210,7 +210,7 @@ class GceClusterResolverTest(test.TestCase):
         task_type='', task_id=0), 'grpc://10.1.2.3:8470')
 
   def testCustomJobNameAndPortRetrieval(self):
-    gce_cluster_resolver = GceClusterResolver(
+    gce_cluster_resolver = GCEClusterResolver(
         project='test-project',
         zone='us-east1-d',
         instance_group='test-instance-group',
@@ -232,7 +232,7 @@ class GceClusterResolverTest(test.TestCase):
         {'name': 'instance3', 'ip': '10.3.4.5'},
     ]
 
-    gce_cluster_resolver = GceClusterResolver(
+    gce_cluster_resolver = GCEClusterResolver(
         project='test-project',
         zone='us-east1-d',
         instance_group='test-instance-group',
@@ -266,7 +266,7 @@ class GceClusterResolverTest(test.TestCase):
         {'name': 'ps2', 'ip': '10.100.2.3'},
     ]
 
-    worker1_gce_cluster_resolver = GceClusterResolver(
+    worker1_gce_cluster_resolver = GCEClusterResolver(
         project='test-project',
         zone='us-east1-d',
         instance_group='test-instance-group',
@@ -275,7 +275,7 @@ class GceClusterResolverTest(test.TestCase):
         credentials=None,
         service=self.gen_standard_mock_service_client(worker1_name_to_ip))
 
-    worker2_gce_cluster_resolver = GceClusterResolver(
+    worker2_gce_cluster_resolver = GCEClusterResolver(
         project='test-project',
         zone='us-east1-d',
         instance_group='test-instance-group',
@@ -284,7 +284,7 @@ class GceClusterResolverTest(test.TestCase):
         credentials=None,
         service=self.gen_standard_mock_service_client(worker2_name_to_ip))
 
-    ps_gce_cluster_resolver = GceClusterResolver(
+    ps_gce_cluster_resolver = GCEClusterResolver(
         project='test-project',
         zone='us-east1-d',
         instance_group='test-instance-group',

@@ -39,7 +39,7 @@ from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
-from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver as resolver_lib
+from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
@@ -65,7 +65,7 @@ def initialize_tpu_system(cluster_resolver=None):
     The tf.contrib.tpu.Topology object for the topology of the TPU cluster.
   """
   if cluster_resolver is None:
-    cluster_resolver = resolver_lib.TPUClusterResolver("")
+    cluster_resolver = TPUClusterResolver("")
   master = cluster_resolver.master()
 
   logging.info("Initializing the TPU system.")
@@ -246,7 +246,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     super(TPUExtended, self).__init__(container_strategy)
 
     if tpu_cluster_resolver is None:
-      tpu_cluster_resolver = resolver_lib.TPUClusterResolver("")
+      tpu_cluster_resolver = TPUClusterResolver("")
 
     if steps_per_run is None:
       # TODO(frankchn): Warn when we are being used by DS/Keras and this is
