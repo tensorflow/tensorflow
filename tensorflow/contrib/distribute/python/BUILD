@@ -568,7 +568,7 @@ distribute_py_test(
     srcs = ["keras_test.py"],
     full_precision = True,
     main = "keras_test.py",
-    shard_count = 16,
+    shard_count = 32,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.

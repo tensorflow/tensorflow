@@ -161,9 +161,8 @@ def evaluate_distributed(model,
       steps=steps)
 
   if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
-    # TODO(fchollet): why aren't callbacks supported here?
     return experimental_tpu_test_loop(
-        model, dataset, verbose=verbose, steps=steps)
+        model, dataset, verbose=verbose, steps=steps, callbacks=callbacks)
   else:
     return training_arrays.test_loop(
         model,
@@ -198,9 +197,8 @@ def predict_distributed(model,
       repeat=False,
       allow_partial_batch=True)
   if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
-    # TODO(fchollet): why aren't callbacks supported here?
     return experimental_tpu_predict_loop(
-        model, dataset, verbose=verbose, steps=steps)
+        model, dataset, verbose=verbose, steps=steps, callbacks=callbacks)
   else:
     return training_arrays.predict_loop(
         model,
@@ -340,7 +338,9 @@ def experimental_tpu_fit_loop(model,
       do_validation=do_validation,
       epochs=epochs,
       steps_per_epoch=steps_per_epoch,
-      verbose=verbose)
+      verbose=verbose,
+      count_mode='steps',
+      mode=ModeKeys.TRAIN)
 
   # Calculate the steps each time on the device.
   steps_to_run = [current_strategy.extended.steps_per_run] * (
@@ -415,7 +415,8 @@ def experimental_tpu_fit_loop(model,
 def experimental_tpu_test_loop(model,
                                dataset,
                                verbose=0,
-                               steps=None):
+                               steps=None,
+                               callbacks=None):
   """Test loop for evaluating with TPU DistributionStrategy.
 
   Arguments:
@@ -425,6 +426,7 @@ def experimental_tpu_test_loop(model,
       steps: Total number of steps (batches of samples)
           before declaring predictions finished.
           Ignored with the default value of `None`.
+      callbacks: List of callbacks to be called during training
 
   Returns:
       Scalar loss (if the model has a single output and no metrics)
@@ -506,6 +508,16 @@ def experimental_tpu_test_loop(model,
 
   distributed_training_utils._reset_metrics(model)
 
+  callbacks = cbks.configure_callbacks(
+      callbacks,
+      model,
+      do_validation=False,
+      epochs=1,
+      steps_per_epoch=steps,
+      verbose=verbose,
+      count_mode='steps',
+      mode=ModeKeys.TEST)
+
   assert steps is not None
   outs = [0.] * len(model.metrics_names)
   for step in range(steps):
@@ -530,7 +542,11 @@ def experimental_tpu_test_loop(model,
   return outs
 
 
-def experimental_tpu_predict_loop(model, dataset, verbose=0, steps=None):
+def experimental_tpu_predict_loop(model,
+                                  dataset,
+                                  verbose=0,
+                                  steps=None,
+                                  callbacks=None):
   """Predict loop for predicting with TPU DistributionStrategy.
 
   Arguments:
@@ -540,6 +556,7 @@ def experimental_tpu_predict_loop(model, dataset, verbose=0, steps=None):
       steps: Total number of steps (batches of samples)
           before declaring `_predict_loop` finished.
           Ignored with the default value of `None`.
+      callbacks: List of callbacks to be called during training
 
   Returns:
       Array of predictions (if the model has a single output)
@@ -641,6 +658,16 @@ def experimental_tpu_predict_loop(model, dataset, verbose=0, steps=None):
         model, ModeKeys.PREDICT)
 
   distributed_training_utils._reset_metrics(model)
+
+  callbacks = cbks.configure_callbacks(
+      callbacks,
+      model,
+      do_validation=False,
+      epochs=1,
+      steps_per_epoch=steps,
+      verbose=verbose,
+      count_mode='steps',
+      mode=ModeKeys.PREDICT)
 
   assert steps is not None
   # Since we do not know how many samples we will see, we cannot pre-allocate
