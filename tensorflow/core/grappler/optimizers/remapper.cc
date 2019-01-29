@@ -803,23 +803,25 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
     // Check if node was invalidated by one of the previous remaps.
     if (invalidated_nodes.count(&node) > 0) continue;
 
+// Remove this once TF-ROCm supports _FusedConv2D
+#if !defined(TENSORFLOW_USE_ROCM)
     // Remap Conv2D+BiasAdd into the _FusedConv2D.
     if (FindConv2DWithBias(ctx, &node, &conv2d_with_bias)) {
       AddFusedConv2DNode(ctx, conv2d_with_bias, optimized_graph,
                          &invalidated_nodes);
       continue;
     }
-
     // Remap Conv2D+BiasAdd+Relu into the _FusedConv2D.
     if (FindConv2DWithBiasAndRelu(ctx, &node, &conv2d_with_bias_and_relu)) {
       AddFusedConv2DNode(ctx, conv2d_with_bias_and_relu, optimized_graph,
                          &invalidated_nodes);
       continue;
     }
+#endif
 
 // TODO(penporn):
 // Remove this once TF-MKL supports _FusedConv2D with these operations.
-#ifndef INTEL_MKL
+#if !defined(INTEL_MKL) && !defined(TENSORFLOW_USE_ROCM)
     // Remap Conv2D+Squeeze+BiasAdd into the _FusedConv2D+Squeeze.
     if (FindConv2DWithSqueezeAndBias(ctx, &node,
                                      &conv2d_with_squeeze_and_bias)) {
