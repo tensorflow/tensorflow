@@ -63,12 +63,6 @@ class UnknownArgument(object):
   pass
 
 
-# TODO(vbardiovsky): Remove this when nest is updated with new
-# flatten_with_tuple_paths.
-def flatten_with_tuple_paths(structure):
-  return list(zip(nest.yield_flat_paths(structure), nest.flatten(structure)))
-
-
 def convert_structure_to_signature(structure, arg_names=None):
   """Convert a potentially nested structure to a signature.
 
@@ -100,7 +94,7 @@ def convert_structure_to_signature(structure, arg_names=None):
 
   # We are using the flattened paths to name the TensorSpecs. We need an
   # explicit name for them downstream.
-  flattened = flatten_with_tuple_paths(structure)
+  flattened = nest.flatten_with_tuple_paths(structure)
   if arg_names:
     if len(arg_names) != len(structure):
       raise ValueError(
