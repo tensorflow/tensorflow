@@ -202,7 +202,7 @@ class ReturnStatementsTransformer(converter.Base):
   def visit_Return(self, node):
     self.state[_Return].used = True
 
-    retval = node.value if node.value else parser.parse_expresison('None')
+    retval = node.value if node.value else parser.parse_expression('None')
 
     template = """
       do_return_var_name = True
