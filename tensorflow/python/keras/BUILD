@@ -731,7 +731,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 6,
+    shard_count = 8,
 )
 
 tf_py_test(
