@@ -1607,8 +1607,8 @@ class AUC(Metric):
 
   def __init__(self,
                num_thresholds=200,
-               curve=metrics_utils.AUCCurve.ROC,
-               summation_method=metrics_utils.AUCSummationMethod.INTERPOLATION,
+               curve='ROC',
+               summation_method='interpolation',
                name=None,
                dtype=None):
     """Creates an `AUC` instance.
@@ -1631,18 +1631,29 @@ class AUC(Metric):
     # Validate configurations.
     if num_thresholds <= 1:
       raise ValueError('`num_thresholds` must be > 1.')
-    if curve not in list(metrics_utils.AUCCurve):
+    if isinstance(curve, metrics_utils.AUCCurve) and curve not in list(
+        metrics_utils.AUCCurve):
       raise ValueError('Invalid curve: "{}". Valid options are: "{}"'.format(
           curve, list(metrics_utils.AUCCurve)))
-    if summation_method not in list(metrics_utils.AUCSummationMethod):
+    if isinstance(
+        summation_method,
+        metrics_utils.AUCSummationMethod) and summation_method not in list(
+            metrics_utils.AUCSummationMethod):
       raise ValueError(
           'Invalid summation method: "{}". Valid options are: "{}"'.format(
               summation_method, list(metrics_utils.AUCSummationMethod)))
 
     # Update properties.
     self.num_thresholds = num_thresholds
-    self.curve = curve
-    self.summation_method = summation_method
+    if isinstance(curve, metrics_utils.AUCCurve):
+      self.curve = curve
+    else:
+      self.curve = metrics_utils.AUCCurve.from_str(curve)
+    if isinstance(summation_method, metrics_utils.AUCSummationMethod):
+      self.summation_method = summation_method
+    else:
+      self.summation_method = metrics_utils.AUCSummationMethod.from_str(
+          summation_method)
     super(AUC, self).__init__(name=name, dtype=dtype)
 
     # Create metric variables
@@ -1802,8 +1813,8 @@ class AUC(Metric):
   def get_config(self):
     config = {
         'num_thresholds': self.num_thresholds,
-        'curve': self.curve,
-        'summation_method': self.summation_method,
+        'curve': self.curve.value,
+        'summation_method': self.summation_method.value,
     }
     base_config = super(AUC, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
