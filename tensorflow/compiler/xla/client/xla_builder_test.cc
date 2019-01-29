@@ -590,6 +590,27 @@ TEST_F(XlaBuilderTest, DynamicBroadcast) {
       << result_shape;
 }
 
+TEST_F(XlaBuilderTest, DynamicBinaryHasDegenerateBroadcast) {
+  XlaBuilder b(TestName());
+  Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {10}), ShapeUtil::MakeShape(F32, {1, 15}),
+       ShapeUtil::MakeShape(U32, {})});
+  auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
+  ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
+                                   /*dynamic_size_param_index=*/{1},
+                                   /*target_param_num=*/0,
+                                   /*target_param_index=*/{0},
+                                   /*target_dim_num=*/0));
+  auto gte0 = GetTupleElement(p0, 0);
+  auto gte1 = GetTupleElement(p0, 1);
+  Add(gte0, gte1, /*broadcast_dimensions=*/{0});  // f32[<=10, 15]
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result_shape =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ContainersEqual(result_shape.dynamic_dimensions(), {true, false}))
+      << result_shape;
+}
+
 TEST_F(XlaBuilderTest, DynamicPad) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
