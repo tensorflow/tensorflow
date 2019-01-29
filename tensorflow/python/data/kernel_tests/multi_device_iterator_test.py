@@ -263,7 +263,6 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
 
   @test_util.run_v1_only("b/121264236")
   def testMultipleInitializationsEager(self):
-    self.skipTest("b/123023614")
     if not context.executing_eagerly():
       return
 
@@ -272,7 +271,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
       dataset2 = dataset_ops.Dataset.range(1000)
       dataset = dataset_ops.Dataset.zip((dataset1, dataset2))
 
-    for _ in range(1000):
+    for _ in range(5):
       multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
           dataset, ["/cpu:1", "/cpu:2"], prefetch_buffer_size=4)
       elem_on_1, elem_on_2 = multi_device_iterator.get_next()
