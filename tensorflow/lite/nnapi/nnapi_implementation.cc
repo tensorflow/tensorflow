@@ -51,12 +51,12 @@ int32_t GetAndroidSdkVersion() {
 }
 #endif  // __ANDROID__
 
-void* LoadFunction(void* handle, const char* name) {
+void* LoadFunction(void* handle, const char* name, bool optional) {
   if (handle == nullptr) {
     return nullptr;
   }
   void* fn = dlsym(handle, name);
-  if (fn == nullptr) {
+  if (fn == nullptr && !optional) {
     NNAPI_LOG("nnapi error: unable to open function %s", name);
   }
   return fn;
@@ -78,8 +78,13 @@ int ASharedMemory_create(const char* name, size_t size) {
 }
 #endif  // __ANDROID__
 
-#define LOAD_FUNCTION(handle, name) \
-  nnapi.name = reinterpret_cast<name##_fn>(LoadFunction(handle, #name));
+#define LOAD_FUNCTION(handle, name)         \
+  nnapi.name = reinterpret_cast<name##_fn>( \
+      LoadFunction(handle, #name, /*optional*/ false));
+
+#define LOAD_FUNCTION_OPTIONAL(handle, name) \
+  nnapi.name = reinterpret_cast<name##_fn>(  \
+      LoadFunction(handle, #name, /*optional*/ true));
 
 const NnApi LoadNnApi() {
   NnApi nnapi = {};
@@ -117,6 +122,9 @@ const NnApi LoadNnApi() {
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksModel_finish);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksModel_addOperand);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksModel_setOperandValue);
+  LOAD_FUNCTION_OPTIONAL(
+      libneuralnetworks,
+      ANeuralNetworksModel_setOperandSymmPerChannelQuantParams);
   LOAD_FUNCTION(libneuralnetworks,
                 ANeuralNetworksModel_setOperandValueFromMemory);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksModel_addOperation);
@@ -143,7 +151,33 @@ const NnApi LoadNnApi() {
 #else
   nnapi.ASharedMemory_create = ASharedMemory_create;
 #endif  // __ANDROID__
-
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworks_getDeviceCount);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworks_getDevice);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksDevice_getName);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksDevice_getVersion);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksDevice_getFeatureLevel);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksModel_getSupportedOperationsForDevices);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksCompilation_createForDevices);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksCompilation_setCaching);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksExecution_compute);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksExecution_getOutputOperandRank);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksExecution_getOutputOperandDimensions);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksBurst_create);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksBurst_free);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksExecution_burstCompute);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksMemory_createFromAHardwareBuffer);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksExecution_setMeasureTiming);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksExecution_getDuration);
   return nnapi;
 }
 
