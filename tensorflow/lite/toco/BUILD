@@ -133,6 +133,7 @@ cc_library(
 cc_library(
     name = "model_cmdline_flags",
     srcs = [
+        "args.cc",
         "model_cmdline_flags.cc",
     ],
     hdrs = [
@@ -474,6 +475,19 @@ tf_cc_test(
     ],
     deps = [
         ":toco_port",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "model_cmdline_flags_test",
+    srcs = [
+        "model_cmdline_flags_test.cc",
+    ],
+    deps = [
+        ":model_cmdline_flags",
+        ":model_flags_proto_cc",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
