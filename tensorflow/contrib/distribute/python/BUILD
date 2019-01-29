@@ -774,7 +774,6 @@ cuda_py_test(
     additional_deps = [
         ":combinations",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:checkpoint_utils_test",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
