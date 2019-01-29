@@ -185,12 +185,13 @@ class Conv3DTest(keras_parameterized.TestCase):
       ('data_format', {'data_format': 'channels_first'}),
   )
   def test_conv3d(self, kwargs):
-    kwargs['filters'] = 2
-    kwargs['kernel_size'] = (3, 3, 3)
 
     if test.is_built_with_rocm():
       self.skipTest("5D tensors are not yet supported in ROCm")
 
+    kwargs['filters'] = 2
+    kwargs['kernel_size'] = (3, 3, 3)
+    
     if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
       self._run_test(kwargs)
 
@@ -217,6 +218,10 @@ class Conv3DTest(keras_parameterized.TestCase):
       self.assertEqual(len(layer.losses), 3)
 
   def test_conv3d_constraints(self):
+
+    if test.is_built_with_rocm():
+      self.skipTest("5D tensors are not yet supported in ROCm")
+
     k_constraint = lambda x: x
     b_constraint = lambda x: x
 
@@ -235,6 +240,10 @@ class Conv3DTest(keras_parameterized.TestCase):
       self.assertEqual(layer.bias.constraint, b_constraint)
 
   def test_conv3d_dynamic_shape(self):
+
+    if test.is_built_with_rocm():
+      self.skipTest("5D tensors are not yet supported in ROCm")
+
     input_data = np.random.random((1, 3, 3, 3, 3)).astype(np.float32)
     with self.cached_session(use_gpu=True):
       # Won't raise error here.
@@ -391,6 +400,10 @@ class ZeroPaddingTest(keras_parameterized.TestCase):
         keras.layers.ZeroPadding2D(padding=None)
 
   def test_zero_padding_3d(self):
+
+    if test.is_built_with_rocm():
+      self.skipTest("5D tensors are not yet supported in ROCm")
+
     num_samples = 2
     stack_size = 2
     input_len_dim1 = 4
@@ -521,6 +534,10 @@ class UpSamplingTest(keras_parameterized.TestCase):
               self.assertEqual(np_output.shape[2], length_col * input_num_col)
 
   def test_upsampling_3d(self):
+
+    if test.is_built_with_rocm():
+      self.skipTest("5D tensors are not yet supported in ROCm")
+
     num_samples = 2
     stack_size = 2
     input_len_dim1 = 10
@@ -665,6 +682,10 @@ class CroppingTest(keras_parameterized.TestCase):
       keras.layers.Cropping2D(cropping=None)
 
   def test_cropping_3d(self):
+
+    if test.is_built_with_rocm():
+      self.skipTest("5D tensors are not yet supported in ROCm")
+
     num_samples = 2
     stack_size = 2
     input_len_dim1 = 8
