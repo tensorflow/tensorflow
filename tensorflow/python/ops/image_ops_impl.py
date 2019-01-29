@@ -1100,7 +1100,8 @@ def resize_images_v2(images,
 def resize_image_with_pad(image,
                           target_height,
                           target_width,
-                          method=ResizeMethod.BILINEAR):
+                          method=ResizeMethod.BILINEAR,
+                          align_corners=False):
   """Resizes and pads an image to a target width and height.
 
   Resizes an image to a target width and height by keeping
@@ -1115,6 +1116,9 @@ def resize_image_with_pad(image,
     target_height: Target height.
     target_width: Target width.
     method: Method to use for resizing image. See `resize_images()`
+    align_corners: bool.  If True, the centers of the 4 corner pixels of the
+        input and output tensors are aligned, preserving the values at the
+        corner pixels. Defaults to `False`.
 
   Raises:
     ValueError: if `target_height` or `target_width` are zero or negative.
@@ -1180,7 +1184,10 @@ def resize_image_with_pad(image,
     p_width = max_(0, math_ops.cast(f_padding_width, dtype=dtypes.int32))
 
     # Resize first, then pad to meet requested dimensions
-    resized = resize_images(image, [resized_height, resized_width], method)
+    resized = resize_images(
+        image, [resized_height, resized_width],
+        method,
+        align_corners=align_corners)
 
     padded = pad_to_bounding_box(resized, p_height, p_width, target_height,
                                  target_width)
