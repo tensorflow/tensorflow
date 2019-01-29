@@ -240,7 +240,7 @@ class CollectiveAllReduceStrategyTestBase(
     return np.allclose(x_value, reduced_x_value, atol=1e-5)
 
   def _test_input_fn_iterator(self, task_type, task_id, num_gpus, input_fn,
-                              expected_values):
+                              expected_values, test_reinitialize=True):
     distribution, master_target, config = self._get_test_object(
         task_type, task_id, num_gpus)
     devices = distribution.extended.worker_devices
@@ -263,13 +263,14 @@ class CollectiveAllReduceStrategyTestBase(
                   for r in range(len(devices))])
 
       # After re-initializing the iterator, should be able to iterate again.
-      sess.run(iterator.initialize())
+      if test_reinitialize:
+        sess.run(iterator.initialize())
 
-      for expected_value in expected_values:
-        next_element = iterator.get_next()
-        computed_value = sess.run([values.select_replica(r, next_element)
-                                   for r in range(len(devices))])
-        self.assertEqual(expected_value, computed_value)
+        for expected_value in expected_values:
+          next_element = iterator.get_next()
+          computed_value = sess.run([values.select_replica(r, next_element)
+                                     for r in range(len(devices))])
+          self.assertEqual(expected_value, computed_value)
 
 
 class DistributedCollectiveAllReduceStrategyTest(
@@ -319,23 +320,31 @@ class DistributedCollectiveAllReduceStrategyTest(
 
   # TODO(yuefengz): Update how we use num_gpus and required_gpus
   @combinations.generate(
-      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2], required_gpus=1))
-  def testMakeInputFnIterator(self, num_gpus):
+      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2], required_gpus=1,
+                           use_dataset=[True, False]))
+  def testMakeInputFnIterator(self, num_gpus, use_dataset):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
-    dataset_fn = lambda: dataset_ops.Dataset.range(100)
+    if use_dataset:
+      fn = lambda: dataset_ops.Dataset.range(100)
+    else:
+      def fn():
+        dataset = dataset_ops.Dataset.range(100)
+        it = dataset.make_one_shot_iterator()
+        return it.get_next
     # We use CPU as the device when num_gpus = 0
     devices_per_worker = max(1, num_gpus)
     expected_values = [[i+j for j in range(devices_per_worker)]
                        for i in range(0, 100, devices_per_worker)]
 
     input_fn = self._input_fn_to_test_input_context(
-        dataset_fn,
+        fn,
         expected_num_replicas_in_sync=3*devices_per_worker,
         expected_num_input_pipelines=3,
         expected_input_pipeline_id=1)  # because task_id = 1
     self._test_input_fn_iterator('worker', 1, num_gpus,
-                                 input_fn, expected_values)
+                                 input_fn, expected_values,
+                                 test_reinitialize=use_dataset)
 
   def testUpdateConfigProto(self):
     distribution = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
@@ -425,19 +434,27 @@ class LocalCollectiveAllReduceStrategy(
     self._test_complex_model(None, None, num_gpus)
 
   @combinations.generate(
-      combinations.combine(mode=['graph', 'eager'], required_gpus=2))
-  def testMakeInputFnIterator(self):
+      combinations.combine(mode=['graph', 'eager'], required_gpus=2,
+                           use_dataset=[True, False]))
+  def testMakeInputFnIterator(self, use_dataset):
     num_gpus = 2
-    dataset_fn = lambda: dataset_ops.Dataset.range(5 * num_gpus)
+    if use_dataset:
+      fn = lambda: dataset_ops.Dataset.range(5 * num_gpus)
+    else:
+      def fn():
+        dataset = dataset_ops.Dataset.range(5 * num_gpus)
+        it = dataset.make_one_shot_iterator()
+        return it.get_next
     expected_values = [range(i, i + num_gpus) for i in range(0, 10, num_gpus)]
 
     input_fn = self._input_fn_to_test_input_context(
-        dataset_fn,
+        fn,
         expected_num_replicas_in_sync=num_gpus,
         expected_num_input_pipelines=1,
         expected_input_pipeline_id=0)
     self._test_input_fn_iterator(None, None, num_gpus,
-                                 input_fn, expected_values)
+                                 input_fn, expected_values,
+                                 test_reinitialize=use_dataset)
 
   def testAllReduceSum(self):
     if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
