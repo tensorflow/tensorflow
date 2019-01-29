@@ -132,7 +132,7 @@ void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
     os.indent(indent) << formatv("if (!op{0}) return matchFailure();\n", depth);
     os.indent(indent) << formatv(
         "if (!op{0}->isa<{1}>()) return matchFailure();\n", depth,
-        op.qualifiedCppClassName());
+        op.getQualCppClassName());
   }
   if (tree.getNumArgs() != op.getNumArgs())
     PrintFatalError(loc, Twine("mismatch in number of arguments to op '") +
@@ -287,7 +287,7 @@ void PatternEmitter::emitReplaceOpWithNewOp(DagNode resultTree) {
 
   os << formatv(R"(
     rewriter.replaceOpWithNewOp<{0}>(op, op->getResult(0)->getType())",
-                resultOp.cppClassName());
+                resultOp.getCppClassName());
   if (numOpArgs != resultTree.getNumArgs()) {
     PrintFatalError(loc, Twine("mismatch between arguments of resultant op (") +
                              Twine(numOpArgs) +

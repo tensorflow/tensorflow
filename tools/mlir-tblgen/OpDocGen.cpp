@@ -85,7 +85,7 @@ static void emitOpDoc(const RecordKeeper &recordKeeper, raw_ostream &os) {
   os << "# Operation definition\n";
   for (auto *def : defs) {
     Operator op(def);
-    os << "## " << op.getOperationName() << " (" << op.qualifiedCppClassName()
+    os << "## " << op.getOperationName() << " (" << op.getQualCppClassName()
        << ")";
 
     // Emit summary & description of operator.

@@ -46,10 +46,10 @@ StringRef tblgen::Operator::getOperationName() const {
   return def.getValueAsString("opName");
 }
 
-StringRef tblgen::Operator::cppClassName() const {
+StringRef tblgen::Operator::getCppClassName() const {
   return getSplitDefName().back();
 }
-std::string tblgen::Operator::qualifiedCppClassName() const {
+std::string tblgen::Operator::getQualCppClassName() const {
   return llvm::join(getSplitDefName(), "::");
 }
 

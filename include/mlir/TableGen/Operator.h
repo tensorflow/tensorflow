@@ -55,10 +55,10 @@ public:
   const SmallVectorImpl<StringRef> &getSplitDefName() const;
 
   // Returns the C++ class name of the op.
-  StringRef cppClassName() const;
+  StringRef getCppClassName() const;
 
   // Returns the C++ class name of the op with namespace added.
-  std::string qualifiedCppClassName() const;
+  std::string getQualCppClassName() const;
 
   // Op attribute interators.
   using attribute_iterator = NamedAttribute *;

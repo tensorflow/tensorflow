@@ -150,7 +150,7 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
 
   emitter.mapOverClassNamespaces(
       [&os](StringRef ns) { os << "\nnamespace " << ns << "{\n"; });
-  os << formatv("class {0} : public Op<{0}", emitter.op.cppClassName());
+  os << formatv("class {0} : public Op<{0}", emitter.op.getCppClassName());
   emitter.emitTraits();
   os << "> {\npublic:\n";
 
@@ -168,7 +168,7 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
   emitter.emitFolders();
 
   os << "private:\n  friend class ::mlir::OperationInst;\n"
-     << "  explicit " << emitter.op.cppClassName()
+     << "  explicit " << emitter.op.getCppClassName()
      << "(const OperationInst* state) : Op(state) {}\n};\n";
   emitter.mapOverClassNamespaces(
       [&os](StringRef ns) { os << "} // end namespace " << ns << "\n"; });
@@ -529,7 +529,7 @@ static void emitOpList(const std::vector<Record *> &defs, raw_ostream &os) {
   for (auto &def : defs) {
     if (!first)
       os << ",";
-    os << Operator(def).qualifiedCppClassName();
+    os << Operator(def).getQualCppClassName();
     first = false;
   }
 }
