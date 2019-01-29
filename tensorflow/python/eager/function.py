@@ -1290,9 +1290,10 @@ class Function(object):
     with self._lock:
       try:
         graph_function = self._function_cache.get(cache_key, None)
-      except TypeError:
-        raise TypeError("Arguments supplied to `defun`-generated functions "
-                        "must be hashable.")
+      except TypeError as e:
+        raise TypeError(
+            "Arguments supplied to `defun`-generated functions must be"
+            " hashable.  Original error: %s" % e)
 
       if graph_function is None:
         logging.vlog(1,
