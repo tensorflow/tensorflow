@@ -73,6 +73,9 @@ void Instruction::destroy() {
   case Kind::For:
     delete cast<ForInst>(this);
     break;
+  case Kind::If:
+    delete cast<IfInst>(this);
+    break;
   }
 }
 
@@ -138,6 +141,8 @@ unsigned Instruction::getNumOperands() const {
     return cast<OperationInst>(this)->getNumOperands();
   case Kind::For:
     return cast<ForInst>(this)->getNumOperands();
+  case Kind::If:
+    return cast<IfInst>(this)->getNumOperands();
   }
 }
 
@@ -147,6 +152,8 @@ MutableArrayRef<InstOperand> Instruction::getInstOperands() {
     return cast<OperationInst>(this)->getInstOperands();
   case Kind::For:
     return cast<ForInst>(this)->getInstOperands();
+  case Kind::If:
+    return cast<IfInst>(this)->getInstOperands();
   }
 }
 
@@ -280,6 +287,15 @@ void Instruction::dropAllReferences() {
     // Make sure to drop references held by instructions within the body.
     cast<ForInst>(this)->getBody()->dropAllReferences();
     break;
+  case Kind::If: {
+    // Make sure to drop references held by instructions within the 'then' and
+    // 'else' blocks.
+    auto *ifInst = cast<IfInst>(this);
+    ifInst->getThen()->dropAllReferences();
+    if (auto *elseBlock = ifInst->getElse())
+      elseBlock->dropAllReferences();
+    break;
+  }
   case Kind::OperationInst: {
     auto *opInst = cast<OperationInst>(this);
     if (isTerminator())
@@ -794,6 +810,54 @@ mlir::extractForInductionVars(ArrayRef<ForInst *> forInsts) {
   return results;
 }
 //===----------------------------------------------------------------------===//
+// IfInst
+//===----------------------------------------------------------------------===//
+
+IfInst::IfInst(Location location, unsigned numOperands, IntegerSet set)
+    : Instruction(Kind::If, location), thenClause(this), elseClause(nullptr),
+      set(set) {
+  operands.reserve(numOperands);
+
+  // The then of an 'if' inst always has one block.
+  thenClause.push_back(new Block());
+}
+
+IfInst::~IfInst() {
+  if (elseClause)
+    delete elseClause;
+
+  // An IfInst's IntegerSet 'set' should not be deleted since it is
+  // allocated through MLIRContext's bump pointer allocator.
+}
+
+IfInst *IfInst::create(Location location, ArrayRef<Value *> operands,
+                       IntegerSet set) {
+  unsigned numOperands = operands.size();
+  assert(numOperands == set.getNumOperands() &&
+         "operand cound does not match the integer set operand count");
+
+  IfInst *inst = new IfInst(location, numOperands, set);
+
+  for (auto *op : operands)
+    inst->operands.emplace_back(InstOperand(inst, op));
+
+  return inst;
+}
+
+const AffineCondition IfInst::getCondition() const {
+  return AffineCondition(*this, set);
+}
+
+MLIRContext *IfInst::getContext() const {
+  // Check for degenerate case of if instruction with no operands.
+  // This is unlikely, but legal.
+  if (operands.empty())
+    return getFunction()->getContext();
+
+  return getOperand(0)->getType().getContext();
+}
+
+//===----------------------------------------------------------------------===//
 // Instruction Cloning
 //===----------------------------------------------------------------------===//
 
@@ -867,23 +931,40 @@ Instruction *Instruction::clone(BlockAndValueMapping &mapper,
   for (auto *opValue : getOperands())
     operands.push_back(mapper.lookupOrDefault(const_cast<Value *>(opValue)));
 
-  // Otherwise, this must be a ForInst.
-  auto *forInst = cast<ForInst>(this);
-  auto lbMap = forInst->getLowerBoundMap();
-  auto ubMap = forInst->getUpperBoundMap();
+  if (auto *forInst = dyn_cast<ForInst>(this)) {
+    auto lbMap = forInst->getLowerBoundMap();
+    auto ubMap = forInst->getUpperBoundMap();
 
-  auto *newFor = ForInst::create(
-      getLoc(), ArrayRef<Value *>(operands).take_front(lbMap.getNumInputs()),
-      lbMap, ArrayRef<Value *>(operands).take_back(ubMap.getNumInputs()), ubMap,
-      forInst->getStep());
+    auto *newFor = ForInst::create(
+        getLoc(), ArrayRef<Value *>(operands).take_front(lbMap.getNumInputs()),
+        lbMap, ArrayRef<Value *>(operands).take_back(ubMap.getNumInputs()),
+        ubMap, forInst->getStep());
 
-  // Remember the induction variable mapping.
-  mapper.map(forInst->getInductionVar(), newFor->getInductionVar());
+    // Remember the induction variable mapping.
+    mapper.map(forInst->getInductionVar(), newFor->getInductionVar());
 
-  // Recursively clone the body of the for loop.
-  for (auto &subInst : *forInst->getBody())
-    newFor->getBody()->push_back(subInst.clone(mapper, context));
-  return newFor;
+    // Recursively clone the body of the for loop.
+    for (auto &subInst : *forInst->getBody())
+      newFor->getBody()->push_back(subInst.clone(mapper, context));
+
+    return newFor;
+  }
+
+  // Otherwise, we must have an If instruction.
+  auto *ifInst = cast<IfInst>(this);
+  auto *newIf = IfInst::create(getLoc(), operands, ifInst->getIntegerSet());
+
+  auto *resultThen = newIf->getThen();
+  for (auto &childInst : *ifInst->getThen())
+    resultThen->push_back(childInst.clone(mapper, context));
+
+  if (ifInst->hasElse()) {
+    auto *resultElse = newIf->createElse();
+    for (auto &childInst : *ifInst->getElse())
+      resultElse->push_back(childInst.clone(mapper, context));
+  }
+
+  return newIf;
 }
 
 Instruction *Instruction::clone(MLIRContext *context) const {

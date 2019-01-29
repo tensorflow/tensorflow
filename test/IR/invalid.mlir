@@ -243,6 +243,14 @@ func @non_instruction() {
 
 // -----
 
+func @invalid_if_conditional1() {
+  for %i = 1 to 10 {
+    if () { // expected-error {{expected ':' or '['}}
+  }
+}
+
+// -----
+
 func @invalid_if_conditional2() {
   for %i = 1 to 10 {
     if (i)[N] : (i >= )  // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
@@ -656,11 +664,7 @@ func @invalid_if_operands2(%N : index) {
 func @invalid_if_operands3(%N : index) {
   for %i = 1 to 10 {
     if #set0(%i)[%i] {
-    // expected-error@-1 {{operand cannot be used as a symbol}}
-    }
-  }
-  return
-}
+    // expected-error@-1 {{value '%i' cannot be used as a symbol}}
 
 // -----
 // expected-error@+1 {{expected '"' in string literal}}

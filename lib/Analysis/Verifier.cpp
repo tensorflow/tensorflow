@@ -73,6 +73,7 @@ public:
   bool verifyBlock(const Block &block, bool isTopLevel);
   bool verifyOperation(const OperationInst &op);
   bool verifyForInst(const ForInst &forInst);
+  bool verifyIfInst(const IfInst &ifInst);
   bool verifyDominance(const Block &block);
   bool verifyInstDominance(const Instruction &inst);
 
@@ -179,6 +180,10 @@ bool FuncVerifier::verifyBlock(const Block &block, bool isTopLevel) {
       if (verifyForInst(cast<ForInst>(inst)))
         return true;
       break;
+    case Instruction::Kind::If:
+      if (verifyIfInst(cast<IfInst>(inst)))
+        return true;
+      break;
     }
   }
 
@@ -245,6 +250,18 @@ bool FuncVerifier::verifyForInst(const ForInst &forInst) {
   return verifyBlock(*forInst.getBody(), /*isTopLevel=*/false);
 }
 
+bool FuncVerifier::verifyIfInst(const IfInst &ifInst) {
+  // TODO: check that if conditions are properly formed.
+  if (verifyBlock(*ifInst.getThen(), /*isTopLevel*/ false))
+    return true;
+
+  if (auto *elseClause = ifInst.getElse())
+    if (verifyBlock(*elseClause, /*isTopLevel*/ false))
+      return true;
+
+  return false;
+}
+
 bool FuncVerifier::verifyDominance(const Block &block) {
   for (auto &inst : block) {
     // Check that all operands on the instruction are ok.
@@ -265,6 +282,14 @@ bool FuncVerifier::verifyDominance(const Block &block) {
     case Instruction::Kind::For:
       if (verifyDominance(*cast<ForInst>(inst).getBody()))
         return true;
+      break;
+    case Instruction::Kind::If:
+      auto &ifInst = cast<IfInst>(inst);
+      if (verifyDominance(*ifInst.getThen()))
+        return true;
+      if (auto *elseClause = ifInst.getElse())
+        if (verifyDominance(*elseClause))
+          return true;
       break;
     }
   }

@@ -16,7 +16,6 @@
 // =============================================================================
 
 #include "mlir/Analysis/NestedMatcher.h"
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/StandardOps/StandardOps.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -187,11 +186,6 @@ FilterFunctionType NestedPattern::getFilterFunction() {
   return storage->filter;
 }
 
-static bool isAffineIfOp(const Instruction &inst) {
-  return isa<OperationInst>(inst) &&
-         cast<OperationInst>(inst).isa<AffineIfOp>();
-}
-
 namespace mlir {
 namespace matcher {
 
@@ -200,22 +194,16 @@ NestedPattern Op(FilterFunctionType filter) {
 }
 
 NestedPattern If(NestedPattern child) {
-  return NestedPattern(Instruction::Kind::OperationInst, child, isAffineIfOp);
+  return NestedPattern(Instruction::Kind::If, child, defaultFilterFunction);
 }
 NestedPattern If(FilterFunctionType filter, NestedPattern child) {
-  return NestedPattern(Instruction::Kind::OperationInst, child,
-                       [filter](const Instruction &inst) {
-                         return isAffineIfOp(inst) && filter(inst);
-                       });
+  return NestedPattern(Instruction::Kind::If, child, filter);
 }
 NestedPattern If(ArrayRef<NestedPattern> nested) {
-  return NestedPattern(Instruction::Kind::OperationInst, nested, isAffineIfOp);
+  return NestedPattern(Instruction::Kind::If, nested, defaultFilterFunction);
 }
 NestedPattern If(FilterFunctionType filter, ArrayRef<NestedPattern> nested) {
-  return NestedPattern(Instruction::Kind::OperationInst, nested,
-                       [filter](const Instruction &inst) {
-                         return isAffineIfOp(inst) && filter(inst);
-                       });
+  return NestedPattern(Instruction::Kind::If, nested, filter);
 }
 
 NestedPattern For(NestedPattern child) {

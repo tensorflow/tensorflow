@@ -286,6 +286,10 @@ public:
   // Default step is 1.
   ForInst *createFor(Location loc, int64_t lb, int64_t ub, int64_t step = 1);
 
+  /// Creates if instruction.
+  IfInst *createIf(Location location, ArrayRef<Value *> operands,
+                   IntegerSet set);
+
 private:
   Function *function;
   Block *block = nullptr;

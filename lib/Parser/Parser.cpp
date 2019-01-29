@@ -996,7 +996,8 @@ Attribute Parser::parseAttribute(Type type) {
     AffineMap map;
     IntegerSet set;
     if (parseAffineMapOrIntegerSetReference(map, set))
-      return nullptr;
+      return (emitError("expected affine map or integer set attribute value"),
+              nullptr);
     if (map)
       return builder.getAffineMapAttr(map);
     assert(set);
@@ -2208,6 +2209,8 @@ public:
                                     const char *affineStructName);
   ParseResult parseBound(SmallVectorImpl<Value *> &operands, AffineMap &map,
                          bool isLower);
+  ParseResult parseIfInst();
+  ParseResult parseElseClause(Block *elseClause);
   ParseResult parseInstructions(Block *block);
 
 private:
@@ -2387,6 +2390,10 @@ ParseResult FunctionParser::parseBlockBody(Block *block) {
       break;
     case Token::kw_for:
       if (parseForInst())
+        return ParseFailure;
+      break;
+    case Token::kw_if:
+      if (parseIfInst())
         return ParseFailure;
       break;
     }
@@ -2928,18 +2935,12 @@ public:
     return false;
   }
 
-  /// Parse an optional keyword.
-  bool parseOptionalKeyword(const char *keyword) override {
-    // Check that the current token is a bare identifier or keyword.
-    if (parser.getToken().isNot(Token::bare_identifier) &&
-        !parser.getToken().isKeyword())
-      return true;
-
-    if (parser.getTokenSpelling() == keyword) {
-      parser.consumeToken();
-      return false;
-    }
-    return true;
+  /// Parse a keyword followed by a type.
+  bool parseKeywordType(const char *keyword, Type &result) override {
+    if (parser.getTokenSpelling() != keyword)
+      return parser.emitError("expected '" + Twine(keyword) + "'");
+    parser.consumeToken();
+    return !(result = parser.parseType());
   }
 
   /// Parse an arbitrary attribute of a given type and return it in result. This
@@ -3077,15 +3078,6 @@ public:
     return result == nullptr;
   }
 
-  /// Parses a list of blocks.
-  bool parseBlockList() override {
-    SmallVector<Block *, 2> results;
-    if (parser.parseOperationBlockList(results))
-      return true;
-    parsedBlockLists.emplace_back(results);
-    return false;
-  }
-
   //===--------------------------------------------------------------------===//
   // Methods for interacting with the parser
   //===--------------------------------------------------------------------===//
@@ -3107,11 +3099,6 @@ public:
 
   /// Emit a diagnostic at the specified location and return true.
   bool emitError(llvm::SMLoc loc, const Twine &message) override {
-    // If we emit an error, then cleanup any parsed block lists.
-    for (auto &blockList : parsedBlockLists)
-      parser.cleanupInvalidBlocks(blockList);
-    parsedBlockLists.clear();
-
     parser.emitError(loc, "custom op '" + Twine(opName) + "' " + message);
     emittedError = true;
     return true;
@@ -3119,13 +3106,7 @@ public:
 
   bool didEmitError() const { return emittedError; }
 
-  /// Returns the block lists that were parsed.
-  MutableArrayRef<SmallVector<Block *, 2>> getParsedBlockLists() {
-    return parsedBlockLists;
-  }
-
 private:
-  std::vector<SmallVector<Block *, 2>> parsedBlockLists;
   SMLoc nameLoc;
   StringRef opName;
   FunctionParser &parser;
@@ -3164,25 +3145,8 @@ OperationInst *FunctionParser::parseCustomOperation() {
   if (opAsmParser.didEmitError())
     return nullptr;
 
-  // Check that enough block lists were reserved for those that were parsed.
-  auto parsedBlockLists = opAsmParser.getParsedBlockLists();
-  if (parsedBlockLists.size() > opState.numBlockLists) {
-    opAsmParser.emitError(
-        opLoc,
-        "parsed more block lists than those reserved in the operation state");
-    return nullptr;
-  }
-
   // Otherwise, we succeeded.  Use the state it parsed as our op information.
-  auto *opInst = builder.createOperation(opState);
-
-  // Resolve any parsed block lists.
-  for (unsigned i = 0, e = parsedBlockLists.size(); i != e; ++i) {
-    auto &opBlockList = opInst->getBlockList(i).getBlocks();
-    opBlockList.insert(opBlockList.end(), parsedBlockLists[i].begin(),
-                       parsedBlockLists[i].end());
-  }
-  return opInst;
+  return builder.createOperation(opState);
 }
 
 /// For instruction.
@@ -3472,6 +3436,69 @@ IntegerSet AffineParser::parseIntegerSetConstraints(unsigned numDims,
 
   // Parsed a valid integer set.
   return builder.getIntegerSet(numDims, numSymbols, constraints, isEqs);
+}
+
+/// If instruction.
+///
+///   ml-if-head ::= `if` ml-if-cond trailing-location? `{` inst* `}`
+///               | ml-if-head `else` `if` ml-if-cond trailing-location?
+///                                                   `{` inst* `}`
+///   ml-if-inst ::= ml-if-head
+///               | ml-if-head `else` `{` inst* `}`
+///
+ParseResult FunctionParser::parseIfInst() {
+  auto loc = getToken().getLoc();
+  consumeToken(Token::kw_if);
+
+  IntegerSet set = parseIntegerSetReference();
+  if (!set)
+    return ParseFailure;
+
+  SmallVector<Value *, 4> operands;
+  if (parseDimAndSymbolList(operands, set.getNumDims(), set.getNumOperands(),
+                            "integer set"))
+    return ParseFailure;
+
+  IfInst *ifInst =
+      builder.createIf(getEncodedSourceLocation(loc), operands, set);
+
+  // Try to parse the optional trailing location.
+  if (parseOptionalTrailingLocation(ifInst))
+    return ParseFailure;
+
+  Block *thenClause = ifInst->getThen();
+
+  // When parsing of an if instruction body fails, the IR contains
+  // the if instruction with the portion of the body that has been
+  // successfully parsed.
+  if (parseToken(Token::l_brace, "expected '{' before instruction list") ||
+      parseBlock(thenClause) ||
+      parseToken(Token::r_brace, "expected '}' after instruction list"))
+    return ParseFailure;
+
+  if (consumeIf(Token::kw_else)) {
+    auto *elseClause = ifInst->createElse();
+    if (parseElseClause(elseClause))
+      return ParseFailure;
+  }
+
+  // Reset insertion point to the current block.
+  builder.setInsertionPointToEnd(ifInst->getBlock());
+
+  return ParseSuccess;
+}
+
+ParseResult FunctionParser::parseElseClause(Block *elseClause) {
+  if (getToken().is(Token::kw_if)) {
+    builder.setInsertionPointToEnd(elseClause);
+    return parseIfInst();
+  }
+
+  if (parseToken(Token::l_brace, "expected '{' before instruction list") ||
+      parseBlock(elseClause) ||
+      parseToken(Token::r_brace, "expected '}' after instruction list"))
+    return ParseFailure;
+  return ParseSuccess;
 }
 
 //===----------------------------------------------------------------------===//

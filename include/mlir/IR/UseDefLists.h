@@ -81,9 +81,10 @@ public:
   enum class Kind {
     OperationInst,
     ForInst,
+    IfInst,
 
     /// These enums define ranges used for classof implementations.
-    INST_LAST = ForInst,
+    INST_LAST = IfInst,
   };
 
   Kind getKind() const { return locationAndKind.getInt(); }

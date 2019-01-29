@@ -10,7 +10,7 @@ func @store_may_execute_before_load() {
   %cf7 = constant 7.0 : f32
   %c0 = constant 4 : index
   // There is a dependence from store 0 to load 1 at depth 1 because the
-  // ancestor IfOp of the store, dominates the ancestor ForSmt of the load,
+  // ancestor IfInst of the store, dominates the ancestor ForSmt of the load,
   // and thus the store "may" conditionally execute before the load.
   if #set0(%c0) {
     for %i0 = 0 to 10 {

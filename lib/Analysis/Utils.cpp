@@ -22,7 +22,6 @@
 
 #include "mlir/Analysis/Utils.h"
 
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/IR/Builders.h"
@@ -44,7 +43,7 @@ void mlir::getLoopIVs(const Instruction &inst,
   // Traverse up the hierarchy collecing all 'for' instruction while skipping
   // over 'if' instructions.
   while (currInst && ((currForInst = dyn_cast<ForInst>(currInst)) ||
-                      cast<OperationInst>(currInst)->isa<AffineIfOp>())) {
+                      isa<IfInst>(currInst))) {
     if (currForInst)
       loops->push_back(currForInst);
     currInst = currInst->getParentInst();
@@ -360,12 +359,21 @@ static Instruction *getInstAtPosition(ArrayRef<unsigned> positions,
     if (auto *childForInst = dyn_cast<ForInst>(&inst))
       return getInstAtPosition(positions, level + 1, childForInst->getBody());
 
-    for (auto &blockList : cast<OperationInst>(&inst)->getBlockLists()) {
-      for (auto &b : blockList)
-        if (auto *ret = getInstAtPosition(positions, level + 1, &b))
-          return ret;
+    if (auto *ifInst = dyn_cast<IfInst>(&inst)) {
+      auto *ret = getInstAtPosition(positions, level + 1, ifInst->getThen());
+      if (ret != nullptr)
+        return ret;
+      if (auto *elseClause = ifInst->getElse())
+        return getInstAtPosition(positions, level + 1, elseClause);
     }
-    return nullptr;
+    if (auto *opInst = dyn_cast<OperationInst>(&inst)) {
+      for (auto &blockList : opInst->getBlockLists()) {
+        for (auto &b : blockList)
+          if (auto *ret = getInstAtPosition(positions, level + 1, &b))
+            return ret;
+      }
+      return nullptr;
+    }
   }
   return nullptr;
 }

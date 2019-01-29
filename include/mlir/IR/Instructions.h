@@ -794,6 +794,130 @@ private:
 
   friend class ForInst;
 };
+
+/// If instruction restricts execution to a subset of the loop iteration space.
+class IfInst : public Instruction {
+public:
+  static IfInst *create(Location location, ArrayRef<Value *> operands,
+                        IntegerSet set);
+  ~IfInst();
+
+  //===--------------------------------------------------------------------===//
+  // Then, else, condition.
+  //===--------------------------------------------------------------------===//
+
+  Block *getThen() { return &thenClause.front(); }
+  const Block *getThen() const { return &thenClause.front(); }
+  Block *getElse() { return elseClause ? &elseClause->front() : nullptr; }
+  const Block *getElse() const {
+    return elseClause ? &elseClause->front() : nullptr;
+  }
+  bool hasElse() const { return elseClause != nullptr; }
+
+  Block *createElse() {
+    assert(elseClause == nullptr && "already has an else clause!");
+    elseClause = new BlockList(this);
+    elseClause->push_back(new Block());
+    return &elseClause->front();
+  }
+
+  const AffineCondition getCondition() const;
+
+  IntegerSet getIntegerSet() const { return set; }
+  void setIntegerSet(IntegerSet newSet) {
+    assert(newSet.getNumOperands() == operands.size());
+    set = newSet;
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Operands
+  //===--------------------------------------------------------------------===//
+
+  /// Operand iterators.
+  using operand_iterator = OperandIterator<IfInst, Value>;
+  using const_operand_iterator = OperandIterator<const IfInst, const Value>;
+
+  /// Operand iterator range.
+  using operand_range = llvm::iterator_range<operand_iterator>;
+  using const_operand_range = llvm::iterator_range<const_operand_iterator>;
+
+  unsigned getNumOperands() const { return operands.size(); }
+
+  Value *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
+  const Value *getOperand(unsigned idx) const {
+    return getInstOperand(idx).get();
+  }
+  void setOperand(unsigned idx, Value *value) {
+    getInstOperand(idx).set(value);
+  }
+
+  operand_iterator operand_begin() { return operand_iterator(this, 0); }
+  operand_iterator operand_end() {
+    return operand_iterator(this, getNumOperands());
+  }
+
+  const_operand_iterator operand_begin() const {
+    return const_operand_iterator(this, 0);
+  }
+  const_operand_iterator operand_end() const {
+    return const_operand_iterator(this, getNumOperands());
+  }
+
+  ArrayRef<InstOperand> getInstOperands() const { return operands; }
+  MutableArrayRef<InstOperand> getInstOperands() { return operands; }
+  InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
+  const InstOperand &getInstOperand(unsigned idx) const {
+    return getInstOperands()[idx];
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Other
+  //===--------------------------------------------------------------------===//
+
+  MLIRContext *getContext() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const IROperandOwner *ptr) {
+    return ptr->getKind() == IROperandOwner::Kind::IfInst;
+  }
+
+private:
+  // it is always present.
+  BlockList thenClause;
+  // 'else' clause of the if instruction. 'nullptr' if there is no else clause.
+  BlockList *elseClause;
+
+  // The integer set capturing the conditional guard.
+  IntegerSet set;
+
+  // Condition operands.
+  std::vector<InstOperand> operands;
+
+  explicit IfInst(Location location, unsigned numOperands, IntegerSet set);
+};
+
+/// AffineCondition represents a condition of the 'if' instruction.
+/// Its life span should not exceed that of the objects it refers to.
+/// AffineCondition does not provide its own methods for iterating over
+/// the operands since the iterators of the if instruction accomplish
+/// the same purpose.
+///
+/// AffineCondition is trivially copyable, so it should be passed by value.
+class AffineCondition {
+public:
+  const IfInst *getIfInst() const { return &inst; }
+  IntegerSet getIntegerSet() const { return set; }
+
+private:
+  // 'if' instruction that contains this affine condition.
+  const IfInst &inst;
+  // Integer set for this affine condition.
+  IntegerSet set;
+
+  AffineCondition(const IfInst &inst, IntegerSet set) : inst(inst), set(set) {}
+
+  friend class IfInst;
+};
 } // end namespace mlir
 
 #endif // MLIR_IR_INSTRUCTIONS_H

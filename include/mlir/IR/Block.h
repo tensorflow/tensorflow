@@ -26,6 +26,7 @@
 #include "llvm/ADT/PointerUnion.h"
 
 namespace mlir {
+class IfInst;
 class BlockList;
 class BlockAndValueMapping;
 
@@ -61,7 +62,7 @@ public:
   }
 
   /// Returns the function that this block is part of, even if the block is
-  /// nested under an OperationInst or ForInst.
+  /// nested under an IfInst or ForInst.
   Function *getFunction();
   const Function *getFunction() const {
     return const_cast<Block *>(this)->getFunction();
@@ -324,7 +325,7 @@ private:
 namespace mlir {
 
 /// This class contains a list of basic blocks and has a notion of the object it
-/// is part of - a Function or OperationInst or ForInst.
+/// is part of - a Function or IfInst or ForInst.
 class BlockList {
 public:
   explicit BlockList(Function *container);
@@ -364,14 +365,14 @@ public:
     return &BlockList::blocks;
   }
 
-  /// A BlockList is part of a Function or and OperationInst/ForInst.  If it is
-  /// part of an OperationInst/ForInst, then return it, otherwise return null.
+  /// A BlockList is part of a Function or and IfInst/ForInst.  If it is
+  /// part of an IfInst/ForInst, then return it, otherwise return null.
   Instruction *getContainingInst();
   const Instruction *getContainingInst() const {
     return const_cast<BlockList *>(this)->getContainingInst();
   }
 
-  /// A BlockList is part of a Function or and OperationInst/ForInst.  If it is
+  /// A BlockList is part of a Function or and IfInst/ForInst.  If it is
   /// part of a Function, then return it, otherwise return null.
   Function *getContainingFunction();
   const Function *getContainingFunction() const {

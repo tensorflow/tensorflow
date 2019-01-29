@@ -93,7 +93,7 @@ using OwningMLLoweringPatternList =
 ///   next _original_ operation is considered.
 /// In other words, for each operation, the pass applies the first matching
 /// rewriter in the list and advances to the (lexically) next operation.
-/// Non-operation instructions (ForInst) are ignored.
+/// Non-operation instructions (ForInst and IfInst) are ignored.
 /// This is similar to greedy worklist-based pattern rewriter, except that this
 /// operates on ML functions using an ML builder and does not maintain the work
 /// list.  Note that, as of the time of writing, worklist-based rewriter did not

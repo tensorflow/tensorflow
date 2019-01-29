@@ -287,15 +287,13 @@ func @ifinst(%N: index) {
        // CHECK: %c1_i32 = constant 1 : i32
       %y = "add"(%x, %i) : (i32, index) -> i32 // CHECK: %0 = "add"(%c1_i32, %i0) : (i32, index) -> i32
       %z = "mul"(%y, %y) : (i32, i32) -> i32 // CHECK: %1 = "mul"(%0, %0) : (i32, i32) -> i32
-    } else { // CHECK } else {
-      if (i)[N] : (i - 2 >= 0, 4 - i >= 0)(%i)[%N]  {      // CHECK  if (#set1(%i0)[%arg0]) {
-        // CHECK: %c1 = constant 1 : index
-        %u = constant 1 : index
-        // CHECK: %2 = affine_apply #map{{.*}}(%i0, %i0)[%c1]
-        %w = affine_apply (d0,d1)[s0] -> (d0+d1+s0) (%i, %i) [%u]
-      } else {            // CHECK     } else {
-        %v = constant 3 : i32 // %c3_i32 = constant 3 : i32
-      }
+    } else if (i)[N] : (i - 2 >= 0, 4 - i >= 0)(%i)[%N]  {      // CHECK     } else if (#set1(%i0)[%arg0]) {
+      // CHECK: %c1 = constant 1 : index
+      %u = constant 1 : index
+      // CHECK: %2 = affine_apply #map{{.*}}(%i0, %i0)[%c1]
+      %w = affine_apply (d0,d1)[s0] -> (d0+d1+s0) (%i, %i) [%u]
+    } else {            // CHECK     } else {
+      %v = constant 3 : i32 // %c3_i32 = constant 3 : i32
     }       // CHECK     }
   }         // CHECK   }
   return    // CHECK   return
@@ -753,11 +751,11 @@ func @type_alias() -> !i32_type_alias {
 func @verbose_if(%N: index) {
   %c = constant 200 : index
 
-  // CHECK: if #set0(%c200)[%arg0, %c200] {
-  "if"(%c, %N, %c) { condition: #set0 } : (index, index, index) -> () {
+  // CHECK: "if"(%c200, %arg0, %c200) {cond: #set0} : (index, index, index) -> () {
+  "if"(%c, %N, %c) { cond: #set0 } : (index, index, index) -> () {
     // CHECK-NEXT: "add"
     %y = "add"(%c, %N) : (index, index) -> index
-    // CHECK-NEXT: } else {
+    // CHECK-NEXT: } {
   } { // The else block list.
     // CHECK-NEXT: "add"
     %z = "add"(%c, %c) : (index, index) -> index
