@@ -212,6 +212,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
         return tensorflow::errors::FailedPrecondition(
             "Need to run graph with calibration data first!");
       }
+      tensorflow::core::ScopedUnref calib_sc(cres);
       if (cres->calibrator_) {
         cres->calibrator_->waitAndSetDone();
         cres->thr_->join();
@@ -228,7 +229,6 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
         return tensorflow::errors::Unknown(
             "Can't get TRTCalibrator from resource manager!");
       }
-      cres->Unref();
       TF_RETURN_IF_ERROR(calib_rm->Cleanup(container_name));
     }
   }
