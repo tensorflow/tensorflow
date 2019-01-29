@@ -86,7 +86,7 @@ namespace tensorflow {
 // For use with MKL ML, has been deprecated
 typedef enum { W = 0, H = 1, C = 2, N = 3 } MklDims;
 
-// The dimensions order that MKL DNN internally uses for 2D activations
+// The dimensions order that MKL-DNN internally uses for 2D activations
 // [Batch, Channel, Height, Width] and
 // for 2D filters [Out_Channel, In_Channel, Height, Width].
 typedef enum {
@@ -98,7 +98,7 @@ typedef enum {
   Dim_I = 1
 } MklDnnDims;
 
-// The dimensions order that MKL DNN internally uses for 3D activations
+// The dimensions order that MKL-DNN internally uses for 3D activations
 // [Batch, Channel, Depth, Height, Width] and
 // for 3D filters [Out_Channel, In_Channel, Depth, Height, Width].
 typedef enum {
@@ -130,7 +130,7 @@ typedef enum {
   TF_3DFILTER_DIM_O = 4
 } TFFilterDims3d;
 
-// The dimensions order that MKL DNN requires for the filter in a grouped
+// The dimensions order that MKL-DNN requires for the filter in a grouped
 // convolution (2D only)
 typedef enum {
   MKL_GROUP_FILTER_DIM_G = 0,
@@ -141,7 +141,6 @@ typedef enum {
 } MklDnnFilterGroupDims;
 
 // Enum used to templatize MklOp kernel implementations
-
 // that support both fp32 and int8 versions.
 enum class MklQuantization {
   QUANTIZED_VERSION,
@@ -2157,7 +2156,7 @@ class LRUCache {
   std::unordered_map<string, Entry> cache_;
 
   // The LRU list of entries.
-  // The front of the list contians the key of the most recently accessed 
+  // The front of the list contains the key of the most recently accessed 
   // entry, while the back of the list is the least recently accessed entry.
   std::list<string> lru_list_;
 };
