@@ -2142,7 +2142,6 @@ class LRUCache {
     if (lru_list_.empty()) return false;
     string key = lru_list_.back();
     auto it = cache_.find(key);
-    DCHECK(it != cache_.end());
     lru_list_.pop_back();
     delete it->second.op;  // delete the object
     cache_.erase(it);
