@@ -19,6 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/LoopAnalysis.h"
@@ -99,16 +100,16 @@ public:
   SmallVector<ForInst *, 4> forInsts;
   SmallVector<OperationInst *, 4> loadOpInsts;
   SmallVector<OperationInst *, 4> storeOpInsts;
-  bool hasIfInst = false;
+  bool hasNonForRegion = false;
 
   void visitForInst(ForInst *forInst) { forInsts.push_back(forInst); }
 
-  void visitIfInst(IfInst *ifInst) { hasIfInst = true; }
-
   void visitOperationInst(OperationInst *opInst) {
-    if (opInst->isa<LoadOp>())
+    if (opInst->getNumBlockLists() != 0)
+      hasNonForRegion = true;
+    else if (opInst->isa<LoadOp>())
       loadOpInsts.push_back(opInst);
-    if (opInst->isa<StoreOp>())
+    else if (opInst->isa<StoreOp>())
       storeOpInsts.push_back(opInst);
   }
 };
@@ -410,8 +411,8 @@ bool MemRefDependenceGraph::init(Function *f) {
       // all loads and store accesses it contains.
       LoopNestStateCollector collector;
       collector.walkForInst(forInst);
-      // Return false if IfInsts are found (not currently supported).
-      if (collector.hasIfInst)
+      // Return false if a non 'for' region was found (not currently supported).
+      if (collector.hasNonForRegion)
         return false;
       Node node(id++, &inst);
       for (auto *opInst : collector.loadOpInsts) {
@@ -434,19 +435,18 @@ bool MemRefDependenceGraph::init(Function *f) {
         auto *memref = opInst->cast<LoadOp>()->getMemRef();
         memrefAccesses[memref].insert(node.id);
         nodes.insert({node.id, node});
-      }
-      if (auto storeOp = opInst->dyn_cast<StoreOp>()) {
+      } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {
         // Create graph node for top-level store op.
         Node node(id++, &inst);
         node.stores.push_back(opInst);
         auto *memref = opInst->cast<StoreOp>()->getMemRef();
         memrefAccesses[memref].insert(node.id);
         nodes.insert({node.id, node});
+      } else if (opInst->getNumBlockLists() != 0) {
+        // Return false if another region is found (not currently supported).
+        return false;
       }
     }
-    // Return false if IfInsts are found (not currently supported).
-    if (isa<IfInst>(&inst))
-      return false;
   }
 
   // Walk memref access lists and add graph edges between dependent nodes.

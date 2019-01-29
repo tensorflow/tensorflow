@@ -128,7 +128,6 @@ private:
   void matchOne(Instruction *elem);
 
   void visitForInst(ForInst *forInst) { matchOne(forInst); }
-  void visitIfInst(IfInst *ifInst) { matchOne(ifInst); }
   void visitOperationInst(OperationInst *opInst) { matchOne(opInst); }
 
   /// POD paylod.

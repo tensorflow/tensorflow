@@ -327,10 +327,3 @@ ForInst *FuncBuilder::createFor(Location location, int64_t lb, int64_t ub,
   auto ubMap = AffineMap::getConstantMap(ub, context);
   return createFor(location, {}, lbMap, {}, ubMap, step);
 }
-
-IfInst *FuncBuilder::createIf(Location location, ArrayRef<Value *> operands,
-                              IntegerSet set) {
-  auto *inst = IfInst::create(location, operands, set);
-  block->getInstructions().insert(insertPoint, inst);
-  return inst;
-}

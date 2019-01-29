@@ -44,7 +44,7 @@
 //    lc.walk(function);
 //    numLoops = lc.numLoops;
 //
-// There  are 'visit' methods for OperationInst, ForInst, IfInst, and
+// There  are 'visit' methods for OperationInst, ForInst, and
 // Function, which recursively process all contained instructions.
 //
 // Note that if you don't implement visitXXX for some instruction type,
@@ -85,8 +85,6 @@ public:
     switch (s->getKind()) {
     case Instruction::Kind::For:
       return static_cast<SubClass *>(this)->visitForInst(cast<ForInst>(s));
-    case Instruction::Kind::If:
-      return static_cast<SubClass *>(this)->visitIfInst(cast<IfInst>(s));
     case Instruction::Kind::OperationInst:
       return static_cast<SubClass *>(this)->visitOperationInst(
           cast<OperationInst>(s));
@@ -104,7 +102,6 @@ public:
   // When visiting a for inst, if inst, or an operation inst directly, these
   // methods get called to indicate when transitioning into a new unit.
   void visitForInst(ForInst *forInst) {}
-  void visitIfInst(IfInst *ifInst) {}
   void visitOperationInst(OperationInst *opInst) {}
 };
 
@@ -166,23 +163,6 @@ public:
     static_cast<SubClass *>(this)->visitForInst(forInst);
   }
 
-  void walkIfInst(IfInst *ifInst) {
-    static_cast<SubClass *>(this)->visitIfInst(ifInst);
-    static_cast<SubClass *>(this)->walk(ifInst->getThen()->begin(),
-                                        ifInst->getThen()->end());
-    if (auto *elseBlock = ifInst->getElse())
-      static_cast<SubClass *>(this)->walk(elseBlock->begin(), elseBlock->end());
-  }
-
-  void walkIfInstPostOrder(IfInst *ifInst) {
-    static_cast<SubClass *>(this)->walkPostOrder(ifInst->getThen()->begin(),
-                                                 ifInst->getThen()->end());
-    if (auto *elseBlock = ifInst->getElse())
-      static_cast<SubClass *>(this)->walkPostOrder(elseBlock->begin(),
-                                                   elseBlock->end());
-    static_cast<SubClass *>(this)->visitIfInst(ifInst);
-  }
-
   // Function to walk a instruction.
   RetTy walk(Instruction *s) {
     static_assert(std::is_base_of<InstWalker, SubClass>::value,
@@ -193,8 +173,6 @@ public:
     switch (s->getKind()) {
     case Instruction::Kind::For:
       return static_cast<SubClass *>(this)->walkForInst(cast<ForInst>(s));
-    case Instruction::Kind::If:
-      return static_cast<SubClass *>(this)->walkIfInst(cast<IfInst>(s));
     case Instruction::Kind::OperationInst:
       return static_cast<SubClass *>(this)->walkOpInst(cast<OperationInst>(s));
     }
@@ -210,9 +188,6 @@ public:
     case Instruction::Kind::For:
       return static_cast<SubClass *>(this)->walkForInstPostOrder(
           cast<ForInst>(s));
-    case Instruction::Kind::If:
-      return static_cast<SubClass *>(this)->walkIfInstPostOrder(
-          cast<IfInst>(s));
     case Instruction::Kind::OperationInst:
       return static_cast<SubClass *>(this)->walkOpInstPostOrder(
           cast<OperationInst>(s));
@@ -231,7 +206,6 @@ public:
   // processing their descendants in some way. When using RetTy, all of these
   // need to be overridden.
   void visitForInst(ForInst *forInst) {}
-  void visitIfInst(IfInst *ifInst) {}
   void visitOperationInst(OperationInst *opInst) {}
   void visitInstruction(Instruction *inst) {}
 };

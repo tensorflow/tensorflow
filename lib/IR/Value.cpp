@@ -66,8 +66,6 @@ MLIRContext *IROperandOwner::getContext() const {
     return cast<OperationInst>(this)->getContext();
   case Kind::ForInst:
     return cast<ForInst>(this)->getContext();
-  case Kind::IfInst:
-    return cast<IfInst>(this)->getContext();
   }
 }
 

@@ -21,6 +21,7 @@
 
 #include "mlir/Analysis/LoopAnalysis.h"
 
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/NestedMatcher.h"
@@ -243,6 +244,16 @@ static bool isVectorizableLoopWithCond(const ForInst &loop,
   auto *forInst = const_cast<ForInst *>(&loop);
   auto conditionalsMatched = conditionals.match(forInst);
   if (!conditionalsMatched.empty()) {
+    return false;
+  }
+
+  // No vectorization across unknown regions.
+  auto regions = matcher::Op([](const Instruction &inst) -> bool {
+    auto &opInst = cast<OperationInst>(inst);
+    return opInst.getNumBlockLists() != 0 && !opInst.isa<AffineIfOp>();
+  });
+  auto regionsMatched = regions.match(forInst);
+  if (!regionsMatched.empty()) {
     return false;
   }
 

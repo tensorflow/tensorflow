@@ -188,16 +188,6 @@ void CSE::simplifyBlock(Block *bb) {
       simplifyBlock(cast<ForInst>(i).getBody());
       break;
     }
-    case Instruction::Kind::If: {
-      auto &ifInst = cast<IfInst>(i);
-      if (auto *elseBlock = ifInst.getElse()) {
-        ScopedMapTy::ScopeTy scope(knownValues);
-        simplifyBlock(elseBlock);
-      }
-      ScopedMapTy::ScopeTy scope(knownValues);
-      simplifyBlock(ifInst.getThen());
-      break;
-    }
     }
   }
 }

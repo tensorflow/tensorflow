@@ -20,6 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/Analysis/LoopAnalysis.h"
@@ -559,9 +560,6 @@ static bool instantiateMaterialization(Instruction *inst,
   if (isa<ForInst>(inst))
     return inst->emitError("NYI path ForInst");
 
-  if (isa<IfInst>(inst))
-    return inst->emitError("NYI path IfInst");
-
   // Create a builder here for unroll-and-jam effects.
   FuncBuilder b(inst);
   auto *opInst = cast<OperationInst>(inst);
@@ -570,6 +568,9 @@ static bool instantiateMaterialization(Instruction *inst,
   if (opInst->isa<AffineApplyOp>()) {
     return false;
   }
+  if (opInst->getNumBlockLists() != 0)
+    return inst->emitError("NYI path Op with region");
+
   if (auto write = opInst->dyn_cast<VectorTransferWriteOp>()) {
     auto *clone = instantiate(&b, write, state->hwVectorType,
                               state->hwVectorInstance, state->substitutionsMap);

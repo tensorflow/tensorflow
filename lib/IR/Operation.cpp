@@ -281,7 +281,7 @@ bool OpTrait::impl::verifyIsTerminator(const OperationInst *op) {
   if (!block || &block->back() != op)
     return op->emitOpError("must be the last instruction in the parent block");
 
-  // Terminators may not exist in ForInst and IfInst.
+  // TODO(riverriddle) Terminators may not exist with an operation region.
   if (block->getContainingInst())
     return op->emitOpError("may only be at the top level of a function");
 

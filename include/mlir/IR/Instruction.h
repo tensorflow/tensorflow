@@ -75,7 +75,6 @@ public:
   enum class Kind {
     OperationInst = (int)IROperandOwner::Kind::OperationInst,
     For = (int)IROperandOwner::Kind::ForInst,
-    If = (int)IROperandOwner::Kind::IfInst,
   };
 
   Kind getKind() const { return (Kind)IROperandOwner::getKind(); }
