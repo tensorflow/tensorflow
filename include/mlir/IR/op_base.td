@@ -343,6 +343,9 @@ def NoSideEffect  : OpProperty;   // op has no side effect
 // Marker used to identify the argument list for an op.
 def ins;
 
+// Marker used to identify the result list for an op.
+def outs;
+
 // Base class for all ops.
 class Op<string mnemonic, list<OpProperty> props = []> {
   // The mnemonic of the op.
@@ -354,11 +357,11 @@ class Op<string mnemonic, list<OpProperty> props = []> {
   // Additional, longer human-readable description of what the op does.
   string description = ?;
 
-  // Dag containting the arguments of the op. Default 0 arguments.
+  // Dag containting the arguments of the op. Default to 0 arguments.
   dag arguments = (ins);
 
-  // The list of return types of the op. Default no return type set.
-  list<Type> returnTypes = [];
+  // The list of results of the op. Default to 0 results.
+  dag results = (outs);
 
   // Attribute getters can be added to the op by adding an Attr member
   // with the name and type of the attribute. E.g., adding int attribute
@@ -410,13 +413,13 @@ class Op<string mnemonic, list<OpProperty> props = []> {
 }
 
 // The arguments of an op.
-class Arguments<dag types> {
-  dag arguments = types;
+class Arguments<dag args> {
+  dag arguments = args;
 }
 
-// The result types of an op.
-class Results<list<Type> types> {
-  list<Type> returnTypes = types;
+// The results of an op.
+class Results<dag rets> {
+  dag results = rets;
 }
 
 // The traits of an op.

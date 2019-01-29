@@ -53,6 +53,21 @@ std::string tblgen::Operator::getQualCppClassName() const {
   return llvm::join(getSplitDefName(), "::");
 }
 
+int tblgen::Operator::getNumResults() const {
+  DagInit *results = def.getValueAsDag("results");
+  return results->getNumArgs();
+}
+
+tblgen::Type tblgen::Operator::getResultType(int index) const {
+  DagInit *results = def.getValueAsDag("results");
+  return Type(cast<DefInit>(results->getArg(index)));
+}
+
+StringRef tblgen::Operator::getResultName(int index) const {
+  DagInit *results = def.getValueAsDag("results");
+  return results->getArgNameStr(index);
+}
+
 int tblgen::Operator::getNumNativeAttributes() const {
   return derivedAttrStart - nativeAttrStart;
 }

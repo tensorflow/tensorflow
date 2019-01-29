@@ -251,11 +251,12 @@ void OpEmitter::emitBuilder() {
 
   // 1. Stand-alone parameters
 
-  std::vector<Record *> returnTypes = def.getValueAsListOfDefs("returnTypes");
   OUT(2) << "static void build(Builder* builder, OperationState* result";
 
+  auto numResults = op.getNumResults();
+
   // Emit parameters for all return types
-  for (unsigned i = 0, e = returnTypes.size(); i != e; ++i)
+  for (unsigned i = 0, e = numResults; i != e; ++i)
     os << ", Type returnType" << i;
 
   // Emit parameters for all operands
@@ -274,9 +275,9 @@ void OpEmitter::emitBuilder() {
   os << ") {\n";
 
   // Push all result types to the result
-  if (!returnTypes.empty()) {
+  if (numResults > 0) {
     OUT(4) << "result->addTypes({returnType0";
-    for (unsigned i = 1, e = returnTypes.size(); i != e; ++i)
+    for (unsigned i = 1; i != numResults; ++i)
       os << ", returnType" << i;
     os << "});\n\n";
   }
@@ -304,7 +305,7 @@ void OpEmitter::emitBuilder() {
             "ArrayRef<NamedAttribute> attributes) {\n";
 
   // Result types
-  OUT(4) << "assert(resultTypes.size() == " << returnTypes.size()
+  OUT(4) << "assert(resultTypes.size() == " << numResults
          << "u && \"mismatched number of return types\");\n"
          << "    result->addTypes(resultTypes);\n";
 
@@ -334,7 +335,7 @@ void OpEmitter::emitCanonicalizationPatterns() {
 }
 
 void OpEmitter::emitFolders() {
-  bool hasSingleResult = def.getValueAsListOfDefs("returnTypes").size() == 1;
+  bool hasSingleResult = op.getNumResults() == 1;
   if (def.getValueAsBit("hasConstantFolder")) {
     if (hasSingleResult) {
       os << "  Attribute constantFold(ArrayRef<Attribute> operands,\n"
@@ -451,10 +452,10 @@ void OpEmitter::emitVerifier() {
 }
 
 void OpEmitter::emitTraits() {
-  std::vector<Record *> returnTypes = def.getValueAsListOfDefs("returnTypes");
+  auto numResults = op.getNumResults();
 
   // Add return size trait.
-  switch (returnTypes.size()) {
+  switch (numResults) {
   case 0:
     os << ", OpTrait::ZeroResult";
     break;
@@ -462,7 +463,7 @@ void OpEmitter::emitTraits() {
     os << ", OpTrait::OneResult";
     break;
   default:
-    os << ", OpTrait::NResults<" << returnTypes.size() << ">::Impl";
+    os << ", OpTrait::NResults<" << numResults << ">::Impl";
     break;
   }
 

@@ -37,7 +37,7 @@ class ArithmeticOp<string mnemonic, list<OpProperty> props = [],
                    list<string> traits = []> :
     Op<mnemonic, !listconcat(props, [NoSideEffect])>,
     Traits<!listconcat(traits, ["SameOperandsAndResultType"])>,
-    Results<[AnyType]> {
+    Results<(outs AnyType)> {
 
   let opName = mnemonic;
 

@@ -60,6 +60,14 @@ public:
   // Returns the C++ class name of the op with namespace added.
   std::string getQualCppClassName() const;
 
+  // Returns the number of results this op produces.
+  int getNumResults() const;
+
+  // Returns the `index`-th result's type.
+  Type getResultType(int index) const;
+  // Returns the `index`-th result's name.
+  StringRef getResultName(int index) const;
+
   // Op attribute interators.
   using attribute_iterator = NamedAttribute *;
   attribute_iterator attribute_begin();

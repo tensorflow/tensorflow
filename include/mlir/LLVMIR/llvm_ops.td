@@ -51,7 +51,7 @@ class LLVM_Op<string mnemonic, list<OpProperty> props = [],
 // Base class for LLVM operations with one result.
 class LLVM_OneResultOp<string mnemonic, list<OpProperty> props = [],
                       list<string> traits = []> :
-    LLVM_Op<mnemonic, props, traits>, Results<[LLVM_Type]> {
+    LLVM_Op<mnemonic, props, traits>, Results<(outs LLVM_Type)> {
   let builder = [{
     static void build(Builder *builder, OperationState *result, Type resultType,
                       ArrayRef<Value *> operands,
@@ -69,7 +69,7 @@ class LLVM_OneResultOp<string mnemonic, list<OpProperty> props = [],
 // Base class for LLVM operations with zero results.
 class LLVM_ZeroResultOp<string mnemonic, list<OpProperty> props = [],
                        list<string> traits = []> :
-    LLVM_Op<mnemonic, props, traits>, Results<[]> {
+    LLVM_Op<mnemonic, props, traits>, Results<(outs)> {
   let builder = [{
     // Compatibility builder that takes an instance of wrapped llvm::VoidType
     // to indicate no result.
@@ -103,7 +103,7 @@ class LLVM_TerminatorOp<string mnemonic, list<OpProperty> props = [],
                        list<string> traits = []> :
     LLVM_Op<mnemonic, props,
             !listconcat(["IsTerminator", "VariadicOperands"], traits)>,
-    Results<[]> {
+    Results<(outs)> {
   let builder = [{
       static void build(Builder *builder, OperationState *result,
                         ArrayRef<Value *> properOperands,

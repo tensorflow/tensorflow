@@ -7,7 +7,7 @@ include "mlir/IR/op_base.td"
 
 def X_AddOp : Op<"x.add">,
     Arguments<(ins Tensor:$lhs, Tensor:$rhs)>,
-    Results<[Tensor]> {
+    Results<(outs Tensor)> {
     // TODO: extract referenceImplementation to Op.
     // TODO: shrink the reference implementation
   code referenceImplementation = [{
