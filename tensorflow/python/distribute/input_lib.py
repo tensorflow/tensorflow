@@ -182,8 +182,6 @@ class InputFunctionIterator(InputIteratorImpl):
     once on each worker.
 
     TODO(priyag): Add other replication modes.
-    TODO(priyag): Allow taking input function that returns a callable that
-    returns nest of tensors.
 
     Args:
       input_fn: Input function that returns a `tf.data.Dataset` object.
@@ -204,10 +202,14 @@ class InputFunctionIterator(InputIteratorImpl):
       worker = input_workers.worker_devices[i]
       with ops.device(worker):
         result = input_fn(ctx)
-        if not isinstance(result, dataset_ops.DatasetV2):
-          raise ValueError("input_fn must return a tf.data.Dataset.")
         devices = input_workers.compute_devices_for_worker(i)
-        iterator = _SingleWorkerDatasetIterator(result, worker, devices)
+        if isinstance(result, dataset_ops.DatasetV2):
+          iterator = _SingleWorkerDatasetIterator(result, worker, devices)
+        elif callable(result):
+          iterator = _SingleWorkerCallableIterator(result, worker, devices)
+        else:
+          raise ValueError(
+              "input_fn must return a tf.data.Dataset or a callable.")
         iterators.append(iterator)
 
     super(InputFunctionIterator, self).__init__(input_workers, iterators)
@@ -319,6 +321,26 @@ class _SingleWorkerDatasetIterator(object):
   @property
   def output_types(self):
     return self._iterator.output_types
+
+
+class _SingleWorkerCallableIterator(object):
+  """Iterator for a single tensor-returning callable."""
+
+  def __init__(self, fn, worker, devices):
+    self._fn = fn
+    self._worker = worker
+    self._devices = devices
+
+  def get_next_as_list(self, name=None):
+    """Get next element from the callable."""
+    del name
+    with ops.device(self._worker):
+      data_list = [self._fn() for _ in self._devices]
+      return data_list
+
+  def initialize(self):
+    # TODO(petebu) Should this throw an exception instead?
+    return []
 
 
 # TODO(sourabhbajaj): Remove this in lieu of distributed datasets
