@@ -537,6 +537,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.unbatch",
         "tf.contrib.data.unique":
             "tf.data.experimental.unique",
+        "tf.contrib.framework.constant_value":
+            "tf.get_static_value",
         "tf.contrib.saved_model.load_keras_model":
             "tf.keras.experimental.load_from_saved_model",
         "tf.contrib.saved_model.save_keras_model":
