@@ -94,3 +94,4 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/training/checkpointable:util_xla_test_cpu \
     -//tensorflow/python/kernel_tests/signal:mfcc_ops_test \
     -//tensorflow/python/kernel_tests:self_adjoint_eig_op_test_gpu \
+    -//tensorflow/python/keras:normalization_test \
