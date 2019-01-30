@@ -279,10 +279,9 @@ tf_xla_py_test(
     ],
 )
 
-# This test is large because occasionally the cpu test is long for testConcatLargeNumberOfTensors
 tf_xla_py_test(
     name = "concat_ops_test",
-    size = "large",
+    size = "medium",
     srcs = ["concat_ops_test.py"],
     deps = [
         ":xla_test",
