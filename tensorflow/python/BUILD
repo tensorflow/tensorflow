@@ -650,7 +650,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:execute",
-        "//tensorflow/tools/docs:doc_controls",
     ],
 )
 
@@ -6070,12 +6069,4 @@ py_library(
     name = "tf2",
     srcs = ["tf2.py"],
     srcs_version = "PY2AND3",
-)
-
-cuda_py_test(
-    name = "raw_ops_test",
-    srcs = ["ops/raw_ops_test.py"],
-    additional_deps = [
-        "//tensorflow/python:client_testlib",
-    ],
 )

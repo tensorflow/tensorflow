@@ -46,7 +46,6 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "quantization/__init__.py",
     "ragged/__init__.py",
     "random/__init__.py",
-    "raw_ops/__init__.py",
     "resource_loader/__init__.py",
     "strings/__init__.py",
     "saved_model/__init__.py",
