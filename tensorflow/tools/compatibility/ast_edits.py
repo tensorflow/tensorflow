@@ -116,6 +116,8 @@ class APIChangeSpec(object):
   * `function_warnings`: maps full names of functions to warnings that will be
     printed out if the function is used. (e.g. tf.nn.convolution())
   * `function_transformers`: maps function names to custom handlers
+  * `leftover_warnings`: These warnings are printed if a matching Attribute
+    still exists after all other transformations have run.
 
   For an example, see `TFAPIChangeSpec`.
   """
@@ -238,6 +240,20 @@ class _PastaEditVisitor(ast.NodeVisitor):
       message = message.replace("<function name>", full_name)
       self.add_log(level, node.lineno, node.col_offset,
                    "%s requires manual check. %s" % (full_name, message))
+      return True
+    else:
+      return False
+
+  def _maybe_add_module_deprecation_warning(self, node, full_name, whole_name):
+    """Adds a warning if full_name is a deprecated module."""
+    warnings = self._api_change_spec.module_deprecations
+    if full_name in warnings:
+      level, message = warnings[full_name]
+      message = message.replace("<function name>", whole_name)
+      self.add_log(level, node.lineno, node.col_offset,
+                   "Using member %s in deprecated module %s. %s" % (whole_name,
+                                                                    full_name,
+                                                                    message))
       return True
     else:
       return False
@@ -439,6 +455,14 @@ class _PastaEditVisitor(ast.NodeVisitor):
         return
       if self._maybe_change_to_function_call(parent, node, full_name):
         return
+
+      # The isinstance check is enough -- a bare Attribute is never root.
+      i = 2
+      while isinstance(self._stack[-i], ast.Attribute):
+        i += 1
+      whole_name = pasta.dump(self._stack[-(i-1)])
+
+      self._maybe_add_module_deprecation_warning(node, full_name, whole_name)
 
     self.generic_visit(node)
 
