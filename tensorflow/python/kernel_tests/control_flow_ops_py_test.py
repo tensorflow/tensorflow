@@ -3912,14 +3912,14 @@ class ControlFlowContextCheckTest(test.TestCase):
     while_tensor = self._getWhileTensor()
     with self.assertRaisesRegexp(
         ValueError,
-        "Cannot use 'while_1/Add' as input to 'while/Const_1' because they are "
+        "Cannot use 'while/Const_1' as input to 'while_1/Add' because they are "
         "in different while loops. See info log for more details."):
       control_flow_ops.while_loop(lambda i: i < 10,
                                   lambda x: math_ops.add(1, while_tensor), [0])
 
     with self.assertRaisesRegexp(
         ValueError,
-        "Cannot use 'while_2/NextIteration' as input to 'while/Const_1' "
+        "Cannot use 'while/Const_1' as input to 'while_2/NextIteration' "
         "because they are in different while loops. See info log for more "
         "details."):
       control_flow_ops.while_loop(lambda i: i < 10, lambda i: while_tensor, [0])
@@ -3976,7 +3976,7 @@ class ControlFlowContextCheckTest(test.TestCase):
 
     with self.assertRaisesRegexp(
         ValueError,
-        "Cannot use 'cond/while_1/add' as input to 'cond/while/Const_1' because"
+        "Cannot use 'cond/while/Const_1' as input to 'cond/while_1/add' because"
         " they are in different while loops. See info log for more details."):
       control_flow_ops.cond(
           math_ops.less(1, 2), true_fn, lambda: constant_op.constant(0))
