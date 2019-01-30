@@ -59,7 +59,8 @@ inline int ASharedMemory_create(const char* name, size_t size) {
       handle != nullptr ? reinterpret_cast<ASharedMemory_create_fn>(
                               dlsym(handle, "ASharedMemory_create"))
                         : nullptr;
-  return fn(name, size);
+  int fd = fn != nullptr ? fn(name, size) : -1;
+  return fd;
 }
 
 inline void* getLibraryHandle() {
