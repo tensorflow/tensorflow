@@ -3070,11 +3070,27 @@ class Graph(object):
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
   @tf_contextlib.contextmanager
-  def _variable_creator_scope(self, creator):
+  def _variable_creator_scope(self, creator, priority=100):
+    """Scope which defines a variable creation function.
+
+    Args:
+      creator: A callable taking `next_creator` and `kwargs`. See the
+        `tf.variable_creator_scope` docstring.
+      priority: Creators with a higher `priority` are called first. Within the
+        same priority, creators are called inner-to-outer.
+
+    Yields:
+      `_variable_creator_scope` is a context manager with a side effect, but
+      doesn't return a value.
+    """
     # This step makes a copy of the existing stack, and it also initializes
     # self._thread_local._variable_creator_stack if it doesn't exist yet.
     old = list(self._variable_creator_stack)
-    self._thread_local._variable_creator_stack.append(creator)  # pylint: disable=protected-access
+    stack = self._thread_local._variable_creator_stack  # pylint: disable=protected-access
+    stack.append((priority, creator))
+    # Sorting is stable, so we'll put higher-priority creators later in the list
+    # but otherwise maintain registration order.
+    stack.sort(key=lambda item: item[0])
     try:
       yield
     finally:
