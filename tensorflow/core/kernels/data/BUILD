@@ -22,6 +22,26 @@ cc_library(
 )
 
 cc_library(
+    name = "dataset_test_base",
+    testonly = 1,
+    srcs = ["dataset_test_base.cc"],
+    hdrs = ["dataset_test_base.h"],
+    deps = [
+        ":iterator_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+    ],
+)
+
+cc_library(
     name = "dataset_utils",
     srcs = ["dataset_utils.cc"],
     hdrs = ["dataset_utils.h"],
@@ -181,6 +201,26 @@ tf_kernel_library(
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "map_dataset_op_test",
+    size = "small",
+    srcs = ["map_dataset_op_test.cc"],
+    deps = [
+        ":map_dataset_op",
+        ":range_dataset_op",
+        ":dataset_test_base",
+        ":iterator_ops",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:cwise_op",
     ],
 )
 
@@ -347,6 +387,20 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "range_dataset_op_test",
+    size = "small",
+    srcs = ["range_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":range_dataset_op",
+        ":iterator_ops",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core:test_main",
+
     ],
 )
 
