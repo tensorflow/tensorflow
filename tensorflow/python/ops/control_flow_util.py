@@ -331,7 +331,7 @@ def CheckInputFromValidContext(op, input_op):
     if while_ctxt:
       error_msg = (
           "Cannot use '%s' as input to '%s' because they are in different while"
-          " loops." % (op.name, input_op.name))
+          " loops." % (input_op.name, op.name))
     else:
       error_msg = (
           "Cannot use '%s' as input to '%s' because '%s' is in a while loop."
