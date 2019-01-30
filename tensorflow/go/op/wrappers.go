@@ -31765,6 +31765,18 @@ func ExtractGlimpseUniformNoise(value bool) ExtractGlimpseAttr {
 	}
 }
 
+// ExtractGlimpseNoise sets the optional noise attribute to value.
+//
+// value: indicates if the noise should `uniform`, `gaussian`, or
+// `zero`. The default is `uniform` which means the the noise type
+// will be decided by `uniform_noise`.
+// If not specified, defaults to "uniform"
+func ExtractGlimpseNoise(value string) ExtractGlimpseAttr {
+	return func(m optionalAttr) {
+		m["noise"] = value
+	}
+}
+
 // Extracts a glimpse from the input tensor.
 //
 // Returns a set of windows called glimpses extracted at location
