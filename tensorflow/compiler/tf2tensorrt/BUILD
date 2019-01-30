@@ -97,8 +97,10 @@ tf_cuda_cc_test(
         "nomac",
     ],
     deps = [
-        ":get_serialized_resource_op_op_lib",
+        # TODO(laigd): consider splitting get_serialized_resource_op out from
+        # TF-TRT.
         ":trt_op_kernels",
+        ":trt_op_libs",
         ":trt_resources",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -117,6 +119,14 @@ tf_gen_op_libs(
     ],
 )
 
+cc_library(
+    name = "trt_op_libs",
+    deps = [
+        ":get_serialized_resource_op_op_lib",
+        ":trt_engine_op_op_lib",
+    ],
+)
+
 tf_cuda_library(
     name = "trt_logging",
     srcs = ["utils/trt_logger.cc"],
@@ -132,9 +142,7 @@ tf_cuda_library(
 tf_gen_op_wrapper_py(
     name = "trt_ops",
     deps = [
-        ":get_serialized_resource_op_op_lib",
-        ":trt_engine_op_op_lib",
-        ":trt_logging",
+        ":trt_op_libs",
     ],
 )
 
@@ -148,8 +156,7 @@ tf_custom_op_py_library(
     ]),
     kernels = [
         ":trt_op_kernels",
-        ":trt_engine_op_op_lib",
-        ":get_serialized_resource_op_op_lib",
+        ":trt_op_libs",
     ],
     srcs_version = "PY2AND3",
     deps = [
