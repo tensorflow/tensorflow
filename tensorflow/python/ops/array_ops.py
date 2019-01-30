@@ -2666,7 +2666,10 @@ def required_space_to_batch_paddings(input_shape,
 
 @tf_export(v1=["nn.space_to_batch", "space_to_batch"])
 @deprecation.deprecated_endpoints("space_to_batch")
-def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=redefined-builtin
+def space_to_batch(  # pylint: disable=missing-docstring
+    input, paddings, block_size=None, name=None, block_shape=None):  # pylint: disable=redefined-builtin
+  block_size = deprecation.deprecated_argument_lookup(
+      "block_shape", block_shape, "block_size", block_size)
   result = space_to_batch_nd(
       input,
       paddings=paddings,
@@ -2722,7 +2725,9 @@ depth_to_space_v2.__doc__ = gen_array_ops.depth_to_space.__doc__
 
 
 @tf_export(v1=["batch_to_space"])
-def batch_to_space(input, crops, block_size, name=None):  # pylint: disable=redefined-builtin
+def batch_to_space(input, crops, block_size, name=None, block_shape=None):  # pylint: disable=redefined-builtin,missing-docstring
+  block_size = deprecation.deprecated_argument_lookup(
+      "block_shape", block_shape, "block_size", block_size)
   result = batch_to_space_nd(
       input,
       crops=crops,
@@ -3654,7 +3659,22 @@ def extract_image_patches_v2(
   return gen_array_ops.extract_image_patches(
       images, sizes, strides, rates, padding, name)
 
-extract_image_patches_deprecation = deprecation.deprecated_args(
+
+@tf_export(v1=["image.extract_image_patches", "extract_image_patches"])
+@deprecation.deprecated_args(
     None, "ksizes is deprecated, use sizes instead", "ksizes")
-tf_export(v1=["image.extract_image_patches", "extract_image_patches"])(
-    extract_image_patches_deprecation(gen_array_ops.extract_image_patches))
+def extract_image_patches(  # pylint: disable=missing-docstring
+    images,
+    ksizes=None,
+    strides=None,
+    rates=None,
+    padding=None,
+    name=None,
+    sizes=None):
+  ksizes = deprecation.deprecated_argument_lookup(
+      "sizes", sizes, "ksizes", ksizes)
+  return gen_array_ops.extract_image_patches(
+      images, ksizes, strides, rates, padding, name)
+
+
+extract_image_patches.__doc__ = gen_array_ops.extract_image_patches.__doc__
