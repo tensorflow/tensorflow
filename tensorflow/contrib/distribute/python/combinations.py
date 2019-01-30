@@ -357,24 +357,13 @@ tpu_strategy = NamedDistribution(
 tpu_strategy_one_step = NamedDistribution(
     "TPUOneStep", _get_tpu_strategy_creator(steps_per_run=1),
     required_tpu=True)
-tpu_strategy_loop_on_device_one_core = NamedDistribution(
-    "TPULoopOnDeviceOneCore", _get_tpu_strategy_creator(
-        steps_per_run=2, use_single_core=True,
-        _disable_training_loop_on_host=True),
+tpu_strategy_one_core = NamedDistribution(
+    "TPUOneCore", _get_tpu_strategy_creator(
+        steps_per_run=2, use_single_core=True),
     required_tpu=True)
-tpu_strategy_one_step_loop_on_device_one_core = NamedDistribution(
-    "TPUOneStepLoopOnDeviceOneCore", _get_tpu_strategy_creator(
-        steps_per_run=1, use_single_core=True,
-        _disable_training_loop_on_host=True),
-    required_tpu=True)
-# TODO(b/122327153): Remove below two NamedDistributions.
-tpu_strategy_loop_on_device = NamedDistribution(
-    "TPULoopOnDevice", _get_tpu_strategy_creator(
-        steps_per_run=2, _disable_training_loop_on_host=True),
-    required_tpu=True)
-tpu_strategy_one_step_loop_on_device = NamedDistribution(
-    "TPUOneStepLoopOnDevice", _get_tpu_strategy_creator(
-        steps_per_run=1, _disable_training_loop_on_host=True),
+tpu_strategy_one_step_one_core = NamedDistribution(
+    "TPUOneStepOneCore", _get_tpu_strategy_creator(
+        steps_per_run=1, use_single_core=True),
     required_tpu=True)
 
 mirrored_strategy_with_one_cpu = NamedDistribution(

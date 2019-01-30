@@ -29,8 +29,8 @@ from tensorflow.python.training import gradient_descent
 def strategies_for_stateful_embedding_model():
   """Returns TPUStrategy with single core device assignment."""
 
-  return [combinations.tpu_strategy_loop_on_device_one_core,
-          combinations.tpu_strategy_one_step_loop_on_device_one_core]
+  return [combinations.tpu_strategy_one_core,
+          combinations.tpu_strategy_one_step_one_core]
 
 
 def test_combinations_for_stateful_embedding_model():

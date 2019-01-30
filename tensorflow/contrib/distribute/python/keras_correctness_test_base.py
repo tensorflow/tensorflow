@@ -78,11 +78,7 @@ def strategies_for_embedding_models():
   and DefaultStrategy in order to prevent testing timeouts.
   """
 
-  strategies = [s for s in all_strategies
-                if not s.required_tpu and s.required_gpus is not None]
-  strategies.append(combinations.tpu_strategy_loop_on_device)
-  strategies.append(combinations.tpu_strategy_one_step_loop_on_device)
-  return strategies
+  return [s for s in all_strategies if s.required_tpu or s.required_gpus]
 
 
 def test_combinations_for_embedding_model():
@@ -95,8 +91,8 @@ def test_combinations_for_embedding_model():
 
 
 def test_combinations_with_tpu_strategies():
-  tpu_strategies = [combinations.tpu_strategy_loop_on_device,
-                    combinations.tpu_strategy_one_step_loop_on_device]
+  tpu_strategies = [combinations.tpu_strategy,
+                    combinations.tpu_strategy_one_step]
 
   return (
       combinations.times(
