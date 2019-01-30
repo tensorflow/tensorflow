@@ -222,14 +222,18 @@ def FloatLike : TypeConstraint<AnyOf<[Float.predicate,
 
 // A constraint on attributes. This can be used to check the validity of
 // instruction attributes.
-class AttrConstraint<Pred condition> {
+class AttrConstraint<Pred condition, string descr> {
   // The predicates that this attribute satisfies.
   // Format: {0} will be expanded to the attribute.
   Pred predicate = condition;
+  // User-readable description used, e.g., for error reporting.
+  // If empty, a generic message will be used instead.
+  string description = descr;
 }
 
 // Base class for all attributes.
-class Attr<Pred condition = CPred<"true">> : AttrConstraint<condition> {
+class Attr<Pred condition, string descr = ""> :
+    AttrConstraint<condition, descr> {
   code storageType = ?; // The backing mlir::Attribute type
   code returnType = ?;  // The underlying C++ value type
 
@@ -257,49 +261,52 @@ class Attr<Pred condition = CPred<"true">> : AttrConstraint<condition> {
 
 // A generic attribute that must be constructed around a specific type.
 // Backed by a C++ class "attrName".
-class TypeBasedAttr<BuildableType t, string attrName> : Attr {
+class TypeBasedAttr<BuildableType t, string attrName, string descr> :
+    Attr<CPred<"true">, descr> {
   let constBuilderCall =
       "{0}.get" # attrName # "({0}." # t.builderCall # ", {1})";
   let storageType = attrName;
 }
 
 // An attribute backed by a string type.
-class StringBasedAttr : Attr {
+class StringBasedAttr<string descr> : Attr<CPred<"true">, descr> {
   let constBuilderCall = [{ {0}.getStringAttr("{1}") }];
   let storageType = [{ StringAttr }];
 }
 
 // Base class for instantiating float attributes of fixed width.
-class FloatAttrBase<BuildableType t> : TypeBasedAttr<t, "FloatAttr">;
+class FloatAttrBase<BuildableType t, string descr> :
+    TypeBasedAttr<t, "FloatAttr", descr>;
 
 // Base class for instantiating integer attributes of fixed width.
-class IntegerAttrBase<BuildableType t> : TypeBasedAttr<t, "IntegerAttr">;
+class IntegerAttrBase<BuildableType t, string descr> :
+  TypeBasedAttr<t, "IntegerAttr", descr>;
 
-def BoolAttr : Attr {
+def BoolAttr : Attr<CPred<"true">, "bool"> {
   let storageType = [{ BoolAttr }];
   let returnType = [{ bool }];
   let constBuilderCall = [{ {0}.getBoolAttr({1}) }];
 }
-def ArrayAttr : Attr {
+def ArrayAttr : Attr<CPred<"true">, "array"> {
   let storageType = [{ ArrayAttr }];
   let returnType = [{ ArrayAttr }];
   code convertFromStorage = "{0}";
 }
-def ElementsAttr : Attr {
+def ElementsAttr : Attr<CPred<"true">, "constant vector/tensor"> {
   let storageType = [{ ElementsAttr }];
   let returnType = [{ ElementsAttr }];
   let convertFromStorage = "{0}";
 }
-def F32Attr : FloatAttrBase<F32> {
+def F32Attr : FloatAttrBase<F32, "32-bit float"> {
   let returnType = [{ float }];
   let convertFromStorage = [{ {0}.getValue().convertToFloat() }];
 }
-def I32Attr : IntegerAttrBase<I32> {
+def I32Attr : IntegerAttrBase<I32, "32-bit integer"> {
   let storageType = [{ IntegerAttr }];
   let returnType = [{ int }];
   let convertFromStorage = [{ {0}.getValue().getSExtValue() }];
 }
-def StrAttr : StringBasedAttr {
+def StrAttr : StringBasedAttr<"string"> {
   let storageType = [{ StringAttr }];
   let returnType = [{ StringRef }];
   let constBuilderCall = [{ {0}.getStringAttr("{1}") }];
@@ -308,9 +315,9 @@ def StrAttr : StringBasedAttr {
 // DerivedAttr are attributes whose value is computed from properties
 // of the operation. They do not require additional storage and are
 // materialized as needed.
-class DerivedAttr<code ReturnType, code Body> : Attr {
-  let returnType = ReturnType;
-  code body = Body;
+class DerivedAttr<code ret, code b> : Attr<CPred<"true">, "derived"> {
+  let returnType = ret;
+  code body = b;
 }
 
 // Derived attribute that returns a mlir::Type.
@@ -448,7 +455,7 @@ class Pat<dag pattern, dag result> : Pattern<pattern, [result]>;
 
 // Attribute matcher. This is the base class to specify a predicate
 // that has to match. Used on the input attributes of a rewrite rule.
-class mAttr<Pred pred> : AttrConstraint<pred>;
+class mAttr<Pred pred> : AttrConstraint<pred, "">;
 
 // Attribute transforms. This is the base class to specify a
 // transformation of a matched attribute. Used on the output of a rewrite

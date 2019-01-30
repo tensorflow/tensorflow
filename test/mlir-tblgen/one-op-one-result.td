@@ -4,7 +4,7 @@ include "mlir/IR/op_base.td"
 
 // Create a Type and Attribute.
 def YT : BuildableType<"buildYT">;
-def Y_Attr : TypeBasedAttr<YT, "Attribute">;
+def Y_Attr : TypeBasedAttr<YT, "Attribute", "attribute of Y type">;
 def Y_Const_Attr {
   Attr attr = Y_Attr;
   string value = "attrValue";

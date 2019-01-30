@@ -114,12 +114,8 @@ static void emitOpDoc(const RecordKeeper &recordKeeper, raw_ostream &os) {
     // info. This should be improved.
     os << "\n### Attributes:\n";
     for (auto namedAttr : op.getAttributes()) {
-      os << "- `" << namedAttr.getName() << "`: ";
-      if (namedAttr.attr.isDerivedAttr())
-        os << "derived";
-      else
-        os << namedAttr.attr.getTableGenDefName();
-      os << "\n";
+      os << "- `" << namedAttr.getName()
+         << "`: " << namedAttr.attr.getDescription() << " attribute\n";
     }
 
     // Emit results.

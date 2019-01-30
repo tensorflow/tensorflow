@@ -60,6 +60,13 @@ std::string tblgen::AttrConstraint::getConditionTemplate() const {
   return getPredicate().getCondition();
 }
 
+StringRef tblgen::AttrConstraint::getDescription() const {
+  auto doc = def->getValueAsString("description");
+  if (doc.empty())
+    return def->getName();
+  return doc;
+}
+
 tblgen::Attribute::Attribute(const llvm::Record *record)
     : AttrConstraint(record) {
   assert(record->isSubClassOf("Attr") &&
