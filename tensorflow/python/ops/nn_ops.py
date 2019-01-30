@@ -3014,9 +3014,9 @@ def max_pool_with_argmax_v2(input,
 
   The indices in `argmax` are flattened, so that a maximum value at position
   `[b, y, x, c]` becomes flattened index: `(y * width + x) * channels + c` if
-  `include_batch_in_index` is False.
+  `include_batch_in_index` is False;
   `((b * height + y) * width + x) * channels + c`
-  if `include_batch_in_index` is True;
+  if `include_batch_in_index` is True.
 
   The indices returned are always in `[0, height) x [0, width)` before
   flattening, even if padding is involved and the mathematically correct answer
