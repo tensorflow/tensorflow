@@ -561,16 +561,17 @@ class Layer(checkpointable.Checkpointable):
             try:
               outputs = self.call(inputs, *args, **kwargs)
             except TypeError as e:
-              messages = ['`tf.Tensor` as a Python `bool` is not allowed',
-                          'Tensor objects are only iterable when eager']
+              messages = ('`tf.Tensor` as a Python `bool` is not allowed',
+                          'Tensor objects are only iterable when eager')
+              exception_str = str(e)
               for msg in messages:
-                if msg in str(e):
+                if msg in exception_str:
                   raise TypeError('You are attempting to use Python control '
                                   'flow in a layer that was not declared to be '
                                   'dynamic. Pass `dynamic=True` to the class '
                                   'constructor.\nEncountered error:\n"""\n' +
-                                  str(e) + '\n"""')
-              raise e
+                                  exception_str + '\n"""')
+              raise
           else:
             # We will use static shape inference to return symbolic tensors
             # matching the specifications of the layer outputs.

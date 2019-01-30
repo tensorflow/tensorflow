@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+import traceback
 from absl.testing import parameterized
 import numpy as np
 
@@ -319,6 +321,31 @@ class BaseLayerTest(keras_parameterized.TestCase):
     self.assertAllClose(fn([x_val])[0],
                         np.matmul(x_val, y_val),
                         atol=1e-5)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_reraising_exception(self):
+    # When layer is not dynamic, we have some pattern matching during exception
+    # handling to detect when the user is trying to use python control flow.
+    # When an exception is thrown but the pattern doesn't match, we want to
+    # preserve the originating stack trace. An early implementation of this
+    # logic lost the stack trace. We test the correct behavior here.
+
+    class TypeErrorLayer(base_layer.Layer):
+
+      def call(self, inputs):
+        def easily_identifiable_name():
+          raise TypeError('Non-matching TypeError message.')
+        easily_identifiable_name()
+
+    inputs = keras.Input((3,))
+
+    try:
+      _ = TypeErrorLayer()(inputs)
+    except TypeError:
+      tb = traceback.extract_tb(sys.exc_info()[2])
+      last_entry = tb[-1]
+      function_name = last_entry[2]
+      self.assertEqual(function_name, 'easily_identifiable_name')
 
 
 @test_util.run_all_in_graph_and_eager_modes
