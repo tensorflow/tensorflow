@@ -1118,6 +1118,13 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
+  def test_contrib_framework_argsort(self):
+    text = "tf.contrib.framework.argsort"
+    expected = "tf.argsort"
+    # pylint: enable=line-too-long
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 
