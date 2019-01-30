@@ -100,6 +100,7 @@ py_library(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:init_ops_v2",
         "//tensorflow/python:logging_ops",
+        "//tensorflow/python:map_fn",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
         "//tensorflow/python:nn",
