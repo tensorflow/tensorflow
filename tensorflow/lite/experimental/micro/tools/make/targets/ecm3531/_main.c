@@ -51,11 +51,6 @@ void EtaPrintExecutionTime(uint64_t);
 //*****************************************************************************
 extern int main(int argc, char** argv);
 
-void DebugLog(const char* s) { EtaCspIoPrintf("%s", s); }
-void DebugLogInt32(int32_t i) { EtaCspIoPrintf("%d", i); }
-void DebugLogUInt32(uint32_t i) { EtaCspIoPrintf("%d", i); }
-void DebugLogHex(uint32_t i) { EtaCspIoPrintf("0x%8x", i); }
-void DebugLogFloat(float i) { EtaCspIoPrintf("%f", i); }
 
 int _main(void) {
   uint64_t time_ms;
