@@ -272,7 +272,7 @@ Status ValidateStridedSliceOp(
     const std::array<int64, 2> valid_range = {
         {stride_i > 0 ? 0 : -1, stride_i > 0 ? dim_i : dim_i - 1}};
 
-    auto canonical = [stride_i, i, dim_i, masks, valid_range](int64 x, int c) {
+    auto canonical = [stride_i, dim_i, masks, valid_range](int64 x, int c) {
       if (masks[c]) {
         return stride_i > 0 ? valid_range[c] : valid_range[(c + 1) & 1];
       } else {

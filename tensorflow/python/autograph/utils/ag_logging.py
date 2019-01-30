@@ -132,4 +132,4 @@ def log(level, msg, *args, **kwargs):
 
 
 def warn_first_n(msg, *args, **kwargs):
-  logging.log_first_n(logging.WARNING, msg, *args, **kwargs)
+  logging.log_first_n(logging.WARN, msg, *args, **kwargs)

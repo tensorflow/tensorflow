@@ -79,6 +79,13 @@ typedef Eigen::GpuDevice GPUDevice;
                               .HostMemory("element_shape")        \
                               .HostMemory("indices"),             \
                           TensorListScatter<GPUDevice, T>)        \
+  REGISTER_KERNEL_BUILDER(Name("TensorListScatterV2")             \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_GPU)                 \
+                              .HostMemory("element_shape")        \
+                              .HostMemory("num_elements")         \
+                              .HostMemory("indices"),             \
+                          TensorListScatter<GPUDevice, T>)        \
   REGISTER_KERNEL_BUILDER(Name("TensorListSplit")                 \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_GPU)                 \

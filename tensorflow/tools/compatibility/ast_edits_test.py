@@ -417,7 +417,7 @@ class TestAstEdits(test_util.TensorFlowTestCase):
 
       def __init__(self):
         NoUpdateSpec.__init__(self)
-        self.function_warnings = {"*.foo": "not good"}
+        self.function_warnings = {"*.foo": (ast_edits.WARNING, "not good")}
 
     texts = ["object.foo()", "get_object().foo()",
              "get_object().foo()", "object.foo().bar()"]

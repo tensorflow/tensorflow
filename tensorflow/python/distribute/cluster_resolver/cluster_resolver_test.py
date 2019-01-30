@@ -57,24 +57,28 @@ class BaseClusterResolverTest(test.TestCase):
     mock_list_devices.return_value = device_list
 
     resolver = MockBaseClusterResolver()
-    self.assertEqual(resolver.num_accelerators(), 4)
+    self.assertEqual(resolver.num_accelerators(), {"GPU": 4})
 
   @mock.patch.object(session.BaseSession, "list_devices")
-  def testNumAcceleratorsFilterSuccess(self, mock_list_devices):
+  def testNumAcceleratorsMultiDeviceSuccess(self, mock_list_devices):
     device_names = [
         "/job:worker/task:0/device:TPU:0",
         "/job:worker/task:0/device:TPU:1",
         "/job:worker/task:0/device:TPU:2",
         "/job:worker/task:0/device:TPU:3",
+        "/job:worker/task:0/device:GPU:0",
+        "/job:worker/task:0/device:GPU:1",
+        "/job:worker/task:0/device:GPU:2",
+        "/job:worker/task:0/device:GPU:3",
     ]
     device_list = [
         session._DeviceAttributes(
-            name, "TPU", 1024, 0) for name in device_names
+            name, name[26:29], 1024, 0) for name in device_names
     ]
     mock_list_devices.return_value = device_list
 
     resolver = MockBaseClusterResolver()
-    self.assertEqual(resolver.num_accelerators(), 0)
+    self.assertEqual(resolver.num_accelerators(), {"TPU": 4, "GPU": 4})
 
 
 class UnionClusterResolverTest(test.TestCase):

@@ -1532,6 +1532,25 @@ ENTRY %reduce-window (parameter.0: s32[81,8], parameter.1: s32[]) -> s32[82,8] {
   EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
 }
 
+XLA_TEST_F(HloTestBase, ReduceWindowS64) {
+  const string hlo_string = R"(
+HloModule reduce-window
+
+%identity.pad_to_reduce_window (param0: s64[], param1: s64[]) -> s64[] {
+  %param0 = s64[] parameter(0)
+  ROOT %param1 = s64[] parameter(1)
+}
+
+ENTRY %reduce-window (parameter.0: s64[81,8], parameter.1: s64[]) -> s64[82,8] {
+  %parameter.0 = s64[81,8]{1,0} parameter(0)
+  %parameter.1 = s64[] parameter(1)
+  ROOT %reduce-window = s64[82,8]{1,0} reduce-window(s64[81,8]{1,0} %parameter.0, s64[] %parameter.1), window={size=1x1 pad=0_1x0_0}, to_apply=%identity.pad_to_reduce_window
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
+}
+
 XLA_TEST_F(HloTestBase, ReduceWindowF16) {
   const string hlo_string = R"(
 HloModule reduce-window

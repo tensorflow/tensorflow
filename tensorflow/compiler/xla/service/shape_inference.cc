@@ -832,10 +832,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
           ShapeUtil::HumanString(larger_shape));
     }
     if (small_is_dynamic != large_is_dynamic) {
-      return InvalidArgument(
-          "Broadcast dimension %d dynamism mismatch: %s and %s.", i,
-          ShapeUtil::HumanString(smaller_shape),
-          ShapeUtil::HumanString(larger_shape));
+      if ((small_dimension_size == 1 && !small_is_dynamic) ||
+          (large_dimension_size == 1 && !large_is_dynamic)) {
+        // Do nothing. It's OK when the size-1 dimension is not static.
+      } else {
+        return InvalidArgument(
+            "Broadcast dimension %d dynamism mismatch: %s and %s.", i,
+            ShapeUtil::HumanString(smaller_shape),
+            ShapeUtil::HumanString(larger_shape));
+      }
     }
     // Make sure the broadcast dimensions are listed in a strictly increasing
     // order.

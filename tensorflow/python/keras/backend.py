@@ -215,8 +215,9 @@ def clear_session():
   _SESSION.session = None
   graph = get_graph()
   with graph.as_default():
-    phase = array_ops.placeholder_with_default(
-        False, shape=(), name='keras_learning_phase')
+    with ops.name_scope(''):
+      phase = array_ops.placeholder_with_default(
+          False, shape=(), name='keras_learning_phase')
     _GRAPH_LEARNING_PHASES = {}
     _GRAPH_LEARNING_PHASES[graph] = phase
     _GRAPH_VARIABLES.pop(graph, None)
@@ -275,8 +276,9 @@ def symbolic_learning_phase():
   graph = get_graph()
   with graph.as_default():
     if graph not in _GRAPH_LEARNING_PHASES:
-      phase = array_ops.placeholder_with_default(
-          False, shape=(), name='keras_learning_phase')
+      with ops.name_scope(''):
+        phase = array_ops.placeholder_with_default(
+            False, shape=(), name='keras_learning_phase')
       _GRAPH_LEARNING_PHASES[graph] = phase
     return _GRAPH_LEARNING_PHASES[graph]
 

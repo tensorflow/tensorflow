@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -491,15 +490,52 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
 
 Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
   auto operand = is_finite->operand(0);
-  if (!ShapeUtil::ElementIsFloating(operand->shape())) {
-    return InvalidArgument(
-        "expected element type in shape to be float for IsFinite op, got: %s",
-        PrimitiveType_Name(operand->shape().element_type()));
-  }
+  auto elem_ty = operand->shape().element_type();
+  switch (elem_ty) {
+    case PRED:
+    case TUPLE:
+    case OPAQUE:
+    case TOKEN:
+    case S8:
+    case S16:
+    case S32:
+    case S64:
+    case U8:
+    case U16:
+    case U32:
+    case U64:
+    case C64:
+    case C128:
+    // Explicitly enumerate all types in this switch so that when we add a new
+    // type, we'll get a compile error here.
+    case PRIMITIVE_TYPE_INVALID:
+    case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:
+    case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
+      return InvalidArgument(
+          "expected element type in shape to be floating point, but "
+          "got: %s",
+          PrimitiveType_Name(elem_ty));
 
-  switch (operand->shape().element_type()) {
-    case F16:
-      return Unimplemented("unhandled primitive type: F16.");
+    case F16: {
+      auto result_or = ElementWiseUnaryOpImpl<bool, Eigen::half>(
+          is_finite,
+          [](Eigen::half elem_operand) {
+            return std::isfinite(static_cast<float>(elem_operand));
+          },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
+      break;
+    }
+    case BF16: {
+      auto result_or = ElementWiseUnaryOpImpl<bool, bfloat16>(
+          is_finite,
+          [](bfloat16 elem_operand) {
+            return std::isfinite(static_cast<float>(elem_operand));
+          },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
+      break;
+    }
     case F32: {
       auto result_or = ElementWiseUnaryOpImpl<bool, float>(
           is_finite,
@@ -516,9 +552,6 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
       TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
       break;
     }
-    default:
-      LOG(FATAL) << "HandleIsFinite: unknown/unhandled primitive type: "
-                 << PrimitiveType_Name(operand->shape().element_type());
   }
 
   return Status::OK();
@@ -1505,6 +1538,27 @@ Status HloEvaluator::HandleReduce(HloInstruction* reduce) {
     }
     return reduce->Visit(typed_visitors_[first_element_type].get());
   }
+}
+
+Status HloEvaluator::HandleCustomCall(HloInstruction* custom_call) {
+  if (!custom_call_handler_) {
+    // No handler is registered; this means custom-calls are not allowed.
+    return DefaultAction(custom_call);
+  }
+
+  // Evaluate input operands so the handler has access to the operand data.
+  std::vector<const Literal*> operands;
+  operands.reserve(custom_call->operand_count());
+  for (const HloInstruction* operand : custom_call->operands()) {
+    operands.push_back(&GetEvaluatedLiteralFor(operand));
+  }
+
+  // Synchronously issue the handler to populate the instruction output literal.
+  TF_ASSIGN_OR_RETURN(
+      auto output, custom_call_handler_(custom_call, absl::MakeSpan(operands)));
+
+  evaluated_[custom_call] = std::move(output);
+  return Status::OK();
 }
 
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {

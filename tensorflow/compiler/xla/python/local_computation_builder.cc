@@ -691,6 +691,17 @@ LocalOp LocalComputationBuilder::Collapse(const LocalOp& operand,
   return xla::Collapse(operand.op(), dimensions);
 }
 
+LocalOp LocalComputationBuilder::AllToAll(
+    const LocalOp& operand, int64 split_dimension, int64 concat_dimension,
+    int64 split_count, absl::Span<const ReplicaGroup> replica_groups) {
+  std::vector<ReplicaGroup> rg(replica_groups.size());
+  for (int i = 0; i < replica_groups.size(); ++i) {
+    rg.push_back(replica_groups[i]);
+  }
+  return xla::AllToAll(operand.op(), split_dimension, concat_dimension,
+                       split_count, rg);
+}
+
 LocalOp LocalComputationBuilder::CrossReplicaSum(
     const LocalOp& operand, absl::Span<const ReplicaGroup> replica_groups) {
   return xla::CrossReplicaSum(operand.op(), replica_groups);

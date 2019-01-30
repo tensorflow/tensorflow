@@ -83,6 +83,19 @@ class InterfaceTests(test.TestCase):
     with self.assertRaisesRegexp(AssertionError, "foo_attr"):
       status.assert_consumed()
 
+  def testBuggyGetConfig(self):
+
+    class NotSerializable(object):
+      pass
+
+    class GetConfigRaisesError(base.Checkpointable):
+
+      def get_config(self):
+        return NotSerializable()
+
+    util.Checkpoint(obj=GetConfigRaisesError()).save(
+        os.path.join(self.get_temp_dir(), "ckpt"))
+
 
 if __name__ == "__main__":
   ops.enable_eager_execution()

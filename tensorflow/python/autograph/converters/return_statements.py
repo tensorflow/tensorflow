@@ -38,7 +38,7 @@ class _Block(object):
     self.definitely_returns = False
 
 
-class ConditionalReturnLowering(converter.Base):
+class ConditionalReturnRewriter(converter.Base):
   """Rewrites a a pattern where it's unbovious that all paths return a value.
 
   This rewrite allows avoiding intermediate None return values.
@@ -61,7 +61,7 @@ class ConditionalReturnLowering(converter.Base):
         <block 2>
         <block 3>
 
-  and vice-versa (if the else returns, subsequent statements are moved unthe the
+  and vice-versa (if the else returns, subsequent statements are moved under the
   if branch).
   """
 
@@ -195,10 +195,14 @@ class ReturnStatementsTransformer(converter.Base):
         retval = val
   """
 
+  def __init__(self, ctx, default_to_null_return):
+    super(ReturnStatementsTransformer, self).__init__(ctx)
+    self.default_to_null_return = default_to_null_return
+
   def visit_Return(self, node):
     self.state[_Return].used = True
 
-    retval = node.value if node.value else parser.parse_expresison('None')
+    retval = node.value if node.value else parser.parse_expression('None')
 
     template = """
       do_return_var_name = True
@@ -320,28 +324,51 @@ class ReturnStatementsTransformer(converter.Base):
 
     converted_body = self._visit_statement_block(node, node.body)
 
+    # Avoid placing statements before any eventual docstring.
+    # TODO(mdan): Should a docstring even be included in the output?
+    docstring = None
+    if converted_body:
+      if (isinstance(converted_body[0], gast.Expr) and
+          isinstance(converted_body[0].value, gast.Str)):
+        docstring = converted_body[0]
+        converted_body = converted_body[1:]
+
     if self.state[_Return].used:
-      template = """
-        do_return_var_name = False
-        retval_var_name = None
-        body
-        return retval_var_name
-      """
+      if self.default_to_null_return:
+        template = """
+          do_return_var_name = False
+          retval_var_name = None
+          body
+          return retval_var_name
+        """
+      else:
+        template = """
+          body
+          return retval_var_name
+        """
       node.body = templates.replace(
           template,
           body=converted_body,
           do_return_var_name=do_return_var_name,
           retval_var_name=retval_var_name)
 
+      if docstring:
+        node.body.insert(0, docstring)
+
     self.state[_Return].exit()
     self.state[_Function].exit()
     return node
 
 
-def transform(node, ctx):
+def transform(node, ctx, default_to_null_return=True):
   """Ensure a function has only a single return."""
   # Note: Technically, these two could be merged into a single walk, but
   # keeping them separate helps with readability.
-  node = ConditionalReturnLowering(ctx).visit(node)
-  node = ReturnStatementsTransformer(ctx).visit(node)
+
+  node = ConditionalReturnRewriter(ctx).visit(node)
+
+  transformer = ReturnStatementsTransformer(
+      ctx, default_to_null_return=default_to_null_return)
+  node = transformer.visit(node)
+
   return node

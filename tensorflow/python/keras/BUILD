@@ -134,6 +134,7 @@ py_library(
         "engine/input_layer.py",
         "engine/input_spec.py",
         "engine/network.py",
+        "engine/partial_batch_padding_handler.py",
         "engine/saving.py",
         "engine/sequential.py",
         "engine/training.py",
@@ -159,7 +160,8 @@ py_library(
         ":regularizers",
         ":saving",
         "//tensorflow/python/data",
-        "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/training/checkpointable:data_structures",
         "//tensorflow/tools/docs:doc_controls",
@@ -486,6 +488,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "tensorflow_op_layer_test",
+    size = "medium",
+    srcs = ["layers/tensorflow_op_layer_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 3,
+)
+
+tf_py_test(
     name = "convolutional_recurrent_test",
     size = "large",
     srcs = ["layers/convolutional_recurrent_test.py"],
@@ -717,7 +731,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 6,
+    shard_count = 8,
 )
 
 tf_py_test(
@@ -1010,6 +1024,7 @@ tf_py_test(
     shard_count = 6,
     tags = [
         "no_oss",
+        "notap",  #TODO(b/123544294): Re-enable this test.
         "notsan",
     ],
 )
