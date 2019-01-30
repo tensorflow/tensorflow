@@ -33,6 +33,7 @@ from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import conversion
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.framework import tensor_util
@@ -398,66 +399,70 @@ def to_graph(entity,
   Raises:
     ValueError: If the entity could not be converted.
   """
-  if experimental_strip_decorators is None:
-    experimental_strip_decorators = ()
-  experimental_strip_decorators += (convert, do_not_convert, converted_call)
+  try:
+    if experimental_strip_decorators is None:
+      experimental_strip_decorators = ()
+    experimental_strip_decorators += (convert, do_not_convert, converted_call)
 
-  program_ctx = converter.ProgramContext(
-      options=converter.ConversionOptions(
-          recursive=recursive,
-          verbose=experimental_verbose,
-          strip_decorators=experimental_strip_decorators,
-          optional_features=experimental_optional_features),
-      partial_types=experimental_partial_types,
-      autograph_module=tf_inspect.getmodule(to_graph),
-      uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
-  _, name, namespace = conversion.entity_to_graph(entity, program_ctx,
-                                                  arg_values, arg_types)
+    program_ctx = converter.ProgramContext(
+        options=converter.ConversionOptions(
+            recursive=recursive,
+            verbose=experimental_verbose,
+            strip_decorators=experimental_strip_decorators,
+            optional_features=experimental_optional_features),
+        partial_types=experimental_partial_types,
+        autograph_module=tf_inspect.getmodule(to_graph),
+        uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
+    _, name, namespace = conversion.entity_to_graph(entity, program_ctx,
+                                                    arg_values, arg_types)
 
-  nodes = []
-  for dep in reversed(program_ctx.conversion_order):
-    nodes.extend(program_ctx.dependency_cache[dep])
+    nodes = []
+    for dep in reversed(program_ctx.conversion_order):
+      nodes.extend(program_ctx.dependency_cache[dep])
 
-  compiled_module, _ = compiler.ast_to_object(
-      nodes,
-      source_prefix=program_ctx.required_imports,
-      include_source_map=True)
+    compiled_module, _ = compiler.ast_to_object(
+        nodes,
+        source_prefix=program_ctx.required_imports,
+        include_source_map=True)
 
-  # The compiled code should see everything the entry entity saw.
-  # TODO(mdan): This might not work well if the call tree spans modules?
-  for key, val in namespace.items():
-    # Avoid overwriting entities that have been transformed.
-    if key not in compiled_module.__dict__:
-      compiled_module.__dict__[key] = val
-  for key, val in program_ctx.additional_symbols.items():
-    if key not in compiled_module.__dict__:
-      compiled_module.__dict__[key] = val
-  compiled = getattr(compiled_module, name)
+    # The compiled code should see everything the entry entity saw.
+    # TODO(mdan): This might not work well if the call tree spans modules?
+    for key, val in namespace.items():
+      # Avoid overwriting entities that have been transformed.
+      if key not in compiled_module.__dict__:
+        compiled_module.__dict__[key] = val
+    for key, val in program_ctx.additional_symbols.items():
+      if key not in compiled_module.__dict__:
+        compiled_module.__dict__[key] = val
+    compiled = getattr(compiled_module, name)
 
-  if tf_inspect.isfunction(entity):
-    compiled.__defaults__ = entity.__defaults__
+    if tf_inspect.isfunction(entity):
+      compiled.__defaults__ = entity.__defaults__
 
-  if hasattr(compiled, '__globals__'):
-    # Remove self to avoid circular references. This will probably only work
-    # so long as the function is not reentrant.
-    del compiled.__globals__[name]
+    if hasattr(compiled, '__globals__'):
+      # Remove self to avoid circular references. This will probably only work
+      # so long as the function is not reentrant.
+      del compiled.__globals__[name]
 
-  # Need this so the source_mapping attribute is available for the context
-  # manager to access for runtime errors.
-  #
-  # Note that compiler.ast_to_object attaches the source map 'ag_source_map__'
-  # symbol to the compiled module.
-  # TODO(mdan): Record this statically in the generated code.
-  # TODO(mdan): Rename this attribute to 'autograph_info__'
-  source_map_attribute_name = 'ag_source_map'
-  if getattr(compiled, source_map_attribute_name, None) is not None:
-    raise ValueError('cannot convert %s because is has an attribute '
-                     '"%s", which is reserved for AutoGraph.' %
-                     (compiled, source_map_attribute_name))
-  setattr(compiled, source_map_attribute_name,
-          compiled_module.__dict__['ag_source_map__'])
+    # Need this so the source_mapping attribute is available for the context
+    # manager to access for runtime errors.
+    #
+    # Note that compiler.ast_to_object attaches the source map 'ag_source_map__'
+    # symbol to the compiled module.
+    # TODO(mdan): Record this statically in the generated code.
+    # TODO(mdan): Rename this attribute to 'autograph_info__'
+    source_map_attribute_name = 'ag_source_map'
+    if getattr(compiled, source_map_attribute_name, None) is not None:
+      # TODO(znado): change input problem errors into TransformError
+      raise ValueError('cannot convert %s because is has an attribute '
+                       '"%s", which is reserved for AutoGraph.' %
+                       (compiled, source_map_attribute_name))
+    setattr(compiled, source_map_attribute_name,
+            compiled_module.__dict__['ag_source_map__'])
 
-  return compiled
+    return compiled
+  except (ValueError, AttributeError, KeyError, NameError, AssertionError) as e:
+    errors.report_internal_error(entity, e)
 
 
 @tf_export('autograph.to_code')

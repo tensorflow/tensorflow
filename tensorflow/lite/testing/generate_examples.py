@@ -3757,6 +3757,12 @@ def make_mirror_pad_tests(zip_path):
           "mode": ["REFLECT"],
           "type": ["const"]
       },
+      {
+          "input_shape": [[3, 2, 4, 5]],
+          "padding_matrix": [[[1, 1], [2, 2], [1, 1], [1, 1]]],
+          "mode": ["SYMMETRIC"],
+          "type": ["placeholder"]
+      },
   ]
 
   def build_graph(parameters):
@@ -3790,7 +3796,7 @@ def make_mirror_pad_tests(zip_path):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_success=7)
+      expected_tf_success=8)
 
 
 def make_unroll_batch_matmul_tests(zip_path):

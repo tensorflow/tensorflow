@@ -3073,10 +3073,24 @@ def crop_and_resize_v2(
       image, boxes, box_indices, crop_size, method, extrapolation_value, name)
 
 
-crop_and_resize_deprecation = deprecation.deprecated_args(
+@tf_export(v1=['image.crop_and_resize'])
+@deprecation.deprecated_args(
     None, 'box_ind is deprecated, use box_indices instead', 'box_ind')
-tf_export(v1=['image.crop_and_resize'])(
-    crop_and_resize_deprecation(gen_image_ops.crop_and_resize))
+def crop_and_resize_v1(   # pylint: disable=missing-docstring
+    image,
+    boxes,
+    box_ind=None,
+    crop_size=None,
+    method='bilinear',
+    extrapolation_value=0,
+    name=None,
+    box_indices=None):
+  box_ind = deprecation.deprecated_argument_lookup(
+      "box_indices", box_indices, "box_ind", box_ind)
+  return gen_image_ops.crop_and_resize(
+      image, boxes, box_ind, crop_size, method, extrapolation_value, name)
+
+crop_and_resize_v1.__doc__ = gen_image_ops.crop_and_resize.__doc__
 
 
 @tf_export(v1=['image.extract_glimpse'])

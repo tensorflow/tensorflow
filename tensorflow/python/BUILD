@@ -650,6 +650,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:execute",
+        "//tensorflow/tools/docs:doc_controls",
     ],
 )
 
@@ -3722,6 +3723,7 @@ py_library(
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/optimizer_v2:learning_rate_schedule",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/training/checkpointable:base",
         "//tensorflow/python/training/checkpointable:util",
@@ -4807,7 +4809,6 @@ cuda_py_tests(
         "training/ftrl_test.py",
         "training/gradient_descent_test.py",
         "training/learning_rate_decay_test.py",
-        "training/learning_rate_decay_v2_test.py",
         "training/momentum_test.py",
         "training/optimizer_test.py",
         "training/proximal_adagrad_test.py",
@@ -6069,4 +6070,12 @@ py_library(
     name = "tf2",
     srcs = ["tf2.py"],
     srcs_version = "PY2AND3",
+)
+
+cuda_py_test(
+    name = "raw_ops_test",
+    srcs = ["ops/raw_ops_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+    ],
 )

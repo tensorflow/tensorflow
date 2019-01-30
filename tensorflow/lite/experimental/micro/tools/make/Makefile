@@ -32,13 +32,9 @@ ALL_TAGS := $(TAGS) $(TARGET)
 
 INCLUDES := \
 -I. \
--I$(MAKEFILE_DIR)/../../../../../ \
--I$(MAKEFILE_DIR)/../../../../../../ \
--I$(MAKEFILE_DIR)/../../../../../../../ \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
--I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
--I$(OBJDIR)
+-I$(MAKEFILE_DIR)/downloads/flatbuffers/include
 
 # These are the include paths added to any generated project file.
 PROJECT_INCLUDES := \

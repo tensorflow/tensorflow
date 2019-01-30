@@ -310,7 +310,6 @@ py_library(
         "layers/recurrent.py",
         "layers/serialization.py",
         "layers/wrappers.py",
-        "utils/generic_utils.py",
         "utils/kernelized_utils.py",
         "utils/layer_utils.py",
         "utils/tf_utils.py",
@@ -318,6 +317,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":engine",
+        ":generic_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:cudnn_rnn_ops_gen",
         "//tensorflow/python:dtypes",
@@ -335,6 +335,18 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "generic_utils",
+    srcs = [
+        "utils/generic_utils.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
 )

@@ -36,6 +36,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients
@@ -452,8 +453,11 @@ class OptimizerV2(checkpointable.Checkpointable):
       self._hyper[name] = value
     else:
       prev_value = self._hyper[name]
-      if callable(prev_value) or isinstance(prev_value,
-                                            (ops.Tensor, int, float)):
+      if (callable(prev_value)
+          or isinstance(prev_value,
+                        (ops.Tensor, int, float,
+                         learning_rate_schedule.LearningRateSchedule))
+          or isinstance(value, learning_rate_schedule.LearningRateSchedule)):
         self._hyper[name] = value
       else:
         backend.set_value(self._hyper[name], value)
@@ -462,6 +466,8 @@ class OptimizerV2(checkpointable.Checkpointable):
     if not self._hypers_created:
       self._create_hypers()
     value = self._hyper[name]
+    if isinstance(value, learning_rate_schedule.LearningRateSchedule):
+      return value
     if callable(value):
       value = value()
     if dtype:
@@ -575,6 +581,9 @@ class OptimizerV2(checkpointable.Checkpointable):
   def _decayed_lr(self, var_dtype):
     """Get decayed learning rate as a Tensor with dtype=var_dtype."""
     lr_t = self._get_hyper("learning_rate", var_dtype)
+    if isinstance(lr_t, learning_rate_schedule.LearningRateSchedule):
+      local_step = math_ops.cast(self.iterations, var_dtype)
+      lr_t = math_ops.cast(lr_t(local_step), var_dtype)
     if self._initial_decay > 0.:
       local_step = math_ops.cast(self.iterations, var_dtype)
       decay_t = self._get_hyper("decay", var_dtype)
@@ -619,11 +628,17 @@ class OptimizerV2(checkpointable.Checkpointable):
     """
     if "lr" in config:
       config["learning_rate"] = config.pop("lr")
+    if "learning_rate" in config:
+      if isinstance(config["learning_rate"], dict):
+        config["learning_rate"] = learning_rate_schedule.deserialize(
+            config["learning_rate"])
     return cls(**config)
 
   def _serialize_hyperparameter(self, hyperparameter_name):
     """Serialize a hyperparameter that can be a float, callable, or Tensor."""
     value = self._hyper[hyperparameter_name]
+    if isinstance(value, learning_rate_schedule.LearningRateSchedule):
+      return learning_rate_schedule.serialize(value)
     if callable(value):
       return value()
     if isinstance(value, (ops.Tensor, tf_variables.Variable,

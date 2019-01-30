@@ -2779,6 +2779,9 @@ class TPUEstimator(estimator_lib.Estimator):
         tpu_init_ops = []
         if ctx.embedding_config:
           tpu_init_ops.extend(ctx.embedding_config.tpu_embedding.init_ops)
+          embedding_variables_and_ops = (
+              ctx.embedding_config.tpu_embedding.create_variables_and_ops())
+          tpu_init_ops.extend(embedding_variables_and_ops.load_ops)
 
         input_holders = _InputPipeline(input_fn, batch_axis, ctx)
         enqueue_ops, dequeue_fn, input_hooks, run_infeed_loop_on_coordinator = (
@@ -2871,8 +2874,7 @@ class TPUEstimator(estimator_lib.Estimator):
             update_ops = _sync_variables_ops(ctx)
 
           if ctx.embedding_config:
-            update_ops.extend(
-                ctx.embedding_config.tpu_embedding.retrieve_parameters_ops)
+            update_ops.extend(embedding_variables_and_ops.retrieve_ops)
 
           # Validate the TPU training graph to catch basic errors
           _validate_tpu_training_graph()
