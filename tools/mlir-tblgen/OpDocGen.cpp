@@ -113,9 +113,14 @@ static void emitOpDoc(const RecordKeeper &recordKeeper, raw_ostream &os) {
     // TODO: Attributes are only documented by TableGen name, with no further
     // info. This should be improved.
     os << "\n### Attributes:\n";
+    if (op.getNumAttributes() > 0) {
+      os << "| Attribute | MLIR Type | Description |\n"
+         << "| :-------: | :-------: | ----------- |\n";
+    }
     for (auto namedAttr : op.getAttributes()) {
-      os << "- `" << namedAttr.getName()
-         << "`: " << namedAttr.attr.getDescription() << " attribute\n";
+      os << "| `" << namedAttr.getName() << "` | `"
+         << namedAttr.attr.getStorageType() << "` | "
+         << namedAttr.attr.getDescription() << " attribute |\n";
     }
 
     // Emit results.
