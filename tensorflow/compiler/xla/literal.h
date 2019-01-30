@@ -958,6 +958,7 @@ template <typename NativeT>
 void MutableLiteralBase::AppendSparseElement(
     absl::Span<const int64> multi_index, NativeT value,
     const ShapeIndex& shape_index) {
+  // TODO(jlebar): CHECK that multi_index is in range?
   Piece& p = piece(shape_index);
   const Shape& subshape = p.subshape();
   CHECK(LayoutUtil::IsSparseArray(subshape));
