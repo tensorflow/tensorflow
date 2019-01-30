@@ -43,11 +43,12 @@ from tensorflow.python.autograph.converters import side_effect_guards
 from tensorflow.python.autograph.converters import slices
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.core import errors
+from tensorflow.python.autograph.core import errors as ag_errors
 from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
@@ -322,7 +323,7 @@ def _add_self_references(namespace, autograph_module):
     ag_internal.utils = utils
     ag_internal.function_scope = function_wrapping.function_scope
     ag_internal.rewrite_graph_construction_error = (
-        errors.rewrite_graph_construction_error)
+        ag_errors.rewrite_graph_construction_error)
     # TODO(mdan): Add safeguards against name clashes.
     # We don't want to create a submodule because we want the operators to be
     # accessible as ag__.<operator>
@@ -340,28 +341,23 @@ def function_to_graph(f,
   """Specialization of `entity_to_graph` for callable functions."""
 
   node, source = parser.parse_entity(f)
+  logging.log(3, 'Source code of %s:\n%s', f, source)
   node = node.body[0]
 
-  # In general, the output of inspect.getsource is inexact because it uses
-  # regex matching to adjust the exact location around the line number that
-  # CPython records. This is particularly problematic for lambda functions,
-  # where the entire containing lines are returned.
-  nodes = ast_util.find_matching_definitions(node, f)
-  if len(nodes) != 1:
-    if f.__name__ == '<lambda>':
+  # In general, the output of inspect.getsource is inexact for lambdas because
+  # it uses regex matching to adjust the exact location around the line number
+  # that CPython records. Then, the entire containing line is returned, which
+  # we may have trouble disambiguating. For example:
+  # x, y = lambda: 1, lambda: 2
+  if f.__name__ == '<lambda>':
+    nodes = ast_util.find_matching_definitions(node, f)
+    if len(nodes) != 1:
       raise ValueError(
           'Unable to identify source code of lambda function {}. It was'
           ' defined on this line: {}, which must contain a single lambda with'
           ' matching signature. To avoid ambiguity, define each lambda'
           ' in a separate expression.'.format(f, source))
-    else:
-      raise ValueError(
-          'Unable to identify source code of function {}({}). The source code'
-          ' reported by Python did not include exactly one matching signature:'
-          '\n{}\n. This is an extremely rare occurrence. Please report it to'
-          ' the TensorFlow team.'.format(f, tf_inspect.getfullargspec(f),
-                                         source))
-  node, = nodes
+    node, = nodes
 
   # TODO(znado): Place inside standard_analysis.
   origin_info.resolve(node, source, f)
@@ -380,10 +376,9 @@ def function_to_graph(f,
   try:
     node = node_to_graph(node, context)
   except (ValueError, AttributeError, KeyError, NotImplementedError) as e:
-    # TODO(znado): raise InternalError
-    if not context.current_origin:
-      raise e
-    raise transformer.AutoGraphParseError(str(e), context.current_origin)
+    logging.error(1, 'Error converting %s', f, exc_info=True)
+    raise errors.InternalError('conversion', e)
+    # TODO(mdan): Catch and rethrow syntax errors.
 
   if isinstance(node, gast.Lambda):
     new_name = namer.new_symbol('tf__lambda', ())
@@ -429,7 +424,8 @@ def node_to_graph(node, context):
   node = converter.apply_(node, context, arg_defaults)
   node = converter.apply_(node, context, directives)
   node = converter.apply_(node, context, break_statements)
-  node = converter.apply_(node, context, asserts)
+  if context.program.options.uses(converter.Feature.ASSERT_STATEMENTS):
+    node = converter.apply_(node, context, asserts)
   # Note: sequencing continue canonicalization before for loop one avoids
   # dealing with the extra loop increment operation that the for
   # canonicalization creates.
@@ -438,11 +434,13 @@ def node_to_graph(node, context):
   if context.program.options.uses(converter.Feature.LISTS):
     node = converter.apply_(node, context, lists)
     node = converter.apply_(node, context, slices)
-  node = converter.apply_(node, context, builtin_functions)
+  if context.program.options.uses(converter.Feature.BUILTIN_FUNCTIONS):
+    node = converter.apply_(node, context, builtin_functions)
   node = converter.apply_(node, context, call_trees)
   node = converter.apply_(node, context, control_flow)
   node = converter.apply_(node, context, conditional_expressions)
-  node = converter.apply_(node, context, logical_expressions)
+  if context.program.options.uses(converter.Feature.LOGICAL_EXPRESSIONS):
+    node = converter.apply_(node, context, logical_expressions)
   if context.program.options.uses(converter.Feature.AUTO_CONTROL_DEPS):
     node = converter.apply_(node, context, side_effect_guards)
   # TODO(mdan): If function scopes ever does more, the toggle will need moving.

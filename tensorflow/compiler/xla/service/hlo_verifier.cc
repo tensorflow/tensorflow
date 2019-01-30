@@ -184,6 +184,10 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
                     ShapeInference::InferAllToAllTupleShape(operand_shapes));
 }
 
+Status ShapeVerifier::HandleReplicaId(HloInstruction* hlo) {
+  return CheckShape(hlo, ShapeUtil::MakeShape(U32, {}));
+}
+
 Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(CheckOperandCount(hlo, 1));
   return CheckShape(hlo, ShapeInference::InferCollectivePermuteShape(

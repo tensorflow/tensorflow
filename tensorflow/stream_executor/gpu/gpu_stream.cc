@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,49 +13,49 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/cuda/cuda_stream.h"
+#include "tensorflow/stream_executor/gpu/gpu_stream.h"
 
-#include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
+#include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/stream.h"
 
 namespace stream_executor {
-namespace cuda {
+namespace gpu {
 
-bool CUDAStream::Init() {
-  if (!CUDADriver::CreateStream(parent_->cuda_context(), &cuda_stream_)) {
+bool GpuStream::Init() {
+  if (!GpuDriver::CreateStream(parent_->gpu_context(), &gpu_stream_)) {
     return false;
   }
-  return CUDADriver::CreateEvent(parent_->cuda_context(), &completed_event_,
-                                 CUDADriver::EventFlags::kDisableTiming)
+  return GpuDriver::CreateEvent(parent_->gpu_context(), &completed_event_,
+                                GpuDriver::EventFlags::kDisableTiming)
       .ok();
 }
 
-void CUDAStream::Destroy() {
+void GpuStream::Destroy() {
   if (completed_event_ != nullptr) {
     port::Status status =
-        CUDADriver::DestroyEvent(parent_->cuda_context(), &completed_event_);
+        GpuDriver::DestroyEvent(parent_->gpu_context(), &completed_event_);
     if (!status.ok()) {
       LOG(ERROR) << status.error_message();
     }
   }
 
-  CUDADriver::DestroyStream(parent_->cuda_context(), &cuda_stream_);
+  GpuDriver::DestroyStream(parent_->gpu_context(), &gpu_stream_);
 }
 
-bool CUDAStream::IsIdle() const {
-  return CUDADriver::IsStreamIdle(parent_->cuda_context(), cuda_stream_);
+bool GpuStream::IsIdle() const {
+  return GpuDriver::IsStreamIdle(parent_->gpu_context(), gpu_stream_);
 }
 
-CUDAStream *AsCUDAStream(Stream *stream) {
+GpuStream* AsGpuStream(Stream* stream) {
   DCHECK(stream != nullptr);
-  return static_cast<CUDAStream *>(stream->implementation());
+  return static_cast<GpuStream*>(stream->implementation());
 }
 
-CUstream AsCUDAStreamValue(Stream *stream) {
+GpuStreamHandle AsGpuStreamValue(Stream* stream) {
   DCHECK(stream != nullptr);
-  return AsCUDAStream(stream)->cuda_stream();
+  return AsGpuStream(stream)->gpu_stream();
 }
 
-}  // namespace cuda
+}  // namespace gpu
 }  // namespace stream_executor

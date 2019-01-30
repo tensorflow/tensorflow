@@ -119,6 +119,12 @@ class BackendUtilsTest(test.TestCase):
           self.evaluate(variables.global_variables_initializer())
           sess.run(y, feed_dict={x: np.random.random((2, 3))})
 
+  def test_learning_phase_name(self):
+    with ops.name_scope('test_scope'):
+      # Test that outer name scopes do not affect the learning phase's name.
+      lp = keras.backend.symbolic_learning_phase()
+    self.assertEqual(lp.name, 'keras_learning_phase:0')
+
   def test_learning_phase_scope(self):
     initial_learning_phase = keras.backend.learning_phase()
     with keras.backend.learning_phase_scope(1):

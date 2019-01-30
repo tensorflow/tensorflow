@@ -524,7 +524,8 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
   }
 
   const int64 fma_count = (input_feature / convolution->feature_group_count()) *
-                          output_feature * batch *
+                          output_feature *
+                          (batch / convolution->batch_group_count()) *
                           Product(valid_position_counts);
   current_properties_[kFlopsKey] = fma_count * kFmaFlops;
   return Status::OK();
@@ -567,6 +568,10 @@ Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
 }
 
 Status HloCostAnalysis::HandleCollectivePermute(const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleReplicaId(const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
 

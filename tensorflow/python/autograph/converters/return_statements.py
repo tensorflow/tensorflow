@@ -22,310 +22,353 @@ import gast
 
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.pyct import anno
-from tensorflow.python.autograph.pyct import ast_util
+from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct.static_analysis.annos import NodeAnno
 
 
-# TODO(mdan): Move this logic into transformer_base.
-class BodyVisitor(converter.Base):
-  """Walks breadth- or depth-first the list-of-nodes bodies of AST nodes."""
+BODY_DEFINITELY_RETURNS = 'BODY_DEFINITELY_RETURNS'
+ORELSE_DEFINITELY_RETURNS = 'ORELSE_DEFINITELY_RETURNS'
+STMT_DEFINITELY_RETURNS = 'STMT_DEFINITELY_RETURNS'
 
-  def __init__(self, ctx, depth_first=False):
-    super(BodyVisitor, self).__init__(ctx)
-    self.depth_first = depth_first
-    self.changes_made = False
 
-  def visit_nodelist(self, nodelist):
-    for node in nodelist:
-      if isinstance(node, list):
-        node = self.visit_nodelist(node)
+class _Block(object):
+
+  def __init__(self):
+    self.definitely_returns = False
+
+
+class ConditionalReturnRewriter(converter.Base):
+  """Rewrites a a pattern where it's unbovious that all paths return a value.
+
+  This rewrite allows avoiding intermediate None return values.
+
+  The following pattern:
+
+      if cond:
+        <block 1>
+        return
       else:
-        node = self.generic_visit(node)
-    return nodelist
+        <block 2>
+      <block 3>
 
-  def visit_If(self, node):
-    if self.depth_first:
-      node = self.generic_visit(node)
-    node.body = self.visit_nodelist(node.body)
-    node.orelse = self.visit_nodelist(node.orelse)
-    if not self.depth_first:
-      node = self.generic_visit(node)
-    return node
+  is converted to:
 
-  def visit_For(self, node):
-    if self.depth_first:
-      node = self.generic_visit(node)
-    node.body = self.visit_nodelist(node.body)
-    node.orelse = self.visit_nodelist(node.orelse)
-    if not self.depth_first:
-      node = self.generic_visit(node)
-    return node
+      if cond:
+        <block 1>
+        return
+      else:
+        <block 2>
+        <block 3>
 
-  def visit_While(self, node):
-    if self.depth_first:
-      node = self.generic_visit(node)
-    node.body = self.visit_nodelist(node.body)
-    node.orelse = self.visit_nodelist(node.orelse)
-    if not self.depth_first:
-      node = self.generic_visit(node)
-    return node
-
-  def visit_Try(self, node):
-    if self.depth_first:
-      node = self.generic_visit(node)
-    node.body = self.visit_nodelist(node.body)
-    node.orelse = self.visit_nodelist(node.orelse)
-    node.finalbody = self.visit_nodelist(node.finalbody)
-    for i in range(len(node.handlers)):
-      node.handlers[i].body = self.visit_nodelist(node.handlers[i].body)
-    if not self.depth_first:
-      node = self.generic_visit(node)
-    return node
-
-  def visit_With(self, node):
-    if self.depth_first:
-      node = self.generic_visit(node)
-    node.body = self.visit_nodelist(node.body)
-    if not self.depth_first:
-      node = self.generic_visit(node)
-    return node
-
-  def visit_FunctionDef(self, node):
-    if self.depth_first:
-      node = self.generic_visit(node)
-    node.body = self.visit_nodelist(node.body)
-    self.generic_visit(node)
-    if not self.depth_first:
-      node = self.generic_visit(node)
-    return node
-
-
-class FoldElse(BodyVisitor):
-
-  def visit_nodelist(self, nodelist):
-    for i in range(len(nodelist)):
-      node = nodelist[i]
-      if isinstance(node, gast.If):
-        true_branch_returns = isinstance(node.body[-1], gast.Return)
-        false_branch_returns = len(node.orelse) and isinstance(
-            node.orelse[-1], gast.Return)
-        # If the last node in the if body is a return,
-        # then every line after this if statement effectively
-        # belongs in the else.
-        if true_branch_returns and not false_branch_returns:
-          for j in range(i + 1, len(nodelist)):
-            nodelist[i].orelse.append(ast_util.copy_clean(nodelist[j]))
-          if nodelist[i + 1:]:
-            self.changes_made = True
-          return nodelist[:i + 1]
-        elif not true_branch_returns and false_branch_returns:
-          for j in range(i + 1, len(nodelist)):
-            nodelist[i].body.append(ast_util.copy_clean(nodelist[j]))
-          if nodelist[i + 1:]:
-            self.changes_made = True
-          return nodelist[:i + 1]
-        elif true_branch_returns and false_branch_returns:
-          if nodelist[i + 1:]:
-            raise ValueError(
-                'Unreachable code after conditional where both branches return.'
-            )
-          return nodelist
-      elif isinstance(node, gast.Return) and nodelist[i + 1:]:
-        raise ValueError(
-            'Cannot have statements after a return in the same basic block')
-    return nodelist
-
-
-def contains_return(node):
-  for n in gast.walk(node):
-    if isinstance(n, gast.Return):
-      return True
-  return False
-
-
-class LiftReturn(converter.Base):
-  """Move return statements out of If and With blocks."""
-
-  def __init__(self, ctx):
-    super(LiftReturn, self).__init__(ctx)
-    self.changes_made = False
-    self.common_return_name = None
-
-  def visit_If(self, node):
-    # Depth-first traversal of if statements
-    node = self.generic_visit(node)
-
-    # We check if both branches return, and if so, lift the return out of the
-    # conditional. We don't enforce that the true and false branches either
-    # both return or both do not, because FoldElse might move a return
-    # into a branch after this transform completes. FoldElse and LiftReturn
-    # are alternately run until the code reaches a fixed point.
-    true_branch_returns = isinstance(node.body[-1], gast.Return)
-    false_branch_returns = len(node.orelse) and isinstance(
-        node.orelse[-1], gast.Return)
-    if true_branch_returns and false_branch_returns:
-      node.body[-1] = templates.replace(
-          'a = b', a=self.common_return_name, b=node.body[-1].value)[0]
-      node.orelse[-1] = templates.replace(
-          'a = b', a=self.common_return_name, b=node.orelse[-1].value)[0]
-      return_node = templates.replace('return a', a=self.common_return_name)[0]
-      self.changes_made = True
-      return [node, return_node]
-    else:
-      return node
-
-  def visit_With(self, node):
-    # Depth-first traversal of syntax
-    node = self.generic_visit(node)
-
-    # If the with statement returns, lift the return
-    if isinstance(node.body[-1], gast.Return):
-      node.body[-1] = templates.replace(
-          'a = b', a=self.common_return_name, b=node.body[-1].value)[0]
-      return_node = templates.replace('return a', a=self.common_return_name)[0]
-      node = self.generic_visit(node)
-      self.changes_made = True
-      return [node, return_node]
-    else:
-      return node
-
-  def visit_FunctionDef(self, node):
-    # Ensure we're doing depth-first traversal
-    last_return_name = self.common_return_name
-    body_scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
-    referenced_names = body_scope.referenced
-    self.common_return_name = self.ctx.namer.new_symbol('return_',
-                                                        referenced_names)
-    node = self.generic_visit(node)
-    self.common_return_name = last_return_name
-    return node
-
-
-class DetectReturnInUnsupportedControlFlow(gast.NodeVisitor):
-  """Throws an error if code returns inside loops or try/except."""
-
-  # First, throw an error if we detect a return statement in a loop.
-  # TODO(alexbw): we need to learn to handle returns inside a loop,
-  # but don't currently have the TF constructs to do so (need something
-  # that looks vaguely like a goto).
-
-  def __init__(self):
-    self.cant_return = False
-    self.function_level = 0
-    super(DetectReturnInUnsupportedControlFlow, self).__init__()
-
-  def visit_While(self, node):
-    self.cant_return = True
-    self.generic_visit(node)
-    self.cant_return = False
-
-  def visit_For(self, node):
-    self.cant_return = True
-    self.generic_visit(node)
-    self.cant_return = False
-
-  def visit_Try(self, node):
-    self.cant_return = True
-    self.generic_visit(node)
-    self.cant_return = False
-
-  def visit_FunctionDef(self, node):
-    if not self.function_level:
-      self.function_level += 1
-      self.generic_visit(node)
-      self.function_level -= 1
-
-  def visit_Return(self, node):
-    if self.cant_return:
-      raise ValueError(
-          '`return` statements are not supported in loops. '
-          'Try assigning to a variable in the while loop, and returning '
-          'outside of the loop')
-
-
-class DetectReturnInConditional(gast.NodeVisitor):
-  """Assert that no return statements are present in conditionals."""
-
-  def __init__(self):
-    self.cant_return = False
-    self.function_level = 0
-    super(DetectReturnInConditional, self).__init__()
-
-  def visit_If(self, node):
-    self.cant_return = True
-    self.generic_visit(node)
-    self.cant_return = False
-
-  def visit_FunctionDef(self, node):
-    if not self.function_level:
-      self.function_level += 1
-      self.generic_visit(node)
-      self.function_level -= 1
-
-  def visit_Return(self, node):
-    if self.cant_return:
-      raise ValueError(
-          'After transforms, a conditional contained a `return `statement, '
-          'which is not allowed. This is a bug, and should not happen.')
-
-
-class DetectReturnInFunctionDef(gast.NodeVisitor):
-
-  def visit_FunctionDef(self, node):
-    self.generic_visit(node)
-    if not contains_return(node):
-      raise ValueError(
-          'Each function definition should contain at least one return.')
-
-
-def transform(node, ctx):
-  """Ensure a function has only a single return.
-
-  This transforms an AST node with multiple returns successively into containing
-  only a single return node.
-  There are a few restrictions on what we can handle:
-   - An AST being transformed must contain at least one return.
-   - No returns allowed in loops. We have to know the type of the return value,
-   and we currently don't have either a type inference system to discover it,
-   nor do we have a mechanism for late type binding in TensorFlow.
-   - After all transformations are finished, a Return node is not allowed inside
-   control flow. If we were unable to move a return outside of control flow,
-   this is an error.
-
-  Args:
-     node: ast.AST
-     ctx: converter.EntityContext
-
-  Returns:
-     new_node: an AST with a single return value
-
-  Raises:
-    ValueError: if the AST is structured so that we can't perform the
-   transform.
+  and vice-versa (if the else returns, subsequent statements are moved under the
+  if branch).
   """
-  # Make sure that the function has at least one return statement
-  # TODO(alexbw): turning off this assertion for now --
-  # we need to not require this in e.g. class constructors.
-  # DetectReturnInFunctionDef().visit(node)
 
-  # Make sure there's no returns in unsupported locations (loops, try/except)
-  DetectReturnInUnsupportedControlFlow().visit(node)
+  def visit_Return(self, node):
+    self.state[_Block].definitely_returns = True
+    return node
 
-  while True:
+  def _postprocess_statement(self, node):
+    # If the node definitely returns (e.g. it's a with statement with a
+    # return stateent in it), then the current block also definitely returns.
+    if anno.getanno(node, STMT_DEFINITELY_RETURNS, default=False):
+      self.state[_Block].definitely_returns = True
 
-    # Try to lift all returns out of if statements and with blocks
-    lr = LiftReturn(ctx)
-    node = lr.visit(node)
-    changes_made = lr.changes_made
-    fe = FoldElse(ctx)
-    node = fe.visit(node)
-    changes_made = changes_made or fe.changes_made
+    # The special case: collapse a typical conditional return pattern into
+    # a single conditional with possibly returns on both branches. This
+    # reduces the use of None return values, which don't work with TF
+    # conditionals.
+    if (isinstance(node, gast.If)
+        and anno.getanno(node, BODY_DEFINITELY_RETURNS, default=False)):
+      return node, node.orelse
+    elif (isinstance(node, gast.If)
+          and anno.getanno(node, ORELSE_DEFINITELY_RETURNS, default=False)):
+      return node, node.body
 
-    if not changes_made:
-      break
+    return node, None
 
-  # Make sure we've scrubbed all returns from conditionals
-  DetectReturnInConditional().visit(node)
+  def _visit_statement_block(self, node, nodes):
+    self.state[_Block].enter()
+    new_nodes = self.visit_block(nodes, after_visit=self._postprocess_statement)
+    block_definitely_returns = self.state[_Block].definitely_returns
+    self.state[_Block].exit()
+    return new_nodes, block_definitely_returns
+
+  def visit_While(self, node):
+    node.test = self.visit(node.test)
+    node.body, _ = self._visit_statement_block(node, node.body)
+    node.orelse, _ = self._visit_statement_block(node, node.orelse)
+    return node
+
+  def visit_For(self, node):
+    node.iter = self.visit(node.iter)
+    node.target = self.visit(node.target)
+    node.body, _ = self._visit_statement_block(node, node.body)
+    node.orelse, _ = self._visit_statement_block(node, node.orelse)
+    return node
+
+  def visit_If(self, node):
+    node.test = self.visit(node.test)
+
+    node.body, body_definitely_returns = self._visit_statement_block(
+        node, node.body)
+    if body_definitely_returns:
+      anno.setanno(node, BODY_DEFINITELY_RETURNS, True)
+
+    node.orelse, orelse_definitely_returns = self._visit_statement_block(
+        node, node.orelse)
+    if orelse_definitely_returns:
+      anno.setanno(node, ORELSE_DEFINITELY_RETURNS, True)
+
+    if body_definitely_returns and orelse_definitely_returns:
+      self.state[_Block].definitely_returns = True
+
+    return node
+
+  def visit_FunctionDef(self, node):
+    node.args = self.visit(node.args)
+    node.body, _ = self._visit_statement_block(node, node.body)
+    return node
+
+
+class _Return(object):
+
+  def __init__(self):
+    self.used = False
+    self.create_guard = False
+    self.guard_created = False
+
+  def __repr__(self):
+    return 'used: {}'.format(
+        self.used)
+
+
+class _Function(object):
+
+  def __init__(self):
+    self.do_return_var_name = None
+    self.retval_var_name = None
+
+  def __repr__(self):
+    return 'return control: {}, return value: {}'.format(
+        self.do_return_var_name, self.retval_var_name)
+
+
+class ReturnStatementsTransformer(converter.Base):
+  """Lowers return statements into variables and conditionals.
+
+  Specifically, the following pattern:
+
+      <block 1>
+      return val
+      <block 2>
+
+  is converted to:
+
+      do_return = False
+      retval = None
+
+      <block 1>
+
+      do_return = True
+      retval = val
+
+      if not do_return:
+        <block 2>
+
+      return retval
+
+  The conversion adjusts loops as well:
+
+      <block 1>
+      while cond:
+        <block 2>
+        return retval
+
+  is converted to:
+
+      <block 1>
+      while not do_return and cond:
+        <block 2>
+        do_return = True
+        retval = val
+  """
+
+  def __init__(self, ctx, default_to_null_return):
+    super(ReturnStatementsTransformer, self).__init__(ctx)
+    self.default_to_null_return = default_to_null_return
+
+  def visit_Return(self, node):
+    self.state[_Return].used = True
+
+    retval = node.value if node.value else parser.parse_expression('None')
+
+    template = """
+      do_return_var_name = True
+      retval_var_name = retval
+    """
+    node = templates.replace(
+        template,
+        do_return_var_name=self.state[_Function].do_return_var_name,
+        retval_var_name=self.state[_Function].retval_var_name,
+        retval=retval)
+
+    return node
+
+  def _postprocess_statement(self, node):
+    # Example of how the state machine below works:
+    #
+    #   1| stmt           # State: _Return.used = False
+    #    |                # Action: none
+    #   3| return         # State: _Return.used = True,
+    #    |                #        _Return.guard_created = False,
+    #    |                #        _Return.create_guard = False
+    #    |                # Action: _Return.create_guard = True
+    #   4| stmt           # State: _Return.used = True,
+    #    |                #        _Return.guard_created = False,
+    #    |                #        _Return.create_guard = True
+    #    |                # Action: create `if not return_used`,
+    #    |                #         set _Return.guard_created = True
+    #   5| stmt           # State: _Return.used = True,
+    #    |                #        _Return.guard_created = True
+    #    |                # Action: none (will be wrapped under previously
+    #    |                #         created if node)
+    if self.state[_Return].used:
+      if self.state[_Return].guard_created:
+        return node, None
+
+      elif not self.state[_Return].create_guard:
+        self.state[_Return].create_guard = True
+        return node, None
+
+      elif (not self.state[_Return].guard_created and
+            self.state[_Return].create_guard):
+        self.state[_Return].guard_created = True
+        template = """
+          if ag__.not_(do_return_var_name):
+            original_node
+        """
+        cond, = templates.replace(
+            template,
+            do_return_var_name=self.state[_Function].do_return_var_name,
+            original_node=node)
+        return cond, cond.body
+
+      else:
+        assert False, 'should handle all states'
+
+    return node, None
+
+  def _visit_statement_block(self, node, nodes):
+    self.state[_Return].enter()
+    nodes = self.visit_block(nodes, after_visit=self._postprocess_statement)
+    return_used = self.state[_Return].used
+    self.state[_Return].exit()
+    if return_used:
+      self.state[_Return].used = True
+    return nodes
+
+  def visit_While(self, node):
+    node.test = self.visit(node.test)
+
+    # Add the check for return to the loop condition.
+    node.body = self._visit_statement_block(node, node.body)
+    if self.state[_Return].used:
+      node.test = templates.replace_as_expression(
+          'ag__.and_(lambda: ag__.not_(control_var), lambda: test)',
+          test=node.test,
+          control_var=self.state[_Function].do_return_var_name)
+
+    node.orelse = self._visit_statement_block(node, node.orelse)
+    return node
+
+  def visit_For(self, node):
+    node.iter = self.visit(node.iter)
+    node.target = self.visit(node.target)
+
+    # Add the check for return to the loop condition.
+    node.body = self._visit_statement_block(node, node.body)
+    if self.state[_Return].used:
+      extra_test = anno.getanno(node, 'extra_test', default=None)
+      if extra_test is not None:
+        extra_test = templates.replace_as_expression(
+            'ag__.and_(lambda: ag__.not_(control_var), lambda: extra_test)',
+            extra_test=extra_test,
+            control_var=self.state[_Function].do_return_var_name)
+      else:
+        extra_test = templates.replace_as_expression(
+            'ag__.not_(control_var)',
+            control_var=self.state[_Function].do_return_var_name)
+      anno.setanno(node, 'extra_test', extra_test)
+
+    node.orelse = self._visit_statement_block(node, node.orelse)
+    return node
+
+  def visit_If(self, node):
+    node.test = self.visit(node.test)
+    node.body = self._visit_statement_block(node, node.body)
+    node.orelse = self._visit_statement_block(node, node.orelse)
+    return node
+
+  def visit_FunctionDef(self, node):
+    self.state[_Function].enter()
+    self.state[_Return].enter()
+
+    scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
+    do_return_var_name = self.ctx.namer.new_symbol(
+        'do_return', scope.referenced)
+    retval_var_name = self.ctx.namer.new_symbol('retval_', scope.referenced)
+    self.state[_Function].do_return_var_name = do_return_var_name
+    self.state[_Function].retval_var_name = retval_var_name
+
+    converted_body = self._visit_statement_block(node, node.body)
+
+    # Avoid placing statements before any eventual docstring.
+    # TODO(mdan): Should a docstring even be included in the output?
+    docstring = None
+    if converted_body:
+      if (isinstance(converted_body[0], gast.Expr) and
+          isinstance(converted_body[0].value, gast.Str)):
+        docstring = converted_body[0]
+        converted_body = converted_body[1:]
+
+    if self.state[_Return].used:
+      if self.default_to_null_return:
+        template = """
+          do_return_var_name = False
+          retval_var_name = None
+          body
+          return retval_var_name
+        """
+      else:
+        template = """
+          body
+          return retval_var_name
+        """
+      node.body = templates.replace(
+          template,
+          body=converted_body,
+          do_return_var_name=do_return_var_name,
+          retval_var_name=retval_var_name)
+
+      if docstring:
+        node.body.insert(0, docstring)
+
+    self.state[_Return].exit()
+    self.state[_Function].exit()
+    return node
+
+
+def transform(node, ctx, default_to_null_return=True):
+  """Ensure a function has only a single return."""
+  # Note: Technically, these two could be merged into a single walk, but
+  # keeping them separate helps with readability.
+
+  node = ConditionalReturnRewriter(ctx).visit(node)
+
+  transformer = ReturnStatementsTransformer(
+      ctx, default_to_null_return=default_to_null_return)
+  node = transformer.visit(node)
 
   return node

@@ -22,8 +22,6 @@ import abc
 import collections
 from collections import OrderedDict
 import copy
-import json
-import os
 
 import numpy as np
 import six
@@ -49,7 +47,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 
 
@@ -844,22 +841,34 @@ def get_metric_function(metric, output_shape=None, loss_fn=None):
   Returns:
       The metric function.
   """
+  if metric not in ['accuracy', 'acc', 'crossentropy', 'ce']:
+    return metrics_module.get(metric)
+
+  is_sparse_categorical_crossentropy = (
+      isinstance(loss_fn, losses.SparseCategoricalCrossentropy) or
+      (isinstance(loss_fn, losses.LossFunctionWrapper) and
+       loss_fn.fn == losses.sparse_categorical_crossentropy))
+
+  is_binary_crossentropy = (
+      isinstance(loss_fn, losses.BinaryCrossentropy) or
+      (isinstance(loss_fn, losses.LossFunctionWrapper) and
+       loss_fn.fn == losses.binary_crossentropy))
+
   if metric in ['accuracy', 'acc']:
-    if output_shape[-1] == 1 or loss_fn == losses.binary_crossentropy:
-      return metrics_module.binary_accuracy  # case: binary accuracy
-    elif loss_fn == losses.sparse_categorical_crossentropy:
-      # case: categorical accuracy with sparse targets
+    if output_shape[-1] == 1 or is_binary_crossentropy:
+      return metrics_module.binary_accuracy
+    elif is_sparse_categorical_crossentropy:
       return metrics_module.sparse_categorical_accuracy
-    return metrics_module.categorical_accuracy  # case: categorical accuracy
-  elif metric in ['crossentropy', 'ce']:
-    if output_shape[-1] == 1 or loss_fn == losses.binary_crossentropy:
-      return metrics_module.binary_crossentropy  # case: binary cross-entropy
-    elif loss_fn == losses.sparse_categorical_crossentropy:
-      # case: categorical cross-entropy with sparse targets
+    # If the output_shape[-1] is not 1, then we know output is `categorical`.
+    # We assume it is sparse categorical only if loss is explicitly given
+    # as sparse categorical crossentropy loss.
+    return metrics_module.categorical_accuracy
+  else:
+    if output_shape[-1] == 1 or is_binary_crossentropy:
+      return metrics_module.binary_crossentropy
+    elif is_sparse_categorical_crossentropy:
       return metrics_module.sparse_categorical_crossentropy
-    # case: categorical cross-entropy
     return metrics_module.categorical_crossentropy
-  return metrics_module.get(metric)
 
 
 def call_metric_function(metric_fn, y_true, y_pred, weights=None, mask=None):
@@ -1522,13 +1531,6 @@ def convert_eager_tensors_to_numpy(structure):
     return element
 
   return nest.map_structure(_convert, structure)
-
-
-def should_run_multi_worker():
-  """Whether a model should be run using DistributedCoordinator."""
-  tf_config = json.loads(os.environ.get('TF_CONFIG', '{}'))
-  cluster_spec = server_lib.ClusterSpec(tf_config.get('cluster', {}))
-  return tf_config and 'master' not in cluster_spec.jobs
 
 
 def should_run_validation(validation_freq, epoch):

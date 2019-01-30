@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import func_graph as func_graph_module
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import saved_object_graph_pb2
 
@@ -45,14 +44,10 @@ def serialize_concrete_function(concrete_function, node_ids, coder):
     for capture in concrete_function.captured_inputs:
       bound_inputs.append(node_ids[capture])
   except KeyError:
-    # TODO(allenl): This warning shadows a real issue in test_table in
-    # save_test.py, where we don't handle captured constants. Fix that and
-    # then make this an exception.
-    logging.warning(
+    raise KeyError(
         "Concrete function %s not added to object based saved model as it "
-        "captures tensor %s which is unsupported or not reachable from root.",
-        concrete_function.name, capture)
-    return None
+        "captures tensor %s which is unsupported or not reachable from root."
+        % (concrete_function.name, capture))
   concrete_function_proto = saved_object_graph_pb2.SavedConcreteFunction()
   structured_outputs = func_graph_module.convert_structure_to_signature(
       concrete_function.structured_outputs)

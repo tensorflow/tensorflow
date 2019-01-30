@@ -32,9 +32,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_v2
@@ -394,7 +394,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     param = constant_op.constant(2.0)
     y0 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="elems")
     # map_fn uses TensorArray internally.
-    r = functional_ops.map_fn(lambda x: math_ops.multiply(x, param), y0)
+    r = map_fn.map_fn(lambda x: math_ops.multiply(x, param), y0)
     grad = gradients_impl.gradients(r, param)[0]
     self.assertAllClose([2.0, 4.0, 6.0, 8.0, 10.0, 12.0], self.evaluate(r))
     self.assertAllClose(21.0, self.evaluate(grad))

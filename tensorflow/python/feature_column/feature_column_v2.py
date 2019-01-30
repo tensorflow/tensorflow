@@ -1091,7 +1091,7 @@ def shared_embedding_columns(categorical_columns,
   return result
 
 
-@tf_export('feature_column.shared_embedding_columns', v1=[])
+@tf_export('feature_column.shared_embeddings', v1=[])
 def shared_embedding_columns_v2(categorical_columns,
                                 dimension,
                                 combiner='mean',

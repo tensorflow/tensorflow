@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/presized_cuckoo_map.h"
@@ -161,10 +162,30 @@ class Feature {
         if (!stream.ReadVarint32(&packed_length)) return false;
         auto packed_limit = stream.PushLimit(packed_length);
 
-        while (!stream.ExpectAtEnd()) {
-          uint32 buffer32;
-          if (!stream.ReadLittleEndian32(&buffer32)) return false;
-          float_list->push_back(absl::bit_cast<float>(buffer32));
+        // If the result data type is float and we are on a little endian
+        // machine then we can simply memcpy the data from the proto into the
+        // result vector.
+        constexpr int32 kNumFloatBytes = 4;
+        if (port::kLittleEndian &&
+            sizeof(typename Result::value_type) == kNumFloatBytes) {
+          // Store the initial size to know the offset we have to start writing
+          // data from before resizing the output "vector".
+          const size_t initial_size = float_list->size();
+          float_list->resize(initial_size + packed_length / kNumFloatBytes);
+          // Calculate the length of the buffer available what can be less than
+          // what we requested in resize in case of a LimitedArraySlice.
+          const uint32 bytes_to_copy =
+              std::min(static_cast<uint32>((float_list->size() - initial_size) *
+                                           kNumFloatBytes),
+                       packed_length);
+          if (!stream.ReadRaw(float_list->data() + initial_size, bytes_to_copy))
+            return false;
+        } else {
+          while (!stream.ExpectAtEnd()) {
+            uint32 buffer32;
+            if (!stream.ReadLittleEndian32(&buffer32)) return false;
+            float_list->push_back(absl::bit_cast<float>(buffer32));
+          }
         }
 
         stream.PopLimit(packed_limit);
@@ -448,8 +469,10 @@ struct SeededHasher {
 template <typename T>
 class LimitedArraySlice {
  public:
+  using value_type = T;
+
   LimitedArraySlice(T* begin, size_t num_elements)
-      : current_(begin), end_(begin + num_elements) {}
+      : current_(begin), begin_(begin), end_(begin + num_elements) {}
 
   // May return negative if there were push_back calls after slice was filled.
   int64 EndDistance() const { return end_ - current_; }
@@ -462,8 +485,21 @@ class LimitedArraySlice {
     ++current_;
   }
 
+  // Returns the number of elements in the slice.
+  size_t size() const { return std::min(current_ - begin_, end_ - begin_); }
+
+  // Attempts to resize the vector to the given size. It does so by advancing
+  // the pointer to the current element, possibly beyond the end of the slice.
+  // As a consequence, calling `size()` after `resize(x)` was called might
+  // return a value less than `x`.
+  void resize(size_t size) { current_ = begin_ + size; }
+
+  // Returns the pointer to the underlying data buffer.
+  T* data() { return begin_; }
+
  private:
   T* current_;
+  T* begin_;
   T* end_;
 };
 

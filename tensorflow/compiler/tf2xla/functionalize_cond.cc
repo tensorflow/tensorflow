@@ -247,7 +247,9 @@ class Conditional {
   Status AddMerge(Node* m);
 
   // Constructs an If node from the merge nodes.
-  Status BuildAndReplace(Graph* graph, FunctionLibraryDefinition* library);
+  Status BuildAndReplace(
+      Graph* graph, FunctionLibraryDefinition* library,
+      std::unordered_map<Node*, OutputTensor>* merge_to_replacement);
 
  private:
   // Extracts the then/else bodies: creates new graphs with the nodes
@@ -262,10 +264,15 @@ class Conditional {
   Status BuildIfNode(Graph* graph, FunctionLibraryDefinition* library);
 
   // Adds input edges to If node.
-  Status AddInputEdges(Graph* graph);
+  Status AddInputEdges(
+      Graph* graph,
+      const std::unordered_map<Node*, OutputTensor>& merge_to_replacement);
 
   // Adds output edges from If node.
-  Status AddOutputEdges(Graph* graph);
+  // Record new output tensor for all Merge nodes in 'merge_to_replacement'.
+  Status AddOutputEdges(
+      Graph* graph,
+      std::unordered_map<Node*, OutputTensor>* merge_to_replacement);
 
   // Adds switch node that is part of this conditional.
   Status AddSwitch(Node* s);
@@ -720,12 +727,29 @@ Status Conditional::BuildIfNode(Graph* graph,
   return Status::OK();
 }
 
-Status Conditional::AddInputEdges(Graph* graph) {
+Status Conditional::AddInputEdges(
+    Graph* graph,
+    const std::unordered_map<Node*, OutputTensor>& merge_to_replacement) {
   VLOG(2) << "AddInputEdges for " << if_node_->name();
   int index = 0;
   // Add predicate input.
-  graph->AddEdge(const_cast<Node*>(predicate_.node), predicate_.index, if_node_,
-                 index++);
+  if (predicate_.node->IsMerge()) {
+    // If the predicate is a Merge node, we should not use Merge output as
+    // predicate. Instead, we should use the corresponding If output in
+    // 'merge_to_replacement'. Otherwise, this Conditional's If node is still
+    // connected to the predicate Merge node; and when we call
+    // DeleteReachableAndDeadNodes(), the predicate Merge node and this
+    // Conditional's If node will be removed.
+    auto iter = merge_to_replacement.find(predicate_.node);
+    if (iter == merge_to_replacement.end()) {
+      return errors::Internal("Cannot find replacement for Merge node ",
+                              predicate_.node->name());
+    }
+    graph->AddEdge(iter->second.node, iter->second.index, if_node_, index++);
+  } else {
+    graph->AddEdge(const_cast<Node*>(predicate_.node), predicate_.index,
+                   if_node_, index++);
+  }
   // Add function body inputs.
   for (auto& arg : cond_arg_nodes_) {
     if (arg.src_output == Graph::kControlSlot) {
@@ -740,7 +764,9 @@ Status Conditional::AddInputEdges(Graph* graph) {
   return Status::OK();
 }
 
-Status Conditional::AddOutputEdges(Graph* graph) {
+Status Conditional::AddOutputEdges(
+    Graph* graph,
+    std::unordered_map<Node*, OutputTensor>* merge_to_replacement) {
   VLOG(2) << "AddOutputEdges for " << if_node_->name();
   int i = 0;
   for (Node* node : merges_) {
@@ -764,6 +790,10 @@ Status Conditional::AddOutputEdges(Graph* graph) {
         graph->AddEdge(if_node_, i, dst, dst_input);
       }
     }
+
+    // Record corresponding output tensor in 'merge_to_replacement'.
+    (*merge_to_replacement)[node] = OutputTensor{if_node_, i};
+
     ++i;
   }
   for (Node* n : external_control_outputs_) {
@@ -773,8 +803,9 @@ Status Conditional::AddOutputEdges(Graph* graph) {
   return Status::OK();
 }
 
-Status Conditional::BuildAndReplace(Graph* graph,
-                                    FunctionLibraryDefinition* library) {
+Status Conditional::BuildAndReplace(
+    Graph* graph, FunctionLibraryDefinition* library,
+    std::unordered_map<Node*, OutputTensor>* merge_to_replacement) {
   VLOG(1) << "Build If and replace merge nodes "
           << NodesToString(this->merges_);
   if (replaced_) return Status::OK();
@@ -793,8 +824,8 @@ Status Conditional::BuildAndReplace(Graph* graph,
   }
 
   TF_RETURN_IF_ERROR(BuildIfNode(graph, library));
-  TF_RETURN_IF_ERROR(AddInputEdges(graph));
-  TF_RETURN_IF_ERROR(AddOutputEdges(graph));
+  TF_RETURN_IF_ERROR(AddInputEdges(graph, *merge_to_replacement));
+  TF_RETURN_IF_ERROR(AddOutputEdges(graph, merge_to_replacement));
   TF_RETURN_IF_ERROR(parent_->PropagateUpdatedState(if_node_));
 
   // Check that the if_node doesn't feed into itself.
@@ -1345,7 +1376,8 @@ Status FunctionalizeCond::FunctionalizeInternal() {
     Conditional cond(merge_to_predicate_.at(cluster.front()), this,
                      &state_map_);
     for (Node* merge : cluster) TF_RETURN_IF_ERROR(cond.AddMerge(merge));
-    TF_RETURN_IF_ERROR(cond.BuildAndReplace(graph_, library_));
+    TF_RETURN_IF_ERROR(
+        cond.BuildAndReplace(graph_, library_, &merge_to_predicate_));
 
     if (VLOG_IS_ON(4)) DumpGraphWithCondState("after_extract");
   }

@@ -1482,7 +1482,7 @@ def set_other_mpi_vars(environ_cp):
   else:
     raise ValueError(
         'Cannot find the MPI library file in %s/lib or %s/lib64 or %s/lib32' %
-        mpi_home, mpi_home, mpi_home)
+        (mpi_home, mpi_home, mpi_home))
 
 
 def set_system_libs_flag(environ_cp):
