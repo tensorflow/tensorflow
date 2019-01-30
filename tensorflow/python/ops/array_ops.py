@@ -579,11 +579,16 @@ def _slice_helper(tensor, slice_spec, var=None):
     TypeError: If the slice indices aren't int, slice, ellipsis,
       tf.newaxis or scalar int32/int64 tensors.
   """
-  if isinstance(slice_spec, (np.ndarray, ops.Tensor)):
+  if isinstance(slice_spec, np.ndarray):
+    ndims_slice_spec = slice_spec.ndim
+    if ndims_slice_spec != 0:
       return boolean_mask(tensor=tensor, mask=slice_spec)
 
-  if not isinstance(slice_spec, (list, tuple)):
-    slice_spec = [slice_spec]
+  if isinstance(slice_spec, ops.Tensor):
+    shape_slice_spec = slice_spec.get_shape()
+    ndims_slice_spec = shape_slice_spec.ndims
+    if ndims_slice_spec != 0:
+      return boolean_mask(tensor=tensor, mask=slice_spec)
 
   begin, end, strides = [], [], []
   index = 0

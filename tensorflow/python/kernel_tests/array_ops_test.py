@@ -517,8 +517,10 @@ class StridedSliceChecker(object):
     if isinstance(spec, (np.ndarray, ops.Tensor)):
       tensor = op.eval()
       np_specs = eval_if_tensor(spec)
-      self.test.assertAllEqual(self.x_np[np_specs], tensor)
-      return tensor
+      ndims_np_specs = np_specs.ndim
+      if ndims_np_specs != 0:
+        self.test.assertAllEqual(self.x_np[np_specs], tensor)
+        return tensor
 
     if not isinstance(spec, (list, tuple)):
       spec = [spec]
@@ -731,10 +733,12 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
 
   def testMasks(self):
     with self.session(use_gpu=True):
+      scalar = np.array(0)
       # Test tensor type mask
       checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
       _ = checker[checker.x > 2]
       _ = checker[checker.x <= 5]
+      _ = checker[ops.convert_to_tensor(scalar)]
 
       # Test numpy array type mask
       raw = np.array([[[[[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]]],
@@ -742,6 +746,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       checker1 = StridedSliceChecker(self, raw)
       _ = checker1[raw >= 4]
       _ = checker1[raw < 19]
+      _ = checker1[scalar]
 
 
 class StridedSliceShapeChecker(object):
