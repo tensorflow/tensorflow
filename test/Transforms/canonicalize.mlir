@@ -323,3 +323,16 @@ func @cond_br_folding(%a : i32) {
 ^bb2:
   return
 }
+
+// CHECK-LABEL: func @indirect_call_folding
+func @indirect_target() {
+  return
+}
+
+func @indirect_call_folding() {
+  // CHECK-NEXT: call @indirect_target() : () -> ()
+  // CHECK-NEXT: return
+  %indirect_fn = constant @indirect_target : () -> ()
+  call_indirect %indirect_fn() : () -> ()
+  return
+}

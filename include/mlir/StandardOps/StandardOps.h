@@ -101,6 +101,20 @@ public:
     return getAttrOfType<FunctionAttr>("callee").getValue();
   }
 
+  /// Get the argument operands to the called function.
+  llvm::iterator_range<const_operand_iterator> getArgOperands() const {
+    return {arg_operand_begin(), arg_operand_end()};
+  }
+  llvm::iterator_range<operand_iterator> getArgOperands() {
+    return {arg_operand_begin(), arg_operand_end()};
+  }
+
+  const_operand_iterator arg_operand_begin() const { return operand_begin(); }
+  const_operand_iterator arg_operand_end() const { return operand_end(); }
+
+  operand_iterator arg_operand_begin() { return operand_begin(); }
+  operand_iterator arg_operand_end() { return operand_end(); }
+
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
@@ -130,10 +144,26 @@ public:
   const Value *getCallee() const { return getOperand(0); }
   Value *getCallee() { return getOperand(0); }
 
+  /// Get the argument operands to the called function.
+  llvm::iterator_range<const_operand_iterator> getArgOperands() const {
+    return {arg_operand_begin(), arg_operand_end()};
+  }
+  llvm::iterator_range<operand_iterator> getArgOperands() {
+    return {arg_operand_begin(), arg_operand_end()};
+  }
+
+  const_operand_iterator arg_operand_begin() const { return ++operand_begin(); }
+  const_operand_iterator arg_operand_end() const { return operand_end(); }
+
+  operand_iterator arg_operand_begin() { return ++operand_begin(); }
+  operand_iterator arg_operand_end() { return operand_end(); }
+
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
   bool verify() const;
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context);
 
 protected:
   friend class OperationInst;

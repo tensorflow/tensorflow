@@ -382,6 +382,38 @@ bool CallOp::verify() const {
 //===----------------------------------------------------------------------===//
 // CallIndirectOp
 //===----------------------------------------------------------------------===//
+namespace {
+/// Fold indirect calls that have a constant function as the callee operand.
+struct SimplifyIndirectCallWithKnownCallee : public RewritePattern {
+  SimplifyIndirectCallWithKnownCallee(MLIRContext *context)
+      : RewritePattern(CallIndirectOp::getOperationName(), 1, context) {}
+
+  PatternMatchResult match(OperationInst *op) const override {
+    auto indirectCall = op->cast<CallIndirectOp>();
+
+    // Check that the callee is a constant operation.
+    Value *callee = indirectCall->getCallee();
+    OperationInst *calleeInst = callee->getDefiningInst();
+    if (!calleeInst || !calleeInst->isa<ConstantOp>())
+      return matchFailure();
+
+    // Check that the constant callee is a function.
+    if (calleeInst->cast<ConstantOp>()->getValue().isa<FunctionAttr>())
+      return matchSuccess();
+    return matchFailure();
+  }
+  void rewrite(OperationInst *op, PatternRewriter &rewriter) const override {
+    auto indirectCall = op->cast<CallIndirectOp>();
+    auto calleeOp =
+        indirectCall->getCallee()->getDefiningInst()->cast<ConstantOp>();
+
+    // Replace with a direct call.
+    Function *calledFn = calleeOp->getValue().cast<FunctionAttr>().getValue();
+    SmallVector<Value *, 8> callOperands(indirectCall->getArgOperands());
+    rewriter.replaceOpWithNewOp<CallOp>(op, calledFn, callOperands);
+  }
+};
+} // end anonymous namespace.
 
 void CallIndirectOp::build(Builder *builder, OperationState *result,
                            Value *callee, ArrayRef<Value *> operands) {
@@ -444,6 +476,16 @@ bool CallIndirectOp::verify() const {
 
   return false;
 }
+
+void CallIndirectOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.push_back(
+      std::make_unique<SimplifyIndirectCallWithKnownCallee>(context));
+}
+
+//===----------------------------------------------------------------------===//
+// CmpIOp
+//===----------------------------------------------------------------------===//
 
 // Return the type of the same shape (scalar, vector or tensor) containing i1.
 static Type getCheckedI1SameShape(Builder *build, Type type) {
