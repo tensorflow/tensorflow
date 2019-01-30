@@ -2111,13 +2111,6 @@ class LRUCache {
   void Clear() {
     if (lru_list_.empty()) return;
 
-    // delete the cached objects
-    for (auto& key : lru_list_) {
-      auto it = cache_.find(key);
-      DCHECK(it != cache_.end());
-      delete it->second.op;
-    }
-
     // clean up the cache
     cache_.clear();
     lru_list_.clear();
