@@ -46,5 +46,4 @@ PassResult StripDebugInfo::runOnFunction(Function *f) {
 FunctionPass *mlir::createStripDebugInfoPass() { return new StripDebugInfo(); }
 
 static PassRegistration<StripDebugInfo>
-    pass("strip-debug-info",
-         "Strip debug info from functions and instructions");
+    pass("strip-debuginfo", "Strip debug info from functions and instructions");

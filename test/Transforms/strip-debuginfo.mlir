@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -mlir-print-debuginfo -strip-debug-info | FileCheck %s
+// RUN: mlir-opt %s -mlir-print-debuginfo -strip-debuginfo | FileCheck %s
 // This test verifies that debug locations are stripped.
 
 #set0 = (d0) : (1 == 0)
