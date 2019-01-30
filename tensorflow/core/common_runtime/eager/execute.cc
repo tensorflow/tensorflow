@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -750,7 +751,10 @@ bool IsPinnableOp(const string& op_type) {
       "StatelessRandomNormal",
   });
 
-  return unpinnable_ops->find(op_type) == unpinnable_ops->end();
+  // XRT ops refer to per-device handles that are not safe to move between
+  // devices.
+  return unpinnable_ops->find(op_type) == unpinnable_ops->end() &&
+         !absl::StartsWith(op_type, "XRT");
 }
 
 // The Op device may be updated if:
