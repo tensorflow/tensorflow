@@ -825,10 +825,10 @@ class PoolingTest(test.TestCase):
 
   def testMaxPoolingWithArgmax(self):
     tensor_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
-                    1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
-    configs = [[False, False, [0, 1, 3, 5, 0, 1, 3, 5]],
-               [False, True, [0, 1, 3, 5, 9, 10, 12, 14]],
-               [True, False, [0, 1, 3, 5, 0, 1, 3, 5]]]
+                    1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0]
+    configs = [[False, False, [0, 1, 3, 5, 0, 2, 6, 8]],
+               [False, True, [0, 1, 3, 5, 9, 11, 15, 17]],
+               [True, False, [0, 1, 3, 5, 0, 2, 6, 8]]]
 
     for use_gpu, include_batch_in_index, argmax_exp in configs:
       with self.session(use_gpu=use_gpu):
@@ -849,13 +849,13 @@ class PoolingTest(test.TestCase):
 
   def testMaxPoolingGradWithArgmax(self):
     orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
-                  1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+                  1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0]
     tensor_input = [11.0, 12.0, 13.0, 14.0,
                     21.0, 22.0, 23.0, 24.0]
 
-    configs = [[False, False, [0, 1, 3, 5, 0, 1, 3, 5]],
-               [False, True, [0, 1, 3, 5, 9, 10, 12, 14]],
-               [True, False, [0, 1, 3, 5, 0, 1, 3, 5]]]
+    configs = [[False, False, [0, 1, 3, 5, 0, 2, 6, 8]],
+               [False, True, [0, 1, 3, 5, 9, 11, 15, 17]],
+               [True, False, [0, 1, 3, 5, 0, 2, 6, 8]]]
 
     for use_gpu, include_batch_in_index, argmax in configs:
       with self.session(use_gpu=use_gpu):
@@ -875,18 +875,21 @@ class PoolingTest(test.TestCase):
         self.assertAllClose(
             out,
             [11.0, 12.0, 0.0, 13.0, 0.0, 14.0, 0.0, 0.0, 0.0,
-             21.0, 22.0, 0.0, 23.0, 0.0, 24.0, 0.0, 0.0, 0.0])
+             21.0, 0.0, 22.0, 0.0, 0.0, 0.0, 23.0, 0.0, 24.0])
 
   def testMaxPoolingGradGradWithArgmax(self):
     # MaxPoolWithArgMax is implemented only on CUDA.
     if not test.is_gpu_available(cuda_only=True):
       return
-    orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
-    tensor_input = [11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0]
-    tensor_argmax = list(np.array([0, 1, 3, 5], dtype=np.int64))
+    orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
+                  1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0]
+    tensor_input = [11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0,
+                    21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0]
+    tensor_argmax = list(np.array([0, 1, 3, 5,
+                                   0, 2, 6, 8], dtype=np.int64))
     with self.session(use_gpu=True):
-      orig_in = constant_op.constant(orig_input, shape=[1, 3, 3, 1])
-      t = constant_op.constant(tensor_input, shape=[1, 3, 3, 1])
+      orig_in = constant_op.constant(orig_input, shape=[2, 3, 3, 1])
+      t = constant_op.constant(tensor_input, shape=[2, 3, 3, 1])
       argmax = constant_op.constant(
           tensor_argmax, shape=[1, 2, 2, 1], dtype=dtypes.int64)
       out_op = gen_nn_ops.max_pool_grad_grad_with_argmax(
@@ -898,7 +901,8 @@ class PoolingTest(test.TestCase):
           padding="VALID",
           include_batch_in_index=False)
       out = self.evaluate(out_op).flatten()
-      self.assertAllClose(out, [11.0, 12.0, 14.0, 16.0])
+      self.assertAllClose(out, [11.0, 12.0, 14.0, 16.0,
+                                21.0, 23.0, 27.0, 29.0])
 
   def _ConstructAndTestGradient(self,
                                 pool_func,
