@@ -41,9 +41,9 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
@@ -346,7 +346,7 @@ def classifier_score(images, classifier_fn, num_batches=1):
       images, num_or_size_splits=num_batches)
 
   # Compute the classifier splits using the memory-efficient `map_fn`.
-  logits = functional_ops.map_fn(
+  logits = map_fn.map_fn(
       fn=classifier_fn,
       elems=array_ops.stack(generated_images_list),
       parallel_iterations=1,
@@ -505,12 +505,12 @@ def frechet_classifier_distance(real_images,
 
   # Compute the activations using the memory-efficient `map_fn`.
   def compute_activations(elems):
-    return functional_ops.map_fn(fn=classifier_fn,
-                                 elems=elems,
-                                 parallel_iterations=1,
-                                 back_prop=False,
-                                 swap_memory=True,
-                                 name='RunClassifier')
+    return map_fn.map_fn(fn=classifier_fn,
+                         elems=elems,
+                         parallel_iterations=1,
+                         back_prop=False,
+                         swap_memory=True,
+                         name='RunClassifier')
 
   real_a = compute_activations(real_imgs)
   gen_a = compute_activations(generated_imgs)
@@ -895,7 +895,7 @@ def kernel_classifier_distance_and_std(real_images,
 
   # Compute the activations using the memory-efficient `map_fn`.
   def compute_activations(elems):
-    return functional_ops.map_fn(
+    return map_fn.map_fn(
         fn=classifier_fn,
         elems=elems,
         parallel_iterations=1,
@@ -1099,7 +1099,7 @@ def kernel_classifier_distance_and_std_from_activations(real_activations,
             (math_ops.reduce_sum(k_rr) - math_ops.trace(k_rr)) / (m * (m - 1)) +
             (math_ops.reduce_sum(k_gg) - math_ops.trace(k_gg)) / (n * (n - 1)))
 
-  ests = functional_ops.map_fn(
+  ests = map_fn.map_fn(
       compute_kid_block, math_ops.range(n_blocks), dtype=dtype, back_prop=False)
 
   mn = math_ops.reduce_mean(ests)

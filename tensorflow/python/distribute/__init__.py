@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
+from tensorflow.python.distribute import cluster_resolver
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy

@@ -127,17 +127,7 @@ py_library(
     srcs = ["one_device_strategy.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python/distribute:numpy_dataset",
-        "//tensorflow/python/distribute:reduce_util",
-        "//tensorflow/python/distribute:values",
-        "//tensorflow/python/eager:context",
-        "@six_archive//:six",
+        "//tensorflow/python/distribute:one_device_strategy",
     ],
 )
 
@@ -189,6 +179,7 @@ py_library(
     deps = [
         ":mirrored_strategy",
         ":one_device_strategy",
+        ":parameter_server_strategy",
         ":tpu_strategy",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
         "//tensorflow/contrib/optimizer_v2:training",
@@ -216,9 +207,9 @@ py_test(
     srcs = ["one_device_strategy_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":one_device_strategy",
         ":strategy_test_lib",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/eager:test",
     ],
 )
@@ -414,6 +405,7 @@ cuda_py_test(
     additional_deps = [
         ":keras_test_lib",
     ],
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # http://b/119349471
@@ -502,10 +494,10 @@ cuda_py_test(
     additional_deps = [
         ":combinations",
         ":monitor",
-        ":one_device_strategy",
         ":single_loss_example",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python:framework_ops",
@@ -576,8 +568,9 @@ py_library(
 distribute_py_test(
     name = "keras_test",
     srcs = ["keras_test.py"],
+    full_precision = True,
     main = "keras_test.py",
-    shard_count = 16,
+    shard_count = 32,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
@@ -774,7 +767,6 @@ cuda_py_test(
     additional_deps = [
         ":combinations",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:checkpoint_utils_test",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",

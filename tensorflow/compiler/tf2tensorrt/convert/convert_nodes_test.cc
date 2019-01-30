@@ -973,7 +973,8 @@ class OpConverterTest : public ::testing::Test {
       const char* output_name, std::vector<T>* output_data) {
     // Mark the output tensor as TRT engine output.
     TF_EXPECT_OK(converter_->RenameAndMarkOutputTensors(
-        {{string(output_name), string(output_name)}}));
+        {{string(output_name), string(output_name),
+          TfDataTypeToTrt(DataTypeToEnum<T>::v())}}));
 
     // Build the TRT engine.
     ASSERT_EQ(nullptr, engine_.get());

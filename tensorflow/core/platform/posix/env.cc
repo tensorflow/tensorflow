@@ -86,7 +86,7 @@ class PosixEnv : public Env {
     return new StdThread(thread_options, name, fn);
   }
 
-  int32 GetCurrentThreadId() {
+  int32 GetCurrentThreadId() override {
 #ifdef __APPLE__
     uint64_t tid64;
     pthread_threadid_np(nullptr, &tid64);
@@ -101,7 +101,7 @@ class PosixEnv : public Env {
 #endif
   }
 
-  bool GetCurrentThreadName(string* name) {
+  bool GetCurrentThreadName(string* name) override {
 #ifdef __ANDROID__
     return false;
 #else

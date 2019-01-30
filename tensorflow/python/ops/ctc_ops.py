@@ -31,6 +31,7 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_ctc_ops
 from tensorflow.python.ops import inplace_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
@@ -904,7 +905,7 @@ def ctc_unique_labels(labels, name=None):
           u.y, [[0, _get_dim(u.idx, 0) - _get_dim(u.y, 0)]])
       y = math_ops.cast(y, dtypes.int64)
       return [y, u.idx]
-    return functional_ops.map_fn(
+    return map_fn.map_fn(
         _unique, labels, dtype=[dtypes.int64, dtypes.int32])
 
 

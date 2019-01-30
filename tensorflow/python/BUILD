@@ -140,6 +140,7 @@ py_library(
         ":lib",
         ":list_ops",
         ":manip_ops",
+        ":map_fn",
         ":math_ops",
         ":metrics",
         ":mode_keys",
@@ -912,6 +913,24 @@ py_library(
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:tape",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "map_fn",
+    srcs = ["ops/map_fn.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":constant_op",
+        ":control_flow_ops",
+        ":framework_ops",
+        ":sparse_tensor",
+        ":tensor_array_ops",
+        ":tensor_shape",
+        ":util",
+        ":variable_scope",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -2546,9 +2565,9 @@ py_library(
         ":array_ops",
         ":dtypes",
         ":framework_ops",
-        ":functional_ops",
         ":linalg_ops_gen",
         ":linalg_ops_impl",
+        ":map_fn",
         ":math_ops",
         "//third_party/py/numpy",
     ],

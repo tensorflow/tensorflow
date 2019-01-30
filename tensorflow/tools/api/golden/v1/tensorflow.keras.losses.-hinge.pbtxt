@@ -1,6 +1,7 @@
 path: "tensorflow.keras.losses.Hinge"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.losses.Hinge\'>"
+  is_instance: "<class \'tensorflow.python.keras.losses.LossFunctionWrapper\'>"
   is_instance: "<class \'tensorflow.python.keras.losses.Loss\'>"
   is_instance: "<type \'object\'>"
   member_method {

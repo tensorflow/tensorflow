@@ -652,6 +652,10 @@ REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_GPU),
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_CPU),                \
                           TensorListScatter<CPUDevice, T>)        \
+  REGISTER_KERNEL_BUILDER(Name("TensorListScatterV2")             \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_CPU),                \
+                          TensorListScatter<CPUDevice, T>)        \
   REGISTER_KERNEL_BUILDER(Name("TensorListSplit")                 \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_CPU),                \

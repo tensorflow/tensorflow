@@ -12625,6 +12625,30 @@ op {
   }
 }
 op {
+  name: "Cholesky"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "CholeskyGrad"
   input_arg {
     name: "l"
@@ -12643,6 +12667,32 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "CholeskyGrad"
+  input_arg {
+    name: "l"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -12912,6 +12962,56 @@ op {
     }
   }
   is_stateful: true
+}
+op {
+  name: "CombinedNonMaxSuppression"
+  input_arg {
+    name: "boxes"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scores"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_output_size_per_class"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "max_total_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "iou_threshold"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "score_threshold"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "nmsed_boxes"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "nmsed_scores"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "nmsed_classes"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "valid_detections"
+    type: DT_INT32
+  }
+  attr {
+    name: "pad_per_class"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "CompareAndBitpack"
@@ -23986,6 +24086,53 @@ op {
   }
 }
 op {
+  name: "ExtractGlimpse"
+  input_arg {
+    name: "input"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "offsets"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "glimpse"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "centered"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "normalized"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "uniform_noise"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "noise"
+    type: "string"
+    default_value {
+      s: "uniform"
+    }
+  }
+}
+op {
   name: "ExtractImagePatches"
   input_arg {
     name: "images"
@@ -31711,6 +31858,34 @@ op {
   }
 }
 op {
+  name: "LogMatrixDeterminant"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "sign"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "log_abs_determinant"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "LogSoftmax"
   input_arg {
     name: "logits"
@@ -32213,6 +32388,47 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "output_idx_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "Lu"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "lu"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "p"
+    type_attr: "output_idx_type"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_HALF
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -33114,6 +33330,30 @@ op {
   }
 }
 op {
+  name: "MatrixDeterminant"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "MatrixDiag"
   input_arg {
     name: "diagonal"
@@ -33193,6 +33433,33 @@ op {
   }
 }
 op {
+  name: "MatrixExponential"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  deprecation {
+    version: 27
+  }
+}
+op {
   name: "MatrixInverse"
   input_arg {
     name: "input"
@@ -33244,6 +33511,37 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "MatrixInverse"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "adjoint"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_HALF
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -33325,6 +33623,41 @@ op {
   }
 }
 op {
+  name: "MatrixSolve"
+  input_arg {
+    name: "matrix"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "adjoint"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "MatrixSolveLs"
   input_arg {
     name: "matrix"
@@ -33385,6 +33718,45 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "fast"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+}
+op {
+  name: "MatrixSolveLs"
+  input_arg {
+    name: "matrix"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2_regularizer"
+    type: DT_DOUBLE
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_HALF
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -33422,6 +33794,30 @@ op {
   }
 }
 op {
+  name: "MatrixSquareRoot"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "MatrixTriangularSolve"
   input_arg {
     name: "matrix"
@@ -33495,6 +33891,48 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "MatrixTriangularSolve"
+  input_arg {
+    name: "matrix"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "lower"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "adjoint"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_HALF
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -42653,6 +43091,41 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "Qr"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "q"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "r"
+    type_attr: "T"
+  }
+  attr {
+    name: "full_matrices"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_HALF
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -63579,6 +64052,31 @@ op {
   }
 }
 op {
+  name: "SelfAdjointEig"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_HALF
+      }
+    }
+  }
+  deprecation {
+    version: 11
+  }
+}
+op {
   name: "SelfAdjointEigV2"
   input_arg {
     name: "input"
@@ -63638,6 +64136,41 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "SelfAdjointEigV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "e"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "v"
+    type_attr: "T"
+  }
+  attr {
+    name: "compute_v"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_HALF
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -76582,6 +77115,52 @@ op {
   }
 }
 op {
+  name: "Svd"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "s"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "u"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "v"
+    type_attr: "T"
+  }
+  attr {
+    name: "compute_uv"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "full_matrices"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "Switch"
   input_arg {
     name: "data"
@@ -78765,6 +79344,43 @@ op {
   input_arg {
     name: "element_shape"
     type_attr: "shape_type"
+  }
+  output_arg {
+    name: "output_handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "element_dtype"
+    type: "type"
+  }
+  attr {
+    name: "shape_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "TensorListScatterV2"
+  input_arg {
+    name: "tensor"
+    type_attr: "element_dtype"
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "element_shape"
+    type_attr: "shape_type"
+  }
+  input_arg {
+    name: "num_elements"
+    type: DT_INT32
   }
   output_arg {
     name: "output_handle"

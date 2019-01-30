@@ -32,9 +32,9 @@ from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
@@ -1037,7 +1037,7 @@ class PFor(object):
     if sparse_tensor_rank is not None:
       sparse_tensor_rank += 1
 
-    def map_fn(args):
+    def fn(args):
       res = gen_sparse_ops.serialize_sparse(
           args[0], args[1], args[2], out_type=dtypes.variant)
       return res
@@ -1046,8 +1046,8 @@ class PFor(object):
     # sparse tensor element and batch them all, then deserializes the batch.
     # TODO(rachelim): Try to do this without map_fn -- add the right offsets
     # to shape and indices tensors instead.
-    result = functional_ops.map_fn(
-        map_fn, [indices, values, shape], dtype=dtypes.variant)
+    result = map_fn.map_fn(
+        fn, [indices, values, shape], dtype=dtypes.variant)
     return sparse_ops.deserialize_sparse(
         result, dtype=values.dtype, rank=sparse_tensor_rank)
 

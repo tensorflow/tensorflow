@@ -316,6 +316,10 @@ class LocalComputationBuilder {
 
   LocalOp Collapse(const LocalOp& operand, absl::Span<const int64> dimensions);
 
+  LocalOp AllToAll(const LocalOp& operand, int64 split_dimension,
+                   int64 concat_dimension, int64 split_count,
+                   absl::Span<const ReplicaGroup> replica_groups);
+
   LocalOp CrossReplicaSum(const LocalOp& operand,
                           absl::Span<const ReplicaGroup> replica_groups);
 

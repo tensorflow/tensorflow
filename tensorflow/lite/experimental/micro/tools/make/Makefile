@@ -39,9 +39,12 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
 -I$(OBJDIR)
-# This is at the end so any globally-installed frameworks like protobuf don't
-# override local versions in the source tree.
-INCLUDES += -I/usr/local/include
+
+# These are the include paths added to any generated project file.
+PROJECT_INCLUDES := \
+. \
+third_party/gemmlowp \
+third_party/flatbuffers/include
 
 TEST_SCRIPT := tensorflow/lite/experimental/micro/testing/test_linux_binary.sh
 
@@ -124,6 +127,10 @@ MBED_PROJECT_FILES := \
   README_MBED.md \
   mbed-os.lib \
   mbed_app.json
+
+KEIL_PROJECT_FILES := \
+  README_KEIL.md \
+  keil_project.uvprojx
 
 # These target-specific makefiles should modify or replace options like
 # CXXFLAGS or LIBS to work for a specific targetted architecture. All logic

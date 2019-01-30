@@ -25,27 +25,39 @@ namespace tensorflow {
 
 // Flags associated with the XLA bridge's mark_for_compilation_pass module.
 struct MarkForCompilationPassFlags {
-  int32 tf_xla_auto_jit;  // Control compilation of operators into XLA
-                          // computations on CPU and GPU devices.  0 = use
-                          // ConfigProto setting; -1 = off; 1 = on for things
-                          // very likely to be improved; 2 = on for everything.
-                          // Experimental.
-  int32 tf_xla_min_cluster_size;  // Minimum number of operators in an XLA
-                                  // compilation. Ignored for operators placed
-                                  // on an XLA device or operators explicitly
-                                  // marked for compilation.
-  int32 tf_xla_max_cluster_size;  // Maximum number of operators in an XLA
-                                  // compilation.
-  bool tf_xla_clustering_debug;   // Dump graphs during XLA compilation.
-  bool tf_xla_cpu_global_jit;     // Enables global JIT compilation for CPU
-                                  // via SessionOptions.
-  int64 tf_xla_clustering_fuel;   // "Compiler fuel" for clustering.  Only this
-                                  // many ops will be marked as eligible for
-                                  // clustering.
-  bool tf_xla_fusion_only;  // This flag is effective only when global_jit_level
-                            // is set to ON* and overrides its behavior. If
-                            // true, enable fusion of element-wise operations
-                            // only using XLA.
+  // Control compilation of operators into XLA computations on CPU and GPU
+  // devices.  0 = use ConfigProto setting; -1 = off; 1 = on for things very
+  // likely to be improved; 2 = on for everything.
+  //
+  // Experimental.
+  int32 tf_xla_auto_jit;
+
+  // Minimum number of operators in an XLA compilation. Ignored for operators
+  // placed on an XLA device or operators explicitly marked for compilation.
+  int32 tf_xla_min_cluster_size;
+
+  // Maximum number of operators in an XLA compilation.
+  int32 tf_xla_max_cluster_size;
+
+  // Dump graphs during XLA compilation.
+  bool tf_xla_clustering_debug;
+
+  // Enables global JIT compilation for CPU via SessionOptions.
+  bool tf_xla_cpu_global_jit;
+
+  // "Compiler fuel" for clustering.  Only this many ops will be marked as
+  // eligible for clustering.
+  int64 tf_xla_clustering_fuel;
+
+  // tf_xla_fusion_only is effective only when global_jit_level is set to ON*
+  // and overrides its behavior. If true, enable fusion of element-wise
+  // operations only using XLA.
+  bool tf_xla_fusion_only;
+
+  // If tf_xla_disable_deadness_safety_checks_for_debugging is set to true then
+  // we do not do deadness related safety checks.  This is unsound in general,
+  // but can be used as a debugging aid.
+  bool tf_xla_disable_deadness_safety_checks_for_debugging;
 };
 
 // Flags associated with the XLA bridge's xla_device module.

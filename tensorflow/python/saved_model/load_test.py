@@ -32,11 +32,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
 from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.checkpointable import util
 
 
 @parameterized.named_parameters(
@@ -254,6 +256,32 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                         imported.f(
                             constant_op.constant([1.0, 2.0, 3.0]),
                             dtype=dtypes.int32).numpy())
+
+  def test_function_no_return(self, cycles):
+
+    class CheckpointableWithOneVariable(tracking.AutoCheckpointable):
+
+      def __init__(self, initial_value=0.0):
+        super(CheckpointableWithOneVariable, self).__init__()
+        self.variable = variables.Variable(initial_value)
+
+      @def_function.function
+      def increase(self, by=1.0):
+        self.variable.assign_add(by)
+
+    obj = CheckpointableWithOneVariable(5.0)
+
+    obj.increase(constant_op.constant(10.0))
+    self.assertEqual(15.0, obj.variable.numpy())
+    obj.increase()
+    self.assertEqual(16.0, obj.variable.numpy())
+
+    imported = self.cycle(obj, cycles)
+
+    imported.increase(constant_op.constant(10.0))
+    self.assertEqual(26.0, imported.variable.numpy())
+    imported.increase(constant_op.constant(1.0))
+    self.assertEqual(27.0, imported.variable.numpy())
 
   def test_structured_inputs(self, cycles):
 
@@ -733,6 +761,46 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported.variables[0].assign(3.)
     imported.variables[1].assign(4.)
     self.assertAllClose([9., 16.], [loss() for loss in imported.losses])
+
+  def test_captured_constant(self, cycles):
+    const = array_ops.zeros([100])
+    root = tracking.AutoCheckpointable()
+    root.f = def_function.function(lambda: const + 1.)
+    root.g = def_function.function(lambda: const + 2.)
+    self.assertAllClose(array_ops.ones([100]), root.f())
+    self.assertAllClose(2. * array_ops.ones([100]), root.g())
+    imported = self.cycle(root, cycles)
+    self.assertAllClose(array_ops.ones([100]), imported.f())
+    self.assertAllClose(2. * array_ops.ones([100]), imported.g())
+    # TODO(b/123408994): Use the public get_concrete_function.
+    f_concrete = imported.f._list_all_concrete_functions_for_serialization()[0]
+    g_concrete = imported.g._list_all_concrete_functions_for_serialization()[0]
+    self.assertLen(f_concrete.captured_inputs, 1)
+    self.assertLen(g_concrete.captured_inputs, 1)
+    # We should be using the same captured EagerTensor in both functions, not
+    # duplicating the constant.
+    self.assertIs(f_concrete.captured_inputs[0],
+                  g_concrete.captured_inputs[0])
+
+  def test_table(self, cycles):
+    # TODO(b/123408779): Handle generic TrackableResources and enable this test
+    self.skipTest("Need to handle generic TrackableResources")
+    vocab_path = self._make_asset("alpha\nbeta\ngamma\n")
+    initializer = lookup_ops.TextFileInitializer(
+        vocab_path,
+        key_dtype=dtypes.string,
+        key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
+        value_dtype=dtypes.int64,
+        value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
+    root = util.Checkpoint(table=lookup_ops.HashTable(
+        initializer, default_value=-1))
+    root.table_user = def_function.function(
+        root.table.lookup,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.string)])
+    self.assertEqual(2, root.table_user(constant_op.constant("gamma")).numpy())
+    imported = self.cycle(root, cycles)
+    self.assertEqual(
+        2, imported.table_user(constant_op.constant("gamma")).numpy())
 
 if __name__ == "__main__":
   test.main()

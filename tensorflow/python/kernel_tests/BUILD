@@ -521,6 +521,7 @@ tf_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
     ],
+    tags = ["notap"],  #TODO(b/123583863): Re-enable this test.
 )
 
 tf_py_test(
@@ -2073,6 +2074,29 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "map_fn_test",
+    size = "small",
+    srcs = ["map_fn_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:map_fn",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_array_grad",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+    ],
+    grpc_enabled = True,
+    shard_count = 2,
+    tags = ["no_windows"],
     xla_enable_strict_auto_jit = True,
 )
 

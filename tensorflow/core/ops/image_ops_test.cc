@@ -183,6 +183,13 @@ TEST(ImageOpsTest, ExtractGlimpse_ShapeFn) {
   op.input_tensors.resize(2);
 
   // Inputs are input, size, offsets.
+  TF_ASSERT_OK(NodeDefBuilder("test", "ExtractGlimpse")
+                   .Input({"input", 0, DT_FLOAT})
+                   .Input({"size", 1, DT_INT32})
+                   .Input({"offsets", 2, DT_FLOAT})
+                   .Attr("uniform_noise", true)
+                   .Attr("noise", "")
+                   .Finalize(&op.node_def));
 
   // Rank and size checks.
   INFER_ERROR("Shape must be rank 4 but is rank 5", op, "[1,2,3,4,5];?;?");

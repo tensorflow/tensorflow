@@ -20,13 +20,31 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "export_rnn_cell",
+    srcs = ["export_rnn_cell.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_binary(
+    name = "use_rnn_cell",
+    srcs = ["use_rnn_cell.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_test(
     name = "saved_model_test",
     srcs = [
         "saved_model_test.py",
     ],
     data = [
+        ":export_rnn_cell",
         ":export_text_rnn_model",
+        ":use_rnn_cell",
         ":use_text_rnn_model",
     ],
     srcs_version = "PY2AND3",

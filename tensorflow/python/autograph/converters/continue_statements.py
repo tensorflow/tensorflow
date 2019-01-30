@@ -78,7 +78,7 @@ class ContinueCanonicalizationTransformer(converter.Base):
       else:
         self.state[_Continue].guard_created = True
         template = """
-          if not var_name:
+          if ag__.not_(var_name):
             original_node
         """
         cond, = templates.replace(

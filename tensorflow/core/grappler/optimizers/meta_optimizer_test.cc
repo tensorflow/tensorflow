@@ -824,7 +824,6 @@ TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnInvalidGraph) {
       {NDef("x0", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
        NDef("x1", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
        NDef("dy", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
-       NDef("x1", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
        // Calls into function library
        NDef("mul_1", "MyMul1", {"x0", "x1"}, {}, kDevice),
        NDef("mul_2", "MyMul2", {"x0", "x1"}, {}, kDevice),
@@ -857,9 +856,10 @@ TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnInvalidGraph) {
   MetaOptimizer optimizer_with_post_verifiers(nullptr, config_proto);
   Status status =
       optimizer_with_post_verifiers.Optimize(nullptr, item, &output);
-  EXPECT_EQ(status.code(), errors::Code::NOT_FOUND);
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "Op type not registered"));
+  EXPECT_EQ(status.code(), errors::Code::INVALID_ARGUMENT);
+  EXPECT_TRUE(absl::StrContains(
+      status.error_message(),
+      "NodeDef expected inputs 'float' do not match 3 inputs specified"));
 }
 
 TEST_F(MetaOptimizerTest, RunInterOptimizerVerifiersOnInvalidGraph) {
@@ -931,9 +931,10 @@ TEST_F(MetaOptimizerTest, RunInterOptimizerVerifiersOnInvalidGraph) {
   MetaOptimizer optimizer_with_inter_verifiers(nullptr, config_proto);
   Status status =
       optimizer_with_inter_verifiers.Optimize(nullptr, item, &output);
-  EXPECT_EQ(status.code(), errors::Code::NOT_FOUND);
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "Op type not registered"));
+  EXPECT_EQ(status.code(), errors::Code::INVALID_ARGUMENT);
+  EXPECT_TRUE(absl::StrContains(
+      status.error_message(),
+      "NodeDef expected inputs 'float' do not match 3 inputs specified"));
 }
 
 }  // namespace

@@ -135,6 +135,38 @@ TEST_F(XlaBuilderTest, BinaryOperatorsBuildExpectedHLO) {
       op::ShiftRightLogical(op::Constant(), op::Constant()));
 }
 
+TEST_F(XlaBuilderTest, VariadicAnd) {
+  XlaBuilder b(TestName());
+  Shape s = ShapeUtil::MakeShape(PRED, {});
+  And(Parameter(&b, 0, s, "p0"), Parameter(&b, 1, s, "p1"),
+      Parameter(&b, 2, s, "p2"));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  // Don't specify in the test whether And(x, y, z) is right- or
+  // left-associative; accept either one.
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      ::testing::AnyOf(op::And(op::Parameter(0),
+                               op::And(op::Parameter(1), op::Parameter(2))),
+                       op::And(op::And(op::Parameter(0), op::Parameter(1)),
+                               op::Parameter(2))));
+}
+
+TEST_F(XlaBuilderTest, VariadicOr) {
+  XlaBuilder b(TestName());
+  Shape s = ShapeUtil::MakeShape(PRED, {});
+  Or(Parameter(&b, 0, s, "p0"), Parameter(&b, 1, s, "p1"),
+     Parameter(&b, 2, s, "p2"));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  // Don't specify in the test whether Or(x, y, z) is right- or
+  // left-associative; accept either one.
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      ::testing::AnyOf(
+          op::Or(op::Parameter(0), op::Or(op::Parameter(1), op::Parameter(2))),
+          op::Or(op::Or(op::Parameter(0), op::Parameter(1)),
+                 op::Parameter(2))));
+}
+
 TEST_F(XlaBuilderTest, ShiftRightOperatorOnNonIntegerProducesError) {
   XlaBuilder b(TestName());
   ConstantR0<float>(&b, 1) >> ConstantR0<float>(&b, 2);
@@ -555,6 +587,27 @@ TEST_F(XlaBuilderTest, DynamicBroadcast) {
       module->entry_computation()->root_instruction()->shape();
   EXPECT_TRUE(
       ContainersEqual(result_shape.dynamic_dimensions(), {false, true, false}))
+      << result_shape;
+}
+
+TEST_F(XlaBuilderTest, DynamicBinaryHasDegenerateBroadcast) {
+  XlaBuilder b(TestName());
+  Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {10}), ShapeUtil::MakeShape(F32, {1, 15}),
+       ShapeUtil::MakeShape(U32, {})});
+  auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
+  ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,
+                                   /*dynamic_size_param_index=*/{1},
+                                   /*target_param_num=*/0,
+                                   /*target_param_index=*/{0},
+                                   /*target_dim_num=*/0));
+  auto gte0 = GetTupleElement(p0, 0);
+  auto gte1 = GetTupleElement(p0, 1);
+  Add(gte0, gte1, /*broadcast_dimensions=*/{0});  // f32[<=10, 15]
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result_shape =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ContainersEqual(result_shape.dynamic_dimensions(), {true, false}))
       << result_shape;
 }
 

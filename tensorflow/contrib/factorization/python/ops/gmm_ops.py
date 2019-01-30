@@ -314,8 +314,7 @@ class GmmAlgorithm(object):
     # reparametrization of variance parameters.
     det_expanded = math_ops.reduce_sum(
         math_ops.log(self._covs + 1e-3), 1, keepdims=True)
-    diff = shard - self._means
-    x2 = math_ops.square(diff)
+    x2 = math_ops.squared_difference(shard, self._means)
     cov_expanded = array_ops.expand_dims(1.0 / (self._covs + 1e-3), 2)
     # num_classes X num_examples
     x2_cov = math_ops.matmul(x2, cov_expanded)

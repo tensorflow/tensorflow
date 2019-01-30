@@ -80,12 +80,18 @@ TEST(LinalgOpsTest, SelfAdjointEig_ShapeFn) {
 TEST(LinalgOpsTest, SelfAdjointEigV2_ShapeFn) {
   ShapeInferenceTestOp op("SelfAdjointEigV2");
   auto set_compute_v = [&op](bool compute_v) {
+    // Test for float32
     TF_ASSERT_OK(NodeDefBuilder("test", "Pack")
                      .Input({{"input", 0, DT_FLOAT}})
                      .Attr("compute_v", compute_v)
                      .Finalize(&op.node_def));
-  };
 
+    // Test for float16
+    TF_ASSERT_OK(NodeDefBuilder("test", "Pack")
+                     .Input({{"input", 0, DT_HALF}})
+                     .Attr("compute_v", compute_v)
+                     .Finalize(&op.node_def));
+  };
   set_compute_v(false);
   INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
   INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,2]");
@@ -174,8 +180,15 @@ TEST(LinalgOpsTest, MatrixSolveLs_ShapeFn) {
 TEST(LinalgOpsTest, Qr_ShapeFn) {
   ShapeInferenceTestOp op("Qr");
   auto set_attrs = [&op](bool full_matrices) {
+    // Test float32
     TF_ASSERT_OK(NodeDefBuilder("test", "Qr")
                      .Input({"input", 0, DT_FLOAT})
+                     .Attr("full_matrices", full_matrices)
+                     .Finalize(&op.node_def));
+
+    // Test float16
+    TF_ASSERT_OK(NodeDefBuilder("test", "Qr")
+                     .Input({"input", 0, DT_HALF})
                      .Attr("full_matrices", full_matrices)
                      .Finalize(&op.node_def));
   };
@@ -218,8 +231,16 @@ TEST(LinalgOpsTest, Qr_ShapeFn) {
 TEST(LinalgOpsTest, Svd_ShapeFn) {
   ShapeInferenceTestOp op("Svd");
   auto set_attrs = [&op](bool compute_uv, bool full_matrices) {
+    // Test for float32
     TF_ASSERT_OK(NodeDefBuilder("test", "Svd")
                      .Input({"input", 0, DT_FLOAT})
+                     .Attr("compute_uv", compute_uv)
+                     .Attr("full_matrices", full_matrices)
+                     .Finalize(&op.node_def));
+
+    // Test for float16
+    TF_ASSERT_OK(NodeDefBuilder("test", "Svd")
+                     .Input({"input", 0, DT_HALF})
                      .Attr("compute_uv", compute_uv)
                      .Attr("full_matrices", full_matrices)
                      .Finalize(&op.node_def));
