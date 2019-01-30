@@ -521,6 +521,9 @@ class Converter {
   // Tensors/weights added during construction of trt_network_.
   std::unordered_map<string, TRT_TensorOrWeights> trt_tensors_;
 
+  // Input constants which have been converted to tensors via IConstLayer
+  std::unordered_map<TRT_ShapedWeights*, nvinfer1::ITensor*> trt_tensors_from_constants_;
+
   // Special op converter for custom plugins.
   OpConverter plugin_converter_;
 
