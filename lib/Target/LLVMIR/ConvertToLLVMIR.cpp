@@ -39,6 +39,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ToolOutputFile.h"
 
 using namespace mlir;
@@ -268,11 +269,8 @@ llvm::Type *ModuleLowerer::convertType(Type type) {
     return convertVectorType(vectorType);
 
   MLIRContext *context = type.getContext();
-  std::string message;
-  llvm::raw_string_ostream os(message);
-  os << "unsupported type: ";
-  type.print(os);
-  context->emitError(UnknownLoc::get(context), os.str());
+  context->emitError(UnknownLoc::get(context),
+                     llvm::formatv("unsupported type: {0}", type));
   return nullptr;
 }
 
