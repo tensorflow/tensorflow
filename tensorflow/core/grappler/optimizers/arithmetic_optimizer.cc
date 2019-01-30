@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/util/strided_slice_op.h"
 
 using tensorflow::strings::StrCat;
+using tensorflow::str_util::StringReplace;
 
 namespace tensorflow {
 namespace grappler {
@@ -2721,7 +2722,7 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
   ~OptimizeMaxOrMinOfMonotonicStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsMax(*node) || IsMin(*node);
+    return IsAnyMax(*node) || IsAnyMin(*node);
   }
 
   Status TrySimplify(NodeDef* reduction_node,
@@ -2752,7 +2753,7 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
       if (!is_non_decreasing) {
         // Flip Min<->Max if the function is non-increasing, e.g.
         // Max(Neg(x)) = Neg(Min(x)).
-        const string opposite = IsMax(*reduction_node) ? "Min" : "Max";
+        const string opposite = FlipMinMax(*reduction_node);
         reduction_node->set_op(opposite);
       }
       AddToOptimizationQueue(reduction_node);
@@ -2773,6 +2774,16 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
         }
       }
       AddToOptimizationQueue(consumer);
+    }
+  }
+
+ private:
+  string FlipMinMax(const NodeDef& node) {
+    const string& op = node.op();
+    if (IsAnyMax(node)) {
+      return str_util::StringReplace(op, "Max", "Min", false);
+    } else {
+      return str_util::StringReplace(op, "Min", "Max", false);
     }
   }
 };
