@@ -585,6 +585,29 @@ class KerasCallbacksTest(test.TestCase):
             optimizer=keras.optimizers.SGD(lr=0.1))
         return model
 
+      # TODO(psv): Make sure the callback works correctly when min_delta is
+      # set as 0. Test fails when the order of this callback and assertion is
+      # interchanged.
+      model = make_model()
+      cbks = [
+          keras.callbacks.ReduceLROnPlateau(
+              monitor='val_loss',
+              factor=0.1,
+              min_delta=0,
+              patience=1,
+              cooldown=5)
+      ]
+      model.fit(
+          x_train,
+          y_train,
+          batch_size=BATCH_SIZE,
+          validation_data=(x_test, y_test),
+          callbacks=cbks,
+          epochs=5,
+          verbose=0)
+      self.assertAllClose(
+          float(keras.backend.get_value(model.optimizer.lr)), 0.1, atol=1e-4)
+
       model = make_model()
       # This should reduce the LR after the first epoch (due to high epsilon).
       cbks = [
@@ -602,31 +625,9 @@ class KerasCallbacksTest(test.TestCase):
           validation_data=(x_test, y_test),
           callbacks=cbks,
           epochs=5,
-          verbose=0)
-      self.assertAllClose(
-          float(keras.backend.get_value(model.optimizer.lr)),
-          0.01,
-          atol=1e-4)
-
-      model = make_model()
-      cbks = [
-          keras.callbacks.ReduceLROnPlateau(
-              monitor='val_loss',
-              factor=0.1,
-              min_delta=0,
-              patience=1,
-              cooldown=5)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=5,
           verbose=2)
       self.assertAllClose(
-          float(keras.backend.get_value(model.optimizer.lr)), 0.1, atol=1e-4)
+          float(keras.backend.get_value(model.optimizer.lr)), 0.01, atol=1e-4)
 
   def test_ReduceLROnPlateau_patience(self):
 

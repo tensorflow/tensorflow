@@ -185,9 +185,6 @@ py_test(
     name = "distribute_coordinator_test",
     srcs = ["distribute_coordinator_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -347,16 +344,12 @@ cuda_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
     ],
-    tags = [
-        "no_pip",
-    ],
 )
 
 py_test(
     name = "multi_worker_util_test",
     srcs = ["multi_worker_util_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
     deps = [
         ":multi_worker_util",
         "//tensorflow/core:protos_all_py",

@@ -463,25 +463,48 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testScatterOutputListSize(self):
     c0 = constant_op.constant([1.0, 2.0])
-    l = list_ops.tensor_list_scatter(
-        c0, [1, 3], ops.convert_to_tensor([], dtype=dtypes.int32))
+    l = list_ops.tensor_list_scatter(c0, [1, 3], [])
     # TensorListScatter should return a list with size largest index + 1.
     self.assertAllEqual(list_ops.tensor_list_length(l), 4)
+
+  def testScatterOutputListSizeWithNumElementsSpecified(self):
+    c0 = constant_op.constant([1.0, 2.0])
+    l = gen_list_ops.tensor_list_scatter_v2(
+        c0, [1, 3], list_ops._build_element_shape([]), num_elements=5)
+    # TensorListScatter should return a list with size num_elements.
+    self.assertAllEqual(list_ops.tensor_list_length(l), 5)
+
+  def testScatterFailsWhenIndexLargerThanNumElements(self):
+    c0 = constant_op.constant([1.0, 2.0])
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "TensorListScatter: Trying to scatter at index 3 in list with size 3"):
+      l = gen_list_ops.tensor_list_scatter_v2(
+          c0, [1, 3], list_ops._build_element_shape([]), num_elements=3)
+      self.evaluate(l)
+
+  def testScatterFailsWithInvalidNumElements(self):
+    c0 = constant_op.constant([1.0, 2.0])
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "TensorListScatter expects num_elements >= -1, found: -2"):
+      l = gen_list_ops.tensor_list_scatter_v2(
+          c0, [1, 3], list_ops._build_element_shape([]), num_elements=-2)
+      self.evaluate(l)
 
   def testScatterWithInvalidRowsInInputTensorFails(self):
     c0 = constant_op.constant([1.0, 2.0])
     with self.assertRaisesRegexp(
         errors.InvalidArgumentError,
         "Invalid number of rows in input tensor. Expected: 3 Actual: 2"):
-      l = list_ops.tensor_list_scatter(
-          c0, [1, 0, 2], ops.convert_to_tensor([], dtype=dtypes.int32))
+      l = list_ops.tensor_list_scatter(c0, [1, 0, 2], [])
       self.evaluate(l)
 
   def testScatterWithNegativeIndicesFails(self):
     c0 = constant_op.constant([1.0, 2.0])
     with self.assertRaisesRegexp(
         errors.InvalidArgumentError,
-        "Indices in TensorListScatter must all be positive."):
+        "Indices in TensorListScatter must all be non-negative."):
       l = list_ops.tensor_list_scatter(
           c0, [-1, -2], ops.convert_to_tensor([], dtype=dtypes.int32))
       self.evaluate(l)
@@ -949,16 +972,25 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               list_ops.empty_tensor_list([], dtypes.float32),
               element_dtype=dtypes.float32))
 
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "element shapes are not identical at index 0"):
+    if context.executing_eagerly():
+      expected_error = (
+          errors.InvalidArgumentError,
+          "element shapes are not identical at index 0")
+    else:
+      expected_error = (ValueError, "Shapes must be equal rank")
+    with self.assertRaisesRegexp(*expected_error):
       l_batch_of_vec_tls = array_ops.stack(
           [list_ops.tensor_list_from_tensor([[1.0]], element_shape=[1])] * 2)
       self.evaluate(
           list_ops.tensor_list_concat_lists(l_batch_0, l_batch_of_vec_tls,
                                             element_dtype=dtypes.float32))
 
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 r"input_b\[0\].dtype != element_dtype."):
+    if context.executing_eagerly():
+      expected_error = (errors.InvalidArgumentError,
+                        r"input_b\[0\].dtype != element_dtype.")
+    else:
+      expected_error = (ValueError, "input_b.type != element_dtype")
+    with self.assertRaisesRegexp(*expected_error):
       l_batch_of_int_tls = array_ops.stack(
           [list_ops.tensor_list_from_tensor([1], element_shape=[])] * 2)
       self.evaluate(
@@ -1003,8 +1035,11 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.evaluate(
           list_ops.tensor_list_push_back_batch(l_batch, [[3.0], [4.0]]))
 
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "Invalid data type at index 0"):
+    if context.executing_eagerly():
+      expected_error = (errors.InvalidArgumentError, "Invalid data type")
+    else:
+      expected_error = (ValueError, "wrong element dtype")
+    with self.assertRaisesRegexp(*expected_error):
       self.evaluate(list_ops.tensor_list_push_back_batch(l_batch, [3, 4]))
 
   def testZerosLike(self):

@@ -258,15 +258,20 @@ def all_strategy_combinations_minus_default():
   return strategy_minus_default_combinations + tpu_strategy_combinations()
 
 
-# TODO(priyag): Add v2 optimizers here.
 def strategy_and_optimizer_combinations():
+  # TODO(b/122372746): Uncomment optimizers after they pass tests.
   return combinations.times(
       all_strategy_combinations(),
-      combinations.combine(
-          optimizer=[combinations.adagrad_optimizer_v1_fn,
-                     combinations.adam_optimizer_v1_fn,
-                     combinations.gradient_descent_optimizer_v1_fn,
-                     combinations.rmsprop_optimizer_v1_fn]))
+      combinations.combine(optimizer=[
+          combinations.adagrad_optimizer_v1_fn,
+          # combinations.adagrad_optimizer_keras_v2_fn,
+          combinations.adam_optimizer_v1_fn,
+          combinations.adam_optimizer_keras_v2_fn,
+          combinations.gradient_descent_optimizer_v1_fn,
+          combinations.gradient_descent_optimizer_keras_v2_fn,
+          combinations.rmsprop_optimizer_v1_fn,
+          # combinations.rmsprop_optimizer_keras_v2_fn
+      ]))
 
 
 def strategy_for_numpy_input_combinations():
@@ -1173,20 +1178,19 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
 
   @combinations.generate(all_strategy_combinations_minus_default())
   def test_save_load_checkpointable(self, distribution):
-    # TODO(sourabhbajaj): Fix this and enable the test.
-    self.skipTest('Restore for checkpoint for optimizer weights fails.')
+    # TODO(sourabhbajaj): Test fails with optimizer v2 without h5
     with self.cached_session():
       dataset = get_dataset(distribution)
       with distribution.scope():
         model = get_model()
-        model.compile(gradient_descent_keras.SGD(0.01), 'mse')
+        model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
         model.fit(dataset, epochs=1, steps_per_epoch=1)
 
         weights_file = tempfile.mktemp()
         model.save_weights(weights_file)
 
         model_2 = get_model()
-        model_2.compile(gradient_descent_keras.SGD(0.01), 'mse')
+        model_2.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
         model_2.load_weights(weights_file)
         model_2.predict(get_predict_dataset(distribution), steps=2)
         model_2.fit(dataset, epochs=1, steps_per_epoch=1)

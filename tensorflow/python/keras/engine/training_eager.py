@@ -25,7 +25,6 @@ from tensorflow.python.eager.backprop import GradientTape
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import losses as losses_module
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import math_ops
@@ -124,22 +123,16 @@ def _model_loss(model,
         weights = None
       mask = masks[i]
       with backend.name_scope(model.output_names[i] + '_loss'):
-        if isinstance(loss_fn, losses_module.Loss):
-          if mask is not None:
-            mask = math_ops.cast(mask, outs[i].dtype)
-            # Update weights with mask.
-            if weights is None:
-              weights = mask
-            else:
-              # Update dimensions of weights to match with mask if possible.
-              mask, _, weights = squeeze_or_expand_dimensions(
-                  mask, None, weights)
-              weights *= mask
-          output_loss = loss_fn(targets[i], outs[i], sample_weight=weights)
-        else:
-          weighted_masked_fn = training_utils.weighted_masked_objective(loss_fn)
-          output_loss = weighted_masked_fn(
-              targets[i], outs[i], weights, mask=mask)
+        if mask is not None:
+          mask = math_ops.cast(mask, outs[i].dtype)
+          # Update weights with mask.
+          if weights is None:
+            weights = mask
+          else:
+            # Update dimensions of weights to match with mask if possible.
+            mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
+            weights *= mask
+        output_loss = loss_fn(targets[i], outs[i], sample_weight=weights)
 
       # If the number of outputs is 1 then we don't append the loss metric
       # associated with each model output. When there are multiple outputs

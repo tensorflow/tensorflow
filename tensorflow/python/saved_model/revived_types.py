@@ -26,7 +26,8 @@ class VersionedTypeRegistration(object):
   """Holds information about one version of a revived type."""
 
   def __init__(self, object_factory, version, min_producer_version,
-               min_consumer_version, bad_consumers=None, setter=setattr):
+               min_consumer_version, bad_consumers=None, setter=setattr,
+               getter=getattr, attribute_extractor=dir):
     """Identify a revived type version.
 
     Args:
@@ -59,8 +60,16 @@ class VersionedTypeRegistration(object):
         addition to any version less than `min_consumer_version`).
       setter: A callable with the same signature as `setattr` to use when adding
         dependencies to generated objects.
+      getter: A callable with the same signature as `getattr` to use when
+        retrieving items from objects of this type. Used along with
+        `attribute_extractor` to find functions, which are not Checkpointable
+        objects and so not regular dependencies.
+      attribute_extractor: A callable equivalent of the builtin `dir`, used for
+        listing items in this container (if any).
     """
     self.setter = setter
+    self.getter = getter
+    self.attribute_extractor = attribute_extractor
     self.identifier = None  # Set after registration
     self._object_factory = object_factory
     self.version = version
@@ -135,6 +144,15 @@ def register_revived_type(identifier, predicate, versions):
 
   _REVIVED_TYPE_REGISTRY[identifier] = (predicate, versions)
   _TYPE_IDENTIFIERS.append(identifier)
+
+
+def get_attribute_extractors(obj):
+  """Get a `dir` and `getattr` equivalent for use with `obj`."""
+  for identifier in _TYPE_IDENTIFIERS:
+    predicate, versions = _REVIVED_TYPE_REGISTRY[identifier]
+    if predicate(obj):
+      return versions[0].attribute_extractor, versions[0].getter
+  return dir, getattr
 
 
 def serialize(obj):

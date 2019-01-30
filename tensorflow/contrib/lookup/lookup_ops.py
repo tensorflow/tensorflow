@@ -28,7 +28,6 @@ from tensorflow.python.ops import lookup_ops
 # pylint: disable=unused-import
 from tensorflow.python.ops.lookup_ops import FastHashSpec
 from tensorflow.python.ops.lookup_ops import HasherSpec
-from tensorflow.python.ops.lookup_ops import HashTable
 from tensorflow.python.ops.lookup_ops import IdTableWithHashBuckets
 from tensorflow.python.ops.lookup_ops import index_table_from_file
 from tensorflow.python.ops.lookup_ops import index_to_string_table_from_file
@@ -286,6 +285,83 @@ def index_to_string(tensor, mapping, default_value="UNK", name=None):
   table = index_to_string_table_from_tensor(
       mapping=mapping, default_value=default_value, name=name)
   return table.lookup(tensor)
+
+
+class HashTable(InitializableLookupTableBase):
+  """A generic hash table implementation.
+
+  Example usage:
+
+  ```python
+  table = tf.HashTable(
+      tf.KeyValueTensorInitializer(keys, values), -1)
+  out = table.lookup(input_tensor)
+  table.init.run()
+  print(out.eval())
+  ```
+  """
+
+  def __init__(self, initializer, default_value, shared_name=None, name=None):
+    """Creates a non-initialized `HashTable` object.
+
+    Creates a table, the type of its keys and values are specified by the
+    initializer.
+    Before using the table you will have to initialize it. After initialization
+    the table will be immutable.
+
+    Args:
+      initializer: The table initializer to use. See `HashTable` kernel for
+        supported key and value types.
+      default_value: The value to use if a key is missing in the table.
+      shared_name: If non-empty, this table will be shared under the given name
+        across multiple sessions.
+      name: A name for the operation (optional).
+
+    Returns:
+      A `HashTable` object.
+    """
+    self._initializer = initializer
+    self._default_value = default_value
+    self._shared_name = shared_name
+    self._name = name or "hash_table"
+    self._table_name = None
+    super(HashTable, self).__init__(default_value, initializer)
+    self._value_shape = self._default_value.get_shape()
+
+  def create_resource(self):
+    table_ref = gen_lookup_ops.hash_table_v2(
+        shared_name=self._shared_name,
+        key_dtype=self._initializer.key_dtype,
+        value_dtype=self._initializer.value_dtype,
+        name=self._name)
+    if context.executing_eagerly():
+      self._table_name = None
+    else:
+      self._table_name = table_ref.op.name.split("/")[-1]
+    return table_ref
+
+  @property
+  def name(self):
+    return self._table_name
+
+  def export(self, name=None):
+    """Returns tensors of all keys and values in the table.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      A pair of tensors with the first tensor containing all keys and the
+        second tensors containing all values in the table.
+    """
+    with ops.name_scope(name, "%s_Export" % self.name,
+                        [self.resource_handle]) as name:
+      exported_keys, exported_values = gen_lookup_ops.lookup_table_export_v2(
+          self.resource_handle, self._key_dtype, self._value_dtype, name=name)
+
+    exported_values.set_shape(exported_keys.get_shape().concatenate(
+        self._value_shape))
+    return exported_keys, exported_values
 
 
 class MutableHashTable(LookupInterface):
