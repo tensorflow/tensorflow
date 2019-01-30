@@ -201,7 +201,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       pipeline.AddPass<ZeroSizedHloElimination>();
 
       AlgebraicSimplifierOptions options;
-      options.set_enable_permutation_sort_replacement(true);
       pass.AddPass<AlgebraicSimplifier>(options);
       pass.AddPass<SortSimplifier>();
       pass.AddPass<TupleSimplifier>();
@@ -274,7 +273,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
-    options.set_enable_permutation_sort_replacement(true);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
     // Choose the fastest algorithm for each conv.
