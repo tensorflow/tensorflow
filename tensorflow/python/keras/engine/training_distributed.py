@@ -22,6 +22,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
@@ -73,13 +74,17 @@ def fit_distributed(model,
             batch_size, mode=ModeKeys.TRAIN))
   batch_size = model._validate_or_infer_batch_size(
       batch_size, steps_per_epoch, x)
+  steps_name = 'steps_per_epoch'
+  if isinstance(x, dataset_ops.DatasetV2):
+    steps_per_epoch = training_utils.infer_steps_for_dataset(
+        x, steps_per_epoch, steps_name=steps_name)
   dataset = model._distribution_standardize_user_data(
       x, y,
       sample_weight=sample_weight,
       class_weight=class_weight,
       batch_size=batch_size,
       check_steps=True,
-      steps_name='steps_per_epoch',
+      steps_name=steps_name,
       steps=steps_per_epoch,
       validation_split=validation_split,
       shuffle=shuffle)
@@ -95,13 +100,17 @@ def fit_distributed(model,
       validation_steps, _ = distributed_training_utils.get_input_params(
           model._distribution_strategy, first_valx_value, validation_steps,
           batch_size)
+    steps_name = 'validation_steps'
+    if isinstance(val_x, dataset_ops.DatasetV2):
+      validation_steps = training_utils.infer_steps_for_dataset(
+          val_x, validation_steps, steps_name=steps_name)
     val_dataset = model._distribution_standardize_user_data(
         val_x, val_y,
         sample_weight=val_sample_weights,
         class_weight=None,
         batch_size=batch_size,
         check_steps=True,
-        steps_name='validation_steps',
+        steps_name=steps_name,
         steps=validation_steps,
         validation_split=validation_split,
         shuffle=shuffle)
@@ -152,12 +161,17 @@ def evaluate_distributed(model,
     steps, batch_size = distributed_training_utils.get_input_params(
         model._distribution_strategy, first_x_value, steps, batch_size)
   batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
+  steps_name = 'steps'
+
+  if isinstance(x, dataset_ops.DatasetV2):
+    steps = training_utils.infer_steps_for_dataset(x, steps,
+                                                   steps_name=steps_name)
   dataset = model._distribution_standardize_user_data(
       x, y,
       sample_weight=sample_weight,
       batch_size=batch_size,
       check_steps=True,
-      steps_name='steps',
+      steps_name=steps_name,
       steps=steps)
 
   if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
@@ -188,11 +202,15 @@ def predict_distributed(model,
         model._distribution_strategy, first_x_value, steps,
         batch_size, mode=ModeKeys.PREDICT)
   batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
+  steps_name = 'steps'
+  if isinstance(x, dataset_ops.DatasetV2):
+    steps = training_utils.infer_steps_for_dataset(x, steps,
+                                                   steps_name=steps_name)
   dataset = model._distribution_standardize_user_data(
       x,
       batch_size=batch_size,
       check_steps=True,
-      steps_name='steps',
+      steps_name=steps_name,
       steps=steps,
       repeat=False,
       allow_partial_batch=True)
