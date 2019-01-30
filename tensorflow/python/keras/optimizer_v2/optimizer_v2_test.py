@@ -42,6 +42,7 @@ from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import adamax
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.optimizer_v2 import nadam
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -500,6 +501,17 @@ class OptimizerTest(test.TestCase):
     new_step_value = self.evaluate(global_step)
     self.assertEqual(new_step_value, init_step_value + 1)
 
+  def testVarKey(self):
+    with context.graph_mode():
+      a = variables.Variable([1., 2.], name='var')
+      b = variables.Variable([1.], name='var')
+      self.assertTrue(a._in_graph_mode)
+      self.assertTrue(b._in_graph_mode)
+      var_key = optimizer_v2._var_key(a)
+      self.assertEqual('var', var_key)
+      var_key = optimizer_v2._var_key(b)
+      self.assertEqual('var_1', var_key)
+
 
 @keras_parameterized.run_with_all_model_types
 class OptimizersCompatibilityTest(keras_parameterized.TestCase):
@@ -672,6 +684,23 @@ class OptimizerWithFunctionTest(test.TestCase):
 
       self.assertAllClose([0., 1.], fn(), atol=1e-4)
       self.assertAllClose([-1, 0.], fn(), atol=1e-4)
+
+  def testVarKeyWithVarCreatedInEager(self):
+    with context.eager_mode():
+      a = variables.Variable([1., 2.], name='var')
+      b = variables.Variable([1.], name='var')
+
+      @test_util.also_run_as_tf_function
+      def var_key_test():
+        self.assertFalse(a._in_graph_mode)
+        self.assertFalse(b._in_graph_mode)
+        var_key_a = optimizer_v2._var_key(a)
+        self.assertStartsWith(var_key_a, 'var_')
+        var_key_b = optimizer_v2._var_key(b)
+        self.assertStartsWith(var_key_b, 'var_')
+        self.assertNotEquals(var_key_a, var_key_b)
+
+      var_key_test()
 
 
 if __name__ == '__main__':

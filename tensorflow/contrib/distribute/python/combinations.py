@@ -49,6 +49,7 @@ import six
 from tensorflow.contrib import cluster_resolver
 from tensorflow.contrib.distribute.python import mirrored_strategy as mirrored_lib
 from tensorflow.contrib.distribute.python import one_device_strategy as one_device_lib
+from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.contrib.distribute.python import tpu_strategy as tpu_lib
 from tensorflow.contrib.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.contrib.optimizer_v2 import adam as adam_v2
@@ -395,6 +396,11 @@ core_mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
 core_mirrored_strategy_with_two_gpus = NamedDistribution(
     "CoreMirrored2GPUs",
     lambda: mirrored_lib.CoreMirroredStrategy(["/gpu:0", "/gpu:1"]),
+    required_gpus=2)
+parameter_server_strategy_with_two_gpus = NamedDistribution(
+    "ParameterServer2GPUs",
+    lambda: parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2),
     required_gpus=2)
 
 
