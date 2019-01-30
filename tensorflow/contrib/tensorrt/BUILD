@@ -146,7 +146,6 @@ cuda_py_tests(
         "test/identity_output_test.py",
         "test/int32_test.py",
         "test/lru_cache_test.py",
-        "test/manual_test.py",
         "test/memory_alignment_test.py",
         "test/multi_connection_neighbor_engine_test.py",
         "test/neighboring_engine_test.py",
