@@ -173,7 +173,7 @@ def einsum(equation, *inputs, **kwargs):
   >>> einsum('ij->ji', m)  # output[j,i] = m[i,j]
 
   # Trace
-  >>> einsum('ii', m)  # output[j,i] = trace_i
+  >>> einsum('ii', m)  # output[j,i] = trace(m) = sum_i m[i, i]
 
   # Batch matrix multiplication
   >>> einsum('aij,ajk->aik', s, t)  # out[a,i,k] = sum_j s[a,i,j] * t[a, j, k]
