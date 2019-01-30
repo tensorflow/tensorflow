@@ -159,6 +159,9 @@ include $(wildcard tensorflow/lite/experimental/micro/examples/*/Makefile.inc)
 MICROLITE_LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MICROLITE_CC_SRCS))))
 
+MICROLITE_LIB_OBJS += $(addprefix $(OBJDIR), \
+$(patsubst %.S,%.o,$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(THIRD_PARTY_CC_SRCS)))))
+
 # For normal manually-created TensorFlow C++ source files.
 $(OBJDIR)%.o: %.cc
 	@mkdir -p $(dir $@)
