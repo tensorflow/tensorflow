@@ -231,13 +231,9 @@ public:
     nodes.erase(id);
   }
 
-  // Returns true if node 'id' can be removed from the graph. Returns false
-  // otherwise. A node can be removed from the graph iff the following
-  // conditions are met:
-  // *) The node does not write to any memref which escapes (or is an argument
-  //    to) the function/block.
-  // *) The node has no successors in the dependence graph.
-  bool canRemoveNode(unsigned id) {
+  // Returns true if node 'id' writes to any memref which escapes (or is an
+  // argument to) the function/block. Returns false otherwise.
+  bool writesToLiveInOrEscapingMemrefs(unsigned id) {
     Node *node = getNode(id);
     for (auto *storeOpInst : node->stores) {
       auto *memref = storeOpInst->cast<StoreOp>()->getMemRef();
@@ -245,15 +241,30 @@ public:
       auto *opInst = dyn_cast_or_null<OperationInst>(inst);
       // Return false if 'memref' is a function argument.
       if (opInst == nullptr)
-        return false;
+        return true;
       // Return false if any use of 'memref' escapes the function.
       for (auto &use : memref->getUses()) {
         auto *user = dyn_cast<OperationInst>(use.getOwner());
         if (!user || !isMemRefDereferencingOp(*user))
-          return false;
+          return true;
       }
+    }
+    return false;
+  }
+
+  // Returns true if node 'id' can be removed from the graph. Returns false
+  // otherwise. A node can be removed from the graph iff the following
+  // conditions are met:
+  // *) The node does not write to any memref which escapes (or is a
+  //    function/block argument).
+  // *) The node has no successors in the dependence graph.
+  bool canRemoveNode(unsigned id) {
+    if (writesToLiveInOrEscapingMemrefs(id))
+      return false;
+    Node *node = getNode(id);
+    for (auto *storeOpInst : node->stores) {
       // Return false if there exist out edges from 'id' on 'memref'.
-      if (getOutEdgeCount(id, memref) > 0)
+      if (getOutEdgeCount(id, storeOpInst->cast<StoreOp>()->getMemRef()) > 0)
         return false;
     }
     return true;
@@ -758,6 +769,49 @@ static unsigned getInnermostCommonLoopDepth(ArrayRef<OperationInst *> ops) {
   return loopDepth;
 }
 
+// Returns the maximum loop depth at which no dependences between 'loadOpInsts'
+// and 'storeOpInsts' are satisfied.
+static unsigned getMaxLoopDepth(ArrayRef<OperationInst *> loadOpInsts,
+                                ArrayRef<OperationInst *> storeOpInsts) {
+  // Merge loads and stores into the same array.
+  SmallVector<OperationInst *, 2> ops(loadOpInsts.begin(), loadOpInsts.end());
+  ops.append(storeOpInsts.begin(), storeOpInsts.end());
+
+  // Compute the innermost common loop depth for loads and stores.
+  unsigned loopDepth = getInnermostCommonLoopDepth(ops);
+
+  // Return common loop depth for loads if there are no store ops.
+  if (storeOpInsts.empty())
+    return loopDepth;
+
+  // Check dependences on all pairs of ops in 'ops' and store the minimum
+  // loop depth at which a dependence is satisfied.
+  for (unsigned i = 0, e = ops.size(); i < e; ++i) {
+    auto *srcOpInst = ops[i];
+    MemRefAccess srcAccess(srcOpInst);
+    for (unsigned j = 0; j < e; ++j) {
+      auto *dstOpInst = ops[j];
+      MemRefAccess dstAccess(dstOpInst);
+
+      unsigned numCommonLoops =
+          getNumCommonSurroundingLoops(*srcOpInst, *dstOpInst);
+      for (unsigned d = 1; d <= numCommonLoops + 1; ++d) {
+        FlatAffineConstraints dependenceConstraints;
+        // TODO(andydavis) Cache dependence analysis results, check cache here.
+        if (checkMemrefAccessDependence(srcAccess, dstAccess, d,
+                                        &dependenceConstraints,
+                                        /*dependenceComponents=*/nullptr)) {
+          // Store minimum loop depth and break because we want the min 'd' at
+          // which there is a dependence.
+          loopDepth = std::min(loopDepth, d - 1);
+          break;
+        }
+      }
+    }
+  }
+  return loopDepth;
+}
+
 // Returns the slice union of 'sliceStateA' and 'sliceStateB' in 'sliceStateB'
 // using a rectangular bounding box.
 // TODO(andydavis) This function assumes that lower bounds for 'sliceStateA'
@@ -926,7 +980,7 @@ static uint64_t getSliceIterationCount(
 }
 
 // Checks the profitability of fusing a backwards slice of the loop nest
-// surrounding 'srcOpInst' into the loop nest surrounding 'dstOpInsts'.
+// surrounding 'srcOpInst' into the loop nest surrounding 'dstLoadOpInsts'.
 // Returns true if it is profitable to fuse the candidate loop nests. Returns
 // false otherwise. `dstLoopDepth` is set to the most profitable depth at which
 // to materialize the source loop nest slice.
@@ -943,7 +997,7 @@ static uint64_t getSliceIterationCount(
 //    the largest compution slice at the maximal dst loop depth (closest to the
 //    load) to minimize reuse distance and potentially enable subsequent
 //    load/store forwarding.
-//    NOTE: If the dst loop nest includes multiple loads in 'dstOpInsts' for
+//    NOTE: If the dst loop nest includes multiple loads in 'dstLoadOpInsts' for
 //    the same memref as is written by 'srcOpInst', then the union of slice
 //    loop bounds is used to compute the slice and associated slice cost.
 //    NOTE: 'dstLoopDepth' refers to the loop depth within the destination loop
@@ -956,7 +1010,8 @@ static uint64_t getSliceIterationCount(
 //    loop nest computed in the previous step, and returns true if the latter
 //    is lower.
 static bool isFusionProfitable(OperationInst *srcOpInst,
-                               ArrayRef<OperationInst *> dstOpInsts,
+                               ArrayRef<OperationInst *> dstLoadOpInsts,
+                               ArrayRef<OperationInst *> dstStoreOpInsts,
                                ComputationSliceState *sliceState,
                                unsigned *dstLoopDepth) {
   LLVM_DEBUG({
@@ -964,7 +1019,7 @@ static bool isFusionProfitable(OperationInst *srcOpInst,
     llvm::dbgs() << " ";
     srcOpInst->dump();
     llvm::dbgs() << " and \n";
-    for (auto dstOpInst : dstOpInsts) {
+    for (auto dstOpInst : dstLoadOpInsts) {
       llvm::dbgs() << " ";
       dstOpInst->dump();
     };
@@ -985,7 +1040,7 @@ static bool isFusionProfitable(OperationInst *srcOpInst,
 
   // Compute cost of dst loop nest.
   SmallVector<ForInst *, 4> dstLoopIVs;
-  getLoopIVs(*dstOpInsts[0], &dstLoopIVs);
+  getLoopIVs(*dstLoadOpInsts[0], &dstLoopIVs);
 
   LoopNestStats dstLoopNestStats;
   LoopNestStatsCollector dstStatsCollector(&dstLoopNestStats);
@@ -994,8 +1049,9 @@ static bool isFusionProfitable(OperationInst *srcOpInst,
   if (dstStatsCollector.hasLoopWithNonConstTripCount)
     return false;
 
-  // Compute the innermost common loop for ops in 'dstOpInst'.
-  unsigned maxDstLoopDepth = getInnermostCommonLoopDepth(dstOpInsts);
+  // Compute the maximum loop depth at which we can can insert the src slice
+  // and still satisfy dest loop nest dependences.
+  unsigned maxDstLoopDepth = getMaxLoopDepth(dstLoadOpInsts, dstStoreOpInsts);
   if (maxDstLoopDepth == 0)
     return false;
 
@@ -1030,11 +1086,11 @@ static bool isFusionProfitable(OperationInst *srcOpInst,
     MemRefAccess srcAccess(srcOpInst);
     // Handle the common case of one dst load without a copy.
     if (!mlir::getBackwardComputationSliceState(
-            srcAccess, MemRefAccess(dstOpInsts[0]), i, &sliceStates[i - 1]))
+            srcAccess, MemRefAccess(dstLoadOpInsts[0]), i, &sliceStates[i - 1]))
       return false;
-    // Compute the union of slice bound of all ops in 'dstOpInsts'.
-    for (int j = 1, e = dstOpInsts.size(); j < e; ++j) {
-      MemRefAccess dstAccess(dstOpInsts[j]);
+    // Compute the union of slice bound of all ops in 'dstLoadOpInsts'.
+    for (int j = 1, e = dstLoadOpInsts.size(); j < e; ++j) {
+      MemRefAccess dstAccess(dstLoadOpInsts[j]);
       ComputationSliceState tmpSliceState;
       if (!mlir::getBackwardComputationSliceState(srcAccess, dstAccess, i,
                                                   &tmpSliceState))
@@ -1062,7 +1118,7 @@ static bool isFusionProfitable(OperationInst *srcOpInst,
     if (storeLoadFwdGuaranteed) {
       // A single store disappears: -1 for that.
       computeCostMap[srcLoopIVs[numSrcLoopIVs - 1]] = -1;
-      for (auto *loadOp : dstOpInsts) {
+      for (auto *loadOp : dstLoadOpInsts) {
         if (auto *loadLoop = dyn_cast_or_null<ForInst>(loadOp->getParentInst()))
           computeCostMap[loadLoop] = -1;
       }
@@ -1321,6 +1377,10 @@ public:
           if (mdg->getIncomingMemRefAccesses(srcNode->id, memref) != 0)
             continue;
 
+          // Skip if 'srcNode' writes to any live in or escaping memrefs.
+          if (mdg->writesToLiveInOrEscapingMemrefs(srcNode->id))
+            continue;
+
           // Compute an instruction list insertion point for the fused loop
           // nest which preserves dependences.
           Instruction *insertPointInst = mdg->getFusedLoopNestInsertionPoint(
@@ -1330,10 +1390,17 @@ public:
 
           // Get unique 'srcNode' store op.
           auto *srcStoreOpInst = srcNode->stores.front();
+          // Gather 'dstNode' store ops to 'memref'.
+          SmallVector<OperationInst *, 2> dstStoreOpInsts;
+          for (auto *storeOpInst : dstNode->stores)
+            if (storeOpInst->cast<StoreOp>()->getMemRef() == memref)
+              dstStoreOpInsts.push_back(storeOpInst);
+
           unsigned bestDstLoopDepth;
           mlir::ComputationSliceState sliceState;
           // Check if fusion would be profitable.
-          if (!isFusionProfitable(srcStoreOpInst, dstLoadOpInsts, &sliceState,
+          if (!isFusionProfitable(srcStoreOpInst, dstLoadOpInsts,
+                                  dstStoreOpInsts, &sliceState,
                                   &bestDstLoopDepth))
             continue;
 

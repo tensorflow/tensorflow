@@ -1252,10 +1252,8 @@ func @should_fuse_with_private_memrefs_with_diff_shapes() {
 
 // -----
 
-// CHECK: [[MAP0:#map[0-9]+]] = (d0, d1) -> (-d0 + d1)
-
-// CHECK-LABEL: func @fusion_should_not_remove_memref_arg(%arg0: memref<10xf32>) {
-func @fusion_should_not_remove_memref_arg(%arg0: memref<10xf32>) {
+// CHECK-LABEL: func @should_not_fuse_live_out_arg(%arg0: memref<10xf32>) {
+func @should_not_fuse_live_out_arg(%arg0: memref<10xf32>) {
   %cf7 = constant 7.0 : f32
 
   for %i0 = 0 to 10 {
@@ -1266,15 +1264,11 @@ func @fusion_should_not_remove_memref_arg(%arg0: memref<10xf32>) {
   }
   // This tests that the loop nest '%i0' should not be removed after fusion
   // because it writes to memref argument '%arg0'.
-  // CHECK-DAG:  %0 = alloc() : memref<1xf32>
   // CHECK:       for %i0 = 0 to 10 {
   // CHECK-NEXT:    store %cst, %arg0[%i0] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  for %i1 = 0 to 10 {
-  // CHECK-NEXT:    %1 = affine_apply [[MAP0]](%i1, %i1)
-  // CHECK-NEXT:    store %cst, %0[%1] : memref<1xf32>
-  // CHECK-NEXT:    %2 = affine_apply [[MAP0]](%i1, %i1)
-  // CHECK-NEXT:    %3 = load %0[%2] : memref<1xf32>
+  // CHECK-NEXT:    %0 = load %arg0[%i1] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  return
   return
@@ -1282,10 +1276,8 @@ func @fusion_should_not_remove_memref_arg(%arg0: memref<10xf32>) {
 
 // -----
 
-// CHECK: [[MAP0:#map[0-9]+]] = (d0, d1) -> (-d0 + d1)
-
-// CHECK-LABEL: func @fusion_should_not_remove_escaping_memref()
-func @fusion_should_not_remove_escaping_memref() -> memref<10xf32> {
+// CHECK-LABEL: func @should_not_fuse_escaping_memref() -> memref<10xf32>
+func @should_not_fuse_escaping_memref() -> memref<10xf32> {
   %cf7 = constant 7.0 : f32
   %m = alloc() : memref<10xf32>
   for %i0 = 0 to 10 {
@@ -1296,17 +1288,14 @@ func @fusion_should_not_remove_escaping_memref() -> memref<10xf32> {
   }
   // This tests that the loop nest '%i0' should not be removed after fusion
   // because it writes to memref '%m' which is returned by the function. 
-  // CHECK-DAG:  %0 = alloc() : memref<1xf32>
+  // CHECK-DAG:   %0 = alloc() : memref<10xf32>
   // CHECK:       for %i0 = 0 to 10 {
-  // CHECK-NEXT:    store %cst, %1[%i0] : memref<10xf32>
+  // CHECK-NEXT:    store %cst, %0[%i0] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  for %i1 = 0 to 10 {
-  // CHECK-NEXT:    %2 = affine_apply [[MAP0]](%i1, %i1)
-  // CHECK-NEXT:    store %cst, %0[%2] : memref<1xf32>
-  // CHECK-NEXT:    %3 = affine_apply [[MAP0]](%i1, %i1)
-  // CHECK-NEXT:    %4 = load %0[%3] : memref<1xf32>
+  // CHECK-NEXT:    %1 = load %0[%i1] : memref<10xf32>
   // CHECK-NEXT:  }
-  // CHECK-NEXT:  return %1 : memref<10xf32>
+  // CHECK-NEXT:  return %0 : memref<10xf32>
   return %m : memref<10xf32>
 }
 
@@ -1574,6 +1563,91 @@ func @should_fuse_and_preserve_dep_on_constant() {
   // CHECK-NEXT:  }
   // CHECK-NEXT:  for %i1 = 0 to 10 {
   // CHECK-NEXT:    store %cst, %1[%i1] : memref<10xf32>
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:  return
+  return
+}
+
+// -----
+
+// CHECK: [[MAP0:#map[0-9]+]] = (d0, d1, d2) -> (d1)
+// CHECK: [[MAP1:#map[0-9]+]] = (d0, d1, d2) -> (-d0 + d2)
+// CHECK: [[MAP2:#map[0-9]+]] = (d0, d1) -> (d0 * 16 - d1 + 15)
+// CHECK: [[MAP3:#map[0-9]+]] = (d0, d1) -> (d0 * 16 + d1)
+
+// CHECK-LABEL: func @should_fuse_at_depth_above_loop_carried_dependence(%arg0: memref<64x4xf32>, %arg1: memref<64x4xf32>) {
+func @should_fuse_at_depth_above_loop_carried_dependence(%arg0: memref<64x4xf32>, %arg1: memref<64x4xf32>) {
+  %out = alloc() : memref<64x4xf32>
+  %0 = constant 0.0 : f32
+  for %i0 = 0 to 64 {
+    for %i1 = 0 to 4 {
+      store %0, %out[%i0, %i1] : memref<64x4xf32>
+    }
+  }
+  for %i2 = 0 to 4 {
+    for %i3 = 0 to 4 {
+      for %i4 = 0 to 16 {
+        %1 = affine_apply (d0, d1) -> (d0 * 16 - d1 + 15)(%i3, %i4)
+        %2 = load %arg1[%1, %i2] : memref<64x4xf32>
+        "op0"(%2) : (f32) -> ()
+      }
+      for %i5 = 0 to 4 {
+        for %i6 = 0 to 16 {
+          %3 = affine_apply (d0, d1) -> (d0 * 16 - d1 + 15)(%i5, %i6)
+          %4 = load %arg0[%3, %i3] : memref<64x4xf32>
+          "op1"(%4) : (f32) -> ()
+        }
+        for %i7 = 0 to 16 {
+          %5 = "op2"() : () -> (f32)
+          %6 = affine_apply (d0, d1) -> (d0 * 16 + d1)(%i5, %i7)
+          %7 = load %out[%6, %i2] : memref<64x4xf32>
+          %8 = addf %7, %5 : f32
+          store %8, %out[%6, %i2] : memref<64x4xf32>
+        }
+      }
+    }
+  }
+
+  // We can fuse source loop nest '%i0' into dst loop nest '%i2', but the
+  // depth at which we can insert the src loop nest slice into the dst loop
+  // lest must be decreased because of a loop carried dependence on loop '%i3'.
+  // As a result, the source loop nest is inserted at dst loop nest depth 1,
+  // just above the loop with the carried depenence. In addition, the source
+  // loop nest iteration bounds on its loop '%i1' are reduced to 1, so the
+  // memref size can be reduced to 128x1xf32.
+
+  // CHECK:       %0 = alloc() : memref<64x1xf32>
+  // CHECK:       for %i0 = 0 to 4 {
+  // CHECK-NEXT:    for %i1 = 0 to 64 {
+  // CHECK-NEXT:      %1 = affine_apply [[MAP0]](%i0, %i1, %i0)
+  // CHECK-NEXT:      %2 = affine_apply [[MAP1]](%i0, %i1, %i0)
+  // CHECK-NEXT:      store %cst, %0[%1, %2] : memref<64x1xf32>
+  // CHECK-NEXT:    }
+  // CHECK-NEXT:    for %i2 = 0 to 4 {
+  // CHECK-NEXT:      for %i3 = 0 to 16 {
+  // CHECK-NEXT:        %3 = affine_apply [[MAP2]](%i2, %i3)
+  // CHECK-NEXT:        %4 = load %arg1[%3, %i0] : memref<64x4xf32>
+  // CHECK-NEXT:        "op0"(%4) : (f32) -> ()
+  // CHECK-NEXT:      }
+  // CHECK-NEXT:      for %i4 = 0 to 4 {
+  // CHECK-NEXT:        for %i5 = 0 to 16 {
+  // CHECK-NEXT:          %5 = affine_apply [[MAP2]](%i4, %i5)
+  // CHECK-NEXT:          %6 = load %arg0[%5, %i2] : memref<64x4xf32>
+  // CHECK-NEXT:          "op1"(%6) : (f32) -> ()
+  // CHECK-NEXT:        }
+  // CHECK-NEXT:        for %i6 = 0 to 16 {
+  // CHECK-NEXT:          %7 = "op2"() : () -> f32
+  // CHECK-NEXT:          %8 = affine_apply [[MAP3]](%i4, %i6)
+  // CHECK-NEXT:          %9 = affine_apply [[MAP0]](%i0, %8, %i0)
+  // CHECK-NEXT:          %10 = affine_apply [[MAP1]](%i0, %8, %i0)
+  // CHECK-NEXT:          %11 = load %0[%9, %10] : memref<64x1xf32>
+  // CHECK-NEXT:          %12 = addf %11, %7 : f32
+  // CHECK-NEXT:          %13 = affine_apply [[MAP0]](%i0, %8, %i0)
+  // CHECK-NEXT:          %14 = affine_apply [[MAP1]](%i0, %8, %i0)
+  // CHECK-NEXT:          store %12, %0[%13, %14] : memref<64x1xf32>
+  // CHECK-NEXT:        }
+  // CHECK-NEXT:      }
+  // CHECK-NEXT:    }
   // CHECK-NEXT:  }
   // CHECK-NEXT:  return
   return
