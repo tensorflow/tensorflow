@@ -90,14 +90,14 @@ Status AddOneBody(const Scope& s, const std::vector<Output>& inputs,
 
 TEST_F(WhileLoopTest, Basic) {
   Init(1);
-  int start_idx = scope_.graph()->num_node_ids();
+  const int start_idx = scope_.graph()->num_node_ids();
 
   // Create loop: while (i < 10) i += 1
   CreateLoop(LessThanTenCond, AddOneBody);
 
   // Verify some output invariants
   WhileContext* while_ctx;
-  int final_idx = scope_.graph()->num_node_ids();
+  const int final_idx = scope_.graph()->num_node_ids();
   for (int i = start_idx; i < final_idx; ++i) {
     Node* node = scope_.graph()->FindNodeId(i);
     ASSERT_TRUE(node->while_ctx() != nullptr) << i;
