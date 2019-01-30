@@ -11704,6 +11704,13 @@ op {
       b: true
     }
   }
+  attr {
+    name: "noise"
+    type: "string"
+    default_value {
+      s: "uniform"
+    }
+  }
 }
 op {
   name: "ExtractImagePatches"
