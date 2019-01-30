@@ -27,7 +27,7 @@ The binary takes the following parameters:
     1001 dimension tensor.
 
 *   `output_path`: `string` \
-    This is the path to the output file. The output is a CSV file that has top-10 accuracies in each row. Each line of output file is the cumulative accuracy after processing images in a sorted order. So first line is accuracy after processing the first image, second line is accuracy after procesing first two images. The last line of the file is accuracy after processing the entire validation set.
+    This is the path to the output file. The output is a CSV file that has top-10 accuracies in each row. Each line of output file is the cumulative accuracy after processing images in a sorted order. So first line is accuracy after processing the first image, second line is accuracy after processing first two images. The last line of the file is accuracy after processing the entire validation set.
 
 and the following optional parameters:
 
