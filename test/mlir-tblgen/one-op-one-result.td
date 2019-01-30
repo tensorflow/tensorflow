@@ -11,7 +11,7 @@ def Y_Const_Attr {
 }
 
 // Define ops to rewrite.
-def T1: Type;
+def T1: Type<CPred<"true">, "T1">;
 def X_AddOp : Op<"x.add"> {
   let arguments = (ins T1, T1);
 }

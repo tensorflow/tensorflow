@@ -44,12 +44,10 @@ std::string tblgen::TypeConstraint::getConditionTemplate() const {
 }
 
 llvm::StringRef tblgen::TypeConstraint::getDescription() const {
-  const static auto fieldName = "description";
-  auto *val = def.getValue(fieldName);
-  if (!val)
-    return "";
-
-  return def.getValueAsString(fieldName);
+  auto doc = def.getValueAsString("description");
+  if (doc.empty())
+    return def.getName();
+  return doc;
 }
 
 tblgen::TypeConstraint::TypeConstraint(const llvm::DefInit &init)

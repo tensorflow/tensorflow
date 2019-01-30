@@ -91,17 +91,17 @@ def IsStaticShapeTensorTypePred :
 
 // A constraint on types.  This can be used to check the validity of
 // instruction arguments.
-class TypeConstraint<Pred condition, string descr = ""> {
+class TypeConstraint<Pred condition, string descr> {
   // The predicates that this type satisfies.
   // Format: {0} will be expanded to the type.
   Pred predicate = condition;
-  // User-readable description used, e.g., for error reporting.  If empty, a
-  // generic message will be used instead.
+  // User-readable description used, e.g., for error reporting.  If empty,
+  // a generic message will be used instead.
   string description = descr;
 }
 
 // A type, carries type constraints, but accepts any type by default.
-class Type<Pred condition = CPred<"true">, string descr = "">
+class Type<Pred condition, string descr = "">
     : TypeConstraint<condition, descr>;
 
 // A type that can be constructed using MLIR::Builder.
@@ -117,7 +117,7 @@ class BuildableType<code builder> {
 }
 
 // Integer types.
-class IntegerBase<CPred pred, string descr = ?> : Type<pred, descr>;
+class IntegerBase<CPred pred, string descr> : Type<pred, descr>;
 
 // Any integer type irrespective of its width.
 def Integer : IntegerBase<CPred<"{0}.isa<IntegerType>()">, "integer">;
@@ -127,7 +127,8 @@ def Index : IntegerBase<CPred<"{0}.isa<IndexType>()">, "index">;
 
 // Integer type of a specific width.
 class I<int width>
-    : IntegerBase<CPred<"{0}.isInteger(" # width # ")">, "i" # width>,
+    : IntegerBase<CPred<"{0}.isInteger(" # width # ")">,
+                  width # "-bit integer">,
       BuildableType<"getIntegerType(" # width # ")"> {
   int bitwidth = width;
 }
@@ -135,14 +136,15 @@ def I1  : I<1>;
 def I32 : I<32>;
 
 // Floating point types.
-class FloatBase<CPred pred, string descr = ?> : Type<pred, descr>;
+class FloatBase<CPred pred, string descr> : Type<pred, descr>;
 
 // Any float type irrespective of its width.
-def Float : FloatBase<CPred<"{0}.isa<FloatType>()">, "floating point">;
+def Float : FloatBase<CPred<"{0}.isa<FloatType>()">, "floating-point">;
 
 // Float type of a specific width.
 class F<int width>
-    : FloatBase<CPred<"{0}.isF" # width # "()">, "f" # width>,
+    : FloatBase<CPred<"{0}.isF" # width # "()">,
+                width # "-bit float">,
       BuildableType<"getF" # width # "Type()"> {
   int bitwidth = width;
 }
@@ -156,8 +158,8 @@ class ContainerType<Type etype, Pred containerPred, code elementTypeCall,
     // element into the element type checker.
     Type<AllOf<[containerPred,
                 SubstLeaves<"{0}", !cast<string>(elementTypeCall),
-		            etype.predicate>]>,
-	 descr # "<" # etype.description # ">" > {
+                etype.predicate>]>,
+         descr # " of " # etype.description # " values"> {
   // The type of elements in the container.
   Type elementType = etype;
 
@@ -199,7 +201,7 @@ def StaticShapeTensor
 class TypedTensor<Type t>
     : ContainerType<t, Tensor.predicate,
                     "{0}.cast<TensorType>().getElementType()",
-		    "tensor">;
+                    "tensor">;
 
 def F32Tensor : TypedTensor<F32>;
 
@@ -212,7 +214,7 @@ def IntegerLike : TypeConstraint<AnyOf<[Integer.predicate, Index.predicate,
 // Type constraint for float-like types: floats, vectors or tensors thereof.
 def FloatLike : TypeConstraint<AnyOf<[Float.predicate,
         TypedVector<Float>.predicate, TypedTensor<Float>.predicate]>,
-    "float-like">;
+    "floating-point-like">;
 
 //===----------------------------------------------------------------------===//
 // Attributes

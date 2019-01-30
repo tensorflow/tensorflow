@@ -28,7 +28,7 @@
 include "mlir/IR/op_base.td"
 #endif // OP_BASE
 
-def AnyType : Type;
+def AnyType : Type<CPred<"true">, "any type">;
 
 // Base class for standard arithmetic operations.  Requires operands and
 // results to be of the same type, but does not constrain them to specific

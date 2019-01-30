@@ -173,12 +173,19 @@ func @func_with_ops(f32) {
   %sf = addf{%a, %a} : f32  // expected-error {{invalid operand}}
 }
 
+// -----
+
+func @func_with_ops(f32) {
+^bb0(%a : f32):
+  // expected-error@+1 {{'addi' op operand #0 must be integer-like}}
+  %sf = addi %a, %a : f32
+}
 
 // -----
 
 func @func_with_ops(i32) {
 ^bb0(%a : i32):
-  %sf = addf %a, %a : i32  // expected-error {{'addf' op operand #0 must be float-like}}
+  %sf = addf %a, %a : i32  // expected-error {{'addf' op operand #0 must be floating-point-like}}
 }
 
 // -----
