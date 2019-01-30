@@ -1661,6 +1661,10 @@ class TensorFlowTestCase(googletest.TestCase):
           return sparse_tensor.SparseTensorValue(tensor.indices.numpy(),
                                                  tensor.values.numpy(),
                                                  tensor.dense_shape.numpy())
+        elif isinstance(tensor, ops.IndexedSlices):
+          return ops.IndexedSlicesValue(values=tensor.values.numpy(),
+                                        indices=tensor.indices.numpy(),
+                                        dense_shape=tensor.dense_shape.numpy())
         return tensor.numpy()
       except AttributeError as e:
         six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)

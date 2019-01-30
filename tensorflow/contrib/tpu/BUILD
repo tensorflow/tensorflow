@@ -61,6 +61,7 @@ py_library(
 py_library(
     name = "tpu_estimator",
     srcs = [
+        "python/tpu/_tpu_estimator_embedding.py",
         "python/tpu/error_handling.py",
         "python/tpu/tpu_config.py",
         "python/tpu/tpu_context.py",
@@ -70,7 +71,9 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":async_checkpoint",
+        ":feature_column",
         ":functional",
+        ":tpu_embedding",
         ":tpu_lib",
         ":tpu_ordinal_selector_py",
         "//tensorflow/contrib/training:training_py",

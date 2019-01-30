@@ -407,7 +407,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "eager_test",
-    size = "large",
+    size = "medium",
     srcs = ["eager_test.py"],
     deps = [
         ":xla_test",

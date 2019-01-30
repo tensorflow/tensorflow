@@ -29,18 +29,9 @@ limitations under the License.
 namespace tensorflow {
 
 namespace shape_op_helpers {
-inline Status GetRegularOrVariantShape(OpKernelContext* ctx, int input_index,
-                                       TensorShape* shape) {
-  const Tensor& inp = ctx->input(input_index);
-  if (ctx->input_dtype(0) == DT_VARIANT) {
-    if (inp.dims() != 0) {
-      return errors::InvalidArgument(
-          "Shape of non-unary Variant not supported.");
-    }
-    TF_RETURN_IF_ERROR(GetUnaryVariantShape(inp, shape));
-  } else {
-    *shape = inp.shape();
-  }
+inline Status GetShape(OpKernelContext* ctx, int input_index,
+                       TensorShape* shape) {
+  *shape = ctx->input(input_index).shape();
   return Status::OK();
 }
 }  // namespace shape_op_helpers
@@ -52,8 +43,7 @@ class ShapeOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     TensorShape shape;
-    OP_REQUIRES_OK(ctx,
-                   shape_op_helpers::GetRegularOrVariantShape(ctx, 0, &shape));
+    OP_REQUIRES_OK(ctx, shape_op_helpers::GetShape(ctx, 0, &shape));
     const int rank = shape.dims();
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({rank}), &out));
@@ -81,8 +71,7 @@ class ShapeNOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       TensorShape shape;
-      OP_REQUIRES_OK(
-          ctx, shape_op_helpers::GetRegularOrVariantShape(ctx, i, &shape));
+      OP_REQUIRES_OK(ctx, shape_op_helpers::GetShape(ctx, i, &shape));
       const int dims = shape.dims();
       Tensor* out = nullptr;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(i, {dims}, &out));
@@ -110,8 +99,7 @@ class RankOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     TensorShape shape;
-    OP_REQUIRES_OK(ctx,
-                   shape_op_helpers::GetRegularOrVariantShape(ctx, 0, &shape));
+    OP_REQUIRES_OK(ctx, shape_op_helpers::GetShape(ctx, 0, &shape));
     const int rank = shape.dims();
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
@@ -128,8 +116,7 @@ class SizeOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     TensorShape shape;
-    OP_REQUIRES_OK(ctx,
-                   shape_op_helpers::GetRegularOrVariantShape(ctx, 0, &shape));
+    OP_REQUIRES_OK(ctx, shape_op_helpers::GetShape(ctx, 0, &shape));
     const int64 size = shape.num_elements();
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));

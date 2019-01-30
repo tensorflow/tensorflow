@@ -51,11 +51,11 @@ REGISTER_OP("TensorListPushBack")
       shape_inference::ShapeHandle element_shape = c->UnknownShape();
 
       auto* handle_data = c->input_handle_shapes_and_types(0);
-      if (handle_data != nullptr && handle_data->size() != 1) {
+      if (handle_data != nullptr && handle_data->size() > 1) {
         return errors::InvalidArgument(
             "Trying to push to list with wrong variant data.");
       }
-      if (handle_data != nullptr) {
+      if (handle_data != nullptr && handle_data->size() == 1) {
         const shape_inference::ShapeAndType& list_shape_type =
             (*handle_data)[0];
         if (list_shape_type.dtype != element_dtype) {
@@ -98,11 +98,11 @@ REGISTER_OP("TensorListPushBackBatch")
       shape_inference::ShapeHandle element_shape = c->UnknownShape();
 
       auto* handle_data = c->input_handle_shapes_and_types(0);
-      if (handle_data != nullptr && handle_data->size() != 1) {
+      if (handle_data != nullptr && handle_data->size() > 1) {
         return errors::InvalidArgument(
             "Trying to push to list with wrong variant data.");
       }
-      if (handle_data != nullptr) {
+      if (handle_data != nullptr && handle_data->size() == 1) {
         const shape_inference::ShapeAndType& list_shape_type =
             (*handle_data)[0];
         if (list_shape_type.dtype != element_dtype) {
@@ -139,11 +139,11 @@ REGISTER_OP("TensorListPopBack")
       TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));
       shape_inference::ShapeHandle tensor_shape = c->UnknownShape();
       auto* handle_data = c->input_handle_shapes_and_types(0);
-      if (handle_data != nullptr && handle_data->size() != 1) {
+      if (handle_data != nullptr && handle_data->size() > 1) {
         return errors::InvalidArgument(
             "Trying to read from list with invalid variant data.");
       }
-      if (handle_data != nullptr) {
+      if (handle_data != nullptr && handle_data->size() == 1) {
         const shape_inference::ShapeAndType& list_shape_type =
             (*handle_data)[0];
         if (list_shape_type.dtype != element_dtype) {
@@ -176,11 +176,11 @@ REGISTER_OP("TensorListStack")
       TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));
       shape_inference::ShapeHandle element_shape = c->UnknownShape();
       auto* handle_data = c->input_handle_shapes_and_types(0);
-      if (handle_data != nullptr && handle_data->size() != 1) {
+      if (handle_data != nullptr && handle_data->size() > 1) {
         return errors::InvalidArgument(
             "Trying to read from list with wrong variant data.");
       }
-      if (handle_data != nullptr) {
+      if (handle_data != nullptr && handle_data->size() == 1) {
         const shape_inference::ShapeAndType& list_shape_type =
             (*handle_data)[0];
         if (list_shape_type.dtype != element_dtype) {
@@ -225,11 +225,11 @@ REGISTER_OP("TensorListConcat")
                                                             &element_shape));
 
       auto* handle_data = c->input_handle_shapes_and_types(0);
-      if (handle_data != nullptr && handle_data->size() != 1) {
+      if (handle_data != nullptr && handle_data->size() > 1) {
         return errors::InvalidArgument(
             "Trying to read from list with wrong variant data.");
       }
-      if (handle_data != nullptr) {
+      if (handle_data != nullptr && handle_data->size() == 1) {
         const shape_inference::ShapeAndType& list_shape_type =
             (*handle_data)[0];
         if (list_shape_type.dtype != element_dtype) {
@@ -465,6 +465,26 @@ REGISTER_OP("TensorListScatter")
       return Status::OK();
     });
 
+REGISTER_OP("TensorListScatterV2")
+    .Input("tensor: element_dtype")
+    .Input("indices: int32")
+    .Input("element_shape: shape_type")
+    .Input("num_elements: int32")
+    .Output("output_handle: variant")
+    .Attr("element_dtype: type")
+    .Attr("shape_type: {int32, int64}")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      DataType element_dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));
+      shape_inference::ShapeHandle element_shape;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensorTreatScalarAsUnknownShape(
+          2, &element_shape));
+      c->set_output_handle_shapes_and_types(0,
+                                            {{element_shape, element_dtype}});
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
+
 REGISTER_OP("TensorListConcatLists")
     .Input("input_a: variant")
     .Input("input_b: variant")
@@ -481,15 +501,18 @@ REGISTER_OP("TensorListConcatLists")
 
       auto* handle_data_a = c->input_handle_shapes_and_types(0);
       auto* handle_data_b = c->input_handle_shapes_and_types(1);
-      if (handle_data_a == nullptr && handle_data_b == nullptr) {
+      if ((handle_data_a == nullptr || handle_data_a->empty()) &&
+          (handle_data_b == nullptr || handle_data_b->empty())) {
         c->set_output_handle_shapes_and_types(
             0, {{c->UnknownShape(), element_dtype}});
         return Status::OK();
       }
       shape_inference::ShapeAndType list_shape_type_a =
-          (handle_data_a) ? handle_data_a->at(0) : handle_data_b->at(0);
+          (handle_data_a && !handle_data_a->empty()) ? handle_data_a->at(0)
+                                                     : handle_data_b->at(0);
       const shape_inference::ShapeAndType& list_shape_type_b =
-          (handle_data_b) ? handle_data_b->at(0) : handle_data_a->at(0);
+          (handle_data_b && !handle_data_b->empty()) ? handle_data_b->at(0)
+                                                     : handle_data_a->at(0);
       if (list_shape_type_a.dtype != element_dtype) {
         return errors::InvalidArgument("input_a.type != element_dtype: ",
                                        DataTypeString(list_shape_type_a.dtype),

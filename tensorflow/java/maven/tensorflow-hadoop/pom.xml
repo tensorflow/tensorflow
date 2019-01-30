@@ -5,7 +5,7 @@
     <groupId>org.tensorflow</groupId>
     <artifactId>tensorflow-hadoop</artifactId>
     <packaging>jar</packaging>
-    <version>1.12.0</version>
+    <version>1.13.0-rc0</version>
     <name>tensorflow-hadoop</name>
     <url>https://www.tensorflow.org</url>
     <description>TensorFlow TFRecord InputFormat/OutputFormat for Apache Hadoop</description>

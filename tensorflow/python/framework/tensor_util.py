@@ -42,7 +42,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 def ExtractBitsFromFloat16(x):
-  return np.asarray(x, dtype=np.float16).view(np.uint16).item()
+  return np.asscalar(np.asarray(x, dtype=np.float16).view(np.uint16))
 
 
 def SlowAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
@@ -58,8 +58,8 @@ def _MediumAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
 
 
 def ExtractBitsFromBFloat16(x):
-  return np.asarray(
-      x, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16).item()
+  return np.asscalar(
+      np.asarray(x, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16))
 
 
 def SlowAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
@@ -122,39 +122,39 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
 else:
 
   def SlowAppendFloat32ArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.float_val.extend([x.item() for x in proto_values])
+    tensor_proto.float_val.extend([np.asscalar(x) for x in proto_values])
 
   def SlowAppendFloat64ArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.double_val.extend([x.item() for x in proto_values])
+    tensor_proto.double_val.extend([np.asscalar(x) for x in proto_values])
 
   def SlowAppendIntArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.int_val.extend([x.item() for x in proto_values])
+    tensor_proto.int_val.extend([np.asscalar(x) for x in proto_values])
 
   def SlowAppendInt64ArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.int64_val.extend([x.item() for x in proto_values])
+    tensor_proto.int64_val.extend([np.asscalar(x) for x in proto_values])
 
   def SlowAppendQIntArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.int_val.extend([x.item(0) for x in proto_values])
+    tensor_proto.int_val.extend([np.asscalar(x[0]) for x in proto_values])
 
   def SlowAppendUInt32ArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.uint32_val.extend([x.item() for x in proto_values])
+    tensor_proto.uint32_val.extend([np.asscalar(x) for x in proto_values])
 
   def SlowAppendUInt64ArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.uint64_val.extend([x.item() for x in proto_values])
+    tensor_proto.uint64_val.extend([np.asscalar(x) for x in proto_values])
 
   def SlowAppendComplex64ArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.scomplex_val.extend(
-        [v.item() for x in proto_values for v in [x.real, x.imag]])
+        [np.asscalar(v) for x in proto_values for v in [x.real, x.imag]])
 
   def SlowAppendComplex128ArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.dcomplex_val.extend(
-        [v.item() for x in proto_values for v in [x.real, x.imag]])
+        [np.asscalar(v) for x in proto_values for v in [x.real, x.imag]])
 
   def SlowAppendObjectArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.string_val.extend([compat.as_bytes(x) for x in proto_values])
 
   def SlowAppendBoolArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.bool_val.extend([x.item() for x in proto_values])
+    tensor_proto.bool_val.extend([np.asscalar(x) for x in proto_values])
 
   _NP_TO_APPEND_FN = {
       dtypes.bfloat16.as_numpy_dtype: SlowAppendBFloat16ArrayToTensorProto,

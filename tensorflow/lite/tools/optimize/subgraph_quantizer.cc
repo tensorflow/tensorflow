@@ -60,8 +60,8 @@ bool OpHasOptionalBiasTensor(BuiltinOperator op_code) {
 
 struct OpWithBiasTensors {
   int activation_input_index;
-  int bias_input_index;
   int weights_input_index;
+  int bias_input_index;
   int index_for_channel_in_weights;
 };
 

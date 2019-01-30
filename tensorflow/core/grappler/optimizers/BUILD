@@ -181,7 +181,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/utils:grappler_test",
-        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
@@ -538,6 +537,8 @@ cc_library(
         "//tensorflow/core/grappler/utils:colocation",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/grappler/utils:topological_sort",
+        "//tensorflow/core/grappler/verifiers:graph_verifier",
+        "//tensorflow/core/grappler/verifiers:structure_verifier",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -550,6 +551,7 @@ tf_cuda_cc_test(
         ":custom_graph_optimizer_registry",
         ":meta_optimizer",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",

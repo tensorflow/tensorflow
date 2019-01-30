@@ -132,6 +132,32 @@ class BackendUtilsTest(test.TestCase):
         pass
     self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
 
+    new_learning_phase = 0
+    keras.backend.set_learning_phase(new_learning_phase)
+    self.assertEqual(keras.backend.learning_phase(), new_learning_phase)
+    with keras.backend.learning_phase_scope(1):
+      self.assertEqual(keras.backend.learning_phase(), 1)
+    self.assertEqual(keras.backend.learning_phase(), new_learning_phase)
+
+  def test_learning_phase_scope_in_graph(self):
+    initial_learning_phase_outside_graph = keras.backend.learning_phase()
+    with keras.backend.get_graph().as_default():
+      initial_learning_phase_in_graph = keras.backend.learning_phase()
+
+    self.assertEqual(keras.backend.learning_phase(),
+                     initial_learning_phase_outside_graph)
+    with keras.backend.learning_phase_scope(1):
+      self.assertEqual(keras.backend.learning_phase(), 1)
+    self.assertEqual(keras.backend.learning_phase(),
+                     initial_learning_phase_outside_graph)
+
+    with keras.backend.get_graph().as_default():
+      self.assertEqual(keras.backend.learning_phase(),
+                       initial_learning_phase_in_graph)
+
+    self.assertEqual(keras.backend.learning_phase(),
+                     initial_learning_phase_outside_graph)
+
   def test_int_shape(self):
     x = keras.backend.ones(shape=(3, 4))
     self.assertEqual(keras.backend.int_shape(x), (3, 4))

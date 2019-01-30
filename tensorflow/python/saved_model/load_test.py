@@ -32,6 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
@@ -691,10 +692,15 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.variables = dict(a=variables.Variable(1.))
     root.variables["b"] = variables.Variable(2.)
     root.variables["c"] = 1
+    root.funcs = dict(
+        a=def_function.function(lambda: constant_op.constant(100.)))
+    root.funcs["conc"] = root.funcs["a"].get_concrete_function()
     imported = self.cycle(root, cycles)
     self.assertEqual(1., imported.variables["a"].numpy())
     self.assertEqual(2., imported.variables["b"].numpy())
     self.assertEqual(set(["a", "b"]), set(imported.variables.keys()))
+    self.assertEqual(100., imported.funcs["a"]().numpy())
+    self.assertEqual(100., imported.funcs["conc"]().numpy())
 
   def test_list(self, cycles):
     root = tracking.AutoCheckpointable()
@@ -707,6 +713,26 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertIs(None, imported.variables[1])
     self.assertEqual(3, len(imported.variables))
 
+  def test_functions_list(self, cycles):
+    root = tracking.AutoCheckpointable()
+    v1 = variables.Variable(1.)
+    root.losses = [def_function.function(lambda: math_ops.reduce_sum(v1 ** 2))]
+    root.variables = [v1]
+
+    @def_function.function
+    def _v2_loss():
+      if len(root.variables) == 1:
+        v2 = variables.Variable(2.)
+        root.variables.append(v2)
+      return math_ops.reduce_sum(root.variables[1] ** 2)
+
+    root.losses.append(_v2_loss)
+    self.assertAllClose([1., 4.], [loss() for loss in root.losses])
+    imported = self.cycle(root, cycles)
+    self.assertAllClose([1., 4.], [loss() for loss in imported.losses])
+    imported.variables[0].assign(3.)
+    imported.variables[1].assign(4.)
+    self.assertAllClose([9., 16.], [loss() for loss in imported.losses])
 
 if __name__ == "__main__":
   test.main()

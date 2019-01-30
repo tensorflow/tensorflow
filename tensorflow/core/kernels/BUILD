@@ -3669,27 +3669,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "shape_op_test",
-    srcs = ["shape_op_test.cc"],
-    deps = [
-        ":array",
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:client_session",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:direct_session",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:ops",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
 tf_cuda_cc_test(
     name = "sparse_matmul_op_test",
     size = "small",

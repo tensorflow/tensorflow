@@ -97,6 +97,15 @@ def tensor_list_gather(input_handle, indices, element_dtype, name=None):
       name=name)
 
 
+def tensor_list_scatter(tensor, indices, element_shape, name=None):
+  return gen_list_ops.tensor_list_scatter_v2(
+      tensor=tensor,
+      indices=indices,
+      element_shape=_build_element_shape(element_shape),
+      num_elements=-1,
+      name=name)
+
+
 def tensor_list_stack(input_handle, element_dtype, num_elements=-1, name=None):
   return gen_list_ops.tensor_list_stack(
       input_handle=input_handle,
@@ -248,25 +257,30 @@ def _TensorListResizeGrad(op, dlist):
 def _TensorListGatherGrad(op, dtensor):
   """Gradient function for TensorListGather."""
   input_list, indices, _ = op.inputs
-  dlist = gen_list_ops.tensor_list_scatter(
+  dlist = gen_list_ops.tensor_list_scatter_v2(
       tensor=dtensor,
       indices=indices,
-      element_shape=ops.convert_to_tensor(-1, dtype=dtypes.int32))
-  # TensorListScatter returns a list with size `max(indices) + 1`
-  # so we manually resize it to match the size of the input list.
-  input_list_size = gen_list_ops.tensor_list_length(input_list)
-  dlist = gen_list_ops.tensor_list_resize(dlist, input_list_size)
+      element_shape=gen_list_ops.tensor_list_element_shape(
+          input_list, shape_type=dtypes.int32),
+      num_elements=gen_list_ops.tensor_list_length(input_list))
   return dlist, None, None
 
 
 @ops.RegisterGradient("TensorListScatter")
+@ops.RegisterGradient("TensorListScatterV2")
 def _TensorListScatterGrad(op, dlist):
-  t, indices, _ = op.inputs
-  return gen_list_ops.tensor_list_gather(
+  """Gradient function for TensorListScatter."""
+  tensor = op.inputs[0]
+  indices = op.inputs[1]
+  dtensor = gen_list_ops.tensor_list_gather(
       dlist,
       indices,
-      element_shape=array_ops.slice(array_ops.shape(t), [1], [-1]),
-      element_dtype=t.dtype), None, None
+      element_shape=array_ops.slice(array_ops.shape(tensor), [1], [-1]),
+      element_dtype=tensor.dtype)
+  if op.type == "TensorListScatterV2":
+    return dtensor, None, None, None
+  else:
+    return dtensor, None, None
 
 
 def _build_element_shape(shape):

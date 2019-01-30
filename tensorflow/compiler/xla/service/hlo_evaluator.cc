@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -1505,6 +1504,27 @@ Status HloEvaluator::HandleReduce(HloInstruction* reduce) {
     }
     return reduce->Visit(typed_visitors_[first_element_type].get());
   }
+}
+
+Status HloEvaluator::HandleCustomCall(HloInstruction* custom_call) {
+  if (!custom_call_handler_) {
+    // No handler is registered; this means custom-calls are not allowed.
+    return DefaultAction(custom_call);
+  }
+
+  // Evaluate input operands so the handler has access to the operand data.
+  std::vector<const Literal*> operands;
+  operands.reserve(custom_call->operand_count());
+  for (const HloInstruction* operand : custom_call->operands()) {
+    operands.push_back(&GetEvaluatedLiteralFor(operand));
+  }
+
+  // Synchronously issue the handler to populate the instruction output literal.
+  TF_ASSIGN_OR_RETURN(
+      auto output, custom_call_handler_(custom_call, absl::MakeSpan(operands)));
+
+  evaluated_[custom_call] = std::move(output);
+  return Status::OK();
 }
 
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {

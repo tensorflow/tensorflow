@@ -675,6 +675,12 @@ class LocalComputation(object):
     self._delete(self._c_computation)
 
 
+def _make_replica_group_proto(replica_group):
+  replica_group_proto = xla_data_pb2.ReplicaGroup()
+  replica_group_proto.replica_ids.extend(replica_group)
+  return replica_group_proto
+
+
 class ComputationBuilder(object):
   """XLA computation builder.
 
@@ -965,6 +971,41 @@ class ComputationBuilder(object):
       dimensions = tuple(range(ndim))
     return self._client.Reshape(operand, dimensions, new_sizes)
 
+  def AllToAll(self,
+               operand,
+               split_dimension,
+               concat_dimension,
+               replica_groups=None):
+    """AllToAll op.
+
+    Args:
+      operand: LocalOp representing the input array
+      split_dimension: the dimension along which the operand is split
+      concat_dimension: the dimension along which the split blocks are
+        concatenated
+      replica_groups: optional, list of lists of ints encoding a partition of
+        the set {0, 1, ..., num_replicas} into equally-sized replica groups
+        within which the all-to-all is performed. If not supplied or None (the
+        default), all replicas belong to the same group.
+
+    Returns:
+      A LocalOp that represents the all-to-all concatenation.
+    """
+    if replica_groups is None:
+      replica_groups_protos = []  # special value for XLA API
+    else:
+      replica_groups = list(replica_groups)
+      replica_groups_protos = [
+          _make_replica_group_proto(group) for group in replica_groups]
+    if not replica_groups:
+      split_count = get_replica_count()
+    else:
+      split_count = len(replica_groups[0])
+      if not all(split_count == len(g) for g in replica_groups):
+        raise ValueError('Replica groups must be equally sized')
+    return self._client.AllToAll(operand, split_dimension, concat_dimension,
+                                 split_count, replica_groups_protos)
+
   def CrossReplicaSum(self, operand, replica_groups=None):
     """CrossReplicaSum op.
 
@@ -978,16 +1019,11 @@ class ComputationBuilder(object):
     Returns:
       A LocalOp that represents on each replica the sum of its group's values.
     """
-
-    def make_proto(replica_group):
-      replica_group_proto = xla_data_pb2.ReplicaGroup()
-      replica_group_proto.replica_ids.extend(replica_group)
-      return replica_group_proto
-
     if replica_groups is None:
       replica_groups = []  # special value for XLA API
     else:
-      replica_groups = [make_proto(group) for group in replica_groups]
+      replica_groups = [
+          _make_replica_group_proto(group) for group in replica_groups]
     return self._client.CrossReplicaSum(operand, replica_groups)
 
   def Collapse(self, operand, dimensions):

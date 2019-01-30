@@ -26,10 +26,10 @@ import numpy as np
 import six
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.losses import binary_crossentropy
@@ -53,17 +53,16 @@ from tensorflow.python.keras.utils.generic_utils import to_list
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import confusion_matrix
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
 
+@keras_export('keras.metrics.Metric')
 @six.add_metaclass(abc.ABCMeta)
 class Metric(Layer):
   """Encapsulates metric logic and state.
@@ -128,15 +127,15 @@ class Metric(Layer):
       if sample_weight is not None:
         sample_weight = math_ops.cast(sample_weight, self._dtype)
         values = math_ops.multiply(values, sample_weight)
-      state_ops.assign_add(self.true_positives, math_ops.reduce_sum(values))
+      self.true_positives.assign_add(math_ops.reduce_sum(values))
 
     def result(self):
       return array_ops.identity(self.true_positives)
   ```
   """
 
-  def __init__(self, name=None, dtype=None):
-    super(Metric, self).__init__(name=name, dtype=dtype)
+  def __init__(self, name=None, dtype=None, **kwargs):
+    super(Metric, self).__init__(name=name, dtype=dtype, **kwargs)
     self.stateful = True  # All metric layers are stateful.
     self.built = True
     self._dtype = K.floatx() if dtype is None else dtypes.as_dtype(dtype).name
@@ -190,6 +189,14 @@ class Metric(Layer):
         result_t._metric_obj = self  # pylint: disable=protected-access
       return result_t
 
+  @property
+  def dtype(self):
+    return self._dtype
+
+  def get_config(self):
+    """Returns the serializable config of the metric."""
+    return {'name': self.name, 'dtype': self.dtype}
+
   def reset_states(self):
     """Resets all of the metric state variables.
 
@@ -212,7 +219,6 @@ class Metric(Layer):
          All update ops added to the graph by this function will be executed.
       As a result, code should generally work the same way with graph or
       eager execution.
-    and adds the update op to the metric layer.
 
     Args:
       *args:
@@ -228,12 +234,6 @@ class Metric(Layer):
     metric value using the state variables.
     """
     NotImplementedError('Must be implemented in subclasses.')
-
-  @classmethod
-  def from_config(cls, config):
-    if 'trainable' in config:
-      config.pop('trainable')
-    return cls(**config)
 
   ### For use by subclasses ###
   @doc_controls.for_subclass_implementers
@@ -256,6 +256,7 @@ class Metric(Layer):
         aggregation=aggregation)
 
   ### End: For use by subclasses ###
+
 
 class Reduce(Metric):
   """Encapsulates metrics that perform a reduce operation on the values."""
@@ -315,7 +316,7 @@ class Reduce(Metric):
 
     value_sum = math_ops.reduce_sum(values)
     with ops.control_dependencies([value_sum]):
-      update_total_op = state_ops.assign_add(self.total, value_sum)
+      update_total_op = self.total.assign_add(value_sum)
 
     # Exit early if the reduction doesn't have a denominator.
     if self.reduction == metrics_utils.Reduction.SUM:
@@ -334,7 +335,7 @@ class Reduce(Metric):
           'reduction [%s] not implemented' % self.reduction)
 
     with ops.control_dependencies([update_total_op]):
-      return state_ops.assign_add(self.count, num_values)
+      return self.count.assign_add(num_values)
 
   def result(self):
     if self.reduction == metrics_utils.Reduction.SUM:
@@ -432,6 +433,7 @@ class Mean(Reduce):
         reduction=metrics_utils.Reduction.WEIGHTED_MEAN, name=name, dtype=dtype)
 
 
+@keras_export('keras.metrics.MeanRelativeError')
 class MeanRelativeError(Mean):
   """Computes the mean relative error by normalizing with the given values.
 
@@ -506,7 +508,8 @@ class MeanRelativeError(Mean):
         relative_errors, sample_weight=sample_weight)
 
   def get_config(self):
-    config = {'normalizer': self.normalizer}
+    n = self.normalizer
+    config = {'normalizer': K.eval(n) if _is_tensor_or_variable(n) else n}
     base_config = super(MeanRelativeError, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -553,8 +556,9 @@ class MeanMetricWrapper(Mean):
         matches, sample_weight=sample_weight)
 
   def get_config(self):
-    config = {'fn': self._fn}
-    config.update(self._fn_kwargs)
+    config = {}
+    for k, v in six.iteritems(self._fn_kwargs):
+      config[k] = K.eval(v) if _is_tensor_or_variable(v) else v
     base_config = super(MeanMetricWrapper, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -593,12 +597,6 @@ class Accuracy(MeanMetricWrapper):
 
   def __init__(self, name='accuracy', dtype=None):
     super(Accuracy, self).__init__(accuracy, name, dtype=dtype)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(Accuracy, cls).from_config(config)
 
 
 @keras_export('keras.metrics.BinaryAccuracy')
@@ -644,12 +642,6 @@ class BinaryAccuracy(MeanMetricWrapper):
     """
     super(BinaryAccuracy, self).__init__(
         binary_accuracy, name, dtype=dtype, threshold=threshold)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(BinaryAccuracy, cls).from_config(config)
 
 
 @keras_export('keras.metrics.CategoricalAccuracy')
@@ -701,12 +693,6 @@ class CategoricalAccuracy(MeanMetricWrapper):
     super(CategoricalAccuracy, self).__init__(
         categorical_accuracy, name, dtype=dtype)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(CategoricalAccuracy, cls).from_config(config)
-
 
 @keras_export('keras.metrics.SparseCategoricalAccuracy')
 class SparseCategoricalAccuracy(MeanMetricWrapper):
@@ -748,13 +734,8 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
     super(SparseCategoricalAccuracy, self).__init__(
         sparse_categorical_accuracy, name, dtype=dtype)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(SparseCategoricalAccuracy, cls).from_config(config)
 
-
+@keras_export('keras.metrics.TopKCategoricalAccuracy')
 class TopKCategoricalAccuracy(MeanMetricWrapper):
   """Computes how often targets are in the top `K` predictions.
 
@@ -786,13 +767,8 @@ class TopKCategoricalAccuracy(MeanMetricWrapper):
     super(TopKCategoricalAccuracy, self).__init__(
         top_k_categorical_accuracy, name, dtype=dtype, k=k)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(TopKCategoricalAccuracy, cls).from_config(config)
 
-
+@keras_export('keras.metrics.SparseTopKCategoricalAccuracy')
 class SparseTopKCategoricalAccuracy(MeanMetricWrapper):
   """Computes how often integer targets are in the top `K` predictions.
 
@@ -825,12 +801,6 @@ class SparseTopKCategoricalAccuracy(MeanMetricWrapper):
     """
     super(SparseTopKCategoricalAccuracy, self).__init__(
         sparse_top_k_categorical_accuracy, name, dtype=dtype, k=k)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(SparseTopKCategoricalAccuracy, cls).from_config(config)
 
 
 class _ConfusionMatrixConditionCount(Metric):
@@ -1585,6 +1555,7 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.metrics.AUC')
 class AUC(Metric):
   """Computes the approximate AUC (Area under the curve) via a Riemann sum.
 
@@ -1877,12 +1848,6 @@ class CosineProximity(MeanMetricWrapper):
     """
     super(CosineProximity, self).__init__(cosine, name, dtype=dtype, axis=axis)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(CosineProximity, cls).from_config(config)
-
 
 @keras_export('keras.metrics.MeanAbsoluteError')
 class MeanAbsoluteError(MeanMetricWrapper):
@@ -1909,12 +1874,6 @@ class MeanAbsoluteError(MeanMetricWrapper):
   def __init__(self, name='mean_absolute_error', dtype=None):
     super(MeanAbsoluteError, self).__init__(
         mean_absolute_error, name, dtype=dtype)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(MeanAbsoluteError, cls).from_config(config)
 
 
 @keras_export('keras.metrics.MeanAbsolutePercentageError')
@@ -1944,12 +1903,6 @@ class MeanAbsolutePercentageError(MeanMetricWrapper):
     super(MeanAbsolutePercentageError, self).__init__(
         mean_absolute_percentage_error, name, dtype=dtype)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(MeanAbsolutePercentageError, cls).from_config(config)
-
 
 @keras_export('keras.metrics.MeanSquaredError')
 class MeanSquaredError(MeanMetricWrapper):
@@ -1977,12 +1930,6 @@ class MeanSquaredError(MeanMetricWrapper):
   def __init__(self, name='mean_squared_error', dtype=None):
     super(MeanSquaredError, self).__init__(
         mean_squared_error, name, dtype=dtype)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(MeanSquaredError, cls).from_config(config)
 
 
 @keras_export('keras.metrics.MeanSquaredLogarithmicError')
@@ -2012,12 +1959,6 @@ class MeanSquaredLogarithmicError(MeanMetricWrapper):
     super(MeanSquaredLogarithmicError, self).__init__(
         mean_squared_logarithmic_error, name, dtype=dtype)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(MeanSquaredLogarithmicError, cls).from_config(config)
-
 
 @keras_export('keras.metrics.Hinge')
 class Hinge(MeanMetricWrapper):
@@ -2044,12 +1985,6 @@ class Hinge(MeanMetricWrapper):
 
   def __init__(self, name='hinge', dtype=None):
     super(Hinge, self).__init__(hinge, name, dtype=dtype)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(Hinge, cls).from_config(config)
 
 
 @keras_export('keras.metrics.SquaredHinge')
@@ -2078,12 +2013,6 @@ class SquaredHinge(MeanMetricWrapper):
   def __init__(self, name='squared_hinge', dtype=None):
     super(SquaredHinge, self).__init__(squared_hinge, name, dtype=dtype)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(SquaredHinge, cls).from_config(config)
-
 
 @keras_export('keras.metrics.CategoricalHinge')
 class CategoricalHinge(MeanMetricWrapper):
@@ -2111,13 +2040,8 @@ class CategoricalHinge(MeanMetricWrapper):
   def __init__(self, name='categorical_hinge', dtype=None):
     super(CategoricalHinge, self).__init__(categorical_hinge, name, dtype=dtype)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(CategoricalHinge, cls).from_config(config)
 
-
+@keras_export('keras.metrics.RootMeanSquaredError')
 class RootMeanSquaredError(Mean):
   """Computes root mean squared error metric between `y_true` and `y_pred`.
 
@@ -2157,7 +2081,7 @@ class RootMeanSquaredError(Mean):
     y_pred = math_ops.cast(y_pred, self._dtype)
     y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
         y_pred, y_true, sample_weight)
-    error_sq = math_ops.square(y_pred - y_true)
+    error_sq = math_ops.squared_difference(y_pred, y_true)
     return super(RootMeanSquaredError, self).update_state(
         error_sq, sample_weight=sample_weight)
 
@@ -2165,15 +2089,16 @@ class RootMeanSquaredError(Mean):
     return math_ops.sqrt(math_ops.div_no_nan(self.total, self.count))
 
 
-class Logcosh(MeanMetricWrapper):
+@keras_export('keras.metrics.LogCoshError')
+class LogCoshError(MeanMetricWrapper):
   """Computes the logarithm of the hyperbolic cosine of the prediction error.
 
-  logcosh = log((exp(x) + exp(-x))/2) where x is the error `y_pred` - `y_true`.
+  `logcosh = log((exp(x) + exp(-x))/2)`, where x is the error (y_pred - y_true)
 
   Usage:
 
   ```python
-  m = tf.keras.metrics.Logcosh()
+  m = tf.keras.metrics.LogCoshError()
   m.update_state([0., 1., 1.], [1., 0., 1.])
   print('Final result: ', m.result().numpy())  # Final result: 0.289
   ```
@@ -2182,24 +2107,19 @@ class Logcosh(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', metrics=[tf.keras.metrics.Logcosh()])
+  model.compile('sgd', metrics=[tf.keras.metrics.LogCoshError()])
   ```
   """
 
   def __init__(self, name='logcosh', dtype=None):
-    super(Logcosh, self).__init__(logcosh, name, dtype=dtype)
-
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(Logcosh, cls).from_config(config)
+    super(LogCoshError, self).__init__(logcosh, name, dtype=dtype)
 
 
+@keras_export('keras.metrics.Poisson')
 class Poisson(MeanMetricWrapper):
-  """Computes the poisson metric between `y_true` and `y_pred`.
+  """Computes the Poisson metric between `y_true` and `y_pred`.
 
-  metric = y_pred - y_true * log(y_pred)
+  `metric = y_pred - y_true * log(y_pred)`
 
   Usage:
 
@@ -2220,22 +2140,17 @@ class Poisson(MeanMetricWrapper):
   def __init__(self, name='poisson', dtype=None):
     super(Poisson, self).__init__(poisson, name, dtype=dtype)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(Poisson, cls).from_config(config)
 
+@keras_export('keras.metrics.KLDivergence')
+class KLDivergence(MeanMetricWrapper):
+  """Computes Kullback Leibler divergence metric between `y_true` and `y_pred`.
 
-class KullbackLeiblerDivergence(MeanMetricWrapper):
-  """Computes kullback leibler divergence metric between `y_true` and `y_pred`.
-
-  metric = y_true * log(y_true / y_pred)
+  `metric = y_true * log(y_true / y_pred)`
 
   Usage:
 
   ```python
-  m = tf.keras.metrics.KullbackLeiblerDivergence()
+  m = tf.keras.metrics.KLDivergence()
   m.update_state([.4, .9, .2], [.5, .8, .12])
   print('Final result: ', m.result().numpy())  # Final result: -0.043
   ```
@@ -2244,21 +2159,16 @@ class KullbackLeiblerDivergence(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', metrics=[tf.keras.metrics.KullbackLeiblerDivergence()])
+  model.compile('sgd', metrics=[tf.keras.metrics.KLDivergence()])
   ```
   """
 
   def __init__(self, name='kullback_leibler_divergence', dtype=None):
-    super(KullbackLeiblerDivergence, self).__init__(
+    super(KLDivergence, self).__init__(
         kullback_leibler_divergence, name, dtype=dtype)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(KullbackLeiblerDivergence, cls).from_config(config)
 
-
+@keras_export('keras.metrics.MeanIoU')
 class MeanIoU(Metric):
   """Computes the mean Intersection-Over-Union metric.
 
@@ -2348,7 +2258,7 @@ class MeanIoU(Metric):
         self.num_classes,
         weights=sample_weight,
         dtype=dtypes.float64)
-    return state_ops.assign_add(self.total_cm, current_cm)
+    return self.total_cm.assign_add(current_cm)
 
   def result(self):
     """Compute the mean intersection-over-union via the confusion matrix."""
@@ -2383,6 +2293,7 @@ class MeanIoU(Metric):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.metrics.MeanTensor')
 class MeanTensor(Metric):
   """Computes the element-wise (weighted) mean of the given tensors.
 
@@ -2475,9 +2386,9 @@ class MeanTensor(Metric):
       num_values = math_ops.multiply(num_values, sample_weight)
       values = math_ops.multiply(values, sample_weight)
 
-    update_total_op = state_ops.assign_add(self._total, values)
+    update_total_op = self._total.assign_add(values)
     with ops.control_dependencies([update_total_op]):
-      return state_ops.assign_add(self._count, num_values)
+      return self._count.assign_add(num_values)
 
   def result(self):
     if not self._built:
@@ -2493,8 +2404,12 @@ class MeanTensor(Metric):
         K.set_value(v, np.zeros(self._shape.as_list()))
 
 
+@keras_export('keras.metrics.BinaryCrossentropy')
 class BinaryCrossentropy(MeanMetricWrapper):
-  """Computes the binary crossentropy between `y_true` and `y_pred`.
+  """Computes the crossentropy metric between the labels and predictions.
+
+  This is the crossentropy metric class to be used when there are only two
+  label classes (0 and 1).
 
   Usage:
 
@@ -2552,11 +2467,69 @@ class BinaryCrossentropy(MeanMetricWrapper):
         from_logits=from_logits,
         label_smoothing=label_smoothing)
 
-  @classmethod
-  def from_config(cls, config):
-    if 'fn' in config:
-      config.pop('fn')
-    return super(BinaryCrossentropy, cls).from_config(config)
+
+@keras_export('keras.metrics.CategoricalCrossentropy')
+class CategoricalCrossentropy(MeanMetricWrapper):
+  """Computes the crossentropy metric between the labels and predictions.
+
+  This is the crossentropy metric class to be used when there are multiple
+  label classes (2 or more). Here we assume that labels are given as a `one_hot`
+  representation. eg., When labels values are [2, 0, 1],
+   `y_true` = [[0, 0, 1], [1, 0, 0], [0, 1, 0]].
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.CategoricalCrossentropy()
+  m.update_state([[0, 1, 0], [0, 0, 1]],
+                 [[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
+
+  # EPSILON = 1e-7, y = y_true, y` = y_pred
+  # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+  # y` = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+
+  # xent = -sum(y * log(y'), axis = -1)
+  #      = -((log 0.95), (log 0.1))
+  #      = [0.051, 2.302]
+  # Reduced xent = (0.051 + 2.302) / 2
+
+  print('Final result: ', m.result().numpy())  # Final result: 1.176
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile(
+    'sgd',
+    loss='mse',
+    metrics=[tf.keras.metrics.CategoricalCrossentropy()])
+  ```
+
+  Args:
+    name: (Optional) string name of the metric instance.
+    dtype: (Optional) data type of the metric result.
+    from_logits: (Optional ) Whether `y_pred` is expected to be a logits tensor.
+      By default, we assume that `y_pred` encodes a probability distribution.
+    label_smoothing: Float in [0, 1]. When > 0, label values are smoothed,
+      meaning the confidence on label values are relaxed. e.g.
+      `label_smoothing=0.2` means that we will use a value of `0.1` for label
+      `0` and `0.9` for label `1`"
+  """
+
+  def __init__(self,
+               name='categorical_crossentropy',
+               dtype=None,
+               from_logits=False,
+               label_smoothing=0):
+    label_smoothing = ops.convert_to_tensor(label_smoothing, dtype=K.floatx())
+
+    super(CategoricalCrossentropy, self).__init__(
+        categorical_crossentropy,
+        name,
+        dtype=dtype,
+        from_logits=from_logits,
+        label_smoothing=label_smoothing)
 
 
 def accuracy(y_true, y_pred):
@@ -2666,3 +2639,7 @@ def get(identifier):
   else:
     raise ValueError('Could not interpret '
                      'metric function identifier: %s' % identifier)
+
+
+def _is_tensor_or_variable(x):
+  return tensor_util.is_tensor(x) or isinstance(x, tf_variables.Variable)

@@ -268,17 +268,10 @@ class CallTreeTransformer(converter.Base):
     new_call.keywords = node.keywords
     return new_call
 
-  def _visit_decorators(self, decorator_list):
-    if not self.ctx.program.options.uses(converter.Feature.DECORATORS):
-      # When not processing decorators, strip everything that is encountered.
-      return []
-
-    return self.visit_block(decorator_list)
-
   def visit_FunctionDef(self, node):
     node.args = self.visit(node.args)
     node.body = self.visit_block(node.body)
-    node.decorator_list = self._visit_decorators(node.decorator_list)
+    node.decorator_list = []
     node.returns = self.visit_block(node.returns)
     return node
 
