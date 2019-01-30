@@ -9,8 +9,8 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_kernel_library",
     "tf_cc_test",
+    "tf_kernel_library",
 )
 
 # TODO(mrry): Remove this empty forwarding library.
@@ -209,18 +209,18 @@ tf_cc_test(
     size = "small",
     srcs = ["map_dataset_op_test.cc"],
     deps = [
-        ":map_dataset_op",
-        ":range_dataset_op",
         ":dataset_test_base",
         ":iterator_ops",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core:test_main",
+        ":map_dataset_op",
+        ":range_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:function_ops",
     ],
 )
 
@@ -396,11 +396,10 @@ tf_cc_test(
     srcs = ["range_dataset_op_test.cc"],
     deps = [
         ":dataset_test_base",
-        ":range_dataset_op",
         ":iterator_ops",
-        "//tensorflow/core:testlib",
+        ":range_dataset_op",
         "//tensorflow/core:test_main",
-
+        "//tensorflow/core:testlib",
     ],
 )
 
