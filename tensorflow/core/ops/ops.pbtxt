@@ -5469,6 +5469,56 @@ op {
   is_stateful: true
 }
 op {
+  name: "CombinedNonMaxSuppression"
+  input_arg {
+    name: "boxes"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scores"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_output_size_per_class"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "max_total_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "iou_threshold"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "score_threshold"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "nmsed_boxes"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "nmsed_scores"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "nmsed_classes"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "valid_detections"
+    type: DT_INT32
+  }
+  attr {
+    name: "pad_per_class"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "CompareAndBitpack"
   input_arg {
     name: "input"
