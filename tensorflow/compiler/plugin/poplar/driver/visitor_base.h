@@ -149,6 +149,8 @@ class BaseVisitor : public DfsHloVisitor {
 
   Status HandleAddDependency(HloInstruction* hlo) override;
 
+  Status HandleReplicaId(HloInstruction* hlo) override;
+
   TensorMap tensor_map;
 
   poplar::program::Sequence sequence;
