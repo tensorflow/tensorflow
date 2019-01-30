@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,15 +43,15 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(kInputTensorIndex);
-    const Tensor& input_min = ctx->input(kInputMin);
-    const Tensor& input_max = ctx->input(kInputMax);
+    const Tensor& input_min = ctx->input(kInputMinIndex);
+    const Tensor& input_max = ctx->input(kInputMaxIndex);
 
     size_t depth = input_max.NumElements();
     OP_REQUIRES(ctx, input_min.dim_size(0) == depth,
-                errors::InvalidArgument("min has incorrect size, expected ",
+                errors::InvalidArgument("input_min has incorrect size, expected ",
                                         depth, " was ", input_min.dim_size(0)));
     OP_REQUIRES(ctx, input_max.dim_size(0) == depth,
-                errors::InvalidArgument("max has incorrect size, expected ",
+                errors::InvalidArgument("input_max has incorrect size, expected ",
                                         depth, " was ", input_max.dim_size(0)));
 
     const float* input_min_data = input_min.flat<float>().data();
@@ -62,8 +62,9 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
     auto input_matrix = input.flat_inner_dims<qint32>();
     auto transposed_input = input_matrix.shuffle(shuffling);
 
+    // Find the ranges of each channel in parallel.
 #pragma omp parallel for
-    for (size_t i = 0; i < depth; i++) {
+    for (size_t i = 0; i < depth; ++i) {
       Eigen::Tensor<qint32, 0, Eigen::RowMajor> min =
           transposed_input.chip<0>(i).minimum();
       Eigen::Tensor<qint32, 0, Eigen::RowMajor> max =
@@ -74,12 +75,13 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
           std::max(std::abs(min_per_channel), std::abs(max_per_channel));
       float scale =
           std::max(std::abs(input_min_data[i]), std::abs(input_max_data[i]));
-      ranges[i] = (scale * (float)abs_max / (float)(1L << 31));
+      ranges[i] = scale * static_cast<float>(abs_max) / static_cast<float>(1L << 31);
       if (min_per_channel < 0) is_non_negative = false;
     }
 
+    // Obtain ranges of out_min_max after all parallel_for openMP threads have joined. 
     float out_min_max = std::numeric_limits<float>::min();
-    for (size_t i = 0; i < depth; i++) {
+    for (size_t i = 0; i < depth; ++i) {
       if (out_min_max < ranges[i]) out_min_max = ranges[i];
     }
     // Fixing max to clip_value_max_ (example 6.0 to support relu6)
@@ -87,19 +89,19 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
 
     Tensor* output_min = nullptr;
     Tensor* output_max = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(kOutputMin, {}, &output_min));
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(kOutputMax, {}, &output_max));
-    output_min->flat<float>()(0) = is_non_negative ? 0.0f : out_min_max * -1.0f;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(kOutputMinIndex, {}, &output_min));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(kOutputMaxIndex, {}, &output_max));
+    output_min->flat<float>()(0) = is_non_negative ? 0.0f : -out_min_max;
     output_max->flat<float>()(0) = out_min_max;
   }
 
  private:
   float clip_value_max_ = std::numeric_limits<float>::infinity();
   const int kInputTensorIndex = 0;
-  const int kInputMin = 1;
-  const int kInputMax = 2;
-  const int kOutputMin = 0;
-  const int kOutputMax = 1;
+  const int kInputMinIndex = 1;
+  const int kInputMaxIndexIndex = 2;
+  const int kOutputMinIndex = 0;
+  const int kOutputMaxIndex = 1;
 };
 
 REGISTER_KERNEL_BUILDER(Name("RequantizationRangePerChannel")

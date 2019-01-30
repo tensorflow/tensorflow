@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -48,31 +48,31 @@ class MklRequantizePerChannelOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     try {
       const Tensor& input = ctx->input(kInputTensorIndex);
-      const Tensor& input_min_vec = ctx->input(kInputMinVec);
+      const Tensor& input_min_vec = ctx->input(kInputMinVecIndex);
       float* input_min_vec_data = (float*)const_cast<void*>(
           static_cast<const void*>(input_min_vec.flat<float>().data()));
-      const Tensor& input_max_vec = ctx->input(kInputMaxVec);
+      const Tensor& input_max_vec = ctx->input(kInputMaxVecIndex);
       float* input_max_vec_data = (float*)const_cast<void*>(
           static_cast<const void*>(input_max_vec.flat<float>().data()));
 
-      const Tensor& input_requested_min = ctx->input(this->kRequestMin);
+      const Tensor& input_requested_min = ctx->input(this->kRequestMinIndex);
       const float input_requested_min_float =
           input_requested_min.flat<float>()(0);
-      const Tensor& input_requested_max = ctx->input(this->kRequestMax);
+      const Tensor& input_requested_max = ctx->input(this->kRequestMaxIndex);
       const float input_requested_max_float =
           input_requested_max.flat<float>()(0);
 
       size_t depth = input_min_vec.NumElements();
       OP_REQUIRES(
           ctx, input_min_vec.dim_size(0) == depth,
-          errors::InvalidArgument("min has incorrect size, expected ", depth,
+          errors::InvalidArgument("input_min has incorrect size, expected ", depth,
                                   " was ", input_min_vec.dim_size(0)));
       OP_REQUIRES(
           ctx, input_max_vec.dim_size(0) == depth,
-          errors::InvalidArgument("max has incorrect size, expected ", depth,
+          errors::InvalidArgument("input_max has incorrect size, expected ", depth,
                                   " was ", input_max_vec.dim_size(0)));
 
-      if (out_type_ == DT_QINT8) CHECK(input_requested_min_float < 0.0f);
+      if (out_type_ == DT_QINT8) DCHECK(input_requested_min_float < 0.0f);
 
       const float factor = (out_type_ == DT_QINT8) ? 127.0f : 255.0f;
       float requested_min_max = std::max(std::abs(input_requested_min_float),
@@ -82,12 +82,11 @@ class MklRequantizePerChannelOp : public OpKernel {
                                                input.shape(), &output));
 
       std::vector<float> scales(depth);
-      for (int i = 0; i < depth; i++) {
+      for (int i = 0; i < depth; ++i) {
         float min_max_from_vec = std::max(std::abs(input_min_vec_data[i]),
                                           std::abs(input_max_vec_data[i]));
-        float scale =
+        scales[i] =
             factor * (min_max_from_vec / requested_min_max / (float)(1L << 31));
-        scales[i] = scale;
       }
 
       mkldnn::primitive_attr reorder_attr;
@@ -133,8 +132,8 @@ class MklRequantizePerChannelOp : public OpKernel {
 
       Tensor* output_min = nullptr;
       Tensor* output_max = nullptr;
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(kOutputMin, {}, &output_min));
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(kOutputMax, {}, &output_max));
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(kOutputMinIndex, {}, &output_min));
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(kOutputMaxIndex, {}, &output_max));
 
       output_min->flat<float>()(0) = input_requested_min_float;
       output_max->flat<float>()(0) = input_requested_max_float;
@@ -150,13 +149,13 @@ class MklRequantizePerChannelOp : public OpKernel {
 
  private:
   const int kInputTensorIndex = 0;
-  const int kInputMinVec = 1;
-  const int kInputMaxVec = 2;
-  const int kRequestMin = 3;
-  const int kRequestMax = 4;
+  const int kInputMinVecIndex = 1;
+  const int kInputMaxVecIndex = 2;
+  const int kRequestMinIndex = 3;
+  const int kRequestMaxIndex = 4;
   const int kOutputTensorIndex = 0;
-  const int kOutputMin = 1;
-  const int kOutputMax = 2;
+  const int kOutputMinIndex = 1;
+  const int kOutputMaxIndex = 2;
   DataType out_type_;
   engine cpu_engine_ = engine(engine::cpu, 0);
 };
