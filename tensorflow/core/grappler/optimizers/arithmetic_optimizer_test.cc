@@ -71,10 +71,6 @@ string AggregationMulName(const string& name) {
   return AddPrefixToNodeName(name, kSimplifyAggregationMul, "");
 }
 
-string OptimizedName(const string& name) {
-  return AddPrefixToNodeName(name, kArithmeticOptimizer);
-}
-
 void VerifyGraphsMatch(const GraphDef& original_graph,
                        const GraphDef& optimized_graph, int line) {
   EXPECT_EQ(original_graph.node_size(), optimized_graph.node_size()) << line;
