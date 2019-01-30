@@ -41,7 +41,6 @@ extern const PluginId kMIOpenPlugin;
 class MIOpenSupport : public dnn::DnnSupport {
  public:
   explicit MIOpenSupport(ROCMExecutor* parent);
-  ~MIOpenSupport() override;
 
   port::Status Init() override;
   port::StatusOr<perftools::gputools::dnn::VersionInfo> GetVersion() override;
@@ -720,33 +719,10 @@ class MIOpenSupport : public dnn::DnnSupport {
   ROCMExecutor* GetParentExecutor() { return parent_; }
 
  private:
-  mutex dnn_handle_mutex_;
-
   ROCMExecutor* parent_;  // Parent executor object. Not owned.
 
-  // miopen library handle. miopenHandle_t type is not present in this header to
-  // prevent third-party library header inclusions from leaking outside the
-  // single rocm_dnn translation unit.
-  void* dnn_handle_ GUARDED_BY(dnn_handle_mutex_);
-
-  // NOTE(keveman): Temporary data layout transformation until MIOpen supports
-  // kBatchYXDepth for backward pass. This function allocates temporary memory,
-  // lays out the source data into the temporary but in the kBatchDepthXY
-  // layout, and returns the temporary memory. The caller is responsible for
-  // deallocating the temporary. Since the allocation is done using Stream's
-  // AllocateTemporaryMemory, a later BlockHostUntilDone could be used for
-  // deallocation.
-  //
-  // transform_scratch is populated with a legitimate temporary allocation iff
-  // the original output data needs to be transformed.
-  template<class T>
-  DeviceMemory<T> MaybeTransformLayout(
-      Stream* stream,
-      int miopen_type,  // Actually miopenDataType_t.
-      dnn::BatchDescriptor* output_descriptor,
-      DeviceMemory<T> backward_output_data,
-      std::unique_ptr<TemporaryDeviceMemory<T>>* transform_scratch)
-      EXCLUSIVE_LOCKS_REQUIRED(dnn_handle_mutex_);
+  // Provide access to the MIOpen handle.
+  std::unique_ptr<class MIOpenAccess> miopen_;
 
   template <class T, class U>
   bool DoBatchNormalizationForwardImpl(
