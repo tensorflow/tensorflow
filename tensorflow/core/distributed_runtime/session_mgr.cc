@@ -78,10 +78,10 @@ Status SessionMgr::CreateSession(const string& session,
 
   if (isolate_session_state || server_def.cluster().job_size()) {
     if (server_def.cluster().job_size()) {
-      LOG(INFO) << "ClusterSpec propagation is enabled.";
+      VLOG(1) << "ClusterSpec propagation is enabled.";
     }
     if (!isolate_session_state) {
-      LOG(INFO) << "Session state isolation is disabled.";
+      VLOG(1) << "Session state isolation is disabled.";
     }
 
     // Create a private copy of the DeviceMgr for the WorkerSession.
