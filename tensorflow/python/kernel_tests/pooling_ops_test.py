@@ -730,7 +730,7 @@ class PoolingTest(test.TestCase):
         t = nn_ops.max_pool(
             t, ksize=ksize, strides=strides, padding="SAME").eval()
 
-  @test_util.disable_xla("This test never passed for XLA")
+  @test_util.disable_xla("b/123338077")
   def testDepthwiseMaxPoolInvalidConfigs(self):
     self._testDepthwiseMaxPoolInvalidConfig(
         [1, 2, 2, 4], [1, 2, 2, 2], [1, 1, 1, 2],
@@ -1175,7 +1175,6 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
   def testMaxPoolGrad(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self._testMaxPoolGradValidPadding1_1(data_format, use_gpu)
