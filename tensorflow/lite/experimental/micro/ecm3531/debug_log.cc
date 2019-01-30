@@ -17,6 +17,4 @@ limitations under the License.
 
 #include "eta_csp_io.h"
 
-extern "C" void DebugLog(const char* s) {
- EtaCspIoPrintf("%s", s);
-}
+extern "C" void DebugLog(const char* s) { EtaCspIoPrintf("%s", s); }
