@@ -65,9 +65,6 @@ cc_library(
         "kernels/get_serialized_resource_op.cc",
         "kernels/trt_engine_op.cc",
     ],
-    hdrs = [
-        "kernels/trt_engine_op.h",
-    ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -87,8 +84,7 @@ cc_library(
     ] + if_tensorrt([
         "@local_config_tensorrt//:tensorrt",
     ]) + tf_custom_op_library_additional_deps(),
-    # TODO(laigd): fix this by merging header file in cc file.
-    alwayslink = 1,  # buildozer: disable=alwayslink-with-hdrs
+    alwayslink = 1,
 )
 
 tf_cuda_cc_test(
