@@ -6104,9 +6104,7 @@ tf_kernel_library(
 tf_cc_test(
     name = "requantization_range_op_test",
     size = "small",
-    srcs = [
-        "requantization_range_op_test.cc",
-    ],
+    srcs = ["requantization_range_op_test.cc"],
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -6994,8 +6992,7 @@ tf_mkl_kernel_library(
         "no_op.h",
         "reference_gemm.h",
     ],
-    deps = if_mkl(
-        [
+    deps = if_mkl([
             ":concat_lib_hdrs",
             ":conv_ops",
             ":cwise_op",
@@ -7004,6 +7001,7 @@ tf_mkl_kernel_library(
             ":ops_util",
             ":pooling_ops",
             ":quantization_utils",
+            ":transpose_functor",
             "//tensorflow/core:array_ops_op_lib",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:framework",
@@ -7011,10 +7009,9 @@ tf_mkl_kernel_library(
             "//tensorflow/core:math_ops_op_lib",
             "//tensorflow/core:nn_ops_op_lib",
             "//third_party/eigen3",
-            "@gemmlowp",
-            ":transpose_functor",
-            "@mkl_dnn",
             "//third_party/mkl:intel_binary_blob",
+            "@gemmlowp",
+            "@mkl_dnn",            
         ],
     ),
 )

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
+
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -26,8 +28,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-
-#include <cmath>
 
 namespace tensorflow {
 
@@ -43,24 +43,24 @@ class MklRequantizatedOpsTestHelper : public OpsTestBase {
 void MklRequantizatedOpsTestHelper::Setup(Tensor &input_tensor_qint32,
                                           float &range_weights_ch1,
                                           float &range_weights_ch2) {
-  // Step 1: Assumption of inputs
-  // ----------------------------
+  // Step 1: Input range assumptions
+  // -------------------------------
   // Assume input Tensor T (NHWC) in FP32 has range [0, 5.0]   size nt*ht*wt*ct
-  // Assume input Filter W (NHWC) with 2 output channels of    size nw*ht**wt*2
-  // logically,   Filter W has 2 channels W1 and W2 each of    size nw*ht**wt*1
-  // Assume input Filter W1(NHWC) in FP32 has range [-2.0, 2.0]size nw*ht**wt*1
-  // Assume input Filter W2(NHWC) in FP32 has range [-3.0, 3.0]size nw*ht**wt*1
+  // Assume input Filter W (NHWC) with 2 output channels of    size nw*ht*wt*2
+  // logically,   Filter W has 2 channels W1 and W2 each of    size nw*ht*wt*1
+  // Assume input Filter W1(NHWC) in FP32 has range [-2.0, 2.0]size nw*ht*wt*1
+  // Assume input Filter W2(NHWC) in FP32 has range [-3.0, 3.0]size nw*ht*wt*1
 
-  // Step 2: Assumption of Quantizing inputs and weights (per channel)
-  // ------------------------------------------------------------------
-  // When these 2 Tensors, T and W are quantized using a Quantize Op.
-  // When  the input Tensor T (NHWC) is quantized to unsigned int8.
-  // While the input Filter W (NHWC) is qunatized to signed int8.
-  // hence T max value is mapped to ((2^8-1) = 255) while W to ((2^7)-1 = 127))
+  // Step 2: Quantization details (per channel)
+  // ------------------------------------------
+  // T and W are quantized using a Quantize Op.
+  // The input Tensor T (NHWC) is quantized to unsigned int8.
+  // The input Filter W (NHWC) is quantized to signed int8.
+  // Hence T's max value is mapped to ((2^8-1) = 255), while W's to ((2^7)-1 = 127)).
 
-  // Range of Quantized T  in int8[0   , 255] maps to orig T  in FP32[0   , 5.0]
-  // Range of Quantized W1 in int8[-127, 127] maps to orig W1 in FP32[-2.0, 2.0]
-  // Range of Quantized W2 in int8[-127, 127] maps to orig W2 in FP32[-3.0, 3.0]
+  // Range of Quantized T  in uint8[0   , 255] maps to orig T  in FP32[0   , 5.0]
+  // Range of Quantized W1 in int8[-127, 127]  maps to orig W1 in FP32[-2.0, 2.0]
+  // Range of Quantized W2 in int8[-127, 127]  maps to orig W2 in FP32[-3.0, 3.0]
 
   // Hence the resolution of Quantized T will be 5.0/255
   // Hence the resolution of Quantized W1 will be 2.0/127
@@ -68,20 +68,20 @@ void MklRequantizatedOpsTestHelper::Setup(Tensor &input_tensor_qint32,
 
   // Step 3: Assumption of quantizedconv on quantized input&weights(per channel)
   // ---------------------------------------------------------------------------
-  // The input T and weights W1 (or W2) will be convolved (and multipled)
-  // The output Tensor T is in int32 whose range is [-2^31, 2^31]
-  // The Range of the Convolved T*W1 is 2^31 * 5.0/255 * 2.0/127 = 663110.59
-  // So Range of Convolved T*W1 in int32[-2^31, 22^31] that maps to
+  // The input T and weights W1 (or W2) will be convolved.
+  // The output Tensor T is in int32 whose range is [-(2^31-1), 2^31-1)
+  // The Range of the convolved T*W1 is ((2^31)-1) * 5.0/255 * 2.0/127 = 663110.59
+  // So the range of convolved T*W1 in int32[-(2^31-1), 22^31-1] that maps to
   // orig T Range in FP32[0,5.0] * [-2.0, 2.0] is [-663110.59, 663110.59]
 
-  // The Range of the Convolved T*W2 is 2^31 * 5.0/255 * 3.0/127 = 994665.88
-  // So Range of Convolved T*W2 in int32[-2^31, 22^31] that maps to
-  // orig T Range in FP32[0,5.0] * [-3.0, 3.0]  is [-994665.88, 994665.88]
+  // The Range of the convolved T*W2 is 2^31-1 * 5.0/255 * 3.0/127 = 994665.88
+  // So Range of convolved T*W2 in int32[-(2^31-1), 22^31-1] that maps to
+  // orig T Range in FP32 [0, 5.0] * [-3.0, 3.0]  is [-994665.88, 994665.88]
 
   // Step 4: Assumption output above is fed to Requantization_range_perchannel
   // --------------------------------------------------------------------------
-  // Here we recalculate the new Range for Convolved T*W so that we
-  // make good use in int8 qunatization from int32 to int8.
+  // Here we recalculate the new Range for convolved T*W so that we
+  // make good use in int8 quantization from int32 to int8.
 
   // We assume the above operations are performed and use these values above
   // as ranges for Requantization_range_perchannel_op.
@@ -102,10 +102,10 @@ void MklRequantizatedOpsTestHelper::Setup(Tensor &input_tensor_qint32,
   // test RequantizationRangePerChannelTest_ClipMax
 }
 
-// Following tests the RequantizationRangePerChannel Op wherein the range
+// Tests the RequantizationRangePerChannel Op wherein the range
 // of the weights is calculated per channel.
 TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_Basic) {
-  // Let us setup the tensor and inputs before we run this op.
+  // Let us set up the tensor and inputs before we run this op.
   float clip_max_value = pow(2, 31);
   float range_weights_ch1 = 0.0;
   float range_weights_ch2 = 0.0;
@@ -115,7 +115,7 @@ TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_Basic) {
   const int input_width = 4;
   const int input_channels = 2;
 
-  // define and input tensor T shape.
+  // Define the shape of T.
   Tensor input_tensor_qint32(DT_QINT32,
                              {1, input_height, input_width, input_channels});
 
@@ -202,9 +202,9 @@ TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_ClipMax) {
                             input_tensor_qint32.flat<qint32>());
 
   // Calculate the Min and max from the ranges
-  float ch1_min = -1.0 * range_weights_ch1;
+  float ch1_min = -range_weights_ch1;
   float ch1_max = range_weights_ch1;
-  float ch2_min = -1.0 * range_weights_ch2;
+  float ch2_min = -range_weights_ch2;
   float ch2_max = range_weights_ch2;
 
   // Add the Perchannel range Nodes to the Op.
