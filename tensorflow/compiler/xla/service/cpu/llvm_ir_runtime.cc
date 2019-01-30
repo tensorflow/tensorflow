@@ -83,7 +83,7 @@ llvm::Function* EmitVectorF32ExpIfNeeded(llvm::Module* module,
 
   llvm::IRBuilder<> b(vector_exp_body);
   llvm::FastMathFlags fast_math_flags;
-  fast_math_flags.setFast();
+  fast_math_flags.setFast(enable_fast_math);
   b.setFastMathFlags(fast_math_flags);
 
   VectorSupportLibrary vsl(F32, vector_width, &b, "exp_f32");
@@ -166,7 +166,7 @@ llvm::Function* EmitVectorF32LogIfNeeded(llvm::Module* module,
 
   llvm::IRBuilder<> b(vector_log_body);
   llvm::FastMathFlags fast_math_flags;
-  fast_math_flags.setFast();
+  fast_math_flags.setFast(enable_fast_math);
   b.setFastMathFlags(fast_math_flags);
 
   llvm::Value* input = &*vector_log_function->arg_begin();
