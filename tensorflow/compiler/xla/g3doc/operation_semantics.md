@@ -1873,6 +1873,20 @@ non-deterministic. Therefore, the reduction function should not be overly
 sensitive to reassociation. See the discussion about associativity in the
 context of [`Reduce`](#reduce) for more details.
 
+## ReplicaId
+
+See also
+[`XlaBuilder::ReplicaId`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Returns the unique ID (U32 scalar) of the replica.
+
+<b> `ReplicaId()` </b>
+
+The unique ID of each replica is an unsigned integer in the interval `[0, N)`,
+where `N` is the number of replicas. Since all the replicas are running the same
+program, a `ReplicaId()` call in the program will return a different value on
+each replica.
+
 ## Reshape
 
 See also
