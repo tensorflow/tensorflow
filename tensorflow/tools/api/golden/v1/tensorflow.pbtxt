@@ -553,6 +553,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "raw_ops"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "resource"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
