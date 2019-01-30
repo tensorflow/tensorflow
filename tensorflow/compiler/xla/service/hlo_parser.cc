@@ -845,6 +845,17 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
           HloInstruction::CreateCollectivePermute(shape, operands[0], pairs));
       break;
     }
+    case HloOpcode::kReplicaId: {
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      if (!operands.empty()) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateReplicaId());
+      break;
+    }
     case HloOpcode::kReshape: {
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
