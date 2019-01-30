@@ -791,16 +791,21 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
             verbose=0,
             sample_weight=sample_weight)
 
-      # Test with not specifying the `steps` argument.
-      with self.assertRaisesRegexp(
-          ValueError, 'the `steps_per_epoch` argument'):
+      # Test with not specifying the `steps` argument for dataset with
+      # infinite cardinality.
+      dataset = dataset.repeat()
+      with self.assertRaisesRegexp(ValueError, 'When passing an infinitely '
+                                   'repeating dataset, you must specify the '
+                                   '`steps_per_epoch` argument'):
         model.fit(dataset, epochs=1, verbose=0)
-      with self.assertRaisesRegexp(ValueError,
-                                   'the `steps` argument'):
+      with self.assertRaisesRegexp(ValueError, 'When passing an infinitely '
+                                   'repeating dataset, you must specify the '
+                                   '`steps` argument'):
         model.evaluate(dataset, verbose=0)
 
-      with self.assertRaisesRegexp(ValueError,
-                                   'the `steps` argument'):
+      with self.assertRaisesRegexp(ValueError, 'When passing an infinitely '
+                                   'repeating dataset, you must specify the '
+                                   '`steps` argument'):
         model.predict(dataset, verbose=0)
 
   @combinations.generate(combinations.combine(
