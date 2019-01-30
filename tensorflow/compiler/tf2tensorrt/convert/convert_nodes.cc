@@ -2583,6 +2583,17 @@ Status ConvertQuantize(OpConverterParams* params) {
                                                     {"input_max", true},
                                                     {"num_bits", true}}));
   }
+  if (node_def.op() == "FakeQuantWithMinMaxArgs") {
+    TF_RETURN_IF_ERROR(CheckInputsWeights(params, {{"input", false}}));
+  } else if (node_def.op() == "FakeQuantWithMinMaxVars" ||
+             node_def.op() == "QuantizeAndDequantizeV2") {
+    TF_RETURN_IF_ERROR(CheckInputsWeights(
+        params, {{"input", false}, {"min", true}, {"max", true}}));
+  } else if (node_def.op() == "QuantizeAndDequantizeV3") {
+    TF_RETURN_IF_ERROR(CheckInputsWeights(
+        params,
+        {{"input", false}, {"min", true}, {"max", true}, {"num_bits", true}}));
+  }
   float min_range = 0.0f;
   float max_range = 0.0f;
   if (node_def.op() == "FakeQuantWithMinMaxArgs") {
