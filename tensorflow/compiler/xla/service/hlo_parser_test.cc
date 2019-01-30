@@ -2558,5 +2558,13 @@ TEST_F(HloParserTest, ParseDynamicTuple) {
       << "actual:   " << ShapeUtil::HumanString(actual);
 }
 
+TEST_F(HloParserTest, NegativeParameterNumber) {
+  const string hlo_string = "par0 = f32[3,5] parameter(-1)";
+  auto result = ParseHloString(hlo_string);
+  ASSERT_FALSE(result.status().ok());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr("parameter number must be >= 0"));
+}
+
 }  // namespace
 }  // namespace xla

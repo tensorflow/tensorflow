@@ -41,6 +41,7 @@ from tensorflow.python.keras.optimizer_v2 import adagrad
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import adamax
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.optimizer_v2 import nadam
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop
@@ -112,6 +113,13 @@ class OptimizerTest(test.TestCase):
       self.assertAllClose([-6.5, -5.5], self.evaluate(var0))
       # var1 = [0., 1.] - 0.5 * [3, 3]
       self.assertAllClose([-1.5, -0.5], self.evaluate(var1))
+
+      sgd.learning_rate = learning_rate_schedule.InverseTimeDecay(
+          0.5, decay_steps=1.0, decay_rate=0.5)
+      if context.executing_eagerly():
+        sgd.minimize(loss, [var0, var1])
+      else:
+        self.evaluate(opt_op)
 
   @test_util.run_in_graph_and_eager_modes
   def testPrecomputedGradient(self):
@@ -280,6 +288,33 @@ class OptimizerTest(test.TestCase):
       lr3 = opt3._get_hyper('learning_rate')
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(self.evaluate(lr), self.evaluate(lr3))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConfigWithLearningRateDecay(self):
+    with self.cached_session():
+      decay_schedule = learning_rate_schedule.InverseTimeDecay(
+          0.5, decay_steps=1.0, decay_rate=0.1)
+      step = 10
+      opt = gradient_descent.SGD(decay_schedule)
+      config = opt.get_config()
+      opt2 = gradient_descent.SGD.from_config(config)
+      # assert both are equal float values.
+      self.assertAllEqual(
+          decay_schedule(step),
+          opt._get_hyper('learning_rate')(step))
+      self.assertAllEqual(
+          decay_schedule(step),
+          opt2._get_hyper('learning_rate')(step))
+      var0 = variables.Variable([[1.0], [2.0]], dtype=dtypes.float32)
+      loss = lambda: 3 * var0
+      # learning rate variable created when calling minimize.
+      opt.minimize(loss, [var0])
+      self.evaluate(variables.global_variables_initializer())
+      config = opt.get_config()
+      opt3 = gradient_descent.SGD.from_config(config)
+      self.assertAllEqual(
+          self.evaluate(opt._get_hyper('learning_rate')(step)),
+          opt3._get_hyper('learning_rate')(step))
 
   @test_util.run_in_graph_and_eager_modes
   def testGradClipValue(self):

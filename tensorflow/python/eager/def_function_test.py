@@ -31,6 +31,7 @@ from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
@@ -322,6 +323,25 @@ class DefFunctionTest(test.TestCase):
 
     with self.assertRaisesRegexp(TypeError, MIXING_GRAPH_EAGER_TENSORS_ERROR):
       failing_function()
+
+  def testVariableCreatorScope(self):
+    created_variables = []
+    captured_variables = []
+
+    @def_function.function
+    def f():
+      if not created_variables:
+        created_variables.append(variables.Variable(1.))
+      return created_variables[0] + 1.
+
+    def capture_creator(next_creator, **kwargs):
+      created = next_creator(**kwargs)
+      captured_variables.append(created)
+      return created
+
+    with variable_scope.variable_creator_scope(capture_creator):
+      f()
+    self.assertEqual(created_variables, captured_variables)
 
 
 if __name__ == '__main__':

@@ -213,6 +213,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "nest"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "newaxis"
     mtype: "<type \'NoneType\'>"
   }
@@ -267,6 +271,10 @@ tf_module {
   member {
     name: "random_uniform_initializer"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "raw_ops"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "resource"

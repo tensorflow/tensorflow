@@ -113,12 +113,12 @@ def generate(combinations):
       # We use OrderedDicts in `combine()` and `times()` to ensure stable
       # order of keys in each dictionary.
       assert isinstance(combination, OrderedDict)
-      name = "".join(sorted([
+      name = "".join([
           "_{}_{}".format(
               "".join(filter(str.isalnum, key)),
               "".join(filter(str.isalnum, str(value))))
           for key, value in combination.items()
-      ]))
+      ])
       named_combinations.append(
           OrderedDict(
               list(combination.items()) + [("testcase_name",
@@ -232,7 +232,7 @@ def combine(**kwargs):
   if not kwargs:
     return [OrderedDict()]
 
-  sort_by_key = lambda k: k[0][0]
+  sort_by_key = lambda k: k[0]
   kwargs = OrderedDict(sorted(kwargs.items(), key=sort_by_key))
   first = list(kwargs.items())[0]
 

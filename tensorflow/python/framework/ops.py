@@ -991,7 +991,8 @@ register_dense_tensor_like_type(Tensor)
 
 
 @tf_export(v1=["convert_to_tensor"])
-def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
+def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None,
+                      dtype_hint=None):
   """Converts the given `value` to a `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -1031,6 +1032,7 @@ def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
       dtype in mind when converting to a tensor, so preferred_dtype
       can be used as a soft preference.  If the conversion to
       `preferred_dtype` is not possible, this argument has no effect.
+    dtype_hint: same meaning as preferred_dtype, and overrides it.
 
   Returns:
     A `Tensor` based on `value`.
@@ -1040,6 +1042,8 @@ def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
     RuntimeError: If a registered conversion function returns an invalid value.
     ValueError: If the `value` is a tensor not of given `dtype` in graph mode.
   """
+  preferred_dtype = deprecation.deprecated_argument_lookup(
+      "dtype_hint", dtype_hint, "preferred_dtype", preferred_dtype)
   return convert_to_tensor_v2(value, dtype, preferred_dtype, name)
 
 
@@ -3066,11 +3070,27 @@ class Graph(object):
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
   @tf_contextlib.contextmanager
-  def _variable_creator_scope(self, creator):
+  def _variable_creator_scope(self, creator, priority=100):
+    """Scope which defines a variable creation function.
+
+    Args:
+      creator: A callable taking `next_creator` and `kwargs`. See the
+        `tf.variable_creator_scope` docstring.
+      priority: Creators with a higher `priority` are called first. Within the
+        same priority, creators are called inner-to-outer.
+
+    Yields:
+      `_variable_creator_scope` is a context manager with a side effect, but
+      doesn't return a value.
+    """
     # This step makes a copy of the existing stack, and it also initializes
     # self._thread_local._variable_creator_stack if it doesn't exist yet.
     old = list(self._variable_creator_stack)
-    self._thread_local._variable_creator_stack.append(creator)  # pylint: disable=protected-access
+    stack = self._thread_local._variable_creator_stack  # pylint: disable=protected-access
+    stack.append((priority, creator))
+    # Sorting is stable, so we'll put higher-priority creators later in the list
+    # but otherwise maintain registration order.
+    stack.sort(key=lambda item: item[0])
     try:
       yield
     finally:

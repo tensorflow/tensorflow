@@ -86,18 +86,30 @@ class TestUpgrade(test_util.TensorFlowTestCase):
   @classmethod
   def setUpClass(cls):
     cls.v2_symbols = {}
-    if not hasattr(tf.compat, "v2"):
-      return
+    cls.v1_symbols = {}
+    if hasattr(tf.compat, "v2"):
 
-    def symbol_collector(unused_path, unused_parent, children):
-      for child in children:
-        _, attr = tf_decorator.unwrap(child[1])
-        api_names_v2 = tf_export.get_v2_names(attr)
-        for name in api_names_v2:
-          cls.v2_symbols["tf." + name] = attr
+      def symbol_collector(unused_path, unused_parent, children):
+        for child in children:
+          _, attr = tf_decorator.unwrap(child[1])
+          api_names_v2 = tf_export.get_v2_names(attr)
+          for name in api_names_v2:
+            cls.v2_symbols["tf." + name] = attr
 
-    visitor = public_api.PublicAPIVisitor(symbol_collector)
-    traverse.traverse(tf.compat.v2, visitor)
+      visitor = public_api.PublicAPIVisitor(symbol_collector)
+      traverse.traverse(tf.compat.v2, visitor)
+
+    if hasattr(tf.compat, "v1"):
+
+      def symbol_collector_v1(unused_path, unused_parent, children):
+        for child in children:
+          _, attr = tf_decorator.unwrap(child[1])
+          api_names_v1 = tf_export.get_v1_names(attr)
+          for name in api_names_v1:
+            cls.v1_symbols["tf." + name] = attr
+
+      visitor = public_api.PublicAPIVisitor(symbol_collector_v1)
+      traverse.traverse(tf.compat.v1, visitor)
 
   def _upgrade(self, old_file_text):
     in_file = six.StringIO(old_file_text)
@@ -145,7 +157,10 @@ class TestUpgrade(test_util.TensorFlowTestCase):
           _, _, _, text = self._upgrade("tf." + name)
           if (text and
               not text.startswith("tf.compat.v1") and
-              text not in self.v2_symbols):
+              text not in self.v2_symbols and
+              # Builds currently install old version of estimator that doesn't
+              # have some 2.0 symbols.
+              not text.startswith("tf.estimator")):
             self.assertFalse(
                 True, "Symbol %s generated from %s not in v2 API" % (
                     text, name))
@@ -287,6 +302,18 @@ class TestUpgrade(test_util.TensorFlowTestCase):
                 "Invalid argument '%s' in 2.0 when converting\n%s\nto\n%s.\n"
                 "Supported arguments: %s" % (
                     new_arg, text_input, text, str(args_v2)))
+          # 4. Verify that the argument exists in v1 as well.
+          if new_function_name in set(["tf.nn.ctc_loss",
+                                       "tf.saved_model.save"]):
+            continue
+          args_v1 = get_args(self.v1_symbols[new_function_name])
+          args_v1.extend(v2_arg_exceptions)
+          for new_arg in new_args:
+            self.assertIn(
+                new_arg, args_v1,
+                "Invalid argument '%s' in 1.0 when converting\n%s\nto\n%s.\n"
+                "Supported arguments: %s" % (
+                    new_arg, text_input, text, str(args_v1)))
 
     visitor = public_api.PublicAPIVisitor(conversion_visitor)
     visitor.do_not_descend_map["tf"].append("contrib")

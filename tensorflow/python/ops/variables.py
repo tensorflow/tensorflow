@@ -138,7 +138,7 @@ class VariableMetaclass(type):
                         aggregation=VariableAggregation.NONE):
     """Call on Variable class. Useful to force the signature."""
     previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
-    for getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
+    for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
       previous_getter = _make_getter(getter, previous_getter)
 
     # Reset `aggregation` that is explicitly set as `None` to the enum NONE.
@@ -174,7 +174,7 @@ class VariableMetaclass(type):
                         aggregation=VariableAggregation.NONE):
     """Call on Variable class. Useful to force the signature."""
     previous_getter = lambda **kws: default_variable_creator_v2(None, **kws)
-    for getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
+    for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
       previous_getter = _make_getter(getter, previous_getter)
 
     # Reset `aggregation` that is explicitly set as `None` to the enum NONE.
