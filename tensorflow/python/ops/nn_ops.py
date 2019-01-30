@@ -3008,8 +3008,8 @@ def max_pool_with_argmax_v2(input,
                             padding,
                             data_format="NHWC",
                             output_dtype=dtypes.int64,
-                            name=None,
-                            include_batch_in_index=False):
+                            include_batch_in_index=False,
+                            name=None):
   """Performs max pooling on the input and outputs both max values and indices.
 
   The indices in `argmax` are flattened, so that a maximum value at position
@@ -3042,9 +3042,9 @@ def max_pool_with_argmax_v2(input,
     output_dtype: An optional `tf.DType` from: `tf.int32, tf.int64`.
       Defaults to `tf.int64`.
       The dtype of the returned argmax tensor.
-    name: A name for the operation (optional).
     include_batch_in_index: An optional `boolean`. Defaults to `False`.
       Whether to include batch dimension in flattened index of `argmax`.
+    name: A name for the operation (optional).
 
   Returns:
     A tuple of `Tensor` objects (output, argmax).
@@ -3062,8 +3062,8 @@ def max_pool_with_argmax_v2(input,
       strides=strides,
       padding=padding,
       Targmax=output_dtype,
-      name=name,
-      include_batch_in_index=include_batch_in_index)
+      include_batch_in_index=include_batch_in_index,
+      name=name)
 # pylint: enable=redefined-builtin
 
 
