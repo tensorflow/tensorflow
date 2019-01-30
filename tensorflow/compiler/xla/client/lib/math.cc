@@ -19,12 +19,65 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/math.h"
 
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {
+
+// TODO(jlebar): Use this function in more places in this file to restrict the
+// domain of other functions.
+static Status EnsureOperandIsRealFp(absl::string_view op_name, XlaOp operand) {
+  auto& b = *operand.builder();
+  TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
+  auto elem_ty = shape.element_type();
+  if (!primitive_util::IsFloatingPointType(elem_ty)) {
+    return InvalidArgument(
+        "Operands to %s must be real-valued floating-point, but got %s",
+        op_name, PrimitiveType_Name(elem_ty));
+  }
+  return Status::OK();
+}
+
+XlaOp IsPosInf(XlaOp operand) {
+  auto& b = *operand.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IsPosInf", operand));
+    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
+    // Note that this is only correct for floating-point types.  If we wanted it
+    // to be correct for all types, we'd need to Gt(MaxFiniteValue).
+    return Eq(operand, MaxValue(&b, shape.element_type()));
+  });
+}
+
+XlaOp IsNegInf(XlaOp operand) {
+  auto& b = *operand.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IsNegInf", operand));
+    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
+    // Note that this is only correct for floating-point types.  If we wanted it
+    // to be correct for all types, we'd need to Lt(MinFiniteValue).
+    return Eq(operand, MinValue(&b, shape.element_type()));
+  });
+}
+
+XlaOp IsInf(XlaOp operand) {
+  auto& b = *operand.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IsInf", operand));
+    return IsPosInf(Abs(operand));
+  });
+}
+
+XlaOp IsNan(XlaOp operand) {
+  auto& b = *operand.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IsNan", operand));
+    return Ne(operand, operand);
+  });
+}
 
 XlaOp Sqrt(XlaOp operand) { return Pow(operand, ScalarLike(operand, 0.5)); }
 
@@ -101,14 +154,8 @@ XlaOp EvaluatePolynomial(XlaOp x, absl::Span<const float> coefficients) {
 XlaOp Erfc(XlaOp x) {
   auto& b = *x.builder();
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    // Reject non-real non-fp inputs.  (We could extend erfc to accept complex
-    // types, but it doesn't seem necessary at this point.)
-    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
-    if (!ShapeUtil::ElementIsFloating(shape)) {
-      return InvalidArgument(
-          "erfc only accepts real floating-point arrays or scalars, but got %s",
-          shape.ToString());
-    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Erfc", x));
+
     XlaOp abs_x = Abs(x);
     XlaOp z = Exp(-x * x);
 
@@ -223,15 +270,7 @@ static constexpr std::array<double, 8> kLanczosCoefficients = {
 XlaOp Lgamma(XlaOp input) {
   auto& b = *input.builder();
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    // Reject non-real non-fp inputs.  (We could extend lgamma to accept complex
-    // types, but it doesn't seem necessary at this point.)
-    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(input));
-    if (!ShapeUtil::ElementIsFloating(shape)) {
-      return InvalidArgument(
-          "lgamma only accepts real floating-point arrays or scalars, but got "
-          "%s",
-          shape.ToString());
-    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Lgamma", input));
 
     XlaOp one_half = ScalarLike(input, 0.5);
     XlaOp one = ScalarLike(input, 1);
@@ -321,15 +360,7 @@ XlaOp Lgamma(XlaOp input) {
 XlaOp Digamma(XlaOp input) {
   auto& b = *input.builder();
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    // Reject non-real non-fp inputs.  (We could extend digamma to accept
-    // complex types, but it doesn't seem necessary at this point.)
-    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(input));
-    if (!ShapeUtil::ElementIsFloating(shape)) {
-      return InvalidArgument(
-          "digamma only accepts real floating-point arrays or scalars, but got "
-          "%s",
-          shape.ToString());
-    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Digamma", input));
 
     XlaOp zero = ScalarLike(input, 0);
     XlaOp one_half = ScalarLike(input, 0.5);
@@ -381,12 +412,8 @@ XlaOp RoundToEven(XlaOp x) {
     // Reject non-real non-fp inputs (What does it even mean to round a complex
     // number?  Do you round each component equally?  In that case, you should
     // just ask for that explicitly.)
-    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
-    if (ShapeUtil::ElementIsComplex(shape)) {
-      return InvalidArgument(
-          "RoundToEven doesn't accept complex inputs, but got %s",
-          shape.ToString());
-    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("RoundToEven", x));
+
     auto half = ScalarLike(x, 0.5);
     auto one = ScalarLike(x, 1.0);
     auto two = ScalarLike(x, 2.0);

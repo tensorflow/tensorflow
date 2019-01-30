@@ -1776,10 +1776,14 @@ XlaOp Imag(const XlaOp& operand);
 XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions = {});
 
-// Enqueues an operator that tests if the operand's values are finite, i.e.,
-// not Inf or NaN. Defined only for floating-point types. Returns an array of
-// booleans with the same shape where entries are true iff the corresponding
-// entry was NaN.
+// Enqueues an operator that tests if the operand's values are finite, i.e., not
+// +/-Inf or NaN.  Returns an array of booleans with the same shape where
+// entries are true iff the corresponding entry was not infinite or NaN.
+//
+// Defined only for real-valued (i.e. not complex) floating-point types; raises
+// an error for other types.
+//
+// See also IsInf, IsPosInf, IsNegInf, and IsNan in lib/math.h.
 XlaOp IsFinite(const XlaOp& operand);
 
 // Enqueues an iota operation onto the computation.
