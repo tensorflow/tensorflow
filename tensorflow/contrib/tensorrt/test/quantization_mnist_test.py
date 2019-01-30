@@ -18,10 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.tensorrt.python import trt_convert
 # pylint: disable=unused-import
-from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
+from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
 # pylint: enable=unused-import
+from tensorflow.contrib.tensorrt.python import trt_convert
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import data
 from tensorflow.python import keras
@@ -274,7 +274,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
         num_epochs=None,
         model_dir=model_dir)['accuracy']
     logging.info('accuracy_tf_native: %f', accuracy_tf_native)
-    self.assertAllClose(accuracy_tf_native, 0.9662)
+    self.assertAllClose(0.9662, accuracy_tf_native, rtol=1e-3, atol=1e-3)
 
     if trt_convert.get_linked_tensorrt_version()[0] < 5:
       return
@@ -286,7 +286,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
         num_epochs=None,
         model_dir=model_dir)['accuracy']
     logging.info('accuracy_tf_trt: %f', accuracy_tf_trt)
-    self.assertAllClose(accuracy_tf_trt, 0.9677)
+    self.assertAllClose(0.9675, accuracy_tf_trt, rtol=1e-3, atol=1e-3)
 
 
 if __name__ == '__main__':

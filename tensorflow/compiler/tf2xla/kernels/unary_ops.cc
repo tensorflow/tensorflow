@@ -65,11 +65,8 @@ XLAJIT_MAKE_UNARY(Exp, xla::Exp(x));
 XLAJIT_MAKE_UNARY(Expm1, xla::Expm1(x));
 XLAJIT_MAKE_UNARY(Floor, xla::Floor(x));
 XLAJIT_MAKE_UNARY(IsFinite, xla::IsFinite(x));
-XLAJIT_MAKE_UNARY(
-    IsInf,
-    xla::Eq(xla::Abs(x),
-            xla::ScalarLike(x, std::numeric_limits<double>::infinity())));
-XLAJIT_MAKE_UNARY(IsNan, xla::Ne(x, x));
+XLAJIT_MAKE_UNARY(IsInf, xla::IsInf(x));
+XLAJIT_MAKE_UNARY(IsNan, xla::IsNan(x));
 // Return 1/x
 XLAJIT_MAKE_UNARY(Inv, xla::ScalarLike(x, 1.0) / x);
 XLAJIT_MAKE_UNARY(Reciprocal, xla::ScalarLike(x, 1.0) / x);

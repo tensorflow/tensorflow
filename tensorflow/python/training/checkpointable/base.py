@@ -142,8 +142,10 @@ class PythonStringStateSaveable(PythonStateSaveable):
       state_callback: A function taking no arguments which returns a
         string. This function is run every time a checkpoint is written.
       restore_callback: A function taking a Python string, used to restore
-        state. Optional; defaults to doing nothing.
+        state. Optional; defaults to doing nothing, in which case it is ignored
+        by status assertions such as assert_consumed().
     """
+    self._has_trivial_state_callback = (restore_callback is None)
     def _state_callback_wrapper():
       with ops.init_scope():
         return state_callback()
@@ -155,6 +157,11 @@ class PythonStringStateSaveable(PythonStateSaveable):
         self._save_string, "", name, dtype=dtypes.string)
     super(PythonStringStateSaveable, self).__init__(
         self._save_string, [spec], name)
+
+  @property
+  def optional_restore(self):
+    """For values with no restore, relaxes assert_consumed()."""
+    return self._has_trivial_state_callback
 
   def feed_dict_additions(self):
     """When running a graph, indicates fresh state to feed."""
@@ -351,8 +358,9 @@ class _CheckpointPosition(object):
           # added or deleted. Stores unused attributes so an exception can be
           # raised if the user decides to check that everything in the
           # checkpoint was loaded.
-          self._checkpoint.unused_attributes.setdefault(
-              self.checkpointable, []).append(serialized_tensor.name)
+          if not serialized_tensor.optional_restore:
+            self._checkpoint.unused_attributes.setdefault(
+                self.checkpointable, []).append(serialized_tensor.name)
           continue
         if callable(saveable_factory):
           saveable = saveable_factory(name=serialized_tensor.checkpoint_key)
@@ -452,16 +460,16 @@ def no_automatic_dependency_tracking(method):
       target=method, decorator_func=_method_wrapper)
 
 
-class CheckpointableBase(object):
+class Checkpointable(object):
   """Base class for `Checkpointable` objects without automatic dependencies.
 
   This class has no __setattr__ override for performance reasons. Dependencies
   must be added explicitly. Unless attribute assignment is performance-critical,
-  use `Checkpointable` instead. Use `CheckpointableBase` for `isinstance`
+  use `AutoCheckpointable` instead. Use `Checkpointable` for `isinstance`
   checks.
   """
 
-  # CheckpointableBase does not do automatic dependency tracking, but uses the
+  # Checkpointable does not do automatic dependency tracking, but uses the
   # no_automatic_dependency_tracking decorator so it can avoid adding
   # dependencies if a subclass is Checkpointable / inherits from Model (both of
   # which have __setattr__ overrides).
@@ -615,7 +623,7 @@ class CheckpointableBase(object):
     # assign again. It will add this variable to our dependencies, and if there
     # is a non-trivial restoration queued, it will handle that. This also
     # handles slot variables.
-    if not overwrite or isinstance(new_variable, CheckpointableBase):
+    if not overwrite or isinstance(new_variable, Checkpointable):
       return self._track_checkpointable(new_variable, name=name,
                                         overwrite=overwrite)
     else:
@@ -687,7 +695,7 @@ class CheckpointableBase(object):
       ValueError: If another object is already tracked by this name.
     """
     self._maybe_initialize_checkpointable()
-    if not isinstance(checkpointable, CheckpointableBase):
+    if not isinstance(checkpointable, Checkpointable):
       raise TypeError(
           ("Checkpointable._track_checkpointable() passed type %s, not a "
            "Checkpointable.") % (type(checkpointable),))
@@ -734,7 +742,7 @@ class CheckpointableBase(object):
       name: The name of the dependency within this object (`self`), used to
         match `checkpointable` with values saved in a checkpoint.
       checkpointable: The Checkpointable object to restore (inheriting from
-        `CheckpointableBase`).
+        `Checkpointable`).
     """
     self._maybe_initialize_checkpointable()
     checkpointable._maybe_initialize_checkpointable()  # pylint: disable=protected-access
@@ -838,11 +846,16 @@ class CheckpointableBase(object):
       return {}
     weak_self = weakref.ref(self)
     def _state_callback():
+      """Serializes `self.get_config()` for saving."""
       dereferenced_self = weak_self()
       if dereferenced_self:
-        return json.dumps(dereferenced_self,
-                          default=serialization.get_json_type,
-                          sort_keys=True).encode("utf8")
+        try:
+          return json.dumps(dereferenced_self,
+                            default=serialization.get_json_type,
+                            sort_keys=True).encode("utf8")
+        except TypeError:
+          # Even if get_config worked objects may have produced garbage.
+          return ""
       else:
         return ""
     return {OBJECT_CONFIG_JSON_KEY: functools.partial(

@@ -83,7 +83,7 @@ class SlurmClusterResolverTest(test.TestCase):
         auto_set_gpu=False)
 
     slurm_cluster_resolver.task_type = 'worker'
-    slurm_cluster_resolver.task_index = 1
+    slurm_cluster_resolver.task_id = 1
     self.assertEqual(slurm_cluster_resolver.master(), 'grpc://t02n43:8888')
 
     slurm_cluster_resolver.rpc_layer = 'ab'

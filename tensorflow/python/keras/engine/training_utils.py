@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 from collections import OrderedDict
 import copy
 
@@ -45,6 +46,7 @@ from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensi
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
@@ -472,14 +474,16 @@ def check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
       ValueError: if a loss function or target array
           is incompatible with an output.
   """
-  key_losses = {
+  key_loss_fns = {
       losses.mean_squared_error, losses.binary_crossentropy,
       losses.categorical_crossentropy
   }
+  key_loss_classes = (losses.MeanSquaredError, losses.BinaryCrossentropy,
+                      losses.CategoricalCrossentropy)
   for y, loss, shape in zip(targets, loss_fns, output_shapes):
     if y is None or loss is None or tensor_util.is_tensor(y):
       continue
-    if loss is losses.categorical_crossentropy:
+    if losses.is_categorical_crossentropy(loss):
       if y.shape[-1] == 1:
         raise ValueError('You are passing a target array of shape ' + str(
             y.shape) + ' while using as loss `categorical_crossentropy`. '
@@ -496,14 +500,20 @@ def check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
                          'Alternatively, you can use the loss function '
                          '`sparse_categorical_crossentropy` instead, '
                          'which does expect integer targets.')
-    if loss in key_losses:
+
+    is_loss_wrapper = isinstance(loss, losses.LossFunctionWrapper)
+    if (isinstance(loss, key_loss_classes) or (is_loss_wrapper and
+                                               (loss.fn in key_loss_fns))):
       for target_dim, out_dim in zip(y.shape[1:], shape[1:]):
         if out_dim is not None and target_dim != out_dim:
+          loss_name = loss.name
+          if loss_name is None:
+            loss_type = loss.fn if is_loss_wrapper else type(loss)
+            loss_name = loss_type.__name__
           raise ValueError('A target array with shape ' + str(y.shape) +
                            ' was passed for an output of shape ' + str(shape) +
-                           ' while using as loss `' + loss.__name__ + '`. '
-                           'This loss expects '
-                           'targets to have the same shape '
+                           ' while using as loss `' + loss_name + '`. '
+                           'This loss expects targets to have the same shape '
                            'as the output.')
 
 
@@ -831,22 +841,34 @@ def get_metric_function(metric, output_shape=None, loss_fn=None):
   Returns:
       The metric function.
   """
+  if metric not in ['accuracy', 'acc', 'crossentropy', 'ce']:
+    return metrics_module.get(metric)
+
+  is_sparse_categorical_crossentropy = (
+      isinstance(loss_fn, losses.SparseCategoricalCrossentropy) or
+      (isinstance(loss_fn, losses.LossFunctionWrapper) and
+       loss_fn.fn == losses.sparse_categorical_crossentropy))
+
+  is_binary_crossentropy = (
+      isinstance(loss_fn, losses.BinaryCrossentropy) or
+      (isinstance(loss_fn, losses.LossFunctionWrapper) and
+       loss_fn.fn == losses.binary_crossentropy))
+
   if metric in ['accuracy', 'acc']:
-    if output_shape[-1] == 1 or loss_fn == losses.binary_crossentropy:
-      return metrics_module.binary_accuracy  # case: binary accuracy
-    elif loss_fn == losses.sparse_categorical_crossentropy:
-      # case: categorical accuracy with sparse targets
+    if output_shape[-1] == 1 or is_binary_crossentropy:
+      return metrics_module.binary_accuracy
+    elif is_sparse_categorical_crossentropy:
       return metrics_module.sparse_categorical_accuracy
-    return metrics_module.categorical_accuracy  # case: categorical accuracy
-  elif metric in ['crossentropy', 'ce']:
-    if output_shape[-1] == 1 or loss_fn == losses.binary_crossentropy:
-      return metrics_module.binary_crossentropy  # case: binary cross-entropy
-    elif loss_fn == losses.sparse_categorical_crossentropy:
-      # case: categorical cross-entropy with sparse targets
+    # If the output_shape[-1] is not 1, then we know output is `categorical`.
+    # We assume it is sparse categorical only if loss is explicitly given
+    # as sparse categorical crossentropy loss.
+    return metrics_module.categorical_accuracy
+  else:
+    if output_shape[-1] == 1 or is_binary_crossentropy:
+      return metrics_module.binary_crossentropy
+    elif is_sparse_categorical_crossentropy:
       return metrics_module.sparse_categorical_crossentropy
-    # case: categorical cross-entropy
     return metrics_module.categorical_crossentropy
-  return metrics_module.get(metric)
 
 
 def call_metric_function(metric_fn, y_true, y_pred, weights=None, mask=None):
@@ -870,10 +892,18 @@ def get_loss_function(loss):
   if loss is None or isinstance(loss, losses.Loss):
     return loss
 
-  # TODO(psv): After we have added all V2 losses, update this function.
-  if loss in ['mse', 'MSE', 'mean_squared_error']:
-    return losses.MeanSquaredError()
-  return losses.get(loss)
+  # Deserialize loss configuration, if needed.
+  if isinstance(loss, collections.Mapping):
+    loss = losses.get(loss)
+
+  # Custom callable class.
+  if callable(loss) and not hasattr(loss, '__name__'):
+    return loss
+
+  # Wrap loss function with signature `(y_true, y_pred, **kwargs)`
+  # in `LossFunctionWrapper` class.
+  loss_fn = losses.get(loss)
+  return losses.LossFunctionWrapper(loss_fn, name=loss_fn.__name__)
 
 
 def validate_dataset_input(x, y, sample_weight, validation_split=None):
@@ -1200,11 +1230,44 @@ def assert_not_shuffled(dataset):
     raise ValueError('Could not assert that dataset is not shuffled.')
 
 
+def verify_dataset_shuffled(x):
+  """Verifies that the dataset is shuffled.
+
+  Args:
+    x: Dataset passed as an input to the model.
+
+  Raises:
+    ValueError: if the dataset is not already shuffled.
+  """
+  assert isinstance(x, dataset_ops.DatasetV2)
+  try:
+    assert_not_shuffled(x)
+  except ValueError:
+    # Dataset may or may not be shuffled.
+    return
+  else:
+    logging.warning('Expected a shuffled dataset but input dataset `x` is '
+                    'not shuffled. Please invoke `shuffle()` on input dataset.')
+
+
 def is_dataset_or_iterator(data):
   return isinstance(data, (dataset_ops.DatasetV1,
                            dataset_ops.DatasetV2,
                            iterator_ops.EagerIterator,
                            iterator_ops.Iterator))
+
+
+def get_iterator(dataset):
+  """Create and initialize an iterator from a dataset."""
+  iterator = dataset_ops.make_initializable_iterator(dataset)
+  initialize_iterator(iterator)
+  return iterator
+
+
+def initialize_iterator(iterator):
+  init_op = iterator.initializer
+  if not context.executing_eagerly():
+    K.get_session().run(init_op)
 
 
 def extract_tensors_from_dataset(dataset):
@@ -1216,10 +1279,7 @@ def extract_tensors_from_dataset(dataset):
   Returns:
     Tuple of tensors `x, y, weights`. `y` and `weights` entry may be None.
   """
-  iterator = dataset_ops.make_initializable_iterator(dataset)
-  init_op = iterator.initializer
-  if not context.executing_eagerly():
-    K.get_session().run(init_op)
+  iterator = get_iterator(dataset)
   inputs, targets, sample_weight = unpack_iterator_input(iterator)
   return inputs, targets, sample_weight
 
@@ -1471,3 +1531,33 @@ def convert_eager_tensors_to_numpy(structure):
     return element
 
   return nest.map_structure(_convert, structure)
+
+
+def should_run_validation(validation_freq, epoch):
+  """Checks if validation should be run this epoch.
+
+  Arguments:
+    validation_freq: Integer or list. If an integer, specifies how many training
+      epochs to run before a new validation run is performed. If a list,
+      specifies the epochs on which to run validation.
+    epoch: Integer, the number of the training epoch just completed.
+
+  Returns:
+    Bool, True if validation should be run.
+
+  Raises:
+    ValueError: if `validation_freq` is an Integer and less than 1, or if
+    it is neither an Integer nor a Sequence.
+  """
+  # `epoch` is 0-indexed internally but 1-indexed in the public API.
+  one_indexed_epoch = epoch + 1
+
+  if isinstance(validation_freq, int):
+    if validation_freq < 1:
+      raise ValueError('`validation_freq` can not be less than 1.')
+    return one_indexed_epoch % validation_freq == 0
+
+  if not isinstance(validation_freq, collections.Container):
+    raise ValueError('`validation_freq` must be an Integer or '
+                     '`collections.Container` (e.g. list, tuple, etc.)')
+  return one_indexed_epoch in validation_freq

@@ -34,8 +34,7 @@ namespace {
 const char kSamples[] = "smartreply_samples.tsv";
 
 string GetModelFilePath() {
-  return "third_party/tensorflow/lite/models/testdata/"
-         "smartreply_ondevice_model.bin";
+  return "external/tflite_smartreply/smartreply.tflite";  // NOLINT
 }
 
 string GetSamplesFilePath() {

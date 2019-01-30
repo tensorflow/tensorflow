@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.python import keras
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -44,107 +45,71 @@ def get_model():
 
 class MirroredStrategyOptimizerV2Test(test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu],
-      mode=['graph']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              combinations.core_mirrored_strategy_with_gpu_and_cpu,
+              combinations.core_mirrored_strategy_with_two_gpus,
+              combinations.parameter_server_strategy_with_two_gpus,
+          ],
+          mode=['graph', 'eager']))
   def testKerasOptimizerWithUnequalInput(self, distribution):
-    def create_fn():
+    with distribution.scope():
       var = variables.Variable(
           2.0, name='var', aggregation=variable_scope.VariableAggregation.SUM)
-      # grad for cpu is 1, grad for gpu is 2, avg grad is 1.5.
-      def loss():
-        return math_ops.cast(_replica_id() + 1, dtype=dtypes.float32) * var
-
       optimizer = adam.Adam(learning_rate=0.01, beta_1=0.2, beta_2=0.2)
-      train_op = optimizer.minimize(loss, var_list=[var])
-      m = optimizer.get_slot(var, 'm')
-      v = optimizer.get_slot(var, 'v')
-      return (var, m, v, train_op, optimizer.iterations)
+      all_vars = []
 
-    devices = ['/device:GPU:0', '/device:CPU:0']
-    with distribution.scope():
-      (var, m, v, op, counter) = distribution.call_for_each_replica(create_fn)
+      def model_fn():
+
+        def loss_fn():
+          replica_id = _replica_id()
+          return math_ops.cast(replica_id + 1, dtype=dtypes.float32) * var
+
+        train_op = optimizer.minimize(loss_fn, var_list=[var])
+
+        return train_op, optimizer
+
+      def train_fn():
+        train_op, optimizer = distribution.extended.call_for_each_replica(
+            model_fn)
+        if not all_vars:
+          all_vars.append(var)
+          all_vars.append(optimizer.get_slot(var, 'm'))
+          all_vars.append(optimizer.get_slot(var, 'v'))
+        return distribution.group(train_op)
+
+      if not context.executing_eagerly():
+        with self.cached_session() as sess:
+          train_fn = sess.make_callable(train_fn())
       self.evaluate(variables.global_variables_initializer())
-      var_val = [2.0, 2.0, 2.0]
-      self.assertAllClose(
-          var_val,
-          self.evaluate(
-              [distribution.extended.read_var(var),
-               var.get(devices[0]),
-               var.get(devices[1])]))
-      self.assertAllClose([0, 0, 0],
-                          self.evaluate([
-                              distribution.extended.read_var(counter),
-                              counter.get(devices[0]),
-                              counter.get(devices[1])
-                          ]))
 
-      train_op = distribution.unwrap(op)
-      self.evaluate(train_op)
-      # m(1) = beta1 * m(0) + (1-beta1) * grad = 0.2 * 0 + 0.8 * (1 + 2) / 2
-      m_val = [1.2, 1.2, 1.2]
-      # assert slot variables in both replicas are the same.
-      self.assertAllClose(
-          m_val,
-          self.evaluate(
-              [distribution.extended.read_var(m),
-               m.get(devices[0]),
-               m.get(devices[1])]))
-      # v(1) = beta2 * v(0) + (1-beta2) * grad^2 = 0.2 * 0 + 0.8 * 2.25
-      v_val = [1.8, 1.8, 1.8]
-      self.assertAllClose(
-          v_val,
-          self.evaluate(
-              [distribution.extended.read_var(v),
-               v.get(devices[0]),
-               v.get(devices[1])]))
+      # first step.
+      train_fn()
       # var(1) = var(0) - lr * m(1) * sqrt(1 - beta2) / sqrt(v(1)) / (1 - beta1)
       #        = 2.0 - 0.01 * 1.2 * sqrt(0.8) / sqrt(1.8) / 0.8
-      var_val = [1.99, 1.99, 1.99]
-      self.assertAllClose(
-          var_val,
-          self.evaluate(
-              [distribution.extended.read_var(var),
-               var.get(devices[0]),
-               var.get(devices[1])]))
-      self.assertAllClose([1, 1, 1],
-                          self.evaluate([
-                              distribution.extended.read_var(counter),
-                              counter.get(devices[0]),
-                              counter.get(devices[1])
-                          ]))
+      self.assertAllClose(1.99, self.evaluate(all_vars[0]))
+      # m(1) = beta1 * m(0) + (1-beta1) * grad = 0.2 * 0 + 0.8 * (1 + 2) / 2
+      self.assertAllClose(1.2, self.evaluate(all_vars[1]))
+      # v(1) = beta2 * v(0) + (1-beta2) * grad^2 = 0.2 * 0 + 0.8 * 2.25
+      self.assertAllClose(1.8, self.evaluate(all_vars[2]))
 
-      self.evaluate(train_op)
+      # second step.
+      train_fn()
+      # var(1) = var(0) - lr * 2 = 1.98
+      self.assertAllClose(1.98, self.evaluate(all_vars[0]))
       # m(2) = beta1 * m(1) + (1-beta1) * grad = 0.2 * 1.2 + 0.8 * 1.5
-      m_val = [1.44, 1.44, 1.44]
-      self.assertAllClose(
-          m_val,
-          self.evaluate(
-              [distribution.extended.read_var(m),
-               m.get(devices[0]),
-               m.get(devices[1])]))
+      self.assertAllClose(1.44, self.evaluate(all_vars[1]))
       # v(2) = beta2 * v(1) + (1-beta2) * grad^2 = 0.2 * 1.8 + 0.8 * 2.25
-      v_val = [2.16, 2.16, 2.16]
-      self.assertAllClose(
-          v_val,
-          self.evaluate(
-              [distribution.extended.read_var(v),
-               v.get(devices[0]),
-               v.get(devices[1])]))
-      self.assertAllClose([2, 2, 2],
-                          self.evaluate([
-                              distribution.extended.read_var(counter),
-                              counter.get(devices[0]),
-                              counter.get(devices[1])
-                          ]))
+      self.assertAllClose(2.16, self.evaluate(all_vars[2]))
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu],
-      mode=['graph']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              combinations.core_mirrored_strategy_with_gpu_and_cpu,
+              combinations.parameter_server_strategy_with_two_gpus,
+          ],
+          mode=['graph', 'eager']))
   def testOptimizerWithKerasModelAndNumpyArrays(self, distribution):
 
     with self.cached_session():

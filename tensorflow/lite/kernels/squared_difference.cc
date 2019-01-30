@@ -105,10 +105,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   } else if (output->type == kTfLiteInt32) {
     EvalSquaredDifference<int32_t>(context, node, data, input1, input2, output);
   } else {
-    context->ReportError(context,
-                         "SquaredDifference only supports FLOAT32, INT32 and "
-                         "quantized UINT8 now, got %d.",
-                         output->type);
+    context->ReportError(
+        context,
+        "SquaredDifference only supports FLOAT32 and INT32 now, got %d.",
+        output->type);
     return kTfLiteError;
   }
 

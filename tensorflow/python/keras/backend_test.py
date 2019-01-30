@@ -99,24 +99,6 @@ class BackendUtilsTest(test.TestCase):
   def test_backend(self):
     self.assertEqual(keras.backend.backend(), 'tensorflow')
 
-  def test_espilon(self):
-    epsilon = 1e-2
-    keras.backend.set_epsilon(epsilon)
-    self.assertEqual(keras.backend.epsilon(), epsilon)
-    keras.backend.set_epsilon(1e-7)
-
-  def test_floatx(self):
-    floatx = 'float64'
-    keras.backend.set_floatx(floatx)
-    self.assertEqual(keras.backend.floatx(), floatx)
-    keras.backend.set_floatx('float32')
-
-  def test_image_data_format(self):
-    image_data_format = 'channels_first'
-    keras.backend.set_image_data_format(image_data_format)
-    self.assertEqual(keras.backend.image_data_format(), image_data_format)
-    keras.backend.set_image_data_format('channels_last')
-
   def test_get_reset_uids(self):
     self.assertEqual(keras.backend.get_uid('foo'), 1)
     self.assertEqual(keras.backend.get_uid('foo'), 2)
@@ -126,34 +108,61 @@ class BackendUtilsTest(test.TestCase):
 
   def test_learning_phase(self):
     with self.cached_session() as sess:
-      keras.backend.set_learning_phase(1)
-      self.assertEqual(keras.backend.learning_phase(), 1)
       with self.assertRaises(ValueError):
         keras.backend.set_learning_phase(2)
 
       # Test running with a learning-phase-consuming layer
-      keras.backend.set_learning_phase(0)
-      x = keras.Input((3,))
-      y = keras.layers.BatchNormalization()(x)
-      if not context.executing_eagerly():
-        self.evaluate(variables.global_variables_initializer())
-        sess.run(y, feed_dict={x: np.random.random((2, 3))})
+      with keras.backend.learning_phase_scope(0):
+        x = keras.Input((3,))
+        y = keras.layers.BatchNormalization()(x)
+        if not context.executing_eagerly():
+          self.evaluate(variables.global_variables_initializer())
+          sess.run(y, feed_dict={x: np.random.random((2, 3))})
+
+  def test_learning_phase_name(self):
+    with ops.name_scope('test_scope'):
+      # Test that outer name scopes do not affect the learning phase's name.
+      lp = keras.backend.symbolic_learning_phase()
+    self.assertEqual(lp.name, 'keras_learning_phase:0')
 
   def test_learning_phase_scope(self):
-    with self.cached_session():
-      initial_learning_phase = keras.backend.learning_phase()
-      with keras.backend.learning_phase_scope(1) as lp:
-        self.assertEqual(lp, 1)
-        self.assertEqual(keras.backend.learning_phase(), 1)
-      self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
-      with keras.backend.learning_phase_scope(0) as lp:
-        self.assertEqual(lp, 0)
-        self.assertEqual(keras.backend.learning_phase(), 0)
-      self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
-      with self.assertRaises(ValueError):
-        with keras.backend.learning_phase_scope(None):
-          pass
-      self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
+    initial_learning_phase = keras.backend.learning_phase()
+    with keras.backend.learning_phase_scope(1):
+      self.assertEqual(keras.backend.learning_phase(), 1)
+    self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
+    with keras.backend.learning_phase_scope(0):
+      self.assertEqual(keras.backend.learning_phase(), 0)
+    self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
+    with self.assertRaises(ValueError):
+      with keras.backend.learning_phase_scope(None):
+        pass
+    self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
+
+    new_learning_phase = 0
+    keras.backend.set_learning_phase(new_learning_phase)
+    self.assertEqual(keras.backend.learning_phase(), new_learning_phase)
+    with keras.backend.learning_phase_scope(1):
+      self.assertEqual(keras.backend.learning_phase(), 1)
+    self.assertEqual(keras.backend.learning_phase(), new_learning_phase)
+
+  def test_learning_phase_scope_in_graph(self):
+    initial_learning_phase_outside_graph = keras.backend.learning_phase()
+    with keras.backend.get_graph().as_default():
+      initial_learning_phase_in_graph = keras.backend.learning_phase()
+
+    self.assertEqual(keras.backend.learning_phase(),
+                     initial_learning_phase_outside_graph)
+    with keras.backend.learning_phase_scope(1):
+      self.assertEqual(keras.backend.learning_phase(), 1)
+    self.assertEqual(keras.backend.learning_phase(),
+                     initial_learning_phase_outside_graph)
+
+    with keras.backend.get_graph().as_default():
+      self.assertEqual(keras.backend.learning_phase(),
+                       initial_learning_phase_in_graph)
+
+    self.assertEqual(keras.backend.learning_phase(),
+                     initial_learning_phase_outside_graph)
 
   def test_int_shape(self):
     x = keras.backend.ones(shape=(3, 4))
@@ -164,21 +173,20 @@ class BackendUtilsTest(test.TestCase):
       self.assertEqual(keras.backend.int_shape(x), (None, 4))
 
   def test_in_train_phase(self):
-    with self.cached_session():
-      y1 = keras.backend.variable(1)
-      y2 = keras.backend.variable(2)
-      if context.executing_eagerly():
-        with keras.backend.learning_phase_scope(0):
-          y_val_test = keras.backend.in_train_phase(y1, y2).numpy()
-        with keras.backend.learning_phase_scope(1):
-          y_val_train = keras.backend.in_train_phase(y1, y2).numpy()
-      else:
-        y = keras.backend.in_train_phase(y1, y2)
-        f = keras.backend.function([keras.backend.learning_phase()], [y])
-        y_val_test = f([0])[0]
-        y_val_train = f([1])[0]
-      self.assertAllClose(y_val_test, 2)
-      self.assertAllClose(y_val_train, 1)
+    y1 = keras.backend.variable(1)
+    y2 = keras.backend.variable(2)
+    if context.executing_eagerly():
+      with keras.backend.learning_phase_scope(0):
+        y_val_test = keras.backend.in_train_phase(y1, y2).numpy()
+      with keras.backend.learning_phase_scope(1):
+        y_val_train = keras.backend.in_train_phase(y1, y2).numpy()
+    else:
+      y = keras.backend.in_train_phase(y1, y2)
+      f = keras.backend.function([keras.backend.learning_phase()], [y])
+      y_val_test = f([0])[0]
+      y_val_train = f([1])[0]
+    self.assertAllClose(y_val_test, 2)
+    self.assertAllClose(y_val_train, 1)
 
   def test_is_keras_tensor(self):
     x = keras.backend.variable(1)
@@ -205,74 +213,63 @@ class BackendUtilsTest(test.TestCase):
 class BackendVariableTest(test.TestCase):
 
   def test_zeros(self):
-    with self.cached_session():
-      x = keras.backend.zeros((3, 4))
-      val = keras.backend.eval(x)
-      self.assertAllClose(val, np.zeros((3, 4)))
+    x = keras.backend.zeros((3, 4))
+    val = keras.backend.eval(x)
+    self.assertAllClose(val, np.zeros((3, 4)))
 
   def test_ones(self):
-    with self.cached_session():
-      x = keras.backend.ones((3, 4))
-      val = keras.backend.eval(x)
-      self.assertAllClose(val, np.ones((3, 4)))
+    x = keras.backend.ones((3, 4))
+    val = keras.backend.eval(x)
+    self.assertAllClose(val, np.ones((3, 4)))
 
   def test_eye(self):
-    with self.cached_session():
-      x = keras.backend.eye(4)
-      val = keras.backend.eval(x)
-      self.assertAllClose(val, np.eye(4))
+    x = keras.backend.eye(4)
+    val = keras.backend.eval(x)
+    self.assertAllClose(val, np.eye(4))
 
   def test_zeros_like(self):
-    with self.cached_session():
-      x = keras.backend.zeros((3, 4))
-      y = keras.backend.zeros_like(x)
-      val = keras.backend.eval(y)
-      self.assertAllClose(val, np.zeros((3, 4)))
+    x = keras.backend.zeros((3, 4))
+    y = keras.backend.zeros_like(x)
+    val = keras.backend.eval(y)
+    self.assertAllClose(val, np.zeros((3, 4)))
 
   def test_ones_like(self):
-    with self.cached_session():
-      x = keras.backend.zeros((3, 4))
-      y = keras.backend.ones_like(x)
-      val = keras.backend.eval(y)
-      self.assertAllClose(val, np.ones((3, 4)))
+    x = keras.backend.zeros((3, 4))
+    y = keras.backend.ones_like(x)
+    val = keras.backend.eval(y)
+    self.assertAllClose(val, np.ones((3, 4)))
 
   def test_random_uniform_variable(self):
-    with self.cached_session():
-      x = keras.backend.random_uniform_variable((30, 20), low=1, high=2, seed=0)
-      val = keras.backend.eval(x)
-      self.assertAllClose(val.mean(), 1.5, atol=1e-1)
-      self.assertAllClose(val.max(), 2., atol=1e-1)
-      self.assertAllClose(val.min(), 1., atol=1e-1)
+    x = keras.backend.random_uniform_variable((30, 20), low=1, high=2, seed=0)
+    val = keras.backend.eval(x)
+    self.assertAllClose(val.mean(), 1.5, atol=1e-1)
+    self.assertAllClose(val.max(), 2., atol=1e-1)
+    self.assertAllClose(val.min(), 1., atol=1e-1)
 
   def test_random_normal_variable(self):
-    with self.cached_session():
-      x = keras.backend.random_normal_variable((30, 20), 1., 0.5,
-                                               seed=0)
-      val = keras.backend.eval(x)
-      self.assertAllClose(val.mean(), 1., atol=1e-1)
-      self.assertAllClose(val.std(), 0.5, atol=1e-1)
+    x = keras.backend.random_normal_variable((30, 20), 1., 0.5, seed=0)
+    val = keras.backend.eval(x)
+    self.assertAllClose(val.mean(), 1., atol=1e-1)
+    self.assertAllClose(val.std(), 0.5, atol=1e-1)
 
   def test_count_params(self):
-    with self.cached_session():
-      x = keras.backend.zeros((4, 5))
-      val = keras.backend.count_params(x)
-      self.assertAllClose(val, 20)
+    x = keras.backend.zeros((4, 5))
+    val = keras.backend.count_params(x)
+    self.assertAllClose(val, 20)
 
   def test_constant(self):
-    with self.cached_session():
-      ref_val = np.random.random((3, 4)).astype('float32')
-      x = keras.backend.constant(ref_val)
-      val = keras.backend.eval(x)
-      self.assertAllClose(val, ref_val)
+    ref_val = np.random.random((3, 4)).astype('float32')
+    x = keras.backend.constant(ref_val)
+    val = keras.backend.eval(x)
+    self.assertAllClose(val, ref_val)
 
   def test_sparse_variable(self):
-    with self.cached_session():
-      val = scipy.sparse.eye(10)
-      x = keras.backend.variable(val)
-      self.assertTrue(isinstance(x, sparse_tensor.SparseTensor))
+    val = scipy.sparse.eye(10)
+    x = keras.backend.variable(val)
+    self.assertTrue(isinstance(x, sparse_tensor.SparseTensor))
 
-      y = keras.backend.to_dense(x)
-      self.assertFalse(keras.backend.is_sparse(y))
+    y = keras.backend.to_dense(x)
+    self.assertFalse(keras.backend.is_sparse(y))
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -310,20 +307,19 @@ class BackendLinearAlgebraTest(test.TestCase):
         (keras.backend.argmax, np.argmax),
     ]
     for keras_op, np_op in ops_to_test:
-      with self.cached_session():
-        compare_single_input_op_to_numpy(keras_op, np_op, input_shape=(4, 7, 5),
-                                         keras_kwargs={'axis': 1},
-                                         np_kwargs={'axis': 1})
-        compare_single_input_op_to_numpy(keras_op, np_op, input_shape=(4, 7, 5),
-                                         keras_kwargs={'axis': -1},
-                                         np_kwargs={'axis': -1})
-        if 'keepdims' in tf_inspect.getargspec(keras_op).args:
-          compare_single_input_op_to_numpy(keras_op, np_op,
-                                           input_shape=(4, 7, 5),
-                                           keras_kwargs={'axis': 1,
-                                                         'keepdims': True},
-                                           np_kwargs={'axis': 1,
-                                                      'keepdims': True})
+      compare_single_input_op_to_numpy(keras_op, np_op, input_shape=(4, 7, 5),
+                                       keras_kwargs={'axis': 1},
+                                       np_kwargs={'axis': 1})
+      compare_single_input_op_to_numpy(keras_op, np_op, input_shape=(4, 7, 5),
+                                       keras_kwargs={'axis': -1},
+                                       np_kwargs={'axis': -1})
+      if 'keepdims' in tf_inspect.getargspec(keras_op).args:
+        compare_single_input_op_to_numpy(keras_op, np_op,
+                                         input_shape=(4, 7, 5),
+                                         keras_kwargs={'axis': 1,
+                                                       'keepdims': True},
+                                         np_kwargs={'axis': 1,
+                                                    'keepdims': True})
 
   def test_elementwise_ops(self):
     ops_to_test = [
@@ -336,32 +332,28 @@ class BackendLinearAlgebraTest(test.TestCase):
         (keras.backend.exp, np.exp),
     ]
     for keras_op, np_op in ops_to_test:
-      with self.cached_session():
-        compare_single_input_op_to_numpy(keras_op, np_op, input_shape=(4, 7))
+      compare_single_input_op_to_numpy(keras_op, np_op, input_shape=(4, 7))
 
     ops_to_test = [
         (keras.backend.sqrt, np.sqrt),
         (keras.backend.log, np.log),
     ]
     for keras_op, np_op in ops_to_test:
-      with self.cached_session():
-        compare_single_input_op_to_numpy(keras_op, np_op,
-                                         input_shape=(4, 7),
-                                         negative_values=False)
+      compare_single_input_op_to_numpy(keras_op, np_op,
+                                       input_shape=(4, 7),
+                                       negative_values=False)
 
-    with self.cached_session():
-      compare_single_input_op_to_numpy(
-          keras.backend.clip, np.clip,
-          input_shape=(6, 4),
-          keras_kwargs={'min_value': 0.1, 'max_value': 2.4},
-          np_kwargs={'a_min': 0.1, 'a_max': 1.4})
+    compare_single_input_op_to_numpy(
+        keras.backend.clip, np.clip,
+        input_shape=(6, 4),
+        keras_kwargs={'min_value': 0.1, 'max_value': 2.4},
+        np_kwargs={'a_min': 0.1, 'a_max': 1.4})
 
-    with self.cached_session():
-      compare_single_input_op_to_numpy(
-          keras.backend.pow, np.power,
-          input_shape=(6, 4),
-          keras_args=[3],
-          np_args=[3])
+    compare_single_input_op_to_numpy(
+        keras.backend.pow, np.power,
+        input_shape=(6, 4),
+        keras_args=[3],
+        np_args=[3])
 
   def test_two_tensor_ops(self):
     ops_to_test = [
@@ -375,84 +367,82 @@ class BackendLinearAlgebraTest(test.TestCase):
         (keras.backend.minimum, np.minimum),
     ]
     for keras_op, np_op in ops_to_test:
-      with self.cached_session():
-        compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                       input_shape_a=(4, 7),
-                                       input_shape_b=(4, 7))
+      compare_two_inputs_op_to_numpy(keras_op, np_op,
+                                     input_shape_a=(4, 7),
+                                     input_shape_b=(4, 7))
 
   def test_relu(self):
     x = ops.convert_to_tensor([[-4, 0], [2, 7]], 'float32')
-    with self.cached_session():
-      # standard relu
-      relu_op = keras.backend.relu(x)
-      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 7]])
 
-      # alpha (leaky relu used)
-      relu_op = keras.backend.relu(x, alpha=0.5)
-      if not context.executing_eagerly():
-        self.assertTrue('LeakyRelu' in relu_op.name)
-      self.assertAllClose(keras.backend.eval(relu_op), [[-2, 0], [2, 7]])
+    # standard relu
+    relu_op = keras.backend.relu(x)
+    self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 7]])
 
-      # max_value < some elements
-      relu_op = keras.backend.relu(x, max_value=5)
-      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 5]])
+    # alpha (leaky relu used)
+    relu_op = keras.backend.relu(x, alpha=0.5)
+    if not context.executing_eagerly():
+      self.assertTrue('LeakyRelu' in relu_op.name)
+    self.assertAllClose(keras.backend.eval(relu_op), [[-2, 0], [2, 7]])
 
-      # nn.relu6 used
-      relu_op = keras.backend.relu(x, max_value=6)
-      if not context.executing_eagerly():
-        self.assertTrue('Relu6' in relu_op.name)  # uses tf.nn.relu6
-      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 6]])
+    # max_value < some elements
+    relu_op = keras.backend.relu(x, max_value=5)
+    self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 5]])
 
-      # max value > 6
-      relu_op = keras.backend.relu(x, max_value=10)
-      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 7]])
+    # nn.relu6 used
+    relu_op = keras.backend.relu(x, max_value=6)
+    if not context.executing_eagerly():
+      self.assertTrue('Relu6' in relu_op.name)  # uses tf.nn.relu6
+    self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 6]])
 
-      # max value is float
-      relu_op = keras.backend.relu(x, max_value=4.3)
-      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 4.3]])
+    # max value > 6
+    relu_op = keras.backend.relu(x, max_value=10)
+    self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 7]])
 
-      # max value == 0
-      relu_op = keras.backend.relu(x, max_value=0)
-      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [0, 0]])
+    # max value is float
+    relu_op = keras.backend.relu(x, max_value=4.3)
+    self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 4.3]])
 
-      # alpha and max_value
-      relu_op = keras.backend.relu(x, alpha=0.25, max_value=3)
-      self.assertAllClose(keras.backend.eval(relu_op), [[-1, 0], [2, 3]])
+    # max value == 0
+    relu_op = keras.backend.relu(x, max_value=0)
+    self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [0, 0]])
 
-      # threshold
-      relu_op = keras.backend.relu(x, threshold=3)
-      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [0, 7]])
+    # alpha and max_value
+    relu_op = keras.backend.relu(x, alpha=0.25, max_value=3)
+    self.assertAllClose(keras.backend.eval(relu_op), [[-1, 0], [2, 3]])
 
-      # threshold is float
-      relu_op = keras.backend.relu(x, threshold=1.5)
-      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 7]])
+    # threshold
+    relu_op = keras.backend.relu(x, threshold=3)
+    self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [0, 7]])
 
-      # threshold is negative
-      relu_op = keras.backend.relu(x, threshold=-5)
-      self.assertAllClose(keras.backend.eval(relu_op), [[-4, 0], [2, 7]])
+    # threshold is float
+    relu_op = keras.backend.relu(x, threshold=1.5)
+    self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 7]])
 
-      # threshold and max_value
-      relu_op = keras.backend.relu(x, threshold=3, max_value=5)
-      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [0, 5]])
+    # threshold is negative
+    relu_op = keras.backend.relu(x, threshold=-5)
+    self.assertAllClose(keras.backend.eval(relu_op), [[-4, 0], [2, 7]])
 
-      # threshold and alpha
-      relu_op = keras.backend.relu(x, alpha=0.25, threshold=4)
-      self.assertAllClose(keras.backend.eval(relu_op), [[-2, -1], [-0.5, 7]])
+    # threshold and max_value
+    relu_op = keras.backend.relu(x, threshold=3, max_value=5)
+    self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [0, 5]])
 
-      # threshold, alpha, and max_value
-      relu_op = keras.backend.relu(x, alpha=0.25, threshold=4, max_value=5)
-      self.assertAllClose(keras.backend.eval(relu_op), [[-2, -1], [-0.5, 5]])
+    # threshold and alpha
+    relu_op = keras.backend.relu(x, alpha=0.25, threshold=4)
+    self.assertAllClose(keras.backend.eval(relu_op), [[-2, -1], [-0.5, 7]])
+
+    # threshold, alpha, and max_value
+    relu_op = keras.backend.relu(x, alpha=0.25, threshold=4, max_value=5)
+    self.assertAllClose(keras.backend.eval(relu_op), [[-2, -1], [-0.5, 5]])
 
 
 @test_util.run_all_in_graph_and_eager_modes
 class BackendShapeOpsTest(test.TestCase):
 
   def test_reshape(self):
-    with self.cached_session():
-      compare_single_input_op_to_numpy(keras.backend.reshape, np.reshape,
-                                       input_shape=(4, 7),
-                                       keras_args=[(2, 14)],
-                                       np_args=[(2, 14)])
+    compare_single_input_op_to_numpy(keras.backend.reshape, np.reshape,
+                                     input_shape=(4, 7),
+                                     keras_args=[(2, 14)],
+                                     np_args=[(2, 14)])
 
   def test_concatenate(self):
     a = keras.backend.variable(np.ones((1, 2, 3)))
@@ -461,12 +451,11 @@ class BackendShapeOpsTest(test.TestCase):
     self.assertEqual(y.get_shape().as_list(), [1, 2, 5])
 
   def test_permute_dimensions(self):
-    with self.cached_session():
-      compare_single_input_op_to_numpy(keras.backend.permute_dimensions,
-                                       np.transpose,
-                                       input_shape=(4, 7),
-                                       keras_args=[(1, 0)],
-                                       np_args=[(1, 0)])
+    compare_single_input_op_to_numpy(keras.backend.permute_dimensions,
+                                     np.transpose,
+                                     input_shape=(4, 7),
+                                     keras_args=[(1, 0)],
+                                     np_args=[(1, 0)])
 
   def test_resize_images(self):
     height_factor = 2
@@ -541,18 +530,16 @@ class BackendShapeOpsTest(test.TestCase):
     self.assertEqual(y.get_shape().as_list(), [1, 2, 3])
 
   def test_flatten(self):
-    with self.cached_session():
-      compare_single_input_op_to_numpy(keras.backend.flatten,
-                                       np.reshape,
-                                       input_shape=(4, 7, 6),
-                                       np_args=[(4 * 7 * 6,)])
+    compare_single_input_op_to_numpy(keras.backend.flatten,
+                                     np.reshape,
+                                     input_shape=(4, 7, 6),
+                                     np_args=[(4 * 7 * 6,)])
 
   def test_batch_flatten(self):
-    with self.cached_session():
-      compare_single_input_op_to_numpy(keras.backend.batch_flatten,
-                                       np.reshape,
-                                       input_shape=(4, 7, 6),
-                                       np_args=[(4, 7 * 6)])
+    compare_single_input_op_to_numpy(keras.backend.batch_flatten,
+                                     np.reshape,
+                                     input_shape=(4, 7, 6),
+                                     np_args=[(4, 7 * 6)])
 
   def test_temporal_padding(self):
 
@@ -563,12 +550,11 @@ class BackendShapeOpsTest(test.TestCase):
       y[:, padding[0]:-padding[1], :] = x
       return y
 
-    with self.cached_session():
-      compare_single_input_op_to_numpy(keras.backend.temporal_padding,
-                                       ref_op,
-                                       input_shape=(4, 7, 6),
-                                       keras_args=[(2, 3)],
-                                       np_args=[(2, 3)])
+    compare_single_input_op_to_numpy(keras.backend.temporal_padding,
+                                     ref_op,
+                                     input_shape=(4, 7, 6),
+                                     keras_args=[(2, 3)],
+                                     np_args=[(2, 3)])
 
   def test_spatial_2d_padding(self):
 
@@ -586,23 +572,22 @@ class BackendShapeOpsTest(test.TestCase):
         y[:, :, padding[0][0]:-padding[0][1], padding[1][0]:-padding[1][1]] = x
       return y
 
-    with self.cached_session():
-      compare_single_input_op_to_numpy(
-          keras.backend.spatial_2d_padding,
-          ref_op,
-          input_shape=(2, 3, 2, 3),
-          keras_args=[((2, 3), (1, 2))],
-          keras_kwargs={'data_format': 'channels_last'},
-          np_args=[((2, 3), (1, 2))],
-          np_kwargs={'data_format': 'channels_last'})
-      compare_single_input_op_to_numpy(
-          keras.backend.spatial_2d_padding,
-          ref_op,
-          input_shape=(2, 3, 2, 3),
-          keras_args=[((2, 3), (1, 2))],
-          keras_kwargs={'data_format': 'channels_first'},
-          np_args=[((2, 3), (1, 2))],
-          np_kwargs={'data_format': 'channels_first'})
+    compare_single_input_op_to_numpy(
+        keras.backend.spatial_2d_padding,
+        ref_op,
+        input_shape=(2, 3, 2, 3),
+        keras_args=[((2, 3), (1, 2))],
+        keras_kwargs={'data_format': 'channels_last'},
+        np_args=[((2, 3), (1, 2))],
+        np_kwargs={'data_format': 'channels_last'})
+    compare_single_input_op_to_numpy(
+        keras.backend.spatial_2d_padding,
+        ref_op,
+        input_shape=(2, 3, 2, 3),
+        keras_args=[((2, 3), (1, 2))],
+        keras_kwargs={'data_format': 'channels_first'},
+        np_args=[((2, 3), (1, 2))],
+        np_kwargs={'data_format': 'channels_first'})
 
   def test_spatial_3d_padding(self):
 
@@ -629,73 +614,70 @@ class BackendShapeOpsTest(test.TestCase):
           padding[2][0]:-padding[2][1]] = x
       return y
 
-    with self.cached_session():
-      compare_single_input_op_to_numpy(
-          keras.backend.spatial_3d_padding,
-          ref_op,
-          input_shape=(2, 3, 2, 3, 2),
-          keras_args=[((2, 3), (1, 2), (2, 3))],
-          keras_kwargs={'data_format': 'channels_last'},
-          np_args=[((2, 3), (1, 2), (2, 3))],
-          np_kwargs={'data_format': 'channels_last'})
-      compare_single_input_op_to_numpy(
-          keras.backend.spatial_3d_padding,
-          ref_op,
-          input_shape=(2, 3, 2, 3, 2),
-          keras_args=[((2, 3), (1, 2), (2, 3))],
-          keras_kwargs={'data_format': 'channels_first'},
-          np_args=[((2, 3), (1, 2), (2, 3))],
-          np_kwargs={'data_format': 'channels_first'})
+    compare_single_input_op_to_numpy(
+        keras.backend.spatial_3d_padding,
+        ref_op,
+        input_shape=(2, 3, 2, 3, 2),
+        keras_args=[((2, 3), (1, 2), (2, 3))],
+        keras_kwargs={'data_format': 'channels_last'},
+        np_args=[((2, 3), (1, 2), (2, 3))],
+        np_kwargs={'data_format': 'channels_last'})
+    compare_single_input_op_to_numpy(
+        keras.backend.spatial_3d_padding,
+        ref_op,
+        input_shape=(2, 3, 2, 3, 2),
+        keras_args=[((2, 3), (1, 2), (2, 3))],
+        keras_kwargs={'data_format': 'channels_first'},
+        np_args=[((2, 3), (1, 2), (2, 3))],
+        np_kwargs={'data_format': 'channels_first'})
 
 
 @test_util.run_all_in_graph_and_eager_modes
 class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
 
   def test_bias_add(self):
-    with self.cached_session():
-      keras_op = keras.backend.bias_add
-      np_op = np.add
-      compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                     input_shape_a=(4, 7),
-                                     input_shape_b=(7,))
-      compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                     input_shape_a=(4, 3, 7),
-                                     input_shape_b=(7,))
-      compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                     input_shape_a=(4, 3, 5, 7),
-                                     input_shape_b=(7,))
-      compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                     input_shape_a=(4, 3, 5, 2, 7),
-                                     input_shape_b=(7,))
+    keras_op = keras.backend.bias_add
+    np_op = np.add
+    compare_two_inputs_op_to_numpy(keras_op, np_op,
+                                   input_shape_a=(4, 7),
+                                   input_shape_b=(7,))
+    compare_two_inputs_op_to_numpy(keras_op, np_op,
+                                   input_shape_a=(4, 3, 7),
+                                   input_shape_b=(7,))
+    compare_two_inputs_op_to_numpy(keras_op, np_op,
+                                   input_shape_a=(4, 3, 5, 7),
+                                   input_shape_b=(7,))
+    compare_two_inputs_op_to_numpy(keras_op, np_op,
+                                   input_shape_a=(4, 3, 5, 2, 7),
+                                   input_shape_b=(7,))
 
-      with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
-        x = keras.backend.variable((3, 4))
-        b = keras.backend.variable((3, 4))
-        keras.backend.bias_add(x, b)
-      with self.assertRaises(ValueError):
-        x = keras.backend.variable((3, 4))
-        b = keras.backend.variable((4,))
-        keras.backend.bias_add(x, b, data_format='unknown')
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      x = keras.backend.variable((3, 4))
+      b = keras.backend.variable((3, 4))
+      keras.backend.bias_add(x, b)
+    with self.assertRaises(ValueError):
+      x = keras.backend.variable((3, 4))
+      b = keras.backend.variable((4,))
+      keras.backend.bias_add(x, b, data_format='unknown')
 
   def test_bias_add_channels_first(self):
-    with self.cached_session():
 
-      def keras_op(x, b):
-        return keras.backend.bias_add(x, b, data_format='channels_first')
+    def keras_op(x, b):
+      return keras.backend.bias_add(x, b, data_format='channels_first')
 
-      def np_op(x, b):
-        if x.ndim == 3:
-          b = b.reshape((1, b.shape[0], 1))
-        if x.ndim == 4:
-          b = b.reshape((1, b.shape[0], 1, 1))
-        return x + b
+    def np_op(x, b):
+      if x.ndim == 3:
+        b = b.reshape((1, b.shape[0], 1))
+      if x.ndim == 4:
+        b = b.reshape((1, b.shape[0], 1, 1))
+      return x + b
 
-      compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                     input_shape_a=(4, 3, 7),
-                                     input_shape_b=(3,))
-      compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                     input_shape_a=(4, 3, 5, 7),
-                                     input_shape_b=(3,))
+    compare_two_inputs_op_to_numpy(keras_op, np_op,
+                                   input_shape_a=(4, 3, 7),
+                                   input_shape_b=(3,))
+    compare_two_inputs_op_to_numpy(keras_op, np_op,
+                                   input_shape_a=(4, 3, 5, 7),
+                                   input_shape_b=(3,))
 
   def test_pool2d(self):
     val = np.random.random((10, 3, 10, 10))
@@ -855,9 +837,9 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
                                              strides,
                                              output_shape,
                                              'channels_last')
-          with self.cached_session():
-            conv_cf = keras.backend.eval(conv_cf)
-            conv_cl = keras.backend.eval(conv_cl)
+
+          conv_cf = keras.backend.eval(conv_cf)
+          conv_cl = keras.backend.eval(conv_cl)
 
           self.assertAllCloseAccordingToType(
               conv_cf,
@@ -905,9 +887,8 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
                                                   output_shape,
                                                   'channels_last')
 
-    with self.cached_session():
-      local_conv = keras.backend.eval(local_conv)
-      local_conv_dim = keras.backend.eval(local_conv_dim)
+    local_conv = keras.backend.eval(local_conv)
+    local_conv_dim = keras.backend.eval(local_conv_dim)
 
     self.assertAllCloseAccordingToType(local_conv, local_conv_dim)
 
@@ -1063,24 +1044,23 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
         {'go_backwards': False, 'mask': mask},
         {'go_backwards': False, 'mask': mask, 'unroll': True},
     ]
-    with self.cached_session():
-      for i, kwargs in enumerate(kwargs_list):
-        last_output, outputs, new_states = keras.backend.rnn(rnn_fn, inputs,
-                                                             initial_states,
-                                                             **kwargs)
-        # check static shape inference
-        self.assertEqual(last_output.get_shape().as_list(),
+    for i, kwargs in enumerate(kwargs_list):
+      last_output, outputs, new_states = keras.backend.rnn(rnn_fn, inputs,
+                                                           initial_states,
+                                                           **kwargs)
+      # check static shape inference
+      self.assertEqual(last_output.get_shape().as_list(),
+                       [num_samples, output_dim])
+      self.assertEqual(outputs.get_shape().as_list(),
+                       [num_samples, timesteps, output_dim])
+      for state in new_states:
+        self.assertEqual(state.get_shape().as_list(),
                          [num_samples, output_dim])
-        self.assertEqual(outputs.get_shape().as_list(),
-                         [num_samples, timesteps, output_dim])
-        for state in new_states:
-          self.assertEqual(state.get_shape().as_list(),
-                           [num_samples, output_dim])
 
-        last_output_list[i].append(keras.backend.eval(last_output))
-        outputs_list[i].append(keras.backend.eval(outputs))
-        self.assertEqual(len(new_states), 1)
-        state_list[i].append(keras.backend.eval(new_states[0]))
+      last_output_list[i].append(keras.backend.eval(last_output))
+      outputs_list[i].append(keras.backend.eval(outputs))
+      self.assertLen(new_states, 1)
+      state_list[i].append(keras.backend.eval(new_states[0]))
 
       def assert_list_pairwise(z_list, atol=1e-05):
         for (z1, z2) in zip(z_list[1:], z_list[:-1]):
@@ -1162,29 +1142,28 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
         {'go_backwards': False, 'mask': mask},
         {'go_backwards': False, 'mask': mask, 'unroll': True},
     ]
-    with self.cached_session():
-      for i, kwargs in enumerate(kwargs_list):
-        last_output, outputs, new_states = keras.backend.rnn(rnn_fn, inputs,
-                                                             initial_states,
-                                                             **kwargs)
-        # check static shape inference
-        self.assertEqual(last_output.get_shape().as_list(),
-                         [num_samples, output_dim])
-        self.assertEqual(outputs.get_shape().as_list(),
-                         [num_samples, timesteps, output_dim])
-        # for state in new_states:
-        #   self.assertEqual(state.get_shape().as_list(),
-        #                     [num_samples, output_dim])
-        self.assertEqual(new_states[0].get_shape().as_list(),
-                         [num_samples, output_dim])
-        self.assertEqual(new_states[1].get_shape().as_list(),
-                         [num_samples, 2 * output_dim])
+    for i, kwargs in enumerate(kwargs_list):
+      last_output, outputs, new_states = keras.backend.rnn(rnn_fn, inputs,
+                                                           initial_states,
+                                                           **kwargs)
+      # check static shape inference
+      self.assertEqual(last_output.get_shape().as_list(),
+                       [num_samples, output_dim])
+      self.assertEqual(outputs.get_shape().as_list(),
+                       [num_samples, timesteps, output_dim])
+      # for state in new_states:
+      #   self.assertEqual(state.get_shape().as_list(),
+      #                     [num_samples, output_dim])
+      self.assertEqual(new_states[0].get_shape().as_list(),
+                       [num_samples, output_dim])
+      self.assertEqual(new_states[1].get_shape().as_list(),
+                       [num_samples, 2 * output_dim])
 
-        last_output_list[i].append(keras.backend.eval(last_output))
-        outputs_list[i].append(keras.backend.eval(outputs))
-        self.assertEqual(len(new_states), 2)
-        state_list[i].append(keras.backend.eval(new_states[0]))
-        additional_state_list[i].append(keras.backend.eval(new_states[1]))
+      last_output_list[i].append(keras.backend.eval(last_output))
+      outputs_list[i].append(keras.backend.eval(outputs))
+      self.assertLen(new_states, 2)
+      state_list[i].append(keras.backend.eval(new_states[0]))
+      additional_state_list[i].append(keras.backend.eval(new_states[1]))
 
       def assert_list_pairwise(z_list, atol=1e-05):
         for (z1, z2) in zip(z_list[1:], z_list[:-1]):
@@ -1374,53 +1353,52 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
 class TestCTC(test.TestCase):
 
   def test_ctc_decode(self):
-    with self.cached_session():
-      depth = 6
-      seq_len_0 = 5
-      input_prob_matrix_0 = np.asarray(
-          [[0.30999, 0.309938, 0.0679938, 0.0673362, 0.0708352, 0.173908],
-           [0.215136, 0.439699, 0.0370931, 0.0393967, 0.0381581, 0.230517],
-           [0.199959, 0.489485, 0.0233221, 0.0251417, 0.0233289, 0.238763],
-           [0.279611, 0.452966, 0.0204795, 0.0209126, 0.0194803, 0.20655],
-           [0.51286, 0.288951, 0.0243026, 0.0220788, 0.0219297, 0.129878],
-           # Random entry added in at time=5
-           [0.155251, 0.164444, 0.173517, 0.176138, 0.169979, 0.160671]],
-          dtype=np.float32)
+    depth = 6
+    seq_len_0 = 5
+    input_prob_matrix_0 = np.asarray(
+        [[0.30999, 0.309938, 0.0679938, 0.0673362, 0.0708352, 0.173908],
+         [0.215136, 0.439699, 0.0370931, 0.0393967, 0.0381581, 0.230517],
+         [0.199959, 0.489485, 0.0233221, 0.0251417, 0.0233289, 0.238763],
+         [0.279611, 0.452966, 0.0204795, 0.0209126, 0.0194803, 0.20655],
+         [0.51286, 0.288951, 0.0243026, 0.0220788, 0.0219297, 0.129878],
+         # Random entry added in at time=5
+         [0.155251, 0.164444, 0.173517, 0.176138, 0.169979, 0.160671]],
+        dtype=np.float32)
 
-      # len max_time_steps array of batch_size x depth matrices
-      inputs = ([input_prob_matrix_0[t, :][np.newaxis, :]
-                 for t in range(seq_len_0)] +  # Pad to max_time_steps = 8
-                2 * [np.zeros((1, depth), dtype=np.float32)])
+    # len max_time_steps array of batch_size x depth matrices
+    inputs = ([input_prob_matrix_0[t, :][np.newaxis, :]
+               for t in range(seq_len_0)] +  # Pad to max_time_steps = 8
+              2 * [np.zeros((1, depth), dtype=np.float32)])
 
-      inputs = keras.backend.variable(np.asarray(inputs).transpose((1, 0, 2)))
+    inputs = keras.backend.variable(np.asarray(inputs).transpose((1, 0, 2)))
 
-      # batch_size length vector of sequence_lengths
-      input_length = keras.backend.variable(
-          np.array([seq_len_0], dtype=np.int32))
-      # batch_size length vector of negative log probabilities
-      log_prob_truth = np.array([
-          -3.5821197,  # output beam 0
-          -3.777835    # output beam 1
-      ], np.float32)[np.newaxis, :]
+    # batch_size length vector of sequence_lengths
+    input_length = keras.backend.variable(
+        np.array([seq_len_0], dtype=np.int32))
+    # batch_size length vector of negative log probabilities
+    log_prob_truth = np.array([
+        -3.5821197,  # output beam 0
+        -3.777835    # output beam 1
+    ], np.float32)[np.newaxis, :]
 
-      decode_truth = [np.array([1, 0]), np.array([0, 1, 0])]
-      beam_width = 2
-      top_paths = 2
+    decode_truth = [np.array([1, 0]), np.array([0, 1, 0])]
+    beam_width = 2
+    top_paths = 2
 
-      decode_pred_tf, log_prob_pred_tf = keras.backend.ctc_decode(
-          inputs,
-          input_length,
-          greedy=False,
-          beam_width=beam_width,
-          top_paths=top_paths)
+    decode_pred_tf, log_prob_pred_tf = keras.backend.ctc_decode(
+        inputs,
+        input_length,
+        greedy=False,
+        beam_width=beam_width,
+        top_paths=top_paths)
 
-      self.assertEqual(len(decode_pred_tf), top_paths)
-      log_prob_pred = keras.backend.eval(log_prob_pred_tf)
-      for i in range(top_paths):
-        self.assertTrue(
-            np.alltrue(
-                decode_truth[i] == keras.backend.eval(decode_pred_tf[i])))
-      self.assertAllClose(log_prob_truth, log_prob_pred)
+    self.assertEqual(len(decode_pred_tf), top_paths)
+    log_prob_pred = keras.backend.eval(log_prob_pred_tf)
+    for i in range(top_paths):
+      self.assertTrue(
+          np.alltrue(
+              decode_truth[i] == keras.backend.eval(decode_pred_tf[i])))
+    self.assertAllClose(log_prob_truth, log_prob_pred)
 
   @test_util.run_v1_only('b/120545219')
   def test_ctc_batch_cost(self):
@@ -1481,29 +1459,26 @@ class TestCTC(test.TestCase):
 class TestRandomOps(test.TestCase):
 
   def test_random_binomial(self):
-    with self.cached_session():
-      np.random.seed(123)
-      x = keras.backend.random_binomial((1000, 1000), p=0.5)
-      self.assertAllClose(np.mean(keras.backend.eval(x)), 0.5, atol=0.1)
+    np.random.seed(123)
+    x = keras.backend.random_binomial((1000, 1000), p=0.5)
+    self.assertAllClose(np.mean(keras.backend.eval(x)), 0.5, atol=0.1)
 
   def test_truncated_normal(self):
-    with self.cached_session():
-      np.random.seed(123)
-      x = keras.backend.truncated_normal((1000, 1000), mean=0.0, stddev=1.0)
-      y = keras.backend.eval(x)
-      self.assertAllClose(np.mean(y), 0., atol=0.1)
-      self.assertAllClose(np.std(y), 0.88, atol=0.1)
-      self.assertAllClose(np.max(y), 2., atol=0.1)
-      self.assertAllClose(np.min(y), -2., atol=0.1)
+    np.random.seed(123)
+    x = keras.backend.truncated_normal((1000, 1000), mean=0.0, stddev=1.0)
+    y = keras.backend.eval(x)
+    self.assertAllClose(np.mean(y), 0., atol=0.1)
+    self.assertAllClose(np.std(y), 0.88, atol=0.1)
+    self.assertAllClose(np.max(y), 2., atol=0.1)
+    self.assertAllClose(np.min(y), -2., atol=0.1)
 
   def test_string_input(self):
-    with self.cached_session():
-      seq = keras.Sequential([
-          keras.layers.InputLayer(input_shape=(1,), dtype=dtypes.string),
-          keras.layers.Lambda(lambda x: x[0])
-      ])
-      preds = seq.predict([['tensorflow eager']])
-      self.assertEqual(preds.shape, (1,))
+    seq = keras.Sequential([
+        keras.layers.InputLayer(input_shape=(1,), dtype=dtypes.string),
+        keras.layers.Lambda(lambda x: x[0])
+    ])
+    preds = seq.predict([['tensorflow eager']])
+    self.assertEqual(preds.shape, (1,))
 
 
 class BackendGraphTests(test.TestCase):

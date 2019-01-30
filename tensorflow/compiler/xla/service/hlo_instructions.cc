@@ -383,6 +383,15 @@ HloInstructionProto HloAllReduceInstruction::ToProto() const {
   return proto;
 }
 
+bool HloAllReduceInstruction::IsNoop() const {
+  for (auto replica_group : replica_groups()) {
+    if (replica_group.replica_ids().size() != 1) {
+      return false;
+    }
+  }
+  return !all_reduce_id();
+}
+
 std::vector<string> HloAllReduceInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   std::vector<string> result =
@@ -1686,6 +1695,7 @@ HloInstructionProto HloConvolutionInstruction::ToProto() const {
   *proto.mutable_convolution_dimension_numbers() =
       convolution_dimension_numbers_;
   proto.set_feature_group_count(feature_group_count_);
+  proto.set_batch_group_count(batch_group_count_);
   *proto.mutable_precision_config() = precision_config_;
   return proto;
 }
@@ -1700,6 +1710,10 @@ std::vector<string> HloConvolutionInstruction::ExtraAttributesToStringImpl(
                                             convolution_dimension_numbers_)));
   if (feature_group_count_ != 1) {
     extra.push_back(StrCat("feature_group_count=", feature_group_count_));
+  }
+
+  if (batch_group_count_ != 1) {
+    extra.push_back(StrCat("batch_group_count=", batch_group_count_));
   }
 
   string precision_config_string = PrecisionConfigToString(precision_config_);
@@ -1717,6 +1731,9 @@ bool HloConvolutionInstruction::IdenticalSlowPath(
   const auto& casted_other =
       static_cast<const HloConvolutionInstruction&>(other);
   if (feature_group_count_ != other.feature_group_count()) {
+    return false;
+  }
+  if (batch_group_count_ != other.batch_group_count()) {
     return false;
   }
   return protobuf_util::ProtobufEquals(window(), casted_other.window()) &&
@@ -1837,6 +1854,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
       opaque_(opaque.begin(), opaque.end()),
       feature_group_count_(1),
+      batch_group_count_(1),
       layout_constrained_(false) {
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -1851,6 +1869,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
       opaque_(opaque.begin(), opaque.end()),
       feature_group_count_(1),
+      batch_group_count_(1),
       layout_constrained_(true),
       operand_shapes_with_layout_(operand_shapes_with_layout.begin(),
                                   operand_shapes_with_layout.end()) {
@@ -1871,6 +1890,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
   proto.set_custom_call_target(custom_call_target_);
   proto.set_custom_call_opaque(opaque_);
   proto.set_feature_group_count(feature_group_count_);
+  proto.set_batch_group_count(batch_group_count_);
   if (layout_constrained()) {
     proto.set_constrain_layout(true);
     for (const Shape& shape : operand_shapes_with_layout_) {
@@ -1893,6 +1913,9 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
   }
   if (feature_group_count_ != 1) {
     extra.push_back(StrCat("feature_group_count=", feature_group_count_));
+  }
+  if (batch_group_count_ != 1) {
+    extra.push_back(StrCat("batch_group_count=", batch_group_count_));
   }
   // By contract, we print the custom call target even if
   // options.print_subcomputation_mode() == kOff, because the call target is not
@@ -1937,6 +1960,9 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
   if (feature_group_count_ != casted_other.feature_group_count_) {
     return false;
   }
+  if (batch_group_count_ != casted_other.batch_group_count_) {
+    return false;
+  }
   return custom_call_target_ == casted_other.custom_call_target_ &&
          opaque_ == casted_other.opaque_;
 }
@@ -1954,6 +1980,7 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
     cloned->set_convolution_dimension_numbers(*convolution_dimension_numbers_);
   }
   cloned->set_feature_group_count(feature_group_count_);
+  cloned->set_batch_group_count(batch_group_count_);
   return std::move(cloned);
 }
 

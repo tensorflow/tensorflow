@@ -619,8 +619,9 @@ class _GraphTensorArrayV2(object):
       value = ops.convert_to_tensor(value, name="value")
       if self._infer_shape and not context.executing_eagerly():
         self._merge_element_shape(value.shape[1:])
+      element_shape = self._element_shape[0] if self._element_shape else None
       flow_out = list_ops.tensor_list_scatter(
-          tensor=value, indices=indices, element_shape=-1)
+          tensor=value, indices=indices, element_shape=element_shape)
       return build_ta_with_new_flow(self, flow_out)
 
   @tf_should_use.should_use_result

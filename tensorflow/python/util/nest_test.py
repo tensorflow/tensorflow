@@ -510,30 +510,28 @@ class NestTest(parameterized.TestCase, test.TestCase):
   def testAssertShallowStructure(self):
     inp_ab = ["a", "b"]
     inp_abc = ["a", "b", "c"]
-    expected_message = (
-        "The two structures don't have the same sequence length. Input "
-        "structure has length 2, while shallow structure has length 3.")
-    with self.assertRaisesRegexp(ValueError, expected_message):
-      nest.assert_shallow_structure(inp_abc, inp_ab)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        nest._INPUT_TREE_SMALLER_THAN_SHALLOW_TREE.format(
+            shallow_size=len(inp_abc),
+            input_size=len(inp_ab))):
+      nest.assert_shallow_structure(shallow_tree=inp_abc, input_tree=inp_ab)
 
     inp_ab1 = [(1, 1), (2, 2)]
     inp_ab2 = [[1, 1], [2, 2]]
-    expected_message = (
-        "The two structures don't have the same sequence type. Input structure "
-        "has type <(type|class) 'tuple'>, while shallow structure has type "
-        "<(type|class) 'list'>.")
-    with self.assertRaisesRegexp(TypeError, expected_message):
+    with self.assertRaisesWithLiteralMatch(
+        TypeError,
+        nest._STRUCTURES_HAVE_MISMATCHING_TYPES.format(
+            shallow_type=type(inp_ab2[0]),
+            input_type=type(inp_ab1[0]))):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
     nest.assert_shallow_structure(inp_ab2, inp_ab1, check_types=False)
 
     inp_ab1 = {"a": (1, 1), "b": {"c": (2, 2)}}
     inp_ab2 = {"a": (1, 1), "b": {"d": (2, 2)}}
-    expected_message = (
-        r"The two structures don't have the same keys. Input "
-        r"structure has keys \['c'\], while shallow structure has "
-        r"keys \['d'\].")
-
-    with self.assertRaisesRegexp(ValueError, expected_message):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        nest._SHALLOW_TREE_HAS_INVALID_KEYS.format(["d"])):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
 
     inp_ab = collections.OrderedDict([("a", 1), ("b", (2, 3))])
@@ -719,7 +717,9 @@ class NestTest(parameterized.TestCase, test.TestCase):
     # Non-equal dicts.
     inp_val = dict(a=2, b=3)
     inp_ops = dict(a=dict(add=1, mul=2), c=dict(add=2, mul=3))
-    with self.assertRaisesRegexp(ValueError, "same keys"):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        nest._SHALLOW_TREE_HAS_INVALID_KEYS.format(["b"])):
       nest.map_structure_up_to(
           inp_val,
           lambda val, ops: (val + ops["add"]) * ops["mul"], inp_val, inp_ops)
@@ -736,7 +736,9 @@ class NestTest(parameterized.TestCase, test.TestCase):
     # Non-equal dict/mapping.
     inp_val = dict(a=2, b=3)
     inp_ops = _CustomMapping(a=dict(add=1, mul=2), c=dict(add=2, mul=3))
-    with self.assertRaisesRegexp(ValueError, "same keys"):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        nest._SHALLOW_TREE_HAS_INVALID_KEYS.format(["b"])):
       nest.map_structure_up_to(
           inp_val,
           lambda val, ops: (val + ops["add"]) * ops["mul"], inp_val, inp_ops)
@@ -849,12 +851,12 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(expected, result)
 
   @parameterized.named_parameters(
-      ("tuples", (1, 2), (3, 4, 5), ValueError),
+      ("tuples", (1, 2, 3), (4, 5), ValueError),
       ("dicts", {"a": 1}, {"b": 2}, ValueError),
       ("mixed", (1, 2), [3, 4], TypeError),
       ("nested",
-       {"a": [2, 3], "b": [1, 3]},
-       {"b": [5, 6, 7], "a": [8, 9]},
+       {"a": [2, 3, 4], "b": [1, 3]},
+       {"b": [5, 6], "a": [8, 9]},
        ValueError
       ))
   def testMapWithPathsIncompatibleStructures(self, s1, s2, error_type):
@@ -884,13 +886,14 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(expected, result)
 
   @parameterized.named_parameters([
-      dict(testcase_name="Tuples", s1=(1, 2), s2=(3, 4, 5),
+      dict(testcase_name="Tuples", s1=(1, 2, 3), s2=(4, 5),
            error_type=ValueError),
       dict(testcase_name="Dicts", s1={"a": 1}, s2={"b": 2},
            error_type=ValueError),
       dict(testcase_name="Mixed", s1=(1, 2), s2=[3, 4], error_type=TypeError),
       dict(testcase_name="Nested",
-           s1={"a": [2, 3], "b": [1, 3]}, s2={"b": [5, 6, 7], "a": [8, 9]},
+           s1={"a": [2, 3, 4], "b": [1, 3]},
+           s2={"b": [5, 6], "a": [8, 9]},
            error_type=ValueError)
   ])
   def testMapWithTuplePathsIncompatibleStructures(self, s1, s2, error_type):

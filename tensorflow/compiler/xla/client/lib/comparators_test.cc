@@ -103,15 +103,14 @@ XLA_TEST_F(ComparatorsTest, CompareGtBF16) {
   ComputeAndCompareR1<bool>(builder(), expected, {});
 }
 
-// The interpreter doesn't support S16, and F16 results in comparisons with S16.
-XLA_TEST_F(ComparatorsTest, DISABLED_ON_INTERPRETER(CompareLtF16)) {
+XLA_TEST_F(ComparatorsTest, CompareLtF16) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<F16>(this, /*compare_less_than=*/true,
                                      &expected);
   ComputeAndCompareR1<bool>(builder(), expected, {});
 }
 
-XLA_TEST_F(ComparatorsTest, DISABLED_ON_INTERPRETER(CompareGtF16)) {
+XLA_TEST_F(ComparatorsTest, CompareGtF16) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<F16>(this, /*compare_less_than=*/false,
                                      &expected);

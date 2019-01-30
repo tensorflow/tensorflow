@@ -34,37 +34,104 @@ class ExhaustiveF32ElementwiseOpTest
     int64 begin, end;
     std::tie(begin, end) = GetParam();
     int64 input_size = end - begin;
+
+    if (begin >= known_incorrect_range.first &&
+        end <= known_incorrect_range.second) {
+      LOG(INFO) << absl::StreamFormat(
+          "Skipping this shard, as the range under test, [%d, %d), falls "
+          "entirely within the known-incorrect range [%d, %d).",
+          begin, end, known_incorrect_range.first,
+          known_incorrect_range.second);
+      return;
+    }
+
     LOG(INFO) << "Checking range [" << begin << ", " << end << ")";
 
     XlaBuilder builder(TestName());
 
-    Literal input_literal =
-        LiteralUtil::CreateFromDimensions(F32, {input_size});
-    for (int64 i = begin; i < end; i++) {
+    auto ith_input_elem = [&](int64 i) -> float {
+      i += begin;
+      // If the operation is known to be buggy on a specific input clamp that
+      // input to 0 under the assumption that the op is at least correct on 0.
       if (i >= known_incorrect_range.first &&
           i < known_incorrect_range.second) {
-        // If the operation is known to be buggy on a specific input clamp that
-        // input to 0 under the assumption that the op is at least correct on 0.
-        input_literal.Set({i - begin}, 0.0f);
-      } else {
-        input_literal.Set({i - begin}, absl::bit_cast<float, int>(i));
+        return 0;
       }
+      return absl::bit_cast<float, int32>(i);
+    };
+
+    Literal input_literal =
+        LiteralUtil::CreateFromDimensions(F32, {input_size});
+    absl::Span<float> input_arr = input_literal.data<float>();
+    for (int64 i = 0; i < input_size; i++) {
+      input_arr[i] = ith_input_elem(i);
     }
-
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
-                            client_->TransferToServer(input_literal));
-
     auto input = Parameter(&builder, 0, input_literal.shape(), "input");
     enqueue_op(&builder, input);
+    TF_ASSERT_OK_AND_ASSIGN(XlaComputation comp, builder.Build());
 
-    std::vector<float> expected_result;
-    expected_result.reserve(input_size);
-    for (int64 i = 0; i < input_size; i++) {
-      expected_result.push_back(evaluate_op(input_literal.Get<float>({i})));
+    // Build and run the computation using the LocalClient API, rather than the
+    // plain Client API, which is used by ClientLibraryTestBase.  This is
+    // because the plain Client API results does more memcpys to/from Literals,
+    // and that's slow given that we're touching a lot of data here.
+    //
+    // Copy debug options from ClientLibraryTestBase.  In particular, we're
+    // interested in disabling constant folding.
+    ExecutableBuildOptions build_opts;
+    *build_opts.mutable_debug_options() = *mutable_debug_options();
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto executable,
+        client_->Compile(comp, {&input_literal.shape()}, build_opts));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        ScopedShapedBuffer input_data,
+        client_->LiteralToShapedBuffer(input_literal, /*device_ordinal=*/0));
+
+    ExecutableRunOptions run_opts;
+    run_opts.set_allocator(client_->backend().memory_allocator());
+    run_opts.set_intra_op_thread_pool(
+        client_->backend().eigen_intra_op_thread_pool_device());
+    TF_ASSERT_OK_AND_ASSIGN(ScopedShapedBuffer result,
+                            executable->Run({&input_data}, run_opts));
+
+    TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                            client_->ShapedBufferToLiteral(result));
+
+    // We essentially reimplement LiteralTestUtil::Near here because
+    //  a) this streamlined implementation is much faster, and
+    //  b) we can print out better error messages (namely, we can print out
+    //     which floating-point value input failed, while LiteralTestUtil::Near
+    //     can only print out the input index that failed).
+    absl::Span<float> result_arr = result_literal.data<float>();
+    ASSERT_EQ(result_arr.size(), input_arr.size());
+    int64 mismatches = 0;
+    for (int64 i = 0; i < input_arr.size(); ++i) {
+      float input = ith_input_elem(i);
+      float expected = evaluate_op(input);
+      float actual = result_arr[i];
+      float abs_err = std::abs(expected - actual);
+      float rel_err = abs_err / std::abs(expected);
+      if (abs_err < error_spec_.abs || rel_err < error_spec_.rel ||
+          (std::isnan(expected) && std::isnan(actual)) ||
+          (std::isinf(expected) && std::isinf(actual) &&
+           (expected > 0) == (actual > 0))) {
+        // Successful match!  Nothing to do.
+      } else {
+        constexpr int64 kMaxMismatchesPrinted = 1000;
+        mismatches++;
+        if (mismatches < kMaxMismatchesPrinted || VLOG_IS_ON(2)) {
+          LOG(ERROR) << "Mismatch on " << input << " (0x"
+                     << absl::StrCat(absl::Hex(input, absl::kZeroPad8))
+                     << "). Expected " << expected << ", but got " << actual;
+        }
+        if (mismatches == kMaxMismatchesPrinted && !VLOG_IS_ON(2)) {
+          LOG(ERROR) << "Not printing any more mismatches; pass "
+                        "--vmodule=exhaustive_f32_elementwise_op_test=2 to see "
+                        "all of them.";
+        }
+      }
     }
-
-    ComputeAndCompareR1<float>(&builder, expected_result, {input_data.get()},
-                               error_spec_);
+    EXPECT_EQ(mismatches, 0);
   }
 };
 

@@ -237,24 +237,17 @@ Status HloCostAnalysis::HandleDomain(const HloInstruction* domain) {
 
 Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   const Shape& lhs_shape = dot->operand(0)->shape();
-  const Shape& rhs_shape = dot->operand(1)->shape();
+  const Shape& dot_shape = dot->shape();
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   // Count of elements along the reduction dimension (last dimension for the
   // rhs).
-  int64 reduction_width =
-      lhs_shape.dimensions(dnums.lhs_contracting_dimensions(0));
-  // First divide by reduction width before multiplying by rhs elements to avoid
-  // overflow.
-  int64 fma_count;
-  if (reduction_width == 0) {
-    fma_count = 0;
-  } else {
-    fma_count = (ShapeUtil::ElementsIn(lhs_shape) / reduction_width) *
-                ShapeUtil::ElementsIn(rhs_shape);
+  int64 reduction_width = 1;
+  for (auto dim : dnums.lhs_contracting_dimensions()) {
+    reduction_width *= lhs_shape.dimensions(dim);
   }
-
-  // We count an FMA operation as 2 floating point operations.
-  current_properties_[kFlopsKey] = kFmaFlops * fma_count;
+  // Each output elment requires reduction_widht FMA operations.
+  current_properties_[kFlopsKey] =
+      kFmaFlops * ShapeUtil::ElementsIn(dot_shape) * reduction_width;
   return Status::OK();
 }
 
@@ -531,7 +524,8 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
   }
 
   const int64 fma_count = (input_feature / convolution->feature_group_count()) *
-                          output_feature * batch *
+                          output_feature *
+                          (batch / convolution->batch_group_count()) *
                           Product(valid_position_counts);
   current_properties_[kFlopsKey] = fma_count * kFmaFlops;
   return Status::OK();
@@ -574,6 +568,10 @@ Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
 }
 
 Status HloCostAnalysis::HandleCollectivePermute(const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleReplicaId(const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
 

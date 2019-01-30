@@ -110,7 +110,7 @@ See the documentation for `tf.contrib.quantize` and [TensorFlow Lite](../lite/).
 
 ## Quantized accuracy results
 
-The following are results of trainiing some popular CNN models (Mobilenet-v1,
+The following are results of training some popular CNN models (Mobilenet-v1,
 Mobilenet-v2, and Inception-v3) using this tool:
 
 <figure>

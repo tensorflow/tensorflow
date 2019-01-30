@@ -99,9 +99,9 @@ _LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/stat_summarizer.h"
-#include "tensorflow/contrib/tensorrt/convert/convert_graph.h"
-#include "tensorflow/contrib/tensorrt/convert/utils.h"
-#include "tensorflow/contrib/tensorrt/test/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/test_utils.h"
 %}
 
 %ignoreall

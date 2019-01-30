@@ -59,8 +59,6 @@ class LibHDFS {
   std::function<hdfsBuilder*()> hdfsNewBuilder;
   std::function<void(hdfsBuilder*, const char*)> hdfsBuilderSetNameNode;
   std::function<int(const char*, char**)> hdfsConfGetStr;
-  std::function<void(hdfsBuilder*, const char* kerbTicketCachePath)>
-      hdfsBuilderSetKerbTicketCachePath;
   std::function<int(hdfsFS, hdfsFile)> hdfsCloseFile;
   std::function<tSize(hdfsFS, hdfsFile, tOffset, void*, tSize)> hdfsPread;
   std::function<tSize(hdfsFS, hdfsFile, const void*, tSize)> hdfsWrite;
@@ -88,7 +86,6 @@ class LibHDFS {
       BIND_HDFS_FUNC(hdfsNewBuilder);
       BIND_HDFS_FUNC(hdfsBuilderSetNameNode);
       BIND_HDFS_FUNC(hdfsConfGetStr);
-      BIND_HDFS_FUNC(hdfsBuilderSetKerbTicketCachePath);
       BIND_HDFS_FUNC(hdfsCloseFile);
       BIND_HDFS_FUNC(hdfsPread);
       BIND_HDFS_FUNC(hdfsWrite);
@@ -167,13 +164,6 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
     hdfs_->hdfsBuilderSetNameNode(builder, "default");
   } else {
     hdfs_->hdfsBuilderSetNameNode(builder, nn.c_str());
-  }
-  // KERB_TICKET_CACHE_PATH will be deleted in the future, Because KRB5CCNAME is
-  // the build in environment variable of Kerberos, so KERB_TICKET_CACHE_PATH
-  // and related code are unnecessary.
-  char* ticket_cache_path = getenv("KERB_TICKET_CACHE_PATH");
-  if (ticket_cache_path != nullptr) {
-    hdfs_->hdfsBuilderSetKerbTicketCachePath(builder, ticket_cache_path);
   }
   *fs = hdfs_->hdfsBuilderConnect(builder);
   if (*fs == nullptr) {

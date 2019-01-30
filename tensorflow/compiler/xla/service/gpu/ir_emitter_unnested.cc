@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstring>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -2080,12 +2081,36 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
   return Status::OK();
 }
 
+namespace {
+
+// Returns true if the fusion contains any instruction that is likely
+// translated to complex LLVM IR, such as loops, and prevent vectorization.
+bool MayPreventVectorization(const HloInstruction& fusion_hlo) {
+  CHECK_EQ(fusion_hlo.opcode(), HloOpcode::kFusion);
+  return absl::c_any_of(
+      fusion_hlo.fused_instructions_computation()->instructions(),
+      [&](const HloInstruction* instr) {
+        switch (instr->opcode()) {
+          case HloOpcode::kReduce:
+          case HloOpcode::kReduceWindow:
+          case HloOpcode::kSort:
+          case HloOpcode::kDot:
+            return true;
+          default:
+            return false;
+        }
+      });
+}
+
+}  // namespace
+
 Status IrEmitterUnnested::EmitTargetElementLoop(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator) {
   int unroll_factor = 1;
   // Unfused elementwise operations are usually memory bound, unroll them.
-  if (hlo.IsElementwise() || hlo.opcode() == HloOpcode::kFusion) {
+  if (hlo.IsElementwise() ||
+      (hlo.opcode() == HloOpcode::kFusion && !MayPreventVectorization(hlo))) {
     unroll_factor = ComputeMaxUnrollFactor(&hlo);
   }
 

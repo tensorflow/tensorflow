@@ -85,6 +85,7 @@ using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
 using reference_ops::StridedSlice;
+using reference_ops::Sub16;
 using reference_ops::Transpose;
 
 // TODO(b/80247582) Remove this constant.
@@ -5050,6 +5051,14 @@ inline void Floor(const RuntimeShape& input_shape, const float* input_data,
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   output_map.array() = Eigen::floor(input_map.array());
+}
+
+inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Ceil");
+  auto input_map = MapAsVector(input_data, input_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
+  output_map.array() = Eigen::ceil(input_map.array());
 }
 
 #ifdef USE_NEON

@@ -10,7 +10,7 @@ tf_module {
   }
   member_method {
     name: "assert_equal_graph_def"
-    argspec: "args=[\'actual\', \'expected\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'expected\', \'actual\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "benchmark_config"

@@ -344,6 +344,13 @@ config_setting(
 )
 
 config_setting(
+    name = "using_rocm_hipcc",
+    define_values = {
+        "using_rocm_hipcc": "true",
+    },
+)
+
+config_setting(
     name = "with_mpi_support",
     values = {"define": "with_mpi_support=true"},
     visibility = ["//visibility:public"],
@@ -385,6 +392,7 @@ package_group(
         "-//third_party/tensorflow/python/estimator",
         "//learning/deepmind/...",
         "//learning/meta_rank/...",
+        "//platforms/performance/autograppler/...",
         "//tensorflow/...",
         "//tensorflow_estimator/contrib/...",
         "//tensorflow_fold/llgtm/...",

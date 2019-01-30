@@ -27,6 +27,7 @@ import tempfile
 import threading
 import unittest
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import summary_pb2
@@ -88,6 +89,23 @@ class Counter(keras.callbacks.Callback):
     return _call_and_count
 
 
+def _get_numpy():
+  return np.ones((10, 10)), np.ones((10, 1))
+
+
+def _get_sequence():
+
+  class MySequence(keras.utils.data_utils.Sequence):
+
+    def __getitem__(self, _):
+      return np.ones((2, 10)), np.ones((2, 1))
+
+    def __len__(self):
+      return 5
+
+  return MySequence(), None
+
+
 @keras_parameterized.run_with_all_model_types
 @keras_parameterized.run_all_keras_modes
 class CallbackCountsTest(keras_parameterized.TestCase):
@@ -113,8 +131,10 @@ class CallbackCountsTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     return model
 
-  def test_callback_hooks_are_called_in_fit(self):
-    x, y = np.ones((10, 10)), np.ones((10, 1))
+  @parameterized.named_parameters(('with_numpy', _get_numpy()),
+                                  ('with_sequence', _get_sequence()))
+  def test_callback_hooks_are_called_in_fit(self, data):
+    x, y = data
     val_x, val_y = np.ones((4, 10)), np.ones((4, 1))
 
     model = self._get_model()
@@ -147,8 +167,10 @@ class CallbackCountsTest(keras_parameterized.TestCase):
             'on_train_end': 1
         })
 
-  def test_callback_hooks_are_called_in_evaluate(self):
-    x, y = np.ones((10, 10)), np.ones((10, 1))
+  @parameterized.named_parameters(('with_numpy', _get_numpy()),
+                                  ('with_sequence', _get_sequence()))
+  def test_callback_hooks_are_called_in_evaluate(self, data):
+    x, y = data
 
     model = self._get_model()
     counter = Counter()
@@ -161,8 +183,10 @@ class CallbackCountsTest(keras_parameterized.TestCase):
             'on_test_end': 1
         })
 
-  def test_callback_hooks_are_called_in_predict(self):
-    x = np.ones((10, 10))
+  @parameterized.named_parameters(('with_numpy', _get_numpy()),
+                                  ('with_sequence', _get_sequence()))
+  def test_callback_hooks_are_called_in_predict(self, data):
+    x = data[0]
 
     model = self._get_model()
     counter = Counter()
@@ -561,6 +585,29 @@ class KerasCallbacksTest(test.TestCase):
             optimizer=keras.optimizers.SGD(lr=0.1))
         return model
 
+      # TODO(psv): Make sure the callback works correctly when min_delta is
+      # set as 0. Test fails when the order of this callback and assertion is
+      # interchanged.
+      model = make_model()
+      cbks = [
+          keras.callbacks.ReduceLROnPlateau(
+              monitor='val_loss',
+              factor=0.1,
+              min_delta=0,
+              patience=1,
+              cooldown=5)
+      ]
+      model.fit(
+          x_train,
+          y_train,
+          batch_size=BATCH_SIZE,
+          validation_data=(x_test, y_test),
+          callbacks=cbks,
+          epochs=5,
+          verbose=0)
+      self.assertAllClose(
+          float(keras.backend.get_value(model.optimizer.lr)), 0.1, atol=1e-4)
+
       model = make_model()
       # This should reduce the LR after the first epoch (due to high epsilon).
       cbks = [
@@ -578,31 +625,9 @@ class KerasCallbacksTest(test.TestCase):
           validation_data=(x_test, y_test),
           callbacks=cbks,
           epochs=5,
-          verbose=0)
-      self.assertAllClose(
-          float(keras.backend.get_value(model.optimizer.lr)),
-          0.01,
-          atol=1e-4)
-
-      model = make_model()
-      cbks = [
-          keras.callbacks.ReduceLROnPlateau(
-              monitor='val_loss',
-              factor=0.1,
-              min_delta=0,
-              patience=1,
-              cooldown=5)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=5,
           verbose=2)
       self.assertAllClose(
-          float(keras.backend.get_value(model.optimizer.lr)), 0.1, atol=1e-4)
+          float(keras.backend.get_value(model.optimizer.lr)), 0.01, atol=1e-4)
 
   def test_ReduceLROnPlateau_patience(self):
 
@@ -1018,7 +1043,7 @@ class KerasCallbacksTest(test.TestCase):
       def close(self):
         pass
 
-    def _init_writer(obj):
+    def _init_writer(obj, _):
       obj.writer = FileWriterStub(obj.log_dir)
 
     np.random.seed(1337)

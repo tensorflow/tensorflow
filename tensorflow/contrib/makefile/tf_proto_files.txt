@@ -43,6 +43,7 @@ tensorflow/core/protobuf/rewriter_config.proto
 tensorflow/core/protobuf/saver.proto
 tensorflow/core/protobuf/tensor_bundle.proto
 tensorflow/core/protobuf/tensorflow_server.proto
+tensorflow/core/protobuf/verifier_config.proto
 tensorflow/core/util/event.proto
 tensorflow/core/util/memmapped_file_system.proto
 tensorflow/core/util/saved_tensor_slice.proto

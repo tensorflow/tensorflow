@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
@@ -202,6 +203,10 @@ Status GetWindowedOutputSizeFromDims(
 
 Status UnchangedShape(shape_inference::InferenceContext* c) {
   c->set_output(0, c->input(0));
+  auto* handle_data = c->input_handle_shapes_and_types(0);
+  if (handle_data != nullptr) {
+    c->set_output_handle_shapes_and_types(0, *handle_data);
+  }
   return Status::OK();
 }
 
@@ -498,7 +503,12 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
 
   std::vector<int64> explicit_paddings;
   if (supports_explicit_padding) {
-    TF_RETURN_IF_ERROR(c->GetAttr("explicit_paddings", &explicit_paddings));
+    Status s = c->GetAttr("explicit_paddings", &explicit_paddings);
+    // Use the default value, which is an empty list, if the attribute is not
+    // found. Otherwise return the error to the caller.
+    if (!s.ok() && !errors::IsNotFound(s)) {
+      return s;
+    }
     TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
                                          /*num_dims=*/4, data_format));
   } else {

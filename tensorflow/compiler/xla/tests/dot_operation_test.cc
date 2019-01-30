@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
+#include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -919,8 +920,9 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSClassicMM) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto start_constant = ConstantR1<int32>(&builder, {1, 0});
-  auto dynamic_slice = DynamicSlice(lhs_constant, start_constant, {1, 6});
+  auto one = ConstantR0<int32>(&builder, 1);
+  auto zero = ConstantR0<int32>(&builder, 0);
+  auto dynamic_slice = DynamicSlice(lhs_constant, {one, zero}, {1, 6});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
@@ -946,8 +948,9 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSClassicMM) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto start_constant = ConstantR1<int32>(&builder, {0, 1});
-  auto dynamic_slice = DynamicSlice(rhs_constant, start_constant, {6, 1});
+  auto zero = ConstantR0<int32>(&builder, 0);
+  auto one = ConstantR0<int32>(&builder, 1);
+  auto dynamic_slice = DynamicSlice(rhs_constant, {zero, one}, {6, 1});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
@@ -975,8 +978,9 @@ XLA_TEST_F(DotOperationTest,
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto start_constant = ConstantR1<int32>(&builder, {0, 1});
-  auto dynamic_slice = DynamicSlice(lhs_constant, start_constant, {6, 1});
+  auto zero = ConstantR0<int32>(&builder, 0);
+  auto one = ConstantR0<int32>(&builder, 1);
+  auto dynamic_slice = DynamicSlice(lhs_constant, {zero, one}, {6, 1});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(0);
@@ -1002,8 +1006,9 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSReverseMM) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto start_constant = ConstantR1<int32>(&builder, {1, 0});
-  auto dynamic_slice = DynamicSlice(rhs_constant, start_constant, {1, 6});
+  auto zero = ConstantR0<int32>(&builder, 0);
+  auto one = ConstantR0<int32>(&builder, 1);
+  auto dynamic_slice = DynamicSlice(rhs_constant, {one, zero}, {1, 6});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(0);
@@ -1034,8 +1039,9 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSRows) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto start_constant = ConstantR1<int32>(&builder, {0, 1});
-  auto dynamic_slice = DynamicSlice(lhs_constant, start_constant, {6, 1});
+  auto zero = ConstantR0<int32>(&builder, 0);
+  auto one = ConstantR0<int32>(&builder, 1);
+  auto dynamic_slice = DynamicSlice(lhs_constant, {zero, one}, {6, 1});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(0);
@@ -1066,8 +1072,9 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSRows) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto start_constant = ConstantR1<int32>(&builder, {0, 1});
-  auto dynamic_slice = DynamicSlice(rhs_constant, start_constant, {6, 1});
+  auto zero = ConstantR0<int32>(&builder, 0);
+  auto one = ConstantR0<int32>(&builder, 1);
+  auto dynamic_slice = DynamicSlice(rhs_constant, {zero, one}, {6, 1});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(0);
@@ -1090,8 +1097,9 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSCols) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto start_constant = ConstantR1<int32>(&builder, {1, 0});
-  auto dynamic_slice = DynamicSlice(lhs_constant, start_constant, {1, 6});
+  auto zero = ConstantR0<int32>(&builder, 0);
+  auto one = ConstantR0<int32>(&builder, 1);
+  auto dynamic_slice = DynamicSlice(lhs_constant, {one, zero}, {1, 6});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
@@ -1114,8 +1122,9 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSCols) {
   XlaBuilder builder(TestName());
   auto lhs_constant = ConstantR2FromArray2D(&builder, *constant_lhs_array);
   auto rhs_constant = ConstantR2FromArray2D(&builder, *constant_rhs_array);
-  auto start_constant = ConstantR1<int32>(&builder, {1, 0});
-  auto dynamic_slice = DynamicSlice(rhs_constant, start_constant, {1, 6});
+  auto zero = ConstantR0<int32>(&builder, 0);
+  auto one = ConstantR0<int32>(&builder, 1);
+  auto dynamic_slice = DynamicSlice(rhs_constant, {one, zero}, {1, 6});
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
@@ -1149,6 +1158,43 @@ XLA_TEST_F(DotOperationTest, DotRank2AndRank2NonDefaultContractionDims) {
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
+using EinsumParamType =
+    std::tuple<std::vector<int64>, std::vector<int64>, string>;
+class EinsumTest : public DotOperationTest,
+                   public ::testing::WithParamInterface<EinsumParamType> {};
+XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
+  XlaBuilder builder(TestName());
+  auto x = AddParam(
+      MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<0>(GetParam())))
+          .ValueOrDie(),
+      &builder);
+  auto y = AddParam(
+      MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<1>(GetParam())))
+          .ValueOrDie(),
+      &builder);
+  Einsum(x, y, std::get<2>(GetParam()));
+  ComputeAndCompare(&builder, {}, ErrorSpec{1e-3, 1e-3});
+}
+
+std::vector<EinsumParamType> GetEinsumTestCases() {
+  using v = std::vector<int64>;
+  using p = EinsumParamType;
+  std::vector<p> test_cases = {
+      p{v{5, 6}, v{6, 7}, "mk,kn->mn"},
+      p{v{5, 6}, v{6, 7}, "mk,kn->nm"},
+      p{v{5, 6, 11}, v{6, 11, 7}, "mkB,kBn->nmB"},
+      p{v{31, 55, 11}, v{55, 11, 29}, "mkB,kBn->nmB"},
+      p{v{31, 55, 11}, v{55, 11, 29}, "mkB,kBn->Bnm"},
+      p{v{8, 55, 11, 3}, v{55, 11, 3, 29}, "mkBC,kBCn->BCnm"},
+      p{v{5, 6}, v{6, 7}, "ab,cd->dcba"},
+      p{v{6}, v{6, 7}, "b,bc->c"},
+  };
+  return test_cases;
+}
+
+INSTANTIATE_TEST_CASE_P(Einsum, EinsumTest,
+                        ::testing::ValuesIn(GetEinsumTestCases()));
+
 class DotOperationTextTest : public HloTestBase {};
 
 XLA_TEST_F(DotOperationTextTest, DotReorderedDotDims) {
@@ -1179,6 +1225,36 @@ ENTRY %test {
 )";
 
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-3, 1e-3}));
+}
+
+XLA_TEST_F(DotOperationTextTest, DotWithNoDnums) {
+  absl::string_view hlo_string =
+      R"(
+HloModule DotWithNoDnums
+
+ENTRY %test {
+  %lhs = f32[2,3]{1,0} parameter(0)
+  %rhs = f32[4,5]{1,0} parameter(1)
+  ROOT %dot = f32[2,3,4,5]{3,2,1,0} dot(%lhs, %rhs)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-3, 1e-3}));
+}
+
+XLA_TEST_F(DotOperationTextTest, Einsum) {
+  absl::string_view hlo_string =
+      R"(
+HloModule Einsum
+
+ENTRY %test {
+  %lhs = f32[8,64,96]{2,1,0} parameter(0)
+  %rhs = f32[96,32,4]{2,1,0} parameter(1)
+  ROOT %dot = f32[8,64,32,4]{3,2,1,0}  dot(%lhs, %rhs), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
 }  // namespace

@@ -513,8 +513,7 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
 
 class TupleHloTest : public HloTestBase {};
 
-// Disabled on the interpreter because bitcast doesn't exist on the interpreter.
-XLA_TEST_F(TupleHloTest, DISABLED_ON_INTERPRETER(BitcastAfterGTE)) {
+XLA_TEST_F(TupleHloTest, BitcastAfterGTE) {
   const char* testcase = R"(
     HloModule m, is_scheduled=true
 
@@ -526,9 +525,7 @@ XLA_TEST_F(TupleHloTest, DISABLED_ON_INTERPRETER(BitcastAfterGTE)) {
       ROOT tuple.4 = (f32[1,3]{1,0}) tuple(copy)
     }
   )";
-  auto module =
-      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
-          .ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
   auto param =
       LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1<float>({1, 2, 3}));
   auto result = ExecuteNoHloPasses(std::move(module), {&param});
@@ -560,9 +557,7 @@ XLA_TEST_F(TupleHloTest,
       ROOT outfeed = token[] outfeed(tuple, token0)
     }
   )";
-  auto module =
-      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
-          .ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
   auto param0 = LiteralUtil::CreateR1<float>({1, 2});
   auto param1 = LiteralUtil::CreateR1<float>({2, 3});
   auto param4 = LiteralUtil::CreateR0<bool>(false);

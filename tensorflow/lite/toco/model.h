@@ -42,6 +42,7 @@ enum class OperatorType : uint8 {
   kAveragePool,
   kBatchMatMul,
   kBatchNormalization,
+  kCeil,
   kConv,
   kConcatenation,
   kDepthwiseConv,
@@ -158,7 +159,11 @@ enum class OperatorType : uint8 {
   kLeakyRelu,
   kAbs,
   kMirrorPad,
-  kUnique
+  kUnique,
+  kUnidirectionalSequenceRnn,
+  kBidirectionalSequenceLstm,
+  kReverseV2,
+  kBidirectionalSequenceRnn
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -646,6 +651,18 @@ struct LstmCellOperator : Operator {
 struct UnidirectionalSequenceLstmOperator : Operator {
   UnidirectionalSequenceLstmOperator()
       : Operator(OperatorType::kUnidirectionalSequenceLstm) {}
+};
+
+struct BidirectionalSequenceLstmOperator : Operator {
+  BidirectionalSequenceLstmOperator()
+      : Operator(OperatorType::kBidirectionalSequenceLstm) {}
+  bool merge_outputs;
+};
+
+struct BidirectionalSequenceRnnOperator : Operator {
+  BidirectionalSequenceRnnOperator()
+      : Operator(OperatorType::kBidirectionalSequenceRnn) {}
+  bool merge_outputs;
 };
 
 // Element-wise multiplication operator.
@@ -1659,6 +1676,16 @@ struct FloorOperator : Operator {
   FloorOperator() : Operator(OperatorType::kFloor) {}
 };
 
+// Ceil operator.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Ceil
+struct CeilOperator : Operator {
+  CeilOperator() : Operator(OperatorType::kCeil) {}
+};
+
 // Gather operator. It gathers slices from params according to indices.
 // Only 1-D indices are supported at the moment.
 //
@@ -1684,6 +1711,7 @@ struct GatherOperator : Operator {
 //
 // Inputs:
 //   inputs[0]: required: the input tensor
+//   inputs[1]: optional: 0-D (scalar) axis
 //
 // TensorFlow equivalent: ArgMax
 struct ArgMaxOperator : Operator {
@@ -1695,6 +1723,7 @@ struct ArgMaxOperator : Operator {
 //
 // Inputs:
 //   inputs[0]: required: the input tensor
+//   inputs[1]: optional: 0-D (scalar) axis
 //
 // TensorFlow equivalent: ArgMin
 struct ArgMinOperator : Operator {
@@ -1937,6 +1966,16 @@ struct TensorFlowZerosLikeOperator : Operator {
   TensorFlowZerosLikeOperator() : Operator(OperatorType::kZerosLike) {}
 };
 
+// ReverseV2 operator:
+//
+// Inputs:
+// Inputs[0]: required: the input array.
+//
+// TensorFlow equivalent: ReverseV2.
+struct ReverseV2Operator : Operator {
+  ReverseV2Operator() : Operator(OperatorType::kReverseV2) {}
+};
+
 enum class MirrorPadMode { kNone, kSymmetric, kReflect };
 
 // MirrorPad Operator:
@@ -1963,6 +2002,13 @@ struct MirrorPadOperator : Operator {
 struct UniqueOperator : Operator {
   UniqueOperator() : Operator(OperatorType::kUnique) {}
   ArrayDataType idx_out_type = ArrayDataType::kInt32;
+};
+
+struct UnidirectionalSequenceRnnOperator : Operator {
+  UnidirectionalSequenceRnnOperator()
+      : Operator(OperatorType::kUnidirectionalSequenceRnn) {}
+  bool time_major;
+  FusedActivationFunctionType fused_activation_function;
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

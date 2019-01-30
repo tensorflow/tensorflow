@@ -8,6 +8,15 @@ load(
     "tf_cuda_library",
     "tfe_xla_copts",
 )
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_additional_device_tracer_test_flags",
+    "tf_kernel_tests_linkstatic",
+)
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 
 tf_cuda_library(
     name = "c_api",
@@ -28,7 +37,6 @@ tf_cuda_library(
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core/common_runtime/eager:attr_builder",
-            "//tensorflow/core/common_runtime/eager:profiler",
             "//tensorflow/core/common_runtime/eager:context",
             "//tensorflow/core/common_runtime/eager:eager_executor",
             "//tensorflow/core/common_runtime/eager:execute",
@@ -62,6 +70,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:remote_device",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/profiler/lib:eager_profiler",
         "//tensorflow/core:gpu_runtime",
     ],
 )
@@ -89,7 +98,6 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:kernel_and_device",
-        "//tensorflow/core/common_runtime/eager:profiler",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime:remote_device",
         "//tensorflow/core/distributed_runtime:server_lib",
@@ -102,6 +110,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
+        "//tensorflow/core/profiler/lib:eager_profiler",
     ],
 )
 
@@ -201,6 +210,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:remote_device",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/profiler/rpc:profiler_server",
         "//tensorflow/core:gpu_runtime",
     ],
 )
@@ -211,16 +221,16 @@ tf_cuda_cc_test(
     srcs = [
         "c_api_experimental_test.cc",
     ],
-    extra_copts = tfe_xla_copts(),
-    tags = [
-        "guitar",
-        "multi_gpu",
-    ],
+    args =
+        ["--heap_check=local"] + tf_additional_device_tracer_test_flags(),
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
         ":c_api_experimental",
         ":c_api_test_util",
         "//tensorflow/c:c_test_util",
         "//tensorflow/cc/profiler",
+        "//tensorflow/contrib/tpu/profiler:trace_events_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

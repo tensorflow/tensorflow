@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import contextlib
 import copy
-import functools
 import threading
 
 from tensorflow.python import pywrap_tensorflow
@@ -414,7 +413,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   This strategy uses one replica per device and sync replication for its
   multi-GPU version.
 
-  The multi-worker version will be added in the fture.
+  The multi-worker version will be added in the future.
 
   Args:
     devices: a list of device strings.
@@ -547,17 +546,6 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate_distributed_variable(colocate_with_variable, self)
-
-  def _distribute_dataset(self, dataset_fn):
-    if self._local_mode:
-      worker_index = 0
-      return input_lib.PerReplicaDataset(
-          self._call_dataset_fn(dataset_fn), self._input_workers, worker_index)
-    else:
-      return input_lib.MultiWorkerDataset(
-          functools.partial(self._call_dataset_fn, dataset_fn),
-          self._input_workers,
-          auto_shard=False)
 
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(
@@ -784,8 +772,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
   def _global_batch_size(self):
     """`make_dataset_iterator` and `make_numpy_iterator` use global batch size.
 
-    `distribute_dataset` and `make_input_fn_iterator` assume per-replica
-    batching.
+    `make_input_fn_iterator` assumes per-replica batching.
 
     Returns:
       Boolean.
@@ -880,13 +867,13 @@ class _MirroredReplicaThread(threading.Thread):
 
 
 class MirroredReplicaContext(distribute_lib.ReplicaContext):
-  """ReplicaContext used in MirroredStrategy.call_for_each_replica().
+  """ReplicaContext used in MirroredStrategy.extended.call_for_each_replica().
 
   Opened in `_MirroredReplicaThread`, to allow the user to invoke
   `MirroredStrategy`'s specific implementation of `merge_call()`,
   which works by delegating the function and its arguments to
   the main thread (the one that invoked
-  `MirroredStrategy.call_for_each_replica()`).
+  `MirroredStrategy.extended.call_for_each_replica()`).
   """
 
   def _merge_call(self, fn, args, kwargs):

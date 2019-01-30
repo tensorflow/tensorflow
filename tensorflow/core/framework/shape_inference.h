@@ -588,9 +588,9 @@ class InferenceContext {
   // position idx with the specified shapes and types. This requires idx to be
   // in the [0, num_inputs) range.
   //
-  // If the relax is successful and any of the new shapes differs from the old
-  // one, or any of the old dtypes was DT_INVALID, store the new shapes and
-  // return true.  Return false otherwise.
+  // If the relax is successful (sizes are the same, old dtypes match new ones
+  // or are DT_INVALID), then store the relaxed shapes and return true.
+  // Return false otherwise.
   //
   // See 'RelaxInput' function for full details and examples.
   bool RelaxInputHandleShapesAndMergeTypes(

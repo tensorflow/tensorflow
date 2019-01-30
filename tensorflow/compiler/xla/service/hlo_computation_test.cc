@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <memory>
 #include <set>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -511,7 +511,7 @@ TEST_F(HloComputationTest, CloneWithReplacements) {
   auto module = CreateNewVerifiedModule();
   auto computation =
       module->AddEntryComputation(builder.Build(/*root_instruction=*/lt));
-  std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       replacements;
   replacements.emplace(param2,
                        HloInstruction::CreateParameter(2, r0s32, "p.1"));
@@ -643,6 +643,29 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
   EXPECT_EQ(computation->ToString(options), expected_computation2);
+}
+
+std::unique_ptr<HloComputation> MakeAddNComputation(int n) {
+  auto builder = HloComputation::Builder("add_n");
+  auto result = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "x_value"));
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  for (int i = 0; i < n; ++i) {
+    result = builder.AddInstruction(HloInstruction::CreateBinary(
+        one->shape(), HloOpcode::kAdd, result, one));
+  }
+  return builder.Build();
+}
+
+TEST_F(HloComputationTest, DeepEquality) {
+  auto computation_a = MakeAddNComputation(200000);
+  auto computation_b = MakeAddNComputation(200000);
+  EXPECT_TRUE(*computation_a == *computation_b);
+
+  auto computation_c = MakeAddNComputation(199999);
+  EXPECT_FALSE(*computation_a == *computation_c);
+  EXPECT_FALSE(*computation_c == *computation_b);
 }
 
 }  // namespace

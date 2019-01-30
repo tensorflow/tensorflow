@@ -613,6 +613,13 @@ if [[ "${DO_DOCKER}" == "1" ]]; then
   fi
 fi
 
+# Set a disk usage trap.
+function debug_disk_usage {
+    echo "Finished script... disk usage report in ${TMP_DIR}"
+    du -k -d 2 ${TMP_DIR} | sort -n -r
+}
+# trap debug_disk_usage EXIT
+
 chmod +x ${TMP_SCRIPT}
 
 # Map TF_BUILD container types to containers we actually have.
@@ -648,6 +655,8 @@ echo ""
 echo "Parameterized build ends with ${RESULT} at: $(date) "\
 "(Elapsed time: $((END_TIME - START_TIME)) s)"
 
+# Dump disk usage
+debug_disk_usage
 
 # Clean up temporary directory if it exists
 if [[ ! -z "${TMP_DIR}" ]]; then

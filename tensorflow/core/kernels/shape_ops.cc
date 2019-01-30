@@ -469,8 +469,7 @@ class EnsureShapeOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     TensorShape shape;
-    OP_REQUIRES_OK(ctx,
-                   shape_op_helpers::GetRegularOrVariantShape(ctx, 0, &shape));
+    OP_REQUIRES_OK(ctx, shape_op_helpers::GetShape(ctx, 0, &shape));
 
     if (!expected_shape_.IsCompatibleWith(shape)) {
       ctx->SetStatus(errors::InvalidArgument(

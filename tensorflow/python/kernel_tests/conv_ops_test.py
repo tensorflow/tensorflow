@@ -256,7 +256,7 @@ class Conv2DTest(test.TestCase):
       tensors.append(_SetupVal(data_format, use_gpu))
     values = self.evaluate(tensors)
     for i in range(1, len(values)):
-      self.assertAllClose(values[0], values[i], rtol=1e-5, atol=1e-5)
+      self.assertAllClose(values[0], values[i], rtol=1e-3, atol=1e-3)
 
   def _ComputeReferenceDilatedConv(self, tensor_in_sizes, filter_in_sizes,
                                    stride, dilation, padding, data_format,
@@ -297,7 +297,7 @@ class Conv2DTest(test.TestCase):
     return expected, computed
 
   def _VerifyDilatedConvValues(self, tensor_in_sizes, filter_in_sizes, strides,
-                               padding, dilations):
+                               padding, dilations, rtol=1e-4):
     expected_results = []
     computed_results = []
     for data_format, use_gpu in GetTestConfigs():
@@ -313,7 +313,7 @@ class Conv2DTest(test.TestCase):
         tf_logging.debug("expected = %s", e_value)
         tf_logging.debug("actual = %s", c_value)
         self.assertAllClose(
-            e_value.flatten(), c_value.flatten(), atol=tolerance, rtol=1e-4)
+            e_value.flatten(), c_value.flatten(), atol=tolerance, rtol=rtol)
 
   def _VerifyValues(self,
                     tensor_in_sizes,
@@ -574,6 +574,7 @@ class Conv2DTest(test.TestCase):
         padding="VALID")
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2D0x0Padding(self):
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 2, 3, 3],
@@ -588,6 +589,7 @@ class Conv2DTest(test.TestCase):
         padding=[[0, 0], [0, 0]])
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2D1x1Padding(self):
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 2, 3, 2],
@@ -602,6 +604,7 @@ class Conv2DTest(test.TestCase):
         padding=[[1, 1], [1, 1]])
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2D2x2Padding(self):
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 2, 1, 2],
@@ -616,6 +619,7 @@ class Conv2DTest(test.TestCase):
         padding=[[2, 2], [2, 2]])
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2DOnlyBottomPadding(self):
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 2, 3, 3],
@@ -630,6 +634,7 @@ class Conv2DTest(test.TestCase):
         padding=[[0, 3], [0, 0]])
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2DOnlyTopRightPadding(self):
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 2, 3, 3],
@@ -645,6 +650,7 @@ class Conv2DTest(test.TestCase):
         padding=[[1, 0], [0, 2]])
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2DLotsPadding(self):
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 1, 1, 3],
@@ -659,6 +665,7 @@ class Conv2DTest(test.TestCase):
         padding=[[3, 4], [4, 2]])
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2DExplicitPaddingWithDilations(self):
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 3, 2, 1],
@@ -674,6 +681,7 @@ class Conv2DTest(test.TestCase):
         padding=[[2, 1], [1, 2]],
         dilations=[2, 3])
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2DExplicitPaddingWithLayoutOptimizer(self):
     # Test with Grappler's layout optimizer, to ensure the layout optimizer
     # handles explicit padding correctly.
@@ -1341,6 +1349,7 @@ class Conv2DTest(test.TestCase):
         dilations=dilations)
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2D2x2Depth1Padding0x0BackpropInput(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -1363,6 +1372,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format)
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2D2x2Depth1Padding1x1BackpropInput(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -1395,6 +1405,7 @@ class Conv2DTest(test.TestCase):
             dilations=[2, 2])
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2D2x2Depth1Padding2x2BackpropInput(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -1419,6 +1430,7 @@ class Conv2DTest(test.TestCase):
             dilations=[2, 3])
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2D2x2Depth1Padding_1_8_4_1_BackpropInput(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -1441,6 +1453,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format)
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2D2x2Depth1Padding_5_0_2_2_BackpropInput(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -1499,6 +1512,7 @@ class Conv2DTest(test.TestCase):
         err=err)
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2D2x2Depth1Padding0x0BackpropFilter(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -1521,6 +1535,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format)
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2D2x2Depth1Padding1x1BackpropFilter(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -1554,6 +1569,7 @@ class Conv2DTest(test.TestCase):
             dilations=[2, 2])
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2D2x2Depth1Padding2x2BackpropFilter(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -1578,6 +1594,7 @@ class Conv2DTest(test.TestCase):
             dilations=[2, 3])
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2D2x2Depth1Padding_1_8_4_1_BackpropFilter(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -1601,6 +1618,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format)
 
   @test_util.run_in_graph_and_eager_modes()
+  @test_util.disable_xla("This test never passed for XLA")
   def testConv2D2x2Depth1Padding_5_0_2_2_BackpropFilter(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -1958,6 +1976,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testInputGradient1x1PaddingStrideOne(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -1979,6 +1998,7 @@ class Conv2DTest(test.TestCase):
             use_gpu=use_gpu,
             max_err=0.0025)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testFilterGradient1x1PaddingStrideOne(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -1999,6 +2019,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format,
             use_gpu=use_gpu)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testInputGradient1x1PaddingStrideTwo(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -2019,6 +2040,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format,
             use_gpu=use_gpu)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testFilterGradient1x1PaddingStrideTwo(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -2039,6 +2061,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format,
             use_gpu=use_gpu)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testInputGradient2x2PaddingStrideOne(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -2059,6 +2082,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format,
             use_gpu=use_gpu)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testFilterGradient2x2PaddingStrideOne(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -2080,6 +2104,7 @@ class Conv2DTest(test.TestCase):
             use_gpu=use_gpu,
             max_err=0.003)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testInputGradient1_2_3_4PaddingStride3x2(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -2100,6 +2125,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format,
             use_gpu=use_gpu)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testFilterGradient1_2_3_4PaddingStride3x2(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -2120,6 +2146,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format,
             use_gpu=use_gpu)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testInputGradient4_3_2_1PaddingStride2x1(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -2140,6 +2167,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format,
             use_gpu=use_gpu)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testFilterGradient4_3_2_1PaddingStride2x1(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -2160,6 +2188,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format,
             use_gpu=use_gpu)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testInputGradient0_0_0_5PaddingStride1x2(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -2180,6 +2209,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format,
             use_gpu=use_gpu)
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testFilterGradient0_0_0_5PaddingStride1x2(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -2286,6 +2316,7 @@ class Conv2DTest(test.TestCase):
           strides=[1, 1, 1, 1],
           padding=[0, 0, 0, 0])
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testOpEdgeCases(self):
     with self.cached_session() as sess:
       # Illegal strides.
@@ -2891,7 +2922,8 @@ def GetInceptionFwdDilatedConvTest(input_size, filter_size, stride, padding):
           filter_in_sizes=filter_size,
           strides=[stride, stride],
           dilations=[2, 2],
-          padding=padding)
+          padding=padding,
+          rtol=5e-4)
 
   return Test
 

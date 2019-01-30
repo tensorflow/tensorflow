@@ -59,7 +59,7 @@ _UPDATE_GOLDENS_HELP = """
 # DEFINE_boolean, only_test_core_api, default False:
 _ONLY_TEST_CORE_API_HELP = """
     Some TF APIs are being moved outside of the tensorflow/ directory. There is
-    no garuntee which versions of these APIs will be present when running this
+    no guarantee which versions of these APIs will be present when running this
     test. Therefore, do not error out on API changes in non-core TF code
     if this flag is set.
 """

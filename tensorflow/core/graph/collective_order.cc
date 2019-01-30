@@ -47,6 +47,9 @@ Status DiscoverDataDependencies(
       instance_keys->push_back(instance_key);
       VLOG(2) << "collective node " << node->DebugString();
     }
+    // Avoid reference invalidation of `node_deps`.
+    data_dependencies->reserve(data_dependencies->size() + 1 +
+                               node->out_edges().size());
     const auto& node_deps = (*data_dependencies)[node];
     for (const Edge* out_edge : node->out_edges()) {
       auto& child_deps = (*data_dependencies)[out_edge->dst()];
@@ -92,8 +95,8 @@ Status CreateControlDependencies(
       const auto& deps_j = (*data_dependencies)[collective_nodes[j]];
       if (deps_i.find(instance_keys[j]) == deps_i.end() &&
           deps_j.find(instance_keys[i]) == deps_j.end()) {
-        int src_idx = instance_keys[i] < instance_keys[j] ? i : j;
-        int dst_idx = instance_keys[i] < instance_keys[j] ? j : i;
+        int src_idx = instance_keys[i] > instance_keys[j] ? i : j;
+        int dst_idx = instance_keys[i] > instance_keys[j] ? j : i;
         Node* src_node = collective_nodes[src_idx];
         Node* dst_node = collective_nodes[dst_idx];
         VLOG(1) << "Adding control dependency from node " << src_node->name()

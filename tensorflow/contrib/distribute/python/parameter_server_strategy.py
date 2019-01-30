@@ -70,9 +70,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   variables.
 
   3) It is also not recommended to open a colocation scope (i.e. calling
-  `tf.colocate_with`) under the strategy's scope. For colocating variables,
-  use `distribution.colocate_vars_with` instead. Colocation of ops will possibly
-  create conflicts of device assignment.
+  `tf.colocate_with`) under the strategy's scope. For colocating variables, use
+  `strategy.extended.colocate_vars_with` instead. Colocation of ops will
+  possibly create conflicts of device assignment.
   """
 
   def __init__(self, num_gpus_per_worker=0):
@@ -157,7 +157,7 @@ class ParameterServerExtended(CoreParameterServerExtended):
     cluster_resolver = SimpleClusterResolver(
         cluster_spec=tfconfig.cluster_spec(),
         task_type=tfconfig.task_type,
-        task_index=tfconfig.task_index,
+        task_id=tfconfig.task_id,
         num_accelerators=num_gpus_per_worker)
     super(ParameterServerExtended, self).__init__(
         container_strategy, cluster_resolver=cluster_resolver)
