@@ -47,6 +47,9 @@ Status DiscoverDataDependencies(
       instance_keys->push_back(instance_key);
       VLOG(2) << "collective node " << node->DebugString();
     }
+    // Avoid reference invalidation of `node_deps`.
+    data_dependencies->reserve(data_dependencies->size() + 1 +
+                               node->out_edges().size());
     const auto& node_deps = (*data_dependencies)[node];
     for (const Edge* out_edge : node->out_edges()) {
       auto& child_deps = (*data_dependencies)[out_edge->dst()];
