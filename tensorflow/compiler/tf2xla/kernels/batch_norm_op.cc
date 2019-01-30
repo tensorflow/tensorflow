@@ -160,8 +160,7 @@ class FusedBatchNormGradOp : public XlaOpKernel {
 
       // scratch1 = rsqrt(pop_var + epsilon)
       auto epsilon = XlaHelpers::FloatLiteral(b, scale_dtype, epsilon_);
-      auto scratch1 =
-          xla::Rsqrt(xla::Add(var, epsilon));
+      auto scratch1 = xla::Rsqrt(xla::Add(var, epsilon));
 
       // scratch2 = sum(y_backprop * (x - mean))
       auto mul =

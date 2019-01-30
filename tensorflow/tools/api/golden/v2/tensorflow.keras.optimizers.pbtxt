@@ -32,6 +32,10 @@ tf_module {
     name: "SGD"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "schedules"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "deserialize"
     argspec: "args=[\'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "

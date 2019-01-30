@@ -257,6 +257,32 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                             constant_op.constant([1.0, 2.0, 3.0]),
                             dtype=dtypes.int32).numpy())
 
+  def test_function_no_return(self, cycles):
+
+    class CheckpointableWithOneVariable(tracking.AutoCheckpointable):
+
+      def __init__(self, initial_value=0.0):
+        super(CheckpointableWithOneVariable, self).__init__()
+        self.variable = variables.Variable(initial_value)
+
+      @def_function.function
+      def increase(self, by=1.0):
+        self.variable.assign_add(by)
+
+    obj = CheckpointableWithOneVariable(5.0)
+
+    obj.increase(constant_op.constant(10.0))
+    self.assertEqual(15.0, obj.variable.numpy())
+    obj.increase()
+    self.assertEqual(16.0, obj.variable.numpy())
+
+    imported = self.cycle(obj, cycles)
+
+    imported.increase(constant_op.constant(10.0))
+    self.assertEqual(26.0, imported.variable.numpy())
+    imported.increase(constant_op.constant(1.0))
+    self.assertEqual(27.0, imported.variable.numpy())
+
   def test_structured_inputs(self, cycles):
 
     def func(x, training=True):

@@ -59,7 +59,7 @@ COMMON_PIP_DEPS = [
     "setup.py",
     ":included_headers",
     "//tensorflow:tensorflow_py",
-    "//tensorflow/lite/python:interpreter_test_data",
+    "//tensorflow/lite/python/testdata:interpreter_test_data",
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",
     # "//tensorflow/python/autograph/converters:converters",

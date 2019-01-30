@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import map_fn as map_fn_lib
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import numerics
 from tensorflow.python.ops import random_ops
@@ -629,7 +630,7 @@ def map_fn(fn, labeled_tensor, name=None):
 
     # TODO(ericmc): Fix this upstream.
     if labeled_tensor.dtype == dtypes.string:
-      # We must construct the full graph here, because functional_ops.map_fn
+      # We must construct the full graph here, because map_fn_lib.map_fn
       # doesn't work for string-valued tensors.
       # Constructing the full graph may be slow.
       map_lts = [fn(t) for t in unpack_lts]
@@ -652,7 +653,7 @@ def map_fn(fn, labeled_tensor, name=None):
         tensor_lt = core.LabeledTensor(tensor, original_axes)
         return fn(tensor_lt).tensor
 
-      map_op = functional_ops.map_fn(
+      map_op = map_fn_lib.map_fn(
           tf_fn, labeled_tensor.tensor, dtype=first_map_lt.dtype)
       map_lt = core.LabeledTensor(map_op, final_axes)
 

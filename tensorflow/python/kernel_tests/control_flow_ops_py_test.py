@@ -58,6 +58,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
@@ -497,7 +498,7 @@ class ControlFlowTest(test.TestCase):
         pred = array_ops.placeholder(dtypes.bool, [])
         x = constant_op.constant([1.0, 2.0, 3.0])
         y = control_flow_ops.cond(
-            pred, lambda: functional_ops.map_fn(lambda z: z * 2.0, x),
+            pred, lambda: map_fn.map_fn(lambda z: z * 2.0, x),
             lambda: constant_op.constant([1.0, 1.0, 1.0]))
         g = gradients_impl.gradients(y, x)[0]
 
@@ -2933,10 +2934,10 @@ class ControlFlowTest(test.TestCase):
 
       def inner_loop(t):
         fn = lambda n: n + math_ops.square(var)
-        return functional_ops.map_fn(fn=fn, elems=t, parallel_iterations=10)
+        return map_fn.map_fn(fn=fn, elems=t, parallel_iterations=10)
 
       def outer_loop(inp):
-        return functional_ops.map_fn(
+        return map_fn.map_fn(
             fn=inner_loop, elems=inp, parallel_iterations=10)
 
       var = variables.Variable(constant_op.constant(3.0))
@@ -3122,7 +3123,7 @@ class ControlFlowTest(test.TestCase):
       def b(i, y):
         return [
             i + 1,
-            functional_ops.map_fn(lambda x: math_ops.multiply(x, param), y)
+            map_fn.map_fn(lambda x: math_ops.multiply(x, param), y)
         ]
 
       r = control_flow_ops.while_loop(c, b, [n0, y0], parallel_iterations=1)

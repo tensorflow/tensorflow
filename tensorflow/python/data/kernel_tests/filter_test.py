@@ -24,7 +24,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -83,7 +83,7 @@ class FilterTest(test_base.DatasetTestBase):
     # Define a predicate that returns true for the first element of
     # the sequence and not the second, and uses `tf.map_fn()`.
     def _predicate(xs):
-      squared_xs = functional_ops.map_fn(lambda x: x * x, xs)
+      squared_xs = map_fn.map_fn(lambda x: x * x, xs)
       summed = math_ops.reduce_sum(squared_xs)
       return math_ops.equal(summed, 1 + 4 + 9)
 

@@ -658,8 +658,14 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       tensorflow::int64 parameter_number;
       if (!ParseToken(TokKind::kLparen,
                       "expects '(' before parameter number") ||
-          !ParseInt64(&parameter_number) ||
-          !ParseToken(TokKind::kRparen, "expects ')' after parameter number") ||
+          !ParseInt64(&parameter_number)) {
+        return false;
+      }
+      if (parameter_number < 0) {
+        Error(lexer_.GetLoc(), "parameter number must be >= 0");
+        return false;
+      }
+      if (!ParseToken(TokKind::kRparen, "expects ')' after parameter number") ||
           !ParseAttributes(attrs)) {
         return false;
       }

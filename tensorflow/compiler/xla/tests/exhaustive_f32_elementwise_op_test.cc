@@ -25,12 +25,14 @@ class ExhaustiveF32ElementwiseOpTest
     : public ClientLibraryTestBase,
       public ::testing::WithParamInterface<std::pair<int64, int64>> {
  protected:
-  ErrorSpec error_spec_{0.0001, 0.0001, /*relaxed_nans=*/true};
+  ErrorSpec error_spec_{0.0001, 0.0001};
 
   template <typename EnqueueOpTy>
   void ExhaustivelyTestF32Op(EnqueueOpTy enqueue_op,
                              float (*evaluate_op)(float),
                              std::pair<int64, int64> known_incorrect_range) {
+    SetFastMathDisabled(true);
+
     int64 begin, end;
     std::tie(begin, end) = GetParam();
     int64 input_size = end - begin;

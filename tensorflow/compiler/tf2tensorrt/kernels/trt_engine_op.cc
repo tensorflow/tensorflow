@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/tf2tensorrt/kernels/trt_engine_op.h"
-
 #include <algorithm>
+#include <memory>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -22,20 +22,28 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/test_utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_resource_manager.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 #include "cuda/include/cuda_runtime_api.h"
+#include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -53,6 +61,83 @@ class AsyncHelper : public tensorflow::core::RefCounted {
 
  private:
   AsyncOpKernel::DoneCallback done_;
+};
+
+//  This OP can construct TRTEngine on the fly and if construction of engine
+//  fails, executes equivalent subgraph as a TensorFlow function.
+class TRTEngineOp : public AsyncOpKernel {
+ public:
+  explicit TRTEngineOp(OpKernelConstruction* context);
+
+  void ComputeAsync(OpKernelContext* context,
+                    AsyncOpKernel::DoneCallback done) override;
+
+ private:
+  // Execute calibration
+  void ExecuteCalibration(OpKernelContext* ctx, AsyncHelper* helper);
+
+  // Construct a function handle for executing native funcdef graph
+  Status ConstructFunctionHandle(OpKernelContext* ctx);
+
+  // Execute replaced native segment as function Op.
+  void ExecuteNativeSegment(OpKernelContext* ctx, AsyncHelper* helper);
+
+  // Execute the tensorrt engine. Returns whether we need to retry by running
+  // the native segment.
+  bool ExecuteTrtEngine(OpKernelContext* ctx, EngineContext* engine_context);
+
+  // Allocate necessary resources for calibration
+  Status AllocateCalibrationResources(OpKernelContext* ctx,
+                                      SerializableResourceBase** cr);
+
+  // Get engine for the input shape
+  EngineContext* GetEngine(const std::vector<TensorShape>& input_shapes,
+                           OpKernelContext* ctx);
+
+  // Return engine batch in cached_engne_batch_sizes_ which is closest to input
+  // batch.
+  bool GetCompatibleCachedEngine(
+      const std::vector<TensorShape>& actual_input_shapes,
+      std::vector<TensorShape>* engine_input_shapes);
+
+  std::vector<string> input_nodes_;
+  std::vector<string> output_nodes_;
+
+  // serialized protobuf segment or trt engine depending on static_engine_ flag.
+  string serialized_segment_;
+
+  // Name of the function for TF native execution of the segment.
+  string funcdef_name_;
+
+  // GraphDef representation of the segment.
+  GraphDef segment_graph_;
+
+  // Engine Precision mode.
+  int precision_mode_;
+
+  // Whether engine is constructed during the conversion or needs to be
+  // constructed from protobuf segment.
+  bool static_engine_;
+
+  // Whether to calibrate INT8 engine.
+  bool calibration_mode_;
+
+  // Batches of the cached engines
+  std::vector<int> cached_engine_batches_;
+
+  // Maximum number of cached engines
+  int max_cached_engines_;
+
+  int64 workspace_size_;
+  mutex engine_mutex_;
+  FunctionLibraryRuntime::Handle native_func_;
+
+  // The finalized calibrator for inference.
+  std::unique_ptr<TRTInt8Calibrator> calibrator_;
+
+  // If true, create calibration graph for INT8 mode. Otherwise, we are using
+  // user-provided quantization ranges.
+  bool use_calibration_;
 };
 
 #define TYPECASE(dt, X, Y)                                                \

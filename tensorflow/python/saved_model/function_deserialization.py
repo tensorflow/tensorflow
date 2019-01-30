@@ -160,7 +160,11 @@ def recreate_function(saved_function, concrete_functions):
                             canonicalized_original_inputs):
         flattened_inputs = nest.flatten(canonicalized_inputs)
         filtered_inputs = [t for t in flattened_inputs if _is_tensor(t)]
-        return function_obj._call_flat(filtered_inputs)  # pylint: disable=protected-access
+
+        result = function_obj._call_flat(filtered_inputs)  # pylint: disable=protected-access
+        if isinstance(result, ops.Operation):
+          return None
+        return result
 
     raise AssertionError(
         "Could not find matching function to call for canonicalized inputs %r. "

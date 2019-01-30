@@ -853,9 +853,9 @@ def categorical_crossentropy(y_true,
 
 @keras_export('keras.metrics.sparse_categorical_crossentropy',
               'keras.losses.sparse_categorical_crossentropy')
-def sparse_categorical_crossentropy(y_true, y_pred, from_logits=False):
+def sparse_categorical_crossentropy(y_true, y_pred, from_logits=False, axis=-1):
   return K.sparse_categorical_crossentropy(
-      y_true, y_pred, from_logits=from_logits)
+      y_true, y_pred, from_logits=from_logits, axis=axis)
 
 
 @keras_export('keras.metrics.binary_crossentropy',

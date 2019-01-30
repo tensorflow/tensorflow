@@ -34,10 +34,10 @@ from tensorflow.python.grappler import cluster as gcluster
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.layers import convolutional as conv_layers
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
@@ -120,7 +120,7 @@ def _loop():
   x3 = random_ops.truncated_normal([1, 784], seed=0)
   x4 = random_ops.truncated_normal([1, 784], seed=0)
   elems = (x1, x2, x3, x4)
-  outputs = functional_ops.map_fn(_two_layer_model, elems, dtype=dtypes.float32)
+  outputs = map_fn.map_fn(_two_layer_model, elems, dtype=dtypes.float32)
   return outputs
 
 
@@ -131,8 +131,7 @@ def _loop_with_branch():
   x3 = random_ops.truncated_normal([1, 784], seed=0)
   x4 = random_ops.truncated_normal([1, 784], seed=0)
   elems = (x1, x2, x3, x4)
-  outputs = functional_ops.map_fn(
-      _model_with_branch, elems, dtype=dtypes.float32)
+  outputs = map_fn.map_fn(_model_with_branch, elems, dtype=dtypes.float32)
   return outputs
 
 
@@ -143,8 +142,7 @@ def _loop_with_vec_and_4d():
   x3 = random_ops.truncated_normal([1, 784], seed=0)
   x4 = random_ops.truncated_normal([1, 784], seed=0)
   elems = (x1, x2, x3, x4)
-  outputs = functional_ops.map_fn(
-      _model_with_vec_and_4d, elems, dtype=dtypes.float32)
+  outputs = map_fn.map_fn(_model_with_vec_and_4d, elems, dtype=dtypes.float32)
   return outputs
 
 

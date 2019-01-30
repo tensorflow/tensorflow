@@ -537,6 +537,14 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.unbatch",
         "tf.contrib.data.unique":
             "tf.data.experimental.unique",
+        "tf.contrib.framework.nest.assert_same_structure":
+            "tf.nest.assert_same_structure",
+        "tf.contrib.framework.nest.flatten":
+            "tf.nest.flatten",
+        "tf.contrib.framework.nest.map_structure":
+            "tf.nest.map_structure",
+        "tf.contrib.framework.nest.pack_sequence_as":
+            "tf.nest.pack_sequence_as",
         "tf.contrib.framework.constant_value":
             "tf.get_static_value",
         "tf.contrib.saved_model.load_keras_model":

@@ -1341,13 +1341,14 @@ def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 @deprecation.deprecated_args(
     None, "reduction_indices is deprecated, use axis instead", "axis")
-def count_nonzero(input_tensor,
+def count_nonzero(input_tensor=None,
                   axis=None,
                   keepdims=None,
                   dtype=dtypes.int64,
                   name=None,
                   reduction_indices=None,
-                  keep_dims=None):
+                  keep_dims=None,
+                  input=None):  # pylint: disable=redefined-builtin
   """Computes number of nonzero elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1393,12 +1394,15 @@ def count_nonzero(input_tensor,
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
     keep_dims: Deprecated alias for `keepdims`.
+    input: Overrides input_tensor. For compatibility.
 
   Returns:
     The reduced tensor (number of nonzero values).
   """
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
+  input_tensor = deprecation.deprecated_argument_lookup(
+      "input", input, "input_tensor", input_tensor)
   axis = deprecation.deprecated_argument_lookup(
       "axis", axis,
       "reduction_indices", reduction_indices
