@@ -50,6 +50,7 @@ from tensorflow.python.autograph.lang.directives import set_element_type
 from tensorflow.python.autograph.lang.directives import set_loop_options
 from tensorflow.python.autograph.lang.special_functions import stack
 from tensorflow.python.autograph.lang.special_functions import tensor_list
+from tensorflow.python.autograph.pyct.errors import AutoGraphError
 from tensorflow.python.autograph.pyct.transformer import AutoGraphParseError
 from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.util.all_util import remove_undocumented
@@ -79,6 +80,7 @@ _allowed_symbols = [
     'tensor_list',
     # Exceptions
     'AutoGraphParseError',
+    'AutoGraphError',
     # Utilities: to be removed
     'utils',
 ]
