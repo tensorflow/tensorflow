@@ -49,8 +49,8 @@ AMDGPUExecutable::AMDGPUExecutable(
                     std::move(thunk_schedule),
                     std::move(hlo_module), std::move(assignment),
                     std::move(hlo_profile_printer_data),
-                    std::move(hlo_profile_index_map)) {}
-
+                    std::move(hlo_profile_index_map)),
+                    isa_version_(isa_version){}
 Status AMDGPUExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     const ServiceExecutableRunOptions* run_options) {
   se::Stream* main_stream = run_options->stream();

@@ -31,7 +31,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_llvm_disable_expensive_passes(false);
   opts.set_xla_backend_optimization_level(3);
   opts.set_xla_cpu_multi_thread_eigen(true);
+#ifdef GOOGLE_CUDA
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
+#endif
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
   opts.set_xla_hlo_dump_as_html(false);
 #ifdef INTEL_MKL
