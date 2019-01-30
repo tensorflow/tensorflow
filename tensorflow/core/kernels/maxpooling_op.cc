@@ -59,6 +59,13 @@ static void SpatialMaxPoolWithArgMaxHelper(
     OpKernelContext* context, Tensor* output, Tensor* output_arg_max,
     Tensor* input_backprop, const Tensor& tensor_in, const Tensor& out_backprop,
     const PoolParameters& params, const bool include_batch_in_index) {
+  if (input_backprop != nullptr) {
+    OP_REQUIRES(context, include_batch_in_index == true,
+                errors::Unimplemented(
+                    "include_batch_in_index=false is not yet supported "
+                    "for input_backprop on the CPU kernel."));
+  }
+
   typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
       ConstEigenMatrixMap;
   typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
@@ -982,9 +989,11 @@ struct LaunchMaxPoolingGradWithArgmax<CPUDevice, T> {
         const int input_start = start * input_size_per_batch;
         const int input_end = limit * input_size_per_batch;
         for (int64 index = input_start; index < input_end; index++) {
-          const int64 grad_out_index = include_batch_in_index
-                                           ? argmax_flat(index)
-                                           : argmax_flat(index) + output_start;
+          int64 grad_out_index = argmax_flat(index);
+          if (!include_batch_in_index) {
+            const int64 cur_batch = index / input_size_per_batch;
+            grad_out_index += cur_batch * output_size_per_batch;
+          }
           CHECK(grad_out_index >= output_start && grad_out_index < output_end)
               << "Invalid output gradient index: " << grad_out_index << ", "
               << output_start << ", " << output_end;
