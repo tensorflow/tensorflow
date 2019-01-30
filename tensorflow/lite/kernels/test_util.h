@@ -430,6 +430,17 @@ class SingleOpModel {
     // Update quantization params.
     t->params.scale = scaling_factor;
     t->params.zero_point = 0;
+    // Populate the new quantization params.
+    TfLiteQuantizationFree(&t->quantization);
+    t->quantization.type = kTfLiteAffineQuantization;
+    auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
+        malloc(sizeof(TfLiteAffineQuantization)));
+    affine_quantization->quantized_dimension = 0;
+    affine_quantization->scale = TfLiteFloatArrayCreate(1);
+    affine_quantization->zero_point = TfLiteIntArrayCreate(1);
+    affine_quantization->scale->data[0] = scaling_factor;
+    affine_quantization->zero_point->data[0] = 0;
+    t->quantization.params = affine_quantization;
     return q;
   }
 

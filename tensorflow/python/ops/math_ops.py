@@ -2659,11 +2659,11 @@ def add_n(inputs, name=None):
     cannot be inferred.
   """
   if not inputs or not isinstance(inputs, (list, tuple)):
-    raise ValueError("inputs must be a list of at least one"
+    raise ValueError("inputs must be a list of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape")
   inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(isinstance(x, (ops.Tensor, ops.IndexedSlices)) for x in inputs):
-    raise ValueError("inputs must be a list of at least one"
+    raise ValueError("inputs must be a list of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape")
 
   if len(inputs) == 1:

@@ -52,10 +52,6 @@ bool IsTensorIdControlling(const TensorId& tensor_id) {
   return tensor_id.index() == Graph::kControlSlot;
 }
 
-bool IsOutputPortRegular(const MutableGraphView::OutputPort& port) {
-  return port.port_id > Graph::kControlSlot;
-}
-
 bool IsOutputPortControlling(const MutableGraphView::OutputPort& port) {
   return port.port_id == Graph::kControlSlot;
 }
@@ -93,6 +89,8 @@ bool CanDedupControlWithRegularInput(const MutableGraphView& graph,
 bool CanDedupControlWithRegularInput(const MutableGraphView& graph,
                                      absl::string_view control_node_name) {
   NodeDef* control_node = graph.GetNode(control_node_name);
+  DCHECK(control_node != nullptr)
+      << "Didn't find a node for control dependency: " << control_node_name;
   return CanDedupControlWithRegularInput(graph, *control_node);
 }
 

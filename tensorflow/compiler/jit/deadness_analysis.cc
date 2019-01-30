@@ -1071,7 +1071,6 @@ Status DeadnessAnalysisImpl::PopulateWithReversePostOrder(
     absl::Span<Node* const> rpo) {
   std::vector<string> unreachable_nodes;
   // Compute the loop structure of the graph.
-  std::vector<ControlFlowInfo> control_flow_info;
   TF_RETURN_IF_ERROR(
       BuildControlFlowInfo(&graph_, &control_flow_info_, &unreachable_nodes));
 

@@ -24,6 +24,7 @@ import os
 
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.python.util.tf_export import tf_export
 
 _TF_CONFIG_ENV = 'TF_CONFIG'
 _SESSION_MASTER_KEY = 'session_master'
@@ -47,6 +48,7 @@ def _get_value_in_tfconfig(key, default=None):
   return tf_config[key] if key in tf_config else default
 
 
+@tf_export('distribute.cluster_resolver.TFConfigClusterResolver')
 class TFConfigClusterResolver(ClusterResolver):
   """Implementation of a ClusterResolver which reads the TF_CONFIG EnvVar."""
 

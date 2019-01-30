@@ -946,17 +946,19 @@ Status Converter::AddInputTensor(const string& name, nvinfer1::DataType dtype,
 }
 
 Status Converter::RenameAndMarkOutputTensors(
-    const std::vector<std::pair<string, string>>& output_tensors) {
+    const std::vector<Converter::EngineOutputInfo>& output_tensors) {
   for (const auto& output : output_tensors) {
     TRT_TensorOrWeights tensor_or_weights;
-    TF_RETURN_IF_ERROR(GetTensorOrWeights(output.first, &tensor_or_weights));
+    TF_RETURN_IF_ERROR(
+        GetTensorOrWeights(output.source_tensor_name, &tensor_or_weights));
     if (!tensor_or_weights.is_tensor()) {
-      return errors::InvalidArgument("Output ", output.first,
+      return errors::InvalidArgument("Output ", output.source_tensor_name,
                                      " is weights not tensor");
     }
     nvinfer1::ITensor* tensor = tensor_or_weights.tensor();
     if (tensor == nullptr) {
-      return errors::NotFound("Output tensor not found: ", output.first);
+      return errors::NotFound("Output tensor not found: ",
+                              output.source_tensor_name);
     }
     // Check if this tensor has already been marked as an output.
     // ConvertIdentity can cause the same tensor to be repeated in
@@ -974,10 +976,13 @@ Status Converter::RenameAndMarkOutputTensors(
       MarkQuantizationRangesAsInferrable(tensor, layer->getOutput(0));
       tensor = layer->getOutput(0);
     }
-    tensor->setName(output.second.c_str());
-    VLOG(1) << "Marking output tensor " << output.first << ", as output tensor "
-            << output.second;
+    tensor->setName(output.dest_node_name.c_str());
     network()->markOutput(*tensor);
+    // Set type after marking as output. TRT only supports setType for engine
+    // outputs and inputs (type is inferred otherwise).
+    tensor->setType(output.trt_dtype);
+    VLOG(1) << "Marking output TRT tensor " << output.source_tensor_name
+            << ", which feeds TF node " << output.dest_node_name;
   }
   return Status::OK();
 }
@@ -3561,8 +3566,8 @@ tensorflow::Status ConvertTopK(OpConverterParams* params) {
     reducedAxes |= 1 << (nbDims - 1);
   } else {
     return tensorflow::errors::Unimplemented(
-        "Operation: " + node_def.op() +
-        " not implemented, at: " + node_def.name());
+        "Operation: ", node_def.op(),
+        " not implemented, at: ", node_def.name());
   }
 
   nvinfer1::ITopKLayer* layer = params->converter->network()->addTopK(
@@ -3571,9 +3576,6 @@ tensorflow::Status ConvertTopK(OpConverterParams* params) {
 
   nvinfer1::ITensor* output_value_tensor = layer->getOutput(0);
   nvinfer1::ITensor* output_indices_tensor = layer->getOutput(1);
-  // Tensor type for network output is not inferred. Indices should be INT32
-  // (default is float).
-  output_indices_tensor->setType(nvinfer1::DataType::kINT32);
   params->outputs->push_back(TRT_TensorOrWeights(output_value_tensor));
   params->outputs->push_back(TRT_TensorOrWeights(output_indices_tensor));
   return tensorflow::Status::OK();
@@ -3686,7 +3688,7 @@ tensorflow::Status ConvertGraphDefToEngine(
   // Build the network
   VLOG(1) << "Starting engine conversion ";
   Converter converter(trt_network.get(), precision_mode, use_calibration);
-  std::vector<std::pair<string, string>> output_tensors;
+  std::vector<Converter::EngineOutputInfo> output_tensors;
   // Graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {
     string node_name = node_def.name();
@@ -3728,10 +3730,16 @@ tensorflow::Status ConvertGraphDefToEngine(
         return tensorflow::errors::InvalidArgument(
             "Failed to parse slot number from ", node_name);
       }
+      // Get output type that TensorFlow expects
+      TFAttrs attrs(node_def);
+      tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
+      nvinfer1::DataType trt_dtype;
+      TF_RETURN_IF_ERROR(ConvertDType(tf_dtype, &trt_dtype));
       if (output_tensors.size() <= slot_number) {
         output_tensors.resize(slot_number + 1);
       }
-      output_tensors.at(slot_number) = {node_def.input(0), node_name};
+      output_tensors.at(slot_number) = {node_def.input(0), node_name,
+                                        trt_dtype};
     } else {
       VLOG(2) << "Converting node: " << node_def.name() << " , "
               << node_def.op();

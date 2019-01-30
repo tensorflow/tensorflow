@@ -54,11 +54,11 @@ REQUIRED_PACKAGES = [
     'google_pasta >= 0.1.1',
     'keras_applications >= 1.0.6',
     'keras_preprocessing >= 1.0.5',
-    'numpy >= 1.13.3',
+    'numpy >= 1.14.5, < 2.0',
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
     'tensorboard >= 1.12.0, < 1.13.0',
-    'tensorflow_estimator >= 1.13.0 < 1.14.0',
+    'tensorflow_estimator >= 1.13.0rc0, < 1.14.0rc0',
     'termcolor >= 1.1.0',
 ]
 

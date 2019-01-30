@@ -122,8 +122,10 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
   // placeholders inside functions, and we want to catch such invalid graphs
   // early.
   if (optimization_options_.is_function_instantiation) {
+    FunctionLibraryDefinition fn_library(OpRegistry::Global(), graph.library());
     for (const NodeDef& node : graph.node()) {
-      if (IsStateful(node) || IsDataset(node) || IsPlaceholder(node)) {
+      if (IsStateful(node, &fn_library) || IsDataset(node) ||
+          IsPlaceholder(node)) {
         result.insert(node.name());
       }
     }

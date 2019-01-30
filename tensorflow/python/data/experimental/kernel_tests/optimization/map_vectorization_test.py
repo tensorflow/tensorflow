@@ -356,8 +356,10 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset
 
     unoptimized = _make_dataset([map_node_name, "Batch"])
-    optimized = _make_dataset(["Batch", map_node_name]
-                              if expect_optimized else [map_node_name, "Batch"])
+    # Note that because of the `ChooseDataset` fork, we can't use `assert_next`
+    # to verify the optimization result.
+    optimized = _make_dataset(
+        [] if expect_optimized else [map_node_name, "Batch"])
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_vectorization = True
@@ -418,7 +420,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset
 
     unoptimized = _make_dataset(["MapAndBatch"])
-    optimized = _make_dataset(["Batch", "ParallelMap"])
+    optimized = _make_dataset([])
     options = dataset_ops.Options()
     options.experimental_optimization.map_vectorization = True
     optimized = optimized.with_options(options)
@@ -469,7 +471,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset
 
     unoptimized = make_dataset(unoptimized_seq)
-    optimized = make_dataset(["Batch", "ParallelMap", "Batch", "ParallelMap"])
+    optimized = make_dataset([])
     options = dataset_ops.Options()
     options.experimental_optimization.map_vectorization = True
     optimized = optimized.with_options(options)

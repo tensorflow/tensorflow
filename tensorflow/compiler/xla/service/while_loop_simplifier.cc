@@ -180,7 +180,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // replace the old instructions after we remove unused elements from the while
   // tuple.
   auto make_while_computation_replacements = [&](const HloComputation* comp) {
-    std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+    absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
         replacements;
 
     auto* param = comp->parameter_instruction(0);
@@ -232,7 +232,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
       while_cond->CloneWithReplacements(
           make_while_computation_replacements(while_cond));
 
-  std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       while_body_replacements = make_while_computation_replacements(while_body);
   std::vector<HloInstruction*> new_while_body_root_elems;
   new_while_body_root_elems.reserve(new_to_old_tuple_idx.size());

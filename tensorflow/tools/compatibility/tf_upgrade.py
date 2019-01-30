@@ -177,10 +177,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     # Warnings that should be printed if corresponding functions are used.
     self.function_warnings = {
-        "tf.reverse":
-            "ERROR: tf.reverse has had its argument semantics changed "
+        "tf.reverse": (
+            ast_edits.ERROR,
+            "tf.reverse has had its argument semantics changed "
             "significantly. The converter cannot detect this reliably, so "
-            "you need to inspect this usage manually.\n",
+            "you need to inspect this usage manually.\n"),
     }
 
 

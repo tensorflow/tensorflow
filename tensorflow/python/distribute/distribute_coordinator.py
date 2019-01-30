@@ -77,8 +77,6 @@ class _Barrier(object):
 
   def wait(self):
     """Waits until all other callers reach the same wait call."""
-    if not hasattr(self._local_sense, "value"):
-      self._local_sense.value = False
     self._local_sense.value = not self._flag
     with self._lock:
       self._counter += 1
@@ -721,8 +719,7 @@ def run_distribute_coordinator(worker_fn,
 
   Returns:
     In the client job, return the value returned by `worker_fn` if
-    it is in-graph replication or INDEPENDENT_WORKER mode; return None
-    otherwise.
+    it is in-graph replication; return None otherwise.
   """
   tf_config = json.loads(os.environ.get("TF_CONFIG", "{}"))
   if not cluster_spec:
@@ -820,19 +817,19 @@ def run_distribute_coordinator(worker_fn,
     if task_type in [_TaskType.CHIEF, _TaskType.WORKER]:
       if strategy.extended.experimental_between_graph:
         # All jobs run `worker_fn` if between-graph.
-        return _run_single_worker(worker_fn, strategy, cluster_spec, task_type,
-                                  task_id, session_config, rpc_layer)
+        _run_single_worker(worker_fn, strategy, cluster_spec, task_type,
+                           task_id, session_config, rpc_layer)
       else:
         # Only one node runs `worker_fn` if in-graph.
         context = _WorkerContext(strategy, cluster_spec, task_type, task_id)
         if context.is_chief:
-          return _run_single_worker(worker_fn, strategy, cluster_spec, None,
-                                    None, session_config, rpc_layer)
+          _run_single_worker(worker_fn, strategy, cluster_spec, None, None,
+                             session_config, rpc_layer)
         else:
           server.join()
     elif task_type == _TaskType.EVALUATOR:
-      return _run_single_worker(eval_fn, eval_strategy, cluster_spec, task_type,
-                                task_id, session_config, rpc_layer)
+      _run_single_worker(eval_fn, eval_strategy, cluster_spec, task_type,
+                         task_id, session_config, rpc_layer)
     else:
       if task_type != _TaskType.PS:
         raise ValueError("Unexpected task_type: %r" % task_type)

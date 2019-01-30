@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -158,9 +159,8 @@ class FusedBatchNormGradOp : public XlaOpKernel {
       offset_backprop = XlaHelpers::ConvertElementType(reduce, scale_dtype);
 
       // scratch1 = rsqrt(pop_var + epsilon)
-      auto neg_half = XlaHelpers::FloatLiteral(b, scale_dtype, -0.5);
       auto epsilon = XlaHelpers::FloatLiteral(b, scale_dtype, epsilon_);
-      auto scratch1 = xla::Pow(xla::Add(var, epsilon), neg_half);
+      auto scratch1 = xla::Rsqrt(xla::Add(var, epsilon));
 
       // scratch2 = sum(y_backprop * (x - mean))
       auto mul =
