@@ -272,18 +272,15 @@ def all_strategy_combinations_minus_default():
 
 
 def strategy_and_optimizer_combinations():
-  # TODO(b/122372746): Uncomment optimizers after they pass tests.
   return combinations.times(
       all_strategy_combinations(),
       combinations.combine(optimizer=[
-          combinations.adagrad_optimizer_v1_fn,
-          # combinations.adagrad_optimizer_keras_v2_fn,
-          combinations.adam_optimizer_v1_fn,
+          combinations.adagrad_optimizer_v1_fn, combinations
+          .adagrad_optimizer_keras_v2_fn, combinations.adam_optimizer_v1_fn,
           combinations.adam_optimizer_keras_v2_fn,
           combinations.gradient_descent_optimizer_v1_fn,
-          combinations.gradient_descent_optimizer_keras_v2_fn,
-          combinations.rmsprop_optimizer_v1_fn,
-          # combinations.rmsprop_optimizer_keras_v2_fn
+          combinations.gradient_descent_optimizer_keras_v2_fn, combinations
+          .rmsprop_optimizer_v1_fn, combinations.rmsprop_optimizer_keras_v2_fn
       ]))
 
 

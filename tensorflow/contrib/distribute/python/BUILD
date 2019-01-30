@@ -179,6 +179,7 @@ py_library(
     deps = [
         ":mirrored_strategy",
         ":one_device_strategy",
+        ":parameter_server_strategy",
         ":tpu_strategy",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
         "//tensorflow/contrib/optimizer_v2:training",
@@ -404,6 +405,7 @@ cuda_py_test(
     additional_deps = [
         ":keras_test_lib",
     ],
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # http://b/119349471
