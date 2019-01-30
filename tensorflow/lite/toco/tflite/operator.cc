@@ -1728,7 +1728,14 @@ class TensorFlowUnsupported : public BaseOperator {
           has_valid_attr = true;
           break;
         case tensorflow::AttrValue::kList:
-          if (attr.list().i_size() > 0) {
+          if (attr.list().s_size() > 0) {
+            auto start = fbb->StartVector(key);
+            for (const string& v : attr.list().s()) {
+              fbb->Add(v);
+            }
+            fbb->EndVector(start, /*typed=*/true, /*fixed=*/false);
+            has_valid_attr = true;
+          } else if (attr.list().i_size() > 0) {
             auto start = fbb->StartVector(key);
             for (const int64_t v : attr.list().i()) {
               fbb->Add(v);
@@ -1807,6 +1814,14 @@ class TensorFlowUnsupported : public BaseOperator {
           const auto& vector = value.AsTypedVector();
           for (size_t i = 0; i < vector.size(); i++) {
             list->add_f(vector[i].AsFloat());
+          }
+          break;
+        }
+        case 15: {  // flexbuffers::FBT_VECTOR_STRING: {
+          auto* list = (*attr)[key].mutable_list();
+          const auto& vector = value.AsTypedVector();
+          for (size_t i = 0; i < vector.size(); i++) {
+            list->add_s(vector[i].AsString().str());
           }
           break;
         }

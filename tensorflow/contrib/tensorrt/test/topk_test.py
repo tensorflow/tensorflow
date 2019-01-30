@@ -54,5 +54,36 @@ class TopKTest(trt_test.TfTrtIntegrationTestBase):
     return {"TRTEngineOp_0": ["Const", "TopK"]}
 
 
+class TopKOutputTypeTest(trt_test.TfTrtIntegrationTestBase):
+
+  def GetParams(self):
+    """Testing that output type of engine using Top-K is set correctly."""
+    dtype = dtypes.float32
+    input_name = "input"
+    input_dims = [100, 100]
+    k = 5
+    g = ops.Graph()
+    with g.as_default():
+      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
+      k_tensor = constant_op.constant(k, dtype=dtypes.int32, name="Const")
+      values, indices = nn_ops.top_k(x, k_tensor, name="TopK")
+      # Reshape will act as a layer between the TopK output and the engine
+      # output, requiring the output tensor of reshape to be set explicitly to
+      # int32.
+      indices = array_ops.reshape(indices, [100, 1, 5], name="Reshape")
+      values = array_ops.identity(values, name="output_values")
+      indices = array_ops.identity(indices, name="output_indices")
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=[input_name],
+        input_dims=[[input_dims]],
+        output_names=["output_values", "output_indices"],
+        expected_output_dims=[[[100, k], [100, 1, k]]])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return {"TRTEngineOp_0": ["Const", "TopK", "Reshape", "Reshape/shape"]}
+
+
 if __name__ == "__main__":
   test.main()

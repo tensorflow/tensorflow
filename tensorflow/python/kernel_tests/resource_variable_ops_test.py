@@ -745,7 +745,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   @test_util.run_v1_only("b/120545219")
-  @test_util.disable_xla("This test never passed for XLA")
   def testDestroyResource(self):
     v = resource_variable_ops.ResourceVariable(3.0, name="var0")
     self.evaluate(variables.global_variables_initializer())

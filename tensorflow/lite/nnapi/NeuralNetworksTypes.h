@@ -18,6 +18,8 @@ limitations under the License.
 #include <stdint.h>
 #include <stdio.h>
 
+typedef struct AHardwareBuffer AHardwareBuffer;
+
 // NN api types based on NNAPI header file
 // https://developer.android.com/ndk/reference/group/neural-networks
 
@@ -242,6 +244,53 @@ typedef struct ANeuralNetworksCompilation ANeuralNetworksCompilation;
 typedef struct ANeuralNetworksExecution ANeuralNetworksExecution;
 
 /**
+ * Parameters for ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL operand.
+ */
+typedef struct ANeuralNetworksSymmPerChannelQuantParams {
+  /* The index of the channel dimension. */
+  uint32_t channelDim;
+  /** The size of the scale array. Should be equal to dimension[channelDim] of
+   * the Operand. */
+  uint32_t scaleCount;
+  /** The array of scaling values for each channel. Each value must be greater
+   * than zero. */
+  const float* scales;
+} ANeuralNetworksSymmPerChannelQuantParams;
+
+/**
+ * ANeuralNetworksBurst is an opaque type that can be used to reduce the latency
+ * of a rapid sequence of executions. It will likely cause overhead if only used
+ * for a single execution.
+ *
+ * ANeuralNetworksBurst serves as a context object for any number of inferences
+ * using {@link ANeuralNetworksExecution} objects. An ANeuralNetworksBurst
+ * object and the {@link ANeuralNetworksExecution} objects used with it must all
+ * have been created from the same {@link ANeuralNetworksCompilation} object.
+ *
+ * This object is also used as a hint to drivers, providing insight to the
+ * lifetime of a rapid sequence of executions. For example, a driver may choose
+ * to increase the clock frequency of its accelerator for the lifetime of a
+ * burst object.
+ *
+ * <p>To use:<ul>
+ *    <li>Create a new burst object by calling the
+ *        {@link ANeuralNetworksBurst_create} function.</li>
+ *    <li>For each execution:</li><ul>
+ *        <li>Create {@link ANeuralNetworksExecution} and configure its
+ *            properties (see {@link ANeuralNetworksExecution} for
+ * details).</li> <li>Apply the model synchronously with
+ *            {@link ANeuralNetworksExecution_burstCompute}, reusing the same
+ *            {@link ANeuralNetworksBurst} with the new
+ *            {@link ANeuralNetworksExecution}.</li>
+ *        <li>Use and free the {@link ANeuralNetworksExecution}.</li></ul>
+ *    <li>Destroy the burst with
+ *        {@link ANeuralNetworksBurst_free}.</li></ul></p>
+ *
+ * Available since API level 29.
+ */
+typedef struct ANeuralNetworksBurst ANeuralNetworksBurst;
+
+/**
  * ANeuralNetworksOperandType describes the type of an operand.
  * This structure is used to describe both scalars and tensors.
  */
@@ -267,6 +316,16 @@ typedef struct ANeuralNetworksOperandType {
 typedef struct ANeuralNetworksEvent ANeuralNetworksEvent;
 
 typedef int32_t ANeuralNetworksOperationType;
+
+/**
+ * ANeuralNetworksDevice is an opaque type that represents a device.
+ *
+ * This type is used to query basic properties and supported operations of the
+ * corresponding device, and control which device(s) a model is to be run on.
+ *
+ * Available since API level 29.
+ */
+typedef struct ANeuralNetworksDevice ANeuralNetworksDevice;
 
 // nn api function types
 
@@ -300,6 +359,10 @@ typedef int (*ANeuralNetworksModel_addOperand_fn)(
 typedef int (*ANeuralNetworksModel_setOperandValue_fn)(
     ANeuralNetworksModel* model, int32_t index, const void* buffer,
     size_t length);
+
+typedef int (*ANeuralNetworksModel_setOperandSymmPerChannelQuantParams_fn)(
+    ANeuralNetworksModel* model, int32_t index,
+    const ANeuralNetworksSymmPerChannelQuantParams* channelQuant);
 
 typedef int (*ANeuralNetworksModel_setOperandValueFromMemory_fn)(
     ANeuralNetworksModel* model, int32_t index,
@@ -350,5 +413,71 @@ typedef int (*ANeuralNetworksEvent_wait_fn)(ANeuralNetworksEvent* event);
 typedef void (*ANeuralNetworksEvent_free_fn)(ANeuralNetworksEvent* event);
 
 typedef int (*ASharedMemory_create_fn)(const char* name, size_t size);
+
+typedef int (*ANeuralNetworks_getDeviceCount_fn)(uint32_t* numDevices);
+
+typedef int (*ANeuralNetworks_getDevice_fn)(uint32_t devIndex,
+                                            ANeuralNetworksDevice** device);
+
+typedef int (*ANeuralNetworksDevice_getName_fn)(
+    const ANeuralNetworksDevice* device, const char** name);
+
+typedef int (*ANeuralNetworksDevice_getType_fn)(
+    const ANeuralNetworksDevice* device, int32_t* type);
+
+typedef int (*ANeuralNetworksDevice_getVersion_fn)(
+    const ANeuralNetworksDevice* device, const char** version);
+
+typedef int (*ANeuralNetworksDevice_getFeatureLevel_fn)(
+    const ANeuralNetworksDevice* device, int64_t* featureLevel);
+
+typedef int (*ANeuralNetworksModel_getSupportedOperationsForDevices_fn)(
+    const ANeuralNetworksModel* model,
+    const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
+    bool* supportedOps);
+
+typedef int (*ANeuralNetworksCompilation_createForDevices_fn)(
+    ANeuralNetworksModel* model, const ANeuralNetworksDevice* const* devices,
+    uint32_t numDevices, ANeuralNetworksCompilation** compilation);
+
+typedef int (*ANeuralNetworksCompilation_setCaching_fn)(
+    ANeuralNetworksCompilation* compilation, const char* cacheDir,
+    const uint8_t* token);
+
+typedef int (*ANeuralNetworksExecution_compute_fn)(
+    ANeuralNetworksExecution* execution);
+
+typedef int (*ANeuralNetworksExecution_getOutputOperandRank_fn)(
+    ANeuralNetworksExecution* execution, int32_t index, uint32_t* rank);
+
+typedef int (*ANeuralNetworksExecution_getOutputOperandDimensions_fn)(
+    ANeuralNetworksExecution* execution, int32_t index, uint32_t* dimensions);
+
+typedef int (*ANeuralNetworksBurst_create_fn)(
+    ANeuralNetworksCompilation* compilation, ANeuralNetworksBurst** burst);
+
+typedef void (*ANeuralNetworksBurst_free_fn)(ANeuralNetworksBurst* burst);
+
+typedef int (*ANeuralNetworksExecution_burstCompute_fn)(
+    ANeuralNetworksExecution* execution, ANeuralNetworksBurst* burst);
+
+typedef int (*ANeuralNetworksMemory_createFromAHardwareBuffer_fn)(
+    const AHardwareBuffer* ahwb, ANeuralNetworksMemory** memory);
+
+typedef int (*ANeuralNetworksExecution_setMeasureTiming_fn)(
+    ANeuralNetworksExecution* execution, bool measure);
+
+typedef enum {
+  // Execution time on hardware (not driver, which runs on host processor).
+  ANEURALNETWORKS_DURATION_ON_HARDWARE = 0,
+  // Execution time in driver (including time on hardware).  Excludes overhead
+  // such as that of the runtime itself and the IPC needed for the runtime to
+  // communicate with the driver.
+  ANEURALNETWORKS_DURATION_IN_DRIVER = 1,
+} DurationCode;
+
+typedef int (*ANeuralNetworksExecution_getDuration_fn)(
+    const ANeuralNetworksExecution* execution, int32_t durationCode,
+    uint64_t* duration);
 
 #endif  // TENSORFLOW_LITE_NNAPI_NEURALNETWORKSTYPES_H_

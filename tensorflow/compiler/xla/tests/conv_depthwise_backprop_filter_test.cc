@@ -32,20 +32,20 @@ string GetFloatDataType(bool use_bfloat16) {
   return use_bfloat16 ? "bf16" : "f32";
 }
 
-struct DepthwiseConvolution2DSpec {
+struct BatchGroupedConvolution2DSpec {
   int64 output_batch, window, window_dilation;
   std::vector<int64> activation_dims;
   std::vector<int64> kernel_dims;
   std::vector<int64> output_dims;
 };
 
-class DepthwiseConvolution2DTest
+class BatchGroupedConvolution2DTest
     : public HloTestBase,
       public ::testing::WithParamInterface<
-          ::testing::tuple<DepthwiseConvolution2DSpec, bool>> {};
+          ::testing::tuple<BatchGroupedConvolution2DSpec, bool>> {};
 
-static std::vector<DepthwiseConvolution2DSpec> GetConv2DTestCases() {
-  std::vector<DepthwiseConvolution2DSpec> config_set;
+static std::vector<BatchGroupedConvolution2DSpec> GetConv2DTestCases() {
+  std::vector<BatchGroupedConvolution2DSpec> config_set;
   std::vector<std::vector<int64>> config_options = {
       {8, 5, 3, 2},   {4, 5, 5, 2},   {8, 7, 4, 128},  {16, 20, 20, 256},
       {256, 7, 5, 4}, {256, 6, 6, 4}, {256, 8, 8, 512}};
@@ -56,7 +56,7 @@ static std::vector<DepthwiseConvolution2DSpec> GetConv2DTestCases() {
     int64 kernel_size = option[2];
     int64 batch = option[0];
 
-    DepthwiseConvolution2DSpec config;
+    BatchGroupedConvolution2DSpec config;
     config.window_dilation = 1;
     config.output_batch = feature;
     config.window = kernel_size;
@@ -72,7 +72,7 @@ static std::vector<DepthwiseConvolution2DSpec> GetConv2DTestCases() {
 
     // Add configurations for window dilation cases.
     if (activation_size % 2 == 0 && activation_size == kernel_size) {
-      DepthwiseConvolution2DSpec config;
+      BatchGroupedConvolution2DSpec config;
       config.window_dilation = 2;
       config.output_batch = feature;
       config.window = kernel_size / 2;
@@ -90,9 +90,9 @@ static std::vector<DepthwiseConvolution2DSpec> GetConv2DTestCases() {
   return config_set;
 }
 
-string DepthwiseConvolution2DTestDataToString(
+string BatchGroupedConvolution2DTestDataToString(
     const ::testing::TestParamInfo<
-        ::testing::tuple<DepthwiseConvolution2DSpec, bool>>& data) {
+        ::testing::tuple<BatchGroupedConvolution2DSpec, bool>>& data) {
   const auto& spec = ::testing::get<0>(data.param);
   const string data_type = GetFloatDataType(::testing::get<1>(data.param));
   string str = absl::StrCat(
@@ -105,8 +105,8 @@ string DepthwiseConvolution2DTestDataToString(
   return str;
 }
 
-string BuildHloTextDepthwiseConvolution2D(
-    const DepthwiseConvolution2DSpec& spec, bool use_bfloat16) {
+string BuildHloTextBatchGroupedConvolution2D(
+    const BatchGroupedConvolution2DSpec& spec, bool use_bfloat16) {
   const string data_type = GetFloatDataType(use_bfloat16);
   return absl::StrFormat(
       R"(
@@ -129,11 +129,11 @@ string BuildHloTextDepthwiseConvolution2D(
       spec.window_dilation, spec.output_batch);
 }
 
-XLA_TEST_P(DepthwiseConvolution2DTest, DoIt) {
-  const DepthwiseConvolution2DSpec& spec = ::testing::get<0>(GetParam());
+XLA_TEST_P(BatchGroupedConvolution2DTest, DoIt) {
+  const BatchGroupedConvolution2DSpec& spec = ::testing::get<0>(GetParam());
   bool use_bfloat16 = ::testing::get<1>(GetParam());
   const string hlo_text =
-      BuildHloTextDepthwiseConvolution2D(spec, use_bfloat16);
+      BuildHloTextBatchGroupedConvolution2D(spec, use_bfloat16);
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0.01, 0.01},
                             [](HloModule* module) -> Status {
@@ -145,10 +145,11 @@ XLA_TEST_P(DepthwiseConvolution2DTest, DoIt) {
 }
 
 INSTANTIATE_TEST_CASE_P(
-    DepthwiseConvolution2DTestWithRandomIndices, DepthwiseConvolution2DTest,
+    BatchGroupedConvolution2DTestWithRandomIndices,
+    BatchGroupedConvolution2DTest,
     ::testing::Combine(::testing::ValuesIn(GetConv2DTestCases()),
                        ::testing::Bool()),
-    DepthwiseConvolution2DTestDataToString);
+    BatchGroupedConvolution2DTestDataToString);
 
 }  // namespace
 }  // namespace xla

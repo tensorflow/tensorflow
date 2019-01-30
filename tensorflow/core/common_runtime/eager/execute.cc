@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -744,13 +745,16 @@ bool IsPinnableOp(const string& op_type) {
   static const gtl::FlatSet<string>* unpinnable_ops = new gtl::FlatSet<string>({
       "RandomUniform",
       "RandomUniformInt",
-      "RandomNormal",
+      "RandomStandardNormal",
       "StatelessRandomUniform",
       "StatelessRandomUniformInt",
       "StatelessRandomNormal",
   });
 
-  return unpinnable_ops->find(op_type) == unpinnable_ops->end();
+  // XRT ops refer to per-device handles that are not safe to move between
+  // devices.
+  return unpinnable_ops->find(op_type) == unpinnable_ops->end() &&
+         !absl::StartsWith(op_type, "XRT");
 }
 
 // The Op device may be updated if:
@@ -764,7 +768,7 @@ bool IsPinnableOp(const string& op_type) {
 Status MaybeUpdateOpDevice(EagerOperation* op) {
   EagerContext* ctx = op->EagerContext();
   bool all_inputs_eligible_for_cpu_pinning =
-      ctx->PinSmallOpsToCPU() && IsPinnableOp(op->Name());
+      ctx->PinSmallOpsToCPU() && !op->is_function() && IsPinnableOp(op->Name());
   Device* op_device = op->Device() == nullptr ? ctx->HostCPU() : op->Device();
   for (int i = 0; i < op->Inputs().size(); ++i) {
     TensorHandle* tensor_handle = op->Inputs()[i];

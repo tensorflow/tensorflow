@@ -473,15 +473,10 @@ class Layer(checkpointable.Checkpointable):
             one per output tensor of the layer).
     """
     if not self.supports_masking:
-      if mask is not None:
-        if isinstance(mask, list):
-          if any(m is not None for m in mask):
-            raise TypeError('Layer ' + self.name + ' does not support masking, '
-                            'but was passed an input_mask: ' + str(mask))
-        else:
-          raise TypeError('Layer ' + self.name + ' does not support masking, '
-                          'but was passed an input_mask: ' + str(mask))
-      # masking not explicitly supported: return None as mask
+      if any(m is not None for m in nest.flatten(mask)):
+        raise TypeError('Layer ' + self.name + ' does not support masking, '
+                        'but was passed an input_mask: ' + str(mask))
+      # masking not explicitly supported: return None as mask.
       return None
     # if masking is explicitly supported, by default
     # carry over the input mask
@@ -524,17 +519,26 @@ class Layer(checkpointable.Checkpointable):
     # models using the functional API).
     build_graph = tf_utils.are_all_symbolic_tensors(input_list)
 
+    if build_graph:
+      # Only create Keras history if at least one tensor originates from a
+      # `keras.Input`. Otherwise this Layer may be being used outside the Keras
+      # framework.
+      if base_layer_utils.needs_keras_history(inputs):
+        base_layer_utils.create_keras_history(inputs)
+      # Do not track these Tensors in any sublayers invoked during `call`.
+      base_layer_utils.mark_checked(inputs)
+
     # Handle Keras mask propagation from previous layer to current layer.
     previous_mask = None
-    if build_graph and (not hasattr(self, '_compute_previous_mask') or
-                        self._compute_previous_mask):
+    if (not hasattr(self, '_compute_previous_mask') or
+        self._compute_previous_mask):
       previous_mask = base_layer_utils.collect_previous_mask(inputs)
       if not hasattr(self, '_call_fn_args'):
         self._call_fn_args = function_utils.fn_args(self.call)
       if ('mask' in self._call_fn_args and 'mask' not in kwargs and
           not generic_utils.is_all_none(previous_mask)):
-        # The previous layer generated a mask, and mask was not explicitly pass
-        # to __call__, hence we set previous_mask as the default value.
+        # The previous layer generated a mask, and mask was not explicitly
+        # pass to __call__, hence we set previous_mask as the default value.
         kwargs['mask'] = previous_mask
 
     with ops.name_scope(self._name_scope()):
@@ -557,16 +561,17 @@ class Layer(checkpointable.Checkpointable):
             try:
               outputs = self.call(inputs, *args, **kwargs)
             except TypeError as e:
-              messages = ['`tf.Tensor` as a Python `bool` is not allowed',
-                          'Tensor objects are only iterable when eager']
+              messages = ('`tf.Tensor` as a Python `bool` is not allowed',
+                          'Tensor objects are only iterable when eager')
+              exception_str = str(e)
               for msg in messages:
-                if msg in str(e):
+                if msg in exception_str:
                   raise TypeError('You are attempting to use Python control '
                                   'flow in a layer that was not declared to be '
                                   'dynamic. Pass `dynamic=True` to the class '
                                   'constructor.\nEncountered error:\n"""\n' +
-                                  str(e) + '\n"""')
-              raise e
+                                  exception_str + '\n"""')
+              raise
           else:
             # We will use static shape inference to return symbolic tensors
             # matching the specifications of the layer outputs.
@@ -580,11 +585,11 @@ class Layer(checkpointable.Checkpointable):
             raise ValueError('A layer\'s `call` method should return a '
                              'Tensor or a list of Tensors, not None '
                              '(layer: ' + self.name + ').')
-          self._handle_activity_regularization(inputs, outputs)
-          self._set_mask_metadata(inputs, outputs, previous_mask)
           if base_layer_utils.have_all_keras_metadata(inputs):
             inputs, outputs = self._set_connectivity_metadata_(
                 inputs, outputs, args, kwargs)
+          self._handle_activity_regularization(inputs, outputs)
+          self._set_mask_metadata(inputs, outputs, previous_mask)
           if hasattr(self, '_set_inputs') and not self.inputs:
             # Subclassed network: explicitly set metadata normally set by
             # a call to self._set_inputs().
@@ -596,7 +601,7 @@ class Layer(checkpointable.Checkpointable):
         # Eager execution on data tensors.
         outputs = self.call(inputs, *args, **kwargs)
         self._handle_activity_regularization(inputs, outputs)
-        return outputs
+        self._set_mask_metadata(inputs, outputs, previous_mask)
 
     if not context.executing_eagerly():
       # Optionally load weight values specified at layer instantiation.
@@ -1343,27 +1348,32 @@ class Layer(checkpointable.Checkpointable):
           self.add_loss(mean_activity_loss, inputs=inputs)
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):
-    # In some cases the mask of the outputs has already been computed by
-    # inner layers and does not need to be recomputed by this layer.
-    mask_already_computed = all(
-        hasattr(x, '_keras_mask') for x in generic_utils.to_list(outputs))
-    if hasattr(self, 'compute_mask') and not mask_already_computed:
-      output_mask = self.compute_mask(inputs, previous_mask)
+    if getattr(self, '_compute_output_and_mask_jointly', False):
+      # Mask is already computed for Keras Graph Networks.
+      return
+
+    flat_outputs = nest.flatten(outputs)
+    if all(getattr(x, '_keras_mask', None) is not None for x in flat_outputs):
+      # Mask is already computed by sublayers.
+      return
+
+    if hasattr(self, 'compute_mask'):
+      output_masks = self.compute_mask(inputs, previous_mask)
+      # `compute_mask` can return a single `None` even when a Layer
+      # has multiple outputs.
+      if output_masks is None:
+        flat_masks = [None for _ in flat_outputs]
+      else:
+        flat_masks = nest.flatten(output_masks)
     else:
-      output_mask = None
-    if isinstance(outputs, (list, tuple)):
-      if output_mask is None:
-        output_mask = [None for _ in range(len(outputs))]
-      for x, m in zip(outputs, output_mask):
-        try:
-          x._keras_mask = m  # pylint: disable=protected-access
-        except AttributeError:
-          pass  # C type such as dict. Masking not supported in this case.
-    else:
+      flat_masks = [None for _ in flat_outputs]
+
+    for output, mask in zip(flat_outputs, flat_masks):
       try:
-        outputs._keras_mask = output_mask  # pylint: disable=protected-access
+        output._keras_mask = mask
       except AttributeError:
-        pass  # C type such as dict. Masking not supported in this case.
+        # C Type such as np.ndarray.
+        pass
 
   def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):
     call_convention = getattr(
@@ -1576,9 +1586,13 @@ class Layer(checkpointable.Checkpointable):
   def _symbolic_call(self, inputs):
     input_shapes = nest.map_structure(lambda x: x.shape, inputs)
     output_shapes = self.compute_output_shape(input_shapes)
-    return nest.map_structure(
-        lambda shape: backend.placeholder(shape, dtype=self.dtype),
-        output_shapes)
+
+    def _make_placeholder_like(shape):
+      ph = backend.placeholder(shape, self.dtype)
+      ph._keras_mask = None
+      return ph
+
+    return nest.map_structure(_make_placeholder_like, output_shapes)
 
   def __setattr__(self, name, value):
     if (not getattr(self, '_setattr_tracking', True) or

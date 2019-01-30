@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import format_master_url
 from tensorflow.python.training import server_lib
+from tensorflow.python.util.tf_export import tf_export
 
 _KUBERNETES_API_CLIENT_INSTALLED = True
 try:
@@ -30,6 +31,7 @@ except ImportError:
   _KUBERNETES_API_CLIENT_INSTALLED = False
 
 
+@tf_export('distribute.cluster_resolver.KubernetesClusterResolver')
 class KubernetesClusterResolver(ClusterResolver):
   """Cluster Resolver for Kubernetes.
 
@@ -154,13 +156,3 @@ class KubernetesClusterResolver(ClusterResolver):
       cluster_map[tf_job] = all_pods
 
     return server_lib.ClusterSpec(cluster_map)
-
-  @property
-  def environment(self):
-    """Returns the current environment which TensorFlow is running in.
-
-    For users in the Cloud environment, the environment property is always an
-    empty string, and Google users will not use this ClusterResolver for running
-    on internal systems.
-    """
-    return ''

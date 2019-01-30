@@ -56,7 +56,7 @@ class LinearModel(tf.keras.Model):
 
 
 def mean_square_loss(model, xs, ys):
-  return tf.reduce_mean(tf.square(tf.subtract(model(xs), ys)))
+  return tf.reduce_mean(tf.squared_difference(model(xs), ys))
 
 
 def fit(model, dataset, optimizer, verbose=False, logdir=None):

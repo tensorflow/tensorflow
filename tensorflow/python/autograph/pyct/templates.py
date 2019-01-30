@@ -108,6 +108,7 @@ class ReplaceTransformer(gast.NodeTransformer):
         anno.Basic.ORIGIN,
         anno.Basic.SKIP_PROCESSING,
         anno.Static.ORIG_DEFINITIONS,
+        'extra_test',
     }
 
   def _prepare_replacement(self, replaced, key):

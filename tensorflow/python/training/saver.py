@@ -1078,7 +1078,8 @@ class Saver(object):
            meta_graph_suffix="meta",
            write_meta_graph=True,
            write_state=True,
-           strip_default_attrs=False):
+           strip_default_attrs=False,
+           save_debug_info=False):
     # pylint: disable=line-too-long
     """Saves variables.
 
@@ -1108,6 +1109,10 @@ class Saver(object):
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
         removed from the NodeDefs. For a detailed guide, see
         [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+      save_debug_info: If `True`, save the GraphDebugInfo to a separate file,
+        which in the same directory of save_path and with `_debug` added before
+        the file extension. This is only enabled when `write_meta_graph` is
+        `True`
 
     Returns:
       A string: path prefix used for the checkpoint files.  If the saver is
@@ -1193,7 +1198,8 @@ class Saver(object):
       if not context.executing_eagerly():
         with sess.graph.as_default():
           self.export_meta_graph(
-              meta_graph_filename, strip_default_attrs=strip_default_attrs)
+              meta_graph_filename, strip_default_attrs=strip_default_attrs,
+              save_debug_info=save_debug_info)
 
     if self._is_empty:
       return None
@@ -1207,7 +1213,8 @@ class Saver(object):
                         export_scope=None,
                         clear_devices=False,
                         clear_extraneous_savers=False,
-                        strip_default_attrs=False):
+                        strip_default_attrs=False,
+                        save_debug_info=False):
     # pylint: disable=line-too-long
     """Writes `MetaGraphDef` to save_path/filename.
 
@@ -1224,6 +1231,9 @@ class Saver(object):
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
         removed from the NodeDefs. For a detailed guide, see
         [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+      save_debug_info: If `True`, save the GraphDebugInfo to a separate file,
+        which in the same directory of filename and with `_debug` added before
+        the file extension.
 
     Returns:
       A `MetaGraphDef` proto.
@@ -1238,7 +1248,8 @@ class Saver(object):
         export_scope=export_scope,
         clear_devices=clear_devices,
         clear_extraneous_savers=clear_extraneous_savers,
-        strip_default_attrs=strip_default_attrs)
+        strip_default_attrs=strip_default_attrs,
+        save_debug_info=save_debug_info)
 
   def restore(self, sess, save_path):
     """Restores previously saved variables.
@@ -1497,6 +1508,7 @@ def export_meta_graph(filename=None,
                       clear_devices=False,
                       clear_extraneous_savers=False,
                       strip_default_attrs=False,
+                      save_debug_info=False,
                       **kwargs):
   # pylint: disable=line-too-long
   """Returns `MetaGraphDef` proto. Optionally writes it to filename.
@@ -1527,6 +1539,9 @@ def export_meta_graph(filename=None,
     strip_default_attrs: Boolean. If `True`, default-valued attributes will be
       removed from the NodeDefs. For a detailed guide, see
       [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+    save_debug_info: If `True`, save the GraphDebugInfo to a separate file,
+      which in the same directory of filename and with `_debug` added before
+      the file extend.
     **kwargs: Optional keyed arguments.
 
   Returns:
@@ -1558,6 +1573,7 @@ def export_meta_graph(filename=None,
       clear_devices=clear_devices,
       clear_extraneous_savers=clear_extraneous_savers,
       strip_default_attrs=strip_default_attrs,
+      save_debug_info=save_debug_info,
       **kwargs)
   return meta_graph_def
 

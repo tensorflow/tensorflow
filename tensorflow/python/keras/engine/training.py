@@ -24,8 +24,6 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.distribute import distribute_coordinator as dc
-from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -130,7 +128,6 @@ class Model(Network):
     # passing distribution strategy to compile rather than creating the model
     # under distribution strategy scope.
     self._compile_distribution = False
-    self._distributed_session_is_configured = False
 
     self.run_eagerly = None
 
@@ -219,7 +216,6 @@ class Model(Network):
                       'create the model under the distribution strategy scope.')
       self._distribution_strategy = distribute
       self._compile_distribution = True
-      self._distributed_session_is_configured = False
     else:
       if distribution_strategy_context.has_strategy():
         # When the user builds the model in the DS scope and cross replica
@@ -278,7 +274,9 @@ class Model(Network):
     # Set DistributionStrategy specific parameters.
     for mode in [ModeKeys.TRAIN, ModeKeys.TEST, ModeKeys.PREDICT]:
       distributed_training_utils.set_distributed_model(self, mode, None)
-
+    if self._distribution_strategy is not None:
+      distributed_training_utils.configure_and_create_session(
+          self._distribution_strategy)
     # Initialize model metric attributes.
     self._init_metric_attributes()
     if not self.built or not self.inputs or not self.outputs:
@@ -788,54 +786,23 @@ class Model(Network):
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:
-      if training_utils.should_run_multi_worker():
-        # Multi-Worker mode runs the Keras training loop on multiple
-        # servers via the Distribute Coordinator.
-        def _worker_fn(_):
-          """Run training inside the distributed coordinator."""
-          self._configure_distributed_session()
-          return training_distributed.fit_distributed(
-              self,
-              x=x,
-              y=y,
-              batch_size=batch_size,
-              epochs=epochs,
-              verbose=verbose,
-              callbacks=callbacks,
-              validation_split=validation_split,
-              validation_data=validation_data,
-              shuffle=shuffle,
-              class_weight=class_weight,
-              sample_weight=sample_weight,
-              initial_epoch=initial_epoch,
-              steps_per_epoch=steps_per_epoch,
-              validation_steps=validation_steps,
-              validation_freq=validation_freq)
-
-        # Independent worker only for now.
-        return dc.run_distribute_coordinator(
-            _worker_fn,
-            self._distribution_strategy,
-            mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
-      else:
-        self._configure_distributed_session()
-        return training_distributed.fit_distributed(
-            self,
-            x=x,
-            y=y,
-            batch_size=batch_size,
-            epochs=epochs,
-            verbose=verbose,
-            callbacks=callbacks,
-            validation_split=validation_split,
-            validation_data=validation_data,
-            shuffle=shuffle,
-            class_weight=class_weight,
-            sample_weight=sample_weight,
-            initial_epoch=initial_epoch,
-            steps_per_epoch=steps_per_epoch,
-            validation_steps=validation_steps,
-            validation_freq=validation_freq)
+      return training_distributed.fit_distributed(
+          self,
+          x=x,
+          y=y,
+          batch_size=batch_size,
+          epochs=epochs,
+          verbose=verbose,
+          callbacks=callbacks,
+          validation_split=validation_split,
+          validation_data=validation_data,
+          shuffle=shuffle,
+          class_weight=class_weight,
+          sample_weight=sample_weight,
+          initial_epoch=initial_epoch,
+          steps_per_epoch=steps_per_epoch,
+          validation_steps=validation_steps,
+          validation_freq=validation_freq)
 
     batch_size = self._validate_or_infer_batch_size(
         batch_size, steps_per_epoch, x)
@@ -1050,7 +1017,6 @@ class Model(Network):
     """
     # Case 1: distribution strategy.
     if self._distribution_strategy:
-      self._configure_distributed_session()
       return training_distributed.evaluate_distributed(
           self,
           x=x,
@@ -1178,7 +1144,6 @@ class Model(Network):
     """
     # Case 1: distribution strategy.
     if self._distribution_strategy:
-      self._configure_distributed_session()
       return training_distributed.predict_distributed(self,
                                                       x=x,
                                                       batch_size=batch_size,
@@ -2171,7 +2136,9 @@ class Model(Network):
                                           steps_name='steps',
                                           steps=None,
                                           validation_split=0,
-                                          shuffle=False):
+                                          shuffle=False,
+                                          repeat=True,
+                                          allow_partial_batch=False):
     """Runs validation checks on input and target data passed by the user.
 
     This is called when using DistributionStrategy to train, evaluate or serve
@@ -2195,6 +2162,10 @@ class Model(Network):
       validation_split: Float between 0 and 1.
         Fraction of the training data to be used as validation data.
       shuffle: Boolean whether to shuffle the training data before each epoch.
+      repeat: Boolean whether to repeat the numpy training data when converting
+        to training dataset.
+      allow_partial_batch: Boolean whether to enforce that all batches have the
+        same size.
 
     Returns:
       Dataset instance.
@@ -2274,10 +2245,13 @@ class Model(Network):
                                                                session=session)
         if shuffle_buffer:
           ds = ds.shuffle(shuffle_buffer)
-        ds = ds.repeat()
+        if repeat:
+          ds = ds.repeat()
+
         # We need to use the drop_remainder argument to get a known static
         # input shape which is required for TPUs.
-        drop_remainder = strategy.extended.experimental_require_static_shapes
+        drop_remainder = (not allow_partial_batch and
+                          strategy.extended.experimental_require_static_shapes)
         x = ds.batch(batch_size, drop_remainder=drop_remainder)
       else:
         assert isinstance(x, dataset_ops.DatasetV2)
@@ -2714,26 +2688,6 @@ class Model(Network):
     self.outputs = outputs
     self.output_names = training_utils.generic_output_names(outputs)
     self.built = True
-
-  def _configure_distributed_session(self):
-    """Configure a Session for use with Distribution Strategies.
-
-    Raises:
-      ValueError: If a non-distributed Session has already been created.
-    """
-    if not self._distributed_session_is_configured:
-      if (dc_context.get_current_worker_context() is not None and
-          getattr(K._SESSION, 'session', None) is not None):  # pylint: disable=protected-access
-        raise ValueError('Session was created before `fit`, `evaluate`, '
-                         'or `predict` was called. With Multi-Worker '
-                         'mode, this is not allowed. Please avoid '
-                         'creating a Session outside of these methods. '
-                         'The Session may have been created by a call '
-                         'to `keras.backend.get_session()` or '
-                         'functions that use Sessions, like `load_weights`.')
-      distributed_training_utils.configure_and_create_session(
-          self._distribution_strategy)
-      self._distributed_session_is_configured = True
 
 
 class DistributedCallbackModel(Model):

@@ -29,7 +29,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.losses import binary_crossentropy
@@ -51,6 +50,7 @@ from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import to_list
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
+from tensorflow.python.keras.utils.tf_utils import is_tensor_or_variable
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import confusion_matrix
 from tensorflow.python.ops import init_ops
@@ -509,7 +509,7 @@ class MeanRelativeError(Mean):
 
   def get_config(self):
     n = self.normalizer
-    config = {'normalizer': K.eval(n) if _is_tensor_or_variable(n) else n}
+    config = {'normalizer': K.eval(n) if is_tensor_or_variable(n) else n}
     base_config = super(MeanRelativeError, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -558,7 +558,7 @@ class MeanMetricWrapper(Mean):
   def get_config(self):
     config = {}
     for k, v in six.iteritems(self._fn_kwargs):
-      config[k] = K.eval(v) if _is_tensor_or_variable(v) else v
+      config[k] = K.eval(v) if is_tensor_or_variable(v) else v
     base_config = super(MeanMetricWrapper, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -1607,8 +1607,8 @@ class AUC(Metric):
 
   def __init__(self,
                num_thresholds=200,
-               curve=metrics_utils.AUCCurve.ROC,
-               summation_method=metrics_utils.AUCSummationMethod.INTERPOLATION,
+               curve='ROC',
+               summation_method='interpolation',
                name=None,
                dtype=None):
     """Creates an `AUC` instance.
@@ -1631,18 +1631,29 @@ class AUC(Metric):
     # Validate configurations.
     if num_thresholds <= 1:
       raise ValueError('`num_thresholds` must be > 1.')
-    if curve not in list(metrics_utils.AUCCurve):
+    if isinstance(curve, metrics_utils.AUCCurve) and curve not in list(
+        metrics_utils.AUCCurve):
       raise ValueError('Invalid curve: "{}". Valid options are: "{}"'.format(
           curve, list(metrics_utils.AUCCurve)))
-    if summation_method not in list(metrics_utils.AUCSummationMethod):
+    if isinstance(
+        summation_method,
+        metrics_utils.AUCSummationMethod) and summation_method not in list(
+            metrics_utils.AUCSummationMethod):
       raise ValueError(
           'Invalid summation method: "{}". Valid options are: "{}"'.format(
               summation_method, list(metrics_utils.AUCSummationMethod)))
 
     # Update properties.
     self.num_thresholds = num_thresholds
-    self.curve = curve
-    self.summation_method = summation_method
+    if isinstance(curve, metrics_utils.AUCCurve):
+      self.curve = curve
+    else:
+      self.curve = metrics_utils.AUCCurve.from_str(curve)
+    if isinstance(summation_method, metrics_utils.AUCSummationMethod):
+      self.summation_method = summation_method
+    else:
+      self.summation_method = metrics_utils.AUCSummationMethod.from_str(
+          summation_method)
     super(AUC, self).__init__(name=name, dtype=dtype)
 
     # Create metric variables
@@ -1802,8 +1813,8 @@ class AUC(Metric):
   def get_config(self):
     config = {
         'num_thresholds': self.num_thresholds,
-        'curve': self.curve,
-        'summation_method': self.summation_method,
+        'curve': self.curve.value,
+        'summation_method': self.summation_method.value,
     }
     base_config = super(AUC, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -2081,7 +2092,7 @@ class RootMeanSquaredError(Mean):
     y_pred = math_ops.cast(y_pred, self._dtype)
     y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
         y_pred, y_true, sample_weight)
-    error_sq = math_ops.square(y_pred - y_true)
+    error_sq = math_ops.squared_difference(y_pred, y_true)
     return super(RootMeanSquaredError, self).update_state(
         error_sq, sample_weight=sample_weight)
 
@@ -2532,6 +2543,77 @@ class CategoricalCrossentropy(MeanMetricWrapper):
         label_smoothing=label_smoothing)
 
 
+@keras_export('keras.metrics.SparseCategoricalCrossentropy')
+class SparseCategoricalCrossentropy(MeanMetricWrapper):
+  """Computes the crossentropy metric between the labels and predictions.
+
+  Use this crossentropy metric when there are two or more label classes.
+  We expect labels to be provided as integers. If you want to provide labels
+  using `one-hot` representation, please use `CategoricalCrossentropy` metric.
+  There should be `# classes` floating point values per feature for `y_pred`
+  and a single floating point value per feature for `y_true`.
+
+  In the snippet below, there is a single floating point value per example for
+  `y_true` and `# classes` floating pointing values per example for `y_pred`.
+  The shape of `y_true` is `[batch_size]` and the shape of `y_pred` is
+  `[batch_size, num_classes]`.
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.SparseCategoricalCrossentropy()
+  m.update_state(
+    [1, 2],
+    [[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
+
+  # y_true = one_hot(y_true) = [[0, 1, 0], [0, 0, 1]]
+  # logits = log(y_pred)
+  # softmax = exp(logits) / sum(exp(logits), axis=-1)
+  # softmax = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+
+  # xent = -sum(y * log(softmax), 1)
+  # log(softmax) = [[-2.9957, -0.0513, -16.1181], [-2.3026, -0.2231, -2.3026]]
+  # y_true * log(softmax) = [[0, -0.0513, 0], [0, 0, -2.3026]]
+
+  # xent = [0.0513, 2.3026]
+  # Reduced xent = (0.0513 + 2.3026) / 2
+
+  print('Final result: ', m.result().numpy())  # Final result: 1.176
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile(
+    'sgd',
+    loss='mse',
+    metrics=[tf.keras.metrics.SparseCategoricalCrossentropy()])
+  ```
+
+  Args:
+    name: (Optional) string name of the metric instance.
+    dtype: (Optional) data type of the metric result.
+    from_logits: (Optional ) Whether `y_pred` is expected to be a logits tensor.
+      By default, we assume that `y_pred` encodes a probability distribution.
+    axis: (Optional) Defaults to -1. The dimension along which the metric is
+      computed.
+  """
+
+  def __init__(self,
+               name='sparse_categorical_crossentropy',
+               dtype=None,
+               from_logits=False,
+               axis=-1):
+
+    super(SparseCategoricalCrossentropy, self).__init__(
+        sparse_categorical_crossentropy,
+        name,
+        dtype=dtype,
+        from_logits=from_logits,
+        axis=axis)
+
+
 def accuracy(y_true, y_pred):
   y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
   if y_true.dtype != y_pred.dtype:
@@ -2639,7 +2721,3 @@ def get(identifier):
   else:
     raise ValueError('Could not interpret '
                      'metric function identifier: %s' % identifier)
-
-
-def _is_tensor_or_variable(x):
-  return tensor_util.is_tensor(x) or isinstance(x, tf_variables.Variable)

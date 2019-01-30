@@ -351,3 +351,7 @@ def register_symbolic_tensor_type(cls):
   """
   global _user_convertible_tensor_types
   _user_convertible_tensor_types.add(cls)
+
+
+def is_tensor_or_variable(x):
+  return tensor_util.is_tensor(x) or isinstance(x, variables.Variable)

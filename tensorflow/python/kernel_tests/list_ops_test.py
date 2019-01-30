@@ -463,25 +463,48 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testScatterOutputListSize(self):
     c0 = constant_op.constant([1.0, 2.0])
-    l = list_ops.tensor_list_scatter(
-        c0, [1, 3], ops.convert_to_tensor([], dtype=dtypes.int32))
+    l = list_ops.tensor_list_scatter(c0, [1, 3], [])
     # TensorListScatter should return a list with size largest index + 1.
     self.assertAllEqual(list_ops.tensor_list_length(l), 4)
+
+  def testScatterOutputListSizeWithNumElementsSpecified(self):
+    c0 = constant_op.constant([1.0, 2.0])
+    l = gen_list_ops.tensor_list_scatter_v2(
+        c0, [1, 3], list_ops._build_element_shape([]), num_elements=5)
+    # TensorListScatter should return a list with size num_elements.
+    self.assertAllEqual(list_ops.tensor_list_length(l), 5)
+
+  def testScatterFailsWhenIndexLargerThanNumElements(self):
+    c0 = constant_op.constant([1.0, 2.0])
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "TensorListScatter: Trying to scatter at index 3 in list with size 3"):
+      l = gen_list_ops.tensor_list_scatter_v2(
+          c0, [1, 3], list_ops._build_element_shape([]), num_elements=3)
+      self.evaluate(l)
+
+  def testScatterFailsWithInvalidNumElements(self):
+    c0 = constant_op.constant([1.0, 2.0])
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "TensorListScatter expects num_elements >= -1, found: -2"):
+      l = gen_list_ops.tensor_list_scatter_v2(
+          c0, [1, 3], list_ops._build_element_shape([]), num_elements=-2)
+      self.evaluate(l)
 
   def testScatterWithInvalidRowsInInputTensorFails(self):
     c0 = constant_op.constant([1.0, 2.0])
     with self.assertRaisesRegexp(
         errors.InvalidArgumentError,
         "Invalid number of rows in input tensor. Expected: 3 Actual: 2"):
-      l = list_ops.tensor_list_scatter(
-          c0, [1, 0, 2], ops.convert_to_tensor([], dtype=dtypes.int32))
+      l = list_ops.tensor_list_scatter(c0, [1, 0, 2], [])
       self.evaluate(l)
 
   def testScatterWithNegativeIndicesFails(self):
     c0 = constant_op.constant([1.0, 2.0])
     with self.assertRaisesRegexp(
         errors.InvalidArgumentError,
-        "Indices in TensorListScatter must all be positive."):
+        "Indices in TensorListScatter must all be non-negative."):
       l = list_ops.tensor_list_scatter(
           c0, [-1, -2], ops.convert_to_tensor([], dtype=dtypes.int32))
       self.evaluate(l)

@@ -1100,7 +1100,8 @@ def resize_images_v2(images,
 def resize_image_with_pad(image,
                           target_height,
                           target_width,
-                          method=ResizeMethod.BILINEAR):
+                          method=ResizeMethod.BILINEAR,
+                          align_corners=False):
   """Resizes and pads an image to a target width and height.
 
   Resizes an image to a target width and height by keeping
@@ -1115,6 +1116,9 @@ def resize_image_with_pad(image,
     target_height: Target height.
     target_width: Target width.
     method: Method to use for resizing image. See `resize_images()`
+    align_corners: bool.  If True, the centers of the 4 corner pixels of the
+        input and output tensors are aligned, preserving the values at the
+        corner pixels. Defaults to `False`.
 
   Raises:
     ValueError: if `target_height` or `target_width` are zero or negative.
@@ -1180,7 +1184,10 @@ def resize_image_with_pad(image,
     p_width = max_(0, math_ops.cast(f_padding_width, dtype=dtypes.int32))
 
     # Resize first, then pad to meet requested dimensions
-    resized = resize_images(image, [resized_height, resized_width], method)
+    resized = resize_images(
+        image, [resized_height, resized_width],
+        method,
+        align_corners=align_corners)
 
     padded = pad_to_bounding_box(resized, p_height, p_width, target_height,
                                  target_width)
@@ -3070,3 +3077,204 @@ crop_and_resize_deprecation = deprecation.deprecated_args(
     None, 'box_ind is deprecated, use box_indices instead', 'box_ind')
 tf_export(v1=['image.crop_and_resize'])(
     crop_and_resize_deprecation(gen_image_ops.crop_and_resize))
+
+
+@tf_export(v1=['image.extract_glimpse'])
+def extract_glimpse(
+    input,  # pylint: disable=redefined-builtin
+    size,
+    offsets,
+    centered=True,
+    normalized=True,
+    uniform_noise=True,
+    name=None):
+  """Extracts a glimpse from the input tensor.
+
+  Returns a set of windows called glimpses extracted at location
+  `offsets` from the input tensor. If the windows only partially
+  overlaps the inputs, the non overlapping areas will be filled with
+  random noise.
+
+  The result is a 4-D tensor of shape `[batch_size, glimpse_height,
+  glimpse_width, channels]`. The channels and batch dimensions are the
+  same as that of the input tensor. The height and width of the output
+  windows are specified in the `size` parameter.
+
+  The argument `normalized` and `centered` controls how the windows are built:
+
+  * If the coordinates are normalized but not centered, 0.0 and 1.0
+    correspond to the minimum and maximum of each height and width
+    dimension.
+  * If the coordinates are both normalized and centered, they range from
+    -1.0 to 1.0. The coordinates (-1.0, -1.0) correspond to the upper
+    left corner, the lower right corner is located at (1.0, 1.0) and the
+    center is at (0, 0).
+  * If the coordinates are not normalized they are interpreted as
+    numbers of pixels.
+
+  Args:
+    input: A `Tensor` of type `float32`. A 4-D float tensor of shape
+      `[batch_size, height, width, channels]`.
+    size: A `Tensor` of type `int32`. A 1-D tensor of 2 elements containing the
+      size of the glimpses to extract.  The glimpse height must be specified
+      first, following by the glimpse width.
+    offsets: A `Tensor` of type `float32`. A 2-D integer tensor of shape
+      `[batch_size, 2]` containing the y, x locations of the center of each
+      window.
+    centered: An optional `bool`. Defaults to `True`. indicates if the offset
+      coordinates are centered relative to the image, in which case the (0, 0)
+      offset is relative to the center of the input images. If false, the (0,0)
+      offset corresponds to the upper left corner of the input images.
+    normalized: An optional `bool`. Defaults to `True`. indicates if the offset
+      coordinates are normalized.
+    uniform_noise: An optional `bool`. Defaults to `True`. indicates if the
+      noise should be generated using a uniform distribution or a Gaussian
+      distribution.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `float32`.
+  """
+  return gen_image_ops.extract_glimpse(
+      input=input,
+      size=size,
+      offsets=offsets,
+      centered=centered,
+      normalized=normalized,
+      uniform_noise=uniform_noise,
+      name=name)
+
+
+@tf_export('image.extract_glimpse', v1=[])
+def extract_glimpse_v2(
+    input,  # pylint: disable=redefined-builtin
+    size,
+    offsets,
+    centered=True,
+    normalized=True,
+    noise='uniform',
+    name=None):
+  """Extracts a glimpse from the input tensor.
+
+  Returns a set of windows called glimpses extracted at location
+  `offsets` from the input tensor. If the windows only partially
+  overlaps the inputs, the non overlapping areas will be filled with
+  random noise.
+
+  The result is a 4-D tensor of shape `[batch_size, glimpse_height,
+  glimpse_width, channels]`. The channels and batch dimensions are the
+  same as that of the input tensor. The height and width of the output
+  windows are specified in the `size` parameter.
+
+  The argument `normalized` and `centered` controls how the windows are built:
+
+  * If the coordinates are normalized but not centered, 0.0 and 1.0
+    correspond to the minimum and maximum of each height and width
+    dimension.
+  * If the coordinates are both normalized and centered, they range from
+    -1.0 to 1.0. The coordinates (-1.0, -1.0) correspond to the upper
+    left corner, the lower right corner is located at (1.0, 1.0) and the
+    center is at (0, 0).
+  * If the coordinates are not normalized they are interpreted as
+    numbers of pixels.
+
+  Args:
+    input: A `Tensor` of type `float32`. A 4-D float tensor of shape
+      `[batch_size, height, width, channels]`.
+    size: A `Tensor` of type `int32`. A 1-D tensor of 2 elements containing the
+      size of the glimpses to extract.  The glimpse height must be specified
+      first, following by the glimpse width.
+    offsets: A `Tensor` of type `float32`. A 2-D integer tensor of shape
+      `[batch_size, 2]` containing the y, x locations of the center of each
+      window.
+    centered: An optional `bool`. Defaults to `True`. indicates if the offset
+      coordinates are centered relative to the image, in which case the (0, 0)
+      offset is relative to the center of the input images. If false, the (0,0)
+      offset corresponds to the upper left corner of the input images.
+    normalized: An optional `bool`. Defaults to `True`. indicates if the offset
+      coordinates are normalized.
+    noise: An optional `string`. Defaults to `uniform`. indicates if the noise
+      should be `uniform` (uniform distribution), `gaussian` (gaussian
+      distribution), or `zero` (zero padding).
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `float32`.
+  """
+  return gen_image_ops.extract_glimpse(
+      input=input,
+      size=size,
+      offsets=offsets,
+      centered=centered,
+      normalized=normalized,
+      noise=noise,
+      uniform_noise=False,
+      name=name)
+
+
+@tf_export('image.combined_non_max_suppression')
+def combined_non_max_suppression(boxes,
+                                 scores,
+                                 max_output_size_per_class,
+                                 max_total_size,
+                                 iou_threshold=0.5,
+                                 score_threshold=float('-inf'),
+                                 pad_per_class=False,
+                                 name=None):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  This operation performs non_max_suppression on the inputs per batch, across
+  all classes.
+  Prunes away boxes that have high intersection-over-union (IOU) overlap
+  with previously selected boxes.  Bounding boxes are supplied as
+  [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+  diagonal pair of box corners and the coordinates can be provided as normalized
+  (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+  is agnostic to where the origin is in the coordinate system. Also note that
+  this algorithm is invariant to orthogonal transformations and translations
+  of the coordinate system; thus translating or reflections of the coordinate
+  system result in the same boxes being selected by the algorithm.
+  The output of this operation is the final boxes, scores and classes tensor
+  returned after performing non_max_suppression.
+
+  Args:
+    boxes: A 4-D float `Tensor` of shape `[batch_size, num_boxes, q, 4]`. If `q`
+      is 1 then same boxes are used for all classes otherwise, if `q` is equal
+      to number of classes, class-specific boxes are used.
+    scores: A 3-D float `Tensor` of shape `[batch_size, num_boxes, num_classes]`
+      representing a single score corresponding to each box (each row of boxes).
+    max_output_size_per_class: A scalar integer `Tensor` representing the
+      maximum number of boxes to be selected by non max suppression per class
+    max_total_size: A scalar representing maximum number of boxes retained over
+      all classes.
+    iou_threshold: A float representing the threshold for deciding whether boxes
+      overlap too much with respect to IOU.
+    score_threshold: A float representing the threshold for deciding when to
+      remove boxes based on score.
+    pad_per_class: If false, the output nmsed boxes, scores and classes are
+      padded/clipped to `max_total_size`. If true, the output nmsed boxes,
+      scores and classes are padded to be of length
+      `max_size_per_class`*`num_classes`, unless it exceeds `max_total_size` in
+      which case it is clipped to `max_total_size`. Defaults to false.
+    name: A name for the operation (optional).
+
+  Returns:
+    'nmsed_boxes': A [batch_size, max_detections, 4] float32 tensor
+      containing the non-max suppressed boxes.
+    'nmsed_scores': A [batch_size, max_detections] float32 tensor containing
+      the scores for the boxes.
+    'nmsed_classes': A [batch_size, max_detections] float32 tensor
+      containing the class for boxes.
+    'valid_detections': A [batch_size] int32 tensor indicating the number of
+      valid detections per batch item. Only the top valid_detections[i] entries
+      in nms_boxes[i], nms_scores[i] and nms_class[i] are valid. The rest of the
+      entries are zero paddings.
+  """
+  with ops.name_scope(name, 'combined_non_max_suppression'):
+    iou_threshold = ops.convert_to_tensor(
+        iou_threshold, dtype=dtypes.float32, name='iou_threshold')
+    score_threshold = ops.convert_to_tensor(
+        score_threshold, dtype=dtypes.float32, name='score_threshold')
+    return gen_image_ops.combined_non_max_suppression(
+        boxes, scores, max_output_size_per_class, max_total_size, iou_threshold,
+        score_threshold, pad_per_class)

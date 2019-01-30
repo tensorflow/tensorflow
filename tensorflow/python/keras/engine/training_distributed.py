@@ -21,7 +21,9 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
@@ -29,6 +31,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.engine import partial_batch_padding_handler as padding_util
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import Progbar
@@ -61,10 +64,13 @@ def fit_distributed(model,
 
   first_x_value = nest.flatten(x)[0]
   if isinstance(first_x_value, np.ndarray):
+    # Until support for partial batch is implemented across all
+    # functions and distribution strategy, we pass `mode` to selectively
+    # relax the costraint to consume all the training samples.
     steps_per_epoch, batch_size = (
         distributed_training_utils.get_input_params(
             model._distribution_strategy, first_x_value, steps_per_epoch,
-            batch_size, is_training=True))
+            batch_size, mode=ModeKeys.TRAIN))
   batch_size = model._validate_or_infer_batch_size(
       batch_size, steps_per_epoch, x)
   dataset = model._distribution_standardize_user_data(
@@ -155,9 +161,8 @@ def evaluate_distributed(model,
       steps=steps)
 
   if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
-    # TODO(fchollet): why aren't callbacks supported here?
     return experimental_tpu_test_loop(
-        model, dataset, verbose=verbose, steps=steps)
+        model, dataset, verbose=verbose, steps=steps, callbacks=callbacks)
   else:
     return training_arrays.test_loop(
         model,
@@ -176,22 +181,24 @@ def predict_distributed(model,
                         callbacks=None):
   """Predict loop for Distribution Strategies."""
   distributed_training_utils.validate_inputs(
-      x, None, model._distribution_strategy)
+      x, None, model._distribution_strategy, allow_partial_batch=True)
   first_x_value = nest.flatten(x)[0]
   if isinstance(first_x_value, np.ndarray):
     steps, batch_size = distributed_training_utils.get_input_params(
-        model._distribution_strategy, first_x_value, steps, batch_size)
+        model._distribution_strategy, first_x_value, steps,
+        batch_size, mode=ModeKeys.PREDICT)
   batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
   dataset = model._distribution_standardize_user_data(
       x,
       batch_size=batch_size,
       check_steps=True,
       steps_name='steps',
-      steps=steps)
+      steps=steps,
+      repeat=False,
+      allow_partial_batch=True)
   if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
-    # TODO(fchollet): why aren't callbacks supported here?
     return experimental_tpu_predict_loop(
-        model, dataset, verbose=verbose, steps=steps)
+        model, dataset, verbose=verbose, steps=steps, callbacks=callbacks)
   else:
     return training_arrays.predict_loop(
         model,
@@ -331,7 +338,9 @@ def experimental_tpu_fit_loop(model,
       do_validation=do_validation,
       epochs=epochs,
       steps_per_epoch=steps_per_epoch,
-      verbose=verbose)
+      verbose=verbose,
+      count_mode='steps',
+      mode=ModeKeys.TRAIN)
 
   # Calculate the steps each time on the device.
   steps_to_run = [current_strategy.extended.steps_per_run] * (
@@ -406,7 +415,8 @@ def experimental_tpu_fit_loop(model,
 def experimental_tpu_test_loop(model,
                                dataset,
                                verbose=0,
-                               steps=None):
+                               steps=None,
+                               callbacks=None):
   """Test loop for evaluating with TPU DistributionStrategy.
 
   Arguments:
@@ -416,6 +426,7 @@ def experimental_tpu_test_loop(model,
       steps: Total number of steps (batches of samples)
           before declaring predictions finished.
           Ignored with the default value of `None`.
+      callbacks: List of callbacks to be called during training
 
   Returns:
       Scalar loss (if the model has a single output and no metrics)
@@ -497,6 +508,16 @@ def experimental_tpu_test_loop(model,
 
   distributed_training_utils._reset_metrics(model)
 
+  callbacks = cbks.configure_callbacks(
+      callbacks,
+      model,
+      do_validation=False,
+      epochs=1,
+      steps_per_epoch=steps,
+      verbose=verbose,
+      count_mode='steps',
+      mode=ModeKeys.TEST)
+
   assert steps is not None
   outs = [0.] * len(model.metrics_names)
   for step in range(steps):
@@ -521,7 +542,11 @@ def experimental_tpu_test_loop(model,
   return outs
 
 
-def experimental_tpu_predict_loop(model, dataset, verbose=0, steps=None):
+def experimental_tpu_predict_loop(model,
+                                  dataset,
+                                  verbose=0,
+                                  steps=None,
+                                  callbacks=None):
   """Predict loop for predicting with TPU DistributionStrategy.
 
   Arguments:
@@ -531,12 +556,39 @@ def experimental_tpu_predict_loop(model, dataset, verbose=0, steps=None):
       steps: Total number of steps (batches of samples)
           before declaring `_predict_loop` finished.
           Ignored with the default value of `None`.
+      callbacks: List of callbacks to be called during training
 
   Returns:
       Array of predictions (if the model has a single output)
       or list of arrays of predictions
       (if the model has multiple outputs).
   """
+  dataset_fully_shaped = (distributed_training_utils.
+                          is_dataset_shape_fully_defined(dataset))
+  padding_handler = None
+  if not dataset_fully_shaped:
+    # TODO(hongjunchoi): Investigate whether operations from
+    # PartialBatchPaddingHandler are unnecessarily pruned out
+    # during graph optimization.
+    padding_handler = padding_util.PartialBatchPaddingHandler(
+        model._feed_output_shapes)
+    batched_dataset = input_lib._get_batched_dataset(dataset)
+    batch_size, _, prefetch_buffer = input_lib._get_batched_dataset_attributes(
+        batched_dataset)
+    padding_handler.padded_batch_size = batch_size
+    padding_handler.padding_mask = dataset.reduce(padding_handler.padding_mask,
+                                                  padding_handler.update_mask)
+
+    dataset = dataset.map(padding_handler.pad_batch)
+    dataset = dataset.apply(batching.unbatch())
+    # Upon this point, it is guaranteed that the dataset does not
+    # have partial batches. Thus, we set `drop_remainder=True` to
+    # get static shape information about the elements in the dataset.
+    dataset = dataset.batch(batch_size, drop_remainder=True)
+
+    if prefetch_buffer is not None:
+      dataset = dataset.prefetch(prefetch_buffer)
+
   current_strategy = model._distribution_strategy
   iterator = distributed_training_utils.get_iterator(dataset, current_strategy)
 
@@ -607,6 +659,16 @@ def experimental_tpu_predict_loop(model, dataset, verbose=0, steps=None):
 
   distributed_training_utils._reset_metrics(model)
 
+  callbacks = cbks.configure_callbacks(
+      callbacks,
+      model,
+      do_validation=False,
+      epochs=1,
+      steps_per_epoch=steps,
+      verbose=verbose,
+      count_mode='steps',
+      mode=ModeKeys.PREDICT)
+
   assert steps is not None
   # Since we do not know how many samples we will see, we cannot pre-allocate
   # the returned Numpy arrays. Instead, we store one array per batch seen
@@ -623,8 +685,14 @@ def experimental_tpu_predict_loop(model, dataset, verbose=0, steps=None):
   scope.__exit__(None, None, None)
 
   if len(unconcatenated_outs) == 1:
-    return np.concatenate(unconcatenated_outs[0], axis=0)
-  return [
-      np.concatenate(unconcatenated_outs[i], axis=0)
-      for i in range(len(unconcatenated_outs))
-  ]
+    prediction_result = np.concatenate(unconcatenated_outs[0], axis=0)
+  else:
+    prediction_result = [
+        np.concatenate(unconcatenated_outs[i], axis=0)
+        for i in range(len(unconcatenated_outs))
+    ]
+
+  if padding_handler:
+    prediction_result = padding_handler.apply_mask(prediction_result)
+
+  return prediction_result

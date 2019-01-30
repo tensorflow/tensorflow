@@ -23,6 +23,7 @@ tf_py_test(
     srcs = ["module_test.py"],
     additional_deps = [
         ":module",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python:variables",
