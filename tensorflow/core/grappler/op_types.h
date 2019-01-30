@@ -28,6 +28,8 @@ bool IsAll(const NodeDef& node);
 bool IsAngle(const NodeDef& node);
 bool IsAny(const NodeDef& node);
 bool IsAnyDiv(const NodeDef& node);
+bool IsAnyMax(const NodeDef& node);
+bool IsAnyMin(const NodeDef& node);
 bool IsApproximateEqual(const NodeDef& node);
 bool IsAvgPoolGrad(const NodeDef& node);
 bool IsAssert(const NodeDef& node);
