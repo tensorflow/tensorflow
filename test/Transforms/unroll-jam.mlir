@@ -1,6 +1,6 @@
 // RUN: mlir-opt %s -loop-unroll-jam -unroll-jam-factor=2 | FileCheck %s
 
-// CHECK: #map0 = (d0) -> (d0 + 1)
+// CHECK: [[MAP_PLUS_1:#map[0-9]+]] = (d0) -> (d0 + 1)
 // This should be matched to M1, but M1 is defined later.
 // CHECK: {{#map[0-9]+}} = ()[s0] -> (s0 + 8)
 
@@ -10,20 +10,20 @@ func @unroll_jam_imperfect_nest() {
   // CHECK-NEXT: for %i0 = 0 to 99 step 2 {
   for %i = 0 to 101 {
     // CHECK: %0 = "addi32"(%i0, %i0) : (index, index) -> i32
-    // CHECK-NEXT: %1 = affine_apply #map0(%i0)
+    // CHECK-NEXT: %1 = affine_apply [[MAP_PLUS_1]](%i0)
     // CHECK-NEXT: %2 = "addi32"(%1, %1) : (index, index) -> i32
     %x = "addi32"(%i, %i) : (index, index) -> i32
     for %j = 0 to 17 {
       // CHECK: %3 = "addi32"(%i0, %i0) : (index, index) -> i32
       // CHECK-NEXT: %4 = "addi32"(%3, %3) : (i32, i32) -> i32
-      // CHECK-NEXT: %5 = affine_apply #map0(%i0)
+      // CHECK-NEXT: %5 = affine_apply [[MAP_PLUS_1]](%i0)
       // CHECK-NEXT: %6 = "addi32"(%5, %5) : (index, index) -> i32
       // CHECK-NEXT: %7 = "addi32"(%6, %6) : (i32, i32) -> i32
       %y = "addi32"(%i, %i) : (index, index) -> i32
       %z = "addi32"(%y, %y) : (i32, i32) -> i32
     }
     // CHECK: %8 = "addi32"(%i0, %i0) : (index, index) -> i32
-    // CHECK-NEXT: %9 = affine_apply #map0(%i0)
+    // CHECK-NEXT: %9 = affine_apply [[MAP_PLUS_1]](%i0)
     // CHECK-NEXT: %10 = "addi32"(%9, %9) : (index, index) -> i32
     %w = "addi32"(%i, %i) : (index, index) -> i32
   } // CHECK }

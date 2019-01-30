@@ -3,6 +3,7 @@
 // CHECK-DAG: [[MOD_2:#map[0-9]+]] = (d0) -> (d0 mod 2)
 // CHECK-DAG: [[FLOOR_MOD_2:#map[0-9]+]] = (d0) -> ((d0 floordiv 4) mod 2)
 // CHECK-DAG: [[REMAP_SHIFT_MINUS_4:#map[0-9]+]] = (d0) -> (d0 - 4)
+// CHECK-DAG: [[MAP_MINUS_1:#map[0-9]+]] = (d0) -> (d0 - 1)
 
 // CHECK-LABEL: func @loop_nest_dma() {
 func @loop_nest_dma() {
@@ -37,7 +38,7 @@ func @loop_nest_dma() {
 // CHECK-NEXT:    %5 = affine_apply [[MOD_2]](%i0)
 // CHECK-NEXT:    %6 = affine_apply [[MOD_2]](%i0)
 // CHECK-NEXT:    dma_start %0[%i0], %1[%5, %i0], %c128, %2[%6, %c0_0] : memref<256xf32>, memref<2x32xf32, 1>, memref<2x1xf32>
-// CHECK-NEXT:    %7 = affine_apply #map1(%i0)
+// CHECK-NEXT:    %7 = affine_apply [[MAP_MINUS_1]](%i0)
 // CHECK-NEXT:    %8 = affine_apply [[MOD_2]](%7)
 // CHECK-NEXT:    %9 = affine_apply [[MOD_2]](%7)
 // CHECK-NEXT:    dma_wait %2[%8, %c0_0], %c128 : memref<2x1xf32>
@@ -48,7 +49,7 @@ func @loop_nest_dma() {
 // CHECK-NEXT:      "do_more_compute"(%7, %i1) : (index, index) -> ()
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  %12 = affine_apply #map1(%c8)
+// CHECK-NEXT:  %12 = affine_apply [[MAP_MINUS_1]](%c8)
 // CHECK-NEXT:  %13 = affine_apply [[MOD_2]](%12)
 // CHECK-NEXT:  %14 = affine_apply [[MOD_2]](%12)
 // CHECK-NEXT:  dma_wait %2[%13, %c0_0], %c128 : memref<2x1xf32>

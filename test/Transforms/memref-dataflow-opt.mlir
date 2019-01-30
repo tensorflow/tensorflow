@@ -1,5 +1,11 @@
 // RUN: mlir-opt %s -memref-dataflow-opt -verify | FileCheck %s
 
+// CHECK-DAG: [[MAP0:#map[0-9]+]] = (d0, d1) -> (d1 + 1)
+// CHECK-DAG: [[MAP1:#map[0-9]+]] = (d0, d1) -> (d0)
+// CHECK-DAG: [[MAP2:#map[0-9]+]] = (d0, d1) -> (d1)
+// CHECK-DAG: [[MAP3:#map[0-9]+]] = (d0, d1) -> (d0 - 1)
+// CHECK-DAG: [[MAP4:#map[0-9]+]] = (d0) -> (d0 + 1)
+
 // CHECK-LABEL: func @simple_store_load() {
 func @simple_store_load() {
   %cf7 = constant 7.0 : f32
@@ -71,10 +77,10 @@ func @store_load_affine_apply() -> memref<10x10xf32> {
 // CHECK-NEXT:  %0 = alloc() : memref<10x10xf32>
 // CHECK-NEXT:  for %i0 = 0 to 10 {
 // CHECK-NEXT:    for %i1 = 0 to 10 {
-// CHECK-NEXT:      %1 = affine_apply #map0(%i0, %i1)
-// CHECK-NEXT:      %2 = affine_apply #map1(%i0, %i1)
-// CHECK-NEXT:      %3 = affine_apply #map2(%1, %2)
-// CHECK-NEXT:      %4 = affine_apply #map3(%1, %2)
+// CHECK-NEXT:      %1 = affine_apply [[MAP0]](%i0, %i1)
+// CHECK-NEXT:      %2 = affine_apply [[MAP1]](%i0, %i1)
+// CHECK-NEXT:      %3 = affine_apply [[MAP2]](%1, %2)
+// CHECK-NEXT:      %4 = affine_apply [[MAP3]](%1, %2)
 // CHECK-NEXT:      store %cst, %0[%3, %4] : memref<10x10xf32>
 // CHECK-NEXT:      %5 = addf %cst, %cst : f32
 // CHECK-NEXT:    }
@@ -234,7 +240,7 @@ func @store_load_store_nested_fwd(%N : index) -> f32 {
 // CHECK-NEXT:    store %cst, %0[%i0] : memref<10xf32>
 // CHECK-NEXT:    for %i1 = 0 to %arg0 {
 // CHECK-NEXT:      %1 = addf %cst, %cst : f32
-// CHECK-NEXT:      %2 = affine_apply #map4(%i0)
+// CHECK-NEXT:      %2 = affine_apply [[MAP4]](%i0)
 // CHECK-NEXT:      store %cst_0, %0[%2] : memref<10xf32>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }

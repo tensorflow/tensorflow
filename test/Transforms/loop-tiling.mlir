@@ -1,7 +1,7 @@
 // RUN: mlir-opt %s -loop-tile -tile-size=32 | FileCheck %s
 
-// CHECK-DAG: #map0 = (d0) -> (d0 + 32)
-// CHECK-DAG: #map1 = (d0) -> (d0 + 32, 50)
+// CHECK-DAG: [[MAP0:#map[0-9]+]] = (d0) -> (d0 + 32)
+// CHECK-DAG: [[MAP1:#map[0-9]+]] = (d0) -> (d0 + 32, 50)
 // CHECK-DAG: [[IDENTITY:#map[0-9]+]] = (d0) -> (d0)
 // CHECK-DAG: [[LB:#map[0-9]+]] = ()[s0] -> (0, s0)
 // CHECK-DAG: [[UB:#map[0-9]+]] = ()[s0, s1] -> (s0, 4096 floordiv s1)
@@ -11,9 +11,9 @@
 // CHECK-NEXT:   for %i0 = 0 to 256 step 32 {
 // CHECK-NEXT:     for %i1 = 0 to 512 step 32 {
 // CHECK-NEXT:       for %i2 = 0 to 1024 step 32 {
-// CHECK-NEXT:         for %i3 = [[IDENTITY]](%i0) to #map0(%i0) {
-// CHECK-NEXT:           for %i4 = [[IDENTITY]](%i1) to #map0(%i1) {
-// CHECK-NEXT:             for %i5 = [[IDENTITY]](%i2) to #map0(%i2) {
+// CHECK-NEXT:         for %i3 = [[IDENTITY]](%i0) to [[MAP0]](%i0) {
+// CHECK-NEXT:           for %i4 = [[IDENTITY]](%i1) to [[MAP0]](%i1) {
+// CHECK-NEXT:             for %i5 = [[IDENTITY]](%i2) to [[MAP0]](%i2) {
 // CHECK-NEXT:               "foo"(%i3, %i4, %i5) : (index, index, index) -> ()
 // CHECK-NEXT:             }
 // CHECK-NEXT:           }
@@ -22,7 +22,7 @@
 // CHECK-NEXT:     }
 // CHECK-NEXT:   }
 // CHECK-NEXT:   for %i6 = 0 to 50 step 32 {
-// CHECK-NEXT:     for %i7 = [[IDENTITY]](%i6) to min #map1(%i6) {
+// CHECK-NEXT:     for %i7 = [[IDENTITY]](%i6) to min [[MAP1]](%i6) {
 // CHECK-NEXT:       "bar"(%i7, %i7) : (index, index) -> ()
 // CHECK-NEXT:     }
 // CHECK-NEXT:   }

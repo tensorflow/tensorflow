@@ -160,7 +160,7 @@ func @materialize_write(%M: index, %N: index, %O: index, %P: index) {
   // CHECK-NEXT:                {{.*}} = select {{.*}}, %[[C0]], {{.*}} : index
   // CHECK-NEXT:                {{.*}} = cmpi "slt", %[[I2]], %[[C0]] : index
   // CHECK-NEXT:                {{.*}} = cmpi "slt", %[[I2]], %3 : index
-  // CHECK-NEXT:                {{.*}} = affine_apply #map1(%3, %[[C1]])
+  // CHECK-NEXT:                {{.*}} = affine_apply #map{{.*}}(%3, %[[C1]])
   // CHECK-NEXT:                {{.*}} = select {{.*}}, %[[I2]], {{.*}} : index
   // CHECK-NEXT:                {{.*}} = select {{.*}}, %[[C0]], {{.*}} : index
   // CHECK-NEXT:                {{.*}} = affine_apply #[[ADD]](%[[I3]], %[[I6]])

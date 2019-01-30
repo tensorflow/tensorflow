@@ -291,12 +291,12 @@ func @dma_memref_3d(%arg0: memref<1024x1024x1024xf32>) {
 
 // -----
 
-// CHECK:      #map0 = (d0) -> (d0 + 64)
-// CHECK-NEXT: #map1 = (d0) -> (d0 + 128)
-// CHECK-NEXT: #map2 = (d0) -> (d0 + 2)
-// CHECK-NEXT: #map3 = (d0, d1) -> (d0 - 2)
-// CHECK-NEXT: #map4 = (d0, d1) -> (d1 - 2)
-// CHECK-NEXT: #map5 = (d0) -> (d0 + 192)
+// CHECK-DAG: [[MAP_PLUS_64:#map[0-9]+]] = (d0) -> (d0 + 64)
+// CHECK-DAG: [[MAP_PLUS_128:#map[0-9]+]] = (d0) -> (d0 + 128)
+// CHECK-DAG: [[MAP_PLUS_2:#map[0-9]+]] = (d0) -> (d0 + 2)
+// CHECK-DAG: [[MAP_D0_MINUS_2:#map[0-9]+]] = (d0, d1) -> (d0 - 2)
+// CHECK-DAG: [[MAP_D1_MINUS_2:#map[0-9]+]] = (d0, d1) -> (d1 - 2)
+// CHECK-DAG: [[MAP_PLUS_192:#map[0-9]+]] = (d0) -> (d0 + 192)
 
 // The first load accesses ([2,258), [128,384))
 // The second load accesses ([64,320), [2,258))
@@ -335,23 +335,23 @@ func @multi_load_store_union() {
 // CHECK-NEXT:  %3 = alloc() : memref<1xi32>
 // CHECK-NEXT:  for %i0 = 0 to 256 {
 // CHECK-NEXT:    for %i1 = 0 to 256 {
-// CHECK-NEXT:      %4 = affine_apply #map0(%i0)
-// CHECK-NEXT:      %5 = affine_apply #map1(%i1)
-// CHECK-NEXT:      %6 = affine_apply #map2(%i0)
-// CHECK-NEXT:      %7 = affine_apply #map2(%i1)
-// CHECK-NEXT:      %8 = affine_apply #map3(%6, %5)
-// CHECK-NEXT:      %9 = affine_apply #map4(%6, %5)
+// CHECK-NEXT:      %4 = affine_apply [[MAP_PLUS_64]](%i0)
+// CHECK-NEXT:      %5 = affine_apply [[MAP_PLUS_128]](%i1)
+// CHECK-NEXT:      %6 = affine_apply [[MAP_PLUS_2]](%i0)
+// CHECK-NEXT:      %7 = affine_apply [[MAP_PLUS_2]](%i1)
+// CHECK-NEXT:      %8 = affine_apply [[MAP_D0_MINUS_2]](%6, %5)
+// CHECK-NEXT:      %9 = affine_apply [[MAP_D1_MINUS_2]](%6, %5)
 // CHECK-NEXT:      %10 = load %1[%8, %9] : memref<382x446xf32, 1>
-// CHECK-NEXT:      %11 = affine_apply #map3(%4, %7)
-// CHECK-NEXT:      %12 = affine_apply #map4(%4, %7)
+// CHECK-NEXT:      %11 = affine_apply [[MAP_D0_MINUS_2]](%4, %7)
+// CHECK-NEXT:      %12 = affine_apply [[MAP_D1_MINUS_2]](%4, %7)
 // CHECK-NEXT:      %13 = load %1[%11, %12] : memref<382x446xf32, 1>
-// CHECK-NEXT:      %14 = affine_apply #map1(%i0)
-// CHECK-NEXT:      %15 = affine_apply #map5(%i1)
-// CHECK-NEXT:      %16 = affine_apply #map3(%6, %15)
-// CHECK-NEXT:      %17 = affine_apply #map4(%6, %15)
+// CHECK-NEXT:      %14 = affine_apply [[MAP_PLUS_128]](%i0)
+// CHECK-NEXT:      %15 = affine_apply [[MAP_PLUS_192]](%i1)
+// CHECK-NEXT:      %16 = affine_apply [[MAP_D0_MINUS_2]](%6, %15)
+// CHECK-NEXT:      %17 = affine_apply [[MAP_D1_MINUS_2]](%6, %15)
 // CHECK-NEXT:      store %10, %1[%16, %17] : memref<382x446xf32, 1>
-// CHECK-NEXT:      %18 = affine_apply #map3(%14, %7)
-// CHECK-NEXT:      %19 = affine_apply #map4(%14, %7)
+// CHECK-NEXT:      %18 = affine_apply [[MAP_D0_MINUS_2]](%14, %7)
+// CHECK-NEXT:      %19 = affine_apply [[MAP_D1_MINUS_2]](%14, %7)
 // CHECK-NEXT:      store %13, %1[%18, %19] : memref<382x446xf32, 1>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
