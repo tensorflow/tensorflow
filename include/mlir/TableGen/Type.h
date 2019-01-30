@@ -41,6 +41,8 @@ public:
   explicit TypeConstraint(const llvm::Record &record);
   explicit TypeConstraint(const llvm::DefInit &init);
 
+  bool operator==(const TypeConstraint &that) { return def == that.def; }
+
   // Returns the predicate that can be used to check if a type satisfies this
   // type constraint.
   Pred getPredicate() const;
@@ -56,7 +58,7 @@ public:
 
 protected:
   // The TableGen definition of this type.
-  const llvm::Record &def;
+  const llvm::Record *def;
 };
 
 // Wrapper class providing helper methods for accessing MLIR Type defined

@@ -55,22 +55,20 @@ static void emitReferenceImplementations(const RecordKeeper &recordKeeper,
 
     // Create memrefs for the operands. Operand $x has variable name xMemRef.
     for (auto arg : op.getOperands()) {
-      if (!arg.name)
+      if (arg.name.empty())
         PrintFatalError(def->getLoc(), "all operands must be named");
-      os << formatv("  mlir::BlockArgument* {0}MemRef;\n",
-                    arg.name->getAsUnquotedString());
+      os << formatv("  mlir::BlockArgument* {0}MemRef;\n", arg.name);
     }
     os << "  mlir::BlockArgument* resultMemRef;\n";
     os << "  {\n    auto opIt = f->getArguments().begin();\n";
     for (auto arg : op.getOperands()) {
-      os.indent(4) << arg.name->getAsUnquotedString() << "MemRef = *opIt++;\n";
+      os.indent(4) << arg.name << "MemRef = *opIt++;\n";
     }
     os.indent(4) << "resultMemRef = *opIt++;\n";
     os << "  }\n";
 
     for (auto arg : op.getOperands()) {
-      os << formatv("  Bindable {0}; (void){0};\n",
-                    arg.name->getAsUnquotedString());
+      os << formatv("  Bindable {0}; (void){0};\n", arg.name);
     }
     os << "  Bindable result;\n";
 
@@ -78,7 +76,7 @@ static void emitReferenceImplementations(const RecordKeeper &recordKeeper,
       os.indent(2) << formatv(
           "auto {0}Shape = emitter.makeBoundSizes({0}MemRef); "
           "(void){0}Shape;\n",
-          arg.name->getAsUnquotedString());
+          arg.name);
     }
 
     // Print the EDSC.

@@ -22,18 +22,13 @@
 using namespace mlir;
 
 std::string tblgen::NamedAttribute::getName() const {
-  std::string ret = name->getAsUnquotedString();
   // TODO(jpienaar): Revise this post dialect prefixing attribute discussion.
-  auto split = StringRef(ret).split("__");
+  auto split = name.split("__");
   if (split.second.empty())
-    return ret;
+    return name;
   return llvm::join_items("$", split.first, split.second);
 }
 
 bool tblgen::Operand::hasMatcher() const {
-  return !tblgen::TypeConstraint(*defInit).getPredicate().isNull();
-}
-
-tblgen::TypeConstraint tblgen::Operand::getTypeConstraint() const {
-  return tblgen::TypeConstraint(*defInit);
+  return !type.getPredicate().isNull();
 }

@@ -63,8 +63,8 @@ static inline bool hasStringAttribute(const Record &record,
 
 static std::string getArgumentName(const Operator &op, int index) {
   const auto &operand = op.getOperand(index);
-  if (operand.name)
-    return operand.name->getAsUnquotedString();
+  if (!operand.name.empty())
+    return operand.name;
   else
     return formatv("{0}_{1}", generatedArgName, index);
 }
@@ -228,8 +228,8 @@ void OpEmitter::emitNamedOperands() {
 )";
   for (int i = 0, e = op.getNumOperands(); i != e; ++i) {
     const auto &operand = op.getOperand(i);
-    if (operand.name)
-      os << formatv(operandMethods, operand.name->getAsUnquotedString(), i);
+    if (!operand.name.empty())
+      os << formatv(operandMethods, operand.name, i);
   }
 }
 
@@ -428,10 +428,9 @@ void OpEmitter::emitVerifier() {
     // TODO: Commonality between matchers could be extracted to have a more
     // concise code.
     if (operand.hasMatcher()) {
-      auto constraint = operand.getTypeConstraint();
-      auto description = constraint.getDescription();
+      auto description = operand.type.getDescription();
       OUT(4) << "if (!("
-             << formatv(constraint.getConditionTemplate(),
+             << formatv(operand.type.getConditionTemplate(),
                         "this->getInstruction()->getOperand(" + Twine(opIndex) +
                             ")->getType()")
              << ")) {\n";

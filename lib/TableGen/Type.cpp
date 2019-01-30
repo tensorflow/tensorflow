@@ -25,13 +25,13 @@
 using namespace mlir;
 
 tblgen::TypeConstraint::TypeConstraint(const llvm::Record &record)
-    : def(record) {
-  assert(def.isSubClassOf("TypeConstraint") &&
+    : def(&record) {
+  assert(def->isSubClassOf("TypeConstraint") &&
          "must be subclass of TableGen 'TypeConstraint' class");
 }
 
 tblgen::Pred tblgen::TypeConstraint::getPredicate() const {
-  auto *val = def.getValue("predicate");
+  auto *val = def->getValue("predicate");
   assert(val &&
          "TableGen 'TypeConstraint' class should have 'predicate' field");
 
@@ -44,9 +44,9 @@ std::string tblgen::TypeConstraint::getConditionTemplate() const {
 }
 
 llvm::StringRef tblgen::TypeConstraint::getDescription() const {
-  auto doc = def.getValueAsString("description");
+  auto doc = def->getValueAsString("description");
   if (doc.empty())
-    return def.getName();
+    return def->getName();
   return doc;
 }
 
@@ -54,10 +54,10 @@ tblgen::TypeConstraint::TypeConstraint(const llvm::DefInit &init)
     : TypeConstraint(*init.getDef()) {}
 
 tblgen::Type::Type(const llvm::Record &record) : TypeConstraint(record) {
-  assert(def.isSubClassOf("Type") &&
+  assert(def->isSubClassOf("Type") &&
          "must be subclass of TableGen 'Type' class");
 }
 
 tblgen::Type::Type(const llvm::DefInit *init) : Type(*init->getDef()) {}
 
-StringRef tblgen::Type::getTableGenDefName() const { return def.getName(); }
+StringRef tblgen::Type::getTableGenDefName() const { return def->getName(); }

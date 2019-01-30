@@ -121,7 +121,7 @@ void tblgen::Operator::populateOperandsAndAttributes() {
   // Handle operands.
   for (unsigned e = argumentValues->getNumArgs(); i != e; ++i) {
     auto arg = argumentValues->getArg(i);
-    auto givenName = argumentValues->getArgName(i);
+    auto givenName = argumentValues->getArgNameStr(i);
     auto argDefInit = dyn_cast<DefInit>(arg);
     if (!argDefInit)
       PrintFatalError(def.getLoc(),
@@ -129,20 +129,20 @@ void tblgen::Operator::populateOperandsAndAttributes() {
     Record *argDef = argDefInit->getDef();
     if (argDef->isSubClassOf(attrClass))
       break;
-    operands.push_back(Operand{givenName, argDefInit});
+    operands.push_back(Operand{givenName, Type(argDefInit)});
   }
 
   // Handle native attributes.
   nativeAttrStart = i;
   for (unsigned e = argumentValues->getNumArgs(); i != e; ++i) {
     auto arg = argumentValues->getArg(i);
-    auto givenName = argumentValues->getArgName(i);
+    auto givenName = argumentValues->getArgNameStr(i);
     Record *argDef = cast<DefInit>(arg)->getDef();
     if (!argDef->isSubClassOf(attrClass))
       PrintFatalError(def.getLoc(),
                       Twine("expected attribute as argument ") + Twine(i));
 
-    if (!givenName)
+    if (givenName.empty())
       PrintFatalError(argDef->getLoc(), "attributes must be named");
     bool isDerived = argDef->isSubClassOf(derivedAttrClass);
     if (isDerived)
@@ -166,8 +166,9 @@ void tblgen::Operator::populateOperandsAndAttributes() {
             def.getLoc(),
             "unsupported attribute modelling, only single class expected");
       }
-      attributes.push_back({cast<llvm::StringInit>(val.getNameInit()),
-                            Attribute(cast<DefInit>(val.getValue()))});
+      attributes.push_back(
+          {cast<llvm::StringInit>(val.getNameInit())->getValue(),
+           Attribute(cast<DefInit>(val.getValue()))});
     }
   }
 }

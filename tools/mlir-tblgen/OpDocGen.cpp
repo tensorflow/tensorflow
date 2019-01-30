@@ -33,7 +33,6 @@ using namespace llvm;
 using namespace mlir;
 
 using mlir::tblgen::Operator;
-using mlir::tblgen::Type;
 
 // Emit the description by aligning the text to the left per line (e.g.,
 // removing the minimum indentation across the block).
@@ -100,13 +99,13 @@ static void emitOpDoc(const RecordKeeper &recordKeeper, raw_ostream &os) {
     // Emit operands & type of operand. All operands are numbered, some may be
     // named too.
     os << "\n### Operands:\n";
-    for (auto operand : op.getOperands()) {
+    for (const auto &operand : op.getOperands()) {
       os << "1. ";
-      if (operand.name && !operand.name->getValue().empty())
-        os << "`" << operand.name->getAsUnquotedString() << "`: ";
+      if (!operand.name.empty())
+        os << "`" << operand.name << "`: ";
       else
         os << "&laquo;unnamed&raquo;: ";
-      os << Type(operand.defInit).getDescription() << "\n";
+      os << operand.type.getDescription() << "\n";
     }
 
     // Emit attributes.

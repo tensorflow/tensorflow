@@ -36,8 +36,7 @@
 #include <string>
 
 namespace llvm {
-class DefInit;
-class StringInit;
+class StringRef;
 } // end namespace llvm
 
 namespace mlir {
@@ -48,7 +47,7 @@ struct NamedAttribute {
   // Returns the MLIR attribute name.
   std::string getName() const;
 
-  llvm::StringInit *name;
+  llvm::StringRef name;
   Attribute attr;
 };
 
@@ -57,11 +56,8 @@ struct Operand {
   // Returns true if this operand has constraint that need to be satisfied.
   bool hasMatcher() const;
 
-  // Returns the type constraint applicable to this operand.
-  TypeConstraint getTypeConstraint() const;
-
-  llvm::StringInit *name;
-  llvm::DefInit *defInit;
+  llvm::StringRef name;
+  Type type;
 };
 
 // Operation argument: either attribute or operand

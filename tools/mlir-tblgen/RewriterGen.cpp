@@ -156,7 +156,7 @@ void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
       // Verify operands.
       if (auto *operand = opArg.dyn_cast<Operand *>()) {
         // Skip verification where not needed due to definition of op.
-        if (operand->defInit == defInit)
+        if (operand->type == Type(defInit))
           goto StateCapture;
 
         if (!defInit->getDef()->isSubClassOf("Type"))
@@ -304,8 +304,8 @@ void PatternEmitter::emitReplaceOpWithNewOp(DagNode resultTree) {
 
     auto name = resultTree.getArgName(i);
     pattern.ensureArgBoundInSourcePattern(name);
-    if (operand.name)
-      os << "/*" << operand.name->getAsUnquotedString() << "=*/";
+    if (!operand.name.empty())
+      os << "/*" << operand.name << "=*/";
     os << "s." << name;
     // TODO(jpienaar): verify types
     ++i;
