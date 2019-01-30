@@ -67,6 +67,10 @@ bool IsApproximateEqual(const NodeDef& node) {
   return node.op() == "ApproximateEqual";
 }
 
+bool IsArgMax(const NodeDef& node) { return node.op() == "ArgMax"; }
+
+bool IsArgMin(const NodeDef& node) { return node.op() == "ArgMin"; }
+
 bool IsAvgPoolGrad(const NodeDef& node) { return node.op() == "AvgPoolGrad"; }
 
 bool IsAssign(const NodeDef& node) {

@@ -32,6 +32,8 @@ bool IsAnyMax(const NodeDef& node);
 bool IsAnyMaxPool(const NodeDef& node);
 bool IsAnyMin(const NodeDef& node);
 bool IsApproximateEqual(const NodeDef& node);
+bool IsArgMax(const NodeDef& node);
+bool IsArgMin(const NodeDef& node);
 bool IsAvgPoolGrad(const NodeDef& node);
 bool IsAssert(const NodeDef& node);
 bool IsAssign(const NodeDef& node);
