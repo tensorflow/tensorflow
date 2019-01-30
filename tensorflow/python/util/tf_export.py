@@ -46,7 +46,6 @@ import functools
 import sys
 
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
 
 ESTIMATOR_API_NAME = 'estimator'
 KERAS_API_NAME = 'keras'
@@ -378,15 +377,6 @@ class api_export(object):  # pylint: disable=invalid-name
       setattr(module, api_constants_attr_v1, [])
     getattr(module, api_constants_attr_v1).append(
         (self._names_v1, name))
-
-
-def kwarg_only(f):
-  """A wrapper that throws away all non-kwarg arguments."""
-  def wrapper(**kwargs):
-    return f(**kwargs)
-
-  return tf_decorator.make_decorator(
-      f, wrapper, decorator_argspec=tf_inspect.getargspec(f))
 
 
 tf_export = functools.partial(api_export, api_name=TENSORFLOW_API_NAME)
