@@ -27,8 +27,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -104,8 +104,8 @@ class LuOpTest(test.TestCase):
         verification_reshaped = array_ops.reshape(verification,
                                                   [-1, num_rows, num_cols])
         # Invert the permutation in each batch.
-        inv_perm_reshaped = functional_ops.map_fn(array_ops.invert_permutation,
-                                                  perm_reshaped)
+        inv_perm_reshaped = map_fn.map_fn(array_ops.invert_permutation,
+                                          perm_reshaped)
         batch_size = perm_reshaped.shape.as_list()[0]
         # Prepare the batch indices with the same shape as the permutation.
         # The corresponding batch index is paired with each of the `num_rows`
