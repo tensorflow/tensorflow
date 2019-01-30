@@ -100,6 +100,25 @@ class TableConfig(
                                            initializer, combiner)
 
 
+AdamSlotVariableNames = collections.namedtuple(
+    'AdamSlotVariableNames', ['m', 'v'])
+
+AdagradSlotVariableName = collections.namedtuple(
+    'AdagradSlotVariableName', ['accumulator'])
+
+AdamSlotVariables = collections.namedtuple(
+    'AdamSlotVariables', ['m', 'v'])
+
+AdagradSlotVariable = collections.namedtuple(
+    'AdagradSlotVariable', ['accumulator'])
+
+VariablesAndOps = collections.namedtuple(
+    'VariablesAndOps',
+    ['embedding_variables_by_table', 'slot_variables_by_table',
+     'load_ops', 'retrieve_ops']
+)
+
+
 # TODO(shizhiw): Factor `use_gradient_accumulation` and
 # `pipeline_execution_with_tensor_core` out of `_OptimizationParameters`.
 class _OptimizationParameters(object):
@@ -236,6 +255,7 @@ class TPUEmbedding(object):
           sparse_features_list.append(sparse_features)
 
     enqueue_ops = embedding.generate_enqueue_ops(sparse_features_list)
+    embedding_variables_and_ops = embedding.create_variables_and_ops()
 
     def computation():
       activations = embedding.get_activations()
@@ -261,6 +281,7 @@ class TPUEmbedding(object):
                                      embedding.config_proto))
       sess.run(variables.global_variables_initializer())
       sess.run(embedding.init_ops)
+      sess.run(embedding_variables_and_ops.load_ops)
       sess.run(enqueue_ops)
       loss_val = sess.run(loss)
     ```
@@ -367,9 +388,6 @@ class TPUEmbedding(object):
 
     self._config_proto = self._create_config_proto()
 
-    self._create_variables_and_ops()
-    self._init_ops.extend(self._load_parameters_ops)
-
   @property
   def hosts(self):
     """A list of device names for CPU hosts.
@@ -435,27 +453,9 @@ class TPUEmbedding(object):
     """
     return self._init_ops
 
-  # TODO(shizhiw): get table variables the same way as getting slot variables.
-  @property
-  def table_to_table_variables_dict(self):
-    return copy.copy(self._table_to_table_variables_dict)
-
   @property
   def feature_to_table_dict(self):
     return copy.copy(self._feature_to_table_dict)
-
-  def get_slot_names(self):
-    """Return a list of the names of slots created by `TPUEmbedding`."""
-    return self._optimizer_handler.get_slot_names()
-
-  def get_slot(self, table, name):
-    """Return a slot named `name` create for `table` by `TPUEmbedding`."""
-    return self._optimizer_handler.get_slot(table, name)
-
-  # TODO(shizhiw): expose load to user too?
-  @property
-  def retrieve_parameters_ops(self):
-    return self._retrieve_parameters_ops
 
   def _create_config_proto(self):
     """Create `TPUEmbeddingConfiguration`."""
@@ -487,30 +487,63 @@ class TPUEmbedding(object):
 
     return config_proto
 
-  def _create_variables_and_ops(self):
-    """Create embedding variables and return ops to load them into TPU."""
-    self._load_parameters_ops = []
-    self._retrieve_parameters_ops = []
-    self._table_to_table_variables_dict = {}
+  def create_variables_and_ops(self, embedding_variable_name_by_table=None,
+                               slot_variable_names_by_table=None):
+    """Create embedding and slot variables, with ops to load and retrieve them.
+
+    Args:
+      embedding_variable_name_by_table: A dictionary mapping from string of
+        table name to string of embedding variable name. If `None`,
+        defaults from `get_default_slot_variable_names()` will be used.
+      slot_variable_names_by_table: A dictionary mapping from string of table
+        name to `AdamSlotVariableNames`, `AdagradSlotVariableNames` etc. If
+        `None`, defaults from `get_default_slot_variable_names()` will be used.
+
+    Returns:
+      `tpu_embedding.VariablesAndOps` with:
+        A dictionary mapping from string of table name to embedding variables,
+        A dictionary mapping from string of table name to AdagradSlotVariable,
+         AdamSlotVariables etc with slot variables,
+        A list of ops to load embedding and slot variables on CPU to TPU,
+        A list of ops to retrieve embedding and slot variables from TPU to CPU.
+    """
+    embedding_variables_by_table = {}
+    slot_variables_by_table = {}
+    load_ops = []
+    retrieve_ops = []
     for table in self._table_to_config_dict:
+      if embedding_variable_name_by_table:
+        embedding_variable_name = embedding_variable_name_by_table[table]
+      else:
+        embedding_variable_name = table
+      if slot_variable_names_by_table:
+        slot_variable_names = slot_variable_names_by_table[table]
+      else:
+        slot_variable_names = (
+            self._optimizer_handler.get_default_slot_variable_names(table))
+
       device_fn = _create_device_fn(self._hosts)
       with ops.device(device_fn):
-        # TODO(shizhiw): allow user to specify variable name so that
-        # they could make the name consistent with CPU etc.
-        variable_name = table
         table_variables = _create_partitioned_variables(
-            name=variable_name,
+            name=embedding_variable_name,
             num_hosts=self._num_hosts,
             vocabulary_size=self._table_to_config_dict[table].vocabulary_size,
             embedding_dimension=self._table_to_config_dict[table].dimension,
             initializer=self._table_to_config_dict[table].initializer,
             collections=[ops.GraphKeys.GLOBAL_VARIABLES])
-        self._table_to_table_variables_dict[table] = table_variables
+        embedding_variables_by_table[table] = table_variables
 
-        self._optimizer_handler.create_variables_and_ops(
-            table, variable_name, self._num_hosts,
-            self._table_to_config_dict[table], table_variables,
-            self._load_parameters_ops, self._retrieve_parameters_ops)
+        slot_variables_for_table, load_ops_for_table, retrieve_ops_for_table = (
+            self._optimizer_handler.create_variables_and_ops(
+                table, slot_variable_names, self._num_hosts,
+                self._table_to_config_dict[table], table_variables)
+        )
+        slot_variables_by_table[table] = slot_variables_for_table
+        load_ops.extend(load_ops_for_table)
+        retrieve_ops.extend(retrieve_ops_for_table)
+    return VariablesAndOps(embedding_variables_by_table,
+                           slot_variables_by_table,
+                           load_ops, retrieve_ops)
 
   def _create_dummy_table_variables(self):
     """Create dummy embedding table variables.
@@ -804,13 +837,11 @@ class _OptimizerHandler(object):
   def set_optimization_parameters(self, table_descriptor):
     raise NotImplementedError()
 
-  def create_variables_and_ops(self, table, variable_name):
+  def get_default_slot_variable_names(self, table):
     raise NotImplementedError()
 
-  def get_slot_names(self):
-    raise NotImplementedError()
-
-  def get_slot(self, table, name):
+  def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
+                               table_config, table_variables):
     raise NotImplementedError()
 
 
@@ -824,21 +855,24 @@ class _AdagradHandler(_OptimizerHandler):
   def set_optimization_parameters(self, table_descriptor):
     table_descriptor.optimization_parameters.adagrad.SetInParent()
 
-  def create_variables_and_ops(self, table, variable_name, num_hosts,
-                               table_config, table_variables,
-                               load_parameters_ops, retrieve_parameters_ops):
-    optimizer_name = 'Adagrad'
+  def get_default_slot_variable_names(self, table):
+    return AdagradSlotVariableName('{}/{}'.format(table, 'Adagrad'))
+
+  def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
+                               table_config, table_variables):
     accumulator_initializer = init_ops.constant_initializer(
         self._optimization_parameters.initial_accumulator)
     accumulator_variables = _create_partitioned_variables(
-        name='%s/%s' % (variable_name, optimizer_name),
+        name=slot_variable_names.accumulator,
         num_hosts=num_hosts,
         vocabulary_size=table_config.vocabulary_size,
         embedding_dimension=table_config.dimension,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES],
         initializer=accumulator_initializer)
+    slot_variables = AdagradSlotVariable(accumulator_variables)
 
-    self._table_to_accumulator_variables_dict[table] = accumulator_variables
+    load_ops = []
+    retrieve_ops = []
     for host_id, table_variable, accumulator_variable in (zip(
         range(num_hosts), table_variables, accumulator_variables)):
       with ops.colocate_with(table_variable):
@@ -858,17 +892,9 @@ class _AdagradHandler(_OptimizerHandler):
             state_ops.assign(table_variable, retrieved_table),
             state_ops.assign(accumulator_variable, retrieved_accumulator))
 
-      load_parameters_ops.append(load_parameters_op)
-      retrieve_parameters_ops.append(retrieve_parameters_op)
-
-  def get_slot_names(self):
-    return ['accumulator']
-
-  def get_slot(self, table, name):
-    if name not in self.get_slot_names():
-      raise ValueError('Adagrad has {} as slot names; got {}.'
-                       .format(self.get_slot_names(), name))
-    return self._table_to_accumulator_variables_dict[table]
+      load_ops.append(load_parameters_op)
+      retrieve_ops.append(retrieve_parameters_op)
+    return slot_variables, load_ops, retrieve_ops
 
 
 class _AdamHandler(_OptimizerHandler):
@@ -891,13 +917,15 @@ class _AdamHandler(_OptimizerHandler):
     table_descriptor.optimization_parameters.adam.use_sum_inside_sqrt = (
         self._optimization_parameters.sum_inside_sqrt)
 
-  def create_variables_and_ops(self, table, variable_name, num_hosts,
-                               table_config, table_variables,
-                               load_parameters_ops, retrieve_parameters_ops):
-    optimizer_name = 'Adam'
+  def get_default_slot_variable_names(self, table):
+    return AdamSlotVariableNames('{}/{}/m'.format(table, 'Adam'),
+                                 '{}/{}/v'.format(table, 'Adam'))
+
+  def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
+                               table_config, table_variables):
     m_initializer = init_ops.zeros_initializer()
     m_variables = _create_partitioned_variables(
-        name='%s/%s/m' % (variable_name, optimizer_name),
+        name=slot_variable_names.m,
         num_hosts=num_hosts,
         vocabulary_size=table_config.vocabulary_size,
         embedding_dimension=table_config.dimension,
@@ -905,16 +933,16 @@ class _AdamHandler(_OptimizerHandler):
         initializer=m_initializer)
     v_initializer = init_ops.zeros_initializer()
     v_variables = _create_partitioned_variables(
-        name='%s/%s/v' % (variable_name, optimizer_name),
+        name=slot_variable_names.v,
         num_hosts=num_hosts,
         vocabulary_size=table_config.vocabulary_size,
         embedding_dimension=table_config.dimension,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES],
         initializer=v_initializer)
+    slot_variables = AdamSlotVariables(m_variables, v_variables)
 
-    self._table_to_m_variables_dict[table] = m_variables
-    self._table_to_v_variables_dict[table] = v_variables
-
+    load_ops = []
+    retrieve_ops = []
     for host_id, table_variable, m_variable, v_variable in (zip(
         range(num_hosts), table_variables,
         m_variables, v_variables)):
@@ -937,20 +965,9 @@ class _AdamHandler(_OptimizerHandler):
             state_ops.assign(m_variable, retrieved_m),
             state_ops.assign(v_variable, retrieved_v))
 
-      load_parameters_ops.append(load_parameters_op)
-      retrieve_parameters_ops.append(retrieve_parameters_op)
-
-  def get_slot_names(self):
-    return ['m', 'v']
-
-  def get_slot(self, table, name):
-    if name == 'm':
-      return self._table_to_m_variables_dict[table]
-    elif name == 'v':
-      return self._table_to_v_variables_dict[table]
-    else:
-      raise ValueError('Adam has {} as slot names; got {}.'
-                       .format(self.get_slot_names(), name))
+      load_ops.append(load_parameters_op)
+      retrieve_ops.append(retrieve_parameters_op)
+    return slot_variables, load_ops, retrieve_ops
 
 
 class _StochasticGradientDescentHandler(_OptimizerHandler):
@@ -960,11 +977,15 @@ class _StochasticGradientDescentHandler(_OptimizerHandler):
     (table_descriptor.optimization_parameters.stochastic_gradient_descent
      .SetInParent())
 
-  def create_variables_and_ops(self, table, variable_name, num_hosts,
-                               table_config, table_variables,
-                               load_parameters_ops, retrieve_parameters_ops):
+  def get_default_slot_variable_names(self, table):
+    return None
+
+  def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
+                               table_config, table_variables):
     del table_config
 
+    load_ops = []
+    retrieve_ops = []
     for host_id, table_variable in (zip(
         range(num_hosts), table_variables)):
       with ops.colocate_with(table_variable):
@@ -984,14 +1005,9 @@ class _StochasticGradientDescentHandler(_OptimizerHandler):
         retrieve_parameters_op = control_flow_ops.group(
             state_ops.assign(table_variable, retrieved_table))
 
-      load_parameters_ops.append(load_parameters_op)
-      retrieve_parameters_ops.append(retrieve_parameters_op)
-
-  def get_slot_names(self):
-    return []
-
-  def get_slot(self, table, name):
-    raise ValueError('Stochastic gradient descent does not have slot variable.')
+      load_ops.append(load_parameters_op)
+      retrieve_ops.append(retrieve_parameters_op)
+    return None, load_ops, retrieve_ops
 
 
 def _get_optimization_handler(optimization_parameters):
