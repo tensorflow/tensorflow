@@ -841,6 +841,42 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       model.fit(dataset_dict, epochs=1, steps_per_epoch=2, verbose=1)
 
+  # TODO(b/122743976): Include TPUStrategy for this test as well once
+  # step inference is supported.
+  @combinations.generate(strategy_minus_tpu_combinations())
+  def test_fit_eval_and_predict_methods_on_dataset_without_steps(
+      self, distribution):
+    with self.cached_session():
+      with distribution.scope():
+        model = get_model()
+        optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+        loss = 'mse'
+        metrics = ['mae', keras.metrics.CategoricalAccuracy()]
+        model.compile(optimizer, loss, metrics=metrics)
+
+      inputs = np.zeros((1000, 3), dtype=np.float32)
+      targets = np.zeros((1000, 4), dtype=np.float32)
+      # steps/steps_per_epoch are calculated when using numpy arrays as
+      # input data.
+      fit_with_numpy = model.fit(inputs, targets, epochs=1,
+                                 batch_size=10).history
+      eval_with_numpy = model.evaluate(inputs, targets, batch_size=10)
+      predict_with_numpy = model.predict(inputs, batch_size=10)
+
+      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+      dataset = dataset.batch(10)
+      fit_with_ds = model.fit(dataset, epochs=1).history
+      eval_with_ds = model.evaluate(dataset)
+      predict_dataset = dataset_ops.Dataset.from_tensor_slices(inputs)
+      predict_dataset = predict_dataset.batch(10, drop_remainder=True)
+      predict_with_ds = model.predict(predict_dataset)
+      self.assertAllClose(
+          fit_with_numpy, fit_with_ds, atol=1e-4, rtol=1e-4)
+      self.assertAllClose(
+          eval_with_numpy, eval_with_ds, atol=1e-4, rtol=1e-4)
+      self.assertAllClose(
+          predict_with_numpy, predict_with_ds, atol=1e-4, rtol=1e-4)
+
   @combinations.generate(all_strategy_combinations())
   def test_fit_eval_and_predict_methods_on_dataset(self, distribution):
     with self.cached_session():
@@ -1293,14 +1329,21 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
             verbose=0,
             sample_weight=sample_weight)
 
-      # Test with not specifying the `steps` argument.
-      with self.assertRaisesRegexp(
-          ValueError, 'the `steps_per_epoch` argument'):
+      # Test with not specifying the `steps` argument for dataset with infinite
+      # cardinality.
+      dataset = dataset.repeat()
+      with self.assertRaisesRegexp(ValueError, 'When passing an infinitely '
+                                   'repeating dataset, you must specify the '
+                                   '`steps_per_epoch` argument'):
         model.fit(dataset, epochs=1, verbose=0)
-      with self.assertRaisesRegexp(ValueError, 'the `steps` argument'):
+      with self.assertRaisesRegexp(ValueError, 'When passing an infinitely '
+                                   'repeating dataset, you must specify the '
+                                   '`steps` argument'):
         model.evaluate(dataset, verbose=0)
 
-      with self.assertRaisesRegexp(ValueError, 'the `steps` argument'):
+      with self.assertRaisesRegexp(ValueError, 'When passing an infinitely '
+                                   'repeating dataset, you must specify the '
+                                   '`steps` argument'):
         model.predict(dataset, verbose=0)
 
   @combinations.generate(combinations.combine(

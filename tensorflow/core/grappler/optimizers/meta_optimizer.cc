@@ -124,7 +124,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("scoped_allocator",
          new ScopedAllocatorOptimizer(cfg_.scoped_allocator_optimization(),
                                       cfg_.scoped_allocator_opts()));
-  MK_OPT("small_op", new PinToHostOptimizer(cfg_.pin_to_host_optimization()));
+  MK_OPT("pin_to_host",
+         new PinToHostOptimizer(cfg_.pin_to_host_optimization()));
 
   return std::unique_ptr<GraphOptimizer>();
 }
@@ -164,7 +165,7 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.remapping() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
-  if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
+  if (cfg_.pin_to_host_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
@@ -679,7 +680,7 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          rewrite_cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          rewrite_cfg.debug_stripper() == RewriterConfig::ON ||
          rewrite_cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
-         rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
+         rewrite_cfg.pin_to_host_optimization() != RewriterConfig::OFF ||
          !rewrite_cfg.optimizers().empty() ||
          !rewrite_cfg.custom_optimizers().empty();
 }

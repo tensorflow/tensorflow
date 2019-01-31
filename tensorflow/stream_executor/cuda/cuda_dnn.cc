@@ -784,7 +784,6 @@ bool BatchnormSpatialPersistentEnabled() {
 }
 
 // A helper function to decide whether to enable deterministic functionality.
-// TODO(pr/24355): Support all cuDNN functionality (currently only convolution).
 bool RequireDeterminism() {
   static bool is_enabled = [] {
     bool is_enabled = false;
@@ -887,10 +886,13 @@ class CudnnPoolingDescriptor {
     std::transform(shape64.cbegin(), shape64.cend(), shape.begin(),
                    &CheckedNarrowing<int64, int>);
     bool propagate_nans = pooling_descriptor.propagate_nans();
+    auto cudnn_max_pooling_mode = RequireDeterminism()
+                                      ? CUDNN_POOLING_MAX_DETERMINISTIC
+                                      : CUDNN_POOLING_MAX;
     CHECK_CUDNN_OK(cudnnSetPoolingNdDescriptor(
         handle_.get(),
         (pooling_descriptor.mode() == dnn::PoolingMode::kMaximum
-             ? CUDNN_POOLING_MAX
+             ? cudnn_max_pooling_mode
              : CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING),
         propagate_nans ? CUDNN_PROPAGATE_NAN : CUDNN_NOT_PROPAGATE_NAN, nd,
         shape.data(), padding.data(), strides.data()));
@@ -4128,13 +4130,6 @@ bool CudnnSupport::DoPoolBackward(
     return port::Status::OK();
   }();
   return IsStatusOk(status, /*report_error=*/true);
-}
-
-bool CudnnSupport::DoNormalize(
-    Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
-    const DeviceMemory<float>& input_data, DeviceMemory<float>* output_data) {
-  LOG(FATAL) << "not yet implemented";  // TODO(leary)
-  return false;
 }
 
 bool CudnnSupport::DoNormalizeWithDimensions(

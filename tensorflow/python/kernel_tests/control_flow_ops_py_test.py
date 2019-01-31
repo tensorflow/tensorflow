@@ -1358,7 +1358,7 @@ class ControlFlowTest(test.TestCase):
           r"while loop context '' \(currently defined in 'cond/.+'\)"):
         _ = gradients_impl.gradients(loop, v)
 
-  @test_util.disable_control_flow_v2("b/118457764")
+  @test_util.disable_control_flow_v2("b/123601232")
   @test_util.run_v1_only("b/120545219")
   def testNestedWhileLoopWithMaxItersFromOuterContextInXLAContext(self):
     v = constant_op.constant(1.0)
@@ -3134,25 +3134,24 @@ class ControlFlowTest(test.TestCase):
   def testNestedWhileAndTensorArray(self):
     n = constant_op.constant(3.0)
 
-    def Body(row, ta, n):
+    def Body(row, ta):
 
-      def InnerBody(row, col, ta, n):
+      def InnerBody(row, col, ta):
         # Note: row and col are 1-based.
         ta = ta.write(
             math_ops.cast(n * (row - 1.) + col - 1., dtypes.int32), row * col)
-        return row, col + 1., ta, n
+        return row, col + 1., ta
 
-      # TODO(b/118457764): Remove n from loop_vars from both loops once fixed.
       ta = control_flow_ops.while_loop(
-          lambda _, col, _1, n: col <= n,
-          InnerBody, [row, constant_op.constant(1.), ta, n],
+          lambda _, col, _1: col <= n,
+          InnerBody, [row, constant_op.constant(1.), ta],
           return_same_structure=False)[2]
-      return row + 1., ta, n
+      return row + 1., ta
 
     ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=9)
     ta = control_flow_ops.while_loop(
-        lambda row, _, _1: row <= n,
-        Body, [constant_op.constant(1.), ta, n],
+        lambda row, _: row <= n,
+        Body, [constant_op.constant(1.), ta],
         return_same_structure=False)[1]
 
     output = array_ops.reshape(ta.stack(), [3, 3])
