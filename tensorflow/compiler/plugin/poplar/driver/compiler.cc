@@ -296,7 +296,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     simplifier_opts.set_is_layout_sensitive(false);
     simplifier_opts.set_enable_conv_simplification(false);
     simplifier_opts.set_enable_dot_strength_reduction(false);
-    simplifier_opts.set_enable_permutation_sort_replacement(false);
     simplifier_opts.set_enable_window_reduce_to_reduce_replacement(false);
 
     HloPassPipeline pipeline("IPU");
