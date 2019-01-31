@@ -561,29 +561,33 @@ PERFTOOLS_GPUTOOLS_ROCM_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 namespace gpu = ::stream_executor;
 
 REGISTER_MODULE_INITIALIZER(register_hipfft, {
-  gpu::port::Status status =
-      gpu::PluginRegistry::Instance()
-          ->RegisterFactory<gpu::PluginRegistry::FftFactory>(
-              gpu::rocm::kROCmPlatformId, gpu::rocm::kRocFftPlugin, "rocFFT",
-              [](gpu::internal::StreamExecutorInterface
-                     *parent) -> gpu::fft::FftSupport * {
-                gpu::rocm::ROCMExecutor *rocm_executor =
-                    dynamic_cast<gpu::rocm::ROCMExecutor *>(parent);
-                if (rocm_executor == nullptr) {
-                  LOG(ERROR)
-                      << "Attempting to initialize an instance of the rocFFT "
-                      << "support library with a non-ROCM StreamExecutor";
-                  return nullptr;
-                }
+  if (!gpu::PluginRegistry::Instance()->HasFactory(gpu::rocm::kROCmPlatformId,
+                                                   gpu::PluginKind::kFft,
+                                                   gpu::rocm::kRocFftPlugin)) {
+    gpu::port::Status status =
+        gpu::PluginRegistry::Instance()
+            ->RegisterFactory<gpu::PluginRegistry::FftFactory>(
+                gpu::rocm::kROCmPlatformId, gpu::rocm::kRocFftPlugin, "rocFFT",
+                [](gpu::internal::StreamExecutorInterface*
+                       parent) -> gpu::fft::FftSupport* {
+                  gpu::rocm::ROCMExecutor* rocm_executor =
+                      dynamic_cast<gpu::rocm::ROCMExecutor*>(parent);
+                  if (rocm_executor == nullptr) {
+                    LOG(ERROR)
+                        << "Attempting to initialize an instance of the rocFFT "
+                        << "support library with a non-ROCM StreamExecutor";
+                    return nullptr;
+                  }
 
-                return new gpu::rocm::ROCMFft(rocm_executor);
-              });
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to register rocFFT factory: "
-               << status.error_message();
+                  return new gpu::rocm::ROCMFft(rocm_executor);
+                });
+    if (!status.ok()) {
+      LOG(ERROR) << "Unable to register rocFFT factory: "
+                 << status.error_message();
+    }
+
+    gpu::PluginRegistry::Instance()->SetDefaultFactory(
+        gpu::rocm::kROCmPlatformId, gpu::PluginKind::kFft,
+        gpu::rocm::kRocFftPlugin);
   }
-
-  gpu::PluginRegistry::Instance()->SetDefaultFactory(gpu::rocm::kROCmPlatformId,
-                                                     gpu::PluginKind::kFft,
-                                                     gpu::rocm::kRocFftPlugin);
 });

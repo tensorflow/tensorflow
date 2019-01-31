@@ -4742,39 +4742,43 @@ bool MIOpenSupport::DoFusedBatchNormActivationBackward(
 namespace gpu = ::stream_executor;
 
 void initialize_miopen() {
-  gpu::port::Status status =
-      gpu::PluginRegistry::Instance()
-          ->RegisterFactory<gpu::PluginRegistry::DnnFactory>(
-              gpu::rocm::kROCmPlatformId, gpu::rocm::kMIOpenPlugin, "MIOpen",
-              [](gpu::internal::StreamExecutorInterface*
-                     parent) -> gpu::dnn::DnnSupport* {
-                gpu::rocm::ROCMExecutor* rocm_executor =
-                    dynamic_cast<gpu::rocm::ROCMExecutor*>(parent);
-                if (rocm_executor == nullptr) {
-                  LOG(ERROR)
-                      << "Attempting to initialize an instance of the MIOpen "
-                      << "support library with a non-ROCM StreamExecutor";
-                  return nullptr;
-                }
+  if (!gpu::PluginRegistry::Instance()->HasFactory(gpu::rocm::kROCmPlatformId,
+                                                   gpu::PluginKind::kDnn,
+                                                   gpu::rocm::kMIOpenPlugin)) {
+    gpu::port::Status status =
+        gpu::PluginRegistry::Instance()
+            ->RegisterFactory<gpu::PluginRegistry::DnnFactory>(
+                gpu::rocm::kROCmPlatformId, gpu::rocm::kMIOpenPlugin, "MIOpen",
+                [](gpu::internal::StreamExecutorInterface*
+                       parent) -> gpu::dnn::DnnSupport* {
+                  gpu::rocm::ROCMExecutor* rocm_executor =
+                      dynamic_cast<gpu::rocm::ROCMExecutor*>(parent);
+                  if (rocm_executor == nullptr) {
+                    LOG(ERROR)
+                        << "Attempting to initialize an instance of the MIOpen "
+                        << "support library with a non-ROCM StreamExecutor";
+                    return nullptr;
+                  }
 
-                gpu::rocm::MIOpenSupport* dnn =
-                    new gpu::rocm::MIOpenSupport(rocm_executor);
-                if (!dnn->Init().ok()) {
-                  // Note: Init() will log a more specific error.
-                  delete dnn;
-                  return nullptr;
-                }
-                return dnn;
-              });
+                  gpu::rocm::MIOpenSupport* dnn =
+                      new gpu::rocm::MIOpenSupport(rocm_executor);
+                  if (!dnn->Init().ok()) {
+                    // Note: Init() will log a more specific error.
+                    delete dnn;
+                    return nullptr;
+                  }
+                  return dnn;
+                });
 
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to register MIOpen factory: "
-               << status.error_message();
+    if (!status.ok()) {
+      LOG(ERROR) << "Unable to register MIOpen factory: "
+                 << status.error_message();
+    }
+
+    gpu::PluginRegistry::Instance()->SetDefaultFactory(
+        gpu::rocm::kROCmPlatformId, gpu::PluginKind::kDnn,
+        gpu::rocm::kMIOpenPlugin);
   }
-
-  gpu::PluginRegistry::Instance()->SetDefaultFactory(gpu::rocm::kROCmPlatformId,
-                                                     gpu::PluginKind::kDnn,
-                                                     gpu::rocm::kMIOpenPlugin);
 }
 
 }  // namespace stream_executor
