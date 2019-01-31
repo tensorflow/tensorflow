@@ -279,3 +279,5 @@ IotaR3PredTest POPLAR // iota PRED support
 ArrayElementwiseOpTest.ClampF32 POPLAR // NaN propagation
 
 DynamicUpdateSliceTest.R3ContiguousLarger POPLAR // Update slice is too big for dynamic slice
+
+BatchGroupedConvolution2DTest POPLAR // don't support batch_group_count
