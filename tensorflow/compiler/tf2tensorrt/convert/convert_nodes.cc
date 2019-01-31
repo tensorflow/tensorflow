@@ -3547,31 +3547,34 @@ tensorflow::Status ConvertSoftmax(OpConverterParams* params) {
 
 tensorflow::Status ConvertTopK(OpConverterParams* params) {
   const auto& inputs = params->inputs;
+  if (inputs.size() != 2 || !inputs.at(0).is_tensor() ||
+      !inputs.at(1).is_weights()) {
+    return errors::InvalidArgument("Input expects tensor and weights, at ",
+                                   params->node_def.name());
+  }
+
   const auto& node_def = params->node_def;
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-
-  int nbDims = tensor->getDimensions().nbDims;
-  if (nbDims == 0) {
-    return tensorflow::errors::InvalidArgument(
-        "TensorRT TopK cannot apply on batch dimension, at" + node_def.name());
+  const int num_dims = tensor->getDimensions().nbDims;
+  if (num_dims == 0) {
+    return errors::InvalidArgument(
+        "TensorRT TopK cannot apply on batch dimension, at", node_def.name());
   }
 
   TRT_ShapedWeights k_w = inputs.at(1).weights();
-  int k = *(static_cast<int*>(const_cast<void*>(k_w.GetValues())));
-
-  nvinfer1::TopKOperation op;
-  uint32_t reducedAxes = 0;
-  if (node_def.op() == "TopKV2") {
-    op = nvinfer1::TopKOperation::kMAX;
-    reducedAxes |= 1 << (nbDims - 1);
-  } else {
-    return tensorflow::errors::Unimplemented(
-        "Operation: ", node_def.op(),
-        " not implemented, at: ", node_def.name());
+  if (k_w.count() != 1) {
+    return errors::InvalidArgument("k value of TopK should be a scalar, at",
+                                   node_def.name());
   }
+  // Note that ITopKLayer always have sorted outputs, so we don't need to handle
+  // the 'sorted' attribute of the node.
+  if (params->validation_only) return Status::OK();
 
+  const nvinfer1::TopKOperation op = nvinfer1::TopKOperation::kMAX;
+  const int k = *(static_cast<int*>(const_cast<void*>(k_w.GetValues())));
+  const uint32_t reduce_axes = 1 << (num_dims - 1);
   nvinfer1::ITopKLayer* layer = params->converter->network()->addTopK(
-      *const_cast<nvinfer1::ITensor*>(tensor), op, k, reducedAxes);
+      *const_cast<nvinfer1::ITensor*>(tensor), op, k, reduce_axes);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
   nvinfer1::ITensor* output_value_tensor = layer->getOutput(0);
@@ -3598,6 +3601,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["Squeeze"] = ConvertSqueeze;
   (*registration)["StridedSlice"] = ConvertStridedSlice;
   (*registration)["Transpose"] = ConvertTranspose;
+  (*registration)["TopKV2"] = ConvertTopK;
 
   for (auto quantization_op_type :
        {"QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3",
@@ -3644,7 +3648,6 @@ void Converter::RegisterOpConverters() {
   op_registry_["Mean"] = ConvertReduce;
   op_registry_["Softmax"] = ConvertSoftmax;
   op_registry_["BatchMatMul"] = ConvertBatchMatMul;
-  op_registry_["TopKV2"] = ConvertTopK;
 
   plugin_converter_ = ConvertPlugin;
 }

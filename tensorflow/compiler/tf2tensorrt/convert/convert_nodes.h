@@ -178,6 +178,8 @@ class TRT_ShapedWeights {
 
   nvinfer1::Weights GetTrtWeights() const;
 
+  // Returns the raw pointer to the underlying buffer which holds the weights
+  // value.
   void* GetValues() const {
     return const_cast<char*>(tensor_.tensor_data().data());
   }
@@ -400,6 +402,19 @@ class TrtNodeValidator {
 // Class to convert TF nodes to TRT network.
 class Converter {
  public:
+  // Used for Converter::RenameAndMarkOutputTensors()
+  struct EngineOutputInfo {
+    // The TRT tensor name which produces the output.
+    string source_tensor_name;
+    // The TensorFlow node name which is receiving the output from the TRT
+    // engine. This should always be the Identity node created in
+    // ConvertSegmentToGraphDef.
+    string dest_node_name;
+    // Output type. TensorRT requires this to be explicitly set for engine
+    // outputs.
+    nvinfer1::DataType trt_dtype;
+  };
+
   Converter(nvinfer1::INetworkDefinition* trt_network, int precision_mode,
             bool use_calibration);
 
@@ -414,19 +429,6 @@ class Converter {
   // 'batch_size'.
   Status AddInputTensor(const string& name, nvinfer1::DataType dtype,
                         const nvinfer1::Dims& dims, int batch_size);
-
-  // Used for Converter::RenameAndMarkOutputTensors()
-  struct EngineOutputInfo {
-    // The TRT tensor name which produces the output.
-    string source_tensor_name;
-    // The TensorFlow node name which is receiving the output from the TRT
-    // engine. This should always be the Identity node created in
-    // ConvertSegmentToGraphDef.
-    string dest_node_name;
-    // Output type. TensorRT requires this to be explicitly set for engine
-    // outputs.
-    nvinfer1::DataType trt_dtype;
-  };
 
   // Mark the tensors with names specified by source_tensor_name as output of
   // the TRT network, and set their names in the TRT network as dest_node_name.
