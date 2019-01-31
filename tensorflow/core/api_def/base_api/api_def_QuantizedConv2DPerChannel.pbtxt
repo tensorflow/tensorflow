@@ -1,5 +1,4 @@
 op {
-  graph_op_name: "QuantizedConv2DPerChannel"
-  visibility: HIDDEN
-  }
-  
+graph_op_name: "QuantizedConv2DPerChannel"
+visibility : HIDDEN
+}
