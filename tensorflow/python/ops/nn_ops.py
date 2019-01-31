@@ -3211,13 +3211,13 @@ def max_pool_with_argmax_v1(input,  # pylint: disable=missing-docstring,invalid-
                             strides,
                             padding,
                             data_format="NHWC",
-                            Targmax=dtypes.int64,  # pylint: disable=invalid-name
+                            Targmax=None,  # pylint: disable=invalid-name
                             name=None,
                             output_dtype=None):
   Targmax = deprecated_argument_lookup(
       "output_dtype", output_dtype, "Targmax", Targmax)
-  if output_dtype is not None:
-    Targmax = output_dtype
+  if Targmax is None:
+    Targmax = dtypes.int64
   return gen_nn_ops.max_pool_with_argmax(
       input, ksize, strides, padding, data_format, Targmax, name)
 
