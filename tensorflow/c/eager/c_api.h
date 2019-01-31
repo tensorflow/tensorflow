@@ -367,6 +367,16 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrFunctionList(TFE_Op* op,
                                                      const TFE_Op** value,
                                                      int num_values);
 
+// Returns the length (number of tensors) of the input argument `input_name`
+// found in the provided `op`.
+TF_CAPI_EXPORT extern int TFE_OpGetInputLength(
+    TFE_Op* op, const char* input_name, TF_Status* status);
+
+// Returns the length (number of tensors) of the output argument `output_name`
+// found in the provided `op`.
+TF_CAPI_EXPORT extern int TFE_OpGetOutputLength(
+    TFE_Op* op, const char* output_name, TF_Status* status);
+
 // Execute the operation defined by 'op' and return handles to computed
 // tensors in `retvals`.
 //
