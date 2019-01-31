@@ -122,9 +122,14 @@ class ExhaustiveF32ElementwiseOpTest
         constexpr int64 kMaxMismatchesPrinted = 1000;
         mismatches++;
         if (mismatches < kMaxMismatchesPrinted || VLOG_IS_ON(2)) {
-          LOG(ERROR) << "Mismatch on " << input << " (0x"
-                     << absl::StrCat(absl::Hex(input, absl::kZeroPad8))
-                     << "). Expected " << expected << ", but got " << actual;
+          // Use %0.9g because that's guaranteed to print an f32 to full
+          // precision.
+          LOG(ERROR) << absl::StreamFormat(
+              "Mismatch on %0.9g (0x%08x). Expected %0.9g (0x%08x), but got "
+              "%0.9g (0x%08x).",
+              input, absl::bit_cast<uint32>(input),        //
+              expected, absl::bit_cast<uint32>(expected),  //
+              actual, absl::bit_cast<uint32>(actual));
         }
         if (mismatches == kMaxMismatchesPrinted && !VLOG_IS_ON(2)) {
           LOG(ERROR) << "Not printing any more mismatches; pass "
