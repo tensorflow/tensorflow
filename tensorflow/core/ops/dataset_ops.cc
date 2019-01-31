@@ -464,6 +464,18 @@ REGISTER_OP("TFRecordDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("SamplingDataset")
+    .Input("input_dataset: variant")
+    .Input("rate: float32")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle rate_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &rate_shape));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("Iterator")
     .Output("handle: resource")
     .Attr("shared_name: string")

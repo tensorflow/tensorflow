@@ -126,6 +126,9 @@ FunctionDef XPlusOneXTimesY();
 // x:T, y:T -> x <= N
 FunctionDef XYXLessThanOrEqualToN(int64 N);
 
+// x: T -> bool
+FunctionDef RandomUniformLess();
+
 void FunctionTestSchedClosure(std::function<void()> fn);
 
 }  // end namespace function

@@ -1,0 +1,12 @@
+op {
+  graph_op_name: "SamplingDataset"
+  in_arg {
+    name: "rate"
+    description: <<END
+A scalar representing the sample rate of elements from the `input_dataset`
+that should be taken.
+is taken.
+END
+  }
+  summary: "Creates a dataset that contains `rate` elements from the `input_dataset`."
+}
