@@ -1927,7 +1927,7 @@ TEST_F(OpConverterTest, ConvertBinary) {
     Reset();
     NodeDef node_def = MakeNodeDef("my_add", "Add", {num_inputs, "input"});
     AddTestTensor("input", {1}, /*batch_size=*/1, nvinfer1::DataType::kFLOAT);
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                StrCat("Add got ", std::to_string(num_inputs),
                                       "inputs but expected 2, at my_quantize")
                                    .c_str());
