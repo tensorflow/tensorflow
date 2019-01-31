@@ -37,8 +37,7 @@ namespace tensorflow {
 static const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
 static const TensorShape dummy_shape({8});
 
-// Helper class for converting MKL tensors to TF tensors and comparing to
-// expected values
+// Helper class for converting MKL tensors to TF tensors
 class ConvMklToTF : public OpsTestBase {
  public:
   template <typename T>
@@ -97,7 +96,7 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
   const int image_width = 4;
   const int image_channel = 1;
 
-  // Image is uint8
+  // Image is of datatype uint8
   const float image_min = 0.0f;
   const float image_max = 255.0f;
 
@@ -119,7 +118,7 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
   const int filter_channel = 1;
   const int filter_count = 2;
 
-  // Filter is int8
+  // Filter is of datatype int8
   const float filter_min = -128.0f;
   const float filter_max = 127.0f;
 
@@ -132,7 +131,7 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
   test::FillValues<float>(
       &filter_float, {1, 1, 4, 4, 7, 7, 2, 2, 5, 5, 8, 8, 3, 3, 6, 6, 9, 9});
 
-  // create filter tensor
+  // Create filter tensor
   Tensor filter_quantized =
       FloatTensorToQuantized<qint8>(filter_float, filter_min, filter_max);
 
@@ -159,7 +158,7 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
   const Tensor& output = *GetOutput(0);
   const Tensor& output_mkl_metadata = *GetOutput(3);
 
-  // Convert the output tensor in MKL to TF .
+  // Convert the output tensor in MKL to TF format.
   ConvMklToTF conv_comp;
   Tensor output_quantized;
   conv_comp.ConvertMKL2TF<qint32>(DT_QINT32, output, output_mkl_metadata,
@@ -193,8 +192,8 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
   // |  235  |  312  |  357  |  178  |
   // |  187  |  234  |  261  |  121  |
 
-  // Output size expected at  N x IH X IW x filter_count
-  // create the expectation tensor
+  // Shape of expected (output) tensor: N x IH x IW x filter_count
+  // Create the expectated output tensor
   const int expected_width = image_width;
   const int expected_height = image_height;
 
@@ -207,7 +206,7 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
       {105, 105, 150, 150, 183, 183, 95,  95,  235, 235, 312, 312,
        357, 357, 178, 178, 187, 187, 234, 234, 261, 261, 121, 121});
 
-  // test whether the values are as expected.
+  // Test whether the values are as expected.
   test::ExpectTensorNear<float>(expected_float, output_float, 2.0);
 }
 

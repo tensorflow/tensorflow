@@ -386,8 +386,7 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
         key_creator.AddAsKey(post_op_param.param[0]);
       } else if (post_op_param.name == "output_scale") {
         key_creator.AddAsKey(post_op_param.name);
-        size_t nelems = post_op_param.param.size();
-        for (size_t i = 0; i < nelems; i++)
+        for (size_t i = 0; i < post_op_param.param.size(); ++i)
           key_creator.AddAsKey(post_op_param.param[i]);
       } else {
         return string("not_a_key");
@@ -467,10 +466,10 @@ class MklConvOp : public OpKernel {
                 errors::InvalidArgument("filter must be 4-dimensional: ",
                                         filter.shape().DebugString()));
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 3; ++i) {
       OP_REQUIRES(context, FastBoundsCheck(filter.dim_size(i),
                                            std::numeric_limits<int>::max()),
-                  errors::InvalidArgument("filter too large"));
+                  errors::InvalidArgument("filter dimension is too large"));
     }
 
     const int64 input_depth =
@@ -490,7 +489,7 @@ class MklConvOp : public OpKernel {
                             : GetTensorDim(input, data_format_, 'H');
     OP_REQUIRES(context, FastBoundsCheck(input_rows_raw,
                                          std::numeric_limits<int>::max()),
-                errors::InvalidArgument("Input rows too large"));
+                errors::InvalidArgument("Input rows are too large"));
     const int input_rows = static_cast<int>(input_rows_raw);
     const int filter_rows = static_cast<int>(filter.dim_size(0));
 
@@ -501,7 +500,7 @@ class MklConvOp : public OpKernel {
                             : GetTensorDim(input, data_format_, 'W');
     OP_REQUIRES(context, FastBoundsCheck(input_cols_raw,
                                          std::numeric_limits<int>::max()),
-                errors::InvalidArgument("Input cols too large"));
+                errors::InvalidArgument("Input cols are too large"));
     const int input_cols = static_cast<int>(input_cols_raw);
     const int filter_cols = static_cast<int>(filter.dim_size(1));
 
@@ -1016,7 +1015,7 @@ class MklConvOp : public OpKernel {
               : memory::desc(filter_dims, MklDnnType<Tfilter>(), filter_format);
       filter.SetUsrMem(filter_md, &filter_tensor);
       // MKLDNN dilation starts from 0.
-      for (int i = 0; i < dilations.size(); i++) dilations[i] -= 1;
+      for (int i = 0; i < dilations.size(); ++i) dilations[i] -= 1;
 
       // In some cases, primitve descriptor includes potentialy large buffers,
       // we don't cache those primitves if the env variable
@@ -1403,12 +1402,12 @@ class MklQuantizedConv2DOp
     const float max_input =
         context->input(3 + bias_index_offset).flat<float>()(0);
 
-    Tensor* output_min = nullptr;
-    Tensor* output_max = nullptr;
     MklDnnShape output_min_mkl_shape, output_max_mkl_shape;
     output_min_mkl_shape.SetMklTensor(false);
     output_max_mkl_shape.SetMklTensor(false);
 
+    Tensor* output_min = nullptr;
+    Tensor* output_max = nullptr;
     if (std::is_same<Toutput, quint8>::value ||
         std::is_same<Toutput, qint8>::value) {
       AllocateOutputSetMklShape(context, 1, &output_min, {},
@@ -1482,7 +1481,7 @@ class MklQuantizedConv2DOp
       float input_range = std::max(std::abs(min_input), std::abs(max_input));
       float output_range =
           std::max(std::abs(min_freezed_output), std::abs(max_freezed_output));
-      for (size_t i = 0; i < depth; i++) {
+      for (size_t i = 0; i < depth; ++i) {
         float filter_range =
             std::max(std::abs(min_filter[i]), std::abs(max_filter[i]));
         scales[i] = factor * input_range * filter_range /
@@ -1518,7 +1517,7 @@ class MklQuantizedConv2DOp
       // bias to be consistent with quantized-input and quantized-filter.
       size_t depth = min_filter_vector.NumElements();
       std::vector<float> scales(depth);
-      for (size_t i = 0; i < depth; i++) {
+      for (size_t i = 0; i < depth; ++i) {
         scales[i] =
             255.0 * 127.0 /
             (std::max(std::abs(max_input), std::abs(min_input)) *
@@ -1695,7 +1694,7 @@ class MklQuantizedConv2DSumReluOp
 
     size_t depth = min_filter_vector.NumElements();
     std::vector<float> scales(depth);
-    for (size_t i = 0; i < depth; i++) {
+    for (size_t i = 0; i < depth; ++i) {
       scales[i] = 255.0 * 127.0 /
                   (std::max(std::abs(max_input), std::abs(min_input)) *
                    std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
@@ -1753,7 +1752,7 @@ REGISTER_KERNEL_BUILDER(Name("QuantizedConv2DPerChannel")
                             .TypeConstraint<qint8>("Tfilter")
                             .TypeConstraint<qint32>("out_type"),
                         NoOp);
-// Register a templatized implementation of MklQuntizedConv2D.
+// Register a templatized implementation of MklQuntizedConv2DPerChannel.
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2DPerChannel")
         .Device(DEVICE_CPU)
