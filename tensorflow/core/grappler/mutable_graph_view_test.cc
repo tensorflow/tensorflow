@@ -209,6 +209,102 @@ TEST(MutableGraphViewTest, AddSubgraphAndFailIfFunctionDifferent) {
             "different function definition with the same name: XTimesTwo.");
 }
 
+TEST(MutableGraphViewTest, UpdateNodeNoDedupControlDependency) {
+  constexpr char kDevice[] = "/device:foo:0";
+  GraphDef graph_def = test::function::GDef(
+      {NDef("bar_1", "Switch", {}, {}), NDef("bar_2", "Identity", {"bar_1:1"}),
+       NDef("other", "NotImportant", {}, {}),
+       NDef("foo_1", "NotImportant", {"bar_2", "other", "bar_2:1", "^bar_2"}),
+       NDef("foo_2", "NotImportant", {"other:1", "bar_2:2", "^bar_2"})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  AttrValue list_value;
+  list_value.mutable_list()->add_type(DT_FLOAT);
+  TF_EXPECT_OK(
+      graph.UpdateNode("bar_2", "IdentityN", kDevice, {{"T", list_value}}));
+
+  CheckNode(graph, "bar_1", "Switch", "", {}, {}, {"bar_2"});
+  CheckNode(graph, "bar_2", "IdentityN", kDevice, {{"T", list_value}},
+            {"bar_1:1"}, {"foo_1", "foo_1:2", "^foo_1", "foo_2:1", "^foo_2"});
+  CheckNode(graph, "other", "NotImportant", "", {}, {}, {"foo_1:1", "foo_2"});
+  CheckNode(graph, "foo_1", "NotImportant", "", {},
+            {"bar_2", "other", "bar_2:1", "^bar_2"}, {});
+  CheckNode(graph, "foo_2", "NotImportant", "", {},
+            {"other:1", "bar_2:2", "^bar_2"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, UpdateNodeDedupControlDependency) {
+  constexpr char kDevice[] = "/device:foo:0";
+  GraphDef graph_def = test::function::GDef(
+      {NDef("bar_1", "Switch", {}, {}), NDef("bar_2", "Identity", {"bar_1:1"}),
+       NDef("other", "NotImportant", {}, {}),
+       NDef("foo_1", "NotImportant", {"bar_2", "other", "bar_2:1", "^bar_2"}),
+       NDef("foo_2", "NotImportant", {"other:1", "bar_2:2", "^bar_2"})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.UpdateNode("bar_2", "NotImportant", kDevice, {}));
+
+  CheckNode(graph, "bar_1", "Switch", "", {}, {}, {"bar_2"});
+  CheckNode(graph, "bar_2", "NotImportant", kDevice, {}, {"bar_1:1"},
+            {"foo_1", "foo_1:2", "foo_2:1"});
+  CheckNode(graph, "other", "NotImportant", "", {}, {}, {"foo_1:1", "foo_2"});
+  CheckNode(graph, "foo_1", "NotImportant", "", {},
+            {"bar_2", "other", "bar_2:1"}, {});
+  CheckNode(graph, "foo_2", "NotImportant", "", {}, {"other:1", "bar_2:2"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, UpdateNodeSwitchNoControlDependency) {
+  constexpr char kDevice[] = "/device:foo:0";
+  GraphDef graph_def =
+      test::function::GDef({NDef("foo", "NotImportant", {}, {}),
+                            NDef("bar", "NotImportant", {"foo:1"})},
+                           /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.UpdateNode("foo", "Switch", kDevice, {}));
+
+  CheckNode(graph, "foo", "Switch", kDevice, {}, {}, {"bar"});
+  CheckNode(graph, "bar", "NotImportant", "", {}, {"foo:1"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, UpdateNodeSwitchControlDependency) {
+  constexpr char kDevice[] = "/device:foo:0";
+  GraphDef graph_def =
+      test::function::GDef({NDef("foo", "NotImportant", {}, {}),
+                            NDef("bar", "NotImportant", {"^foo"})},
+                           /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  AttrValue attr;
+  attr.set_type(DT_FLOAT);
+  Status s = graph.UpdateNode("foo", "Switch", kDevice, {{"T", attr}});
+  EXPECT_FALSE(s.ok());
+  string expected_msg =
+      "MutableGraphView::UpdateNodeOp(node_name='foo', op='Switch', "
+      "device='/device:foo:0', attrs={('T', type: DT_FLOAT)}) error: can't "
+      "change node op to Switch when node drives a control dependency "
+      "(alternatively, we could add the identity node needed, but it seems "
+      "like an unlikely event and probably a mistake).";
+  EXPECT_EQ(s.error_message(), expected_msg);
+
+  CheckNode(graph, "foo", "NotImportant", "", {}, {}, {"^bar"});
+  CheckNode(graph, "bar", "NotImportant", "", {}, {"^foo"}, {});
+
+  CheckGraph(graph);
+}
+
 TEST(MutableGraphViewTest, AddAndUpdateFanouts) {
   // Actual node.op() is not important in this test.
   GraphDef graph_def = test::function::GDef(
@@ -2212,6 +2308,109 @@ TEST(MutableGraphViewTest, RemoveControllingFaninSelfLoop) {
   CheckNode(graph, "a", "NotImportant", "", {}, {}, {"b", "c"});
   CheckNode(graph, "b", "NotImportant", "", {}, {"a"}, {"c:1"});
   CheckNode(graph, "c", "NotImportant", "", {}, {"a", "b"}, {});
+
+  CheckGraph(graph);
+}
+
+void TestUpdateAllRegularFaninsToControlling(
+    absl::string_view node_name, bool node_exists, bool success,
+    const string& error_msg, absl::Span<const string> expected_fanins) {
+  constexpr char kDevice[] = "/device:foo:0";
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}),
+       NDef("switch", "Switch", {}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("b", "NotImportant", {"switch:1"}, {}),
+       NDef("ConstantFoldingCtrl/switch_1", "Identity", {"switch:1"},
+            {{"T", DT_FLOAT}}, kDevice),
+       NDef("c", "NotImportant", {"a", "^b"}, {}),
+       NDef("d", "NotImportant", {"b", "c"}, {}),
+       NDef("e", "NotImportant", {"^d"}, {})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  NodeDef* node = graph.GetNode(node_name);
+  if (node_exists) {
+    EXPECT_NE(node, nullptr);
+  } else {
+    EXPECT_EQ(node, nullptr);
+  }
+
+  absl::flat_hash_map<string, std::vector<string>> unmodified_node_inputs =
+      GetNodeInputsFromGraph(graph_def, node_name);
+
+  Status s = graph.UpdateAllRegularFaninsToControlling(node_name);
+  EXPECT_EQ(s.ok(), success);
+  if (!success) {
+    EXPECT_EQ(s.error_message(), error_msg);
+  }
+  if (node_exists) {
+    CompareNodeFanins(graph, node, expected_fanins);
+  }
+
+  CheckUnmodifiedNodeFanins(graph_def, node_name, unmodified_node_inputs);
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, UpdateAllRegularFaninsToControlling) {
+  string error_msg;
+  // Nodes with some regular fanins and some controls.
+  TestUpdateAllRegularFaninsToControlling("a", /*node_exists=*/true,
+                                          /*success=*/true, error_msg, {});
+  TestUpdateAllRegularFaninsToControlling("c", /*node_exists=*/true,
+                                          /*success=*/true, error_msg,
+                                          {"^a", "^b"});
+  TestUpdateAllRegularFaninsToControlling("d", /*node_exists=*/true,
+                                          /*success=*/true, error_msg,
+                                          {"^b", "^c"});
+  TestUpdateAllRegularFaninsToControlling("e", /*node_exists=*/true,
+                                          /*success=*/true, error_msg, {"^d"});
+
+  // Use existing Identity to pin control dependency of Switch.
+  TestUpdateAllRegularFaninsToControlling("b", /*node_exists=*/true,
+                                          /*success=*/true, error_msg,
+                                          {"^ConstantFoldingCtrl/switch_1"});
+
+  // Missing node.
+  error_msg =
+      "MutableGraphView::UpdateAllRegularFaninsToControlling(node_name='f') "
+      "error: node 'f' was not found.";
+  TestUpdateAllRegularFaninsToControlling("f", /*node_exists=*/false,
+                                          /*success=*/false, error_msg, {});
+
+  // Error in getting controlling fanin.
+  error_msg =
+      "MutableGraphView::UpdateAllRegularFaninsToControlling(node_name='"
+      "ConstantFoldingCtrl/switch_1') error: can't add found fanin "
+      "'^ConstantFoldingCtrl/switch_1' to self.";
+  TestUpdateAllRegularFaninsToControlling("ConstantFoldingCtrl/switch_1",
+                                          /*node_exists=*/true,
+                                          /*success=*/false, error_msg,
+                                          {"switch:1"});
+}
+
+TEST(MutableGraphViewTest, UpdateAllRegularFaninsToControllingConsumingSwitch) {
+  constexpr char kDevice[] = "/device:foo:0";
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}),
+       NDef("switch", "Switch", {}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("b", "NotImportant", {"switch:1"}, {})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.UpdateAllRegularFaninsToControlling("b"));
+
+  EXPECT_EQ(graph.graph()->node_size(), 4);
+
+  CheckNode(graph, "a", "NotImportant", "", {}, {}, {});
+  CheckNode(graph, "switch", "Switch", kDevice, {{"T", DT_FLOAT}}, {},
+            {"ConstantFoldingCtrl/switch_1"});
+  CheckNode(graph, "b", "NotImportant", "", {},
+            {"^ConstantFoldingCtrl/switch_1"}, {});
+  CheckNode(graph, "ConstantFoldingCtrl/switch_1", "Identity", kDevice,
+            {{"T", DT_FLOAT}}, {"switch:1"}, {"^b"});
 
   CheckGraph(graph);
 }
