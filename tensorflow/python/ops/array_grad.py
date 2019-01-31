@@ -219,7 +219,11 @@ def _ConcatGrad(op, grad):
 @ops.RegisterGradient("ConcatV2")
 def _ConcatGradV2(op, grad):
   return _ConcatGradHelper(
-      op, grad, start_value_index=0, end_value_index=-1, dim_index=-1)
+      op,
+      grad,
+      start_value_index=0,
+      end_value_index=-1,
+      dim_index=-1)
 
 
 ops.NotDifferentiable("ConcatOffset")
