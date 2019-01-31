@@ -553,7 +553,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Optimize each function only once.
   absl::flat_hash_set<string> optimized_funcs;
-  bool optimize_function_library = true;
+  bool optimize_function_library =
+      item.optimization_options().optimize_function_library;
 
   while (optimize_function_library) {
     optimize_function_library = false;
@@ -605,7 +606,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // instantiated by the function definition, because we must guarantee
       // function execution semantics wrt side effects (see
       // function_optimizer.cc).
-      func_item.optimization_options().is_function_instantiation = true;
+      func_item.optimization_options().allow_pruning_stateful_and_dataset_ops =
+          false;
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;
@@ -701,7 +703,7 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
 Status OptimizeGraph(
     std::vector<string> ret_node_names, FunctionLibraryDefinition* flib,
     const DeviceSet& device_set, Device* cpu_device,
-    const ConfigProto& config_proto,
+    const ConfigProto& config_proto, const string& grappler_item_id,
     const GrapplerItem::OptimizationOptions& optimization_options,
     std::unique_ptr<tensorflow::Graph>* g) {
   if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto)) {
@@ -709,6 +711,7 @@ Status OptimizeGraph(
   }
 
   tensorflow::grappler::GrapplerItem item;
+  item.id = grappler_item_id;
   item.optimization_options() = optimization_options;
 
   // Add all available devices so that inlined function can be placed.
