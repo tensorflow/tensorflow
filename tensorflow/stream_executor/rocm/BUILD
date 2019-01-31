@@ -33,7 +33,7 @@ filegroup(
 cc_library(
     name = "rocm_diagnostics",
     srcs = if_rocm_is_configured(["rocm_diagnostics.cc"]),
-    hdrs = [],
+    hdrs = if_rocm_is_configured(["rocm_diagnostics.h"]),
     deps = if_rocm_is_configured([
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",

@@ -253,7 +253,7 @@ REGISTER_MODULE_INITIALIZER(register_hiprand, {
   se::port::Status status =
       se::PluginRegistry::Instance()
           ->RegisterFactory<se::PluginRegistry::RngFactory>(
-              se::gpu::kROCmPlatformId, se::gpu::kGpuRandPlugin, "hipRAND",
+              se::rocm::kROCmPlatformId, se::gpu::kGpuRandPlugin, "hipRAND",
               [](se::internal::StreamExecutorInterface* parent)
                   -> se::rng::RngSupport* {
                 se::gpu::GpuExecutor* rocm_executor =
@@ -280,5 +280,5 @@ REGISTER_MODULE_INITIALIZER(register_hiprand, {
   }
 
   se::PluginRegistry::Instance()->SetDefaultFactory(
-      se::gpu::kROCmPlatformId, se::PluginKind::kRng, se::gpu::kGpuRandPlugin);
+      se::rocm::kROCmPlatformId, se::PluginKind::kRng, se::gpu::kGpuRandPlugin);
 });
