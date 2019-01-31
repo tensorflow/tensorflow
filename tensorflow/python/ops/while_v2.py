@@ -122,19 +122,12 @@ def while_loop(cond,
     cond_graph = func_graph_module.func_graph_from_py_func(
         cond_name,
         wrapped_cond,
-        loop_vars, {},
+        [],  # We provide signature instead of args.
+        {},
         signature=_build_signature(loop_vars, shape_invariants),
         func_graph=util.WhileCondFuncGraph(
             cond_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
         add_control_dependencies=add_control_dependencies)
-
-    # Add external_captures of cond to the list of loop vars.
-    # Note that external tensors will be treated as loop invariants, i.e.,
-    # the value of that tensor in each iteration is the same as it was at the
-    # beginning of the loop execution.
-    loop_vars = loop_vars + cond_graph.external_captures
-    shape_invariants = shape_invariants + type(shape_invariants)(
-        [t.shape for t in cond_graph.external_captures])
 
     def wrapped_body(loop_counter, *args):
       """Loop body augmented with counter update.
@@ -142,20 +135,21 @@ def while_loop(cond,
       Args:
         loop_counter: Loop counter which needs to be incremented in the body.
         *args: List of args
-          args[:len_orig_loop_vars] - Args for the original loop body.
-          args[len_orig_loop_vars:] - External captures of cond. These get
-            passed through as is.
 
       Returns:
         A list of tensors the same length as args.
       """
+      # Capture the tensors already captured in cond_graph so that they appear
+      # in the same order in body_graph.external_captures.
+      for t in cond_graph.external_captures:
+        ops.get_default_graph().capture(t)
+
       # Convert the flow variables in `args` to TensorArrays. `args` should
       # already have the same structure as `orig_loop_vars` but currently there
       # is no nest.zip so we call `_pack_sequence_as` which flattens both
       # `orig_loop_vars` and `args`, converts flows in `args` to TensorArrays
       # and packs it into the structure of `orig_loop_vars`.
-      outputs = body(
-          *_pack_sequence_as(orig_loop_vars, args[:len_orig_loop_vars]))
+      outputs = body(*_pack_sequence_as(orig_loop_vars, args))
       if not nest.is_sequence(outputs):
         outputs = [outputs]
       # Compare the structure of input and output of body converting the
@@ -164,17 +158,15 @@ def while_loop(cond,
 
       outputs = _tensor_array_to_flow(outputs)
 
-      # Return the external_captures of cond_graph as is, i.e., treat them as
-      # loop invariants.
       # TODO(srbs): Update lowering code to create _Enter nodes with
       # is_constant=True for inputs that are directly passed to outputs.
-      return [loop_counter + 1] + list(outputs) + list(
-          args[len_orig_loop_vars:])
+      return [loop_counter + 1] + list(outputs)
 
     body_graph = func_graph_module.func_graph_from_py_func(
         body_name,
         wrapped_body,
-        loop_vars, {},
+        [],  # We provide signature instead of args.
+        {},
         signature=_build_signature(loop_vars, shape_invariants),
         func_graph=util.WhileBodyFuncGraph(
             body_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
@@ -188,17 +180,15 @@ def while_loop(cond,
     # is_constant=True for inputs that are directly passed to outputs.
     body_graph.outputs.extend(body_graph.internal_captures)
 
-    # Capture `external_captures` of `body_graph` in `cond_graph` so that it
-    # expects to receive those as arguments.
-    # TODO(b/118457764): Dedup tensors that are captured in both the cond and
-    # body. This logic already exists in cond_v2.
+    # Capture the extra `external_captures` of `body_graph` in `cond_graph` so
+    # that it expects to receive those as arguments.
     with cond_graph.as_default():
-      for external_capture in body_graph.external_captures:
-        assert external_capture not in cond_graph.captures, (
-            "Looks like both cond and body are capturing the same tensor %s. "
-            "This is not supported yet. For now consider passing,"
-            " this as a loop variable." % str(external_capture))
-        cond_graph.capture(external_capture)
+      num_cond_captures = len(cond_graph.external_captures)
+      assert (cond_graph.external_captures ==
+              body_graph.external_captures[:num_cond_captures])
+      for body_capture in body_graph.external_captures[num_cond_captures:]:
+        assert body_capture not in cond_graph.captures
+        cond_graph.capture(body_capture)
 
     # Make sure that the shapes of the loop outputs are compatible with the
     # shape invariants, or the shapes of the loop vars if the invariants are not
