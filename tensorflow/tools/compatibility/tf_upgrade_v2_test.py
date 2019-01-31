@@ -653,15 +653,21 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     self.assertEqual(errors, [])
 
   def testColocateGradientsWithOps(self):
-    text = "tf.gradients(a, foo=False)\n"
+    text = "tf.gradients(yx=a, foo=False)\n"
     _, unused_report, errors, new_text = self._upgrade(text)
     self.assertEqual(text, new_text)
     self.assertEqual(errors, [])
 
-    text = "tf.gradients(a, colocate_gradients_with_ops=False)\n"
+    text = "tf.gradients(yx=a, colocate_gradients_with_ops=False)\n"
     _, report, unused_errors, new_text = self._upgrade(text)
-    self.assertEqual("tf.gradients(a)\n", new_text)
+    self.assertEqual("tf.gradients(yx=a)\n", new_text)
     self.assertIn("tf.gradients no longer takes", report)
+
+    text = "tf.gradients(y, x, grad_ys, name, colocate, gate)\n"
+    expected = ("tf.gradients(ys=y, xs=x, grad_ys=grad_ys, name=name, "
+                "gate_gradients=gate)\n")
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
 
   def testColocateGradientsWithOpsMinimize(self):
     text = "optimizer.minimize(a, foo=False)\n"
@@ -846,6 +852,46 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         "tf.nn.separable_conv2d(input=inp, depthwise_filter=d, "
         "pointwise_filter=pt, strides=strides, padding=pad, "
         "dilations=rate, name=name, data_format=fmt)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testConv2D(self):
+    text = (
+        "tf.nn.conv2d(input, filter, strides, padding, use_cudnn_on_gpu, "
+        "data_format)")
+    expected_text = (
+        "tf.nn.conv2d(input=input, filters=filter, strides=strides, "
+        "padding=padding, data_format=data_format)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = (
+        "tf.nn.conv2d(input, filter=filter, strides=strides, padding=padding, "
+        "use_cudnn_on_gpu=use_cudnn_on_gpu)")
+    expected_text = ("tf.nn.conv2d(input=input, filters=filter, "
+                     "strides=strides, padding=padding)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testConv2DBackpropFilter(self):
+    text = (
+        "tf.nn.conv2d_backprop_filter(input, filter_sizes, out_backprop, "
+        "strides, padding, use_cudnn_on_gpu, data_format)")
+    expected_text = (
+        "tf.nn.conv2d_backprop_filter(input=input, filter_sizes=filter_sizes, "
+        "out_backprop=out_backprop, strides=strides, padding=padding, "
+        "data_format=data_format)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testConv2DBackpropInput(self):
+    text = (
+        "tf.nn.conv2d_backprop_input(input_sizes, filter, out_backprop, "
+        "strides, padding, use_cudnn_on_gpu, data_format)")
+    expected_text = (
+        "tf.nn.conv2d_backprop_input(input_sizes=input_sizes, filters=filter, "
+        "out_backprop=out_backprop, strides=strides, padding=padding, "
+        "data_format=data_format)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
