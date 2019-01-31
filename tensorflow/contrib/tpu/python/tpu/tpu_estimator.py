@@ -31,9 +31,9 @@ import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.contrib.tpu.ops import gen_tpu_ordinal_selector_op
 from tensorflow.contrib.tpu.proto import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.ops import tpu_ordinal_selector_op
 from tensorflow.contrib.tpu.python.tpu import _tpu_estimator_embedding
 from tensorflow.contrib.tpu.python.tpu import error_handling
 from tensorflow.contrib.tpu.python.tpu import functional as tpu_functional
@@ -1370,7 +1370,7 @@ def call_computation(computation,
 
     return tpu_functional.TPUPartitionedCall(
         args=tpu_subgraph.captured_inputs,
-        device_ordinal=gen_tpu_ordinal_selector_op.tpu_ordinal_selector(),
+        device_ordinal=tpu_ordinal_selector_op.tpu_ordinal_selector(),
         Tout=[o.type for o in tpu_subgraph.definition.signature.output_arg],
         f=tpu_subgraph)
   else:

@@ -162,14 +162,14 @@ tf_gen_op_wrapper_py(
 )
 
 tf_custom_op_library(
-    name = "python/ops/_tpu_ordinal_selector.so",
+    name = "python/ops/_tpu_ordinal_selector_op.so",
     srcs = ["ops/tpu_ordinal_selector_op.cc"],
 )
 
 tf_custom_op_py_library(
     name = "tpu_ordinal_selector_py",
-    srcs = ["ops/gen_tpu_ordinal_selector_op.py"],
-    dso = [":python/ops/_tpu_ordinal_selector.so"],
+    srcs = ["python/ops/tpu_ordinal_selector_op.py"],
+    dso = [":python/ops/_tpu_ordinal_selector_op.so"],
     kernels = [
         ":tpu_ordinal_selector_op_op_lib",
     ],
@@ -221,7 +221,7 @@ py_library(
 
 tf_custom_op_py_library(
     name = "tpu_py",
-    srcs = glob(["python/ops/*.py"]),
+    srcs = ["python/ops/tpu_ops.py"],
     dso = [":python/ops/_tpu_ops.so"],
     kernels = [
         ":all_ops",
