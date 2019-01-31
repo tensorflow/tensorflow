@@ -849,6 +849,12 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
   auto native_segment = fdeflib.add_function();
   TF_RETURN_IF_ERROR(tensorflow::GraphToFunctionDef(
       sgraph, StrCat(engine_name, "_native_segment"), native_segment));
+  // Set kIntsonDeviceAttr to true so that all TRTEngineOp outputs are always on
+  // a GPU device as expected. Otherwise, some of the tensors of type DT_INT32
+  // would be on host if the op generating the tensor has host memory tag set.
+  (*native_segment
+        ->mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr]
+      .set_b(true);
   if (VLOG_IS_ON(7)) {
     VLOG(7) << engine_name << " Function_Def ";
     VLOG(7) << native_segment->DebugString();
