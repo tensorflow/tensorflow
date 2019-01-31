@@ -137,40 +137,54 @@ def bessel_i1(x, name=None):
 @tf_export('einsum', 'linalg.einsum')
 def einsum(equation, *inputs, **kwargs):
   """A generalized contraction between tensors of arbitrary dimension.
+  
   This function returns a tensor whose elements are defined by `equation`,
   which is written in a shorthand form inspired by the Einstein summation
   convention.  As an example, consider multiplying two matrices
   A and B to form a matrix C.  The elements of C are given by:
+  
   ```
     C[i,k] = sum_j A[i,j] * B[j,k]
   ```
+  
   The corresponding `equation` is:
+  
   ```
     ij,jk->ik
   ```
+  
   In general, the `equation` is obtained from the more familiar element-wise
   equation by
     1. removing variable names, brackets, and commas,
     2. replacing "*" with ",",
     3. dropping summation signs, and
     4. moving the output to the right, and replacing "=" with "->".
+  
   Many common operations can be expressed in this way.  For example:
+  
   ```python
   # Matrix multiplication
   >>> einsum('ij,jk->ik', m0, m1)  # output[i,k] = sum_j m0[i,j] * m1[j, k]
+  
   # Dot product
   >>> einsum('i,i->', u, v)  # output = sum_i u[i]*v[i]
+  
   # Outer product
   >>> einsum('i,j->ij', u, v)  # output[i,j] = u[i]*v[j]
+  
   # Transpose
   >>> einsum('ij->ji', m)  # output[j,i] = m[i,j]
+  
   # Batch matrix multiplication
   >>> einsum('aij,ajk->aik', s, t)  # out[a,i,k] = sum_j s[a,i,j] * t[a, j, k]
   ```
+  
   This function behaves like `numpy.einsum`, but does not support:
+  
   * Ellipses (subscripts like `ij...,jk...->ik...`)
   * Subscripts where an axis appears more than once for a single input
     (e.g. `ijj,k->ik`).
+    
   Args:
     equation: a `str` describing the contraction, in the same format as
       `numpy.einsum`.
@@ -186,8 +200,10 @@ def einsum(equation, *inputs, **kwargs):
       arXiv:1304.6112) will be used to find an optimized contraction order.
       If `'greedy'`, a greedy algorithm will be used to optimize the order.
       The default value is `'True'`. 
+  
   Returns:
     The contracted `Tensor`, with shape determined by `equation`.
+  
   Raises:
     ValueError: If
       - the format of `equation` is incorrect,
