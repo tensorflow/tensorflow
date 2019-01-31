@@ -751,6 +751,19 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
                      output_details[3]['name'])
     self.assertTrue(([1] == output_details[3]['shape']).all())
 
+  def testTFLiteGraphDefCustomOpsFalse(self):
+    # Tests invalid cases for the model that cannot be loaded in TensorFlow.
+    self._initObjectDetectionArgs()
+
+    # `custom_ops` is not set to `True`
+    converter = lite.TFLiteConverter.from_frozen_graph(
+        self._graph_def_file, self._input_arrays, self._output_arrays,
+        self._input_shapes)
+
+    with self.assertRaises(lite.ConverterError) as error:
+      converter.convert()
+    self.assertIn(("TOCO failed. See console for info."), str(error.exception))
+
   def testTFLiteGraphDefMissingShape(self):
     # Tests invalid cases for the model that cannot be loaded in TensorFlow.
     self._initObjectDetectionArgs()
