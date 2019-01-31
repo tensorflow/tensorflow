@@ -161,7 +161,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     # Check reasonable graph construction time.
     self.assertLess(size_50, 5)
     # Check construction time grows approx. linearly with size.
-    e = 1.5  # Fudge factor to prevent flakiness.
+    e = 2  # Fudge factor to prevent flakiness.
     self.assertLess(size_500, (10 * e) * size_50)
 
 
