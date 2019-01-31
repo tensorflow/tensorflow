@@ -2430,6 +2430,69 @@ tensorflow::Status ConvertPool(OpConverterParams* params) {
   return tensorflow::Status::OK();
 }
 
+// TODO(tmorris): Use ActivationType::kLEAKY_RELU in TRT 5.1+ once perf
+// improves.
+tensorflow::Status ConvertLeakyRelu(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  if (inputs.size() != 1) {
+    return tensorflow::errors::InvalidArgument(
+        node_def.op(), " expects one input, at ", node_def.name());
+  }
+  if (!inputs.at(0).is_tensor()) {
+    return tensorflow::errors::Unimplemented(
+        node_def.op(), " is only implemented for tensors, at ",
+        node_def.name());
+  }
+  TFAttrs attrs(node_def);
+  const float alpha = attrs.get<float>("alpha");
+  if (alpha < 0.0f || alpha > 1.0f) {
+    return tensorflow::errors::Unimplemented(
+        "Alpha value for LeakyRelu must be between 0 and 1, at ",
+        node_def.name());
+  }
+  if (params->validation_only) return tensorflow::Status::OK();
+
+  // Input Tensor
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
+  // Create const for alpha. The constant has to have the same rank as the input
+  // in order for TRT to broadcast.
+  nvinfer1::Dims dims;
+  dims.nbDims = inputs.at(0).GetTrtDims().nbDims;
+  for (int i = 0; i < dims.nbDims; i++) {
+    dims.d[i] = 1;
+  }
+  TRT_ShapedWeights weights = params->weight_store->GetTempWeights(
+      tensorflow::DataType::DT_FLOAT, dims);
+  auto weights_ptr =
+      static_cast<float*>(const_cast<void*>(weights.GetValues()));
+  weights_ptr[0] = alpha;
+  nvinfer1::ITensor* const_alpha_tensor =
+      params->converter->CreateConstantLayer(weights, dims);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(const_alpha_tensor, node_def.name());
+  params->converter->ProvideQuantizationRange(const_alpha_tensor, -alpha,
+                                              alpha);
+  // alpha * x
+  nvinfer1::IElementWiseLayer* mul_layer =
+      params->converter->network()->addElementWise(
+          *const_cast<nvinfer1::ITensor*>(tensor), *const_alpha_tensor,
+          nvinfer1::ElementWiseOperation::kPROD);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(mul_layer, node_def.name());
+  // max(x, alpha * x)
+  nvinfer1::IElementWiseLayer* max_layer =
+      params->converter->network()->addElementWise(
+          *const_cast<nvinfer1::ITensor*>(tensor),
+          *const_cast<nvinfer1::ITensor*>(mul_layer->getOutput(0)),
+          nvinfer1::ElementWiseOperation::kMAX);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(max_layer, node_def.name());
+  nvinfer1::ITensor* output_tensor = max_layer->getOutput(0);
+  params->converter->MarkQuantizationRangesAsInferrable(
+      output_tensor, const_cast<nvinfer1::ITensor*>(mul_layer->getOutput(0)));
+
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
+}
+
 tensorflow::Status ConvertActivation(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -2443,18 +2506,15 @@ tensorflow::Status ConvertActivation(OpConverterParams* params) {
         node_def.name());
   }
   static const std::unordered_map<string, nvinfer1::ActivationType> ops{
-#if NV_TENSORRT_MAJOR >= 5 && NV_TENSORRT_MINOR >= 1
-      {"LeakyRelu", nvinfer1::ActivationType::kLEAKY_RELU},
-#endif
       {"Relu", nvinfer1::ActivationType::kRELU},
       {"Sigmoid", nvinfer1::ActivationType::kSIGMOID},
       {"Tanh", nvinfer1::ActivationType::kTANH},
   };
   auto op_pair = ops.find(node_def.op());
   if (op_pair == ops.end()) {
-    return tensorflow::errors::Unimplemented(
-        "Activation op: ", node_def.op(),
-        " not supported at: ", node_def.name());
+    return tensorflow::errors::Unimplemented("Activation op: ", node_def.op(),
+                                             " not supported at: ",
+                                             node_def.name());
   }
   if (params->validation_only) return tensorflow::Status::OK();
 
@@ -2465,15 +2525,6 @@ tensorflow::Status ConvertActivation(OpConverterParams* params) {
           *const_cast<nvinfer1::ITensor*>(tensor), op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
-  // Set alpha parameter for LeakyRelu
-  // TODO(tmorris): Support Elu, Selu, Softplus, Clip, HardSigmoid, ScaledTanh,
-  // ThresholdedRelu.
-#if NV_TENSORRT_MAJOR >= 5 && NV_TENSORRT_MINOR >= 1
-  if (node_def.op() == "LeakyRelu") {
-    TFAttrs attrs(node_def);
-    layer->setAlpha(attrs.get<float>("alpha"));
-  }
-#endif
   // Set quantization range for output of Sigmoid, Tanh.
   if (node_def.op() == "Sigmoid") {
     params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 1.0f);
@@ -2551,8 +2602,7 @@ Status ConvertQuantize(OpConverterParams* params) {
   return Status::OK();
 }
 
-// TODO(pdavoodi): we should update relu6 implementation once TensorRT supports
-// Relu6 natively.
+// TODO(tmorris): Use ActivationType::kCLIP in TRT 5.1+ once perf improves.
 tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -3605,6 +3655,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["Conv2D"] = ConvertConv2D;
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   (*registration)["ExpandDims"] = ConvertExpandDims;
+  (*registration)["LeakyRelu"] = ConvertLeakyRelu;
   (*registration)["MatMul"] = ConvertMatMul;
   (*registration)["Pad"] = ConvertPad;
   (*registration)["Relu6"] = ConvertRelu6;
@@ -3624,7 +3675,7 @@ static void RegisterValidatableOpConverters(
        {"Add", "Mul", "Sub", "Div", "RealDiv", "Maximum", "Minimum"}) {
     (*registration)[binary_op_type] = ConvertBinary;
   }
-  for (auto activation_op_type : {"LeakyRelu", "Relu", "Sigmoid", "Tanh"}) {
+  for (auto activation_op_type : {"Relu", "Sigmoid", "Tanh"}) {
     (*registration)[activation_op_type] = ConvertActivation;
   }
   for (auto pool_op_type : {"AvgPool", "MaxPool"}) {
