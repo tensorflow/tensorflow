@@ -808,6 +808,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.fractional_avg_pool",
         "tf.nn.fractional_max_pool",
         "tf.image.sample_distorted_bounding_box",
+        "tf.gradients",
+        "tf.hessians",
     }
 
     # Functions that were reordered should be changed to the new keyword args
