@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 using xla::StatusOr;
@@ -967,6 +968,10 @@ StatusOr<StateMap::CondId> FunctionalizeCond::JoinCondStatesMerge(
   VLOG(4) << "Joining (for merge) " << DebugString(src) << " and "
           << DebugString(dst);
   if (state_map_.IsEmpty(dst)) return src;
+  if (state_map_.IsEmpty(src)) {
+    return errors::Internal("Merge node ", merge->name(),
+                            " has input that's not in any CondContext.");
+  }
 
   if (state_map_.IsDead(src)) return src;
   if (state_map_.IsDead(dst)) return dst;
