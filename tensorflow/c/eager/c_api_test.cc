@@ -1781,4 +1781,76 @@ TEST(CAPI, TestTFE_OpAttrsInferenceDisabledWhenNotCallingOpAddInputList) {
   TFE_DeleteTensorHandle(dim);
   TFE_DeleteContext(ctx);
 }
+
+TEST(CAPI, TestTFE_OpGetInputAndOutputLengths) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_TensorHandle* input1 = TestMatrixTensorHandle();
+  TFE_TensorHandle* input2 = TestMatrixTensorHandle();
+  TFE_Op* identityOp = TFE_NewOp(ctx, "IdentityN", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  // Try to retrieve lengths before building the attributes (should fail)
+  EXPECT_EQ(-1, TFE_OpGetInputLength(identityOp, "input", status));
+  CHECK_NE(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  EXPECT_EQ(-1, TFE_OpGetOutputLength(identityOp, "output", status));
+  CHECK_NE(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TFE_TensorHandle* inputs[] = { input1, input2 };
+  TFE_OpAddInputList(identityOp, inputs, 2, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  // Try to retrieve lengths before executing the op (should work)
+  EXPECT_EQ(2, TFE_OpGetInputLength(identityOp, "input", status));
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  EXPECT_EQ(2, TFE_OpGetOutputLength(identityOp, "output", status));
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TFE_TensorHandle* retvals[2] = { nullptr };
+  int num_retvals = 2;
+  TFE_Execute(identityOp, &retvals[0], &num_retvals, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  // Try to retrieve lengths after executing the op (should work)
+  EXPECT_EQ(2, TFE_OpGetInputLength(identityOp, "input", status));
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  EXPECT_EQ(2, TFE_OpGetOutputLength(identityOp, "output", status));
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TF_DeleteStatus(status);
+  TFE_DeleteOp(identityOp);
+  TFE_DeleteTensorHandle(input1);
+  TFE_DeleteTensorHandle(input2);
+}
+
+TEST(CAPI, TestTFE_OpGetInputAndOutputLengthsFailForUnknownArguments) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_TensorHandle* input1 = TestMatrixTensorHandle();
+  TFE_TensorHandle* input2 = TestMatrixTensorHandle();
+  TFE_Op* identityOp = TFE_NewOp(ctx, "IdentityN", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_TensorHandle* inputs[] = { input1, input2 };
+  TFE_OpAddInputList(identityOp, inputs, 2, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  EXPECT_EQ(-1, TFE_OpGetInputLength(identityOp, "cheese", status));
+  CHECK_EQ(TF_INVALID_ARGUMENT, TF_GetCode(status)) << TF_Message(status);
+  EXPECT_EQ(-1, TFE_OpGetOutputLength(identityOp, "cheese", status));
+  CHECK_EQ(TF_INVALID_ARGUMENT, TF_GetCode(status)) << TF_Message(status);
+
+  TF_DeleteStatus(status);
+  TFE_DeleteOp(identityOp);
+  TFE_DeleteTensorHandle(input1);
+  TFE_DeleteTensorHandle(input2);
+}
+
 }  // namespace

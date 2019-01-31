@@ -1527,7 +1527,7 @@ int TF_OperationOutputListLength(TF_Operation* oper, const char* arg_name,
   if (!status->status.ok()) return -1;
   auto iter = name_ranges.find(arg_name);
   if (iter == name_ranges.end()) {
-    status->status = InvalidArgument("Input arg '", arg_name, "' not found");
+    status->status = InvalidArgument("Output arg '", arg_name, "' not found");
     return -1;
   }
   return iter->second.second - iter->second.first;
