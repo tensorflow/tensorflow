@@ -22,7 +22,6 @@ from __future__ import print_function
 import collections
 import functools
 import re
-import sys
 import threading
 import types as types_lib
 import weakref
@@ -48,7 +47,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import functional_ops
-from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -58,8 +57,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
-# This is to avoid a circular dependency with gradients_impl
-gradients_impl._function = sys.modules[__name__]  # pylint: disable=protected-access
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
@@ -664,12 +661,12 @@ class ConcreteFunction(object):
         _backward_name(self._func_graph.name))
     forward_function_name = _forward_name(self._func_graph.name)
     outputs = [x for x in self._func_graph.outputs
-               if gradients_impl.IsTrainable(x)]
+               if gradients_util.IsTrainable(x)]
     with backwards_graph.as_default():
       gradients_wrt_outputs = [
           graph_placeholder(x.dtype, x.shape) for x in outputs
       ]
-      gradients_wrt_inputs = gradients_impl._GradientsHelper(  # pylint: disable=protected-access
+      gradients_wrt_inputs = gradients_util._GradientsHelper(  # pylint: disable=protected-access
           outputs,
           self._func_graph.inputs,
           grad_ys=gradients_wrt_outputs,
@@ -738,7 +735,7 @@ class ConcreteFunction(object):
     # the forward graph function so that we can compute its gradient.
     real_outputs = outputs[:self._num_outputs]
     skip_positions = [i for i, t in enumerate(real_outputs)
-                      if not gradients_impl.IsTrainable(t)]
+                      if not gradients_util.IsTrainable(t)]
     side_outputs = outputs[self._num_outputs:]
 
     def backward_function(*args):

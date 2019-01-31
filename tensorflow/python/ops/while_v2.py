@@ -39,7 +39,7 @@ from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_resource_variable_ops
-from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -371,7 +371,7 @@ def _zeros_like(op_output):
 
 def _is_trainable(tensor):
   """Returns whether the given tensor is trainable."""
-  if not gradients_impl.IsTrainable(tensor):
+  if not gradients_util.IsTrainable(tensor):
     return False
 
   # Special case: untrainable accumulator output. The gradients algorithm
@@ -382,7 +382,7 @@ def _is_trainable(tensor):
   if tensor.op.type == "TensorListPopBack" and tensor.value_index == 0:
     assert tensor.dtype == dtypes.variant
     element_type = tensor.op.get_attr("element_dtype")
-    return gradients_impl.IsTrainable(element_type)
+    return gradients_util.IsTrainable(element_type)
 
   return True
 
@@ -534,7 +534,7 @@ def _grad_fn(ys, xs, args, func_graph):
   # func_graph. The captured func_graph tensors are resolved to external tensors
   # after the forward While op has been rewritten in _resolve_grad_captures.
   # TODO(srbs): Mark GradientsHelper as public?
-  grad_outs = gradients_impl._GradientsHelper(
+  grad_outs = gradients_util._GradientsHelper(
       ys, xs, grad_ys=grad_ys, src_graph=func_graph,
       unconnected_gradients="zero")
 
