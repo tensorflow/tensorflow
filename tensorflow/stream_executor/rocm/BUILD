@@ -244,26 +244,34 @@ cc_library(
 #    alwayslink = True,
 #)
 
-# FIXME: enable in future PRs
-#cc_library(
-#    name = "rocrand_plugin",
-#    srcs = ["rocm_rng.cc"],
-#    hdrs = [],
-#    deps = [
-#        ":rocm_gpu_executor",
-#        ":rocm_platform_id",
-#        "@local_config_rocm//rocm:rocm_headers",
-#        "//tensorflow/stream_executor:event",
-#        "//tensorflow/stream_executor:plugin_registry",
-#        "//tensorflow/stream_executor:rng",
-#        "//tenosrflow/stream_executor/gpu:gpu_activation_header",
-#        "//tenosrflow/stream_executor/gpu:gpu_stream_header",
-#        "//tensorflow/stream_executor/lib",
-#        "//tensorflow/stream_executor/platform",
-#        "//tensorflow/stream_executor/platform:dso_loader",
-#    ] + if_static(["@local_config_rocm//rocm:curand"]),
-#    alwayslink = True,
-#)
+cc_library(
+   name = "rocrand_plugin",
+   srcs = if_rocm_is_configured(["rocm_rng.cc"]),
+   hdrs = if_rocm_is_configured([]),
+   deps = if_rocm_is_configured([
+       ":rocm_gpu_executor",
+       ":rocm_platform_id",
+       "@local_config_rocm//rocm:rocm_headers",
+       "//tensorflow/stream_executor:event",
+       "//tensorflow/stream_executor:plugin_registry",
+       "//tensorflow/stream_executor:rng",
+       "//tensorflow/stream_executor/gpu:gpu_activation_header",
+       "//tensorflow/stream_executor/gpu:gpu_helpers_header",
+       "//tensorflow/stream_executor/gpu:gpu_executor_header",
+       "//tensorflow/stream_executor/gpu:gpu_rng_header",
+       "//tensorflow/stream_executor/gpu:gpu_stream_header",
+       "//tensorflow/stream_executor/lib",
+       "//tensorflow/stream_executor/platform",
+       "//tensorflow/stream_executor/platform:dso_loader",
+   ] + if_static([
+       "@local_config_rocm//rocm:hiprand"
+       # Delete the following line once we switch the hiprand library from
+       # being dynamically linked (current behaviour) to being dynamically
+       # loaded (future behaviour)
+       ], ["@local_config_rocm//rocm:hiprand"
+   ])),
+   alwayslink = True,
+)
 
 cc_library(
     name = "all_runtime",
@@ -274,7 +282,7 @@ cc_library(
         #":miopen_plugin",
         ":rocfft_plugin",
         ":rocblas_plugin",
-        #":rocrand_plugin",
+        ":rocrand_plugin",
         ":rocm_driver",
         ":rocm_platform",
     ]),
