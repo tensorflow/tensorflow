@@ -69,6 +69,42 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "filter_with_random_uniform_fusion",
+    srcs = ["filter_with_random_uniform_fusion.cc"],
+    hdrs = [
+        "filter_with_random_uniform_fusion.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "filter_with_random_uniform_fusion_test",
+    srcs = ["filter_with_random_uniform_fusion_test.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        ":filter_with_random_uniform_fusion",
+        ":graph_test_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
     name = "fusion_utils",
     srcs = ["fusion_utils.cc"],
     hdrs = [
@@ -681,39 +717,4 @@ tf_cc_test(
         "//tensorflow/core:parsing_ops_op_lib",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ] + tf_protos_all(),
-)
-
-cc_library(
-    name = "filter_with_random_uniform_fusion",
-    srcs = ["filter_with_random_uniform_fusion.cc"],
-    hdrs = [
-        "filter_with_random_uniform_fusion.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":graph_utils",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/grappler:graph_view",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/grappler/clusters:cluster",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
-    ] + tf_protos_all(),
-)
-
-tf_cc_test(
-    name = "filter_with_random_uniform_fusion_test",
-    srcs = ["filter_with_random_uniform_fusion_test.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":graph_utils",
-        ":filter_with_random_uniform_fusion",
-        ":graph_test_utils",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/grappler:grappler_item",
-    ],
 )

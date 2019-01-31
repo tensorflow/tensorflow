@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/data/filter_with_random_uniform_fusion.h"
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -96,9 +97,10 @@ const NodeDef* FunctionFindNodeDef(const FunctionDef& function, const string op,
 //                  + rate
 // into:
 //   sampling(rate)
-Status FilterWithRandomUniformFusion::Optimize(Cluster* cluster,
-                                               const GrapplerItem& item,
-                                               GraphDef* output) {
+Status FilterWithRandomUniformFusion::OptimizeAndCollectStats(Cluster* cluster,
+                                                  const GrapplerItem& item,
+                                                  GraphDef* output,
+                                                  OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
   absl::flat_hash_set<string> nodes_to_delete;
@@ -183,6 +185,7 @@ Status FilterWithRandomUniformFusion::Optimize(Cluster* cluster,
 
     // Mark the `Filter` node for removal.
     nodes_to_delete.insert(filter_node.name());
+    stats->num_changes++;
   }
 
   graph.DeleteNodes(nodes_to_delete);
