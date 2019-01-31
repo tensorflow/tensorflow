@@ -157,7 +157,7 @@ def tf_to_tflite(name, src, options, out):
     """
 
     toco_cmdline = " ".join([
-        "//tensorflow/lite/toco:toco",
+        "$(location //tensorflow/lite/toco:toco)",
         "--input_format=TENSORFLOW_GRAPHDEF",
         "--output_format=TFLITE",
         ("--input_file=$(location %s)" % src),
