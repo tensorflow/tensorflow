@@ -256,6 +256,28 @@ class TimeDistributedTest(test.TestCase):
       self.assertEqual((mask_outputs_val[1]).all(),
                        model_input.all())
 
+  def test_TimeDistributed_with_different_time_shapes(self):
+    time_dist = keras.layers.TimeDistributed(keras.layers.Dense(5))
+    ph_1 = keras.backend.placeholder(shape=(None, 10, 13))
+    out_1 = time_dist(ph_1)
+    self.assertEqual(out_1.shape.as_list(), [None, 10, 5])
+
+    ph_2 = keras.backend.placeholder(shape=(None, 1, 13))
+    out_2 = time_dist(ph_2)
+    self.assertEqual(out_2.shape.as_list(), [None, 1, 5])
+
+    ph_3 = keras.backend.placeholder(shape=(None, 1, 18))
+    with self.assertRaisesRegexp(ValueError, 'is incompatible with layer'):
+      time_dist(ph_3)
+
+  def test_TimeDistributed_with_invalid_dimensions(self):
+    time_dist = keras.layers.TimeDistributed(keras.layers.Dense(5))
+    ph = keras.backend.placeholder(shape=(None, 10))
+    with self.assertRaisesRegexp(
+        ValueError,
+        '`TimeDistributed` Layer should be passed an `input_shape `'):
+      time_dist(ph)
+
 
 class BidirectionalTest(test.TestCase):
 
