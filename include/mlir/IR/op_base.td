@@ -326,7 +326,14 @@ class DerivedTypeAttr<code body> : DerivedAttr<"Type", body>;
 // Represents a constant attribute of specific Attr type. A constant
 // attribute can be specified only of attributes that have a constant
 // builder call defined. The constant value is specified as a string.
-class ConstantAttr<Attr attribute, string val> {
+//
+// If used as a constraint, it generates a matcher on a constant attribute by
+// using the constant value builder of the attribute and the value.
+class ConstantAttr<Attr attribute, string val> : AttrConstraint<
+    CPred<"{0} == " #
+      !subst("{0}", "mlir::Builder(ctx)", !subst("{1}", val,
+        !cast<string>(attribute.constBuilderCall)))>,
+    "constant attribute " # val> {
   Attr attr = attribute;
   string value = val;
 }
@@ -456,6 +463,12 @@ class Pat<dag pattern, dag result> : Pattern<pattern, [result]>;
 // Attribute matcher. This is the base class to specify a predicate
 // that has to match. Used on the input attributes of a rewrite rule.
 class mAttr<Pred pred> : AttrConstraint<pred, "">;
+
+// Combine a list of attribute matchers into an attribute matcher that holds if
+// any of the original matchers does.
+class mAttrAnyOf<list<AttrConstraint> attrs> :
+  mAttr<AnyOf<!foldl([]<Pred>, attrs, prev, attr,
+                       !listconcat(prev, [attr.predicate]))>>;
 
 // Attribute transforms. This is the base class to specify a
 // transformation of a matched attribute. Used on the output of a rewrite
