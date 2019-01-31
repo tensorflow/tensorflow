@@ -76,6 +76,16 @@ py_binary(
     ],
 )
 
+tf_py_test(
+    name = "train_test",
+    size = "small",
+    srcs = ["train_test.py"],
+    additional_deps = [
+        ":train",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
 py_binary(
     name = "freeze",
     srcs = [
