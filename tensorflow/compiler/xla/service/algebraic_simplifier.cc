@@ -2427,8 +2427,14 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
   // Reshape directly to empty constant if the shape contains zero-element
   // dimension.
   if (ShapeUtil::IsZeroElementArray(reshape->shape())) {
+    // If the instruction doesn't have a layout, use a default layout for
+    // the literal result.
+    Shape reshaped_shape = reshape->shape();
+    if (!LayoutUtil::HasLayout(reshaped_shape)) {
+      LayoutUtil::SetToDefaultLayout(&reshaped_shape);
+    }
     auto empty_constant = HloInstruction::CreateConstant(
-        Literal::CreateFromShape(reshape->shape()));
+        Literal::CreateFromShape(reshaped_shape));
 
     return ReplaceWithNewInstruction(reshape, std::move(empty_constant));
   }
