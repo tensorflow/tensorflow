@@ -509,8 +509,15 @@ class Layer(checkpointable.Checkpointable):
     """
     input_list = nest.flatten(inputs)
     # Accept NumPy inputs by converting to Tensors.
-    if all(isinstance(x, (np.ndarray, float, int)) for x in input_list):
-      inputs = nest.map_structure(ops.convert_to_tensor, inputs)
+    if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
+      # Don't call `ops.convert_to_tensor` on all `inputs` because
+      # `SparseTensors` can't be converted to `Tensor`.
+      def _convert_non_tensor(x):
+        if isinstance(x, (np.ndarray, float, int)):
+          return ops.convert_to_tensor(x)
+        return x
+
+      inputs = nest.map_structure(_convert_non_tensor, inputs)
       input_list = nest.flatten(inputs)
 
     # We will attempt to build a TF graph if & only if all inputs are symbolic.
