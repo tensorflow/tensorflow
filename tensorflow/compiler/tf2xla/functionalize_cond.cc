@@ -35,12 +35,33 @@ limitations under the License.
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 using xla::StatusOr;
 
 namespace tensorflow {
 namespace functionalize_cond {
+
+bool AncestorNode::operator<(const AncestorNode& other) const {
+  return (output_tensor.node->id() < other.output_tensor.node->id()) ||
+         (output_tensor.node->id() == other.output_tensor.node->id() &&
+          output_tensor.index < other.output_tensor.index) ||
+         (output_tensor.node->id() == other.output_tensor.node->id() &&
+          output_tensor.index == other.output_tensor.index &&
+          type < other.type);
+}
+
+bool AncestorNode::operator==(const AncestorNode& other) const {
+  return output_tensor.node->id() == other.output_tensor.node->id() &&
+         output_tensor.index == other.output_tensor.index && type == other.type;
+}
+
+size_t AncestorNode::Hash::operator()(const AncestorNode& ancestor) const {
+  size_t h = std::hash<int>()(ancestor.output_tensor.node->id());
+  h = Hash64Combine(h, std::hash<int>()(ancestor.output_tensor.index));
+  return Hash64Combine(h, std::hash<int>()(static_cast<int>(ancestor.type)));
+}
 
 // TODO(jpienaar): Move to OutputTensor.
 string DebugString(const OutputTensor& tensor) {
@@ -146,10 +167,10 @@ size_t StateMap::Hash::operator()(const StateMap::AncestorState& map) const {
   if (map.empty()) return 0;
   // Compute hash of the front element.
   auto it = map.begin();
-  size_t h = hash<Node*>()(*it);
+  size_t h = AncestorNode::Hash()(*it);
   for (++it; it != map.end(); ++it) {
     // Combine the has with the different elements in the map.
-    h = Hash64Combine(h, hash<Node*>()(*it));
+    h = Hash64Combine(h, AncestorNode::Hash()(*it));
   }
   return h;
 }
@@ -230,7 +251,17 @@ string StateMap::CondStateToString(StateMap::CondId id) const {
 }
 
 string StateMap::AncestorStateToString(const Node* node) const {
-  if (auto id = LookupAncestorId(node)) return NodesToString(*id);
+  if (auto id = LookupAncestorId(node)) {
+    return absl::StrCat(
+        "{",
+        absl::StrJoin(*id, ",",
+                      [](string* output, const AncestorNode& ancestor) {
+                        absl::StrAppend(output,
+                                        ancestor.output_tensor.node->name(),
+                                        ":", ancestor.output_tensor.index);
+                      }),
+        "}");
+  }
   return "{}";
 }
 
@@ -1206,8 +1237,17 @@ Status FunctionalizeCond::DetermineAncestorState(Node* dst) {
     if (other_id != id && other_id != nullptr) {
       state.insert(other_id->begin(), other_id->end());
     }
-    if (IsSwitch(src) || IsMerge(src)) {
-      state.insert(src);
+    if (IsMerge(src)) {
+      state.insert({{src, 0}, AncestorNode::AncestorNodeType::kMerge});
+    } else if (IsSwitch(src)) {
+      OutputTensor pred;
+      // For dead switch nodes, GetSwitchPredicate() will fail, and we use
+      // the switch node directly as ancestor.
+      if (GetSwitchPredicate(*src, &pred).ok()) {
+        state.insert({pred, AncestorNode::AncestorNodeType::kPred});
+      } else {
+        state.insert({{src, 0}, AncestorNode::AncestorNodeType::kSwitch});
+      }
     }
     return state_map_.GetAncestorId(state);
   };
