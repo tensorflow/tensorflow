@@ -30,6 +30,7 @@
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
 #include "mlir/Transforms/Passes.h"
+#include "third_party/llvm/llvm/include/llvm/ADT/STLExtras.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -94,9 +95,6 @@ struct VectorizerTestPass : public FunctionPass {
   void testComposeMaps(Function *f);
   void testNormalizeMaps(Function *f);
 
-  // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
-  NestedPatternContext MLContext;
-
   static char passID;
 };
 
@@ -128,9 +126,10 @@ void VectorizerTestPass::testVectorShapeRatio(Function *f) {
     return true;
   };
   auto pat = Op(filter);
-  auto matches = pat.match(f);
+  SmallVector<NestedMatch, 8> matches;
+  pat.match(f, &matches);
   for (auto m : matches) {
-    auto *opInst = cast<OperationInst>(m.first);
+    auto *opInst = cast<OperationInst>(m.getMatchedInstruction());
     // This is a unit test that only checks and prints shape ratio.
     // As a consequence we write only Ops with a single return type for the
     // purpose of this test. If we need to test more intricate behavior in the
@@ -153,7 +152,7 @@ static std::string toString(Instruction *inst) {
   return res;
 }
 
-static NestedMatch matchTestSlicingOps(Function *f) {
+static NestedPattern patternTestSlicingOps() {
   // Just use a custom op name for this test, it makes life easier.
   constexpr auto kTestSlicingOpName = "slicing-test-op";
   using functional::map;
@@ -163,17 +162,18 @@ static NestedMatch matchTestSlicingOps(Function *f) {
     const auto &opInst = cast<OperationInst>(inst);
     return opInst.getName().getStringRef() == kTestSlicingOpName;
   };
-  auto pat = Op(filter);
-  return pat.match(f);
+  return Op(filter);
 }
 
 void VectorizerTestPass::testBackwardSlicing(Function *f) {
-  auto matches = matchTestSlicingOps(f);
+  SmallVector<NestedMatch, 8> matches;
+  patternTestSlicingOps().match(f, &matches);
   for (auto m : matches) {
     SetVector<Instruction *> backwardSlice;
-    getBackwardSlice(m.first, &backwardSlice);
+    getBackwardSlice(m.getMatchedInstruction(), &backwardSlice);
     auto strs = map(toString, backwardSlice);
-    outs() << "\nmatched: " << *m.first << " backward static slice: ";
+    outs() << "\nmatched: " << *m.getMatchedInstruction()
+           << " backward static slice: ";
     for (const auto &s : strs) {
       outs() << "\n" << s;
     }
@@ -181,12 +181,14 @@ void VectorizerTestPass::testBackwardSlicing(Function *f) {
 }
 
 void VectorizerTestPass::testForwardSlicing(Function *f) {
-  auto matches = matchTestSlicingOps(f);
+  SmallVector<NestedMatch, 8> matches;
+  patternTestSlicingOps().match(f, &matches);
   for (auto m : matches) {
     SetVector<Instruction *> forwardSlice;
-    getForwardSlice(m.first, &forwardSlice);
+    getForwardSlice(m.getMatchedInstruction(), &forwardSlice);
     auto strs = map(toString, forwardSlice);
-    outs() << "\nmatched: " << *m.first << " forward static slice: ";
+    outs() << "\nmatched: " << *m.getMatchedInstruction()
+           << " forward static slice: ";
     for (const auto &s : strs) {
       outs() << "\n" << s;
     }
@@ -194,11 +196,12 @@ void VectorizerTestPass::testForwardSlicing(Function *f) {
 }
 
 void VectorizerTestPass::testSlicing(Function *f) {
-  auto matches = matchTestSlicingOps(f);
+  SmallVector<NestedMatch, 8> matches;
+  patternTestSlicingOps().match(f, &matches);
   for (auto m : matches) {
-    SetVector<Instruction *> staticSlice = getSlice(m.first);
+    SetVector<Instruction *> staticSlice = getSlice(m.getMatchedInstruction());
     auto strs = map(toString, staticSlice);
-    outs() << "\nmatched: " << *m.first << " static slice: ";
+    outs() << "\nmatched: " << *m.getMatchedInstruction() << " static slice: ";
     for (const auto &s : strs) {
       outs() << "\n" << s;
     }
@@ -214,12 +217,12 @@ static bool customOpWithAffineMapAttribute(const Instruction &inst) {
 void VectorizerTestPass::testComposeMaps(Function *f) {
   using matcher::Op;
   auto pattern = Op(customOpWithAffineMapAttribute);
-  auto matches = pattern.match(f);
+  SmallVector<NestedMatch, 8> matches;
+  pattern.match(f, &matches);
   SmallVector<AffineMap, 4> maps;
   maps.reserve(matches.size());
-  std::reverse(matches.begin(), matches.end());
-  for (auto m : matches) {
-    auto *opInst = cast<OperationInst>(m.first);
+  for (auto m : llvm::reverse(matches)) {
+    auto *opInst = cast<OperationInst>(m.getMatchedInstruction());
     auto map = opInst->getAttr(VectorizerTestPass::kTestAffineMapAttrName)
                    .cast<AffineMapAttr>()
                    .getValue();
@@ -248,29 +251,31 @@ void VectorizerTestPass::testNormalizeMaps(Function *f) {
 
   // Save matched AffineApplyOp that all need to be erased in the end.
   auto pattern = Op(affineApplyOp);
-  auto toErase = pattern.match(f);
-  std::reverse(toErase.begin(), toErase.end());
+  SmallVector<NestedMatch, 8> toErase;
+  pattern.match(f, &toErase);
   {
     // Compose maps.
     auto pattern = Op(singleResultAffineApplyOpWithoutUses);
-    for (auto m : pattern.match(f)) {
-      auto app = cast<OperationInst>(m.first)->cast<AffineApplyOp>();
-      FuncBuilder b(m.first);
-
-      using ValueTy = decltype(*(app->getOperands().begin()));
-      SmallVector<Value *, 8> operands =
-          functional::map([](ValueTy v) { return static_cast<Value *>(v); },
-                          app->getOperands().begin(), app->getOperands().end());
+    SmallVector<NestedMatch, 8> matches;
+    pattern.match(f, &matches);
+    for (auto m : matches) {
+      auto app =
+          cast<OperationInst>(m.getMatchedInstruction())->cast<AffineApplyOp>();
+      FuncBuilder b(m.getMatchedInstruction());
+      SmallVector<Value *, 8> operands(app->getOperands());
       makeComposedAffineApply(&b, app->getLoc(), app->getAffineMap(), operands);
     }
   }
   // We should now be able to erase everything in reverse order in this test.
-  for (auto m : toErase) {
-    m.first->erase();
+  for (auto m : llvm::reverse(toErase)) {
+    m.getMatchedInstruction()->erase();
   }
 }
 
 PassResult VectorizerTestPass::runOnFunction(Function *f) {
+  // Thread-safe RAII local context, BumpPtrAllocator freed on exit.
+  NestedPatternContext mlContext;
+
   // Only support single block functions at this point.
   if (f->getBlocks().size() != 1)
     return success();

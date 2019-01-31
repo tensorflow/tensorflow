@@ -655,9 +655,6 @@ struct Vectorize : public FunctionPass {
 
   PassResult runOnFunction(Function *f) override;
 
-  // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
-  NestedPatternContext MLContext;
-
   static char passID;
 };
 
@@ -703,13 +700,13 @@ static void vectorizeLoopIfProfitable(ForInst *loop, unsigned depthInPattern,
 ///   3. account for impact of vectorization on maximal loop fusion.
 /// Then we can quantify the above to build a cost model and search over
 /// strategies.
-static bool analyzeProfitability(NestedMatch matches, unsigned depthInPattern,
-                                 unsigned patternDepth,
+static bool analyzeProfitability(ArrayRef<NestedMatch> matches,
+                                 unsigned depthInPattern, unsigned patternDepth,
                                  VectorizationStrategy *strategy) {
   for (auto m : matches) {
-    auto *loop = cast<ForInst>(m.first);
-    bool fail = analyzeProfitability(m.second, depthInPattern + 1, patternDepth,
-                                     strategy);
+    auto *loop = cast<ForInst>(m.getMatchedInstruction());
+    bool fail = analyzeProfitability(m.getMatchedChildren(), depthInPattern + 1,
+                                     patternDepth, strategy);
     if (fail) {
       return fail;
     }
@@ -875,9 +872,10 @@ static bool vectorizeForInst(ForInst *loop, int64_t step,
                state->terminators.count(opInst) == 0;
       };
   auto loadAndStores = matcher::Op(notVectorizedThisPattern);
-  auto matches = loadAndStores.match(loop);
-  for (auto ls : matches) {
-    auto *opInst = cast<OperationInst>(ls.first);
+  SmallVector<NestedMatch, 8> loadAndStoresMatches;
+  loadAndStores.match(loop, &loadAndStoresMatches);
+  for (auto ls : loadAndStoresMatches) {
+    auto *opInst = cast<OperationInst>(ls.getMatchedInstruction());
     auto load = opInst->dyn_cast<LoadOp>();
     auto store = opInst->dyn_cast<StoreOp>();
     LLVM_DEBUG(opInst->print(dbgs()));
@@ -907,15 +905,15 @@ isVectorizableLoopPtrFactory(unsigned fastestVaryingMemRefDimension) {
 }
 
 /// Forward-declaration.
-static bool vectorizeNonRoot(NestedMatch matches, VectorizationState *state);
+static bool vectorizeNonRoot(ArrayRef<NestedMatch> matches,
+                             VectorizationState *state);
 
 /// Apply vectorization of `loop` according to `state`. This is only triggered
 /// if all vectorizations in `childrenMatches` have already succeeded
 /// recursively in DFS post-order.
-static bool doVectorize(NestedMatch::EntryType oneMatch,
-                        VectorizationState *state) {
-  ForInst *loop = cast<ForInst>(oneMatch.first);
-  NestedMatch childrenMatches = oneMatch.second;
+static bool doVectorize(NestedMatch oneMatch, VectorizationState *state) {
+  ForInst *loop = cast<ForInst>(oneMatch.getMatchedInstruction());
+  auto childrenMatches = oneMatch.getMatchedChildren();
 
   // 1. DFS postorder recursion, if any of my children fails, I fail too.
   auto fail = vectorizeNonRoot(childrenMatches, state);
@@ -949,7 +947,8 @@ static bool doVectorize(NestedMatch::EntryType oneMatch,
 
 /// Non-root pattern iterates over the matches at this level, calls doVectorize
 /// and exits early if anything below fails.
-static bool vectorizeNonRoot(NestedMatch matches, VectorizationState *state) {
+static bool vectorizeNonRoot(ArrayRef<NestedMatch> matches,
+                             VectorizationState *state) {
   for (auto m : matches) {
     auto fail = doVectorize(m, state);
     if (fail) {
@@ -1185,99 +1184,100 @@ static bool vectorizeOperations(VectorizationState *state) {
 /// The root match thus needs to maintain a clone for handling failure.
 /// Each root may succeed independently but will otherwise clean after itself if
 /// anything below it fails.
-static bool vectorizeRootMatches(NestedMatch matches,
-                                 VectorizationStrategy *strategy) {
-  for (auto m : matches) {
-    auto *loop = cast<ForInst>(m.first);
-    VectorizationState state;
-    state.strategy = strategy;
+static bool vectorizeRootMatch(NestedMatch m, VectorizationStrategy *strategy) {
+  auto *loop = cast<ForInst>(m.getMatchedInstruction());
+  VectorizationState state;
+  state.strategy = strategy;
 
-    // Since patterns are recursive, they can very well intersect.
-    // Since we do not want a fully greedy strategy in general, we decouple
-    // pattern matching, from profitability analysis, from application.
-    // As a consequence we must check that each root pattern is still
-    // vectorizable. If a pattern is not vectorizable anymore, we just skip it.
-    // TODO(ntv): implement a non-greedy profitability analysis that keeps only
-    // non-intersecting patterns.
-    if (!isVectorizableLoop(*loop)) {
-      LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ loop is not vectorizable");
-      continue;
-    }
-    FuncBuilder builder(loop); // builder to insert in place of loop
-    ForInst *clonedLoop = cast<ForInst>(builder.clone(*loop));
-    auto fail = doVectorize(m, &state);
-    /// Sets up error handling for this root loop. This is how the root match
-    /// maintains a clone for handling failure and restores the proper state via
-    /// RAII.
-    ScopeGuard sg2([&fail, loop, clonedLoop]() {
-      if (fail) {
-        loop->getInductionVar()->replaceAllUsesWith(
-            clonedLoop->getInductionVar());
-        loop->erase();
-      } else {
-        clonedLoop->erase();
-      }
-    });
-    if (fail) {
-      LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ failed root doVectorize");
-      continue;
-    }
-
-    // Form the root operationsthat have been set in the replacementMap.
-    // For now, these roots are the loads for which vector_transfer_read
-    // operations have been inserted.
-    auto getDefiningInst = [](const Value *val) {
-      return const_cast<Value *>(val)->getDefiningInst();
-    };
-    using ReferenceTy = decltype(*(state.replacementMap.begin()));
-    auto getKey = [](ReferenceTy it) { return it.first; };
-    auto roots = map(getDefiningInst, map(getKey, state.replacementMap));
-
-    // Vectorize the root operations and everything reached by use-def chains
-    // except the terminators (store instructions) that need to be
-    // post-processed separately.
-    fail = vectorizeOperations(&state);
-    if (fail) {
-      LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ failed vectorizeOperations");
-      continue;
-    }
-
-    // Finally, vectorize the terminators. If anything fails to vectorize, skip.
-    auto vectorizeOrFail = [&fail, &state](OperationInst *inst) {
-      if (fail) {
-        return;
-      }
-      FuncBuilder b(inst);
-      auto *res = vectorizeOneOperationInst(&b, inst, &state);
-      if (res == nullptr) {
-        fail = true;
-      }
-    };
-    apply(vectorizeOrFail, state.terminators);
-    if (fail) {
-      LLVM_DEBUG(
-          dbgs() << "\n[early-vect]+++++ failed to vectorize terminators");
-      continue;
-    } else {
-      LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ success vectorizing pattern");
-    }
-
-    // Finish this vectorization pattern.
-    state.finishVectorizationPattern();
+  // Since patterns are recursive, they can very well intersect.
+  // Since we do not want a fully greedy strategy in general, we decouple
+  // pattern matching, from profitability analysis, from application.
+  // As a consequence we must check that each root pattern is still
+  // vectorizable. If a pattern is not vectorizable anymore, we just skip it.
+  // TODO(ntv): implement a non-greedy profitability analysis that keeps only
+  // non-intersecting patterns.
+  if (!isVectorizableLoop(*loop)) {
+    LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ loop is not vectorizable");
+    return true;
   }
+  FuncBuilder builder(loop); // builder to insert in place of loop
+  ForInst *clonedLoop = cast<ForInst>(builder.clone(*loop));
+  auto fail = doVectorize(m, &state);
+  /// Sets up error handling for this root loop. This is how the root match
+  /// maintains a clone for handling failure and restores the proper state via
+  /// RAII.
+  ScopeGuard sg2([&fail, loop, clonedLoop]() {
+    if (fail) {
+      loop->getInductionVar()->replaceAllUsesWith(
+          clonedLoop->getInductionVar());
+      loop->erase();
+    } else {
+      clonedLoop->erase();
+    }
+  });
+  if (fail) {
+    LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ failed root doVectorize");
+    return true;
+  }
+
+  // Form the root operationsthat have been set in the replacementMap.
+  // For now, these roots are the loads for which vector_transfer_read
+  // operations have been inserted.
+  auto getDefiningInst = [](const Value *val) {
+    return const_cast<Value *>(val)->getDefiningInst();
+  };
+  using ReferenceTy = decltype(*(state.replacementMap.begin()));
+  auto getKey = [](ReferenceTy it) { return it.first; };
+  auto roots = map(getDefiningInst, map(getKey, state.replacementMap));
+
+  // Vectorize the root operations and everything reached by use-def chains
+  // except the terminators (store instructions) that need to be
+  // post-processed separately.
+  fail = vectorizeOperations(&state);
+  if (fail) {
+    LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ failed vectorizeOperations");
+    return true;
+  }
+
+  // Finally, vectorize the terminators. If anything fails to vectorize, skip.
+  auto vectorizeOrFail = [&fail, &state](OperationInst *inst) {
+    if (fail) {
+      return;
+    }
+    FuncBuilder b(inst);
+    auto *res = vectorizeOneOperationInst(&b, inst, &state);
+    if (res == nullptr) {
+      fail = true;
+    }
+  };
+  apply(vectorizeOrFail, state.terminators);
+  if (fail) {
+    LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ failed to vectorize terminators");
+    return true;
+  } else {
+    LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ success vectorizing pattern");
+  }
+
+  // Finish this vectorization pattern.
+  state.finishVectorizationPattern();
   return false;
 }
 
 /// Applies vectorization to the current Function by searching over a bunch of
 /// predetermined patterns.
 PassResult Vectorize::runOnFunction(Function *f) {
-  for (auto pat : makePatterns()) {
+  // Thread-safe RAII local context, BumpPtrAllocator freed on exit.
+  NestedPatternContext mlContext;
+
+  for (auto &pat : makePatterns()) {
     LLVM_DEBUG(dbgs() << "\n******************************************");
     LLVM_DEBUG(dbgs() << "\n******************************************");
     LLVM_DEBUG(dbgs() << "\n[early-vect] new pattern on Function\n");
     LLVM_DEBUG(f->print(dbgs()));
     unsigned patternDepth = pat.getDepth();
-    auto matches = pat.match(f);
+
+    SmallVector<NestedMatch, 8> matches;
+    pat.match(f, &matches);
     // Iterate over all the top-level matches and vectorize eagerly.
     // This automatically prunes intersecting matches.
     for (auto m : matches) {
@@ -1285,16 +1285,16 @@ PassResult Vectorize::runOnFunction(Function *f) {
       // TODO(ntv): depending on profitability, elect to reduce the vector size.
       strategy.vectorSizes.assign(clVirtualVectorSize.begin(),
                                   clVirtualVectorSize.end());
-      auto fail = analyzeProfitability(m.second, 1, patternDepth, &strategy);
+      auto fail = analyzeProfitability(m.getMatchedChildren(), 1, patternDepth,
+                                       &strategy);
       if (fail) {
         continue;
       }
-      auto *loop = cast<ForInst>(m.first);
+      auto *loop = cast<ForInst>(m.getMatchedInstruction());
       vectorizeLoopIfProfitable(loop, 0, patternDepth, &strategy);
       // TODO(ntv): if pattern does not apply, report it; alter the
       // cost/benefit.
-      fail = vectorizeRootMatches(matches, &strategy);
-      assert(!fail && "top-level failure should not happen");
+      fail = vectorizeRootMatch(m, &strategy);
       // TODO(ntv): some diagnostics.
     }
   }

@@ -201,9 +201,6 @@ struct MaterializeVectorsPass : public FunctionPass {
 
   PassResult runOnFunction(Function *f) override;
 
-  // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
-  NestedPatternContext mlContext;
-
   static char passID;
 };
 
@@ -744,6 +741,9 @@ static bool materialize(Function *f,
 }
 
 PassResult MaterializeVectorsPass::runOnFunction(Function *f) {
+  // Thread-safe RAII local context, BumpPtrAllocator freed on exit.
+  NestedPatternContext mlContext;
+
   // TODO(ntv): Check to see if this supports arbitrary top-level code.
   if (f->getBlocks().size() != 1)
     return success();
@@ -768,10 +768,11 @@ PassResult MaterializeVectorsPass::runOnFunction(Function *f) {
     return matcher::operatesOnSuperVectors(opInst, subVectorType);
   };
   auto pat = Op(filter);
-  auto matches = pat.match(f);
+  SmallVector<NestedMatch, 8> matches;
+  pat.match(f, &matches);
   SetVector<OperationInst *> terminators;
   for (auto m : matches) {
-    terminators.insert(cast<OperationInst>(m.first));
+    terminators.insert(cast<OperationInst>(m.getMatchedInstruction()));
   }
 
   auto fail = materialize(f, terminators, &state);

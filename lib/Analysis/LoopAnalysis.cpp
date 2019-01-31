@@ -242,7 +242,8 @@ static bool isVectorizableLoopWithCond(const ForInst &loop,
   // No vectorization across conditionals for now.
   auto conditionals = matcher::If();
   auto *forInst = const_cast<ForInst *>(&loop);
-  auto conditionalsMatched = conditionals.match(forInst);
+  SmallVector<NestedMatch, 8> conditionalsMatched;
+  conditionals.match(forInst, &conditionalsMatched);
   if (!conditionalsMatched.empty()) {
     return false;
   }
@@ -252,21 +253,24 @@ static bool isVectorizableLoopWithCond(const ForInst &loop,
     auto &opInst = cast<OperationInst>(inst);
     return opInst.getNumBlockLists() != 0 && !opInst.isa<AffineIfOp>();
   });
-  auto regionsMatched = regions.match(forInst);
+  SmallVector<NestedMatch, 8> regionsMatched;
+  regions.match(forInst, &regionsMatched);
   if (!regionsMatched.empty()) {
     return false;
   }
 
   auto vectorTransfers = matcher::Op(isVectorTransferReadOrWrite);
-  auto vectorTransfersMatched = vectorTransfers.match(forInst);
+  SmallVector<NestedMatch, 8> vectorTransfersMatched;
+  vectorTransfers.match(forInst, &vectorTransfersMatched);
   if (!vectorTransfersMatched.empty()) {
     return false;
   }
 
   auto loadAndStores = matcher::Op(matcher::isLoadOrStore);
-  auto loadAndStoresMatched = loadAndStores.match(forInst);
+  SmallVector<NestedMatch, 8> loadAndStoresMatched;
+  loadAndStores.match(forInst, &loadAndStoresMatched);
   for (auto ls : loadAndStoresMatched) {
-    auto *op = cast<OperationInst>(ls.first);
+    auto *op = cast<OperationInst>(ls.getMatchedInstruction());
     auto load = op->dyn_cast<LoadOp>();
     auto store = op->dyn_cast<StoreOp>();
     // Only scalar types are considered vectorizable, all load/store must be

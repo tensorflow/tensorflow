@@ -20,20 +20,19 @@
 
 #include "mlir/IR/InstVisitor.h"
 #include "llvm/Support/Allocator.h"
-#include <utility>
 
 namespace mlir {
 
-struct NestedPatternStorage;
-struct NestedMatchStorage;
+struct NestedPattern;
 class Instruction;
 
-/// An NestedPattern captures nested patterns. It is used in conjunction with
-/// a scoped NestedPatternContext which is an llvm::BumPtrAllocator that
-/// handles memory allocations efficiently and avoids ownership issues.
+/// An NestedPattern captures nested patterns in the IR.
+/// It is used in conjunction with a scoped NestedPatternContext which is an
+/// llvm::BumpPtrAllocator that handles memory allocations efficiently and
+/// avoids ownership issues.
 ///
-/// In order to use NestedPatterns, first create a scoped context. When the
-/// context goes out of scope, everything is freed.
+/// In order to use NestedPatterns, first create a scoped context.
+/// When the context goes out of scope, everything is freed.
 /// This design simplifies the API by avoiding references to the context and
 /// makes it clear that references to matchers must not escape.
 ///
@@ -45,109 +44,145 @@ class Instruction;
 ///      // do work on matches
 ///   }  // everything is freed
 ///
-
-/// Recursive abstraction for matching results.
-/// Provides iteration over the Instruction* captured by a Matcher.
 ///
-/// Implemented as a POD value-type with underlying storage pointer.
-/// The underlying storage lives in a scoped bumper allocator whose lifetime
-/// is managed by an RAII NestedPatternContext.
-/// This is used by value everywhere.
+/// Nested abstraction for matching results.
+/// Provides access to the nested Instruction* captured by a Matcher.
+///
+/// A NestedMatch contains an Instruction* and the children NestedMatch and is
+/// thus cheap to copy. NestedMatch is stored in a scoped bumper allocator whose
+/// lifetime is managed by an RAII NestedPatternContext.
 struct NestedMatch {
-  using EntryType = std::pair<Instruction *, NestedMatch>;
-  using iterator = EntryType *;
-
-  static NestedMatch build(ArrayRef<NestedMatch::EntryType> elements = {});
+  static NestedMatch build(Instruction *instruction,
+                           ArrayRef<NestedMatch> nestedMatches);
   NestedMatch(const NestedMatch &) = default;
   NestedMatch &operator=(const NestedMatch &) = default;
 
-  explicit operator bool() { return !empty(); }
+  explicit operator bool() { return matchedInstruction != nullptr; }
 
-  iterator begin();
-  iterator end();
-  EntryType &front();
-  EntryType &back();
-  unsigned size() { return end() - begin(); }
-  unsigned empty() { return size() == 0; }
+  Instruction *getMatchedInstruction() { return matchedInstruction; }
+  ArrayRef<NestedMatch> getMatchedChildren() { return matchedChildren; }
 
 private:
   friend class NestedPattern;
   friend class NestedPatternContext;
-  friend class NestedMatchStorage;
 
   /// Underlying global bump allocator managed by a NestedPatternContext.
   static llvm::BumpPtrAllocator *&allocator();
 
-  NestedMatch(NestedMatchStorage *storage) : storage(storage){};
+  NestedMatch() = default;
 
-  /// Copy the specified array of elements into memory managed by our bump
-  /// pointer allocator. The elements are all PODs by constructions.
-  static NestedMatch copyInto(ArrayRef<NestedMatch::EntryType> elements);
-
-  /// POD payload.
-  NestedMatchStorage *storage;
+  /// Payload, holds a NestedMatch and all its children along this branch.
+  Instruction *matchedInstruction;
+  ArrayRef<NestedMatch> matchedChildren;
 };
 
-/// A NestedPattern is a special type of InstWalker that:
+/// A NestedPattern is a nested InstWalker that:
 ///   1. recursively matches a substructure in the tree;
 ///   2. uses a filter function to refine matches with extra semantic
 ///      constraints (passed via a lambda of type FilterFunctionType);
-///   3. TODO(ntv) Optionally applies actions (lambda).
+///   3. TODO(ntv) optionally applies actions (lambda).
 ///
-/// Implemented as a POD value-type with underlying storage pointer.
-/// The underlying storage lives in a scoped bumper allocator whose lifetime
-/// is managed by an RAII NestedPatternContext.
-/// This should be used by value everywhere.
+/// Nested patterns are meant to capture imperfectly nested loops while matching
+/// properties over the whole loop nest. For instance, in vectorization we are
+/// interested in capturing all the imperfectly nested loops of a certain type
+/// and such that all the load and stores have certain access patterns along the
+/// loops' induction variables). Such NestedMatches are first captured using the
+/// `match` function and are later processed to analyze properties and apply
+/// transformations in a non-greedy way.
+///
+/// The NestedMatches captured in the IR can grow large, especially after
+/// aggressive unrolling. As experience has shown, it is generally better to use
+/// a plain InstWalker to match flat patterns but the current implementation is
+/// competitive nonetheless.
 using FilterFunctionType = std::function<bool(const Instruction &)>;
 static bool defaultFilterFunction(const Instruction &) { return true; };
-struct NestedPattern : public InstWalker<NestedPattern> {
+struct NestedPattern {
   NestedPattern(Instruction::Kind k, ArrayRef<NestedPattern> nested,
                 FilterFunctionType filter = defaultFilterFunction);
   NestedPattern(const NestedPattern &) = default;
   NestedPattern &operator=(const NestedPattern &) = default;
 
-  /// Returns all the matches in `function`.
-  NestedMatch match(Function *function);
+  /// Returns all the top-level matches in `function`.
+  void match(Function *function, SmallVectorImpl<NestedMatch> *matches) {
+    State state(*this, matches);
+    state.walkPostOrder(function);
+  }
 
-  /// Returns all the matches nested under `instruction`.
-  NestedMatch match(Instruction *instruction);
+  /// Returns all the top-level matches in `inst`.
+  void match(Instruction *inst, SmallVectorImpl<NestedMatch> *matches) {
+    State state(*this, matches);
+    state.walkPostOrder(inst);
+  }
 
-  unsigned getDepth();
+  /// Returns the depth of the pattern.
+  unsigned getDepth() const;
 
 private:
   friend class NestedPatternContext;
-  friend InstWalker<NestedPattern>;
+  friend class NestedMatch;
+  friend class InstWalker<NestedPattern>;
+  friend struct State;
+
+  /// Helper state that temporarily holds matches for the next level of nesting.
+  struct State : public InstWalker<State> {
+    State(NestedPattern &pattern, SmallVectorImpl<NestedMatch> *matches)
+        : pattern(pattern), matches(matches) {}
+    void visitForInst(ForInst *forInst) { pattern.matchOne(forInst, matches); }
+    void visitOperationInst(OperationInst *opInst) {
+      pattern.matchOne(opInst, matches);
+    }
+
+  private:
+    NestedPattern &pattern;
+    SmallVectorImpl<NestedMatch> *matches;
+  };
 
   /// Underlying global bump allocator managed by a NestedPatternContext.
   static llvm::BumpPtrAllocator *&allocator();
 
-  Instruction::Kind getKind();
-  ArrayRef<NestedPattern> getNestedPatterns();
-  FilterFunctionType getFilterFunction();
+  /// Matches this pattern against a single `inst` and fills matches with the
+  /// result.
+  void matchOne(Instruction *inst, SmallVectorImpl<NestedMatch> *matches);
 
-  void matchOne(Instruction *elem);
+  /// Instruction kind matched by this pattern.
+  Instruction::Kind kind;
 
-  void visitForInst(ForInst *forInst) { matchOne(forInst); }
-  void visitOperationInst(OperationInst *opInst) { matchOne(opInst); }
+  /// Nested patterns to be matched.
+  ArrayRef<NestedPattern> nestedPatterns;
 
-  /// POD paylod.
-  /// Storage for the PatternMatcher.
-  NestedPatternStorage *storage;
+  /// Extra filter function to apply to prune patterns as the IR is walked.
+  FilterFunctionType filter;
 
-  // By-value POD wrapper to underlying storage pointer.
-  NestedMatch matches;
+  /// skip is an implementation detail needed so that we can implement match
+  /// without switching on the type of the Instruction. The idea is that a
+  /// NestedPattern first checks if it matches locally and then recursively
+  /// applies its nested matchers to its elem->nested. Since we want to rely on
+  /// the InstWalker impl rather than duplicate its the logic, we allow an
+  /// off-by-one traversal to account for the fact that we write:
+  ///
+  ///  void match(Instruction *elem) {
+  ///    for (auto &c : getNestedPatterns()) {
+  ///      NestedPattern childPattern(...);
+  ///                                  ^~~~ Needs off-by-one skip.
+  ///
+  Instruction *skip;
 };
 
 /// RAII structure to transparently manage the bump allocator for
-/// NestedPattern and NestedMatch classes.
+/// NestedPattern and NestedMatch classes. This avoids passing a context to
+/// all the API functions.
 struct NestedPatternContext {
   NestedPatternContext() {
-    NestedPattern::allocator() = &allocator;
+    assert(NestedMatch::allocator() == nullptr &&
+           "Only a single NestedPatternContext is supported");
+    assert(NestedPattern::allocator() == nullptr &&
+           "Only a single NestedPatternContext is supported");
     NestedMatch::allocator() = &allocator;
+    NestedPattern::allocator() = &allocator;
   }
   ~NestedPatternContext() {
-    NestedPattern::allocator() = nullptr;
     NestedMatch::allocator() = nullptr;
+    NestedPattern::allocator() = nullptr;
   }
   llvm::BumpPtrAllocator allocator;
 };
