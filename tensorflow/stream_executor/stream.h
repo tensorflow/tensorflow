@@ -684,12 +684,6 @@ class Stream {
                            DeviceMemory<Eigen::half> *output_diff_data,
                            ScratchAllocator *workspace_allocator = nullptr);
 
-  Stream &ThenNormalize(const dnn::NormalizeDescriptor &normalize_descriptor,
-                        const DeviceMemory<float> &input_data,
-                        DeviceMemory<float> *output_data);
-
-  // Similar to ThenNormalize, but normalizes across feature maps and allows for
-  // specifying the dimensions of the tensor.
   Stream &ThenNormalizeWithDimensions(
       const dnn::NormalizeDescriptor &normalize_descriptor,
       const dnn::BatchDescriptor &dimensions,

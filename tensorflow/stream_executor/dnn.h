@@ -1648,20 +1648,8 @@ class DnnSupport {
     return false;
   }
 
-  // Applies local response normalization to the values from
-  // input_data and writes the result to output_data. See comments on
-  // NormalizeDescriptor for a description of local response
-  // normalization.
-  virtual bool DoNormalize(Stream* stream,
-                           const dnn::NormalizeDescriptor& normalize_descriptor,
-                           const DeviceMemory<float>& input_data,
-                           DeviceMemory<float>* output_data) = 0;
-
   // Applies local response normalization to the values from input_data and
   // writes the result to output_data.
-  //
-  // Similar to DoNormalize, but normalizes across feature maps and allows for
-  // specifying the dimensions of the tensor.
   //
   // See comments on NormalizeDescriptor for a description of local response
   // normalization.
