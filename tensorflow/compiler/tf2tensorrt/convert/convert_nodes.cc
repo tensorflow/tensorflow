@@ -865,7 +865,7 @@ Status TrtNodeValidator::ConvertConstToWeights(
 }
 
 Converter::Converter(nvinfer1::INetworkDefinition* trt_network,
-                     int precision_mode, bool use_calibration)
+                     TrtPrecisionMode precision_mode, bool use_calibration)
     : trt_network_(trt_network),
       precision_mode_(precision_mode),
       use_calibration_(use_calibration) {
@@ -1128,7 +1128,7 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
   } else {
     *tensor = CreateConstantLayer(input.weights(), dims);
     TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, "TF-TRT Internal Reshape");
-    if (precision_mode() == INT8MODE && !use_calibration()) {
+    if (precision_mode() == TrtPrecisionMode::INT8 && !use_calibration()) {
       // If we are in int8 mode and not calibrating, we need to explicitly set a
       // quantization range for the output tensor of the IConstantLayer. Here we
       // set the range to [min(weights), max(weights)].
@@ -1163,7 +1163,7 @@ void Converter::ProvideQuantizationRange(nvinfer1::ITensor* tensor,
 }
 
 void Converter::MaybeApplyQuantizationRanges() {
-  if (precision_mode() != INT8MODE) return;
+  if (precision_mode() != TrtPrecisionMode::INT8) return;
 
   // Infer ranges across marked ops.
   PropagateQuantizationRanges();
@@ -1478,7 +1478,7 @@ Status BinaryTensorOpWeight(OpConverterParams* params,
         const_cast<nvinfer1::ITensor*>(tensor), permutation, &tensor));
   }
 
-  if (params->converter->precision_mode() == FP16MODE) {
+  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
     weights = ConvertFP32ToFP16(params->weight_store, weights);
   }
 
@@ -1521,7 +1521,7 @@ Status BinaryTensorOpWeight(OpConverterParams* params,
       // Because of this issue, fall back to BinaryTensorOpTensor if we are
       // doing INT8 with no calibration. There is most likely no performance
       // penalty by falling back here.
-      if (params->converter->precision_mode() == INT8MODE &&
+      if (params->converter->precision_mode() == TrtPrecisionMode::INT8 &&
           !params->converter->use_calibration()) {
         return errors::Unimplemented(
             "Intermediate quantization range cannot be determined without"
@@ -1643,7 +1643,7 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
   // input's channel dim. For a non-depthwise conv, num_groups will be 1.
   const int num_groups = (group == 0) ? tensor_dim.d[0] : group;
 
-  if (params->converter->precision_mode() == FP16MODE) {
+  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
     weights_rsck =
         ConvertFP32ToFP16(params->weight_store, inputs.at(1).weights());
   }
@@ -2675,7 +2675,7 @@ tensorflow::Status ConvertBiasAdd(OpConverterParams* params) {
   }
 
   TRT_ShapedWeights weights = inputs.at(1).weights();
-  if (params->converter->precision_mode() == FP16MODE) {
+  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
     weights = ConvertFP32ToFP16(params->weight_store, weights);
   }
   nvinfer1::ScaleMode mode = nvinfer1::ScaleMode::kCHANNEL;
@@ -2908,7 +2908,7 @@ tensorflow::Status ConvertUnary(OpConverterParams* params) {
     //   x -> [Sqrt] -> sqrt(x) -> [Recip] -> 1/sqrt(x)
     //                     ^
     //               need range here
-    if (params->converter->precision_mode() == INT8MODE &&
+    if (params->converter->precision_mode() == TrtPrecisionMode::INT8 &&
         !params->converter->use_calibration()) {
       return errors::Unimplemented(
           "Intermediate quantization range cannot be determined without"
@@ -3653,8 +3653,8 @@ void Converter::RegisterOpConverters() {
 }
 
 tensorflow::Status ConvertGraphDefToEngine(
-    const tensorflow::GraphDef& gdef, int precision_mode, int max_batch_size,
-    size_t max_workspace_size_bytes,
+    const tensorflow::GraphDef& gdef, TrtPrecisionMode precision_mode,
+    int max_batch_size, size_t max_workspace_size_bytes,
     const std::vector<tensorflow::PartialTensorShape>& input_shapes,
     Logger* logger, nvinfer1::IGpuAllocator* allocator,
     TRTInt8Calibrator* calibrator,
@@ -3669,9 +3669,9 @@ tensorflow::Status ConvertGraphDefToEngine(
   builder->setMaxBatchSize(max_batch_size);
   builder->setMaxWorkspaceSize(max_workspace_size_bytes);
   builder->setGpuAllocator(allocator);
-  if (precision_mode == FP16MODE) {
+  if (precision_mode == TrtPrecisionMode::FP16) {
     builder->setHalf2Mode(true);
-  } else if (precision_mode == INT8MODE) {
+  } else if (precision_mode == TrtPrecisionMode::INT8) {
     builder->setInt8Mode(true);
     if (use_calibration) {
       builder->setInt8Calibrator(calibrator);

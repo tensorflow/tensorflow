@@ -92,7 +92,7 @@ struct EngineInfo {
   EngineInfo()
       : engine_type(EngineType::TRTStatic),
         max_workspace_size_bytes(0),
-        precision_mode(FP32MODE),
+        precision_mode(TrtPrecisionMode::FP32),
         use_calibration(true) {}
 
   string engine_name;
@@ -109,7 +109,7 @@ struct EngineInfo {
   int64 max_workspace_size_bytes;
   int maximum_cached_engines;
   std::vector<int> cached_engine_batches;
-  int precision_mode;
+  TrtPrecisionMode precision_mode;
   bool use_calibration;
 };
 
@@ -141,8 +141,8 @@ tensorflow::Status ConvertSegmentToGraphDef(
 //   is successful. This is different than successfully building the engine:
 //   building can still fail afterwards.
 tensorflow::Status ConvertGraphDefToEngine(
-    const tensorflow::GraphDef& gdef, int precision_mode, int max_batch_size,
-    size_t max_workspace_size_bytes,
+    const tensorflow::GraphDef& gdef, TrtPrecisionMode precision_mode,
+    int max_batch_size, size_t max_workspace_size_bytes,
     const std::vector<tensorflow::PartialTensorShape>& input_shapes,
     Logger* logger, nvinfer1::IGpuAllocator* allocator,
     TRTInt8Calibrator* calibrator,
@@ -415,8 +415,8 @@ class Converter {
     nvinfer1::DataType trt_dtype;
   };
 
-  Converter(nvinfer1::INetworkDefinition* trt_network, int precision_mode,
-            bool use_calibration);
+  Converter(nvinfer1::INetworkDefinition* trt_network,
+            TrtPrecisionMode precision_mode, bool use_calibration);
 
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by the TRT engine builder to build a TRT network from a TF
@@ -444,7 +444,7 @@ class Converter {
   nvinfer1::INetworkDefinition* network() { return trt_network_; }
 
   // What precision are we targeting?
-  int precision_mode() const { return precision_mode_; }
+  TrtPrecisionMode precision_mode() const { return precision_mode_; }
 
   // Calibration will be or was previously performed on this network?
   bool use_calibration() const { return use_calibration_; }
@@ -546,7 +546,7 @@ class Converter {
   std::vector<std::pair<nvinfer1::ITensor*, nvinfer1::ITensor*>>
       quantization_infer_;
 
-  const int precision_mode_;
+  const TrtPrecisionMode precision_mode_;
 
   const bool use_calibration_;
 
