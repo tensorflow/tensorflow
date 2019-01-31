@@ -51,10 +51,12 @@ llvm::BumpPtrAllocator *&NestedPattern::allocator() {
 NestedPattern::NestedPattern(Instruction::Kind k,
                              ArrayRef<NestedPattern> nested,
                              FilterFunctionType filter)
-    : kind(k), nestedPatterns(ArrayRef<NestedPattern>(nested)), filter(filter) {
-  auto *newNested = allocator()->Allocate<NestedPattern>(nested.size());
-  std::uninitialized_copy(nested.begin(), nested.end(), newNested);
-  nestedPatterns = ArrayRef<NestedPattern>(newNested, nested.size());
+    : kind(k), nestedPatterns(), filter(filter), skip(nullptr) {
+  if (!nested.empty()) {
+    auto *newNested = allocator()->Allocate<NestedPattern>(nested.size());
+    std::uninitialized_copy(nested.begin(), nested.end(), newNested);
+    nestedPatterns = ArrayRef<NestedPattern>(newNested, nested.size());
+  }
 }
 
 unsigned NestedPattern::getDepth() const {
