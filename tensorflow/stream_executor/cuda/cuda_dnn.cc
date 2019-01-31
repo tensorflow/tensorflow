@@ -3675,7 +3675,7 @@ bool CudnnSupport::DoTransformTensor(Stream* stream,
   CudnnTensorDescriptor output_tensor_desc(
       output_desc, ToCudnnDataType(output_type, output_desc.layout()));
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto const status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnTransformTensor(
         cudnn.handle(), &scale, input_tensor_desc.handle(), input_data.opaque(),
         &beta, output_tensor_desc.handle(), output_data->opaque()));
