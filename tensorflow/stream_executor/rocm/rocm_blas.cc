@@ -2306,39 +2306,45 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
 namespace gpu = ::stream_executor;
 
 void initialize_rocblas() {
-  gpu::port::Status status =
-      gpu::PluginRegistry::Instance()
-          ->RegisterFactory<gpu::PluginRegistry::BlasFactory>(
-              gpu::rocm::kROCmPlatformId, gpu::rocm::kRocBlasPlugin, "rocBLAS",
-              [](gpu::internal::StreamExecutorInterface
-                     *parent) -> gpu::blas::BlasSupport * {
-                gpu::rocm::ROCMExecutor *rocm_executor =
-                    dynamic_cast<gpu::rocm::ROCMExecutor *>(parent);
-                if (rocm_executor == nullptr) {
-                  LOG(ERROR)
-                      << "Attempting to initialize an instance of the rocBLAS "
-                      << "support library with a non-ROCM StreamExecutor";
-                  return nullptr;
-                }
+  if (!gpu::PluginRegistry::Instance()->HasFactory(gpu::rocm::kROCmPlatformId,
+                                                   gpu::PluginKind::kBlas,
+                                                   gpu::rocm::kRocBlasPlugin)) {
+    gpu::port::Status status =
+        gpu::PluginRegistry::Instance()
+            ->RegisterFactory<gpu::PluginRegistry::BlasFactory>(
+                gpu::rocm::kROCmPlatformId, gpu::rocm::kRocBlasPlugin,
+                "rocBLAS",
+                [](gpu::internal::StreamExecutorInterface* parent)
+                    -> gpu::blas::BlasSupport* {
+                      gpu::rocm::ROCMExecutor* rocm_executor =
+                          dynamic_cast<gpu::rocm::ROCMExecutor*>(parent);
+                      if (rocm_executor == nullptr) {
+                        LOG(ERROR)
+                            << "Attempting to initialize an instance of the "
+                               "rocBLAS "
+                            << "support library with a non-ROCM StreamExecutor";
+                        return nullptr;
+                      }
 
-                gpu::rocm::ROCMBlas *blas =
-                    new gpu::rocm::ROCMBlas(rocm_executor);
-                if (!blas->Init()) {
-                  // Note: Init() will log a more specific error.
-                  delete blas;
-                  return nullptr;
-                }
-                return blas;
-              });
+                      gpu::rocm::ROCMBlas* blas =
+                          new gpu::rocm::ROCMBlas(rocm_executor);
+                      if (!blas->Init()) {
+                        // Note: Init() will log a more specific error.
+                        delete blas;
+                        return nullptr;
+                      }
+                      return blas;
+                    });
 
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to register rocBLAS factory: "
-               << status.error_message();
+    if (!status.ok()) {
+      LOG(ERROR) << "Unable to register rocBLAS factory: "
+                 << status.error_message();
+    }
+
+    gpu::PluginRegistry::Instance()->SetDefaultFactory(
+        gpu::rocm::kROCmPlatformId, gpu::PluginKind::kBlas,
+        gpu::rocm::kRocBlasPlugin);
   }
-
-  gpu::PluginRegistry::Instance()->SetDefaultFactory(gpu::rocm::kROCmPlatformId,
-                                                     gpu::PluginKind::kBlas,
-                                                     gpu::rocm::kRocBlasPlugin);
 }
 
 }  // namespace stream_executor
