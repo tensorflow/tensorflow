@@ -23,6 +23,7 @@
 #include "mlir/Support/STLExtras.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -623,9 +624,8 @@ operator[](llvm::ArrayRef<Bindable> indices) const {
   return (*this)[llvm::ArrayRef<Expr>{indices.begin(), indices.end()}];
 }
 
-// clang-format off
-Stmt mlir::edsc::Indexed::operator=(Expr expr) { // NOLINT: unconventional-assign-operator
-  // clang-format on
+// NOLINTNEXTLINE: unconventional-assign-operator
+Stmt mlir::edsc::Indexed::operator=(Expr expr) {
   assert(!indices.empty() && "Expected attached indices to Indexed");
   assert(base);
   Stmt stmt(store(expr, base, indices));
@@ -644,27 +644,23 @@ edsc_indexed_t index(edsc_indexed_t indexed, edsc_expr_list_t indices) {
 mlir_type_t makeScalarType(mlir_context_t context, const char *name,
                            unsigned bitwidth) {
   mlir::MLIRContext *c = reinterpret_cast<mlir::MLIRContext *>(context);
-  if (llvm::StringRef(name) == "bf16") {
-    return mlir_type_t{mlir::Type::getBF16(c).getAsOpaquePointer()};
+  mlir_type_t res =
+      llvm::StringSwitch<mlir_type_t>(name)
+          .Case("bf16",
+                mlir_type_t{mlir::Type::getBF16(c).getAsOpaquePointer()})
+          .Case("f16", mlir_type_t{mlir::Type::getF16(c).getAsOpaquePointer()})
+          .Case("f32", mlir_type_t{mlir::Type::getF32(c).getAsOpaquePointer()})
+          .Case("f64", mlir_type_t{mlir::Type::getF64(c).getAsOpaquePointer()})
+          .Case("index",
+                mlir_type_t{mlir::Type::getIndex(c).getAsOpaquePointer()})
+          .Case("i",
+                mlir_type_t{
+                    mlir::Type::getInteger(bitwidth, c).getAsOpaquePointer()})
+          .Default(mlir_type_t{nullptr});
+  if (!res) {
+    llvm_unreachable("Invalid type specifier");
   }
-  if (llvm::StringRef(name) == "f16") {
-    return mlir_type_t{mlir::Type::getF16(c).getAsOpaquePointer()};
-  }
-  if (llvm::StringRef(name) == "f32") {
-    return mlir_type_t{mlir::Type::getF32(c).getAsOpaquePointer()};
-  }
-  if (llvm::StringRef(name) == "f64") {
-    return mlir_type_t{mlir::Type::getF64(c).getAsOpaquePointer()};
-  }
-  if (llvm::StringRef(name) == "index") {
-    return mlir_type_t{mlir::Type::getIndex(c).getAsOpaquePointer()};
-  }
-  if (llvm::StringRef(name) == "i") {
-    return mlir_type_t{
-        mlir::Type::getInteger(bitwidth, c).getAsOpaquePointer()};
-  }
-  assert(false && "unknown scalar type");
-  return mlir_type_t{nullptr};
+  return res;
 }
 
 mlir_type_t makeMemRefType(mlir_context_t context, mlir_type_t elemType,

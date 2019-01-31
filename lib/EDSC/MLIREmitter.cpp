@@ -459,8 +459,7 @@ edsc_expr_t bindConstantInt(edsc_mlir_emitter_t emitter, int64_t value,
   auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
   Bindable b;
   e->bindConstant<mlir::ConstantIntOp>(
-      b, // mlir::APInt(bitwidth, value),
-      value, e->getBuilder()->getIntegerType(bitwidth));
+      b, value, e->getBuilder()->getIntegerType(bitwidth));
   return b;
 }
 
