@@ -408,7 +408,6 @@ miopenConvBwdDataAlgorithm_t ToConvBackwardDataAlgo(
     case miopenConvolutionBwdDataAlgoDirect:
     case miopenConvolutionBwdDataAlgoFFT:
     case miopenConvolutionBwdDataAlgoWinograd:
-    case miopenTransposeBwdDataAlgoGEMM:
       return algo;
     default:
       LOG(FATAL)
@@ -463,10 +462,10 @@ class MIOpenAccess {
   // The null stream synchronizes with all other streams and it is
   // therefore a bad idea (performance wise) to call any MIOpen APIs that
   // enqueue work in the stream.
-  MIOpenHandle GetHandle(ROCMExecutor* executor, Stream* stream) {
+  MIOpenHandle GetHandle(GpuExecutor* executor, Stream* stream) {
     mutex_lock lock(mutex_);
     rocm::ScopedActivateExecutorContext context(executor);
-    hipStream_t hip_stream = stream ? AsROCMStreamValue(stream) : nullptr;
+    hipStream_t hip_stream = stream ? AsGpuStreamValue(stream) : nullptr;
     auto status = wrap::miopenSetStream(handle_, hip_stream);
     CHECK_EQ(status, miopenStatusSuccess) << "Failed to set MIOpen stream.";
     return MIOpenHandle(std::move(context), std::move(lock), handle_);
@@ -480,7 +479,7 @@ class MIOpenAccess {
   miopenHandle_t handle_ GUARDED_BY(mutex_);  // Owned.
 };
 
-MIOpenSupport::MIOpenSupport(ROCMExecutor* parent) : parent_(parent) {}
+MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {}
 
 port::Status MIOpenSupport::Init() {
   ScopedActivateExecutorContext context(parent_);
@@ -2764,7 +2763,7 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
 // transform_scratch is populated with a legitimate temporary allocation iff
 // the original output data needs to be transformed.
 static DeviceMemoryBase MaybeTransformLayout(
-    GpuExecutor* parent_, Stream* stream, miopenHandle_t handle_,
+    Stream* stream, miopenHandle_t handle_,
     int miopen_type,  // Actually miopenDataType_t.
     BatchDescriptor* output_descriptor, DeviceMemoryBase backward_output_data,
     std::unique_ptr<TemporaryDeviceMemory<uint8>>* transform_scratch) {
@@ -2779,16 +2778,16 @@ static DeviceMemoryBase MaybeTransformLayout(
   transformed_output_descriptor.CloneFrom(*output_descriptor);
   transformed_output_descriptor.set_layout(dnn::DataLayout::kBatchDepthYX);
   ScopedTensorDescriptor orig_out_back_nd{
-      parent_, *output_descriptor, static_cast<miopenDataType_t>(miopen_type)};
+      *output_descriptor, static_cast<miopenDataType_t>(miopen_type)};
   ScopedTensorDescriptor transformed_out_back_nd{
-      parent_, transformed_output_descriptor,
+      transformed_output_descriptor,
       static_cast<miopenDataType_t>(miopen_type)};
 
   float alpha1 = 1.0f;
   float alpha2 = 0.0f;
   float beta = 0.0f;
   auto status = wrap::miopenOpTensor(
-      parent_, handle_, miopenTensorOpAdd, &alpha1, orig_out_back_nd.handle(),
+      handle_, miopenTensorOpAdd, &alpha1, orig_out_back_nd.handle(),
       backward_output_data.opaque(), &alpha2, orig_out_back_nd.handle(),
       backward_output_data.opaque(), &beta, transformed_out_back_nd.handle(),
       (*transform_scratch)->mutable_device_memory()->opaque());
@@ -2809,21 +2808,16 @@ port::Status MIOpenSupport::DoConvolve(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
     dnn::ProfileResult* output_profile_result) {
-  ScopedTensorDescriptor input_nd{parent_, input_descriptor,
+  auto miopen = miopen_->GetHandle(parent_, stream);
+  ScopedTensorDescriptor input_nd{input_descriptor,
                                   ToMIOpenDataType(element_type)};
-  ScopedTensorDescriptor output_nd{parent_, output_descriptor,
+  ScopedTensorDescriptor output_nd{output_descriptor,
                                    ToMIOpenDataType(element_type)};
-  ScopedFilterDescriptor filter{parent_, filter_descriptor, input_descriptor,
+  ScopedFilterDescriptor filter{filter_descriptor, input_descriptor,
                                 ToMIOpenDataType(element_type)};
-  ScopedConvolutionDescriptor conv{parent_, convolution_descriptor,
+  ScopedConvolutionDescriptor conv{convolution_descriptor,
                                    ToMIOpenDataType(element_type)};
 
-  mutex_lock lock{dnn_handle_mutex_};
-  auto status = wrap::miopenSetStream(parent_, ToHandle(dnn_handle_),
-                                      AsGpuStreamValue(stream));
-  if (status != miopenStatusSuccess) {
-    LOG(FATAL) << "failed to set stream for miopen handle: " << ToString(status);
-  }
   // Alpha is the scaling factor for input.
   float alpha = 1.0;
   // Beta is the scaling factor for output.
@@ -2846,10 +2840,11 @@ port::Status MIOpenSupport::DoConvolve(
     }
   }
 
+  miopenStatus_t status = miopenStatusSuccess;
   switch (kind) {
     case dnn::ConvolutionKind::FORWARD: {
       status = wrap::miopenConvolutionForward(
-          parent_, ToHandle(dnn_handle_),
+          miopen.handle(),
           /*alpha=*/&alpha, /*srcDesc=*/input_nd.handle(),
           /*srcData=*/input_data.opaque(), /*filterDesc=*/filter.handle(),
           /*filterData=*/filter_data.opaque(), /*convDesc=*/conv.handle(),
@@ -2866,13 +2861,13 @@ port::Status MIOpenSupport::DoConvolve(
       BatchDescriptor output_back_descriptor;
       output_back_descriptor.CloneFrom(output_descriptor);
       std::unique_ptr<TemporaryDeviceMemory<uint8>> transform_scratch;
-      output_data = MaybeTransformLayout(parent_, stream, ToHandle(dnn_handle_),
+      output_data = MaybeTransformLayout(stream, miopen.handle(),
                                          ToMIOpenDataType(element_type),
                                          &output_back_descriptor, output_data,
                                          &transform_scratch);
 
       status = wrap::miopenConvolutionBackwardData(
-          parent_, ToHandle(dnn_handle_),
+          miopen.handle(),
           /*alpha=*/&alpha,
           /*diffDesc=*/output_nd.handle(),
           /*diffData=*/output_data.opaque(),
@@ -2893,13 +2888,13 @@ port::Status MIOpenSupport::DoConvolve(
       BatchDescriptor output_back_descriptor;
       output_back_descriptor.CloneFrom(output_descriptor);
       std::unique_ptr<TemporaryDeviceMemory<uint8>> transform_scratch;
-      output_data = MaybeTransformLayout(parent_, stream, ToHandle(dnn_handle_),
+      output_data = MaybeTransformLayout(stream, miopen.handle(),
                                          ToMIOpenDataType(element_type),
                                          &output_back_descriptor, output_data,
                                          &transform_scratch);
 
       status = wrap::miopenConvolutionBackwardWeights(
-          parent_, ToHandle(dnn_handle_),
+          miopen.handle(),
           /*alpha=*/&alpha,
           /*diffDesc=*/output_nd.handle(),
           /*diffData=*/output_data.opaque(),
@@ -2975,7 +2970,6 @@ bool MIOpenSupport::GetConvolveBackwardDataAlgorithms(
       dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoDirect, false),
       dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoFFT, false),
       dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoWinograd, false),
-      dnn::AlgorithmDesc(miopenTransposeBwdDataAlgoGEMM, false),
       // clang-format on
   });
   return true;

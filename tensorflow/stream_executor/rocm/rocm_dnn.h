@@ -40,7 +40,7 @@ extern const PluginId kMIOpenPlugin;
 // functions, see dnn.h.
 class MIOpenSupport : public dnn::DnnSupport {
  public:
-  explicit MIOpenSupport(ROCMExecutor* parent);
+  explicit MIOpenSupport(GpuExecutor* parent);
 
   port::Status Init() override;
   port::StatusOr<perftools::gputools::dnn::VersionInfo> GetVersion() override;
