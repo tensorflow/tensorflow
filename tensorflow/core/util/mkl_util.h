@@ -2105,13 +2105,13 @@ class LRUCache {
     // Insert an entry to the front of the LRU list
     lru_list_.push_front(key);
     Entry entry(op, lru_list_.begin());
-    cache_.insert(std::make_pair(key, entry));
+    cache_.emplace(std::make_pair(key, std::move(entry)));
   }
 
   void Clear() {
     if (lru_list_.empty()) return;
 
-    // clean up the cache
+    // Clean up the cache
     cache_.clear();
     lru_list_.clear();
   }
@@ -2123,9 +2123,23 @@ class LRUCache {
 
     // A list iterator pointing to the entry's position in the LRU list.
     std::list<string>::iterator lru_iterator;
+
+    // Constructor
     Entry(T* op, std::list<string>::iterator it) {
       this->op = op;
       this->lru_iterator = it;
+    }
+
+    // Move construcctor
+    Entry(Entry&& source) noexcept :
+      lru_iterator(std::move(source.lru_iterator)) {
+      op = std::move(source.op);
+      source.op = std::forward<T*>(nullptr);
+    }
+
+    // Destructor
+    ~Entry() {
+      if (op != nullptr) delete op;  
     }
   };
 
@@ -2134,10 +2148,8 @@ class LRUCache {
   bool Delete() {
     if (lru_list_.empty()) return false;
     string key = lru_list_.back();
-    auto it = cache_.find(key);
     lru_list_.pop_back();
-    delete it->second.op;  // delete the object
-    cache_.erase(it);
+    cache_.erase(key);
     return true;
   }
 
