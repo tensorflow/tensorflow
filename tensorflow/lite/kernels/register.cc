@@ -26,6 +26,7 @@ TfLiteRegistration* Register_LAYER_NORM_LSTM();
 TfLiteRegistration* Register_MFCC();
 TfLiteRegistration* Register_DETECTION_POSTPROCESS();
 TfLiteRegistration* Register_RELU_1();
+TfLiteRegistration* Register_IF();
 
 }  // namespace custom
 
@@ -304,6 +305,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddCustom("Relu1", tflite::ops::custom::Register_RELU_1());
   AddCustom("TFLite_Detection_PostProcess",
             tflite::ops::custom::Register_DETECTION_POSTPROCESS());
+
+  // WARNING: Control flow ops are experimental and subject to change.
+  AddCustom("Experimental_If", tflite::ops::custom::Register_IF());
 }
 
 }  // namespace builtin
