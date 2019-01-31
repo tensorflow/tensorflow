@@ -187,6 +187,11 @@ tf_gen_op_wrapper_py(
     ],
 )
 
+tf_custom_op_library(
+    name = "python/ops/_functional_ops.so",
+    srcs = ["ops/functional_ops.cc"],
+)
+
 tf_gen_op_wrapper_py(
     name = "gen_functional_ops",
     out = "python/tpu/gen_functional_ops.py",
@@ -196,9 +201,14 @@ tf_gen_op_wrapper_py(
     deps = [":functional_ops_op_lib"],
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "functional",
     srcs = ["python/tpu/functional.py"],
+    dso = [":python/ops/_functional_ops.so"],
+    kernels = [
+        ":functional_ops_op_lib",
+    ],
+    srcs_version = "PY2AND3",
     visibility = [
         "//visibility:public",
     ],
