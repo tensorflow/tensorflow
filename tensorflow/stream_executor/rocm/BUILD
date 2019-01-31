@@ -140,34 +140,40 @@ cc_library(
     deps = ["//tensorflow/stream_executor:platform"],
 )
 
-# FIXME: enable in future PRs
-#cc_library(
-#    name = "rocblas_plugin",
-#    srcs = ["rocm_blas.cc"],
-#    hdrs = ["rocm_blas.h"],
-#    visibility = ["//visibility:public"],
-#    deps = [
-#        ":rocm_gpu_executor",
-#        ":rocm_platform_id",
-#        "//third_party/eigen3",
-#        "//tensorflow/core:lib_internal",
-#        "//tensorflow/stream_executor",
-#        "//tensorflow/stream_executor:event",
-#        "//tensorflow/stream_executor:host_or_device_scalar",
-#        "//tensorflow/stream_executor:plugin_registry",
-#        "//tensorflow/stream_executor:scratch_allocator",
-#        "//tensorflow/stream_executor:timer",
-#        "//tenosrflow/stream_executor/gpu:gpu_activation_header",
-#        "//tenosrflow/stream_executor/gpu:gpu_stream_header",
-#        "//tenosrflow/stream_executor/gpu:gpu_timer_header",
-#        "//tensorflow/stream_executor/lib",
-#        "//tensorflow/stream_executor/platform",
-#        "//tensorflow/stream_executor/platform:dso_loader",
-#        "@com_google_absl//absl/strings",
-#        "@local_config_rocm//rocm:rocm_headers",
-#    ] + if_static(["@local_config_rocm//rocm:rocblas"]),
-#    alwayslink = True,
-#)
+cc_library(
+   name = "rocblas_plugin",
+   srcs = if_rocm_is_configured(["rocm_blas.cc"]),
+   hdrs = if_rocm_is_configured(["rocm_blas.h"]),
+   visibility = ["//visibility:public"],
+   deps = if_rocm_is_configured([
+       ":rocm_gpu_executor",
+       ":rocm_platform_id",
+       "//third_party/eigen3",
+       "//tensorflow/core:lib_internal",
+       "//tensorflow/stream_executor",
+       "//tensorflow/stream_executor:event",
+       "//tensorflow/stream_executor:host_or_device_scalar",
+       "//tensorflow/stream_executor:plugin_registry",
+       "//tensorflow/stream_executor:scratch_allocator",
+       "//tensorflow/stream_executor:timer",
+       "//tensorflow/stream_executor/gpu:gpu_activation",
+       "//tensorflow/stream_executor/gpu:gpu_helpers_header",
+       "//tensorflow/stream_executor/gpu:gpu_stream_header",
+       "//tensorflow/stream_executor/gpu:gpu_timer_header",
+       "//tensorflow/stream_executor/lib",
+       "//tensorflow/stream_executor/platform",
+       "//tensorflow/stream_executor/platform:dso_loader",
+       "@com_google_absl//absl/strings",
+       "@local_config_rocm//rocm:rocm_headers",
+   ] + if_static([
+       "@local_config_rocm//rocm:rocblas"
+       # Delete the following line once we switch the rocblas library from
+       # being dynamically linked (current behaviour) to being dynamically
+       # loaded (future behaviour)
+       ], ["@local_config_rocm//rocm:rocblas"
+   ])),
+   alwayslink = True,
+)
 
 # FIXME: enable in future PRs
 #cc_library(
@@ -258,7 +264,7 @@ cc_library(
         # FIXME: enable in future PRs
         #":miopen_plugin",
         #":rocfft_plugin",
-        #":rocblas_plugin",
+        ":rocblas_plugin",
         #":rocrand_plugin",
         ":rocm_driver",
         ":rocm_platform",
