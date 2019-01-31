@@ -26,7 +26,10 @@ template <class T>
 float MklFloatForOneQuantizedLevel(float range_min, float range_max) {
   int64 highest = static_cast<int64>(Eigen::NumTraits<T>::highest());
   int64 lowest = static_cast<int64>(Eigen::NumTraits<T>::lowest());
-  if (lowest < -highest) lowest += 1;
+
+  // Adjusting for having a symmetric range. 
+  // for example: for 8-bit [-127, 127] as opposed to [-128, 127].
+  if (lowest < -highest) ++lowest;
 
   const float float_for_one_quantized_level =
       (range_max - range_min) / (highest - lowest);
@@ -59,7 +62,7 @@ void MklQuantizationRangeForMultiplication(float min_a, float max_a,
                                            Tensor** max_c_vector) {
   CHECK(min_b_vector.NumElements() == (*min_c_vector)->NumElements());
   CHECK(max_b_vector.NumElements() == (*max_c_vector)->NumElements());
-  size_t n_channel = min_b_vector.NumElements();
+
   const int64 c_highest = static_cast<int64>(Eigen::NumTraits<T3>::highest());
   const int64 c_lowest = static_cast<int64>(Eigen::NumTraits<T3>::lowest());
   const float* min_b = min_b_vector.flat<float>().data();
@@ -67,7 +70,7 @@ void MklQuantizationRangeForMultiplication(float min_a, float max_a,
   float* min_c = (*min_c_vector)->flat<float>().data();
   float* max_c = (*max_c_vector)->flat<float>().data();
 #pragma omp parallel for
-  for (size_t n = 0; n < n_channel; n++) {
+  for (size_t n = 0; n < min_b_vector.NumElements(); n++) {
     float a_float_for_one_quant_level =
         MklFloatForOneQuantizedLevel<T1>(min_a, max_a);
     float b_float_for_one_quant_level =
