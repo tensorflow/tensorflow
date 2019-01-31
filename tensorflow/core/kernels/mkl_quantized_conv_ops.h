@@ -27,7 +27,7 @@ float MklFloatForOneQuantizedLevel(float range_min, float range_max) {
   int64 highest = static_cast<int64>(Eigen::NumTraits<T>::highest());
   int64 lowest = static_cast<int64>(Eigen::NumTraits<T>::lowest());
 
-  // Adjusting for having a symmetric range. 
+  // Adjusting for having a symmetric range.
   // for example: for 8-bit [-127, 127] as opposed to [-128, 127].
   if (lowest < -highest) ++lowest;
 
