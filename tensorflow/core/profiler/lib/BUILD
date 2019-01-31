@@ -43,3 +43,17 @@ tf_cuda_library(
         ],
     }),
 )
+
+tf_cuda_library(
+    name = "traceme",
+    srcs = ["traceme.cc"],
+    hdrs = ["traceme.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/internal:traceme_recorder",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
+    ],
+)

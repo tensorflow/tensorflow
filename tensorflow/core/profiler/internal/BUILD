@@ -373,7 +373,9 @@ tf_cuda_library(
     srcs = ["traceme_recorder.cc"],
     hdrs = ["traceme_recorder.h"],
     visibility = [
+        "//learning/brain/runtime:__pkg__",  # xprof_bridge
         "//perftools/accelerators/xprof/xprofilez:__pkg__",  # alias xprof::TraceMeRecorder
+        "//tensorflow/core/profiler/lib:__pkg__",  # traceme
     ],
     deps = [
         "//tensorflow/core:lib",
