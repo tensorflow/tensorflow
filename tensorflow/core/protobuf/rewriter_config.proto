@@ -76,7 +76,7 @@ message RewriterConfig {
   // Try to allocate some independent Op outputs contiguously in order to
   // merge or eliminate downstream Ops (off by default).
   Toggle scoped_allocator_optimization = 15;
-  // Force small ops onto the CPU (default is OFF).
+  // Force small ops onto the CPU (default is ON).
   Toggle pin_to_host_optimization = 18;
   // Disable the entire meta optimizer (off by default).
   bool disable_meta_optimizer = 19;
