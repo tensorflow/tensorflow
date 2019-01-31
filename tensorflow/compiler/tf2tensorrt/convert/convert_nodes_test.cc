@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -154,7 +155,7 @@ void ExpectTrtDimsEqualsArray(const std::vector<int>& lhs,
 }
 
 template <typename T>
-void ExpectArrayNear(const std::vector<T>& lhs, const std::vector<T>& rhs) {
+void ExpectArrayNear(const std::vector<T>& lhs, absl::Span<const T> rhs) {
   ASSERT_EQ(lhs.size(), rhs.size());
   for (int i = 0; i < lhs.size(); i++) {
     EXPECT_FLOAT_EQ(lhs[i], rhs[i]);
@@ -165,7 +166,7 @@ void ExpectArrayNear(const std::vector<T>& lhs, const std::vector<T>& rhs) {
 // EXPECT_FLOAT_EQ.
 template <>
 void ExpectArrayNear(const std::vector<Eigen::half>& lhs,
-                     const std::vector<Eigen::half>& rhs) {
+                     absl::Span<const Eigen::half> rhs) {
   ASSERT_EQ(lhs.size(), rhs.size());
   for (int i = 0; i < lhs.size(); i++) {
     EXPECT_FLOAT_EQ(Eigen::half_impl::half_to_float(lhs[i]),
@@ -928,6 +929,32 @@ TEST_F(ConverterTest, CreateConstantLayer) {
   }
 }
 
+// Input/output data format for OpConverterTest::BuildAndRun().
+struct InputOutputData {
+  void* Buffer() const {
+    return const_cast<char*>(tensor.tensor_data().data());
+  }
+
+  size_t TotalBytes() const { return tensor.TotalBytes(); }
+
+  const char* name;
+  Tensor tensor;
+};
+
+template <typename T>
+Tensor ConstructTensor(int data_size, const T& value = T()) {
+  std::vector<T> values(data_size, value);
+  return test::AsTensor<T>(values);
+}
+
+using DataVec = std::vector<InputOutputData>;
+
+template <typename T>
+inline absl::Span<const T> GetSpanForData(const InputOutputData& data) {
+  const auto& tensor_map = data.tensor.flat<T>();
+  return absl::Span<const T>(tensor_map.data(), tensor_map.size());
+}
+
 // Class to test various op converters, using both a TrtNodeValidator and
 // Converter.
 class OpConverterTest : public ::testing::Test {
@@ -953,6 +980,7 @@ class OpConverterTest : public ::testing::Test {
     builder_.reset(nvinfer1::createInferBuilder(logger_));
     network_.reset(builder_->createNetwork());
     builder_->setMaxBatchSize(1);
+    builder_->setMaxWorkspaceSize(1 << 26);
 
     // Reset the validator and converter.
     validator_.reset(new TrtNodeValidator);
@@ -966,15 +994,14 @@ class OpConverterTest : public ::testing::Test {
   }
 
   // TODO(laigd): test fp16 and int8 support.
-  template <typename T>
-  void BuildAndRun(
-      const std::vector<std::pair<const char*, const std::vector<T>>>&
-          input_data,
-      const char* output_name, std::vector<T>* output_data) {
+  void BuildAndRun(const DataVec& input_data, DataVec* output_data) {
     // Mark the output tensor as TRT engine output.
-    TF_EXPECT_OK(converter_->RenameAndMarkOutputTensors(
-        {{string(output_name), string(output_name),
-          TfDataTypeToTrt(DataTypeToEnum<T>::v())}}));
+    std::vector<Converter::EngineOutputInfo> output_info;
+    for (const auto& data : *output_data) {
+      output_info.push_back(
+          {data.name, data.name, TfDataTypeToTrt(data.tensor.dtype())});
+    }
+    TF_EXPECT_OK(converter_->RenameAndMarkOutputTensors(output_info));
 
     // Build the TRT engine.
     ASSERT_EQ(nullptr, engine_.get());
@@ -982,31 +1009,44 @@ class OpConverterTest : public ::testing::Test {
     CHECK_NOTNULL(engine_.get());
 
     // Execute the TRT engine.
-    ASSERT_LE(input_data.size() + 1, 3);
-    void* buffers[3];
-    for (const auto name_and_data : input_data) {
-      const int input_size = name_and_data.second.size() * sizeof(T);
-      const int input_index = engine_->getBindingIndex(name_and_data.first);
-      ASSERT_EQ(0, cudaMalloc(&buffers[input_index], input_size));
-      ASSERT_EQ(
-          0, cudaMemcpyAsync(buffers[input_index], name_and_data.second.data(),
-                             input_size, cudaMemcpyHostToDevice, stream_));
+    const int num_bindings = input_data.size() + output_data->size();
+    std::vector<void*> buffers(num_bindings);
+
+    for (const auto& data : input_data) {
+      const int input_index = engine_->getBindingIndex(data.name);
+      ASSERT_EQ(0, cudaMalloc(&buffers[input_index], data.TotalBytes()));
+      ASSERT_EQ(0, cudaMemcpyAsync(buffers[input_index], data.Buffer(),
+                                   data.TotalBytes(), cudaMemcpyHostToDevice,
+                                   stream_));
+    }
+    struct SizeAndIndex {
+      SizeAndIndex(int in_size, int in_index)
+          : size(in_size), index(in_index) {}
+      int size;
+      int index;
+    };
+    std::vector<SizeAndIndex> output_infos;
+    for (const auto& data : *output_data) {
+      const int output_index = engine_->getBindingIndex(data.name);
+      output_infos.emplace_back(data.TotalBytes(), output_index);
+      ASSERT_EQ(0, cudaMalloc(&buffers[output_index], data.TotalBytes()));
     }
 
-    const int output_size = output_data->size() * sizeof(T);
-    const int output_index = engine_->getBindingIndex(output_name);
-    ASSERT_EQ(0, cudaMalloc(&buffers[output_index], output_size));
-
-    ASSERT_EQ(engine_->getNbBindings(), input_data.size() + 1);
-
+    ASSERT_EQ(engine_->getNbBindings(), num_bindings);
     TrtUniquePtrType<nvinfer1::IExecutionContext> execution_context(
         engine_->createExecutionContext());
-    execution_context->enqueue(/*batchSize=*/1, buffers, stream_, nullptr);
-    ASSERT_EQ(0, cudaMemcpyAsync(output_data->data(), buffers[output_index],
-                                 output_size, cudaMemcpyDeviceToHost, stream_));
+    execution_context->enqueue(/*batchSize=*/1, buffers.data(), stream_,
+                               nullptr);
+
+    for (int i = 0; i < output_infos.size(); ++i) {
+      const auto& output_info = output_infos[i];
+      ASSERT_EQ(0, cudaMemcpyAsync(output_data->at(i).Buffer(),
+                                   buffers[output_info.index], output_info.size,
+                                   cudaMemcpyDeviceToHost, stream_));
+    }
     cudaStreamSynchronize(stream_);
 
-    for (int i = 0; i < input_data.size() + 1; ++i) {
+    for (int i = 0; i < num_bindings; ++i) {
       ASSERT_EQ(0, cudaFree(buffers[i]));
     }
   }
@@ -1301,10 +1341,12 @@ TEST_F(OpConverterTest, ConvertTranspose) {
     EXPECT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({3, 1, 2}, output.tensor()->getDimensions());
 
-    std::vector<float> output_data(6);
-    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_transpose",
-                       &output_data);
-    EXPECT_THAT(output_data, ElementsAre(1, 4, 2, 5, 3, 6));
+    const DataVec input_data{
+        {"input", test::AsTensor<float>({1, 2, 3, 4, 5, 6})}};
+    DataVec output_data{{"my_transpose", ConstructTensor<float>(6)}};
+    BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                ElementsAre(1, 4, 2, 5, 3, 6));
   }
 }
 
@@ -1391,10 +1433,12 @@ TEST_F(OpConverterTest, ConvertReshape) {
     EXPECT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({1, 3, 2}, output.tensor()->getDimensions());
 
-    std::vector<float> output_data(6);
-    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_reshape",
-                       &output_data);
-    EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
+    const DataVec input_data{
+        {"input", test::AsTensor<float>({1, 2, 3, 4, 5, 6})}};
+    DataVec output_data{{"my_reshape", ConstructTensor<float>(6)}};
+    BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                ElementsAre(1, 2, 3, 4, 5, 6));
   }
 }
 
@@ -1454,12 +1498,13 @@ TEST_F(OpConverterTest, ConvertMatMul) {
     EXPECT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({2}, output.tensor()->getDimensions());
 
-    std::vector<float> output_data(2);
-    BuildAndRun<float>({{"input", {0, 1}}}, "my_matmul", &output_data);
+    const DataVec input_data{{"input", test::AsTensor<float>({0, 1})}};
+    DataVec output_data{{"my_matmul", ConstructTensor<float>(2)}};
+    BuildAndRun(input_data, &output_data);
     if (transpose_b) {
-      EXPECT_THAT(output_data, ElementsAre(1, 3));
+      EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(1, 3));
     } else {
-      EXPECT_THAT(output_data, ElementsAre(2, 3));
+      EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(2, 3));
     }
   }
 }
@@ -1513,23 +1558,28 @@ void TestConvertBiasAdd(OpConverterTest* test) {
       const int num_input = TrtDimsNumElements(GetTestDims(dims_array));
       ASSERT_EQ(trt_input_rank > 1 ? 6 : (data_format == "NHWC" ? 3 : 2),
                 num_input);
-      std::vector<CType> output_data(num_input);
-      test->BuildAndRun<CType>(
-          {{"input", std::vector<CType>(num_input, CType(0))}}, "my_biasadd",
-          &output_data);
+
+      const DataVec input_data{
+          {"input", ConstructTensor<CType>(num_input, CType(0))}};
+      DataVec output_data{{"my_biasadd", ConstructTensor<CType>(num_input)}};
+      test->BuildAndRun(input_data, &output_data);
       if (trt_input_rank == 1) {
         if (data_format == "NHWC") {
-          EXPECT_THAT(output_data, ElementsAre(CType(1), CType(2), CType(3)));
+          EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                      ElementsAre(CType(1), CType(2), CType(3)));
         } else {
-          EXPECT_THAT(output_data, ElementsAre(CType(1), CType(2)));
+          EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                      ElementsAre(CType(1), CType(2)));
         }
       } else {
         if (data_format == "NHWC") {
-          EXPECT_THAT(output_data, ElementsAre(CType(1), CType(2), CType(3),
-                                               CType(1), CType(2), CType(3)));
+          EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                      ElementsAre(CType(1), CType(2), CType(3), CType(1),
+                                  CType(2), CType(3)));
         } else {
-          EXPECT_THAT(output_data, ElementsAre(CType(1), CType(1), CType(1),
-                                               CType(2), CType(2), CType(2)));
+          EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                      ElementsAre(CType(1), CType(1), CType(1), CType(2),
+                                  CType(2), CType(2)));
         }
       }
     }
@@ -1607,21 +1657,25 @@ void TestBinaryTensorOpWeightNoBroadcast(OpConverterTest* test) {
     EXPECT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({1, 1, 2}, output.tensor()->getDimensions());
 
-    std::vector<CType> output_data(2);
-    test->BuildAndRun<CType>(
-        {{"input",
-          /*input_data=*/swap_inputs ? operand2 : operand1}},
-        "my_binary", &output_data);
+    const DataVec input_data{
+        {"input", test::AsTensor<CType>(swap_inputs ? operand2 : operand1)}};
+    DataVec output_data{{"my_binary", ConstructTensor<CType>(2)}};
+    test->BuildAndRun(input_data, &output_data);
     if (node_def.op() == "Add") {
-      EXPECT_THAT(output_data, ElementsAre(CType(5), CType(10.5)));
+      EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                  ElementsAre(CType(5), CType(10.5)));
     } else if (node_def.op() == "Sub") {
-      EXPECT_THAT(output_data, ElementsAre(CType(1), CType(4.5)));
+      EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                  ElementsAre(CType(1), CType(4.5)));
     } else if (node_def.op() == "Mul") {
-      EXPECT_THAT(output_data, ElementsAre(CType(6), CType(22.5)));
+      EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                  ElementsAre(CType(6), CType(22.5)));
     } else if (node_def.op() == "Div") {
-      EXPECT_THAT(output_data, ElementsAre(CType(1.5), CType(2.5)));
+      EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                  ElementsAre(CType(1.5), CType(2.5)));
     } else if (node_def.op() == "RealDiv") {
-      EXPECT_THAT(output_data, ElementsAre(CType(1.5), CType(2.5)));
+      EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                  ElementsAre(CType(1.5), CType(2.5)));
     } else {
       ASSERT_TRUE(false);
     }
@@ -1656,13 +1710,14 @@ void TestBinaryTensorOpWeightWithChannelWiseBroadcast(OpConverterTest* test) {
     EXPECT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({2, 1, 2}, output.tensor()->getDimensions());
 
-    std::vector<CType> output_data(4);
-    test->BuildAndRun<CType>({{"input", input}}, "my_binary", &output_data);
+    const DataVec input_data{{"input", test::AsTensor<CType>(input)}};
+    DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
+    test->BuildAndRun(input_data, &output_data);
     if (weights_dims.size() == 1) {
-      EXPECT_THAT(output_data,
+      EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                   ElementsAre(CType(11), CType(22), CType(13), CType(24)));
     } else {
-      EXPECT_THAT(output_data,
+      EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                   ElementsAre(CType(11), CType(12), CType(23), CType(24)));
     }
   }
@@ -1690,9 +1745,10 @@ void TestBinaryTensorOpWeightWithUniformlyBroadcast(OpConverterTest* test) {
   EXPECT_TRUE(output.is_tensor());
   ExpectTrtDimsEqualsArray({2, 1, 2}, output.tensor()->getDimensions());
 
-  std::vector<CType> output_data(4);
-  test->BuildAndRun<CType>({{"input", input}}, "my_binary", &output_data);
-  EXPECT_THAT(output_data,
+  const DataVec input_data{{"input", test::AsTensor<CType>(input)}};
+  DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
+  test->BuildAndRun(input_data, &output_data);
+  EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
               ElementsAre(CType(11), CType(12), CType(13), CType(14)));
 }
 
@@ -1740,17 +1796,19 @@ void TestBinaryTensorOpWeightFallback(OpConverterTest* test,
   // Check the result of running the engine.
   const int expected_num_outputs =
       TrtDimsNumElements(GetTestDims(expected_output_dims));
-  std::vector<CType> output_data(expected_num_outputs);
-  test->BuildAndRun<CType>(
-      {{"input",
-        /*input_data=*/std::vector<CType>(num_inputs, CType(2))}},
-      "my_binary", &output_data);
+  const DataVec input_data{
+      {"input", ConstructTensor<CType>(num_inputs, CType(2))}};
+  DataVec output_data{
+      {"my_binary", ConstructTensor<CType>(expected_num_outputs)}};
+  test->BuildAndRun(input_data, &output_data);
   if (node_def.op() == "Add") {
-    EXPECT_THAT(output_data, ElementsAreArray(std::vector<CType>(
-                                 expected_num_outputs, CType(3))));
+    EXPECT_THAT(
+        GetSpanForData<CType>(output_data[0]),
+        ElementsAreArray(std::vector<CType>(expected_num_outputs, CType(3))));
   } else if (node_def.op() == "Minimum") {
-    EXPECT_THAT(output_data, ElementsAreArray(std::vector<CType>(
-                                 expected_num_outputs, CType(1))));
+    EXPECT_THAT(
+        GetSpanForData<CType>(output_data[0]),
+        ElementsAreArray(std::vector<CType>(expected_num_outputs, CType(1))));
   } else {
     ASSERT_TRUE(false);
   }
@@ -1777,32 +1835,33 @@ void TestBinaryTensorOpTensor(OpConverterTest* test) {
   EXPECT_TRUE(output.is_tensor());
   ExpectTrtDimsEqualsArray({2, 2}, output.tensor()->getDimensions());
 
-  std::vector<CType> output_data(4);
+  const DataVec input_data{
+      {"input1", test::AsTensor<CType>({CType(3), CType(6)})},
+      {"input2", test::AsTensor<CType>({CType(2), CType(3)})}};
+  DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
   // After broadcasting first input becomes {3, 6, 3, 6} and second input
   // becomes {2, 3, 2, 3}.
-  test->BuildAndRun<CType>(
-      {{"input1", {CType(3), CType(6)}}, {"input2", {CType(2), CType(3)}}},
-      "my_binary", &output_data);
+  test->BuildAndRun(input_data, &output_data);
   if (node_def.op() == "Add") {
-    EXPECT_THAT(output_data,
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAre(CType(5), CType(8), CType(6), CType(9)));
   } else if (node_def.op() == "Sub") {
-    EXPECT_THAT(output_data,
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAre(CType(1), CType(4), CType(0), CType(3)));
   } else if (node_def.op() == "Mul") {
-    EXPECT_THAT(output_data,
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAre(CType(6), CType(12), CType(9), CType(18)));
   } else if (node_def.op() == "Div") {
-    EXPECT_THAT(output_data,
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAre(CType(1.5), CType(3), CType(1), CType(2)));
   } else if (node_def.op() == "RealDiv") {
-    EXPECT_THAT(output_data,
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAre(CType(1.5), CType(3), CType(1), CType(2)));
   } else if (node_def.op() == "Minimum") {
-    EXPECT_THAT(output_data,
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAre(CType(2), CType(2), CType(3), CType(3)));
   } else if (node_def.op() == "Maximum") {
-    EXPECT_THAT(output_data,
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAre(CType(3), CType(6), CType(3), CType(6)));
   } else {
     ASSERT_TRUE(false);
@@ -2042,10 +2101,12 @@ TEST_F(OpConverterTest, ConvertRelu6) {
     auto ranges = quantization_ranges();
     EXPECT_EQ(ranges[output.tensor()], 6.0f);
 
-    std::vector<float> output_data(6);
-    BuildAndRun<float>({{"input", {-100, -1, 0, 3, 5, 9}}}, "my_relu6",
-                       &output_data);
-    EXPECT_THAT(output_data, ElementsAre(0, 0, 0, 3, 5, 6));
+    const DataVec input_data{
+        {"input", test::AsTensor<float>({-100, -1, 0, 3, 5, 9})}};
+    DataVec output_data{{"my_relu6", ConstructTensor<float>(6)}};
+    BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                ElementsAre(0, 0, 0, 3, 5, 6));
   }
 }
 
@@ -2067,16 +2128,17 @@ void TestConvertSquare(OpConverterTest* test) {
   ExpectTrtDimsEqualsArray({1, 20}, output.tensor()->getDimensions());
 
   const int num_inputs = 20;
-  std::vector<CType> input_data(num_inputs);
-  std::vector<CType> expected_output_data(num_inputs);
+  std::vector<CType> inputs(num_inputs);
+  std::vector<CType> expected_outputs(num_inputs);
   for (int i = 0; i < 20; i++) {
     const CType value = CType(i - 9);
-    input_data[i] = value;
-    expected_output_data[i] = value * value;
+    inputs[i] = value;
+    expected_outputs[i] = value * value;
   }
-  std::vector<CType> output_data(num_inputs);
-  test->BuildAndRun<CType>({{"input", input_data}}, "my_square", &output_data);
-  ExpectArrayNear(expected_output_data, output_data);
+  const DataVec input_data{{"input", test::AsTensor<CType>(inputs)}};
+  DataVec output_data{{"my_square", ConstructTensor<CType>(num_inputs)}};
+  test->BuildAndRun(input_data, &output_data);
+  ExpectArrayNear(expected_outputs, GetSpanForData<CType>(output_data[0]));
 }
 
 TEST_F(OpConverterTest, ConvertSquare) {
@@ -2168,12 +2230,14 @@ TEST_F(OpConverterTest, ConvertActivation) {
     EXPECT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions());
 
-    const std::vector<float> input_data = {-100, -2, -1, 0, 1, 100};
-    std::vector<float> output_data(6);
-    BuildAndRun<float>({{"input", input_data}}, "my_act", &output_data);
-    for (int i = 0; i < input_data.size(); i++) {
-      const float expected_output = get_act_output(op_name, input_data[i]);
-      EXPECT_FLOAT_EQ(output_data[i], expected_output);
+    const std::vector<float> input = {-100, -2, -1, 0, 1, 100};
+    const DataVec input_data{{"input", test::AsTensor<float>(input)}};
+    DataVec output_data{{"my_act", ConstructTensor<float>(6)}};
+    BuildAndRun(input_data, &output_data);
+    for (int i = 0; i < input.size(); i++) {
+      const float expected_output = get_act_output(op_name, input[i]);
+      EXPECT_FLOAT_EQ(GetSpanForData<float>(output_data[0])[i],
+                      expected_output);
     }
   }
 }
@@ -2286,10 +2350,12 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
 
-    std::vector<float> output_data(6);
-    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_expanddims",
-                       &output_data);
-    EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
+    const DataVec input_data{
+        {"input", test::AsTensor<float>({1, 2, 3, 4, 5, 6})}};
+    DataVec output_data{{"my_expanddims", ConstructTensor<float>(6)}};
+    BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                ElementsAre(1, 2, 3, 4, 5, 6));
   }
 }
 
@@ -2406,10 +2472,12 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
 
-    std::vector<float> output_data(6);
-    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_squeeze",
-                       &output_data);
-    EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
+    const DataVec input_data{
+        {"input", test::AsTensor<float>({1, 2, 3, 4, 5, 6})}};
+    DataVec output_data{{"my_squeeze", ConstructTensor<float>(6)}};
+    BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                ElementsAre(1, 2, 3, 4, 5, 6));
   }
 }
 
@@ -2679,10 +2747,15 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
 
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_strided_slice", &output));
-    std::vector<float> output_data(ok_params[i].expected_output.size());
-    BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_strided_slice",
-                       &output_data);
-    EXPECT_THAT(output_data, ElementsAreArray(ok_params[i].expected_output));
+
+    const DataVec input_data{
+        {"input", test::AsTensor<float>({1, 2, 3, 4, 5, 6})}};
+    DataVec output_data{
+        {"my_strided_slice",
+         ConstructTensor<float>(ok_params[i].expected_output.size())}};
+    BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                ElementsAreArray(ok_params[i].expected_output));
   }
 }
 
@@ -2913,10 +2986,67 @@ TEST_F(OpConverterTest, ConvertConv2D) {
     EXPECT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
-    std::vector<float> output_data(ok_params[i].expected_output.size());
-    BuildAndRun<float>({{"input", ok_params[i].input}}, "my_conv2d",
-                       &output_data);
-    EXPECT_THAT(output_data, ElementsAreArray(ok_params[i].expected_output));
+
+    const DataVec input_data{
+        {"input", test::AsTensor<float>(ok_params[i].input)}};
+    DataVec output_data{
+        {"my_conv2d",
+         ConstructTensor<float>(ok_params[i].expected_output.size())}};
+    BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                ElementsAreArray(ok_params[i].expected_output));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertTopK) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_topk", "TopKV2", {});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Input expects tensor and weights, at my_topk");
+  }
+
+  for (const auto dtype : {DT_FLOAT, DT_INT32}) {
+    // Get the NodeDef for TopKV2.
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), dtype);
+    auto weights = ops::Placeholder(s.WithOpName("weights"), DT_INT32);
+    auto topk = ops::TopK(s.WithOpName("my_topk"), input, weights);
+    const NodeDef& node_def = topk.operation.node()->def();
+    {
+      // K is a tensor, should fail.
+      Reset();
+      AddTestTensor("input", {1, 2, 3}, /*batch_size=*/1,
+                    /*trt_dtype=*/TfDataTypeToTrt(dtype));
+      AddTestTensor("weights", {2});
+      RunValidationAndConversion(
+          node_def, error::INVALID_ARGUMENT,
+          "Input expects tensor and weights, at my_topk");
+    }
+    {
+      // Ok.
+      Reset();
+      AddTestTensor("input", {1, 2, 5});
+      AddTestWeights<int32>("weights", {1}, {2});
+      RunValidationAndConversion(node_def);
+      TRT_TensorOrWeights outputs[2];
+      TF_EXPECT_OK(GetTensorOrWeights("my_topk", &outputs[0]));
+      TF_EXPECT_OK(GetTensorOrWeights("my_topk:1", &outputs[1]));
+      for (auto& output : outputs) {
+        EXPECT_TRUE(output.is_tensor());
+        ExpectTrtDimsEqualsArray({1, 2, 2}, output.tensor()->getDimensions());
+      }
+
+      const DataVec input_data{
+          {"input", test::AsTensor<float>({-9, 3, 5, 1, 6, -5, 7, 1, 0, -1})}};
+      DataVec output_data{{"my_topk", ConstructTensor<float>(4)},
+                          {"my_topk:1", ConstructTensor<int32>(4)}};
+      BuildAndRun(input_data, &output_data);
+      EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                  ElementsAre(6, 5, 7, 1));
+      EXPECT_THAT(GetSpanForData<int32>(output_data[1]),
+                  ElementsAre(4, 2, 1, 2));
+    }
   }
 }
 
