@@ -2228,17 +2228,8 @@ TEST_F(OpConverterTest, ConvertActivation) {
     return 0;
   };
 
-  const std::vector<string> ops_to_test = {
-#if NV_TENSORRT_MAJOR >= 5 && NV_TENSORRT_MINOR >= 1
-    "LeakyRelu",
-#endif
-    "Relu",
-    "Sigmoid",
-    "Tanh",
-  };
-
   // Ok.
-  for (const string& op_name : ops_to_test) {
+  for (const string& op_name : {"LeakyRelu", "Relu", "Sigmoid", "Tanh"}) {
     Reset();
     NodeDef node_def = get_act_nodedef(op_name);
     AddTestTensor("input", {1, 2, 3});
