@@ -175,26 +175,35 @@ cc_library(
    alwayslink = True,
 )
 
-# FIXME: enable in future PRs
-#cc_library(
-#    name = "rocfft_plugin",
-#    srcs = ["rocm_fft.cc"],
-#    hdrs = [],
-#    visibility = ["//visibility:public"],
-#    deps = [
-#        ":rocm_platform_id",
-#        "//tensorflow/stream_executor:event",
-#        "//tensorflow/stream_executor:fft",
-#        "//tensorflow/stream_executor:plugin_registry",
-#        "//tensorflow/stream_executor:scratch_allocator",
-#        "//tenosrflow/stream_executor/gpu:gpu_stream_header",
-#        "//tensorflow/stream_executor/lib",
-#        "//tensorflow/stream_executor/platform",
-#        "//tensorflow/stream_executor/platform:dso_loader",
-#        "@local_config_rocm//rocm:rocm_headers",
-#    ] + if_static(["@local_config_rocm//rocm:rocfft"]),
-#    alwayslink = True,
-#)
+cc_library(
+   name = "rocfft_plugin",
+   srcs = if_rocm_is_configured(["rocm_fft.cc"]),
+   hdrs = if_rocm_is_configured(["rocm_fft.h"]),
+   visibility = ["//visibility:public"],
+   deps = if_rocm_is_configured([
+       ":rocm_platform_id",
+       "//tensorflow/stream_executor:event",
+       "//tensorflow/stream_executor:fft",
+       "//tensorflow/stream_executor:plugin_registry",
+       "//tensorflow/stream_executor:scratch_allocator",
+       "//tensorflow/stream_executor/gpu:gpu_activation",
+       "//tensorflow/stream_executor/gpu:gpu_helpers_header",
+       "//tensorflow/stream_executor/gpu:gpu_executor_header",
+       "//tensorflow/stream_executor/gpu:gpu_stream_header",
+       "//tensorflow/stream_executor/gpu:gpu_kernel_header",
+       "//tensorflow/stream_executor/lib",
+       "//tensorflow/stream_executor/platform",
+       "//tensorflow/stream_executor/platform:dso_loader",
+       "@local_config_rocm//rocm:rocm_headers",
+   ] + if_static([
+       "@local_config_rocm//rocm:rocfft"
+       # Delete the following line once we switch the rocfft library from
+       # being dynamically linked (current behaviour) to being dynamically
+       # loaded (future behaviour)
+       ], ["@local_config_rocm//rocm:rocfft"
+   ])),
+   alwayslink = True,
+)
 
 # FIXME: enable in future PRs
 #cc_library(
@@ -263,7 +272,7 @@ cc_library(
     deps = if_rocm_is_configured([
         # FIXME: enable in future PRs
         #":miopen_plugin",
-        #":rocfft_plugin",
+        ":rocfft_plugin",
         ":rocblas_plugin",
         #":rocrand_plugin",
         ":rocm_driver",
