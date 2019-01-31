@@ -91,6 +91,10 @@ class ContextAdjuster(gast.NodeTransformer):
     self._ctx_override = None
     return self.generic_visit(node)
 
+  def visit_comprehension(self, node):
+    self._ctx_override = None
+    return self.generic_visit(node)
+
 
 class ReplaceTransformer(gast.NodeTransformer):
   """Replace AST nodes."""
