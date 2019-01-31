@@ -338,7 +338,7 @@ class CudnnAccess {
     mutex_lock lock(mutex_);
     gpu::ScopedActivateExecutorContext context(executor);
     CUstream cu_stream = stream ? AsGpuStreamValue(stream) : cudaStreamLegacy;
-    auto status = cudnnSetStream(handle_, cu_stream);
+    const auto status = cudnnSetStream(handle_, cu_stream);
     CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Failed to set cuDNN stream.";
     return CudnnHandle(std::move(context), std::move(lock), handle_);
   }
@@ -453,7 +453,7 @@ CudnnSupport::CudnnSupport(GpuExecutor* parent) : parent_(parent) {}
 port::Status CudnnSupport::Init() {
   ScopedActivateExecutorContext context(parent_);
   cudnnHandle_t cudnn_handle = nullptr;
-  auto status = cudnnCreate(&cudnn_handle);
+  const auto status = cudnnCreate(&cudnn_handle);
   if (status == CUDNN_STATUS_SUCCESS) {
     CudnnVersion source_version(CUDNN_MAJOR, CUDNN_MINOR, CUDNN_PATCHLEVEL);
 
@@ -886,7 +886,7 @@ class CudnnPoolingDescriptor {
     std::transform(shape64.cbegin(), shape64.cend(), shape.begin(),
                    &CheckedNarrowing<int64, int>);
     bool propagate_nans = pooling_descriptor.propagate_nans();
-    auto cudnn_max_pooling_mode = RequireDeterminism()
+    const auto cudnn_max_pooling_mode = RequireDeterminism()
                                       ? CUDNN_POOLING_MAX_DETERMINISTIC
                                       : CUDNN_POOLING_MAX;
     CHECK_CUDNN_OK(cudnnSetPoolingNdDescriptor(
@@ -2506,7 +2506,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     algo_desc = dnn::AlgorithmDesc(algo, /*use_tensor_ops=*/true);
   }
 
-  auto scratch_or = AllocateCudnnConvolutionForwardWorkspace(
+  const auto scratch_or = AllocateCudnnConvolutionForwardWorkspace(
       stream, cudnn, input_nd, filter, conv, output_nd, *algo_desc,
       scratch_allocator);
 
@@ -2555,7 +2555,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
     algo_desc = dnn::AlgorithmDesc(algo, /*use_tensor_ops=*/true);
   }
 
-  auto scratch_or = AllocateCudnnConvolutionBackwardDataWorkspace(
+  const auto scratch_or = AllocateCudnnConvolutionBackwardDataWorkspace(
       stream, cudnn, input_nd, filter, conv, output_nd, *algo_desc,
       scratch_allocator);
 
@@ -2924,7 +2924,7 @@ port::Status CudnnSupport::DoConvolve(
     }
   }
 
-  auto get_fwd_bugs = [&]() -> port::Status {
+  const auto get_fwd_bugs = [&]() -> port::Status {
     // Report an error if we might be hitting a cuDNN bug that accesses illegal
     // memory. See nvbugs/2138754, b/80018418.
     if (CUDNN_VERSION < 7300) {
@@ -2935,7 +2935,7 @@ port::Status CudnnSupport::DoConvolve(
         return port::Status::OK();
       }
       // Checks that a*b is within the valid range (as provided by NVIDIA).
-      auto check_sizes = [](size_t a, size_t b) {
+      const auto check_sizes = [](size_t a, size_t b) {
         if ((a * b * 4608 - 1) >> 31 == 0) {
           return port::Status::OK();
         }
@@ -2989,7 +2989,7 @@ port::Status CudnnSupport::DoConvolve(
     return port::Status::OK();
   };
 
-  auto get_bwd_filter_bugs = [&]() -> port::Status {
+  const auto get_bwd_filter_bugs = [&]() -> port::Status {
     // Report an error if we might be hitting a cuDNN bug that produces
     // incorrect results. See nvbugs/2072856
     if (CUDNN_VERSION < 7300) {
@@ -3675,7 +3675,7 @@ bool CudnnSupport::DoTransformTensor(Stream* stream,
   CudnnTensorDescriptor output_tensor_desc(
       output_desc, ToCudnnDataType(output_type, output_desc.layout()));
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  auto const status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnTransformTensor(
         cudnn.handle(), &scale, input_tensor_desc.handle(), input_data.opaque(),
         &beta, output_tensor_desc.handle(), output_data->opaque()));
@@ -3908,7 +3908,7 @@ bool CudnnSupport::DoBiasAdd(Stream* stream,
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnAddTensor(
         cudnn.handle(), &alpha, bias_descriptor.handle(), biases.opaque(),
         &beta, input_descriptor.handle(), output_data->opaque()));
@@ -3933,7 +3933,7 @@ bool CudnnSupport::DoActivate(Stream* stream,
   float beta = 0.0;
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnActivationForward(
         cudnn.handle(), activation_desc.handle(), &alpha, input_nd.handle(),
         input_data.opaque(), &beta, input_nd.handle(), output_data->opaque()));
@@ -3958,7 +3958,7 @@ bool CudnnSupport::DoPoolForward(
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingForward(
         cudnn.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
         input_data.opaque(), &beta, dest_desc.handle(), output_data->opaque()));
@@ -3983,7 +3983,7 @@ bool CudnnSupport::DoPoolForward(
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingForward(
         cudnn.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
         input_data.opaque(), &beta, dest_desc.handle(), output_data->opaque()));
@@ -4008,7 +4008,7 @@ bool CudnnSupport::DoPoolForward(
   CudnnTensorDescriptor dest_desc(output_dimensions, CUDNN_DATA_HALF);
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingForward(
         cudnn.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
         input_data.opaque(), &beta, dest_desc.handle(), output_data->opaque()));
@@ -4033,7 +4033,7 @@ bool CudnnSupport::DoPoolForward(
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingForward(
         cudnn.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
         input_data.opaque(), &beta, dest_desc.handle(), output_data->opaque()));
@@ -4061,7 +4061,7 @@ bool CudnnSupport::DoPoolBackward(
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingBackward(
         cudnn.handle(), pooling_desc.handle(), &alpha, dest_desc.handle(),
         output_data.opaque(), dest_desc.handle(), input_diff_data.opaque(),
@@ -4091,7 +4091,7 @@ bool CudnnSupport::DoPoolBackward(
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingBackward(
         cudnn.handle(), pooling_desc.handle(), &alpha, dest_desc.handle(),
         output_data.opaque(), dest_desc.handle(), input_diff_data.opaque(),
@@ -4121,7 +4121,7 @@ bool CudnnSupport::DoPoolBackward(
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingBackward(
         cudnn.handle(), pooling_desc.handle(), &alpha, dest_desc.handle(),
         output_data.opaque(), dest_desc.handle(), input_diff_data.opaque(),
@@ -4164,7 +4164,7 @@ bool CudnnSupport::DoNormalizeWithDimensions(
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   // Launch the normalization.
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnLRNCrossChannelForward(
         cudnn.handle(), normalize.handle(), CUDNN_LRN_CROSS_CHANNEL_DIM1,
         &alpha, dims.handle(), input_data.opaque(), &beta, dims.handle(),
@@ -4198,7 +4198,7 @@ bool CudnnSupport::DoNormalizeBackwardWithDimensions(
   float beta = 0.0f;
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnLRNCrossChannelBackward(
         cudnn.handle(), normalize.handle(), CUDNN_LRN_CROSS_CHANNEL_DIM1,
         &alpha, dims.handle(), normalized_data.opaque(), dims.handle(),
@@ -4321,7 +4321,7 @@ bool CudnnSupport::DeriveOutputBatchDescriptor(
 
   int dn = batch_descriptor.ndims() + 2;
   std::vector<int> dims(dn);  // in BDYX
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionNdForwardOutputDim(
         conv.handle(), input_nd.handle(), filter.handle(), dn, dims.data()));
     output_batch_descriptor->set_count(dims[0])
