@@ -370,6 +370,7 @@ py_library(
         ":ragged_tensor_shape",
         ":ragged_util",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:bitwise_ops",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
