@@ -166,6 +166,10 @@ public:
   // Edge represents a data dependece between nodes in the graph.
   struct Edge {
     // The id of the node at the other end of the edge.
+    // If this edge is stored in Edge = Node.inEdges[i], then
+    // 'Node.inEdges[i].id' is the identifier of the source node of the edge.
+    // If this edge is stored in Edge = Node.outEdges[i], then
+    // 'Node.outEdges[i].id' is the identifier of the dest node of the edge.
     unsigned id;
     // The SSA value on which this edge represents a dependence.
     // If the value is a memref, then the dependence is between graph nodes
@@ -1355,13 +1359,21 @@ public:
         // Skip if no input edges along which to fuse.
         if (mdg->inEdges.count(dstId) == 0)
           continue;
-        // Iterate through in edges for 'dstId'.
+        // Iterate through in edges for 'dstId' and src node id for any
+        // edges on 'memref'.
+        SmallVector<unsigned, 2> srcNodeIds;
         for (auto &srcEdge : mdg->inEdges[dstId]) {
           // Skip 'srcEdge' if not for 'memref'.
           if (srcEdge.value != memref)
             continue;
-
-          auto *srcNode = mdg->getNode(srcEdge.id);
+          srcNodeIds.push_back(srcEdge.id);
+        }
+        for (unsigned srcId : srcNodeIds) {
+          // Skip if this node was removed (fused into another node).
+          if (mdg->nodes.count(srcId) == 0)
+            continue;
+          // Get 'srcNode' from which to attempt fusion into 'dstNode'.
+          auto *srcNode = mdg->getNode(srcId);
           // Skip if 'srcNode' is not a loop nest.
           if (!isa<ForInst>(srcNode->inst))
             continue;
