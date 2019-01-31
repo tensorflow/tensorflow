@@ -78,6 +78,7 @@ def count_params(weights):
   return int(sum(np.prod(p.get_shape().as_list()) for p in set(weights)))
 
 
+@keras_export('keras.utils.print_summary')
 def print_summary(model, line_length=None, positions=None, print_fn=None):
   """Prints a summary of a model.
 
