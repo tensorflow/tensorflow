@@ -70,6 +70,12 @@ $(PRJDIR)$(3)/$(1)/%: tensorflow/lite/experimental/micro/tools/make/templates/%.
 	sed -E 's#\%\{LINKER_FLAGS\}\%#$(6)#g' | \
 	sed -E 's#\%\{CXX_FLAGS\}\%#$(7)#g' > $$@
 
+$(PRJDIR)$(3)/$(1)/keil_project.uvprojx: tensorflow/lite/experimental/micro/tools/make/templates/keil_project.uvprojx.tpl
+	@mkdir -p $$(dir $$@)
+	python tensorflow/lite/experimental/micro/tools/make/generate_keil_project.py \
+        --input_template=$$< --output_file=$$@ --executable=$(3) \
+        --srcs="$(4)" --hdrs="$(5)" --include_paths="$$(PROJECT_INCLUDES)"
+
 generate_$(3)_$(1)_project: $(addprefix $(PRJDIR)$(3)/$(1)/, $(4) $(5) $(2))
 endef
 
@@ -85,6 +91,7 @@ endef
 define generate_microlite_projects
 $(call generate_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS))
 $(call generate_project,mbed,$(MBED_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS))
+$(call generate_project,keil,$(KEIL_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS))
 endef
 
 
@@ -103,7 +110,6 @@ $(1)_LOCAL_HDRS := $(3)
 $(1)_LOCAL_OBJS := $$(addprefix $$(OBJDIR), \
 $$(patsubst %.cc,%.o,$$(patsubst %.c,%.o,$$($(1)_LOCAL_SRCS))))
 $(1)_BINARY := $$(BINDIR)$(1)
-ALL_BINARIES += $$($(1)_BINARY)
 $$($(1)_BINARY): $$($(1)_LOCAL_OBJS) $$(MICROLITE_LIB_PATH)
 	@mkdir -p $$(dir $$@)
 	$$(CXX) $$(CXXFLAGS) $$(INCLUDES) \
@@ -113,5 +119,8 @@ $(1): $$($(1)_BINARY)
 $(1)_bin: $$($(1)_BINARY).bin
 test_$(1): $$($(1)_BINARY)
 	$$(TEST_SCRIPT) $$($(1)_BINARY) '~~~ALL TESTS PASSED~~~'
+ifneq (,$(findstring _test,$(1)))
+  MICROLITE_TEST_TARGETS += test_$(1)
+endif
 $(eval $(call generate_microlite_projects,$(1),$(call specialize,$(2)),$(3)))
 endef

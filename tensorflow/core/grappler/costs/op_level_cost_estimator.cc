@@ -54,6 +54,7 @@ constexpr char kVariable[] = "Variable";
 constexpr char kVariableV2[] = "VariableV2";
 constexpr char kRank[] = "Rank";
 constexpr char kShape[] = "Shape";
+constexpr char kShapeN[] = "ShapeN";
 constexpr char kSize[] = "Size";
 constexpr char kStopGradient[] = "StopGradient";
 constexpr char kPreventGradient[] = "PreventGradient";
@@ -264,6 +265,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
 
       {kRank, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kShape, wrap(&OpLevelCostEstimator::PredictMetadata)},
+      {kShapeN, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kSize, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kMaxPool, wrap(&OpLevelCostEstimator::PredictMaxPool)},
       {kMaxPoolGrad, wrap(&OpLevelCostEstimator::PredictMaxPoolGrad)},
@@ -526,8 +528,10 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
                       device_info.intermediate_write_gb_per_sec)
           : 0;
 
-  Costs::NanoSeconds intermediate_memory_cost(intermediate_read_time +
-                                              intermediate_write_time);
+  Costs::NanoSeconds intermediate_memory_cost =
+      compute_memory_overlap_
+          ? std::max(intermediate_read_time, intermediate_write_time)
+          : (intermediate_read_time + intermediate_write_time);
   VLOG(1) << "Op:" << op_info.op() << " Size (KB):" << (total_io_bytes) / 1e3
           << " Intermediate Memory Time (ns):"
           << intermediate_memory_cost.count();

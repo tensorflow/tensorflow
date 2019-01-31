@@ -201,10 +201,12 @@ COMMON_PROTO_SRCS = [
     "protobuf/cluster.proto",
     "protobuf/debug.proto",
     "protobuf/device_properties.proto",
+    "protobuf/graph_debug_info.proto",
     "protobuf/queue_runner.proto",
     "protobuf/rewriter_config.proto",
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
+    "protobuf/verifier_config.proto",
     "util/event.proto",
     "util/memmapped_file_system.proto",
     "util/saved_tensor_slice.proto",
@@ -506,6 +508,7 @@ cc_library(
         ":platform_port",
         ":platform_protobuf",
         "//tensorflow/core/platform/default/build_config:env",
+        "//tensorflow/core/platform/default/build_config:port",
     ],
 )
 
@@ -1962,6 +1965,14 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "rocm",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:rocm",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Clif-related proto libraries.
 
@@ -2220,7 +2231,6 @@ cc_library(
             "lib/**/*.cc",
             "platform/*.cc",
             "platform/profile_utils/**/*.cc",
-        ] + [
             "framework/resource_handle.cc",
             "util/env_var.cc",
         ],
@@ -2831,6 +2841,7 @@ tf_cuda_library(
         "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3036,6 +3047,7 @@ tf_cuda_library(
         ":framework",
         ":graph",
         ":lib",
+        ":metrics",
         ":proto_text",
         ":protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",

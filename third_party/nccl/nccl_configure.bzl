@@ -43,13 +43,6 @@ cc_library(
 """
 
 _NCCL_ARCHIVE_BUILD_CONTENT = """
-exports_files([
-    "cuda/bin/crt/link.stub",
-    "cuda/bin/fatbinary",
-    "cuda/bin/bin2c",
-    "nvlink",
-])
-
 filegroup(
   name = "LICENSE",
   data = ["@nccl_archive//:LICENSE.txt"],
@@ -151,15 +144,6 @@ def _nccl_configure_impl(repository_ctx):
         repository_ctx.template("build_defs.bzl", _label("build_defs.bzl.tpl"), {
             "%{gpu_architectures}": str(gpu_architectures),
         })
-
-        repository_ctx.symlink(cuda_toolkit_path(repository_ctx), "cuda")
-
-        # Temporary work-around for setups which symlink ptxas to a newer
-        # version. The versions of nvlink and ptxas need to agree, so we find
-        # nvlink next to the real location of ptxas. This is only temporary and
-        # will be removed again soon.
-        nvlink_dir = repository_ctx.path("cuda/bin/ptxas").realpath.dirname
-        repository_ctx.symlink(nvlink_dir.get_child("nvlink"), "nvlink")
     else:
         # Create target for locally installed NCCL.
         nccl_install_path = repository_ctx.os.environ[_NCCL_INSTALL_PATH].strip()

@@ -140,6 +140,7 @@ py_library(
         ":lib",
         ":list_ops",
         ":manip_ops",
+        ":map_fn",
         ":math_ops",
         ":metrics",
         ":mode_keys",
@@ -214,6 +215,7 @@ py_library(
         ":pywrap_tensorflow",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "@absl_py//absl:app",
         "@absl_py//absl/flags",
         "@six_archive//:six",
     ],
@@ -234,7 +236,10 @@ py_library(
     name = "platform_test",
     srcs = ["platform/googletest.py"],
     srcs_version = "PY2AND3",
-    deps = [":platform_benchmark"],
+    deps = [
+        ":platform_benchmark",
+        "@absl_py//absl/testing:absltest",
+    ],
 )
 
 tf_py_test(
@@ -908,6 +913,24 @@ py_library(
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:tape",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "map_fn",
+    srcs = ["ops/map_fn.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":constant_op",
+        ":control_flow_ops",
+        ":framework_ops",
+        ":sparse_tensor",
+        ":tensor_array_ops",
+        ":tensor_shape",
+        ":util",
+        ":variable_scope",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -2542,9 +2565,9 @@ py_library(
         ":array_ops",
         ":dtypes",
         ":framework_ops",
-        ":functional_ops",
         ":linalg_ops_gen",
         ":linalg_ops_impl",
+        ":map_fn",
         ":math_ops",
         "//third_party/py/numpy",
     ],
@@ -3699,6 +3722,7 @@ py_library(
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/optimizer_v2:learning_rate_schedule",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/training/checkpointable:base",
         "//tensorflow/python/training/checkpointable:util",
@@ -4784,7 +4808,6 @@ cuda_py_tests(
         "training/ftrl_test.py",
         "training/gradient_descent_test.py",
         "training/learning_rate_decay_test.py",
-        "training/learning_rate_decay_v2_test.py",
         "training/momentum_test.py",
         "training/optimizer_test.py",
         "training/proximal_adagrad_test.py",
@@ -5451,7 +5474,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "accumulate_n_benchmark",
-    size = "large",
+    size = "medium",
     srcs = ["ops/accumulate_n_benchmark.py"],
     additional_deps = [
         ":array_ops",
@@ -5466,6 +5489,7 @@ cuda_py_test(
         ":state_ops_gen",
     ],
     main = "ops/accumulate_n_benchmark.py",
+    shard_count = 6,
 )
 
 cuda_py_test(

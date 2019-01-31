@@ -36,6 +36,7 @@ limitations under the License.
 %rename("%s") TFE_NewProfiler;
 %rename("%s") TFE_DeleteProfiler;
 %rename("%s") TFE_ProfilerSerializeToString;
+%rename("%s") TFE_StartProfilerServer;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_SetEagerTensorProfiler;
@@ -184,6 +185,25 @@ limitations under the License.
       }
       if (EagerTensor_CheckExact(elem)) {
         (*$1)[i] = EagerTensor_Handle(elem);
+      } else if (tensorflow::swig::IsTensor(elem)) {
+        // If it isnt an EagerTensor, but is still a Tensor, it must be a graph
+        // tensor.
+        SWIG_exception_fail(
+            SWIG_TypeError,
+            tensorflow::strings::StrCat(
+                "An op outside of the function building code is being passed\n"
+                "a \"Graph\" tensor. It is possible to have Graph tensors\n"
+                "leak out of the function building context by including a\n"
+                "tf.init_scope in your function building code.\n"
+                "For example, the following function will fail:\n",
+                "  @tf.function\n",
+                "  def has_init_scope():\n",
+                "    my_constant = tf.constant(1.)\n",
+                "    with tf.init_scope():\n",
+                "      added = my_constant * 2\n",
+                "The graph tensor has name: ",
+                TFE_GetPythonString(PyObject_GetAttrString(elem, "name")))
+                .c_str());
       } else {
         SWIG_exception_fail(
             SWIG_TypeError,

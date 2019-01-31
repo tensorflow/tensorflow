@@ -4,12 +4,6 @@ package(default_visibility = ["//tensorflow:internal"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
-filegroup(
-    name = "interpreter_test_data",
-    srcs = glob(["**/testdata/*"]),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 py_library(
     name = "interpreter",
     srcs = [
@@ -27,7 +21,7 @@ py_library(
 py_test(
     name = "interpreter_test",
     srcs = ["interpreter_test.py"],
-    data = [":interpreter_test_data"],
+    data = ["//tensorflow/lite/python/testdata:interpreter_test_data"],
     srcs_version = "PY2AND3",
     tags = ["no_oss"],
     deps = [
@@ -145,7 +139,6 @@ py_library(
     srcs = ["convert_saved_model.py"],
     srcs_version = "PY2AND3",
     visibility = [
-        "//tensorflow/contrib/lite:__subpackages__",
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [

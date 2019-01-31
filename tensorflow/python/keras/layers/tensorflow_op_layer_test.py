@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -34,23 +36,22 @@ from tensorflow.python.util import nest
 def _single_op_at_end():
   inputs = keras.Input(shape=(10,))
   x = keras.layers.Dense(10)(inputs)
-  outputs = gen_nn_ops.relu(x, name='hey')
+  outputs = gen_nn_ops.relu(x)
   return inputs, outputs
 
 
 def _multiple_ops_at_end():
   inputs = keras.Input(shape=(10,))
-  inputs = keras.Input(shape=(10,))
   x = keras.layers.Dense(10)(inputs)
-  x = gen_nn_ops.relu(x, name='hey')
-  outputs = gen_nn_ops.relu(x, name='hey2')
+  x = gen_nn_ops.relu(x)
+  outputs = gen_nn_ops.relu(x)
   return inputs, outputs
 
 
 def _single_op_in_middle():
   inputs = keras.Input(shape=(10,))
   x = keras.layers.Dense(10)(inputs)
-  x = gen_nn_ops.relu(x, name='hey')
+  x = gen_nn_ops.relu(x)
   outputs = keras.layers.Dense(10)(x)
   return inputs, outputs
 
@@ -58,8 +59,8 @@ def _single_op_in_middle():
 def _multiple_ops_in_middle():
   inputs = keras.Input(shape=(10,))
   x = keras.layers.Dense(10)(inputs)
-  x = gen_nn_ops.relu(x, name='hey')
-  x = gen_nn_ops.relu(x, name='hey2')
+  x = gen_nn_ops.relu(x)
+  x = gen_nn_ops.relu(x)
   outputs = keras.layers.Dense(10)(x)
   return inputs, outputs
 
@@ -78,6 +79,15 @@ def _single_op_with_attrs():
   return inputs, outputs
 
 
+def _multiple_uses():
+  inputs = keras.Input(shape=(10,))
+  x = math_ops.reduce_mean(inputs, axis=1, keepdims=True)
+  x1 = keras.layers.Dense(10)(x)
+  x2 = keras.layers.Dense(10)(x)
+  outputs = x1 + x2
+  return inputs, outputs
+
+
 @keras_parameterized.run_all_keras_modes
 class AutoLambdaTest(keras_parameterized.TestCase):
 
@@ -87,7 +97,8 @@ class AutoLambdaTest(keras_parameterized.TestCase):
       ('single_op_in_middle', _single_op_in_middle),
       ('multiple_ops_in_middle', _multiple_ops_in_middle),
       ('single_standalone_branch', _single_standalone_branch),
-      ('single_op_with_attrs', _single_op_with_attrs))
+      ('single_op_with_attrs', _single_op_with_attrs),
+      ('multiple_uses', _multiple_uses))
   def test_autolambda(self, model_fn):
     inputs, outputs = model_fn()
     model = keras.Model(inputs, outputs)
@@ -125,6 +136,33 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     model2 = model1.from_config(model1.get_config())
     y2 = self.evaluate(model2(x))
     self.assertAllClose(y1, y2)
+
+  def test_no_tracking(self):
+    x = keras.backend.placeholder((10, 10))
+    keras.layers.Dense(1)(x)
+    self.assertTrue(x._keras_history_checked)
+
+  def test_timing_scales_linearly(self):
+
+    def _construct_graph_of_size(size):
+      start = time.time()
+      x = keras.backend.placeholder(shape=(10, 4))
+
+      for _ in range(size):
+        x = keras.layers.Dense(4)(x)
+        x = gen_nn_ops.relu(x)
+
+      end = time.time()
+      return end - start
+
+    size_50 = _construct_graph_of_size(50)
+    size_500 = _construct_graph_of_size(500)
+
+    # Check reasonable graph construction time.
+    self.assertLess(size_50, 5)
+    # Check construction time grows approx. linearly with size.
+    e = 2  # Fudge factor to prevent flakiness.
+    self.assertLess(size_500, (10 * e) * size_50)
 
 
 if __name__ == '__main__':

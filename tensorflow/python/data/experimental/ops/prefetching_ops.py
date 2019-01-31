@@ -147,7 +147,9 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
     next_func_concrete = _next_func._get_concrete_function_internal()  # pylint: disable=protected-access
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
+    @function.defun_with_attributes(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
+        attributes={"experimental_ints_on_device": True})
     def _remote_next_func(string_handle):
       return functional_ops.remote_call(
           target=self._source_device,

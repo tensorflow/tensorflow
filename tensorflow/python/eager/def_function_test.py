@@ -31,6 +31,7 @@ from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
@@ -60,6 +61,21 @@ class _HasDecoratedMethod(object):
   @def_function.function
   def f(self, x):
     return x * 3.
+
+# pylint: disable=bad-continuation,anomalous-backslash-in-string
+MIXING_GRAPH_EAGER_TENSORS_ERROR = (
+"""An op outside of the function building code is being passed
+a "Graph" tensor. It is possible to have Graph tensors
+leak out of the function building context by including a
+tf.init_scope in your function building code.
+For example, the following function will fail:
+  @tf.function
+  def has_init_scope\(\):
+    my_constant = tf.constant\(1.\)
+    with tf.init_scope\(\):
+      added = my_constant \* 2
+The graph tensor has name: Const:0""")
+# pylint: enable=bad-continuation,anomalous-backslash-in-string
 
 
 class DefFunctionTest(test.TestCase):
@@ -295,6 +311,37 @@ class DefFunctionTest(test.TestCase):
     # means the object has been deleted. This should be true as long as the
     # function itself is not involved in a reference cycle.
     self.assertIs(None, weak_fn())
+
+  def testErrorMessageWhenGraphTensorIsPassedToEager(self):
+
+    @def_function.function
+    def failing_function():
+      a = constant_op.constant(1.)
+
+      with ops.init_scope():
+        _ = a + a
+
+    with self.assertRaisesRegexp(TypeError, MIXING_GRAPH_EAGER_TENSORS_ERROR):
+      failing_function()
+
+  def testVariableCreatorScope(self):
+    created_variables = []
+    captured_variables = []
+
+    @def_function.function
+    def f():
+      if not created_variables:
+        created_variables.append(variables.Variable(1.))
+      return created_variables[0] + 1.
+
+    def capture_creator(next_creator, **kwargs):
+      created = next_creator(**kwargs)
+      captured_variables.append(created)
+      return created
+
+    with variable_scope.variable_creator_scope(capture_creator):
+      f()
+    self.assertEqual(created_variables, captured_variables)
 
 
 if __name__ == '__main__':

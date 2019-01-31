@@ -556,6 +556,44 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_sanitize_constant_names",
+    srcs = ["gpu_sanitize_constant_names.cc"],
+    hdrs = ["gpu_sanitize_constant_names.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_sanitize_constant_names_test",
+    srcs = ["gpu_sanitize_constant_names_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_sanitize_constant_names",
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:shape_layout",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:computation_layout",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "fusion_merger",
     srcs = ["fusion_merger.cc"],
     hdrs = ["fusion_merger.h"],
@@ -679,6 +717,7 @@ cc_library(
         ":gpu_hlo_schedule",
         ":gpu_hlo_support_checker",
         ":gpu_layout_assignment",
+        ":gpu_sanitize_constant_names",
         ":instruction_fusion",
         ":ir_emission_utils",
         ":ir_emitter",

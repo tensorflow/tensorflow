@@ -42,6 +42,10 @@ extern const char* kSingleSoftmaxModelMinMinus5MaxPlus5;
 // and max in range [-5, 5], not necessarily -5 or +5.
 extern const char* kSingleAvgPoolModelMinMinus5MaxPlus5;
 
+// Test model with a weights variable that is shared between a convolution layer
+// and an add operation.
+extern const char* kModelWithSharedWeights;
+
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {
  public:

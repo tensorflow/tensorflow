@@ -21,6 +21,23 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+// This optimizer rewrites dataset.map(map_fn, ...).batch(...) and
+// dataset.apply(tf.data.experimental.map_and_batch(map_fn, ...)) patterns in an
+// input pipeline. It vectorizes the map_fn, such that this segment can be
+// rewritten as dataset.batch().map(vectorized_map_fn). This is more performant
+// when the map_fn is cheap, because it amortizes the cost of running a map
+// function over a larger batch.
+//
+// From:
+//      input --> map --> batch --> output
+//              (or map_and_batch)
+//
+// To:
+//      input --> map --> batch --------+
+//        |     (or map_and_batch)      |
+//        |                             v
+//        +-----> batch --> map --> choose_fastest --> output
+//
 class MapVectorization : public TFDataOptimizerBase {
  public:
   MapVectorization() = default;

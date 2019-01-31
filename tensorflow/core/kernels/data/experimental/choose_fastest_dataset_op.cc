@@ -31,6 +31,8 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
   explicit ChooseFastestDatasetOp(OpKernelConstruction* ctx)
       : DatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_experiments", &num_experiments_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
@@ -49,45 +51,43 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       inputs.push_back(input);
     }
 
-    const DataTypeVector& output_types = inputs[0]->output_dtypes();
     for (size_t i = 1, num_inputs = inputs.size(); i < num_inputs; ++i) {
-      OP_REQUIRES(ctx, inputs[i]->output_dtypes() == output_types,
-                  errors::InvalidArgument(
-                      "All inputs to ChooseFastestDataset "
-                      "must have the same output types. Input ",
-                      i, " has output types: ",
-                      DataTypeVectorString(inputs[i]->output_dtypes()),
-                      ", while all prior inputs have types: ",
-                      DataTypeVectorString(output_types), "."));
+      OP_REQUIRES(
+          ctx, inputs[i]->output_dtypes() == output_types_,
+          errors::InvalidArgument(
+              "All inputs to ChooseFastestDataset "
+              "must have the same output types. Input ",
+              i, " has output types: ",
+              DataTypeVectorString(inputs[i]->output_dtypes()),
+              ". Expected: ", DataTypeVectorString(output_types_), "."));
     }
 
-    std::vector<PartialTensorShape> output_shapes = inputs[0]->output_shapes();
     // Merge the output shapes of all the input datasets, returning an
     // error if any of them are incompatible.
     for (size_t i = 1, num_inputs = inputs.size(); i < num_inputs; ++i) {
       OP_REQUIRES(
-          ctx, inputs[i]->output_shapes().size() == output_shapes.size(),
+          ctx, inputs[i]->output_shapes().size() == output_shapes_.size(),
           errors::InvalidArgument(
               "All inputs to ChooseFastestDataset must have compatible outputs."
               " Input ",
               i, " has ", inputs[i]->output_shapes().size(),
-              " components, while all prior inputs have ", output_shapes.size(),
+              " components. Expected to have ", output_shapes_.size(),
               " components."));
-      for (size_t j = 0, num_components = output_shapes.size();
+      for (size_t j = 0, num_components = output_shapes_.size();
            j < num_components; ++j) {
         PartialTensorShape result;
-        OP_REQUIRES(
-            ctx,
-            output_shapes[j]
-                .MergeWith(inputs[i]->output_shapes().at(j), &result)
-                .ok(),
-            errors::InvalidArgument(
-                "All inputs to ChooseFastestDataset must have "
-                "compatible output shapes. Component ",
-                j, " of input ", i, " has shape: ",
-                inputs[i]->output_shapes().at(j), ", while components ", j,
-                " of all prior inputs have shape: ", output_shapes[j], "."));
-        output_shapes[j] = std::move(result);
+        OP_REQUIRES(ctx,
+                    output_shapes_[j]
+                        .MergeWith(inputs[i]->output_shapes().at(j), &result)
+                        .ok(),
+                    errors::InvalidArgument(
+                        "All inputs to ChooseFastestDataset must have "
+                        "compatible output shapes. Component ",
+                        j, " of input ", i,
+                        " has shape: ", inputs[i]->output_shapes().at(j),
+                        ". Expected to be compatible with shape: ",
+                        output_shapes_[j], "."));
+        output_shapes_[j] = std::move(result);
       }
     }
 
@@ -108,7 +108,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
                 "."));
       }
     }
-    *output = new Dataset(ctx, std::move(inputs), std::move(output_shapes),
+    *output = new Dataset(ctx, std::move(inputs), output_types_, output_shapes_,
                           cardinality, num_experiments_);
   }
 
@@ -116,11 +116,13 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, std::vector<DatasetBase*> inputs,
-            std::vector<PartialTensorShape> output_shapes, int64 cardinality,
-            int64 num_experiments)
+            const DataTypeVector& output_types,
+            const std::vector<PartialTensorShape>& output_shapes,
+            int64 cardinality, int64 num_experiments)
         : DatasetBase(DatasetContext(ctx)),
           inputs_(std::move(inputs)),
-          output_shapes_(std::move(output_shapes)),
+          output_types_(output_types),
+          output_shapes_(output_shapes),
           cardinality_(cardinality),
           num_experiments_(num_experiments) {
       for (auto input : inputs_) {
@@ -142,7 +144,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
     }
 
     const DataTypeVector& output_dtypes() const override {
-      return inputs_[0]->output_dtypes();
+      return output_types_;
     }
 
     const std::vector<PartialTensorShape>& output_shapes() const override {
@@ -328,12 +330,15 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
     };  // class Iterator
 
     const std::vector<DatasetBase*> inputs_;
+    const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
     const int64 cardinality_;
     const int64 num_experiments_;
   };  // class Dataset
 
   int64 num_experiments_;
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
 };  // class ChooseFastestDatasetOp
 
 // Register the kernel implementation for ChooseFastestDataset.

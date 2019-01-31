@@ -9,6 +9,13 @@ py_binary(
     name = "linear_regression",
     srcs = ["linear_regression.py"],
     srcs_version = "PY2AND3",
+    deps = [":linear_regression_lib"],
+)
+
+py_library(
+    name = "linear_regression_lib",
+    srcs = ["linear_regression.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/eager/python:tfe",
@@ -20,7 +27,7 @@ cuda_py_test(
     size = "small",
     srcs = ["linear_regression_test.py"],
     additional_deps = [
-        ":linear_regression",
+        ":linear_regression_lib",
         "//tensorflow:tensorflow_py",
     ],
     tags = [
@@ -34,7 +41,7 @@ cuda_py_test(
     size = "small",
     srcs = ["linear_regression_graph_test.py"],
     additional_deps = [
-        ":linear_regression",
+        ":linear_regression_lib",
         "//tensorflow:tensorflow_py",
     ],
 )

@@ -45,7 +45,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.annotation.NonNull;
-import android.support.v13.app.FragmentCompat;
 import android.support.v4.content.ContextCompat;
 import android.text.SpannableString;
 import android.text.SpannableStringBuilder;
@@ -62,6 +61,7 @@ import android.widget.ListView;
 import android.widget.NumberPicker;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.support.v13.app.FragmentCompat;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -70,7 +70,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-
 
 /** Basic fragments for the Camera. */
 public class Camera2BasicFragment extends Fragment

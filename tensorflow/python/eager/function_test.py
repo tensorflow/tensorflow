@@ -49,6 +49,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
@@ -110,6 +111,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with context.function_config_proto(config_proto):
       t = constant_op.constant(1.0)
       self.assertAllEqual(add(t, t).numpy(), 2.0)
+
+  def testNoHash(self):
+
+    @def_function.function()
+    def f(_):
+      return 1.0
+
+    with self.assertRaisesRegexp(TypeError, 'set'):
+      f(set([]))
 
   def testFuncName(self):
 
@@ -953,6 +963,32 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.evaluate(variables.global_variables_initializer())
 
     self.assertAllClose([[[[4.0]]]], self.evaluate(y))
+
+  # Variable lifting is somewhat different between defun/tf.function, so testing
+  # device placement on both makes sense.
+  @parameterized.named_parameters(
+      dict(testcase_name='Defun',
+           function_decorator=function.defun),
+      dict(testcase_name='DefFunction',
+           function_decorator=def_function.function))
+  @test_util.run_in_graph_and_eager_modes
+  def testVariablesPlacedOnOutsideDevice(self, function_decorator):
+
+    class _Obj(object):
+
+      def __init__(self):
+        self.v = None
+
+      @function_decorator
+      def f(self):
+        if self.v is None:
+          self.v = variables.Variable(1.)
+        return self.v + 1.
+
+    has_device = _Obj()
+    with ops.device('cpu:0'):
+      has_device.f()
+    self.assertIn('CPU', has_device.v.device)
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testDefunKerasModelCall(self):
@@ -2093,6 +2129,24 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertIn('fn -> fn2', e.message)
       self.assertIn('node assert_equal/Assert/Assert (defined at', e.message)
       self.assertNotIn('fn3', e.message)
+
+  def testFunctionIsNotPinned(self):
+    """Tests that functions aren't pinned to the CPU by the eager runtime."""
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+    seed1, seed2 = 79, 25
+    shape = constant_op.constant([4, 7])
+    dtype = dtypes.float32
+
+    @def_function.function
+    def func():
+      with ops.device('GPU:0'):
+        return gen_random_ops.random_standard_normal(
+            shape, dtype=dtype, seed=seed1, seed2=seed2)
+
+    with ops.device('GPU:0'):
+      x = func()
+      self.assertRegexpMatches(x.device, 'GPU')
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

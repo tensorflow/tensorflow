@@ -256,6 +256,49 @@ TEST(ConstFloatMeanOpTest, KeepDims) {
               ElementsAreArray(ArrayFloatNear({10.5, 12.5, 14.5})));
 }
 
+// Uses a set of reduction conditions that trigger the specialized 4D version
+// of Mean.
+TEST(ConstFloatMeanOpTest, KeepDims_4DMean) {
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  MeanOpConstModel m({TensorType_FLOAT32, {2, 2, 3, 2}},
+                     {TensorType_FLOAT32, {3}}, {2}, {1, 2}, true);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 1, 2}));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear({6, 7, 18, 19})));
+}
+
+TEST(ConstFloatMeanOpTest, KeepDims_4DMean_UInt8) {
+  float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
+  std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.1, 0.2,
+                             0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
+  MeanOpConstModel m({TensorType_UINT8, {1, 2, 2, 3}, -1.0, 1.0},
+                     {TensorType_UINT8, {2}, -1.0, 1.0}, {2}, {1, 2}, true);
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 3}));
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear({0.25098, 0.25098, 0.25098},
+                                              kQuantizedTolerance)));
+}
+
+TEST(ConstFloatMeanOpTest, KeepDims_4DMean_Quantized) {
+  float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+  std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.1, 0.2,
+                             0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
+  MeanOpConstModel m({TensorType_UINT8, {1, 2, 3, 2}, 0.0, 1.0},
+                     {TensorType_UINT8, {3}, -5.0, 5.0}, {2}, {1, 2}, true);
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 2}));
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(
+                  ArrayFloatNear({0.235294, 0.313726}, kQuantizedTolerance)));
+}
+
 TEST(ConstFloatMeanOpTest, Scalar) {
   std::vector<float> data = {3.27};
   MeanOpConstModel m({TensorType_FLOAT32, {}}, {TensorType_FLOAT32, {}}, {},

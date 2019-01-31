@@ -355,6 +355,10 @@ bool IsRandomShuffle(const NodeDef& node) {
 
 bool IsRank(const NodeDef& node) { return node.op() == "Rank"; }
 
+bool IsReadVariableOp(const NodeDef& node) {
+  return node.op() == "ReadVariableOp";
+}
+
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }
 
 bool IsRealDiv(const NodeDef& node) { return node.op() == "RealDiv"; }
@@ -566,6 +570,22 @@ bool IsDataset(const NodeDef& node) {
   // See `GetNodeClassForOp` in core/graph/graph.cc.
   return op == "IteratorGetNext" || op == "IteratorGetNextSync" ||
          op == "DatasetToSingleElement" || op == "ReduceDataset";
+}
+
+bool IsStateful(const NodeDef node, const OpRegistryInterface* op_registry) {
+  const OpDef* op_def = nullptr;
+  const string& op_name = node.op();
+  Status status = op_registry->LookUpOpDef(op_name, &op_def);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to lookup OpDef for " << op_name
+                 << ". Error: " << status.error_message();
+    return false;
+  }
+  return op_def->is_stateful();
+}
+
+bool IsStateful(const NodeDef node) {
+  return IsStateful(node, OpRegistry::Global());
 }
 
 bool IsFreeOfSideEffect(const NodeDef& node,

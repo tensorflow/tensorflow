@@ -465,6 +465,40 @@ TEST_F(BufferAssignmentTest, Basic) {
   GetAssignedOutputAllocation(*buffers, sub);
 }
 
+TEST_F(BufferAssignmentTest, AliasedParamCanBeReused) {
+  // If an input buffer and output buffer aliases, the input buffer can be
+  // reused for other intermediate results.
+  //
+  // param0[100] ----- (neg1) -- (neg2)
+  //    |                           |
+  //    + -------- Aliased ---------+
+
+  auto builder = HloComputation::Builder(TestName());
+
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec100_, "p0"));
+  auto neg_1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param));
+  auto neg_2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, neg_1));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias(
+      {}, 0, {}, HloInputOutputAliasConfig::kUserAlias));
+
+  auto buffers = RunBufferAssignment(module.get());
+
+  BufferAllocation param_buffer = GetAssignedInputAllocation(*buffers, param);
+  BufferAllocation neg_1_buffer = GetAllocation(*buffers, neg_1, {});
+  BufferAllocation neg_2_buffer = GetAllocation(*buffers, neg_2, {});
+
+  // Everything use one buffer.
+  EXPECT_EQ(param_buffer.index(), neg_1_buffer.index());
+  EXPECT_EQ(neg_2_buffer.index(), neg_1_buffer.index());
+}
+
 TEST_F(BufferAssignmentTest, AddCannotReuse) {
   // Pass in a special rule to indicate that "add" cannot reuse any buffer.
   //

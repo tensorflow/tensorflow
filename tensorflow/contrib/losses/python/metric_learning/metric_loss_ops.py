@@ -105,7 +105,8 @@ def contrastive_loss(labels, embeddings_anchor, embeddings_positive,
   # Get per pair distances
   distances = math_ops.sqrt(
       math_ops.reduce_sum(
-          math_ops.square(embeddings_anchor - embeddings_positive), 1))
+          math_ops.squared_difference(embeddings_anchor, embeddings_positive),
+          1))
 
   # Add contrastive loss for the siamese network.
   #   label here is {0,1} for neg, pos.

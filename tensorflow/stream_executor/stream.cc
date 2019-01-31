@@ -1742,22 +1742,6 @@ Stream &Stream::ThenPoolBackward(
   return *this;
 }
 
-Stream &Stream::ThenNormalize(
-    const dnn::NormalizeDescriptor &normalize_descriptor,
-    const DeviceMemory<float> &input_data, DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(normalize_descriptor), PARAM(input_data), PARAM(output_data));
-
-  if (ok()) {
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      CheckError(dnn->DoNormalize(this, normalize_descriptor, input_data,
-                                  output_data));
-    } else {
-      SetErrorAndLogNoDnnSupport();
-    }
-  }
-  return *this;
-}
-
 Stream &Stream::ThenNormalizeWithDimensions(
     const dnn::NormalizeDescriptor &normalize_descriptor,
     const dnn::BatchDescriptor &dimensions,

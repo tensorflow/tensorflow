@@ -33,12 +33,16 @@ tf_module {
     argspec: "args=[\'image\', \'central_fraction\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "combined_non_max_suppression"
+    argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "convert_image_dtype"
     argspec: "args=[\'image\', \'dtype\', \'saturate\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "crop_and_resize"
-    argspec: "args=[\'image\', \'boxes\', \'box_ind\', \'crop_size\', \'method\', \'extrapolation_value\', \'name\'], varargs=None, keywords=None, defaults=[\'bilinear\', \'0\', \'None\'], "
+    argspec: "args=[\'image\', \'boxes\', \'box_ind\', \'crop_size\', \'method\', \'extrapolation_value\', \'name\', \'box_indices\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'bilinear\', \'0\', \'None\', \'None\'], "
   }
   member_method {
     name: "crop_to_bounding_box"
@@ -86,7 +90,7 @@ tf_module {
   }
   member_method {
     name: "extract_image_patches"
-    argspec: "args=[\'images\', \'ksizes\', \'strides\', \'rates\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'images\', \'ksizes\', \'strides\', \'rates\', \'padding\', \'name\', \'sizes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "extract_jpeg_shape"
@@ -194,7 +198,7 @@ tf_module {
   }
   member_method {
     name: "resize_image_with_pad"
-    argspec: "args=[\'image\', \'target_height\', \'target_width\', \'method\'], varargs=None, keywords=None, defaults=[\'0\'], "
+    argspec: "args=[\'image\', \'target_height\', \'target_width\', \'method\', \'align_corners\'], varargs=None, keywords=None, defaults=[\'0\', \'False\'], "
   }
   member_method {
     name: "resize_images"

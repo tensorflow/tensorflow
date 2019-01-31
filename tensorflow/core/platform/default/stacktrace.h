@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_DEFAULT_STACKTRACE_H_
 
 #include "tensorflow/core/platform/platform.h"
-#if !defined(IS_MOBILE_PLATFORM) && defined(PLATFORM_POSIX) && \
-    (defined(__clang__) || defined(__GNUC__))
+#if !defined(IS_MOBILE_PLATFORM) && !defined(PLATFORM_WINDOWS) && \
+    defined(PLATFORM_POSIX) && (defined(__clang__) || defined(__GNUC__))
 #define TF_GENERATE_BACKTRACE
 #endif
 

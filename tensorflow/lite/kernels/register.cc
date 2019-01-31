@@ -131,6 +131,7 @@ TfLiteRegistration* Register_SQUARED_DIFFERENCE();
 TfLiteRegistration* Register_FILL();
 TfLiteRegistration* Register_MIRROR_PAD();
 TfLiteRegistration* Register_UNIQUE();
+TfLiteRegistration* Register_REVERSE_V2();
 
 TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
   context->ReportError(
@@ -166,15 +167,17 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6());
   AddBuiltin(BuiltinOperator_TANH, Register_TANH());
   AddBuiltin(BuiltinOperator_LOGISTIC, Register_LOGISTIC());
-  AddBuiltin(BuiltinOperator_AVERAGE_POOL_2D, Register_AVERAGE_POOL_2D());
+  AddBuiltin(BuiltinOperator_AVERAGE_POOL_2D, Register_AVERAGE_POOL_2D(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_MAX_POOL_2D, Register_MAX_POOL_2D());
   AddBuiltin(BuiltinOperator_L2_POOL_2D, Register_L2_POOL_2D());
   AddBuiltin(BuiltinOperator_CONV_2D, Register_CONV_2D(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D, Register_DEPTHWISE_CONV_2D(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_SVDF, Register_SVDF(),
              /* min_version */ 1,
              /* max_version */ 2);
@@ -199,7 +202,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 3);
   AddBuiltin(BuiltinOperator_LSH_PROJECTION, Register_LSH_PROJECTION());
   AddBuiltin(BuiltinOperator_HASHTABLE_LOOKUP, Register_HASHTABLE_LOOKUP());
-  AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX());
+  AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_CONCATENATION, Register_CONCATENATION());
   AddBuiltin(BuiltinOperator_ADD, Register_ADD());
   AddBuiltin(BuiltinOperator_SPACE_TO_BATCH_ND, Register_SPACE_TO_BATCH_ND());
@@ -288,6 +293,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_FILL, Register_FILL());
   AddBuiltin(BuiltinOperator_MIRROR_PAD, Register_MIRROR_PAD());
   AddBuiltin(BuiltinOperator_UNIQUE, Register_UNIQUE());
+  AddBuiltin(BuiltinOperator_REVERSE_V2, Register_REVERSE_V2());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

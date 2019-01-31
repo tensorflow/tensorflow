@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
+#include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 
 // Disallow Numpy 1.7 deprecated symbols.
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
@@ -60,36 +62,6 @@ limitations under the License.
 namespace tflite {
 namespace interpreter_wrapper {
 
-class PythonErrorReporter : public tflite::ErrorReporter {
- public:
-  PythonErrorReporter() {}
-
-  // Report an error message
-  int Report(const char* format, va_list args) override {
-    char buf[1024];
-    int formatted = vsnprintf(buf, sizeof(buf), format, args);
-    buffer_ << buf;
-    return formatted;
-  }
-
-  // Set's a Python runtime exception with the last error.
-  PyObject* exception() {
-    std::string last_message = message();
-    PyErr_SetString(PyExc_RuntimeError, last_message.c_str());
-    return nullptr;
-  }
-
-  // Gets the last error message and clears the buffer.
-  std::string message() {
-    std::string value = buffer_.str();
-    buffer_.clear();
-    return value;
-  }
-
- private:
-  std::stringstream buffer_;
-};
-
 namespace {
 
 // Calls PyArray's initialization to initialize all the API pointers. Note that
@@ -112,61 +84,6 @@ std::unique_ptr<tflite::Interpreter> CreateInterpreter(
     return nullptr;
   }
   return interpreter;
-}
-
-int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
-  switch (tf_lite_type) {
-    case kTfLiteFloat32:
-      return NPY_FLOAT32;
-    case kTfLiteInt32:
-      return NPY_INT32;
-    case kTfLiteInt16:
-      return NPY_INT16;
-    case kTfLiteUInt8:
-      return NPY_UINT8;
-    case kTfLiteInt8:
-      return NPY_INT8;
-    case kTfLiteInt64:
-      return NPY_INT64;
-    case kTfLiteString:
-      return NPY_OBJECT;
-    case kTfLiteBool:
-      return NPY_BOOL;
-    case kTfLiteComplex64:
-      return NPY_COMPLEX64;
-    case kTfLiteNoType:
-      return NPY_NOTYPE;
-      // Avoid default so compiler errors created when new types are made.
-  }
-  return NPY_NOTYPE;
-}
-
-TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array) {
-  int pyarray_type = PyArray_TYPE(array);
-  switch (pyarray_type) {
-    case NPY_FLOAT32:
-      return kTfLiteFloat32;
-    case NPY_INT32:
-      return kTfLiteInt32;
-    case NPY_INT16:
-      return kTfLiteInt16;
-    case NPY_UINT8:
-      return kTfLiteUInt8;
-    case NPY_INT8:
-      return kTfLiteInt8;
-    case NPY_INT64:
-      return kTfLiteInt64;
-    case NPY_BOOL:
-      return kTfLiteBool;
-    case NPY_OBJECT:
-    case NPY_STRING:
-    case NPY_UNICODE:
-      return kTfLiteString;
-    case NPY_COMPLEX64:
-      return kTfLiteComplex64;
-      // Avoid default so compiler errors created when new types are made.
-  }
-  return kTfLiteNoType;
 }
 
 struct PyDecrefDeleter {
@@ -307,7 +224,7 @@ PyObject* InterpreterWrapper::TensorType(int i) const {
     return nullptr;
   }
 
-  int code = TfLiteTypeToPyArrayType(tensor->type);
+  int code = python_utils::TfLiteTypeToPyArrayType(tensor->type);
   if (code == -1) {
     PyErr_Format(PyExc_ValueError, "Invalid tflite type code %d", code);
     return nullptr;
@@ -352,12 +269,12 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value) {
   PyArrayObject* array = reinterpret_cast<PyArrayObject*>(array_safe.get());
   const TfLiteTensor* tensor = interpreter_->tensor(i);
 
-  if (TfLiteTypeFromPyArray(array) != tensor->type) {
+  if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
     PyErr_Format(PyExc_ValueError,
                  "Cannot set tensor:"
                  " Got tensor of type %d"
                  " but expected type %d for input %d ",
-                 TfLiteTypeFromPyArray(array), tensor->type, i);
+                 python_utils::TfLiteTypeFromPyArray(array), tensor->type, i);
     return nullptr;
   }
 
@@ -400,7 +317,7 @@ PyObject* CheckGetTensorArgs(Interpreter* interpreter_, int tensor_index,
     return nullptr;
   }
 
-  *type_num = TfLiteTypeToPyArrayType((*tensor)->type);
+  *type_num = python_utils::TfLiteTypeToPyArrayType((*tensor)->type);
   if (*type_num == -1) {
     PyErr_SetString(PyExc_ValueError, "Unknown tensor type.");
     return nullptr;

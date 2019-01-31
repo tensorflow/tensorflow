@@ -18,6 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
+from absl.testing import parameterized
+
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.framework import ops
 from tensorflow.python.module import module
@@ -316,11 +320,15 @@ class CallsMethodBeforeSuperConstructorModule(module.Module):
   def with_name_scope(self):
     pass
 
+NamedPair = collections.namedtuple("NamedPair", ("first", "second"))
+mk_index_dict = lambda v: dict(enumerate(v))
 
-class WalkTest(test.TestCase):
 
-  def test_walk(self):
-    parent = SimpleModule()
+class WalkTest(parameterized.TestCase, test.TestCase):
+
+  @parameterized.parameters(lambda v: NamedPair(*v), list, tuple, mk_index_dict)
+  def test_walk(self, container_type):
+    parent = SimpleModule(container_type=container_type)
     child = parent.c
 
     self.assertEqual(
@@ -339,10 +347,10 @@ class MemberType(object):
 
 class SimpleModule(module.Module):
 
-  def __init__(self, create_child=True):
+  def __init__(self, create_child=True, container_type=list):
     super(SimpleModule, self).__init__()
     self.z = MemberType()
-    self.a = [MemberType(), MemberType()]
+    self.a = container_type([MemberType(), MemberType()])
     if create_child:
       self.c = SimpleModule(create_child=False)
 

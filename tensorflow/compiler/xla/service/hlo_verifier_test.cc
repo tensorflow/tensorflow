@@ -535,5 +535,22 @@ TEST_F(HloVerifierTestAllowMixedPrecision, SelectMixedPrecisionAllowed) {
   ASSERT_TRUE(status.ok());
 }
 
+TEST_F(HloVerifierTest, IotaNonArrayResult) {
+  const char* const hlo_string = R"(
+  HloModule IotaTupleResult
+
+  ENTRY  kernelEntry {
+    ROOT iota = () iota(), iota_dimension=24
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("does not support non-array result"));
+}
+
 }  // namespace
 }  // namespace xla

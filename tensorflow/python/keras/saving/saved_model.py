@@ -255,9 +255,8 @@ def _export_mode(
         'Model does not have an optimizer. Cannot export mode %s' % mode)
 
   model_graph = ops.get_default_graph()
-  with ops.Graph().as_default() as g:
-
-    K.set_learning_phase(mode == mode_keys.ModeKeys.TRAIN)
+  with ops.Graph().as_default() as g, K.learning_phase_scope(
+      mode == mode_keys.ModeKeys.TRAIN):
 
     if input_signature is None:
       input_tensors = None

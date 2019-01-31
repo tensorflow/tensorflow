@@ -25,6 +25,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework.auto_control_deps import AutomaticControlDependencies
@@ -62,12 +63,6 @@ class UnknownArgument(object):
   pass
 
 
-# TODO(vbardiovsky): Remove this when nest is updated with new
-# flatten_with_tuple_paths.
-def flatten_with_tuple_paths(structure):
-  return list(zip(nest.yield_flat_paths(structure), nest.flatten(structure)))
-
-
 def convert_structure_to_signature(structure, arg_names=None):
   """Convert a potentially nested structure to a signature.
 
@@ -86,20 +81,29 @@ def convert_structure_to_signature(structure, arg_names=None):
     """A representation for this argument, for converting into signatures."""
     if isinstance(arg, ops.Tensor):
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
-    if isinstance(arg, (int, float, bool, tensor_spec.TensorSpec)):
+    if isinstance(arg, (
+        int,
+        float,
+        bool,
+        type(None),
+        dtypes.DType,
+        tensor_spec.TensorSpec,
+    )):
       return arg
     return UnknownArgument()
 
   # We are using the flattened paths to name the TensorSpecs. We need an
   # explicit name for them downstream.
-  flattened = flatten_with_tuple_paths(structure)
+  flattened = nest.flatten_with_tuple_paths(structure)
   if arg_names:
     if len(arg_names) != len(structure):
       raise ValueError(
           "Passed in arg_names don't match actual signature (%s)." % arg_names)
     # Replace all top-level names with their actual arg_names. If a path before
     # was "(2,'a',1)", it will become "(arg_names[2],'a',1)".
-    flattened = [((arg_names[0],) + path[1:], arg) for path, arg in flattened]
+    flattened = [
+        ((arg_names[path[0]],) + path[1:], arg) for path, arg in flattened
+    ]
 
   mapped = [
       encode_arg(arg, "/".join([str(p) for p in path]))
@@ -394,6 +398,7 @@ def func_graph_from_py_func(name,
                             signature=None,
                             func_graph=None,
                             autograph=False,
+                            autograph_options=None,
                             add_control_dependencies=True,
                             arg_names=None,
                             op_return_value=None,
@@ -415,6 +420,8 @@ def func_graph_from_py_func(name,
     func_graph: Optional. An instance of FuncGraph. If provided, we will use
       this graph else a new one is built and returned.
     autograph: whether to use autograph to compile `python_func`.
+      See https://www.tensorflow.org/guide/autograph for more information.
+    autograph_options: additional knobs to control when `autograph=True`.
       See https://www.tensorflow.org/guide/autograph for more information.
     add_control_dependencies: If True, automatically adds control dependencies
       to ensure program order matches execution order and stateful ops always
@@ -518,7 +525,7 @@ def func_graph_from_py_func(name,
                   verbose=autograph.Verbosity.BRIEF,
                   recursive=True,
                   strip_decorators=(def_function.function,),
-                  optional_features=(),
+                  optional_features=autograph_options,
                   force_conversion=True,
               ), *args, **kwargs)
 

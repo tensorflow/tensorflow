@@ -112,12 +112,7 @@ GrpcServer::~GrpcServer() {
 
 void GrpcServer::MaybeMutateBuilder(::grpc::ServerBuilder* builder) {}
 
-Status GrpcServer::Init(
-    ServiceInitFunction service_func,
-    const RendezvousMgrCreationFunction& rendezvous_mgr_func,
-    const CollectiveMgrCreationFunction& collective_mgr_func,
-    const WorkerCreationFunction& worker_func,
-    const StatsPublisherFactory& stats_factory) {
+Status GrpcServer::Init(const GrpcServerOptions& opts) {
   mutex_lock l(mu_);
   CHECK_EQ(state_, NEW);
   master_env_.env = env_;
@@ -165,9 +160,9 @@ Status GrpcServer::Init(
   worker_env_.device_mgr = new DeviceMgr(std::move(devices));
   master_env_.local_devices = worker_env_.device_mgr->ListDevices();
   worker_env_.local_devices = worker_env_.device_mgr->ListDevices();
-  worker_env_.rendezvous_mgr = rendezvous_mgr_func == nullptr
+  worker_env_.rendezvous_mgr = opts.rendezvous_mgr_func == nullptr
                                    ? new RpcRendezvousMgr(&worker_env_)
-                                   : rendezvous_mgr_func(&worker_env_);
+                                   : opts.rendezvous_mgr_func(&worker_env_);
   string unused;
   string default_worker_name;
   if (!DeviceNameUtils::SplitDeviceName(master_env_.local_devices[0]->name(),
@@ -200,15 +195,16 @@ Status GrpcServer::Init(
   MaybeMutateBuilder(&builder);
   master_impl_ = CreateMaster(&master_env_);
   master_service_ = NewGrpcMasterService(master_impl_.get(), config, &builder);
-  worker_impl_ = worker_func ? worker_func(&worker_env_, config)
-                             : NewGrpcWorker(&worker_env_, config);
-  worker_service_ =
-      NewGrpcWorkerService(worker_impl_.get(), &builder).release();
+  worker_impl_ = opts.worker_func ? opts.worker_func(&worker_env_, config)
+                                  : NewGrpcWorker(&worker_env_, config);
+  worker_service_ = NewGrpcWorkerService(worker_impl_.get(), &builder,
+                                         opts.worker_service_options)
+                        .release();
   eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);
 
   // extra service:
-  if (service_func != nullptr) {
-    service_func(&worker_env_, &builder);
+  if (opts.service_func != nullptr) {
+    opts.service_func(&worker_env_, &builder);
   }
   server_ = builder.BuildAndStart();
 
@@ -222,9 +218,9 @@ Status GrpcServer::Init(
       WorkerCacheFactory(worker_cache_factory_options, &worker_cache));
   CHECK_NE(nullptr, worker_cache);
 
-  if (collective_mgr_func) {
+  if (opts.collective_mgr_func) {
     worker_env_.collective_executor_mgr =
-        collective_mgr_func(config, &worker_env_, worker_cache);
+        opts.collective_mgr_func(config, &worker_env_, worker_cache);
     if (!worker_env_.collective_executor_mgr) {
       return errors::Internal(
           "collective_mgr_func did not return CollectiveExecutorMgr");
@@ -256,6 +252,7 @@ Status GrpcServer::Init(
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_cache;
   master_env_.collective_executor_mgr = worker_env_.collective_executor_mgr;
+  StatsPublisherFactory stats_factory = opts.stats_factory;
   master_env_.master_session_factory =
       [config, stats_factory](
           SessionOptions options, const MasterEnv* env,
@@ -281,31 +278,6 @@ Status GrpcServer::Init(
 
   return Status::OK();
 }
-
-Status GrpcServer::Init(
-    ServiceInitFunction service_func,
-    const RendezvousMgrCreationFunction& rendezvous_mgr_func,
-    const CollectiveMgrCreationFunction& collective_mgr_func,
-    const WorkerCreationFunction& worker_func) {
-  return Init(std::move(service_func), rendezvous_mgr_func, collective_mgr_func,
-              worker_func, CreateNoOpStatsPublisher);
-}
-
-Status GrpcServer::Init(
-    ServiceInitFunction service_func,
-    const RendezvousMgrCreationFunction& rendezvous_mgr_func,
-    const CollectiveMgrCreationFunction& collective_mgr_func) {
-  return Init(std::move(service_func), rendezvous_mgr_func, collective_mgr_func,
-              nullptr);
-}
-
-Status GrpcServer::Init(
-    ServiceInitFunction service_func,
-    const RendezvousMgrCreationFunction& rendezvous_mgr_func) {
-  return Init(std::move(service_func), rendezvous_mgr_func, nullptr, nullptr);
-}
-
-Status GrpcServer::Init() { return Init(nullptr, nullptr, nullptr, nullptr); }
 
 Status GrpcServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
                                     GrpcChannelSpec* channel_spec) {
@@ -457,7 +429,9 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
   ServiceInitFunction service_func = nullptr;
-  Status s = ret->Init(service_func, NewRpcRendezvousMgr, nullptr);
+  GrpcServerOptions options;
+  options.rendezvous_mgr_func = NewRpcRendezvousMgr;
+  Status s = ret->Init(options);
   if (!s.ok()) {
     LOG(ERROR) << s;
     return s;
@@ -471,8 +445,9 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
                           std::unique_ptr<GrpcServer>* out_server) {
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
-  ServiceInitFunction service_func = nullptr;
-  Status s = ret->Init(service_func, NewRpcRendezvousMgr, nullptr);
+  GrpcServerOptions options;
+  options.rendezvous_mgr_func = NewRpcRendezvousMgr;
+  Status s = ret->Init(options);
   if (!s.ok()) {
     LOG(ERROR) << s;
     return s;

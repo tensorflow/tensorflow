@@ -57,8 +57,8 @@ EagerContext::EagerContext(const SessionOptions& opts,
       rendezvous_(rendezvous),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       pflr_(new ProcessFunctionLibraryRuntime(
-          device_mgr, opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_, {},
-          thread_pool_.get())),
+          device_mgr, opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_,
+          opts.config.graph_options().optimizer_options(), thread_pool_.get())),
       log_device_placement_(opts.config.log_device_placement()),
       num_active_steps_(0),
       async_default_(async),
@@ -66,7 +66,7 @@ EagerContext::EagerContext(const SessionOptions& opts,
       env_(opts.env),
       use_send_tensor_rpc_(false),
       pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
-          "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", true)) {
+          "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)) {
   if (device_mgr_owned) {
     local_device_manager_.reset(device_mgr);
     local_unowned_device_manager_ = nullptr;
@@ -207,6 +207,14 @@ EagerContext::~EagerContext() {
   executor_.WaitForAllPendingNodes().IgnoreError();
   ClearCaches();
   rendezvous_->Unref();
+
+  for (auto& thread : child_threads_) {
+    thread.reset();
+  }
+}
+
+void EagerContext::AddChildThread(std::unique_ptr<Thread> thread) {
+  child_threads_.push_back(std::move(thread));
 }
 
 bool EagerContext::FindFunctionByName(const string& name) {

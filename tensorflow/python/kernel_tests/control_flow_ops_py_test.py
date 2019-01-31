@@ -53,10 +53,12 @@ from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_state_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
@@ -429,6 +431,24 @@ class ControlFlowTest(test.TestCase):
     self.assertAllEqual(11, val)
     self.assertAllEqual(0, ind)
 
+  def testCondMismatchedIndexedSlices(self):
+    @def_function.function
+    def foo():
+      values = constant_op.constant(10)
+      indices = constant_op.constant(0)
+      x = ops.IndexedSlices(values, indices)
+      v1_msg = "The two structures don't have the same nested structure"
+      v2_msg = ("true_fn and false_fn arguments to tf.cond must have the same "
+                "number, type, and overall structure of return values.")
+      with self.assertRaisesRegexp(
+          TypeError,
+          v2_msg if control_flow_util.ENABLE_CONTROL_FLOW_V2 else v1_msg):
+        control_flow_ops.cond(
+            constant_op.constant(True),
+            lambda: ops.IndexedSlices(math_ops.add(x.values, 1), indices),
+            lambda: math_ops.add(x.values, 1), indices)
+    foo()
+
   def testCondSparseTensor(self):
     values = constant_op.constant([2.0, 4.0], name="values")
     indices = constant_op.constant([[0], [3]],
@@ -478,7 +498,7 @@ class ControlFlowTest(test.TestCase):
         pred = array_ops.placeholder(dtypes.bool, [])
         x = constant_op.constant([1.0, 2.0, 3.0])
         y = control_flow_ops.cond(
-            pred, lambda: functional_ops.map_fn(lambda z: z * 2.0, x),
+            pred, lambda: map_fn.map_fn(lambda z: z * 2.0, x),
             lambda: constant_op.constant([1.0, 1.0, 1.0]))
         g = gradients_impl.gradients(y, x)[0]
 
@@ -714,12 +734,12 @@ class ControlFlowTest(test.TestCase):
       fn1 = lambda: {"a": math_ops.add(x, y), "b": math_ops.add(x, y)}
       fn2 = lambda: {"c": y, "d": y}
       v1_msg = "The two structures don't have the same nested structure"
-      v2_msg = "Outputs of true_fn and false_fn must have the same structure"
+      v2_msg = ("true_fn and false_fn arguments to tf.cond must have the same "
+                "number, type, and overall structure of return values.")
       with self.assertRaisesRegexp(
-          ValueError,
+          TypeError if control_flow_util.ENABLE_CONTROL_FLOW_V2 else ValueError,
           v2_msg if control_flow_util.ENABLE_CONTROL_FLOW_V2 else v1_msg):
-        r = control_flow_ops.cond(pred, fn1, fn2)
-        self.evaluate(r)
+        control_flow_ops.cond(pred, fn1, fn2)
 
   @test_util.run_deprecated_v1
   def testCondRef(self):
@@ -923,6 +943,68 @@ class ControlFlowTest(test.TestCase):
           sum(y for (x, y) in zip(gi, gv) if x == i) for i in range(2)
       ]
       self.assertAllEqual(dense_gv, [0.0, 2.0])
+
+  @test_util.run_deprecated_v1
+  def testCondGrad_ResourceVarSparseRead(self):
+    # NOTE(skyewm): this test is interesting because the
+    # ResourceVariable.sparse_read gradient function returns IndexedSlices.
+    var = resource_variable_ops.ResourceVariable(
+        np.ones((4, 2), dtype=np.float32))
+    x = constant_op.constant(1.0)
+    r = control_flow_ops.cond(
+        constant_op.constant(True),
+        lambda: x * math_ops.reduce_sum(var.sparse_read([1, 2])),
+        lambda: constant_op.constant(np.zeros((2, 3)),
+                                     dtype=dtypes.float32))
+    grad = gradients_impl.gradients(r, var)[0]
+
+    self.evaluate(variables.global_variables_initializer())
+    grad_val = self.evaluate(grad)
+    self.assertIsInstance(grad_val, ops.IndexedSlicesValue)
+    self.assertAllEqual(gradient_checker_v2._to_numpy(grad_val), [[0., 0.],
+                                                                  [1., 1.],
+                                                                  [1., 1.],
+                                                                  [0., 0.]])
+
+  def testCondGrad_MultiGather(self):
+    # NOTE(skyewm): this test is interesting because the array_ops.gather and
+    # ResourceVariable.sparse_read gradient functions returns IndexedSlices.
+    var = resource_variable_ops.ResourceVariable(
+        np.ones((4, 2), dtype=np.float32))
+    x1 = constant_op.constant(np.ones((3, 3), dtype=np.float32))
+    x2 = constant_op.constant(2.0)
+
+    def true_fn():
+      y1 = var.sparse_read([1, 2])
+      y2 = array_ops.gather(x1, [2]) * x2
+      y3 = x2 * [1., 1., 1.]
+      return y1, y2, y3
+
+    def false_fn():
+      y1 = np.zeros((2, 2), dtype=np.float32)
+      y2 = array_ops.gather(x1, [2]) * x2
+      y3 = array_ops.gather(x1, [2])
+      return y1, y2, y3
+
+    @def_function.function
+    def foo():
+      r = control_flow_ops.cond(constant_op.constant(True), true_fn, false_fn)
+      return gradients_impl.gradients(r, [var, x1, x2])
+
+    grad = foo()
+    self.evaluate(variables.global_variables_initializer())
+    var_grad, x1_grad, x2_grad = self.evaluate(grad)
+    self.assertIsInstance(var_grad, ops.IndexedSlicesValue)
+    self.assertAllEqual(gradient_checker_v2._to_numpy(var_grad), [[0., 0.],
+                                                                  [1., 1.],
+                                                                  [1., 1.],
+                                                                  [0., 0]])
+    self.assertIsInstance(x1_grad, ops.IndexedSlicesValue)
+    self.assertAllEqual(gradient_checker_v2._to_numpy(x1_grad), [[0., 0., 0.],
+                                                                 [0., 0., 0.],
+                                                                 [2., 2., 2.]])
+    self.assertIsInstance(x1_grad, ops.IndexedSlicesValue)
+    self.assertEqual(gradient_checker_v2._to_numpy(x2_grad), 6.)
 
   @test_util.run_v1_only("b/120545219")
   def testCondPredicateTensor(self):
@@ -1276,7 +1358,7 @@ class ControlFlowTest(test.TestCase):
           r"while loop context '' \(currently defined in 'cond/.+'\)"):
         _ = gradients_impl.gradients(loop, v)
 
-  @test_util.disable_control_flow_v2("b/118457764")
+  @test_util.disable_control_flow_v2("b/123601232")
   @test_util.run_v1_only("b/120545219")
   def testNestedWhileLoopWithMaxItersFromOuterContextInXLAContext(self):
     v = constant_op.constant(1.0)
@@ -2852,10 +2934,10 @@ class ControlFlowTest(test.TestCase):
 
       def inner_loop(t):
         fn = lambda n: n + math_ops.square(var)
-        return functional_ops.map_fn(fn=fn, elems=t, parallel_iterations=10)
+        return map_fn.map_fn(fn=fn, elems=t, parallel_iterations=10)
 
       def outer_loop(inp):
-        return functional_ops.map_fn(
+        return map_fn.map_fn(
             fn=inner_loop, elems=inp, parallel_iterations=10)
 
       var = variables.Variable(constant_op.constant(3.0))
@@ -3041,7 +3123,7 @@ class ControlFlowTest(test.TestCase):
       def b(i, y):
         return [
             i + 1,
-            functional_ops.map_fn(lambda x: math_ops.multiply(x, param), y)
+            map_fn.map_fn(lambda x: math_ops.multiply(x, param), y)
         ]
 
       r = control_flow_ops.while_loop(c, b, [n0, y0], parallel_iterations=1)
@@ -3052,25 +3134,24 @@ class ControlFlowTest(test.TestCase):
   def testNestedWhileAndTensorArray(self):
     n = constant_op.constant(3.0)
 
-    def Body(row, ta, n):
+    def Body(row, ta):
 
-      def InnerBody(row, col, ta, n):
+      def InnerBody(row, col, ta):
         # Note: row and col are 1-based.
         ta = ta.write(
             math_ops.cast(n * (row - 1.) + col - 1., dtypes.int32), row * col)
-        return row, col + 1., ta, n
+        return row, col + 1., ta
 
-      # TODO(b/118457764): Remove n from loop_vars from both loops once fixed.
       ta = control_flow_ops.while_loop(
-          lambda _, col, _1, n: col <= n,
-          InnerBody, [row, constant_op.constant(1.), ta, n],
+          lambda _, col, _1: col <= n,
+          InnerBody, [row, constant_op.constant(1.), ta],
           return_same_structure=False)[2]
-      return row + 1., ta, n
+      return row + 1., ta
 
     ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=9)
     ta = control_flow_ops.while_loop(
-        lambda row, _, _1: row <= n,
-        Body, [constant_op.constant(1.), ta, n],
+        lambda row, _: row <= n,
+        Body, [constant_op.constant(1.), ta],
         return_same_structure=False)[1]
 
     output = array_ops.reshape(ta.stack(), [3, 3])
@@ -3831,14 +3912,14 @@ class ControlFlowContextCheckTest(test.TestCase):
     while_tensor = self._getWhileTensor()
     with self.assertRaisesRegexp(
         ValueError,
-        "Cannot use 'while_1/Add' as input to 'while/Const_1' because they are "
+        "Cannot use 'while/Const_1' as input to 'while_1/Add' because they are "
         "in different while loops. See info log for more details."):
       control_flow_ops.while_loop(lambda i: i < 10,
                                   lambda x: math_ops.add(1, while_tensor), [0])
 
     with self.assertRaisesRegexp(
         ValueError,
-        "Cannot use 'while_2/NextIteration' as input to 'while/Const_1' "
+        "Cannot use 'while/Const_1' as input to 'while_2/NextIteration' "
         "because they are in different while loops. See info log for more "
         "details."):
       control_flow_ops.while_loop(lambda i: i < 10, lambda i: while_tensor, [0])
@@ -3895,7 +3976,7 @@ class ControlFlowContextCheckTest(test.TestCase):
 
     with self.assertRaisesRegexp(
         ValueError,
-        "Cannot use 'cond/while_1/add' as input to 'cond/while/Const_1' because"
+        "Cannot use 'cond/while/Const_1' as input to 'cond/while_1/add' because"
         " they are in different while loops. See info log for more details."):
       control_flow_ops.cond(
           math_ops.less(1, 2), true_fn, lambda: constant_op.constant(0))

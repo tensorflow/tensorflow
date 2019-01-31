@@ -16,14 +16,31 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/tools/optimize/node_info_delegate.h"
+#include "tensorflow/lite/tools/optimize/test_util.h"
+
+namespace {
+tensorflow::string* g_test_model_dir = nullptr;
+}  // namespace
 
 namespace tflite {
 namespace optimize {
 namespace calibration {
 namespace {
+
+std::unique_ptr<FlatBufferModel> ReadModel(const char* model) {
+  auto model_path = tensorflow::io::JoinPath(*g_test_model_dir, model);
+  return FlatBufferModel::BuildFromFile(model_path.c_str());
+}
+
+std::unique_ptr<FlatBufferModel> ReadModel() {
+  return ReadModel(internal::kConvModelWith0Plus10Weights);
+}
 
 class TestDelegateObserver : public DelegateObserver {
  public:
@@ -45,8 +62,7 @@ TEST(NodeInfoDelegateTest, DelegateObserverIsCalled) {
   TestDelegateObserver observer(kTfLiteOk);
   NodeInfoDelegateParams params;
   params.delegate_observer = &observer;
-  auto model = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/multi_add.bin");
+  auto model = ReadModel();
   ASSERT_TRUE(model);
   std::unique_ptr<Interpreter> interpreter;
   ASSERT_EQ(InterpreterBuilder(*model,
@@ -66,8 +82,7 @@ TEST(NodeInfoDelegateTest, ObserverErrorCausesModifyGraphFailure) {
   TestDelegateObserver observer(kTfLiteError);
   NodeInfoDelegateParams params;
   params.delegate_observer = &observer;
-  auto model = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/multi_add.bin");
+  auto model = ReadModel();
   ASSERT_TRUE(model);
   std::unique_ptr<Interpreter> interpreter;
   ASSERT_EQ(InterpreterBuilder(*model,
@@ -81,8 +96,7 @@ TEST(NodeInfoDelegateTest, ObserverErrorCausesModifyGraphFailure) {
 }
 
 TEST(NodeInfoDelegateTest, NodeInfoDelegateObserver) {
-  auto model = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/multi_add.bin");
+  auto model = ReadModel();
   ASSERT_TRUE(model);
 
   std::unordered_map<int, OperatorInfo> index_to_opinfo;
@@ -146,7 +160,19 @@ TEST(NodeInfoDelegateTest, NodeInfoDelegateObserver) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  // On Linux, add: FLAGS_logtostderr = true;
-  ::testing::InitGoogleTest(&argc, argv);
+  tensorflow::string model_file;
+  const std::vector<tensorflow::Flag> flag_list = {
+      tensorflow::Flag("test_model_file", &model_file,
+                       "Path to test tflite model file."),
+  };
+
+  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  if (!parse_result) {
+    std::cerr << "Required test_model_file\n";
+    std::abort();
+  }
+  g_test_model_dir =
+      new tensorflow::string(tensorflow::io::Dirname(model_file));
+  ::tensorflow::port::InitMain(argv[0], &argc, &argv);
   return RUN_ALL_TESTS();
 }

@@ -372,6 +372,8 @@ struct bfloat16 {
     return x;
   }
 
+  bool IsZero() const { return (value & 0x7FFF) == ZERO_VALUE; }
+
   uint16_t value;
 
   // A value that represents "not a number".

@@ -87,6 +87,7 @@ Simple usage:
           "single file.")
     files_processed, report_text, errors = upgrade.process_file(
         args.input_file, args.output_file)
+    errors = {args.input_file: errors}
     files_processed = 1
   elif args.input_tree:
     if not args.output_tree:
@@ -99,23 +100,20 @@ Simple usage:
     parser.print_help()
   if report_text:
     num_errors = 0
-    report = ""
+    report = []
     for f in errors:
       if errors[f]:
         num_errors += len(errors[f])
-        report += "-" * 80 + "\n"
-        report += "File: %s\n" % f
-        report += "-" * 80 + "\n"
-        report += "\n".join(errors[f]) + "\n"
+        report.append("-" * 80 + "\n")
+        report.append("File: %s\n" % f)
+        report.append("-" * 80 + "\n")
+        report.append("\n".join(errors[f]) + "\n")
 
-    report = (
-        "TensorFlow 2.0 Upgrade Script\n"
-        "-----------------------------\n"
-        "Converted %d files\n" % files_processed +
-        "Detected %d errors that require attention" % num_errors + "\n" +
-        "-" * 80 + "\n"
-    ) + report
-
+    report = ("TensorFlow 2.0 Upgrade Script\n"
+              "-----------------------------\n"
+              "Converted %d files\n" % files_processed +
+              "Detected %d issues that require attention" % num_errors + "\n" +
+              "-" * 80 + "\n") + "".join(report)
     with open(report_filename, "w") as report_file:
       report_file.write(report)
       report_file.write("=" * 80 + "\n")

@@ -238,7 +238,7 @@ cc_library(
             "//tensorflow/contrib/kinesis:dataset_ops_op_lib",
         ],
     }) + if_not_windows([
-        "//tensorflow/contrib/tensorrt:trt_engine_op_op_lib",
+        "//tensorflow/compiler/tf2tensorrt:trt_op_libs",
     ]) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],

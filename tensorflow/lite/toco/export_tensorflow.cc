@@ -2062,6 +2062,20 @@ void ConvertZerosLikeOperator(const Model& model,
   (*zeros_like_op->mutable_attr())["T"].set_type(data_type);
 }
 
+void ConvertReverseV2Operator(const Model& model,
+                              const ReverseV2Operator& src_op,
+                              const char* op_name, GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* reverse_v2_op = tensorflow_graph->add_node();
+  reverse_v2_op->set_op(op_name);
+  reverse_v2_op->set_name(src_op.outputs[0]);
+  DCHECK_EQ(src_op.inputs.size(), 2);
+  *reverse_v2_op->add_input() = src_op.inputs[0];
+  *reverse_v2_op->add_input() = src_op.inputs[1];
+  const tensorflow::DataType data_type =
+      GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*reverse_v2_op->mutable_attr())["T"].set_type(data_type);
+}
+
 void ConvertOperator(const Model& model, const Operator& src_op,
                      GraphDef* tensorflow_graph) {
   if (src_op.fused_activation_function != FusedActivationFunctionType::kNone) {
@@ -2341,6 +2355,10 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertZerosLikeOperator(
         model, static_cast<const TensorFlowZerosLikeOperator&>(src_op),
         "ZerosLike", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kReverseV2) {
+    ConvertReverseV2Operator(model,
+                             static_cast<const ReverseV2Operator&>(src_op),
+                             "Reverse_V2", tensorflow_graph);
   } else {
     LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(src_op.type);
   }

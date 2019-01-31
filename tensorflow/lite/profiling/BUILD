@@ -74,7 +74,6 @@ tf_cc_test(
         ":profile_summarizer",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/testing:util",

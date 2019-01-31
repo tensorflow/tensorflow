@@ -32,16 +32,15 @@ ALL_TAGS := $(TAGS) $(TARGET)
 
 INCLUDES := \
 -I. \
--I$(MAKEFILE_DIR)/../../../../../ \
--I$(MAKEFILE_DIR)/../../../../../../ \
--I$(MAKEFILE_DIR)/../../../../../../../ \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
--I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
--I$(OBJDIR)
-# This is at the end so any globally-installed frameworks like protobuf don't
-# override local versions in the source tree.
-INCLUDES += -I/usr/local/include
+-I$(MAKEFILE_DIR)/downloads/flatbuffers/include
+
+# These are the include paths added to any generated project file.
+PROJECT_INCLUDES := \
+. \
+third_party/gemmlowp \
+third_party/flatbuffers/include
 
 TEST_SCRIPT := tensorflow/lite/experimental/micro/testing/test_linux_binary.sh
 
@@ -125,6 +124,10 @@ MBED_PROJECT_FILES := \
   mbed-os.lib \
   mbed_app.json
 
+KEIL_PROJECT_FILES := \
+  README_KEIL.md \
+  keil_project.uvprojx
+
 # These target-specific makefiles should modify or replace options like
 # CXXFLAGS or LIBS to work for a specific targetted architecture. All logic
 # based on platforms or architectures should happen within these files, to
@@ -156,8 +159,8 @@ include $(wildcard tensorflow/lite/experimental/micro/examples/*/Makefile.inc)
 MICROLITE_LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MICROLITE_CC_SRCS))))
 
-MICROLITE_TEST_TARGETS := $(addprefix $(BINDIR), \
-$(patsubst %_test.cc,%.test_target,$(MICROLITE_TEST_SRCS)))
+MICROLITE_LIB_OBJS += $(addprefix $(OBJDIR), \
+$(patsubst %.S,%.o,$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(THIRD_PARTY_CC_SRCS)))))
 
 # For normal manually-created TensorFlow C++ source files.
 $(OBJDIR)%.o: %.cc
@@ -201,7 +204,7 @@ $(BINDIR)%.test_target: $(BINDIR)%_test
 $(foreach TEST_TARGET,$(MICROLITE_TEST_SRCS),\
 $(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 
-test: test_micro_speech $(MICROLITE_TEST_TARGETS)
+test: $(MICROLITE_TEST_TARGETS)
 
 # Gets rid of all generated files.
 clean:

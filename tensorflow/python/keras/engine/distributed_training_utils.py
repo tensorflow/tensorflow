@@ -40,6 +40,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_contextlib
 
 
 def set_weights(distribution_strategy, dist_model, weights):
@@ -344,7 +345,7 @@ def init_restore_or_wait_for_variables():
   session = K._get_session()  # pylint: disable=protected-access
   worker_context = dc_context.get_current_worker_context()
   if not worker_context or worker_context.experimental_should_init:
-    # TODO(yuefengz): if checkpoints exit, restore from checkpoint.
+    # TODO(yuefengz): if checkpoints exist, restore from checkpoint.
     K._initialize_variables(session)  # pylint: disable=protected-access
   else:
     _wait_for_variable_initialization(session)
@@ -378,7 +379,7 @@ def configure_and_create_session(distribution_strategy):
   K.set_session(session)
 
 
-def validate_inputs(x, y, distribution_strategy):
+def validate_inputs(x, y, distribution_strategy, allow_partial_batch=False):
   """Validate inputs when using DistributionStrategy.
 
   Args:
@@ -386,16 +387,13 @@ def validate_inputs(x, y, distribution_strategy):
     y: Model Targets.
     distribution_strategy: The DistributionStrategy with which the model is
       compiled.
+    allow_partial_batch: Boolean. If false, datasets must have fully
+      defined shapes.
 
   Raises:
     ValueError: if input is not a Dataset or a numpy array(when we use
       MirroredStrategy).
   """
-  if isinstance(x, dict) or isinstance(y, dict):
-    raise ValueError('`DistributionStrategy` does not support inputs of type '
-                     'dict. You must pass a `tf.data.Dataset` object or a '
-                     'numpy array as input.')
-
   if (isinstance(x, iterator_ops.Iterator) or
       isinstance(y, iterator_ops.Iterator)):
     raise ValueError('`DistributionStrategy` does not support inputs of type '
@@ -404,18 +402,13 @@ def validate_inputs(x, y, distribution_strategy):
 
   if is_tpu_strategy(distribution_strategy):
     for i in [x, y]:
-      if isinstance(i, dataset_ops.DatasetV2):
-        shapes = nest.flatten(i.output_shapes)
-        try:
-          s = next(s for s in shapes if not s.is_fully_defined())
-        except StopIteration:
-          continue
-        else:
+      if (isinstance(i, dataset_ops.DatasetV2) and not allow_partial_batch):
+        if not is_dataset_shape_fully_defined(i):
           raise ValueError(
               'Using TPUs currently requires fully defined shapes. Either use '
               'set_shape() on the input tensors or use '
               'dataset.batch(..., drop_remainder=True).'
-              'Found unknown shape {} in input {}.'.format(s, i))
+              'Found unknown shape in input {}.'.format(i))
 
 
 # TODO(b/118776054): Currently we support global batch size for TPUStrategy and
@@ -431,8 +424,15 @@ def is_tpu_strategy(strategy):
   return strategy is not None and strategy.__class__.__name__ == 'TPUStrategy'
 
 
+def is_dataset_shape_fully_defined(dataset):
+  """Returns whether a dataset contains a final partial batch."""
+  shapes = nest.flatten(dataset.output_shapes)
+  unknown_shapes = [s for s in shapes if not s.is_fully_defined()]
+  return not unknown_shapes
+
+
 def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
-                     is_training=False):
+                     mode=None):
   """Calculate the number of batches and steps/steps_per_epoch.
 
   Args:
@@ -441,8 +441,10 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
       model input.
     steps:  The specified number of steps.
     batch_size: The specified batch_size.
-    is_training: Boolean to relax the constraints on consuming all the training
-      samples to keep compatibility till we support partial batches.
+    mode: ModeKey representing whether input will be used for training,
+      evaluation, or prediction. This is used to relax the constraints on
+      consuming all the training samples to keep compatibility till we
+      support partial batches. If none, then partial batches are not allowed.
 
   Returns:
     steps: The steps or steps_per_epoch argument depending on if a user is
@@ -460,6 +462,14 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
   use_per_replica_batch = not global_batch_size_supported(
       distribution_strategy)
 
+  # Partial batches are allowed for training as we repeat the
+  # dataset when converting numpy arrays into a dataset.
+  # For other modes uneven batch sizes are not allowed except
+  # for `predict()` on TPUStrategy.
+  allow_partial_batch = (mode == ModeKeys.TRAIN or
+                         (mode == ModeKeys.PREDICT
+                          and is_tpu_strategy(distribution_strategy)))
+
   if steps is None:
     if batch_size is None:
       # If neither the batch size or number of steps are set. We choose the
@@ -472,7 +482,7 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
       global_batch_size = batch_size
       if use_per_replica_batch:
         global_batch_size *= distribution_strategy.num_replicas_in_sync
-    if not is_training and num_samples % global_batch_size:
+    if not allow_partial_batch and num_samples % global_batch_size:
       raise ValueError('The number of samples %s is not divisible by '
                        'batch size %s.' % (num_samples, global_batch_size))
     steps = num_samples // global_batch_size
@@ -492,7 +502,11 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
       if use_per_replica_batch:
         global_batch_size *= distribution_strategy.num_replicas_in_sync
 
-      if num_samples < (global_batch_size * steps):
+      min_num_samples = global_batch_size * steps
+      if allow_partial_batch:
+        min_num_samples = global_batch_size * (steps-1) + 1 if steps > 1 else 0
+
+      if num_samples < min_num_samples:
         raise ValueError('Number of samples %s is less than samples required '
                          'for specified batch_size %s and steps %s' % (
                              num_samples, global_batch_size, steps))
@@ -608,7 +622,7 @@ def _custom_compile_for_predict(model):
   model.predict_function = None
 
 
-def _build_network_on_replica(model, inputs=None, targets=None, mode=None):
+def _build_network_on_replica(model, mode, inputs=None, targets=None):
   """Build an updated model on replicas.
 
   We create a new Keras model while sharing the variables from the old graph.
@@ -626,9 +640,9 @@ def _build_network_on_replica(model, inputs=None, targets=None, mode=None):
 
   Args:
     model: Model to be replicated across Replicas
+    mode: Which of fit/eval/predict is building the distributed network
     inputs: Input variables to be passed to the model
     targets: Target tensor to be passed to model.compile
-    mode: Which of fit/eval/predict is building the distributed network
 
   Returns:
     A new model with shared layers with the old model.
@@ -660,7 +674,7 @@ def _build_network_on_replica(model, inputs=None, targets=None, mode=None):
   if isinstance(targets, tuple):
     targets = nest.flatten(targets)
 
-  if mode == ModeKeys.PREDICT:
+  if mode == ModeKeys.PREDICT and inputs is not None:  # TPU predict case
     _custom_compile_for_predict(updated_model)
   else:
     updated_model.compile(
@@ -675,24 +689,17 @@ def _build_network_on_replica(model, inputs=None, targets=None, mode=None):
   return updated_model
 
 
-def _build_distributed_network(model, strategy, inputs=None, targets=None,
-                               mode=None):
+def _build_distributed_network(model, strategy, mode, inputs=None,
+                               targets=None):
   """Create a cloned model on each replica."""
   with K.get_graph().as_default(), strategy.scope():
     distributed_model = strategy.extended.call_for_each_replica(
         _build_network_on_replica,
-        args=(model, inputs, targets, mode))
-    if mode is ModeKeys.TRAIN:
-      model._distributed_model_train = distributed_model
-    elif mode is ModeKeys.TEST:
-      model._distributed_model_test = distributed_model
-    elif mode is ModeKeys.PREDICT:
-      model._distributed_model_predict = distributed_model
-    else:
-      model._distributed_model = distributed_model
+        args=(model, mode, inputs, targets))
+    set_distributed_model(model, mode, distributed_model)
 
 
-def _clone_and_build_model(model, inputs=None, targets=None, mode=None):
+def _clone_and_build_model(model, mode, inputs=None, targets=None):
   """Clone and build the given keras_model."""
   # We need to set the import here since we run into a circular dependency
   # error.
@@ -719,7 +726,7 @@ def _clone_and_build_model(model, inputs=None, targets=None, mode=None):
 
   if isinstance(targets, tuple):
     targets = nest.flatten(targets)
-  if mode == ModeKeys.PREDICT:
+  if mode == ModeKeys.PREDICT and inputs is not None:  # TPU predict case
     _custom_compile_for_predict(cloned_model)
   else:
     cloned_model.compile(
@@ -734,21 +741,13 @@ def _clone_and_build_model(model, inputs=None, targets=None, mode=None):
   return cloned_model
 
 
-def clone_model_on_replicas(model, strategy, make_callback_model=False,
-                            inputs=None, targets=None, mode=None):
+def clone_model_on_replicas(model, strategy, mode, inputs=None, targets=None):
   """Create a cloned model on each replica."""
   with K.get_graph().as_default(), strategy.scope():
     distributed_model = strategy.extended.call_for_each_replica(
-        _clone_and_build_model, args=(model, inputs, targets, mode))
-    if mode is ModeKeys.TRAIN:
-      model._distributed_model_train = distributed_model
-    elif mode is ModeKeys.TEST:
-      model._distributed_model_test = distributed_model
-    elif mode is ModeKeys.PREDICT:
-      model._distributed_model_predict = distributed_model
-    else:
-      model._distributed_model = distributed_model
-  if make_callback_model:
+        _clone_and_build_model, args=(model, mode, inputs, targets))
+    set_distributed_model(model, mode, distributed_model)
+  if mode == ModeKeys.TRAIN:
     model._make_callback_model(distributed_model)
 
 
@@ -758,12 +757,11 @@ def _make_execution_function(model, mode):
     return _make_eager_execution_function(model, mode)
 
   strategy = model._distribution_strategy
-  if not model._distributed_model:
+  if not get_distributed_model(model, mode):
     if model._compile_distribution:
-      clone_model_on_replicas(
-          model, strategy, make_callback_model=(mode == ModeKeys.TRAIN))
+      clone_model_on_replicas(model, strategy, mode)
     else:
-      _build_distributed_network(model, strategy)
+      _build_distributed_network(model, strategy, mode)
 
   def _per_device_function(model):
     f = model._make_execution_function(mode)
@@ -774,14 +772,13 @@ def _make_execution_function(model, mode):
     # `_per_device_fit_function`.
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = strategy.extended.call_for_each_replica(
-         _per_device_function, args=(model._distributed_model,))
+         _per_device_function, args=(get_distributed_model(model, mode),))
 
-    if mode == ModeKeys.TRAIN:
-      # Initialize the variables in the replicated model. This is necessary for
-      # multi-worker training because on some workers, initialization is not
-      # needed. This method does initialization or waiting for initialization
-      # according to the context object of distribute coordinator.
-      init_restore_or_wait_for_variables()
+    # Initialize the variables in the replicated model. This is necessary for
+    # multi-worker training because on some workers, initialization is not
+    # needed. This method does initialization or waiting for initialization
+    # according to the context object of distribute coordinator.
+    init_restore_or_wait_for_variables()
 
     # Unwrap all the per device values returned from `call_for_each_replica`.
     # Unwrapping per device values gives you a list of values that can be
@@ -806,12 +803,11 @@ def _make_execution_function(model, mode):
 def _make_eager_execution_function(model, mode):
   """Makes function to run one step of distributed model eager execution."""
   strategy = model._distribution_strategy
-  if not model._distributed_model:
+  if not get_distributed_model(model, mode):
     if model._compile_distribution:
-      clone_model_on_replicas(
-          model, strategy, make_callback_model=(mode == ModeKeys.TRAIN))
+      clone_model_on_replicas(model, strategy, mode)
     else:
-      _build_distributed_network(model, strategy)
+      _build_distributed_network(model, strategy, mode)
 
   def _per_device_function(model):
     f = model._make_execution_function(mode)
@@ -823,7 +819,7 @@ def _make_eager_execution_function(model, mode):
     # Create train ops on each of the devices when we call
     # `_per_device_fit_function`.
     (grouped_inputs, grouped_outputs) = strategy.extended.call_for_each_replica(
-        _per_device_function, args=(model._distributed_model,))
+        _per_device_function, args=(get_distributed_model(model, mode),))
 
     # Unwrap all the per device values returned from `call_for_each_replica`.
     # Unwrapping per device values gives you a list of values that can be
@@ -841,22 +837,24 @@ def _make_eager_execution_function(model, mode):
         name='eager_distributed_{}_function'.format(mode))
 
 
-def _copy_weights_to_distributed_model(original_model, grouped_model):
+def _copy_weights_to_distributed_model(original_model, mode):
   """Copies weights from original model to distributed models."""
   strategy = original_model._distribution_strategy
+  distributed_model = get_distributed_model(original_model, mode)
   if strategy:
     # Copy the weights from the original model to each of the replicated
     # models.
     orig_model_weights = original_model.get_weights()
-    distributed_model = strategy.unwrap(grouped_model)[0]
-    set_weights(strategy, distributed_model, orig_model_weights)
+    first_model = strategy.unwrap(distributed_model)[0]
+    set_weights(strategy, first_model, orig_model_weights)
 
 
-def _copy_weights_to_original_model(model, grouped_model, mode):
+def _copy_weights_to_original_model(model, mode):
   """Copies weights from first distributed model back to original model."""
   if model._distribution_strategy and mode == ModeKeys.TRAIN:
+    distributed_model = get_distributed_model(model, mode)
     updated_weights = model._distribution_strategy.unwrap(
-        grouped_model)[0].get_weights()
+        distributed_model)[0].get_weights()
     model.set_weights(updated_weights)
 
 
@@ -872,9 +870,34 @@ def _per_device_aggregate_batch(batch_outs, model, mode):
   return batch_outs
 
 
-def _reset_metrics(model, distributed_model=None):
+def _reset_metrics(model):
   if model._distribution_strategy:
-    distributed_model = (
-        distributed_model or
-        model._distribution_strategy.unwrap(model._distributed_model)[0])
-    distributed_model.reset_metrics()
+    for mode in [ModeKeys.TRAIN, ModeKeys.TEST, ModeKeys.PREDICT]:
+      distributed_model = get_distributed_model(model, mode)
+      if distributed_model:
+        first_model = model._distribution_strategy.unwrap(distributed_model)[0]
+        first_model.reset_metrics()
+
+
+def get_distributed_model(model, mode):
+  if mode is ModeKeys.TRAIN:
+    return model._distributed_model_train
+  elif mode is ModeKeys.TEST:
+    return model._distributed_model_test
+  elif mode is ModeKeys.PREDICT:
+    return model._distributed_model_predict
+
+
+def set_distributed_model(model, mode, distributed_model):
+  if mode is ModeKeys.TRAIN:
+    model._distributed_model_train = distributed_model
+  elif mode is ModeKeys.TEST:
+    model._distributed_model_test = distributed_model
+  elif mode is ModeKeys.PREDICT:
+    model._distributed_model_predict = distributed_model
+
+
+@tf_contextlib.contextmanager
+def distributed_scope(strategy, learning_phase):
+  with strategy.scope(), K.learning_phase_scope(learning_phase):
+    yield

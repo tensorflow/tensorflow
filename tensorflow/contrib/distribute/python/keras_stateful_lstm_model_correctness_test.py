@@ -29,8 +29,8 @@ from tensorflow.python.training import gradient_descent
 def strategies_for_stateful_embedding_model():
   """Returns TPUStrategy with single core device assignment."""
 
-  return [combinations.tpu_strategy_loop_on_device_one_core,
-          combinations.tpu_strategy_one_step_loop_on_device_one_core]
+  return [combinations.tpu_strategy_one_core,
+          combinations.tpu_strategy_one_step_one_core]
 
 
 def test_combinations_for_stateful_embedding_model():
@@ -83,7 +83,7 @@ class DistributionStrategyStatefulLstmModelCorrectnessTest(
                               is_stateful_model=True)
 
   @combinations.generate(keras_correctness_test_base.
-                         test_combinations_for_embedding_model())
+                         test_combinations_with_tpu_strategies())
   def test_incorrectly_use_multiple_cores_for_stateful_lstm_model(
       self, distribution, use_numpy, use_validation_data):
     with self.assertRaisesRegexp(ValueError,

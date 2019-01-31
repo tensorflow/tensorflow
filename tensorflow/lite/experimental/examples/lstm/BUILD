@@ -44,7 +44,7 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/examples/tutorials/mnist:input_data",
         "//tensorflow/lite/python:lite",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:framework",
         "//tensorflow/python:platform",
         "//tensorflow/python/tools:optimize_for_inference",
         "//third_party/py/numpy",
@@ -85,6 +85,28 @@ py_test(
     ],
     deps = [
         ":tflite_lstm",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/examples/tutorials/mnist:input_data",
+        "//tensorflow/lite/python:lite",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/tools:optimize_for_inference",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "bidirectional_sequence_rnn_test",
+    size = "large",
+    srcs = ["bidirectional_sequence_rnn_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
+    deps = [
+        ":tflite_rnn",
         "//tensorflow:tensorflow_py",
         "//tensorflow/examples/tutorials/mnist:input_data",
         "//tensorflow/lite/python:lite",

@@ -201,6 +201,10 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
   def variables(self):
     """Collection of variables owned by this module and it's submodules.
 
+    Note: this method uses reflection to find variables on the current instance
+    and submodules. For performance reasons you may wish to cache the result
+    of calling this method if you don't expect the return value to change.
+
     Returns:
       A collection of variables for the current module (sorted by attribute
       name) followed by variables from all submodules recursively (depth first).
@@ -225,6 +229,10 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
   def trainable_variables(self):
     """Collection of variables owned by this module and it's submodules.
 
+    Note: this method uses reflection to find variables on the current instance
+    and submodules. For performance reasons you may wish to cache the result
+    of calling this method if you don't expect the return value to change.
+
     Returns:
       A collection of variables for the current module (sorted by attribute
       name) followed by variables from all submodules recursively (depth first).
@@ -248,7 +256,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
 
   @property
   def owned_submodules(self):
-    """Returns an iterator of immediate child modules.
+    """Collection of immediate child modules.
 
     Child modules are modules which are found as properties of the current
     module.
@@ -263,13 +271,13 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
     >>> assert list(c.owned_submodules) == []
 
     Returns:
-      A generator over all child modules.
+      A collection of all child modules.
     """
-    return walk(self, predicate=_IS_MODULE)
+    return tuple(walk(self, predicate=_IS_MODULE))
 
   @property
   def submodules(self):
-    """Returns an iterator of all sub-modules recursively.
+    """Collection of all sub-modules.
 
     Submodules are modules which are properties of this module, or found as
     properties of modules which are properties of this module (and so on).
@@ -284,9 +292,9 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
     >>> assert list(c.submodules) == []
 
     Returns:
-      A generator over all submodules.
+      A collection of all submodules.
     """
-    return walk(self, recurse_if=_IS_MODULE, predicate=_IS_MODULE)
+    return tuple(walk(self, recurse_if=_IS_MODULE, predicate=_IS_MODULE))
 
   @classmethod
   def no_name_scope(cls, method):

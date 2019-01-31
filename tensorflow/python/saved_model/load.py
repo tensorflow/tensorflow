@@ -21,6 +21,8 @@ from __future__ import print_function
 import functools
 import os
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -43,6 +45,8 @@ class _Loader(object):
   def __init__(self, object_graph_proto, saved_model_proto, export_dir):
     meta_graph = saved_model_proto.meta_graphs[0]
     self._asset_file_def = meta_graph.asset_file_def
+    self._operation_attributes = {
+        node.name: node.attr for node in meta_graph.graph_def.node}
     self._proto = object_graph_proto
     self._export_dir = export_dir
     self._concrete_functions = (
@@ -52,59 +56,46 @@ class _Loader(object):
     self._setup_functions()
     self._restore_checkpoint()
 
-  def _setup_concrete_function(
-      self, concrete_function, seen_functions, coder):
+  def _setup_concrete_function(self, proto, concrete_function, coder):
     """Setup captured tensors and outputs for a single concrete function."""
-    name = concrete_function.name
     bound_inputs = [
         self._get_tensor_from_node(node_id)
-        for node_id in concrete_function.bound_inputs]
+        for node_id in proto.bound_inputs]
     bound_variables = [
         self._nodes[node_id]
-        for node_id in concrete_function.bound_inputs
+        for node_id in proto.bound_inputs
         if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
     ]
-    if name in seen_functions:
-      raise RuntimeError(
-          "Concrete function with a duplicate name: %s." % name)
-    else:
-      seen_functions.add(name)
-      # TODO(andresp): This is only injecting the captured inputs into the
-      # concrete function, note that we did not modify the FuncGraph
-      # itself.
-      function = self._concrete_functions[name]
-      function._captured_inputs = bound_inputs  # pylint: disable=protected-access
-      function._func_graph.variables = bound_variables  # pylint: disable=protected-access
-      # By setting the structured_outputs directly, we can rely on this
-      # function_lib.ConcreteFunction object to perform the output repacking
-      # logic. The only limitation of that logic is that it only works
-      # with output that is convertible to Tensors and the conversion
-      # always happens. For example tf.TensorShape([2, 3]) will be
-      # converted to Tensor representing [2, 3].
-      original_outputs = coder.decode_proto(
-          concrete_function.output_signature)
-      # The original_outputs here had Tensors converted to TensorSpecs, so
-      # the restored function's structured_outputs field will not be
-      # exactly the same. Fortunately the repacking logic cares only about
-      # the structure.
-      # TODO(vbardiovsky): Should we just replicate the structures, with
-      # Nones instead of real objects? Decide when we start solving
-      # idempotency.
-      function._func_graph.structured_outputs = original_outputs  # pylint: disable=protected-access
+    # TODO(andresp): This is only injecting the captured inputs into the
+    # concrete function, note that we did not modify the FuncGraph
+    # itself.
+    concrete_function._captured_inputs = bound_inputs  # pylint: disable=protected-access
+    concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
+    # By setting the structured_outputs directly, we can rely on this
+    # function_lib.ConcreteFunction object to perform the output repacking
+    # logic. The only limitation of that logic is that it only works
+    # with output that is convertible to Tensors and the conversion
+    # always happens. For example tf.TensorShape([2, 3]) will be
+    # converted to Tensor representing [2, 3].
+    original_outputs = coder.decode_proto(proto.output_signature)
+    # The original_outputs here had Tensors converted to TensorSpecs, so
+    # the restored function's structured_outputs field will not be
+    # exactly the same. Fortunately the repacking logic cares only about
+    # the structure.
+    # TODO(vbardiovsky): Should we just replicate the structures, with
+    # Nones instead of real objects?
+    concrete_function._func_graph.structured_outputs = original_outputs  # pylint: disable=protected-access
+    concrete_function._func_graph.structured_input_signature = (  # pylint: disable=protected-access
+        coder.decode_proto(proto.canonicalized_input_signature))
 
   def _setup_functions(self):
-
-    """Setup captures and output structure in restored concrete functions."""
-    seen_concrete_functions = set()
+    """Setup captures and output structure in restored functions."""
     coder = nested_structure_coder.StructureCoder()
-    for object_proto in self._proto.nodes:
-      if object_proto.WhichOneof("kind") == "concrete_function":
-        self._setup_concrete_function(
-            object_proto.concrete_function, seen_concrete_functions, coder)
-      elif object_proto.WhichOneof("kind") == "function":
-        for concrete_function in object_proto.function.concrete_function:
-          self._setup_concrete_function(
-              concrete_function, seen_concrete_functions, coder)
+    for name, concrete_function_proto in self._proto.concrete_functions.items():
+      self._setup_concrete_function(
+          concrete_function_proto,
+          self._concrete_functions[name],
+          coder)
 
   def _get_tensor_from_node(self, node_id):
     obj = self._nodes[node_id]
@@ -112,6 +103,8 @@ class _Loader(object):
       return obj.handle
     elif isinstance(obj, tracking.TrackableAsset):
       return obj.asset_path.handle
+    elif tensor_util.is_tensor(obj):
+      return obj
     raise ValueError("Can't convert node %s to tensor" % (type(obj)))
 
   def _load_all(self):
@@ -147,9 +140,11 @@ class _Loader(object):
         "user_object": lambda: self._recreate_user_object(proto.user_object),
         "asset": lambda: self._recreate_asset(proto.asset),
         "function": lambda: self._recreate_function(proto.function),
-        "concrete_function": functools.partial(
-            self._recreate_concrete_function, proto.concrete_function),
+        "bare_concrete_function": functools.partial(
+            self._recreate_bare_concrete_function,
+            proto.bare_concrete_function),
         "variable": lambda: self._recreate_variable(proto.variable),
+        "constant": lambda: self._recreate_constant(proto.constant),
     }
     kind = proto.WhichOneof("kind")
     if kind not in factory:
@@ -180,14 +175,20 @@ class _Loader(object):
     return function_deserialization.recreate_function(
         proto, self._concrete_functions), setattr
 
-  def _recreate_concrete_function(self, proto):
-    return function_deserialization.recreate_concrete_function(
+  def _recreate_bare_concrete_function(self, proto):
+    return function_deserialization.setup_bare_concrete_function(
         proto, self._concrete_functions), setattr
 
   def _recreate_variable(self, proto):
     # TODO(andresp): Can we use the checkpointed value as initializer?
     dummy_value = init_ops.Zeros(dtype=proto.dtype)(shape=proto.shape)
     return variables.Variable(dummy_value, trainable=proto.trainable), setattr
+
+  def _recreate_constant(self, proto):
+    tensor_proto = self._operation_attributes[proto.operation]["value"].tensor
+    imported_constant = constant_op.constant(
+        tensor_util.MakeNdarray(tensor_proto))
+    return imported_constant, setattr
 
 
 def _call_attribute(instance, *args, **kwargs):

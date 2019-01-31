@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -249,6 +250,16 @@ bool OnSameTask(EagerContext* ctx, Device* first, Device* second) {
   return first->parsed_name().job == second->parsed_name().job &&
          first->parsed_name().replica == second->parsed_name().replica &&
          first->parsed_name().task == second->parsed_name().task;
+}
+
+// Gets the CPU device on the task of device.
+Status CPUDeviceOnTask(EagerContext* ctx, tensorflow::Device* device,
+                       tensorflow::Device** cpu_device) {
+  string cpu_device_name;
+  TF_RETURN_IF_ERROR(DeviceNameUtils::DeviceNameToCpuDeviceName(
+      device->name(), &cpu_device_name));
+
+  return ctx->FindDeviceByName(cpu_device_name, cpu_device);
 }
 
 inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
@@ -627,10 +638,16 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
         // explicitly copy, and instead depend on the copy to happen locally
         // when the op is executed on the device.
         !OnSameTask(ctx, op->Device(), input_device)) {
+      tensorflow::Device* remote_cpu_device;
+      TF_RETURN_IF_ERROR(
+          CPUDeviceOnTask(ctx, op->Device(), &remote_cpu_device));
       // TODO(b/110044833): It's possible the same tensor gets copied to the
       // remote device repeatedly.
+      // Always copy to the remote CPU so that the actual device can be
+      // correctly determined after the kernel is selected/instantiated, since
+      // the op might have its inputs on host memory.
       TF_RETURN_IF_ERROR(MaybeCopyInputToExpectedDevice(
-          op, op->Device(), i, op->Device(), /* run_metadata= */ nullptr,
+          op, op->Device(), i, remote_cpu_device, /* run_metadata= */ nullptr,
           &(*op->MutableInputs())[i]));
     }
 
@@ -744,13 +761,16 @@ bool IsPinnableOp(const string& op_type) {
   static const gtl::FlatSet<string>* unpinnable_ops = new gtl::FlatSet<string>({
       "RandomUniform",
       "RandomUniformInt",
-      "RandomNormal",
+      "RandomStandardNormal",
       "StatelessRandomUniform",
       "StatelessRandomUniformInt",
       "StatelessRandomNormal",
   });
 
-  return unpinnable_ops->find(op_type) == unpinnable_ops->end();
+  // XRT ops refer to per-device handles that are not safe to move between
+  // devices.
+  return unpinnable_ops->find(op_type) == unpinnable_ops->end() &&
+         !absl::StartsWith(op_type, "XRT");
 }
 
 // The Op device may be updated if:
@@ -764,7 +784,7 @@ bool IsPinnableOp(const string& op_type) {
 Status MaybeUpdateOpDevice(EagerOperation* op) {
   EagerContext* ctx = op->EagerContext();
   bool all_inputs_eligible_for_cpu_pinning =
-      ctx->PinSmallOpsToCPU() && IsPinnableOp(op->Name());
+      ctx->PinSmallOpsToCPU() && !op->is_function() && IsPinnableOp(op->Name());
   Device* op_device = op->Device() == nullptr ? ctx->HostCPU() : op->Device();
   for (int i = 0; i < op->Inputs().size(); ++i) {
     TensorHandle* tensor_handle = op->Inputs()[i];

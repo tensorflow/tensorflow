@@ -9053,9 +9053,9 @@ static TF_Output getOrCreateSymbolicTensor(TFE_TraceContext* trace_ctx,
   return ret;
 }
 
-void TFE_AddEagerOpToGraph(TFE_Op* op, TFE_TraceContext* trace_ctx,
-                           TFE_TensorHandle** retvals, int* num_retvals,
-                           TF_Status* status) {
+TF_Operation* TFE_AddEagerOpToGraph(TFE_Op* op, TFE_TraceContext* trace_ctx,
+                                    TFE_TensorHandle** retvals,
+                                    int* num_retvals, TF_Status* status) {
   VLOG(1) << "Calling TFE_AddEagerOpToGraph() with op " << op << ": "
           << op->operation.DebugString();
 
@@ -9066,15 +9066,19 @@ void TFE_AddEagerOpToGraph(TFE_Op* op, TFE_TraceContext* trace_ctx,
       TF_NewOperation(trace_ctx->graph, op_type.c_str(), op_name.c_str());
   for (auto* input : op->operation.Inputs()) {
     auto symbolic_input = getOrCreateSymbolicTensor(trace_ctx, input, status);
-    if (!status->status.ok()) return;
+    if (!status->status.ok()) return nullptr;
     TF_AddInput(desc, symbolic_input);
   }
 
   VLOG(1) << "Adding attrs.";
-  // TODO(hongm): add attrs
+  tensorflow::AttrValueMap attrs;
+  op->operation.Attrs().FillAttrValueMap(&attrs);
+  for (const auto& attr : attrs) {
+    desc->node_builder.Attr(attr.first, attr.second);
+  }
 
   auto* graph_op = TF_FinishOperation(desc, status);
-  if (!status->status.ok()) return;
+  if (!status->status.ok()) return nullptr;
 
   VLOG(1) << "Op finalized; setting return tensors.";
   *num_retvals = TF_OperationNumOutputs(graph_op);
@@ -9084,6 +9088,7 @@ void TFE_AddEagerOpToGraph(TFE_Op* op, TFE_TraceContext* trace_ctx,
     auto dtype = TF_OperationOutputType(output);
     retvals[i] = TFE_NewTensorHandleFromTFOutput(output, dtype);
   }
+  return graph_op;
 }
 
 int TFE_FinalizeInputTensorsFromTraceContext(TFE_TraceContext* trace_ctx) {

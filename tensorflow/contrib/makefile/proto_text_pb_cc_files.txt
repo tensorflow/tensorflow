@@ -36,6 +36,7 @@ tensorflow/core/protobuf/queue_runner.pb.cc
 tensorflow/core/protobuf/rewriter_config.pb.cc
 tensorflow/core/protobuf/saver.pb.cc
 tensorflow/core/protobuf/tensorflow_server.pb.cc
+tensorflow/core/protobuf/verifier_config.pb.cc
 tensorflow/core/util/event.pb.cc
 tensorflow/core/util/memmapped_file_system.pb.cc
 tensorflow/core/util/saved_tensor_slice.pb.cc
