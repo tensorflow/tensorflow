@@ -685,26 +685,43 @@ class HingeTest(test.TestCase):
   def test_unweighted(self):
     hinge_obj = metrics.Hinge()
     self.evaluate(variables.variables_initializer(hinge_obj.variables))
-    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
-                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
-    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
-                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+
+    # metric = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true = [[-1, 1, -1, 1], [-1, -1, 1, 1]]
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # metric = [(0.7 + 0.8 + 0.9 + 0) / 4, (0.75 + 0 + 0.5 + 0.4) / 4]
+    #        = [0.6, 0.4125]
+    # reduced metric = (0.6 + 0.4125) / 2
 
     update_op = hinge_obj.update_state(y_true, y_pred)
     self.evaluate(update_op)
     result = hinge_obj.result()
-    self.assertAllClose(0.65, result, atol=1e-5)
+    self.assertAllClose(0.506, result, atol=1e-3)
 
   def test_weighted(self):
     hinge_obj = metrics.Hinge()
     self.evaluate(variables.variables_initializer(hinge_obj.variables))
-    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
-                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
-    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
-                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
-    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
+    y_true = constant_op.constant([[-1, 1, -1, 1], [-1, -1, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+    sample_weight = constant_op.constant([1.5, 2.])
+
+    # metric = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # metric = [(0.7 + 0.8 + 0.9 + 0) / 4, (0.75 + 0 + 0.5 + 0.4) / 4]
+    #        = [0.6, 0.4125]
+    # weighted metric = [0.6 * 1.5, 0.4125 * 2]
+    # reduced metric = (0.6 * 1.5 + 0.4125 * 2) / (1.5 + 2)
+
     result = hinge_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAllClose(0.65714, self.evaluate(result), atol=1e-5)
+    self.assertAllClose(0.493, self.evaluate(result), atol=1e-3)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -723,26 +740,49 @@ class SquaredHingeTest(test.TestCase):
   def test_unweighted(self):
     sq_hinge_obj = metrics.SquaredHinge()
     self.evaluate(variables.variables_initializer(sq_hinge_obj.variables))
-    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
-                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
-    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
-                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+
+    # metric = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true = [[-1, 1, -1, 1], [-1, -1, 1, 1]]
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # max(0, 1 - y_true * y_pred) = [[0.7, 0.8, 0.9, 0], [0.75, 0, 0.5, 0.4]]
+    # squared(max(0, 1 - y_true * y_pred)) = [[0.49, 0.64, 0.81, 0],
+    #                                         [0.5625, 0, 0.25, 0.16]]
+    # metric = [(0.49 + 0.64 + 0.81 + 0) / 4, (0.5625 + 0 + 0.25 + 0.16) / 4]
+    #        = [0.485, 0.2431]
+    # reduced metric = (0.485 + 0.2431) / 2
 
     update_op = sq_hinge_obj.update_state(y_true, y_pred)
     self.evaluate(update_op)
     result = sq_hinge_obj.result()
-    self.assertAllClose(0.65, result, atol=1e-5)
+    self.assertAllClose(0.364, result, atol=1e-3)
 
   def test_weighted(self):
     sq_hinge_obj = metrics.SquaredHinge()
     self.evaluate(variables.variables_initializer(sq_hinge_obj.variables))
-    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
-                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
-    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
-                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
-    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
+    y_true = constant_op.constant([[-1, 1, -1, 1], [-1, -1, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+    sample_weight = constant_op.constant([1.5, 2.])
+
+    # metric = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # max(0, 1 - y_true * y_pred) = [[0.7, 0.8, 0.9, 0], [0.75, 0, 0.5, 0.4]]
+    # squared(max(0, 1 - y_true * y_pred)) = [[0.49, 0.64, 0.81, 0],
+    #                                         [0.5625, 0, 0.25, 0.16]]
+    # metric = [(0.49 + 0.64 + 0.81 + 0) / 4, (0.5625 + 0 + 0.25 + 0.16) / 4]
+    #        = [0.485, 0.2431]
+    # weighted metric = [0.485 * 1.5, 0.2431 * 2]
+    # reduced metric = (0.485 * 1.5 + 0.2431 * 2) / (1.5 + 2)
+
     result = sq_hinge_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAllClose(0.65714, self.evaluate(result), atol=1e-5)
+    self.assertAllClose(0.347, self.evaluate(result), atol=1e-3)
 
 
 @test_util.run_all_in_graph_and_eager_modes
