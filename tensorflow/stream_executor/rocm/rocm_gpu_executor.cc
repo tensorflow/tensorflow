@@ -18,7 +18,6 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/stream_executor/gpu/gpu_diagnostics.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/gpu/gpu_event.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
@@ -41,6 +40,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
+#include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
 #include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
@@ -655,7 +655,7 @@ port::Status GpuExecutor::BlockHostUntilDone(Stream* stream) {
 blas::BlasSupport* GpuExecutor::CreateBlas() {
   PluginRegistry* registry = PluginRegistry::Instance();
   port::StatusOr<PluginRegistry::BlasFactory> status =
-      registry->GetFactory<PluginRegistry::BlasFactory>(kROCmPlatformId,
+    registry->GetFactory<PluginRegistry::BlasFactory>(rocm::kROCmPlatformId,
                                                         plugin_config_.blas());
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve BLAS factory: "
@@ -669,7 +669,7 @@ blas::BlasSupport* GpuExecutor::CreateBlas() {
 dnn::DnnSupport* GpuExecutor::CreateDnn() {
   PluginRegistry* registry = PluginRegistry::Instance();
   port::StatusOr<PluginRegistry::DnnFactory> status =
-      registry->GetFactory<PluginRegistry::DnnFactory>(kROCmPlatformId,
+    registry->GetFactory<PluginRegistry::DnnFactory>(rocm::kROCmPlatformId,
                                                        plugin_config_.dnn());
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve DNN factory: "
@@ -683,7 +683,7 @@ dnn::DnnSupport* GpuExecutor::CreateDnn() {
 fft::FftSupport* GpuExecutor::CreateFft() {
   PluginRegistry* registry = PluginRegistry::Instance();
   port::StatusOr<PluginRegistry::FftFactory> status =
-      registry->GetFactory<PluginRegistry::FftFactory>(kROCmPlatformId,
+    registry->GetFactory<PluginRegistry::FftFactory>(rocm::kROCmPlatformId,
                                                        plugin_config_.fft());
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve FFT factory: "
@@ -697,7 +697,7 @@ fft::FftSupport* GpuExecutor::CreateFft() {
 rng::RngSupport* GpuExecutor::CreateRng() {
   PluginRegistry* registry = PluginRegistry::Instance();
   port::StatusOr<PluginRegistry::RngFactory> status =
-      registry->GetFactory<PluginRegistry::RngFactory>(kROCmPlatformId,
+    registry->GetFactory<PluginRegistry::RngFactory>(rocm::kROCmPlatformId,
                                                        plugin_config_.rng());
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve RNG factory: "
@@ -878,12 +878,9 @@ DeviceDescription* GpuExecutor::PopulateDeviceDescription() const {
   {
     int driver_version = 0;
     (void)GpuDriver::GetDriverVersion(&driver_version);
-    string augmented_driver_version =
-        absl::StrFormat("%d (%s)", driver_version, "__FIXME__");
-    // FIXME:
-    // uncomment the line below once the "DriverVersionStatusToString"
-    // routine is moved from the "cuda" namespace to the "gpu" naemspace
-    // DriverVersionStatusToString(Diagnostician::FindDsoVersion()).c_str());
+    string augmented_driver_version = absl::StrFormat(
+        "%d (%s)", driver_version,
+        rocm::DriverVersionStatusToString(Diagnostician::FindDsoVersion()).c_str());
     builder.set_driver_version(augmented_driver_version);
   }
 
