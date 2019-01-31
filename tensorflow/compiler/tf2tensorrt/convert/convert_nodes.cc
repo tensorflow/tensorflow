@@ -1314,7 +1314,7 @@ tensorflow::Status CheckInputsWeights(
   for (int i = 0; i < inputs.size(); i++) {
     if (inputs_is_weight[i].second && inputs.at(i).is_tensor()) {
       return tensorflow::errors::Unimplemented(
-          "The input \",", inputs_is_weight[i].first, "\" for ", node_def.op(),
+          "The input \"", inputs_is_weight[i].first, "\" for ", node_def.op(),
           " must be a constant, at ", node_def.name());
     }
     // TODO(tmorris): Remove this check and provide a method to automatically
@@ -1323,7 +1323,7 @@ tensorflow::Status CheckInputsWeights(
     // duplicate constants from being created.
     if (!inputs_is_weight[i].second && inputs.at(i).is_weights()) {
       return tensorflow::errors::Unimplemented(
-          "The input \",", inputs_is_weight[i].first, "\" for ", node_def.op(),
+          "The input \"", inputs_is_weight[i].first, "\" for ", node_def.op(),
           " must be a tensor, at ", node_def.name());
     }
   }
@@ -2497,12 +2497,6 @@ tensorflow::Status ConvertActivation(OpConverterParams* params) {
 Status ConvertQuantize(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.at(0).is_weights()) {
-    // This shouldn't happen unless constant folding failed. TRT will
-    // automatically quantize weights so it should be okay.
-    params->outputs->push_back(inputs.at(0));
-    return Status::OK();
-  }
   if (node_def.op() == "FakeQuantWithMinMaxArgs") {
     TF_RETURN_IF_ERROR(CheckInputsWeights(params, {{"input", false}}));
   } else if (node_def.op() == "FakeQuantWithMinMaxVars" ||
