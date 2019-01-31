@@ -278,7 +278,7 @@ class MathTest(PForTestCase):
     x = random_ops.random_uniform([2, 3, 4, 5])
     for op in [
         math_ops.reduce_sum, math_ops.reduce_prod, math_ops.reduce_max,
-        math_ops.reduce_min
+        math_ops.reduce_min, math_ops.reduce_mean,
     ]:
       for axis in ([1], None, [0, 2]):
         for keepdims in (True, False):
