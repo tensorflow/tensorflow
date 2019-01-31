@@ -2518,6 +2518,85 @@ class ControlFlowTest(test.TestCase):
       self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(216.0, g[0])
 
+  @test_util.run_deprecated_v1
+  def testWhileGrad_ResourceVarSparseRead(self):
+    # NOTE(skyewm): this test is interesting because the
+    # ResourceVariable.sparse_read gradient function returns an IndexedSlices.
+    var = resource_variable_ops.ResourceVariable(np.ones(5),
+                                                 dtype=dtypes.float32)
+    r = control_flow_ops.while_loop(
+        lambda i, _: i < 3,
+        lambda i, x: (i + 1, x * math_ops.reduce_sum(var.sparse_read([1, 3]))),
+        [0, constant_op.constant(1.0)])[1]
+    grad = gradients_impl.gradients(r, var)[0]
+
+    self.evaluate(variables.global_variables_initializer())
+    grad_val = self.evaluate(grad)
+    self.assertIsInstance(grad_val, ops.IndexedSlicesValue)
+    arr = gradient_checker_v2._to_numpy(grad_val)
+    self.assertAllEqual(arr, [0., 12., 0., 12., 0.])
+
+  @test_util.run_deprecated_v1
+  def testWhileGrad_MultiResourceVarSparseRead(self):
+    # NOTE(skyewm): this test is interesting because the
+    # ResourceVariable.sparse_read gradient function returns an IndexedSlices.
+    var1 = resource_variable_ops.ResourceVariable(np.ones(5),
+                                                  dtype=dtypes.float32)
+    var2 = resource_variable_ops.ResourceVariable(np.ones(3),
+                                                  dtype=dtypes.float32)
+    x1_init = constant_op.constant([0., 0.])
+    x2_init = constant_op.constant(1.)
+    x3_init = constant_op.constant(1.)
+
+    def body(i, unused_x1, x2, x3):
+      y1 = var1.sparse_read([1, 3])
+      y2 = x2 * 2
+      y3 = x3 * math_ops.reduce_sum(var2.sparse_read([0]))
+      return i + 1, y1, y2, y3
+
+    r = control_flow_ops.while_loop(
+        lambda i, x1, x2, x3: i < 3, body,
+        [0, x1_init, x2_init, x3_init])[1:]
+    var1_grad, var2_grad = gradients_impl.gradients(r, [var1, var2])
+
+    self.evaluate(variables.global_variables_initializer())
+    var1_grad_val = self.evaluate(var1_grad)
+    var2_grad_val = self.evaluate(var2_grad)
+    self.assertIsInstance(var1_grad_val, ops.IndexedSlicesValue)
+    self.assertIsInstance(var2_grad_val, ops.IndexedSlicesValue)
+    self.assertAllEqual(gradient_checker_v2._to_numpy(var1_grad_val),
+                        [0., 1., 0., 1., 0.])
+    self.assertAllEqual(gradient_checker_v2._to_numpy(var2_grad_val),
+                        [3., 0., 0.])
+
+  @test_util.run_deprecated_v1
+  def testWhileGrad_Gather(self):
+    # NOTE(skyewm): this test is interesting because the gather gradient
+    # function returns an IndexedSlices.
+    x = constant_op.constant([1., 1., 1., 1., 1.])
+    y = control_flow_ops.while_loop(
+        lambda i, _: i < 3,
+        lambda i, x: (i + 1, x + array_ops.gather(x, [0])),
+        [0, x[:1]])[1]
+    z = y * 3.0
+    grad = gradients_impl.gradients(z, x)[0]
+    self.assertEqual(self.evaluate(y), 8.)
+    self.assertAllEqual(self.evaluate(grad), [24., 0., 0., 0., 0.])
+
+  @test_util.run_deprecated_v1
+  def testWhileGrad_GatherNoFanOut(self):
+    # NOTE(skyewm): this test is interesting because the gather gradient
+    # function returns an IndexedSlices.
+    x = constant_op.constant([1., 1., 1., 1., 1.])
+    y = control_flow_ops.while_loop(
+        lambda i, _: i < 3,
+        lambda i, x: (i + 1, array_ops.gather(x, [0])),
+        [0, x[:1]])[1]
+    z = y * 3.0
+    grad = gradients_impl.gradients(z, x)[0]
+    self.assertEqual(self.evaluate(y), 1.)
+    self.assertAllEqual(self.evaluate(grad), [3., 0., 0., 0., 0.])
+
   @test_util.run_v1_only("b/120545219")
   def testWhileGradInCond(self):
 
