@@ -2189,7 +2189,7 @@ TEST_F(OpConverterTest, ConvertActivation) {
         "Relu is only implemented for tensors, at my_act");
   }
 
-  constexpr float kALPHA = 0.2f;
+  constexpr float kAlpha = 0.2f;
 
   // Get nodedef for activation layer.
   auto get_act_nodedef = [](string op_name) -> NodeDef {
@@ -2198,7 +2198,7 @@ TEST_F(OpConverterTest, ConvertActivation) {
     if (op_name == "LeakyRelu") {
       // LeakyRelu does not have a C++ API
       NodeDef node_def = MakeNodeDef("my_act", "LeakyRelu", {"input"});
-      (*node_def.mutable_attr())["alpha"].set_f(kALPHA);
+      (*node_def.mutable_attr())["alpha"].set_f(kAlpha);
       return node_def;
     } else if (op_name == "Relu") {
       auto act = ops::Relu(s.WithOpName("my_act"), input);
@@ -2216,7 +2216,7 @@ TEST_F(OpConverterTest, ConvertActivation) {
   // Get expected output for activation layer.
   auto get_act_output = [](string op_name, float input) -> float {
     if (op_name == "LeakyRelu") {
-      return (input > 0.0f) ? input : input * kALPHA;
+      return (input > 0.0f) ? input : input * kAlpha;
     } else if (op_name == "Relu") {
       return (input > 0.0f) ? input : 0.0f;
     } else if (op_name == "Sigmoid") {
