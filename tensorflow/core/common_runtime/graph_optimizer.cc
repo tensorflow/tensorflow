@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
+#include "tensorflow/core/graph/auto_mixed_precision.h"
 
 namespace tensorflow {
 
@@ -88,6 +89,11 @@ void GraphOptimizer::Optimize(
     }
     if (opts_.do_function_inlining() && ExpandInlineFunctions(runtime, g)) {
       DumpGraph("ExpandInlineFunctions", g);
+      changed = true;
+    }
+    if (opts_.auto_mixed_precision() && RunAutoMixedPrecision(g)) {
+      RemoveDeadNodes(g);
+      DumpGraph("MixedPrecision", g);
       changed = true;
     }
     if (!changed) break;

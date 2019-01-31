@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/util.h"
+#include "tensorflow/core/common_runtime/graph_optimizer.h"
 
 #ifndef IS_MOBILE_PLATFORM
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
@@ -578,6 +579,18 @@ Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
+
+  const OptimizerOptions& session_optimizer_options =
+      session_options_->config.graph_options().optimizer_options();
+  bool auto_mixed_precision = session_optimizer_options.auto_mixed_precision();
+  if (auto_mixed_precision) {
+    OptimizerOptions opti_opts;
+    opti_opts.set_opt_level(OptimizerOptions::L0);
+    opti_opts.set_auto_mixed_precision(auto_mixed_precision);
+    GraphOptimizer optimizer(opti_opts);
+    optimizer.Optimize(nullptr, nullptr,
+                      /*device=*/nullptr, &new_graph, /*shape_map=*/nullptr);
+  }
 
   for (const Node* n : new_graph->nodes()) {
     VLOG(2) << "Mapping " << n->name() << " to " << n->cost_id();
