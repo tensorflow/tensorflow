@@ -1415,8 +1415,6 @@ class MklQuantizedConv2DOp
       AllocateOutputSetMklShape(context, 2, &output_max, {},
                                 output_max_mkl_shape);
       // This is the case the convolution and requantization are fused.
-      // min_freezed_output and max_freezed_output are the actual range
-      // for the output
       output_min->flat<float>()(0) =
           context->input(6 + bias_index_offset).flat<float>()(0);
       output_max->flat<float>()(0) =
@@ -1468,6 +1466,9 @@ class MklQuantizedConv2DOp
           context->input(3 + bias_index_offset).flat<float>()(0);
       const Tensor& min_filter_vector = context->input(4 + bias_index_offset);
       const Tensor& max_filter_vector = context->input(5 + bias_index_offset);
+
+      // min_freezed_output and max_freezed_output are the actual range
+      // for the output.
       const float min_freezed_output =
           context->input(6 + bias_index_offset).flat<float>()(0);
       const float max_freezed_output =
