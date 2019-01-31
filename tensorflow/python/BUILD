@@ -2277,6 +2277,7 @@ py_library(
     name = "while_v2",
     srcs = [
         "ops/while_v2.py",
+        "ops/while_v2_indexed_slices_rewriter.py",
     ],
     srcs_version = "PY2AND3",
     deps = [

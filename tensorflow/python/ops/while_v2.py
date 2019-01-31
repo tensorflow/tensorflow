@@ -43,6 +43,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import while_v2_indexed_slices_rewriter
 from tensorflow.python.util import nest
 
 # pylint: disable=protected-access
@@ -293,6 +294,10 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
                                            while_op)
   loop_vars = args + captured_inputs
 
+  # This modifies body_grad_graph.
+  loop_vars = while_v2_indexed_slices_rewriter.rewrite_grad_indexed_slices(
+      grads, body_grad_graph, loop_vars, while_op.inputs)
+
   def grad_cond(counter, max_iters, *unused_args):
     return counter < max_iters
 
@@ -310,26 +315,15 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       output_shapes=[t.shape for t in body_grad_graph.outputs],
       parallel_iterations=parallel_iterations,
       name="%s_grad" % while_op.name)
+  grad_op = outputs[0].op
 
   _copy_handle_data(body_grad_graph.outputs, outputs)
-  util.maybe_set_lowering_attr(outputs[0].op)
-  _maybe_set_maximum_iterations_attr(outputs[0].op, maximum_iterations)
+  util.maybe_set_lowering_attr(grad_op)
+  _maybe_set_maximum_iterations_attr(grad_op, maximum_iterations)
 
   # See comment in while_loop.
   outputs = [array_ops.identity(t) for t in outputs]
-
-  # Set None as the output gradient for tensors with None input gradient.
-  # outputs[0] is the loop counter.
-  # outputs[1] is the total number of loop iterations.
-  index = 2
-  none_padded_outputs = []
-  for g in grads:
-    if g is None:
-      none_padded_outputs.append(None)
-    else:
-      none_padded_outputs.append(outputs[index])
-      index += 1
-  return none_padded_outputs
+  return _get_structured_grad_output(outputs, grads, body_grad_graph)
 
 
 def _preprocess_grad(grad, body_graph_output, while_op_output):
@@ -365,6 +359,8 @@ def _preprocess_grad(grad, body_graph_output, while_op_output):
   return grad
 
 
+# TODO(skyewm): make this return constants if op_output's shape is fully
+# defined (this can be done by checking the "shape" attr of resource vars).
 def _zeros_like(op_output):
   """Like array_ops.zeros_like() but also accepts resource var handles."""
   if op_output.dtype == dtypes.resource:
@@ -500,14 +496,15 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
   # Add the popped accumulators to the list of outputs.
   for internal_capture in grad_func_graph.internal_captures:
     if internal_capture in grad_func_graph.popped_tensor_lists:
-      grad_func_graph.outputs.append(
-          grad_func_graph.popped_tensor_lists[internal_capture])
+      new_output = grad_func_graph.popped_tensor_lists[internal_capture]
     elif internal_capture.dtype == dtypes.resource:
-      grad_func_graph.outputs.append(internal_capture)
+      new_output = internal_capture
     else:
       raise ValueError("Tensor %s is in list of internal_captures but is"
                        " neither a resource nor is in popped_tensor_lists." %
                        str(internal_capture))
+    grad_func_graph.outputs.append(new_output)
+    grad_func_graph.structured_outputs.append(new_output)
 
   return grad_func_graph, args
 
@@ -588,6 +585,45 @@ def _resolve_grad_captures(body_graph, body_grad_graph, while_op):
 
     new_capture_inputs.append(t)
   return new_capture_inputs
+
+
+def _get_structured_grad_output(outputs, grads, body_grad_graph):
+  """Returns the values that should be returned from the while grad function.
+
+  Args:
+    outputs: the raw Tensor outputs of the grad While op.
+    grads: the input gradients to the gradient function.
+    body_grad_graph: _WhileBodyGradFuncGraph.
+
+  Returns:
+    A list of gradient values. May include Nones.
+  """
+  result = []
+  # outputs[0] is the loop counter.
+  # outputs[1] is the total number of loop iterations.
+  outputs_idx = 2
+  structured_outputs_idx = 2
+  for g in grads:
+    # Set None as the output gradient for tensors with None input gradient.
+    if g is None:
+      result.append(None)
+      continue
+    output = body_grad_graph.structured_outputs[structured_outputs_idx]
+    structured_outputs_idx += 1
+    if isinstance(output, ops.IndexedSlices):
+      # TODO(skyewm): is there a more robust way to determine the order of
+      # flattened IndexedSlices components?
+      result.append(ops.IndexedSlices(
+          values=outputs[outputs_idx],
+          indices=outputs[outputs_idx + 1],
+          dense_shape=outputs[outputs_idx + 2]))
+      outputs_idx += 3
+    else:
+      assert isinstance(output, ops.Tensor)
+      result.append(outputs[outputs_idx])
+      outputs_idx += 1
+
+  return result
 
 
 def _get_accumulator(tensor):
@@ -731,9 +767,9 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     """
     if (not whitelisted and tensor.graph is not self and
         tensor.graph != self._forward_graph):
-      raise ValueError("Attempting to capture tensor", str(tensor),
-                       " which is not in the forward graph but in ",
-                       _graph_name(tensor.graph), ".")
+      raise ValueError("Attempting to capture tensor %s which is not in the "
+                       "forward graph but in %s." %
+                       (str(tensor), _graph_name(tensor.graph)))
     return super(_WhileBodyGradFuncGraph, self).capture(tensor, name)
 
   def _capture_helper(self, tensor, name):
@@ -847,7 +883,7 @@ def _check_num_inputs_outputs(cond_graph, body_graph, num_flattened_loop_vars):
   assert len(cond_graph.outputs) == 1, (
       "cond_graph has %d outputs; Expected: 1" % len(cond_graph.outputs))
   assert len(body_graph.inputs) == num_flattened_loop_vars, (
-      "body_graph takes %d inputs; Expected: %d" % (len(cond_graph.inputs),
+      "body_graph takes %d inputs; Expected: %d" % (len(body_graph.inputs),
                                                     num_flattened_loop_vars))
   assert len(body_graph.outputs) == num_flattened_loop_vars, (
       "body_graph has %d outputs; Expected: %d" % (len(body_graph.outputs),
