@@ -4478,35 +4478,38 @@ bool MIOpenSupport::DoFusedBatchNormActivationBackward(
 }  // namespace gpu
 
 void initialize_miopen() {
-  port::Status status =
-      PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
-          rocm::kROCmPlatformId, gpu::kMIOpenPlugin, "MIOpen",
-          [](internal::StreamExecutorInterface* parent) -> dnn::DnnSupport* {
-            gpu::GpuExecutor* rocm_executor =
-                dynamic_cast<gpu::GpuExecutor*>(parent);
-            if (rocm_executor == nullptr) {
-              LOG(ERROR)
-                  << "Attempting to initialize an instance of the MIOpen "
-                  << "support library with a non-ROCM StreamExecutor";
-              return nullptr;
-            }
+  if (!PluginRegistry::Instance()->HasFactory(
+          rocm::kROCmPlatformId, PluginKind::kDnn, gpu::kMIOpenPlugin)) {
+    port::Status status =
+        PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
+            rocm::kROCmPlatformId, gpu::kMIOpenPlugin, "MIOpen",
+            [](internal::StreamExecutorInterface* parent) -> dnn::DnnSupport* {
+              gpu::GpuExecutor* rocm_executor =
+                  dynamic_cast<gpu::GpuExecutor*>(parent);
+              if (rocm_executor == nullptr) {
+                LOG(ERROR)
+                    << "Attempting to initialize an instance of the MIOpen "
+                    << "support library with a non-ROCM StreamExecutor";
+                return nullptr;
+              }
 
-            gpu::MIOpenSupport* dnn = new gpu::MIOpenSupport(rocm_executor);
-            if (!dnn->Init().ok()) {
-              // Note: Init() will log a more specific error.
-              delete dnn;
-              return nullptr;
-            }
-            return dnn;
-          });
+              gpu::MIOpenSupport* dnn = new gpu::MIOpenSupport(rocm_executor);
+              if (!dnn->Init().ok()) {
+                // Note: Init() will log a more specific error.
+                delete dnn;
+                return nullptr;
+              }
+              return dnn;
+            });
 
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to register MIOpen factory: "
-               << status.error_message();
+    if (!status.ok()) {
+      LOG(ERROR) << "Unable to register MIOpen factory: "
+                 << status.error_message();
+    }
+
+    PluginRegistry::Instance()->SetDefaultFactory(
+        rocm::kROCmPlatformId, PluginKind::kDnn, gpu::kMIOpenPlugin);
   }
-
-  PluginRegistry::Instance()->SetDefaultFactory(
-      rocm::kROCmPlatformId, PluginKind::kDnn, gpu::kMIOpenPlugin);
 }
 
 }  // namespace stream_executor
