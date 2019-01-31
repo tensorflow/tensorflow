@@ -827,12 +827,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     decay_function_comment = (
         ast_edits.INFO,
-        "<function name> has been changed to return a callable instead "
-        "of a tensor when graph building, but its functionality remains "
-        "unchanged during eager execution (returns a callable like "
-        "before). The converter cannot detect and fix this reliably, so "
-        "this usage has been converted to compat.v1 (even though it may already"
-        " be correct).\n"
+        "To use learning rate decay schedules with TensorFlow 2.0, switch to "
+        "the schedules in `tf.keras.optimizers.schedules`.\n"
     )
 
     assert_return_type_comment = (

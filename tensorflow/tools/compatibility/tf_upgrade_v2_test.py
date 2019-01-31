@@ -409,7 +409,8 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
 
       text = "%s(a, b)\n" % decay
       _, report, unused_errors, _ = self._upgrade(text)
-      self.assertIn("%s has been changed to return a callable" % decay, report)
+      self.assertIn("switch to the schedules in "
+                    "`tf.keras.optimizers.schedules`", report)
 
   def testMetrics(self):
     metrics = [
