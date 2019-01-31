@@ -394,3 +394,14 @@ tf_cuda_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+tf_cuda_library(
+    name = "profiler_interface",
+    hdrs = [
+        "profiler_interface.h",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
