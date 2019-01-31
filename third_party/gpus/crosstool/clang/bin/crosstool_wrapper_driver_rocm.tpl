@@ -205,24 +205,24 @@ def main():
   args, leftover = parser.parse_known_args(sys.argv[1:])
 
   if args.x and args.x[0] == 'rocm':
+    # XXX use hipcc to link
+    if args.pass_exit_codes:
+      gpu_compiler_flags = [flag for flag in sys.argv[1:]
+                                 if not flag.startswith(('-pass-exit-codes'))]
+
+      # special handling for $ORIGIN
+      # - guard every argument with ''
+      modified_gpu_compiler_flags = []
+      for flag in gpu_compiler_flags:
+        modified_gpu_compiler_flags.append("'" + flag + "'")
+
+      if args.rocm_log: Log('Link with hipcc: %s' % (' '.join([HIPCC_PATH] + modified_gpu_compiler_flags)))
+      return subprocess.call([HIPCC_PATH] + modified_gpu_compiler_flags)
+
     if args.rocm_log: Log('-x rocm')
     leftover = [pipes.quote(s) for s in leftover]
     if args.rocm_log: Log('using hipcc')
     return InvokeHipcc(leftover, log=args.rocm_log)
-
-  # XXX use hipcc to link
-  if args.pass_exit_codes:
-    gpu_compiler_flags = [flag for flag in sys.argv[1:]
-                               if not flag.startswith(('-pass-exit-codes'))]
-
-    # special handling for $ORIGIN
-    # - guard every argument with ''
-    modified_gpu_compiler_flags = []
-    for flag in gpu_compiler_flags:
-      modified_gpu_compiler_flags.append("'" + flag + "'")
-
-    if args.rocm_log: Log('Link with hipcc: %s' % (' '.join([HIPCC_PATH] + modified_gpu_compiler_flags)))
-    return subprocess.call([HIPCC_PATH] + modified_gpu_compiler_flags)
 
   # Strip our flags before passing through to the CPU compiler for files which
   # are not -x rocm. We can't just pass 'leftover' because it also strips -x.
