@@ -40,7 +40,6 @@ PrngTest.ScalarBF16Tests POPLAR
 PrngTest.ScalarBF16CountTests POPLAR
 DynamicUpdateSliceTest.Int32R0BF16 POPLAR
 ConvertTest.ConvertBF16F32 POPLAR
-DepthwiseConvolution2DTest POPLAR
 
 UnaryOpTest.UnsignedAbsTestR1         POPLAR // U32
 UnaryOpTest.UnsignedSignTestR1        POPLAR
@@ -118,6 +117,7 @@ DynamicSliceTest.Int64R1 POPLAR
 ScalarComputationsTest.CastS64ToF32 POPLAR
 ConvertTest.ConvertR1S64ToR1F32 POPLAR
 ConvertTest.ConvertR1F32ToR1S64 POPLAR
+HloTestBase.ReduceWindowS64 POPLAR
 
 ScalarComputationsTest.AddTwoScalarsU64      POPLAR // U64
 DynamicUpdateSliceTest.UInt64R3 POPLAR
