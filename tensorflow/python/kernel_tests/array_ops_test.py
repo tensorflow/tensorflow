@@ -514,13 +514,19 @@ class StridedSliceChecker(object):
       except AttributeError:
         return x
 
-    if isinstance(spec, (np.ndarray, ops.Tensor)):
+    def convert_if_possible(spec):
+      try:
+        return ops.convert_to_tensor(spec)
+      except:
+        pass
+      return None
+
+    bool_spec = convert_if_possible(spec)
+    if bool_spec is not None and bool_spec.dtype == dtypes.bool:
       tensor = op.eval()
-      np_specs = eval_if_tensor(spec)
-      ndims_np_specs = np_specs.ndim
-      if ndims_np_specs != 0:
-        self.test.assertAllEqual(self.x_np[np_specs], tensor)
-        return tensor
+      np_spec = eval_if_tensor(bool_spec)
+      self.test.assertAllEqual(self.x_np[np_spec], tensor)
+      return tensor
 
     if not isinstance(spec, (list, tuple)):
       spec = [spec]
@@ -687,6 +693,10 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         _ = checker[0.0]
       with self.assertRaisesRegexp(TypeError, expected):
         _ = checker[constant_op.constant(0.0)]
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker[constant_op.constant([1, 2, 3])]
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker[[2.1, -0.7, 1.5]]
 
   @test_util.run_deprecated_v1
   def testExpand(self):
@@ -747,6 +757,13 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       _ = checker1[raw >= 4]
       _ = checker1[raw < 19]
       _ = checker1[scalar]
+
+      # Test boolean and non boolean cases
+      mask = np.array([True, False, True])
+      raw1 = np.array([[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]])
+      checker2 = StridedSliceChecker(self, raw1)
+      _ = checker2[mask]
+      _ = checker2[ops.convert_to_tensor(mask)]
 
 
 class StridedSliceShapeChecker(object):
