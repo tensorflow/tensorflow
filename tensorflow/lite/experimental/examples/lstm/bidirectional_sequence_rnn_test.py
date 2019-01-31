@@ -149,8 +149,8 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
         curr, ["INPUT_IMAGE_LITE"], ["OUTPUT_CLASS"],
         [tf.float32.as_datatype_enum])
 
-    tflite = tf.lite.toco_convert(
-        curr, [tflite_input], [outputs], allow_custom_ops=False)
+    converter = tf.lite.TFLiteConverter(curr, [tflite_input], [outputs])
+    tflite = converter.convert()
 
     interpreter = tf.lite.Interpreter(model_content=tflite)
 
