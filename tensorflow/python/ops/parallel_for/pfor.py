@@ -1876,6 +1876,7 @@ def _convert_batch_mat_mul(pfor_input):
 @RegisterPForWithArgs("Prod", math_ops.reduce_prod)
 @RegisterPForWithArgs("Max", math_ops.reduce_max)
 @RegisterPForWithArgs("Min", math_ops.reduce_min)
+@RegisterPForWithArgs("Mean", math_ops.reduce_mean)
 def _convert_reduction(pfor_input, _, op_func):
   t = pfor_input.stacked_input(0)
   indices = pfor_input.unstacked_input(1)
