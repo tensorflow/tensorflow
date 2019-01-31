@@ -252,6 +252,16 @@ bool OnSameTask(EagerContext* ctx, Device* first, Device* second) {
          first->parsed_name().task == second->parsed_name().task;
 }
 
+// Gets the CPU device on the task of device.
+Status CPUDeviceOnTask(EagerContext* ctx, tensorflow::Device* device,
+                       tensorflow::Device** cpu_device) {
+  string cpu_device_name;
+  TF_RETURN_IF_ERROR(DeviceNameUtils::DeviceNameToCpuDeviceName(
+      device->name(), &cpu_device_name));
+
+  return ctx->FindDeviceByName(cpu_device_name, cpu_device);
+}
+
 inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
                                                const tensorflow::Fprint128& b) {
   return {tensorflow::FingerprintCat64(a.low64, b.low64),
@@ -628,10 +638,16 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
         // explicitly copy, and instead depend on the copy to happen locally
         // when the op is executed on the device.
         !OnSameTask(ctx, op->Device(), input_device)) {
+      tensorflow::Device* remote_cpu_device;
+      TF_RETURN_IF_ERROR(
+          CPUDeviceOnTask(ctx, op->Device(), &remote_cpu_device));
       // TODO(b/110044833): It's possible the same tensor gets copied to the
       // remote device repeatedly.
+      // Always copy to the remote CPU so that the actual device can be
+      // correctly determined after the kernel is selected/instantiated, since
+      // the op might have its inputs on host memory.
       TF_RETURN_IF_ERROR(MaybeCopyInputToExpectedDevice(
-          op, op->Device(), i, op->Device(), /* run_metadata= */ nullptr,
+          op, op->Device(), i, remote_cpu_device, /* run_metadata= */ nullptr,
           &(*op->MutableInputs())[i]));
     }
 
