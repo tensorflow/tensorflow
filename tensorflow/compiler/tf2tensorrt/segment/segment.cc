@@ -450,6 +450,12 @@ tensorflow::Status SegmentGraph(
         num_unsupported_ops++;
         node = nullptr;
       }
+      else {
+        VLOG(2) << "Accepted as a TF-TRT candidate, "
+                << "(Op type: " << node->tf_node()->type_string() << "), "
+                << "(Op name: " << node->name() << "), "
+                << "(Reason: " << status << ")";
+      }
     }
     node_segments.emplace_back(node);
   }
