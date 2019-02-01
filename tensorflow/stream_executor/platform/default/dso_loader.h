@@ -41,6 +41,12 @@ port::StatusOr<void*> GetCufftDsoHandle();
 port::StatusOr<void*> GetCurandDsoHandle();
 port::StatusOr<void*> GetCuptiDsoHandle();
 port::StatusOr<void*> GetCudnnDsoHandle();
+
+port::StatusOr<void*> GetRocblasDsoHandle();
+port::StatusOr<void*> GetMiopenDsoHandle();
+port::StatusOr<void*> GetRocfftDsoHandle();
+port::StatusOr<void*> GetRocrandDsoHandle();
+port::StatusOr<void*> GetHipDsoHandle();
 }  // namespace DsoLoader
 
 // Wrapper around the DsoLoader that prevents us from dlopen'ing any of the DSOs
@@ -54,7 +60,14 @@ port::StatusOr<void*> GetCufftDsoHandle();
 port::StatusOr<void*> GetCurandDsoHandle();
 port::StatusOr<void*> GetCuptiDsoHandle();
 port::StatusOr<void*> GetCudnnDsoHandle();
+ 
+port::StatusOr<void*> GetRocblasDsoHandle();
+port::StatusOr<void*> GetMiopenDsoHandle();
+port::StatusOr<void*> GetRocfftDsoHandle();
+port::StatusOr<void*> GetRocrandDsoHandle();
+port::StatusOr<void*> GetHipDsoHandle();
 }  // namespace CachedDsoLoader
+
 }  // namespace internal
 }  // namespace stream_executor
 
