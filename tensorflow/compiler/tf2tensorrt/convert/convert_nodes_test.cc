@@ -2099,7 +2099,7 @@ TEST_F(OpConverterTest, ConvertQuantize) {
     AddTestTensor("weights_max", {1});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"min\" for QuantizeAndDequantizeV2 must be a constant"
+        "The input \"input_min\" for QuantizeAndDequantizeV2 must be a constant"
         ", at my_quantize");
   }
   {
@@ -2218,7 +2218,7 @@ TEST_F(OpConverterTest, ConvertSquare) {
     AddTestWeights<float>("input", {1, 2, 3}, {1, 2, 3, 4, -5, 6});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"input\" for Square must be a tensor, at my_square");
+        "The input \"x\" for Square must be a tensor, at my_square");
   }
 
   // OK. Note that kINT32 is not supported by IElementWiseLayer, so we don't
