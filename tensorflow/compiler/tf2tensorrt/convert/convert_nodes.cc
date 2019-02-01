@@ -351,7 +351,7 @@ nvinfer1::ITensor* Converter::CreateConstantLayer(
   return trt_tensor;
 }
 
-tensorflow::Status Converter::CreateBroadcastableScalarConstant(
+tensorflow::Status CreateBroadcastableScalarConstant(
     OpConverterParams* params, float value, const nvinfer1::Dims& dims,
     const nvinfer1::ITensor** tensor) {
   // In order to be broadcastable, the number of dims has to match.
@@ -2477,7 +2477,7 @@ tensorflow::Status ConvertLeakyRelu(OpConverterParams* params) {
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   // Create const for alpha.
   const nvinfer1::ITensor* const_alpha_tensor = nullptr;
-  TF_RETURN_IF_ERROR(params->converter->CreateBroadcastableScalarConstant(
+  TF_RETURN_IF_ERROR(CreateBroadcastableScalarConstant(
       params, alpha, tensor->getDimensions(), &const_alpha_tensor));
   // alpha * x
   nvinfer1::IElementWiseLayer* mul_layer =
@@ -2648,7 +2648,7 @@ tensorflow::Status ConvertRelu6(OpConverterParams* params) {
 
   // Create a constant layer to store the floating point weight i.e. 6.0f
   const nvinfer1::ITensor* const6_tensor = nullptr;
-  TF_RETURN_IF_ERROR(params->converter->CreateBroadcastableScalarConstant(
+  TF_RETURN_IF_ERROR(CreateBroadcastableScalarConstant(
       params, 6.0f, relu_layer->getOutput(0)->getDimensions(), &const6_tensor));
 
   // ElementWise Min Operation
