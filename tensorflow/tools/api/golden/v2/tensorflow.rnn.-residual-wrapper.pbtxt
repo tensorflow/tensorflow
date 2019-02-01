@@ -1,6 +1,10 @@
-path: "tensorflow.nn.rnn_cell.ResidualWrapper"
+path: "tensorflow.rnn.ResidualWrapper"
 tf_class {
+  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.ResidualWrapperV2\'>"
+  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl._RNNCellWrapperV2\'>"
+  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.LayerRNNCell\'>"
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.ResidualWrapper\'>"
+  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl._RNNCellWrapperV1\'>"
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.RNNCell\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
@@ -132,11 +136,11 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'self\', \'_\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'inputs_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "call"
-    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=kwargs, defaults=None"
+    argspec: "args=[\'self\', \'inputs\', \'state\'], varargs=None, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "compute_mask"
