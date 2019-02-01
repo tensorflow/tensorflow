@@ -1156,16 +1156,7 @@ class Counter(keras.callbacks.Callback):
 class TestDistributionStrategyWithCallbacks(test.TestCase,
                                             parameterized.TestCase):
 
-  def _check_counts(self, counter, expected_counts):
-    """Checks that the counts registered by `counter` are those expected."""
-    for method_name, expected_count in expected_counts.items():
-      self.assertEqual(
-          counter.method_counts[method_name],
-          expected_count,
-          msg='For method {}: expected {}, got: {}'.format(
-              method_name, expected_count, counter.method_counts[method_name]))
-
-  @combinations.generate(strategy_minus_tpu_combinations())
+  @combinations.generate(all_strategy_combinations())
   def test_callbacks_in_fit(self, distribution):
     with distribution.scope():
       model = get_model()
@@ -1174,36 +1165,46 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
     dataset = get_dataset(distribution)
     counter = Counter()
 
+    epochs = 2
+    steps_per_epoch = 5
+    validation_steps = 3
+
     model.fit(
         dataset,
-        epochs=2,
-        steps_per_epoch=5,
+        epochs=epochs,
+        steps_per_epoch=steps_per_epoch,
         verbose=0,
         validation_data=dataset,
-        validation_steps=2,
+        validation_steps=validation_steps,
         callbacks=[counter])
 
-    self._check_counts(
-        counter, {
-            'on_batch_begin': 10,
-            'on_batch_end': 10,
-            'on_epoch_begin': 2,
-            'on_epoch_end': 2,
-            'on_predict_batch_begin': 0,
-            'on_predict_batch_end': 0,
-            'on_predict_begin': 0,
-            'on_predict_end': 0,
-            'on_test_batch_begin': 4,
-            'on_test_batch_end': 4,
-            'on_test_begin': 2,
-            'on_test_end': 2,
-            'on_train_batch_begin': 10,
-            'on_train_batch_end': 10,
+    if isinstance(distribution, tpu_strategy.TPUStrategy):
+      # TPU Strategy can have multi step training, from extended.steps_per_run
+      # if steps_per_run = 1, then num_batch_call_per_epoch = steps_per_epoch
+      steps_per_run = distribution.extended.steps_per_run
+      num_batch_call_per_epoch = steps_per_epoch // steps_per_run
+      if steps_per_epoch % steps_per_run:
+        num_batch_call_per_epoch += 1
+    else:
+      num_batch_call_per_epoch = steps_per_epoch
+
+    self.assertDictEqual(
+        counter.method_counts, {
+            'on_batch_begin': epochs * num_batch_call_per_epoch,
+            'on_batch_end': epochs * num_batch_call_per_epoch,
+            'on_epoch_begin': epochs,
+            'on_epoch_end': epochs,
+            'on_test_batch_begin': epochs * validation_steps,
+            'on_test_batch_end': epochs * validation_steps,
+            'on_test_begin': epochs,
+            'on_test_end': epochs,
+            'on_train_batch_begin': epochs * num_batch_call_per_epoch,
+            'on_train_batch_end': epochs * num_batch_call_per_epoch,
             'on_train_begin': 1,
             'on_train_end': 1
         })
 
-  @combinations.generate(strategy_minus_tpu_combinations())
+  @combinations.generate(all_strategy_combinations())
   def test_callbacks_in_eval(self, distribution):
     with distribution.scope():
       model = get_model()
@@ -1214,15 +1215,15 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
 
     model.evaluate(dataset, steps=5, callbacks=[counter])
 
-    self._check_counts(
-        counter, {
+    self.assertDictEqual(
+        counter.method_counts, {
             'on_test_batch_begin': 5,
             'on_test_batch_end': 5,
             'on_test_begin': 1,
             'on_test_end': 1
         })
 
-  @combinations.generate(strategy_minus_tpu_combinations())
+  @combinations.generate(all_strategy_combinations())
   def test_callbacks_in_predict(self, distribution):
     with distribution.scope():
       model = get_model()
@@ -1233,8 +1234,8 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
 
     model.predict(get_predict_dataset(dataset), steps=5, callbacks=[counter])
 
-    self._check_counts(
-        counter, {
+    self.assertDictEqual(
+        counter.method_counts, {
             'on_predict_batch_begin': 5,
             'on_predict_batch_end': 5,
             'on_predict_begin': 1,
