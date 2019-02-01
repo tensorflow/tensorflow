@@ -1302,10 +1302,10 @@ Status Converter::GetInputs(const tensorflow::NodeDef& node_def,
 // while false means the input must be a tensor. In the future, false will mean
 // the input can be a tensor or weight.
 tensorflow::Status CheckInputsWeights(
-    OpConverterParams* params,
-    const std::vector<std::pair<string, bool>> inputs_is_weight) {
-  const auto& inputs = params->inputs;
-  const auto& node_def = params->node_def;
+    const OpConverterParams& params,
+    const std::vector<std::pair<string, bool>>& inputs_is_weight) {
+  const auto& inputs = params.inputs;
+  const auto& node_def = params.node_def;
   if (inputs.size() != inputs_is_weight.size()) {
     return tensorflow::errors::InvalidArgument(
         node_def.op(), " got ", inputs.size(), " inputs but expected ",
@@ -1623,13 +1623,13 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group,
   const nvinfer1::ITensor* tensor = nullptr;
   if (is_conv2d_backprop_input) {
     TF_RETURN_IF_ERROR(CheckInputsWeights(
-        params,
-        {{"input_sizes", true}, {"filter", true},  {"out_backprop", false}}));
+        *params,
+        {{"input_sizes", true}, {"filter", true}, {"out_backprop", false}}));
     backprop_output_size = inputs.at(0);
     tensor = inputs.at(2).tensor();
   } else {
     TF_RETURN_IF_ERROR(
-        CheckInputsWeights(params, {{"input", false}, {"filter", true}}));
+        CheckInputsWeights(*params, {{"input", false}, {"filter", true}}));
     tensor = inputs.at(0).tensor();
   }
   TRT_ShapedWeights weights_rsck = inputs.at(1).weights();
@@ -1893,7 +1893,7 @@ tensorflow::Status ConvertPlugin(OpConverterParams* params) {
 tensorflow::Status ConvertTranspose(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   TF_RETURN_IF_ERROR(
-      CheckInputsWeights(params, {{"input", false}, {"perm", true}}));
+      CheckInputsWeights(*params, {{"x", false}, {"perm", true}}));
   // Get the permutation from weights.
   TRT_ShapedWeights weights = inputs.at(1).weights();
   const int* weights_ptr =
@@ -1927,7 +1927,7 @@ tensorflow::Status ConvertReshape(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
-      CheckInputsWeights(params, {{"input", false}, {"shape", true}}));
+      CheckInputsWeights(*params, {{"tensor", false}, {"shape", true}}));
   TRT_TensorOrWeights input_tensor = inputs.at(0);
   TRT_ShapedWeights weights = inputs.at(1).weights();
   if (weights.count() == 0) {
@@ -2024,7 +2024,7 @@ tensorflow::Status ConvertExpandDims(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
-      CheckInputsWeights(params, {{"input", false}, {"axis", true}}));
+      CheckInputsWeights(*params, {{"input", false}, {"axis", true}}));
   // Get input shape as vector.
   TRT_TensorOrWeights input_tensor = inputs.at(0);
   const nvinfer1::Dims dims = input_tensor.GetTrtDims();
@@ -2074,7 +2074,7 @@ tensorflow::Status ConvertExpandDims(OpConverterParams* params) {
 tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(params, {{"input", false}}));
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
   // Get input shape.
   TRT_TensorOrWeights input_tensor = inputs.at(0);
   const nvinfer1::Dims dims = input_tensor.GetTrtDims();
@@ -2177,7 +2177,7 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(
-      params,
+      *params,
       {{"input", false}, {"begin", true}, {"end", true}, {"strides", true}}));
   // Get input dims.
   nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
@@ -2373,7 +2373,7 @@ tensorflow::Status ConvertConv2DBackpropInput(OpConverterParams* params) {
 tensorflow::Status ConvertPool(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(params, {{"input", false}}));
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
   nvinfer1::PoolingType type;
   if (node_def.op() == "MaxPool") {
     type = nvinfer1::PoolingType::kMAX;
@@ -2463,7 +2463,7 @@ tensorflow::Status ConvertPool(OpConverterParams* params) {
 tensorflow::Status ConvertActivation(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(params, {{"input", false}}));
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
   static const std::unordered_map<string, nvinfer1::ActivationType> ops{
       {"Relu", nvinfer1::ActivationType::kRELU},
       {"Sigmoid", nvinfer1::ActivationType::kSIGMOID},
@@ -2498,15 +2498,18 @@ Status ConvertQuantize(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   if (node_def.op() == "FakeQuantWithMinMaxArgs") {
-    TF_RETURN_IF_ERROR(CheckInputsWeights(params, {{"input", false}}));
-  } else if (node_def.op() == "FakeQuantWithMinMaxVars" ||
-             node_def.op() == "QuantizeAndDequantizeV2") {
+    TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
+  } else if (node_def.op() == "FakeQuantWithMinMaxVars") {
     TF_RETURN_IF_ERROR(CheckInputsWeights(
-        params, {{"input", false}, {"min", true}, {"max", true}}));
+        *params, {{"input", false}, {"min", true}, {"max", true}}));
+  } else if (node_def.op() == "QuantizeAndDequantizeV2") {
+    TF_RETURN_IF_ERROR(CheckInputsWeights(
+        *params, {{"input", false}, {"input_min", true}, {"input_max", true}}));
   } else if (node_def.op() == "QuantizeAndDequantizeV3") {
-    TF_RETURN_IF_ERROR(CheckInputsWeights(
-        params,
-        {{"input", false}, {"min", true}, {"max", true}, {"num_bits", true}}));
+    TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false},
+                                                    {"input_min", true},
+                                                    {"input_max", true},
+                                                    {"num_bits", true}}));
   }
   float min_range = 0.0f;
   float max_range = 0.0f;
@@ -2558,7 +2561,7 @@ Status ConvertQuantize(OpConverterParams* params) {
 tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(params, {{"input", false}}));
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
   if (params->validation_only) return Status::OK();
   // ***************************************************************************
   // TensorRT does not implement Relu6 natively. This function converts Relu6 op
@@ -2620,7 +2623,7 @@ tensorflow::Status ConvertBiasAdd(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
-      CheckInputsWeights(params, {{"input", false}, {"bias", true}}));
+      CheckInputsWeights(*params, {{"value", false}, {"bias", true}}));
   TFAttrs attrs(node_def);
   tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
   if (tf_dtype != DataType::DT_FLOAT && tf_dtype != DataType::DT_HALF) {
@@ -2841,7 +2844,7 @@ Status ConvertBinary(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   // TODO(tmorris): Enable once false is updated to mean either tensor or weight
-  // TF_RETURN_IF_ERROR(CheckInputsWeights(params, {{"x", false}, {"y",
+  // TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}, {"y",
   // false}}));
   if (inputs.size() != 2) {
     return tensorflow::errors::InvalidArgument(
@@ -2896,7 +2899,7 @@ tensorflow::Status ConvertUnary(OpConverterParams* params) {
       {"Abs", nvinfer1::UnaryOperation::kABS},
       {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
   };
-  TF_RETURN_IF_ERROR(CheckInputsWeights(params, {{"input", false}}));
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
 
   // TODO(jie): check type
   const nvinfer1::ITensor* tensor = nullptr;
@@ -2945,7 +2948,7 @@ tensorflow::Status ConvertUnary(OpConverterParams* params) {
 tensorflow::Status ConvertSquare(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(params, {{"input", false}}));
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
   if (params->validation_only) return Status::OK();
 
   // Constant 2 with same rank as input
@@ -2978,7 +2981,7 @@ tensorflow::Status ConvertReduce(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
-      CheckInputsWeights(params, {{"input", false}, {"axis", true}}));
+      CheckInputsWeights(*params, {{"input", false}, {"axis", true}}));
 
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   TRT_ShapedWeights index_list = inputs.at(1).weights();
@@ -3040,7 +3043,7 @@ tensorflow::Status ConvertPad(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
-      CheckInputsWeights(params, {{"input", false}, {"paddings", true}}));
+      CheckInputsWeights(*params, {{"tensor", false}, {"paddings", true}}));
 
   // Implement tensor binaryOp weight [channel wise] for now;
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
@@ -3221,11 +3224,11 @@ tensorflow::Status ConvertConcat(OpConverterParams* params) {
 tensorflow::Status ConvertFusedBatchNorm(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(params, {{"input", false},
-                                                 {"scale", true},
-                                                 {"offset", true},
-                                                 {"mean", true},
-                                                 {"variance", true}}));
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false},
+                                                  {"scale", true},
+                                                  {"offset", true},
+                                                  {"mean", true},
+                                                  {"variance", true}}));
   TFAttrs attrs(node_def);
   float epsilon = attrs.get<float>("epsilon");
   auto data_format = attrs.get<string>("data_format");
@@ -3402,7 +3405,7 @@ tensorflow::Status ConvertMatMulHelper(OpConverterParams* params,
 tensorflow::Status ConvertMatMul(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(params, {{"a", false}, {"b", true}}));
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"a", false}, {"b", true}}));
 
   TFAttrs attrs(node_def);
   tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
@@ -3429,7 +3432,7 @@ tensorflow::Status ConvertBatchMatMul(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   // TODO(tmorris): Enable once false is updated to mean either tensor or weight
-  // TF_RETURN_IF_ERROR(CheckInputsWeights(params, {{"x", false}, {"y",
+  // TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}, {"y",
   // false}}));
   if (inputs.size() != 2) {
     return tensorflow::errors::InvalidArgument(
@@ -3507,7 +3510,7 @@ tensorflow::Status ConvertBatchMatMul(OpConverterParams* params) {
 tensorflow::Status ConvertSoftmax(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(params, {{"input", false}}));
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"logits", false}}));
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
 
   int nbDims = tensor->getDimensions().nbDims;
@@ -3541,7 +3544,7 @@ tensorflow::Status ConvertTopK(OpConverterParams* params) {
 
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
-      CheckInputsWeights(params, {{"input", false}, {"k", true}}));
+      CheckInputsWeights(*params, {{"input", false}, {"k", true}}));
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   const int num_dims = tensor->getDimensions().nbDims;
   if (num_dims == 0) {
