@@ -198,12 +198,14 @@ llvm::Value* GenerateVF32Log(llvm::IRBuilder<>* b, llvm::Value* input,
   // The smallest non denormalized float number.
   const llvm::APFloat min_norm_pos = GetIeeeF32FromBitwiseRep(0x00800000);
   const llvm::APFloat minus_inf = GetIeeeF32FromBitwiseRep(0xff800000);
+  const llvm::APFloat pos_inf = GetIeeeF32FromBitwiseRep(0x7f800000);
   const llvm::APFloat inv_mant_mask = GetIeeeF32FromBitwiseRep(~0x7f800000);
 
   // invalid_mask is set if x is negative or NaN (and therefore output
   // must be NaN).
   llvm::Value* invalid_mask = vsl.FCmpULEMask(input, vsl.GetZeroVector());
-  llvm::Value* iszero_mask = vsl.FCmpEQMask(input, vsl.GetZeroVector());
+  llvm::Value* is_zero_mask = vsl.FCmpEQMask(input, vsl.GetZeroVector());
+  llvm::Value* is_pos_inf_mask = vsl.FCmpEQMask(input, pos_inf);
 
   // Cut off denormalized stuff.
   input = vsl.Max(min_norm_pos, input);
@@ -260,11 +262,20 @@ llvm::Value* GenerateVF32Log(llvm::IRBuilder<>* b, llvm::Value* input,
   input = vsl.Add(input, y);
   input = vsl.Add(input, y2);
 
-  // Negative arg will be NAN, 0 will be -INF.
-  llvm::Value* or_lhs =
-      vsl.FloatAndNot(iszero_mask, vsl.FloatOr(input, invalid_mask));
-  llvm::Value* or_rhs = vsl.FloatAnd(iszero_mask, minus_inf);
-  return vsl.FloatOr(or_lhs, or_rhs);
+  // Contains +/-inf where +/-inf is the correct answer, otherwise 0.
+  llvm::Value* result_inf = vsl.FloatOr(vsl.FloatAnd(is_zero_mask, minus_inf),
+                                        vsl.FloatAnd(is_pos_inf_mask, pos_inf));
+
+  // Contains a finite result or nan.  This is the correct answer only if both
+  // result_minus_inf and result_pos_inf are both 0.
+  //
+  // (This implementation works because 0xffffffff is a nan.)
+  llvm::Value* result_finite_or_nan = vsl.FloatOr(input, invalid_mask);
+
+  // Combine the above into a final result.
+  return vsl.FloatOr(result_inf,
+                     vsl.FloatAndNot(vsl.FloatOr(is_zero_mask, is_pos_inf_mask),
+                                     result_finite_or_nan));
 }
 }  // namespace
 
