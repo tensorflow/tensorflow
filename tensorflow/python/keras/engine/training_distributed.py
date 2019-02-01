@@ -597,9 +597,7 @@ def experimental_tpu_predict_loop(model,
     # during graph optimization.
     padding_handler = padding_util.PartialBatchPaddingHandler(
         model._feed_output_shapes)
-    batched_dataset = input_lib._get_batched_dataset(dataset)
-    batch_size, _, prefetch_buffer = input_lib._get_batched_dataset_attributes(
-        batched_dataset)
+    batch_size, _, prefetch_buffer = input_lib._get_dataset_attributes(dataset)
     padding_handler.padded_batch_size = batch_size
     padding_handler.padding_mask = dataset.reduce(padding_handler.padding_mask,
                                                   padding_handler.update_mask)
