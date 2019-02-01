@@ -1100,6 +1100,21 @@ class DatasetV2(object):
   def filter(self, predicate):
     """Filters this dataset according to `predicate`.
 
+    ```python
+    # NOTE: The following examples use `{ ... }` to represent the
+    # contents of a dataset.
+    a = { 1, 2, 3 }
+    b = { 4, 5, 6, 7 }
+
+    a.filter(lambda x: x < 3) == { 1, 2 }
+
+    # `tf.math.equal(x, y)` is required for equality comparison
+    def filter_fn(x):
+      return tf.math.equal(x, 4)
+
+    b.filter(filter_fn) == { 4 }
+    ```
+
     Args:
       predicate: A function mapping a nested structure of tensors (having shapes
         and types defined by `self.output_shapes` and `self.output_types`) to a
