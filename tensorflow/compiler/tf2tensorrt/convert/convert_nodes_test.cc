@@ -21,7 +21,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -37,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -926,6 +930,57 @@ TEST_F(ConverterTest, CreateConstantLayer) {
         << DebugString(tensor->getType());
     ExpectTrtDimsEqualsArray({3, 10}, tensor->getDimensions());
   }
+}
+
+class ConvertGraphDefToEngineTest : public ::testing::Test {
+ public:
+  Status RunConvertGraphDefToEngine(Scope* s) {
+    GraphDef gdef;
+    TF_EXPECT_OK(s->ToGraphDef(&gdef));
+    std::vector<tensorflow::PartialTensorShape> input_shapes;
+    int batch_size = -1;
+    for (const NodeDef& node : gdef.node()) {
+      absl::string_view node_name(node.name());
+      if (str_util::ConsumePrefix(&node_name, kInputPHName)) {
+        int port = -1;
+        EXPECT_TRUE(absl::SimpleAtoi(node_name, &port)) << node.name();
+        if (input_shapes.size() < port + 1) input_shapes.resize(port + 1);
+        input_shapes[port] =
+            PartialTensorShape(node.attr().at("shape").shape());
+        if (batch_size == -1) {
+          batch_size = input_shapes[port].dim_size(0);
+        } else {
+          EXPECT_EQ(batch_size, input_shapes[port].dim_size(0));
+        }
+      }
+    }
+    // TODO(laigd): execute the engine and get outputs.
+    return ConvertGraphDefToEngine(
+        gdef, TrtPrecisionMode::FP32, /*max_batch_size=*/1,
+        /*max_workspace_size_bytes=*/64 << 20, input_shapes, &logger_,
+        /*allocator=*/nullptr, /*calibrator=*/nullptr, &engine_,
+        /*use_calibration=*/false, /*convert_successfully=*/nullptr);
+  }
+
+ protected:
+  TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
+
+ private:
+  Logger logger_;
+};
+
+TEST_F(ConvertGraphDefToEngineTest, IdentityGraph) {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName(StrCat(kInputPHName, 0)), DT_FLOAT,
+                                ops::Placeholder::Shape({1, 1}));
+  auto output = ops::Identity(s.WithOpName("identity1"), input);
+  output = ops::Identity(s.WithOpName("identity2"), output);
+  output = ops::Identity(s.WithOpName(StrCat(kOutputPHName, 0)), output);
+  // If the converter marks the input tensor as output tensor, the conversion
+  // below will fail with:
+  // > TensorRTOutputPH_0 cannot be both input and output
+  // > Network must have at least one output
+  TF_EXPECT_OK(RunConvertGraphDefToEngine(&s));
 }
 
 // Input/output data format for OpConverterTest::BuildAndRun().
