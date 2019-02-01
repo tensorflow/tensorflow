@@ -21,10 +21,10 @@ from __future__ import print_function
 # pylint: disable=unused-import
 from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
 # pylint: enable=unused-import
-from tensorflow.contrib.tensorrt.python import trt_convert
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import data
 from tensorflow.python import keras
+from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.estimator.estimator import Estimator
 from tensorflow.python.estimator.model_fn import EstimatorSpec
 from tensorflow.python.estimator.model_fn import ModeKeys
@@ -265,7 +265,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
   def testEval(self):
     if not trt_convert.is_tensorrt_enabled():
       return
-    model_dir = test.test_src_dir_path('contrib/tensorrt/test/testdata')
+    model_dir = test.test_src_dir_path('python/compiler/tensorrt/test/testdata')
 
     accuracy_tf_native = self._Run(
         is_training=False,
