@@ -45,6 +45,10 @@ limitations under the License.
 #include <poplar/IPUModel.hpp>
 #include <poplar/Tensor.hpp>
 
+// Pre-processor convert token to string
+#define QUOTE(str) #str
+#define TOSTRING(str) QUOTE(str)
+
 /*
  * TensorControl is a structure that maintains state about the location
  * of a tensor - either on the device or cached on the host.
@@ -346,9 +350,12 @@ bool PoplarExecutor::SynchronizeAllActivity() {
 se::DeviceDescription* PoplarExecutor::PopulateDeviceDescription() const {
   se::internal::DeviceDescriptionBuilder builder;
 
+  std::string tf_poplar_build_tag = TOSTRING(TF_POPLAR_BUILD_TAG);
+
   builder.set_name("Poplar");
-  const auto version =
-      poplar::versionString() + " (" + poplar::packageHash() + ")";
+  const auto version = poplar::versionString() +
+                       " (Poplar package: " + poplar::packageHash() +
+                       ") (Tensorflow package: " + tf_poplar_build_tag + ")";
   builder.set_platform_version(version);
 
   auto built = builder.Build();

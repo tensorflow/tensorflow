@@ -5,6 +5,7 @@ package(default_visibility = ["//visibility:public"])
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("@local_config_poplar//poplar:build_defs.bzl", "poplar_lib_directory")
 load("@local_config_poplar//poplar:build_defs.bzl", "poplibs_lib_directory")
+load("@local_config_poplar//poplar:build_defs.bzl", "tf_poplar_build_tag")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
@@ -213,6 +214,9 @@ cc_library(
         "driver/custom_ops/popnn_ops.h",
         "driver/custom_ops/popops_ops.h",
         "driver/custom_ops/poprand_ops.h",
+    ],
+    copts = [
+        "-DTF_POPLAR_BUILD_TAG=" + tf_poplar_build_tag(),
     ],
     deps = [
         ":common",
