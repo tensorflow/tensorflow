@@ -33,6 +33,7 @@ class RegistryTest(test.TestCase, parameterized.TestCase):
   class Foo(object):
     pass
 
+  # Test the registry basics on both classes (Foo) and functions (bar).
   @parameterized.parameters([Foo, bar])
   def testRegistryBasics(self, candidate):
     myreg = registry.Registry('testRegistry')
