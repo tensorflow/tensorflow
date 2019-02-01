@@ -444,6 +444,7 @@ renames = {
     'tf.nn.rnn_cell.GRUCell': 'tf.compat.v1.nn.rnn_cell.GRUCell',
     'tf.nn.rnn_cell.LSTMCell': 'tf.compat.v1.nn.rnn_cell.LSTMCell',
     'tf.nn.rnn_cell.MultiRNNCell': 'tf.compat.v1.nn.rnn_cell.MultiRNNCell',
+    'tf.nn.rnn_cell.ResidualWrapper': 'tf.compat.v1.nn.rnn_cell.ResidualWrapper',
     'tf.nn.static_bidirectional_rnn': 'tf.compat.v1.nn.static_bidirectional_rnn',
     'tf.nn.static_rnn': 'tf.compat.v1.nn.static_rnn',
     'tf.nn.uniform_candidate_sampler': 'tf.random.uniform_candidate_sampler',
