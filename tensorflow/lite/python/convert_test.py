@@ -83,6 +83,20 @@ class ConvertTest(test_util.TensorFlowTestCase):
         "std_dev and mean must be defined when inference_input_type is "
         "QUANTIZED_UINT8.", str(error.exception))
 
+  def testInferenceTypeInvalid(self):
+    in_tensor = array_ops.placeholder(shape=[1, 16, 16, 3],
+                                      dtype=dtypes.float32)
+    out_tensor = array_ops.fake_quant_with_min_max_args(in_tensor + in_tensor,
+                                                        min=0., max=1.)
+    sess = session.Session()
+    #Passing an invalid inference type
+    with self.assertRaises(ValueError) as error:
+      convert.toco_convert(
+          sess.graph_def, [in_tensor], [out_tensor],
+          inference_type=dtypes.int8,
+          quantized_input_stats=[(0., 1.)])
+    self.assertIn("Unsupported tf.dtype", str(error.exception))
+
   def testGraphDefBasic(self):
     in_tensor = array_ops.placeholder(
         shape=[1, 16, 16, 3], dtype=dtypes.float32, name="input")
