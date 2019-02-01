@@ -1159,6 +1159,14 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
+  def test_flags_bare(self):
+    _, _, errors, _ = self._upgrade("tf.flags")
+    self.assertIn("tf.flags has been removed", errors[0])
+
+  def test_flags_flags(self):
+    _, _, errors, _ = self._upgrade("tf.flags.FLAGS")
+    self.assertIn("tf.flags has been removed", errors[0])
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 

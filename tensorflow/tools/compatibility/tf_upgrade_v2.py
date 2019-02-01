@@ -824,6 +824,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "the required code."
     )
 
+    flags_warning = (
+        ast_edits.ERROR,
+        "tf.flags has been removed, please use the argparse or absl"
+        " modules if you need command line parsing.")
+
     decay_function_comment = (
         ast_edits.INFO,
         "To use learning rate decay schedules with TensorFlow 2.0, switch to "
@@ -973,10 +978,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             assert_rank_comment,
         "tf.debugging.assert_rank_in":
             assert_rank_comment,
-        "tf.flags": (
-            ast_edits.ERROR,
-            "tf.flags has been removed, please use the argparse or absl"
-            " modules if you need command line parsing."),
         "tf.train.exponential_decay":
             decay_function_comment,
         "tf.train.piecewise_constant_decay":
@@ -1321,6 +1322,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     self.module_deprecations = {
         "tf.contrib": contrib_warning,
+        "tf.flags": flags_warning,
     }
 
 

@@ -116,8 +116,8 @@ class APIChangeSpec(object):
   * `function_warnings`: maps full names of functions to warnings that will be
     printed out if the function is used. (e.g. tf.nn.convolution())
   * `function_transformers`: maps function names to custom handlers
-  * `leftover_warnings`: These warnings are printed if a matching Attribute
-    still exists after all other transformations have run.
+  * `module_deprecations`: maps module names to warnings that will be printed
+    if the module is still used after all other transformations have run
 
   For an example, see `TFAPIChangeSpec`.
   """
