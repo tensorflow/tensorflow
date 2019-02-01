@@ -16,11 +16,14 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service.h"
 
 #include <deque>
+#include <memory>
 #include <unordered_map>
+#include <vector>
 
 #include "grpcpp/alarm.h"
 #include "grpcpp/server_builder.h"
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/common_runtime/buf_rendezvous.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -32,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_response_cache.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
@@ -42,8 +46,12 @@ limitations under the License.
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
@@ -91,10 +99,11 @@ class GrpcWorkerServiceThread {
  public:
   explicit GrpcWorkerServiceThread(
       GrpcWorker* worker, ::grpc::ServerBuilder* builder,
-      std::unordered_map<int, int> queue_depth,
+      std::unordered_map<int, int> queue_depth, GrpcResponseCache* cache,
       grpc::WorkerService::AsyncService* worker_service)
       : worker_(worker),
         queue_depth_(queue_depth),
+        cache_(cache),
         worker_service_(worker_service),
         is_shutdown_(false) {
     cq_ = builder->AddCompletionQueue();
@@ -220,18 +229,32 @@ class GrpcWorkerServiceThread {
       NonOwnedProtoRunGraphResponse* wrapped_response =
           new NonOwnedProtoRunGraphResponse(&call->response);
       call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
-      worker_->RunGraphAsync(call_opts, wrapped_request, wrapped_response,
-                             [call, call_opts, wrapped_request,
-                              wrapped_response](const Status& s) {
-                               if (!s.ok()) {
-                                 VLOG(1) << "Bad response from RunGraph:" << s;
-                               }
-                               call->ClearCancelCallback();
-                               delete call_opts;
-                               delete wrapped_request;
-                               delete wrapped_response;
-                               call->SendResponse(ToGrpcStatus(s));
-                             });
+      auto done_cb = [call, call_opts, wrapped_request,
+                      wrapped_response](const Status& s) {
+        VLOG(1) << "RunGraph::Done";
+        if (!s.ok()) {
+          VLOG(1) << "Bad response from RunGraph:" << s;
+        }
+        call->ClearCancelCallback();
+        delete call_opts;
+        delete wrapped_request;
+        delete wrapped_response;
+        call->SendResponse(ToGrpcStatus(s));
+      };
+
+      auto compute_fn = [this, call_opts, wrapped_request,
+                         wrapped_response](StatusCallback done) {
+        worker_->RunGraphAsync(call_opts, wrapped_request, wrapped_response,
+                               done);
+      };
+
+      if (cache_) {
+        string request_key = call->request.ShortDebugString();
+        cache_->LookupOrCompute(request_key, RPCResponse(&call->response),
+                                compute_fn, done_cb);
+      } else {
+        compute_fn(done_cb);
+      }
     });
     ENQUEUE_REQUEST(RunGraph, true);
   }
@@ -241,16 +264,28 @@ class GrpcWorkerServiceThread {
     Schedule([this, call]() {
       CallOptions* call_opts = new CallOptions;
       call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
-      worker_->GrpcRecvTensorAsync(
-          call_opts, &call->request, &call->response,
-          [call, call_opts](const Status& s) {
-            call->ClearCancelCallback();
-            delete call_opts;
-            if (!s.ok()) {
-              VLOG(1) << "Bad response from RecvTensor:" << s;
-            }
-            call->SendResponse(ToGrpcStatus(s));
-          });
+
+      auto done_cb = [call, call_opts](const Status& s) {
+        call->ClearCancelCallback();
+        delete call_opts;
+        if (!s.ok()) {
+          VLOG(1) << "Bad response from RecvTensor:" << s;
+        }
+        call->SendResponse(ToGrpcStatus(s));
+      };
+
+      auto compute_fn = [this, &call_opts, &call](StatusCallback done) {
+        worker_->GrpcRecvTensorAsync(call_opts, &call->request, &call->response,
+                                     done);
+      };
+
+      if (cache_) {
+        string request_key = call->request.ShortDebugString();
+        cache_->LookupOrCompute(request_key, RPCResponse(&call->response),
+                                compute_fn, done_cb);
+      } else {
+        compute_fn(done_cb);
+      }
     });
     EnqueueRecvTensorRequestRaw();
   }
@@ -328,6 +363,7 @@ class GrpcWorkerServiceThread {
   std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
   std::unique_ptr<Thread> thread_;
   std::unordered_map<int, int> queue_depth_;
+  GrpcResponseCache* cache_;
   grpc::WorkerService::AsyncService* const worker_service_;
 
   mutex shutdown_mu_;
@@ -341,9 +377,16 @@ class GrpcWorkerService : public AsyncServiceInterface {
                     GrpcWorkerServiceOptions options)
       : is_shutdown_(false) {
     builder->RegisterService(&worker_service_);
-    for (int i = 0; i < options.num_worker_threads; i++) {
-      threads_.emplace_back(new GrpcWorkerServiceThread(
-          worker, builder, options.queue_depth, &worker_service_));
+    if (options.response_cache_bytes > 0) {
+      cache_.reset(
+          new GrpcResponseCache(options.response_cache_bytes,
+                                options.response_cache_expires_seconds));
+    }
+
+    for (int i = 0; i < options.num_serving_threads; i++) {
+      threads_.emplace_back(
+          new GrpcWorkerServiceThread(worker, builder, options.queue_depth,
+                                      cache_.get(), &worker_service_));
     }
   }
 
@@ -378,6 +421,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
   grpc::WorkerService::AsyncService worker_service_;
   std::vector<std::unique_ptr<GrpcWorkerServiceThread>> threads_;
 
+  std::unique_ptr<GrpcResponseCache> cache_;
   mutex service_shutdown_mu_;
   bool is_shutdown_ GUARDED_BY(service_shutdown_mu_);
 
