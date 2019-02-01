@@ -234,6 +234,8 @@ struct OperationState {
   /// Successors of this operation and their respective operands.
   SmallVector<Block *, 1> successors;
   unsigned numBlockLists = 0;
+  /// If the operation has a resizable operand list.
+  bool resizableOperandList = false;
 
 public:
   OperationState(MLIRContext *context, Location location, StringRef name)
@@ -245,7 +247,8 @@ public:
   OperationState(MLIRContext *context, Location location, StringRef name,
                  ArrayRef<Value *> operands, ArrayRef<Type> types,
                  ArrayRef<NamedAttribute> attributes,
-                 ArrayRef<Block *> successors = {}, unsigned numBlockLists = 0)
+                 ArrayRef<Block *> successors = {}, unsigned numBlockLists = 0,
+                 bool resizableOperandList = false)
       : context(context), location(location), name(name, context),
         operands(operands.begin(), operands.end()),
         types(types.begin(), types.end()),
@@ -282,6 +285,11 @@ public:
 
   /// Add a new block list with the specified blocks.
   void reserveBlockLists(unsigned numReserved) { numBlockLists += numReserved; }
+
+  /// Sets the operand list of the operation as resizable.
+  void setOperandListToResizable(bool isResizable = true) {
+    resizableOperandList = isResizable;
+  }
 };
 
 } // end namespace mlir

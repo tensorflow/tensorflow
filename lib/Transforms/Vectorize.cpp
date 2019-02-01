@@ -1122,6 +1122,7 @@ static OperationInst *vectorizeOneOperationInst(FuncBuilder *b,
   OperationState newOp(b->getContext(), opInst->getLoc(),
                        opInst->getName().getStringRef(), operands, types,
                        opInst->getAttrs());
+  newOp.setOperandListToResizable(opInst->hasResizableOperandsList());
   return b->createOperation(newOp);
 }
 

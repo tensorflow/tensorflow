@@ -42,21 +42,157 @@ template <typename ObjectType, typename ElementType> class ResultIterator;
 template <typename ObjectType, typename ElementType> class ResultTypeIterator;
 class Function;
 
+namespace detail {
+/// A utility class holding the information necessary to dynamically resize
+/// operands.
+struct ResizableStorage {
+  ResizableStorage(InstOperand *opBegin, unsigned numOperands)
+      : firstOpAndIsDynamic(opBegin, false), capacity(numOperands) {}
+
+  ~ResizableStorage() { cleanupStorage(); }
+
+  /// Cleanup any allocated storage.
+  void cleanupStorage() {
+    // If the storage is dynamic, then we need to free the storage.
+    if (isStorageDynamic())
+      free(firstOpAndIsDynamic.getPointer());
+  }
+
+  /// Sets the storage pointer to a new dynamically allocated block.
+  void setDynamicStorage(InstOperand *opBegin) {
+    /// Cleanup the old storage if necessary.
+    cleanupStorage();
+    firstOpAndIsDynamic.setPointerAndInt(opBegin, true);
+  }
+
+  /// Returns the current storage pointer.
+  InstOperand *getPointer() { return firstOpAndIsDynamic.getPointer(); }
+  const InstOperand *getPointer() const {
+    return firstOpAndIsDynamic.getPointer();
+  }
+
+  /// Returns if the current storage of operands is in the trailing objects is
+  /// in a dynamically allocated memory block.
+  bool isStorageDynamic() const { return firstOpAndIsDynamic.getInt(); }
+
+  /// A pointer to the first operand element. This is either to the trailing
+  /// objects storage, or a dynamically allocated block of memory.
+  llvm::PointerIntPair<InstOperand *, 1, bool> firstOpAndIsDynamic;
+
+  // The maximum number of operands that can be currently held by the storage.
+  unsigned capacity;
+};
+
+/// This class handles the management of instruction operands. Operands are
+/// stored similarly to the elements of a SmallVector except for two key
+/// differences. The first is the inline storage, which is a trailing objects
+/// array. The second is that being able to dynamically resize the operand list
+/// is optional.
+class OperandStorage final
+    : private llvm::TrailingObjects<OperandStorage, ResizableStorage,
+                                    InstOperand> {
+public:
+  OperandStorage(unsigned numOperands, bool resizable)
+      : numOperands(numOperands), resizable(resizable) {
+    // Initialize the resizable storage.
+    if (resizable)
+      new (&getResizableStorage())
+          ResizableStorage(getTrailingObjects<InstOperand>(), numOperands);
+  }
+
+  ~OperandStorage() {
+    // Manually destruct the operands.
+    for (auto &operand : getInstOperands())
+      operand.~InstOperand();
+
+    // If the storage is resizable then destruct the utility.
+    if (resizable)
+      getResizableStorage().~ResizableStorage();
+  }
+
+  /// Replace the operands contained in the storage with the ones provided in
+  /// 'operands'.
+  void setOperands(Instruction *owner, ArrayRef<Value *> operands);
+
+  /// Erase an operand held by the storage.
+  void eraseOperand(unsigned index);
+
+  /// Get the instruction operands held by the storage.
+  ArrayRef<InstOperand> getInstOperands() const {
+    return {getRawOperands(), size()};
+  }
+  MutableArrayRef<InstOperand> getInstOperands() {
+    return {getRawOperands(), size()};
+  }
+
+  /// Return the number of operands held in the storage.
+  unsigned size() const { return numOperands; }
+
+  /// Returns the additional size necessary for allocating this object.
+  static size_t additionalAllocSize(unsigned numOperands, bool resizable) {
+    return additionalSizeToAlloc<ResizableStorage, InstOperand>(
+        resizable ? 1 : 0, numOperands);
+  }
+
+  /// Returns if this storage is resizable.
+  bool isResizable() const { return resizable; }
+
+private:
+  /// Clear the storage and destroy the current operands held by the storage.
+  void clear() { numOperands = 0; }
+
+  /// Returns the current pointer for the raw operands array.
+  InstOperand *getRawOperands() {
+    return resizable ? getResizableStorage().getPointer()
+                     : getTrailingObjects<InstOperand>();
+  }
+  const InstOperand *getRawOperands() const {
+    return resizable ? getResizableStorage().getPointer()
+                     : getTrailingObjects<InstOperand>();
+  }
+
+  /// Returns the resizable operand utility class.
+  ResizableStorage &getResizableStorage() {
+    assert(resizable);
+    return *getTrailingObjects<ResizableStorage>();
+  }
+  const ResizableStorage &getResizableStorage() const {
+    assert(resizable);
+    return *getTrailingObjects<ResizableStorage>();
+  }
+
+  /// Grow the internal resizable operand storage.
+  void grow(ResizableStorage &resizeUtil, size_t minSize);
+
+  /// The current number of operands, and the current max operand capacity.
+  unsigned numOperands : 31;
+
+  /// Whether this storage is resizable or not.
+  bool resizable : 1;
+
+  // This stuff is used by the TrailingObjects template.
+  friend llvm::TrailingObjects<OperandStorage, ResizableStorage, InstOperand>;
+  size_t numTrailingObjects(OverloadToken<ResizableStorage>) const {
+    return resizable ? 1 : 0;
+  }
+};
+} // end namespace detail
+
 /// Operations represent all of the arithmetic and other basic computation in
 /// MLIR.
 ///
 class OperationInst final
     : public Instruction,
       private llvm::TrailingObjects<OperationInst, InstResult, BlockOperand,
-                                    unsigned, InstOperand, BlockList> {
+                                    unsigned, BlockList,
+                                    detail::OperandStorage> {
 public:
   /// Create a new OperationInst with the specific fields.
-  static OperationInst *create(Location location, OperationName name,
-                               ArrayRef<Value *> operands,
-                               ArrayRef<Type> resultTypes,
-                               ArrayRef<NamedAttribute> attributes,
-                               ArrayRef<Block *> successors,
-                               unsigned numBlockLists, MLIRContext *context);
+  static OperationInst *
+  create(Location location, OperationName name, ArrayRef<Value *> operands,
+         ArrayRef<Type> resultTypes, ArrayRef<NamedAttribute> attributes,
+         ArrayRef<Block *> successors, unsigned numBlockLists,
+         bool resizableOperandList, MLIRContext *context);
 
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
@@ -77,7 +213,13 @@ public:
   // Operands
   //===--------------------------------------------------------------------===//
 
-  unsigned getNumOperands() const { return numOperands; }
+  /// Returns if the operation has a resizable operation list, i.e. operands can
+  /// be added.
+  bool hasResizableOperandsList() const {
+    return getOperandStorage().isResizable();
+  }
+
+  unsigned getNumOperands() const { return getOperandStorage().size(); }
 
   Value *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
   const Value *getOperand(unsigned idx) const {
@@ -119,10 +261,10 @@ public:
   }
 
   ArrayRef<InstOperand> getInstOperands() const {
-    return {getTrailingObjects<InstOperand>(), numOperands};
+    return getOperandStorage().getInstOperands();
   }
   MutableArrayRef<InstOperand> getInstOperands() {
-    return {getTrailingObjects<InstOperand>(), numOperands};
+    return getOperandStorage().getInstOperands();
   }
 
   InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
@@ -302,7 +444,8 @@ public:
   void eraseSuccessorOperand(unsigned succIndex, unsigned opIndex) {
     assert(succIndex < getNumSuccessors());
     assert(opIndex < getNumSuccessorOperands(succIndex));
-    eraseOperand(getSuccessorOperandIndex(succIndex) + opIndex);
+    getOperandStorage().eraseOperand(getSuccessorOperandIndex(succIndex) +
+                                     opIndex);
     --getTrailingObjects<unsigned>()[succIndex];
   }
 
@@ -429,7 +572,6 @@ public:
   }
 
 private:
-  unsigned numOperands;
   const unsigned numResults, numSuccs, numBlockLists;
 
   /// This holds the name of the operation.
@@ -438,21 +580,22 @@ private:
   /// This holds general named attributes for the operation.
   AttributeListStorage *attrs;
 
-  OperationInst(Location location, OperationName name, unsigned numOperands,
-                unsigned numResults, unsigned numSuccessors,
-                unsigned numBlockLists, ArrayRef<NamedAttribute> attributes,
-                MLIRContext *context);
+  OperationInst(Location location, OperationName name, unsigned numResults,
+                unsigned numSuccessors, unsigned numBlockLists,
+                ArrayRef<NamedAttribute> attributes, MLIRContext *context);
   ~OperationInst();
 
-  /// Erase the operand at 'index'.
-  void eraseOperand(unsigned index);
+  /// Returns the operand storage object.
+  detail::OperandStorage &getOperandStorage() {
+    return *getTrailingObjects<detail::OperandStorage>();
+  }
+  const detail::OperandStorage &getOperandStorage() const {
+    return *getTrailingObjects<detail::OperandStorage>();
+  }
 
   // This stuff is used by the TrailingObjects template.
   friend llvm::TrailingObjects<OperationInst, InstResult, BlockOperand,
-                               unsigned, InstOperand, BlockList>;
-  size_t numTrailingObjects(OverloadToken<InstOperand>) const {
-    return numOperands;
-  }
+                               unsigned, BlockList, detail::OperandStorage>;
   size_t numTrailingObjects(OverloadToken<InstResult>) const {
     return numResults;
   }
@@ -555,7 +698,9 @@ inline auto OperationInst::getResultTypes() const
 }
 
 /// For instruction represents an affine loop nest.
-class ForInst : public Instruction {
+class ForInst final
+    : public Instruction,
+      private llvm::TrailingObjects<ForInst, detail::OperandStorage> {
 public:
   static ForInst *create(Location location, ArrayRef<Value *> lbOperands,
                          AffineMap lbMap, ArrayRef<Value *> ubOperands,
@@ -648,7 +793,7 @@ public:
   // Operands
   //===--------------------------------------------------------------------===//
 
-  unsigned getNumOperands() const { return operands.size(); }
+  unsigned getNumOperands() const { return getOperandStorage().size(); }
 
   Value *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
   const Value *getOperand(unsigned idx) const {
@@ -670,8 +815,12 @@ public:
     return const_operand_iterator(this, getNumOperands());
   }
 
-  ArrayRef<InstOperand> getInstOperands() const { return operands; }
-  MutableArrayRef<InstOperand> getInstOperands() { return operands; }
+  ArrayRef<InstOperand> getInstOperands() const {
+    return getOperandStorage().getInstOperands();
+  }
+  MutableArrayRef<InstOperand> getInstOperands() {
+    return getOperandStorage().getInstOperands();
+  }
   InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
   const InstOperand &getInstOperand(unsigned idx) const {
     return getInstOperands()[idx];
@@ -711,6 +860,8 @@ public:
     return const_cast<ForInst *>(this)->getInductionVar();
   }
 
+  void destroy();
+
 private:
   // The Block for the body. By construction, this list always contains exactly
   // one block.
@@ -723,13 +874,21 @@ private:
   // Positive constant step. Since index is stored as an int64_t, we restrict
   // step to the set of positive integers that int64_t can represent.
   int64_t step;
-  // Operands for the lower and upper bounds, with the former followed by the
-  // latter. Dimensional operands are followed by symbolic operands for each
-  // bound.
-  std::vector<InstOperand> operands;
 
-  explicit ForInst(Location location, unsigned numOperands, AffineMap lbMap,
-                   AffineMap ubMap, int64_t step);
+  explicit ForInst(Location location, AffineMap lbMap, AffineMap ubMap,
+                   int64_t step);
+  ~ForInst();
+
+  /// Returns the operand storage object.
+  detail::OperandStorage &getOperandStorage() {
+    return *getTrailingObjects<detail::OperandStorage>();
+  }
+  const detail::OperandStorage &getOperandStorage() const {
+    return *getTrailingObjects<detail::OperandStorage>();
+  }
+
+  // This stuff is used by the TrailingObjects template.
+  friend llvm::TrailingObjects<ForInst, detail::OperandStorage>;
 };
 
 /// Returns if the provided value is the induction variable of a ForInst.

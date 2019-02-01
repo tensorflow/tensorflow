@@ -55,6 +55,79 @@ template <> unsigned BlockOperand::getOperandNumber() const {
 }
 
 //===----------------------------------------------------------------------===//
+// OperandStorage
+//===----------------------------------------------------------------------===//
+
+/// Replace the operands contained in the storage with the ones provided in
+/// 'operands'.
+void detail::OperandStorage::setOperands(Instruction *owner,
+                                         ArrayRef<Value *> operands) {
+  // If the number of operands is less than or equal to the current amount, we
+  // can just update in place.
+  if (operands.size() <= numOperands) {
+    auto instOperands = getInstOperands();
+
+    // If the number of new operands is less than the current count, then remove
+    // any extra operands.
+    for (unsigned i = operands.size(); i != numOperands; ++i)
+      instOperands[i].~InstOperand();
+
+    // Set the operands in place.
+    numOperands = operands.size();
+    for (unsigned i = 0; i != numOperands; ++i)
+      instOperands[i].set(operands[i]);
+    return;
+  }
+
+  // Otherwise, we need to be resizable.
+  assert(resizable && "Only resizable operations may add operands");
+
+  // Grow the capacity if necessary.
+  auto &resizeUtil = getResizableStorage();
+  if (resizeUtil.capacity < operands.size())
+    grow(resizeUtil, operands.size());
+
+  // Set the operands.
+  InstOperand *opBegin = getRawOperands();
+  for (unsigned i = 0; i != numOperands; ++i)
+    opBegin[i].set(operands[i]);
+  for (unsigned e = operands.size(); numOperands != e; ++numOperands)
+    new (&opBegin[numOperands]) InstOperand(owner, operands[numOperands]);
+}
+
+/// Erase an operand held by the storage.
+void detail::OperandStorage::eraseOperand(unsigned index) {
+  assert(index < size());
+  auto Operands = getInstOperands();
+  --numOperands;
+
+  // Shift all operands down by 1 if the operand to remove is not at the end.
+  if (index != numOperands)
+    std::rotate(&Operands[index], &Operands[index + 1], &Operands[numOperands]);
+  Operands[numOperands].~InstOperand();
+}
+
+/// Grow the internal operand storage.
+void detail::OperandStorage::grow(ResizableStorage &resizeUtil,
+                                  size_t minSize) {
+  // Allocate a new storage array.
+  resizeUtil.capacity =
+      std::max(size_t(llvm::NextPowerOf2(resizeUtil.capacity + 2)), minSize);
+  InstOperand *newStorage = static_cast<InstOperand *>(
+      llvm::safe_malloc(resizeUtil.capacity * sizeof(InstOperand)));
+
+  // Move the current operands to the new storage.
+  auto operands = getInstOperands();
+  std::uninitialized_copy(std::make_move_iterator(operands.begin()),
+                          std::make_move_iterator(operands.end()), newStorage);
+
+  // Destroy the original operands and update the resizable storage pointer.
+  for (auto &operand : operands)
+    operand.~InstOperand();
+  resizeUtil.setDynamicStorage(newStorage);
+}
+
+//===----------------------------------------------------------------------===//
 // Instruction
 //===----------------------------------------------------------------------===//
 
@@ -71,7 +144,7 @@ void Instruction::destroy() {
     cast<OperationInst>(this)->destroy();
     break;
   case Kind::For:
-    delete cast<ForInst>(this);
+    cast<ForInst>(this)->destroy();
     break;
   }
 }
@@ -298,29 +371,32 @@ void Instruction::dropAllReferences() {
 //===----------------------------------------------------------------------===//
 
 /// Create a new OperationInst with the specific fields.
-OperationInst *OperationInst::create(Location location, OperationName name,
-                                     ArrayRef<Value *> operands,
-                                     ArrayRef<Type> resultTypes,
-                                     ArrayRef<NamedAttribute> attributes,
-                                     ArrayRef<Block *> successors,
-                                     unsigned numBlockLists,
-                                     MLIRContext *context) {
+OperationInst *
+OperationInst::create(Location location, OperationName name,
+                      ArrayRef<Value *> operands, ArrayRef<Type> resultTypes,
+                      ArrayRef<NamedAttribute> attributes,
+                      ArrayRef<Block *> successors, unsigned numBlockLists,
+                      bool resizableOperandList, MLIRContext *context) {
   unsigned numSuccessors = successors.size();
 
   // Input operands are nullptr-separated for each successors in the case of
   // terminators, the nullptr aren't actually stored.
   unsigned numOperands = operands.size() - numSuccessors;
 
-  auto byteSize =
-      totalSizeToAlloc<InstResult, BlockOperand, unsigned, InstOperand,
-                       BlockList>(resultTypes.size(), numSuccessors,
-                                  numSuccessors, numOperands, numBlockLists);
+  // Compute the byte size for the instruction and the operand storage.
+  auto byteSize = totalSizeToAlloc<InstResult, BlockOperand, unsigned,
+                                   BlockList, detail::OperandStorage>(
+      resultTypes.size(), numSuccessors, numSuccessors, numBlockLists,
+      /*detail::OperandStorage*/ 1);
+  byteSize += llvm::alignTo(detail::OperandStorage::additionalAllocSize(
+                                numOperands, resizableOperandList),
+                            alignof(OperationInst));
   void *rawMem = malloc(byteSize);
 
   // Initialize the OperationInst part of the instruction.
   auto inst = ::new (rawMem)
-      OperationInst(location, name, numOperands, resultTypes.size(),
-                    numSuccessors, numBlockLists, attributes, context);
+      OperationInst(location, name, resultTypes.size(), numSuccessors,
+                    numBlockLists, attributes, context);
 
   assert((numSuccessors == 0 || inst->isTerminator()) &&
          "unexpected successors in a non-terminator operation");
@@ -330,6 +406,9 @@ OperationInst *OperationInst::create(Location location, OperationName name,
     new (&inst->getBlockList(i)) BlockList(inst);
 
   // Initialize the results and operands.
+  new (&inst->getOperandStorage())
+      detail::OperandStorage(numOperands, resizableOperandList);
+
   auto instResults = inst->getInstResults();
   for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
     new (&instResults[i]) InstResult(resultTypes[i], inst);
@@ -395,13 +474,12 @@ OperationInst *OperationInst::create(Location location, OperationName name,
 }
 
 OperationInst::OperationInst(Location location, OperationName name,
-                             unsigned numOperands, unsigned numResults,
-                             unsigned numSuccessors, unsigned numBlockLists,
+                             unsigned numResults, unsigned numSuccessors,
+                             unsigned numBlockLists,
                              ArrayRef<NamedAttribute> attributes,
                              MLIRContext *context)
-    : Instruction(Kind::OperationInst, location), numOperands(numOperands),
-      numResults(numResults), numSuccs(numSuccessors),
-      numBlockLists(numBlockLists), name(name) {
+    : Instruction(Kind::OperationInst, location), numResults(numResults),
+      numSuccs(numSuccessors), numBlockLists(numBlockLists), name(name) {
 #ifndef NDEBUG
   for (auto elt : attributes)
     assert(elt.second != nullptr && "Attributes cannot have null entries");
@@ -412,8 +490,7 @@ OperationInst::OperationInst(Location location, OperationName name,
 
 OperationInst::~OperationInst() {
   // Explicitly run the destructors for the operands and results.
-  for (auto &operand : getInstOperands())
-    operand.~InstOperand();
+  getOperandStorage().~OperandStorage();
 
   for (auto &result : getInstResults())
     result.~InstResult();
@@ -466,17 +543,6 @@ bool OperationInst::isReturn() const { return isa<ReturnOp>(); }
 void OperationInst::setSuccessor(Block *block, unsigned index) {
   assert(index < getNumSuccessors());
   getBlockOperands()[index].set(block);
-}
-
-void OperationInst::eraseOperand(unsigned index) {
-  assert(index < getNumOperands());
-  auto Operands = getInstOperands();
-  --numOperands;
-
-  // Shift all operands down by 1 if the operand to remove is not at the end.
-  if (index != numOperands)
-    std::rotate(&Operands[index], &Operands[index + 1], &Operands[numOperands]);
-  Operands[numOperands].~InstOperand();
 }
 
 auto OperationInst::getNonSuccessorOperands() const
@@ -604,21 +670,33 @@ ForInst *ForInst::create(Location location, ArrayRef<Value *> lbOperands,
              "upper bound operand count does not match the affine map");
   assert(step > 0 && "step has to be a positive integer constant");
 
+  // Compute the byte size for the instruction and the operand storage.
   unsigned numOperands = lbOperands.size() + ubOperands.size();
-  ForInst *inst = new ForInst(location, numOperands, lbMap, ubMap, step);
+  auto byteSize = totalSizeToAlloc<detail::OperandStorage>(
+      /*detail::OperandStorage*/ 1);
+  byteSize += llvm::alignTo(detail::OperandStorage::additionalAllocSize(
+                                numOperands, /*resizable=*/true),
+                            alignof(ForInst));
+  void *rawMem = malloc(byteSize);
 
+  // Initialize the OperationInst part of the instruction.
+  ForInst *inst = ::new (rawMem) ForInst(location, lbMap, ubMap, step);
+  new (&inst->getOperandStorage())
+      detail::OperandStorage(numOperands, /*resizable=*/true);
+
+  auto operands = inst->getInstOperands();
   unsigned i = 0;
   for (unsigned e = lbOperands.size(); i != e; ++i)
-    inst->operands.emplace_back(InstOperand(inst, lbOperands[i]));
+    new (&operands[i]) InstOperand(inst, lbOperands[i]);
 
   for (unsigned j = 0, e = ubOperands.size(); j != e; ++i, ++j)
-    inst->operands.emplace_back(InstOperand(inst, ubOperands[j]));
+    new (&operands[i]) InstOperand(inst, ubOperands[j]);
 
   return inst;
 }
 
-ForInst::ForInst(Location location, unsigned numOperands, AffineMap lbMap,
-                 AffineMap ubMap, int64_t step)
+ForInst::ForInst(Location location, AffineMap lbMap, AffineMap ubMap,
+                 int64_t step)
     : Instruction(Instruction::Kind::For, location), body(this), lbMap(lbMap),
       ubMap(ubMap), step(step) {
 
@@ -628,9 +706,9 @@ ForInst::ForInst(Location location, unsigned numOperands, AffineMap lbMap,
 
   // Add an argument to the block for the induction variable.
   bodyEntry->addArgument(Type::getIndex(lbMap.getResult(0).getContext()));
-
-  operands.reserve(numOperands);
 }
+
+ForInst::~ForInst() { getOperandStorage().~OperandStorage(); }
 
 const AffineBound ForInst::getLowerBound() const {
   return AffineBound(*this, 0, lbMap.getNumInputs(), lbMap);
@@ -644,16 +722,12 @@ void ForInst::setLowerBound(ArrayRef<Value *> lbOperands, AffineMap map) {
   assert(lbOperands.size() == map.getNumInputs());
   assert(map.getNumResults() >= 1 && "bound map has at least one result");
 
-  SmallVector<Value *, 4> ubOperands(getUpperBoundOperands());
+  SmallVector<Value *, 4> newOperands(lbOperands.begin(), lbOperands.end());
 
-  operands.clear();
-  operands.reserve(lbOperands.size() + ubMap.getNumInputs());
-  for (auto *operand : lbOperands) {
-    operands.emplace_back(InstOperand(this, operand));
-  }
-  for (auto *operand : ubOperands) {
-    operands.emplace_back(InstOperand(this, operand));
-  }
+  auto ubOperands = getUpperBoundOperands();
+  newOperands.append(ubOperands.begin(), ubOperands.end());
+  getOperandStorage().setOperands(this, newOperands);
+
   this->lbMap = map;
 }
 
@@ -661,16 +735,10 @@ void ForInst::setUpperBound(ArrayRef<Value *> ubOperands, AffineMap map) {
   assert(ubOperands.size() == map.getNumInputs());
   assert(map.getNumResults() >= 1 && "bound map has at least one result");
 
-  SmallVector<Value *, 4> lbOperands(getLowerBoundOperands());
+  SmallVector<Value *, 4> newOperands(getLowerBoundOperands());
+  newOperands.append(ubOperands.begin(), ubOperands.end());
+  getOperandStorage().setOperands(this, newOperands);
 
-  operands.clear();
-  operands.reserve(lbOperands.size() + ubOperands.size());
-  for (auto *operand : lbOperands) {
-    operands.emplace_back(InstOperand(this, operand));
-  }
-  for (auto *operand : ubOperands) {
-    operands.emplace_back(InstOperand(this, operand));
-  }
   this->ubMap = map;
 }
 
@@ -767,6 +835,11 @@ void ForInst::walkOpsPostOrder(std::function<void(OperationInst *)> callback) {
 /// Returns the induction variable for this loop.
 Value *ForInst::getInductionVar() { return getBody()->getArgument(0); }
 
+void ForInst::destroy() {
+  this->~ForInst();
+  free(this);
+}
+
 /// Returns if the provided value is the induction variable of a ForInst.
 bool mlir::isForInductionVar(const Value *val) {
   return getForInductionVarOwner(val) != nullptr;
@@ -848,9 +921,9 @@ Instruction *Instruction::clone(BlockAndValueMapping &mapper,
       resultTypes.push_back(result->getType());
 
     unsigned numBlockLists = opInst->getNumBlockLists();
-    auto *newOp = OperationInst::create(getLoc(), opInst->getName(), operands,
-                                        resultTypes, opInst->getAttrs(),
-                                        successors, numBlockLists, context);
+    auto *newOp = OperationInst::create(
+        getLoc(), opInst->getName(), operands, resultTypes, opInst->getAttrs(),
+        successors, numBlockLists, opInst->hasResizableOperandsList(), context);
 
     // Clone the block lists.
     for (unsigned i = 0; i != numBlockLists; ++i)
