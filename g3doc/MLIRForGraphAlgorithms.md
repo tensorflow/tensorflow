@@ -238,7 +238,7 @@ and use this information when available, but because TensorFlow graphs don't
 capture this (e.g. serialize it to proto), passes have to recompute it on demand
 with ShapeRefiner.
 
-The [MLIR Tensor Type](g3doc/LangRef.md#tensor-type) directly captures shape
+The [MLIR Tensor Type](LangRef.md#tensor-type) directly captures shape
 information, so you can have things like:
 
 ```mlir {.mlir}
