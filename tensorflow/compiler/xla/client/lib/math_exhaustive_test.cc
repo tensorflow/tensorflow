@@ -71,7 +71,7 @@ struct Testcase {
   XlaOp (*op)(XlaOp);
   float (*host_op)(float);
 
-  ErrorSpec error{0.01};
+  ErrorSpec error{0.01, 0.01};
 
   // If true, don't test +/-infinity or negative 0.
   bool skip_pos_inf = false;
@@ -145,7 +145,6 @@ XLA_TEST_P(MathExhaustiveTest, DISABLED_ON_INTERPRETER(F16)) {
 //   Testcase{"asinh", Asinh, std::asinh},
 //   Testcase{"sinh", Sinh, std::sinh},
 //   Testcase{"cosh", Cosh, std::cosh}.set_fewer_infs_ok(),
-//   Testcase{"erf", Erf, std::erf},
 //   Testcase{"round_to_even", RoundToEven,
 //            [](float x) { return std::nearbyint(x / 2) * 2; }},
 //
@@ -161,7 +160,8 @@ XLA_TEST_P(MathExhaustiveTest, DISABLED_ON_INTERPRETER(F16)) {
 //
 // TODO(b/123355973): Test math functions not from math.cc (e.g. log).
 // TODO(b/123355973): Test bf16 and f32.
-//
+// TODO(b/123355973): Get rid of skip_infs / skip_neg_zero below if possible.
+// TODO(b/123355973): Reduce lgamma error if possible; it is very high.
 INSTANTIATE_TEST_CASE_P(
     MathExhaustiveTest_Instantiation, MathExhaustiveTest,
     ::testing::ValuesIn(std::vector<Testcase>{
@@ -172,7 +172,8 @@ INSTANTIATE_TEST_CASE_P(
             .set_skip_neg_zero(),
         Testcase{"square", Square, [](float x) { return x * x; }},
         Testcase{"reciprocal", Reciprocal, [](float x) { return 1 / x; }},
-        Testcase{"erfc", Erfc, std::erfc},
+        Testcase{"erf", Erf, std::erf}.set_tolerance(0.001, 0.0001),
+        Testcase{"erfc", Erfc, std::erfc}.set_tolerance(0.001, 0.0001),
         Testcase{"lgamma", Lgamma, std::lgamma}
             .set_tolerance(0.1, 0.15)
             .set_fewer_infs_ok(),
