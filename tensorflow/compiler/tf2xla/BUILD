@@ -1,6 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_cuda_cc_test")
 
 package_group(
     name = "internal",
@@ -677,5 +677,27 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "fused_batchnorm_reserve_space_test",
+    size = "medium",
+    srcs = ["fused_batchnorm_reserve_space_test.cc"],
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/compiler/jit",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
