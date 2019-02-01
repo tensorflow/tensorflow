@@ -25,6 +25,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -390,6 +391,71 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
                             self.evaluate(get_next()))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
+
+  # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
+  @test_util.run_v1_only("b/121264236")
+  def testSkipEagerCaptureConstantsWithConflictingDevices(self):
+    config = config_pb2.ConfigProto(
+        device_count={"CPU": 3}, log_device_placement=True)
+    with self.cached_session(config=config):
+      with ops.device("/device:CPU:0"):
+        a = constant_op.constant(3.0)
+      with ops.device("/device:CPU:1"):
+        b = constant_op.constant(5.0)
+
+      def func(_):
+        return math_ops.add(a, b)
+
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).map(func)
+      expected_output = [8.0] * 10
+      self.assertDatasetProduces(dataset, expected_output=expected_output)
+
+  # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
+  @test_util.run_v1_only(
+      "defun will convert RefVariables to ResourceVariables.")
+  def testSkipEagerRefVariablesWithConflictingDevices(self):
+    config = config_pb2.ConfigProto(
+        device_count={"CPU": 3}, log_device_placement=True)
+    with self.cached_session(config=config):
+
+      def func(_):
+        with ops.device("/device:CPU:0"):
+          a = variables.VariableV1(3.0)
+        with ops.device("/device:CPU:1"):
+          b = variables.VariableV1(5.0)
+        return math_ops.add(a, b)
+
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).map(func)
+      self.evaluate(variables.global_variables_initializer())
+      expected_output = [8.0] * 10
+      self.assertDatasetProduces(
+          dataset,
+          expected_output=expected_output,
+          requires_initialization=True)
+
+  # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
+  @test_util.run_v1_only("b/121264236")
+  def testSkipEagerResourceVariablesWithConflictingDevices(self):
+    config = config_pb2.ConfigProto(
+        device_count={"CPU": 3}, log_device_placement=True)
+    with self.cached_session(config=config):
+
+      def func(_):
+        with ops.device("/device:CPU:0"):
+          a = variables.Variable(3.0)
+        with ops.device("/device:CPU:1"):
+          b = variables.Variable(5.0)
+        return math_ops.add(a, b)
+
+      # The MapDataset node ends up with two ResourceVariable inputs, one on
+      # device CPU:0 and the other on device CPU:1. The placer cannot resolve
+      # this as it cannot place the MapDatasetOp on both devices.
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).map(func)
+      expected_error = (
+          errors.InvalidArgumentError,
+          "Could not colocate node with its resource and reference inputs")
+      self.assertDatasetProduces(
+          dataset, expected_error=expected_error, requires_initialization=True)
 
   def testCaptureVariable(self):
     counter_var = variable_scope.get_variable(
