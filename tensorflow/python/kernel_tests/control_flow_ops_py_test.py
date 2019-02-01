@@ -1055,7 +1055,8 @@ class ControlFlowTest(test.TestCase):
 
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(cond()), 10)
-      self.assertEqual(printed.contents(), "A\nB\nC\n")
+      self.assertTrue(printed.contents().endswith("A\nB\nC\n"),
+                      printed.contents())
 
       @eager_function.defun
       def nested_cond():
@@ -1063,7 +1064,8 @@ class ControlFlowTest(test.TestCase):
 
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(nested_cond()), 10)
-      self.assertEqual(printed.contents(), "A\nB\nC\n")
+      self.assertTrue(printed.contents().endswith("A\nB\nC\n"),
+                      printed.contents())
 
     # wrap_function should prune.
     def pruned_cond():
@@ -1112,11 +1114,13 @@ class ControlFlowTest(test.TestCase):
       with self.cached_session():
         with self.captureWritesToStream(sys.stderr) as printed:
           self.assertEqual(self.evaluate(build_while()[0]), 2)
-        self.assertEqual(printed.contents(), "D\nD\n")
+        self.assertTrue(printed.contents().endswith("D\nD\n"),
+                        printed.contents())
 
         with self.captureWritesToStream(sys.stderr) as printed:
           self.assertEqual(self.evaluate(build_nested_while()[0]), 2)
-        self.assertEqual(printed.contents(), "D\nD\n")
+        self.assertTrue(printed.contents().endswith("D\nD\n"),
+                        printed.contents())
 
     # In defuns, all prints should execute in program order.
     @eager_function.defun
@@ -1125,7 +1129,8 @@ class ControlFlowTest(test.TestCase):
 
     with self.captureWritesToStream(sys.stderr) as printed:
       self.assertEqual(self.evaluate(while_loop()), 2)
-    self.assertEqual(printed.contents(), "A\nB\nC\nD\nA\nB\nC\nD\nA\n")
+    self.assertTrue(printed.contents().endswith("A\nB\nC\nD\nA\nB\nC\nD\nA\n"),
+                    printed.contents())
 
     @eager_function.defun
     def nested_while_loop():
@@ -1135,7 +1140,9 @@ class ControlFlowTest(test.TestCase):
     if not context.executing_eagerly():
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(nested_while_loop()), 2)
-      self.assertEqual(printed.contents(), "A\nB\nC\nD\nA\nB\nC\nD\nA\n")
+      self.assertTrue(
+          printed.contents().endswith("A\nB\nC\nD\nA\nB\nC\nD\nA\n"),
+          printed.contents())
 
     # wrap_function should prune.
     def pruned_while():
@@ -1144,7 +1151,7 @@ class ControlFlowTest(test.TestCase):
 
     with self.captureWritesToStream(sys.stderr) as printed:
       self.assertEqual(self.evaluate(pruned_while()), 2)
-    self.assertEqual(printed.contents(), "D\nD\n")
+    self.assertTrue(printed.contents().endswith("D\nD\n"), printed.contents())
 
     def pruned_nested_while():
       return build_nested_while()[0]
@@ -1154,7 +1161,7 @@ class ControlFlowTest(test.TestCase):
     if not context.executing_eagerly():
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(pruned_nested_while()), 2)
-      self.assertEqual(printed.contents(), "D\nD\n")
+      self.assertTrue(printed.contents().endswith("D\nD\n"), printed.contents())
 
   # Microbenchmark: 256,000 iterations/s.
   def testWhile_1(self):
