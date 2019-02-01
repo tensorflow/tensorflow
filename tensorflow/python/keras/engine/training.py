@@ -273,8 +273,8 @@ class Model(Network):
     self.target_tensors = target_tensors
 
     # Set DistributionStrategy specific parameters.
-    for mode in [ModeKeys.TRAIN, ModeKeys.TEST, ModeKeys.PREDICT]:
-      distributed_training_utils.set_distributed_model(self, mode, None)
+    self._distributed_model_cache = {}
+
     if self._distribution_strategy is not None:
       # Ensures a Session is created and configured correctly for Distribution
       # Strategy.

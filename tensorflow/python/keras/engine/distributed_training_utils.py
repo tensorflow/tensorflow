@@ -851,21 +851,18 @@ def _reset_metrics(model):
 
 
 def get_distributed_model(model, mode):
-  if mode is ModeKeys.TRAIN:
-    return model._distributed_model_train
-  elif mode is ModeKeys.TEST:
-    return model._distributed_model_test
-  elif mode is ModeKeys.PREDICT:
-    return model._distributed_model_predict
+  key = _generate_cache_key(mode)
+  return model._distributed_model_cache.get(key, None)
 
 
 def set_distributed_model(model, mode, distributed_model):
-  if mode is ModeKeys.TRAIN:
-    model._distributed_model_train = distributed_model
-  elif mode is ModeKeys.TEST:
-    model._distributed_model_test = distributed_model
-  elif mode is ModeKeys.PREDICT:
-    model._distributed_model_predict = distributed_model
+  key = _generate_cache_key(mode)
+  model._distributed_model_cache[key] = distributed_model
+
+
+def _generate_cache_key(mode):
+  key = hash(mode)
+  return key
 
 
 @tf_contextlib.contextmanager
