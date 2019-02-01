@@ -111,6 +111,24 @@ public:
   StringRef getDerivedCodeBody() const;
 };
 
+// Wrapper class providing helper methods for accessing MLIR constant attribute
+// defined in TableGen. This class should closely reflect what is defined as
+// class `ConstantAttr` in TableGen.
+class ConstantAttr {
+public:
+  explicit ConstantAttr(const llvm::DefInit *init);
+
+  // Returns the attribute kind.
+  Attribute getAttribute() const;
+
+  // Returns the constant value.
+  StringRef getConstantValue() const;
+
+private:
+  // The TableGen definition of this constant attribute.
+  const llvm::Record *def;
+};
+
 } // end namespace tblgen
 } // end namespace mlir
 

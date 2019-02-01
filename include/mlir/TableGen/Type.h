@@ -42,6 +42,7 @@ public:
   explicit TypeConstraint(const llvm::DefInit &init);
 
   bool operator==(const TypeConstraint &that) { return def == that.def; }
+  bool operator!=(const TypeConstraint &that) { return def != that.def; }
 
   // Returns the predicate that can be used to check if a type satisfies this
   // type constraint.

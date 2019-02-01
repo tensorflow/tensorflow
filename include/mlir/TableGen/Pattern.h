@@ -23,6 +23,7 @@
 #ifndef MLIR_TABLEGEN_PATTERN_H_
 #define MLIR_TABLEGEN_PATTERN_H_
 
+#include "mlir/Support/LLVM.h"
 #include "mlir/TableGen/Argument.h"
 #include "mlir/TableGen/Operator.h"
 #include "llvm/ADT/DenseMap.h"
@@ -30,9 +31,9 @@
 #include "llvm/TableGen/Error.h"
 
 namespace llvm {
-class Record;
-class Init;
 class DagInit;
+class Init;
+class Record;
 class StringRef;
 } // end namespace llvm
 
@@ -42,19 +43,61 @@ namespace tblgen {
 // Mapping from TableGen Record to Operator wrapper object
 using RecordOperatorMap = llvm::DenseMap<const llvm::Record *, Operator>;
 
-// Wrapper around DAG argument.
-struct DagArg {
-  DagArg(Argument arg, llvm::Init *constraint)
-      : arg(arg), constraint(constraint) {}
-
-  // Returns true if this DAG argument concerns an operation attribute.
-  bool isAttr() const;
-
-  Argument arg;
-  llvm::Init *constraint;
-};
-
 class Pattern;
+
+// Wrapper class providing helper methods for accessing TableGen DAG leaves
+// used inside Patterns. This class is lightweight and designed to be used like
+// values.
+//
+// A TableGen DAG construct is of the syntax
+//   `(operator, arg0, arg1, ...)`.
+//
+// This class provides getters to retrieve `arg*` as tblgen:: wrapper objects
+// for handy helper methods. It only works on `arg*`s that are not nested DAG
+// constructs.
+class DagLeaf {
+public:
+  explicit DagLeaf(const llvm::Init *def) : def(def) {}
+
+  // Returns true if this DAG leaf is not specified in the pattern. That is, it
+  // places no further constraints/transforms and just carries over the original
+  // value.
+  bool isUnspecified() const;
+
+  // Returns true if this DAG leaf is matching an operand. That is, it specifies
+  // a type constraint.
+  bool isOperandMatcher() const;
+
+  // Returns true if this DAG leaf is matching an attribute. That is, it
+  // specifies an attribute constraint.
+  bool isAttrMatcher() const;
+
+  // Returns true if this DAG leaf is transforming an attribute.
+  bool isAttrTransformer() const;
+
+  // Returns true if this DAG leaf is specifying a constant attribute.
+  bool isConstantAttr() const;
+
+  // Returns this DAG leaf as a type constraint. Asserts if fails.
+  TypeConstraint getAsTypeConstraint() const;
+
+  // Returns this DAG leaf as an attribute constraint. Asserts if fails.
+  AttrConstraint getAsAttrConstraint() const;
+
+  // Returns this DAG leaf as an constant attribute. Asserts if fails.
+  ConstantAttr getAsConstantAttr() const;
+
+  // Returns the matching condition template inside this DAG leaf. Assumes the
+  // leaf is an operand/attribute matcher and asserts otherwise.
+  std::string getConditionTemplate() const;
+
+  // Returns the transformation template inside this DAG leaf. Assumes the
+  // leaf is an attribute matcher and asserts otherwise.
+  std::string getTransformationTemplate() const;
+
+private:
+  const llvm::Init *def;
+};
 
 // Wrapper class providing helper methods for accessing TableGen DAG constructs
 // used inside Patterns. This class is lightweight and designed to be used like
@@ -96,10 +139,9 @@ public:
   // Gets the `index`-th argument as a nested DAG construct if possible. Returns
   // null DagNode otherwise.
   DagNode getArgAsNestedDag(unsigned index) const;
-  // Gets the `index`-th argument as a TableGen DefInit* if possible. Returns
-  // nullptr otherwise.
-  // TODO: This method is exposing raw TableGen object and should be changed.
-  llvm::DefInit *getArgAsDefInit(unsigned index) const;
+
+  // Gets the `index`-th argument as a DAG leaf.
+  DagLeaf getArgAsLeaf(unsigned index) const;
 
   // Returns the specified name of the `index`-th argument.
   llvm::StringRef getArgName(unsigned index) const;
@@ -146,7 +188,7 @@ public:
   void ensureArgBoundInSourcePattern(llvm::StringRef name) const;
 
   // Returns a reference to all the bound arguments in the source pattern.
-  llvm::StringMap<DagArg> &getSourcePatternBoundArgs();
+  llvm::StringMap<Argument> &getSourcePatternBoundArgs();
 
   // Returns the op that the root node of the source pattern matches.
   const Operator &getSourceRootOp();
@@ -159,8 +201,10 @@ private:
   // The TableGen definition of this pattern.
   const llvm::Record &def;
 
-  RecordOperatorMap *recordOpMap;         // All operators
-  llvm::StringMap<DagArg> boundArguments; // All bound arguments
+  // All operators
+  RecordOperatorMap *recordOpMap;
+  // All bound arguments
+  llvm::StringMap<Argument> boundArguments;
 };
 
 } // end namespace tblgen

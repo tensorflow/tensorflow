@@ -133,3 +133,17 @@ StringRef tblgen::Attribute::getDerivedCodeBody() const {
   assert(isDerivedAttr() && "only derived attribute has 'body' field");
   return def->getValueAsString("body");
 }
+
+tblgen::ConstantAttr::ConstantAttr(const llvm::DefInit *init)
+    : def(init->getDef()) {
+  assert(def->isSubClassOf("ConstantAttr") &&
+         "must be subclass of TableGen 'ConstantAttr' class");
+}
+
+tblgen::Attribute tblgen::ConstantAttr::getAttribute() const {
+  return Attribute(def->getValueAsDef("attr"));
+}
+
+StringRef tblgen::ConstantAttr::getConstantValue() const {
+  return def->getValueAsString("value");
+}

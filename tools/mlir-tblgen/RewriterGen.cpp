@@ -39,31 +39,11 @@
 using namespace llvm;
 using namespace mlir;
 
-using mlir::tblgen::Argument;
-using mlir::tblgen::Attribute;
 using mlir::tblgen::DagNode;
 using mlir::tblgen::NamedAttribute;
 using mlir::tblgen::Operand;
 using mlir::tblgen::Operator;
-using mlir::tblgen::Pattern;
 using mlir::tblgen::RecordOperatorMap;
-using mlir::tblgen::Type;
-
-namespace {
-
-// Wrapper around DAG argument.
-struct DagArg {
-  DagArg(Argument arg, Init *constraintInit)
-      : arg(arg), constraintInit(constraintInit) {}
-  bool isAttr();
-
-  Argument arg;
-  Init *constraintInit;
-};
-
-} // end namespace
-
-bool DagArg::isAttr() { return arg.is<NamedAttribute *>(); }
 
 namespace {
 class PatternEmitter {
@@ -93,11 +73,18 @@ private:
   void emitReplaceWithNativeBuilder(DagNode resultTree);
 
   // Emits the value of constant attribute to `os`.
-  void emitAttributeValue(Record *constAttr);
+  void emitConstantAttr(tblgen::ConstantAttr constAttr);
 
   // Emits C++ statements for matching the op constrained by the given DAG
   // `tree`.
   void emitOpMatch(DagNode tree, int depth);
+
+  // Emits C++ statements for matching the `index`-th argument of the given DAG
+  // `tree` as an operand.
+  void emitOperandMatch(DagNode tree, int index, int depth, int indent);
+  // Emits C++ statements for matching the `index`-th argument of the given DAG
+  // `tree` as an attribute.
+  void emitAttributeMatch(DagNode tree, int index, int depth, int indent);
 
 private:
   // Pattern instantiation location followed by the location of multiclass
@@ -107,14 +94,13 @@ private:
   // Op's TableGen Record to wrapper object
   RecordOperatorMap *opMap;
   // Handy wrapper for pattern being emitted
-  Pattern pattern;
+  tblgen::Pattern pattern;
   raw_ostream &os;
 };
 } // end namespace
 
-void PatternEmitter::emitAttributeValue(Record *constAttr) {
-  Attribute attr(constAttr->getValueAsDef("attr"));
-  auto value = constAttr->getValue("value");
+void PatternEmitter::emitConstantAttr(tblgen::ConstantAttr constAttr) {
+  auto attr = constAttr.getAttribute();
 
   if (!attr.isConstBuildable())
     PrintFatalError(loc, "Attribute " + attr.getTableGenDefName() +
@@ -122,7 +108,7 @@ void PatternEmitter::emitAttributeValue(Record *constAttr) {
 
   // TODO(jpienaar): Verify the constants here
   os << formatv(attr.getConstBuilderTemplate().str().c_str(), "rewriter",
-                value->getValue()->getAsUnquotedString());
+                constAttr.getConstantValue());
 }
 
 // Helper function to match patterns.
@@ -137,13 +123,17 @@ void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
         "if (!op{0}->isa<{1}>()) return matchFailure();\n", depth,
         op.getQualCppClassName());
   }
-  if (tree.getNumArgs() != op.getNumArgs())
-    PrintFatalError(loc, Twine("mismatch in number of arguments to op '") +
-                             op.getOperationName() +
-                             "' in pattern and op's definition");
+  if (tree.getNumArgs() != op.getNumArgs()) {
+    PrintFatalError(loc, formatv("op '{0}' argument number mismatch: {1} in "
+                                 "pattern vs. {2} in definition",
+                                 op.getOperationName(), tree.getNumArgs(),
+                                 op.getNumArgs()));
+  }
+
   for (int i = 0, e = tree.getNumArgs(); i != e; ++i) {
     auto opArg = op.getArg(i);
 
+    // Handle nested DAG construct first
     if (DagNode argTree = tree.getArgAsNestedDag(i)) {
       os.indent(indent) << "{\n";
       os.indent(indent + 2) << formatv(
@@ -154,50 +144,78 @@ void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
       continue;
     }
 
-    // Verify arguments.
-    if (auto defInit = tree.getArgAsDefInit(i)) {
-      // Verify operands.
-      if (auto *operand = opArg.dyn_cast<Operand *>()) {
-        // Skip verification where not needed due to definition of op.
-        if (operand->type == Type(defInit))
-          goto StateCapture;
+    // Next handle DAG leaf: operand or attribute
+    if (auto *operand = opArg.dyn_cast<Operand *>()) {
+      emitOperandMatch(tree, i, depth, indent);
+    } else if (auto *namedAttr = opArg.dyn_cast<NamedAttribute *>()) {
+      emitAttributeMatch(tree, i, depth, indent);
+    } else {
+      PrintFatalError(loc, "unhandled case when matching op");
+    }
+  }
+}
 
-        if (!defInit->getDef()->isSubClassOf("Type"))
-          PrintFatalError(loc, "type argument required for operand");
+void PatternEmitter::emitOperandMatch(DagNode tree, int index, int depth,
+                                      int indent) {
+  Operator &op = tree.getDialectOp(opMap);
+  auto *operand = op.getArg(index).get<Operand *>();
+  auto matcher = tree.getArgAsLeaf(index);
 
-        auto constraint = tblgen::TypeConstraint(*defInit);
-        os.indent(indent)
-            << "if (!("
-            << formatv(constraint.getConditionTemplate().c_str(),
-                       formatv("op{0}->getOperand({1})->getType()", depth, i))
-            << ")) return matchFailure();\n";
-      }
-
-      // TODO(jpienaar): Verify attributes.
-      if (auto *namedAttr = opArg.dyn_cast<NamedAttribute *>()) {
-        auto constraint = tblgen::AttrConstraint(defInit);
-        std::string condition = formatv(
-            constraint.getConditionTemplate().c_str(),
-            formatv("op{0}->getAttrOfType<{1}>(\"{2}\")", depth,
-                    namedAttr->attr.getStorageType(), namedAttr->getName()));
-        os.indent(indent) << "if (!(" << condition
-                          << ")) return matchFailure();\n";
-      }
+  // If a constraint is specified, we need to generate C++ statements to
+  // check the constraint.
+  if (!matcher.isUnspecified()) {
+    if (!matcher.isOperandMatcher()) {
+      PrintFatalError(
+          loc, formatv("the {1}-th argument of op '{0}' should be an operand",
+                       op.getOperationName(), index + 1));
     }
 
-  StateCapture:
-    auto name = tree.getArgName(i);
-    if (name.empty())
-      continue;
-    if (opArg.is<Operand *>())
-      os.indent(indent) << "state->" << name << " = op" << depth
-                        << "->getOperand(" << i << ");\n";
-    if (auto namedAttr = opArg.dyn_cast<NamedAttribute *>()) {
-      os.indent(indent) << "state->" << name << " = op" << depth
-                        << "->getAttrOfType<"
-                        << namedAttr->attr.getStorageType() << ">(\""
-                        << namedAttr->getName() << "\");\n";
+    // Only need to verify if the matcher's type is different from the one
+    // of op definition.
+    if (static_cast<tblgen::TypeConstraint>(operand->type) !=
+        matcher.getAsTypeConstraint()) {
+      os.indent(indent) << "if (!("
+                        << formatv(matcher.getConditionTemplate().c_str(),
+                                   formatv("op{0}->getOperand({1})->getType()",
+                                           depth, index))
+                        << ")) return matchFailure();\n";
     }
+  }
+
+  // Capture the value
+  auto name = tree.getArgName(index);
+  if (!name.empty()) {
+    os.indent(indent) << "state->" << name << " = op" << depth
+                      << "->getOperand(" << index << ");\n";
+  }
+}
+
+void PatternEmitter::emitAttributeMatch(DagNode tree, int index, int depth,
+                                        int indent) {
+  Operator &op = tree.getDialectOp(opMap);
+  auto *namedAttr = op.getArg(index).get<NamedAttribute *>();
+  auto matcher = tree.getArgAsLeaf(index);
+
+  if (!matcher.isUnspecified() && !matcher.isAttrMatcher()) {
+    PrintFatalError(
+        loc, formatv("the {1}-th argument of op '{0}' should be an attribute",
+                     op.getOperationName(), index + 1));
+  }
+
+  // If a constraint is specified, we need to generate C++ statements to
+  // check the constraint.
+  std::string condition =
+      formatv(matcher.getConditionTemplate().c_str(),
+              formatv("op{0}->getAttrOfType<{1}>(\"{2}\")", depth,
+                      namedAttr->attr.getStorageType(), namedAttr->getName()));
+  os.indent(indent) << "if (!(" << condition << ")) return matchFailure();\n";
+
+  // Capture the value
+  auto name = tree.getArgName(index);
+  if (!name.empty()) {
+    os.indent(indent) << "state->" << name << " = op" << depth
+                      << "->getAttrOfType<" << namedAttr->attr.getStorageType()
+                      << ">(\"" << namedAttr->getName() << "\");\n";
   }
 }
 
@@ -234,11 +252,12 @@ void PatternEmitter::emit(StringRef rewriteName) {
   // Emit matched state.
   os << "  struct MatchedState : public PatternState {\n";
   for (const auto &arg : pattern.getSourcePatternBoundArgs()) {
-    if (auto namedAttr = arg.second.arg.dyn_cast<NamedAttribute *>()) {
-      os.indent(4) << namedAttr->attr.getStorageType() << " " << arg.first()
+    auto fieldName = arg.first();
+    if (auto namedAttr = arg.second.dyn_cast<NamedAttribute *>()) {
+      os.indent(4) << namedAttr->attr.getStorageType() << " " << fieldName
                    << ";\n";
     } else {
-      os.indent(4) << "Value* " << arg.first() << ";\n";
+      os.indent(4) << "Value* " << fieldName << ";\n";
     }
   }
   os << "  };\n";
@@ -285,10 +304,10 @@ void PatternEmitter::emitReplaceOpWithNewOp(DagNode resultTree) {
     rewriter.replaceOpWithNewOp<{0}>(op, op->getResult(0)->getType())",
                 resultOp.getCppClassName());
   if (numOpArgs != resultTree.getNumArgs()) {
-    PrintFatalError(loc, Twine("mismatch between arguments of resultant op (") +
-                             Twine(numOpArgs) +
-                             ") and arguments provided for rewrite (" +
-                             Twine(resultTree.getNumArgs()) + Twine(')'));
+    PrintFatalError(loc, formatv("resultant op '{0}' argument number mismatch: "
+                                 "{1} in pattern vs. {2} in definition",
+                                 resultOp.getOperationName(),
+                                 resultTree.getNumArgs(), numOpArgs));
   }
 
   // Create the builder call for the result.
@@ -312,38 +331,33 @@ void PatternEmitter::emitReplaceOpWithNewOp(DagNode resultTree) {
     // Start each attribute on its own line.
     (os << ",\n").indent(6);
 
+    auto leaf = resultTree.getArgAsLeaf(i);
     // The argument in the result DAG pattern.
-    auto argName = resultTree.getArgName(i);
-    auto opName = resultOp.getArgName(i);
-    auto *defInit = resultTree.getArgAsDefInit(i);
-    auto *value = defInit ? defInit->getDef()->getValue("value") : nullptr;
-    if (!value) {
-      pattern.ensureArgBoundInSourcePattern(argName);
-      auto result = "s." + argName;
-      os << "/*" << opName << "=*/";
-      if (defInit) {
-        auto transform = defInit->getDef();
-        if (transform->isSubClassOf("tAttr")) {
-          // TODO(jpienaar): move to helper class.
-          os << formatv(
-              transform->getValueAsString("attrTransform").str().c_str(),
-              result);
-          continue;
-        }
-      }
-      os << result;
-      continue;
+    auto patArgName = resultTree.getArgName(i);
+    // The argument in the op definition.
+    auto opArgName = resultOp.getArgName(i);
+
+    if (leaf.isUnspecified() || leaf.isOperandMatcher()) {
+      pattern.ensureArgBoundInSourcePattern(patArgName);
+      os << formatv("/*{0}=*/s.{1}", opArgName, patArgName);
+    } else if (leaf.isAttrTransformer()) {
+      pattern.ensureArgBoundInSourcePattern(patArgName);
+      std::string result = std::string("s.") + patArgName.str();
+      result = formatv(leaf.getTransformationTemplate().c_str(), result);
+      os << formatv("/*{0}=*/{1}", opArgName, result);
+    } else if (leaf.isConstantAttr()) {
+      // TODO(jpienaar): Refactor out into map to avoid recomputing these.
+      auto argument = resultOp.getArg(i);
+      if (!argument.is<NamedAttribute *>())
+        PrintFatalError(loc, Twine("expected attribute ") + Twine(i));
+
+      if (!patArgName.empty())
+        os << "/*" << patArgName << "=*/";
+      emitConstantAttr(leaf.getAsConstantAttr());
+      // TODO(jpienaar): verify types
+    } else {
+      PrintFatalError(loc, "unhandled case when rewriting op");
     }
-
-    // TODO(jpienaar): Refactor out into map to avoid recomputing these.
-    auto argument = resultOp.getArg(i);
-    if (!argument.is<NamedAttribute *>())
-      PrintFatalError(loc, Twine("expected attribute ") + Twine(i));
-
-    if (!argName.empty())
-      os << "/*" << argName << "=*/";
-    emitAttributeValue(defInit->getDef());
-    // TODO(jpienaar): verify types
   }
   os << "\n    );\n";
 }
@@ -367,7 +381,7 @@ void PatternEmitter::emitReplaceWithNativeBuilder(DagNode resultTree) {
     auto name = resultTree.getArgName(i);
     pattern.ensureArgBoundInSourcePattern(name);
     const auto &val = boundedValues.find(name);
-    if (val->second.isAttr() && !printingAttr) {
+    if (val->second.dyn_cast<NamedAttribute *>() && !printingAttr) {
       os << "}, {";
       first = true;
       printingAttr = true;

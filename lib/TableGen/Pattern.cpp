@@ -28,8 +28,66 @@ using namespace mlir;
 
 using mlir::tblgen::Operator;
 
-bool tblgen::DagArg::isAttr() const {
-  return arg.is<tblgen::NamedAttribute *>();
+bool tblgen::DagLeaf::isUnspecified() const {
+  return !def || isa<llvm::UnsetInit>(def);
+}
+
+bool tblgen::DagLeaf::isOperandMatcher() const {
+  if (!def || !isa<llvm::DefInit>(def))
+    return false;
+  // Operand matchers specify a type constraint.
+  return cast<llvm::DefInit>(def)->getDef()->isSubClassOf("TypeConstraint");
+}
+
+bool tblgen::DagLeaf::isAttrMatcher() const {
+  if (!def || !isa<llvm::DefInit>(def))
+    return false;
+  // Attribute matchers specify a type constraint.
+  return cast<llvm::DefInit>(def)->getDef()->isSubClassOf("AttrConstraint");
+}
+
+bool tblgen::DagLeaf::isAttrTransformer() const {
+  if (!def || !isa<llvm::DefInit>(def))
+    return false;
+  return cast<llvm::DefInit>(def)->getDef()->isSubClassOf("tAttr");
+}
+
+bool tblgen::DagLeaf::isConstantAttr() const {
+  if (!def || !isa<llvm::DefInit>(def))
+    return false;
+  return cast<llvm::DefInit>(def)->getDef()->isSubClassOf("ConstantAttr");
+}
+
+tblgen::TypeConstraint tblgen::DagLeaf::getAsTypeConstraint() const {
+  assert(isOperandMatcher() && "the DAG leaf must be operand");
+  return TypeConstraint(*cast<llvm::DefInit>(def)->getDef());
+}
+
+tblgen::AttrConstraint tblgen::DagLeaf::getAsAttrConstraint() const {
+  assert(isAttrMatcher() && "the DAG leaf must be attribute");
+  return AttrConstraint(cast<llvm::DefInit>(def)->getDef());
+}
+
+tblgen::ConstantAttr tblgen::DagLeaf::getAsConstantAttr() const {
+  assert(isConstantAttr() && "the DAG leaf must be constant attribute");
+  return ConstantAttr(cast<llvm::DefInit>(def));
+}
+
+std::string tblgen::DagLeaf::getConditionTemplate() const {
+  assert((isOperandMatcher() || isAttrMatcher()) &&
+         "the DAG leaf must be operand/attribute matcher");
+  if (isOperandMatcher()) {
+    return getAsTypeConstraint().getConditionTemplate();
+  }
+  return getAsAttrConstraint().getConditionTemplate();
+}
+
+std::string tblgen::DagLeaf::getTransformationTemplate() const {
+  assert(isAttrTransformer() && "the DAG leaf must be attribute transformer");
+  return cast<llvm::DefInit>(def)
+      ->getDef()
+      ->getValueAsString("attrTransform")
+      .str();
 }
 
 Operator &tblgen::DagNode::getDialectOp(RecordOperatorMap *mapper) const {
@@ -56,8 +114,9 @@ tblgen::DagNode tblgen::DagNode::getArgAsNestedDag(unsigned index) const {
   return DagNode(dyn_cast_or_null<llvm::DagInit>(node->getArg(index)));
 }
 
-llvm::DefInit *tblgen::DagNode::getArgAsDefInit(unsigned index) const {
-  return dyn_cast<llvm::DefInit>(node->getArg(index));
+tblgen::DagLeaf tblgen::DagNode::getArgAsLeaf(unsigned index) const {
+  assert(!isNestedDagArg(index));
+  return DagLeaf(node->getArg(index));
 }
 
 StringRef tblgen::DagNode::getArgName(unsigned index) const {
@@ -81,7 +140,7 @@ static void collectBoundArguments(const llvm::DagInit *tree,
     if (name.empty())
       continue;
 
-    pattern->getSourcePatternBoundArgs().try_emplace(name, op.getArg(i), arg);
+    pattern->getSourcePatternBoundArgs().try_emplace(name, op.getArg(i));
   }
 }
 
@@ -131,7 +190,8 @@ void tblgen::Pattern::ensureArgBoundInSourcePattern(
                     Twine("referencing unbound variable '") + name + "'");
 }
 
-llvm::StringMap<tblgen::DagArg> &tblgen::Pattern::getSourcePatternBoundArgs() {
+llvm::StringMap<tblgen::Argument> &
+tblgen::Pattern::getSourcePatternBoundArgs() {
   return boundArguments;
 }
 

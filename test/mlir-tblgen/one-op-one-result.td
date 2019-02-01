@@ -3,24 +3,21 @@
 include "mlir/IR/op_base.td"
 
 // Create a Type and Attribute.
-def YT : BuildableType<"buildYT">;
-def Y_Attr : TypeBasedAttr<YT, "Attribute", "attribute of Y type">;
-def Y_Const_Attr {
-  Attr attr = Y_Attr;
-  string value = "attrValue";
-}
+def T : BuildableType<"buildT">;
+def T_Attr : TypeBasedAttr<T, "Attribute", "attribute of T type">;
+def T_Const_Attr : ConstantAttr<T_Attr, "attrValue">;
 
 // Define ops to rewrite.
-def T1: Type<CPred<"true">, "T1">;
+def U: Type<CPred<"true">, "U">;
 def X_AddOp : Op<"x.add"> {
-  let arguments = (ins T1, T1);
+  let arguments = (ins U, U);
 }
 def Y_AddOp : Op<"y.add"> {
-  let arguments = (ins T1, T1, Y_Attr:$attrName);
+  let arguments = (ins U, U, T_Attr:$attrName);
 }
 
 // Define rewrite pattern.
-def : Pat<(X_AddOp $lhs, $rhs), (Y_AddOp $lhs, T1:$rhs, Y_Const_Attr:$x)>;
+def : Pat<(X_AddOp $lhs, $rhs), (Y_AddOp $lhs, U:$rhs, T_Const_Attr:$x)>;
 
 // CHECK: struct GeneratedConvert0 : public RewritePattern
 // CHECK: RewritePattern("x.add", 1, context)
