@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
 
@@ -181,6 +182,47 @@ class Conv2DStridedNCHWTest(trt_test.TfTrtIntegrationTestBase):
         input_dims=[[input_dims]],
         output_names=[output_name],
         expected_output_dims=[[[n, num_filters, h, w]]])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return ["TRTEngineOp_0"]
+
+
+class Conv2DTranposeTest(trt_test.TfTrtIntegrationTestBase):
+
+  def GetParams(self):
+    """Testing conversion of conv2d_transpose (AKA Conv2DBackpropInput)"""
+    np.random.seed(1234)
+    dtype = dtypes.float32
+    input_name = "input"
+    n, c, h, w = 13, 3, 7, 11
+    num_filters = 8
+    input_dims = [n, c, h, w]
+    output_name = "output"
+    g = ops.Graph()
+    with g.as_default():
+      inp = array_ops.placeholder(
+          dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
+      with g.device("/GPU:0"):
+        weights_shape = [2, 2, num_filters, c]
+        weights = constant_op.constant(
+            np.random.randn(*weights_shape), dtype=dtype)
+        output_shape = constant_op.constant([n, num_filters, h * 2, w * 2],
+                                            dtype=dtypes.int32)
+        output = nn_ops.conv2d_transpose(
+            inp,
+            weights,
+            output_shape,
+            strides=[1, 1, 2, 2],
+            padding="SAME",
+            data_format="NCHW")
+        output = array_ops.identity(output, name=output_name)
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=[input_name],
+        input_dims=[[input_dims]],
+        output_names=[output_name],
+        expected_output_dims=[[[n, num_filters, h * 2, w * 2]]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""

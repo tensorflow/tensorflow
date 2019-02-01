@@ -1571,20 +1571,48 @@ Status BinaryTensorOpWeight(OpConverterParams* params,
   return tensorflow::Status::OK();
 }
 
-enum class ConvolutionType { DEFAULT, DEPTHWISE_CONV };
-
-tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
+tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group,
+                                       bool is_conv2d_backprop_input) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 2) {
-    return tensorflow::errors::InvalidArgument("Two inputs are expected for ",
-                                               node_def.op(), ", at ",
-                                               node_def.name());
-  }
-  if (inputs.at(0).is_weights()) {
-    return tensorflow::errors::Unimplemented(
-        node_def.op(), " is only implemented for tensors, not weights, at ",
-        node_def.name());
+  TRT_TensorOrWeights backprop_output_size;
+  const nvinfer1::ITensor* tensor = nullptr;
+  // TODO(tmorris): Add helper functions for validating inputs to avoid code
+  // duplication.
+  if (is_conv2d_backprop_input) {
+    // Conv2DBackpropInput has 3 inputs: input_sizes, filter, and out_backprop.
+    // In the case of conv2d_transpose, these correspond to: output size,
+    // filter, and input.
+    if (inputs.size() != 3) {
+      return tensorflow::errors::InvalidArgument(
+          "Three inputs are expected for ", node_def.op(), ", at ",
+          node_def.name());
+    }
+    if (inputs.at(0).is_tensor()) {
+      return tensorflow::errors::Unimplemented(
+          "input_sizes for ", node_def.op(), " must be constant weights, at ",
+          node_def.name());
+    }
+    if (inputs.at(2).is_weights()) {
+      return tensorflow::errors::Unimplemented(
+          node_def.op(), " is only implemented for tensors, not weights, at ",
+          node_def.name());
+    }
+    backprop_output_size = inputs.at(0);
+    tensor = inputs.at(2).tensor();
+  } else {
+    // Regular convolution has 2 inputs: input, filter.
+    if (inputs.size() != 2) {
+      return tensorflow::errors::InvalidArgument("Two inputs are expected for ",
+                                                 node_def.op(), ", at ",
+                                                 node_def.name());
+    }
+    if (inputs.at(0).is_weights()) {
+      return tensorflow::errors::Unimplemented(
+          node_def.op(), " is only implemented for tensors, not weights, at ",
+          node_def.name());
+    }
+    tensor = inputs.at(0).tensor();
   }
   if (inputs.at(1).is_tensor()) {
     return tensorflow::errors::Unimplemented("Kernel for ", node_def.op(),
@@ -1613,6 +1641,11 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
         node_def.name());
   }
   const nvinfer1::DimsHW dilation(tf_dilations[h_index], tf_dilations[w_index]);
+  if (is_conv2d_backprop_input && (dilation.d[0] != 1 || dilation.d[1] != 1)) {
+    return tensorflow::errors::Unimplemented(
+        "Dilation with Conv2DBackpropInput (conv2d_transpose) is not supported",
+        ", at ", node_def.name());
+  }
 
   const auto tf_stride = attrs.get<std::vector<int>>("strides");
   if (tf_stride.size() != 4) {
@@ -1628,8 +1661,6 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
   const nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
   if (params->validation_only) return tensorflow::Status::OK();
 
-  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-
   // Transpose to NCHW (NCHW is required for IConvLayer).
   const bool need_transpose = (data_format == "NHWC");
   if (need_transpose) {
@@ -1639,19 +1670,23 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
   // Dimensions of transposed tensor.
   const auto tensor_dim = tensor->getDimensions();
 
-  // For depthwise convolution, group will be 0 so set num_groups to size of
-  // input's channel dim. For a non-depthwise conv, num_groups will be 1.
+  // group == 0 signifies that this is a depthwise convolution, so set
+  // num_groups to size of input's channel dim. For a non-depthwise conv,
+  // num_groups will be 1.
   const int num_groups = (group == 0) ? tensor_dim.d[0] : group;
 
   if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
-    weights_rsck =
-        ConvertFP32ToFP16(params->weight_store, inputs.at(1).weights());
+    weights_rsck = ConvertFP32ToFP16(params->weight_store, weights_rsck);
   }
+  // For conv, TF weights are RSCK, and TRT expects KCRS.
+  // For backprop, TF weights are RSKC, and TRT expects CKRS.
+  // Therefore, this reorder will work for both cases.
   TRT_ShapedWeights weights =
       params->weight_store->GetTempWeights(weights_rsck);
   ReorderRSCKToKCRS(weights_rsck, &weights, num_groups);
   TRT_ShapedWeights biases(weights.type_);
-  const int noutput = weights.shape_.d[0] * num_groups;
+  const int output_axis = is_conv2d_backprop_input ? 1 : 0;
+  const int noutput = weights.shape_.d[output_axis] * num_groups;
   nvinfer1::DimsHW kernel_size;
   kernel_size.h() = weights.shape_.d[2];
   kernel_size.w() = weights.shape_.d[3];
@@ -1662,9 +1697,23 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
     nvinfer1::DimsHW effective_kernel_size = kernel_size;
     effective_kernel_size.h() += (kernel_size.h() - 1) * (dilation.h() - 1);
     effective_kernel_size.w() += (kernel_size.w() - 1) * (dilation.w() - 1);
-    padding = CreateSamePadding(
-        stride, effective_kernel_size,
-        {static_cast<int>(tensor_dim.d[1]), static_cast<int>(tensor_dim.d[2])});
+    std::vector<int64_t> input_dims;
+    if (is_conv2d_backprop_input) {
+      // For backprop, calculate padding based on "input_sizes" input, which
+      // actually corresponds to output size. ("input_sizes" makes sense in the
+      // context of Conv2DBackpropInput).
+      // We use h_index and w_index instead of 1 and 2 because we havent
+      // transposed backprop_output_size along with the input.
+      auto output_size_weights = static_cast<int*>(
+          const_cast<void*>(backprop_output_size.weights().GetValues()));
+      input_dims = {output_size_weights[h_index], output_size_weights[w_index]};
+    } else {
+      // Use 1 and 2 because tensor_dim has the dimensions of the transposed
+      // input.
+      input_dims = {static_cast<int>(tensor_dim.d[1]),
+                    static_cast<int>(tensor_dim.d[2])};
+    }
+    padding = CreateSamePadding(stride, effective_kernel_size, input_dims);
   } else {
     padding = {{0, 0}, {0, 0}};
   }
@@ -1683,17 +1732,32 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
   }
 
   // Add convolution.
-  nvinfer1::IConvolutionLayer* layer =
-      params->converter->network()->addConvolution(
-          *const_cast<nvinfer1::ITensor*>(tensor), noutput, kernel_size,
-          weights.GetTrtWeights(), biases.GetTrtWeights());
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  layer->setStride(stride);
-  layer->setPadding({padding[0].first, padding[1].first});
-  layer->setName(node_def.name().c_str());
-  layer->setNbGroups(num_groups);
-  layer->setDilation(dilation);
-  const nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  nvinfer1::ILayer* conv_layer = nullptr;
+  if (is_conv2d_backprop_input) {
+    nvinfer1::IDeconvolutionLayer* layer =
+        params->converter->network()->addDeconvolution(
+            *const_cast<nvinfer1::ITensor*>(tensor), noutput, kernel_size,
+            weights.GetTrtWeights(), biases.GetTrtWeights());
+    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+    layer->setStride(stride);
+    layer->setPadding({padding[0].first, padding[1].first});
+    layer->setName(node_def.name().c_str());
+    layer->setNbGroups(num_groups);
+    conv_layer = layer;
+  } else {
+    nvinfer1::IConvolutionLayer* layer =
+        params->converter->network()->addConvolution(
+            *const_cast<nvinfer1::ITensor*>(tensor), noutput, kernel_size,
+            weights.GetTrtWeights(), biases.GetTrtWeights());
+    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+    layer->setStride(stride);
+    layer->setPadding({padding[0].first, padding[1].first});
+    layer->setName(node_def.name().c_str());
+    layer->setNbGroups(num_groups);
+    layer->setDilation(dilation);
+    conv_layer = layer;
+  }
+  const nvinfer1::ITensor* output_tensor = conv_layer->getOutput(0);
 
   // Restore transpose.
   if (need_transpose) {
@@ -1704,18 +1768,6 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
   params->outputs->push_back(
       TRT_TensorOrWeights(const_cast<nvinfer1::ITensor*>(output_tensor)));
   return tensorflow::Status::OK();
-}
-
-tensorflow::Status ConvertConv2DHelper(OpConverterParams* params,
-                                       ConvolutionType type) {
-  switch (type) {
-    case ConvolutionType::DEFAULT:
-      return ConvertConv2DHelper(params, 1);
-    case ConvolutionType::DEPTHWISE_CONV:
-      return ConvertConv2DHelper(params, 0);
-  }
-  return tensorflow::errors::Unimplemented("Unsupported convolution type, at ",
-                                           params->node_def.name());
 }
 
 Status BinaryTensorOpTensor(OpConverterParams* params,
@@ -2329,11 +2381,15 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
 }
 
 tensorflow::Status ConvertConv2D(OpConverterParams* params) {
-  return ConvertConv2DHelper(params, ConvolutionType::DEFAULT);
+  return ConvertConv2DHelper(params, 1, /*is_conv2d_backprop_input=*/false);
 }
 
 tensorflow::Status ConvertConv2DDepthwise(OpConverterParams* params) {
-  return ConvertConv2DHelper(params, ConvolutionType::DEPTHWISE_CONV);
+  return ConvertConv2DHelper(params, 0, /*is_conv2d_backprop_input=*/false);
+}
+
+tensorflow::Status ConvertConv2DBackpropInput(OpConverterParams* params) {
+  return ConvertConv2DHelper(params, 1, /*is_conv2d_backprop_input=*/true);
 }
 
 tensorflow::Status ConvertPool(OpConverterParams* params) {
@@ -3591,6 +3647,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["ConcatV2"] = ConvertConcat;
   (*registration)["Const"] = ConvertConst;
   (*registration)["Conv2D"] = ConvertConv2D;
+  (*registration)["Conv2DBackpropInput"] = ConvertConv2DBackpropInput;
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   (*registration)["ExpandDims"] = ConvertExpandDims;
   (*registration)["MatMul"] = ConvertMatMul;
