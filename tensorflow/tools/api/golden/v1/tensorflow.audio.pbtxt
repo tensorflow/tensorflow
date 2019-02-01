@@ -4,8 +4,4 @@ tf_module {
     name: "encode_wav"
     argspec: "args=[\'audio\', \'sample_rate\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
-  member_method {
-    name: "decode_wav"
-    argspec: "args=[\'contents\', \'audio\', \'sample_rate\', \'desired_channels\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
 }
