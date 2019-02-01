@@ -2476,12 +2476,13 @@ tensorflow::Status ConvertLeakyRelu(OpConverterParams* params) {
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   // Create const for alpha.
   const nvinfer1::ITensor* const_alpha_tensor = nullptr;
-  TF_RETURN_IF_ERROR(CreateBroadcastableScalarConstant(
+  TF_RETURN_IF_ERROR(params->converter->CreateBroadcastableScalarConstant(
       params, alpha, tensor->getDimensions(), &const_alpha_tensor));
   // alpha * x
   nvinfer1::IElementWiseLayer* mul_layer =
       params->converter->network()->addElementWise(
-          *const_cast<nvinfer1::ITensor*>(tensor), *const_alpha_tensor,
+          *const_cast<nvinfer1::ITensor*>(tensor),
+          *const_cast<nvinfer1::ITensor*>(const_alpha_tensor),
           nvinfer1::ElementWiseOperation::kPROD);
   TFTRT_RETURN_ERROR_IF_NULLPTR(mul_layer, node_def.name());
   // max(x, alpha * x)
@@ -2646,7 +2647,7 @@ tensorflow::Status ConvertRelu6(OpConverterParams* params) {
 
   // Create a constant layer to store the floating point weight i.e. 6.0f
   const nvinfer1::ITensor* const6_tensor = nullptr;
-  TF_RETURN_IF_ERROR(CreateBroadcastableScalarConstant(
+  TF_RETURN_IF_ERROR(params->converter->CreateBroadcastableScalarConstant(
       params, 6.0f, relu_layer->getOutput(0)->getDimensions(), &const6_tensor));
 
   // ElementWise Min Operation
@@ -2655,7 +2656,8 @@ tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   nvinfer1::IElementWiseLayer* relu6_layer =
       params->converter->network()->addElementWise(
           *const_cast<nvinfer1::ITensor*>(relu_layer->getOutput(0)),
-          *const6_tensor, nvinfer1::ElementWiseOperation::kMIN);
+          *const_cast<nvinfer1::ITensor*>(const6_tensor),
+          nvinfer1::ElementWiseOperation::kMIN);
   TFTRT_RETURN_ERROR_IF_NULLPTR(relu6_layer, node_def.name());
   nvinfer1::ITensor* output_tensor = relu6_layer->getOutput(0);
   params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 6.0f);
