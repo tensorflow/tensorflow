@@ -4,9 +4,9 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "if_not_windows")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 exports_files(glob([
     "testdata/*.bin",
@@ -191,8 +191,6 @@ cc_library(
         ":util",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api:api",
-        "//tensorflow/lite/kernels:eigen_support",
-        "//tensorflow/lite/kernels:gemm_support",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
@@ -219,6 +217,9 @@ cc_test(
     name = "string_util_test",
     size = "small",
     srcs = ["string_util_test.cc"],
+    tags = [
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
     deps = [
         ":framework",
         ":string_util",
@@ -233,10 +234,12 @@ cc_test(
     name = "interpreter_test",
     size = "small",
     srcs = ["interpreter_test.cc"],
+    tags = [
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
     deps = [
         ":framework",
         ":string_util",
-        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
@@ -252,6 +255,9 @@ cc_test(
     name = "graph_info_test",
     size = "small",
     srcs = ["graph_info_test.cc"],
+    tags = [
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
     deps = [
         ":framework",
         "//tensorflow/lite/testing:util",
@@ -264,6 +270,9 @@ cc_test(
     name = "simple_memory_arena_test",
     size = "small",
     srcs = ["simple_memory_arena_test.cc"],
+    tags = [
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
     deps = [
         ":simple_memory_arena",
         "//tensorflow/lite/testing:util",
@@ -284,9 +293,11 @@ cc_test(
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
     ],
+    tags = [
+        "tflite_not_portable",
+    ],
     deps = [
         ":framework",
-        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/testing:util",
@@ -323,6 +334,9 @@ cc_test(
     name = "mutable_op_resolver_test",
     size = "small",
     srcs = ["mutable_op_resolver_test.cc"],
+    tags = [
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
     deps = [
         ":framework",
         "//tensorflow/lite/testing:util",
@@ -344,9 +358,14 @@ cc_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.cc"],
+    tags = [
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
     deps = [
         ":util",
         "//tensorflow/lite/c:c_api_internal",
         "@com_google_googletest//:gtest",
     ],
 )
+
+tflite_portable_test_suite()
