@@ -414,12 +414,14 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(ZerosLike)
     HANDLE_OPERATORTYPENAME_CASE(UnidirectionalSequenceLstm)
     HANDLE_OPERATORTYPENAME_CASE(BidirectionalSequenceLstm)
+    HANDLE_OPERATORTYPENAME_CASE(BidirectionalSequenceRnn)
     HANDLE_OPERATORTYPENAME_CASE(ResizeNearestNeighbor)
     HANDLE_OPERATORTYPENAME_CASE(LeakyRelu)
     HANDLE_OPERATORTYPENAME_CASE(SquaredDifference)
     HANDLE_OPERATORTYPENAME_CASE(MirrorPad)
     HANDLE_OPERATORTYPENAME_CASE(Unique)
     HANDLE_OPERATORTYPENAME_CASE(UnidirectionalSequenceRnn)
+    HANDLE_OPERATORTYPENAME_CASE(ReverseV2)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE

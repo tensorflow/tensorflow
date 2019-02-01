@@ -151,8 +151,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
             name="initial_value", dtype=dtype)
       with ops.init_scope():
         self._handle = resource_variable_ops.eager_safe_variable_handle(
-            shape=initial_value.get_shape(),
-            dtype=initial_value.dtype.base_dtype,
+            initial_value=initial_value,
             shared_name=shared_name,
             name=name,
             graph_mode=self._in_graph_mode)

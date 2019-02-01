@@ -88,31 +88,31 @@ class KubernetesClusterResolver(ClusterResolver):
     self._override_client = override_client
 
     self.task_type = None
-    self.task_index = None
+    self.task_id = None
     self.rpc_layer = rpc_layer
 
-  def master(self, task_type=None, task_index=None, rpc_layer=None):
+  def master(self, task_type=None, task_id=None, rpc_layer=None):
     """Returns the master address to use when creating a session.
 
-    You must have set the task_type and task_index object properties before
-    calling this function, or pass in the `task_type` and `task_index`
+    You must have set the task_type and task_id object properties before
+    calling this function, or pass in the `task_type` and `task_id`
     parameters when using this function. If you do both, the function parameters
     will override the object properties.
 
     Args:
       task_type: (Optional) The type of the TensorFlow task of the master.
-      task_index: (Optional) The index of the TensorFlow task of the master.
+      task_id: (Optional) The index of the TensorFlow task of the master.
       rpc_layer: (Optional) The RPC protocol for the given cluster.
 
     Returns:
       The name or URL of the session master.
     """
     task_type = task_type if task_type is not None else self.task_type
-    task_index = task_index if task_index is not None else self.task_index
+    task_id = task_id if task_id is not None else self.task_id
 
-    if task_type is not None and task_index is not None:
+    if task_type is not None and task_id is not None:
       return format_master_url(
-          self.cluster_spec().task_address(task_type, task_index),
+          self.cluster_spec().task_address(task_type, task_id),
           rpc_layer or self.rpc_layer)
 
     return ''

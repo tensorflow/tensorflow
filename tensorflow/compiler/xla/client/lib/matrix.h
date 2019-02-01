@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATRIX_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATRIX_H_
 
+#include <array>
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -63,6 +67,40 @@ XlaOp LowerTriangle(XlaOp x);
 //     output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
 xla::XlaOp BatchDot(
     xla::XlaOp x, xla::XlaOp y,
+    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
+
+// Parse an einsum string into dimension numbers:
+//   "ab,cb->ac"
+// becomes:
+//   {{0, 1},{2, 1},{0, 2}}
+//
+// NOTE: This function is meant for testing, there is no need to call it
+// directly.
+
+StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
+    absl::string_view einsum_config);
+
+// Determine if each dimension label is in at least two inputs.
+//
+// NOTE: This function is meant for testing, there is no need to call it
+// directly.
+Status ValidateEinsumNumericDimensions(absl::Span<const int64> x_config,
+                                       absl::Span<const int64> y_config,
+                                       absl::Span<const int64> output_config);
+
+// Supports two operand einsum notation like "ab,cb->ac".
+xla::XlaOp Einsum(
+    xla::XlaOp x, xla::XlaOp y, absl::string_view einsum_config,
+    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
+
+// Same as above but supporting numeric labels on dimensins. So "ab,cb->ac"
+// becomes:
+//   x_config = {0, 1}
+//   y_config = {2, 1}
+//   output_config = {0, 2}
+xla::XlaOp Einsum(
+    xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
+    absl::Span<const int64> y_config, absl::Span<const int64> output_config,
     xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
 
 // Transposes a stack of matrices `x` by swapping the last two dimensions.

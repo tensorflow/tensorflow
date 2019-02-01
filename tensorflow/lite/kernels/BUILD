@@ -46,6 +46,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/testing:util",
+        "//tensorflow/lite/tools/optimize:quantization_utils",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -111,7 +112,6 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels/internal:round",
-        "//tensorflow/lite/kernels/internal:types",
     ],
 )
 
@@ -201,13 +201,13 @@ cc_library(
         "reshape.cc",
         "resize_bilinear.cc",
         "resize_nearest_neighbor.cc",
+        "reverse.cc",
         "select.cc",
         "shape.cc",
         "skip_gram.cc",
         "slice.cc",
         "space_to_batch_nd.cc",
         "space_to_depth.cc",
-        "sparse_output_fully_connected.cc",
         "sparse_to_dense.cc",
         "split.cc",
         "split_v.cc",
@@ -286,7 +286,6 @@ cc_library(
     srcs = ["register_ref.cc"],
     hdrs = ["register_ref.h"],
     deps = [
-        ":builtin_op_kernels",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_internal",
@@ -340,20 +339,6 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
-        "@flatbuffers",
-    ],
-)
-
-tf_cc_test(
-    name = "sparse_output_fully_connected_test",
-    size = "small",
-    srcs = ["sparse_output_fully_connected_test.cc"],
-    deps = [
-        ":builtin_ops",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:test_util",
-        "//tensorflow/lite/kernels/internal:types",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
@@ -1257,6 +1242,18 @@ tf_cc_test(
         ":test_util",
         "//tensorflow/lite:framework",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
+    name = "reverse_test",
+    size = "small",
+    srcs = ["reverse_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
     ],
 )
 

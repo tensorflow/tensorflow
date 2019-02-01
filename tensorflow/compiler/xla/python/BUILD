@@ -3,8 +3,8 @@ licenses(["notice"])  # Apache 2.0
 package(default_visibility = ["//tensorflow:internal"])
 
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("//tensorflow/core:platform/default/build_config.bzl", "pyx_library")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_python_default_plugins")
 
 py_library(
     name = "xla_client",
@@ -110,7 +110,5 @@ tf_py_wrap_cc(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:cpu_plugin",
-    ] + if_cuda_is_configured([
-        "//tensorflow/compiler/xla/service:gpu_plugin",
-    ]),
+    ] + xla_python_default_plugins(),
 )

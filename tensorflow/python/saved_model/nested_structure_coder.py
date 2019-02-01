@@ -38,6 +38,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.saved_model import struct_pb2
+from tensorflow.python.util import compat
 
 
 class NotEncodableError(Exception):
@@ -304,7 +305,7 @@ class _StringCodec(object):
 
   def do_decode(self, value, decode_fn):
     del decode_fn
-    return value.string_value
+    return compat.as_str(value.string_value)
 
 
 StructureCoder.register_codec(_StringCodec())

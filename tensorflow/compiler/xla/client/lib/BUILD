@@ -206,6 +206,22 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "math_exhaustive_test",
+    srcs = ["math_exhaustive_test.cc"],
+    shard_count = 16,
+    deps = [
+        ":math",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 cc_library(
     name = "matrix",
     srcs = ["matrix.cc"],
@@ -214,12 +230,16 @@ cc_library(
         ":arithmetic",
         ":constants",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -230,12 +250,16 @@ xla_test(
     deps = [
         ":matrix",
         ":slicing",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -274,7 +298,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
     ],
 )
@@ -326,12 +349,7 @@ cc_library(
     srcs = ["slicing.cc"],
     hdrs = ["slicing.h"],
     deps = [
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "@com_google_absl//absl/types:span",
     ],
@@ -345,7 +363,6 @@ xla_test(
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -372,7 +389,6 @@ xla_test(
         ":sorting",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -466,18 +482,13 @@ xla_test(
         ":triangular_solve",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client:global_data",
-        "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
 )

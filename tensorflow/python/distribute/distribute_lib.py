@@ -333,36 +333,6 @@ class DistributionStrategy(object):
     """DEPRECATED: use extended.colocate_vars_with() instead."""
     return self._extended.colocate_vars_with(colocate_with_variable)
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED
-  def distribute_dataset(self, dataset_fn):
-    """Return a `dataset` split across all replicas.  DEPRECATED.
-
-    DEPRECATED: Please use `make_dataset_iterator` or
-    `make_input_fn_iterator` instead.
-
-    Suitable for providing input to `extended.call_for_each_replica()` by
-    creating an iterator:
-
-    ```
-    def dataset_fn():
-      return tf.data.Dataset.from_tensors([[1.]]).repeat()
-
-    with strategy.scope():
-      distributed_dataset = strategy.distribute_dataset(dataset_fn)
-      iterator = distributed_dataset.make_initializable_iterator()
-      replica_results = strategy.extended.call_for_each_replica(
-          replica_fn, args=(iterator.get_next(),))
-    ```
-
-    Args:
-      dataset_fn: A function that returns a `tf.data.Dataset` with per-replica
-        batching.
-
-    Returns:
-      A `PerReplicaDataset` that will produce data for each replica.
-    """
-    return self._extended._distribute_dataset(dataset_fn)  # pylint: disable=protected-access
-
   def make_dataset_iterator(self, dataset):
     """Makes an iterator for input provided via `dataset`.
 
@@ -756,8 +726,7 @@ class DistributionStrategyExtended(object):
     a variable (which by definition will have locality V(`v`), though
     will match another locality if inside a `colocate_vars_with`
     scope).
-  * `d.make_dataset_iterator(dataset)` (or the deprecated
-    `d.distribute_dataset(dataset).make_one_shot_iterator()`): in cross-replica
+  * `d.make_dataset_iterator(dataset)`: in cross-replica
     context, produces an iterator with locality T
   * `d.broadcast(t)`: in cross-replica context, produces a value with locality M
   * `d.extended.broadcast_to(t, v)`: in cross-replica context, produces a value
@@ -964,21 +933,6 @@ class DistributionStrategyExtended(object):
   def _validate_colocate_with_variable(self, colocate_with_variable):
     """Validate `colocate_with_variable` argument to `colocate_vars_with`."""
     pass
-
-  def _call_dataset_fn(self, dataset_fn):
-    """Call the `dataset_fn` with `input_context` as argument."""
-    result = dataset_fn()
-    if not isinstance(result, dataset_ops.DatasetV2):
-      raise ValueError(
-          "dataset_fn() must return a tf.data.Dataset when using a "
-          "tf.distribute.Strategy.")
-    return result
-
-  # TODO(josh11b): `PerReplicaDataset` currently only implements a few methods of
-  # Dataset API such as make_one_shot_iterator and make_initializable_iterator.
-  # Extend to implement more functionality of datasets.
-  def _distribute_dataset(self, dataset_fn):
-    raise NotImplementedError("must be implemented in descendants")
 
   def _make_dataset_iterator(self, dataset):
     raise NotImplementedError("must be implemented in descendants")
@@ -1548,9 +1502,6 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
 
   def variable_created_in_scope(self, v):
     return v._distribute_strategy is None  # pylint: disable=protected-access
-
-  def _distribute_dataset(self, dataset_fn):
-    return self._call_dataset_fn(dataset_fn)
 
   def _make_dataset_iterator(self, dataset):
     return _DefaultDistributionExtended.DefaultInputIterator(dataset)

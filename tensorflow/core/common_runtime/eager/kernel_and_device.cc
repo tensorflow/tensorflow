@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 
+#include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -95,10 +96,31 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
           "Failed to parse config_proto attribute as tensorflow::ConfigProto "
           "proto.");
     }
-    options.optimize_graph_fn =
-        std::bind(grappler::OptimizeGraph, std::placeholders::_1,
-                  std::placeholders::_2, std::placeholders::_3,
-                  std::placeholders::_4, config_proto, std::placeholders::_5);
+    // We are going to execute the graph via function library runtime, and
+    // because function execution semantics is slightly different from the
+    // regular tensorlow graph, we need to make sure that Grappler respects it
+    // when doing it's optimization passes (e.g. do not prune stateful and
+    // dataset ops).
+    grappler::GrapplerItem::OptimizationOptions optimization_options;
+    optimization_options.is_function_instantiation = true;
+
+    // Keras graphs expected to be executed with regular graph execution
+    // semantics (it's allowed to prune stateful and dataset ops).
+    if (absl::StrContains(function_def->signature().name(), "keras_graph")) {
+      optimization_options.is_function_instantiation = false;
+    }
+
+    // Wrapped function expects execution semantics to be the same as
+    // `session.run`, so we should prune unreachable stateful and dataset ops.
+    if (absl::StrContains(function_def->signature().name(),
+                          "wrapped_function")) {
+      optimization_options.is_function_instantiation = false;
+    }
+
+    options.optimize_graph_fn = std::bind(
+        grappler::OptimizeGraph, std::placeholders::_1, std::placeholders::_2,
+        std::placeholders::_3, std::placeholders::_4, config_proto,
+        optimization_options, std::placeholders::_5);
   }
 #endif
   options.graph_collector = graph_collector;

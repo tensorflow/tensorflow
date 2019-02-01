@@ -218,6 +218,7 @@ enum BuiltinOperator : byte {
   SPLIT_V = 102,
   UNIQUE = 103,
   CEIL = 104,
+  REVERSE_V2 = 105,
 }
 
 // Options for the builtin operators.
@@ -302,6 +303,7 @@ union BuiltinOptions {
   AbsOptions,
   SplitVOptions,
   UniqueOptions,
+  ReverseV2Options,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -717,6 +719,9 @@ table MirrorPadOptions {
 
 table UniqueOptions {
   idx_out_type:TensorType = INT32;
+}
+
+table ReverseV2Options {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

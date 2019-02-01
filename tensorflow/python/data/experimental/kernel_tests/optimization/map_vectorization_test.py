@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
+from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -384,7 +385,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.evaluate(nxt)
 
   def testOptimizationWithCapturedInputs(self):
-    # Tests that vectorization works with captured inputs
+    # Tests that vectorization works with captured inputs.
     y = constant_op.constant(1, shape=(2,))
     z = constant_op.constant(2, shape=(2,))
 
@@ -395,6 +396,84 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
                                                            [3, 4]]).repeat(5)
     unoptimized, optimized = self._get_test_datasets(
         base_dataset, map_fn, expect_optimized=True)
+    self.assertDatasetsEqual(optimized, unoptimized)
+
+  def testOptimizationWithMapAndBatchFusion(self):
+    # Tests that vectorization works on fused map and batch.
+    y = constant_op.constant(1, shape=(2,))
+    z = constant_op.constant(2, shape=(2,))
+
+    def map_fn(x):
+      return x, y, z
+
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    base_dataset = dataset_ops.Dataset.from_tensor_slices([[1, 2],
+                                                           [3, 4]]).repeat(5)
+    base_dataset = base_dataset.with_options(options)
+
+    def _make_dataset(node_names):
+      dataset = base_dataset.apply(optimization.assert_next(node_names))
+      dataset = dataset.apply(batching.map_and_batch(map_fn, 100))
+      return dataset
+
+    unoptimized = _make_dataset(["MapAndBatch"])
+    optimized = _make_dataset(["Batch", "ParallelMap"])
+    options = dataset_ops.Options()
+    options.experimental_optimization.map_vectorization = True
+    optimized = optimized.with_options(options)
+    self.assertDatasetsEqual(optimized, unoptimized)
+
+  @parameterized.named_parameters(
+      ("1", True, True),
+      ("2", True, False),
+      ("3", False, True),
+      ("4", False, False),
+  )
+  def testOptimizationWithChainedMapAndBatch(self, fuse_first, fuse_second):
+    # Tests that vectorization works on chained map and batch functions.
+    def map_fn(x):
+      return x * 2
+
+    unoptimized_seq = []
+
+    def make_apply_fn(is_fused):
+      if is_fused:
+        unoptimized_seq.append("MapAndBatch")
+
+        def apply_fn(dataset):
+          return dataset.apply(
+              batching.map_and_batch(map_fn, 2, 12, drop_remainder=True))
+
+        return apply_fn
+      else:
+        unoptimized_seq.extend(["ParallelMap", "Batch"])
+
+        def apply_fn(dataset):
+          return dataset.map(map_fn, 12).batch(2, drop_remainder=True)
+
+        return apply_fn
+
+    base_dataset = dataset_ops.Dataset.range(1000)
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    base_dataset = base_dataset.with_options(options)
+
+    apply_fn_1 = make_apply_fn(fuse_first)
+    apply_fn_2 = make_apply_fn(fuse_second)
+
+    def make_dataset(node_names):
+      dataset = base_dataset.apply(optimization.assert_next(node_names))
+      dataset = apply_fn_1(dataset)
+      dataset = apply_fn_2(dataset)
+      return dataset
+
+    unoptimized = make_dataset(unoptimized_seq)
+    optimized = make_dataset(["Batch", "ParallelMap", "Batch", "ParallelMap"])
+    options = dataset_ops.Options()
+    options.experimental_optimization.map_vectorization = True
+    optimized = optimized.with_options(options)
+
     self.assertDatasetsEqual(optimized, unoptimized)
 
   # TODO(b/117581999): Add eager coverage for the following tests.

@@ -187,9 +187,6 @@ py_test(
     name = "distribute_coordinator_test",
     srcs = ["distribute_coordinator_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -318,10 +315,7 @@ py_library(
         ":distribute_lib",
         ":input_ops",
         ":values",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/eager:context",
     ],
@@ -352,16 +346,12 @@ cuda_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
     ],
-    tags = [
-        "no_pip",
-    ],
 )
 
 py_test(
     name = "multi_worker_util_test",
     srcs = ["multi_worker_util_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
     deps = [
         ":multi_worker_util",
         "//tensorflow/core:protos_all_py",

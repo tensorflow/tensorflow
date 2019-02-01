@@ -192,9 +192,12 @@ def wrap_function(fn, signature, name=None):
     the wrapped graph function.
   """
   holder = VariableHolder(fn)
+  func_graph_name = "wrapped_function"
+  if name is not None:
+    func_graph_name = "wrapped_function_" + name
   return WrappedFunction(
       func_graph.func_graph_from_py_func(
-          name,
+          func_graph_name,
           holder,
           args=None, kwargs=None, signature=signature,
           add_control_dependencies=False,

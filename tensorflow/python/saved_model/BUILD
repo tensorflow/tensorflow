@@ -337,6 +337,7 @@ tf_py_test(
     additional_deps = [
         ":load",
         ":save",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lib",

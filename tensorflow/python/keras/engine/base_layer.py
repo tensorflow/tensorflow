@@ -513,24 +513,16 @@ class Layer(checkpointable.Checkpointable):
       ValueError: if the layer's `call` method returns None (an invalid value).
     """
     input_list = nest.flatten(inputs)
-    if context.executing_eagerly():
-      # Accept NumPy inputs by converting to Tensors when executing eagerly.
-      if all(isinstance(x, (np.ndarray, float, int)) for x in input_list):
-        inputs = nest.map_structure(ops.convert_to_tensor, inputs)
-        input_list = nest.flatten(inputs)
+    # Accept NumPy inputs by converting to Tensors.
+    if all(isinstance(x, (np.ndarray, float, int)) for x in input_list):
+      inputs = nest.map_structure(ops.convert_to_tensor, inputs)
+      input_list = nest.flatten(inputs)
 
     # We will attempt to build a TF graph if & only if all inputs are symbolic.
     # This is always the case in graph mode. It can also be the case in eager
     # mode when all inputs can be traced back to `keras.Input()` (when building
     # models using the functional API).
     build_graph = tf_utils.are_all_symbolic_tensors(input_list)
-
-    if build_graph:
-      # Only create Keras history if at least one tensor originates from a
-      # `keras.Input`. Otherwise this Layer may be being used outside the Keras
-      # framework.
-      if base_layer_utils.uses_keras_input_layers(inputs):
-        base_layer_utils.create_keras_history(inputs)
 
     # Handle Keras mask propagation from previous layer to current layer.
     previous_mask = None
@@ -565,16 +557,17 @@ class Layer(checkpointable.Checkpointable):
             try:
               outputs = self.call(inputs, *args, **kwargs)
             except TypeError as e:
-              messages = ['`tf.Tensor` as a Python `bool` is not allowed',
-                          'Tensor objects are only iterable when eager']
+              messages = ('`tf.Tensor` as a Python `bool` is not allowed',
+                          'Tensor objects are only iterable when eager')
+              exception_str = str(e)
               for msg in messages:
-                if msg in str(e):
+                if msg in exception_str:
                   raise TypeError('You are attempting to use Python control '
                                   'flow in a layer that was not declared to be '
                                   'dynamic. Pass `dynamic=True` to the class '
                                   'constructor.\nEncountered error:\n"""\n' +
-                                  str(e) + '\n"""')
-              raise e
+                                  exception_str + '\n"""')
+              raise
           else:
             # We will use static shape inference to return symbolic tensors
             # matching the specifications of the layer outputs.

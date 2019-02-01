@@ -265,6 +265,10 @@ message ExecutionOptions {
   // computation on. The computation will be partitioned across these devices.
   // If not provided, the default device will be chosen.
   repeated DeviceHandle device_handles = 5;
+
+  // Number of replicas of the computation to run. If zero, uses the default
+  // number of replicas for the XLA service.
+  int32 num_replicas = 6;
 }
 
 message GetDeviceHandlesRequest {

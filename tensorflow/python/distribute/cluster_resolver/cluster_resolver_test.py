@@ -33,7 +33,7 @@ class MockBaseClusterResolver(ClusterResolver):
   def cluster_spec(self):
     return None
 
-  def master(self, task_type=None, task_index=None, rpc_layer=None):
+  def master(self, task_type=None, task_id=None, rpc_layer=None):
     return ""
 
   def environment(self):
@@ -117,12 +117,12 @@ class UnionClusterResolverTest(test.TestCase):
     })
 
     simple_resolver = SimpleClusterResolver(base_cluster_spec, task_type="ps",
-                                            task_index=1, environment="cloud",
+                                            task_id=1, environment="cloud",
                                             num_accelerators=8,
                                             rpc_layer="grpc")
 
     self.assertEqual(simple_resolver.task_type, "ps")
-    self.assertEqual(simple_resolver.task_index, 1)
+    self.assertEqual(simple_resolver.task_id, 1)
     self.assertEqual(simple_resolver.environment, "cloud")
     self.assertEqual(simple_resolver.num_accelerators(), 8)
     self.assertEqual(simple_resolver.rpc_layer, "grpc")
@@ -134,16 +134,16 @@ class UnionClusterResolverTest(test.TestCase):
     })
 
     simple_resolver = SimpleClusterResolver(base_cluster_spec, task_type="ps",
-                                            task_index=1, environment="cloud",
+                                            task_id=1, environment="cloud",
                                             num_accelerators=8,
                                             rpc_layer="grpc")
 
     simple_resolver.task_type = "worker"
-    simple_resolver.task_index = 2
+    simple_resolver.task_id = 2
     simple_resolver.rpc_layer = "http"
 
     self.assertEqual(simple_resolver.task_type, "worker")
-    self.assertEqual(simple_resolver.task_index, 2)
+    self.assertEqual(simple_resolver.task_id, 2)
     self.assertEqual(simple_resolver.rpc_layer, "http")
 
   def testSimpleOverrideMasterWithTaskIndexZero(self):
@@ -182,7 +182,7 @@ class UnionClusterResolverTest(test.TestCase):
         "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
     })
     resolver1 = SimpleClusterResolver(cluster_spec_1, task_type="ps",
-                                      task_index=1, environment="cloud",
+                                      task_id=1, environment="cloud",
                                       num_accelerators=8,
                                       rpc_layer="grpc")
 
@@ -191,24 +191,24 @@ class UnionClusterResolverTest(test.TestCase):
         "worker": ["worker3:2222", "worker4:2222", "worker5:2222"]
     })
     resolver2 = SimpleClusterResolver(cluster_spec_2, task_type="worker",
-                                      task_index=2, environment="local",
+                                      task_id=2, environment="local",
                                       num_accelerators=16,
                                       rpc_layer="http")
 
     union_resolver = UnionClusterResolver(resolver1, resolver2)
 
     self.assertEqual(union_resolver.task_type, "ps")
-    self.assertEqual(union_resolver.task_index, 1)
+    self.assertEqual(union_resolver.task_id, 1)
     self.assertEqual(union_resolver.environment, "cloud")
     self.assertEqual(union_resolver.num_accelerators(), 8)
     self.assertEqual(union_resolver.rpc_layer, "grpc")
 
     union_resolver.task_type = "worker"
-    union_resolver.task_index = 2
+    union_resolver.task_id = 2
     union_resolver.rpc_layer = "http"
 
     self.assertEqual(union_resolver.task_type, "worker")
-    self.assertEqual(union_resolver.task_index, 2)
+    self.assertEqual(union_resolver.task_id, 2)
     self.assertEqual(union_resolver.rpc_layer, "http")
 
   def testTwoNonOverlappingJobMergedClusterResolver(self):

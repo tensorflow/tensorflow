@@ -39,7 +39,10 @@ following new APIs:
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import ast
 import six
+
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib
 from tensorflow.tools.compatibility import ast_edits
@@ -429,6 +432,13 @@ class TestAstEdits(test_util.TensorFlowTestCase):
       (_, report, _), _ = self._upgrade(FooWarningSpec(), text)
       self.assertNotIn("not good", report)
 
+  def testFullNameNode(self):
+    t = ast_edits.full_name_node("a.b.c")
+    self.assertEquals(
+        ast.dump(t),
+        "Attribute(value=Attribute(value=Name(id='a', ctx=Load()), attr='b', "
+        "ctx=Load()), attr='c', ctx=Load())"
+    )
 
 if __name__ == "__main__":
   test_lib.main()

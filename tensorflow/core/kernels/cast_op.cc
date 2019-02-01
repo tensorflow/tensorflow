@@ -99,9 +99,9 @@ void CastOpBase::Compute(OpKernelContext* ctx) {
   } else {
     Tensor in;
     if (external_src_dtype_ != src_dtype_) {
-      // If the type is a quantized type we need to do an UnsafeCopyFromInternal
-      // since the src_dtype_ is different from external_src_type_.
-      in.UnsafeCopyFromInternal(inp, src_dtype_, inp.shape());
+      // If the type is a quantized type we need to do a bitcast since the
+      // src_dtype_ is different from external_src_type_.
+      OP_REQUIRES_OK(ctx, in.BitcastFrom(inp, src_dtype_, inp.shape()));
     } else {
       in = inp;
     }

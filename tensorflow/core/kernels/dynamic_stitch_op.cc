@@ -15,10 +15,10 @@ limitations under the License.
 
 // See docs in ../ops/data_flow_ops.cc.
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

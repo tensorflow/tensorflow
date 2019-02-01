@@ -140,7 +140,7 @@ class GceClusterResolverTest(test.TestCase):
         project='test-project',
         zone='us-east1-d',
         instance_group='test-instance-group',
-        task_index=0,
+        task_id=0,
         port=8470,
         credentials=None,
         service=self.standard_mock_service_client())
@@ -181,11 +181,11 @@ class GceClusterResolverTest(test.TestCase):
         credentials=None,
         service=self.gen_standard_mock_service_client(name_to_ip))
 
-    gce_cluster_resolver.task_index = 1
+    gce_cluster_resolver.task_id = 1
     gce_cluster_resolver.rpc_layer = 'test'
 
     self.assertEqual(gce_cluster_resolver.task_type, 'testworker')
-    self.assertEqual(gce_cluster_resolver.task_index, 1)
+    self.assertEqual(gce_cluster_resolver.task_id, 1)
     self.assertEqual(gce_cluster_resolver.rpc_layer, 'test')
     self.assertEqual(gce_cluster_resolver.master(), 'test://10.2.3.4:8470')
 
@@ -201,13 +201,13 @@ class GceClusterResolverTest(test.TestCase):
         zone='us-east1-d',
         instance_group='test-instance-group',
         task_type='',
-        task_index=1,
+        task_id=1,
         port=8470,
         credentials=None,
         service=self.gen_standard_mock_service_client(name_to_ip))
 
     self.assertEqual(gce_cluster_resolver.master(
-        task_type='', task_index=0), 'grpc://10.1.2.3:8470')
+        task_type='', task_id=0), 'grpc://10.1.2.3:8470')
 
   def testCustomJobNameAndPortRetrieval(self):
     gce_cluster_resolver = GceClusterResolver(

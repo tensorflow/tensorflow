@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/model.h"
@@ -299,6 +300,56 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
   return status;
 }
 
+TfLiteStatus InterpreterBuilder::ParseQuantization(
+    const QuantizationParameters* src_quantization,
+    TfLiteQuantization* quantization) {
+  quantization->type = kTfLiteNoQuantization;
+  if (!src_quantization || !src_quantization->scale() ||
+      src_quantization->scale()->size() == 0) {
+    return kTfLiteOk;
+  }
+  if (!src_quantization->zero_point()) {
+    error_reporter_->Report(
+        "Quantization parameters has non-null scale but null zero_point.");
+    return kTfLiteError;
+  }
+
+  // Ensure that the number of scales matches the number of zero_points.
+  if (src_quantization->scale()->size() !=
+      src_quantization->zero_point()->size()) {
+    error_reporter_->Report(
+        "QuantizationParam has %d zero_point values and %d scale values. Must "
+        "have same number.",
+        src_quantization->zero_point()->size(),
+        src_quantization->scale()->size());
+    return kTfLiteError;
+  }
+
+  // Affine-quantization.
+  quantization->type = kTfLiteAffineQuantization;
+  auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
+      malloc(sizeof(TfLiteAffineQuantization)));
+  const size_t num_scales = src_quantization->scale()->size();
+  affine_quantization->scale = TfLiteFloatArrayCreate(num_scales);
+  affine_quantization->zero_point = TfLiteIntArrayCreate(num_scales);
+  for (size_t i = 0; i < num_scales; ++i) {
+    affine_quantization->scale->data[i] = src_quantization->scale()->Get(i);
+    affine_quantization->zero_point->data[i] =
+        src_quantization->zero_point()->Get(i);
+  }
+  if (src_quantization->quantized_dimension() < 0 ||
+      src_quantization->quantized_dimension() >= num_scales) {
+    error_reporter_->Report(
+        "quantized_dimension must be in range [0, %d). Was %d.", num_scales,
+        src_quantization->quantized_dimension());
+    return kTfLiteError;
+  }
+  affine_quantization->quantized_dimension =
+      src_quantization->quantized_dimension();
+  quantization->params = reinterpret_cast<void*>(affine_quantization);
+  return kTfLiteOk;
+}
+
 TfLiteStatus InterpreterBuilder::ParseTensors(
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
     const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
@@ -317,36 +368,11 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     const auto* tensor = tensors->Get(i);
     std::vector<int> dims = FlatBufferIntArrayToVector(tensor->shape());
 
-    TfLiteQuantizationParams quantization;
-    quantization.scale = 0;
-    quantization.zero_point = 0;
-    auto* q_params = tensor->quantization();
-    if (q_params) {
-      // Note that the schema could hold per-channel quantization parameters
-      // but we really only support one value for the whole tensor.
-      // TODO(aselle): This breaks as well if these are nullptr's.
-      // TODO(aselle): This assumes non per-channel quantization.
-
-      if (q_params->scale()) {
-        if (q_params->scale()->size() != 1) {
-          error_reporter_->Report(
-              "QuantizationParam has %d scale values (only 1 is supported).",
-              q_params->scale()->size());
-          return kTfLiteError;
-        }
-        quantization.scale = q_params->scale()->Get(0);
-      }
-
-      if (q_params->zero_point()) {
-        if (q_params->zero_point()->size() != 1) {
-          error_reporter_->Report(
-              "QuantizationParam has %d zero_point values"
-              " (only 1 is supported).",
-              q_params->zero_point()->size());
-          return kTfLiteError;
-        }
-        quantization.zero_point = q_params->zero_point()->Get(0);
-      }
+    const auto* src_quantization = tensor->quantization();
+    TfLiteQuantization quantization;
+    if (ParseQuantization(src_quantization, &quantization) != kTfLiteOk) {
+      status = kTfLiteError;
+      continue;
     }
 
     TfLiteType type;

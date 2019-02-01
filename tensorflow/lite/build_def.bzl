@@ -291,6 +291,7 @@ def generated_test_models():
         "relu6",
         "reshape",
         "resize_bilinear",
+        "reverse_v2",
         "rsqrt",
         "shape",
         "sigmoid",

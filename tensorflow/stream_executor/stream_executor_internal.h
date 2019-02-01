@@ -374,11 +374,11 @@ using StreamFactory = std::function<StreamInterface *(StreamExecutor *)>;
 using TimerFactory = std::function<TimerInterface *(StreamExecutor *)>;
 using KernelFactory = std::function<KernelInterface*()>;
 
-StreamExecutorFactory* MakeCUDAExecutorImplementation();
+StreamExecutorFactory *MakeCUDAExecutorImplementation();
 
-StreamExecutorFactory* MakeROCMExecutorImplementation();
+StreamExecutorFactory *MakeROCMExecutorImplementation();
 
-StreamExecutorFactory* MakeOpenCLExecutorImplementation();
+StreamExecutorFactory *MakeOpenCLExecutorImplementation();
 
 extern StreamExecutorFactory MakeHostExecutorImplementation;
 

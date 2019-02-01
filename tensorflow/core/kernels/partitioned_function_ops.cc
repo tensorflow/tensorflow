@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/function.h"
@@ -156,13 +157,33 @@ class PartitionedCallOp : public AsyncOpKernel {
   Status Instantiate(FunctionLibraryRuntime* lib, OpKernelContext* ctx,
                      std::vector<Tensor>* inputs,
                      FunctionLibraryRuntime::Handle* handle) {
+    // We are going to execute the graph via function library runtime, and
+    // because function execution semantics is slightly different from the
+    // regular tensorlow graph, we need to make sure that Grappler respects it
+    // when doing it's optimization passes (e.g. do not prune stateful and
+    // dataset ops).
+    grappler::GrapplerItem::OptimizationOptions optimization_options;
+    optimization_options.is_function_instantiation = true;
+
+    // Keras graphs expected to be executed with regular graph execution
+    // semantics (it's allowed to prune stateful and dataset ops).
+    if (absl::StrContains(func_.name(), "keras_graph")) {
+      optimization_options.is_function_instantiation = false;
+    }
+
+    // Wrapped function expects execution semantics to be the same as
+    // `session.run`, so we should prune unreachable stateful and dataset ops.
+    if (absl::StrContains(func_.name(), "wrapped_function")) {
+      optimization_options.is_function_instantiation = false;
+    }
+
     FunctionLibraryRuntime::InstantiateOptions opts;
     opts.target = lib->device()->name();
     opts.is_multi_device_function = true;
-    opts.optimize_graph_fn =
-        std::bind(grappler::OptimizeGraph, std::placeholders::_1,
-                  std::placeholders::_2, std::placeholders::_3,
-                  std::placeholders::_4, config_proto_, std::placeholders::_5);
+    opts.optimize_graph_fn = std::bind(
+        grappler::OptimizeGraph, std::placeholders::_1, std::placeholders::_2,
+        std::placeholders::_3, std::placeholders::_4, config_proto_,
+        optimization_options, std::placeholders::_5);
     opts.graph_collector = ctx->graph_collector();
     opts.executor_type = executor_type_;
 

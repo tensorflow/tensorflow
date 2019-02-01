@@ -251,14 +251,6 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         self._container_strategy(), device_map, logical_device,
         _real_mirrored_creator, *args, **kwargs)
 
-  def _distribute_dataset(self, dataset_fn):
-    """Distributes the dataset to each local GPU."""
-    # TODO(yuefengz): shard the dataset.
-    worker_index = 0
-    return input_lib.PerReplicaDataset(
-        self._call_dataset_fn(dataset_fn), self._input_workers, worker_index,
-        prefetch_on_device=True)
-
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(dataset, self._input_workers,
                                      self._num_replicas_in_sync)
@@ -374,8 +366,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   def _global_batch_size(self):
     """`make_dataset_iterator` and `make_numpy_iterator` use global batch size.
 
-    `distribute_dataset` and `make_input_fn_iterator` assume per-replica
-    batching.
+    `make_input_fn_iterator` assumes per-replica batching.
 
     Returns:
       Boolean.

@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,30 +20,11 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace stream_executor {
-namespace rocm {
+namespace gpu {
 
-ROCMEvent::ROCMEvent(ROCMExecutor* parent)
-    : parent_(parent), rocm_event_(nullptr) {}
-
-ROCMEvent::~ROCMEvent() {}
-
-port::Status ROCMEvent::Init() {
-  return ROCMDriver::CreateEvent(parent_->device_ordinal(), &rocm_event_,
-                                 ROCMDriver::EventFlags::kDisableTiming);
-}
-
-port::Status ROCMEvent::Destroy() {
-  return ROCMDriver::DestroyEvent(parent_->device_ordinal(), &rocm_event_);
-}
-
-port::Status ROCMEvent::Record(ROCMStream* stream) {
-  return ROCMDriver::RecordEvent(parent_->device_ordinal(), rocm_event_,
-                                 stream->rocm_stream());
-}
-
-Event::Status ROCMEvent::PollForStatus() {
+Event::Status GpuEvent::PollForStatus() {
   port::StatusOr<hipError_t> status =
-      ROCMDriver::QueryEvent(parent_->device_ordinal(), rocm_event_);
+      GpuDriver::QueryEvent(parent_->gpu_context(), gpu_event_);
   if (!status.ok()) {
     LOG(ERROR) << "Error polling for event status: "
                << status.status().error_message();
@@ -62,9 +43,5 @@ Event::Status ROCMEvent::PollForStatus() {
   }
 }
 
-const hipEvent_t& ROCMEvent::rocm_event() {
-  return rocm_event_;
-}
-
-}  // namespace rocm
+}  // namespace gpu
 }  // namespace stream_executor

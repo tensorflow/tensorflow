@@ -87,11 +87,8 @@ _GRAPH_LEARNING_PHASES = weakref.WeakKeyDictionary()
 
 # _DUMMY_EAGER_GRAPH is used as a key in _GRAPH_LEARNING_PHASES.
 # We keep a separate reference to it to make sure it does not get removed from
-# _GRAPH_LEARNING_PHASES. We use a dummy class instead of something like a
-# string because strings are not weakly-referencable.
-class _DummyEagerGraph(object):
-  pass
-_DUMMY_EAGER_GRAPH = _DummyEagerGraph()
+# _GRAPH_LEARNING_PHASES.
+_DUMMY_EAGER_GRAPH = threading.local()
 
 # This boolean flag can be set to True to leave variable initialization
 # up to the user.
@@ -254,12 +251,24 @@ def learning_phase():
   Returns:
       Learning phase (scalar integer tensor or Python integer).
   """
-  if context.executing_eagerly():
-    if _DUMMY_EAGER_GRAPH not in _GRAPH_LEARNING_PHASES:
-      # Fallback to inference mode as default.
-      return 0
-    return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
-  return symbolic_learning_phase()
+  if ops.get_default_graph() is _GRAPH:
+    # Don't enter an init_scope for the learning phase if eager execution
+    # is enabled but we're inside the Keras workspace graph.
+    return symbolic_learning_phase()
+  with ops.init_scope():
+    # We always check & set the learning phase inside the init_scope,
+    # otherwise the wrong default_graph will be used to look up the learning
+    # phase inside of functions & defuns.
+    #
+    # This is because functions & defuns (both in graph & in eager mode)
+    # will always execute non-eagerly using a function-specific default
+    # subgraph.
+    if context.executing_eagerly():
+      if _DUMMY_EAGER_GRAPH not in _GRAPH_LEARNING_PHASES:
+        # Fallback to inference mode as default.
+        return 0
+      return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
+    return symbolic_learning_phase()
 
 
 def symbolic_learning_phase():
@@ -287,11 +296,25 @@ def set_learning_phase(value):
     raise ValueError('Expected learning phase to be 0 or 1.')
   with ops.init_scope():
     if context.executing_eagerly():
+      # In an eager context, the learning phase values applies to both the eager
+      # context and the internal Keras graph.
       _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
-    else:
-      _GRAPH_LEARNING_PHASES[get_graph()] = value
+    _GRAPH_LEARNING_PHASES[get_graph()] = value
 
 
+def set_eager_learning_phase(value):
+  """Internal utility that sets the learning phase in eager execution only.
+
+  Arguments:
+      value: Learning phase value, either 0 or 1 (integers).
+  """
+  global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
+  assert value in {0, 1}
+  assert context.executing_eagerly()
+  _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
+
+
+@keras_export('keras.backend.learning_phase_scope')
 @tf_contextlib.contextmanager
 def learning_phase_scope(value):
   """Provides a scope within which the learning phase is equal to `value`.
@@ -302,24 +325,62 @@ def learning_phase_scope(value):
      value: Learning phase value, either 0 or 1 (integers).
 
   Yields:
-    The provided value.
+    None.
 
   Raises:
      ValueError: if `value` is neither `0` nor `1`.
   """
+  global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   if value not in {0, 1}:
     raise ValueError('Expected learning phase to be 0 or 1.')
-  previous_value = learning_phase()
+
+  with ops.init_scope():
+    if context.executing_eagerly():
+      previous_eager_value = _GRAPH_LEARNING_PHASES.get(
+          _DUMMY_EAGER_GRAPH, None)
+    previous_graph_value = _GRAPH_LEARNING_PHASES.get(get_graph(), None)
+
   try:
     set_learning_phase(value)
-    yield value
+    yield
   finally:
     # Restore learning phase to initial value.
     with ops.init_scope():
       if context.executing_eagerly():
-        _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
-      else:
-        _GRAPH_LEARNING_PHASES[get_graph()] = previous_value
+        if previous_eager_value is not None:
+          _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_eager_value
+        elif _DUMMY_EAGER_GRAPH in _GRAPH_LEARNING_PHASES:
+          del _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
+
+      graph = get_graph()
+      if previous_graph_value is not None:
+        _GRAPH_LEARNING_PHASES[graph] = previous_graph_value
+      elif graph in _GRAPH_LEARNING_PHASES:
+        del _GRAPH_LEARNING_PHASES[graph]
+
+@tf_contextlib.contextmanager
+def eager_learning_phase_scope(value):
+  """Internal scope that sets the learning phase in eager execution only.
+
+  Arguments:
+      value: Learning phase value, either 0 or 1 (integers).
+
+  Yields:
+    None.
+
+  Raises:
+     ValueError: if `value` is neither `0` nor `1`.
+  """
+  global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
+  assert value in {0, 1}
+  assert context.executing_eagerly()
+  previous_value = learning_phase()
+  try:
+    _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
+    yield
+  finally:
+    # Restore learning phase to initial value.
+    _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
 
 
 def _get_session():
@@ -1558,6 +1619,7 @@ def prod(x, axis=None, keepdims=False):
   return math_ops.reduce_prod(x, axis, keepdims)
 
 
+@keras_export('keras.backend.cumsum')
 def cumsum(x, axis=0):
   """Cumulative sum of the values in a tensor, alongside the specified axis.
 
@@ -1571,6 +1633,7 @@ def cumsum(x, axis=0):
   return math_ops.cumsum(x, axis=axis)
 
 
+@keras_export('keras.backend.cumprod')
 def cumprod(x, axis=0):
   """Cumulative product of the values in a tensor, alongside the specified axis.
 

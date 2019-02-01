@@ -297,12 +297,11 @@ class ControlFlowTransformer(converter.Base):
         if str(name) != ssf
     }
 
+    state_ast_tuple = gast.Tuple([n.ast() for n in loop_state], None)
+
     if len(loop_state) == 1:
       loop_state = loop_state[0]
       state_ssf = state_ssf[0]
-      state_ast_tuple = loop_state
-    else:
-      state_ast_tuple = gast.Tuple([n.ast() for n in loop_state], None)
 
     return loop_state, state_ssf, state_ast_tuple, ssf_map
 

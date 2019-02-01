@@ -74,9 +74,13 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
     context_device = context.context().device_name
     if not context_device:
       context_device = "/job:localhost/replica:0/task:0/device:CPU:0"
-    if context_device != in_device:
-      return input._copy()  # pylint: disable=protected-access
-    return input
+    if context_device == in_device:
+      return input
+    else:
+      copied = input._copy()  # pylint: disable=protected-access
+      if hasattr(copied, "_handle_data"):
+        copied._handle_data = input._handle_data  # pylint: disable=protected-access
+      return copied
   else:
     ret = gen_array_ops.identity(input, name=name)
     # Propagate handle data for happier shape inference for resource variables.

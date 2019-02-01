@@ -39,6 +39,21 @@ void RecordTFDataOptimization(const string& name, int64 num_changes);
 
 void UpdateGraphExecTime(const uint64 running_time_usecs);
 
+// Updates the metrics stored about time spent building graphs.
+//
+// By "GraphBuild", we refer to building a client graph, which is a sub-graph of
+// the full graph, induced by a set of options. In particular, these options
+// include the feeds and fetches requested.
+//
+// This includes time spent:
+//   * optimizing the graphs with Grappler
+//   * pruning the sub-graph (unless the place_pruned_graph option is set)
+//
+// When executing eagerly, this will not record any activity.
+//
+// TODO(jtkeeling): Should we record building/optimizing tf.functions?
+void UpdateGraphBuildTime(const uint64 running_time_usecs);
+
 }  // namespace metrics
 }  // namespace tensorflow
 

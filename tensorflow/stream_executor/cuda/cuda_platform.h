@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/trace_listener.h"
 
 namespace stream_executor {
-namespace cuda {
+namespace gpu {
 
 // Opaque and unique identifier for the CUDA platform plugin.
 // This is needed so that plugins can refer to/identify this platform without
@@ -101,6 +101,12 @@ class CudaPlatform : public Platform {
 
   SE_DISALLOW_COPY_AND_ASSIGN(CudaPlatform);
 };
+
+}  // namespace gpu
+
+namespace cuda {
+
+using CudaPlatform = gpu::CudaPlatform;
 
 }  // namespace cuda
 }  // namespace stream_executor

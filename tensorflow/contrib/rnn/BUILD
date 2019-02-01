@@ -388,6 +388,13 @@ py_binary(
     name = "checkpoint_convert",
     srcs = ["python/tools/checkpoint_convert.py"],
     srcs_version = "PY2AND3",
+    deps = [":checkpoint_convert_lib"],
+)
+
+py_library(
+    name = "checkpoint_convert_lib",
+    srcs = ["python/tools/checkpoint_convert.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_ops",
@@ -406,7 +413,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
-        ":checkpoint_convert",
+        ":checkpoint_convert_lib",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",

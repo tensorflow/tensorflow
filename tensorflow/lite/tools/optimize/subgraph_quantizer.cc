@@ -60,8 +60,8 @@ bool OpHasOptionalBiasTensor(BuiltinOperator op_code) {
 
 struct OpWithBiasTensors {
   int activation_input_index;
-  int bias_input_index;
   int weights_input_index;
+  int bias_input_index;
   int index_for_channel_in_weights;
 };
 
@@ -186,14 +186,10 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(const TensorT* input_tensor,
   // Set the buffers and output type.
   uint8_t* uint8_buffer = reinterpret_cast<uint8_t*>(final_buffer.data());
   size_t buffer_size = num_elements * sizeof(int32_t);
-  // For Bias we only set the quantized values, the scale and quantized
-  // dimension is implicit.
-  tensor->quantization = nullptr;
-  model->buffers[tensor->buffer]->data.assign(uint8_buffer,
-                                              uint8_buffer + buffer_size);
-
-  tensor->type = TensorType_INT32;
-  return kTfLiteOk;
+  std::vector<int64_t> zero_point(scales.size(), 0);
+  return AddQuantizationParams(scales, zero_point, channel_dim_index,
+                               uint8_buffer, buffer_size, TensorType_INT32,
+                               model, tensor);
 }
 }  // namespace
 

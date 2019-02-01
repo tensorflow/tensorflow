@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,7 +45,10 @@ string ConstantBufferAllocationToGlobalName(
     const BufferAllocation& allocation) {
   string instr_name = InstrForConstantBufferAllocation(allocation).name();
   for (char& c : instr_name) {
-    if (c == '.') {
+    // Having a hyphen in a global variable name can crash the LLVM PTX backend.
+    // LLVM is able to generate unique global variable names using the string
+    // returned from here as name prefix.
+    if (c == '.' || c == '-') {
       c = '_';
     }
   }

@@ -130,7 +130,7 @@ class ParameterServerStrategyExtended(
     num_gpus = cluster_resolver.num_accelerators()
     cluster_spec = cluster_resolver.cluster_spec()
     task_type = cluster_resolver.task_type
-    task_id = cluster_resolver.task_index
+    task_id = cluster_resolver.task_id
     if not task_type or task_id is None:
       raise ValueError("When `cluster_spec` is given, you must also specify "
                        "`task_type` and `task_id`")
@@ -232,14 +232,6 @@ class ParameterServerStrategyExtended(
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate(colocate_with_variable, self)
-
-  def _distribute_dataset(self, dataset_fn):
-    """Distributes the dataset to each local GPU."""
-    return input_lib.PerReplicaDataset(
-        self._call_dataset_fn(dataset_fn),
-        self._input_workers,
-        0,
-        prefetch_on_device=True)
 
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(dataset, self._input_workers,
@@ -471,7 +463,7 @@ class ParameterServerStrategyExtended(
       cluster_resolver = SimpleClusterResolver(
           cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
           task_type=task_type,
-          task_index=task_id,
+          task_id=task_id,
           num_accelerators=self._num_gpus_per_worker)
       self._initialize_multi_worker(cluster_resolver)
 
@@ -538,8 +530,7 @@ class ParameterServerStrategyExtended(
   def _global_batch_size(self):
     """`make_dataset_iterator` and `make_numpy_iterator` use global batch size.
 
-    `distribute_dataset` and `make_input_fn_iterator` assume per-replica
-    batching.
+    `make_input_fn_iterator` assumes per-replica batching.
 
     Returns:
       Boolean.

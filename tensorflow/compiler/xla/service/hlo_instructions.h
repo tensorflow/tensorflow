@@ -253,6 +253,10 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
+  // Returns true if the AllReduce does no communication, so it's equivalent
+  // to a mem copy.
+  bool IsNoop() const;
+
  private:
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;

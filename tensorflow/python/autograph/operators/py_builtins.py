@@ -155,14 +155,23 @@ def _py_len(s):
 
 
 def print_(*objects, **kwargs):
+  """Overload of the print builtin."""
   # Note: Python 2.6 doesn't support explicit keywords after starargs.
   unknown_kwargs = tuple(
       set(kwargs.keys()) - set(('sep', 'end', 'file', 'flush')))
   if unknown_kwargs:
     raise ValueError('invalid keyword arguments: {}'.format(unknown_kwargs))
 
-  # TODO(mdan): use logging_ops.Print when py_func is not supported.
-  return _tf_py_func_print(objects, kwargs)
+  # TODO(mdan): Use next.flatten(objects) instead?
+  if any(tensor_util.is_tensor(o) for o in objects):
+    # TODO(mdan): use tf.print instead.
+    return _tf_py_func_print(objects, kwargs)
+  else:
+    _py_print(*objects, **kwargs)
+
+
+def _py_print(*objects, **kwargs):
+  print(*objects, **kwargs)
 
 
 def _tf_py_func_print(objects, kwargs):

@@ -41,6 +41,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 TF_CALL_GPU_ALL_TYPES(DEFINE_GPU_SPECS);
 TF_CALL_int8(DEFINE_GPU_SPECS);
+TF_CALL_uint8(DEFINE_GPU_SPECS);
 
 }  // namespace tensorflow
 

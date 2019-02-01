@@ -30,26 +30,26 @@ namespace stream_executor {
 
 class Stream;
 
-namespace rocm {
+namespace gpu {
 
 // Opaque and unique identifier for the rocBLAS plugin.
 extern const PluginId kRocBlasPlugin;
 
-class ROCMExecutor;
+class GpuExecutor;
 
 // BLAS plugin for ROCM platform via rocBLAS library.
 //
 // This satisfies the platform-agnostic BlasSupport interface.
 //
 // Note that the rocBLAS handle that this encapsulates is implicitly tied to the
-// context (and, as a result, the device) that the parent ROCMExecutor is tied
+// context (and, as a result, the device) that the parent GpuExecutor is tied
 // to. This simply happens as an artifact of creating the rocBLAS handle when a
 // ROCM context is active.
 //
 // Thread-safe post-initialization.
 class ROCMBlas : public blas::BlasSupport {
  public:
-  explicit ROCMBlas(ROCMExecutor *parent);
+  explicit ROCMBlas(GpuExecutor* parent);
 
   // Allocates a rocBLAS handle.
   bool Init();
@@ -143,9 +143,9 @@ class ROCMBlas : public blas::BlasSupport {
   // mutex that guards the rocBLAS handle for this device.
   mutex mu_;
 
-  // ROCMExecutor which instantiated this ROCMBlas.
+  // GpuExecutor which instantiated this ROCMBlas.
   // Immutable post-initialization.
-  ROCMExecutor *parent_;
+  GpuExecutor* parent_;
 
   // rocBLAS library handle on the device.
   rocblas_handle blas_ GUARDED_BY(mu_);
@@ -153,7 +153,7 @@ class ROCMBlas : public blas::BlasSupport {
   SE_DISALLOW_COPY_AND_ASSIGN(ROCMBlas);
 };
 
-}  // namespace rocm
+}  // namespace gpu
 }  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_BLAS_H_

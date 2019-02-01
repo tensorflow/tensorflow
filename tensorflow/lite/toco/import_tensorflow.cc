@@ -2459,6 +2459,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Reshape", ConvertSimpleOperator<TensorFlowReshapeOperator, 2, 1>},
       {"ResizeBilinear", ConvertResizeBilinearOperator},
       {"ResizeNearestNeighbor", ConvertResizeNearestNeighborOperator},
+      {"ReverseV2", ConvertSimpleOperator<ReverseV2Operator, 2, 1>},
       {"Rsqrt", ConvertSimpleOperator<TensorFlowRsqrtOperator, 1, 1>},
       {"Select", ConvertSimpleOperator<SelectOperator, 3, 1>},
       {"Shape", ConvertShapeOperator},

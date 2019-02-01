@@ -207,6 +207,83 @@ class ListTests(test.TestCase):
     self.assertEqual([v], l.trainable_weights)
     self.assertEqual([v2], l.non_trainable_weights)
 
+  def testCopy(self):
+    v1 = resource_variable_ops.ResourceVariable(1.)
+    v2 = resource_variable_ops.ResourceVariable(1.)
+    v3 = resource_variable_ops.ResourceVariable(1.)
+
+    l1 = data_structures.List([v1, v2])
+    l2 = l1.copy()
+    l2.append(v3)
+    self.assertEqual(list(l1), [v1, v2])
+    self.assertEqual(list(l2), [v1, v2, v3])
+
+  def testSlicing(self):
+    v1 = resource_variable_ops.ResourceVariable(1.)
+    v2 = resource_variable_ops.ResourceVariable(1.)
+    v3 = resource_variable_ops.ResourceVariable(1.)
+    v4 = resource_variable_ops.ResourceVariable(1.)
+
+    l = data_structures.List([v1, v2, v3, v4])
+    self.assertEqual(l[1:], [v2, v3, v4])
+    self.assertEqual(l[1:-1], [v2, v3])
+    self.assertEqual(l[:-1], [v1, v2, v3])
+
+  def testHash(self):
+    has_sequences = set([data_structures.List(),
+                         data_structures.List()])
+    self.assertEqual(2, len(has_sequences))
+    self.assertNotIn(data_structures.List(), has_sequences)
+
+  def testIMul_zero(self):
+    l = data_structures.List([])
+    with self.assertRaisesRegexp(ValueError, "List only supports append"):
+      l *= 0
+
+  def testIMul(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    l = data_structures.List([v])
+    l *= 2
+    self.assertEqual(list(l), [v] * 2)
+
+  def testMul(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    l = data_structures.List([v, v, v])
+    self.assertEqual(list(l * 2), [v, v, v] * 2)
+
+  def testRMul(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    l = data_structures.List([v, v, v])
+    self.assertEqual(list(2 * l), [v, v, v] * 2)
+
+
+class ListWrapperTest(test.TestCase):
+
+  IGNORED = ("__new__", "__init__", "__subclasshook__", "__getattribute__")
+
+  def test_overrides_all_list_methods(self):
+    not_overridden = []
+
+    for name in dir(list):
+      if name in ListWrapperTest.IGNORED:
+        continue
+
+      list_method = getattr(list, name)
+
+      if not callable(list_method):
+        continue
+
+      object_method = getattr(object, name, None)
+      if object_method is not None and object_method == list_method:
+        # Skip methods that aren't overridden from object.
+        continue
+
+      if list_method == getattr(data_structures._ListWrapper, name):
+        not_overridden.append(name)
+
+    if not_overridden:
+      self.fail("_ListWrapper does not override %s" % (not_overridden))
+
   def testListWrapperBasic(self):
     # _ListWrapper, unlike List, compares like the built-in list type (since it
     # is used to automatically replace lists).
@@ -244,6 +321,10 @@ class ListTests(test.TestCase):
     self.assertEqual([a, a], [a] + data_structures._ListWrapper([a]))
     self.assertIsInstance(data_structures._ListWrapper([a]), list)
 
+  def testAcceptsNonCheckpointableContent(self):
+    l = data_structures._ListWrapper([1, 2, 3])
+    self.assertEqual(l, [1, 2, 3])
+
   def testWrapperChangesList(self):
     l = []
     l_wrapper = data_structures._ListWrapper(l)
@@ -263,19 +344,61 @@ class ListTests(test.TestCase):
     l.append(layer)
     self.assertEqual([layer], l_wrapper.layers)
 
-  def testHashing(self):
-    has_sequences = set([data_structures.List(),
-                         data_structures.List()])
-    self.assertEqual(2, len(has_sequences))
-    self.assertNotIn(data_structures.List(), has_sequences)
+  def testNotHashable(self):
     with self.assertRaises(TypeError):
-      has_sequences.add(data_structures._ListWrapper([]))
+      hash(data_structures._ListWrapper())
 
-  def testSlicing(self):
+  def testDelItem(self):
     l = data_structures._ListWrapper([1, 2, 3, 4])
-    self.assertEqual(l[1:], [2, 3, 4])
-    self.assertEqual(l[1:-1], [2, 3])
-    self.assertEqual(l[:-1], [1, 2, 3])
+    del l[0]
+    self.assertEqual(l, [2, 3, 4])
+    self.assertUnableToSave(l, "Unable to save .*__delitem__")
+
+  def testDelSlice(self):
+    l = data_structures._ListWrapper([1, 2, 3, 4])
+    del l[2:3]
+    self.assertEqual(l, [1, 2, 4])
+    self.assertUnableToSave(l, "Unable to save .*__delslice__")
+
+  def testSetSlice_canSaveForNonCheckpointableItems(self):
+    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l[:] = 2, 8, 9, 0
+    self.assertEqual(l, [2, 8, 9, 0])
+    l._maybe_initialize_checkpointable()  # pylint: disable=protected-access
+    self.assertEqual(len(l._checkpoint_dependencies), 0)  # pylint: disable=protected-access
+
+  def testSetSlice_cannotSaveIfCheckpointableModified(self):
+    v1 = resource_variable_ops.ResourceVariable(1.)
+    v2 = resource_variable_ops.ResourceVariable(1.)
+    l = data_structures._ListWrapper([1, 2, v1, v2])
+    l[:] = 2, 8, 9, v2
+    self.assertEqual(l, [2, 8, 9, v2])
+    self.assertUnableToSave(l, "Unable to save .*__setslice__")
+
+  def testSetSlice_truncate(self):
+    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l[:] = []
+    self.assertEqual(l, [])
+
+  def testSetSlice_extend(self):
+    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l[2:] = 1, 2, 3, 4
+    self.assertEqual(l, [1, 2, 1, 2, 3, 4])
+
+  def testSort(self):
+    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l.sort()
+    self.assertEqual(l, [1, 2, 3, 4])
+    # Regardless of being a no-op for the input list, we still refuse to save.
+    # This is intentional since otherwise we would end up with a hard to debug
+    # case for users (e.g. sometimes sort on a ListWrapper is checkpointable and
+    # other times it is not).
+    self.assertUnableToSave(l, "Unable to save .*sort")
+
+  def assertUnableToSave(self, l, msg):
+    l._maybe_initialize_checkpointable()  # pylint: disable=protected-access
+    with self.assertRaisesRegexp(ValueError, msg):
+      return l._checkpoint_dependencies  # pylint: disable=protected-access
 
 
 class HasMapping(training.Model):

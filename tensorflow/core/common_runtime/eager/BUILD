@@ -155,6 +155,7 @@ tf_cuda_library(
     deps = [
         ":attr_builder",
         "@farmhash_archive//:farmhash",
+        "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
+#include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 
@@ -32,23 +33,6 @@ namespace {
 constexpr char kMapDataset[] = "MapDataset";
 constexpr char kParallelMapDataset[] = "ParallelMapDataset";
 constexpr int kAutotune = -1;
-
-bool CanParallelize(const FunctionDef& function,
-                    const FunctionLibraryDefinition& library) {
-  if (!function.signature().is_stateful()) return true;
-
-  for (const auto& node : function.node_def()) {
-    const OpDef* op_def;
-    TF_CHECK_OK(library.LookUpOpDef(node.op(), &op_def));
-    // Assert is marked as stateful, but it does not have any state (except
-    // changing io).  Similarly to CUDA, we do not give guarantee that the
-    // assert operation that would fail would be the first one, so that we can
-    // parallelize it.
-    if (op_def->is_stateful() && op_def->name() != "Assert") return false;
-  }
-
-  return true;
-}
 
 NodeDef MakeParallelMap(const string& name, MutableGraphView* graph) {
   // The inputs of the node to be parallelized could be changed by the
@@ -88,7 +72,8 @@ Status MapParallelization::OptimizeAndCollectStats(Cluster* cluster,
 
     auto* function =
         function_library.Find(map_node->attr().at("f").func().name());
-    if (!CanParallelize(*function, function_library)) continue;
+    if (function_utils::IsFunctionStateful(function_library, *function, true))
+      continue;
 
     auto* parallel_map =
         graph.AddNode(MakeParallelMap(map_node->name(), &graph));

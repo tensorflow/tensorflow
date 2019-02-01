@@ -954,6 +954,32 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose([[[[4.0]]]], self.evaluate(y))
 
+  # Variable lifting is somewhat different between defun/tf.function, so testing
+  # device placement on both makes sense.
+  @parameterized.named_parameters(
+      dict(testcase_name='Defun',
+           function_decorator=function.defun),
+      dict(testcase_name='DefFunction',
+           function_decorator=def_function.function))
+  @test_util.run_in_graph_and_eager_modes
+  def testVariablesPlacedOnOutsideDevice(self, function_decorator):
+
+    class _Obj(object):
+
+      def __init__(self):
+        self.v = None
+
+      @function_decorator
+      def f(self):
+        if self.v is None:
+          self.v = variables.Variable(1.)
+        return self.v + 1.
+
+    has_device = _Obj()
+    with ops.device('cpu:0'):
+      has_device.f()
+    self.assertIn('CPU', has_device.v.device)
+
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testDefunKerasModelCall(self):
     model = MiniModel()

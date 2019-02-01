@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
 
+#include <unordered_map>
 #include "tensorflow/core/distributed_runtime/recent_request_ids.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
 
 namespace grpc {
@@ -57,9 +59,17 @@ class GrpcWorker : public Worker {
 std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* worker_env,
                                           const ConfigProto& config);
 
+struct GrpcWorkerServiceOptions {
+  // Map from GrpcWorkerMethod id to queue depth.  If set this overrides the
+  // default queue depth for a method.
+  std::unordered_map<int, int> queue_depth;
+  int num_worker_threads = 8;
+};
+
 // Returns an implementation of WorkerService rpc service.
 std::unique_ptr<AsyncServiceInterface> NewGrpcWorkerService(
-    GrpcWorker* worker, ::grpc::ServerBuilder* builder);
+    GrpcWorker* worker, ::grpc::ServerBuilder* builder,
+    GrpcWorkerServiceOptions opts = GrpcWorkerServiceOptions());
 
 }  // namespace tensorflow
 

@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,13 +16,12 @@ limitations under the License.
 #include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
 
 #include <dirent.h>
-
 #include <limits.h>
+#include <link.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <link.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
 #include <algorithm>
@@ -31,14 +30,13 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/stream_executor/lib/process_state.h"
 #include "tensorflow/stream_executor/lib/error.h"
+#include "tensorflow/stream_executor/lib/numbers.h"
+#include "tensorflow/stream_executor/lib/process_state.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/lib/numbers.h"
-#include "tensorflow/stream_executor/lib/str_util.h"
 
 namespace stream_executor {
 namespace rocm {
@@ -95,6 +93,12 @@ port::StatusOr<DriverVersion> StringToDriverVersion(const string &value) {
   return result;
 }
 
+}  // namespace rocm
+}  // namespace stream_executor
+
+namespace stream_executor {
+namespace gpu {
+
 // -- class Diagnostician
 
 string Diagnostician::GetDevNodePath(int dev_node_ordinal) {
@@ -132,12 +136,12 @@ void Diagnostician::LogDiagnosticInformation() {
     }
   }
   port::StatusOr<DriverVersion> dso_version = FindDsoVersion();
-  LOG(INFO) << "librocm reported version is: "
-            << DriverVersionStatusToString(dso_version);
+  LOG(INFO) << "ROCm reported version is: "
+            << rocm::DriverVersionStatusToString(dso_version);
 
   port::StatusOr<DriverVersion> kernel_version = FindKernelDriverVersion();
   LOG(INFO) << "kernel reported version is: "
-	  << DriverVersionStatusToString(kernel_version);
+            << rocm::DriverVersionStatusToString(kernel_version);
 
   if (kernel_version.ok() && dso_version.ok()) {
     WarnOnDsoKernelMismatch(dso_version, kernel_version);
@@ -175,7 +179,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
       // TODO(b/22689637): Eliminate the explicit namespace if possible.
       auto stripped_dso_version = port::StripSuffixString(dso_version, ".ld64");
       auto result = static_cast<port::StatusOr<DriverVersion> *>(data);
-      *result = StringToDriverVersion(stripped_dso_version);
+      *result = rocm::StringToDriverVersion(stripped_dso_version);
       return 1;
     }
     return 0;
@@ -205,7 +209,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
   // TODO(b/22689637): Eliminate the explicit namespace if possible.
   auto stripped_kernel_version =
       port::StripSuffixString(kernel_version, ".ld64");
-  return StringToDriverVersion(stripped_kernel_version);
+  return rocm::StringToDriverVersion(stripped_kernel_version);
 }
 
 void Diagnostician::WarnOnDsoKernelMismatch(
@@ -214,16 +218,15 @@ void Diagnostician::WarnOnDsoKernelMismatch(
   if (kernel_version.ok() && dso_version.ok() &&
       dso_version.ValueOrDie() == kernel_version.ValueOrDie()) {
     LOG(INFO) << "kernel version seems to match DSO: "
-              << DriverVersionToString(kernel_version.ValueOrDie());
+              << rocm::DriverVersionToString(kernel_version.ValueOrDie());
   } else {
     LOG(ERROR) << "kernel version "
-               << DriverVersionStatusToString(kernel_version)
+               << rocm::DriverVersionStatusToString(kernel_version)
                << " does not match DSO version "
-               << DriverVersionStatusToString(dso_version)
+               << rocm::DriverVersionStatusToString(dso_version)
                << " -- cannot find working devices in this configuration";
   }
 }
-
 
 port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   auto status =
@@ -233,6 +236,5 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   return status;
 }
 
-
-}  // namespace rocm
+}  // namespace gpu
 }  // namespace stream_executor

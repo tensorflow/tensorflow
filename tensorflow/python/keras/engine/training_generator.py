@@ -140,7 +140,6 @@ def model_iteration(model,
       shuffle=shuffle)
 
   do_validation = validation_data is not None
-  should_set_learning_phase = context.executing_eagerly() and model.run_eagerly
   is_sequence = isinstance(generator, data_utils.Sequence)
   _validate_arguments(is_sequence, is_dataset, use_multiprocessing, workers,
                       steps_per_epoch, validation_data, validation_steps, mode,
@@ -181,9 +180,10 @@ def model_iteration(model,
   else:
     aggregator = training_utils.MetricsAggregator(True, steps_per_epoch)
 
+  should_set_learning_phase = context.executing_eagerly() and model.run_eagerly
   if should_set_learning_phase:
     old_learning_phase = backend.learning_phase()
-    backend.set_learning_phase(1 if mode == ModeKeys.TRAIN else 0)
+    backend.set_eager_learning_phase(1 if mode == ModeKeys.TRAIN else 0)
 
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
@@ -302,7 +302,7 @@ def model_iteration(model,
     enqueuer.stop()
 
   if should_set_learning_phase:
-    backend.set_learning_phase(old_learning_phase)
+    backend.set_eager_learning_phase(old_learning_phase)
 
   if mode == ModeKeys.TRAIN:
     return model.history

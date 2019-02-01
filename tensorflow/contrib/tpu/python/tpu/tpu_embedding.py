@@ -440,6 +440,10 @@ class TPUEmbedding(object):
   def table_to_table_variables_dict(self):
     return copy.copy(self._table_to_table_variables_dict)
 
+  @property
+  def feature_to_table_dict(self):
+    return copy.copy(self._feature_to_table_dict)
+
   def get_slot_names(self):
     """Return a list of the names of slots created by `TPUEmbedding`."""
     return self._optimizer_handler.get_slot_names()
@@ -1065,34 +1069,3 @@ def _create_partitioned_variables(name,
       initializer=initializer,
       collections=collections,
       trainable=False))
-
-
-@ops.RegisterGradient('TPUEmbeddingActivations')
-def _embedding_activations_grad(activations_op, grad_wrt_activations):
-  """Saves the gradient of embedding activations ops in a graph collection."""
-  g = ops.get_default_graph()
-  table_id = activations_op.get_attr('table_id')
-  lookup_id = activations_op.get_attr('lookup_id')
-  table_gradients = g.get_collection_ref(
-      'tpu_embedding_gradients_table_%d' % table_id)
-
-  if not table_gradients:
-    raise RuntimeError(
-        'Gradients for TPUEmbedding have been generated in non-training mode. '
-        'This is not expected. Consider putting your Optimizer.minimize code '
-        'behind the training mode condition check. For Estimator, you can '
-        'do \n\n'
-        '    if mode == tf.estimator.ModeKeys.TRAIN:\n'
-        '        train_op = opt.minimize(loss)\n'
-        '\n')
-
-  table_gradients[lookup_id] = array_ops.identity(grad_wrt_activations)
-  return [
-      # RegisterGradient requires that value be returned for all inputs. Since
-      # the first argument (tpu_gradient_variable_{table_name}) has shape [1],
-      # we will return zeros(shape=[1]). The actual gradient w.r.t. the
-      # embedding activations (grad_wrt_activations) has the same shape as the
-      # activations returned by  embedding_activations.
-      array_ops.zeros(arg.shape, dtype=dtypes.float32)
-      for arg in activations_op.inputs
-  ]

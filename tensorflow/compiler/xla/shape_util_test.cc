@@ -710,6 +710,26 @@ TEST(ShapeUtilTest, PermuteDimensionsLayout) {
   } while (std::next_permutation(layout.begin(), layout.end()));
 }
 
+TEST(ShapeUtilTest, PermuteDynamicDimensions) {
+  Shape shape =
+      ShapeUtil::MakeShape(F32, {10, 100, 1000},
+                           /*dynamic_dimensions*/ {false, true, true});
+  SCOPED_TRACE(absl::StrCat("shape=", shape.ToString()));
+
+  std::vector<int64> permutation(3);
+  std::iota(permutation.begin(), permutation.end(), 0);
+  do {
+    SCOPED_TRACE(absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));
+
+    auto permuted = ShapeUtil::PermuteDimensions(permutation, shape);
+    for (int i = 0; i < shape.rank(); i++) {
+      EXPECT_EQ(permuted.dimensions(permutation[i]), shape.dimensions(i));
+      EXPECT_EQ(permuted.is_dynamic_dimension(permutation[i]),
+                shape.is_dynamic_dimension(i));
+    }
+  } while (std::next_permutation(permutation.begin(), permutation.end()));
+}
+
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {
   EXPECT_FALSE(ShapeUtil::ReshapeIsBitcast(
       ShapeUtil::MakeShapeWithLayout(F32, {3, 2, 2}, {0, 1, 2}),

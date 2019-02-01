@@ -30,10 +30,10 @@ from tensorflow.python.platform import test
 class DummyGensym(object):
   """A dumb gensym that suffixes a stem by sequential numbers from 1000."""
 
-  def __init__(self, entity_info):
-    del entity_info
+  def __init__(self, ctx):
+    del ctx
     # A proper implementation needs to account for:
-    #   * entity_info.namespace
+    #   * ctx.info.namespace
     #   * all the symbols defined in the AST
     #   * the symbols generated so far
     self._idx = 0
@@ -68,21 +68,22 @@ def exec_expected_result():
 
 class AnfTransformerTest(test.TestCase):
 
-  def _simple_source_info(self):
-    return transformer.EntityInfo(
+  def _simple_context(self):
+    entity_info = transformer.EntityInfo(
         source_code=None,
         source_file=None,
         namespace=None,
         arg_values=None,
         arg_types=None,
         owner_type=None)
+    return transformer.Context(entity_info)
 
   def test_basic(self):
     def test_function():
       a = 0
       return a
     node, _ = parser.parse_entity(test_function)
-    node = anf.transform(node.body[0], self._simple_source_info())
+    node = anf.transform(node.body[0], self._simple_context())
     result, _ = compiler.ast_to_object(node)
     self.assertEqual(test_function(), result.test_function())
 
@@ -100,7 +101,7 @@ class AnfTransformerTest(test.TestCase):
     exp_node, _ = parser.parse_entity(expected_fn)
     node, _ = parser.parse_entity(test_fn)
     node = anf.transform(
-        node, self._simple_source_info(), gensym_source=DummyGensym)
+        node, self._simple_context(), gensym_source=DummyGensym)
     exp_name = exp_node.body[0].name
     # Ignoring the function names in the result because they can't be
     # the same (because both functions have to exist in the same scope
@@ -109,7 +110,7 @@ class AnfTransformerTest(test.TestCase):
     self.assert_same_ast(exp_node, node)
     # Check that ANF is idempotent
     node_repeated = anf.transform(
-        node, self._simple_source_info(), gensym_source=DummyGensym)
+        node, self._simple_context(), gensym_source=DummyGensym)
     self.assert_same_ast(node_repeated, node)
 
   def test_binop_basic(self):

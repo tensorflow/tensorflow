@@ -662,6 +662,7 @@ cc_library(
     srcs = if_rocm_is_configured(
         glob(
             [
+                "gpu/*.cc",
                 "rocm/*.cc",
             ],
         ),
@@ -669,6 +670,7 @@ cc_library(
     hdrs = if_rocm_is_configured(
         glob(
             [
+                "gpu/*.h",
                 "rocm/*.h",
             ],
         ),
@@ -685,6 +687,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
+        "@com_google_absl//absl/strings",
         "@local_config_rocm//rocm:rocm_headers",
     ] + if_rocm_is_configured([
         "//tensorflow/core:rocm",

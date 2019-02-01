@@ -57,6 +57,10 @@ from tensorflow.contrib.tpu.python.tpu import device_assignment as device_assign
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_keras_v2
+from tensorflow.python.keras.optimizer_v2 import adam as adam_keras_v2
+from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras_v2
+from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_keras_v2
 from tensorflow.python.training import adagrad
 from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
@@ -422,9 +426,19 @@ gradient_descent_optimizer_v2_fn = NamedObject(
 adagrad_optimizer_v2_fn = NamedObject(
     "AdagradV2", lambda: adagrad_v2.AdagradOptimizer(0.001))
 adam_optimizer_v2_fn = NamedObject(
-    "AdamV2", lambda: adam_v2.AdamOptimizer(0.001, epsilon=1))
+    "AdamV2", lambda: adam_v2.AdamOptimizer(0.001, epsilon=1.0))
 
 optimizers_v2 = [gradient_descent_optimizer_v2_fn, adagrad_optimizer_v2_fn]
+
+gradient_descent_optimizer_keras_v2_fn = NamedObject(
+    "GradientDescentKerasV2",
+    lambda: gradient_descent_keras_v2.SGD(0.2))
+adagrad_optimizer_keras_v2_fn = NamedObject(
+    "AdagradKerasV2", lambda: adagrad_keras_v2.Adagrad(0.001))
+adam_optimizer_keras_v2_fn = NamedObject(
+    "AdamKerasV2", lambda: adam_keras_v2.Adam(0.001, epsilon=1.0))
+rmsprop_optimizer_keras_v2_fn = NamedObject(
+    "RmsPropKerasV2", lambda: rmsprop_keras_v2.RMSprop(0.001))
 
 graph_and_eager_modes = ["graph", "eager"]
 

@@ -140,9 +140,7 @@ XlaOp InvertDiagonalBlocks(XlaOp diag_blocks, bool lower, bool transpose_a,
     // zero (which can happen if the last block was padded) otherwise it will
     // introduce nans which will propagate
     auto diags = GetMatrixDiagonal(diag_blocks);
-    TF_ASSIGN_OR_RETURN(Shape diags_shape, builder->GetShape(diags));
-    auto one = ScalarLike(diags, 1);
-    auto ones = Broadcast(one, AsInt64Slice(diags_shape.dimensions()));
+    auto ones = FullLike(diags, 1);
     diags = Select(Eq(diags, Zero(builder, shape.element_type())), ones, diags);
     auto scaled_diag_blocks = Div(diag_blocks, diags, {0, 2});
 

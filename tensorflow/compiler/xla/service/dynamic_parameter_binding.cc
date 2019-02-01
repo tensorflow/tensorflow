@@ -29,7 +29,8 @@ Status DynamicParameterBinding::Bind(
 }
 
 absl::optional<DynamicParameterBinding::DynamicParameter>
-DynamicParameterBinding::GetBinding(const DynamicDimension& dynamic_dimension) {
+DynamicParameterBinding::GetBinding(
+    const DynamicDimension& dynamic_dimension) const {
   auto param_iter = bindings_.find(dynamic_dimension);
   if (param_iter == bindings_.end()) {
     return absl::nullopt;

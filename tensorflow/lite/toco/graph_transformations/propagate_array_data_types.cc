@@ -272,6 +272,12 @@ void SetDataTypeForAllOutputs(Model* model, Operator* op,
       SetDataTypeForAllOutputs(model, op, data_type);
       break;
     }
+    case OperatorType::kBidirectionalSequenceRnn: {
+      const ArrayDataType data_type = model->GetArray(op->inputs[0]).data_type;
+      if (data_type != ArrayDataType::kFloat) return ::tensorflow::Status::OK();
+      SetDataTypeForAllOutputs(model, op, data_type);
+      break;
+    }
     case OperatorType::kLstmCell: {
       // It's tricky to propagate data types through a LstmCell, as that has
       // multiple inputs and outputs, and there are quantized cases with

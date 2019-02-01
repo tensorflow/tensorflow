@@ -72,6 +72,10 @@ class Shape {
     dynamic_dimensions_[dimension] = is_dynamic;
   }
 
+  const std::vector<bool>& dynamic_dimensions() const {
+    return dynamic_dimensions_;
+  }
+
   // Add dimension_upper_bound().
 
   // Removes the given dimension form the shape. Layout, if it exists, is

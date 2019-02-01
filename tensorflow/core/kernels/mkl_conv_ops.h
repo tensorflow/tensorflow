@@ -21,13 +21,13 @@ limitations under the License.
 #include <vector>
 
 #include "mkldnn.hpp"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -58,7 +58,7 @@ class MklDnnConvUtil {
  public:
   MklDnnConvUtil(OpKernelContext* context, const std::vector<int32>& strides,
                  Padding pad, TensorFormat fm,
-                 const std::vector<int32>& dilations)
+                 const std::vector<int32>& dilations, bool is_depthwise = false)
       : context_(context),
         strides_(strides),
         dilations_(dilations),
@@ -550,7 +550,7 @@ class MklDnnConvUtil {
 ///  Common class that implements ConvBackpropFilter and Input
 /////////////////////////////////////////////////////////////////////
 
-template <typename Device, class T>
+template <typename Device, class T, bool is_depthwise>
 class MklConvBackpropCommonOp : public OpKernel {
  public:
   ~MklConvBackpropCommonOp() {}
@@ -563,28 +563,38 @@ class MklConvBackpropCommonOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     int stride_n = GetTensorDim(strides_, data_format_, 'N');
     int stride_c = GetTensorDim(strides_, data_format_, 'C');
+    const int64 stride_h = GetTensorDim(strides_, data_format_, 'H');
+    const int64 stride_w = GetTensorDim(strides_, data_format_, 'W');
     OP_REQUIRES(
         context, (stride_n == 1 && stride_c == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
-    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
 
-    if (strides_.size() == 4) {
-      // Check Conv2D dilations
-      OP_REQUIRES(context, dilations_.size() == 4,
-                  errors::InvalidArgument("Sliding window dilations field must "
-                                          "specify 4 dimensions"));
-      int dilation_n = GetTensorDim(dilations_, data_format_, 'N');
-      int dilation_c = GetTensorDim(dilations_, data_format_, 'C');
-      int dilation_h = GetTensorDim(dilations_, data_format_, 'H');
-      int dilation_w = GetTensorDim(dilations_, data_format_, 'W');
-      OP_REQUIRES(context, (dilation_n == 1 && dilation_c == 1),
-                  errors::InvalidArgument(
-                      "Current implementation does not yet support "
-                      "dilations in the batch and depth dimensions."));
-      OP_REQUIRES(
-          context, dilation_h > 0 && dilation_w > 0,
-          errors::InvalidArgument("Dilated rates should be larger than 0."));
+    // Depthwise Convolution doesn't have dilation parameter
+    if (!is_depthwise) {
+      OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
+      if (strides_.size() == 4) {
+        // Check Conv2D dilations
+        OP_REQUIRES(
+            context, dilations_.size() == 4,
+            errors::InvalidArgument("Sliding window dilations field must "
+                                    "specify 4 dimensions"));
+        int dilation_n = GetTensorDim(dilations_, data_format_, 'N');
+        int dilation_c = GetTensorDim(dilations_, data_format_, 'C');
+        int dilation_h = GetTensorDim(dilations_, data_format_, 'H');
+        int dilation_w = GetTensorDim(dilations_, data_format_, 'W');
+        OP_REQUIRES(context, (dilation_n == 1 && dilation_c == 1),
+                    errors::InvalidArgument(
+                        "Current implementation does not yet support "
+                        "dilations in the batch and depth dimensions."));
+        OP_REQUIRES(
+            context, dilation_h > 0 && dilation_w > 0,
+            errors::InvalidArgument("Dilated rates should be larger than 0."));
+      }
+    } else {
+      // Set dilations as 1 for depthwise conv
+      // for future support to align with Tensorflow
+      dilations_ = {1, 1, 1, 1};
     }
 
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));

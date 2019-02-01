@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import os
 import tokenize
 
 import gast
@@ -72,6 +73,11 @@ class OriginInfo(
     """Returns a 4-tuple consistent with the return of traceback.extract_tb."""
     return (self.loc.filename, self.loc.lineno, self.function_name,
             self.source_code_line)
+
+  def __repr__(self):
+    return '{}:{}:{}'.format(
+        os.path.split(self.loc.filename)[1], self.loc.lineno,
+        self.loc.col_offset)
 
 
 # TODO(mdan): This source map should be a class - easier to refer to.

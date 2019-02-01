@@ -363,7 +363,7 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
            # feature 0, ids [[20, 3], [5]]
            # feature 1, ids [[3], [8]]
            'indices': ((0, 0, 0), (0, 0, 1), (0, 1, 0), (1, 0, 0), (1, 1, 0)),
-           'values': (20, 3, 5., 3., 8.),
+           'values': (20., 3., 5., 3., 8.),
            'dense_shape': (2, 2, 2)},
        'expected_input_layer': [
            [[20.], [3.], [5.], [0.]],

@@ -28,6 +28,8 @@ class KernelUtilTest : public ::testing::Test {
   KernelUtilTest() {
     context_.ReportError = ReportError;
 
+    memset(&tensor1_, 0, sizeof(TfLiteTensor));
+    memset(&tensor2_, 0, sizeof(TfLiteTensor));
     tensor1_.dims = nullptr;
     tensor2_.dims = nullptr;
     tensor1_.allocation_type = kTfLiteMmapRo;

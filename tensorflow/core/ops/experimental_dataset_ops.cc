@@ -468,6 +468,8 @@ REGISTER_OP("ExperimentalChooseFastestDataset")
     .Output("handle: variant")
     .Attr("N: int >= 2")
     .Attr("num_experiments: int")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalIdentityIndexedDataset")

@@ -1532,7 +1532,7 @@ class Session(BaseSession):
 
     If no `graph` argument is specified when constructing the session,
     the default graph will be launched in the session. If you are
-    using more than one graph (created with `tf.Graph()` in the same
+    using more than one graph (created with `tf.Graph()`) in the same
     process, you will have to use different sessions for each graph,
     but each graph can be used in multiple sessions. In this case, it
     is often clearer to pass the graph to be launched explicitly to
@@ -1675,7 +1675,7 @@ class InteractiveSession(BaseSession):
 
     If no `graph` argument is specified when constructing the session,
     the default graph will be launched in the session. If you are
-    using more than one graph (created with `tf.Graph()` in the same
+    using more than one graph (created with `tf.Graph()`) in the same
     process, you will have to use different sessions for each graph,
     but each graph can be used in multiple sessions. In this case, it
     is often clearer to pass the graph to be launched explicitly to

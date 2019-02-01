@@ -235,15 +235,12 @@ cc_binary(
     deps = [
         ":audio_provider",
         ":feature_provider",
-        ":features_test_data",
         ":model_settings",
-        ":preprocessor_reference",
         ":recognize_commands",
         ":tiny_conv_model_data",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/kernels:all_ops_resolver",
-        "//tensorflow/lite/experimental/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

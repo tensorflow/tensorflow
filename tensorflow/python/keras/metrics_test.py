@@ -40,6 +40,123 @@ from tensorflow.python.training.checkpointable import util as checkpointable_uti
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class KerasSumTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_sum(self):
+    m = metrics.Sum(name='my_sum')
+
+    # check config
+    self.assertEqual(m.name, 'my_sum')
+    self.assertTrue(m.stateful)
+    self.assertEqual(m.dtype, dtypes.float32)
+    self.assertEqual(len(m.variables), 1)
+    self.evaluate(variables.variables_initializer(m.variables))
+
+    # check initial state
+    self.assertEqual(self.evaluate(m.total), 0)
+
+    # check __call__()
+    self.assertEqual(self.evaluate(m(100)), 100)
+    self.assertEqual(self.evaluate(m.total), 100)
+
+    # check update_state() and result() + state accumulation + tensor input
+    update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+    self.evaluate(update_op)
+    self.assertAlmostEqual(self.evaluate(m.result()), 106)
+    self.assertEqual(self.evaluate(m.total), 106)  # 100 + 1 + 5
+
+    # check reset_states()
+    m.reset_states()
+    self.assertEqual(self.evaluate(m.total), 0)
+
+  def test_sum_with_sample_weight(self):
+    m = metrics.Sum(dtype=dtypes.float64)
+    self.assertEqual(m.dtype, dtypes.float64)
+    self.evaluate(variables.variables_initializer(m.variables))
+
+    # check scalar weight
+    result_t = m(100, sample_weight=0.5)
+    self.assertEqual(self.evaluate(result_t), 50)
+    self.assertEqual(self.evaluate(m.total), 50)
+
+    # check weights not scalar and weights rank matches values rank
+    result_t = m([1, 5], sample_weight=[1, 0.2])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 52., 4)  # 50 + 1 + 5 * 0.2
+    self.assertAlmostEqual(self.evaluate(m.total), 52., 4)
+
+    # check weights broadcast
+    result_t = m([1, 2], sample_weight=0.5)
+    self.assertAlmostEqual(self.evaluate(result_t), 53.5, 1)  # 52 + 0.5 + 1
+    self.assertAlmostEqual(self.evaluate(m.total), 53.5, 1)
+
+    # check weights squeeze
+    result_t = m([1, 5], sample_weight=[[1], [0.2]])
+    self.assertAlmostEqual(self.evaluate(result_t), 55.5, 1)  # 53.5 + 1 + 1
+    self.assertAlmostEqual(self.evaluate(m.total), 55.5, 1)
+
+    # check weights expand
+    result_t = m([[1], [5]], sample_weight=[1, 0.2])
+    self.assertAlmostEqual(self.evaluate(result_t), 57.5, 2)  # 55.5 + 1 + 1
+    self.assertAlmostEqual(self.evaluate(m.total), 57.5, 1)
+
+    # check values reduced to the dimensions of weight
+    result_t = m([[[1., 2.], [3., 2.], [0.5, 4.]]], sample_weight=[0.5])
+    result = np.round(self.evaluate(result_t), decimals=2)
+    # result = (prev: 57.5) + 0.5 + 1 + 1.5 + 1 + 0.25 + 2
+    self.assertAlmostEqual(result, 63.75, 2)
+    self.assertAlmostEqual(self.evaluate(m.total), 63.75, 2)
+
+  def test_sum_graph_with_placeholder(self):
+    with context.graph_mode(), self.cached_session() as sess:
+      m = metrics.Sum()
+      v = array_ops.placeholder(dtypes.float32)
+      w = array_ops.placeholder(dtypes.float32)
+      self.evaluate(variables.variables_initializer(m.variables))
+
+      # check __call__()
+      result_t = m(v, sample_weight=w)
+      result = sess.run(result_t, feed_dict=({v: 100, w: 0.5}))
+      self.assertEqual(result, 50)
+      self.assertEqual(self.evaluate(m.total), 50)
+
+      # check update_state() and result()
+      result = sess.run(result_t, feed_dict=({v: [1, 5], w: [1, 0.2]}))
+      self.assertAlmostEqual(result, 52., 2)  # 50 + 1 + 5 * 0.2
+      self.assertAlmostEqual(self.evaluate(m.total), 52., 2)
+
+  def test_save_restore(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
+    m = metrics.Sum()
+    checkpoint = checkpointable_utils.Checkpoint(sum=m)
+    self.evaluate(variables.variables_initializer(m.variables))
+
+    # update state
+    self.evaluate(m(100.))
+    self.evaluate(m(200.))
+
+    # save checkpoint and then add an update
+    save_path = checkpoint.save(checkpoint_prefix)
+    self.evaluate(m(1000.))
+
+    # restore to the same checkpoint sum object (= 300)
+    checkpoint.restore(save_path).assert_consumed().run_restore_ops()
+    self.evaluate(m(300.))
+    self.assertEqual(600., self.evaluate(m.result()))
+
+    # restore to a different checkpoint sum object
+    restore_sum = metrics.Sum()
+    restore_checkpoint = checkpointable_utils.Checkpoint(sum=restore_sum)
+    status = restore_checkpoint.restore(save_path)
+    restore_update = restore_sum(300.)
+    status.assert_consumed().run_restore_ops()
+    self.evaluate(restore_update)
+    self.assertEqual(600., self.evaluate(restore_sum.result()))
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class KerasMeanTest(test.TestCase):
 
   # TODO(b/120949004): Re-enable garbage collection check
@@ -778,7 +895,7 @@ class SparseTopKCategoricalAccuracyTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class LogcoshTest(test.TestCase):
+class LogCoshErrorTest(test.TestCase):
 
   def setup(self):
     y_pred = np.asarray([1, 9, 2, -5, -2, 6]).reshape((2, 3))
@@ -792,13 +909,13 @@ class LogcoshTest(test.TestCase):
     self.y_true = constant_op.constant(y_true)
 
   def test_config(self):
-    logcosh_obj = metrics.Logcosh(name='logcosh', dtype=dtypes.int32)
+    logcosh_obj = metrics.LogCoshError(name='logcosh', dtype=dtypes.int32)
     self.assertEqual(logcosh_obj.name, 'logcosh')
     self.assertEqual(logcosh_obj._dtype, dtypes.int32)
 
   def test_unweighted(self):
     self.setup()
-    logcosh_obj = metrics.Logcosh()
+    logcosh_obj = metrics.LogCoshError()
     self.evaluate(variables.variables_initializer(logcosh_obj.variables))
 
     update_op = logcosh_obj.update_state(self.y_true, self.y_pred)
@@ -809,7 +926,7 @@ class LogcoshTest(test.TestCase):
 
   def test_weighted(self):
     self.setup()
-    logcosh_obj = metrics.Logcosh()
+    logcosh_obj = metrics.LogCoshError()
     self.evaluate(variables.variables_initializer(logcosh_obj.variables))
     sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
     result = logcosh_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
@@ -867,7 +984,7 @@ class PoissonTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class KullbackLeiblerDivergenceTest(test.TestCase):
+class KLDivergenceTest(test.TestCase):
 
   def setup(self):
     y_pred = np.asarray([.4, .9, .12, .36, .3, .4]).reshape((2, 3))
@@ -880,17 +997,17 @@ class KullbackLeiblerDivergenceTest(test.TestCase):
     self.y_true = constant_op.constant(y_true)
 
   def test_config(self):
-    k_obj = metrics.KullbackLeiblerDivergence(name='kld', dtype=dtypes.int32)
+    k_obj = metrics.KLDivergence(name='kld', dtype=dtypes.int32)
     self.assertEqual(k_obj.name, 'kld')
     self.assertEqual(k_obj._dtype, dtypes.int32)
 
-    k_obj2 = metrics.KullbackLeiblerDivergence.from_config(k_obj.get_config())
+    k_obj2 = metrics.KLDivergence.from_config(k_obj.get_config())
     self.assertEqual(k_obj2.name, 'kld')
     self.assertEqual(k_obj2._dtype, dtypes.int32)
 
   def test_unweighted(self):
     self.setup()
-    k_obj = metrics.KullbackLeiblerDivergence()
+    k_obj = metrics.KLDivergence()
     self.evaluate(variables.variables_initializer(k_obj.variables))
 
     update_op = k_obj.update_state(self.y_true, self.y_pred)
@@ -901,7 +1018,7 @@ class KullbackLeiblerDivergenceTest(test.TestCase):
 
   def test_weighted(self):
     self.setup()
-    k_obj = metrics.KullbackLeiblerDivergence()
+    k_obj = metrics.KLDivergence()
     self.evaluate(variables.variables_initializer(k_obj.variables))
 
     sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
@@ -1210,14 +1327,14 @@ class BinaryCrossentropyTest(test.TestCase):
     self.assertEqual(bce_obj._dtype, dtypes.int32)
 
     old_config = bce_obj.get_config()
-    self.assertAllClose(self.evaluate(old_config['label_smoothing']), 0.2, 1e-3)
+    self.assertAllClose(old_config['label_smoothing'], 0.2, 1e-3)
 
     # Check save and restore config
     bce_obj2 = metrics.BinaryCrossentropy.from_config(old_config)
     self.assertEqual(bce_obj2.name, 'bce')
     self.assertEqual(bce_obj2._dtype, dtypes.int32)
     new_config = bce_obj2.get_config()
-    self.assertAllClose(self.evaluate(new_config['label_smoothing']), 0.2, 1e-3)
+    self.assertDictEqual(old_config, new_config)
 
   def test_unweighted(self):
     bce_obj = metrics.BinaryCrossentropy()
@@ -1318,6 +1435,132 @@ class BinaryCrossentropyTest(test.TestCase):
     result = bce_obj(y_true, logits)
     expected_value = (100.0 + 50.0 * label_smoothing) / 3.0
     self.assertAllClose(expected_value, self.evaluate(result), atol=1e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class CategoricalCrossentropyTest(test.TestCase):
+
+  def test_config(self):
+    cce_obj = metrics.CategoricalCrossentropy(
+        name='cce', dtype=dtypes.int32, label_smoothing=0.2)
+    self.assertEqual(cce_obj.name, 'cce')
+    self.assertEqual(cce_obj._dtype, dtypes.int32)
+
+    old_config = cce_obj.get_config()
+    self.assertAllClose(old_config['label_smoothing'], 0.2, 1e-3)
+
+    # Check save and restore config
+    cce_obj2 = metrics.CategoricalCrossentropy.from_config(old_config)
+    self.assertEqual(cce_obj2.name, 'cce')
+    self.assertEqual(cce_obj2._dtype, dtypes.int32)
+    new_config = cce_obj2.get_config()
+    self.assertDictEqual(old_config, new_config)
+
+  def test_unweighted(self):
+    cce_obj = metrics.CategoricalCrossentropy()
+    self.evaluate(variables.variables_initializer(cce_obj.variables))
+
+    y_true = np.asarray([[0, 1, 0], [0, 0, 1]])
+    y_pred = np.asarray([[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
+    result = cce_obj(y_true, y_pred)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+
+    # Metric = -sum(y * log(y'), axis = -1)
+    #        = -((log 0.95), (log 0.1))
+    #        = [0.051, 2.302]
+    # Reduced metric = (0.051 + 2.302) / 2
+
+    self.assertAllClose(self.evaluate(result), 1.176, atol=1e-3)
+
+  def test_unweighted_from_logits(self):
+    cce_obj = metrics.CategoricalCrossentropy(from_logits=True)
+    self.evaluate(variables.variables_initializer(cce_obj.variables))
+
+    y_true = np.asarray([[0, 1, 0], [0, 0, 1]])
+    logits = np.asarray([[1, 9, 0], [1, 8, 1]], dtype=np.float32)
+    result = cce_obj(y_true, logits)
+
+    # softmax = exp(logits) / sum(exp(logits), axis=-1)
+    # xent = -sum(labels * log(softmax), 1)
+
+    # exp(logits) = [[2.718, 8103.084, 1], [2.718, 2980.958, 2.718]]
+    # sum(exp(logits), axis=-1) = [8106.802, 2986.394]
+    # softmax = [[0.00033, 0.99954, 0.00012], [0.00091, 0.99817, 0.00091]]
+    # log(softmax) = [[-8.00045, -0.00045, -9.00045],
+    #                 [-7.00182, -0.00182, -7.00182]]
+    # labels * log(softmax) = [[0, -0.00045, 0], [0, 0, -7.00182]]
+    # xent = [0.00045, 7.00182]
+    # Reduced xent = (0.00045 + 7.00182) / 2
+
+    self.assertAllClose(self.evaluate(result), 3.5011, atol=1e-3)
+
+  def test_weighted(self):
+    cce_obj = metrics.CategoricalCrossentropy()
+    self.evaluate(variables.variables_initializer(cce_obj.variables))
+
+    y_true = np.asarray([[0, 1, 0], [0, 0, 1]])
+    y_pred = np.asarray([[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
+    sample_weight = constant_op.constant([1.5, 2.])
+    result = cce_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+
+    # Metric = -sum(y * log(y'), axis = -1)
+    #        = -((log 0.95), (log 0.1))
+    #        = [0.051, 2.302]
+    # Weighted metric = [0.051 * 1.5, 2.302 * 2.]
+    # Reduced metric = (0.051 * 1.5 + 2.302 * 2.) / 3.5
+
+    self.assertAllClose(self.evaluate(result), 1.338, atol=1e-3)
+
+  def test_weighted_from_logits(self):
+    cce_obj = metrics.CategoricalCrossentropy(from_logits=True)
+    self.evaluate(variables.variables_initializer(cce_obj.variables))
+
+    y_true = np.asarray([[0, 1, 0], [0, 0, 1]])
+    logits = np.asarray([[1, 9, 0], [1, 8, 1]], dtype=np.float32)
+    sample_weight = constant_op.constant([1.5, 2.])
+    result = cce_obj(y_true, logits, sample_weight=sample_weight)
+
+    # softmax = exp(logits) / sum(exp(logits), axis=-1)
+    # xent = -sum(labels * log(softmax), 1)
+    # xent = [0.00045, 7.00182]
+    # weighted xent = [0.000675, 14.00364]
+    # Reduced xent = (0.000675 + 14.00364) / (1.5 + 2)
+
+    self.assertAllClose(self.evaluate(result), 4.0012, atol=1e-3)
+
+  def test_label_smoothing(self):
+    y_true = np.asarray([[0, 1, 0], [0, 0, 1]])
+    logits = np.asarray([[1, 9, 0], [1, 8, 1]], dtype=np.float32)
+    label_smoothing = 0.1
+
+    # Label smoothing: z' = z * (1 - L) + L/n,
+    #     where L = label smoothing value and n = num classes
+    # Label value 1 becomes: 1 - L + L/n
+    # Label value 0 becomes: L/n
+    # y_true with label_smoothing = [[0.0333, 0.9333, 0.0333],
+    #                               [0.0333, 0.0333, 0.9333]]
+
+    # softmax = exp(logits) / sum(exp(logits), axis=-1)
+    # xent = -sum(labels * log(softmax), 1)
+    # log(softmax) = [[-8.00045, -0.00045, -9.00045],
+    #                 [-7.00182, -0.00182, -7.00182]]
+    # labels * log(softmax) = [[-0.26641, -0.00042, -0.29971],
+    #                          [-0.23316, -0.00006, -6.53479]]
+    # xent = [0.56654, 6.76801]
+    # Reduced xent = (0.56654 + 6.76801) / 2
+
+    cce_obj = metrics.CategoricalCrossentropy(
+        from_logits=True, label_smoothing=label_smoothing)
+    self.evaluate(variables.variables_initializer(cce_obj.variables))
+    loss = cce_obj(y_true, logits)
+    self.assertAllClose(self.evaluate(loss), 3.667, atol=1e-3)
 
 
 def _get_model(compile_metrics):

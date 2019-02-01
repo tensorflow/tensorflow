@@ -111,15 +111,27 @@ $(wildcard tensorflow/lite/*/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/kernels/test_util.cc) \
 $(MINIMAL_SRCS)
+
 ifeq ($(BUILD_TYPE),micro)
-CORE_CC_EXCLUDE_SRCS += \
-tensorflow/lite/mmap_allocation.cc \
-tensorflow/lite/nnapi_delegate.cc
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation.cc
 else
-CORE_CC_EXCLUDE_SRCS += \
-tensorflow/lite/mmap_allocation_disabled.cc \
-tensorflow/lite/nnapi_delegate_disabled.cc
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation_disabled.cc
 endif
+
+BUILD_WITH_NNAPI=true
+ifeq ($(BUILD_TYPE),micro)
+	BUILD_WITH_NNAPI=false
+endif
+ifeq ($(TARGET),ios)
+	BUILD_WITH_NNAPI=false
+endif
+ifeq ($(BUILD_WITH_NNAPI),true)
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/nnapi_delegate_disabled.cc
+else
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/nnapi_delegate.cc
+endif
+
+
 # Filter out all the excluded files.
 TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 

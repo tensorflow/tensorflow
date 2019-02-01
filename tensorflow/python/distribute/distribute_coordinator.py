@@ -77,8 +77,6 @@ class _Barrier(object):
 
   def wait(self):
     """Waits until all other callers reach the same wait call."""
-    if not hasattr(self._local_sense, "value"):
-      self._local_sense.value = False
     self._local_sense.value = not self._flag
     with self._lock:
       self._counter += 1
@@ -210,8 +208,8 @@ class _WorkerContext(object):
       ValueError: if `worker_barrier` is not passed to the __init__ method.
     """
     if not self._worker_barrier:
-      raise ValueError("`worker_barrier is not set in the worker context.` \t" +
-                       self._debug_message())
+      # TODO(yuefengz): we should throw an error in independent worker mode.
+      return
     self._worker_barrier.wait()
 
   def session_creator(self,

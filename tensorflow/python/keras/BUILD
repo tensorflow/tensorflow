@@ -298,6 +298,7 @@ py_library(
         "layers/core.py",
         "layers/cudnn_recurrent.py",
         "layers/embeddings.py",
+        "layers/kernelized.py",
         "layers/local.py",
         "layers/merge.py",
         "layers/noise.py",
@@ -307,6 +308,7 @@ py_library(
         "layers/serialization.py",
         "layers/wrappers.py",
         "utils/generic_utils.py",
+        "utils/kernelized_utils.py",
         "utils/layer_utils.py",
         "utils/tf_utils.py",
     ],
@@ -318,17 +320,19 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:logging_ops",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:standard_ops",
-        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -474,17 +478,6 @@ tf_py_test(
     name = "advanced_activations_test",
     size = "medium",
     srcs = ["layers/advanced_activations_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-tf_py_test(
-    name = "tensorflow_op_layer_test",
-    size = "medium",
-    srcs = ["layers/tensorflow_op_layer_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
@@ -739,6 +732,32 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "kernelized_test",
+    size = "small",
+    srcs = ["layers/kernelized_test.py"],
+    additional_deps = [
+        ":backend",
+        ":initializers",
+        ":keras",
+        ":layers",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+tf_py_test(
     name = "wrappers_test",
     size = "medium",
     srcs = ["layers/wrappers_test.py"],
@@ -770,7 +789,7 @@ tf_py_test(
 
 tf_py_test(
     name = "data_utils_test",
-    size = "large",
+    size = "medium",
     srcs = ["utils/data_utils_test.py"],
     additional_deps = [
         ":keras",
@@ -778,6 +797,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 6,
     tags = [
         "no_oss",
         "no_windows",
@@ -833,6 +853,18 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+tf_py_test(
+    name = "kernelized_utils_test",
+    size = "small",
+    srcs = ["utils/kernelized_utils_test.py"],
+    additional_deps = [
+        ":layers",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
     ],
 )
 
@@ -967,7 +999,7 @@ tf_py_test(
 
 tf_py_test(
     name = "training_generator_test",
-    size = "large",
+    size = "medium",
     srcs = ["engine/training_generator_test.py"],
     additional_deps = [
         ":keras",
@@ -975,7 +1007,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 3,
+    shard_count = 6,
     tags = [
         "no_oss",
         "notsan",
@@ -1073,6 +1105,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 4,
 )
 
 tf_py_test(

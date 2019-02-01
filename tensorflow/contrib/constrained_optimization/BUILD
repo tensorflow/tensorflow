@@ -42,11 +42,6 @@ py_test(
     name = "candidates_test",
     srcs = ["python/candidates_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        # TODO(b/121223093): Re-enable this test after fixing "Distribution
-        # should match known solution" errors.
-        "no_mac",
-    ],
     deps = [
         ":constrained_optimization",
         "//tensorflow/python:client_testlib",

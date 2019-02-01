@@ -174,7 +174,7 @@ const FunctionDef* MakeLessStatefulFunction(const FunctionDef& map_function,
   return stateless_function;
 }
 // This function returns true if function is stateful and has single
-// RandomUniform op and no other stateful ops except Assert.
+// RandomUniform op and no other stateful ops except Assert and If/While.
 // `is_stateful_after_hoisting` is set to true if RandomUniform is the only
 // stateful op and hoisting can be performed.
 bool CanHoistRandomUniform(const FunctionDef& map_function,
@@ -189,10 +189,10 @@ bool CanHoistRandomUniform(const FunctionDef& map_function,
   for (const auto& node : map_function.node_def()) {
     const OpDef* op_def;
     TF_CHECK_OK(library.LookUpOpDef(node.op(), &op_def));
-    // Skip stateless nodes and assert, as it does not actually have a state.
     if (!op_def->is_stateful()) continue;
 
-    if (op_def->name() == "Assert") {
+    if (!function_utils::IsNodeStateful(library, node, true)) {
+      // Skip ops that are marked stateful but are in fact not stateful.
       have_other_stateful_ops = true;
       continue;
     }

@@ -246,7 +246,9 @@ def experimental_tpu_fit_loop(model,
   # TODO(fchollet): add support for `steps_per_epoch=None` in TPU loops.
   current_strategy = model._distribution_strategy
   iterator = distributed_training_utils.get_iterator(dataset, current_strategy)
-  scope = current_strategy.scope()
+
+  scope = distributed_training_utils.distributed_scope(
+      strategy=current_strategy, learning_phase=1)
   scope.__enter__()
 
   def _per_device_fit_function(model):
@@ -254,8 +256,6 @@ def experimental_tpu_fit_loop(model,
     return (model._fit_function.inputs, model._fit_function.outputs,
             model._fit_function.updates_op, model._fit_function.session_kwargs)
 
-  # TODO(priyag, sourabhbajaj): This should likely not be hardcoded here.
-  K.set_learning_phase(1)
   out_labels = model.metrics_names or []
 
   def step_fn(ctx, inputs):
@@ -263,13 +263,11 @@ def experimental_tpu_fit_loop(model,
     inputs, targets = inputs
     if model._compile_distribution:
       distributed_training_utils.clone_model_on_replicas(
-          model, current_strategy,
-          make_callback_model=True, inputs=inputs,
-          targets=targets, mode=distributed_training_utils.ModeKeys.TRAIN)
+          model, current_strategy, ModeKeys.TRAIN, inputs=inputs,
+          targets=targets)
     else:
       distributed_training_utils._build_distributed_network(
-          model, current_strategy, inputs,
-          targets, mode=distributed_training_utils.ModeKeys.TRAIN)
+          model, current_strategy, ModeKeys.TRAIN, inputs, targets)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.extended.call_for_each_replica(
@@ -325,7 +323,7 @@ def experimental_tpu_fit_loop(model,
 
   if model._compile_distribution:
     distributed_training_utils._copy_weights_to_distributed_model(
-        model, model._distributed_model_train)
+        model, ModeKeys.TRAIN)
 
   callbacks = cbks.configure_callbacks(
       callbacks,
@@ -344,8 +342,7 @@ def experimental_tpu_fit_loop(model,
 
   callbacks.on_train_begin()
   for epoch in range(initial_epoch, epochs):
-    distributed_training_utils._reset_metrics(
-        model, model._distributed_model_train)
+    distributed_training_utils._reset_metrics(model)
     callbacks.on_epoch_begin(epoch)
     epoch_logs = {}
     step_index = 0
@@ -380,7 +377,7 @@ def experimental_tpu_fit_loop(model,
         # Since we create a new clone from the original model we need to copy
         # the weights back to the original model before we can run validation.
         distributed_training_utils._copy_weights_to_original_model(
-            model, model._distributed_model_train, ModeKeys.TRAIN)
+            model, ModeKeys.TRAIN)
 
       val_outs = experimental_tpu_test_loop(  # pylint: disable=undefined-variable
           model,
@@ -401,7 +398,7 @@ def experimental_tpu_fit_loop(model,
   if model._compile_distribution:
     # Copy the weights back from the replicated model to the original model.
     distributed_training_utils._copy_weights_to_original_model(
-        model, model._distributed_model_train, ModeKeys.TRAIN)
+        model, ModeKeys.TRAIN)
   scope.__exit__(None, None, None)
   return model.history
 
@@ -428,7 +425,8 @@ def experimental_tpu_test_loop(model,
   """
   current_strategy = model._distribution_strategy
   iterator = distributed_training_utils.get_iterator(dataset, current_strategy)
-  scope = current_strategy.scope()
+  scope = distributed_training_utils.distributed_scope(
+      strategy=current_strategy, learning_phase=0)
   scope.__enter__()
 
   def _per_device_eval_function(model):
@@ -437,21 +435,16 @@ def experimental_tpu_test_loop(model,
             model._eval_function.updates_op,
             model._eval_function.session_kwargs)
 
-  # TODO(priyag, sourabhbajaj): This should likely not be hardcoded here.
-  K.set_learning_phase(0)
-
   def step_fn(ctx, inputs):
     """Clones the model and calls make_eval_function."""
     inputs, targets = inputs
     if model._compile_distribution:
       distributed_training_utils. clone_model_on_replicas(
-          model, current_strategy,
-          make_callback_model=False, inputs=inputs,
-          targets=targets, mode=distributed_training_utils.ModeKeys.TEST)
+          model, current_strategy, mode=ModeKeys.TEST, inputs=inputs,
+          targets=targets)
     else:
       distributed_training_utils._build_distributed_network(
-          model, current_strategy, inputs, targets,
-          mode=distributed_training_utils.ModeKeys.TEST)
+          model, current_strategy, ModeKeys.TEST, inputs, targets)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.extended.call_for_each_replica(
@@ -500,10 +493,9 @@ def experimental_tpu_test_loop(model,
 
   if model._compile_distribution:
     distributed_training_utils._copy_weights_to_distributed_model(
-        model, model._distributed_model_test)
+        model, ModeKeys.TEST)
 
-  distributed_training_utils._reset_metrics(
-      model, model._distributed_model_test)
+  distributed_training_utils._reset_metrics(model)
 
   assert steps is not None
   outs = [0.] * len(model.metrics_names)
@@ -547,11 +539,10 @@ def experimental_tpu_predict_loop(model, dataset, verbose=0, steps=None):
   """
   current_strategy = model._distribution_strategy
   iterator = distributed_training_utils.get_iterator(dataset, current_strategy)
-  scope = current_strategy.scope()
-  scope.__enter__()
 
-  # TODO(priyag, sourabhbajaj): This should likely not be hardcoded here.
-  K.set_learning_phase(0)
+  scope = distributed_training_utils.distributed_scope(
+      strategy=current_strategy, learning_phase=0)
+  scope.__enter__()
 
   def _per_device_predict_function(model):
     model._make_predict_function()
@@ -564,13 +555,10 @@ def experimental_tpu_predict_loop(model, dataset, verbose=0, steps=None):
     """Clones the model and calls make_predict_function."""
     if model._compile_distribution:
       distributed_training_utils. clone_model_on_replicas(
-          model, current_strategy,
-          make_callback_model=False, inputs=inputs,
-          mode=distributed_training_utils.ModeKeys.PREDICT)
+          model, current_strategy, ModeKeys.PREDICT, inputs=inputs)
     else:
       distributed_training_utils._build_distributed_network(
-          model, current_strategy, inputs,
-          mode=distributed_training_utils.ModeKeys.PREDICT)
+          model, current_strategy, ModeKeys.PREDICT, inputs)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.extended.call_for_each_replica(
@@ -615,10 +603,9 @@ def experimental_tpu_predict_loop(model, dataset, verbose=0, steps=None):
 
   if model._compile_distribution:
     distributed_training_utils._copy_weights_to_distributed_model(
-        model, model._distributed_model_predict)
+        model, ModeKeys.PREDICT)
 
-  distributed_training_utils._reset_metrics(
-      model, model._distributed_model_predict)
+  distributed_training_utils._reset_metrics(model)
 
   assert steps is not None
   # Since we do not know how many samples we will see, we cannot pre-allocate
@@ -634,6 +621,7 @@ def experimental_tpu_predict_loop(model, dataset, verbose=0, steps=None):
       progbar.update(step + 1)
 
   scope.__exit__(None, None, None)
+
   if len(unconcatenated_outs) == 1:
     return np.concatenate(unconcatenated_outs[0], axis=0)
   return [

@@ -465,7 +465,8 @@ class ARModel(model.TimeSeriesModel):
           math_utils.normal_log_prob(targets, sigma, prediction))
     else:
       assert self.loss == ARModel.SQUARED_LOSS, self.loss
-      loss_op = math_ops.reduce_sum(math_ops.square(prediction - targets))
+      loss_op = math_ops.reduce_sum(
+          math_ops.squared_difference(prediction, targets))
     loss_op /= math_ops.cast(
         math_ops.reduce_prod(array_ops.shape(targets)), loss_op.dtype)
     return loss_op

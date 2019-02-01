@@ -57,8 +57,8 @@ EagerContext::EagerContext(const SessionOptions& opts,
       rendezvous_(rendezvous),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       pflr_(new ProcessFunctionLibraryRuntime(
-          device_mgr, opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_, {},
-          thread_pool_.get())),
+          device_mgr, opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_,
+          opts.config.graph_options().optimizer_options(), thread_pool_.get())),
       log_device_placement_(opts.config.log_device_placement()),
       num_active_steps_(0),
       async_default_(async),
@@ -207,6 +207,14 @@ EagerContext::~EagerContext() {
   executor_.WaitForAllPendingNodes().IgnoreError();
   ClearCaches();
   rendezvous_->Unref();
+
+  for (auto& thread : child_threads_) {
+    thread.reset();
+  }
+}
+
+void EagerContext::AddChildThread(std::unique_ptr<Thread> thread) {
+  child_threads_.push_back(std::move(thread));
 }
 
 bool EagerContext::FindFunctionByName(const string& name) {

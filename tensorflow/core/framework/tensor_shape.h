@@ -256,6 +256,7 @@ class TensorShapeBase : public TensorShapeRep {
 
  private:
   void RecomputeNumElements();
+  void InitDims(gtl::ArraySlice<int64> dim_sizes);
 
   // True for PartialTensorShape, false for TensorShape
   static constexpr bool kIsPartial =

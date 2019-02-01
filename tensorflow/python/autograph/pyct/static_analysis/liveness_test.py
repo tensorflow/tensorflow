@@ -40,9 +40,10 @@ class LivenessTest(test.TestCase):
         arg_types=None,
         owner_type=None)
     node = qual_names.resolve(node)
-    node = activity.resolve(node, entity_info)
+    ctx = transformer.Context(entity_info)
+    node = activity.resolve(node, ctx)
     graphs = cfg.build(node)
-    liveness.resolve(node, entity_info, graphs)
+    liveness.resolve(node, ctx, graphs)
     return node
 
   def assertHasLiveOut(self, node, expected):

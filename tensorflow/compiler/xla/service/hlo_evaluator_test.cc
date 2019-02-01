@@ -3041,5 +3041,83 @@ TEST_F(HloEvaluatorTest, PreserveMOFusionOutputLayout) {
       absl::c_equal(args[0].data<float>(), actual_literals[0].data<float>()));
 }
 
+// Tests that custom_calls fail to evaluate when no handler is specified.
+TEST_F(HloEvaluatorTest, EvaluateCustomCall_NoHandler) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule EvaluateCustomCall_NoHandler
+    ENTRY kernel_entry {
+      parameter.0 = u32[2,2]{1,0} parameter(0)
+      ROOT test_root = (u32[2,2]{1,0}) custom-call(parameter.0),
+          custom_call_target="_my_custom_call"
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  EXPECT_EQ(HloEvaluator().Evaluate(*m_, {&args[0]}).status().code(),
+            ::tensorflow::error::UNIMPLEMENTED);
+}
+
+// Tests when a custom_call handler returns an error.
+TEST_F(HloEvaluatorTest, EvaluateCustomCall_HandlerError) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule EvaluateCustomCall_HandlerError
+    ENTRY kernel_entry {
+      parameter.0 = u32[2,2]{1,0} parameter(0)
+      ROOT test_root = (u32[2,2]{1,0}) custom-call(parameter.0),
+          custom_call_target="_my_custom_call"
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  HloEvaluator evaluator;
+  evaluator.set_custom_call_handler(
+      [](HloInstruction* custom_call, absl::Span<const Literal*> operands) {
+        return InternalError("Test error");
+      });
+  EXPECT_EQ(evaluator.Evaluate(*m_, {&args[0]}).status().code(),
+            ::tensorflow::error::INTERNAL);
+}
+
+// Tests the custom_call handler on calls with many inputs.
+// We sum the operands so that we can verify the operand and output literals
+// are properly mapped for access.
+TEST_F(HloEvaluatorTest, EvaluateCustomCall_ManyInputs) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule EvaluateCustomCall_ManyInputs
+    ENTRY kernel_entry {
+      parameter.0 = u32[1]{0} parameter(0)
+      parameter.1 = u32[1]{0} parameter(1)
+      ROOT test_root = u32[1]{0} custom-call(parameter.0, parameter.1),
+          custom_call_target="_my_custom_call"
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  HloEvaluator evaluator;
+  evaluator.set_custom_call_handler(
+      [](HloInstruction* custom_call, absl::Span<const Literal*> operands) {
+        EXPECT_EQ(HloOpcode::kCustomCall, custom_call->opcode());
+        EXPECT_EQ("_my_custom_call", custom_call->custom_call_target());
+        EXPECT_EQ(2, custom_call->operand_count());
+        EXPECT_EQ(2, operands.size());
+        auto output = Literal::CreateFromShape(custom_call->shape());
+        auto operand0_data = operands[0]->data<uint32>();
+        auto operand1_data = operands[1]->data<uint32>();
+        auto output_data = output.data<uint32>();
+        output_data[0] = operand0_data[0] + operand1_data[0];
+        return output;
+      });
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal actual_literal,
+      evaluator.Evaluate(*m_->entry_computation(), {&args[0], &args[1]}));
+  auto arg0_data = args[0].data<uint32>();
+  auto arg1_data = args[1].data<uint32>();
+  std::vector<uint32> expected_data = {arg0_data[0] + arg1_data[0]};
+  EXPECT_TRUE(absl::c_equal(expected_data, actual_literal.data<uint32>()));
+}
+
 }  // namespace
 }  // namespace xla

@@ -1,0 +1,51 @@
+--- a/Eigen/src/Core/products/GeneralBlockPanelKernel.h	2019-01-22 20:46:51.000000000 -0800
++++ b/Eigen/src/Core/products/GeneralBlockPanelKernel.h	2019-01-25 13:48:49.000000000 -0800
+@@ -1031,7 +1031,7 @@
+ 
+   EIGEN_STRONG_INLINE void madd(const LhsPacket& a, const RhsPacket& b, AccPacket& c, RhsPacket& /*tmp*/, const FixedInt<0>&) const
+   {
+-    c += a * b;
++    c = vfmaq_n_f32(c, a, b);
+   }
+ 
+   EIGEN_STRONG_INLINE void madd(const LhsPacket& a, const RhsPacketx4& b, AccPacket& c, RhsPacket& /*tmp*/, const FixedInt<0>&) const
+diff -Naur eigen-eigen-af2071407280/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceThreadPool.h eigen-eigen-af2071407280-patched/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceThreadPool.h
+--- eigen-eigen-af2071407280/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceThreadPool.h	2018-11-13 17:10:30.000000000 +0000
++++ eigen-eigen-af2071407280-patched/unsupported/Eigen/CXX11/src/Tensor/TensorDeviceThreadPool.h	2018-11-16 17:22:21.468595201 +0000
+@@ -45,8 +45,15 @@
+ class Allocator {
+  public:
+   virtual ~Allocator() {}
+-  EIGEN_DEVICE_FUNC virtual void* allocate(size_t num_bytes) const = 0;
+-  EIGEN_DEVICE_FUNC virtual void deallocate(void* buffer) const = 0;
++  // HIP does not support device-side virtual functions
++#if !EIGEN_USE_HIP
++  EIGEN_DEVICE_FUNC
++#endif
++  virtual void* allocate(size_t num_bytes) const = 0;
++#if !EIGEN_USE_HIP
++  EIGEN_DEVICE_FUNC
++#endif
++  virtual void deallocate(void* buffer) const = 0;
+ };
+ 
+ // Build a thread pool device on top the an existing pool of threads.
+diff -Naur eigen-eigen-af2071407280/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h eigen-eigen-af2071407280-patched/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h
+--- eigen-eigen-af2071407280/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h	2018-11-13 17:10:30.000000000 +0000
++++ eigen-eigen-af2071407280-patched/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h	2018-11-16 17:16:27.019231880 +0000
+@@ -195,6 +195,7 @@
+   }
+ };
+ 
++#if !defined(EIGEN_HIPCC)
+ static const int kLeafSize = 1024;
+ 
+ template <typename Self, typename Op>
+@@ -218,7 +219,6 @@
+   }
+ };
+ 
+-#if !defined(EIGEN_HIPCC) 
+ template <typename Self, typename Op>
+ struct InnerMostDimReducer<Self, Op, true, true> {
+   static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE typename Self::CoeffReturnType

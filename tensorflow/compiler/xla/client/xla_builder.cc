@@ -299,23 +299,25 @@ XlaComputation XlaBuilder::BuildAndNoteError() {
   return build_status.ConsumeValueOrDie();
 }
 
-StatusOr<XlaComputation> XlaBuilder::Build() {
+StatusOr<XlaComputation> XlaBuilder::Build(bool remove_dynamic_dimensions) {
   if (!first_error_.ok()) {
     string backtrace;
     first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
     return AppendStatus(first_error_, backtrace);
   }
-  return Build(instructions_.back().id());
+  return Build(instructions_.back().id(), remove_dynamic_dimensions);
 }
 
-StatusOr<XlaComputation> XlaBuilder::Build(XlaOp root) {
+StatusOr<XlaComputation> XlaBuilder::Build(XlaOp root,
+                                           bool remove_dynamic_dimensions) {
   if (root.builder_ != this) {
     return InvalidArgument("Given root operation is not in this computation.");
   }
-  return Build(root.handle());
+  return Build(root.handle(), remove_dynamic_dimensions);
 }
 
-StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
+StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id,
+                                           bool remove_dynamic_dimensions) {
   if (!first_error_.ok()) {
     string backtrace;
     first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
@@ -325,20 +327,22 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
   // TODO(b/121223198): XLA backend cannot handle dynamic dimensions yet, remove
   // all dynamic dimensions before building xla program until we have support in
   // the backend.
-  std::function<void(ShapeProto*)> remove_dynamic_dimension =
-      [&](ShapeProto* shape) {
-        if (shape->tuple_shapes_size() != 0) {
-          for (int64 i = 0; i < shape->tuple_shapes_size(); ++i) {
-            remove_dynamic_dimension(shape->mutable_tuple_shapes(i));
+  if (remove_dynamic_dimensions) {
+    std::function<void(ShapeProto*)> remove_dynamic_dimension =
+        [&](ShapeProto* shape) {
+          if (shape->tuple_shapes_size() != 0) {
+            for (int64 i = 0; i < shape->tuple_shapes_size(); ++i) {
+              remove_dynamic_dimension(shape->mutable_tuple_shapes(i));
+            }
           }
-        }
-        for (int64 i = 0; i < shape->dimensions_size(); ++i) {
-          shape->set_is_dynamic_dimension(i, false);
-        }
-      };
+          for (int64 i = 0; i < shape->dimensions_size(); ++i) {
+            shape->set_is_dynamic_dimension(i, false);
+          }
+        };
 
-  for (auto& instruction : instructions_) {
-    remove_dynamic_dimension(instruction.mutable_shape());
+    for (auto& instruction : instructions_) {
+      remove_dynamic_dimension(instruction.mutable_shape());
+    }
   }
 
   HloComputationProto entry;
@@ -497,16 +501,19 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
       const Shape& from_shape = should_broadcast_lhs ? lhs_shape : rhs_shape;
 
       std::vector<int64> to_size;
-      for (int64 size : shape.dimensions()) {
-        to_size.push_back(size);
+      std::vector<bool> to_size_is_dynamic;
+      for (int i = 0; i < shape.rank(); i++) {
+        to_size.push_back(shape.dimensions(i));
+        to_size_is_dynamic.push_back(shape.is_dynamic_dimension(i));
       }
       for (int64 from_dim = 0; from_dim < from_shape.rank(); from_dim++) {
         int64 to_dim = broadcast_dimensions[from_dim];
         to_size[to_dim] = from_shape.dimensions(from_dim);
+        to_size_is_dynamic[to_dim] = from_shape.is_dynamic_dimension(from_dim);
       }
 
-      const Shape& broadcasted_shape =
-          ShapeUtil::MakeShape(from_shape.element_type(), to_size);
+      const Shape& broadcasted_shape = ShapeUtil::MakeShape(
+          from_shape.element_type(), to_size, to_size_is_dynamic);
       TF_ASSIGN_OR_RETURN(
           XlaOp broadcasted_operand,
           InDimBroadcast(broadcasted_shape, from, broadcast_dimensions));
@@ -665,8 +672,17 @@ XlaOp XlaBuilder::BroadcastInDim(
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
     // Output shape, in the case of degenerate broadcast, the out_dim_size is
     // not necessarily the same as the dimension sizes of the output shape.
-    const auto& output_shape =
+    auto output_shape =
         ShapeUtil::MakeShape(operand_shape.element_type(), out_dim_size);
+    for (int i = 0; i < broadcast_dimensions.size(); i++) {
+      if (broadcast_dimensions[i] < 0 ||
+          broadcast_dimensions[i] > out_dim_size.size()) {
+        return InvalidArgument("Broadcast dimension %lld is out of bound",
+                               broadcast_dimensions[i]);
+      }
+      output_shape.set_dynamic_dimension(broadcast_dimensions[i],
+                                         operand_shape.is_dynamic_dimension(i));
+    }
 
     TF_RETURN_IF_ERROR(ShapeInference::InferBroadcastShape(
                            operand_shape, output_shape, broadcast_dimensions)

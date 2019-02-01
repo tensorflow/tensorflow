@@ -587,6 +587,7 @@ tf_cc_test(
         ":collective_param_resolver_distributed",
         ":device_resolver_distributed",
         ":test_utils",
+        "//tensorflow/core:collective_ops_op_lib",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

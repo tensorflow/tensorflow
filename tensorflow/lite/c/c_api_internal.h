@@ -340,6 +340,9 @@ typedef struct {
 // Free data memory of tensor `t`.
 void TfLiteTensorDataFree(TfLiteTensor* t);
 
+// Free quantization data.
+void TfLiteQuantizationFree(TfLiteQuantization* quantization);
+
 // Free memory of tensor `t`.
 void TfLiteTensorFree(TfLiteTensor* t);
 

@@ -56,12 +56,12 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/gather_functor.h"
 #include "tensorflow/core/kernels/resource_variable_ops.h"

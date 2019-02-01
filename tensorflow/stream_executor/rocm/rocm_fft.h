@@ -30,9 +30,9 @@ namespace stream_executor {
 
 class Stream;
 
-namespace rocm {
+namespace gpu {
 
-class ROCMExecutor;
+class GpuExecutor;
 
 // Opaque and unique indentifier for the rocFFT plugin.
 extern const PluginId kRocFftPlugin;
@@ -63,7 +63,7 @@ class ROCMFftPlan : public fft::Plan {
   }
 
   // Initialize function for batched plan
-  port::Status Initialize(ROCMExecutor *parent, Stream *stream, int rank,
+  port::Status Initialize(GpuExecutor *parent, Stream *stream, int rank,
                           uint64 *elem_count, uint64 *input_embed,
                           uint64 input_stride, uint64 input_distance,
                           uint64 *output_embed, uint64 output_stride,
@@ -71,7 +71,7 @@ class ROCMFftPlan : public fft::Plan {
                           int batch_count, ScratchAllocator *scratch_allocator);
 
   // Initialize function for 1d,2d, and 3d plan
-  port::Status Initialize(ROCMExecutor *parent, Stream *stream, int rank,
+  port::Status Initialize(GpuExecutor *parent, Stream *stream, int rank,
                           uint64 *elem_count, fft::Type type,
                           ScratchAllocator *scratch_allocator);
 
@@ -79,7 +79,7 @@ class ROCMFftPlan : public fft::Plan {
   bool IsInitialized() const { return is_initialized_; }
 
  private:
-  ROCMExecutor *parent_;
+  GpuExecutor *parent_;
   hipfftHandle plan_;
   fft::Type fft_type_;
   DeviceMemory<uint8> scratch_;
@@ -91,7 +91,7 @@ class ROCMFftPlan : public fft::Plan {
 // This satisfies the platform-agnostic FftSupport interface.
 //
 // Note that the hipFFT handle that this encapsulates is implicitly tied to the
-// context (and, as a result, the device) that the parent ROCMExecutor is tied
+// context (and, as a result, the device) that the parent GpuExecutor is tied
 // to. This simply happens as an artifact of creating the hipFFT handle when a
 // ROCM context is active.
 //
@@ -99,13 +99,13 @@ class ROCMFftPlan : public fft::Plan {
 // context of parent_, so all context is explicit.
 class ROCMFft : public fft::FftSupport {
  public:
-  explicit ROCMFft(ROCMExecutor *parent) : parent_(parent) {}
+  explicit ROCMFft(GpuExecutor *parent) : parent_(parent) {}
   ~ROCMFft() override {}
 
   TENSORFLOW_STREAM_EXECUTOR_GPU_FFT_SUPPORT_OVERRIDES
 
  private:
-  ROCMExecutor *parent_;
+  GpuExecutor *parent_;
 
   // Two helper functions that execute dynload::hipfftExec?2?.
 
@@ -126,7 +126,7 @@ class ROCMFft : public fft::FftSupport {
   SE_DISALLOW_COPY_AND_ASSIGN(ROCMFft);
 };
 
-}  // namespace rocm
+}  // namespace gpu
 }  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_FFT_H_

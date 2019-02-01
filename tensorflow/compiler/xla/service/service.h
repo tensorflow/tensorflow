@@ -53,7 +53,7 @@ class ServiceOptions {
   ServiceOptions& set_platform(se::Platform* platform);
   se::Platform* platform() const;
 
-  // Set the number of replicas to use when compiling replicated
+  // Set the default number of replicas to use when compiling replicated
   // programs.
   ServiceOptions& set_number_of_replicas(int number_of_replicas);
   int number_of_replicas() const;

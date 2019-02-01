@@ -27,6 +27,10 @@ message SavedObjectGraph {
   // The position of the object in this list indicates its id.
   // Nodes[0] is considered the root node.
   repeated SavedObject nodes = 1;
+
+  // Information about captures and output structures in concrete functions.
+  // Referenced from SavedBareConcreteFunction and SavedFunction.
+  map<string, SavedConcreteFunction> concrete_functions = 2;
 }
 
 message SavedObject {
@@ -54,7 +58,7 @@ message SavedObject {
     SavedAsset asset = 5;
     SavedFunction function = 6;
     SavedVariable variable = 7;
-    SavedConcreteFunction concrete_function = 8;
+    SavedBareConcreteFunction bare_concrete_function = 8;
   }
 }
 
@@ -86,14 +90,13 @@ message SavedAsset {
 
 // A function with multiple signatures, possibly with non-Tensor arguments.
 message SavedFunction {
-  repeated SavedConcreteFunction concrete_function = 1;
+  repeated string concrete_functions = 1;
   FunctionSpec function_spec = 2;
 }
 
+// Stores low-level information about a concrete function. Referenced in either
+// a SavedFunction or a SavedBareConcreteFunction.
 message SavedConcreteFunction {
-  // A reference to a TensorFlow function in the MetaGraph's FunctionDefLibrary
-  string name = 1;
-
   // Bound inputs to the function. The SavedObjects identified by the node ids
   // given here are appended as extra inputs to the caller-supplied inputs.
   // The only types of SavedObjects valid here are SavedVariable, SavedResource
@@ -106,6 +109,16 @@ message SavedConcreteFunction {
   // Tensors with TensorSpecs. This can be an arbitrary nested function and will
   // be used to reconstruct the full structure from pure tensors.
   StructuredValue output_signature = 4;
+}
+
+message SavedBareConcreteFunction {
+  // Identifies a SavedConcreteFunction.
+  string concrete_function_name = 1;
+
+  // A sequence of unique strings, one per Tensor argument.
+  repeated string argument_keywords = 2;
+  // The prefix of `argument_keywords` which may be identified by position.
+  int64 allowed_positional_arguments = 3;
 }
 
 // Represents a Variable that is initialized by loading the contents from the

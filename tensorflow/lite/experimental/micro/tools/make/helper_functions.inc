@@ -103,7 +103,6 @@ $(1)_LOCAL_HDRS := $(3)
 $(1)_LOCAL_OBJS := $$(addprefix $$(OBJDIR), \
 $$(patsubst %.cc,%.o,$$(patsubst %.c,%.o,$$($(1)_LOCAL_SRCS))))
 $(1)_BINARY := $$(BINDIR)$(1)
-ALL_BINARIES += $$($(1)_BINARY)
 $$($(1)_BINARY): $$($(1)_LOCAL_OBJS) $$(MICROLITE_LIB_PATH)
 	@mkdir -p $$(dir $$@)
 	$$(CXX) $$(CXXFLAGS) $$(INCLUDES) \
@@ -113,5 +112,8 @@ $(1): $$($(1)_BINARY)
 $(1)_bin: $$($(1)_BINARY).bin
 test_$(1): $$($(1)_BINARY)
 	$$(TEST_SCRIPT) $$($(1)_BINARY) '~~~ALL TESTS PASSED~~~'
+ifneq (,$(findstring _test,$(1)))
+  MICROLITE_TEST_TARGETS += test_$(1)
+endif
 $(eval $(call generate_microlite_projects,$(1),$(call specialize,$(2)),$(3)))
 endef
