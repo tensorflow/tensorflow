@@ -3643,7 +3643,7 @@ tensorflow::Status ConvertCombinedNMS(OpConverterParams* params) {
     return tensorflow::errors::InvalidArgument(
         "Six inputs expected for CombinedNonMaxSuppression, at ", node_def.name());
   }
-  if (!(inputs.at(0).is_tensor()) || (inputs.at(1).is_tensor())) {
+  if (!(inputs.at(0).is_tensor() || inputs.at(1).is_tensor())) {
     return tensorflow::errors::Unimplemented(
         "CombinedNonMaxSuppression expects tensor for boxes and scores, at ", node_def.name());
   }
@@ -3718,6 +3718,8 @@ tensorflow::Status ConvertCombinedNMS(OpConverterParams* params) {
         node_def.name());
   }
 
+  if (params->validation_only) return Status::OK();
+
   // Set plugin fields and the field collection
   TFAttrs attrs(node_def);
   bool share_location = (boxes_dims.d[1] == 1); 
@@ -3765,7 +3767,7 @@ tensorflow::Status ConvertCombinedNMS(OpConverterParams* params) {
 
   // Add plugin to network
   nvinfer1::IPluginV2Layer* layer = params->converter->network()->addPluginV2(
-    &plugin_inputs[0], 2, *plugin);
+    &plugin_inputs[0], int(plugin_inputs.size()), *plugin);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
   // Set plugin outputs
