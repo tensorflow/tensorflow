@@ -366,7 +366,8 @@ tensorflow::Status Converter::CreateBroadcastableScalarConstant(
   weights_ptr[0] = value;
   *tensor = params->converter->CreateConstantLayer(weights, broadcastable_dims);
   TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, params->node_def.name());
-  params->converter->ProvideQuantizationRange(*tensor, value, value);
+  params->converter->ProvideQuantizationRange(
+      const_cast<nvinfer1::ITensor*>(*tensor), value, value);
   return Status::OK();
 }
 
