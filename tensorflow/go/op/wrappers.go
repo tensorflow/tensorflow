@@ -22887,6 +22887,34 @@ func SparseSliceGrad(scope *Scope, backprop_val_grad tf.Output, input_indices tf
 	return op.Output(0)
 }
 
+// Creates a dataset that changes the batch size.
+//
+// Creates a dataset that changes the batch size of the dataset to current batch
+// size // num_workers.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+//	num_workers: A scalar representing the number of workers to distribute this batch across. As
+// a result of this transformation the current batch size would end up being
+// divided  by this parameter.
+//
+//
+func ExperimentalRebatchDataset(scope *Scope, input_dataset tf.Output, num_workers tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ExperimentalRebatchDataset",
+		Input: []tf.Input{
+			input_dataset, num_workers,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the gradient of the sigmoid of `x` wrt its input.
 //
 // Specifically, `grad = dy * y * (1 - y)`, where `y = sigmoid(x)`, and
