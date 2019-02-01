@@ -159,6 +159,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "grpc_response_cache",
+    srcs = ["grpc_response_cache.cc"],
+    hdrs = ["grpc_response_cache.h"],
+    deps = [
+        ":grpc_util",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/time",
+    ],
+)
+
 tf_cuda_library(
     name = "grpc_worker_service",
     srcs = ["grpc_worker_service.cc"],
@@ -166,6 +177,7 @@ tf_cuda_library(
     deps = [
         ":async_service_interface",
         ":grpc_call",
+        ":grpc_response_cache",
         ":grpc_tensor_coding",
         ":grpc_util",
         ":grpc_worker_service_impl",
@@ -183,6 +195,8 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime:worker_session",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/time",
     ],
 )
 
