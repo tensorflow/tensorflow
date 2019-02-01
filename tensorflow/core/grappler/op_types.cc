@@ -47,6 +47,12 @@ bool IsAnyDiv(const NodeDef& node) {
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
+bool IsAnyMaxPool(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPool" || op == "MaxPoolV2" || op == "MaxPool3D" ||
+         op == "MaxPoolWithArgmax" || op == "FractionalMaxPool";
+}
+
 bool IsApproximateEqual(const NodeDef& node) {
   return node.op() == "ApproximateEqual";
 }
