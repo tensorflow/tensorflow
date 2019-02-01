@@ -45,17 +45,19 @@ cc_library(
     srcs = if_cuda_is_configured(["cuda_platform.cc"]),
     hdrs = if_cuda_is_configured(["cuda_platform.h"]),
     visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured([
-        ":cuda_driver",
-        ":cuda_gpu_executor",
-        ":cuda_platform_id",
-        "//tensorflow/stream_executor",  # buildcleaner: keep
-        "//tensorflow/stream_executor:executor_cache",
-        "//tensorflow/stream_executor:multi_platform_manager",
-        "//tensorflow/stream_executor:stream_executor_pimpl_header",
-        "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/platform",
-    ] + tf_additional_cuda_platform_deps()),
+    deps = if_cuda_is_configured(
+        [
+            ":cuda_driver",
+            ":cuda_gpu_executor",
+            ":cuda_platform_id",
+            "//tensorflow/stream_executor",  # buildcleaner: keep
+            "//tensorflow/stream_executor:executor_cache",
+            "//tensorflow/stream_executor:multi_platform_manager",
+            "//tensorflow/stream_executor:stream_executor_pimpl_header",
+            "//tensorflow/stream_executor/lib",
+            "//tensorflow/stream_executor/platform",
+        ],
+    ) + tf_additional_cuda_platform_deps(),
     alwayslink = True,  # Registers itself with the MultiPlatformManager.
 )
 
@@ -85,6 +87,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/core:cuda",
         "//tensorflow/stream_executor:device_options",
         "//tensorflow/stream_executor/gpu:gpu_driver_header",
         "//tensorflow/stream_executor/lib",
@@ -221,7 +224,9 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
-    ] + tf_additional_cudnn_plugin_deps() + if_static(["@local_config_cuda//cuda:cudnn"])),
+    ]) + tf_additional_cudnn_plugin_deps() + if_cuda_is_configured(if_static([
+        "@local_config_cuda//cuda:cudnn",
+    ])),
     alwayslink = True,
 )
 
