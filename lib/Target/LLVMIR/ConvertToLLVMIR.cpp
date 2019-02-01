@@ -149,9 +149,9 @@ private:
   llvm::IntegerType *indexType;
 
   /// Allocation function : (index) -> i8*, declaration only.
-  llvm::Constant *allocFunc;
+  llvm::FunctionCallee allocFunc;
   /// Deallocation function : (i8*) -> void, declaration only.
-  llvm::Constant *freeFunc;
+  llvm::FunctionCallee freeFunc;
 };
 
 llvm::IntegerType *ModuleLowerer::convertIndexType(IndexType type) {
@@ -872,10 +872,11 @@ bool ModuleLowerer::convertFunctions(const Module &mlirModule,
   // call graph with cycles.
   for (const Function &function : mlirModule) {
     const Function *functionPtr = &function;
-    llvm::Constant *llvmFuncCst = llvmModule.getOrInsertFunction(
+    llvm::FunctionCallee llvmFuncCst = llvmModule.getOrInsertFunction(
         function.getName(), convertFunctionType(function.getType()));
-    assert(isa<llvm::Function>(llvmFuncCst));
-    functionMapping[functionPtr] = cast<llvm::Function>(llvmFuncCst);
+    assert(isa<llvm::Function>(llvmFuncCst.getCallee()));
+    functionMapping[functionPtr] =
+        cast<llvm::Function>(llvmFuncCst.getCallee());
   }
 
   // Convert functions.

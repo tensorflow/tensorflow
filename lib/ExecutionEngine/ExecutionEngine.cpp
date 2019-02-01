@@ -216,8 +216,9 @@ void packFunctionArguments(llvm::Module *module) {
         builder.getVoidTy(), builder.getInt8PtrTy()->getPointerTo(),
         /*isVarArg=*/false);
     auto newName = makePackedFunctionName(func.getName());
-    llvm::Constant *funcCst = module->getOrInsertFunction(newName, newType);
-    llvm::Function *interfaceFunc = llvm::cast<llvm::Function>(funcCst);
+    auto funcCst = module->getOrInsertFunction(newName, newType);
+    llvm::Function *interfaceFunc =
+        llvm::cast<llvm::Function>(funcCst.getCallee());
     interfaceFunctions.insert(interfaceFunc);
 
     // Extract the arguments from the type-erased argument list and cast them to
