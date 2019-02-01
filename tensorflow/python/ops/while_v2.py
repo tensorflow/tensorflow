@@ -842,26 +842,96 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
       Tensor in this graph.
     """
     assert tensor.dtype == dtypes.resource
-    if tensor in self._forward_graph.inputs:
-      index = self._forward_graph.inputs.index(tensor)
-    elif tensor.op.type == "While":
-      # Captured resources occur at the same index in the lists of inputs and
-      # outputs of a while op. So we lookup the input of `tensor.op` at the
-      # same index as the index of `tensor` in the `tensor.op.outputs`.
-      index = self._forward_graph.inputs.index(
-          tensor.op.inputs[tensor.value_index])
-    else:
-      raise ValueError(
-          "Taking gradient of a while loop which creates "
-          "a resource in its body is not supported: %s" % tensor)
-    # This must be a loop invariant.
-    assert self._forward_graph.inputs[index] == self._forward_graph.outputs[
-        index], ("Resource tensors must be loop invariants %s." %
-                 self._forward_graph._while.inputs[index])
+
+    index = self._resource_input_index(
+        tensor.name,
+        [t.name for t in self._forward_graph.inputs],
+        {op.name: op.node_def for op in self._forward_graph.get_operations()},
+        self._forward_graph._functions)
+
+    input_placeholder = self._forward_graph.inputs[index]
     tensor_in_outer_graph = self._forward_graph._while.inputs[index]
+
+    assert input_placeholder.dtype == dtypes.resource
+    assert tensor_in_outer_graph.dtype == dtypes.resource
+    # This must be a loop invariant.
+    assert input_placeholder == self._forward_graph.outputs[index], (
+        "Resource tensors must be loop invariants %s." %
+        tensor_in_outer_graph)
+
     self._indirect_captures[tensor] = self.capture(
         tensor_in_outer_graph, whitelisted=True)
     return self._indirect_captures[tensor]
+
+  def _resource_input_index(self, tensor_name, input_names, node_defs,
+                            functions):
+    """Returns the index of the input corresponding to `tensor_name`.
+
+    This method is used to find the corresponding index of an arbitrary resource
+    tensor in a function (the function could be a loop body). We assume that
+    resource handles are never created in functions, so that every resource
+    tensor can be traced back to a function input.
+
+    The awkward signature of this method is to make it work with both FuncGraphs
+    and FunctionDefs. This is so we can recurse on function call ops without
+    building the corresponding FuncGraph (note that even if a FuncGraph for a
+    FunctionDef already exists, the input/output/node names may have been
+    changed when the FuncGraph was serialized to the FunctionDef, which makes it
+    unusable with this algorithm).
+
+    Args:
+      tensor_name: the name of the resource tensor to be resolved to an input.
+      input_names: a list of the names of all inputs to the function.
+      node_defs: a dict mapping op name -> NodeDef for every op in the function.
+      functions: a dict mapping function name -> _EagerDefinedFunction.
+
+    Returns:
+      The index into input_names corresponding to `tensor_name`.
+    """
+    while tensor_name not in input_names:
+      # FunctionDefs and graphs use different tensor naming conventions.
+      parts = tensor_name.split(":")
+      if len(parts) == 3:
+        op_name, _, output_idx = parts
+      elif len(parts) == 2:
+        op_name, output_idx = parts
+      else:
+        assert len(parts) == 1
+        op_name = parts[0]
+        output_idx = 0
+      output_idx = int(output_idx)
+      node_def = node_defs[op_name]
+
+      if node_def.op == "While":
+        # Captured resources occur at the same index in the lists of inputs and
+        # outputs of a while op. So we lookup the input of `tensor.op` at the
+        # same index as the index of `tensor` in the `tensor.op.outputs`.
+        tensor_name = node_def.input[output_idx]
+      elif node_def.op in ("PartitionedCall", "StatefulPartitionedCall"):
+        # Functions output any captured resource tensors used by their
+        # gradients.  `tensor_name` is one of these outputs from a nested
+        # function call, so recursively find the corresponding input in the
+        # nested FunctionDef.
+        func_name = node_def.attr["f"].func.name
+        fdef = functions[func_name].definition
+        output_arg_name = fdef.signature.output_arg[output_idx].name
+        output_tensor_name = fdef.ret[output_arg_name]
+        input_index = self._resource_input_index(
+            output_tensor_name,
+            [arg.name for arg in fdef.signature.input_arg],
+            {ndef.name: ndef for ndef in fdef.node_def},
+            functions)
+        tensor_name = node_def.input[input_index]
+      else:
+        # We assume there are no other ops types that will "forward" resource
+        # handles like this, so all other handles must have been created by the
+        # op. (Note that cond_v2 wraps resource handle outputs in optionals,
+        # which we'll end up accumulating).
+        raise ValueError(
+            "Taking gradient of a while loop which creates "
+            "a resource in its body is not supported: %s" % op_name)
+
+    return input_names.index(tensor_name)
 
 
 def _check_shapes_compat(output_tensors, shape_invariants, input_tensors):
