@@ -234,6 +234,11 @@ def einsum(equation, *inputs, **kwargs):
     if len(inputs) != len(input_axis_labels):
       raise ValueError('Got %d arguments for equation "%s", expecting %d' %
                        (len(inputs), equation, len(input_axis_labels)))
+    
+    ill_inputs = [k for k, i in enumerate(inputs) if i.shape.ndims is None]
+    if len(ill_inputs) > 0:
+      msg = 'Input tensors {} are of unknown rank.'.format(ill_inputs)
+      raise ValueError(msg)
 
     axis_labels = set(''.join(input_axis_labels))
     if match.group(2):
