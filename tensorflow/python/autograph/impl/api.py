@@ -180,6 +180,12 @@ def converted_call(f, owner, options, *args, **kwargs):
   if inspect_utils.isbuiltin(f):
     return py_builtins.overload_of(f)(*args, **kwargs)
 
+  # Don't convert wrapt-decorated functions/methods.
+  # TODO(b/122265385): Fully support wrapt
+  if ('wrapt' in sys.modules and
+      isinstance(f, sys.modules['wrapt'].FunctionWrapper)):
+    return f(*args, **kwargs)
+
   # TODO(mdan): This needs cleanup.
   # In particular, we may want to avoid renaming functions altogether.
   if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
