@@ -296,7 +296,9 @@ def experimental_tpu_fit_loop(model,
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.extended.call_for_each_replica(
-         _per_device_fit_function, args=(model._distributed_model_train,))
+         _per_device_fit_function,
+         args=(distributed_training_utils.get_distributed_model(
+             model, ModeKeys.TRAIN),))
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
          current_strategy, grouped_inputs, grouped_outputs,
@@ -477,7 +479,9 @@ def experimental_tpu_test_loop(model,
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.extended.call_for_each_replica(
-         _per_device_eval_function, args=(model._distributed_model_test,))
+         _per_device_eval_function,
+         args=(distributed_training_utils.get_distributed_model(
+             model, ModeKeys.TEST),))
 
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
@@ -637,7 +641,9 @@ def experimental_tpu_predict_loop(model,
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.extended.call_for_each_replica(
-         _per_device_predict_function, args=(model._distributed_model_predict,))
+         _per_device_predict_function,
+         args=(distributed_training_utils.get_distributed_model(
+             model, ModeKeys.PREDICT),))
 
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
