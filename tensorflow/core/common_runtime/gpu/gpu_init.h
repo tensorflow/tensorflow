@@ -24,6 +24,11 @@ class Platform;
 
 namespace tensorflow {
 
+// The choice of which kind of gpu that the TF GPU device corresponds to is a
+// compile-time decision, and thus we cannot build a single binary that
+// supports multiple kinds. This is sub-optimal, and a better solution will
+// likely need to be developed in the future. Also see the commentary here:
+// https://github.com/tensorflow/tensorflow/pull/20845
 const char* const kCudaGpuConstant = "CUDA";
 const char* const kNoGpuConstant = "NO_GPU_PLATFORM";
 
