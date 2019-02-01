@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
 #include "absl/base/casts.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -21,11 +22,21 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
 class ExhaustiveF32ElementwiseOpTest
     : public ClientLibraryTestBase,
       public ::testing::WithParamInterface<std::pair<int64, int64>> {
  protected:
   ErrorSpec error_spec_{0.0001, 0.0001};
+
+  bool IsClose(float expected, float actual) {
+    float abs_err = std::abs(expected - actual);
+    float rel_err = abs_err / std::abs(expected);
+    return abs_err < error_spec_.abs || rel_err < error_spec_.rel ||
+           (std::isnan(expected) && std::isnan(actual)) ||
+           (std::isinf(expected) && std::isinf(actual) &&
+            (expected > 0) == (actual > 0));
+  }
 
   template <typename EnqueueOpTy>
   void ExhaustivelyTestF32Op(EnqueueOpTy enqueue_op,
@@ -104,26 +115,47 @@ class ExhaustiveF32ElementwiseOpTest
     //  b) we can print out better error messages (namely, we can print out
     //     which floating-point value input failed, while LiteralTestUtil::Near
     //     can only print out the input index that failed).
+    //  c) we need special handling of certain inputs.  For example, we say that
+    //     a denormal input has multiple correct outputs (namely, f(x) and f(0))
+    //     and just needs to be close to one of them.
     absl::Span<float> result_arr = result_literal.data<float>();
     ASSERT_EQ(result_arr.size(), input_arr.size());
     int64 mismatches = 0;
+    // Hoisting this out of the loop is a nice speedup on shards that have many
+    // denormals.
+    const float expected_at_zero = evaluate_op(0);
     for (int64 i = 0; i < input_arr.size(); ++i) {
       float input = ith_input_elem(i);
-      float expected = evaluate_op(input);
       float actual = result_arr[i];
-      float abs_err = std::abs(expected - actual);
-      float rel_err = abs_err / std::abs(expected);
-      if (abs_err < error_spec_.abs || rel_err < error_spec_.rel ||
-          (std::isnan(expected) && std::isnan(actual)) ||
-          (std::isinf(expected) && std::isinf(actual) &&
-           (expected > 0) == (actual > 0))) {
-        // Successful match!  Nothing to do.
-      } else {
-        constexpr int64 kMaxMismatchesPrinted = 1000;
-        mismatches++;
+      float expected = evaluate_op(input);
+      if (IsClose(expected, actual)) {
+        continue;
+      }
+
+      constexpr int64 kMaxMismatchesPrinted = 1000;
+      if (std::fpclassify(input) == FP_SUBNORMAL) {
+        // For denormal inputs, we accept answers that are close to either
+        //   - evaluate_op(input) OR
+        //   - evaluate_op(0).
+        if (IsClose(expected_at_zero, actual)) {
+          continue;
+        }
+        ++mismatches;
         if (mismatches < kMaxMismatchesPrinted || VLOG_IS_ON(2)) {
           // Use %0.9g because that's guaranteed to print an f32 to full
           // precision.
+          LOG(ERROR) << absl::StreamFormat(
+              "Mismatch on denormal value %0.9g (0x%08x). Expected either "
+              "%0.9g (0x%08x) (evaluated at true value) or %0.9g (0x%08x) "
+              "(evaluated at zero), but got %0.9g (0x%08x).",
+              input, absl::bit_cast<uint32>(input),        //
+              expected, absl::bit_cast<uint32>(expected),  //
+              expected_at_zero, absl::bit_cast<uint32>(expected_at_zero),
+              actual, absl::bit_cast<uint32>(actual));
+        }
+      } else {
+        mismatches++;
+        if (mismatches < kMaxMismatchesPrinted || VLOG_IS_ON(2)) {
           LOG(ERROR) << absl::StreamFormat(
               "Mismatch on %0.9g (0x%08x). Expected %0.9g (0x%08x), but got "
               "%0.9g (0x%08x).",
@@ -131,11 +163,12 @@ class ExhaustiveF32ElementwiseOpTest
               expected, absl::bit_cast<uint32>(expected),  //
               actual, absl::bit_cast<uint32>(actual));
         }
-        if (mismatches == kMaxMismatchesPrinted && !VLOG_IS_ON(2)) {
-          LOG(ERROR) << "Not printing any more mismatches; pass "
-                        "--vmodule=exhaustive_f32_elementwise_op_test=2 to see "
-                        "all of them.";
-        }
+      }
+
+      if (mismatches == kMaxMismatchesPrinted && !VLOG_IS_ON(2)) {
+        LOG(ERROR) << "Not printing any more mismatches; pass "
+                      "--vmodule=exhaustive_f32_elementwise_op_test=2 to see "
+                      "all of them.";
       }
     }
     EXPECT_EQ(mismatches, 0);
@@ -143,18 +176,9 @@ class ExhaustiveF32ElementwiseOpTest
 };
 
 XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, LogF32) {
-#ifdef XLA_TEST_BACKEND_CPU
-  // TODO(b/73141998): The vectorized Log implementation gives results outside
-  // our error spec in this range (these numbers are bitwise representations of
-  // floats expressed as a zero extended int64).
-  std::pair<int64, int64> known_incorrect_range = {1, 8388608};
-#else
-  std::pair<int64, int64> known_incorrect_range = {0, 0};
-#endif
-
   ExhaustivelyTestF32Op(
       [](XlaBuilder* builder, const XlaOp& input) { Log(input); }, std::log,
-      known_incorrect_range);
+      /*known_incorrect_range=*/{0, 0});
 }
 
 XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, ExpF32) {
