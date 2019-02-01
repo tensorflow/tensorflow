@@ -189,7 +189,12 @@ bool Block::hasNoPredecessors() const { return pred_begin() == pred_end(); }
 
 // Indexed successor access.
 unsigned Block::getNumSuccessors() const {
-  return getTerminator()->getNumSuccessors();
+  if (auto *terminator = getTerminator()) {
+    return terminator->getNumSuccessors();
+  }
+  assert(getParent() && "top-level block with no terminator");
+  // Blocks inside 'for'/'if' instructions don't have successors.
+  return 0;
 }
 
 Block *Block::getSuccessor(unsigned i) {
