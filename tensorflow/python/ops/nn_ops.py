@@ -3214,12 +3214,15 @@ def max_pool_with_argmax_v1(input,  # pylint: disable=missing-docstring,invalid-
                             Targmax=None,  # pylint: disable=invalid-name
                             name=None,
                             output_dtype=None):
+  if data_format != "NHWC":
+    raise ValueError("Data formats other than 'NHWC' are not yet supported")
+
   Targmax = deprecated_argument_lookup(
       "output_dtype", output_dtype, "Targmax", Targmax)
   if Targmax is None:
     Targmax = dtypes.int64
   return gen_nn_ops.max_pool_with_argmax(
-      input, ksize, strides, padding, data_format, Targmax, name)
+      input, ksize, strides, padding, Targmax, name)
 
 max_pool_with_argmax_v1.__doc__ = gen_nn_ops.max_pool_with_argmax.__doc__
 # pylint: enable=redefined-builtin
