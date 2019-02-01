@@ -727,8 +727,8 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
   lengths_to_add = array_ops.one_hot(
       indices=array_ops.fill([batch_size, beam_width], end_token),
       depth=vocab_size,
-      on_value=np.int64(0),
-      off_value=np.int64(1),
+      on_value=math_ops.to_int64(0),
+      off_value=math_ops.to_int64(1),
       dtype=dtypes.int64)
   add_mask = math_ops.to_int64(not_finished)
   lengths_to_add *= array_ops.expand_dims(add_mask, 2)
