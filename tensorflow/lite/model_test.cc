@@ -87,20 +87,21 @@ TEST(BasicFlatBufferModel, TestEmptyModelsAndNullDestination) {
 
 // Make sure currently unsupported # of subgraphs are checked
 // TODO(aselle): Replace this test when multiple subgraphs are supported.
-TEST(BasicFlatBufferModel, TestZeroAndMultipleSubgraphs) {
-  auto m1 = FlatBufferModel::BuildFromFile(
+TEST(BasicFlatBufferModel, TestZeroSubgraphs) {
+  auto m = FlatBufferModel::BuildFromFile(
       "tensorflow/lite/testdata/0_subgraphs.bin");
-  ASSERT_TRUE(m1);
-  std::unique_ptr<Interpreter> interpreter1;
-  ASSERT_NE(InterpreterBuilder(*m1, TrivialResolver())(&interpreter1),
-            kTfLiteOk);
+  ASSERT_TRUE(m);
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_NE(InterpreterBuilder(*m, TrivialResolver())(&interpreter), kTfLiteOk);
+}
 
-  auto m2 = FlatBufferModel::BuildFromFile(
+TEST(BasicFlatBufferModel, TestMultipleSubgraphs) {
+  auto m = FlatBufferModel::BuildFromFile(
       "tensorflow/lite/testdata/2_subgraphs.bin");
-  ASSERT_TRUE(m2);
-  std::unique_ptr<Interpreter> interpreter2;
-  ASSERT_NE(InterpreterBuilder(*m2, TrivialResolver())(&interpreter2),
-            kTfLiteOk);
+  ASSERT_TRUE(m);
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(InterpreterBuilder(*m, TrivialResolver())(&interpreter), kTfLiteOk);
+  EXPECT_EQ(interpreter->subgraphs_size(), 2);
 }
 
 // Test what happens if we cannot bind any of the ops.
