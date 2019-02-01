@@ -670,17 +670,13 @@ xla_test(
 
 xla_test(
     name = "exhaustive_f32_elementwise_op_test",
-    size = "enormous",
     srcs = ["exhaustive_f32_elementwise_op_test.cc"],
-    backends = [
-        "cpu",
-        "gpu",
-    ],
+    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
-        "broken",
-        "manual",
-        "notap",
+        "optonly",
+        # This is a big test that we skip for capacity reasons in OSS testing.
+        "nooss",
     ],
     deps = [
         ":client_library_test_base",
