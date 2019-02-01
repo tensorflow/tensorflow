@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,26 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <map>
-
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/graph_rewrite_dataset.h"
-#include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-constexpr char kOptimizerName[] = "tf_data_meta_optimizer";
+constexpr char kOptimizerName[] = "tf_data_rebatcher";
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
-class OptimizeDatasetOp : public UnaryDatasetOpKernel {
+class RebatchDatasetOp : public UnaryDatasetOpKernel {
  public:
-  explicit OptimizeDatasetOp(OpKernelConstruction* ctx)
+  explicit RebatchDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx),
         graph_def_version_(ctx->graph_def_version()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
@@ -41,11 +33,14 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    std::vector<string> optimizations;
-    OP_REQUIRES_OK(
-        ctx, ParseVectorArgument<string>(ctx, "optimizations", &optimizations));
+    int64 num_workers;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_workers", &num_workers));
+    OP_REQUIRES(ctx, num_workers > 0,
+                errors::InvalidArgument(
+                    "num_parallel_calls must be greater than zero."));
+
     Dataset* dataset =
-        new Dataset(ctx, input, optimizations, output_types_, output_shapes_);
+        new Dataset(ctx, input, num_workers, output_types_, output_shapes_);
     Status s = dataset->Optimize(ctx);
     if (s.ok()) {
       *output = dataset;
@@ -59,13 +54,12 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
   class Dataset : public GraphRewriteDataset {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const std::vector<string>& optimizations,
-            const DataTypeVector& output_types,
+            const int64 num_workers, const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
         : GraphRewriteDataset(ctx, input, output_types, output_shapes),
-          optimizations_(optimizations) {}
+          num_workers_(num_workers) {}
 
-    string DebugString() const override { return "OptimizeDatasetOp::Dataset"; }
+    string DebugString() const override { return "RebatchDatasetOp::Dataset"; }
 
    private:
     RewriterConfig CreateGrapplerRewriteConfig() override {
@@ -75,16 +69,14 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
           RewriterConfig_NumIterationsType_ONE);
       auto custom_optimizer = rewriter_config.add_custom_optimizers();
       custom_optimizer->set_name(kOptimizerName);
-      auto* custom_optimizations_list =
-          (*custom_optimizer->mutable_parameter_map())["optimizers"]
-              .mutable_list();
-      for (const auto& opt : optimizations_) {
-        custom_optimizations_list->add_s(opt);
-      }
+      AttrValue num_workers_attr;
+      num_workers_attr.set_i(num_workers_);
+      (*custom_optimizer->mutable_parameter_map())["num_workers"] =
+          num_workers_attr;
       return rewriter_config;
     }
 
-    const std::vector<string> optimizations_;
+    const int64 num_workers_;
   };
 
   const int graph_def_version_;
@@ -92,9 +84,9 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("OptimizeDataset").Device(DEVICE_CPU),
-                        OptimizeDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("ExperimentalRebatchDataset").Device(DEVICE_CPU),
+                        RebatchDatasetOp);
 
-}  // namespace
+}  // anonymous namespace
 }  // namespace data
 }  // namespace tensorflow

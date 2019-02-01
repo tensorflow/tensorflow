@@ -548,17 +548,14 @@ tf_kernel_library(
     ],
 )
 
-tf_kernel_library(
-    name = "optimize_dataset_op",
-    srcs = ["optimize_dataset_op.cc"],
+cc_library(
+    name = "graph_rewrite_dataset",
+    srcs = ["graph_rewrite_dataset.cc"],
+    hdrs = ["graph_rewrite_dataset.h"],
     deps = [
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
@@ -566,6 +563,19 @@ tf_kernel_library(
         "//tensorflow/core/grappler/optimizers/data",
         "//tensorflow/core/grappler/optimizers/data:function_utils",
         "//tensorflow/core/grappler/optimizers/data:graph_utils",
+    ],
+)
+
+tf_kernel_library(
+    name = "optimize_dataset_op",
+    srcs = ["optimize_dataset_op.cc"],
+    deps = [
+        ":graph_rewrite_dataset",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
