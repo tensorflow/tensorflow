@@ -723,7 +723,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.io.serialize_many_sparse",
         "tf.argmax",
         "tf.argmin",
-        "tf.batch_gather",
         "tf.batch_to_space",
         "tf.cond",
         "tf.nn.space_to_batch",
@@ -1264,7 +1263,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "*.make_initializable_iterator": _iterator_transformer,
         "*.make_one_shot_iterator": _iterator_transformer,
         "tf.nn.dropout": _dropout_transformer,
-        "tf.batch_gather": _batch_gather_transformer,
         "tf.to_bfloat16": _cast_transformer,
         "tf.to_complex128": _cast_transformer,
         "tf.to_complex64": _cast_transformer,
@@ -1571,24 +1569,6 @@ def _softmax_cross_entropy_with_logits_transformer(
                    "transformation.\n"))
       _wrap_label(karg, karg.value)
       return node
-  return node
-
-
-def _batch_gather_transformer(parent, node, full_name, name, logs):
-  """Add batch_dims argument for gather calls."""
-  # Check if the call already has a batch_dims argument
-  if any([kw.arg == "batch_dims" for kw in node.keywords]):
-    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
-                 "tf.batch_gather already has batch_dims argument. Neat."))
-    return None
-
-  minus_one = ast.Num(n=-1)
-  minus_one.lineno = 0
-  minus_one.col_offset = 0
-  new_arg = ast.keyword("batch_dims", minus_one)
-  node.keywords.append(new_arg)
-  logs.append((ast_edits.INFO, node.lineno, node.col_offset,
-               "Added keyword argument batch_dims=-1 to tf.batch_gather."))
   return node
 
 
