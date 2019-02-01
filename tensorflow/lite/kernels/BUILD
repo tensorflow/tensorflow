@@ -182,7 +182,6 @@ cc_library(
         "hashtable_lookup.cc",
         "if.cc",
         "l2norm.cc",
-        "layer_norm_lstm.cc",
         "local_response_norm.cc",
         "logical.cc",
         "lsh_projection.cc",
@@ -876,19 +875,6 @@ tf_cc_test(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
-    ],
-)
-
-tf_cc_test(
-    name = "layer_norm_lstm_test",
-    size = "small",
-    srcs = ["layer_norm_lstm_test.cc"],
-    deps = [
-        ":builtin_ops",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 
