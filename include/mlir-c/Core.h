@@ -218,7 +218,7 @@ edsc_stmt_t Return(edsc_expr_list_t values);
 /// this is pure syntactic sugar to allow lists of mlir::edsc::Stmt to be
 /// specified and emitted. In particular, block arguments are not currently
 /// supported.
-edsc_stmt_t Block(edsc_stmt_list_t enclosedStmts);
+edsc_stmt_t StmtList(edsc_stmt_list_t enclosedStmts);
 
 /// Returns an opaque statement for an mlir::ForInst with `enclosedStmts` nested
 /// below it.

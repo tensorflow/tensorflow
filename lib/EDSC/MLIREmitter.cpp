@@ -140,6 +140,13 @@ static void printDefininingStatement(llvm::raw_ostream &os, const Value &v) {
   }
 }
 
+mlir::edsc::MLIREmitter::MLIREmitter(FuncBuilder *builder, Location location)
+    : builder(builder), location(location) {
+  // Build the ubiquitous zero and one at the top of the function.
+  bindConstant<ConstantIndexOp>(Bindable(zeroIndex), 0);
+  bindConstant<ConstantIndexOp>(Bindable(oneIndex), 1);
+}
+
 MLIREmitter &mlir::edsc::MLIREmitter::bind(Bindable e, Value *v) {
   LLVM_DEBUG(printDefininingStatement(llvm::dbgs() << "\nBinding " << e << " @"
                                                    << e.getStoragePtr() << ": ",
@@ -153,7 +160,7 @@ MLIREmitter &mlir::edsc::MLIREmitter::bind(Bindable e, Value *v) {
   return *this;
 }
 
-Value *mlir::edsc::MLIREmitter::emit(Expr e) {
+Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
   auto it = ssaBindings.find(e);
   if (it != ssaBindings.end()) {
     return it->second;
@@ -163,12 +170,12 @@ Value *mlir::edsc::MLIREmitter::emit(Expr e) {
   Value *res = nullptr;
   if (auto un = e.dyn_cast<UnaryExpr>()) {
     if (un.getKind() == ExprKind::Dealloc) {
-      builder->create<DeallocOp>(location, emit(un.getExpr()));
+      builder->create<DeallocOp>(location, emitExpr(un.getExpr()));
       return nullptr;
     }
   } else if (auto bin = e.dyn_cast<BinaryExpr>()) {
-    auto *a = emit(bin.getLHS());
-    auto *b = emit(bin.getRHS());
+    auto *a = emitExpr(bin.getLHS());
+    auto *b = emitExpr(bin.getRHS());
     if (!a || !b) {
       return nullptr;
     }
@@ -221,9 +228,9 @@ Value *mlir::edsc::MLIREmitter::emit(Expr e) {
 
   if (auto ter = e.dyn_cast<TernaryExpr>()) {
     if (ter.getKind() == ExprKind::Select) {
-      auto *cond = emit(ter.getCond());
-      auto *lhs = emit(ter.getLHS());
-      auto *rhs = emit(ter.getRHS());
+      auto *cond = emitExpr(ter.getCond());
+      auto *lhs = emitExpr(ter.getLHS());
+      auto *rhs = emitExpr(ter.getRHS());
       if (!cond || !rhs || !lhs) {
         return nullptr;
       }
@@ -233,7 +240,7 @@ Value *mlir::edsc::MLIREmitter::emit(Expr e) {
 
   if (auto nar = e.dyn_cast<VariadicExpr>()) {
     if (nar.getKind() == ExprKind::Alloc) {
-      auto exprs = emit(nar.getExprs());
+      auto exprs = emitExprs(nar.getExprs());
       if (llvm::any_of(exprs, [](Value *v) { return !v; })) {
         return nullptr;
       }
@@ -243,26 +250,26 @@ Value *mlir::edsc::MLIREmitter::emit(Expr e) {
           builder->create<AllocOp>(location, types[0].cast<MemRefType>(), exprs)
               ->getResult();
     } else if (nar.getKind() == ExprKind::Load) {
-      auto exprs = emit(nar.getExprs());
+      auto exprs = emitExprs(nar.getExprs());
       if (llvm::any_of(exprs, [](Value *v) { return !v; })) {
         return nullptr;
       }
-      assert(exprs.size() > 1 && "Expected > 1 expr");
-      assert(nar.getTypes().empty() && "Expected no type");
+      assert(!exprs.empty() && "Load requires >= 1 exprs");
+      assert(nar.getTypes().empty() && "Load expects no type");
       SmallVector<Value *, 8> vals(exprs.begin() + 1, exprs.end());
       res = builder->create<LoadOp>(location, exprs[0], vals)->getResult();
     } else if (nar.getKind() == ExprKind::Store) {
-      auto exprs = emit(nar.getExprs());
+      auto exprs = emitExprs(nar.getExprs());
       if (llvm::any_of(exprs, [](Value *v) { return !v; })) {
         return nullptr;
       }
-      assert(exprs.size() > 2 && "Expected > 2 expr");
-      assert(nar.getTypes().empty() && "Expected no type");
+      assert(exprs.size() >= 2 && "Store requires >= 2 exprs");
+      assert(nar.getTypes().empty() && "Store expects no type");
       SmallVector<Value *, 8> vals(exprs.begin() + 2, exprs.end());
       builder->create<StoreOp>(location, exprs[0], exprs[1], vals);
       return nullptr;
     } else if (nar.getKind() == ExprKind::VectorTypeCast) {
-      auto exprs = emit(nar.getExprs());
+      auto exprs = emitExprs(nar.getExprs());
       if (llvm::any_of(exprs, [](Value *v) { return !v; })) {
         return nullptr;
       }
@@ -274,7 +281,7 @@ Value *mlir::edsc::MLIREmitter::emit(Expr e) {
                                            types[0].cast<MemRefType>())
                 ->getResult();
     } else if (nar.getKind() == ExprKind::Return) {
-      auto exprs = emit(nar.getExprs());
+      auto exprs = emitExprs(nar.getExprs());
       builder->create<ReturnOp>(location, exprs);
       return nullptr; // no Value* produced and this is fine.
     }
@@ -282,12 +289,11 @@ Value *mlir::edsc::MLIREmitter::emit(Expr e) {
 
   if (auto expr = e.dyn_cast<StmtBlockLikeExpr>()) {
     if (expr.getKind() == ExprKind::For) {
-      auto exprs = emit(expr.getExprs());
+      auto exprs = emitExprs(expr.getExprs());
       if (llvm::any_of(exprs, [](Value *v) { return !v; })) {
         return nullptr;
       }
       assert(exprs.size() == 3 && "Expected 3 exprs");
-      assert(expr.getTypes().empty() && "Expected no type");
       auto lb =
           exprs[0]->getDefiningInst()->cast<ConstantIndexOp>()->getValue();
       auto ub =
@@ -318,23 +324,24 @@ Value *mlir::edsc::MLIREmitter::emit(Expr e) {
   return res;
 }
 
-SmallVector<Value *, 8> mlir::edsc::MLIREmitter::emit(ArrayRef<Expr> exprs) {
-  return mlir::functional::map(
-      [this](Expr e) {
-        auto *res = this->emit(e);
-        LLVM_DEBUG(
-            printDefininingStatement(llvm::dbgs() << "\nEmitted: ", *res));
-        return res;
-      },
-      exprs);
+SmallVector<Value *, 8>
+mlir::edsc::MLIREmitter::emitExprs(ArrayRef<Expr> exprs) {
+  SmallVector<Value *, 8> res;
+  res.reserve(exprs.size());
+  for (auto e : exprs) {
+    res.push_back(this->emitExpr(e));
+    LLVM_DEBUG(
+        printDefininingStatement(llvm::dbgs() << "\nEmitted: ", *res.back()));
+  }
+  return res;
 }
 
 void mlir::edsc::MLIREmitter::emitStmt(const Stmt &stmt) {
   auto *block = builder->getBlock();
   auto ip = builder->getInsertionPoint();
   // Blocks are just a containing abstraction, they do not emit their RHS.
-  if (stmt.getRHS().getKind() != ExprKind::Block) {
-    auto *val = emit(stmt.getRHS());
+  if (stmt.getRHS().getKind() != ExprKind::StmtList) {
+    auto *val = emitExpr(stmt.getRHS());
     if (!val) {
       assert((stmt.getRHS().getKind() == ExprKind::Dealloc ||
               stmt.getRHS().getKind() == ExprKind::Store ||
@@ -342,7 +349,8 @@ void mlir::edsc::MLIREmitter::emitStmt(const Stmt &stmt) {
              "dealloc, store or return expected as the only 0-result ops");
       return;
     }
-    bind(stmt.getLHS(), val);
+    // Force create a bindable from stmt.lhs and bind it.
+    bind(Bindable(stmt.getLHS()), val);
     if (stmt.getRHS().getKind() == ExprKind::For) {
       // Step into the loop.
       builder->setInsertionPointToStart(
@@ -408,10 +416,23 @@ static SmallVector<Value *, 8> getMemRefSizes(FuncBuilder *b, Location loc,
 }
 
 SmallVector<edsc::Expr, 8>
-mlir::edsc::MLIREmitter::makeBoundSizes(Value *memRef) {
+mlir::edsc::MLIREmitter::makeBoundFunctionArguments(mlir::Function *function) {
+  SmallVector<edsc::Expr, 8> res;
+  for (unsigned pos = 0, npos = function->getNumArguments(); pos < npos;
+       ++pos) {
+    auto *arg = function->getArgument(pos);
+    Expr b;
+    bind(Bindable(b), arg);
+    res.push_back(Expr(b));
+  }
+  return res;
+}
+
+SmallVector<edsc::Expr, 8>
+mlir::edsc::MLIREmitter::makeBoundMemRefShape(Value *memRef) {
   assert(memRef->getType().isa<MemRefType>() && "Expected a MemRef value");
   MemRefType memRefType = memRef->getType().cast<MemRefType>();
-  auto memRefSizes = edsc::makeBindables(memRefType.getShape().size());
+  auto memRefSizes = edsc::makeNewExprs(memRefType.getShape().size());
   auto memrefSizeValues = getMemRefSizes(getBuilder(), getLocation(), memRef);
   assert(memrefSizeValues.size() == memRefSizes.size());
   bindZipRange(llvm::zip(memRefSizes, memrefSizeValues));
@@ -419,37 +440,71 @@ mlir::edsc::MLIREmitter::makeBoundSizes(Value *memRef) {
   return res;
 }
 
+mlir::edsc::MLIREmitter::BoundMemRefView
+mlir::edsc::MLIREmitter::makeBoundMemRefView(Value *memRef) {
+  auto memRefType = memRef->getType().cast<mlir::MemRefType>();
+  auto rank = memRefType.getRank();
+
+  SmallVector<edsc::Expr, 8> lbs;
+  lbs.reserve(rank);
+  Expr zero;
+  bindConstant<mlir::ConstantIndexOp>(Bindable(zero), 0);
+  for (unsigned i = 0; i < rank; ++i) {
+    lbs.push_back(zero);
+  }
+
+  auto ubs = makeBoundMemRefShape(memRef);
+
+  SmallVector<edsc::Expr, 8> steps;
+  lbs.reserve(rank);
+  Expr one;
+  bindConstant<mlir::ConstantIndexOp>(Bindable(one), 1);
+  for (unsigned i = 0; i < rank; ++i) {
+    steps.push_back(one);
+  }
+
+  return BoundMemRefView{lbs, ubs, steps};
+}
+
+mlir::edsc::MLIREmitter::BoundMemRefView
+mlir::edsc::MLIREmitter::makeBoundMemRefView(Expr boundMemRef) {
+  auto *v = getValue(mlir::edsc::Expr(boundMemRef));
+  assert(v && "Expected a bound Expr");
+  return makeBoundMemRefView(v);
+}
+
 edsc_expr_t bindConstantBF16(edsc_mlir_emitter_t emitter, double value) {
   auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
-  Bindable b;
-  e->bindConstant<mlir::ConstantFloatOp>(b, mlir::APFloat(value),
+  Expr b;
+  e->bindConstant<mlir::ConstantFloatOp>(Bindable(b), mlir::APFloat(value),
                                          e->getBuilder()->getBF16Type());
   return b;
 }
 
 edsc_expr_t bindConstantF16(edsc_mlir_emitter_t emitter, float value) {
   auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
-  Bindable b;
+  Expr b;
   bool unused;
   mlir::APFloat val(value);
   val.convert(e->getBuilder()->getF16Type().getFloatSemantics(),
               mlir::APFloat::rmNearestTiesToEven, &unused);
-  e->bindConstant<mlir::ConstantFloatOp>(b, val, e->getBuilder()->getF16Type());
+  e->bindConstant<mlir::ConstantFloatOp>(Bindable(b), val,
+                                         e->getBuilder()->getF16Type());
   return b;
 }
 
 edsc_expr_t bindConstantF32(edsc_mlir_emitter_t emitter, float value) {
   auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
-  Bindable b;
-  e->bindConstant<mlir::ConstantFloatOp>(b, mlir::APFloat(value),
+  Expr b;
+  e->bindConstant<mlir::ConstantFloatOp>(Bindable(b), mlir::APFloat(value),
                                          e->getBuilder()->getF32Type());
   return b;
 }
 
 edsc_expr_t bindConstantF64(edsc_mlir_emitter_t emitter, double value) {
   auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
-  Bindable b;
-  e->bindConstant<mlir::ConstantFloatOp>(b, mlir::APFloat(value),
+  Expr b;
+  e->bindConstant<mlir::ConstantFloatOp>(Bindable(b), mlir::APFloat(value),
                                          e->getBuilder()->getF64Type());
   return b;
 }
@@ -457,7 +512,7 @@ edsc_expr_t bindConstantF64(edsc_mlir_emitter_t emitter, double value) {
 edsc_expr_t bindConstantInt(edsc_mlir_emitter_t emitter, int64_t value,
                             unsigned bitwidth) {
   auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
-  Bindable b;
+  Expr b;
   e->bindConstant<mlir::ConstantIntOp>(
       b, value, e->getBuilder()->getIntegerType(bitwidth));
   return b;
@@ -465,8 +520,8 @@ edsc_expr_t bindConstantInt(edsc_mlir_emitter_t emitter, int64_t value,
 
 edsc_expr_t bindConstantIndex(edsc_mlir_emitter_t emitter, int64_t value) {
   auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
-  Bindable b;
-  e->bindConstant<mlir::ConstantIndexOp>(b, value);
+  Expr b;
+  e->bindConstant<mlir::ConstantIndexOp>(Bindable(b), value);
   return b;
 }
 
@@ -493,8 +548,8 @@ edsc_expr_t bindFunctionArgument(edsc_mlir_emitter_t emitter,
   auto *f = reinterpret_cast<mlir::Function *>(function);
   assert(pos < f->getNumArguments());
   auto *arg = *(f->getArguments().begin() + pos);
-  Bindable b;
-  e->bind(b, arg);
+  Expr b;
+  e->bind(Bindable(b), arg);
   return Expr(b);
 }
 
@@ -505,8 +560,8 @@ void bindFunctionArguments(edsc_mlir_emitter_t emitter, mlir_func_t function,
   assert(result->n == f->getNumArguments());
   for (unsigned pos = 0; pos < result->n; ++pos) {
     auto *arg = *(f->getArguments().begin() + pos);
-    Bindable b;
-    e->bind(b, arg);
+    Expr b;
+    e->bind(Bindable(b), arg);
     result->exprs[pos] = Expr(b);
   }
 }
@@ -515,6 +570,7 @@ unsigned getBoundMemRefRank(edsc_mlir_emitter_t emitter,
                             edsc_expr_t boundMemRef) {
   auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
   auto *v = e->getValue(mlir::edsc::Expr(boundMemRef));
+  assert(v && "Expected a bound Expr");
   auto memRefType = v->getType().cast<mlir::MemRefType>();
   return memRefType.getRank();
 }
@@ -523,10 +579,11 @@ void bindMemRefShape(edsc_mlir_emitter_t emitter, edsc_expr_t boundMemRef,
                      edsc_expr_list_t *result) {
   auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
   auto *v = e->getValue(mlir::edsc::Expr(boundMemRef));
+  assert(v && "Expected a bound Expr");
   auto memRefType = v->getType().cast<mlir::MemRefType>();
   auto rank = memRefType.getRank();
   assert(result->n == rank && "Unexpected memref shape binding results count");
-  auto bindables = e->makeBoundSizes(v);
+  auto bindables = e->makeBoundMemRefShape(v);
   for (unsigned i = 0; i < rank; ++i) {
     result->exprs[i] = bindables[i];
   }
@@ -542,14 +599,14 @@ void bindMemRefView(edsc_mlir_emitter_t emitter, edsc_expr_t boundMemRef,
   assert(resultLbs->n == rank && "Unexpected memref binding results count");
   assert(resultUbs->n == rank && "Unexpected memref binding results count");
   assert(resultSteps->n == rank && "Unexpected memref binding results count");
-  auto bindables = e->makeBoundSizes(v);
+  auto bindables = e->makeBoundMemRefShape(v);
+  Expr zero;
+  e->bindConstant<mlir::ConstantIndexOp>(zero, 0);
+  Expr one;
+  e->bindConstant<mlir::ConstantIndexOp>(one, 1);
   for (unsigned i = 0; i < rank; ++i) {
-    Bindable zero;
-    e->bindConstant<mlir::ConstantIndexOp>(zero, 0);
     resultLbs->exprs[i] = zero;
     resultUbs->exprs[i] = bindables[i];
-    Bindable one;
-    e->bindConstant<mlir::ConstantIndexOp>(one, 1);
     resultSteps->exprs[i] = one;
   }
 }

@@ -8,9 +8,6 @@ import unittest
 
 import google_mlir.bindings.python.pybind as E
 
-help(E)
-
-
 class EdscTest(unittest.TestCase):
 
   def testBindables(self):
@@ -31,7 +28,7 @@ class EdscTest(unittest.TestCase):
       loop = E.For(i, lb, ub, step, [E.Stmt(E.Add(lb, ub))])
       str = loop.__str__()
       self.assertIn("for($1 = $2 to $3 step $4) {", str)
-      self.assertIn("$5 = ($2 + $3)", str)
+      self.assertIn(" = ($2 + $3)", str)
 
   def testTwoLoops(self):
     with E.ContextManager():
@@ -66,7 +63,7 @@ class EdscTest(unittest.TestCase):
       A, B, C = list(map(E.Indexed, [E.Bindable() for _ in range(3)]))
       stmt = C.store([i, j], A.load([i, k]) * B.load([k, j]))
       str = stmt.__str__()
-      self.assertIn(" = store( ... )", str)
+      self.assertIn(" = store(", str)
 
   def testMatmul(self):
     with E.ContextManager():
@@ -84,7 +81,7 @@ class EdscTest(unittest.TestCase):
       self.assertIn("for($1 = $4 to $7 step $10) {", str)
       self.assertIn("for($2 = $5 to $8 step $11) {", str)
       self.assertIn("for($3 = $6 to $9 step $12) {", str)
-      self.assertIn(" = store( ... )", str)
+      self.assertIn(" = store", str)
 
   def testArithmetic(self):
     with E.ContextManager():
@@ -105,9 +102,9 @@ class EdscTest(unittest.TestCase):
       i, j = list(map(E.Expr, [E.Bindable() for _ in range(2)]))
       stmt = E.Block([E.Stmt(i + j), E.Stmt(i - j)])
       str = stmt.__str__()
-      self.assertIn("block {", str)
-      self.assertIn("$3 = ($1 + $2)", str)
-      self.assertIn("$4 = ($1 - $2)", str)
+      self.assertIn("stmt_list {", str)
+      self.assertIn(" = ($1 + $2)", str)
+      self.assertIn(" = ($1 - $2)", str)
       self.assertIn("}", str)
 
   def testMLIRScalarTypes(self):

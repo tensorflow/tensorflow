@@ -68,7 +68,7 @@ namespace {
 /// local storage.
 struct VectorTransferAccessInfo {
   // `ivs` are bound for `For` Stmt at `For` Stmt construction time.
-  llvm::SmallVector<edsc::Bindable, 8> ivs;
+  llvm::SmallVector<edsc::Expr, 8> ivs;
   llvm::SmallVector<edsc::Expr, 8> lowerBoundsExprs;
   llvm::SmallVector<edsc::Expr, 8> upperBoundsExprs;
   llvm::SmallVector<edsc::Expr, 8> stepExprs;
@@ -107,15 +107,15 @@ private:
   /// buffer.
   MemRefType vectorMemRefType;
 
-  // EDSC `emitter` and Bindables that are pre-bound at construction time.
-  // vectorSizes are bound to the actual constant sizes of vectorType.
-  llvm::SmallVector<edsc::Bindable, 8> vectorSizes;
-  // accesses are bound to transfer->getIndices()
-  llvm::SmallVector<edsc::Bindable, 8> accesses;
-  // `zero` and `one` are bound to locally scoped constants.
-  // `scalarMemRef` is bound to `transfer->getMemRef()`.
-  edsc::Bindable zero, one, scalarMemRef;
+  // EDSC `emitter` and Exprs that are pre-bound at construction time.
   edsc::MLIREmitter emitter;
+  // vectorSizes are bound to the actual constant sizes of vectorType.
+  llvm::SmallVector<edsc::Expr, 8> vectorSizes;
+  // accesses are bound to transfer->getIndices()
+  llvm::SmallVector<edsc::Expr, 8> accesses;
+  // `zero` and `one` are bound emitter.zero() and emitter.one().
+  // `scalarMemRef` is bound to `transfer->getMemRef()`.
+  edsc::Expr zero, one, scalarMemRef;
 };
 
 } // end anonymous namespace
@@ -164,19 +164,19 @@ VectorTransferAccessInfo
 VectorTransferRewriter<VectorTransferOpTy>::makeVectorTransferAccessInfo() {
   using namespace mlir::edsc;
 
-  // Create Bindable objects for ivs, they will be bound at `For` Stmt
+  // Create new Exprs for ivs, they will be bound at `For` Stmt
   // construction.
-  auto ivs = makeBindables(vectorShape.size());
+  auto ivs = makeNewExprs(vectorShape.size());
 
-  // Create and bind Bindables to refer to the Value for memref sizes.
-  auto memRefSizes = emitter.makeBoundSizes(transfer->getMemRef());
+  // Create and bind Exprs to refer to the Value for memref sizes.
+  auto memRefSizes = emitter.makeBoundMemRefShape(transfer->getMemRef());
 
   // Create the edsc::Expr for the clipped and transposes access expressions
   // using the permutationMap. Additionally, capture the index accessing the
   // most minor dimension.
   int coalescingIndex = -1;
-  auto clippedScalarAccessExprs = makeExprs(accesses);
-  auto tmpAccessExprs = makeExprs(ivs);
+  auto clippedScalarAccessExprs = copyExprs(accesses);
+  auto tmpAccessExprs = copyExprs(ivs);
   llvm::DenseSet<unsigned> clipped;
   for (auto it : llvm::enumerate(permutationMap.getResults())) {
     if (auto affineExpr = it.value().template dyn_cast<AffineDimExpr>()) {
@@ -221,9 +221,9 @@ VectorTransferRewriter<VectorTransferOpTy>::makeVectorTransferAccessInfo() {
 
   // Create the proper bindables for lbs, ubs and steps. Additionally, if we
   // recorded a coalescing index, permute the loop informations.
-  auto lbs = makeBindables(ivs.size());
-  auto ubs = makeExprs(vectorSizes);
-  auto steps = makeBindables(ivs.size());
+  auto lbs = makeNewExprs(ivs.size());
+  auto ubs = copyExprs(vectorSizes);
+  auto steps = makeNewExprs(ivs.size());
   if (coalescingIndex >= 0) {
     std::swap(ivs[coalescingIndex], ivs.back());
     std::swap(lbs[coalescingIndex], lbs.back());
@@ -237,9 +237,9 @@ VectorTransferRewriter<VectorTransferOpTy>::makeVectorTransferAccessInfo() {
           llvm::zip(steps, SmallVector<int64_t, 8>(ivs.size(), 1)));
 
   return VectorTransferAccessInfo{ivs,
-                                  makeExprs(lbs),
+                                  copyExprs(lbs),
                                   ubs,
-                                  makeExprs(steps),
+                                  copyExprs(steps),
                                   clippedScalarAccessExprs,
                                   tmpAccessExprs};
 }
@@ -255,14 +255,13 @@ VectorTransferRewriter<VectorTransferOpTy>::VectorTransferRewriter(
       tmpMemRefType(
           MemRefType::get(vectorShape, vectorType.getElementType(), {}, 0)),
       vectorMemRefType(MemRefType::get({1}, vectorType, {}, 0)),
-      vectorSizes(edsc::makeBindables(vectorShape.size())),
-      emitter(edsc::MLIREmitter(rewriter->getBuilder(), transfer->getLoc())) {
+      emitter(edsc::MLIREmitter(rewriter->getBuilder(), transfer->getLoc())),
+      vectorSizes(edsc::makeNewExprs(vectorShape.size())), zero(emitter.zero()),
+      one(emitter.one()) {
   // Bind the Bindable.
   SmallVector<Value *, 8> transferIndices(transfer->getIndices());
-  accesses = edsc::makeBindables(transferIndices.size());
-  emitter.bind(scalarMemRef, transfer->getMemRef())
-      .template bindConstant<ConstantIndexOp>(zero, 0)
-      .template bindConstant<ConstantIndexOp>(one, 1)
+  accesses = edsc::makeNewExprs(transferIndices.size());
+  emitter.bind(edsc::Bindable(scalarMemRef), transfer->getMemRef())
       .template bindZipRangeConstants<ConstantIndexOp>(
           llvm::zip(vectorSizes, vectorShape))
       .template bindZipRange(llvm::zip(accesses, transfer->getIndices()));
@@ -321,23 +320,24 @@ template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
   auto &lbs = accessInfo.lowerBoundsExprs;
   auto &ubs = accessInfo.upperBoundsExprs;
   auto &steps = accessInfo.stepExprs;
-  Stmt scalarValue, vectorValue, tmpAlloc, tmpDealloc, vectorView;
-  Stmt block = edsc::Block({
+  Expr scalarValue, vectorValue, tmpAlloc, tmpDealloc, vectorView;
+  Stmt block = edsc::StmtList({
     tmpAlloc = alloc(tmpMemRefType),
-    vectorView = vector_type_cast(tmpAlloc, vectorMemRefType),
+    vectorView = vector_type_cast(Expr(tmpAlloc), vectorMemRefType),
     For(ivs, lbs, ubs, steps, {
       scalarValue = load(scalarMemRef, accessInfo.clippedScalarAccessExprs),
       store(scalarValue, tmpAlloc, accessInfo.tmpAccessExprs),
     }),
     vectorValue = load(vectorView, {zero}),
-    tmpDealloc = dealloc(tmpAlloc.getLHS())});
+    tmpDealloc = dealloc(tmpAlloc)
+  });
   // clang-format on
 
   // Emit the MLIR.
   emitter.emitStmt(block);
 
   // Finalize rewriting.
-  transfer->replaceAllUsesWith(emitter.getValue(vectorValue.getLHS()));
+  transfer->replaceAllUsesWith(emitter.getValue(vectorValue));
   transfer->erase();
 }
 
@@ -367,24 +367,24 @@ template <> void VectorTransferRewriter<VectorTransferWriteOp>::rewrite() {
   auto accessInfo = makeVectorTransferAccessInfo();
 
   // Bind vector value for the vector_transfer_write.
-  Bindable vectorValue;
-  emitter.bind(vectorValue, transfer->getVector());
+  Expr vectorValue;
+  emitter.bind(Bindable(vectorValue), transfer->getVector());
 
   // clang-format off
   auto &ivs = accessInfo.ivs;
   auto &lbs = accessInfo.lowerBoundsExprs;
   auto &ubs = accessInfo.upperBoundsExprs;
   auto &steps = accessInfo.stepExprs;
-  Stmt scalarValue, tmpAlloc, tmpDealloc, vectorView;
-  Stmt block = edsc::Block({
+  Expr scalarValue, tmpAlloc, tmpDealloc, vectorView;
+  Stmt block(edsc::StmtList({
     tmpAlloc = alloc(tmpMemRefType),
     vectorView = vector_type_cast(tmpAlloc, vectorMemRefType),
-    store(vectorValue, vectorView, {zero}),
+    store(vectorValue, vectorView, MutableArrayRef<Expr>{zero}),
     For(ivs, lbs, ubs, steps, {
       scalarValue = load(tmpAlloc, accessInfo.tmpAccessExprs),
       store(scalarValue, scalarMemRef, accessInfo.clippedScalarAccessExprs),
     }),
-    tmpDealloc = dealloc(tmpAlloc.getLHS())});
+    tmpDealloc = dealloc(tmpAlloc)}));
   // clang-format on
 
   // Emit the MLIR.

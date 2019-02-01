@@ -345,7 +345,7 @@ PYBIND11_MODULE(pybind, m) {
 
   m.def("Block", [](const py::list &stmts) {
     SmallVector<edsc_stmt_t, 8> owning;
-    return PythonStmt(::Block(makeCStmts(owning, stmts)));
+    return PythonStmt(::StmtList(makeCStmts(owning, stmts)));
   });
   m.def("For", [](const py::list &ivs, const py::list &lbs, const py::list &ubs,
                   const py::list &steps, const py::list &stmts) {

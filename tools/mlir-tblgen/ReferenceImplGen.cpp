@@ -51,42 +51,35 @@ static void emitReferenceImplementations(const RecordKeeper &recordKeeper,
     if (!ref)
       continue;
     os << " else if (opName == \"" << op.getOperationName() << "\") {\n"
-       << "  edsc::MLIREmitter emitter(&builder, f->getLoc());\n";
+       << "  edsc::ScopedEDSCContext raiiContext;\n"
+       << "  Stmt block;\n"
+       << "  edsc::MLIREmitter emitter(&builder, f->getLoc());\n"
+       << "  auto zero = emitter.zero(); (void)zero;\n"
+       << "  auto one = emitter.one(); (void)one;\n"
+       << "  auto args = emitter.makeBoundFunctionArguments(f);\n"
+       // TODO(jpienaar): this is generally incorrect, not all args are memref
+       // in the general case.
+       << "  auto views = emitter.makeBoundMemRefViews(args.begin(), "
+          "args.end());\n";
 
-    // Create memrefs for the operands. Operand $x has variable name xMemRef.
-    for (auto arg : op.getOperands()) {
-      if (arg.name.empty())
-        PrintFatalError(def->getLoc(), "all operands must be named");
-      os << formatv("  mlir::BlockArgument* {0}MemRef;\n", arg.name);
-    }
-    os << "  mlir::BlockArgument* resultMemRef;\n";
-    os << "  {\n    auto opIt = f->getArguments().begin();\n";
-    for (auto arg : op.getOperands()) {
-      os.indent(4) << arg.name << "MemRef = *opIt++;\n";
-    }
-    os.indent(4) << "resultMemRef = *opIt++;\n";
-    os << "  }\n";
-
-    for (auto arg : op.getOperands()) {
-      os << formatv("  Bindable {0}; (void){0};\n", arg.name);
-    }
-    os << "  Bindable result;\n";
-
-    for (auto arg : op.getOperands()) {
-      os.indent(2) << formatv(
-          "auto {0}Shape = emitter.makeBoundSizes({0}MemRef); "
-          "(void){0}Shape;\n",
-          arg.name);
+    for (auto en : llvm::enumerate(op.getOperands())) {
+      os.indent(2) << formatv("auto &view_{0} = views[{1}]; "
+                              "(void)view_{0};\n",
+                              en.value().name, en.index());
     }
 
     // Print the EDSC.
-    os << ref->getAsUnquotedString() << "\n}";
+    os << ref->getAsUnquotedString() << "\n";
+    os.indent(2) << "block.print(llvm::outs());\n\n";
+    os.indent(2) << "emitter.emitStmt(block);\n\n";
+    os.indent(2) << "llvm::outs() << \"\\n\";\n\n";
+    os << "}";
   }
-  os << " else {"
-     << "  f->emitError(\"no reference implementation for \" + opName);\n"
-     << "  return;\n}\n";
-  os << "  block.print(llvm::outs());\n llvm::outs() << \"\\n\";\n"
-     << "}\n";
+  os << " else {\n";
+  os.indent(2) << "f->emitError(\"no reference impl. for \" + opName);\n";
+  os.indent(2) << "return;\n";
+  os << "}\n";
+  os << "}\n";
 }
 
 static mlir::GenRegistration

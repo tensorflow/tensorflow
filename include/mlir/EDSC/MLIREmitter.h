@@ -57,8 +57,7 @@ namespace edsc {
 struct MLIREmitter {
   using BindingMap = llvm::DenseMap<Expr, Value *>;
 
-  explicit MLIREmitter(FuncBuilder *builder, Location location)
-      : builder(builder), location(location) {}
+  MLIREmitter(FuncBuilder *builder, Location location);
 
   FuncBuilder *getBuilder() { return builder; }
   Location getLocation() { return location; }
@@ -99,12 +98,6 @@ struct MLIREmitter {
     return *this;
   }
 
-  /// Emits the MLIR for `expr` and inserts at the `builder`'s insertion point.
-  /// This function must only be called once on a given emitter.
-  /// Prerequisites: all the Bindables have been bound.
-  Value *emit(Expr expr);
-  llvm::SmallVector<Value *, 8> emit(llvm::ArrayRef<Expr> exprs);
-
   /// Emits the MLIR for `stmt` and inserts at the `builder`'s insertion point.
   /// Prerequisites: all the Bindables have been bound.
   void emitStmt(const Stmt &stmt);
@@ -114,6 +107,15 @@ struct MLIREmitter {
   /// Prerequisite: it must exist.
   Value *getValue(Expr expr) { return ssaBindings.lookup(expr); }
 
+  /// Returns unique zero and one Expr that are bound to the corresponding
+  /// constant index value.
+  Expr zero() { return zeroIndex; }
+  Expr one() { return oneIndex; }
+
+  /// Returns a list of Expr that are bound to the function arguments.
+  SmallVector<edsc::Expr, 8>
+  makeBoundFunctionArguments(mlir::Function *function);
+
   /// Returns a list of `Bindable` that are bound to the dimensions of the
   /// memRef. The proper DimOp and ConstantOp are constructed at the current
   /// insertion point in `builder`. They can be later hoisted and simplified in
@@ -121,12 +123,55 @@ struct MLIREmitter {
   ///
   /// Prerequisite:
   /// `memRef` is a Value of type MemRefType.
-  SmallVector<edsc::Expr, 8> makeBoundSizes(Value *memRef);
+  SmallVector<edsc::Expr, 8> makeBoundMemRefShape(Value *memRef);
+
+  /// A BoundMemRefView represents the information required to step through a
+  /// memref. It has placeholders for non-contiguous tensors that fit within the
+  /// Fortran subarray model.
+  /// It is extracted from a memref
+  struct BoundMemRefView {
+    SmallVector<edsc::Expr, 8> lbs;
+    SmallVector<edsc::Expr, 8> ubs;
+    SmallVector<edsc::Expr, 8> steps;
+    edsc::Expr dim(unsigned idx) const { return ubs[idx]; }
+    unsigned rank() const { return lbs.size(); }
+  };
+  BoundMemRefView makeBoundMemRefView(Value *memRef);
+  BoundMemRefView makeBoundMemRefView(Expr memRef);
+  template <typename IterType>
+  SmallVector<BoundMemRefView, 8> makeBoundMemRefViews(IterType begin,
+                                                       IterType end) {
+    static_assert(!std::is_same<decltype(*begin), Indexed>(),
+                  "Must use Bindable or Expr");
+    SmallVector<mlir::edsc::MLIREmitter::BoundMemRefView, 8> res;
+    for (auto it = begin; it != end; ++it) {
+      res.push_back(makeBoundMemRefView(*it));
+    }
+    return res;
+  }
+  template <typename T>
+  SmallVector<BoundMemRefView, 8>
+  makeBoundMemRefViews(std::initializer_list<T> args) {
+    static_assert(!std::is_same<T, Indexed>(), "Must use Bindable or Expr");
+    SmallVector<mlir::edsc::MLIREmitter::BoundMemRefView, 8> res;
+    for (auto m : args) {
+      res.push_back(makeBoundMemRefView(m));
+    }
+    return res;
+  }
 
 private:
+  /// Emits the MLIR for `expr` and inserts at the `builder`'s insertion point.
+  /// This function must only be called once on a given emitter.
+  /// Prerequisites: all the Bindables have been bound.
+  Value *emitExpr(Expr expr);
+  llvm::SmallVector<Value *, 8> emitExprs(llvm::ArrayRef<Expr> exprs);
+
   FuncBuilder *builder;
   Location location;
   BindingMap ssaBindings;
+  // These are so ubiquitous that we make them bound and available to all.
+  Expr zeroIndex, oneIndex;
 };
 
 } // namespace edsc

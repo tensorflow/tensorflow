@@ -39,12 +39,9 @@ namespace edsc {
 namespace detail {
 
 struct ExprStorage {
-  ExprStorage(ExprKind kind) : kind(kind) {}
+  ExprStorage(ExprKind kind, unsigned id = Expr::newId())
+      : kind(kind), id(id) {}
   ExprKind kind;
-};
-
-struct BindableStorage : public ExprStorage {
-  BindableStorage(unsigned id) : ExprStorage(ExprKind::Unbound), id(id) {}
   unsigned id;
 };
 
@@ -94,7 +91,22 @@ mlir::edsc::ScopedEDSCContext::~ScopedEDSCContext() {
   Expr::globalAllocator() = nullptr;
 }
 
+mlir::edsc::Expr::Expr() {
+  // Initialize with placement new.
+  storage = Expr::globalAllocator()->Allocate<detail::ExprStorage>();
+  new (storage) detail::ExprStorage(ExprKind::Unbound);
+}
+
 ExprKind mlir::edsc::Expr::getKind() const { return storage->kind; }
+
+unsigned mlir::edsc::Expr::getId() const {
+  return static_cast<ImplType *>(storage)->id;
+}
+
+unsigned &mlir::edsc::Expr::newId() {
+  static thread_local unsigned id = 0;
+  return ++id;
+}
 
 Expr mlir::edsc::Expr::operator+(Expr other) const {
   return BinaryExpr(ExprKind::Add, *this, other);
@@ -132,38 +144,11 @@ Expr mlir::edsc::Expr::operator||(Expr other) const {
 }
 
 // Free functions.
-llvm::SmallVector<Bindable, 8> mlir::edsc::makeBindables(unsigned n) {
-  llvm::SmallVector<Bindable, 8> res;
-  res.reserve(n);
-  for (auto i = 0; i < n; ++i) {
-    res.push_back(Bindable());
-  }
-  return res;
-}
-
-static llvm::SmallVector<Bindable, 8> makeBindables(edsc_expr_list_t exprList) {
-  llvm::SmallVector<Bindable, 8> exprs;
-  exprs.reserve(exprList.n);
-  for (unsigned i = 0; i < exprList.n; ++i) {
-    exprs.push_back(Expr(exprList.exprs[i]).cast<Bindable>());
-  }
-  return exprs;
-}
-
-llvm::SmallVector<Expr, 8> mlir::edsc::makeExprs(unsigned n) {
+llvm::SmallVector<Expr, 8> mlir::edsc::makeNewExprs(unsigned n) {
   llvm::SmallVector<Expr, 8> res;
   res.reserve(n);
   for (auto i = 0; i < n; ++i) {
     res.push_back(Expr());
-  }
-  return res;
-}
-
-llvm::SmallVector<Expr, 8> mlir::edsc::makeExprs(ArrayRef<Bindable> bindables) {
-  llvm::SmallVector<Expr, 8> res;
-  res.reserve(bindables.size());
-  for (auto b : bindables) {
-    res.push_back(b);
   }
   return res;
 }
@@ -177,25 +162,26 @@ static llvm::SmallVector<Expr, 8> makeExprs(edsc_expr_list_t exprList) {
   return exprs;
 }
 
-static llvm::SmallVector<Stmt, 8> makeStmts(edsc_stmt_list_t enclosedStmts) {
-  llvm::SmallVector<Stmt, 8> stmts;
-  stmts.reserve(enclosedStmts.n);
+static void fillStmts(edsc_stmt_list_t enclosedStmts,
+                      llvm::SmallVector<Stmt, 8> *stmts) {
+  stmts->reserve(enclosedStmts.n);
   for (unsigned i = 0; i < enclosedStmts.n; ++i) {
-    stmts.push_back(Stmt(enclosedStmts.stmts[i]));
+    stmts->push_back(Stmt(enclosedStmts.stmts[i]));
   }
-  return stmts;
 }
 
 Expr mlir::edsc::alloc(llvm::ArrayRef<Expr> sizes, Type memrefType) {
   return VariadicExpr(ExprKind::Alloc, sizes, memrefType);
 }
 
-Stmt mlir::edsc::Block(ArrayRef<Stmt> stmts) {
-  return Stmt(StmtBlockLikeExpr(ExprKind::Block, {}), stmts);
+Stmt mlir::edsc::StmtList(ArrayRef<Stmt> stmts) {
+  return Stmt(StmtBlockLikeExpr(ExprKind::StmtList, {}), stmts);
 }
 
-edsc_stmt_t Block(edsc_stmt_list_t enclosedStmts) {
-  return Stmt(mlir::edsc::Block(makeStmts(enclosedStmts)));
+edsc_stmt_t StmtList(edsc_stmt_list_t enclosedStmts) {
+  llvm::SmallVector<Stmt, 8> stmts;
+  fillStmts(enclosedStmts, &stmts);
+  return Stmt(mlir::edsc::StmtList(stmts));
 }
 
 Expr mlir::edsc::dealloc(Expr memref) {
@@ -203,8 +189,8 @@ Expr mlir::edsc::dealloc(Expr memref) {
 }
 
 Stmt mlir::edsc::For(Expr lb, Expr ub, Expr step, ArrayRef<Stmt> stmts) {
-  Bindable idx;
-  return For(idx, lb, ub, step, stmts);
+  Expr idx;
+  return For(Bindable(idx), lb, ub, step, stmts);
 }
 
 Stmt mlir::edsc::For(const Bindable &idx, Expr lb, Expr ub, Expr step,
@@ -212,105 +198,68 @@ Stmt mlir::edsc::For(const Bindable &idx, Expr lb, Expr ub, Expr step,
   return Stmt(idx, StmtBlockLikeExpr(ExprKind::For, {lb, ub, step}), stmts);
 }
 
-Stmt mlir::edsc::For(MutableArrayRef<Bindable> indices, ArrayRef<Expr> lbs,
+Stmt mlir::edsc::For(ArrayRef<Expr> indices, ArrayRef<Expr> lbs,
                      ArrayRef<Expr> ubs, ArrayRef<Expr> steps,
                      ArrayRef<Stmt> enclosedStmts) {
   assert(!indices.empty());
   assert(indices.size() == lbs.size());
   assert(indices.size() == ubs.size());
   assert(indices.size() == steps.size());
+  Expr iv = indices.back();
   Stmt curStmt =
-      For(indices.back(), lbs.back(), ubs.back(), steps.back(), enclosedStmts);
+      For(Bindable(iv), lbs.back(), ubs.back(), steps.back(), enclosedStmts);
   for (int64_t i = indices.size() - 2; i >= 0; --i) {
-    curStmt = For(indices[i], lbs[i], ubs[i], steps[i], {curStmt});
+    Expr iiv = indices[i];
+    curStmt.set(For(Bindable(iiv), lbs[i], ubs[i], steps[i],
+                    llvm::ArrayRef<Stmt>{&curStmt, 1}));
   }
   return curStmt;
 }
 
-Stmt mlir::edsc::For(llvm::MutableArrayRef<Bindable> indices,
-                     llvm::ArrayRef<Bindable> lbs, llvm::ArrayRef<Bindable> ubs,
-                     llvm::ArrayRef<Bindable> steps,
-                     llvm::ArrayRef<Stmt> enclosedStmts) {
-  return For(indices, SmallVector<Expr, 8>{lbs.begin(), lbs.end()},
-             SmallVector<Expr, 8>{ubs.begin(), ubs.end()},
-             SmallVector<Expr, 8>{steps.begin(), steps.end()}, enclosedStmts);
-}
-
-Stmt mlir::edsc::For(llvm::MutableArrayRef<Bindable> indices,
-                     llvm::ArrayRef<Bindable> lbs, llvm::ArrayRef<Expr> ubs,
-                     llvm::ArrayRef<Bindable> steps,
-                     llvm::ArrayRef<Stmt> enclosedStmts) {
-  return For(indices, SmallVector<Expr, 8>{lbs.begin(), lbs.end()}, ubs,
-             SmallVector<Expr, 8>{steps.begin(), steps.end()}, enclosedStmts);
-}
-
 edsc_stmt_t For(edsc_expr_t iv, edsc_expr_t lb, edsc_expr_t ub,
                 edsc_expr_t step, edsc_stmt_list_t enclosedStmts) {
-  return Stmt(For(Expr(iv).cast<Bindable>(), Expr(lb), Expr(ub), Expr(step),
-                  makeStmts(enclosedStmts)));
+  llvm::SmallVector<Stmt, 8> stmts;
+  fillStmts(enclosedStmts, &stmts);
+  return Stmt(
+      For(Expr(iv).cast<Bindable>(), Expr(lb), Expr(ub), Expr(step), stmts));
 }
 
 edsc_stmt_t ForNest(edsc_expr_list_t ivs, edsc_expr_list_t lbs,
                     edsc_expr_list_t ubs, edsc_expr_list_t steps,
                     edsc_stmt_list_t enclosedStmts) {
-  auto bindables = makeBindables(ivs);
-  return Stmt(For(bindables, makeExprs(lbs), makeExprs(ubs), makeExprs(steps),
-                  makeStmts(enclosedStmts)));
+  llvm::SmallVector<Stmt, 8> stmts;
+  fillStmts(enclosedStmts, &stmts);
+  return Stmt(For(makeExprs(ivs), makeExprs(lbs), makeExprs(ubs),
+                  makeExprs(steps), stmts));
 }
 
-template <typename BindableOrExpr>
-static Expr loadBuilder(Expr m, ArrayRef<BindableOrExpr> indices) {
+Expr mlir::edsc::load(Expr m, ArrayRef<Expr> indices) {
   SmallVector<Expr, 8> exprs;
   exprs.push_back(m);
   exprs.append(indices.begin(), indices.end());
   return VariadicExpr(ExprKind::Load, exprs);
 }
-Expr mlir::edsc::load(Expr m, Expr index) {
-  return loadBuilder<Expr>(m, {index});
-}
-Expr mlir::edsc::load(Expr m, Bindable index) {
-  return loadBuilder<Bindable>(m, {index});
-}
-Expr mlir::edsc::load(Expr m, const llvm::SmallVectorImpl<Bindable> &indices) {
-  return loadBuilder(m, ArrayRef<Bindable>{indices.begin(), indices.end()});
-}
-Expr mlir::edsc::load(Expr m, ArrayRef<Expr> indices) {
-  return loadBuilder(m, indices);
-}
 
 edsc_expr_t Load(edsc_indexed_t indexed, edsc_expr_list_t indices) {
   Indexed i(Expr(indexed.base).cast<Bindable>());
-  Expr res = i[makeExprs(indices)];
+  auto exprs = makeExprs(indices);
+  Expr res = i(exprs);
   return res;
 }
 
-template <typename BindableOrExpr>
-static Expr storeBuilder(Expr val, Expr m, ArrayRef<BindableOrExpr> indices) {
+Expr mlir::edsc::store(Expr val, Expr m, ArrayRef<Expr> indices) {
   SmallVector<Expr, 8> exprs;
   exprs.push_back(val);
   exprs.push_back(m);
   exprs.append(indices.begin(), indices.end());
   return VariadicExpr(ExprKind::Store, exprs);
 }
-Expr mlir::edsc::store(Expr val, Expr m, Expr index) {
-  return storeBuilder<Expr>(val, m, {index});
-}
-Expr mlir::edsc::store(Expr val, Expr m, Bindable index) {
-  return storeBuilder<Bindable>(val, m, {index});
-}
-Expr mlir::edsc::store(Expr val, Expr m,
-                       const llvm::SmallVectorImpl<Bindable> &indices) {
-  return storeBuilder(val, m,
-                      ArrayRef<Bindable>{indices.begin(), indices.end()});
-}
-Expr mlir::edsc::store(Expr val, Expr m, ArrayRef<Expr> indices) {
-  return storeBuilder(val, m, indices);
-}
 
 edsc_stmt_t Store(edsc_expr_t value, edsc_indexed_t indexed,
                   edsc_expr_list_t indices) {
   Indexed i(Expr(indexed.base).cast<Bindable>());
-  Indexed loc = i[makeExprs(indices)];
+  auto exprs = makeExprs(indices);
+  Indexed loc = i(exprs);
   return Stmt(loc = Expr(value));
 }
 
@@ -384,15 +333,20 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
     }
     }
   } else if (auto nar = this->dyn_cast<VariadicExpr>()) {
+    auto exprs = nar.getExprs();
     switch (nar.getKind()) {
     case ExprKind::Load:
-      os << "load( ... )";
+      os << "load(" << exprs[0] << "[";
+      interleaveComma(ArrayRef<Expr>(exprs.begin() + 1, exprs.size() - 1), os);
+      os << "])";
       return;
     case ExprKind::Store:
-      os << "store( ... )";
+      os << "store(" << exprs[0] << ", " << exprs[1] << "[";
+      interleaveComma(ArrayRef<Expr>(exprs.begin() + 2, exprs.size() - 2), os);
+      os << "])";
       return;
     case ExprKind::Return:
-      interleaveComma(nar.getExprs(), os);
+      interleaveComma(exprs, os);
       return;
     default: {
       os << "unknown_variadic";
@@ -430,22 +384,7 @@ llvm::raw_ostream &mlir::edsc::operator<<(llvm::raw_ostream &os,
   return os;
 }
 
-mlir::edsc::Bindable::Bindable()
-    : Expr(Expr::globalAllocator()->Allocate<detail::BindableStorage>()) {
-  // Initialize with placement new.
-  new (storage) detail::BindableStorage{Bindable::newId()};
-}
-
-edsc_expr_t makeBindable() { return Bindable(); }
-
-unsigned mlir::edsc::Bindable::getId() const {
-  return static_cast<ImplType *>(storage)->id;
-}
-
-unsigned &mlir::edsc::Bindable::newId() {
-  static thread_local unsigned id = 0;
-  return ++id;
-}
+edsc_expr_t makeBindable() { return Bindable(Expr()); }
 
 mlir::edsc::UnaryExpr::UnaryExpr(ExprKind kind, Expr expr)
     : Expr(Expr::globalAllocator()->Allocate<detail::UnaryExprStorage>()) {
@@ -519,9 +458,6 @@ mlir::edsc::StmtBlockLikeExpr::StmtBlockLikeExpr(ExprKind kind,
 ArrayRef<Expr> mlir::edsc::StmtBlockLikeExpr::getExprs() const {
   return static_cast<ImplType *>(storage)->exprs;
 }
-ArrayRef<Type> mlir::edsc::StmtBlockLikeExpr::getTypes() const {
-  return static_cast<ImplType *>(storage)->types;
-}
 
 mlir::edsc::Stmt::Stmt(const Bindable &lhs, const Expr &rhs,
                        llvm::ArrayRef<Stmt> enclosedStmts) {
@@ -536,7 +472,7 @@ mlir::edsc::Stmt::Stmt(const Bindable &lhs, const Expr &rhs,
 }
 
 mlir::edsc::Stmt::Stmt(const Expr &rhs, llvm::ArrayRef<Stmt> enclosedStmts)
-    : Stmt(Bindable(), rhs, enclosedStmts) {}
+    : Stmt(Bindable(Expr()), rhs, enclosedStmts) {}
 
 edsc_stmt_t makeStmt(edsc_expr_t e) {
   assert(e && "unexpected empty expression");
@@ -544,12 +480,12 @@ edsc_stmt_t makeStmt(edsc_expr_t e) {
 }
 
 Stmt &mlir::edsc::Stmt::operator=(const Expr &expr) {
-  Stmt res(Bindable(), expr, {});
+  Stmt res(Bindable(Expr()), expr, {});
   std::swap(res.storage, this->storage);
   return *this;
 }
 
-Bindable mlir::edsc::Stmt::getLHS() const {
+Expr mlir::edsc::Stmt::getLHS() const {
   return static_cast<ImplType *>(storage)->lhs;
 }
 
@@ -562,7 +498,10 @@ llvm::ArrayRef<Stmt> mlir::edsc::Stmt::getEnclosedStmts() const {
 }
 
 void mlir::edsc::Stmt::print(raw_ostream &os, Twine indent) const {
-  assert(storage && "Unexpected null storage,stmt must be bound to print");
+  if (!storage) {
+    os << "null_storage";
+    return;
+  }
   auto lhs = getLHS();
   auto rhs = getRHS();
 
@@ -580,8 +519,8 @@ void mlir::edsc::Stmt::print(raw_ostream &os, Twine indent) const {
       }
       os << indent << "}";
       return;
-    case ExprKind::Block:
-      os << indent << "block {";
+    case ExprKind::StmtList:
+      os << indent << "stmt_list {";
       for (auto &s : getEnclosedStmts()) {
         os << "\n";
         s.print(os, indent + "  ");
@@ -613,24 +552,15 @@ llvm::raw_ostream &mlir::edsc::operator<<(llvm::raw_ostream &os,
   return os;
 }
 
-Indexed mlir::edsc::Indexed::operator[](llvm::ArrayRef<Expr> indices) const {
+Indexed mlir::edsc::Indexed::operator()(llvm::ArrayRef<Expr> indices) {
   Indexed res(base);
   res.indices = llvm::SmallVector<Expr, 4>(indices.begin(), indices.end());
   return res;
 }
 
-Indexed mlir::edsc::Indexed::
-operator[](llvm::ArrayRef<Bindable> indices) const {
-  return (*this)[llvm::ArrayRef<Expr>{indices.begin(), indices.end()}];
-}
-
 // NOLINTNEXTLINE: unconventional-assign-operator
 Stmt mlir::edsc::Indexed::operator=(Expr expr) {
-  assert(!indices.empty() && "Expected attached indices to Indexed");
-  assert(base);
-  Stmt stmt(store(expr, base, indices));
-  indices.clear();
-  return stmt;
+  return Stmt(store(expr, base, indices));
 }
 
 edsc_indexed_t makeIndexed(edsc_expr_t expr) {

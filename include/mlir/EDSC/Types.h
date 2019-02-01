@@ -41,7 +41,6 @@ namespace edsc {
 namespace detail {
 
 struct ExprStorage;
-struct BindableStorage;
 struct UnaryExprStorage;
 struct BinaryExprStorage;
 struct TernaryExprStorage;
@@ -112,7 +111,7 @@ enum class ExprKind {
   Return,
   LAST_VARIADIC_EXPR = Return,
   FIRST_STMT_BLOCK_LIKE_EXPR = 600,
-  Block = FIRST_STMT_BLOCK_LIKE_EXPR,
+  StmtList = FIRST_STMT_BLOCK_LIKE_EXPR,
   For,
   LAST_STMT_BLOCK_LIKE_EXPR = For,
   LAST_NON_BINDABLE_EXPR = LAST_STMT_BLOCK_LIKE_EXPR,
@@ -170,17 +169,14 @@ public:
     return allocator;
   }
 
-  Expr() : storage(nullptr) {}
+  Expr();
   /* implicit */ Expr(ImplType *storage) : storage(storage) {}
   explicit Expr(edsc_expr_t expr)
       : storage(reinterpret_cast<ImplType *>(expr)) {}
   operator edsc_expr_t() { return edsc_expr_t{storage}; }
 
-  Expr(const Expr &other) : storage(other.storage) {}
-  Expr &operator=(Expr other) {
-    storage = other.storage;
-    return *this;
-  }
+  Expr(const Expr &other) = default;
+  Expr &operator=(const Expr &other) = default;
 
   explicit operator bool() { return storage; }
   bool operator!() { return storage == nullptr; }
@@ -193,6 +189,7 @@ public:
 
   /// Returns the classification for this type.
   ExprKind getKind() const;
+  unsigned getId() const;
 
   void print(raw_ostream &os) const;
   void dump() const;
@@ -218,27 +215,26 @@ public:
   friend ::llvm::hash_code hash_value(Expr arg);
 
 protected:
+  friend struct detail::ExprStorage;
   ImplType *storage;
+
+  static void resetIds() { newId() = 0; }
+  static unsigned &newId();
 };
 
 struct Bindable : public Expr {
-  using ImplType = detail::BindableStorage;
-  friend class Expr;
-  Bindable();
-  unsigned getId() const;
-
-  // protected:
-  Bindable(Expr::ImplType *ptr) : Expr(ptr) {
-    assert(!ptr || isa<Bindable>() && "expected Bindable");
+  Bindable() = delete;
+  Bindable(Expr expr) : Expr(expr) {
+    assert(expr.isa<Bindable>() && "expected Bindable");
   }
+  Bindable(const Bindable &) = default;
+  Bindable &operator=(const Bindable &) = default;
   explicit Bindable(const edsc_expr_t &expr) : Expr(expr) {}
   operator edsc_expr_t() { return edsc_expr_t{storage}; }
 
-  friend struct ScopedEDSCContext;
-
 private:
-  static void resetIds() { newId() = 0; }
-  static unsigned &newId();
+  friend class Expr;
+  friend struct ScopedEDSCContext;
 };
 
 struct UnaryExpr : public Expr {
@@ -301,7 +297,6 @@ struct StmtBlockLikeExpr : public Expr {
   StmtBlockLikeExpr(ExprKind kind, llvm::ArrayRef<Expr> exprs,
                     llvm::ArrayRef<Type> types = {});
   llvm::ArrayRef<Expr> getExprs() const;
-  llvm::ArrayRef<Type> getTypes() const;
 
 protected:
   StmtBlockLikeExpr(Expr::ImplType *ptr) : Expr(ptr) {
@@ -316,7 +311,7 @@ protected:
 ///
 /// ```mlir
 ///    Stmt scalarValue, vectorValue, tmpAlloc, tmpDealloc, vectorView;
-///    Stmt block = Block({
+///    Stmt block = StmtList({
 ///      tmpAlloc = alloc(tmpMemRefType),
 ///      vectorView = vector_type_cast(tmpAlloc, vectorMemRefType),
 ///      For(ivs, lbs, ubs, steps, {
@@ -342,36 +337,38 @@ protected:
 /// 1. `For`-loops for which the `lhs` binds to the induction variable, `rhs`
 ///   binds to an Expr of kind `ExprKind::For` with lower-bound, upper-bound and
 ///   step respectively;
-/// 2. `Block` with an Expr of kind `ExprKind::Block` and which has no `rhs` but
+/// 2. `StmtList` with an Expr of kind `ExprKind::StmtList` and which has no
+/// `rhs` but
 ///   only `enclosingStmts`.
 struct Stmt {
   using ImplType = detail::StmtStorage;
   friend class Expr;
   Stmt() : storage(nullptr) {}
   explicit Stmt(ImplType *storage) : storage(storage) {}
-  Stmt(const Stmt &other) : storage(other.storage) {}
-  Stmt operator=(const Stmt &other) {
-    this->storage = other.storage; // NBD if &other == this
-    return *this;
-  }
+  Stmt(const Stmt &other) = default;
   Stmt(const Expr &rhs, llvm::ArrayRef<Stmt> stmts = llvm::ArrayRef<Stmt>());
   Stmt(const Bindable &lhs, const Expr &rhs,
        llvm::ArrayRef<Stmt> stmts = llvm::ArrayRef<Stmt>());
+
+  explicit operator Expr() const { return getLHS(); }
   Stmt &operator=(const Expr &expr);
+  Stmt &set(const Stmt &other) {
+    this->storage = other.storage;
+    return *this;
+  }
+  Stmt &operator=(const Stmt &other) = delete;
   explicit Stmt(edsc_stmt_t stmt)
       : storage(reinterpret_cast<ImplType *>(stmt)) {}
   operator edsc_stmt_t() { return edsc_stmt_t{storage}; }
 
-  operator Expr() const { return getLHS(); }
-
   /// For debugging purposes.
-  const void *getStoragePtr() const { return storage; }
+  const ImplType *getStoragePtr() const { return storage; }
 
   void print(raw_ostream &os, llvm::Twine indent = "") const;
   void dump() const;
   std::string str() const;
 
-  Bindable getLHS() const;
+  Expr getLHS() const;
   Expr getRHS() const;
   llvm::ArrayRef<Stmt> getEnclosedStmts() const;
 
@@ -470,44 +467,40 @@ namespace edsc {
 ///
 /// Since bindings are hashed by the underlying pointer address, we need to be
 /// sure to construct new elements in a vector. We cannot just use
-/// `llvm::SmallVector<Bindable, 8> dims(n);` directly because a single
-/// `Bindable` will be default constructed and copied everywhere in the vector.
-/// Hilarity ensues when trying to bind structs that are already bound.
-llvm::SmallVector<Bindable, 8> makeBindables(unsigned n);
-llvm::SmallVector<Expr, 8> makeExprs(unsigned n);
-llvm::SmallVector<Expr, 8> makeExprs(ArrayRef<Bindable> bindables);
+/// `llvm::SmallVector<Expr, 8> dims(n);` directly because a single
+/// `Expr` will be default constructed and copied everywhere in the vector.
+/// Hilarity ensues when trying to bind `Expr` multiple times.
+llvm::SmallVector<Expr, 8> makeNewExprs(unsigned n);
 template <typename IterTy>
-llvm::SmallVector<Expr, 8> makeExprs(IterTy begin, IterTy end) {
+llvm::SmallVector<Expr, 8> copyExprs(IterTy begin, IterTy end) {
   return llvm::SmallVector<Expr, 8>(begin, end);
+}
+inline llvm::SmallVector<Expr, 8> copyExprs(llvm::ArrayRef<Expr> exprs) {
+  return llvm::SmallVector<Expr, 8>(exprs.begin(), exprs.end());
 }
 
 Expr alloc(llvm::ArrayRef<Expr> sizes, Type memrefType);
 inline Expr alloc(Type memrefType) { return alloc({}, memrefType); }
 Expr dealloc(Expr memref);
-Expr load(Expr m, Expr index);
-Expr load(Expr m, Bindable index);
-Expr load(Expr m, llvm::ArrayRef<Expr> indices);
-Expr load(Expr m, const llvm::SmallVectorImpl<Bindable> &indices);
-Expr store(Expr val, Expr m, Expr index);
-Expr store(Expr val, Expr m, Bindable index);
-Expr store(Expr val, Expr m, llvm::ArrayRef<Expr> indices);
-Expr store(Expr val, Expr m, const llvm::SmallVectorImpl<Bindable> &indices);
+
+Expr load(Expr m, llvm::ArrayRef<Expr> indices = {});
+inline Expr load(Stmt m, llvm::ArrayRef<Expr> indices = {}) {
+  return load(m.getLHS(), indices);
+}
+Expr store(Expr val, Expr m, llvm::ArrayRef<Expr> indices = {});
+inline Expr store(Stmt val, Expr m, llvm::ArrayRef<Expr> indices = {}) {
+  return store(val.getLHS(), m, indices);
+}
 Expr select(Expr cond, Expr lhs, Expr rhs);
 Expr vector_type_cast(Expr memrefExpr, Type memrefType);
 
-Stmt Return(ArrayRef<Expr> values);
-Stmt Block(llvm::ArrayRef<Stmt> stmts);
+Stmt Return(ArrayRef<Expr> values = {});
+Stmt StmtList(llvm::ArrayRef<Stmt> stmts);
 Stmt For(Expr lb, Expr ub, Expr step, llvm::ArrayRef<Stmt> enclosedStmts);
 Stmt For(const Bindable &idx, Expr lb, Expr ub, Expr step,
          llvm::ArrayRef<Stmt> enclosedStmts);
-Stmt For(llvm::MutableArrayRef<Bindable> indices, llvm::ArrayRef<Expr> lbs,
+Stmt For(llvm::ArrayRef<Expr> indices, llvm::ArrayRef<Expr> lbs,
          llvm::ArrayRef<Expr> ubs, llvm::ArrayRef<Expr> steps,
-         llvm::ArrayRef<Stmt> enclosedStmts);
-Stmt For(llvm::MutableArrayRef<Bindable> indices, llvm::ArrayRef<Bindable> lbs,
-         llvm::ArrayRef<Bindable> ubs, llvm::ArrayRef<Bindable> steps,
-         llvm::ArrayRef<Stmt> enclosedStmts);
-Stmt For(llvm::MutableArrayRef<Bindable> indices, llvm::ArrayRef<Bindable> lbs,
-         llvm::ArrayRef<Expr> ubs, llvm::ArrayRef<Bindable> steps,
          llvm::ArrayRef<Stmt> enclosedStmts);
 
 /// This helper class exists purely for sugaring purposes and allows writing
@@ -520,35 +513,30 @@ Stmt For(llvm::MutableArrayRef<Bindable> indices, llvm::ArrayRef<Bindable> lbs,
 ///    });
 /// ```
 struct Indexed {
-  Indexed(Bindable b) : base(b), indices() {}
   Indexed(Expr e) : base(e), indices() {}
 
   /// Returns a new `Indexed`. As a consequence, an Indexed with attached
   /// indices can never be reused unless it is captured (e.g. via a Stmt).
   /// This is consistent with SSA behavior in MLIR but also allows for some
   /// minimal state and sugaring.
-  Indexed operator[](llvm::ArrayRef<Expr> indices) const;
-  Indexed operator[](llvm::ArrayRef<Bindable> indices) const;
+  Indexed operator()(llvm::ArrayRef<Expr> indices = {});
 
   /// Returns a new `Stmt`.
   /// Emits a `store` and clears the attached indices.
   Stmt operator=(Expr expr); // NOLINT: unconventional-assing-operator
 
   /// Implicit conversion.
-  /// Emits a `load` and clears indices.
-  operator Expr() const {
-    assert(!indices.empty() && "Expected attached indices to Indexed");
-    return load(base, indices);
-  }
+  /// Emits a `load`.
+  operator Expr() { return load(base, indices); }
 
   /// Operator overloadings.
-  Expr operator+(Expr e) const { return static_cast<Expr>(*this) + e; }
-  Expr operator-(Expr e) const { return static_cast<Expr>(*this) - e; }
-  Expr operator*(Expr e) const { return static_cast<Expr>(*this) * e; }
+  Expr operator+(Expr e) { return load(base, indices) + e; }
+  Expr operator-(Expr e) { return load(base, indices) - e; }
+  Expr operator*(Expr e) { return load(base, indices) * e; }
 
 private:
   Expr base;
-  llvm::SmallVector<Expr, 4> indices;
+  llvm::SmallVector<Expr, 8> indices;
 };
 
 } // namespace edsc
