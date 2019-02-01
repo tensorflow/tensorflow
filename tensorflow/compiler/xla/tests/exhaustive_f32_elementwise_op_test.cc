@@ -176,6 +176,9 @@ class ExhaustiveF32ElementwiseOpTest
 };
 
 XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, LogF32) {
+#if !defined(XLA_TEST_BACKEND_CPU) && !defined(XLA_TEST_BACKEND_GPU)
+  error_spec_ = ErrorSpec{0.001, 0.001};
+#endif
   ExhaustivelyTestF32Op(
       [](XlaBuilder* builder, const XlaOp& input) { Log(input); }, std::log,
       /*known_incorrect_range=*/{0, 0});
