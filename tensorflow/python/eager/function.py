@@ -475,11 +475,17 @@ class ConcreteFunction(object):
     tape.variables_accessed(self._func_graph.variables)
 
     tensor_inputs = []
+    variables_used = set([])
     for i, arg in enumerate(args):
       if isinstance(arg, resource_variable_ops.ResourceVariable):
+        # We can pass a variable more than once, and in this case we need to
+        # pass its handle only once.
+        if arg.handle in variables_used:
+          continue
         if arg.trainable:
           tape.variable_accessed(arg)
         tensor_inputs.append(arg.handle)
+        variables_used.add(arg.handle)
       elif isinstance(arg, ops.Tensor):
         tensor_inputs.append(arg)
       elif (self._signature is not None and
