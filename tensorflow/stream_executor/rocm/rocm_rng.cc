@@ -283,35 +283,40 @@ bool GpuRng::SetSeed(Stream* stream, const uint8* seed, uint64 seed_bytes) {
 }  // namespace gpu
 
 void initialize_rocrand() {
-  port::Status status =
-      PluginRegistry::Instance()->RegisterFactory<PluginRegistry::RngFactory>(
-          rocm::kROCmPlatformId, gpu::kGpuRandPlugin, "rocRAND",
-          [](internal::StreamExecutorInterface* parent) -> rng::RngSupport* {
-            gpu::GpuExecutor* rocm_executor =
-                dynamic_cast<gpu::GpuExecutor*>(parent);
-            if (rocm_executor == nullptr) {
-              LOG(ERROR)
-                  << "Attempting to initialize an instance of the hipRAND "
-                  << "support library with a non-ROCM StreamExecutor";
-              return nullptr;
-            }
-
-            gpu::GpuRng* rng = new gpu::GpuRng(rocm_executor);
-            if (!rng->Init()) {
-              // Note: Init() will log a more specific error.
-              delete rng;
-              return nullptr;
-            }
-            return rng;
-          });
-
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to register rocRAND factory: "
-               << status.error_message();
-  }
-
-  PluginRegistry::Instance()->SetDefaultFactory(
+  auto rocRandAlreadyRegistered = PluginRegistry::Instance()->HasFactory(
       rocm::kROCmPlatformId, PluginKind::kRng, gpu::kGpuRandPlugin);
+
+  if (!rocRandAlreadyRegistered) {
+    port::Status status =
+        PluginRegistry::Instance()->RegisterFactory<PluginRegistry::RngFactory>(
+            rocm::kROCmPlatformId, gpu::kGpuRandPlugin, "rocRAND",
+            [](internal::StreamExecutorInterface* parent) -> rng::RngSupport* {
+              gpu::GpuExecutor* rocm_executor =
+                  dynamic_cast<gpu::GpuExecutor*>(parent);
+              if (rocm_executor == nullptr) {
+                LOG(ERROR)
+                    << "Attempting to initialize an instance of the hipRAND "
+                    << "support library with a non-ROCM StreamExecutor";
+                return nullptr;
+              }
+
+              gpu::GpuRng* rng = new gpu::GpuRng(rocm_executor);
+              if (!rng->Init()) {
+                // Note: Init() will log a more specific error.
+                delete rng;
+                return nullptr;
+              }
+              return rng;
+            });
+
+    if (!status.ok()) {
+      LOG(ERROR) << "Unable to register rocRAND factory: "
+                 << status.error_message();
+    }
+
+    PluginRegistry::Instance()->SetDefaultFactory(
+        rocm::kROCmPlatformId, PluginKind::kRng, gpu::kGpuRandPlugin);
+  }
 }
 
 }  // namespace stream_executor

@@ -592,28 +592,33 @@ STREAM_EXECUTOR_ROCM_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 }  // namespace gpu
 
 void initialize_rocfft() {
-  port::Status status =
-      PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
-          rocm::kROCmPlatformId, gpu::kRocFftPlugin, "rocFFT",
-          [](internal::StreamExecutorInterface *parent) -> fft::FftSupport * {
-            gpu::GpuExecutor *rocm_executor =
-                dynamic_cast<gpu::GpuExecutor *>(parent);
-            if (rocm_executor == nullptr) {
-              LOG(ERROR)
-                  << "Attempting to initialize an instance of the rocFFT "
-                  << "support library with a non-ROCM StreamExecutor";
-              return nullptr;
-            }
-
-            return new gpu::ROCMFft(rocm_executor);
-          });
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to register rocFFT factory: "
-               << status.error_message();
-  }
-
-  PluginRegistry::Instance()->SetDefaultFactory(
+  auto rocFftAlreadyRegistered = PluginRegistry::Instance()->HasFactory(
       rocm::kROCmPlatformId, PluginKind::kFft, gpu::kRocFftPlugin);
+
+  if (!rocFftAlreadyRegistered) {
+    port::Status status =
+        PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
+            rocm::kROCmPlatformId, gpu::kRocFftPlugin, "rocFFT",
+            [](internal::StreamExecutorInterface* parent) -> fft::FftSupport* {
+              gpu::GpuExecutor* rocm_executor =
+                  dynamic_cast<gpu::GpuExecutor*>(parent);
+              if (rocm_executor == nullptr) {
+                LOG(ERROR)
+                    << "Attempting to initialize an instance of the rocFFT "
+                    << "support library with a non-ROCM StreamExecutor";
+                return nullptr;
+              }
+
+              return new gpu::ROCMFft(rocm_executor);
+            });
+    if (!status.ok()) {
+      LOG(ERROR) << "Unable to register rocFFT factory: "
+                 << status.error_message();
+    }
+
+    PluginRegistry::Instance()->SetDefaultFactory(
+        rocm::kROCmPlatformId, PluginKind::kFft, gpu::kRocFftPlugin);
+  }
 }
 
 }  // namespace stream_executor
