@@ -492,6 +492,13 @@ class Converter {
   nvinfer1::ITensor* CreateConstantLayer(const TRT_ShapedWeights& weights,
                                          const nvinfer1::Dims& dims);
 
+  // Creates an IConstantLayer scalar which can be broadcasted against dims by
+  // IElementWise layer.
+  Status CreateBroadcastableScalarConstant(OpConverterParams* params,
+                                           float value,
+                                           const nvinfer1::Dims& dims,
+                                           const nvinfer1::ITensor** tensor);
+
  private:
   // Verify the provided batch_size is consistent with batch_size_ and update it
   // if necessary.

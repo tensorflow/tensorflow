@@ -351,6 +351,25 @@ nvinfer1::ITensor* Converter::CreateConstantLayer(
   return trt_tensor;
 }
 
+tensorflow::Status Converter::CreateBroadcastableScalarConstant(
+    OpConverterParams* params, float value, const nvinfer1::Dims& dims,
+    const nvinfer1::ITensor** tensor) {
+  // In order to be broadcastable, the number of dims has to match.
+  nvinfer1::Dims broadcastable_dims(dims);
+  for (int i = 0; i < broadcastable_dims.nbDims; i++) {
+    broadcastable_dims.d[i] = 1;
+  }
+  TRT_ShapedWeights weights = params->weight_store->GetTempWeights(
+      tensorflow::DataType::DT_FLOAT, broadcastable_dims);
+  auto weights_ptr =
+      static_cast<float*>(const_cast<void*>(weights.GetValues()));
+  weights_ptr[0] = value;
+  *tensor = params->converter->CreateConstantLayer(weights, broadcastable_dims);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, params->node_def.name());
+  params->converter->ProvideQuantizationRange(*tensor, value, value);
+  return Status::OK();
+}
+
 inline bool DimsEqual(const nvinfer1::Dims& dim_l,
                       const nvinfer1::Dims& dim_r) {
   if (dim_l.nbDims != dim_r.nbDims) {
@@ -2455,23 +2474,10 @@ tensorflow::Status ConvertLeakyRelu(OpConverterParams* params) {
 
   // Input Tensor
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-  // Create const for alpha. The constant has to have the same rank as the input
-  // in order for TRT to broadcast.
-  nvinfer1::Dims dims;
-  dims.nbDims = inputs.at(0).GetTrtDims().nbDims;
-  for (int i = 0; i < dims.nbDims; i++) {
-    dims.d[i] = 1;
-  }
-  TRT_ShapedWeights weights = params->weight_store->GetTempWeights(
-      tensorflow::DataType::DT_FLOAT, dims);
-  auto weights_ptr =
-      static_cast<float*>(const_cast<void*>(weights.GetValues()));
-  weights_ptr[0] = alpha;
-  nvinfer1::ITensor* const_alpha_tensor =
-      params->converter->CreateConstantLayer(weights, dims);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(const_alpha_tensor, node_def.name());
-  params->converter->ProvideQuantizationRange(const_alpha_tensor, -alpha,
-                                              alpha);
+  // Create const for alpha.
+  const nvinfer1::ITensor* const_alpha_tensor = nullptr;
+  TF_RETURN_IF_ERROR(CreateBroadcastableScalarConstant(
+      params, alpha, tensor->getDimensions(), &const_alpha_tensor));
   // alpha * x
   nvinfer1::IElementWiseLayer* mul_layer =
       params->converter->network()->addElementWise(
@@ -2638,24 +2644,10 @@ tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   params->converter->ProvideQuantizationRange(relu_layer->getOutput(0), 0.0f,
                                               6.0f);
 
-  // Create a constant layer to store the floating point weight i.e. 6.0f This
-  // tensor will be broadcasted uniformly during elementwise `min` operation.
-  // The constant has to have the same rank as the input in order for TRT to
-  // broadcast
-  nvinfer1::Dims dims;
-  dims.nbDims = relu_layer->getOutput(0)->getDimensions().nbDims;
-  for (int i = 0; i < dims.nbDims; i++) {
-    dims.d[i] = 1;
-  }
-  TRT_ShapedWeights weights = params->weight_store->GetTempWeights(
-      tensorflow::DataType::DT_FLOAT, dims);
-  auto weights_ptr =
-      static_cast<float*>(const_cast<void*>(weights.GetValues()));
-  weights_ptr[0] = 6.0f;
-  nvinfer1::ITensor* const6_tensor =
-      params->converter->CreateConstantLayer(weights, dims);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(const6_tensor, node_def.name());
-  params->converter->ProvideQuantizationRange(const6_tensor, 0.0f, 6.0f);
+  // Create a constant layer to store the floating point weight i.e. 6.0f
+  const nvinfer1::ITensor* const6_tensor = nullptr;
+  TF_RETURN_IF_ERROR(CreateBroadcastableScalarConstant(
+      params, 6.0f, relu_layer->getOutput(0)->getDimensions(), &const6_tensor));
 
   // ElementWise Min Operation
   // Min op is a nop for INT8 execution path, as the input tensor
