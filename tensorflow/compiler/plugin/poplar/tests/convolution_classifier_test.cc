@@ -309,16 +309,17 @@ __arithmetic_expression {
 
 loop_body {
   p = (s32[], f16[1,16,16,4], f16[1,1024], f16[4], f16[5,5,64,4], f16[64], f16[7,7,4,64]) parameter(0)
-  arg2.19.2 = f16[4] get-tuple-element(p), index=3
-  call.3 = f16[4] fusion(), kind=kCustom, calls=_pop_op_wide_const
-  arg1.19.1 = f16[1,1024] get-tuple-element(p), index=2
-  convert.19.11 = f32[1,1024] convert(f16[1,1024] arg1.19.1)
+  counter = s32[] get-tuple-element(p), index=0
   arg0.19.0 = f16[1,16,16,4] get-tuple-element(p), index=1
-  arg5.19.5 = f16[7,7,4,64] get-tuple-element(p), index=6
-  call.9 = f16[1,16,16,64] fusion(f16[1,16,16,4] arg0.19.0, f16[7,7,4,64] arg5.19.5), kind=kCustom, calls=pop_convolution.1
-  arg4.19.4 = f16[64] get-tuple-element(p), index=5
-  call.1 = f16[1,16,16,64] fusion(f16[1,16,16,64] call.9, f16[64] arg4.19.4), kind=kCustom, calls=_pop_op_biasadd.1
+  arg1.19.1 = f16[1,1024] get-tuple-element(p), index=2
+  arg2.19.2 = f16[4] get-tuple-element(p), index=3
   arg3.19.3 = f16[5,5,64,4] get-tuple-element(p), index=4
+  arg4.19.4 = f16[64] get-tuple-element(p), index=5
+  arg5.19.5 = f16[7,7,4,64] get-tuple-element(p), index=6
+  call.3 = f16[4] fusion(), kind=kCustom, calls=_pop_op_wide_const
+  convert.19.11 = f32[1,1024] convert(f16[1,1024] arg1.19.1)
+  call.9 = f16[1,16,16,64] fusion(f16[1,16,16,4] arg0.19.0, f16[7,7,4,64] arg5.19.5), kind=kCustom, calls=pop_convolution.1
+  call.1 = f16[1,16,16,64] fusion(f16[1,16,16,64] call.9, f16[64] arg4.19.4), kind=kCustom, calls=_pop_op_biasadd.1
   call.8 = f16[1,16,16,4] fusion(f16[1,16,16,64] call.1, f16[5,5,64,4] arg3.19.3), kind=kCustom, calls=pop_convolution
   call = f16[1,16,16,4] fusion(f16[1,16,16,4] call.8, f16[4] arg2.19.2), kind=kCustom, calls=_pop_op_biasadd
   convert = f32[1,16,16,4] convert(f16[1,16,16,4] call)
@@ -357,7 +358,7 @@ loop_body {
   call.11 = f16[7,7,4,64] fusion(f16[1,16,16,4] arg0.19.0, f16[1,16,16,64] convert.2), kind=kCustom, calls=pop_convolution.3
   multiply.19.88 = f16[7,7,4,64] multiply(f16[7,7,4,64] call.6, f16[7,7,4,64] call.11)
   subtract.19.89 = f16[7,7,4,64] subtract(f16[7,7,4,64] arg5.19.5, f16[7,7,4,64] multiply.19.88)
-  ROOT tuple.19.98 = (f16[4], f16[5,5,64,4], f16[64], f16[7,7,4,64]) tuple(f16[4] subtract.19.65, f16[5,5,64,4] subtract.19.71, f16[64] subtract.19.85, f16[7,7,4,64] subtract.19.89)
+  ROOT tuple.19.98 = (s32[], f16[1,16,16,4], f16[1,1024], f16[4], f16[5,5,64,4], f16[64], f16[7,7,4,64]) tuple(counter, arg0.19.0, arg1.19.1, subtract.19.65, subtract.19.71, subtract.19.85, subtract.19.89)
 }
 
 __repeat {
@@ -629,7 +630,137 @@ ENTRY cluster_1 {
     } else if (it.first->name() == "dot.9.47") {
       EXPECT_EQ(it.second, ConvClassificationType::BACKPROP_FILTER);
     } else {
-      // Should not have missing convolutions
+      // Should not have missing matmuls
+      EXPECT_EQ(1, 0);
+    }
+  }
+}
+
+TEST_F(ConvolutionClassifierTest, TrainingMatMulInRepeat) {
+  std::string hlo_string = R"(
+HloModule top
+
+max7 {
+  x.7.0 = f32[] parameter(0)
+  y.7.1 = f32[] parameter(1)
+  ROOT maximum.7.2 = f32[] maximum(x.7.0, y.7.1)
+}
+
+add8 {
+  x.8.0 = f32[] parameter(0)
+  y.8.1 = f32[] parameter(1)
+  ROOT add.8.2 = f32[] add(x.8.0, y.8.1)
+}
+
+_pop_op_relu {
+  constant.9.10.clone = f32[] constant(0)
+  broadcast.9.11.clone = f32[1,12] broadcast(constant.9.10.clone), dimensions={}
+  arg_0 = f32[1,12] parameter(0)
+  ROOT maximum.9.12.clone = f32[1,12] maximum(broadcast.9.11.clone, arg_0)
+}
+
+_pop_op_relugrad {
+  arg_0.1 = f32[1,12] parameter(0)
+  constant.9.10.clone.1 = f32[] constant(0)
+  broadcast.9.11.clone.1 = f32[1,12] broadcast(constant.9.10.clone.1), dimensions={}
+  greater-than.9.44.clone = pred[1,12] greater-than(arg_0.1, broadcast.9.11.clone.1)
+  arg_1 = f32[1,12] parameter(1)
+  ROOT select.9.45.clone = f32[1,12] select(pred[1,12] greater-than.9.44.clone, arg_1, broadcast.9.11.clone.1)
+}
+
+_pop_op_wide_const {
+  constant.9.6.clone = f32[] constant(0.01)
+  ROOT broadcast.9.39.clone = f32[12,12] broadcast(constant.9.6.clone), dimensions={}
+}
+
+_pop_op_wide_const.1 {
+  constant.9.6.clone.1 = f32[] constant(0.01)
+  ROOT broadcast.9.48.clone = f32[4,12] broadcast(constant.9.6.clone.1), dimensions={}
+}
+
+loop_body {
+  p0 = (s32[], f32[1,4], f32[1,12], f32[12,12], f32[4,12]) parameter(0)
+  counter = s32[] get-tuple-element(p0), index=0
+  arg0.9.0 = f32[1,4] get-tuple-element(p0), index=1
+  arg1.9.1 = f32[1,12] get-tuple-element(p0), index=2
+  arg2.9.2 = f32[12,12] get-tuple-element(p0), index=3
+  arg3.9.3 = f32[4,12] get-tuple-element(p0), index=4
+  call.2 = f32[12,12] fusion(), kind=kCustom, calls=_pop_op_wide_const
+  dot.9.9 = f32[1,12] dot(arg0.9.0, arg3.9.3), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  call = f32[1,12] fusion(dot.9.9), kind=kCustom, calls=_pop_op_relu
+  transpose.9.35 = f32[12,1] transpose(call), dimensions={1,0}
+  dot.9.13 = f32[1,12] dot(call, arg2.9.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  constant.9.14 = f32[] constant(-inf)
+  reduce.9.15 = f32[1] reduce(dot.9.13, constant.9.14), dimensions={1}, to_apply=max7
+  broadcast.9.16 = f32[1,12] broadcast(reduce.9.15), dimensions={0}
+  subtract.9.17 = f32[1,12] subtract(dot.9.13, broadcast.9.16)
+  exponential.9.18 = f32[1,12] exponential(subtract.9.17)
+  constant.9.10 = f32[] constant(0)
+  reduce.9.21 = f32[1] reduce(exponential.9.18, constant.9.10), dimensions={1}, to_apply=add8
+  broadcast.9.32 = f32[1,12] broadcast(reduce.9.21), dimensions={0}
+  divide.9.33 = f32[1,12] divide(exponential.9.18, broadcast.9.32)
+  subtract.9.34 = f32[1,12] subtract(divide.9.33, arg1.9.1)
+  dot.9.36 = f32[12,12] dot(transpose.9.35, subtract.9.34), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  multiply.9.40 = f32[12,12] multiply(call.2, dot.9.36)
+  subtract.9.41 = f32[12,12] subtract(arg2.9.2, multiply.9.40)
+  call.3 = f32[4,12] fusion(), kind=kCustom, calls=_pop_op_wide_const.1
+  transpose.9.46 = f32[4,1] transpose(arg0.9.0), dimensions={1,0}
+  transpose.9.37 = f32[12,12] transpose(arg2.9.2), dimensions={1,0}
+  dot.9.38 = f32[1,12] dot(subtract.9.34, transpose.9.37), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  call.1 = f32[1,12] fusion(call, dot.9.38), kind=kCustom, calls=_pop_op_relugrad
+  dot.9.47 = f32[4,12] dot(transpose.9.46, call.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  multiply.9.49 = f32[4,12] multiply(call.3, dot.9.47)
+  subtract.9.50 = f32[4,12] subtract(arg3.9.3, multiply.9.49)
+  ROOT tuple.9.55 = (s32[], f32[1,4], f32[1,12], f32[12,12], f32[4,12]) tuple(counter, arg0.9.0, arg1.9.1, subtract.9.41, subtract.9.50)
+}
+
+__repeat {
+  repeat_count = s32[] parameter(0)
+  input_tuple = (s32[], f32[1,4], f32[1,12], f32[12,12], f32[4,12]) parameter(1)
+  ROOT call = (s32[], f32[1,4], f32[1,12], f32[12,12], f32[4,12]) call(input_tuple), to_apply=loop_body
+}
+
+ENTRY in {
+  c = s32[] constant(10)
+  p0 = f32[1,4] parameter(0)
+  p1 = f32[1,12] parameter(1)
+  p2 = f32[12,12] parameter(2)
+  p3 = f32[4,12] parameter(3)
+  in = (s32[], f32[1,4], f32[1,12], f32[12,12], f32[4,12]) tuple(c, p0, p1, p2, p3)
+  ROOT r0 = (s32[], f32[1,4], f32[1,12], f32[12,12], f32[4,12]) call(c, in), to_apply=__repeat
+}
+)";
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  config.set_resource_update_to_input_index({2, 3});
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+  auto* module = module_or_status.ValueOrDie().get();
+
+  CompilerAnnotations annotations(module);
+  ConvolutionClassifier classifier(annotations);
+
+  auto res = classifier.Run(module);
+
+  EXPECT_TRUE(res.ok());
+  EXPECT_TRUE(res.ValueOrDie());
+
+  EXPECT_EQ(annotations.classification_map.size(), 5);
+
+  for (auto it : annotations.classification_map) {
+    if (it.first->name() == "dot.9.9") {
+      EXPECT_EQ(it.second, ConvClassificationType::FORWARD);
+    } else if (it.first->name() == "dot.9.13") {
+      EXPECT_EQ(it.second, ConvClassificationType::FORWARD);
+    } else if (it.first->name() == "dot.9.36") {
+      EXPECT_EQ(it.second, ConvClassificationType::BACKPROP_FILTER);
+    } else if (it.first->name() == "dot.9.38") {
+      EXPECT_EQ(it.second, ConvClassificationType::BACKPROP_INPUT);
+    } else if (it.first->name() == "dot.9.47") {
+      EXPECT_EQ(it.second, ConvClassificationType::BACKPROP_FILTER);
+    } else {
+      // Should not have missing matmuls
       EXPECT_EQ(1, 0);
     }
   }
@@ -697,7 +828,7 @@ ENTRY cluster_9 {
     } else if (it.first->name() == "dot.17.6") {
       EXPECT_EQ(it.second, ConvClassificationType::INFERENCE);
     } else {
-      // Should not have missing convolutions
+      // Should not have missing matmuls
       EXPECT_EQ(1, 0);
     }
   }
