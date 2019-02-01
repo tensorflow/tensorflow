@@ -34,6 +34,13 @@ py_binary(
     name = "tf_upgrade",
     srcs = ["tf_upgrade.py"],
     srcs_version = "PY2AND3",
+    deps = [":tf_upgrade_lib"],
+)
+
+py_library(
+    name = "tf_upgrade_lib",
+    srcs = ["tf_upgrade.py"],
+    srcs_version = "PY2AND3",
     deps = [":ast_edits"],
 )
 
@@ -42,7 +49,7 @@ py_test(
     srcs = ["tf_upgrade_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":tf_upgrade",
+        ":tf_upgrade_lib",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",
@@ -89,7 +96,7 @@ py_test(
     srcs = ["tf_upgrade_v2_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":tf_upgrade_v2",
+        ":tf_upgrade_v2_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
