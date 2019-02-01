@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/status_macros.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
+#include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
@@ -49,6 +50,7 @@ PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocBlasPlugin);
 
 namespace wrap {
 
+#ifdef PLATFORM_GOOGLE
 #define STREAM_EXECUTOR_ROCBLAS_WRAP(__name)                       \
   struct WrapperShim__##__name {                                   \
     static const char* kName;                                      \
@@ -63,6 +65,41 @@ namespace wrap {
 #define STREAM_EXECUTOR_ROCBLAS_V2_WRAP(__name) \
   STREAM_EXECUTOR_ROCBLAS_WRAP(__name)
 
+#else
+
+#define STREAM_EXECUTOR_ROCBLAS_WRAP(__name)                              \
+  struct DynLoadShim__##__name {                                          \
+    static const char* kName;                                             \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
+    static void* GetDsoHandle() {                                         \
+      auto s = internal::CachedDsoLoader::GetRocblasDsoHandle();          \
+      return s.ValueOrDie();                                              \
+    }                                                                     \
+    static FuncPtrT LoadOrDie() {                                         \
+      void* f;                                                            \
+      auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                          kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                         \
+                    << " in rocblas DSO; dlerror: " << s.error_message(); \
+      return reinterpret_cast<FuncPtrT>(f);                               \
+    }                                                                     \
+    static FuncPtrT DynLoad() {                                           \
+      static FuncPtrT f = LoadOrDie();                                    \
+      return f;                                                           \
+    }                                                                     \
+    template <typename... Args>                                           \
+    rocblas_status operator()(GpuExecutor* parent, Args... args) {       \
+      gpu::ScopedActivateExecutorContext sac{parent};                    \
+      return DynLoad()(args...);                                          \
+    }                                                                     \
+  } __name;                                                               \
+  const char* DynLoadShim__##__name::kName = #__name;
+
+#define STREAM_EXECUTOR_ROCBLAS_V2_WRAP(__name) \
+  STREAM_EXECUTOR_ROCBLAS_WRAP(__name)
+
+#endif
+  
 #define ROCBLAS_BLAS_ROUTINE_EACH(__macro)                                     \
   __macro(rocblas_snrm2) __macro(rocblas_dnrm2) /*  __macro(rocblas_scnrm2)    \
                                                   __macro(rocblas_dznrm2) */   \

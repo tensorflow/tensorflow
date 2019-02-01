@@ -167,10 +167,6 @@ cc_library(
        "@local_config_rocm//rocm:rocm_headers",
    ] + if_static([
        "@local_config_rocm//rocm:rocblas"
-       # Delete the following line once we switch the rocblas library from
-       # being dynamically linked (current behaviour) to being dynamically
-       # loaded (future behaviour)
-       ], ["@local_config_rocm//rocm:rocblas"
    ])),
    alwayslink = True,
 )
@@ -197,10 +193,6 @@ cc_library(
        "@local_config_rocm//rocm:rocm_headers",
    ] + if_static([
        "@local_config_rocm//rocm:rocfft"
-       # Delete the following line once we switch the rocfft library from
-       # being dynamically linked (current behaviour) to being dynamically
-       # loaded (future behaviour)
-       ], ["@local_config_rocm//rocm:rocfft"
    ])),
    alwayslink = True,
 )
@@ -265,10 +257,6 @@ cc_library(
        "//tensorflow/stream_executor/platform:dso_loader",
    ] + if_static([
        "@local_config_rocm//rocm:hiprand"
-       # Delete the following line once we switch the hiprand library from
-       # being dynamically linked (current behaviour) to being dynamically
-       # loaded (future behaviour)
-       ], ["@local_config_rocm//rocm:hiprand"
    ])),
    alwayslink = True,
 )
