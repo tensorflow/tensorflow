@@ -24,7 +24,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
@@ -81,6 +83,13 @@ namespace tensorrt {
 // TODO(aaroey): put these constants into some class.
 const char* const kInputPHName = "TensorRTInputPH_";
 const char* const kOutputPHName = "TensorRTOutputPH_";
+
+bool IsEngineInput(absl::string_view name) {
+  return absl::StartsWith(name, kInputPHName);
+}
+bool IsEngineOutput(absl::string_view name) {
+  return absl::StartsWith(name, kOutputPHName);
+}
 
 namespace convert {
 using absl::StrAppend;
@@ -900,7 +909,7 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
     // in ConvertIdentity.
     if (output.is_tensor()) {
       const char* tensor_name = output.tensor()->getName();
-      if (!tensorflow::str_util::StartsWith(tensor_name, kInputPHName)) {
+      if (!IsEngineInput(tensor_name)) {
         // TRT initializes tensor names as "(Unnamed ITensor* N)". We rename
         // them to match their corresponding TensorFlow name.
         // Note: ITensors that we create internally within TF-TRT which are
@@ -960,15 +969,17 @@ Status Converter::RenameAndMarkOutputTensors(
       return errors::NotFound("Output tensor not found: ",
                               output.source_tensor_name);
     }
-    // Check if this tensor has already been marked as an output.
+    // Check if this tensor has already been marked as an input or output.
+    //
     // ConvertIdentity can cause the same tensor to be repeated in
     // output_tensors, which can cause us to overwrite the name of the output
     // tensor binding. For example, if we rename OutputPH_0 to OutputPH_1 then
     // we won't be able to locate OutputPH_0 during runtime. To fix this,
     // duplicate the tensor using no-op shuffle.
+    //
     // TODO(tmorris): Remove this work-around once we use TRT's IIdentityLayer
     // in ConvertIdentity.
-    if (tensorflow::str_util::StartsWith(tensor->getName(), kOutputPHName)) {
+    if (IsEngineInput(tensor->getName()) || IsEngineOutput(tensor->getName())) {
       // Using shuffle layer for identity by not setting reshape or transpose.
       nvinfer1::IShuffleLayer* layer = network()->addShuffle(*tensor);
       TFTRT_RETURN_ERROR_IF_NULLPTR(
@@ -3753,8 +3764,7 @@ tensorflow::Status ConvertGraphDefToEngine(
   for (const auto& node_def : gdef.node()) {
     string node_name = node_def.name();
     VLOG(2) << "Converting op name=" << node_name << ", op=" << node_def.op();
-    if (tensorflow::str_util::StartsWith(node_name, kInputPHName) &&
-        (node_def.op() == "Placeholder")) {
+    if (IsEngineInput(node_name) && (node_def.op() == "Placeholder")) {
       int32 slot_number = -1;
       if (!tensorflow::strings::safe_strto32(  // non-absl ok
               node_name.c_str() + strlen(kInputPHName), &slot_number)) {
@@ -3782,8 +3792,7 @@ tensorflow::Status ConvertGraphDefToEngine(
       // engines offline, by calling sess.run() and cache/serialize the engines.
       TF_RETURN_IF_ERROR(
           converter.AddInputTensor(node_name, trt_dtype, trt_dims, batch_size));
-    } else if (tensorflow::str_util::StartsWith(node_name, kOutputPHName) &&
-               (node_def.op() == "Identity")) {
+    } else if (IsEngineOutput(node_name) && (node_def.op() == "Identity")) {
       int32 slot_number = -1;
       if (!tensorflow::strings::safe_strto32(  // non-absl ok
               node_name.c_str() + strlen(kOutputPHName), &slot_number)) {
@@ -3937,7 +3946,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
       TensorId input = ParseTensorName(snode->input(input_idx));
       if (!subgraph_node_names.count(
               string(input.first.data(), input.first.size())) &&
-          !str_util::StartsWith(input.first, kInputPHName)) {
+          !IsEngineInput(input.first)) {
         if (input.second == Graph::kControlSlot) {
           VLOG(1) << "... removing control inputs " << input.first
                   << " from subgraph.";
