@@ -1622,6 +1622,8 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group,
   TRT_TensorOrWeights backprop_output_size;
   const nvinfer1::ITensor* tensor = nullptr;
   if (is_conv2d_backprop_input) {
+    // In the case when Conv2dBackpropInput is used for conv2d_transpose, these
+    // inputs correspond to: output size, filter, and input.
     TF_RETURN_IF_ERROR(CheckInputsWeights(
         *params,
         {{"input_sizes", true}, {"filter", true}, {"out_backprop", false}}));
