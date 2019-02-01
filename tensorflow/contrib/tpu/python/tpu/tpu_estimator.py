@@ -31,9 +31,9 @@ import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.contrib.tpu.ops import gen_tpu_ordinal_selector_op
 from tensorflow.contrib.tpu.proto import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.ops import tpu_ordinal_selector_op
 from tensorflow.contrib.tpu.python.tpu import _tpu_estimator_embedding
 from tensorflow.contrib.tpu.python.tpu import error_handling
 from tensorflow.contrib.tpu.python.tpu import functional as tpu_functional
@@ -354,9 +354,12 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
     hooks = None
     if self.host_call is not None:
       hooks = [_OutfeedHostCallHook(host_call_ret['host_call'])]
-    if tensor_tracer.TensorTracer.is_enabled():
+    loss = self.loss
+    if tensor_tracer.TensorTracer.is_enabled() \
+       and self.train_op is not None:
       tt = tensor_tracer.TensorTracer()
-      tracing_calls = tt.trace_cpu(ops.get_default_graph())
+      (loss, tracing_calls) = tt.trace_cpu(ops.get_default_graph(),
+                                           loss, self.train_op)
       tracing_call_ret = _OutfeedHostCall.create_cpu_hostcall(tracing_calls)
       tracing_functions = tracing_call_ret.values()
       if tracing_functions:
@@ -369,7 +372,7 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
     return model_fn_lib.EstimatorSpec(
         mode=self.mode,
         predictions=self.predictions,
-        loss=self.loss,
+        loss=loss,
         train_op=self.train_op,
         eval_metric_ops=eval_metric_ops,
         export_outputs=self.export_outputs,
@@ -1370,7 +1373,7 @@ def call_computation(computation,
 
     return tpu_functional.TPUPartitionedCall(
         args=tpu_subgraph.captured_inputs,
-        device_ordinal=gen_tpu_ordinal_selector_op.tpu_ordinal_selector(),
+        device_ordinal=tpu_ordinal_selector_op.tpu_ordinal_selector(),
         Tout=[o.type for o in tpu_subgraph.definition.signature.output_arg],
         f=tpu_subgraph)
   else:
@@ -1450,9 +1453,11 @@ class _ModelFnWrapper(object):
       tracing_ops = []
       if tensor_tracer.TensorTracer.is_enabled():
         tt = tensor_tracer.TensorTracer()
-        loss, tracing_ops = tt.trace_tpu(ops.get_default_graph(), loss,
+        loss, tracing_ops = tt.trace_tpu(ops.get_default_graph(),
+                                         loss, train_op,
                                          self._ctx.num_replicas,
-                                         fetches=[loss, train_op])
+                                         self._ctx.num_of_replicas_per_host,
+                                         self._ctx.num_hosts)
 
       if self._ctx.embedding_config is None:
         apply_sparse_grads = []

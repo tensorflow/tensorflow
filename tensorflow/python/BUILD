@@ -650,6 +650,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:execute",
+        "//tensorflow/tools/docs:doc_controls",
     ],
 )
 
@@ -2264,7 +2265,7 @@ py_library(
         ":function_def_to_graph",
         ":functional_ops_gen",
         ":gradients",
-        ":gradients_impl",
+        ":gradients_util",
         ":graph_to_function_def",
         ":pywrap_tensorflow",
         ":util",
@@ -2277,6 +2278,7 @@ py_library(
     name = "while_v2",
     srcs = [
         "ops/while_v2.py",
+        "ops/while_v2_indexed_slices_rewriter.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -2289,7 +2291,7 @@ py_library(
         ":framework_ops",
         ":function_def_to_graph",
         ":functional_ops_gen",
-        ":gradients_impl",
+        ":gradients_util",
         ":list_ops",
         ":tensor_array_ops",
         ":tensor_shape",
@@ -2380,6 +2382,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":gradients_impl",
+        ":gradients_util",
         ":unconnected_gradients",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:tape",
@@ -2403,7 +2406,6 @@ py_library(
         ":framework",
         ":framework_for_generated_wrappers",
         ":framework_ops",
-        ":functional_ops",
         ":image_grad",
         ":linalg_grad",
         ":linalg_ops",
@@ -2415,15 +2417,34 @@ py_library(
         ":optional_grad",
         ":platform",
         ":random_grad",
-        ":resource_variable_ops",
         ":tensor_array_ops",
+        ":unconnected_gradients",
+        ":util",
+    ],
+)
+
+py_library(
+    name = "gradients_util",
+    srcs = [
+        "ops/gradients_util.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":control_flow_ops",
+        ":control_flow_util",
+        ":framework",
+        ":framework_for_generated_wrappers",
+        ":framework_ops",
+        ":functional_ops",
+        ":math_ops",
+        ":platform",
+        ":resource_variable_ops",
         ":tensor_util",
         ":unconnected_gradients",
         ":util",
-        ":variable_scope",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:tape",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -6070,4 +6091,12 @@ py_library(
     name = "tf2",
     srcs = ["tf2.py"],
     srcs_version = "PY2AND3",
+)
+
+cuda_py_test(
+    name = "raw_ops_test",
+    srcs = ["ops/raw_ops_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+    ],
 )

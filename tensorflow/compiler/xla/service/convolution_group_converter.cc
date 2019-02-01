@@ -223,7 +223,7 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
   // We are not yet supporting batch_group of sizes greater than 1.
   TF_RET_CHECK(input_batch == batch_group_count);
 
-  if (!is_cost_viable_(convolution)) {
+  if (!is_cost_viable_(convolution) || filter_expansion_) {
     // We first obtain the expanded the filter (which is the convolution
     // output). The batch dimension is the expanded one (which originally
     // represents kernel input feature dimension). We mask the filter to zero

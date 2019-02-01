@@ -66,7 +66,7 @@ tensorflow::Status TRTOptimizationPass::Init(
     max_workspace_size_bytes_ = params.at("max_workspace_size_bytes").i();
   }
   if (params.count("precision_mode")) {
-    TF_RETURN_IF_ERROR(GetPrecisionMode(
+    TF_RETURN_IF_ERROR(TrtPrecisionModeFromName(
         Uppercase(params.at("precision_mode").s()), &precision_mode_));
   }
   if (params.count("use_calibration")) {
@@ -227,7 +227,7 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
   tensorflow::tensorrt::convert::ConversionParams cp;
 
-  if (use_calibration_ && precision_mode_ != INT8MODE) {
+  if (use_calibration_ && precision_mode_ != TrtPrecisionMode::INT8) {
     VLOG(1) << "Calibration with FP32 or FP16 is not implemented. "
             << "Falling back to use_calibration = False."
             << "Note that the default value of use_calibration is True.";

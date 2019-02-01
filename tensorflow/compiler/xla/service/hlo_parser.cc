@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_lexer.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
@@ -2148,6 +2149,16 @@ bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
             !SetValueInLiteral(loc, value, linear_index++, literal)) {
           return false;
         }
+        break;
+      }
+      case TokKind::kDots: {
+        if (nest_level != 1) {
+          return TokenError(absl::StrFormat(
+              "expects `...` at nest level 1, but sees it at nest level %d",
+              nest_level));
+        }
+        elems_seen_per_dim[0] = shape.dimensions(0);
+        lexer_.Lex();
         break;
       }
       case TokKind::kComma:

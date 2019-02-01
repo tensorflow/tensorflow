@@ -242,11 +242,11 @@ tf_module {
   }
   member_method {
     name: "max_pool_with_argmax"
-    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'Targmax\', \'name\', \'output_dtype\'], varargs=None, keywords=None, defaults=[\'NHWC\', \"<dtype: \'int64\'>\", \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'Targmax\', \'name\', \'output_dtype\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "moments"
-    argspec: "args=[\'x\', \'axes\', \'shift\', \'name\', \'keep_dims\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'None\'], "
+    argspec: "args=[\'x\', \'axes\', \'shift\', \'name\', \'keep_dims\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "nce_loss"
@@ -362,7 +362,7 @@ tf_module {
   }
   member_method {
     name: "sufficient_statistics"
-    argspec: "args=[\'x\', \'axes\', \'shift\', \'keep_dims\', \'name\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'None\'], "
+    argspec: "args=[\'x\', \'axes\', \'shift\', \'keep_dims\', \'name\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "tanh"
@@ -382,7 +382,7 @@ tf_module {
   }
   member_method {
     name: "weighted_moments"
-    argspec: "args=[\'x\', \'axes\', \'frequency_weights\', \'name\', \'keep_dims\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+    argspec: "args=[\'x\', \'axes\', \'frequency_weights\', \'name\', \'keep_dims\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "with_space_to_batch"

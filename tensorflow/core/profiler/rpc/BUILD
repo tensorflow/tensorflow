@@ -14,7 +14,7 @@ tf_cuda_library(
         "//tensorflow/contrib/tpu/profiler:tpu_profiler_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/eager:context",
-        "//tensorflow/core/profiler/lib:eager_profiler",
+        "//tensorflow/core/profiler/lib:profiler_session",
     ],
     alwayslink = 1,
 )

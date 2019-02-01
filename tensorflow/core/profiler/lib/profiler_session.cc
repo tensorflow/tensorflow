@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/lib/eager_profiler.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
 #include <string>
 #include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
-#include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/platform/device_tracer.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/internal/gpu/tracer.h"
+#include "tensorflow/core/profiler/internal/runtime/eager_profiler.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
@@ -72,90 +72,55 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
 
 }  // namespace
 
-/*static*/ std::unique_ptr<EagerProfiler> EagerProfiler::Create(
+/*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create(
     EagerContext* const context) {
-  return absl::WrapUnique(new EagerProfiler(context));
+  return absl::WrapUnique(new ProfilerSession(context));
 }
 
-void EagerProfiler::BeforeClearRunMetadata() {
-  mutex_lock l(mutex_);
-  run_metadata_.MergeFrom(*context_->RunMetadataProto());
-}
-
-Status EagerProfiler::Status() {
+Status ProfilerSession::Status() {
   mutex_lock l(mutex_);
   return status_;
 }
 
-Status EagerProfiler::SerializeToString(string* content) {
+Status ProfilerSession::SerializeToString(string* content) {
   mutex_lock l(mutex_);
   if (!status_.ok()) return status_;
-  Stop();
-
-  // Get profiling data from device tracer
-  if (device_tracer_ != nullptr) {
-    std::unique_ptr<StepStatsCollector> step_stats_collector(
-        new StepStatsCollector(run_metadata_.mutable_step_stats()));
-    tensorflow::Status s = device_tracer_->Collect(step_stats_collector.get());
-    if (!s.ok()) {
-      device_tracer_.reset(nullptr);
-      LOG(WARNING) << "Failed to collect data from device tracer. "
-                   << s.error_message();
-    }
-    step_stats_collector->Finalize();
+  for (auto& profiler : profilers_) {
+    profiler->Stop().IgnoreError();
+  }
+  RunMetadata run_metadata;
+  for (auto& profiler : profilers_) {
+    profiler->CollectData(&run_metadata).IgnoreError();
   }
 
   tpu::Trace trace;
 
-  ConvertRunMetadataToTraceEvent(&run_metadata_, &trace, start_time_micros_);
+  ConvertRunMetadataToTraceEvent(&run_metadata, &trace, start_time_micros_);
 
   trace.SerializeToString(content);
   return Status::OK();
 }
 
-EagerProfiler::EagerProfiler(EagerContext* const context)
-    : context_(context),
-      start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
-  LOG(INFO) << "Eager Profiler started.";
+ProfilerSession::ProfilerSession(EagerContext* const context)
+    : start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
+  LOG(INFO) << "Profile Session started.";
 
-  status_ = context_->RegisterRunMetadataListener(this);
-  if (!status_.ok()) {
-    context_ = nullptr;
-    LOG(WARNING)
-        << "Eager Profiler failed to start. Another profiler is running.";
-    return;
+  if (context != nullptr) {
+    profilers_.push_back(
+        tensorflow::profiler::runtime::EagerProfiler::Create(context));
   }
+  profilers_.push_back(tensorflow::profiler::gpu::Tracer::Create());
 
-  // TODO(fishx): Allow user disable device tracer.
-  device_tracer_ = CreateDeviceTracer();
-  if (!device_tracer_) {
-    LOG(WARNING) << "Continue profiling without device tracer. "
-                 << "Failed to create device tracer.";
-    return;
-  }
-  class Status s = device_tracer_->Start();
-  if (!s.ok()) {
-    device_tracer_.reset(nullptr);
-    LOG(WARNING) << "Continue profiling without device tracer. "
-                 << s.error_message();
+  status_ = Status::OK();
+
+  for (auto& profiler : profilers_) {
+    profiler->Start().IgnoreError();
   }
 }
 
-EagerProfiler::~EagerProfiler() { Stop(); }
-
-void EagerProfiler::Stop() {
-  if (context_ != nullptr) {
-    context_->ClearRunMetadataListener();
-    run_metadata_.MergeFrom(*context_->RunMetadataProto());
-    context_ = nullptr;
-    if (device_tracer_ != nullptr) {
-      tensorflow::Status s = device_tracer_->Stop();
-      if (!s.ok()) {
-        device_tracer_.reset(nullptr);
-        LOG(WARNING) << "Failed to stop device tracer. " << s.error_message();
-      }
-    }
-    LOG(INFO) << "Eager Profiler ended with status:" << status_;
+ProfilerSession::~ProfilerSession() {
+  for (auto& profiler : profilers_) {
+    profiler->Stop().IgnoreError();
   }
 }
 

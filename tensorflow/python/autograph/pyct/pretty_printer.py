@@ -25,10 +25,11 @@ import termcolor
 class PrettyPrinter(gast.NodeVisitor):
   """Print AST nodes."""
 
-  def __init__(self, color):
+  def __init__(self, color, noanno):
     self.indent_lvl = 0
     self.result = ''
     self.color = color
+    self.noanno = noanno
 
   def _color(self, string, color, attrs=None):
     if self.color:
@@ -68,6 +69,8 @@ class PrettyPrinter(gast.NodeVisitor):
 
     self.indent_lvl += 1
     for f in node._fields:
+      if self.noanno and f.startswith('__'):
+        continue
       if not hasattr(node, f):
         self._print('%s%s' % (self._indent(), self._warning('%s=<unset>' % f)))
         continue
@@ -103,8 +106,8 @@ class PrettyPrinter(gast.NodeVisitor):
     self.indent_lvl -= 1
 
 
-def fmt(node, color=True):
-  printer = PrettyPrinter(color)
+def fmt(node, color=True, noanno=False):
+  printer = PrettyPrinter(color, noanno)
   if isinstance(node, (list, tuple)):
     for n in node:
       printer.visit(n)

@@ -23,6 +23,27 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
+
+// Used in tests and template parameters to control which version of depthwise
+// convolution is called. Primarily for reference code, and specializations
+// forced in tests.
+enum class DepthwiseConvKernelInvocation {
+  // Run all tests against kUseStandardEntry even if also testing another
+  // kernel, since we need to be sure that the main DepthwiseConv() function in
+  // optimized_ops.h dispatches to a correctly-executing kernel.
+  kNone = 0,                 // The "default" option: use the normal
+                             // DepthwiseConv kernel (entry) function.
+  kUseGenericKernel,         // Forced use of generic kernel.
+  kUseNeon3x3,               // 3x3 kernel that uses NEON when available.
+  kUseNeon3x3DotProduct,     // 3x3 kernel that uses dot-product enabled NEON
+                             // when available.
+  kUseCModel3x3DotProduct,   // 3x3 kernel, reference C model that is intended
+                             // to match overall design NEON code.
+  kUseUnwound3x3DotProduct,  // 3x3 kernel, reference C model with unwound loops
+                             // and some arrays.
+  kUseIntrinsics3x3DotProduct,  // 3x3 kernel using NEON intrinsics.
+};
+
 namespace reference_ops {
 
 inline void DepthwiseConv(
