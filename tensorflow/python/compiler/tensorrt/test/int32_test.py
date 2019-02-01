@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Script to test TF-TensorRT integration."""
+"""Test conversion of graphs involving INT32 tensors and operations."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,59 +20,62 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.tensorrt.test import tf_trt_integration_test_base as trt_test
+from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
 
 
-class ConstBroadcastTest(trt_test.TfTrtIntegrationTestBase):
+class ExcludeUnsupportedInt32Test(trt_test.TfTrtIntegrationTestBase):
+
+  def _ConstOp(self, shape, dtype):
+    return constant_op.constant(np.random.randn(*shape), dtype=dtype)
 
   def GetParams(self):
-    """Test for Constant broadcasting in TF-TRT."""
-    dtype = dtypes.float32
+    """Test exclusion of ops which are not supported in INT32 mode by TF-TRT"""
     input_name = 'input'
-    input_dims = [5, 12, 12, 2]
     output_name = 'output'
+    input_dims = [100, 4]
+    dtype = dtypes.int32
     g = ops.Graph()
     with g.as_default():
       x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
-      filt1 = constant_op.constant(
-          0.3, shape=(3, 3, 2, 1), dtype=dtype, name='filt1')
-      y1 = nn.conv2d(x, filt1, strides=[1, 1, 1, 1], padding='SAME', name='y1')
-      z1 = nn.relu(y1, name='z1')
-      filt2 = constant_op.constant(
-          np.random.randn(9), shape=(3, 3, 1, 1), dtype=dtype, name='filt2')
-      y2 = nn.conv2d(z1, filt2, strides=[1, 1, 1, 1], padding='SAME', name='y2')
-      z2 = nn.relu(y2, name='z')
-      filt3 = constant_op.constant(
-          np.random.randn(3, 3, 1, 1),
-          shape=(3, 3, 1, 1),
-          dtype=dtype,
-          name='filt3')
-      y3 = nn.conv2d(z2, filt3, strides=[1, 1, 1, 1], padding='SAME', name='y3')
-      nn.relu(y3, name=output_name)
+      b = self._ConstOp((4, 10), dtype)
+      x = math_ops.matmul(x, b)
+      b = self._ConstOp((10,), dtype)
+      x = nn.bias_add(x, b)
+      x = array_ops.identity(x, name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
         input_dims=[[input_dims]],
         output_names=[output_name],
-        expected_output_dims=[[[5, 12, 12, 1]]])
+        expected_output_dims=[[[100, 10]]])
+
+  def GetConversionParams(self, run_params):
+    """Return a ConversionParams for test."""
+    conversion_params = super(ExcludeUnsupportedInt32Test,
+                              self).GetConversionParams(run_params)
+    return conversion_params._replace(
+        max_batch_size=100,
+        maximum_cached_engines=1,
+        # Disable layout optimizer, since it will convert BiasAdd with NHWC
+        # format to NCHW format under four dimentional input.
+        rewriter_config=trt_test.OptimizerDisabledRewriterConfig())
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ['TRTEngineOp_0']
+    return []
 
-  def ExpectedAbsoluteTolerance(self, run_params):
-    """The absolute tolerance to compare floating point results."""
-    return 1.e-04 if run_params.precision_mode == 'FP32' else 1.e-02
-
-  def ExpectedRelativeTolerance(self, run_params):
-    """The relative tolerance to compare floating point results."""
-    return 1.e-04 if run_params.precision_mode == 'FP32' else 1.e-02
+  def ShouldRunTest(self, run_params):
+    """Whether to run the test."""
+    # TODO(aaroey): Trt 4.0 forbids conversion for tensors with rank <3 in int8
+    # mode, which is a bug. Re-enable this when trt library is fixed.
+    return not trt_test.IsQuantizationMode(run_params.precision_mode)
 
 
 if __name__ == '__main__':

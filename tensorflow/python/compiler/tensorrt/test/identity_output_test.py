@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Model script to test TF-TensorRT integration."""
+"""This test checks a situation where the same tensor is considered as an output
+
+multiple times because it has been duplicated by 2+ indentity ops. Previously,
+the tensor would be renamed multiple times, overwriting the output binding name
+which resulted in a runtime error when the binding would not be found.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,57 +25,50 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.tensorrt.test import tf_trt_integration_test_base as trt_test
+from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
+class IdentityTest(trt_test.TfTrtIntegrationTestBase):
 
   def _ConstOp(self, shape):
     return constant_op.constant(np.random.randn(*shape), dtype=dtypes.float32)
 
   def GetParams(self):
-    """Tests for scale & elementwise layers in TF-TRT."""
-    input_name = "input"
-    input_dims = [10, 24, 24, 20]
-    output_name = "output"
+    """Testing engine with the same tensor repeated as output via identity."""
+    input_name = 'input'
+    input_dims = [100, 32]
     g = ops.Graph()
     with g.as_default():
       x = array_ops.placeholder(
           dtype=dtypes.float32, shape=input_dims, name=input_name)
-      for weights_shape in [
-          (1,),  # scale
-          (24, 1, 1),  # scale
-          (24, 24, 20),  # scale
-          (20,),  # elementwise
-          (1, 24, 1, 1),  # elementwise
-          (1, 24, 24, 1),  # elementwise
-          (1, 24, 24, 20),  # elementwise
-          (24, 20),  # elementwise
-      ]:
-        a = self._ConstOp(weights_shape)
-        f = x + a
-        x = self.trt_incompatible_op(f)
-        a = self._ConstOp(weights_shape)
-        f = a + x
-        x = self.trt_incompatible_op(f)
-      gen_array_ops.reshape(x, [5, -1], name=output_name)
+
+      b = self._ConstOp((32, 4))
+      x1 = math_ops.matmul(x, b)
+      b = self._ConstOp((1, 4))
+      x1 = x1 + b
+
+      out1 = array_ops.identity(x1, name='output1')
+      out2 = array_ops.identity(x1, name='output2')
+      iden1 = array_ops.identity(x1)
+      out3 = array_ops.identity(iden1, name='output3')
+
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
         input_dims=[[input_dims]],
-        output_names=[output_name],
-        expected_output_dims=[[[5, 23040]]])
+        output_names=['output1', 'output2', 'output3'],
+        expected_output_dims=[[[100, 4]] * 3])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_%d" % i for i in range(16)]
+    return ['TRTEngineOp_0']
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

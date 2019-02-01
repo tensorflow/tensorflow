@@ -23,10 +23,10 @@ import os
 # pylint: disable=unused-import
 from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
 # pylint: enable=unused-import
-from tensorflow.contrib.tensorrt.python import trt_convert
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
