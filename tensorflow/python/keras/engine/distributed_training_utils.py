@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.client import session as session_module
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
@@ -349,34 +348,6 @@ def init_restore_or_wait_for_variables():
     K._initialize_variables(session)  # pylint: disable=protected-access
   else:
     _wait_for_variable_initialization(session)
-
-
-def configure_and_create_session(distribution_strategy):
-  """Configure session config and create a session with it."""
-  # TODO(priyag): Throw error if a session already exists.
-  session_config = K.get_default_session_config()
-
-  if is_tpu_strategy(distribution_strategy):
-    # TODO(priyag, yuefengz): Remove this workaround when Distribute
-    # Coordinator is integrated with keras and we can create a session from
-    # there.
-    distribution_strategy.configure(session_config)
-    master = distribution_strategy.extended._tpu_cluster_resolver.master()  # pylint: disable=protected-access
-    session = session_module.Session(config=session_config, target=master)
-  else:
-    worker_context = dc_context.get_current_worker_context()
-    if worker_context:
-      dc_session_config = worker_context.session_config
-      # Merge the default session config to the one from distribute coordinator,
-      # which is fine for now since they don't have conflicting configurations.
-      dc_session_config.MergeFrom(session_config)
-      session = session_module.Session(
-          config=dc_session_config, target=worker_context.master_target)
-    else:
-      distribution_strategy.configure(session_config)
-      session = session_module.Session(config=session_config)
-
-  K.set_session(session)
 
 
 def validate_inputs(x, y, distribution_strategy, allow_partial_batch=False):

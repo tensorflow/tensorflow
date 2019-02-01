@@ -34,6 +34,9 @@ from tensorflow.python.training import monitored_session
 from tensorflow.python.training import server_lib
 
 
+_thread_local = threading.local()
+
+
 class _TaskType(object):
   PS = "ps"
   WORKER = "worker"
@@ -383,6 +386,27 @@ def _run_std_server(cluster_spec=None,
                     rpc_layer=None,
                     environment=None):
   """Runs a standard server."""
+  # Check if the Server is already running. If so, assert that no configuration
+  # options have changed, and return the existing Server. This allows us to
+  # call `run_distribute_coordinator` multiple times.
+  if getattr(_thread_local, "server", None) is not None:
+    assert _thread_local.cluster_spec == cluster_spec
+    assert _thread_local.task_type == task_type
+    assert _thread_local.task_id == task_id
+    assert _thread_local.session_config_str == repr(session_config)
+    assert _thread_local.rpc_layer == rpc_layer
+    assert _thread_local.environment == environment
+    return _thread_local.server
+  else:
+    # This method is not thread-safe.
+    _thread_local.server_started = True
+    _thread_local.cluster_spec = cluster_spec
+    _thread_local.task_type = task_type
+    _thread_local.task_id = task_id
+    _thread_local.session_config_str = repr(session_config)
+    _thread_local.rpc_layer = rpc_layer
+    _thread_local.environment = environment
+
   assert cluster_spec
   target = cluster_spec.task_address(task_type, task_id)
   if rpc_layer:
@@ -404,8 +428,6 @@ def _run_std_server(cluster_spec=None,
 
   if environment == "google":
     server = _FakeServer()
-    server.start()
-    return server
   else:
     if session_config:
       logging.info(
@@ -420,8 +442,10 @@ def _run_std_server(cluster_spec=None,
         task_index=task_id,
         config=session_config,
         protocol=rpc_layer)
-    server.start()
-    return server
+
+  server.start()
+  _thread_local.server = server
+  return server
 
 
 def _run_between_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
@@ -719,7 +743,8 @@ def run_distribute_coordinator(worker_fn,
 
   Returns:
     In the client job, return the value returned by `worker_fn` if
-    it is in-graph replication; return None otherwise.
+    it is in-graph replication or INDEPENDENT_WORKER mode; return None
+    otherwise.
   """
   tf_config = json.loads(os.environ.get("TF_CONFIG", "{}"))
   if not cluster_spec:
@@ -813,23 +838,22 @@ def run_distribute_coordinator(worker_fn,
         session_config=session_config,
         rpc_layer=rpc_layer,
         environment=environment)
-
     if task_type in [_TaskType.CHIEF, _TaskType.WORKER]:
       if strategy.extended.experimental_between_graph:
         # All jobs run `worker_fn` if between-graph.
-        _run_single_worker(worker_fn, strategy, cluster_spec, task_type,
-                           task_id, session_config, rpc_layer)
+        return _run_single_worker(worker_fn, strategy, cluster_spec, task_type,
+                                  task_id, session_config, rpc_layer)
       else:
         # Only one node runs `worker_fn` if in-graph.
         context = _WorkerContext(strategy, cluster_spec, task_type, task_id)
         if context.is_chief:
-          _run_single_worker(worker_fn, strategy, cluster_spec, None, None,
-                             session_config, rpc_layer)
+          return _run_single_worker(worker_fn, strategy, cluster_spec, None,
+                                    None, session_config, rpc_layer)
         else:
           server.join()
     elif task_type == _TaskType.EVALUATOR:
-      _run_single_worker(eval_fn, eval_strategy, cluster_spec, task_type,
-                         task_id, session_config, rpc_layer)
+      return _run_single_worker(eval_fn, eval_strategy, cluster_spec, task_type,
+                                task_id, session_config, rpc_layer)
     else:
       if task_type != _TaskType.PS:
         raise ValueError("Unexpected task_type: %r" % task_type)
