@@ -1195,6 +1195,7 @@ tf_py_test(
     srcs = ["framework/registry_test.py"],
     additional_deps = [
         ":framework_for_generated_wrappers",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
     main = "framework/registry_test.py",
