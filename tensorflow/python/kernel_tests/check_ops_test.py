@@ -1457,6 +1457,205 @@ class AssertTypeTest(test.TestCase):
       check_ops.assert_type(floats, dtypes.float32)
 
 
+class AssertShapesTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_raise_shape_mismatch(self):
+    x_known = array_ops.ones([3, 2], name="x")
+    y_known = array_ops.ones([2, 3], name="y")
+
+    shapes = {
+        x_known: ('N', 'Q'),
+        y_known: ('N', 'D'),
+    }
+    regex = r"Specified by tensor .* dimension 0.  " \
+            r"Tensor .* dimension 0 must have size 3.  Received size 2"
+    self.raises_static_error(shapes=shapes, regex=regex)
+
+    if not context.executing_eagerly():
+      x_unknown = array_ops.placeholder(dtypes.float32, [None, 2], name="x")
+      y_unknown = array_ops.placeholder(dtypes.float32, [None, 3], name="y")
+
+      shapes = {
+          x_unknown: ('N', 'Q'),
+          y_unknown: ('N', 'D'),
+      }
+      regex = r"\[Specified by tensor x.* dimension 0\] " \
+              r"\[Tensor y.* dimension\] \[0\] \[must have size\] \[3\]"
+      feed_dict = {
+          x_unknown: np.ones([3, 2]),
+          y_unknown: np.ones([2, 3])
+      }
+      self.raises_dynamic_error(shapes=shapes, regex=regex, feed_dict=feed_dict)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_raise_shape_explicit_mismatch(self):
+    x_known = array_ops.ones([3, 2], name="x")
+    y_known = array_ops.ones([2, 3], name="y")
+
+    shapes = {
+        x_known: (3, 'Q'),
+        y_known: (3, 'D'),
+    }
+    regex = r"Specified explicitly.  " \
+            r"Tensor .* dimension 0 must have size 3.  Received size 2"
+    self.raises_static_error(shapes=shapes, regex=regex)
+
+    if not context.executing_eagerly():
+      x_unknown = array_ops.placeholder(dtypes.float32, [None, 2], name="xa")
+      y_unknown = array_ops.placeholder(dtypes.float32, [None, 3], name="y")
+
+      shapes = {
+          x_unknown: (3, 'Q'),
+          y_unknown: (3, 'D'),
+      }
+      regex = r"\[Specified explicitly\] \[Tensor y.* dimension\] \[0\] " \
+              r"\[must have size\] \[3\]"
+      feed_dict = {
+          x_unknown: np.ones([3, 2]),
+          y_unknown: np.ones([2, 3])
+      }
+      self.raises_dynamic_error(shapes=shapes, regex=regex, feed_dict=feed_dict)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_checking_event_shape_only(self):
+    x = array_ops.ones([1, 2, 3, 2], name="x")
+    y = array_ops.ones([2, 3, 3], name="y")
+    assertion = check_ops.assert_shapes(
+        shapes={
+            x: ('N', 'Q'),
+            y: ('N', 'D'),
+        },
+        event_shape_only=True
+    )
+    with ops.control_dependencies([assertion]):
+      out = array_ops.identity(x)
+    self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_no_op_when_specified_as_unknown(self):
+    x = array_ops.constant([1, 1], name="x")
+    assertion = check_ops.assert_shapes({
+        x: None
+    })
+    with ops.control_dependencies([assertion]):
+      out = array_ops.identity(x)
+    self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_dim_size_specfified_as_unknown(self):
+    x = array_ops.ones([1, 2, 3], name="x")
+    y = array_ops.ones([2, 1], name="y")
+    assertion = check_ops.assert_shapes({
+        x: (None, 2, None),
+        y: (None, 1),
+    })
+    with ops.control_dependencies([assertion]):
+      out = array_ops.identity(x)
+    self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_raises_incorrect_rank(self):
+    rank_two_shapes = [
+        (1, 1),
+        (1, 3),
+        ('a', 'b'),
+        (None, None)
+    ]
+    rank_three_shapes = [
+        (1, 1, 1),
+        ('a', 'b', 'c'),
+        (None, None, None),
+        (1, 'b', None),
+    ]
+
+    def raises_static_rank_error(shapes, x, correct_rank, actual_rank):
+      for shape in shapes:
+        regex = r"Tensor .* must have rank %d.  Received rank %d" % \
+                (correct_rank, actual_rank)
+        self.raises_static_error(shapes={x: shape}, regex=regex)
+
+    def raises_dynamic_rank_error(shapes, x, x_value, correct_rank):
+      for shape in shapes:
+        regex = r"Tensor .* must have rank\] \[%d\]" % correct_rank
+        self.raises_dynamic_error(shapes={x: shape}, regex=regex,
+                                  feed_dict={x: x_value})
+
+    raises_static_rank_error(rank_two_shapes, array_ops.ones([1]),
+                             correct_rank=2, actual_rank=1)
+    raises_static_rank_error(rank_three_shapes, array_ops.ones([1, 1]),
+                             correct_rank=3, actual_rank=2)
+    raises_static_rank_error(rank_three_shapes, array_ops.constant(1),
+                             correct_rank=3, actual_rank=0)
+
+    if not context.executing_eagerly():
+      raises_dynamic_rank_error(
+          rank_two_shapes, array_ops.placeholder(dtypes.float32, None), 5,
+          correct_rank=2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_correctly_matching(self):
+    u = array_ops.constant(1, name="v")
+    v = array_ops.ones([1, 2], name="v")
+    w = array_ops.ones([3], name="w")
+    x = array_ops.ones([1, 2, 3], name="x")
+    y = array_ops.ones([3, 1, 2], name="y")
+    z = array_ops.ones([2, 3, 1], name="z")
+    assertion = check_ops.assert_shapes({
+        x: ('a', 'b', 'c'),
+        y: ('c', 'a', 'b'),
+        z: ('b', 'c', 'a'),
+        v: ('a', 'b'),
+        w: ('c',),
+        u: 'a'
+    })
+    with ops.control_dependencies([assertion]):
+      out = array_ops.identity(x)
+    self.evaluate(out)
+    assertion = check_ops.assert_shapes({
+        x: (1, 'b', 'c'),
+        y: ('c', 'a', 2),
+        z: ('b', 3, 'a'),
+        v: ('a', 2),
+        w: (3,),
+        u: 1
+    })
+    with ops.control_dependencies([assertion]):
+      out = array_ops.identity(x)
+    self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_variable_length_symbols(self):
+    x = array_ops.ones([4, 1], name="x")
+    y = array_ops.ones([4, 2], name="y")
+    assertion = check_ops.assert_shapes({
+        x: ('num_observations', 'input_dimensionality'),
+        y: ('num_observations', 'output_dimensionality'),
+    })
+    with ops.control_dependencies([assertion]):
+      out = array_ops.identity(x)
+    self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_empty_shapes_dict_no_op(self):
+    assertion = check_ops.assert_shapes({})
+    with ops.control_dependencies([assertion]):
+      out = array_ops.identity(0)
+    self.evaluate(out)
+
+  def raises_static_error(self, shapes, regex):
+    with self.assertRaisesRegexp(ValueError, regex):
+      check_ops.assert_shapes(shapes)
+
+  def raises_dynamic_error(self, shapes, regex, feed_dict):
+    with self.session() as sess:
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, regex):
+        assertion = check_ops.assert_shapes(shapes)
+        with ops.control_dependencies([assertion]):
+          out = array_ops.identity(0)
+        sess.run(out, feed_dict=feed_dict)
+
+
 class IsStrictlyIncreasingTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes

@@ -60,6 +60,7 @@ __all__ = [
     'assert_same_float_dtype',
     'assert_scalar',
     'assert_type',
+    'assert_shapes',
     'is_non_decreasing',
     'is_numeric_tensor',
     'is_strictly_increasing',
@@ -1502,6 +1503,206 @@ def assert_type(tensor, tf_type, message=None, name=None):
                                                        tf_type))
 
     return control_flow_ops.no_op('statically_determined_correct_type')
+
+
+@tf_export('debugging.assert_shapes', 'assert_shapes')
+def assert_shapes(shapes, event_shape_only=False, data=None, summarize=None,
+                  message=None, name=None):
+  """Assert tensor shapes and dimension size relationships between tensors.
+
+  This Op checks that a collection of tensors shape relationships
+  satisfies given constraints.
+
+  Example:
+
+  ```python
+  tf.assert_shapes({
+    x: ('N', 'Q'),
+    y: ('N', 'D'),
+    param: 'Q',
+    other_param: 2
+  })
+  ```
+
+  If `x`, `y`, `param` or `other_param` does not have a shape that satisfies
+  all specified constraints, `message`, as well as the first `summarize` entries
+  of the first encountered violating tensor are printed, and
+  `InvalidArgumentError` is raised.
+
+  Size entries in the specified shapes are checked explicitly if of type `int`,
+  else checked against other entries by their __hash__.
+
+  Args:
+    shapes: dictionary with (`Tensor` to shape) items. A shape is either a
+    tuple/list of size entries or a single size entry.
+    event_shape_only: `bool`, if to apply constraints on only
+      the rightmost dimensions or on the whole shapes (default).
+    message: A string to prefix to the default message.
+    summarize: Print this many entries of each tensor.
+    name: A name for this operation (optional).  Defaults to "assert_shapes".
+
+  Returns:
+    Op raising `InvalidArgumentError` unless all shape constraints are
+    satisfied.
+    If static checks determine all constraints are satisfied, a `no_op` is
+    returned.
+
+  Raises:
+    ValueError:  If static checks determine any shape constraint is violated.
+  """
+  message = message or ''
+  with ops.name_scope(name, 'assert_shapes', [shapes, data]):
+
+    # Shape specified as None implies no constraint
+    shapes = {
+        x: shapes[x]
+        for x in shapes
+        if shapes[x] is not None
+    }
+
+    shapes = {
+        ops.convert_to_tensor(x): shapes[x]
+        for x in shapes
+    }
+
+    executing_eagerly = context.executing_eagerly()
+
+    def rank(shape):
+      if isinstance(shape, (tuple, list)):
+        return len(shape)
+      return 0
+
+    rank_assertions = []
+    for x in shapes.keys():
+      shape = shapes[x]
+      if event_shape_only:
+        assertion = assert_rank_at_least(
+            x=x, rank=rank(shape), data=data, summarize=summarize,
+            message=message, name=name)
+      else:
+        assertion = assert_rank(
+            x=x, rank=rank(shape), data=data, summarize=summarize,
+            message=message, name=name)
+      rank_assertions.append(assertion)
+
+    def actual_dimension_sizes(x):
+      # x of rank zero returns [size]
+      dynamic_shape = array_ops.shape(x)
+      dynamic_size = array_ops.size(x)
+      rank = x.get_shape().rank
+      rank_is_known = rank is not None
+      if rank_is_known and rank == 0:
+        static_size = tensor_util.constant_value(dynamic_size)
+        if static_size is not None:
+          return tuple([static_size])
+        return array_ops.reshape(dynamic_size, [-1])
+      if rank_is_known and rank > 0:
+        static_shape = x.get_shape().as_list()
+        sizes = [
+            size if size is not None else
+            dynamic_shape[i]
+            for i, size in enumerate(static_shape)
+        ]
+        return sizes
+      has_rank_zero = math_ops.equal(array_ops.rank(x), 0)
+      return control_flow_ops.cond(
+          has_rank_zero,
+          lambda: array_ops.reshape(dynamic_size, [-1]),
+          lambda: dynamic_shape
+      )
+
+    def specified_symbolic_dimension_sizes(shape):
+      # shape of rank zero returns [symbolic_size]
+      if not isinstance(shape, (tuple, list)):
+        return tuple([shape])
+      return shape
+
+    def has_known_value(size):
+      return size is not None and isinstance(size, int)
+
+    actual_sizes_by_tensor = {
+        tensor: actual_dimension_sizes(tensor)
+        for tensor in shapes
+    }
+    specified_symbolic_sizes_by_tensor = {
+        tensor: specified_symbolic_dimension_sizes(shapes[tensor])
+        for tensor in shapes
+    }
+
+    size_assertions = []
+    size_specifications = {}
+    for x in shapes.keys():
+      actual_sizes = actual_sizes_by_tensor[x]
+      symbolic_sizes = specified_symbolic_sizes_by_tensor[x]
+
+      for i, size_symbol in enumerate(symbolic_sizes):
+
+        if size_symbol is None:
+          # Size specified with None implies no constraint
+          continue
+
+        if event_shape_only:
+          tensor_dim = i - len(symbolic_sizes)
+        else:
+          tensor_dim = i
+
+        if size_symbol in size_specifications or has_known_value(size_symbol):
+          if has_known_value(size_symbol):
+            specified_size = size_symbol
+            size_check_message = 'Specified explicitly'
+          else:
+            specified_size, specified_by_y, specified_at_dim = \
+                size_specifications[size_symbol]
+            if executing_eagerly:
+              name_y = _shape_and_dtype_str(specified_by_y)
+            else:
+              name_y = specified_by_y.name
+            size_check_message = 'Specified by tensor %s dimension %d' % \
+                                 (name_y, specified_at_dim)
+
+          if executing_eagerly:
+            name = _shape_and_dtype_str(x)
+          else:
+            name = x.name
+
+          actual_size = actual_sizes[tensor_dim]
+          if has_known_value(actual_size) and has_known_value(specified_size):
+            if actual_size != specified_size:
+              raise ValueError(
+                  '%s.  %s.  Tensor %s dimension %s must have size %d.  '
+                  'Received size %d, shape %s' %
+                  (message, size_check_message, name, tensor_dim,
+                   specified_size, actual_size, x.get_shape()))
+            # No dynamic assertion needed
+            continue
+
+          condition = math_ops.equal(
+              ops.convert_to_tensor(actual_size),
+              ops.convert_to_tensor(specified_size))
+          data_ = data
+          if data is None:
+            data_ = [
+                message,
+                size_check_message,
+                'Tensor %s dimension' % name, tensor_dim, 'must have size',
+                specified_size, 'Received shape: ', array_ops.shape(x)
+            ]
+          size_assertions.append(
+              control_flow_ops.Assert(condition, data_, summarize=summarize))
+        else:
+          size = actual_sizes[tensor_dim]
+          size_specifications[size_symbol] = (size, x, tensor_dim)
+
+    if not rank_assertions:
+      rank_assertions = \
+        [control_flow_ops.no_op(name='static_checks_determined_all_ok')]
+    if not size_assertions:
+      size_assertions = \
+        [control_flow_ops.no_op(name='static_checks_determined_all_ok')]
+
+    with ops.control_dependencies(rank_assertions):
+      shapes_assertion = control_flow_ops.group(size_assertions)
+    return shapes_assertion
 
 
 # pylint: disable=line-too-long
