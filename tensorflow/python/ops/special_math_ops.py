@@ -239,6 +239,10 @@ def einsum(equation, *inputs, **kwargs):
     if len(ill_inputs) > 0:
       msg = 'Input tensors {} are of unknown rank.'.format(ill_inputs)
       raise ValueError(msg)
+      
+    # if dimensions are not known, optimization is not possible
+    if any(None in i.shape.as_list() for i in inputs):
+      optimize = False
 
     axis_labels = set(''.join(input_axis_labels))
     if match.group(2):
