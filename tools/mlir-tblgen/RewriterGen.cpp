@@ -84,10 +84,13 @@ private:
   // Emits the rewrite() method.
   void emitRewriteMethod();
 
-  // Emits the C++ statement to replace the matched DAG with an existing value.
-  void emitReplaceWithExistingValue(DagNode resultTree);
   // Emits the C++ statement to replace the matched DAG with a new op.
   void emitReplaceOpWithNewOp(DagNode resultTree);
+  // Emits the C++ statement to replace the matched DAG with an existing value.
+  void emitReplaceWithExistingValue(DagNode resultTree);
+  // Emits the C++ statement to replace the matched DAG with a native C++ built
+  // value.
+  void emitReplaceWithNativeBuilder(DagNode resultTree);
 
   // Emits the value of constant attribute to `os`.
   void emitAttributeValue(Record *constAttr);
@@ -263,22 +266,14 @@ void PatternEmitter::emitRewriteMethod() {
     auto& s = *static_cast<MatchedState *>(state.get());
 )";
 
-  if (resultTree.isReplaceWithValue())
+  if (resultTree.isNativeCodeBuilder())
+    emitReplaceWithNativeBuilder(resultTree);
+  else if (resultTree.isReplaceWithValue())
     emitReplaceWithExistingValue(resultTree);
   else
     emitReplaceOpWithNewOp(resultTree);
 
   os << "  }\n";
-}
-
-void PatternEmitter::emitReplaceWithExistingValue(DagNode resultTree) {
-  if (resultTree.getNumArgs() != 1) {
-    PrintFatalError(loc, "exactly one argument needed in the result pattern");
-  }
-
-  auto name = resultTree.getArgName(0);
-  pattern.ensureArgBoundInSourcePattern(name);
-  os.indent(4) << "rewriter.replaceOp(op, {s." << name << "});\n";
 }
 
 void PatternEmitter::emitReplaceOpWithNewOp(DagNode resultTree) {
@@ -351,6 +346,40 @@ void PatternEmitter::emitReplaceOpWithNewOp(DagNode resultTree) {
     // TODO(jpienaar): verify types
   }
   os << "\n    );\n";
+}
+
+void PatternEmitter::emitReplaceWithExistingValue(DagNode resultTree) {
+  if (resultTree.getNumArgs() != 1) {
+    PrintFatalError(loc, "exactly one argument needed in the result pattern");
+  }
+
+  auto name = resultTree.getArgName(0);
+  pattern.ensureArgBoundInSourcePattern(name);
+  os.indent(4) << "rewriter.replaceOp(op, {s." << name << "});\n";
+}
+
+void PatternEmitter::emitReplaceWithNativeBuilder(DagNode resultTree) {
+  os.indent(4) << resultTree.getNativeCodeBuilder() << "(op, {";
+  const auto &boundedValues = pattern.getSourcePatternBoundArgs();
+  bool first = true;
+  bool printingAttr = false;
+  for (int i = 0, e = resultTree.getNumArgs(); i != e; ++i) {
+    auto name = resultTree.getArgName(i);
+    pattern.ensureArgBoundInSourcePattern(name);
+    const auto &val = boundedValues.find(name);
+    if (val->second.isAttr() && !printingAttr) {
+      os << "}, {";
+      first = true;
+      printingAttr = true;
+    }
+    if (!first)
+      os << ",";
+    os << "s." << name;
+    first = false;
+  }
+  if (!printingAttr)
+    os << "},{";
+  os << "}, rewriter);\n";
 }
 
 void PatternEmitter::emit(StringRef rewriteName, Record *p,

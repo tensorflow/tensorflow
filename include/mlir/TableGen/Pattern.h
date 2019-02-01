@@ -104,6 +104,10 @@ public:
   // Returns the specified name of the `index`-th argument.
   llvm::StringRef getArgName(unsigned index) const;
 
+  // Returns the native builder for the pattern.
+  // Precondition: isNativeCodeBuilder.
+  llvm::StringRef getNativeCodeBuilder() const;
+
   // Collects all recursively bound arguments involved in the DAG tree rooted
   // from this node.
   void collectBoundArguments(Pattern *pattern) const;
@@ -111,6 +115,10 @@ public:
   // Returns true if this DAG construct means to replace with an existing SSA
   // value.
   bool isReplaceWithValue() const;
+
+  // Returns true if this DAG construct is meant to invoke a native code
+  // constructor.
+  bool isNativeCodeBuilder() const;
 
 private:
   const llvm::DagInit *node; // nullptr means null DagNode

@@ -94,6 +94,17 @@ bool tblgen::DagNode::isReplaceWithValue() const {
   return dagOpDef->getName() == "replaceWithValue";
 }
 
+bool tblgen::DagNode::isNativeCodeBuilder() const {
+  auto *dagOpDef = cast<llvm::DefInit>(node->getOperator())->getDef();
+  return dagOpDef->isSubClassOf("cOp");
+}
+
+llvm::StringRef tblgen::DagNode::getNativeCodeBuilder() const {
+  assert(isNativeCodeBuilder());
+  auto *dagOpDef = cast<llvm::DefInit>(node->getOperator())->getDef();
+  return dagOpDef->getValueAsString("function");
+}
+
 tblgen::Pattern::Pattern(const llvm::Record *def, RecordOperatorMap *mapper)
     : def(*def), recordOpMap(mapper) {
   getSourcePattern().collectBoundArguments(this);
