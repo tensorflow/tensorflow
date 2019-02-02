@@ -113,6 +113,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SparseCategoricalCrossentropy"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SparseTopKCategoricalAccuracy"
     mtype: "<type \'type\'>"
   }
@@ -250,7 +254,7 @@ tf_module {
   }
   member_method {
     name: "sparse_categorical_crossentropy"
-    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\'], "
   }
   member_method {
     name: "sparse_top_k_categorical_accuracy"

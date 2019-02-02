@@ -25974,29 +25974,6 @@ func SegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.
 	return op.Output(0)
 }
 
-// Removes keys and its associated values from a table.
-//
-// The tensor `keys` must of the same type as the keys of the table. Keys not
-// already in the table are silently ignored.
-//
-// Arguments:
-//	table_handle: Handle to the table.
-//	keys: Any shape.  Keys of the elements to remove.
-//
-// Returns the created operation.
-func LookupTableRemoveV2(scope *Scope, table_handle tf.Output, keys tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "LookupTableRemoveV2",
-		Input: []tf.Input{
-			table_handle, keys,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
 // Computes the sum along segments of a tensor.
 //
 // Read
@@ -31765,6 +31742,18 @@ func ExtractGlimpseUniformNoise(value bool) ExtractGlimpseAttr {
 	}
 }
 
+// ExtractGlimpseNoise sets the optional noise attribute to value.
+//
+// value: indicates if the noise should `uniform`, `gaussian`, or
+// `zero`. The default is `uniform` which means the the noise type
+// will be decided by `uniform_noise`.
+// If not specified, defaults to "uniform"
+func ExtractGlimpseNoise(value string) ExtractGlimpseAttr {
+	return func(m optionalAttr) {
+		m["noise"] = value
+	}
+}
+
 // Extracts a glimpse from the input tensor.
 //
 // Returns a set of windows called glimpses extracted at location
@@ -32170,6 +32159,102 @@ func NonMaxSuppressionV4(scope *Scope, boxes tf.Output, scores tf.Output, max_ou
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Removes keys and its associated values from a table.
+//
+// The tensor `keys` must of the same type as the keys of the table. Keys not
+// already in the table are silently ignored.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//	keys: Any shape.  Keys of the elements to remove.
+//
+// Returns the created operation.
+func LookupTableRemoveV2(scope *Scope, table_handle tf.Output, keys tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LookupTableRemoveV2",
+		Input: []tf.Input{
+			table_handle, keys,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// CombinedNonMaxSuppressionAttr is an optional argument to CombinedNonMaxSuppression.
+type CombinedNonMaxSuppressionAttr func(optionalAttr)
+
+// CombinedNonMaxSuppressionPadPerClass sets the optional pad_per_class attribute to value.
+//
+// value: If false, the output nmsed boxes, scores and classes
+// are padded/clipped to `max_total_size`. If true, the
+// output nmsed boxes, scores and classes are padded to be of length
+// `max_size_per_class`*`num_classes`, unless it exceeds `max_total_size` in
+// which case it is clipped to `max_total_size`. Defaults to false.
+// If not specified, defaults to false
+func CombinedNonMaxSuppressionPadPerClass(value bool) CombinedNonMaxSuppressionAttr {
+	return func(m optionalAttr) {
+		m["pad_per_class"] = value
+	}
+}
+
+// Greedily selects a subset of bounding boxes in descending order of score,
+//
+// This operation performs non_max_suppression on the inputs per batch, across
+// all classes.
+// Prunes away boxes that have high intersection-over-union (IOU) overlap
+// with previously selected boxes.  Bounding boxes are supplied as
+// [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+// diagonal pair of box corners and the coordinates can be provided as normalized
+// (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+// is agnostic to where the origin is in the coordinate system. Also note that
+// this algorithm is invariant to orthogonal transformations and translations
+// of the coordinate system; thus translating or reflections of the coordinate
+// system result in the same boxes being selected by the algorithm.
+// The output of this operation is the final boxes, scores and classes tensor
+// returned after performing non_max_suppression.
+//
+// Arguments:
+//	boxes: A 4-D float tensor of shape `[batch_size, num_boxes, q, 4]`. If `q` is 1 then
+// same boxes are used for all classes otherwise, if `q` is equal to number of
+// classes, class-specific boxes are used.
+//	scores: A 3-D float tensor of shape `[batch_size, num_boxes, num_classes]`
+// representing a single score corresponding to each box (each row of boxes).
+//	max_output_size_per_class: A scalar integer tensor representing the maximum number of
+// boxes to be selected by non max suppression per class
+//	max_total_size: A scalar representing maximum number of boxes retained over all classes.
+//	iou_threshold: A 0-D float tensor representing the threshold for deciding whether
+// boxes overlap too much with respect to IOU.
+//	score_threshold: A 0-D float tensor representing the threshold for deciding when to remove
+// boxes based on score.
+//
+// Returns A [batch_size, max_detections, 4] float32 tensor
+// containing the non-max suppressed boxes.A [batch_size, max_detections] float32 tensor
+// containing the scores for the boxes.A [batch_size, max_detections] float32 tensor
+// containing the classes for the boxes.A [batch_size] int32 tensor indicating the number of
+// valid detections per batch item. Only the top num_detections[i] entries in
+// nms_boxes[i], nms_scores[i] and nms_class[i] are valid. The rest of the
+// entries are zero paddings.
+func CombinedNonMaxSuppression(scope *Scope, boxes tf.Output, scores tf.Output, max_output_size_per_class tf.Output, max_total_size tf.Output, iou_threshold tf.Output, score_threshold tf.Output, optional ...CombinedNonMaxSuppressionAttr) (nmsed_boxes tf.Output, nmsed_scores tf.Output, nmsed_classes tf.Output, valid_detections tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CombinedNonMaxSuppression",
+		Input: []tf.Input{
+			boxes, scores, max_output_size_per_class, max_total_size, iou_threshold, score_threshold,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
 }
 
 // Computes the matrix logarithm of one or more square matrices:
@@ -33723,7 +33808,8 @@ func DecodeProtoV2Sanitize(value bool) DecodeProtoV2Attr {
 // Arguments:
 //	bytes: Tensor of serialized protos with shape `batch_shape`.
 //	message_type: Name of the proto message type to decode.
-//	field_names: List of strings containing proto field names.
+//	field_names: List of strings containing proto field names. An extension field can be decoded
+// by using its full name, e.g. EXT_PACKAGE.EXT_FIELD_NAME.
 //	output_types: List of TF types to use for the respective field in field_names.
 //
 // Returns Tensor of int32 with shape `[batch_shape, len(field_names)]`.

@@ -865,7 +865,7 @@ Status TrtNodeValidator::ConvertConstToWeights(
 }
 
 Converter::Converter(nvinfer1::INetworkDefinition* trt_network,
-                     int precision_mode, bool use_calibration)
+                     TrtPrecisionMode precision_mode, bool use_calibration)
     : trt_network_(trt_network),
       precision_mode_(precision_mode),
       use_calibration_(use_calibration) {
@@ -946,17 +946,19 @@ Status Converter::AddInputTensor(const string& name, nvinfer1::DataType dtype,
 }
 
 Status Converter::RenameAndMarkOutputTensors(
-    const std::vector<std::pair<string, string>>& output_tensors) {
+    const std::vector<Converter::EngineOutputInfo>& output_tensors) {
   for (const auto& output : output_tensors) {
     TRT_TensorOrWeights tensor_or_weights;
-    TF_RETURN_IF_ERROR(GetTensorOrWeights(output.first, &tensor_or_weights));
+    TF_RETURN_IF_ERROR(
+        GetTensorOrWeights(output.source_tensor_name, &tensor_or_weights));
     if (!tensor_or_weights.is_tensor()) {
-      return errors::InvalidArgument("Output ", output.first,
+      return errors::InvalidArgument("Output ", output.source_tensor_name,
                                      " is weights not tensor");
     }
     nvinfer1::ITensor* tensor = tensor_or_weights.tensor();
     if (tensor == nullptr) {
-      return errors::NotFound("Output tensor not found: ", output.first);
+      return errors::NotFound("Output tensor not found: ",
+                              output.source_tensor_name);
     }
     // Check if this tensor has already been marked as an output.
     // ConvertIdentity can cause the same tensor to be repeated in
@@ -974,10 +976,13 @@ Status Converter::RenameAndMarkOutputTensors(
       MarkQuantizationRangesAsInferrable(tensor, layer->getOutput(0));
       tensor = layer->getOutput(0);
     }
-    tensor->setName(output.second.c_str());
-    VLOG(1) << "Marking output tensor " << output.first << ", as output tensor "
-            << output.second;
+    tensor->setName(output.dest_node_name.c_str());
     network()->markOutput(*tensor);
+    // Set type after marking as output. TRT only supports setType for engine
+    // outputs and inputs (type is inferred otherwise).
+    tensor->setType(output.trt_dtype);
+    VLOG(1) << "Marking output TRT tensor " << output.source_tensor_name
+            << ", which feeds TF node " << output.dest_node_name;
   }
   return Status::OK();
 }
@@ -1123,7 +1128,7 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
   } else {
     *tensor = CreateConstantLayer(input.weights(), dims);
     TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, "TF-TRT Internal Reshape");
-    if (precision_mode() == INT8MODE && !use_calibration()) {
+    if (precision_mode() == TrtPrecisionMode::INT8 && !use_calibration()) {
       // If we are in int8 mode and not calibrating, we need to explicitly set a
       // quantization range for the output tensor of the IConstantLayer. Here we
       // set the range to [min(weights), max(weights)].
@@ -1158,7 +1163,7 @@ void Converter::ProvideQuantizationRange(nvinfer1::ITensor* tensor,
 }
 
 void Converter::MaybeApplyQuantizationRanges() {
-  if (precision_mode() != INT8MODE) return;
+  if (precision_mode() != TrtPrecisionMode::INT8) return;
 
   // Infer ranges across marked ops.
   PropagateQuantizationRanges();
@@ -1473,7 +1478,7 @@ Status BinaryTensorOpWeight(OpConverterParams* params,
         const_cast<nvinfer1::ITensor*>(tensor), permutation, &tensor));
   }
 
-  if (params->converter->precision_mode() == FP16MODE) {
+  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
     weights = ConvertFP32ToFP16(params->weight_store, weights);
   }
 
@@ -1516,7 +1521,7 @@ Status BinaryTensorOpWeight(OpConverterParams* params,
       // Because of this issue, fall back to BinaryTensorOpTensor if we are
       // doing INT8 with no calibration. There is most likely no performance
       // penalty by falling back here.
-      if (params->converter->precision_mode() == INT8MODE &&
+      if (params->converter->precision_mode() == TrtPrecisionMode::INT8 &&
           !params->converter->use_calibration()) {
         return errors::Unimplemented(
             "Intermediate quantization range cannot be determined without"
@@ -1638,7 +1643,7 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
   // input's channel dim. For a non-depthwise conv, num_groups will be 1.
   const int num_groups = (group == 0) ? tensor_dim.d[0] : group;
 
-  if (params->converter->precision_mode() == FP16MODE) {
+  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
     weights_rsck =
         ConvertFP32ToFP16(params->weight_store, inputs.at(1).weights());
   }
@@ -2670,7 +2675,7 @@ tensorflow::Status ConvertBiasAdd(OpConverterParams* params) {
   }
 
   TRT_ShapedWeights weights = inputs.at(1).weights();
-  if (params->converter->precision_mode() == FP16MODE) {
+  if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
     weights = ConvertFP32ToFP16(params->weight_store, weights);
   }
   nvinfer1::ScaleMode mode = nvinfer1::ScaleMode::kCHANNEL;
@@ -2903,7 +2908,7 @@ tensorflow::Status ConvertUnary(OpConverterParams* params) {
     //   x -> [Sqrt] -> sqrt(x) -> [Recip] -> 1/sqrt(x)
     //                     ^
     //               need range here
-    if (params->converter->precision_mode() == INT8MODE &&
+    if (params->converter->precision_mode() == TrtPrecisionMode::INT8 &&
         !params->converter->use_calibration()) {
       return errors::Unimplemented(
           "Intermediate quantization range cannot be determined without"
@@ -3542,38 +3547,38 @@ tensorflow::Status ConvertSoftmax(OpConverterParams* params) {
 
 tensorflow::Status ConvertTopK(OpConverterParams* params) {
   const auto& inputs = params->inputs;
+  if (inputs.size() != 2 || !inputs.at(0).is_tensor() ||
+      !inputs.at(1).is_weights()) {
+    return errors::InvalidArgument("Input expects tensor and weights, at ",
+                                   params->node_def.name());
+  }
+
   const auto& node_def = params->node_def;
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-
-  int nbDims = tensor->getDimensions().nbDims;
-  if (nbDims == 0) {
-    return tensorflow::errors::InvalidArgument(
-        "TensorRT TopK cannot apply on batch dimension, at" + node_def.name());
+  const int num_dims = tensor->getDimensions().nbDims;
+  if (num_dims == 0) {
+    return errors::InvalidArgument(
+        "TensorRT TopK cannot apply on batch dimension, at", node_def.name());
   }
 
   TRT_ShapedWeights k_w = inputs.at(1).weights();
-  int k = *(static_cast<int*>(const_cast<void*>(k_w.GetValues())));
-
-  nvinfer1::TopKOperation op;
-  uint32_t reducedAxes = 0;
-  if (node_def.op() == "TopKV2") {
-    op = nvinfer1::TopKOperation::kMAX;
-    reducedAxes |= 1 << (nbDims - 1);
-  } else {
-    return tensorflow::errors::Unimplemented(
-        "Operation: " + node_def.op() +
-        " not implemented, at: " + node_def.name());
+  if (k_w.count() != 1) {
+    return errors::InvalidArgument("k value of TopK should be a scalar, at",
+                                   node_def.name());
   }
+  // Note that ITopKLayer always have sorted outputs, so we don't need to handle
+  // the 'sorted' attribute of the node.
+  if (params->validation_only) return Status::OK();
 
+  const nvinfer1::TopKOperation op = nvinfer1::TopKOperation::kMAX;
+  const int k = *(static_cast<int*>(const_cast<void*>(k_w.GetValues())));
+  const uint32_t reduce_axes = 1 << (num_dims - 1);
   nvinfer1::ITopKLayer* layer = params->converter->network()->addTopK(
-      *const_cast<nvinfer1::ITensor*>(tensor), op, k, reducedAxes);
+      *const_cast<nvinfer1::ITensor*>(tensor), op, k, reduce_axes);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
   nvinfer1::ITensor* output_value_tensor = layer->getOutput(0);
   nvinfer1::ITensor* output_indices_tensor = layer->getOutput(1);
-  // Tensor type for network output is not inferred. Indices should be INT32
-  // (default is float).
-  output_indices_tensor->setType(nvinfer1::DataType::kINT32);
   params->outputs->push_back(TRT_TensorOrWeights(output_value_tensor));
   params->outputs->push_back(TRT_TensorOrWeights(output_indices_tensor));
   return tensorflow::Status::OK();
@@ -3596,6 +3601,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["Squeeze"] = ConvertSqueeze;
   (*registration)["StridedSlice"] = ConvertStridedSlice;
   (*registration)["Transpose"] = ConvertTranspose;
+  (*registration)["TopKV2"] = ConvertTopK;
 
   for (auto quantization_op_type :
        {"QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3",
@@ -3642,14 +3648,13 @@ void Converter::RegisterOpConverters() {
   op_registry_["Mean"] = ConvertReduce;
   op_registry_["Softmax"] = ConvertSoftmax;
   op_registry_["BatchMatMul"] = ConvertBatchMatMul;
-  op_registry_["TopKV2"] = ConvertTopK;
 
   plugin_converter_ = ConvertPlugin;
 }
 
 tensorflow::Status ConvertGraphDefToEngine(
-    const tensorflow::GraphDef& gdef, int precision_mode, int max_batch_size,
-    size_t max_workspace_size_bytes,
+    const tensorflow::GraphDef& gdef, TrtPrecisionMode precision_mode,
+    int max_batch_size, size_t max_workspace_size_bytes,
     const std::vector<tensorflow::PartialTensorShape>& input_shapes,
     Logger* logger, nvinfer1::IGpuAllocator* allocator,
     TRTInt8Calibrator* calibrator,
@@ -3664,9 +3669,9 @@ tensorflow::Status ConvertGraphDefToEngine(
   builder->setMaxBatchSize(max_batch_size);
   builder->setMaxWorkspaceSize(max_workspace_size_bytes);
   builder->setGpuAllocator(allocator);
-  if (precision_mode == FP16MODE) {
+  if (precision_mode == TrtPrecisionMode::FP16) {
     builder->setHalf2Mode(true);
-  } else if (precision_mode == INT8MODE) {
+  } else if (precision_mode == TrtPrecisionMode::INT8) {
     builder->setInt8Mode(true);
     if (use_calibration) {
       builder->setInt8Calibrator(calibrator);
@@ -3686,7 +3691,7 @@ tensorflow::Status ConvertGraphDefToEngine(
   // Build the network
   VLOG(1) << "Starting engine conversion ";
   Converter converter(trt_network.get(), precision_mode, use_calibration);
-  std::vector<std::pair<string, string>> output_tensors;
+  std::vector<Converter::EngineOutputInfo> output_tensors;
   // Graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {
     string node_name = node_def.name();
@@ -3728,10 +3733,16 @@ tensorflow::Status ConvertGraphDefToEngine(
         return tensorflow::errors::InvalidArgument(
             "Failed to parse slot number from ", node_name);
       }
+      // Get output type that TensorFlow expects
+      TFAttrs attrs(node_def);
+      tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
+      nvinfer1::DataType trt_dtype;
+      TF_RETURN_IF_ERROR(ConvertDType(tf_dtype, &trt_dtype));
       if (output_tensors.size() <= slot_number) {
         output_tensors.resize(slot_number + 1);
       }
-      output_tensors.at(slot_number) = {node_def.input(0), node_name};
+      output_tensors.at(slot_number) = {node_def.input(0), node_name,
+                                        trt_dtype};
     } else {
       VLOG(2) << "Converting node: " << node_def.name() << " , "
               << node_def.op();

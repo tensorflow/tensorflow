@@ -37,10 +37,14 @@ class RetvalOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     const Tensor& input = ctx->op_kernel_context()->input(0);
 
-    OP_REQUIRES(ctx, input.dtype() == dtype_,
-                errors::InvalidArgument(
-                    "Type mismatch: actual ", DataTypeString(input.dtype()),
-                    " vs. expect ", DataTypeString(dtype_)));
+    // DT_VARIANT types represent Tensor Lists and are wrapped in a DT_UINT8
+    // tensor so we skip the check here.
+    if (dtype_ != DT_VARIANT) {
+      OP_REQUIRES(ctx, input.dtype() == dtype_,
+                  errors::InvalidArgument(
+                      "Type mismatch: actual ", DataTypeString(input.dtype()),
+                      " vs. expect ", DataTypeString(dtype_)));
+    }
     auto frame = ctx->call_frame();
     if (frame) {
       // If 'frame' is non-null, this is an inner function call inside a JIT
@@ -59,8 +63,9 @@ class RetvalOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
 };
 
-REGISTER_XLA_OP(Name("_Retval").AllowResourceTypes().CompilationOnly(),
-                RetvalOp);
+REGISTER_XLA_OP(
+    Name("_Retval").AllowResourceTypes().AllowVariantTypes().CompilationOnly(),
+    RetvalOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

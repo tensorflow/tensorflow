@@ -21,6 +21,8 @@ from __future__ import print_function
 import functools
 import os
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -43,6 +45,8 @@ class _Loader(object):
   def __init__(self, object_graph_proto, saved_model_proto, export_dir):
     meta_graph = saved_model_proto.meta_graphs[0]
     self._asset_file_def = meta_graph.asset_file_def
+    self._operation_attributes = {
+        node.name: node.attr for node in meta_graph.graph_def.node}
     self._proto = object_graph_proto
     self._export_dir = export_dir
     self._concrete_functions = (
@@ -99,6 +103,8 @@ class _Loader(object):
       return obj.handle
     elif isinstance(obj, tracking.TrackableAsset):
       return obj.asset_path.handle
+    elif tensor_util.is_tensor(obj):
+      return obj
     raise ValueError("Can't convert node %s to tensor" % (type(obj)))
 
   def _load_all(self):
@@ -138,6 +144,7 @@ class _Loader(object):
             self._recreate_bare_concrete_function,
             proto.bare_concrete_function),
         "variable": lambda: self._recreate_variable(proto.variable),
+        "constant": lambda: self._recreate_constant(proto.constant),
     }
     kind = proto.WhichOneof("kind")
     if kind not in factory:
@@ -176,6 +183,12 @@ class _Loader(object):
     # TODO(andresp): Can we use the checkpointed value as initializer?
     dummy_value = init_ops.Zeros(dtype=proto.dtype)(shape=proto.shape)
     return variables.Variable(dummy_value, trainable=proto.trainable), setattr
+
+  def _recreate_constant(self, proto):
+    tensor_proto = self._operation_attributes[proto.operation]["value"].tensor
+    imported_constant = constant_op.constant(
+        tensor_util.MakeNdarray(tensor_proto))
+    return imported_constant, setattr
 
 
 def _call_attribute(instance, *args, **kwargs):

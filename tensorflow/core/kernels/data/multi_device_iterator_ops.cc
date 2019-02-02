@@ -359,6 +359,9 @@ class MultiDeviceIterator : public ResourceBase {
   std::unique_ptr<MultiDeviceBuffer> multi_device_buffer_ GUARDED_BY(mu_);
 };
 
+// Used to generate unique names for anonymous multi device iterators.
+static std::atomic<int64> current_id_;
+
 // Just creates a MultiDeviceIterator and returns it.
 class MultiDeviceIteratorHandleOp : public OpKernel {
  public:
@@ -388,6 +391,8 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override LOCKS_EXCLUDED(mu_) {
+    string unique_name = cinfo_.name();
+    string container_name = cinfo_.container();
     {
       mutex_lock l(mu_);
       if (resource_ == nullptr) {
@@ -402,31 +407,49 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
         OP_REQUIRES_OK(context, cinfo_.Init(mgr, def()));
 
         MultiDeviceIterator* resource;
-        OP_REQUIRES_OK(context,
-                       mgr->LookupOrCreate<MultiDeviceIterator>(
-                           cinfo_.container(), cinfo_.name(), &resource,
-                           [this, lib, &flib_def, &pflr,
-                            &function_handle_cache](MultiDeviceIterator** ret)
-                               EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-                                 *ret = new MultiDeviceIterator(
-                                     output_types_, output_shapes_, devices_,
-                                     std::move(flib_def), std::move(pflr), lib,
-                                     std::move(function_handle_cache));
-                                 return Status::OK();
-                               }));
 
-        Status s = VerifyResource(resource);
-        if (TF_PREDICT_FALSE(!s.ok())) {
-          resource->Unref();
-          context->SetStatus(s);
-          return;
+        if (name_ == ResourceHandle::ANONYMOUS_NAME) {
+          unique_name = strings::StrCat("_AnonymousMultiDeviceIterator",
+                                        current_id_.fetch_add(1));
+          container_name = "AnonymousMultiDeviceIterator";
+          resource = new MultiDeviceIterator(
+              output_types_, output_shapes_, devices_, std::move(flib_def),
+              std::move(pflr), lib, std::move(function_handle_cache));
+          OP_REQUIRES_OK(context, mgr->Create<MultiDeviceIterator>(
+                                      container_name, unique_name, resource));
+          Status s = VerifyResource(resource);
+          if (TF_PREDICT_FALSE(!s.ok())) {
+            resource->Unref();
+            context->SetStatus(s);
+            return;
+          }
+        } else {
+          unique_name = cinfo_.name();
+          container_name = cinfo_.container();
+          OP_REQUIRES_OK(context,
+                         mgr->LookupOrCreate<MultiDeviceIterator>(
+                             container_name, unique_name, &resource,
+                             [this, lib, &flib_def, &pflr,
+                              &function_handle_cache](MultiDeviceIterator** ret)
+                                 EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                                   *ret = new MultiDeviceIterator(
+                                       output_types_, output_shapes_, devices_,
+                                       std::move(flib_def), std::move(pflr),
+                                       lib, std::move(function_handle_cache));
+                                   return Status::OK();
+                                 }));
+          Status s = VerifyResource(resource);
+          if (TF_PREDICT_FALSE(!s.ok())) {
+            resource->Unref();
+            context->SetStatus(s);
+            return;
+          }
+          resource_ = resource;
         }
-
-        resource_ = resource;
       }
     }
     OP_REQUIRES_OK(context, MakeResourceHandleToOutput(
-                                context, 0, cinfo_.container(), cinfo_.name(),
+                                context, 0, container_name, unique_name,
                                 MakeTypeIndex<MultiDeviceIterator>()));
   }
 

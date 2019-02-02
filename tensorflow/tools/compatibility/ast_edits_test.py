@@ -58,6 +58,15 @@ class NoUpdateSpec(ast_edits.APIChangeSpec):
     self.symbol_renames = {}
     self.function_warnings = {}
     self.change_to_function = {}
+    self.module_deprecations = {}
+
+
+class ModuleDeprecationSpec(NoUpdateSpec):
+  """A specification which deprecates 'a.b'."""
+
+  def __init__(self):
+    NoUpdateSpec.__init__(self)
+    self.module_deprecations.update({"a.b": (ast_edits.ERROR, "a.b is evil.")})
 
 
 class RenameKeywordSpec(NoUpdateSpec):
@@ -171,6 +180,15 @@ class TestAstEdits(test_util.TensorFlowTestCase):
         upgrader.process_opened_file("test.py", in_file,
                                      "test_out.py", out_file))
     return (count, report, errors), out_file.getvalue()
+
+  def testModuleDeprecation(self):
+    text = "a.b.c(a.b.x)"
+    (_, _, errors), new_text = self._upgrade(ModuleDeprecationSpec(), text)
+    self.assertEqual(text, new_text)
+    self.assertIn("Using member a.b.c", errors[0])
+    self.assertIn("1:0", errors[0])
+    self.assertIn("Using member a.b.c", errors[0])
+    self.assertIn("1:6", errors[1])
 
   def testNoTransformIfNothingIsSupplied(self):
     text = "f(a, b, kw1=c, kw2=d)\n"
@@ -417,7 +435,7 @@ class TestAstEdits(test_util.TensorFlowTestCase):
 
       def __init__(self):
         NoUpdateSpec.__init__(self)
-        self.function_warnings = {"*.foo": "not good"}
+        self.function_warnings = {"*.foo": (ast_edits.WARNING, "not good")}
 
     texts = ["object.foo()", "get_object().foo()",
              "get_object().foo()", "object.foo().bar()"]

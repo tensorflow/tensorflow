@@ -132,7 +132,7 @@ def assert_ops_in_graph(expected_ops, graph):
 
 
 @tf_export("test.assert_equal_graph_def", v1=[])
-def assert_equal_graph_def_v2(actual, expected):
+def assert_equal_graph_def_v2(expected, actual):
   """Asserts that two `GraphDef`s are (mostly) the same.
 
   Compares two `GraphDef` protos for equality, ignoring versions and ordering of
@@ -141,8 +141,8 @@ def assert_equal_graph_def_v2(actual, expected):
   ignores randomized attribute values that may appear in V2 checkpoints.
 
   Args:
-    actual: The `GraphDef` we have.
     expected: The `GraphDef` we expected.
+    actual: The `GraphDef` we have.
 
   Raises:
     AssertionError: If the `GraphDef`s do not match.

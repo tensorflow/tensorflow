@@ -408,6 +408,44 @@ class ColocationGraph {
     return Status::OK();
   }
 
+  // Limits the possible devices of `node`'s colocation group to the device
+  // to which `node` is assigned. This makes sure that all nodes in this
+  // colocation group will be assigned to the same device. Without this
+  // explicit restriction, heuristics can choose a different possible device
+  // for other nodes in the group.
+  Status LimitToAssignedDevice(const Node& node) {
+    if (node.assigned_device_name_index() < 0) {
+      return errors::Internal(
+          "Expected an assigned node as argument to LimitToAssignedDevice but "
+          "got: ",
+          node.DebugString());
+    }
+    int root = FindRoot(node.id());
+    Member& root_member = members_[root];
+    if (node.assigned_device_name_index() ==
+        root_member.assigned_device_name_index) {
+      return Status::OK();
+    }
+    DeviceNameUtils::ParsedName parsed;
+    DeviceNameUtils::ParseFullName(node.assigned_device_name(), &parsed);
+    Status s = DeviceNameUtils::MergeDevNames(&root_member.device_name, parsed,
+                                              allow_soft_placement_);
+    if (!s.ok()) {
+      return errors::Internal(
+          "Constraining by assigned device should not cause an error. Original "
+          "root device name: ",
+          DeviceNameUtils::ParsedNameToString(root_member.device_name),
+          " assigned device name \"", node.assigned_device_name(),
+          ". Error: ", s.error_message());
+    }
+
+    root_member.assigned_device_name_index = node.assigned_device_name_index();
+    // Clear cached possible_devices, if any.
+    root_member.possible_devices.clear();
+
+    return Status::OK();
+  }
+
   // For the given node, subject to the constraints previously given
   // to this ColocationGraph, set its assigned_device_name. Returns OK
   // if a satisfying device can be found, otherwise an error.
@@ -586,6 +624,16 @@ class ColocationGraph {
     // The merged form of the device requested for this node, with
     // those of all of its children.
     DeviceNameUtils::ParsedName device_name;
+
+    // Once colocation groups have been formed and we assigned at least
+    // one node in this group to a device, assigned_device_name_index will
+    // contain this device name's index in the graph. The `device_name` will
+    // contain the parsed name of this device and `possible_devices`, if
+    // computed, will contain just this device.
+    // `assigned_device_name_index` is an optimization to avoid parsing and
+    // comparing device names. The value of -1 signals that a single device
+    // has not been chosen yet.
+    int assigned_device_name_index = -1;
 
     // If this node is a root, stores a list of Devices to which this node
     // and all of its children have been assigned, or nullptr if this
@@ -891,6 +939,30 @@ class ColocationGraph {
   const bool allow_soft_placement_;
   const bool log_device_placement_;
 };
+
+void LogDeviceAssignment(const Node* node, bool log_device_placement) {
+  // Log placement if log_device_placement is set.
+  if (log_device_placement) {
+    printf("%s: (%s): %s\n", node->name().c_str(), node->type_string().c_str(),
+           node->assigned_device_name().c_str());
+    LOG(INFO) << node->name() << ": "
+              << "(" << node->type_string() << ")"
+              << node->assigned_device_name();
+  }
+}
+
+Status AssignAndLog(int assigned_device, Node* node,
+                    ColocationGraph* colocation_graph,
+                    bool log_device_placement) {
+  node->set_assigned_device_name_index(assigned_device);
+
+  // Constraint the group of node to the assigned device.
+  TF_RETURN_IF_ERROR(colocation_graph->LimitToAssignedDevice(*node));
+
+  LogDeviceAssignment(node, log_device_placement);
+  return Status::OK();
+}
+
 }  // namespace
 
 Placer::Placer(Graph* graph, const DeviceSet* devices,
@@ -927,7 +999,7 @@ Status Placer::Run() {
     // devices (e.g., for stateful placements), so the placer should not try to
     // place nodes that are already placed.
     if (node->has_assigned_device_name()) {
-      LogDeviceAssignment(node);
+      LogDeviceAssignment(node, log_device_placement_);
       continue;
     }
 
@@ -983,7 +1055,8 @@ Status Placer::Run() {
       assigned_device = graph_->InternDeviceName((*devices)[0]->name());
     }
 
-    AssignAndLog(assigned_device, node);
+    TF_RETURN_IF_ERROR(AssignAndLog(assigned_device, node, &colocation_graph,
+                                    log_device_placement_));
   }
 
   // Perform a second pass assignment for those nodes explicitly
@@ -1022,7 +1095,8 @@ Status Placer::Run() {
       assigned_device = graph_->InternDeviceName((*devices)[0]->name());
     }
 
-    AssignAndLog(assigned_device, node);
+    TF_RETURN_IF_ERROR(AssignAndLog(assigned_device, node, &colocation_graph,
+                                    log_device_placement_));
   }
 
   return Status::OK();
@@ -1043,22 +1117,6 @@ bool Placer::CanAssignToDevice(const string& candidate_device_name,
   }
 
   return false;
-}
-
-void Placer::AssignAndLog(int assigned_device, Node* node) const {
-  node->set_assigned_device_name_index(assigned_device);
-  LogDeviceAssignment(node);
-}
-
-void Placer::LogDeviceAssignment(const Node* node) const {
-  // Log placement if log_device_placement is set.
-  if (log_device_placement_) {
-    printf("%s: (%s): %s\n", node->name().c_str(), node->type_string().c_str(),
-           node->assigned_device_name().c_str());
-    LOG(INFO) << node->name() << ": "
-              << "(" << node->type_string() << ")"
-              << node->assigned_device_name();
-  }
 }
 
 }  // namespace tensorflow

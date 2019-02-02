@@ -44,7 +44,7 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/examples/tutorials/mnist:input_data",
         "//tensorflow/lite/python:lite",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:framework",
         "//tensorflow/python:platform",
         "//tensorflow/python/tools:optimize_for_inference",
         "//third_party/py/numpy",

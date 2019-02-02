@@ -157,7 +157,7 @@ def tf_to_tflite(name, src, options, out):
     """
 
     toco_cmdline = " ".join([
-        "//tensorflow/lite/toco:toco",
+        "$(location //tensorflow/lite/toco:toco)",
         "--input_format=TENSORFLOW_GRAPHDEF",
         "--output_format=TFLITE",
         ("--input_file=$(location %s)" % src),
@@ -265,7 +265,7 @@ def generated_test_models():
         "logical_and",
         "logical_or",
         "logical_xor",
-        #"lstm", TODO(b/122889684): Resolve toco structured line parsing in oss.
+        "lstm",
         "max_pool",
         "maximum",
         "mean",

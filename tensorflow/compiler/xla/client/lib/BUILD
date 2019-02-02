@@ -184,6 +184,7 @@ cc_library(
     srcs = ["math.cc"],
     hdrs = ["math.h"],
     deps = [
+        ":arithmetic",
         ":constants",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -197,6 +198,7 @@ xla_test(
     deps = [
         ":math",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",

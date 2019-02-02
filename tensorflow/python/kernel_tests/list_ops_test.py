@@ -1235,9 +1235,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     l = list_ops.tensor_list_push_back(l, [[0., 1.]])
     l = list_ops.tensor_list_push_back(l, [[2.], [4.]])
     with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        r"Tried to concat tensors with unequal shapes: "
-        r"\[2\] vs \[1\]"):
+        errors.InvalidArgumentError, r"Incompatible shapes during merge: "
+        r"\[2\] vs. \[1\]"):
       t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
       self.evaluate(t)
 
@@ -1296,6 +1295,65 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         errors.InvalidArgumentError, "Concat saw a scalar shape at index 1"
         " but requires at least vectors"):
       t = list_ops.tensor_list_concat(l1, element_dtype=dtypes.float32)
+      self.evaluate(t)
+
+  def testConcatWithUninitializedTensorsUseListElementShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[2, 3], num_elements=3)
+    t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
+    self.assertAllEqual(np.zeros((6, 3)), t)
+
+  def testConcatWithUninitializedTensorsUseProvidedElementShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    t = list_ops.tensor_list_concat(
+        l, element_dtype=dtypes.float32, element_shape=(2, 3))
+    self.assertAllEqual(np.zeros((6, 3)), t)
+
+  def testConcatWithUninitializedTensorsUseProvidedElementShapeAndLengths(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    t, _ = gen_list_ops.tensor_list_concat_v2(
+        l,
+        element_dtype=dtypes.float32,
+        element_shape=list_ops._build_element_shape((None, 3)),
+        leading_dims=[2, 3, 5])
+    self.assertAllEqual(np.zeros((10, 3)), t)
+    l = list_ops.tensor_list_set_item(l, 1, [[2., 3.], [4., 5.], [6., 7.]])
+    t, _ = gen_list_ops.tensor_list_concat_v2(
+        l,
+        element_dtype=dtypes.float32,
+        element_shape=list_ops._build_element_shape((None, 2)),
+        leading_dims=[2, 3, 4])
+    self.assertAllEqual([[0., 0.], [0., 0.], [2., 3.], [4., 5.], [6., 7.],
+                         [0., 0.], [0., 0.], [0., 0.], [0., 0.]], t)
+
+  def testConcatWithUninitializedTensorsInferShapeFromElements(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    l = list_ops.tensor_list_set_item(l, 1, [[2., 3.], [4., 5.], [6., 7.]])
+    t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
+    self.assertAllEqual([[0., 0.], [0., 0.], [0., 0.], [2., 3.], [4., 5.],
+                         [6., 7.], [0., 0.], [0., 0.], [0., 0.]], t)
+
+  def testConcatWithUninitializedTensorsFailsIfNoElementShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        r"Trying to concat list with only uninitialized tensors "
+        r"but element_shape_except_first_dim_ is not fully defined"):
+      t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
+      self.evaluate(t)
+
+  def testConcatWithUninitializedTensorsFailsIfNoInputLengths(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[None, 3], num_elements=3)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        r"List contains uninitialized tensor at index 0"
+        r" but leading_dims has only 0 elements."):
+      t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
       self.evaluate(t)
 
   def testEvenSplit(self):

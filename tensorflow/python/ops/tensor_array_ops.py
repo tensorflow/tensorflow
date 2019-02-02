@@ -542,10 +542,15 @@ class _GraphTensorArrayV2(object):
 
   def read(self, index, name=None):
     """See TensorArray."""
+    if self._element_shape:
+      element_shape = self._element_shape[0]
+    else:
+      element_shape = tensor_shape.TensorShape(None)
     value = list_ops.tensor_list_get_item(
         input_handle=self._flow,
         index=index,
         element_dtype=self._dtype,
+        element_shape=element_shape,
         name=name)
     if self._element_shape:
       value.set_shape(self._element_shape[0].dims)

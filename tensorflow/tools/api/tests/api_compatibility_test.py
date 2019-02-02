@@ -265,7 +265,7 @@ class ApiCompatibilityTest(test.TestCase):
     visitor.do_not_descend_map['tf'].append('contrib')
     if FLAGS.only_test_core_api:
       visitor.do_not_descend_map['tf'].extend(_NON_CORE_PACKAGES)
-    traverse.traverse(tf_v2, visitor)
+    traverse.traverse(tf.compat.v2, visitor)
 
   def _checkBackwardsCompatibility(self,
                                    root,
@@ -351,7 +351,7 @@ class ApiCompatibilityTest(test.TestCase):
         tf_v2,
         golden_file_pattern,
         api_version,
-        additional_private_map={'tf.compat': ['v1']})
+        additional_private_map={'tf.compat': ['v1', 'v2']})
 
 
 if __name__ == '__main__':

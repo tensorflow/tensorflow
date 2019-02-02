@@ -73,6 +73,11 @@ XlaOpRegistry::~XlaOpRegistry() = default;
                  << " have incompatible allow_resource_types settings.";
     return false;
   }
+  if (x.allow_variant_types != y.allow_variant_types) {
+    LOG(WARNING) << "Registrations of " << x.name
+                 << " have incompatible allow_variant_types settings.";
+    return false;
+  }
   if (!x.has_device_whitelist && !y.has_device_whitelist) {
     LOG(WARNING) << "Duplicate registrations of " << x.name
                  << "with no device whitelists.";
@@ -289,6 +294,9 @@ void XlaOpRegistry::RegisterCompilationKernels() {
           if (op_registration->allow_resource_types) {
             allowed_values->add_type(DT_RESOURCE);
           }
+          if (op_registration->allow_variant_types) {
+            allowed_values->add_type(DT_VARIANT);
+          }
           // Don't build KernelDefs that have unsatisfiable type constraints.
           if (allowed_values->type().empty()) {
             unsatisfiable_type_constraint = true;
@@ -482,6 +490,11 @@ XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::CompilationOnly() {
 
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::AllowResourceTypes() {
   registration_->allow_resource_types = true;
+  return *this;
+}
+
+XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::AllowVariantTypes() {
+  registration_->allow_variant_types = true;
   return *this;
 }
 

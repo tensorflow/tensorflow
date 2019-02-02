@@ -562,6 +562,8 @@ class XlaBuilder {
       const XlaOp& operand,
       const std::vector<std::pair<int64, int64>>& source_target_pairs);
 
+  XlaOp ReplicaId();
+
   XlaOp SelectAndScatter(const XlaOp& operand, const XlaComputation& select,
                          absl::Span<const int64> window_dimensions,
                          absl::Span<const int64> window_strides,
@@ -1040,6 +1042,7 @@ class XlaBuilder {
   friend XlaOp CollectivePermute(
       const XlaOp& operand,
       const std::vector<std::pair<int64, int64>>& source_target_pairs);
+  friend XlaOp ReplicaId(XlaBuilder* builder);
   friend XlaOp SelectAndScatter(const XlaOp& operand,
                                 const XlaComputation& select,
                                 absl::Span<const int64> window_dimensions,
@@ -1580,8 +1583,32 @@ XlaOp Min(const XlaOp& lhs, const XlaOp& rhs,
 XlaOp And(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions = {});
 
+// Overload to call And with 3 or more operands.  We need the following somewhat
+// convoluted overload set to disambiguate with the overload that takes the
+// `broadcast_dimensions` optional param.
+inline XlaOp And(const XlaOp& op1, const XlaOp& op2, const XlaOp& op3) {
+  return And(op1, And(op2, op3));
+}
+template <typename... XlaOpTs>
+XlaOp And(const XlaOp& op1, const XlaOp& op2, const XlaOp& op3,
+          const XlaOpTs&... operands) {
+  return And(op1, And(op2, And(op3, operands...)));
+}
+
 XlaOp Or(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+
+// Overload to call Or with 3 or more operands.  As with `And`, we need the
+// following complicated overload set to handle the default arg in the `Or`
+// overload above.
+inline XlaOp Or(const XlaOp& op1, const XlaOp& op2, const XlaOp& op3) {
+  return Or(op1, Or(op2, op3));
+}
+template <typename... XlaOpTs>
+XlaOp Or(const XlaOp& op1, const XlaOp& op2, const XlaOp& op3,
+         const XlaOpTs&... operands) {
+  return Or(op1, Or(op2, Or(op3, operands...)));
+}
 
 XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions = {});
@@ -1675,6 +1702,9 @@ XlaOp CollectivePermute(
     const XlaOp& operand,
     const std::vector<std::pair<int64, int64>>& source_target_pairs);
 
+// Enqueues an operation that returns the replica ID.
+XlaOp ReplicaId(XlaBuilder* builder);
+
 // Enqueues an operation that scatters the `source` array to the selected
 // indices of each window.
 XlaOp SelectAndScatter(const XlaOp& operand, const XlaComputation& select,
@@ -1746,10 +1776,14 @@ XlaOp Imag(const XlaOp& operand);
 XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions = {});
 
-// Enqueues an operator that tests if the operand's values are finite, i.e.,
-// not Inf or NaN. Defined only for floating-point types. Returns an array of
-// booleans with the same shape where entries are true iff the corresponding
-// entry was NaN.
+// Enqueues an operator that tests if the operand's values are finite, i.e., not
+// +/-Inf or NaN.  Returns an array of booleans with the same shape where
+// entries are true iff the corresponding entry was not infinite or NaN.
+//
+// Defined only for real-valued (i.e. not complex) floating-point types; raises
+// an error for other types.
+//
+// See also IsInf, IsPosInf, IsNegInf, and IsNan in lib/math.h.
 XlaOp IsFinite(const XlaOp& operand);
 
 // Enqueues an iota operation onto the computation.

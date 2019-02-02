@@ -7,6 +7,17 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_test(
+    name = "meta_benchmark",
+    srcs = ["meta_benchmark.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "batch_benchmark",
     srcs = ["batch_benchmark.py"],
     srcs_version = "PY2AND3",

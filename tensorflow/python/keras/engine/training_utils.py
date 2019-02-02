@@ -22,8 +22,6 @@ import abc
 import collections
 from collections import OrderedDict
 import copy
-import json
-import os
 
 import numpy as np
 import six
@@ -49,7 +47,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 
 
@@ -1345,7 +1342,7 @@ def infer_steps_for_dataset(dataset, steps, epochs=1, steps_name='steps'):
   if size == cardinality.INFINITE and steps is None:
     raise ValueError('When passing an infinitely repeating dataset, you '
                      'must specify the `%s` argument.' % (steps_name,))
-  if size != cardinality.UNKNOWN:
+  if size >= 0:
     if steps is not None and steps * epochs > size:
       if epochs > 1:
         raise ValueError('The dataset you passed contains %s batches, but you '
@@ -1534,13 +1531,6 @@ def convert_eager_tensors_to_numpy(structure):
     return element
 
   return nest.map_structure(_convert, structure)
-
-
-def should_run_multi_worker():
-  """Whether a model should be run using DistributedCoordinator."""
-  tf_config = json.loads(os.environ.get('TF_CONFIG', '{}'))
-  cluster_spec = server_lib.ClusterSpec(tf_config.get('cluster', {}))
-  return tf_config and 'master' not in cluster_spec.jobs
 
 
 def should_run_validation(validation_freq, epoch):

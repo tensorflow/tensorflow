@@ -39,6 +39,7 @@ import collections as _collections
 import six as _six
 
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
+from tensorflow.python.util.tf_export import tf_export
 
 
 _SHALLOW_TREE_HAS_INVALID_KEYS = (
@@ -183,8 +184,38 @@ is_sequence = _pywrap_tensorflow.IsSequence
 is_sequence_or_composite = _pywrap_tensorflow.IsSequenceOrComposite
 
 
-# See the swig file (util.i) for documentation.
-flatten = _pywrap_tensorflow.Flatten
+@tf_export("nest.flatten")
+def flatten(structure, expand_composites=False):
+  """Returns a flat list from a given nested structure.
+
+  If nest is not a sequence, tuple, or dict, then returns a single-element list:
+  [nest].
+
+  In the case of dict instances, the sequence consists of the values, sorted by
+  key to ensure deterministic behavior. This is true also for OrderedDict
+  instances: their sequence order is ignored, the sorting order of keys is used
+  instead. The same convention is followed in pack_sequence_as. This correctly
+  repacks dicts and OrderedDicts after they have been flattened, and also allows
+  flattening an OrderedDict and then repacking it back using a corresponding
+  plain dict, or vice-versa. Dictionaries with non-sortable keys cannot be
+  flattened.
+
+  Users must not modify any collections used in nest while this function is
+  running.
+
+  Args:
+    structure: an arbitrarily nested structure or a scalar object. Note, numpy
+      arrays are considered scalars.
+    expand_composites: If true, then composite tensors such as tf.SparseTensor
+       and tf.RaggedTensor are expanded into their component tensors.
+
+  Returns:
+    A Python list, the flattened version of the input.
+
+  Raises:
+    TypeError: The nest is or contains a dict with non-sortable keys.
+  """
+  return _pywrap_tensorflow.Flatten(structure, expand_composites)
 
 
 # See the swig file (util.i) for documentation.
@@ -203,6 +234,7 @@ class _DotString(object):
 _DOT = _DotString()
 
 
+@tf_export("nest.assert_same_structure")
 def assert_same_structure(nest1, nest2, check_types=True,
                           expand_composites=False):
   """Asserts that two structures are nested in the same way.
@@ -337,6 +369,7 @@ def _packed_nest_with_indices(structure, flat, index, is_seq):
   return index, packed
 
 
+@tf_export("nest.pack_sequence_as")
 def pack_sequence_as(structure, flat_sequence, expand_composites=False):
   """Returns a given flattened sequence packed into a given structure.
 
@@ -394,6 +427,7 @@ def pack_sequence_as(structure, flat_sequence, expand_composites=False):
   return _sequence_like(structure, packed)
 
 
+@tf_export("nest.map_structure")
 def map_structure(func, *structure, **kwargs):
   """Applies `func` to each entry in `structure` and returns a new structure.
 

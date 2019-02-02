@@ -113,11 +113,14 @@ class Feature(enum.Enum):
   Attributes:
     ALL: Enable all features.
     AUTO_CONTROL_DEPS: Insert of control dependencies in the generated code.
-    DECORATORS: Allow decorators in local functions. Note that special
-      decorators, like `tf.function`, are allowed regardless of this toggle.
+    ASSERT_STATEMENTS: Convert Tensor-dependent assert statements to tf.Assert.
+    BUILTIN_FUNCTIONS: Convert builtin functions applied to Tensors to
+      their TF counterparts.
     ERROR_REWRITING: Rewrite errors that occur in the generated code to
       indicate the source code to which the failing code corresponds.
     LISTS: Convert list idioms, like initializers, slices, append, etc.
+    LOGICAL_EXPRESSIONS: Convert data-dependent logical expressions applied to
+      Tensors to their TF counterparts.
     NAME_SCOPES: Insert name scopes that name ops according to context, like the
       function they were defined in.
   """
@@ -125,8 +128,11 @@ class Feature(enum.Enum):
   ALL = 'ALL'
 
   AUTO_CONTROL_DEPS = 'AUTO_CONTROL_DEPS'
+  ASSERT_STATEMENTS = 'ASSERT_STATEMENTS'
+  BUILTIN_FUNCTIONS = 'BUILTIN_FUNCTIONS'
   ERROR_REWRITING = 'ERROR_REWRITING'
   LISTS = 'LISTS'
+  LOGICAL_EXPRESSIONS = 'LOGICAL_EXPRESSIONS'
   NAME_SCOPES = 'NAME_SCOPES'
 
   @classmethod

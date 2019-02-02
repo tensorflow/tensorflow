@@ -205,22 +205,16 @@ def collect_previous_mask(input_tensors):
   """Retrieves the output mask(s) of the previous node.
 
   Arguments:
-      input_tensors: A tensor or list of tensors.
+      input_tensors: An arbitrary structure of Tensors.
 
   Returns:
       A mask tensor or list of mask tensors.
   """
-  input_tensors = nest.flatten(input_tensors)
-  masks = []
-  for x in input_tensors:
-    if hasattr(x, '_keras_mask'):
-      mask = x._keras_mask  # pylint: disable=protected-access
-      masks.append(mask)
-    else:
-      masks.append(None)
-  if len(masks) == 1:
-    return masks[0]
-  return masks
+
+  def _collect_previous_mask(x):
+    return getattr(x, '_keras_mask', None)
+
+  return nest.map_structure(_collect_previous_mask, input_tensors)
 
 
 def have_all_keras_metadata(tensors):

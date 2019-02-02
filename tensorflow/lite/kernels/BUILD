@@ -111,6 +111,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:round",
     ],
 )
@@ -179,6 +180,7 @@ cc_library(
         "fully_connected.cc",
         "gather.cc",
         "hashtable_lookup.cc",
+        "if.cc",
         "l2norm.cc",
         "layer_norm_lstm.cc",
         "local_response_norm.cc",
@@ -1216,9 +1218,26 @@ tf_cc_test(
     srcs = ["squared_difference_test.cc"],
     deps = [
         ":builtin_ops",
+        "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "if_test",
+    size = "small",
+    srcs = ["if_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        ":kernel_util",
+        "//tensorflow/lite:builtin_op_data",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 

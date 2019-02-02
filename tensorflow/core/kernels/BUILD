@@ -7086,6 +7086,7 @@ tf_kernel_library(
         "//tensorflow/core/util/proto:descriptors",
         "//tensorflow/core/util/proto:proto_utils",
         "//third_party/eigen3",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
