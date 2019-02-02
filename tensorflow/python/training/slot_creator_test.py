@@ -32,13 +32,13 @@ from tensorflow.python.training import slot_creator
 
 class SlotCreatorTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testCreateSlotFromVariable(self):
     with self.cached_session():
       v = variables.Variable([1.0, 2.5], name="var")
       slot = slot_creator.create_slot(v, v.initialized_value(), name="slot")
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       self.assertEqual("var/slot", slot.op.name)
       self.assertEqual([2], slot.get_shape().as_list())
@@ -51,7 +51,7 @@ class SlotCreatorTest(test.TestCase):
       v = constant_op.constant([1.0, 2.5], name="const")
       slot = slot_creator.create_slot(v, v * 2, name="slot")
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       self.assertEqual("const/slot", slot.op.name)
       self.assertEqual([2], slot.get_shape().as_list())
@@ -66,14 +66,14 @@ class SlotCreatorTest(test.TestCase):
         slot = slot_creator.create_zeros_slot(
             v, name="slot", dtype=dtypes.float64)
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       self.assertEqual("var/slot", slot.op.name)
       self.assertEqual([2], slot.get_shape().as_list())
       self.assertEqual(dtypes.float64, slot.dtype.base_dtype)
       self.assertAllEqual([0.0, 0.0], self.evaluate(slot))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testCreateZerosSlotFromDynamicShapedVariable(self):
     with self.cached_session():
       dyn_shape = constant_op.constant([2], dtype=dtypes.int32)
@@ -88,7 +88,7 @@ class SlotCreatorTest(test.TestCase):
         slot = slot_creator.create_zeros_slot(
             v, name="slot", dtype=dtypes.float64)
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       self.assertEqual("var/slot", slot.op.name)
       self.assertEqual([2], array_ops.shape(slot).eval())
@@ -102,7 +102,7 @@ class SlotCreatorTest(test.TestCase):
       with ops.control_dependencies(None):
         slot = slot_creator.create_zeros_slot(v, name="slot")
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       self.assertEqual("const/slot", slot.op.name)
       self.assertEqual([2], slot.get_shape().as_list())
@@ -118,14 +118,14 @@ class SlotCreatorTest(test.TestCase):
         slot = slot_creator.create_zeros_slot(
             v, name="slot", dtype=dtypes.float64)
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       self.assertEqual("const/slot", slot.op.name)
       self.assertEqual([2], array_ops.shape(slot).eval())
       self.assertEqual(dtypes.float64, slot.dtype.base_dtype)
       self.assertAllEqual([0.0, 0.0], self.evaluate(slot))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testCreateSlotFromVariableRespectsScope(self):
     # See discussion on #2740.
     with self.cached_session():

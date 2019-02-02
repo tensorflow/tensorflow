@@ -56,8 +56,8 @@ class RangeDatasetSerializationTest(
   def testSaveRestore(self):
 
     def _build_graph(start, stop):
-      iterator = dataset_ops.Dataset.range(start,
-                                           stop).make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(
+          dataset_ops.Dataset.range(start, stop))
       init_op = iterator.initializer
       get_next = iterator.get_next()
       save_op = self._save_op(iterator._iterator_resource)

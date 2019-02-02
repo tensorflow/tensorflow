@@ -139,7 +139,7 @@ TEST_P(SpeechTest, DISABLED_SpeakerIdOkGoogleTest) {
       << test_driver.GetErrorMessage();
 }
 
-TEST_P(SpeechTest, DISABLED_AsrAmTest) {
+TEST_P(SpeechTest, AsrAmTest) {
   std::stringstream os;
   ASSERT_TRUE(
       ConvertCsvData("speech_asr_am_model.tflite", "speech_asr_am_model_in.csv",
@@ -147,6 +147,19 @@ TEST_P(SpeechTest, DISABLED_AsrAmTest) {
                      /*output_tensor=*/"104",
                      /*persistent_tensors=*/"18,19,38,39,58,59,78,79,98,99",
                      /*sequence_size=*/320, &os));
+  testing::TfLiteDriver test_driver(/*use_nnapi=*/false);
+  ASSERT_TRUE(testing::ParseAndRunTests(&os, &test_driver, GetMaxInvocations()))
+      << test_driver.GetErrorMessage();
+}
+
+TEST_P(SpeechTest, AsrAmQuantizedTest) {
+  std::stringstream os;
+  ASSERT_TRUE(ConvertCsvData(
+      "speech_asr_am_model_int8.tflite", "speech_asr_am_model_in.csv",
+      "speech_asr_am_model_int8_out.csv", /*input_tensor=*/"0",
+      /*output_tensor=*/"104",
+      /*persistent_tensors=*/"18,19,38,39,58,59,78,79,98,99",
+      /*sequence_size=*/320, &os));
   testing::TfLiteDriver test_driver(/*use_nnapi=*/false);
   ASSERT_TRUE(testing::ParseAndRunTests(&os, &test_driver, GetMaxInvocations()))
       << test_driver.GetErrorMessage();
@@ -196,10 +209,10 @@ TEST_P(SpeechTest, DISABLED_TtsTest) {
 // 200s just to bring up the Android emulator.)
 static const int kAllInvocations = -1;
 static const int kFirstFewInvocations = 10;
-INSTANTIATE_TEST_CASE_P(LongTests, SpeechTest,
-                        ::testing::Values(kAllInvocations));
-INSTANTIATE_TEST_CASE_P(ShortTests, SpeechTest,
-                        ::testing::Values(kFirstFewInvocations));
+INSTANTIATE_TEST_SUITE_P(LongTests, SpeechTest,
+                         ::testing::Values(kAllInvocations));
+INSTANTIATE_TEST_SUITE_P(ShortTests, SpeechTest,
+                         ::testing::Values(kFirstFewInvocations));
 
 }  // namespace
 }  // namespace tflite

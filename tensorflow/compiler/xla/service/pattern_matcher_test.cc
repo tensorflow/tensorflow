@@ -242,8 +242,8 @@ TEST(PatternMatcherTest, ConstantScalar) {
     HloModule test_module
     ENTRY test {
       a = s32[] constant(1)
-      b = s32[1,1] constant(s32[1,1]{{2}})
-      c = s32[1,2] constant(s32[1,2]{{2,2}})
+      b = s32[1,1] constant({{2}})
+      c = s32[1,2] constant({{2,2}})
       d = f32[] constant(1)
       e = f32[] constant(1.25)
       ROOT tuple = (s32[], s32[1,1], s32[1,2], f32[], f32[]) tuple(a,b,c,d,e)
@@ -767,10 +767,11 @@ TEST(PatternMatcherTest, HloInstructionDescribeToAndExplain) {
       "in c = f64[] constant(2.25)");
   EXPECT_DESC_AND_EXPLANATION(
       constant, m::Op().Is(iota.get()),
-      absl::StrCat("an HloInstruction which is 0x", absl::Hex(iota.get()), " (",
-                   iota->ToShortString(), ")"),
+      absl::StrCat("an HloInstruction which is 0x", absl::Hex(iota.get()),
+                   " (i = s32[42]{0} iota(), iota_dimension=0)"),
       absl::StrCat("HloInstruction 0x", absl::Hex(constant.get()), " is not 0x",
-                   absl::Hex(iota.get()), " (", iota->ToShortString(), ")\n",
+                   absl::Hex(iota.get()),
+                   " (i = s32[42]{0} iota(), iota_dimension=0)\n"
                    "in c = s32[] constant(0)"));
 }
 
@@ -872,6 +873,61 @@ TEST(PatternMatcherTest, Parameter) {
                             0, ShapeUtil::MakeShape(F32, {}), "p0"),
                         m::Parameter(1)),
             "HloInstruction is not parameter 1\n"
+            "in p0 = f32[] parameter(0)");
+}
+
+TEST(PatternMatcherTest, OneUseAndOneUser) {
+  auto param =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
+
+  EXPECT_FALSE(Match(param.get(), m::Op().WithOneUse()));
+  EXPECT_DESC_AND_EXPLANATION(
+      param, m::Op().WithOneUse(),
+      "an HloInstruction which has exactly one use",
+      "HloInstruction has 0 users, but expected exactly one.\n"
+      "in p0 = f32[] parameter(0)");
+
+  EXPECT_FALSE(Match(param.get(), m::Op().WithOneUser()));
+  EXPECT_DESC_AND_EXPLANATION(
+      param, m::Op().WithOneUser(),
+      "an HloInstruction which has exactly one user (but possibly is used "
+      "multiple times by that instruction)",
+      "HloInstruction has 0 users, but expected exactly one.\n"
+      "in p0 = f32[] parameter(0)");
+
+  {
+    auto reshape =
+        SetName("r", HloInstruction::CreateReshape(
+                         ShapeUtil::MakeShape(F32, {1}), param.get()));
+    EXPECT_TRUE(Match(param.get(), m::Op().WithOneUse()));
+    EXPECT_TRUE(Match(param.get(), m::Op().WithOneUser()));
+
+    auto reshape1 =
+        SetName("r1", HloInstruction::CreateReshape(
+                          ShapeUtil::MakeShape(F32, {1}), param.get()));
+    EXPECT_FALSE(Match(param.get(), m::Op().WithOneUse()));
+    EXPECT_FALSE(Match(param.get(), m::Op().WithOneUser()));
+
+    const char* kMultipleUserExplanation =
+        "HloInstruction has 2 users, but expected exactly one.\n"
+        "All users:\n"
+        " - r = f32[1]{0} reshape(f32[] p0)\n"
+        " - r1 = f32[1]{0} reshape(f32[] p0)\n"
+        "in p0 = f32[] parameter(0)";
+    EXPECT_EQ(Explanation(param.get(), m::Op().WithOneUse()),
+              kMultipleUserExplanation);
+    EXPECT_EQ(Explanation(param.get(), m::Op().WithOneUser()),
+              kMultipleUserExplanation);
+  }
+
+  auto add = SetName("add", HloInstruction::CreateBinary(
+                                ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd,
+                                param.get(), param.get()));
+  EXPECT_TRUE(Match(param.get(), m::Op().WithOneUser()));
+  EXPECT_FALSE(Match(param.get(), m::Op().WithOneUse()));
+  EXPECT_EQ(Explanation(param.get(), m::Op().WithOneUse()),
+            "HloInstruction is used 2 times by its user, but is expected to be "
+            "used just once: add = f32[] add(f32[] p0, f32[] p0)\n"
             "in p0 = f32[] parameter(0)");
 }
 

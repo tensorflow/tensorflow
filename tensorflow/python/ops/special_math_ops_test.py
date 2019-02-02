@@ -119,6 +119,7 @@ class LBetaTest(test.TestCase):
           special_math_ops.lbeta(x).get_shape())
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla('This test never passed for XLA')
   def test_length_1_last_dimension_results_in_one(self):
     # If there is only one coefficient, the formula still works, and we get one
     # as the answer, always.

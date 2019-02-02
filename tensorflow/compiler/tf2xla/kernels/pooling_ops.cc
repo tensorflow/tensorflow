@@ -26,10 +26,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/pooling_ops_common.h"
 
@@ -152,7 +152,12 @@ class MaxPoolOp : public PoolingOp {
  public:
   MaxPoolOp(OpKernelConstruction* ctx, int num_spatial_dims)
       : PoolingOp(ctx, /*num_spatial_dims=*/num_spatial_dims,
-                  /*reduction_type=*/ctx->input_type(0)) {}
+                  /*reduction_type=*/ctx->input_type(0)) {
+    string data_format_str;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+  }
 
   void Compile(XlaOpKernelContext* ctx) override {
     auto ksize_or_error = GetKernelSize(ctx);
@@ -180,10 +185,6 @@ class MaxPool2DOp : public MaxPoolOp {
  public:
   explicit MaxPool2DOp(OpKernelConstruction* ctx)
       : MaxPoolOp(ctx, /*num_spatial_dims=*/2) {
-    string data_format_str;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
-    OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
   }
 };
 REGISTER_XLA_OP(Name("MaxPool"), MaxPool2DOp);
@@ -204,7 +205,12 @@ class AvgPoolOp : public PoolingOp {
   AvgPoolOp(OpKernelConstruction* ctx, int num_spatial_dims)
       : PoolingOp(ctx, /*num_spatial_dims=*/num_spatial_dims,
                   /*reduction_type=*/
-                  XlaHelpers::SumAccumulationType(ctx->input_type(0))) {}
+                  XlaHelpers::SumAccumulationType(ctx->input_type(0))) {
+    string data_format_str;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+  }
 
   void Compile(XlaOpKernelContext* ctx) override {
     auto ksize_or_error = GetKernelSize(ctx);
@@ -241,10 +247,6 @@ class AvgPool2DOp : public AvgPoolOp {
  public:
   explicit AvgPool2DOp(OpKernelConstruction* ctx)
       : AvgPoolOp(ctx, /*num_spatial_dims=*/2) {
-    string data_format_str;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
-    OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
   }
 };
 REGISTER_XLA_OP(Name("AvgPool"), AvgPool2DOp);
@@ -390,6 +392,11 @@ class AvgPoolGradOp : public XlaOpKernel {
     OP_REQUIRES(ctx, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
+
+    string data_format;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
+    OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }
@@ -449,10 +456,6 @@ class AvgPool2DGradOp : public AvgPoolGradOp {
  public:
   explicit AvgPool2DGradOp(OpKernelConstruction* ctx)
       : AvgPoolGradOp(ctx, /*num_spatial_dims=*/2) {
-    string data_format;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
-    OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
   }
 };
 REGISTER_XLA_OP(

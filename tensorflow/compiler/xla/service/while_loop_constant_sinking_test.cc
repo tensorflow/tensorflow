@@ -129,7 +129,7 @@ condition {
 
 ENTRY entry {
   const_0 = f32[2] constant({1, 2})
-  const_1 = (f32[2], f32[2]) constant((f32[2], f32[2]) ({2, 1},{3,1}))
+  const_1 = (f32[2], f32[2]) constant(({2, 1},{3,1}))
   while_init = (f32[2],(f32[2],f32[2])) tuple(const_0, const_1)
   ROOT while = (f32[2],(f32[2],f32[2])) while(while_init), condition=condition, body=body
 }
@@ -206,8 +206,8 @@ body {
   p_body.0 = f32[2] get-tuple-element((f32[2],f32[2]) p_body), index=0
   p_body.1 = f32[2] get-tuple-element((f32[2],f32[2]) p_body), index=1
 
-  token = token[] after-all()
-  outfeed = token[] outfeed(p_body.0, token)
+  token0 = token[] after-all()
+  outfeed = token[] outfeed(p_body.0, token0)
   ROOT root = (f32[2],f32[2],f32[2]) tuple(p_body.0, p_body.1, p_body.1)
 }
 
@@ -305,7 +305,7 @@ condition {
 
 ENTRY entry {
   const_0 = f32[] constant(0)
-  const_1 = (f32[], f32[]) constant((f32[], f32[]) (1, 10))
+  const_1 = (f32[], f32[]) constant((1, 10))
   while_init = (f32[],(f32[],f32[])) tuple(const_0, const_1)
   ROOT while = (f32[],(f32[],f32[])) while(while_init), condition=condition, body=body
 }

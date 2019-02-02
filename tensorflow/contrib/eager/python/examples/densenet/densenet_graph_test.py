@@ -119,7 +119,8 @@ class DensenetBenchmark(tf.test.Benchmark):
       with tf.Graph().as_default():
         np_images, np_labels = random_batch(batch_size)
         dataset = tf.data.Dataset.from_tensors((np_images, np_labels)).repeat()
-        (images, labels) = dataset.make_one_shot_iterator().get_next()
+        (images, labels) = tf.compat.v1.data.make_one_shot_iterator(
+            dataset).get_next()
 
         model = densenet.DenseNet(self.depth, self.growth_rate, self.num_blocks,
                                   self.output_classes,

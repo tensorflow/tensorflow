@@ -252,7 +252,7 @@ TEST_P(TransposeConvOpTest, AccuracyTest) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 4, 1}));
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     TransposeConvOpTest, TransposeConvOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 

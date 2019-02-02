@@ -29,11 +29,13 @@ from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
 
+@test_util.run_v1_only("RandomShuffleQueue removed from v2")
 class RandomShuffleQueueTest(test.TestCase):
 
   def setUp(self):

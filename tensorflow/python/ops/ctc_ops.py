@@ -24,26 +24,30 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_ctc_ops
 from tensorflow.python.ops import inplace_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.nn_grad import _BroadcastMul
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=protected-access, invalid-name
 @tf_export(v1=["nn.ctc_loss"])
-def ctc_loss(labels, inputs, sequence_length,
+def ctc_loss(labels, inputs=None, sequence_length=None,
              preprocess_collapse_repeated=False,
              ctc_merge_repeated=True,
-             ignore_longer_outputs_than_inputs=False, time_major=True):
+             ignore_longer_outputs_than_inputs=False, time_major=True,
+             logits=None):
   """Computes the CTC (Connectionist Temporal Classification) Loss.
 
   This op implements the CTC loss as presented in the article:
@@ -141,6 +145,7 @@ def ctc_loss(labels, inputs, sequence_length,
       avoids transposes at the beginning of the ctc_loss calculation.  However,
       most TensorFlow data is batch-major, so by this function also accepts
       inputs in batch-major form.
+    logits: Alias for inputs.
 
   Returns:
     A 1-D `float` `Tensor`, size `[batch]`, containing the negative log
@@ -155,6 +160,8 @@ def ctc_loss(labels, inputs, sequence_length,
     raise TypeError("Expected labels (first argument) to be a SparseTensor")
 
   # For internal calculations, we transpose to [time, batch, num_classes]
+  inputs = deprecation.deprecated_argument_lookup(
+      "logits", logits, "inputs", inputs)
   if not time_major:
     inputs = array_ops.transpose(inputs, [1, 0, 2])  # (B,T,N) => (T,B,N)
 
@@ -903,7 +910,7 @@ def ctc_unique_labels(labels, name=None):
           u.y, [[0, _get_dim(u.idx, 0) - _get_dim(u.y, 0)]])
       y = math_ops.cast(y, dtypes.int64)
       return [y, u.idx]
-    return functional_ops.map_fn(
+    return map_fn.map_fn(
         _unique, labels, dtype=[dtypes.int64, dtypes.int32])
 
 
@@ -1029,7 +1036,7 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
   for the forward backward use case.
 
   Examples:
-    scan(lambda a, e: a + e, [1.0, 2.0, 3.0], 1.0) => [2.0, 3.0, 4.0]
+    scan(lambda a, e: a + e, [1.0, 2.0, 3.0], 1.0) => [2.0, 4.0, 7.0]
 
     Multiple accumulators:
       scan(lambda a, e: (a[0] + e, a[1] * e), [1.0, 2.0, 3.0], (0.0, 1.0))
@@ -1127,4 +1134,5 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
 
 def _get_dim(tensor, i):
   """Get value of tensor shape[i] preferring static value if available."""
-  return tensor.shape[i].value or array_ops.shape(tensor)[i]
+  return tensor_shape.dimension_value(
+      tensor.shape[i]) or array_ops.shape(tensor)[i]

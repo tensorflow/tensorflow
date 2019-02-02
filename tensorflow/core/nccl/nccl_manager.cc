@@ -24,6 +24,22 @@ limitations under the License.
 
 namespace tensorflow {
 
+#define NCCL_RETURN_IF_ERROR(...)                               \
+  do {                                                          \
+    ncclResult_t nccl_status = (__VA_ARGS__);                   \
+    if (nccl_status != ncclSuccess) {                           \
+      return errors::Internal(ncclGetErrorString(nccl_status)); \
+    }                                                           \
+  } while (0)
+
+#define CUDA_RETURN_IF_ERROR(...)                               \
+  do {                                                          \
+    cudaError_t cuda_status = (__VA_ARGS__);                    \
+    if (cuda_status != cudaSuccess) {                           \
+      return errors::Internal(cudaGetErrorString(cuda_status)); \
+    }                                                           \
+  } while (0)
+
 using se::cuda::ScopedActivateExecutorContext;
 
 // Contains data for a single stream used for nccl communication; this includes
@@ -66,14 +82,17 @@ struct NcclManager::CommunicatorMember {
 
 struct NcclManager::Communicator {
  public:
-  explicit Communicator(std::vector<CommunicatorMember> members)
-      : num_devices(members.size()), members(std::move(members)) {}
+  explicit Communicator(std::vector<CommunicatorMember> members,
+                        const string& key)
+      : num_devices(members.size()), members(std::move(members)), key(key) {}
 
   const int num_devices;
-  const std::vector<CommunicatorMember> members;  // indexed by rank.
+  const std::vector<CommunicatorMember> members;
+  const string key;
 };
 
 namespace {
+
 ncclDataType_t ToNcclType(DataType t) {
   switch (t) {
     case DT_HALF:
@@ -90,64 +109,46 @@ ncclDataType_t ToNcclType(DataType t) {
       return ncclFloat;
   }
 }
+
+void StringToNcclUniqueId(const string& str_id, ncclUniqueId* nccl_id) {
+  if (str_id.size() == NCCL_UNIQUE_ID_BYTES) {
+    memcpy(nccl_id->internal, str_id.data(), NCCL_UNIQUE_ID_BYTES);
+  }
+}
+
 }  // namespace
 
-// A participant in a Collective.  See <Collective> below.
-struct NcclManager::Participant {
-  Participant(const Tensor* in_t, Tensor* out_t, EventMgr* event_mgr,
-              se::Stream* tensor_stream, se::StreamExecutor* executor,
-              int gpu_device_id, NcclManager::DoneCallback done_callback)
-      : in_t(in_t),
-        out_t(out_t),
-        event_mgr(event_mgr),
-        tensor_stream(tensor_stream),
-        executor(executor),
-        gpu_device_id(gpu_device_id),
-        done_callback(std::move(done_callback)) {
-    DCHECK(executor != nullptr);
-    DCHECK(event_mgr != nullptr);
-    DCHECK(tensor_stream != nullptr);
-  }
-  // Owned by the caller, who must keep it live until <done_callback> is called.
-  // Is NULL for participants that only receive data.
-  const Tensor* in_t;
-
-  // Owned by the caller, who must keep it live until <done_callback> is called.
-  // Is NULL for participants that only send data.
-  Tensor* out_t;
-
-  // Owned by the caller, who must keep it live until <done_callback> is called.
-  EventMgr* const event_mgr;
-
-  // Owned by the caller, who must keep it live until <done_callback> is called.
-  se::Stream* const tensor_stream;
-
-  // Matches the executor in CommunicatorMember::stream. Expected to be live for
-  // process lifetime.
-  se::StreamExecutor* const executor = nullptr;
-
-  const int gpu_device_id;
-
-  NcclManager::DoneCallback done_callback;
-
-  bool root = false;
-};
-
-// A Collective tracks a single communicator operation (e.g., a single
-// AllReduce call).
+// A `Collective` encapsulates state for a collective instance at one node.
+// Typically, an instance in TensorFlow context would be defined by a collective
+// group and the (step, frame iteration) for that execution.
+//
+// For each collective instance there will be one `Collective` object per node.
+// For example,  a NCCL collective that runs on a single node with 4 GPUs would
+// have a single `Collective` per step.  However, a collective that executes on
+// 3 nodes with 4 GPUs each would have a `Collective` per node, each of which is
+// tracking the 4 GPUs local to that node.
 struct NcclManager::Collective {
   Collective(DataType data_type_in, CollectiveType type_in,
-             ncclRedOp_t reduction_op_in, int num_devices)
+             ncclRedOp_t reduction_op_in, int num_local_devices_in,
+             int num_global_devices_in, const string& communicator_key_in)
       : data_type(data_type_in),
         type(type_in),
         reduction_op(reduction_op_in),
-        remaining_participants(num_devices) {
-    participants.reserve(num_devices);
+        num_local_devices(num_local_devices_in),
+        num_global_devices(num_global_devices_in),
+        single_node(num_local_devices_in == num_global_devices_in),
+        communicator_key(communicator_key_in),
+        remaining_participants(num_local_devices_in) {
+    participants.reserve(num_local_devices_in);
   }
 
   const DataType data_type;
   const CollectiveType type;
   const ncclRedOp_t reduction_op;  // applies when <type> is a reduction.
+  const int num_local_devices;     // devices local to this node
+  const int num_global_devices;    // devices across all nodes
+  const bool single_node;          // true if all devices are at one node
+  const string communicator_key;
 
   Communicator* communicator = nullptr;
 
@@ -162,12 +163,20 @@ struct NcclManager::Collective {
   int root_rank = -1;
 
   // How many participants have been registered so far. The Collective is
-  // eligible for running with <available_participants> == participants.size().
+  // eligible for running with <available_participants> == num_local_devices.
+  //
+  // If this is a multi-node collective, we additionally have to synchronize
+  // across nodes.  The caller would need to signal multi node readiness by
+  // calling NcclManager::SignalMultiNodeReady, which sets `multi_node_ready` to
+  // true.
   //
   // Guarded by the mutex of the containing Communicator.
   int available_participants = 0;
+  bool multi_node_ready = false;
 
   mutable std::atomic_int_fast32_t remaining_participants;
+
+  Status status;
 };
 
 NcclManager::NcclManager() {}
@@ -177,47 +186,77 @@ NcclManager* NcclManager::instance() {
   return instance;
 }
 
-NcclManager::Communicator* NcclManager::GetCommunicator(
-    NcclManager::Collective* collective) {
+string NcclManager::GenerateCommunicatorKey() {
+  ncclUniqueId nccl_id;
+  ncclGetUniqueId(&nccl_id);
+  return string(nccl_id.internal, NCCL_UNIQUE_ID_BYTES);
+}
+
+Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
+                                    NcclManager::Communicator** communicator) {
   // Sort by executor to make ordering of executors deterministic.
   std::sort(collective->participants.begin(), collective->participants.end(),
             [](const std::unique_ptr<Participant>& a,
                const std::unique_ptr<Participant>& b) {
               return a->executor < b->executor;
             });
-  const int num_devices = collective->participants.size();
 
   mutex_lock l(mu_);
 
-  // Scan to find an existing communicator that provides nccl communication
-  // between the executors used by the participants in the collective. For
-  // example, if a collective is for GPUs 0, 1, and 2 then this will scan
-  // to find the communicator for GPUs 0, 1, and 2.
-  //
-  // Note that each executor identifies a context on one device, so this is the
-  // same as getting the communicator connecting the devices in the collective.
-  // A device can be in different communicators as well - for example, a
-  // communicator for GPUs 0 and 1 is separate from one for GPUs 0, 1, and 2.
-  //
-  // Since it's expected that a small number of distinct communicators will
-  // be needed, communicators_ is not garbage collected currently.
-  //
-  // Launching of kernels must be serialized so that, given collectives A and B,
-  // and an order of them (e.g., A before B), then for each comm_stream
-  // involved, the kernel for A is launched before the kernel for B. This is
-  // guaranteed currently be a global mutex controlling additions of the kernels
-  // to per-stream launch queues.  The launch queues are processed by
-  // LoopKernelLaunches.
-  for (auto& comm : communicators_) {
-    if (comm->num_devices == num_devices) {
-      int i;
-      for (i = 0; i < num_devices; ++i) {
-        if (comm->members[i].nccl_stream->executor !=
-            collective->participants[i]->executor) {
-          break;
+  if (collective->single_node) {
+    // For single-node collectives, we identify a communicator uniquely by the
+    // set of devices participating in the collective.  For example, if a
+    // collective is for GPUs 0, 1, and 2 then this will scan to find the
+    // communicator for GPUs 0, 1, and 2.
+    //
+    // Note that each executor identifies a context on one device, so this is
+    // the same as getting the communicator connecting the devices in the
+    // collective. A device can be in different communicators as well - for
+    // example, a communicator for GPUs 0 and 1 is separate from one for GPUs 0,
+    // 1, and 2.
+    //
+    // Since it's expected that a small number of distinct communicators will
+    // be needed, communicators_ is not garbage collected currently.
+    //
+    // Launching of kernels must be serialized so that, given collectives A and
+    // B, and an order of them (e.g., A before B), then for each comm_stream
+    // involved, the kernel for A is launched before the kernel for B. This is
+    // guaranteed currently be a global mutex controlling additions of the
+    // kernels to per-stream launch queues.  The launch queues are processed by
+    // LoopKernelLaunches.
+    for (auto& comm : communicators_) {
+      if (comm->num_devices == collective->num_global_devices) {
+        int i;
+        for (i = 0; i < collective->num_local_devices; ++i) {
+          if (comm->members[i].nccl_stream->executor !=
+              collective->participants[i]->executor) {
+            break;
+          }
+        }
+        if (i == collective->num_local_devices) {
+          *communicator = comm.get();
+          return Status::OK();
         }
       }
-      if (i == num_devices) return comm.get();
+    }
+  } else {
+#if NCCL_MAJOR < 2
+    return errors::Internal(
+        "Cannot use multi-node NCCL collectives with NCCL 1.x");
+#endif
+    if (collective->communicator_key.size() != NCCL_UNIQUE_ID_BYTES) {
+      return errors::Internal("Expected communicator_key of size ",
+                              NCCL_UNIQUE_ID_BYTES, " but found size ",
+                              collective->communicator_key.size());
+    }
+    // This is an instance of multi-node collective.  We have previously
+    // created a NCCL unique id and shared with all workers.  Now we find the
+    // `Communicator` corresponding to this id.
+    for (auto& comm : communicators_) {
+      if (comm->key == collective->communicator_key) {
+        *communicator = comm.get();
+        return Status::OK();
+      }
     }
   }
 
@@ -227,9 +266,9 @@ NcclManager::Communicator* NcclManager::GetCommunicator(
   // Create and initialize a new communicator.
   // Note that this is done under the lock; performance is not expected to
   // matter as this happens a very small number of times.
-  std::vector<CommunicatorMember> members(num_devices);
-  std::vector<int> devices(num_devices);
-  for (int i = 0; i < num_devices; ++i) {
+  std::vector<CommunicatorMember> members(collective->num_local_devices);
+  std::vector<int> devices(collective->num_local_devices);
+  for (int i = 0; i < collective->num_local_devices; ++i) {
     auto* executor = collective->participants[i]->executor;
 
     // Find a communication stream to use for the device.
@@ -259,157 +298,209 @@ NcclManager::Communicator* NcclManager::GetCommunicator(
     devices[i] = collective->participants[i]->gpu_device_id;
   }
 
-  int device_count = num_devices;
+  std::vector<ncclComm_t> nccl_comms(collective->num_local_devices);
 #if NCCL_MAJOR >= 2
-  // NCCL2 prevents InitAll for more communicators than devices (but doesn't
-  // check that device ids are unique). Work around it by initializing each
-  // rank individually.
-  cudaGetDeviceCount(&device_count);
-#endif
-  std::vector<ncclComm_t> nccl_comms(num_devices);
-  if (num_devices <= device_count) {
-    auto result =
-        ncclCommInitAll(nccl_comms.data(), num_devices, devices.data());
-    CHECK_EQ(result, ncclSuccess) << ncclGetErrorString(result);
+  // For NCCL 2, we always initialize using ncclCommInitRank guarded by NCCL
+  // group primitives.
+  ncclUniqueId nccl_id;
+  if (collective->single_node) {
+    NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&nccl_id));
   } else {
-    int savedDevice = 0;
-    CHECK_EQ(cudaGetDevice(&savedDevice), cudaSuccess);
-    ncclUniqueId commId;
-    ncclGetUniqueId(&commId);
-#if NCCL_MAJOR >= 2
-    CHECK_EQ(ncclGroupStart(), ncclSuccess);
-#endif
-    for (int rank = 0; rank < num_devices; ++rank) {
-      cudaSetDevice(devices[rank]);
-      auto result =
-          ncclCommInitRank(nccl_comms.data() + rank, num_devices, commId, rank);
-      CHECK_EQ(result, ncclSuccess) << ncclGetErrorString(result);
-    }
-#if NCCL_MAJOR >= 2
-    CHECK_EQ(ncclGroupEnd(), ncclSuccess);
-#endif
-    cudaSetDevice(savedDevice);
+    StringToNcclUniqueId(collective->communicator_key, &nccl_id);
   }
-  for (int rank = 0; rank < num_devices; ++rank) {
-    members[rank].nccl_comm = nccl_comms[rank];
+  int saved_device = 0;
+  CUDA_RETURN_IF_ERROR(cudaGetDevice(&saved_device));
+  NCCL_RETURN_IF_ERROR(ncclGroupStart());
+  for (int i = 0; i < collective->num_local_devices; ++i) {
+    const int rank =
+        collective->single_node ? i : collective->participants[i]->global_rank;
+    CUDA_RETURN_IF_ERROR(cudaSetDevice(devices[i]));
+    NCCL_RETURN_IF_ERROR(ncclCommInitRank(
+        nccl_comms.data() + i, collective->num_global_devices, nccl_id, rank));
   }
-  communicators_.emplace_back(new Communicator(std::move(members)));
-  return communicators_.back().get();
+  NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+  CUDA_RETURN_IF_ERROR(cudaSetDevice(saved_device));
+#else
+  // Since NCCL 1 is single node only, we use ncclCommInitAll.  We could have
+  // used ncclCommInitRank with NCCL 1 as well, but then we would have to
+  // issue each init call from a different thread
+  // (https://docs.nvidia.com/deeplearning/sdk/nccl-developer-guide/docs/nccl1.html).
+  NCCL_RETURN_IF_ERROR(ncclCommInitAll(
+      nccl_comms.data(), collective->num_local_devices, devices.data()));
+#endif
+
+  for (int i = 0; i < collective->num_local_devices; ++i) {
+    members[i].nccl_comm = nccl_comms[i];
+  }
+  communicators_.emplace_back(
+      new Communicator(std::move(members), collective->communicator_key));
+  *communicator = communicators_.back().get();
+  return Status::OK();
 }
 
-void NcclManager::AddToAllReduce(int num_devices, const string& key,
-                                 ncclRedOp_t reduction_op,
-                                 se::StreamExecutor* executor,
-                                 int gpu_device_id, EventMgr* event_mgr,
-                                 se::Stream* tensor_stream, const Tensor* in_t,
-                                 Tensor* out_t,
-                                 const DoneCallback& done_callback) {
-  std::unique_ptr<Participant> participant(
-      new Participant(in_t, out_t, event_mgr, tensor_stream, executor,
-                      gpu_device_id, done_callback));
-  AddParticipant(num_devices, key, std::move(participant), in_t->dtype(),
-                 kAllReduce, reduction_op);
-}
-
-void NcclManager::AddBroadcastSend(int num_devices, const string& key,
-                                   se::StreamExecutor* executor,
-                                   int gpu_device_id, EventMgr* event_mgr,
-                                   se::Stream* tensor_stream,
-                                   const Tensor* in_t,
-                                   DoneCallback done_callback) {
-  std::unique_ptr<Participant> participant(
-      new Participant(in_t, nullptr /* out_t */, event_mgr, tensor_stream,
-                      executor, gpu_device_id, std::move(done_callback)));
-  participant->root = true;
-  AddParticipant(num_devices, key, std::move(participant), in_t->dtype(),
-                 kBroadcast, ncclSum /* unused */);
-}
-
-void NcclManager::AddBroadcastRecv(int num_devices, const string& key,
-                                   se::StreamExecutor* executor,
-                                   int gpu_device_id, EventMgr* event_mgr,
-                                   se::Stream* tensor_stream, Tensor* out_t,
-                                   DoneCallback done_callback) {
-  std::unique_ptr<Participant> participant(
-      new Participant(nullptr /* in_t */, out_t, event_mgr, tensor_stream,
-                      executor, gpu_device_id, std::move(done_callback)));
-  AddParticipant(num_devices, key, std::move(participant), out_t->dtype(),
-                 kBroadcast, ncclSum /* unused */);
-}
-
-void NcclManager::AddReduceSend(int num_devices, const string& key,
-                                ncclRedOp_t reduction_op,
-                                se::StreamExecutor* executor, int gpu_device_id,
-                                EventMgr* event_mgr, se::Stream* tensor_stream,
-                                const Tensor* in_t,
-                                DoneCallback done_callback) {
-  std::unique_ptr<Participant> participant(
-      new Participant(in_t, nullptr /* out_t */, event_mgr, tensor_stream,
-                      executor, gpu_device_id, std::move(done_callback)));
-  AddParticipant(num_devices, key, std::move(participant), in_t->dtype(),
-                 kReduce, reduction_op);
-}
-
-void NcclManager::AddReduceRecv(int num_devices, const string& key,
-                                ncclRedOp_t reduction_op,
-                                se::StreamExecutor* executor, int gpu_device_id,
-                                EventMgr* event_mgr, se::Stream* tensor_stream,
-                                const Tensor* in_t, Tensor* out_t,
-                                DoneCallback done_callback) {
-  std::unique_ptr<Participant> participant(
-      new Participant(in_t, out_t, event_mgr, tensor_stream, executor,
-                      gpu_device_id, std::move(done_callback)));
-  participant->root = true;
-  AddParticipant(num_devices, key, std::move(participant), in_t->dtype(),
-                 kReduce, reduction_op);
-}
-
-void NcclManager::AddParticipant(int num_devices, const string& key,
-                                 std::unique_ptr<Participant> participant,
-                                 DataType data_type,
-                                 CollectiveType collective_type,
+void NcclManager::AddToAllReduce(std::unique_ptr<Participant> participant,
+                                 const Context& context,
                                  ncclRedOp_t reduction_op) {
+  AddParticipant(std::move(participant), context, kAllReduce, reduction_op);
+}
+
+void NcclManager::AddBroadcastSend(std::unique_ptr<Participant> participant,
+                                   const Context& context) {
+  participant->root = true;
+  AddParticipant(std::move(participant), context, kBroadcast,
+                 ncclSum /* unused */);
+}
+
+void NcclManager::AddBroadcastRecv(std::unique_ptr<Participant> participant,
+                                   const Context& context) {
+  AddParticipant(std::move(participant), context, kBroadcast,
+                 ncclSum /* unused */);
+}
+
+void NcclManager::AddReduceSend(std::unique_ptr<Participant> participant,
+                                const Context& context,
+                                ncclRedOp_t reduction_op) {
+  AddParticipant(std::move(participant), context, kReduce, reduction_op);
+}
+
+void NcclManager::AddReduceRecv(std::unique_ptr<Participant> participant,
+                                const Context& context,
+                                ncclRedOp_t reduction_op) {
+  AddParticipant(std::move(participant), context, kReduce, reduction_op);
+}
+
+void NcclManager::SignalMultiNodeReady(const string& collective_key) {
   Collective* to_run = nullptr;
   {
     mutex_lock l(mu_);
-    auto& collective_ptr = collectives_[key];
-    if (collective_ptr == nullptr) {
-      collective_ptr.reset(new Collective(data_type, collective_type,
-                                          reduction_op, num_devices));
+    auto collective_it = collectives_.find(collective_key);
+    if (collective_it != collectives_.end()) {
+      Collective* collective = collective_it->second.get();
+      collective->multi_node_ready = true;
+      to_run = CheckReady(collective_key, collective);
     }
-    Collective* collective = collective_ptr.get();
-    DCHECK_EQ(collective->type, collective_type);
-    DCHECK_LT(collective->participants.size(), num_devices);
+  }
+
+  if (to_run != nullptr) RunCollective(to_run);
+}
+
+void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
+                                 const Context& context,
+                                 CollectiveType collective_type,
+                                 ncclRedOp_t reduction_op) {
+  Collective* to_run = nullptr;
+  const DataType data_type = participant->input->dtype();
+  {
+    mutex_lock l(mu_);
+    auto collective_it = collectives_.find(context.collective_key);
+    Collective* collective = nullptr;
+    if (collective_it == collectives_.end()) {
+      auto collective_unique_ptr = absl::make_unique<Collective>(
+          data_type, collective_type, reduction_op, context.num_local_devices,
+          context.num_global_devices, context.communicator_key);
+      collective = collective_unique_ptr.get();
+      collectives_.emplace(context.collective_key,
+                           std::move(collective_unique_ptr));
+    } else {
+      collective = collective_it->second.get();
+    }
+
+    // Check `collective` is correct and consistent.
+    if (collective->status.ok() && collective->single_node &&
+        !collective->communicator_key.empty()) {
+      collective->status =
+          errors::Internal("Collective ", reduction_op,
+                           " is single node but has communicator_key of size ",
+                           collective->communicator_key.size());
+    }
+    if (collective->status.ok() && collective->communicator_key.size() !=
+                                       context.communicator_key.size()) {
+      collective->status =
+          errors::Internal("Collective ", reduction_op,
+                           " mismatch in member communicator_key with size ",
+                           collective->communicator_key.size(),
+                           " and arg communicator_key with size ",
+                           context.communicator_key.size());
+    }
+    if (collective->status.ok() && collective->type != collective_type) {
+      collective->status = errors::Internal(
+          "Collective ", reduction_op, " previously initialized with type ",
+          collective->type, " but now got type ", collective_type);
+    }
+    if (collective->status.ok() &&
+        collective->num_global_devices != context.num_global_devices) {
+      collective->status =
+          errors::Internal("Collective ", reduction_op,
+                           " previously initialized with num_global_devices ",
+                           collective->num_global_devices, " but now got ",
+                           context.num_global_devices);
+    }
+    if (collective->status.ok() &&
+        collective->num_local_devices != context.num_local_devices) {
+      collective->status =
+          errors::Internal("Collective ", reduction_op,
+                           "previously initialized with num_local_devices ",
+                           collective->num_local_devices, " but now got ",
+                           context.num_local_devices);
+    }
+    if (collective->status.ok() &&
+        collective->participants.size() >= collective->num_local_devices) {
+      collective->status = errors::Internal(
+          "Collective ", reduction_op, " expected ",
+          collective->num_local_devices, " participants but now has ",
+          collective->participants.size(),
+          " with one more participant being added");
+    }
+
     collective->participants.emplace_back(std::move(participant));
     ++collective->available_participants;
 
-    if (collective->available_participants == num_devices) {
-      to_run = collective;
-
-      // Ownership is going to be transferred to RunCollective.
-      collective_ptr.release();
-      collectives_.erase(key);
-    }
+    to_run = CheckReady(context.collective_key, collective);
   }
 
-  if (to_run != nullptr) {
-    RunCollective(key, to_run);
-  }
+  if (to_run != nullptr) RunCollective(to_run);
 }
 
-void NcclManager::RunCollective(const string& key, Collective* collective) {
+NcclManager::Collective* NcclManager::CheckReady(const string& collective_key,
+                                                 Collective* collective) {
+  Collective* to_run = nullptr;
+  if (collective->available_participants == collective->num_local_devices) {
+    if (collective->num_global_devices == collective->num_local_devices ||
+        collective->multi_node_ready) {
+      // Ownership transferred to callee.
+      to_run = collective;
+      auto collectives_it = collectives_.find(collective_key);
+      collectives_it->second.release();
+      collectives_.erase(collectives_it);
+    }
+  }
+  return to_run;
+}
+
+void NcclManager::RunCollective(Collective* collective) {
   static mutex collective_mu(LINKER_INITIALIZED);
 
-  auto* communicator = GetCommunicator(collective);
-  collective->communicator = communicator;
-  const int size = communicator->num_devices;
+  Status s = collective->status;
+  if (s.ok()) {
+    s = GetCommunicator(collective, &collective->communicator);
+  }
+  if (!s.ok()) {
+    for (int i = 0; i < collective->num_local_devices; ++i) {
+      collective->participants[i]->done_callback(s);
+    }
+    delete collective;
+    return;
+  }
 
-  for (int rank = 0; rank < size; ++rank) {
-    Participant* p = collective->participants[rank].get();
-    NcclStream* nccl_stream = communicator->members[rank].nccl_stream;
+  for (int local_rank = 0; local_rank < collective->num_local_devices;
+       ++local_rank) {
+    Participant* p = collective->participants[local_rank].get();
+    NcclStream* nccl_stream =
+        collective->communicator->members[local_rank].nccl_stream;
     CHECK(nccl_stream != nullptr);
+    const int rank = collective->single_node ? local_rank : p->global_rank;
 
-    if (p->in_t != nullptr) {
+    if (p->input != nullptr) {
       // Wait to ensure that the kernel that produces the data in the input
       // tensor has finished running before the nccl kernel runs on the
       // communication stream.
@@ -431,11 +522,13 @@ void NcclManager::RunCollective(const string& key, Collective* collective) {
     // Note that it would be possible to run multiple collectives at once, if
     // they have non-intersecting sets of devices.
     mutex_lock l(collective_mu);
-    for (int rank = 0; rank < size; ++rank) {
-      NcclStream* nccl_stream = communicator->members[rank].nccl_stream;
+    for (int local_rank = 0; local_rank < collective->num_local_devices;
+         ++local_rank) {
+      NcclStream* nccl_stream =
+          collective->communicator->members[local_rank].nccl_stream;
       mutex_lock l(nccl_stream->mu);
       nccl_stream->pending_launches_.push_front(
-          std::make_pair(collective, rank));
+          std::make_pair(collective, local_rank));
       nccl_stream->cv.notify_all();
     }
   }
@@ -463,37 +556,41 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
       nccl_stream->pending_launches_.pop_back();
     }
     Collective* collective = next_launch.first;
-    int rank = next_launch.second;
+    int local_rank = next_launch.second;
 
     // Launch the nccl kernel.
     ncclDataType_t data_type = ToNcclType(collective->data_type);
-    Participant* p = collective->participants[rank].get();
+    Participant* p = collective->participants[local_rank].get();
 
-    auto nccl_comm = collective->communicator->members[rank].nccl_comm;
+    auto nccl_comm = collective->communicator->members[local_rank].nccl_comm;
     ncclResult_t nccl_result = ncclSuccess;
     switch (collective->type) {
       case kAllReduce: {
-        const void* sendbuff = p->in_t->tensor_data().data();
-        void* recvbuff = const_cast<char*>(p->out_t->tensor_data().data());
+        const void* sendbuff = p->input->tensor_data().data();
+        void* recvbuff = const_cast<char*>(p->output->tensor_data().data());
 
-        nccl_result =
-            ncclAllReduce(sendbuff, recvbuff, p->in_t->NumElements(), data_type,
-                          collective->reduction_op, nccl_comm, *cu_stream);
+        VLOG(2) << "call NcclAllReduce participant " << local_rank
+                << " sendbuff " << sendbuff << " recvbuff " << recvbuff
+                << " nccl_comm " << nccl_comm << " comm_stream " << comm_stream
+                << " cuda_stream " << cu_stream;
+        nccl_result = ncclAllReduce(sendbuff, recvbuff, p->input->NumElements(),
+                                    data_type, collective->reduction_op,
+                                    nccl_comm, *cu_stream);
         break;
       }
       case kBroadcast: {
-        const Tensor* buf_t = p->in_t ? p->in_t : p->out_t;
+        const Tensor* buf_t = p->input ? p->input : p->output;
         void* buf = const_cast<char*>(buf_t->tensor_data().data());
         nccl_result = ncclBcast(buf, buf_t->NumElements(), data_type,
                                 collective->root_rank, nccl_comm, *cu_stream);
         break;
       }
       case kReduce: {
-        const void* sendbuff = p->in_t->tensor_data().data();
-        void* recvbuff = p->out_t
-                             ? const_cast<char*>(p->out_t->tensor_data().data())
-                             : nullptr;
-        nccl_result = ncclReduce(sendbuff, recvbuff, p->in_t->NumElements(),
+        const void* sendbuff = p->input->tensor_data().data();
+        void* recvbuff =
+            p->output ? const_cast<char*>(p->output->tensor_data().data())
+                      : nullptr;
+        nccl_result = ncclReduce(sendbuff, recvbuff, p->input->NumElements(),
                                  data_type, collective->reduction_op,
                                  collective->root_rank, nccl_comm, *cu_stream);
         break;
@@ -501,13 +598,13 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
     }
 
     // Run the done_callback when the nccl kernel finishes running.
-    auto done_callback = [collective, rank, nccl_result]() {
+    auto done_callback = [collective, local_rank, nccl_result]() {
       if (nccl_result == ncclSuccess) {
-        collective->participants[rank]->done_callback(Status::OK());
+        collective->participants[local_rank]->done_callback(Status::OK());
       } else {
         // Propagate the error, but note that if other members of the collective
         // did launch their kernels, then they are hanging.
-        collective->participants[rank]->done_callback(errors::Unknown(
+        collective->participants[local_rank]->done_callback(errors::Unknown(
             "Error invoking NCCL: ", ncclGetErrorString(nccl_result)));
       }
 

@@ -127,7 +127,7 @@ TEST_F(ExperimentalImplementationSelectorTest, SwapImplementationEval) {
                                  test::AsScalar<float>(4.0f));
 
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   const auto twice_boosted_tensor = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(twice_boosted_tensor[0],
                                  test::AsScalar<float>(2.0f));
@@ -223,7 +223,7 @@ TEST_F(ExperimentalImplementationSelectorTest, SwapImplementationWithGradient) {
                                  test::AsScalar<float>(4.0f));
 
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   const auto twice_boosted_tensor = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(twice_boosted_tensor[0],
                                  test::AsScalar<float>(2.0f));

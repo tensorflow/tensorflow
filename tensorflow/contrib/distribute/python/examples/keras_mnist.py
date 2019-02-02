@@ -20,6 +20,10 @@ from __future__ import print_function
 import tensorflow as tf
 
 
+from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.keras.optimizer_v2 import rmsprop
+
+
 NUM_CLASSES = 10
 
 
@@ -105,22 +109,21 @@ def main(_):
   tf.enable_eager_execution()
 
   train_ds, eval_ds, input_shape = get_input_datasets()
-  model = get_model(input_shape)
 
   # Instantiate the MirroredStrategy object. If we don't specify `num_gpus` or
   # the `devices` argument then all the GPUs available on the machine are used.
-  strategy = tf.contrib.distribute.MirroredStrategy(['/gpu:0', '/cpu:0'])
+  # TODO(priyag): Use `tf.distribute.MirroredStrategy` once available.
+  strategy = mirrored_strategy.MirroredStrategy(['/gpu:0', '/cpu:0'])
 
-  # TODO(priyag): Use RMSPropOptimizer when it works with eager mode.
-  optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
-
-  # Compile the model by passing the distribution strategy object to the
-  # `distribute` argument. `fit`, `evaluate` and `predict` will be distributed
-  # based on the strategy instantiated.
-  model.compile(loss=tf.keras.losses.categorical_crossentropy,
-                optimizer=optimizer,
-                metrics=['accuracy'],
-                distribute=strategy)
+  # Create and compile the model under Distribution strategy scope.
+  # `fit`, `evaluate` and `predict` will be distributed based on the strategy
+  # model was compiled with.
+  with strategy.scope():
+    model = get_model(input_shape)
+    optimizer = rmsprop.RMSProp(learning_rate=0.001)
+    model.compile(loss=tf.keras.losses.categorical_crossentropy,
+                  optimizer=optimizer,
+                  metrics=['accuracy'])
 
   # Train the model with the train dataset.
   model.fit(x=train_ds, epochs=20, steps_per_epoch=468)

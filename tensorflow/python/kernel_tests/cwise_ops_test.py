@@ -595,7 +595,7 @@ class MinMaxOpTest(test.TestCase):
 
   def testScalar(self):
     x = np.random.rand(1, 3, 2) * 100.
-    y = np.asscalar(np.random.rand(1) * 100.)  # should broadcast
+    y = np.random.rand(1).item() * 100.  # should broadcast
     # dropped np.float64, int64 because TF automatically converts to 32 bit
     for t in [np.float32, np.int32]:
       self._compare(x.astype(t), t(y), use_gpu=False)
@@ -887,7 +887,7 @@ class ComplexMakeRealImagTest(test.TestCase):
       tf_angle = math_ops.angle(inx)
       tf_angle_val = self.evaluate(tf_angle)
 
-    self.assertAllEqual(np_angle, tf_angle_val)
+    self.assertAllClose(np_angle, tf_angle_val)
     self.assertShapeEqual(np_angle, tf_angle)
 
   def testAngle64(self):
@@ -895,18 +895,14 @@ class ComplexMakeRealImagTest(test.TestCase):
     imag = (np.arange(-3, 3) / 5.).reshape([1, 3, 2]).astype(np.float32)
     cplx = real + 1j * imag
     self._compareAngle(cplx, use_gpu=False)
-    # TODO: Enable GPU tests for angle op after resolving
-    # build failures on GPU (See #10643 for context).
-    # self._compareAngle(cplx, use_gpu=True)
+    self._compareAngle(cplx, use_gpu=True)
 
   def testAngle(self):
     real = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(np.float64)
     imag = (np.arange(-3, 3) / 5.).reshape([1, 3, 2]).astype(np.float64)
     cplx = real + 1j * imag
     self._compareAngle(cplx, use_gpu=False)
-    # TODO: Enable GPU tests for angle op after resolving
-    # build failures on GPU (See #10643 for context).
-    # self._compareAngle(cplx, use_gpu=True)
+    self._compareAngle(cplx, use_gpu=True)
 
   @test_util.run_deprecated_v1
   def testRealReal(self):

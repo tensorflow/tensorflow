@@ -133,6 +133,7 @@ cc_library(
 cc_library(
     name = "model_cmdline_flags",
     srcs = [
+        "args.cc",
         "model_cmdline_flags.cc",
     ],
     hdrs = [
@@ -192,6 +193,7 @@ cc_library(
         "graph_transformations/fuse_binary_into_preceding_affine.cc",
         "graph_transformations/fuse_broadcast_into_following_binary.cc",
         "graph_transformations/graph_transformations.cc",
+        "graph_transformations/group_bidirectional_sequence_ops.cc",
         "graph_transformations/hardcode_min_max.cc",
         "graph_transformations/identify_dilated_conv.cc",
         "graph_transformations/identify_l2_normalization.cc",
@@ -341,15 +343,16 @@ cc_library(
 tf_cc_test(
     name = "import_tensorflow_test",
     srcs = ["import_tensorflow_test.cc"],
-    tags = ["no_oss"],
     deps = [
+        ":toco_port",
         ":toco_tooling",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -384,12 +387,13 @@ cc_library(
 tf_cc_test(
     name = "tooling_util_test",
     srcs = ["tooling_util_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":model",
+        ":toco_port",
         ":tooling_util",
         "//tensorflow/core:lib",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -453,12 +457,13 @@ tf_cc_test(
         ":toco_port",
         ":toco_tooling",
         ":types_proto_cc",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         # We cannot embed the core:ops dependency directly into :toco_tooling as
         # it can conflict with downstream deps when toco is used as a library.
         "//tensorflow/core:ops",
+        "//tensorflow/lite/testing:util",
     ],
 )
 
@@ -468,9 +473,22 @@ tf_cc_test(
     data = [
         "toco_port_test.cc",
     ],
-    tags = ["no_oss"],
     deps = [
         ":toco_port",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "model_cmdline_flags_test",
+    srcs = [
+        "model_cmdline_flags_test.cc",
+    ],
+    deps = [
+        ":model_cmdline_flags",
+        ":model_flags_proto_cc",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
     ],
 )

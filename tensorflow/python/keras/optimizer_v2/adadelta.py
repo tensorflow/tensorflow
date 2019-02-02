@@ -18,10 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
+from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export('keras.optimizers.Adadelta')
 class Adadelta(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the Adadelta algorithm.
 
@@ -73,7 +78,11 @@ class Adadelta(optimizer_v2.OptimizerV2):
                to better conditioning the grad update.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Adadelta".
-      **kwargs: keyword arguments. Allowed to be {`decay`}
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
 
     @compatibility(eager)
     When eager execution is enabled, `learning_rate`, `rho`, and `epsilon` can
@@ -82,16 +91,29 @@ class Adadelta(optimizer_v2.OptimizerV2):
     invocations of optimizer functions.
     @end_compatibility
     """
+    if epsilon is None:
+      epsilon = backend_config.epsilon()
     super(Adadelta, self).__init__(name, **kwargs)
-    self._set_hyper('learning_rate', learning_rate)
+    self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)
     self._set_hyper('rho', rho)
     self._set_hyper('epsilon', epsilon)
 
   def _create_slots(self, var_list):
+    # Separate for-loops to respect the ordering of slot variables from v1.
     for v in var_list:
       self.add_slot(v, 'accum_grad')
+    for v in var_list:
       self.add_slot(v, 'accum_var')
+
+  def set_weights(self, weights):
+    params = self.weights
+    # Override set_weights for backward compatibility of Keras V1 optimizer
+    # since it does not include iteration at head of the weight list. Set
+    # iteration to 0.
+    if len(params) == len(weights) + 1:
+      weights = [np.array(0)] + weights
+    super(Adadelta, self).set_weights(weights)
 
   def _resource_apply_dense(self, grad, var):
     var_dtype = var.dtype.base_dtype

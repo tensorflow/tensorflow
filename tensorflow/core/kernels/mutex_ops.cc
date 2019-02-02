@@ -45,7 +45,9 @@ class Mutex : public ResourceBase {
     VLOG(2) << "Creating mutex with name " << name << ": " << this;
   }
 
-  string DebugString() override { return strings::StrCat("Mutex ", name_); }
+  string DebugString() const override {
+    return strings::StrCat("Mutex ", name_);
+  }
 
   class LockReleaser {
    public:

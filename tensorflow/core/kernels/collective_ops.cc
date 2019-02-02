@@ -43,16 +43,17 @@ class CollectiveOpKernel : public AsyncOpKernel {
       // Call in a blockable thread because it's not guaranteed that
       // this call cannot block.
       c->env()->SchedClosure([this, c, done, col_exec]() {
-        col_exec->CompleteParamsAsync(c->device()->name(), &col_params_,
-                                      c->cancellation_manager(),
-                                      [this, c, done](const Status& s) {
-                                        if (s.ok()) {
-                                          ComputeAsync(c, done);
-                                        } else {
-                                          c->SetStatus(s);
-                                          done();
-                                        }
-                                      });
+        col_exec->CompleteParamsAsync(
+            c->device()->name(), &col_params_, c->cancellation_manager(),
+            [this, c, done](const Status& s) {
+              if (s.ok()) {
+                col_params_.instance.impl_details.dependencies = dependencies_;
+                ComputeAsync(c, done);
+              } else {
+                c->SetStatus(s);
+                done();
+              }
+            });
       });
       return false;
     }
@@ -60,6 +61,7 @@ class CollectiveOpKernel : public AsyncOpKernel {
   }
 
   CollectiveParams col_params_;
+  std::vector<int32> dependencies_;
 };
 
 class CollectiveReduceOpKernel : public CollectiveOpKernel {
@@ -87,6 +89,7 @@ class CollectiveReduceOpKernel : public CollectiveOpKernel {
                     "final_op must be one of {\"Id\", \"Div\"} but got ",
                     final_op_name));
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
+    OP_REQUIRES_OK(c, c->GetAttr("wait_for", &dependencies_));
 
     const NodeDef& real_node = c->def();
     col_params_.name = strings::StrCat(real_node.name(), ": Reduce(",

@@ -140,6 +140,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/example/example.proto"
     "tensorflow/core/example/feature.proto"
     "tensorflow/core/framework/allocation_description.proto"
+    "tensorflow/core/framework/api_def.proto"
     "tensorflow/core/framework/attr_value.proto"
     "tensorflow/core/framework/cost_graph.proto"
     "tensorflow/core/framework/device_attributes.proto"
@@ -150,6 +151,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/log_memory.proto"
     "tensorflow/core/framework/node_def.proto"
     "tensorflow/core/framework/op_def.proto"
+    "tensorflow/core/framework/reader_base.proto"
     "tensorflow/core/framework/remote_fused_graph_execute_info.proto"
     "tensorflow/core/framework/resource_handle.proto"
     "tensorflow/core/framework/step_stats.proto"
@@ -159,6 +161,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/tensor_shape.proto"
     "tensorflow/core/framework/tensor_slice.proto"
     "tensorflow/core/framework/types.proto"
+    "tensorflow/core/framework/variable.proto"
     "tensorflow/core/framework/versions.proto"
     "tensorflow/core/lib/core/error_codes.proto"
     "tensorflow/core/protobuf/cluster.proto"
@@ -204,10 +207,10 @@ file(GLOB tf_core_platform_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/resource_handle.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/resource_handle.cc")
 if (NOT tensorflow_ENABLE_GPU)
-  file(GLOB tf_core_platform_gpu_srcs
+  file(GLOB tf_core_platform_gpu_srcs_exclude
       "${tensorflow_source_dir}/tensorflow/core/platform/cuda_libdevice_path.*"
       "${tensorflow_source_dir}/tensorflow/core/platform/default/cuda_libdevice_path.*")
-  list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_gpu_srcs})
+  list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_gpu_srcs_exclude})
 else()
   file(GLOB tf_core_platform_srcs_exclude
       "${tensorflow_source_dir}/tensorflow/core/platform/default/device_tracer.cc")
@@ -298,8 +301,8 @@ file(GLOB_RECURSE tf_core_framework_srcs
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_factory.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_options.cc"
-    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/*.cc"
-    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/*.h"
+    "${tensorflow_source_dir}/tensorflow/core/summary/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/summary/*.h"
     "${tensorflow_source_dir}/public/*.h"
 )
 
@@ -313,14 +316,14 @@ file(GLOB_RECURSE tf_core_framework_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*main.cc"
-    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/*test*.cc"
-    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/loader.cc"
-    "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/vacuum.cc"
+    "${tensorflow_source_dir}/tensorflow/core/summary/*test*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/summary/loader.cc"
+    "${tensorflow_source_dir}/tensorflow/core/summary/vacuum.cc"
 )
 
 # TODO(jart): Why doesn't this work?
 # set_source_files_properties(
-#     ${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/snapfn.cc
+#     ${tensorflow_source_dir}/tensorflow/core/lib/db/snapfn.cc
 #     PROPERTIES COMPILE_FLAGS -DSQLITE_OMIT_LOAD_EXTENSION)
 
 list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_exclude_srcs})

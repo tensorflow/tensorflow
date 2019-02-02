@@ -119,8 +119,8 @@ TfLiteStatus ResizeIm2ColTensor(TfLiteContext* context,
   im2col_shape_array->data[1] = output_shape->data.i32[1];
   im2col_shape_array->data[2] = output_shape->data.i32[2];
   const int input_depth = SizeOfDimension(input, 3);
-  const int filter_width = SizeOfDimension(weights, 1);
-  const int filter_height = SizeOfDimension(weights, 2);
+  const int filter_width = SizeOfDimension(weights, 2);
+  const int filter_height = SizeOfDimension(weights, 1);
   im2col_shape_array->data[3] = input_depth * filter_height * filter_width;
 
   im2col->type = input->type;
@@ -197,8 +197,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Get height and width of the output image.
   const int width = SizeOfDimension(output, 2);
   const int height = SizeOfDimension(output, 1);
-  const int filter_width = SizeOfDimension(weights, 1);
-  const int filter_height = SizeOfDimension(weights, 2);
+  const int filter_width = SizeOfDimension(weights, 2);
+  const int filter_height = SizeOfDimension(weights, 1);
 
   const int stride_width = params->stride_width;
   const int stride_height = params->stride_height;

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -34,7 +35,6 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
@@ -621,7 +621,7 @@ def _confusion_matrix_at_thresholds(labels,
 
 
 def _aggregate_variable(v, collections):
-  f = lambda distribution, value: distribution.read_var(value)
+  f = lambda distribution, value: distribution.extended.read_var(value)
   return _aggregate_across_replicas(collections, f, v)
 
 
@@ -1295,7 +1295,7 @@ def mean_squared_error(labels,
 
   predictions, labels, weights = _remove_squeezable_dimensions(
       predictions=predictions, labels=labels, weights=weights)
-  squared_error = math_ops.square(labels - predictions)
+  squared_error = math_ops.squared_difference(labels, predictions)
   return mean(squared_error, weights, metrics_collections, updates_collections,
               name or 'mean_squared_error')
 

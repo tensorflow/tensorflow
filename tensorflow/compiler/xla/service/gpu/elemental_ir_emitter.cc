@@ -161,6 +161,16 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
   PrimitiveType lhs_input_type = op->operand(0)->shape().element_type();
   PrimitiveType rhs_input_type = op->operand(1)->shape().element_type();
   PrimitiveType output_type = op->shape().element_type();
+  HloOpcode opcode = op->opcode();
+
+  if (hlo_module_config_.debug_options().xla_gpu_enable_fast_min_max() &&
+      (opcode == HloOpcode::kMaximum || opcode == HloOpcode::kMinimum)) {
+    return llvm_ir::EmitCallToIntrinsic(
+        opcode == HloOpcode::kMaximum ? llvm::Intrinsic::maxnum
+                                      : llvm::Intrinsic::minnum,
+        {lhs_value, rhs_value}, {lhs_value->getType()}, b_);
+  }
+
   switch (op->opcode()) {
     case HloOpcode::kRemainder: {
       return EmitLibdeviceMathCall("__nv_fmod", {lhs_value, rhs_value},
@@ -298,9 +308,11 @@ llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
       false);  // No variadic arguments.
 
   // Declares the callee if it is not declared already.
-  llvm::Function* callee = llvm::cast<llvm::Function>(
-      b_->GetInsertBlock()->getModule()->getOrInsertFunction(
-          llvm_ir::AsStringRef(callee_name), callee_type));
+  llvm::Function* callee = llvm::dyn_cast<llvm::Function>(
+      b_->GetInsertBlock()
+          ->getModule()
+          ->getOrInsertFunction(llvm_ir::AsStringRef(callee_name), callee_type)
+          .getCallee());
 
   for (auto attribute : attributes) {
     callee->addFnAttr(attribute);

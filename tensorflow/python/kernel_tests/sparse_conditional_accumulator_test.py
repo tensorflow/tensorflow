@@ -267,7 +267,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       self.assertAllEqual(val.values, [[5, 5], [0, 20], [30, 0]])
       self.assertAllEqual(val.dense_shape, [-1, 2])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testParallelApplyGradMean(self):
     with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
@@ -299,7 +299,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
           np.array([[expected_val, 0], [0, expected_val]]).astype(np.float32),
           val, sess)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testParallelApplyGradSum(self):
     with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
@@ -334,7 +334,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
           np.array([[expected_val, 0], [0, expected_val]]).astype(np.float32),
           val, sess)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testParallelTakeGrad(self):
     with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
@@ -374,7 +374,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
         self._assertEqual_nparray(
             np.array([[0, 0], [elems[i], 0]]), results[i], sess)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAccumulatorApplyAndBlockingTake(self):
     with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
@@ -410,7 +410,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
     with self.assertRaisesOpError("was cancelled"):
       self.evaluate(takeg_op)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAccumulatorCancel(self):
     with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
@@ -430,7 +430,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
 
       takeg_thread.join()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testNonVectorIndices(self):
     with self.cached_session():
       q = data_flow_ops.SparseConditionalAccumulator(
@@ -443,7 +443,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
             grad_indices=[[0, 1], [1, 0]],
             grad_values=np.array([1, 2]).astype(np.float32)).run()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testZeroDimensionValues(self):
     with self.cached_session():
       q = data_flow_ops.SparseConditionalAccumulator(
@@ -454,7 +454,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
         q.apply_grad(
             grad_indices=[0], grad_values=np.array(1).astype(np.float32)).run()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWrongNonEmptyInputValues(self):
     with self.cached_session():
       q = data_flow_ops.SparseConditionalAccumulator(
@@ -466,7 +466,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
             grad_indices=[0, 1],
             grad_values=np.array([[0, 1, 1]]).astype(np.float32)).run()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testDynamicNonVectorIndices(self):
     with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
@@ -486,7 +486,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
                      x_values: np.array([1, 2]).astype(np.float32)
                  })
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testDynamicWrongNonEmptyInputValues(self):
     with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
@@ -505,7 +505,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
                      x_values: np.array([[0, 1, 1]]).astype(np.float32)
                  })
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testEmptyShapeApply(self):
     with self.cached_session():
       q = data_flow_ops.SparseConditionalAccumulator(
@@ -531,7 +531,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       q.apply_grad(grad_indices=[0], grad_values=[1.0], grad_shape=[]).run()
       q.apply_grad(grad_indices=[0], grad_values=[1.0]).run()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testValidateShape(self):
     with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(

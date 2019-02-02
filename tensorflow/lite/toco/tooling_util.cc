@@ -173,7 +173,7 @@ bool DeleteArrayIfUsedOnce(const string& array_name, Model* model) {
   return false;
 }
 
-void DeleteOpAndArraysIfUnused(Model* model, Operator* op) {
+void DeleteOpAndArraysIfUnused(Model* model, const Operator* op) {
   for (const string& array_name : op->inputs) {
     DeleteArrayIfUsedOnce(array_name, model);
   }
@@ -385,6 +385,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(ConcatV2)
     HANDLE_OPERATORTYPENAME_CASE(Cast)
     HANDLE_OPERATORTYPENAME_CASE(Floor)
+    HANDLE_OPERATORTYPENAME_CASE(Ceil)
     HANDLE_OPERATORTYPENAME_CASE(Gather)
     HANDLE_OPERATORTYPENAME_CASE(ResizeBilinear)
     HANDLE_OPERATORTYPENAME_CASE(SpaceToBatchND)
@@ -412,9 +413,15 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Unpack)
     HANDLE_OPERATORTYPENAME_CASE(ZerosLike)
     HANDLE_OPERATORTYPENAME_CASE(UnidirectionalSequenceLstm)
+    HANDLE_OPERATORTYPENAME_CASE(BidirectionalSequenceLstm)
+    HANDLE_OPERATORTYPENAME_CASE(BidirectionalSequenceRnn)
     HANDLE_OPERATORTYPENAME_CASE(ResizeNearestNeighbor)
     HANDLE_OPERATORTYPENAME_CASE(LeakyRelu)
     HANDLE_OPERATORTYPENAME_CASE(SquaredDifference)
+    HANDLE_OPERATORTYPENAME_CASE(MirrorPad)
+    HANDLE_OPERATORTYPENAME_CASE(Unique)
+    HANDLE_OPERATORTYPENAME_CASE(UnidirectionalSequenceRnn)
+    HANDLE_OPERATORTYPENAME_CASE(ReverseV2)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -898,6 +905,9 @@ void CheckNonExistentIOArrays(const Model& model) {
         << "\" is not consumed by any op in this graph. " << general_comment;
   }
   for (const string& output_array : model.flags.output_arrays()) {
+    if (IsConstantParameterArray(model, output_array)) {
+      continue;  // It is OK to request that a constant be an output.
+    }
     QCHECK(GetOpWithOutput(model, output_array))
         << "Specified output array \"" << output_array
         << "\" is not produced by any op in this graph. " << general_comment;

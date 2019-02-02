@@ -54,11 +54,20 @@ void Add1ToValues(float* out, float** in) {
   out[2] = array[2] + 1;
   out[3] = array[3] + 1;
 }
+
+void F32TupleSwap(float** out, float** in) {
+  TF_ANNOTATE_MEMORY_IS_INITIALIZED(in[0], sizeof(float));
+  TF_ANNOTATE_MEMORY_IS_INITIALIZED(in[1], sizeof(float));
+  *out[0] = *in[1];
+  *out[1] = *in[0];
+}
+
 }  // namespace
 
 REGISTER_CUSTOM_CALL_TARGET(R0F32Add2);
 REGISTER_CUSTOM_CALL_TARGET(R2F32ReduceSum);
 REGISTER_CUSTOM_CALL_TARGET(Add1ToValues);
+REGISTER_CUSTOM_CALL_TARGET(F32TupleSwap);
 
 namespace xla {
 namespace {
@@ -69,7 +78,7 @@ class CustomCallTest : public HloTestBase {
   Shape r2f32_ = ShapeUtil::MakeShape(F32, {2, 2});
 };
 
-XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR0F32Add2)) {
+XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2) {
   auto module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -84,7 +93,7 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR0F32Add2)) {
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, error_spec_);
 }
 
-XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR2F32Reduce)) {
+XLA_TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
   auto module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -105,7 +114,7 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR2F32Reduce)) {
   LiteralTestUtil::ExpectR0Near<float>(10.0f, result, error_spec_);
 }
 
-XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(UsedInOtherComputations)) {
+XLA_TEST_F(CustomCallTest, UsedInOtherComputations) {
   auto module = CreateNewUnverifiedModule();
   auto b = HloComputation::Builder(TestName());
 
@@ -129,7 +138,7 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(UsedInOtherComputations)) {
       Array3D<float>{{{2, 3}, {4, 5}}, {{3, 4}, {5, 6}}}, result);
 }
 
-XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(InputAndOutputLayoutDiffer)) {
+XLA_TEST_F(CustomCallTest, InputAndOutputLayoutDiffer) {
   auto module = CreateNewUnverifiedModule();
   auto b = HloComputation::Builder(TestName());
 
@@ -151,7 +160,7 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(InputAndOutputLayoutDiffer)) {
   LiteralTestUtil::ExpectR2Equal<float>({{2.f, 4.f}, {3.f, 5.f}}, result);
 }
 
-XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(LayoutConstrained)) {
+XLA_TEST_F(CustomCallTest, LayoutConstrained) {
   // The argument and result of the computation are set to different layouts,
   // but the custom call is layout constrained to a fixed operand and result
   // layout, so the correct result should be produced.
@@ -174,6 +183,26 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(LayoutConstrained)) {
 
   Literal result = ExecuteAndTransfer(std::move(module), {&argument});
   LiteralTestUtil::ExpectR2Equal<float>({{2.f, 3.f}, {4.f, 5.f}}, result);
+}
+
+XLA_TEST_F(CustomCallTest, TupleOutput) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT %custom-call = (f32[], f32[]) custom-call(f32[] %p0, f32[] %p1), custom_call_target="F32TupleSwap", operand_layout_constraints={f32[], f32[]}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  Literal arg0 = LiteralUtil::CreateR0<float>(7.f);
+  Literal arg1 = LiteralUtil::CreateR0<float>(42.f);
+
+  Literal expected = LiteralUtil::MakeTuple({&arg1, &arg0});
+  Literal result = ExecuteAndTransfer(std::move(module), {&arg0, &arg1});
+  EXPECT_EQ(result, expected);
 }
 
 class CustomCallClientAPITest : public ClientLibraryTestBase {};

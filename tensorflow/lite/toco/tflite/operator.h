@@ -87,15 +87,15 @@ class BaseOperator {
       const BuiltinOptions* builtin_options,
       const CustomOptions* custom_options) const = 0;
 
-  // Get the op version by op parameters.
-  // The function need to be overridden to return the op version based on the
+  // Get the op version using the OperatorSignature.
+  // The function needs to be overridden to return the op version based on the
   // parameters. Note:
   // * The first version for each op should be 1 (to be consistent with the
   //   default value in Flatbuffer. `return 1;` is okay for newly implemented
   //   ops.
-  // * When multiple versions are defined for an op, this function need to be
+  // * When multiple versions are defined for an op, this function needs to be
   //   overridden. (See example in `operator_test.cc`)
-  virtual int GetVersion(const Operator& op) const = 0;
+  virtual int GetVersion(const OperatorSignature& op_signature) const = 0;
 
   // Given a Toco `Operator`, return a list of booleans indicating the op
   // mutates which input variables.

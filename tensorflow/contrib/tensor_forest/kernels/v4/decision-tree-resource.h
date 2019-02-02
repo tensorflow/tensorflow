@@ -32,7 +32,7 @@ class DecisionTreeResource : public ResourceBase {
   // Constructor.
   explicit DecisionTreeResource(const TensorForestParams& params);
 
-  string DebugString() override {
+  string DebugString() const override {
     return strings::StrCat("DecisionTree[size=",
                            decision_tree_->decision_tree().nodes_size(), "]");
   }

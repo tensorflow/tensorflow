@@ -29,21 +29,20 @@ namespace tensorflow {
 
 namespace {
 
-Status ValidateVariableResourceHandle(InferenceContext* c,
-                                      ShapeAndType* shape_and_type) {
+Status ValidateVariableResourceHandle(
+    InferenceContext* c, std::vector<ShapeAndType>* shape_and_type) {
   auto* handle_data = c->input_handle_shapes_and_types(0);
   if (handle_data == nullptr || handle_data->empty()) {
-    shape_and_type->shape = c->UnknownShape();
-    shape_and_type->dtype = DT_INVALID;
+    shape_and_type->emplace_back(c->UnknownShape(), DT_INVALID);
   } else {
-    *shape_and_type = (*handle_data)[0];
+    *shape_and_type = *handle_data;
     DataType value_dtype;
     TF_RETURN_IF_ERROR(c->GetAttr("dtype", &value_dtype));
-    if (shape_and_type->dtype != value_dtype) {
+    if (shape_and_type->at(0).dtype != value_dtype) {
       return errors::InvalidArgument(
           "Trying to read variable with wrong dtype. "
           "Expected ",
-          DataTypeString(shape_and_type->dtype), " got ",
+          DataTypeString(shape_and_type->at(0).dtype), " got ",
           DataTypeString(value_dtype));
     }
   }
@@ -51,9 +50,15 @@ Status ValidateVariableResourceHandle(InferenceContext* c,
 }
 
 Status ReadVariableShapeFn(InferenceContext* c) {
-  ShapeAndType shape_and_type;
+  std::vector<ShapeAndType> shape_and_type;
   TF_RETURN_IF_ERROR(ValidateVariableResourceHandle(c, &shape_and_type));
-  c->set_output(0, shape_and_type.shape);
+  c->set_output(0, shape_and_type[0].shape);
+  if (shape_and_type[0].dtype == DT_VARIANT && shape_and_type.size() > 1) {
+    std::vector<ShapeAndType> variant_shape_and_type;
+    std::copy(shape_and_type.begin() + 1, shape_and_type.end(),
+              std::back_inserter(variant_shape_and_type));
+    c->set_output_handle_shapes_and_types(0, variant_shape_and_type);
+  }
   return Status::OK();
 }
 
@@ -180,13 +185,27 @@ REGISTER_OP("DestroyResourceOp")
     .SetShapeFn(shape_inference::NoOutputs);
 
 Status CreateAssignShapeFn(InferenceContext* c) {
-  ShapeAndType handle_shape_and_type;
+  std::vector<ShapeAndType> handle_shape_and_type;
   TF_RETURN_IF_ERROR(ValidateVariableResourceHandle(c, &handle_shape_and_type));
 
   ShapeHandle value_shape = c->input(1);
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(
-      c->Merge(handle_shape_and_type.shape, value_shape, &unused));
+      c->Merge(handle_shape_and_type[0].shape, value_shape, &unused));
+
+  if (handle_shape_and_type[0].dtype == DT_VARIANT &&
+      handle_shape_and_type.size() > 1 &&
+      c->input_handle_shapes_and_types(1) != nullptr) {
+    auto* value_handle_shape_and_type = c->input_handle_shapes_and_types(1);
+    if (value_handle_shape_and_type->size() !=
+        handle_shape_and_type.size() - 1) {
+      return errors::InvalidArgument(
+          "Incompatible handle variant shape_and_type size and input "
+          "shape_and_type size: ",
+          handle_shape_and_type.size() - 1, " vs. ",
+          value_handle_shape_and_type->size());
+    }
+  }
   return Status::OK();
 }
 
@@ -240,29 +259,37 @@ REGISTER_OP("ResourceGather")
     .Attr("dtype: type")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn([](InferenceContext* c) {
-      ShapeAndType handle_shape_and_type;
+      std::vector<ShapeAndType> handle_shape_and_type;
       TF_RETURN_IF_ERROR(
           ValidateVariableResourceHandle(c, &handle_shape_and_type));
 
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(
-          c->WithRankAtLeast(handle_shape_and_type.shape, 1, &unused));
+          c->WithRankAtLeast(handle_shape_and_type[0].shape, 1, &unused));
       ShapeHandle params_subshape;
       TF_RETURN_IF_ERROR(
-          c->Subshape(handle_shape_and_type.shape, 1, &params_subshape));
+          c->Subshape(handle_shape_and_type[0].shape, 1, &params_subshape));
       ShapeHandle indices_shape = c->input(1);
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, params_subshape, &out));
       c->set_output(0, out);
+      if (handle_shape_and_type[0].dtype == DT_VARIANT &&
+          !handle_shape_and_type.empty()) {
+        std::vector<ShapeAndType> variant_shape_and_type;
+        std::copy(handle_shape_and_type.begin() + 1,
+                  handle_shape_and_type.end(),
+                  std::back_inserter(variant_shape_and_type));
+        c->set_output_handle_shapes_and_types(0, variant_shape_and_type);
+      }
       return Status::OK();
     });
 
 namespace {
 
 Status ResourceScatterUpdateShape(InferenceContext* c) {
-  ShapeAndType handle_shape_and_type;
+  std::vector<ShapeAndType> handle_shape_and_type;
   TF_RETURN_IF_ERROR(ValidateVariableResourceHandle(c, &handle_shape_and_type));
-  ShapeHandle var_shape = handle_shape_and_type.shape;
+  ShapeHandle var_shape = handle_shape_and_type[0].shape;
   ShapeHandle indices_shape = c->input(1);
 
   ShapeHandle unused_updates_shape;
@@ -274,6 +301,19 @@ Status ResourceScatterUpdateShape(InferenceContext* c) {
       InferenceContext::Rank(c->input(2)) == 0
           ? Status::OK()
           : c->Merge(c->input(2), concat, &unused_updates_shape));
+  if (handle_shape_and_type[0].dtype == DT_VARIANT &&
+      handle_shape_and_type.size() > 1 &&
+      c->input_handle_shapes_and_types(2) != nullptr) {
+    auto* value_handle_shape_and_type = c->input_handle_shapes_and_types(2);
+    if (value_handle_shape_and_type->size() !=
+        handle_shape_and_type.size() - 1) {
+      return errors::InvalidArgument(
+          "Incompatible handle variant shape_and_type size and input "
+          "shape_and_type size: ",
+          handle_shape_and_type.size() - 1, " vs. ",
+          value_handle_shape_and_type->size());
+    }
+  }
   return Status::OK();
 }
 

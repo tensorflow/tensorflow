@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
@@ -74,7 +75,7 @@ Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
 // AttrBuilder a;
 // a.NumInputs(2);
 // a.Set("T", TF_FLOAT);
-// uint64 cache_key = a.CacheKey("cpu:0");
+// tensorflow::Fprint128 cache_key = a.CacheKey("cpu:0");
 // const NodeDef& n = a.BuildNodeDef();
 //
 // Note that all calls to Set and NumInputs should happen before calling
@@ -99,18 +100,21 @@ class AttrBuilder {
   template <class T>
   AttrBuilder& Set(StringPiece attr_name, T&& value) {
     MayBeInitializeNodeDef();
-    SetInAttrValueMap(node_def_->mutable_attr(), attr_name, value);
+    SetInAttrValueMap(node_def_->mutable_attr(), string(attr_name), value);
+    cached_cache_key_ = absl::nullopt;
     return *this;
   }
 
-  tensorflow::Fprint128 CacheKey(const string& device) const;
+  tensorflow::Fprint128 CacheKey(const string& device);
 
   void FillAttrValueMap(AttrValueMap* m) const { FillAttrValueMap(m, true); }
   const NodeDef& BuildNodeDef();
 
  private:
   template <class T>
-  using AttrVec = tensorflow::gtl::InlinedVector<std::pair<StringPiece, T>, 2>;
+  using AttrVec = tensorflow::gtl::InlinedVector<std::pair<string, T>, 2>;
+
+  tensorflow::Fprint128 BuildCacheKeyForDevice(const string& device) const;
 
   void MayBeInitializeNodeDef();
   // Fill `m` with the attr-value pairs set via AttrBuilder::Set() so far, as
@@ -122,7 +126,7 @@ class AttrBuilder {
   void FillAttrValueMap(AttrValueMap* m, bool include_those_in_node_def) const;
 
   template <class T>
-  void SetInAttrValueMap(AttrValueMap* m, StringPiece attr_name,
+  void SetInAttrValueMap(AttrValueMap* m, const string& attr_name,
                          T&& value) const {
     DCHECK(!node_def_finalized_)
         << "Calling SetInAttrValueMap after BuildNodeDef.";
@@ -131,12 +135,12 @@ class AttrBuilder {
     AttrValue attr_value;
     if (found == nullptr) {
       SetAttrValue(value, &attr_value);
-      m->insert(AttrValueMap::value_type(string(attr_name), attr_value));
+      m->insert(AttrValueMap::value_type(attr_name, attr_value));
     } else {
       // TODO(ashankar): Do what is done in
       // NodeDefBuilder::CheckInconsistency(attr_name, *found, attr_value);
       SetAttrValue(std::forward<T>(value), &attr_value);
-      (*m)[string(attr_name)] = attr_value;
+      (*m)[attr_name] = attr_value;
     }
   }
 
@@ -148,6 +152,9 @@ class AttrBuilder {
   int num_inputs_;
   std::unique_ptr<NodeDef> node_def_;
   bool node_def_finalized_;
+
+  absl::optional<tensorflow::Fprint128> cached_cache_key_;
+  string device_for_cached_cache_key_;
 };  // namespace tensorflow
 
 template <>

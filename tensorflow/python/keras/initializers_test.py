@@ -21,8 +21,8 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python.ops import init_ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import init_ops
 from tensorflow.python.platform import test
 
 
@@ -67,6 +67,7 @@ class KerasInitializersTest(test.TestCase):
                    tensor_shape,
                    target_mean=0., target_max=2, target_min=-2)
 
+  @test_util.run_deprecated_v1
   def test_constant(self):
     tensor_shape = (5, 6, 4)
     with self.cached_session():
@@ -134,6 +135,7 @@ class KerasInitializersTest(test.TestCase):
       self._runner(keras.initializers.orthogonal(seed=123), tensor_shape,
                    target_mean=0.)
 
+  @test_util.run_deprecated_v1
   def test_identity(self):
     with self.cached_session():
       tensor_shape = (3, 4, 5)
@@ -145,28 +147,33 @@ class KerasInitializersTest(test.TestCase):
       self._runner(keras.initializers.identity(), tensor_shape,
                    target_mean=1. / tensor_shape[0], target_max=1.)
 
+  @test_util.run_deprecated_v1
   def test_zero(self):
     tensor_shape = (4, 5)
     with self.cached_session():
       self._runner(keras.initializers.zeros(), tensor_shape,
                    target_mean=0., target_max=0.)
 
+  @test_util.run_deprecated_v1
   def test_one(self):
     tensor_shape = (4, 5)
     with self.cached_session():
       self._runner(keras.initializers.ones(), tensor_shape,
                    target_mean=1., target_max=1.)
 
+  @test_util.run_deprecated_v1
   def test_default_random_uniform(self):
     ru = keras.initializers.get('uniform')
     self.assertEqual(ru.minval, -0.05)
     self.assertEqual(ru.maxval, 0.05)
 
+  @test_util.run_deprecated_v1
   def test_default_random_normal(self):
     rn = keras.initializers.get('normal')
     self.assertEqual(rn.mean, 0.0)
     self.assertEqual(rn.stddev, 0.05)
 
+  @test_util.run_deprecated_v1
   def test_default_truncated_normal(self):
     tn = keras.initializers.get('truncated_normal')
     self.assertEqual(tn.mean, 0.0)

@@ -3,7 +3,8 @@ op {
   in_arg {
     name: "segment_ids"
     description: <<END
-A tensor whose shape is a prefix of `data.shape`.END
+A tensor whose shape is a prefix of `data.shape`.
+END
   }
   out_arg {
     name: "output"

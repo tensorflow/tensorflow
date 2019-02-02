@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
@@ -42,8 +43,27 @@ auto* load_latency = monitoring::Counter<1>::New(
     "/tensorflow/cc/saved_model/load_latency",
     "Latency in microseconds for SavedModels that were successfully loaded.",
     "model_path");
+auto* load_latency_by_stage = monitoring::Sampler<2>::New(
+    {
+        "/tensorflow/cc/saved_model/load_latency_by_stage",  // metric name
+        "Distribution of wall time spent (in microseconds) in each stage "
+        "(restore graph from disk, run init graph op, etc) when loading the "
+        "model",
+        "model_path",
+        "stage",
+    },
+    // Scale of 10, power of 1.8 with bucket count 33 (~20 minutes).
+    monitoring::Buckets::Exponential(10, 1.8, 33));
+
 constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";
+
+uint64 GetLatencyMicroseconds(const uint64 start_microseconds) {
+  const uint64 end_microseconds = Env::Default()->NowMicros();
+  // Avoid clock skew.
+  if (end_microseconds < start_microseconds) return 0;
+  return end_microseconds - start_microseconds;
+}
 
 Status LoadMetaGraphIntoSession(const MetaGraphDef& meta_graph_def,
                                 const SessionOptions& session_options,
@@ -242,6 +262,7 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
                               const string& export_dir,
                               const std::unordered_set<string>& tags,
                               SavedModelBundle* const bundle) {
+  const uint64 read_start_microseconds = Env::Default()->NowMicros();
   TF_RETURN_IF_ERROR(ReadMetaGraphDefFromSavedModel(export_dir, tags,
                                                     &bundle->meta_graph_def));
 
@@ -256,12 +277,23 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
                  bundle->meta_graph_def.saver_def().restore_op_name(),
                  bundle->meta_graph_def.saver_def().filename_tensor_name(),
                  asset_file_defs, bundle->session.get()));
+  // Record walltime spent in restoring graph from disk, but postpone metric
+  // increments until graph init finishes.
+  const uint64 restore_graph_walltime =
+      GetLatencyMicroseconds(read_start_microseconds);
+
+  const uint64 graph_init_start_microseconds = Env::Default()->NowMicros();
   string init_op_name;
   TF_RETURN_IF_ERROR(
       GetInitOp(export_dir, bundle->meta_graph_def, &init_op_name));
   TF_RETURN_IF_ERROR(RunInitOp(run_options, export_dir, bundle->meta_graph_def,
                                asset_file_defs, bundle->session.get(),
                                init_op_name));
+  load_latency_by_stage->GetCell(export_dir, "restore_graph")
+      ->Add(restore_graph_walltime);
+  // Record wall time spent in init op.
+  load_latency_by_stage->GetCell(export_dir, "init_graph")
+      ->Add(GetLatencyMicroseconds(graph_init_start_microseconds));
   return Status::OK();
 }
 
@@ -275,16 +307,10 @@ Status LoadSavedModel(const SessionOptions& session_options,
   const uint64 start_microseconds = Env::Default()->NowMicros();
   const Status status = LoadSavedModelInternal(session_options, run_options,
                                                export_dir, tags, bundle);
-  const uint64 load_latency_microsecs = [&]() -> uint64 {
-    const uint64 end_microseconds = Env::Default()->NowMicros();
-    // Avoid clock skew.
-    if (end_microseconds < start_microseconds) return 0;
-    return end_microseconds - start_microseconds;
-  }();
   auto log_and_count = [&](const string& status_str) {
     LOG(INFO) << "SavedModel load for tags { " << str_util::Join(tags, " ")
               << " }; Status: " << status_str << ". Took "
-              << load_latency_microsecs << " microseconds.";
+              << GetLatencyMicroseconds(start_microseconds) << " microseconds.";
     load_attempt_count->GetCell(export_dir, status_str)->IncrementBy(1);
   };
   if (status.ok()) {
@@ -292,7 +318,8 @@ Status LoadSavedModel(const SessionOptions& session_options,
   } else {
     log_and_count(kLoadAttemptFail);
   }
-  load_latency->GetCell(export_dir)->IncrementBy(load_latency_microsecs);
+  load_latency->GetCell(export_dir)
+      ->IncrementBy(GetLatencyMicroseconds(start_microseconds));
   return status;
 }
 

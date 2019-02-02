@@ -206,6 +206,7 @@ class BatchNormalizationTest(test.TestCase):
                                   2)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("This test never passed for XLA")
   def testBatchNormGradImpl(self):
     x_shape = [7, 5, 4, 6]
     param_shape = [6]

@@ -37,6 +37,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearOperatorInversion"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearOperatorKronecker"
     mtype: "<type \'type\'>"
   }
@@ -131,6 +135,10 @@ tf_module {
   member_method {
     name: "lstsq"
     argspec: "args=[\'matrix\', \'rhs\', \'l2_regularizer\', \'fast\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "lu"
+    argspec: "args=[\'input\', \'output_idx_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
     name: "matmul"

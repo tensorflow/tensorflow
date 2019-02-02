@@ -62,6 +62,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/java/jni",
         "//tensorflow/lite/models/smartreply:predictor_lib",
     ],
     alwayslink = 1,

@@ -43,12 +43,19 @@ class CoordinatorShutdownException(Exception):
   pass
 
 
+def _clone_session(session, graph=None):
+  return session_lib.Session(
+      target=session.sess_str,
+      config=session._config,  # pylint: disable=protected-access
+      graph=graph if graph else session.graph)
+
+
 def _make_heartbeat_op(session, device, request_ph):
   """Return a heartbeat op or None if heartbeats are not supported by device."""
   try:
     # Test if we can connect in a isolated graph + session
     with ops.Graph().as_default():
-      with session_lib.Session(target=session.sess_str) as temp_session:
+      with _clone_session(session) as temp_session:
         with ops.device(device):
           heartbeat_op = tpu_ops.worker_heartbeat('')
           options = config_pb2.RunOptions(timeout_in_ms=5000)
@@ -165,7 +172,8 @@ class WorkerHeartbeatManager(object):
     """Shutdown all workers after `shutdown_timeout_secs`."""
     logging.info('Shutting down %s.', self)
     req = event_pb2.WorkerHeartbeatRequest(
-        watchdog_config=event_pb2.WatchdogConfig(timeout_ms=timeout_ms))
+        watchdog_config=event_pb2.WatchdogConfig(timeout_ms=timeout_ms),
+        shutdown_mode=event_pb2.WAIT_FOR_COORDINATOR)
     self.configure(req)
 
     # Wait for workers to shutdown.  This isn't strictly required
@@ -178,7 +186,8 @@ def all_worker_devices(session):
   """Return a list of devices for each worker in the system."""
   devices = session.list_devices()
   return [
-      device.name for device in devices
+      device.name
+      for device in devices
       if ':CPU:' in device.name and 'coordinator' not in device.name
   ]
 
@@ -220,6 +229,7 @@ class WatchdogManager(threading.Thread):
     self.ping_interval = ping_interval
     self.shutdown_timeout = shutdown_timeout
     self.daemon = True
+    self._config = session._config  # pylint: disable=protected-access
     self._target = session.sess_str
     self._running = False
     self._devices = devices
@@ -234,6 +244,7 @@ class WatchdogManager(threading.Thread):
     self._session = session_lib.Session(
         target=self._target,
         graph=self._graph,
+        config=self._config,
     )
 
     if self._devices is None:
@@ -246,12 +257,14 @@ class WatchdogManager(threading.Thread):
     self._worker_manager.configure(
         event_pb2.WorkerHeartbeatRequest(
             watchdog_config=event_pb2.WatchdogConfig(
-                timeout_ms=self.shutdown_timeout * 1000,)))
+                timeout_ms=self.shutdown_timeout * 1000,),
+            shutdown_mode=event_pb2.WAIT_FOR_COORDINATOR))
 
   def configure_and_run(self):
-    logging.info('Enabling watchdog timer with %d second timeout '
-                 'and %d second ping interval.',
-                 self.shutdown_timeout, self.ping_interval)
+    logging.info(
+        'Enabling watchdog timer with %d second timeout '
+        'and %d second ping interval.', self.shutdown_timeout,
+        self.ping_interval)
     self._reset_manager()
     self._running = True
     self.start()
@@ -260,7 +273,8 @@ class WatchdogManager(threading.Thread):
     logging.info('Stopping worker watchdog.')
     self._worker_manager.configure(
         event_pb2.WorkerHeartbeatRequest(
-            watchdog_config=event_pb2.WatchdogConfig(timeout_ms=-1,)))
+            watchdog_config=event_pb2.WatchdogConfig(timeout_ms=-1,),
+            shutdown_mode=event_pb2.NOT_CONFIGURED))
     self._running = False
     self.join()
 
@@ -334,8 +348,7 @@ class GracefulShutdownHook(session_run_hook.SessionRunHook):
 
     with self._graph.as_default():
       logging.info('Installing graceful shutdown hook.')
-      self._session = session_lib.Session(
-          target=training_session.sess_str, graph=self._graph)
+      self._session = _clone_session(training_session, self._graph)
       self._workers = WorkerHeartbeatManager.from_devices(
           self._session, all_worker_devices(self._session))
       self._heartbeat_supported = self._workers.num_workers() > 0

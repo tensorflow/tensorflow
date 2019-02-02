@@ -26,6 +26,7 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import matching_files
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
@@ -59,7 +60,10 @@ class MatchingFilesBenchmark(test.Benchmark):
     for _ in range(iters):
       with ops.Graph().as_default():
         dataset = matching_files.MatchingFilesDataset(patterns)
-        next_element = dataset.make_one_shot_iterator().get_next()
+        options = dataset_ops.Options()
+        options.experimental_optimization.apply_default_optimizations = False
+        dataset = dataset.with_options(options)
+        next_element = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
         with session.Session() as sess:
           sub_deltas = []
@@ -74,11 +78,6 @@ class MatchingFilesBenchmark(test.Benchmark):
           deltas.append(sub_deltas)
 
     median_deltas = np.median(deltas, axis=0)
-    print('Nested directory size (width*depth): %d*%d Median wall time: '
-          '%fs (read first filename), %fs (read second filename), avg %fs'
-          ' (read %d more filenames)' %
-          (width, depth, median_deltas[0], median_deltas[1],
-           np.average(median_deltas[2:]), len(median_deltas) - 2))
     self.report_benchmark(
         iters=iters,
         wall_time=np.sum(median_deltas),
@@ -91,7 +90,7 @@ class MatchingFilesBenchmark(test.Benchmark):
             (len(median_deltas) - 2):
                 np.average(median_deltas[2:])
         },
-        name='dataset_nested_directory(%d*%d)' %
+        name='nested_directory(%d*%d)' %
         (width, depth))
 
     shutil.rmtree(tmp_dir, ignore_errors=True)

@@ -36,7 +36,21 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using BatchNormExpanderTest = HloTestBase;
+class BatchNormExpanderTest : public HloTestBase {
+ protected:
+  // BatchNorm should have a dynamic sized dividor for mean operations.
+  int64 CountGetDimensionSize(const HloModule& module) {
+    int64 count = 0;
+    for (HloComputation* comp : module.computations()) {
+      for (HloInstruction* inst : comp->instructions()) {
+        if (inst->opcode() == HloOpcode::kGetDimensionSize) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }
+};
 
 // Test that we expand BatchNormTraining.
 TEST_F(BatchNormExpanderTest, BatchNormTraining) {
@@ -68,6 +82,7 @@ TEST_F(BatchNormExpanderTest, BatchNormTraining) {
                              /*rewrite_grad_op=*/true);
   ASSERT_TRUE(rewriter.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();
+  EXPECT_EQ(CountGetDimensionSize(*module), 3);
   // Make sure this operation is expanded.
   EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
 }
@@ -110,6 +125,7 @@ TEST_F(BatchNormExpanderTest, BatchNormGrad) {
                              /*rewrite_grad_op=*/true);
   ASSERT_TRUE(rewriter.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();
+  EXPECT_EQ(CountGetDimensionSize(*module), 3);
   // Make sure this operation is expanded.
   EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
 }

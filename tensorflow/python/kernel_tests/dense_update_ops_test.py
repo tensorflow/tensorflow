@@ -86,7 +86,7 @@ class AssignOpTest(test.TestCase):
   def testBasic(self):
     self._testTypes(np.arange(0, 20).reshape([4, 5]))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAssignNonStrictShapeChecking(self):
     with self.cached_session():
       data = array_ops.fill([1024, 1024], 0)
@@ -101,7 +101,7 @@ class AssignOpTest(test.TestCase):
       a2.op.run()
       self.assertAllEqual(p.eval(), self.evaluate(data2))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testInitRequiredAssignAdd(self):
     with self.cached_session():
       p = variables.VariableV1(array_ops.fill([1024, 1024], 1), dtypes.int32)
@@ -109,7 +109,7 @@ class AssignOpTest(test.TestCase):
       with self.assertRaisesOpError("use uninitialized"):
         a.op.run()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testInitRequiredAssignSub(self):
     with self.cached_session():
       p = variables.VariableV1(array_ops.fill([1024, 1024], 1), dtypes.int32)

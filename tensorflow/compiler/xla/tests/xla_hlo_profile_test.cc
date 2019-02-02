@@ -174,9 +174,8 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   exec_run_options.set_allocator(backend->memory_allocator());
   exec_run_options.set_intra_op_thread_pool(
       backend->eigen_intra_op_thread_pool_device());
-  ServiceExecutableRunOptions run_options(
-      exec_run_options, /*borrow_stream=*/nullptr,
-      backend->eigen_intra_op_thread_pool());
+  ServiceExecutableRunOptions run_options(exec_run_options,
+                                          /*borrow_stream=*/nullptr);
   std::vector<const ShapedBuffer*> args = {&lhs_arg, &rhs_arg};
   TF_ASSERT_OK_AND_ASSIGN(
       auto execution_result,
@@ -225,14 +224,17 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
 
   line_no++;  // Skip 'Execution profile for ....'
 
+  ASSERT_LT(line_no, profile_output_lines.size());
   TF_ASSERT_OK(ParseOneProfileOutputLine(profile_output_lines[line_no++],
                                          /*expect_hlo=*/false,
                                          &parsed_profile_lines));
 
+  ASSERT_LT(line_no, profile_output_lines.size());
   TF_ASSERT_OK(ParseOneProfileOutputLine(profile_output_lines[line_no++],
                                          /*expect_hlo=*/true,
                                          &parsed_profile_lines));
 
+  ASSERT_LT(line_no, profile_output_lines.size());
   TF_ASSERT_OK(ParseOneProfileOutputLine(profile_output_lines[line_no++],
                                          /*expect_hlo=*/true,
                                          &parsed_profile_lines));

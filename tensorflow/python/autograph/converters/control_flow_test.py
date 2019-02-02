@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.converters import control_flow
 from tensorflow.python.autograph.core import converter_testing
-from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -175,17 +174,6 @@ class ControlFlowTest(converter_testing.TestCase):
     # but that will be pruned at execution.
     self.assertTransformedResult(test_fn, constant_op.constant(1), 1)
     self.assertTransformedResult(test_fn, constant_op.constant(-1), -1)
-
-  def test_if_imbalanced_outputs(self):
-
-    def test_fn(n):
-      if n > 0:
-        b = 4
-      return b
-
-    node, ctx = self.prepare(test_fn, {})
-    with self.assertRaises(transformer.AutographParseError):
-      control_flow.transform(node, ctx)
 
   @test_util.run_deprecated_v1
   def test_simple_for(self):

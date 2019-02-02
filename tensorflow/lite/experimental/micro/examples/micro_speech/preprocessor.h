@@ -28,4 +28,7 @@ TfLiteStatus Preprocess(tflite::ErrorReporter* error_reporter,
                         const int16_t* input, int input_size, int output_size,
                         uint8_t* output);
 
+TfLiteStatus Preprocess_1sec(tflite::ErrorReporter* error_reporter,
+                             const int16_t* input, uint8_t* output);
+
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_SPEECH_PREPROCESSOR_H_

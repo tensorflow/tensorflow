@@ -1,36 +1,8 @@
 path: "tensorflow.summary"
 tf_module {
   member {
-    name: "Event"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "FileWriter"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "FileWriterCache"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SessionLog"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "Summary"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "SummaryDescription"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
     name: "SummaryWriter"
     mtype: "<type \'type\'>"
-  }
-  member {
-    name: "TaggedRunMetadata"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member_method {
     name: "create_file_writer"
@@ -43,5 +15,13 @@ tf_module {
   member_method {
     name: "import_event"
     argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "summary_scope"
+    argspec: "args=[\'name\', \'default_name\', \'values\'], varargs=None, keywords=None, defaults=[\'summary\', \'None\'], "
+  }
+  member_method {
+    name: "write"
+    argspec: "args=[\'tag\', \'tensor\', \'step\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
 }

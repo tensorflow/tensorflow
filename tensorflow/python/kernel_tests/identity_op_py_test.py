@@ -62,7 +62,7 @@ class IdentityOpTest(test.TestCase):
       self.assertEquals(shape,
                         array_ops.identity(np.array(array_2x3)).get_shape())
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testRefIdentityShape(self):
     with self.cached_session():
       shape = [2, 3]

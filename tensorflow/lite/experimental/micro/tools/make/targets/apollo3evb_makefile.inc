@@ -1,13 +1,14 @@
 # Settings for apollo3 evb platforms.
 ifeq ($(TARGET), apollo3evb)
+  export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
   TARGET_ARCH := cortex-m4
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
   # Download the Ambiq Apollo3 SDK and set this variable to find the header
   # files:
-  APOLLO3_SDK := /ssd/ambiq/AmbiqSuite\ SDK\ for\ Apollo3/Apollo3-SDK-2018.08.13/
+  APOLLO3_SDK := $(MAKEFILE_DIR)/downloads/Apollo3-SDK-2018.08.13
   # Need a pointer to the GNU ARM toolchain for crtbegin.o for the fp functions
   # with the softfp interfaces.
-  GCC_ARM := /ssd/gnu_arm_toolchain/gcc-arm-none-eabi-7-2018-q2-update/
+  GCC_ARM := $(MAKEFILE_DIR)/downloads/gcc_embedded/
 
   PLATFORM_FLAGS = \
     -DPART_apollo3 \
@@ -16,6 +17,8 @@ ifeq ($(TARGET), apollo3evb)
     -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
     -DTF_LITE_STATIC_MEMORY \
     -DTF_LITE_MCU_DEBUG_LOG \
+    -D __FPU_PRESENT=1 \
+    -DARM_MATH_CM4 \
     -fno-rtti \
     -fmessage-length=0 \
     -fno-exceptions \
@@ -41,8 +44,8 @@ ifeq ($(TARGET), apollo3evb)
     -fomit-frame-pointer \
     -fpermissive \
     -nostdlib \
-    -g \
-    -Os
+    -ggdb \
+    -O3
   CXXFLAGS += $(PLATFORM_FLAGS)
   CCFLAGS += $(PLATFORM_FLAGS)
   LDFLAGS += \
@@ -52,17 +55,18 @@ ifeq ($(TARGET), apollo3evb)
     -Wl,--start-group -lm -lc -lgcc -Wl,--end-group \
     -fno-exceptions \
     -nostdlib --specs=nano.specs -t -lstdc++ -lc -lnosys -lm \
-    -Wl,-T,$(MAKEFILE_DIR)/targets/apollo3evb/apollo3evb.ld \
+    -Wl,-T,$(APOLLO3_SDK)/boards/apollo3_evb/examples/hello_world/gcc_patched/apollo3evb.ld \
     -Wl,-Map=$(MAKEFILE_DIR)/gen/$(TARGET).map,--cref
   BUILD_TYPE := micro
-  # The apollo3evb libs should be copied from the SDK after building them.
   MICROLITE_LIBS := \
-    $(MAKEFILE_DIR)/targets/apollo3evb/libam_bsp.a \
-    $(MAKEFILE_DIR)/targets/apollo3evb/libam_hal.a \
+    $(APOLLO3_SDK)/boards/apollo3_evb/bsp/gcc/bin/libam_bsp.a \
+    $(APOLLO3_SDK)/mcu/apollo3/hal/gcc/bin/libam_hal.a \
     $(GCC_ARM)/lib/gcc/arm-none-eabi/7.3.1/thumb/v7e-m/fpv4-sp/softfp/crtbegin.o \
     -lm
   INCLUDES += \
     -isystem$(MAKEFILE_DIR)/downloads/cmsis/CMSIS/Core/Include/ \
+    -isystem$(MAKEFILE_DIR)/downloads/cmsis/CMSIS/DSP/Include/ \
+    -I$(MAKEFILE_DIR)/downloads/CMSIS_ext/ \
     -I$(GCC_ARM)/arm-none-eabi/ \
     -I$(APOLLO3_SDK)/mcu/apollo3/ \
     -I$(APOLLO3_SDK)/CMSIS/AmbiqMicro/Include/ \
@@ -79,26 +83,37 @@ ifeq ($(TARGET), apollo3evb)
   # setting clock speed, default uart setups, etc. and an implementation
   # of the DebugLog interfaces.
   MICROLITE_CC_SRCS += \
-    $(MAKEFILE_DIR)/targets/apollo3evb/startup_gcc.c \
-    $(MAKEFILE_DIR)/targets/apollo3evb/_main.c \
-    $(MAKEFILE_DIR)/targets/apollo3evb/am_util_delay.c \
-    $(MAKEFILE_DIR)/targets/apollo3evb/am_util_faultisr.c \
-    $(MAKEFILE_DIR)/targets/apollo3evb/am_util_id.c \
-    $(MAKEFILE_DIR)/targets/apollo3evb/am_util_stdio.c
+    $(APOLLO3_SDK)/boards/apollo3_evb/examples/hello_world/gcc_patched/startup_gcc.c \
+    $(APOLLO3_SDK)/utils/am_util_delay.c \
+    $(APOLLO3_SDK)/utils/am_util_faultisr.c \
+    $(APOLLO3_SDK)/utils/am_util_id.c \
+    $(APOLLO3_SDK)/utils/am_util_stdio.c
+
+  CMSIS_SRC_DIR := tensorflow/lite/experimental/micro/tools/make/downloads/cmsis/CMSIS/DSP/Source
+  CMSIS_SRCS := \
+  $(CMSIS_SRC_DIR)/BasicMathFunctions/arm_mult_q15.c \
+  $(CMSIS_SRC_DIR)/TransformFunctions/arm_rfft_init_q15.c \
+  $(CMSIS_SRC_DIR)/TransformFunctions/arm_rfft_q15.c \
+  $(CMSIS_SRC_DIR)/TransformFunctions/arm_cfft_q15.c \
+  $(CMSIS_SRC_DIR)/TransformFunctions/arm_cfft_radix4_q15.c \
+  $(CMSIS_SRC_DIR)/CommonTables/arm_const_structs.c \
+  $(CMSIS_SRC_DIR)/CommonTables/arm_common_tables.c \
+  $(CMSIS_SRC_DIR)/StatisticsFunctions/arm_mean_q15.c \
+  $(CMSIS_SRC_DIR)/StatisticsFunctions/arm_max_q7.c
+
+  AP3_EXT_MICRO_DIR := $(MAKEFILE_DIR)/downloads/apollo3_ext
+  AP3_MICRO_DIR := tensorflow/lite/experimental/micro/examples/micro_speech/apollo3
+  CMSIS_DIR := tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS
+  CMSIS_EXT_DIR := $(MAKEFILE_DIR)/downloads/CMSIS_ext
+
+  MICRO_SPEECH_TEST_SRCS += \
+    $(AP3_MICRO_DIR)/_main.c
 
   TEST_SCRIPT := tensorflow/lite/experimental/log_test/test_apollo3evb_binary.sh
-  # These are tests that don't currently work on the blue pill.
+  # These are tests that don't currently work on the Apollo3 board.
   EXCLUDED_TESTS := \
     tensorflow/lite/experimental/micro/micro_interpreter_test.cc \
     tensorflow/lite/experimental/micro/simple_tensor_allocator_test.cc
   MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
-
-# These are microcontroller-specific rules for converting the ELF output
-# of the linker into a binary image that can be loaded directly.
-OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
-
-$(BINDIR)/%.bin: $(BINDIR)/%
-	@mkdir -p $(dir $@)
-	$(OBJCOPY) $< $@ -O binary
 
 endif

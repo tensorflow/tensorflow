@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for TFGAN classifier_metrics."""
+"""Tests for TF-GAN classifier_metrics."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -234,7 +234,7 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
     else:
       logits = classifier_metrics.run_inception(img, _get_dummy_graphdef())
 
-    self.assertTrue(isinstance(logits, ops.Tensor))
+    self.assertIsInstance(logits, ops.Tensor)
     logits.shape.assert_is_compatible_with([batch_size, 1001])
 
     # Check that none of the model variables are trainable.
@@ -258,7 +258,7 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
           img, _get_dummy_graphdef(),
           output_tensor=classifier_metrics.INCEPTION_FINAL_POOL)
 
-    self.assertTrue(isinstance(pool, ops.Tensor))
+    self.assertIsInstance(pool, ops.Tensor)
     pool.shape.assert_is_compatible_with([batch_size, 2048])
 
     # Check that none of the model variables are trainable.
@@ -276,8 +276,8 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
             classifier_metrics.INCEPTION_FINAL_POOL
         ])
 
-    self.assertTrue(isinstance(logits, ops.Tensor))
-    self.assertTrue(isinstance(pool, ops.Tensor))
+    self.assertIsInstance(logits, ops.Tensor)
+    self.assertIsInstance(pool, ops.Tensor)
     logits.shape.assert_is_compatible_with([batch_size, 1001])
     pool.shape.assert_is_compatible_with([batch_size, 2048])
 
@@ -290,7 +290,7 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
         classifier_metrics.inception_score,
         array_ops.zeros([6, 299, 299, 3]),
         num_batches=3)
-    self.assertTrue(isinstance(score, ops.Tensor))
+    self.assertIsInstance(score, ops.Tensor)
     score.shape.assert_has_rank(0)
 
     # Check that none of the model variables are trainable.
@@ -302,7 +302,7 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
     distance = _run_with_mock(
         classifier_metrics.frechet_inception_distance, img, img)
 
-    self.assertTrue(isinstance(distance, ops.Tensor))
+    self.assertIsInstance(distance, ops.Tensor)
     distance.shape.assert_has_rank(0)
 
     # Check that none of the model variables are trainable.
@@ -314,7 +314,7 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
     distance = _run_with_mock(classifier_metrics.kernel_inception_distance, img,
                               img)
 
-    self.assertTrue(isinstance(distance, ops.Tensor))
+    self.assertIsInstance(distance, ops.Tensor)
     distance.shape.assert_has_rank(0)
 
     # Check that none of the model variables are trainable.

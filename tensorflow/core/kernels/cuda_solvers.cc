@@ -692,8 +692,8 @@ static inline Status GetrsBatchedImpl(
     SolverFnT solver, CudaSolver* cuda_solver, OpKernelContext* context,
     cublasHandle_t cublas_handle, cublasOperation_t trans, int n, int nrhs,
     const Scalar* const host_a_dev_ptrs[], int lda, const int* dev_pivots,
-    const Scalar* const host_b_dev_ptrs[], int ldb,
-    DeviceLapackInfo* dev_lapack_info, int batch_size) {
+    const Scalar* const host_b_dev_ptrs[], int ldb, int* host_lapack_info,
+    int batch_size) {
   mutex_lock lock(handle_map_mutex);
   using CudaScalar = typename CUDAComplexT<Scalar>::type;
   ScratchSpace<uint8> dev_a_dev_ptrs =
@@ -714,7 +714,7 @@ static inline Status GetrsBatchedImpl(
       cublas_handle, trans, n, nrhs,
       reinterpret_cast<const CudaScalar* const*>(dev_a_dev_ptrs.data()), lda,
       dev_pivots, reinterpret_cast<CudaScalar**>(dev_b_dev_ptrs.mutable_data()),
-      ldb, dev_lapack_info->mutable_data(), batch_size));
+      ldb, host_lapack_info, batch_size));
   return Status::OK();
 }
 
@@ -723,13 +723,13 @@ static inline Status GetrsBatchedImpl(
   Status CudaSolver::GetrsBatched(                                             \
       cublasOperation_t trans, int n, int nrhs,                                \
       const Scalar* const host_a_dev_ptrs[], int lda, const int* dev_pivots,   \
-      const Scalar* const host_b_dev_ptrs[], int ldb,                          \
-      DeviceLapackInfo* dev_lapack_info, int batch_size) {                     \
+      const Scalar* const host_b_dev_ptrs[], int ldb, int* host_lapack_info,   \
+      int batch_size) {                                                        \
     return GetrsBatchedImpl(reinterpret_cast<getrs_##type_prefix*>(            \
                                 BLAS_SOLVER_FN(getrsBatched, type_prefix)),    \
                             this, context_, cublas_handle_, trans, n, nrhs,    \
                             host_a_dev_ptrs, lda, dev_pivots, host_b_dev_ptrs, \
-                            ldb, dev_lapack_info, batch_size);                 \
+                            ldb, host_lapack_info, batch_size);                \
   }
 
 TF_CALL_LAPACK_TYPES(GETRS_BATCHED_INSTANCE);

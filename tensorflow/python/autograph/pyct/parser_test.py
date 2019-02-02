@@ -42,6 +42,15 @@ class ParserTest(test.TestCase):
     """))
     self.assertEqual('f', mod.body[0].name)
 
+  def test_parse_str_print(self):
+    mod = parser.parse_str(
+        textwrap.dedent("""
+            def f(x):
+              print(x)
+              return x + 1
+    """))
+    self.assertEqual('f', mod.body[0].name)
+
   def test_parse_comments(self):
     def f():
 # unindented comment

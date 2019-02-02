@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/logging.h"
 
 #ifdef GEMMLOWP_PROFILING
-#include "third_party/gemmlowp/profiling/profiler.h"
+#include "gemmlowp/profiling/profiler.h"
 #endif
 
 #ifdef TFLITE_CUSTOM_OPS_HEADER
@@ -181,6 +181,15 @@ bool PopulateInputLayerInfo(
   return true;
 }
 
+std::vector<int> TfLiteIntArrayToVector(const TfLiteIntArray* int_array) {
+  std::vector<int> values;
+  values.reserve(int_array->size);
+  for (size_t i = 0; i < int_array->size; i++) {
+    values.push_back(int_array->data[i]);
+  }
+  return values;
+}
+
 }  // namespace
 
 BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
@@ -250,12 +259,10 @@ uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
 void BenchmarkTfLiteModel::PrepareInputsAndOutputs() {
   auto interpreter_inputs = interpreter->inputs();
   // Set the values of the input tensors.
-  for (int j = 0; j < inputs.size(); ++j) {
-    const InputLayerInfo& input = inputs[j];
+  for (int j = 0; j < interpreter_inputs.size(); ++j) {
     int i = interpreter_inputs[j];
     TfLiteTensor* t = interpreter->tensor(i);
-    std::vector<int> sizes = input.shape;
-
+    std::vector<int> sizes = TfLiteIntArrayToVector(t->dims);
     // TODO(ahentz): below we ignore the O-th dimension (number of batches).
     if (t->type == kTfLiteFloat32) {
       FillRandomValue<float>(
@@ -274,6 +281,11 @@ void BenchmarkTfLiteModel::PrepareInputsAndOutputs() {
           interpreter->typed_tensor<uint8_t>(i),
           std::vector<int>(sizes.begin() + 1, sizes.end()),
           []() { return static_cast<uint8_t>(rand()) % 255; });
+    } else if (t->type == kTfLiteInt8) {
+      FillRandomValue<int8_t>(
+          interpreter->typed_tensor<int8_t>(i),
+          std::vector<int>(sizes.begin() + 1, sizes.end()),
+          []() { return static_cast<int8_t>(rand()) % 255 - 127; });
     } else if (t->type == kTfLiteString) {
       tflite::DynamicBuffer buffer;
       FillRandomString(&buffer, sizes, []() {
@@ -304,17 +316,12 @@ void BenchmarkTfLiteModel::Init() {
   tflite::ops::builtin::BuiltinOpResolver resolver;
 #endif
 
-  tflite::InterpreterBuilder(*model, resolver)(&interpreter);
+  const int32_t num_threads = params_.Get<int32_t>("num_threads");
+  tflite::InterpreterBuilder(*model, resolver)(&interpreter, num_threads);
   if (!interpreter) {
     TFLITE_LOG(FATAL) << "Failed to construct interpreter";
   }
   profiling_listener_.SetInterpreter(interpreter.get());
-
-  const int32_t num_threads = params_.Get<int32_t>("num_threads");
-
-  if (num_threads != -1) {
-    interpreter->SetNumThreads(num_threads);
-  }
 
   bool use_nnapi = params_.Get<bool>("use_nnapi");
 

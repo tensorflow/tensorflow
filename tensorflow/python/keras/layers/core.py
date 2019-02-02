@@ -27,6 +27,7 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import activations
@@ -45,10 +46,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import standard_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.layers.Masking')
+@keras_export('keras.layers.Masking')
 class Masking(Layer):
   """Masks a sequence by using a mask value to skip timesteps.
 
@@ -81,6 +82,7 @@ class Masking(Layer):
     super(Masking, self).__init__(**kwargs)
     self.supports_masking = True
     self.mask_value = mask_value
+    self._compute_output_and_mask_jointly = True
 
   def compute_mask(self, inputs, mask=None):
     return K.any(math_ops.not_equal(inputs, self.mask_value), axis=-1)
@@ -88,7 +90,10 @@ class Masking(Layer):
   def call(self, inputs):
     boolean_mask = K.any(
         math_ops.not_equal(inputs, self.mask_value), axis=-1, keepdims=True)
-    return inputs * math_ops.cast(boolean_mask, inputs.dtype)
+    outputs = inputs * math_ops.cast(boolean_mask, inputs.dtype)
+    # Compute the mask and outputs simultaneously.
+    outputs._keras_mask = array_ops.squeeze(boolean_mask, axis=-1)  # pylint: disable=protected-access
+    return outputs
 
   def compute_output_shape(self, input_shape):
     return input_shape
@@ -99,7 +104,7 @@ class Masking(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.Dropout')
+@keras_export('keras.layers.Dropout')
 class Dropout(Layer):
   """Applies Dropout to the input.
 
@@ -138,9 +143,12 @@ class Dropout(Layer):
       training = K.learning_phase()
 
     def dropped_inputs():
-      return nn.dropout(inputs, 1  - self.rate,
-                        noise_shape=self._get_noise_shape(inputs),
-                        seed=self.seed)
+      return nn.dropout(
+          inputs,
+          noise_shape=self._get_noise_shape(inputs),
+          seed=self.seed,
+          rate=self.rate)
+
     output = tf_utils.smart_cond(training,
                                  dropped_inputs,
                                  lambda: array_ops.identity(inputs))
@@ -159,7 +167,7 @@ class Dropout(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.SpatialDropout1D')
+@keras_export('keras.layers.SpatialDropout1D')
 class SpatialDropout1D(Dropout):
   """Spatial 1D version of Dropout.
 
@@ -196,7 +204,7 @@ class SpatialDropout1D(Dropout):
     return noise_shape
 
 
-@tf_export('keras.layers.SpatialDropout2D')
+@keras_export('keras.layers.SpatialDropout2D')
 class SpatialDropout2D(Dropout):
   """Spatial 2D version of Dropout.
 
@@ -250,7 +258,7 @@ class SpatialDropout2D(Dropout):
       return (input_shape[0], 1, 1, input_shape[3])
 
 
-@tf_export('keras.layers.SpatialDropout3D')
+@keras_export('keras.layers.SpatialDropout3D')
 class SpatialDropout3D(Dropout):
   """Spatial 3D version of Dropout.
 
@@ -303,7 +311,7 @@ class SpatialDropout3D(Dropout):
       return (input_shape[0], 1, 1, 1, input_shape[4])
 
 
-@tf_export('keras.layers.Activation')
+@keras_export('keras.layers.Activation')
 class Activation(Layer):
   """Applies an activation function to an output.
 
@@ -337,7 +345,7 @@ class Activation(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.Reshape')
+@keras_export('keras.layers.Reshape')
 class Reshape(Layer):
   """Reshapes an output to a certain shape.
 
@@ -444,7 +452,7 @@ class Reshape(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.Permute')
+@keras_export('keras.layers.Permute')
 class Permute(Layer):
   """Permutes the dimensions of the input according to a given pattern.
 
@@ -502,9 +510,12 @@ class Permute(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.Flatten')
+@keras_export('keras.layers.Flatten')
 class Flatten(Layer):
   """Flattens the input. Does not affect the batch size.
+
+  If inputs are shaped `(batch,)` without a channel dimension, then flattening
+  adds an extra channel dimension and output shapes are `(batch, 1)`.
 
   Arguments:
       data_format: A string,
@@ -534,23 +545,28 @@ class Flatten(Layer):
   def __init__(self, data_format=None, **kwargs):
     super(Flatten, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
-    self.input_spec = InputSpec(min_ndim=2)
+    self.input_spec = InputSpec(min_ndim=1)
 
   def call(self, inputs):
-    if self.data_format == 'channels_first':
+    if (self.data_format == 'channels_first'
+        and K.ndim(inputs) is not None and K.ndim(inputs) > 1):
       permutation = [0]
       permutation.extend([i for i in
                           range(2, K.ndim(inputs))])
       permutation.append(1)
       inputs = array_ops.transpose(inputs, perm=permutation)
 
-    outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
+    outputs = array_ops.reshape(
+        inputs, (tensor_shape.dimension_value(inputs.shape[0]) or
+                 array_ops.shape(inputs)[0], -1))
     if not context.executing_eagerly():
       outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
     return outputs
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    if not input_shape:
+      output_shape = tensor_shape.TensorShape([1])
     output_shape = [input_shape[0]]
     if all(input_shape[1:]):
       output_shape += [np.prod(input_shape[1:])]
@@ -564,7 +580,7 @@ class Flatten(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.RepeatVector')
+@keras_export('keras.layers.RepeatVector')
 class RepeatVector(Layer):
   """Repeats the input n times.
 
@@ -608,7 +624,7 @@ class RepeatVector(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.Lambda')
+@keras_export('keras.layers.Lambda')
 class Lambda(Layer):
   """Wraps arbitrary expression as a `Layer` object.
 
@@ -837,7 +853,7 @@ class Lambda(Layer):
     return cls(**config)
 
 
-@tf_export('keras.layers.Dense')
+@keras_export('keras.layers.Dense')
 class Dense(Layer):
   """Just your regular densely-connected NN layer.
 
@@ -924,6 +940,10 @@ class Dense(Layer):
     self.input_spec = InputSpec(min_ndim=2)
 
   def build(self, input_shape):
+    dtype = dtypes.as_dtype(self.dtype or K.floatx())
+    if not (dtype.is_floating or dtype.is_complex):
+      raise TypeError('Unable to build `Dense` layer with non-floating point '
+                      'dtype %s' % (dtype,))
     input_shape = tensor_shape.TensorShape(input_shape)
     if tensor_shape.dimension_value(input_shape[-1]) is None:
       raise ValueError('The last dimension of the inputs to `Dense` '
@@ -964,6 +984,7 @@ class Dense(Layer):
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:
+      inputs = math_ops.cast(inputs, self.dtype)
       outputs = gen_math_ops.mat_mul(inputs, self.kernel)
     if self.use_bias:
       outputs = nn.bias_add(outputs, self.bias)
@@ -998,7 +1019,7 @@ class Dense(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.ActivityRegularization')
+@keras_export('keras.layers.ActivityRegularization')
 class ActivityRegularization(Layer):
   """Layer that applies an update to the cost function based input activity.
 

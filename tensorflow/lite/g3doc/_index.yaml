@@ -4,7 +4,7 @@ description: <!--no description-->
 landing_page:
   custom_css_path: /site-assets/css/style.css
   rows:
-  - heading: TensorFlow Lite is for mobile and embedded devices.
+  - heading: TensorFlow Lite is for mobile and embedded devices
     description: >
       <p style="max-width: 75%;">
         TensorFlow Lite is the official solution for running machine learning
@@ -13,9 +13,6 @@ landing_page:
         iOS, and other operating systems.
       </p>
       <style>
-      .tfo-landing-row-heading {
-        padding-top: 0 !important;
-      }
       .tfo-landing-row-heading h2 {
         margin-top: 0 !important;
       }
@@ -71,58 +68,16 @@ landing_page:
           icon_name: lens
           foreground: theme
 
-  - classname: devsite-landing-row-logos tfo-landing-row-heading
-    heading: Companies using TensorFlow Lite
-    items:
-    - custom_image:
-        path: ./images/landing-page/photos_logo.png
-      path: https://www.photos.google.com
-    - custom_image:
-        path: ./images/landing-page/gboard_logo.png
-      path: https://play.google.com/store/apps/details?id=com.google.android.inputmethod.latin&hl=en_US
-    - custom_image:
-        path: ./images/landing-page/gmail_logo.png
-      path: https://www.google.com/gmail/
-    - custom_image:
-        path: ./images/landing-page/assistant_logo.png
-      path: https://assistant.google.com/
-
-  - classname: devsite-landing-row-logos
-    items:
-    - custom_image:
-        path: ./images/landing-page/vsco_logo.png
-      path: https://vsco.co
-    - custom_image:
-        path: ./images/landing-page/shazam_logo.png
-      path: https://www.shazam.com/
-    - custom_image:
-        path: ./images/landing-page/nest_logo.png
-      path: https://nest.com/
-    - custom_image:
-        path: ./images/landing-page/loseit_logo.png
-      path: https://www.loseit.com/
-
-  - classname: devsite-landing-row-no-image-background devsite-landing-row-67
-    background: grey
-    items:
-    - description: >
-        <em>“TensorFlow Lite helped us introduce machine learning and AI into our
-        app in an easy and streamlined way. We could reduce the size of our
-        models while keeping the accuracy high. This helped us create an amazing
-        fishing experience for our users by allowing them to identify any fish
-        species with just a photo.”</em>
-      image_path: ./images/landing-page/fishbrain_logo_big.png
-
   - heading: How it works
     items:
-    - heading: Build
+    - heading: Pick a model
       icon:
         icon_name: build
       description: >
-        Build a new model or retrain an existing one, such as using transfer learning.
+        Pick a new model or retrain an existing one.
       buttons:
-      - label: Read the developer guide
-        path: /lite/devguide
+      - label: Pick
+        path: /lite/devguide#1_choose_a_model
         classname: button button-primary tfo-button-primary
     - heading: Convert
       icon:
@@ -131,18 +86,29 @@ landing_page:
         Convert a TensorFlow model into a compressed flat buffer with the
         TensorFlow Lite Converter.
       buttons:
-      - label: Read the converter guide
-        path: /lite/convert/
+      - label: Convert
+        path: /lite/devguide#2_convert_the_model_format
         classname: button button-primary tfo-button-primary
     - heading: Deploy
       icon:
+        icon_name: settings_cell
+      description: >
+        Take the compressed <code>.tflite</code> file and load it into a mobile or embedded device.
+      buttons:
+      - label: Deploy
+        path: /lite/devguide#3_use_the_tensorflow_lite_model_for_inference_in_a_mobile_app
+        classname: button button-primary tfo-button-primary
+    - heading: Optimize
+      icon:
         icon_name: bolt
       description: >
-        Take the compressed <code>.tflite</code> file and load it into a mobile
-        or embedded device.<br/>
-        See the <a href="#build-your-first-tensorflow-lite-app">tutorials below</a> to build an app.
+        [optional] Quantize by converting 32-bit floats to more efficient 8-bit integers or run on GPU.
+      buttons:
+      - label: Optimize
+        path: /lite/devguide#4_optimize_your_model_optional
+        classname: button button-primary tfo-button-primary
 
-  - heading: Build your first TensorFlow Lite app
+  - heading: Build your first TensorFlow Lite app with Codelabs
     background: grey
     items:
     - classname: tfo-landing-row-item-inset-white
@@ -160,28 +126,40 @@ landing_page:
         We love to hear what you're working on—it may even get highlighted on
         our social media! <a href="https://groups.google.com/a/tensorflow.org/forum/#!forum/discuss" class="external">Tell us</a>.
 
-  - classname: devsite-landing-row-no-image-background devsite-landing-row-67
+  - classname: devsite-landing-row-logos tfo-landing-row-heading
+    heading: TensorFlow Lite users
     items:
-    - description: >
-        <p>
-          <em>“The release of TensorFlow Lite has allowed us to deploy an engaging
-          real-time experience to our users that eliminates the requirement
-          for a data connection. TensorFlow Lite’s ability to compress and
-          optimize the TensorFlow graph for mobile deployment has been
-          transformative in expanding the capabilities of Snap It.</em>
-        </p>
-        <p>
-          <em>Through TensorFlow Lite, our users can now enjoy a state of the
-          art, computer-vision-based food logging experience without worrying
-          about signal strength. We look forward to future collaborations
-          with the TensorFlow Lite team.”</em>
-        </p>
-      image_path: ./images/landing-page/loseit_logo_big.png
+    - custom_image:
+        path: ./images/landing-page/photos_logo.png
+    - custom_image:
+        path: ./images/landing-page/gboard_logo.png
+    - custom_image:
+        path: ./images/landing-page/gmail_logo.png
+    - custom_image:
+        path: ./images/landing-page/assistant_logo.png
+
+  - classname: devsite-landing-row-logos
+    items:
+    - custom_image:
+        path: ./images/landing-page/vsco_logo.png
+    - custom_image:
+        path: ./images/landing-page/shazam_logo.png
+    - custom_image:
+        path: ./images/landing-page/nest_logo.png
+    - custom_image:
+        path: ./images/landing-page/loseit_logo.png
+
 
   - classname: devsite-landing-row-cards
     background: grey
     heading: Updates
     items:
+    - heading: "TensorFlow Lite Now Faster with Mobile GPUs (Developer Preview)"
+      image_path: ./images/landing-page/facial_contour_detection.png
+      path: https://medium.com/tensorflow/tensorflow-lite-now-faster-with-mobile-gpus-developer-preview-e15797e6dee7
+      buttons:
+      - label: Read more
+        path: https://medium.com/tensorflow/tensorflow-lite-now-faster-with-mobile-gpus-developer-preview-e15797e6dee7
     - heading: "AI in motion: react in the real world"
       image_path: ./images/landing-page/ai_in_motion.png
       path: https://cloud.google.com/blog/products/ai-machine-learning/ai-motion-designing-simple-system-see-understand-and-react-real-world-part-ii

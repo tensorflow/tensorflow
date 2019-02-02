@@ -208,12 +208,32 @@ bool HardcodeMinMaxForSelect(Model* model, Operator* op) {
   if (output_array.minmax) {
     return false;
   }
-  const auto& input_array_1 = model->GetArray(op->inputs[1]);
-  if (!input_array_1.minmax) {
+
+  auto& input_array_1 = model->GetArray(op->inputs[1]);
+  auto& input_array_2 = model->GetArray(op->inputs[2]);
+
+  if (!input_array_1.minmax && !input_array_2.minmax) {
     return false;
   }
-  const auto& input_array_2 = model->GetArray(op->inputs[2]);
-  if (!input_array_2.minmax) {
+
+  // Propagate up if one input is quantized and the other is constant.
+  if (!input_array_1.minmax &&
+      IsConstantParameterArray(*model, op->inputs[1])) {
+    auto& minmax_1 = input_array_1.GetOrCreateMinMax();
+    const auto& minmax_2 = input_array_2.GetMinMax();
+    minmax_1.min = minmax_2.min;
+    minmax_1.max = minmax_2.max;
+  }
+
+  if (!input_array_2.minmax &&
+      IsConstantParameterArray(*model, op->inputs[2])) {
+    auto& minmax_2 = input_array_2.GetOrCreateMinMax();
+    const auto& minmax_1 = input_array_1.GetMinMax();
+    minmax_2.min = minmax_1.min;
+    minmax_2.max = minmax_1.max;
+  }
+
+  if (!input_array_1.minmax || !input_array_2.minmax) {
     return false;
   }
 
@@ -420,6 +440,8 @@ bool HardcodeMinMaxForLstmCell(Model* model, Operator* op) {
     case OperatorType::kGather:
     case OperatorType::kTranspose:
     case OperatorType::kMean:
+    case OperatorType::kReduceMax:
+    case OperatorType::kReduceMin:
       changed = HardcodeMinMaxFromFirstInput(model, op);
       break;
     case OperatorType::kSum:
@@ -428,7 +450,7 @@ bool HardcodeMinMaxForLstmCell(Model* model, Operator* op) {
       // in special circumstances like when computing expected value using
       // reduce_sum the input range and the output range matches. Hence the
       // below code would act as a fallback. If a fake_quant node is observed in
-      // the output that takes precendence over the hard coding logic below.
+      // the output that takes precedence over the hard coding logic below.
       changed = HardcodeMinMaxFromFirstInput(model, op);
       if (changed) {
         LOG(WARNING) << "Using the input range for output in reduce_sum op."

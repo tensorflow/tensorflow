@@ -17,6 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training.checkpointable import base
 from tensorflow.python.training.checkpointable import data_structures
 from tensorflow.python.util import tf_contextlib
@@ -37,7 +41,7 @@ class NotCheckpointable(object):
   pass
 
 
-class Checkpointable(base.CheckpointableBase):
+class AutoCheckpointable(base.Checkpointable):
   """Manages dependencies on other objects.
 
   `Checkpointable` objects may have dependencies: other `Checkpointable` objects
@@ -70,7 +74,18 @@ class Checkpointable(base.CheckpointableBase):
     if getattr(self, "_setattr_tracking", True):
       value = data_structures.sticky_attribute_assignment(
           checkpointable=self, value=value, name=name)
-    super(Checkpointable, self).__setattr__(name, value)
+    super(AutoCheckpointable, self).__setattr__(name, value)
+
+  def __delattr__(self, name):
+    self._maybe_initialize_checkpointable()
+    if name in self._unconditional_dependency_names:
+      del self._unconditional_dependency_names[name]
+      for index, (dep_name, _) in enumerate(
+          self._unconditional_checkpoint_dependencies):
+        if dep_name == name:
+          del self._unconditional_checkpoint_dependencies[index]
+          break
+    super(AutoCheckpointable, self).__delattr__(name)
 
   def _no_dependency(self, value):
     """Override to allow CheckpointableBase to disable dependency tracking."""
@@ -120,7 +135,7 @@ def resource_tracker_scope(resource_tracker):
     _RESOURCE_TRACKER_STACK = old
 
 
-class TrackableResource(base.CheckpointableBase):
+class TrackableResource(base.Checkpointable):
   """Base class for all resources that need to be tracked."""
 
   def __init__(self):
@@ -145,3 +160,36 @@ class TrackableResource(base.CheckpointableBase):
     if self._resource_handle is None:
       self._resource_handle = self.create_resource()
     return self._resource_handle
+
+
+class TrackableAsset(base.Checkpointable):
+  """Base class for asset files which need to be tracked."""
+
+  def __init__(self, path):
+    """Record the full path to the asset."""
+    # We use a variable here so that @tf.functions do not capture a literal
+    # value. The init_scope prevents functions from capturing `path` in an
+    # initialization graph, since it is transient and should not end up in a
+    # serialized function body. When serialized in a SavedModel, the variable
+    # will be set during the loading process to its location in the assets/
+    # directory.
+    with ops.init_scope():
+      if context.executing_eagerly():
+        self._path = self._no_dependency(
+            resource_variable_ops.ResourceVariable(
+                path, dtype=dtypes.string,
+                name="asset_path"))
+      else:
+        # Adding a variable is too disruptive when v1-style graph building,
+        # since things may get fed and local variable initializers would then
+        # need to be run.
+        self._path = path
+
+  @property
+  def asset_path(self):
+    """Fetch the current asset path."""
+    return self._path
+
+ops.register_tensor_conversion_function(
+    TrackableAsset,
+    lambda asset, **kw: ops.internal_convert_to_tensor(asset.asset_path, **kw))

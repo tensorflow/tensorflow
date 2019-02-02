@@ -34,6 +34,15 @@ static_assert(
     "kDefaultArenaAlignment doesn't comply with Eigen alignment requirement.");
 #endif  // EIGEN_DONT_ALIGN
 
+// Helper routine for updating the global Eigen thread count used for OpenMP.
+void SetEigenNbThreads(int threads) {
+#if defined(EIGEN_HAS_OPENMP)
+  // The global Eigen thread count is only used when OpenMP is enabled. As this
+  // call causes problems with tsan, make it only when OpenMP is available.
+  Eigen::setNbThreads(threads);
+#endif  // defined(EIGEN_HAS_OPENMP)
+}
+
 // We have a single global threadpool for all convolution operations. This means
 // that inferences started from different threads may block each other, but
 // since the underlying resource of CPU cores should be consumed by the
@@ -78,7 +87,7 @@ void InitDevice(TfLiteContext* context, RefCountedEigenContext* ptr) {
 }
 
 TfLiteStatus Refresh(TfLiteContext* context) {
-  Eigen::setNbThreads(context->recommended_num_threads);
+  SetEigenNbThreads(context->recommended_num_threads);
 
   auto* ptr = GetEigenContext(context);
   if (ptr != nullptr) {
@@ -94,7 +103,7 @@ void IncrementUsageCounter(TfLiteContext* context) {
   auto* ptr = GetEigenContext(context);
   if (ptr == nullptr) {
     if (context->recommended_num_threads != -1) {
-      Eigen::setNbThreads(context->recommended_num_threads);
+      SetEigenNbThreads(context->recommended_num_threads);
     }
     ptr = new RefCountedEigenContext;
     ptr->type = kTfLiteEigenContext;

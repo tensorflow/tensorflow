@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 # Keras has undeclared dependency on tensorflow/estimator:estimator_py.
 # As long as you depend //third_party/py/tensorflow:tensorflow target
@@ -26,7 +26,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 # LINT.IfChange
-@tf_export('keras.estimator.model_to_estimator')
+@keras_export('keras.estimator.model_to_estimator')
 def model_to_estimator(
     keras_model=None,
     keras_model_path=None,
@@ -65,13 +65,13 @@ def model_to_estimator(
     raise NotImplementedError(
         'tf.keras.estimator.model_to_estimator function not available in your '
         'installation.')
-  keras_lib.model_to_estimator(
+  return keras_lib.model_to_estimator(
       keras_model=keras_model,
       keras_model_path=keras_model_path,
       custom_objects=custom_objects,
       model_dir=model_dir,
       config=config)
 
-# LINT.ThenChange(//third_party/tensorflow_estimator/python/estimator/keras.py)
+# LINT.ThenChange(//tensorflow_estimator/python/estimator/keras.py)
 
 

@@ -64,6 +64,9 @@ namespace xla {
 //       e.g. IsConstantScalar() or IsConstantScalar(42).
 //     - WithFusionKind
 //     - WithTupleIndex: get-tuple-element operations with the given tuple index
+//     - WithOneUse: Instruction is used as an operand exactly once.
+//     - WithOneUser: Instruction is used by exactly one other instruction, but
+//       is possibly used more than once as an operand (e.g. multiply(x,x)).
 //
 //   Shape():
 //     - EqualTo
@@ -772,7 +775,7 @@ class ShapePatternIsArrayImpl {
   explicit constexpr ShapePatternIsArrayImpl() {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    if (!ShapeUtil::IsArray(*shape)) {
+    if (!shape->IsArray()) {
       EXPLAIN << "Shape is not an array";
       return false;
     }
@@ -790,7 +793,7 @@ class ShapePatternIsTupleImpl {
   explicit constexpr ShapePatternIsTupleImpl() {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    if (!ShapeUtil::IsTuple(*shape)) {
+    if (!shape->IsTuple()) {
       EXPLAIN << "Shape is not a tuple";
       return false;
     }
@@ -828,7 +831,7 @@ class ShapePatternRankImpl {
   explicit constexpr ShapePatternRankImpl(int64 rank) : rank_(rank) {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    if (ShapeUtil::Rank(*shape) != rank_) {
+    if (shape->rank() != rank_) {
       if (rank_ == 0) {
         EXPLAIN << "Shape is not a scalar";
       } else {
@@ -1133,6 +1136,13 @@ inline const HloInstruction* HloOperand(const HloInstruction* instr,
   return instr->operand(idx);
 }
 
+// Pretty-printer for HloInstruction.  Sort of like ToShortString, but with
+// fewer %s and more shapes.
+inline string InstToString(const HloInstruction* inst) {
+  return inst->ToString(
+      HloPrintOptions().set_print_metadata(false).set_print_percent(false));
+}
+
 template <typename HloInstructionType, typename Impl>
 class HloInstructionPattern;
 
@@ -1187,14 +1197,14 @@ class HloInstructionIsImpl {
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     if (inst != inst_) {
       EXPLAIN << "HloInstruction " << inst << " is not " << inst_ << " ("
-              << inst_->ToShortString() << ")";
+              << InstToString(inst_) << ")";
       return false;
     }
     return true;
   }
 
   void DescribeTo(std::ostream* os, int64 indent = 0) const {
-    *os << "which is " << inst_ << " (" << inst_->ToShortString() << ")";
+    *os << "which is " << inst_ << " (" << InstToString(inst_) << ")";
   }
 
  private:
@@ -1603,6 +1613,64 @@ class HloInstructionPatternParameterNumImpl {
   int64 parameter_num_;
 };
 
+// Superclass that contains common code used by Op::WithOneUse() and
+// Op::WithOneUser().
+class HloInstructionPatternOneUseOrUserImpl {
+ protected:
+  bool MatchOneUser(const HloInstruction* inst, MatchOption option) const {
+    if (inst->user_count() != 1) {
+      EXPLAIN << "HloInstruction has " << inst->user_count()
+              << " users, but expected exactly one.";
+      if (inst->user_count() > 1) {
+        EXPLAIN << "\nAll users:";
+        for (const HloInstruction* user : inst->users()) {
+          EXPLAIN << "\n - " << InstToString(user);
+        }
+      }
+      return false;
+    }
+    return true;
+  }
+};
+
+class HloInstructionPatternOneUseImpl
+    : public HloInstructionPatternOneUseOrUserImpl {
+ public:
+  bool Match(const HloInstruction* inst, MatchOption option) const {
+    if (!MatchOneUser(inst, option)) {
+      return false;
+    }
+
+    int64 use_count = absl::c_count_if(
+        inst->users()[0]->operands(),
+        [&](const HloInstruction* operand) { return operand == inst; });
+    if (use_count != 1) {
+      EXPLAIN << "HloInstruction is used " << use_count
+              << " times by its user, but is expected to be used just once: "
+              << InstToString(inst->users()[0]);
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "which has exactly one use";
+  }
+};
+
+class HloInstructionPatternOneUserImpl
+    : public HloInstructionPatternOneUseOrUserImpl {
+ public:
+  bool Match(const HloInstruction* inst, MatchOption option) const {
+    return MatchOneUser(inst, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "which has exactly one user (but possibly is used multiple times by "
+           "that instruction)";
+  }
+};
+
 // Matches a constant scalar or effective scalar, optionally with a given value.
 template <typename ScalarTy>
 class HloConstantScalarImpl {
@@ -1669,7 +1737,8 @@ class HloConstantScalarImpl {
               literal_r0_as_val_ty_or.ValueOrDie() == val_literal &&
               literal_r0 == val_as_literal_ty;
     if (!rv) {
-      EXPLAIN << "HloInstruction's constant value " << literal_r0.ToString()
+      EXPLAIN << "HloInstruction's constant value "
+              << literal_r0.ToStringWithoutShape()
               << " did not match expected value " << *val_;
     }
     return rv;
@@ -1706,10 +1775,7 @@ class HloInstructionPattern {
       return true;
     }
     if (inst != nullptr) {
-      EXPLAIN << "\nin "
-              << inst->ToString(HloPrintOptions()
-                                    .set_print_metadata(false)
-                                    .set_print_percent(false));
+      EXPLAIN << "\nin " << InstToString(inst);
     }
     return false;
   }
@@ -1722,10 +1788,7 @@ class HloInstructionPattern {
       }
       return true;
     }
-    EXPLAIN << "\nin "
-            << inst->ToString(HloPrintOptions()
-                                  .set_print_metadata(false)
-                                  .set_print_percent(false));
+    EXPLAIN << "\nin " << InstToString(inst);
     return false;
   }
 
@@ -1815,7 +1878,7 @@ class HloInstructionPattern {
   // Make this a templated function to work around gcc 4.9.4 template infinite
   // recursion bug.
   template <typename Dummy = void>
-  constexpr auto WithShapeEqualTo(const ::xla::Shape* shape)
+  constexpr auto WithShapeEqualTo(const ::xla::Shape* shape) const
       -> decltype(this->WithShape(Shape().EqualTo(shape))) {
     return WithShape(Shape().EqualTo(shape));
   }
@@ -1823,7 +1886,7 @@ class HloInstructionPattern {
   // Make this a templated function to work around gcc 4.9.4 template infinite
   // recursion bug.
   template <typename Dummy = void>
-  constexpr auto WithShapeCompatibleTo(const ::xla::Shape* shape)
+  constexpr auto WithShapeCompatibleTo(const ::xla::Shape* shape) const
       -> decltype(this->WithShape(Shape().CompatibleTo(shape))) {
     return WithShape(Shape().CompatibleTo(shape));
   }
@@ -1877,6 +1940,22 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionPatternParameterNumImpl(parameter_num));
   }
 
+  // Modifies the pattern to match if the instruction is used exactly once.
+  // Does not match if the instruction is used twice by the same user (e.g.
+  // multiply(x,x)).
+  constexpr auto WithOneUse() const
+      -> decltype(this->AppendImpl(HloInstructionPatternOneUseImpl())) {
+    return AppendImpl(HloInstructionPatternOneUseImpl());
+  }
+
+  // Modifies the pattern to match if the instruction is used by exactly one
+  // other instruction.  Will match if the instruction is used twice, so long as
+  // it's by the same user (e.g.  multiply(x,x)).
+  constexpr auto WithOneUser() const
+      -> decltype(this->AppendImpl(HloInstructionPatternOneUserImpl())) {
+    return AppendImpl(HloInstructionPatternOneUserImpl());
+  }
+
   void DescribeTo(std::ostream* os, int64 indent = 0) const {
     impl_.DescribeTo(os, indent);
   }
@@ -1922,6 +2001,7 @@ Op(::xla::HloInstruction** matched_inst) {
 XLA_NULLOP_PATTERN(Constant)
 XLA_NULLOP_PATTERN(Parameter)
 XLA_NULLOP_PATTERN(Iota)
+XLA_NULLOP_PATTERN(Rng)
 #undef XLA_NULLOP_PATTERN
 
 // Helpers for unary instructions.
@@ -1956,7 +2036,7 @@ XLA_UNOP_PATTERN(Ceil)
 XLA_UNOP_PATTERN(Convert)
 XLA_UNOP_PATTERN(Copy)
 XLA_UNOP_PATTERN(Cos)
-XLA_UNOP_PATTERN(CrossReplicaSum)
+XLA_UNOP_PATTERN(AllReduce)
 XLA_UNOP_PATTERN(Exp)
 XLA_UNOP_PATTERN(Fft)
 XLA_UNOP_PATTERN(Floor)
@@ -1977,7 +2057,6 @@ XLA_UNOP_PATTERN(SendDone)
 XLA_UNOP_PATTERN(Sign)
 XLA_UNOP_PATTERN(Sin)
 XLA_UNOP_PATTERN(Slice)
-XLA_UNOP_PATTERN(Sort)
 XLA_UNOP_PATTERN(Tanh)
 XLA_UNOP_PATTERN(Transpose)
 #undef XLA_UNOP_PATTERN
@@ -2028,10 +2107,10 @@ XLA_UNOP_PATTERN(Transpose)
   }                                                                         \
   template <typename Lhs, typename Rhs>                                     \
   inline auto NAME##AnyOrder(Lhs&& lhs, Rhs&& rhs)                          \
-      ->decltype(NAME##AnyOrder<HloInstruction>(                            \
+      ->decltype(NAME##AnyOrder<const HloInstruction>(                      \
           nullptr, std::forward<Lhs>(lhs), std::forward<Rhs>(rhs))) {       \
-    return NAME##AnyOrder<HloInstruction>(nullptr, std::forward<Lhs>(lhs),  \
-                                          std::forward<Rhs>(rhs));          \
+    return NAME##AnyOrder<const HloInstruction>(                            \
+        nullptr, std::forward<Lhs>(lhs), std::forward<Rhs>(rhs));           \
   }
 XLA_COMMUTATIVE_BINOP_PATTERN(Add)
 XLA_BINOP_PATTERN(Atan2)
@@ -2039,7 +2118,6 @@ XLA_BINOP_PATTERN(Divide)
 XLA_BINOP_PATTERN(Complex)
 XLA_BINOP_PATTERN(Convolution)
 XLA_BINOP_PATTERN(Dot)
-XLA_BINOP_PATTERN(DynamicSlice)
 XLA_COMMUTATIVE_BINOP_PATTERN(Eq)
 XLA_BINOP_PATTERN(Gather)
 XLA_BINOP_PATTERN(Ge)
@@ -2053,6 +2131,7 @@ XLA_COMMUTATIVE_BINOP_PATTERN(Ne)
 XLA_BINOP_PATTERN(Outfeed)
 XLA_BINOP_PATTERN(Pad)
 XLA_BINOP_PATTERN(Power)
+XLA_BINOP_PATTERN(ReduceWindow)
 XLA_BINOP_PATTERN(Remainder)
 XLA_BINOP_PATTERN(Send)
 XLA_BINOP_PATTERN(Subtract)
@@ -2099,6 +2178,7 @@ XLA_BINOP_PATTERN(ShiftRightLogical)
         .WithOperand(2, std::forward<Arg2>(arg2));                     \
   }
 XLA_TERNOP_PATTERN(Clamp);
+XLA_TERNOP_PATTERN(Scatter);
 XLA_TERNOP_PATTERN(Select);
 #undef XLA_TERNOP_PATTERN
 
@@ -2151,9 +2231,13 @@ inline auto WithOperands(Matcher&& m, int64 operand_num, FirstArg&& first_arg,
 
 // We could implement all ops as "variadic" ops, but it would make the
 // already-bad compile errors even worse.
+XLA_VARIADIC_OP_PATTERN(AfterAll);
 XLA_VARIADIC_OP_PATTERN(Concatenate);
 XLA_VARIADIC_OP_PATTERN(CustomCall);
+XLA_VARIADIC_OP_PATTERN(DynamicSlice)
+XLA_VARIADIC_OP_PATTERN(Map)
 XLA_VARIADIC_OP_PATTERN(Reduce);
+XLA_VARIADIC_OP_PATTERN(Sort);
 XLA_VARIADIC_OP_PATTERN(Tuple);
 
 // Helpers for matching non-constant instructions.

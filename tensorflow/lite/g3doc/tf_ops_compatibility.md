@@ -185,7 +185,7 @@ Inputs {
   1: a tensor
 }
 Outputs {
-  0: A tensor of indices of minium values.
+  0: A tensor of indices of minimum values.
 }
 ```
 
@@ -359,6 +359,17 @@ Inputs {
 }
 Outputs {
   0: result of computing element-wise floor of `tensor 0` modulo `tensor 1`.
+}
+```
+
+**CEIL**
+
+```
+inputs {
+  0: tensor
+}
+outputs: {
+  0: result of computing element-wise ceil of the input tensor
 }
 ```
 
@@ -986,6 +997,18 @@ Inputs {
 }
 Outputs {
   0: A tensor of the same shape and type as x but filled with zeros
+}
+```
+
+**FILL**
+
+```
+Inputs {
+  0: A Tensor. Must be one of the following types: int32, int64. 1-D. Represents the shape of the output tensor.
+  1: A Tensor. 0-D (scalar). Value to fill the returned tensor.
+}
+Outputs {
+  0: A tensor of the same type as value (input1).
 }
 ```
 

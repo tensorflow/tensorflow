@@ -44,6 +44,7 @@ einsum = special_math_ops.einsum
 eye = linalg_ops.eye
 inv = linalg_ops.matrix_inverse
 logm = gen_linalg_ops.matrix_logarithm
+lu = gen_linalg_ops.lu
 tf_export('linalg.logm')(logm)
 lstsq = linalg_ops.matrix_solve_ls
 norm = linalg_ops.norm
@@ -103,6 +104,7 @@ def adjoint(matrix, name=None):
   tf.linalg.adjoint(x)  # [[1 - 1j, 4 - 4j],
                         #  [2 - 2j, 5 - 5j],
                         #  [3 - 3j, 6 - 6j]]
+  ```
 
   Args:
     matrix:  A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`,

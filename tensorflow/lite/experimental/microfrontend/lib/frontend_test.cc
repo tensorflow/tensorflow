@@ -64,7 +64,8 @@ TEST_F(FrontendTest, CheckOutputValues) {
 
   const uint16_t expected[] = {479, 425};
   ASSERT_EQ(output.size, sizeof(expected) / sizeof(expected[0]));
-  for (int i = 0; i < output.size; ++i) {
+  int i;
+  for (i = 0; i < output.size; ++i) {
     EXPECT_EQ(output.values[i], expected[i]);
   }
 
@@ -86,7 +87,8 @@ TEST_F(FrontendTest, CheckConsecutiveWindow) {
 
   const int16_t expected[] = {436, 378};
   ASSERT_EQ(output.size, sizeof(expected) / sizeof(expected[0]));
-  for (int i = 0; i < output.size; ++i) {
+  int i;
+  for (i = 0; i < output.size; ++i) {
     EXPECT_EQ(output.values[i], expected[i]);
   }
 

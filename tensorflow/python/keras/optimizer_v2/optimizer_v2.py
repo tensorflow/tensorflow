@@ -21,10 +21,14 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import functools
 
 import six
 
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
+from tensorflow.python.distribute import values as distributed_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -32,39 +36,62 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import distribution_strategy_context
-from tensorflow.python.training import optimizer as optimizer_v1
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import keras_export
+
+
+def _deduplicate_indexed_slices(values, indices):
+  """Sums `values` associated with any non-unique `indices`.
+
+  Args:
+    values: A `Tensor` with rank >= 1.
+    indices: A one-dimensional integer `Tensor`, indexing into the first
+      dimension of `values` (as in an IndexedSlices object).
+
+  Returns:
+    A tuple of (`summed_values`, `unique_indices`) where `unique_indices` is a
+    de-duplicated version of `indices` and `summed_values` contains the sum of
+    `values` slices associated with each unique index.
+  """
+  unique_indices, new_index_positions = array_ops.unique(indices)
+  summed_values = math_ops.unsorted_segment_sum(
+      values, new_index_positions,
+      array_ops.shape(unique_indices)[0])
+  return (summed_values, unique_indices)
 
 
 @six.add_metaclass(abc.ABCMeta)
-class OptimizerV2(optimizer_v1.Optimizer):
+@keras_export("keras.optimizers.Optimizer")
+class OptimizerV2(checkpointable.Checkpointable):
   """Updated base class for optimizers.
 
   This class defines the API to add Ops to train a model.  You never use this
   class directly, but instead instantiate one of its subclasses such as
-  `GradientDescentOptimizer`, `AdagradOptimizer`, or `MomentumOptimizer`.
+  `tf.keras.optimizers.SGD`, `tf.keras.optimizers.Adam`.
 
   ### Usage
 
   ```python
   # Create an optimizer with the desired parameters.
-  opt = GradientDescentOptimizer(learning_rate=0.1)
-  # Add Ops to the graph to minimize a cost by updating a list of variables.
-  # "cost" is a Tensor, and the list of variables contains tf.Variable
-  # objects.
-  opt_op = opt.minimize(cost, var_list=<list of variables>)
-  ```
-
-  In the training program you will just have to run the returned Op.
-
-  ```python
-  # Execute opt_op to do one step of training:
+  opt = tf.keras.optimizers.SGD(learning_rate=0.1)
+  # `loss` is a callable that takes no argument and returns the value
+  # to minimize.
+  loss = lambda: 3 * var1 * var1 + 2 * var2 * var2
+  # In graph mode, returns op that minimizes the loss by updating the listed
+  # variables.
+  opt_op = opt.minimize(loss, var_list=[var1, var2])
   opt_op.run()
+  # In eager mode, simply call minimize to update the list of variables.
+  opt.minimize(loss, var_list=[var1, var2])
   ```
 
   ### Processing gradients before applying them.
@@ -73,7 +100,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
   applying them to the variables.  If you want to process the gradients
   before applying them you can instead use the optimizer in three steps:
 
-  1.  Compute the gradients with `compute_gradients()`.
+  1.  Compute the gradients with `tf.GradientTape`.
   2.  Process the gradients as you wish.
   3.  Apply the processed gradients with `apply_gradients()`.
 
@@ -81,10 +108,15 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
   ```python
   # Create an optimizer.
-  opt = GradientDescentOptimizer(learning_rate=0.1)
+  opt = tf.keras.optimizers.SGD(learning_rate=0.1)
 
   # Compute the gradients for a list of variables.
-  grads_and_vars = opt.compute_gradients(loss, <list of variables>)
+  with tf.GradientTape() as tape:
+    loss = <call_loss_function>
+  vars = <list_of_variables>
+  grads = tape.gradient(loss, vars)
+  processed_grads = [process_gradient(g) for g in grads]
+  grads_and_vars = zip(processed_grads, var_list)
 
   # grads_and_vars is a list of tuples (gradient, variable).  Do whatever you
   # need to the 'gradient' part, for example cap them, etc.
@@ -94,13 +126,24 @@ class OptimizerV2(optimizer_v1.Optimizer):
   opt.apply_gradients(capped_grads_and_vars)
   ```
 
+  ### Variable Constraint
+  All Keras optimizers respect variable constraints. If constraint function is
+  passed to any variable, the constraint will be applied to the variable after
+  the gradient has been applied to the variable.
+  Important: If gradient is sparse tensor, variable constraint is not supported.
+
+  ### Thread Compatibility
+
+  The entire optimizer is currently thread compatible, not thread-safe. The user
+  needs to perform synchronization if necessary.
+
   ### Slots
 
-  Some optimizer subclasses, such as `MomentumOptimizer` and `AdagradOptimizer`
-  allocate and manage additional variables associated with the variables to
-  train.  These are called <i>Slots</i>.  Slots have names and you can ask the
-  optimizer for the names of the slots that it uses.  Once you have a slot name
-  you can ask the optimizer for the variable it created to hold the slot value.
+  Many optimizer subclasses, such as `Adam` and `Adagrad` allocate and manage
+  additional variables associated with the variables to train.  These are called
+  <i>Slots</i>.  Slots have names and you can ask the optimizer for the names of
+  the slots that it uses.  Once you have a slot name you can ask the optimizer
+  for the variable it created to hold the slot value.
 
   This can be useful if you want to log debug a training algorithm, report stats
   about the slots, etc.
@@ -112,6 +155,33 @@ class OptimizerV2(optimizer_v1.Optimizer):
   They can be either regular Python values (like 1.0), tensors, or
   callables. If they are callable, the callable will be called during
   `apply_gradients()` to get the value for the hyper parameter.
+
+  Hyper parameters can be overwritten through user code:
+
+  Example:
+
+  ```python
+  # Create an optimizer with the desired parameters.
+  opt = tf.keras.optimizers.SGD(learning_rate=0.1)
+  # `loss` is a callable that takes no argument and returns the value
+  # to minimize.
+  loss = lambda: 3 * var1 + 2 * var2
+  # In eager mode, simply call minimize to update the list of variables.
+  opt.minimize(loss, var_list=[var1, var2])
+  # update learning rate
+  opt.learning_rate = 0.05
+  opt.minimize(loss, var_list=[var1, var2])
+  ```
+
+  ### Write a customized optimizer.
+
+  This optimizer class updates variables from gradients and is
+  tf.distribute.Strategy aware. If you intend to create your own optimization
+  algorithm, simply inherit from this class and override the following methods:
+    - resource_apply_dense (update variable given gradient tensor is dense)
+    - resource_apply_sparse (update variable given gradient tensor is sparse)
+    - create_slots (if your optimizer algorithm requires additional variables)
+    - get_config (serialization of the optimizer, include all hyper parameters)
 
   """
 
@@ -129,51 +199,68 @@ class OptimizerV2(optimizer_v1.Optimizer):
     Args:
       name: A non-empty string.  The name to use for accumulators created
         for the optimizer.
-      **kwargs: keyword arguments. Allowed to be {`decay`}
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
 
     Raises:
       ValueError: If name is malformed.
       RuntimeError: If _create_slots has been overridden instead of
           _create_vars.
     """
+    allowed_kwargs = {"clipnorm", "clipvalue", "lr", "decay"}
+    for k in kwargs:
+      if k not in allowed_kwargs:
+        raise TypeError("Unexpected keyword argument "
+                        "passed to optimizer: " + str(k))
+      # checks that all keyword arguments are non-negative.
+      if kwargs[k] < 0:
+        raise ValueError("Expected {} >= 0, received: {}".format(k, kwargs[k]))
+
     self._use_locking = True
-    super(OptimizerV2, self).__init__(self._use_locking, name)
+    self._name = name
     self._hyper = {}
     # dict: {variable name : {slot name : variable}}
     self._slots = {}
+    self._slot_names = []
     self._weights = []
+    self._iterations = None
+
+    # For implementing Checkpointable. Stores information about how to restore
+    # slot variables which have not yet been created
+    # (checkpointable._CheckpointPosition objects).
+    #  {slot_name :
+    #      {_var_key(variable_to_train): [checkpoint_position, ... ], ... },
+    #   ... }
+    self._deferred_slot_restorations = {}
 
     decay = kwargs.pop("decay", 0.0)
     if decay < 0.:
       raise ValueError("decay cannot be less than 0: {}".format(decay))
     self._initial_decay = decay
+    if "clipnorm" in kwargs:
+      self.clipnorm = kwargs.pop("clipnorm")
+    if "clipvalue" in kwargs:
+      self.clipvalue = kwargs.pop("clipvalue")
 
-    self._prepared = False
+    self._hypers_created = False
 
-  def minimize(self,
-               loss,
-               var_list,
-               aggregation_method=None,
-               colocate_gradients_with_ops=False,
-               name=None,
-               grad_loss=None):
+  def minimize(self, loss, var_list, grad_loss=None, name=None):
     """Add operations to minimize `loss` by updating `var_list`.
 
-    This method simply combines calls `compute_gradients()` and
+    This method simply computes gradient using `tf.GradientTape` and calls
     `apply_gradients()`. If you want to process the gradient before applying
-    them call `compute_gradients()` and `apply_gradients()` explicitly instead
+    then call `tf.GradientTape` and `apply_gradients()` explicitly instead
     of using this function.
 
     Args:
-      loss: A `Tensor` containing the value to minimize.
+      loss: A callable taking no arguments which returns the value to minimize.
       var_list: list or tuple of `Variable` objects to update to minimize
         `loss`.
-      aggregation_method: Specifies the method used to combine gradient terms.
-        Valid values are defined in the class `AggregationMethod`.
-      colocate_gradients_with_ops: If True, try colocating gradients with the
-        corresponding op.
-      name: Optional name for the returned operation.
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
+      name: Optional name for the returned operation.
 
     Returns:
       An Operation that updates the variables in `var_list`.  If `global_step`
@@ -185,29 +272,16 @@ class OptimizerV2(optimizer_v1.Optimizer):
     @compatibility(eager)
     When eager execution is enabled, `loss` should be a Python function that
     takes no arguments and computes the value to be minimized. Minimization (and
-    gradient computation) is done with respect to the elements of `var_list` if
-    not None, else with respect to any trainable variables created during the
-    execution of the `loss` function. `gate_gradients`, `aggregation_method`,
-    `colocate_gradients_with_ops` and `grad_loss` are ignored when eager
-    execution is enabled.
+    gradient computation) is done with respect to the elements of `var_list`.
+    `grad_loss` is ignored when eager execution is enabled.
     @end_compatibility
     """
-    grads_and_vars = self.compute_gradients(
-        loss,
-        var_list=var_list,
-        aggregation_method=aggregation_method,
-        colocate_gradients_with_ops=colocate_gradients_with_ops,
-        grad_loss=grad_loss)
+    grads_and_vars = self._compute_gradients(
+        loss, var_list=var_list, grad_loss=grad_loss)
 
     return self.apply_gradients(grads_and_vars, name=name)
 
-  def compute_gradients(self,
-                        loss,
-                        var_list,
-                        aggregation_method=None,
-                        colocate_gradients_with_ops=False,
-                        grad_loss=None,
-                        stop_gradients=None):
+  def _compute_gradients(self, loss, var_list, grad_loss=None):
     """Compute gradients of `loss` for the variables in `var_list`.
 
     This is the first part of `minimize()`.  It returns a list
@@ -217,19 +291,11 @@ class OptimizerV2(optimizer_v1.Optimizer):
     given variable.
 
     Args:
-      loss: A Tensor containing the value to minimize or a callable taking no
-        arguments which returns the value to minimize. When eager execution is
-        enabled it must be a callable.
-      var_list: Optional list or tuple of `tf.Variable` to update to minimize
+      loss: A callable taking no arguments which returns the value to minimize.
+      var_list: List or tuple of `tf.Variable` to update to minimize
         `loss`.  Defaults to the list of variables collected in the graph under
         the key `GraphKeys.TRAINABLE_VARIABLES`.
-      aggregation_method: Specifies the method used to combine gradient terms.
-        Valid values are defined in the class `AggregationMethod`.
-      colocate_gradients_with_ops: If True, try colocating gradients with the
-        corresponding op.
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
-      stop_gradients: Optional. A Tensor or list of tensors not to differentiate
-        through.
 
     Returns:
       A list of (gradient, variable) pairs. Variable is always present, but
@@ -238,36 +304,22 @@ class OptimizerV2(optimizer_v1.Optimizer):
     Raises:
       TypeError: If `var_list` contains anything else than `Variable` objects.
       ValueError: If some arguments are invalid, or var_list is None.
-      RuntimeError: If called with eager execution enabled and `loss` is
-        not callable.
-
-    @compatibility(eager)
-    When eager execution is enabled, `aggregation_method`, and
-    `colocate_gradients_with_ops` are ignored.
-    @end_compatibility
     """
     var_list = nest.flatten(var_list)
     # TODO(josh11b): Test that we handle weight decay in a reasonable way.
-    if callable(loss):
-      with backprop.GradientTape() as tape:
-        tape.watch(var_list)
-        loss_value = loss()
-      grads = tape.gradient(loss_value, var_list, grad_loss)
-    else:
-      if context.executing_eagerly():
-        raise RuntimeError("`loss` passed to Optimizer.compute_gradients "
-                           "should be a function when eager execution is "
-                           "enabled.")
-      self._assert_valid_dtypes([loss])
-      if grad_loss is not None:
-        self._assert_valid_dtypes([grad_loss])
-      grads = gradients.gradients(
-          loss,
-          var_list,
-          grad_ys=grad_loss,
-          aggregation_method=aggregation_method,
-          colocate_gradients_with_ops=colocate_gradients_with_ops,
-          stop_gradients=stop_gradients)
+    with backprop.GradientTape() as tape:
+      tape.watch(var_list)
+      loss_value = loss()
+      loss_value = self._scale_loss(loss_value)
+    grads = tape.gradient(loss_value, var_list, grad_loss)
+
+    if hasattr(self, "clipnorm"):
+      grads = [clip_ops.clip_by_norm(g, self.clipnorm) for g in grads]
+    if hasattr(self, "clipvalue"):
+      grads = [
+          clip_ops.clip_by_value(g, -self.clipvalue, self.clipvalue)
+          for g in grads
+      ]
 
     grads_and_vars = list(zip(grads, var_list))
     self._assert_valid_dtypes([
@@ -277,6 +329,45 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
     return grads_and_vars
 
+  @staticmethod
+  def _scale_loss(loss_value):
+    if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
+      num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
+      if num_replicas > 1:
+        loss_value *= (1. / num_replicas)
+    return loss_value
+
+  def get_gradients(self, loss, params):
+    """Returns gradients of `loss` with respect to `params`.
+
+    Arguments:
+      loss: Loss tensor.
+      params: List of variables.
+
+    Returns:
+      List of gradient tensors.
+
+    Raises:
+      ValueError: In case any gradient cannot be computed (e.g. if gradient
+        function not implemented).
+    """
+    loss = self._scale_loss(loss)
+    grads = gradients.gradients(loss, params)
+    if None in grads:
+      raise ValueError("An operation has `None` for gradient. "
+                       "Please make sure that all of your ops have a "
+                       "gradient defined (i.e. are differentiable). "
+                       "Common ops without gradient: "
+                       "K.argmax, K.round, K.eval.")
+    if hasattr(self, "clipnorm"):
+      grads = [clip_ops.clip_by_norm(g, self.clipnorm) for g in grads]
+    if hasattr(self, "clipvalue"):
+      grads = [
+          clip_ops.clip_by_value(g, -self.clipvalue, self.clipvalue)
+          for g in grads
+      ]
+    return grads
+
   def apply_gradients(self, grads_and_vars, name=None):
     """Apply gradients to variables.
 
@@ -284,8 +375,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
     applies gradients.
 
     Args:
-      grads_and_vars: List of (gradient, variable) pairs as returned by
-        `compute_gradients()`.
+      grads_and_vars: List of (gradient, variable) pairs.
       name: Optional name for the returned operation.  Default to the name
         passed to the `Optimizer` constructor.
 
@@ -299,15 +389,24 @@ class OptimizerV2(optimizer_v1.Optimizer):
     """
     grads_and_vars = _filter_grads(grads_and_vars)
     var_list = [v for (_, v) in grads_and_vars]
-    if distribution_strategy_context.has_distribution_strategy():
-      reduced_grads = merge_grads(grads_and_vars)
-      grads_and_vars = zip(reduced_grads, var_list)
 
+    self._create_hypers()
     with ops.init_scope():
       self._create_slots(var_list)
-    update_ops = []
 
-    def update_grad_to_var(grad, var):
+    self._prepare(var_list)
+
+    return distribute_ctx.get_replica_context().merge_call(
+        self._distributed_apply, args=(grads_and_vars,), kwargs={"name": name})
+
+  def _distributed_apply(self, distribution, grads_and_vars, name):
+    """`apply_gradients` using a `DistributionStrategy`."""
+    reduced_grads = distribution.extended.batch_reduce_to(
+        ds_reduce_util.ReduceOp.SUM, grads_and_vars)
+    var_list = [v for _, v in grads_and_vars]
+    grads_and_vars = zip(reduced_grads, var_list)
+
+    def apply_grad_to_update_var(var, grad):
       """Apply gradient to variable."""
       if isinstance(var, ops.Tensor):
         raise NotImplementedError("Trying to update a Tensor ", var)
@@ -324,22 +423,29 @@ class OptimizerV2(optimizer_v1.Optimizer):
       else:
         return update_op
 
+    update_ops = []
     with ops.name_scope(name, self._name) as name:
-      self._prepare()
       for grad, var in grads_and_vars:
         scope_name = ("" if ops.executing_eagerly_outside_functions() else
                       "_" + var.op.name)
         with ops.name_scope("update" + scope_name):
-          update_ops.append(update_grad_to_var(grad, var))
-      # control dependencies does not work in per replica mode, please change
-      # this once b/118841692 is fixed.
-      # with ops.control_dependencies(update_ops):
-      #   apply_updates = self._iterations.assign_add(1).op
-      apply_updates = merge_update_step(update_ops, self.iterations)
+          update_ops.extend(
+              distribution.extended.update(
+                  var, apply_grad_to_update_var, args=(grad,), group=False))
+      with ops.control_dependencies(update_ops):
+        apply_updates = self._iterations.assign_add(1)
+      if not context.executing_eagerly():
+        apply_updates = apply_updates.op
       return apply_updates
 
   def get_updates(self, loss, params):
-    return [self.minimize(loss, params)]
+    grads = self.get_gradients(loss, params)
+    grads_and_vars = list(zip(grads, params))
+    self._assert_valid_dtypes([
+        v for g, v in grads_and_vars
+        if g is not None and v.dtype != dtypes.resource
+    ])
+    return [self.apply_gradients(grads_and_vars)]
 
   def _set_hyper(self, name, value):
     """set hyper `name` to value. value can be callable, tensor, numeric."""
@@ -347,14 +453,21 @@ class OptimizerV2(optimizer_v1.Optimizer):
       self._hyper[name] = value
     else:
       prev_value = self._hyper[name]
-      if callable(prev_value) or isinstance(prev_value,
-                                            (ops.Tensor, int, float)):
+      if (callable(prev_value)
+          or isinstance(prev_value,
+                        (ops.Tensor, int, float,
+                         learning_rate_schedule.LearningRateSchedule))
+          or isinstance(value, learning_rate_schedule.LearningRateSchedule)):
         self._hyper[name] = value
       else:
         backend.set_value(self._hyper[name], value)
 
   def _get_hyper(self, name, dtype=None):
+    if not self._hypers_created:
+      self._create_hypers()
     value = self._hyper[name]
+    if isinstance(value, learning_rate_schedule.LearningRateSchedule):
+      return value
     if callable(value):
       value = value()
     if dtype:
@@ -374,7 +487,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
       if name == "lr":
         name = "learning_rate"
       if name in self._hyper:
-        return self._hyper[name]
+        return self._get_hyper(name)
       raise e
 
   def __setattr__(self, name, value):
@@ -387,35 +500,57 @@ class OptimizerV2(optimizer_v1.Optimizer):
     else:
       super(OptimizerV2, self).__setattr__(name, value)
 
+  def get_slot_names(self):
+    """A list of names for this optimizer's slots."""
+    return self._slot_names
+
   def add_slot(self, var, slot_name, initializer="zeros"):
+    """Add a new slot variable for `var`."""
+    if slot_name not in self._slot_names:
+      self._slot_names.append(slot_name)
     var_key = _var_key(var)
     slot_dict = self._slots.setdefault(var_key, {})
-    if slot_name not in slot_dict:
-      slot_key = _get_slot_key_from_var(var, slot_name)
-      weight = self.add_weight(
-          name=slot_key,
-          shape=var.shape,
+    weight = slot_dict.get(slot_name, None)
+    if weight is None:
+      if isinstance(initializer, six.string_types) or callable(initializer):
+        initializer = initializers.get(initializer)
+        initial_value = functools.partial(
+            initializer, shape=var.shape, dtype=var.dtype)
+      else:
+        initial_value = initializer
+      weight = tf_variables.Variable(
+          name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
           dtype=var.dtype,
-          initializer=initializer)
+          trainable=False,
+          initial_value=initial_value)
+      backend.track_variable(weight)
       slot_dict[slot_name] = weight
+      self._restore_slot_variable(
+          slot_name=slot_name, variable=var,
+          slot_variable=weight)
       self._weights.append(weight)
+    return weight
 
   def get_slot(self, var, slot_name):
     var_key = _var_key(var)
     slot_dict = self._slots[var_key]
     return slot_dict[slot_name]
 
-  def _prepare(self):
-    if self._prepared:
+  def _prepare(self, var_list):
+    pass
+
+  def _create_hypers(self):
+    if self._hypers_created:
       return
-    with ops.device("cpu:0"):
-      self._iterations = self.add_weight(
-          "iter",
-          shape=[],
-          dtype=dtypes.int64,
-          trainable=False,
-          aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
-      self._weights.append(self._iterations)
+    if self._iterations is None:
+      with ops.device("cpu:0"):
+        self._iterations = self.add_weight(
+            "iter",
+            shape=[],
+            dtype=dtypes.int64,
+            trainable=False,
+            aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
+        self._weights.append(self._iterations)
     for name, value in self._hyper.items():
       if isinstance(value, ops.Tensor) or callable(value):
         pass
@@ -426,18 +561,29 @@ class OptimizerV2(optimizer_v1.Optimizer):
             trainable=False,
             initializer=value,
             aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
-        self._weights.append(self._hyper[name])
-    self._prepared = True
+    self._hypers_created = True
 
   @property
   def iterations(self):
-    if not self._prepared:
-      self._prepare()
+    """Variable. The number of training steps this Optimizer has run."""
+    if not self._hypers_created:
+      self._create_hypers()
     return self._iterations
+
+  @iterations.setter
+  def iterations(self, variable):
+    if self._hypers_created:
+      raise RuntimeError("Cannot set `iterations` to a new Variable after"
+                         "the Optimizer weights have been created")
+    self._iterations = variable
+    self._weights.append(self._iterations)
 
   def _decayed_lr(self, var_dtype):
     """Get decayed learning rate as a Tensor with dtype=var_dtype."""
     lr_t = self._get_hyper("learning_rate", var_dtype)
+    if isinstance(lr_t, learning_rate_schedule.LearningRateSchedule):
+      local_step = math_ops.cast(self.iterations, var_dtype)
+      lr_t = math_ops.cast(lr_t(local_step), var_dtype)
     if self._initial_decay > 0.:
       local_step = math_ops.cast(self.iterations, var_dtype)
       decay_t = self._get_hyper("decay", var_dtype)
@@ -456,7 +602,12 @@ class OptimizerV2(optimizer_v1.Optimizer):
     Returns:
         Python dictionary.
     """
-    return {"name": self._name}
+    config = {"name": self._name}
+    if hasattr(self, "clipnorm"):
+      config["clipnorm"] = self.clipnorm
+    if hasattr(self, "clipvalue"):
+      config["clipvalue"] = self.clipvalue
+    return config
 
   @classmethod
   def from_config(cls, config, custom_objects=None):
@@ -475,14 +626,23 @@ class OptimizerV2(optimizer_v1.Optimizer):
     Returns:
         An optimizer instance.
     """
+    if "lr" in config:
+      config["learning_rate"] = config.pop("lr")
+    if "learning_rate" in config:
+      if isinstance(config["learning_rate"], dict):
+        config["learning_rate"] = learning_rate_schedule.deserialize(
+            config["learning_rate"])
     return cls(**config)
 
   def _serialize_hyperparameter(self, hyperparameter_name):
     """Serialize a hyperparameter that can be a float, callable, or Tensor."""
-    value = self._get_hyper(hyperparameter_name)
+    value = self._hyper[hyperparameter_name]
+    if isinstance(value, learning_rate_schedule.LearningRateSchedule):
+      return learning_rate_schedule.serialize(value)
     if callable(value):
       return value()
-    if isinstance(value, (ops.Tensor, tf_variables.Variable)):
+    if isinstance(value, (ops.Tensor, tf_variables.Variable,
+                          distributed_values.TPUMirroredVariable)):
       return backend.get_value(value)
     return value
 
@@ -562,12 +722,188 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
     return variable
 
+  def _assert_valid_dtypes(self, tensors):
+    """Asserts tensors are all valid types (see `_valid_dtypes`).
+
+    Args:
+      tensors: Tensors to check.
+
+    Raises:
+      ValueError: If any tensor is not a valid type.
+    """
+    valid_dtypes = self._valid_dtypes()
+    for t in tensors:
+      dtype = t.dtype.base_dtype
+      if dtype not in valid_dtypes:
+        raise ValueError("Invalid type %r for %s, expected: %s." %
+                         (dtype, t.name, [v for v in valid_dtypes]))
+
+  def _valid_dtypes(self):
+    """Valid types for loss, variables and gradients.
+
+    Subclasses should override to allow other float types.
+
+    Returns:
+      Valid types for loss, variables and gradients.
+    """
+    return set(
+        [dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64])
+
+  def _call_if_callable(self, param):
+    """Call the function if param is callable."""
+    return param() if callable(param) else param
+
+  def _resource_apply_dense(self, grad, handle):
+    """Add ops to apply dense gradients to the variable `handle`.
+
+    Args:
+      grad: a `Tensor` representing the gradient.
+      handle: a `Tensor` of dtype `resource` which points to the variable to be
+        updated.
+
+    Returns:
+      An `Operation` which updates the value of the variable.
+    """
+    raise NotImplementedError()
+
+  def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
+    """Add ops to apply sparse gradients to `handle`, with repeated indices.
+
+    Optimizers which override this method must deal with repeated indices. See
+    the docstring of `_apply_sparse_duplicate_indices` for details. By default
+    the correct behavior, to sum non-unique indices and their associated
+    gradients, is enforced by first pre-processing `grad` and `indices` and
+    passing them on to `_resource_apply_sparse`. Optimizers which deal correctly
+    with duplicate indices may instead override this method to avoid the
+    overhead of summing.
+
+    Args:
+      grad: a `Tensor` representing the gradient for the affected indices.
+      handle: a `Tensor` of dtype `resource` which points to the variable to be
+        updated.
+      indices: a `Tensor` of integral type representing the indices for which
+        the gradient is nonzero. Indices may be repeated.
+
+    Returns:
+      An `Operation` which updates the value of the variable.
+    """
+    summed_grad, unique_indices = _deduplicate_indexed_slices(
+        values=grad, indices=indices)
+    return self._resource_apply_sparse(summed_grad, handle, unique_indices)
+
+  def _resource_apply_sparse(self, grad, handle, indices):
+    """Add ops to apply sparse gradients to the variable `handle`.
+
+    Similar to `_apply_sparse`, the `indices` argument to this method has been
+    de-duplicated. Optimizers which deal correctly with non-unique indices may
+    instead override `_resource_apply_sparse_duplicate_indices` to avoid this
+    overhead.
+
+    Args:
+      grad: a `Tensor` representing the gradient for the affected indices.
+      handle: a `Tensor` of dtype `resource` which points to the variable to be
+        updated.
+      indices: a `Tensor` of integral type representing the indices for which
+        the gradient is nonzero. Indices are unique.
+
+    Returns:
+      An `Operation` which updates the value of the variable.
+    """
+    raise NotImplementedError()
+
+  def _resource_scatter_add(self, x, i, v):
+    with ops.control_dependencies(
+        [resource_variable_ops.resource_scatter_add(x.handle, i, v)]):
+      return x.value()
+
+  def _resource_scatter_update(self, x, i, v):
+    with ops.control_dependencies(
+        [resource_variable_ops.resource_scatter_update(x.handle, i, v)]):
+      return x.value()
+
+  # ---------------
+  # For implementing the checkpointable interface
+  # ---------------
+
+  def _restore_slot_variable(self, slot_name, variable, slot_variable):
+    """Restore a newly created slot variable's value."""
+    variable_key = _var_key(variable)
+    deferred_restorations = self._deferred_slot_restorations.get(
+        slot_name, {}).pop(variable_key, [])
+    # Iterate over restores, highest restore UID first to minimize the number
+    # of assignments.
+    deferred_restorations.sort(key=lambda position: position.restore_uid,
+                               reverse=True)
+    for checkpoint_position in deferred_restorations:
+      checkpoint_position.restore(slot_variable)
+
+  def _create_or_restore_slot_variable(
+      self, slot_variable_position, slot_name, variable):
+    """Restore a slot variable's value, possibly creating it.
+
+    Called when a variable which has an associated slot variable is created or
+    restored. When executing eagerly, we create the slot variable with a
+    restoring initializer.
+
+    No new variables are created when graph building. Instead,
+    _restore_slot_variable catches these after normal creation and adds restore
+    ops to the graph. This method is nonetheless important when graph building
+    for the case when a slot variable has already been created but `variable`
+    has just been added to a dependency graph (causing us to realize that the
+    slot variable needs to be restored).
+
+    Args:
+      slot_variable_position: A `checkpointable._CheckpointPosition` object
+        indicating the slot variable `Checkpointable` object to be restored.
+      slot_name: The name of this `Optimizer`'s slot to restore into.
+      variable: The variable object this slot is being created for.
+    """
+    variable_key = _var_key(variable)
+    slot_dict = self._slots.get(variable_key, {})
+    slot_variable = slot_dict.get(slot_name, None)
+    if (slot_variable is None and context.executing_eagerly() and
+        slot_variable_position.is_simple_variable()
+        # Defer slot variable creation if there is an active variable creator
+        # scope. Generally we'd like to eagerly create/restore slot variables
+        # when possible, but this may mean that scopes intended to catch
+        # `variable` also catch its eagerly created slot variable
+        # unintentionally (specifically make_template would add a dependency on
+        # a slot variable if not for this case). Deferring is mostly harmless
+        # (aside from double initialization), and makes variable creator scopes
+        # behave the same way they do when graph building.
+        and not ops.get_default_graph()._variable_creator_stack):  # pylint: disable=protected-access
+      initializer = checkpointable.CheckpointInitialValue(
+          checkpoint_position=slot_variable_position)
+      slot_variable = self.add_slot(
+          var=variable,
+          initializer=initializer,
+          slot_name=slot_name)
+      # Slot variables are not owned by any one object (because we don't want to
+      # save the slot variable if the optimizer is saved without the non-slot
+      # variable, or if the non-slot variable is saved without the optimizer;
+      # it's a dependency hypergraph with edges of the form (optimizer, non-slot
+      # variable, variable)). So we don't _track_ slot variables anywhere, and
+      # instead special-case this dependency and otherwise pretend it's a normal
+      # graph.
+    if slot_variable is not None:
+      # If we've either made this slot variable, or if we've pulled out an
+      # existing slot variable, we should restore it.
+      slot_variable_position.restore(slot_variable)
+    else:
+      # We didn't make the slot variable. Defer restoring until it gets created
+      # normally. We keep a list rather than the one with the highest restore
+      # UID in case slot variables have their own dependencies, in which case
+      # those could differ between restores.
+      self._deferred_slot_restorations.setdefault(
+          slot_name, {}).setdefault(variable_key, []).append(
+              slot_variable_position)
+
 
 def _filter_grads(grads_and_vars):
   """Filter out iterable with grad equal to None."""
   grads_and_vars = tuple(grads_and_vars)
   if not grads_and_vars:
-    raise ValueError("No variables provided.")
+    return grads_and_vars
   filtered = []
   vars_with_empty_grads = []
   for grad, var in grads_and_vars:
@@ -586,33 +922,6 @@ def _filter_grads(grads_and_vars):
   return filtered
 
 
-def merge_update_step(update_ops, local_step):
-  """Merge local step counter update from different replicas."""
-
-  def merge_update_step_fn(strategy, update_ops, local_step):
-    merged_ops = []
-    for update_op in update_ops:
-      merged_ops.append(strategy.group(update_op))
-    with ops.control_dependencies(merged_ops):
-      incre_op = local_step.assign_add(1).op
-    return incre_op
-
-  return distribution_strategy_context.get_replica_context().merge_call(
-      merge_update_step_fn, args=(update_ops, local_step))
-
-
-def merge_grads(grads_and_vars):
-  """Merge gradients from different replicas."""
-
-  def merge_grad_fn(strategy, grads_and_vars):
-    reduced_grads = strategy.batch_reduce(
-        ds_reduce_util.ReduceOp.MEAN, grads_and_vars)
-    return reduced_grads
-
-  return distribution_strategy_context.get_replica_context().merge_call(
-      merge_grad_fn, args=(grads_and_vars,))
-
-
 def _var_key(var):
   """Key for representing a primary variable, for looking up slots.
 
@@ -628,10 +937,10 @@ def _var_key(var):
   """
 
   # pylint: disable=protected-access
-  if distribution_strategy_context.has_distribution_strategy() and hasattr(
-      var, "_primary_var"):
-    var = var._primary_var
-  if hasattr(var, "op"):
+  # Get the distributed variable if it exists.
+  if getattr(var, "_distributed_container", None) is not None:
+    var = var._distributed_container()
+  if var._in_graph_mode:
     return var._shared_name
   return var._unique_id
 

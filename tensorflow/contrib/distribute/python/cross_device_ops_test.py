@@ -40,8 +40,16 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 
+def _get_devices(devices):
+  if isinstance(devices, (tuple, list)):
+    return tuple(device_util.resolve(d) for d in devices)
+  elif isinstance(devices, value_lib.DistributedValues):
+    return devices.devices
+  return (device_util.resolve(devices),)
+
+
 def _make_per_replica(values, devices, regroup=False):
-  devices = cross_device_ops_lib.get_devices_from(devices)
+  devices = _get_devices(devices)
   assert len(values) == len(devices)
 
   # We simulate the result of regroup called on PerReplica which strips the
@@ -51,12 +59,12 @@ def _make_per_replica(values, devices, regroup=False):
       placed_v = array_ops.identity(values[0])
     return placed_v
 
-  index = {}
+  index = []
   for d, v in zip(devices, values):
     with ops.device(d):
       placed_v = array_ops.identity(v)
-    index[d] = placed_v
-  return value_lib.PerReplica(index)
+    index.append(placed_v)
+  return value_lib.PerReplica(value_lib.ReplicaDeviceMap(devices), index)
 
 
 # pylint: disable=g-doc-args,g-doc-return-or-yield
@@ -66,9 +74,9 @@ def _fake_mirrored(value, devices):
   All components of the returned Mirrored have the same objects, which is not
   true in reality.
   """
-  devices = cross_device_ops_lib.get_devices_from(devices)
-  return value_lib.Mirrored(
-      {d: v for d, v in zip(devices, [value] * len(devices))})
+  devices = _get_devices(devices)
+  return value_lib.Mirrored(value_lib.ReplicaDeviceMap(devices),
+                            [value] * len(devices))
 
 
 def _make_indexed_slices(values, indices, dense_shape, device):
@@ -81,9 +89,9 @@ def _make_indexed_slices(values, indices, dense_shape, device):
 
 
 def _make_mirrored_indexed_slices(devices, values, indices, dense_shape):
-  return value_lib.Mirrored({
-      d: _make_indexed_slices(values, indices, dense_shape, d) for d in devices
-  })
+  values = [_make_indexed_slices(values, indices, dense_shape, d)
+            for d in devices]
+  return value_lib.Mirrored(value_lib.ReplicaDeviceMap(devices), values)
 
 
 _cpu_device = "/device:CPU:0"
@@ -107,16 +115,16 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
     else:
       self.assertEqual(type(left), type(right))
       self.assertEqual(set(left.devices), set(right.devices))
-      if isinstance(list(left._index.values())[0], ops.IndexedSlices):
-        for (d, v) in left._index.items():
-          self._assert_indexed_slices_equal(v, right._index[d])
+      if isinstance(left.values[0], ops.IndexedSlices):
+        for d in left.devices:
+          self._assert_indexed_slices_equal(left.get(d), right.get(d))
       elif context.executing_eagerly():
-        self.assertEqual([v.numpy() for v in left._index.values()],
-                         list(right._index.values()))
+        self.assertEqual([v.numpy() for v in left.values],
+                         list(right.values))
       else:
         with self.cached_session() as sess:
           self.assertEqual(
-              sess.run(list(left._index.values())), list(right._index.values()))
+              sess.run(list(left.values)), list(right.values))
 
   def _testReductionAndBroadcast(self, cross_device_ops, distribution):
     devices = distribution.extended.worker_devices
@@ -280,7 +288,8 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
     devices = ["/cpu:0", "/gpu:0"]
     t0 = _make_indexed_slices([[1., 2.]], [1], [5, 2], devices[0])
     t1 = _make_indexed_slices([[3., 4.], [5., 6.]], [1, 3], [5, 2], devices[1])
-    per_replica = value_lib.PerReplica({devices[0]: t0, devices[1]: t1})
+    per_replica = value_lib.PerReplica(
+        value_lib.ReplicaDeviceMap(devices), (t0, t1))
     result = cross_device_ops_lib._simple_reduce(
         per_replica, devices[0], math_ops.add_n, reduce_util.ReduceOp.SUM)
 
@@ -314,7 +323,8 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
     t0 = _make_indexed_slices([[1., 2.]], [1], dense_shape, devices[0])
     t1 = _make_indexed_slices(
         [[3., 4.], [5., 6.]], [1, 3], dense_shape, devices[1])
-    per_replica = value_lib.PerReplica({devices[0]: t0, devices[1]: t1})
+    per_replica = value_lib.PerReplica(
+        value_lib.ReplicaDeviceMap(devices), (t0, t1))
 
     if batch_reduce:
       result = cross_device_ops_instance.batch_reduce(
@@ -392,18 +402,16 @@ class MultiWorkerCrossDeviceOpsTest(multi_worker_test_base.MultiWorkerTestBase,
           # pylint: disable=g-long-lambda
           combinations.NamedDistribution(
               "CoreMirroredCPU",
-              lambda: mirrored_strategy.CoreMirroredStrategy(
-                  num_gpus_per_worker=0),
+              lambda: mirrored_strategy.CoreMirroredStrategy(["/device:CPU:0"]),
               required_gpus=0),
           combinations.NamedDistribution(
               "CoreMirrored1GPU",
-              lambda: mirrored_strategy.CoreMirroredStrategy(
-                  num_gpus_per_worker=1),
+              lambda: mirrored_strategy.CoreMirroredStrategy(["/device:GPU:0"]),
               required_gpus=1),
           combinations.NamedDistribution(
               "CoreMirrored2GPUs",
               lambda: mirrored_strategy.CoreMirroredStrategy(
-                  num_gpus_per_worker=2),
+                  ["/device:GPU:0", "/device:GPU:1"]),
               required_gpus=2),
       ],
       mode=["graph"])
@@ -476,8 +484,8 @@ class MultiWorkerCollectiveAllReduceTest(
       run_options.experimental.collective_graph_key = 6
 
       left_values = np.array(
-          sess.run(list(left._index.values()), options=run_options)).flatten()
-      right_values = np.array(list(right._index.values())).flatten()
+          sess.run(list(left.values), options=run_options)).flatten()
+      right_values = np.array(list(right.values)).flatten()
       self.assertEqual(len(left_values), len(right_values))
       for l, r in zip(left_values, right_values):
         self.assertEqual(l, r)
@@ -498,7 +506,7 @@ class MultiWorkerCollectiveAllReduceTest(
       # Collective ops doesn't support scalar tensors, so we have to construct
       # 1-d tensors.
       values = [constant_op.constant([float(d)]) for d in range(len(devices))]
-      per_replica = _make_per_replica(values, devices, regroup=True)
+      per_replica = _make_per_replica(values, devices)
       mean = np.array([(len(devices) - 1.) / 2.])
 
       values_2 = [constant_op.constant([d + 1.0]) for d in range(len(devices))]

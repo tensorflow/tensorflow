@@ -16,18 +16,35 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
 #include "tensorflow/lite/delegates/flex/kernel.h"
 #include "tensorflow/lite/delegates/flex/util.h"
+#include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/util.h"
-#include "tensorflow/core/lib/core/status.h"
 
 namespace tflite {
 namespace flex {
 namespace delegate {
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteDelegate* delegate) {
+  // If the TensorFlow Lite thread count is explicitly configured, use it,
+  // otherwise rely on the default TensorFlow threading behavior.
+  tensorflow::SessionOptions session_options;
+  if (context->recommended_num_threads > 0) {
+    session_options.config.set_intra_op_parallelism_threads(
+        context->recommended_num_threads);
+  }
+
+  if (!reinterpret_cast<DelegateData*>(delegate->data_)
+           ->Prepare(session_options)
+           .ok()) {
+    context->ReportError(context, "Failed to initialize TensorFlow context.");
+    return kTfLiteError;
+  }
+
   // Get the nodes in the current execution plan. Interpreter owns this array.
   TfLiteIntArray* plan;
   TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan));
@@ -68,11 +85,34 @@ TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
   }
 
   tensorflow::Tensor t = buffer_map->GetTensor(buffer_handle);
+
+  if (output->type == kTfLiteString) {
+    if (t.dtype() != tensorflow::DT_STRING) {
+      context->ReportError(context,
+                           "Inconsistent type for TF string tensor index %d.",
+                           buffer_handle);
+      return kTfLiteError;
+    }
+    DynamicBuffer dynamic_buffer;
+
+    auto tf_data = t.flat<string>();
+    for (int i = 0; i < t.NumElements(); ++i) {
+      dynamic_buffer.AddString(tf_data(i).data(), tf_data(i).size());
+    }
+
+    dynamic_buffer.WriteToTensor(output, /*new_shape=*/nullptr);
+    return kTfLiteOk;
+  }
+
   tensorflow::StringPiece t_data = t.tensor_data();
 
   if (output->bytes != t_data.size()) {
-    context->ReportError(
-        context, "Not enough space to store TensorFlow's aligned buffer.");
+    context->ReportError(context,
+                         absl::StrCat("The given ", output->bytes,
+                                      " bytes are not enough to store "
+                                      "TensorFlow's aligned buffer of size ",
+                                      t_data.size(), " bytes.")
+                             .c_str());
     return kTfLiteError;
   }
 
@@ -93,20 +133,11 @@ AcquireFlexDelegate() {
 }
 
 std::unique_ptr<FlexDelegate> FlexDelegate::Create() {
-  std::unique_ptr<flex::DelegateData> delegate_data;
-  if (!flex::DelegateData::Create(&delegate_data).ok()) {
-    fprintf(stderr, "Unable to initialize TensorFlow context.\n");
-    return nullptr;
-  }
-
-  return std::unique_ptr<FlexDelegate>(
-      new FlexDelegate(std::move(delegate_data)));
+  return std::unique_ptr<FlexDelegate>(new FlexDelegate());
 }
 
-FlexDelegate::FlexDelegate(std::unique_ptr<flex::DelegateData> delegate_data)
-    : TfLiteDelegate(TfLiteDelegateCreate()),
-      delegate_data_(std::move(delegate_data)) {
-  data_ = delegate_data_.get();
+FlexDelegate::FlexDelegate() : TfLiteDelegate(TfLiteDelegateCreate()) {
+  data_ = &delegate_data_;
   Prepare = &flex::delegate::Prepare;
   CopyFromBufferHandle = &flex::delegate::CopyFromBufferHandle;
   flags = kTfLiteDelegateFlagsAllowDynamicTensors;

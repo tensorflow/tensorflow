@@ -6,6 +6,8 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
 load("//tensorflow/python/tools/api/generator:api_init_files_v1.bzl", "TENSORFLOW_API_INIT_FILES_V1")
+load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "KERAS_API_INIT_FILES")
+load("//tensorflow/python/tools/api/generator:api_init_files_v1.bzl", "KERAS_API_INIT_FILES_V1")
 
 exports_files(
     [
@@ -55,7 +57,7 @@ py_test(
     args = [
         "--package=tensorflow.python",
         "--api_name=tensorflow",
-    ] + TENSORFLOW_API_INIT_FILES + TENSORFLOW_API_INIT_FILES_V1,
+    ] + KERAS_API_INIT_FILES + KERAS_API_INIT_FILES_V1 + TENSORFLOW_API_INIT_FILES + TENSORFLOW_API_INIT_FILES_V1,
     main = "doc_srcs_test.py",
     srcs_version = "PY2AND3",
     deps = [

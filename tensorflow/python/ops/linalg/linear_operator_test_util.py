@@ -336,6 +336,22 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     self._skip_if_tests_to_skip_contains("solve_with_broadcast")
     self._test_solve(with_batch=False)
 
+  def _test_inverse(self):
+    for use_placeholder in self._use_placeholder_options:
+      for build_info in self._operator_build_infos:
+        for dtype in self._dtypes_to_test:
+          with self.session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+            operator, mat = self._operator_and_matrix(
+                build_info, dtype, use_placeholder=use_placeholder)
+            op_inverse_v, mat_inverse_v = sess.run([
+                operator.inverse().to_dense(), linalg.inv(mat)])
+            self.assertAC(op_inverse_v, mat_inverse_v)
+
+  def test_inverse(self):
+    self._skip_if_tests_to_skip_contains("inverse")
+    self._test_inverse()
+
   def test_trace(self):
     self._skip_if_tests_to_skip_contains("trace")
     for use_placeholder in self._use_placeholder_options:
@@ -463,7 +479,14 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
   @property
   def _tests_to_skip(self):
     """List of test names to skip."""
-    return ["cholesky", "solve", "solve_with_broadcast", "det", "log_abs_det"]
+    return [
+        "cholesky",
+        "inverse",
+        "solve",
+        "solve_with_broadcast",
+        "det",
+        "log_abs_det"
+    ]
 
   @property
   def _operator_build_infos(self):

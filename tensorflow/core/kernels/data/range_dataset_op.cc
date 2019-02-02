@@ -53,8 +53,8 @@ class RangeDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Range")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Range")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -71,6 +71,14 @@ class RangeDatasetOp : public DatasetOpKernel {
     string DebugString() const override {
       return strings::StrCat("RangeDatasetOp(", start_, ", ", stop_, ", ",
                              step_, ")::Dataset");
+    }
+
+    int64 Cardinality() const override {
+      if (step_ > 0) {
+        return std::max(0LL, (stop_ - start_ - 1) / step_ + 1);
+      } else {
+        return std::max(0LL, (start_ - stop_ - 1) / -step_ + 1);
+      }
     }
 
    protected:

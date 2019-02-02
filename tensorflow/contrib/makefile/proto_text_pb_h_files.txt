@@ -37,6 +37,7 @@ tensorflow/core/protobuf/rewriter_config.pb.h
 tensorflow/core/protobuf/saver.pb.h
 tensorflow/core/protobuf/tensor_bundle.pb.h
 tensorflow/core/protobuf/tensorflow_server.pb.h
+tensorflow/core/protobuf/verifier_config.pb.h
 tensorflow/core/util/event.pb.h
 tensorflow/core/util/memmapped_file_system.pb.h
 tensorflow/core/util/saved_tensor_slice.pb.h

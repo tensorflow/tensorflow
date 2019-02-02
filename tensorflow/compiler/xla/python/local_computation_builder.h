@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <Python.h>
+
 #include "absl/types/span.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -49,6 +51,11 @@ Status InitializePlatformName(const string& platform_name);
 // local XLA service has been instantiated yet or not.
 int GetReplicaCount();
 
+// Registers a 'fn_capsule' as a CPU custom call target.
+// 'fn_capsule' is a void* pointer encapsulated in a PyCapsule object, with name
+// "xla._CPU_CUSTOM_CALL_TARGET".
+Status RegisterCpuCustomCallTarget(const string& name, PyObject* fn_capsule);
+
 // Wraps the local client's infeed-transfer function.
 //
 // The default device ordinal (0) is used.
@@ -71,7 +78,8 @@ StatusOr<Literal> TransferFromOutfeedLocalReplica(const Shape& shape,
 class LocalShapedBuffer {
  public:
   static StatusOr<LocalShapedBuffer*> FromLiteral(
-      const Literal& argument, const absl::optional<Shape>& shape_with_layout);
+      const Literal& argument, const absl::optional<Shape>& shape_with_layout,
+      int replica_number);
 
   LocalShapedBuffer(ScopedShapedBuffer shaped_buffer);
   StatusOr<Literal> ToLiteral() const;
@@ -172,8 +180,18 @@ class CompiledLocalComputation {
  public:
   CompiledLocalComputation(std::unique_ptr<LocalExecutable> executable);
 
+  int num_replicas() const {
+    return executable_->build_options().num_replicas();
+  }
+
   StatusOr<LocalShapedBuffer*> Execute(
       absl::Span<LocalShapedBuffer* const> argument_handles);
+
+  // Execute on many replicas. Takes a sequence of argument lists (one argument
+  // list per replica) and returns a tuple of results (one result per replica).
+  // The number of argument lists must be equal to the replica count.
+  StatusOr<LocalShapedBufferTuple*> ExecutePerReplica(
+      absl::Span<const std::vector<LocalShapedBuffer*> > argument_handles);
 
  private:
   std::unique_ptr<LocalExecutable> executable_;
@@ -279,6 +297,10 @@ class LocalComputationBuilder {
 
   LocalOp ConstantLiteral(const Literal& literal);
 
+  LocalOp Iota(PrimitiveType element_type, int64 size);
+
+  LocalOp BroadcastedIota(const Shape& shape, int64 dimension);
+
   LocalOp Broadcast(const LocalOp& operand,
                     absl::Span<const int64> broadcast_sizes);
 
@@ -294,7 +316,12 @@ class LocalComputationBuilder {
 
   LocalOp Collapse(const LocalOp& operand, absl::Span<const int64> dimensions);
 
-  LocalOp CrossReplicaSum(const LocalOp& operand);
+  LocalOp AllToAll(const LocalOp& operand, int64 split_dimension,
+                   int64 concat_dimension, int64 split_count,
+                   absl::Span<const ReplicaGroup> replica_groups);
+
+  LocalOp CrossReplicaSum(const LocalOp& operand,
+                          absl::Span<const ReplicaGroup> replica_groups);
 
   LocalOp Slice(const LocalOp& operand, absl::Span<const int64> start_indices,
                 absl::Span<const int64> limit_indices,
@@ -345,6 +372,12 @@ class LocalComputationBuilder {
   LocalOp Call(const LocalComputation& local_computation,
                absl::Span<const LocalOp> operands);
 
+  LocalOp CustomCall(const string& call_target_name,
+                     absl::Span<const LocalOp> operands,
+                     const Shape& shape_with_layout,
+                     const std::vector<Shape>& operand_shapes_with_layout,
+                     const string& opaque);
+
   LocalOp Transpose(const LocalOp& operand,
                     absl::Span<const int64> permutation);
 
@@ -386,6 +419,22 @@ class LocalComputationBuilder {
 
   LocalOp SortKeyVal(const LocalOp& keys, const LocalOp& values,
                      int64 dimension);
+
+  LocalOp QR(const LocalOp& a, bool full_matrices);
+
+  LocalOp Cholesky(const LocalOp& a);
+
+  LocalOp TriangularSolve(const LocalOp& a, const LocalOp& b, bool left_side,
+                          bool lower, bool transpose_a, bool conjugate_a);
+
+  LocalOp Gather(const LocalOp& input, const LocalOp& start_indices,
+                 const GatherDimensionNumbers& dimension_numbers,
+                 absl::Span<const int64> slice_sizes);
+
+  LocalOp Scatter(const LocalOp& input, const LocalOp& scatter_indices,
+                  const LocalOp& updates,
+                  const LocalComputation& update_computation,
+                  const ScatterDimensionNumbers& dimension_numbers);
 
   StatusOr<LocalComputation*> BuildConstantSubGraph(const LocalOp& operand);
 

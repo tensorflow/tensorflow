@@ -511,7 +511,7 @@ def mean_squared_error(predictions, labels=None, weights=1.0, scope=None):
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     predictions = math_ops.to_float(predictions)
     labels = math_ops.to_float(labels)
-    losses = math_ops.square(math_ops.subtract(predictions, labels))
+    losses = math_ops.squared_difference(predictions, labels)
     return compute_weighted_loss(losses, weights, scope=scope)
 
 

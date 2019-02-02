@@ -4,7 +4,7 @@ tf_class {
   is_instance: "<class \'tensorflow.python.keras.layers.convolutional_recurrent.ConvRNN2D\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.recurrent.RNN\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
-  is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.base.Checkpointable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activation"
@@ -40,6 +40,10 @@ tf_class {
   }
   member {
     name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dynamic"
     mtype: "<type \'property\'>"
   }
   member {

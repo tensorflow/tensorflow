@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -229,13 +230,53 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
       shaped_buffer, device_ref.backend(), device_ref.device_ordinal(),
       &output_tuple));
 
-  Tensor* output_tensor;
-  TF_RETURN_IF_ERROR(
-      context->allocate_output(0, TensorShape({}), &output_tensor));
-  int64 key;
-  TF_RETURN_IF_ERROR(output_tuple->Intern(rm, &key));
-  output_tensor->scalar<int64>()() = key;
+  // The ScopedShapedBuffer returned by the executable Run() API, in case of
+  // input/output buffer aliasing, might have holes in it, which need to be
+  // filled using the proper input tuples buffers which are the source of
+  // aliasing.
+  const xla::HloInputOutputAliasConfig& input_output_alias =
+      executable->executable()->module().input_output_alias_config();
+  auto alias_function =
+      [&](const xla::ShapeIndex& output_index,
+          const xla::HloInputOutputAliasConfig::Alias& alias) -> Status {
+    TF_RET_CHECK(alias.parameter_number < input_tuples.size());
+    return alias.kind == xla::HloInputOutputAliasConfig::AliasKind::kUserAlias
+               ? output_tuple->AliasBufferFrom(
+                     *input_tuples[alias.parameter_number],
+                     alias.parameter_index, output_index)
+               : Status::OK();
+  };
+  TF_RETURN_IF_ERROR(input_output_alias.ForEachAliasWithStatus(alias_function));
 
+  if (config_proto.return_exploded_tuple() &&
+      output_tuple->on_device_shape().IsTuple()) {
+    int64 tuple_element_count =
+        xla::ShapeUtil::TupleElementCount(output_tuple->on_device_shape());
+    Tensor* output_tensor;
+    TF_RETURN_IF_ERROR(context->allocate_output(
+        0, TensorShape({tuple_element_count}), &output_tensor));
+
+    for (int64 i = 0; i < tuple_element_count; ++i) {
+      xla::ShapeIndex shape_index;
+      shape_index.push_back(i);
+
+      XRTTupleAllocation* suballocation;
+      TF_RETURN_IF_ERROR(XRTTupleAllocation::MakeSubBuffer(
+          output_tuple, shape_index, &suballocation,
+          /*alias_parent_allocation=*/false));
+      int64 key;
+      TF_RETURN_IF_ERROR(suballocation->Intern(rm, &key));
+      output_tensor->vec<int64>()(i) = key;
+    }
+    output_tuple->Unref();
+  } else {
+    Tensor* output_tensor;
+    TF_RETURN_IF_ERROR(
+        context->allocate_output(0, TensorShape({}), &output_tensor));
+    int64 key;
+    TF_RETURN_IF_ERROR(output_tuple->Intern(rm, &key));
+    output_tensor->scalar<int64>()() = key;
+  }
   return Status::OK();
 }
 

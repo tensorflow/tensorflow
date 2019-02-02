@@ -1,0 +1,7 @@
+path: "tensorflow.config"
+tf_module {
+  member_method {
+    name: "experimental_connect_to_host"
+    argspec: "args=[\'remote_host\', \'job_name\'], varargs=None, keywords=None, defaults=[\'None\', \'worker\'], "
+  }
+}

@@ -31,10 +31,22 @@ from os import path
 
 from absl import app
 from absl import flags
-
 import tensorflow as tf
 
+from tensorflow_docs.api_generator import doc_generator_visitor
 from tensorflow_docs.api_generator import generate_lib
+from tensorflow_docs.api_generator import parser
+
+from tensorflow.python.util import tf_export
+from tensorflow.python.util import tf_inspect
+
+# Use tensorflow's `tf_inspect`, which is aware of `tf_decorator`.
+parser.tf_inspect = tf_inspect
+
+# `tf` has an `__all__` that doesn't list important things like `keras`.
+# The doc generator recognizes `__all__` as the list of public symbols.
+# So patch `tf.__all__` to list everything.
+tf.__all__ = [item_name for item_name, value in tf_inspect.getmembers(tf)]
 
 FLAGS = flags.FLAGS
 
@@ -47,22 +59,49 @@ flags.DEFINE_string(
     "output_dir", "/tmp/out",
     "A directory, where the docs will be output to.")
 
+flags.DEFINE_bool("search_hints", True,
+                  "Include meta-data search hints at the top of each file.")
 
-def build_docs(output_dir, code_url_prefix):
+flags.DEFINE_string("site_path", "",
+                    "The prefix ({site-path}/api_docs/python/...) used in the "
+                    "`_toc.yaml` and `_redirects.yaml` files")
+
+
+# The doc generator isn't aware of tf_export.
+# So prefix the score tuples with -1 when this is the canonical name, +1
+# otherwise. The generator chooses the name with the lowest score.
+class TfExportAwareDocGeneratorVisitor(
+    doc_generator_visitor.DocGeneratorVisitor):
+  """A `tf_export` aware doc_visitor."""
+
+  def _score_name(self, name):
+    canonical = tf_export.get_canonical_name_for_symbol(self._index[name])
+
+    canonical_score = 1
+    if canonical is not None and name == "tf." + canonical:
+      canonical_score = -1
+
+    scores = super(TfExportAwareDocGeneratorVisitor, self)._score_name(name)
+    return (canonical_score,) + scores
+
+
+def build_docs(output_dir, code_url_prefix, search_hints=True):
   """Build api docs for tensorflow v2.
 
   Args:
     output_dir: A string path, where to put the files.
     code_url_prefix: prefix for "Defined in" links.
+    search_hints: Bool. Include meta-data search hints at the top of each file.
   """
   base_dir = path.dirname(tf.__file__)
   doc_generator = generate_lib.DocGenerator(
       root_title="TensorFlow 2.0 Preview",
       py_modules=[("tf", tf)],
       base_dir=base_dir,
-      search_hints=True,
+      search_hints=search_hints,
       code_url_prefix=code_url_prefix,
-      site_path="api_docs/")
+      site_path=FLAGS.site_path,
+      visitor_cls=TfExportAwareDocGeneratorVisitor)
 
   doc_generator.build(output_dir)
 
@@ -70,7 +109,8 @@ def build_docs(output_dir, code_url_prefix):
 def main(argv):
   del argv
   build_docs(output_dir=FLAGS.output_dir,
-             code_url_prefix=FLAGS.code_url_prefix)
+             code_url_prefix=FLAGS.code_url_prefix,
+             search_hints=FLAGS.search_hints)
 
 
 if __name__ == "__main__":

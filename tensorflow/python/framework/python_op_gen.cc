@@ -142,6 +142,9 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
   void AddEagerAttrs(const string& indentation);
   void AddEagerExecute(const string& indentation,
                        const string& num_outputs_expr);
+  void AddDispatch(const string& prefix);
+
+  void AddRawOpExport();
 
   void AddAttrForArg(const string& attr, int arg_index) {
     gtl::InsertIfNotPresent(&inferred_attrs_, attr,
@@ -356,9 +359,14 @@ string GenEagerPythonOp::Code() {
 
 void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
   strings::StrAppend(&result_, "  # Add nodes to the TensorFlow graph.\n");
-  strings::StrAppend(&result_, function_setup,
-                     "  _, _, _op = _op_def_lib._apply_op_helper(\n");
-  AddBodyNoReturn("        ");
+  strings::StrAppend(&result_, function_setup);
+  if (api_def_.visibility() == ApiDef::VISIBLE) {
+    strings::StrAppend(&result_, "  try:\n  ");
+  }
+  strings::StrAppend(&result_, "  _, _, _op = _op_def_lib._apply_op_helper(\n");
+  AddBodyNoReturn(strings::StrCat("        \"", op_def_.name(), "\", "));
+  AddDispatch("  ");
+
   if (num_outs_ > 0) {
     strings::StrAppend(&result_, "  _result = _op.outputs[:]\n");
     // Special case handling for stateful op with single list output
@@ -628,6 +636,9 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
 bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
     const string& parameters, const std::vector<string>& output_sizes,
     const string& eager_not_allowed_error) {
+  if (api_def_.visibility() == ApiDef::VISIBLE) {
+    strings::StrAppend(&result_, "@_dispatch.add_dispatch_list\n");
+  }
   AddExport();
   AddDefLine(function_name_, parameters);
   AddDocStringDescription();
@@ -640,7 +651,7 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
   strings::StrAppend(&result_, "  \"\"\"\n");
 
   strings::StrAppend(&result_,
-                     "  _ctx = _context._context\n"
+                     "  _ctx = _context._context or _context.context()\n"
                      "  if _ctx is not None and _ctx._eager_context.is_eager:",
                      "\n");
   if (eager_not_allowed_error.empty()) {
@@ -659,6 +670,7 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
   AddEagerFunctionTeardown("  ", output_sizes,
                            true /* execute_record_gradient */);
 
+  AddRawOpExport();
   strings::StrAppend(&result_, "\n\n");
   return true;
 }
@@ -758,6 +770,7 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
   strings::StrAppend(&result_, "      except _core._SymbolicException:\n");
   strings::StrAppend(&result_,
                      "        pass  # Add nodes to the TensorFlow graph.\n");
+  AddDispatch("      ");
 
   // Any errors thrown from execute need to be unwrapped from
   // _NotOkStatusException.
@@ -898,6 +911,81 @@ void GenEagerPythonOp::AddEagerExecute(const string& indentation,
                      WordWrap(return_prefix, return_args, kRightMargin), "\n");
 }
 
+void GenEagerPythonOp::AddDispatch(const string& prefix) {
+  if (api_def_.visibility() != ApiDef::VISIBLE) return;
+
+  strings::StrAppend(&result_, prefix, "except (TypeError, ValueError):\n");
+  strings::StrAppend(&result_, prefix, "  result = _dispatch.dispatch(\n");
+  AddBodyNoReturn(strings::StrCat(prefix, "        ", function_name_, ", "));
+  strings::StrAppend(&result_, prefix,
+                     "  if result is not "
+                     "_dispatch.OpDispatcher.NOT_SUPPORTED:\n");
+  strings::StrAppend(&result_, prefix, "    return result\n");
+  strings::StrAppend(&result_, prefix, "  raise\n");
+}
+
+void GenEagerPythonOp::AddRawOpExport() {
+  // Create function for python op.
+  string raw_parameters;
+  string function_call_parameters;
+  string inputs;
+  string attrs;
+
+  std::map<string, string> renames;
+
+  for (const auto& param_names : param_names_) {
+    renames.insert({param_names.GetName(), param_names.GetRenameTo()});
+  }
+
+  for (const auto& input_arg : op_def_.input_arg()) {
+    const string input_arg_name =
+        python_op_gen_internal::AvoidPythonReserved(input_arg.name());
+    if (!raw_parameters.empty()) strings::StrAppend(&raw_parameters, ", ");
+    strings::StrAppend(&raw_parameters, input_arg_name);
+
+    if (!inputs.empty()) strings::StrAppend(&inputs, ", ");
+    strings::StrAppend(&inputs, input_arg_name);
+
+    if (!function_call_parameters.empty()) {
+      strings::StrAppend(&function_call_parameters, ", ");
+    }
+    strings::StrAppend(&function_call_parameters, renames[input_arg.name()],
+                       "=", input_arg_name);
+  }
+  for (const auto& attr : op_def_.attr()) {
+    if (inferred_attrs_.find(attr.name()) != inferred_attrs_.end()) continue;
+
+    const string attr_name =
+        python_op_gen_internal::AvoidPythonReserved(attr.name());
+
+    if (!raw_parameters.empty()) strings::StrAppend(&raw_parameters, ", ");
+    strings::StrAppend(&raw_parameters, attr_name);
+
+    if (!attrs.empty()) strings::StrAppend(&attrs, ", ");
+    strings::StrAppend(&attrs, "\"", attr_name, "\", ", attr_name);
+
+    if (!function_call_parameters.empty()) {
+      strings::StrAppend(&function_call_parameters, ", ");
+    }
+    strings::StrAppend(&function_call_parameters, renames[attr.name()], "=",
+                       attr_name);
+  }
+
+  const string raw_function_name =
+      python_op_gen_internal::AvoidPythonReserved(op_def_.name());
+
+  strings::StrAppend(&result_,
+                     "@_doc_controls.do_not_generate_docs\n@_kwarg_only\ndef ",
+                     raw_function_name, "(", raw_parameters, "):\n");
+
+  // Function body.
+  strings::StrAppend(&result_, "  return ", function_name_, "(",
+                     function_call_parameters, ")\n");
+
+  strings::StrAppend(&result_, "tf_export(\"raw_ops.", raw_function_name,
+                     "\")(", raw_function_name, ")\n");
+}
+
 string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                     const std::vector<string>& hidden_ops, bool require_shapes,
                     const string& source_file_name = "") {
@@ -937,7 +1025,10 @@ from tensorflow.python.framework import op_def_registry as _op_def_registry
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework import op_def_library as _op_def_library
 from tensorflow.python.util.deprecation import deprecated_endpoints
+from tensorflow.python.util import dispatch as _dispatch
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import kwarg_only as _kwarg_only
+from tensorflow.tools.docs import doc_controls as _doc_controls
 
 )");
 

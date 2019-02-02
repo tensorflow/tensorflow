@@ -31,6 +31,7 @@ limitations under the License.
 #include "unicode/unistr.h"  // TF:icu
 #include "unicode/uset.h"  // TF:icu
 #include "unicode/utypes.h"  // TF:icu
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/string_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -350,10 +350,10 @@ class UnicodeTranscodeOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("UnicodeTranscode").Device(DEVICE_CPU),
                         UnicodeTranscodeOp);
 
-class UnicodeDecodeWithOffsetsOp : public OpKernel {
+class UnicodeDecodeBaseOp : public OpKernel {
  public:
-  explicit UnicodeDecodeWithOffsetsOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {
+  explicit UnicodeDecodeBaseOp(OpKernelConstruction* ctx, bool generate_offsets)
+      : OpKernel(ctx), generate_offsets_(generate_offsets) {
     OP_REQUIRES_OK(ctx, GetErrorOptions(ctx, &error_options_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("input_encoding", &input_encoding_));
     // Make a temporary UConverter to ensure it will create without error
@@ -369,7 +369,7 @@ class UnicodeDecodeWithOffsetsOp : public OpKernel {
   }
 
   void Decode(OpKernelContext* ctx, std::vector<UChar32>* char_values,
-              std::vector<int64>* offset_values, int* string_length,
+              std::vector<int64>* offset_values, int* current_offset,
               int64* next_row_split, UChar32 char_value, int char_length,
               bool found_any_format_error) {
     if (error_options_.error_on_malformatting && found_any_format_error) {
@@ -379,7 +379,8 @@ class UnicodeDecodeWithOffsetsOp : public OpKernel {
     UChar32 decoded_value = char_value;
     if (ShouldHandleFormatError(error_options_, char_value,
                                 found_any_format_error)) {
-      if (error_options_.elide_replacement) {
+      if (error_options_.elide_replacement && (offset_values != nullptr)) {
+        *current_offset += char_length;
         return;
       } else {
         decoded_value = error_options_.subst;
@@ -390,8 +391,10 @@ class UnicodeDecodeWithOffsetsOp : public OpKernel {
     char_values->push_back(decoded_value);
 
     // Emit the byte offset
-    offset_values->push_back(*string_length);
-    *string_length += char_length;
+    if (offset_values != nullptr) {
+      offset_values->push_back(*current_offset);
+      *current_offset += char_length;
+    }
     *next_row_split += 1;
   }
 
@@ -428,42 +431,63 @@ class UnicodeDecodeWithOffsetsOp : public OpKernel {
       // the fields needed to construct a RaggedTensor.
       out_row_splits(row_split_index) = next_row_split;
       row_split_index++;
-      int string_length = 0;
+      int current_offset = 0;
       IterateUnicodeString(
           input, input_encoder->converter_,
-          std::bind(&UnicodeDecodeWithOffsetsOp::Decode, this, ctx,
-                    &char_values, &offset_values, &string_length,
-                    &next_row_split, std::placeholders::_1,
-                    std::placeholders::_2, std::placeholders::_3));
+          std::bind(&UnicodeDecodeBaseOp::Decode, this, ctx, &char_values,
+                    &offset_values, &current_offset, &next_row_split,
+                    std::placeholders::_1, std::placeholders::_2,
+                    std::placeholders::_3));
     }
     out_row_splits(row_split_index) = next_row_split;
 
-    DCHECK(offset_values.size() == char_values.size());
     Tensor* output_char_values;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output("char_values",
                                   {static_cast<int64>(char_values.size())},
                                   &output_char_values));
-    Tensor* output_offset_values;
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_output("char_to_byte_starts",
-                                  {static_cast<int64>(offset_values.size())},
-                                  &output_offset_values));
     auto out_char_values = output_char_values->vec<int32>();
-    auto out_offset_values = output_offset_values->vec<int64>();
+    if (generate_offsets_) {
+      DCHECK(offset_values.size() == char_values.size());
+      Tensor* output_offset_values;
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_output("char_to_byte_starts",
+                                    {static_cast<int64>(offset_values.size())},
+                                    &output_offset_values));
+      auto out_offset_values = output_offset_values->vec<int64>();
 
-    // Load output tensors from intermediate value arrays.
-    for (int i = 0; i < char_values.size(); ++i) {
-      out_char_values(i) = static_cast<int32>(char_values[i]);
-      out_offset_values(i) = offset_values[i];
+      // Load output tensors from intermediate value arrays.
+      for (int i = 0; i < char_values.size(); ++i) {
+        out_char_values(i) = static_cast<int32>(char_values[i]);
+        out_offset_values(i) = offset_values[i];
+      }
+    } else {
+      for (int i = 0; i < char_values.size(); ++i) {
+        out_char_values(i) = static_cast<int32>(char_values[i]);
+      }
     }
   }
 
  private:
   string input_encoding_;
   ErrorOptions error_options_;
+  bool generate_offsets_ = false;
 };
 
+class UnicodeDecodeOp : public UnicodeDecodeBaseOp {
+ public:
+  explicit UnicodeDecodeOp(OpKernelConstruction* ctx)
+      : UnicodeDecodeBaseOp(ctx, false) {}
+};
+
+class UnicodeDecodeWithOffsetsOp : public UnicodeDecodeBaseOp {
+ public:
+  explicit UnicodeDecodeWithOffsetsOp(OpKernelConstruction* ctx)
+      : UnicodeDecodeBaseOp(ctx, true) {}
+};
+
+REGISTER_KERNEL_BUILDER(Name("UnicodeDecode").Device(DEVICE_CPU),
+                        UnicodeDecodeOp);
 REGISTER_KERNEL_BUILDER(Name("UnicodeDecodeWithOffsets").Device(DEVICE_CPU),
                         UnicodeDecodeWithOffsetsOp);
 
@@ -493,7 +517,7 @@ class UnicodeEncodeOp : public OpKernel {
     const Tensor& input_splits = context->input(1);
     const auto input_splits_flat = input_splits.flat<int64>();
 
-    // Since we limit to a 2-D input (inner_values of rank 1 and a single splits
+    // Since we limit to a 2-D input (flat_values of rank 1 and a single splits
     // tensor), our output dimension will be 1 with it's size equal to the
     // number of splits (outer dimension or ragged tensor).
     TensorShape output_shape({input_splits.dim_size(0) - 1});

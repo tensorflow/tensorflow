@@ -851,8 +851,9 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
       embedding_weights = self._random_weights()
       sparse_ids, sparse_weights = self._ids_and_weights_2d()
 
-      embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
-          embedding_weights, sparse_ids, sparse_weights).eval())
+      embedding_lookup_result = (
+          embedding_ops.safe_embedding_lookup_sparse_v2(
+              embedding_weights, sparse_ids, sparse_weights).eval())
 
       self.assertAllClose(
           embedding_lookup_result,
@@ -865,8 +866,10 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
       embedding_weights = self._random_weights()
       sparse_ids, sparse_weights = self._ids_and_weights_2d()
 
-      embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
-          embedding_weights, sparse_ids, sparse_weights, default_id=3).eval())
+      embedding_lookup_result = (
+          embedding_ops.safe_embedding_lookup_sparse_v2(
+              embedding_weights, sparse_ids, sparse_weights,
+              default_id=3).eval())
 
       self.assertAllClose(
           embedding_lookup_result,
@@ -880,8 +883,9 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
       embedding_weights = self._random_weights()
       sparse_ids, _ = self._ids_and_weights_2d()
 
-      embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
-          embedding_weights, sparse_ids, None).eval())
+      embedding_lookup_result = (
+          embedding_ops.safe_embedding_lookup_sparse_v2(
+              embedding_weights, sparse_ids, None).eval())
 
       self.assertAllClose(
           embedding_lookup_result,
@@ -895,8 +899,9 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
       embedding_weights = self._random_weights(num_shards=3)
       sparse_ids, _ = self._ids_and_weights_2d()
 
-      embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
-          embedding_weights, sparse_ids, None).eval())
+      embedding_lookup_result = (
+          embedding_ops.safe_embedding_lookup_sparse_v2(
+              embedding_weights, sparse_ids, None).eval())
 
       embedding_weights = list(itertools.chain(*embedding_weights))
       self.assertAllClose(embedding_lookup_result,
@@ -926,8 +931,9 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
       embedding_weights = self._random_weights()
       sparse_ids, sparse_weights = self._ids_and_weights_3d()
 
-      embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
-          embedding_weights, sparse_ids, sparse_weights).eval())
+      embedding_lookup_result = (
+          embedding_ops.safe_embedding_lookup_sparse_v2(
+              embedding_weights, sparse_ids, sparse_weights).eval())
 
       self.assertAllClose(embedding_lookup_result, [[
           (1.0 * embedding_weights[0][0] + 2.0 * embedding_weights[0][1]) / 3.0,
@@ -940,8 +946,10 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
       embedding_weights = self._random_weights()
       sparse_ids, sparse_weights = self._ids_and_weights_3d()
 
-      embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
-          embedding_weights, sparse_ids, sparse_weights, default_id=3).eval())
+      embedding_lookup_result = (
+          embedding_ops.safe_embedding_lookup_sparse_v2(
+              embedding_weights, sparse_ids, sparse_weights,
+              default_id=3).eval())
 
       self.assertAllClose(
           embedding_lookup_result,
@@ -957,8 +965,9 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
       embedding_weights = self._random_weights()
       sparse_ids, _ = self._ids_and_weights_3d()
 
-      embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
-          embedding_weights, sparse_ids, None).eval())
+      embedding_lookup_result = (
+          embedding_ops.safe_embedding_lookup_sparse_v2(
+              embedding_weights, sparse_ids, None).eval())
 
       self.assertAllClose(embedding_lookup_result, [[(
           embedding_weights[0][0] + embedding_weights[0][1]) / 2.0, [0] * 4, [
@@ -974,8 +983,9 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
       embedding_weights = self._random_weights(num_shards=3)
       sparse_ids, _ = self._ids_and_weights_3d()
 
-      embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
-          embedding_weights, sparse_ids, None).eval())
+      embedding_lookup_result = (
+          embedding_ops.safe_embedding_lookup_sparse_v2(
+              embedding_weights, sparse_ids, None).eval())
 
       embedding_weights = list(itertools.chain(*embedding_weights))
       self.assertAllClose(embedding_lookup_result, [[
