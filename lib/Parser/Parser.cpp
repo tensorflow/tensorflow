@@ -1943,7 +1943,7 @@ ParseResult AffineParser::parseAffineMapOrIntegerSetInline(AffineMap &map,
   bool isArrow = getToken().is(Token::arrow);
   bool isColon = getToken().is(Token::colon);
   if (!isArrow && !isColon) {
-    return ParseFailure;
+    return emitError("expected '->' or ':'");
   } else if (isArrow) {
     parseToken(Token::arrow, "expected '->' or '['");
     map = parseAffineMapRange(numDims, numSymbols);
