@@ -12,13 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include <memory>
+
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -51,7 +50,7 @@ class ThreadPoolResource : public ResourceBase {
 
   int32 NumThreads() { return thread_pool_.NumThreads(); }
 
-  string DebugString() override { return "ThreadPoolResource"; }
+  string DebugString() const override { return "ThreadPoolResource"; }
 
  private:
   thread::ThreadPool thread_pool_;
@@ -154,8 +153,8 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::ThreadPool")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::ThreadPool")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -168,6 +167,8 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override {
       return "ThreadPoolDatasetOp::Dataset";
     }
+
+    int64 Cardinality() const override { return input_->Cardinality(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -248,7 +249,7 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            int max_intra_op_parallelism)
+            int64 max_intra_op_parallelism)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           max_intra_op_parallelism_(max_intra_op_parallelism) {
@@ -259,8 +260,8 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::MaxIntraOpParallelism")}));
+      return absl::make_unique<Iterator>(Iterator::Params{
+          this, strings::StrCat(prefix, "::MaxIntraOpParallelism")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -273,6 +274,8 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override {
       return "MaxIntraOpParallelismDatasetOp::Dataset";
     }
+
+    int64 Cardinality() const override { return input_->Cardinality(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -332,7 +335,7 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
-    const int max_intra_op_parallelism_;
+    const int64 max_intra_op_parallelism_;
   };
 };
 
@@ -358,7 +361,7 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           num_threads_(num_threads) {
-      thread_pool_ = MakeUnique<thread::ThreadPool>(
+      thread_pool_ = absl::make_unique<thread::ThreadPool>(
           ctx->env(), ThreadOptions{}, "data_private_threadpool", num_threads,
           /*low_latency_hint=*/false);
       input_->Ref();
@@ -368,8 +371,8 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::PrivateThreadPool")}));
+      return absl::make_unique<Iterator>(Iterator::Params{
+          this, strings::StrCat(prefix, "::PrivateThreadPool")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -382,6 +385,8 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override {
       return "PrivateThreadPoolDatasetOp::Dataset";
     }
+
+    int64 Cardinality() const override { return input_->Cardinality(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,

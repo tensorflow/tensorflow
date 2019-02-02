@@ -25,6 +25,11 @@ extern "C" {
 
 // TODO(aselle): Consider using "if this then that" for testing.
 
+// Useful placeholder to put in otherwise empty structs to avoid size warnings.
+typedef struct {
+  char dummy;
+} EmptyStructPlaceholder;
+
 // IMPORTANT: All new members of structs must be added at the end to ensure
 // backwards compatibility.
 
@@ -152,9 +157,11 @@ typedef struct {
 } TfLiteAddParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLiteSpaceToBatchNDParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLiteBatchToSpaceNDParams;
 
 typedef struct {
@@ -207,13 +214,18 @@ typedef struct {
 } TfLiteUnidirectionalSequenceLSTMParams;
 
 typedef struct {
-  // Parameters for the LSTM kernel.
+  // Parameters supported by version 1:
+  // Parameters inherited for the LSTM kernel.
   TfLiteFusedActivation activation;
   float cell_clip;
   float proj_clip;
 
   // If true, store the outputs of both directions in the first output.
   bool merge_outputs;
+
+  // Parameters supported by version 2:
+  // If set to true then the first dimension is time, otherwise batch.
+  bool time_major;
 } TfLiteBidirectionalSequenceLSTMParams;
 
 typedef struct {
@@ -225,9 +237,11 @@ typedef struct {
 } TfLiteResizeNearestNeighborParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLitePadParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLitePadV2Params;
 
 typedef struct {
@@ -267,6 +281,7 @@ typedef struct {
 } TfLiteGatherParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLiteTransposeParams;
 
 typedef struct {
@@ -345,6 +360,10 @@ typedef struct {
 typedef struct {
   float alpha;
 } TfLiteLeakyReluParams;
+
+typedef struct {
+  TfLiteType index_out_type;
+} TfLiteUniqueParams;
 
 #ifdef __cplusplus
 }  // extern "C"

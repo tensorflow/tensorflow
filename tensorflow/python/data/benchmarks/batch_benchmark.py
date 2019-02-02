@@ -42,7 +42,10 @@ class BatchBenchmark(test.Benchmark):
 
     dataset = dataset_ops.Dataset.from_tensors(sparse_placeholder).repeat(
         ).batch(batch_size_placeholder)
-    iterator = dataset.make_initializable_iterator()
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     for non_zeros_per_row in non_zeros_per_row_values:
@@ -72,13 +75,11 @@ class BatchBenchmark(test.Benchmark):
 
         median_wall_time = np.median(deltas) / 100.0
 
-        print("Batch sparse dataset non-zeros per row: %d batch_size: %d "
-              "wall time: %f"
-              % (non_zeros_per_row, batch_size, median_wall_time))
         self.report_benchmark(
-            iters=10000, wall_time=median_wall_time,
-            name="batch_sparse_dataset_nnz_%d_batch_size_%d" % (
-                non_zeros_per_row, batch_size))
+            iters=10000,
+            wall_time=median_wall_time,
+            name="sparse_num_elements_%d_batch_size_%d" %
+            (non_zeros_per_row, batch_size))
 
 
 if __name__ == "__main__":

@@ -18,86 +18,26 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 
-#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 namespace dump_graph {
 
-namespace {
-
-struct NameCounts {
-  mutex counts_mutex;
-  std::unordered_map<string, int> counts;
-};
-
-string MakeUniqueFilename(string name) {
-  static NameCounts& instance = *new NameCounts;
-
-  // Remove illegal characters from `name`.
-  for (int i = 0; i < name.size(); ++i) {
-    char ch = name[i];
-    if (ch == '/' || ch == '[' || ch == ']' || ch == '*' || ch == '?') {
-      name[i] = '_';
-    }
-  }
-
-  int count;
-  {
-    mutex_lock lock(instance.counts_mutex);
-    count = instance.counts[name]++;
-  }
-
-  string filename = name;
-  if (count > 0) {
-    absl::StrAppend(&filename, "_", count);
-  }
-  absl::StrAppend(&filename, ".pbtxt");
-  return filename;
-}
-
-string WriteTextProtoToUniqueFile(
-    Env* env, const string& name, const char* proto_type,
-    const ::tensorflow::protobuf::Message& proto) {
-  const string& dirname = GetDumpGraphFlags()->tf_dump_graph_prefix;
-  Status status = env->RecursivelyCreateDir(dirname);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to create " << dirname << " for dumping "
-                 << proto_type << ": " << status;
-    return "(unavailable)";
-  }
-  string filepath = absl::StrCat(dirname, "/", MakeUniqueFilename(name));
-  status = WriteTextProto(Env::Default(), filepath, proto);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to dump " << proto_type << " to file: " << filepath
-                 << " : " << status;
-    return "(unavailable)";
-  }
-  LOG(INFO) << "Dumped " << proto_type << " to " << filepath;
-  return filepath;
-}
-
-}  // anonymous namespace
-
 string DumpGraphDefToFile(const string& name, GraphDef const& graph_def) {
-  return WriteTextProtoToUniqueFile(Env::Default(), name, "GraphDef",
-                                    graph_def);
+  return tensorflow::DumpGraphDefToFile(
+      name, graph_def, GetDumpGraphFlags()->tf_dump_graph_prefix);
 }
 
 string DumpGraphToFile(const string& name, Graph const& graph,
                        const FunctionLibraryDefinition* flib_def) {
-  GraphDef graph_def;
-  graph.ToGraphDef(&graph_def);
-  if (flib_def) {
-    *graph_def.mutable_library() = flib_def->ToProto();
-  }
-  return DumpGraphDefToFile(name, graph_def);
+  return tensorflow::DumpGraphToFile(name, graph, flib_def,
+                                     GetDumpGraphFlags()->tf_dump_graph_prefix);
 }
 
 string DumpFunctionDefToFile(const string& name, FunctionDef const& fdef) {
-  return WriteTextProtoToUniqueFile(Env::Default(), name, "FunctionDef", fdef);
+  return tensorflow::DumpFunctionDefToFile(
+      name, fdef, GetDumpGraphFlags()->tf_dump_graph_prefix);
 }
 
 }  // namespace dump_graph

@@ -18,18 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
-
-from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_strategy
-from tensorflow.python.distribute import values
 
 
 # pylint: disable=protected-access,invalid-name
 _call_for_each_replica = mirrored_strategy._call_for_each_replica
-_reduce_non_distributed_value = mirrored_strategy._reduce_non_distributed_value
 _create_mirrored_variable = mirrored_strategy._create_mirrored_variable
+all_local_devices = mirrored_strategy.all_local_devices
 CoreMirroredStrategy = mirrored_strategy.MirroredStrategy
 CoreMirroredExtended = mirrored_strategy.MirroredExtended
 # pylint: enable=protected-access,invalid-name
@@ -49,8 +46,8 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   distributed environment.
 
   There are several important concepts for distributed TensorFlow, e.g.
-  `client`, `job`, 'task', `cluster`, `in-graph replication` and
-  'synchronous training' and they have already been defined in the
+  `client`, `job`, `task`, `cluster`, `in-graph replication` and
+  `synchronous training` and they have already been defined in the
   [TensorFlow's documentation](https://www.tensorflow.org/deploy/distributed).
   The distribution strategy inherits these concepts as well and in addition to
   that we also clarify several more concepts:
@@ -105,6 +102,61 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                                 auto_shard_dataset)
     super(MirroredStrategy, self).__init__(extended)
 
+  # Override to change the documentation to reflect the different handling of
+  # global vs. local batch size between core and contrib.
+  def make_dataset_iterator(self, dataset):  # pylint: disable=useless-super-delegation
+    """Makes an iterator for input provided via `dataset`.
+
+    NOTE: The batch size of the `dataset` argument is treated differently for
+    this contrib version of `MirroredStrategy`.
+
+    Data from the given dataset will be distributed evenly across all the
+    compute replicas. We will assume that the input dataset is batched by the
+    per-replica batch size.
+
+    The user could also use `make_input_fn_iterator` if they want to
+    customize which input is fed to which replica/worker etc.
+
+    Args:
+      dataset: `tf.data.Dataset` that will be distributed evenly across all
+        replicas.
+
+    Returns:
+      An `tf.distribute.InputIterator` which returns inputs for each step of the
+      computation.  User should call `initialize` on the returned iterator.
+    """
+    return super(MirroredStrategy, self).make_dataset_iterator(dataset)
+
+  # Override to change the documentation to reflect the different handling of
+  # global vs. local batch size between core and contrib.
+  def experimental_make_numpy_iterator(  # pylint: disable=useless-super-delegation
+      self, numpy_input, batch_size, num_epochs=1, shuffle=1024, session=None):
+    """Makes an iterator for input provided via a nest of numpy arrays.
+
+    NOTE: The `batch_size` argument here has different behavior for this
+    contrib version of `MirroredStrategy`.
+
+    Args:
+      numpy_input: A nest of NumPy input arrays that will be distributed evenly
+        across all replicas.
+      batch_size: The number of entries from the array we should consume in one
+        step of the computation, across all replicas. This is the per-replica
+        batch size. The global batch size will be this times
+        `num_replicas_in_sync`.
+      num_epochs: The number of times to iterate through the examples. A value
+        of `None` means repeat forever.
+      shuffle: Size of buffer to use for shuffling the input examples.
+        Use `None` to disable shuffling.
+      session: (TensorFlow v1.x graph execution only) A session used for
+        initialization.
+
+    Returns:
+      An `tf.distribute.InputIterator` which returns inputs for each step of the
+      computation.  User should call `initialize` on the returned iterator.
+    """
+    return super(MirroredStrategy, self).experimental_make_numpy_iterator(
+        numpy_input, batch_size, num_epochs, shuffle, session)
+
 
 class MirroredExtended(CoreMirroredExtended):
   """Implementation of (contrib) MirroredStrategy."""
@@ -115,8 +167,13 @@ class MirroredExtended(CoreMirroredExtended):
                num_gpus_per_worker=None,
                cross_device_ops=None,
                auto_shard_dataset=False):
-    super(MirroredExtended, self).__init__(
-        container_strategy, devices, num_gpus_per_worker, cross_device_ops)
+    if devices is None:
+      devices = mirrored_strategy.all_local_devices(num_gpus_per_worker)
+    elif num_gpus_per_worker is not None:
+      raise ValueError(
+          "Must only specify one of `devices` and `num_gpus_per_worker`.")
+    super(MirroredExtended, self).__init__(container_strategy, devices,
+                                           cross_device_ops)
     self._auto_shard_dataset = auto_shard_dataset
 
   def _make_dataset_iterator(self, dataset):
@@ -131,24 +188,10 @@ class MirroredExtended(CoreMirroredExtended):
     Returns:
       An `InputIterator` which returns inputs for each step of the computation.
     """
-    if self._cluster_spec:
-      worker_device_pairs = self._worker_devices
-    else:
-      worker = device_util.canonicalize("/device:CPU:0")
-      worker_device_pairs = [(worker, self._devices)]
-    return values.DatasetIterator(dataset, worker_device_pairs)
-
-  def _distribute_dataset(self, dataset_fn):
-    if self._cluster_spec:
-      return values.MultiWorkerDataset(
-          functools.partial(self._call_dataset_fn, dataset_fn),
-          self._worker_devices,
-          auto_shard=self._auto_shard_dataset)
-    else:
-      return values.PerReplicaDataset(
-          self._call_dataset_fn(dataset_fn), self._devices)
+    return input_lib.DatasetIterator(dataset, self._input_workers)
 
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property
   def _global_batch_size(self):
+    """The contrib version of Mirrored strategy uses per-replica batch size."""
     return False

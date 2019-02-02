@@ -29,11 +29,11 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class MakeCsvDatasetTest(test_base.DatasetTestBase):
 
   def _make_csv_dataset(self, filenames, batch_size, num_epochs=1, **kwargs):
@@ -75,7 +75,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
 
   def _verify_output(
       self,
-      sess,
       dataset,
       batch_size,
       num_epochs,
@@ -83,7 +82,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
       expected_output,
       expected_keys,
   ):
-    nxt = dataset.make_one_shot_iterator().get_next()
+    get_next = self.getNext(dataset)
 
     for expected_features in self._next_expected_batch(
         expected_output,
@@ -91,7 +90,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         batch_size,
         num_epochs,
     ):
-      actual_features = self.evaluate(nxt)
+      actual_features = self.evaluate(get_next())
 
       if label_name is not None:
         expected_labels = expected_features.pop(label_name)
@@ -103,7 +102,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         self.assertAllEqual(expected_features[k], actual_features[k])
 
     with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(nxt)
+      self.evaluate(get_next())
 
   def _test_dataset(self,
                     inputs,
@@ -117,18 +116,15 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
     # Convert str type because py3 tf strings are bytestrings
     filenames = self._setup_files(
         inputs, compression_type=kwargs.get("compression_type", None))
-    with ops.Graph().as_default() as g:
-      with self.session(graph=g) as sess:
-        dataset = self._make_csv_dataset(
-            filenames,
-            batch_size=batch_size,
-            num_epochs=num_epochs,
-            label_name=label_name,
-            **kwargs)
-        self._verify_output(sess, dataset, batch_size, num_epochs, label_name,
-                            expected_output, expected_keys)
+    dataset = self._make_csv_dataset(
+        filenames,
+        batch_size=batch_size,
+        num_epochs=num_epochs,
+        label_name=label_name,
+        **kwargs)
+    self._verify_output(dataset, batch_size, num_epochs, label_name,
+                        expected_output, expected_keys)
 
-  @test_util.run_deprecated_v1
   def testMakeCSVDataset(self):
     """Tests making a CSV dataset with keys and defaults provided."""
     record_defaults = [
@@ -160,7 +156,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         column_defaults=record_defaults,
     )
 
-  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withBatchSizeAndEpochs(self):
     """Tests making a CSV dataset with keys and defaults provided."""
     record_defaults = [
@@ -192,7 +187,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         column_defaults=record_defaults,
     )
 
-  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withCompressionType(self):
     """Tests `compression_type` argument."""
     record_defaults = [
@@ -261,7 +255,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
           label_name="not_a_real_label",
           column_names=column_names)
 
-  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withNoLabel(self):
     """Tests making a CSV dataset with no label provided."""
     record_defaults = [
@@ -291,7 +284,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         column_defaults=record_defaults,
     )
 
-  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withNoHeader(self):
     """Tests that datasets can be created from CSV files with no header line.
     """
@@ -353,7 +345,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         column_defaults=record_defaults,
     )
 
-  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withNoColNames(self):
     """Tests that datasets can be created when column names are not specified.
 
@@ -458,7 +449,28 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
         header=True,
     )
 
-  @test_util.run_deprecated_v1
+  def testMakeCSVDataset_withNAValuesAndFieldDelim(self):
+    """Tests that datasets can be created from different delim and na_value."""
+    column_names = ["col%d" % i for i in range(5)]
+    inputs = [["0 1 2 3 4", "5 6 7 8 9"], ["10 11 12 13 14", "15 16 17 ? 19"]]
+    expected_output = [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9], [10, 11, 12, 13, 14],
+                       [15, 16, 17, 0, 19]]
+    label = "col0"
+
+    self._test_dataset(
+        inputs,
+        expected_output=expected_output,
+        expected_keys=column_names,
+        column_names=column_names,
+        label_name=label,
+        batch_size=1,
+        num_epochs=1,
+        shuffle=False,
+        header=False,
+        na_value="?",
+        field_delim=" ",
+    )
+
   def testMakeCSVDataset_withSelectCols(self):
     record_defaults = [
         constant_op.constant([], dtypes.int32),
@@ -565,7 +577,6 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
           label_name=None,
           select_columns=["invalid_col_name"])
 
-  @test_util.run_deprecated_v1
   def testMakeCSVDataset_withShuffle(self):
     record_defaults = [
         constant_op.constant([], dtypes.int32),
@@ -590,69 +601,65 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
 
     total_records = 20
     for batch_size in [1, 2]:
-      with ops.Graph().as_default() as g:
-        with self.session(graph=g) as sess:
-          # Test that shuffling with the same seed produces the same result
-          dataset1 = self._make_csv_dataset(
-              filenames,
-              column_defaults=record_defaults,
-              column_names=column_names,
-              batch_size=batch_size,
-              header=True,
-              shuffle=True,
-              shuffle_seed=5,
-              num_epochs=2,
-          )
-          dataset2 = self._make_csv_dataset(
-              filenames,
-              column_defaults=record_defaults,
-              column_names=column_names,
-              batch_size=batch_size,
-              header=True,
-              shuffle=True,
-              shuffle_seed=5,
-              num_epochs=2,
-          )
-          outputs1 = dataset1.make_one_shot_iterator().get_next()
-          outputs2 = dataset2.make_one_shot_iterator().get_next()
-          for _ in range(total_records // batch_size):
-            batch1 = nest.flatten(self.evaluate(outputs1))
-            batch2 = nest.flatten(self.evaluate(outputs2))
-            for i in range(len(batch1)):
-              self.assertAllEqual(batch1[i], batch2[i])
+      # Test that shuffling with the same seed produces the same result
+      dataset1 = self._make_csv_dataset(
+          filenames,
+          column_defaults=record_defaults,
+          column_names=column_names,
+          batch_size=batch_size,
+          header=True,
+          shuffle=True,
+          shuffle_seed=5,
+          num_epochs=2,
+      )
+      dataset2 = self._make_csv_dataset(
+          filenames,
+          column_defaults=record_defaults,
+          column_names=column_names,
+          batch_size=batch_size,
+          header=True,
+          shuffle=True,
+          shuffle_seed=5,
+          num_epochs=2,
+      )
+      next1 = self.getNext(dataset1)
+      next2 = self.getNext(dataset2)
+      for _ in range(total_records // batch_size):
+        batch1 = nest.flatten(self.evaluate(next1()))
+        batch2 = nest.flatten(self.evaluate(next2()))
+        for i in range(len(batch1)):
+          self.assertAllEqual(batch1[i], batch2[i])
 
-      with ops.Graph().as_default() as g:
-        with self.session(graph=g) as sess:
-          # Test that shuffling with a different seed produces different results
-          dataset1 = self._make_csv_dataset(
-              filenames,
-              column_defaults=record_defaults,
-              column_names=column_names,
-              batch_size=batch_size,
-              header=True,
-              shuffle=True,
-              shuffle_seed=5,
-              num_epochs=2,
-          )
-          dataset2 = self._make_csv_dataset(
-              filenames,
-              column_defaults=record_defaults,
-              column_names=column_names,
-              batch_size=batch_size,
-              header=True,
-              shuffle=True,
-              shuffle_seed=6,
-              num_epochs=2,
-          )
-          outputs1 = dataset1.make_one_shot_iterator().get_next()
-          outputs2 = dataset2.make_one_shot_iterator().get_next()
-          all_equal = False
-          for _ in range(total_records // batch_size):
-            batch1 = nest.flatten(self.evaluate(outputs1))
-            batch2 = nest.flatten(self.evaluate(outputs2))
-            for i in range(len(batch1)):
-              all_equal = all_equal and np.array_equal(batch1[i], batch2[i])
-          self.assertFalse(all_equal)
+      # Test that shuffling with a different seed produces different results
+      dataset1 = self._make_csv_dataset(
+          filenames,
+          column_defaults=record_defaults,
+          column_names=column_names,
+          batch_size=batch_size,
+          header=True,
+          shuffle=True,
+          shuffle_seed=5,
+          num_epochs=2,
+      )
+      dataset2 = self._make_csv_dataset(
+          filenames,
+          column_defaults=record_defaults,
+          column_names=column_names,
+          batch_size=batch_size,
+          header=True,
+          shuffle=True,
+          shuffle_seed=6,
+          num_epochs=2,
+      )
+      next1 = self.getNext(dataset1)
+      next2 = self.getNext(dataset2)
+      all_equal = False
+      for _ in range(total_records // batch_size):
+        batch1 = nest.flatten(self.evaluate(next1()))
+        batch2 = nest.flatten(self.evaluate(next2()))
+        for i in range(len(batch1)):
+          all_equal = all_equal and np.array_equal(batch1[i], batch2[i])
+      self.assertFalse(all_equal)
 
   def testIndefiniteRepeatShapeInference(self):
     column_names = ["col%d" % i for i in range(5)]

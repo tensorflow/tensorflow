@@ -26,8 +26,8 @@ using uint8 = std::uint8_t;
 
 class ResizeBilinearOpModel : public SingleOpModel {
  public:
-  ResizeBilinearOpModel(const TensorData& input,
-                        std::initializer_list<int> size_data = {}) {
+  explicit ResizeBilinearOpModel(const TensorData& input,
+                                 std::initializer_list<int> size_data = {}) {
     bool const_size = size_data.size() != 0;
     input_ = AddInput(input);
     if (const_size) {

@@ -18,10 +18,67 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.client import session
+from tensorflow.python.distribute.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import UnionClusterResolver
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
+
+mock = test.mock
+
+
+class MockBaseClusterResolver(ClusterResolver):
+
+  def cluster_spec(self):
+    return None
+
+  def master(self, task_type=None, task_id=None, rpc_layer=None):
+    return ""
+
+  def environment(self):
+    return ""
+
+
+class BaseClusterResolverTest(test.TestCase):
+
+  @mock.patch.object(session.BaseSession, "list_devices")
+  def testNumAcceleratorsSuccess(self, mock_list_devices):
+    device_names = [
+        "/job:worker/task:0/device:GPU:0",
+        "/job:worker/task:0/device:GPU:1",
+        "/job:worker/task:0/device:GPU:2",
+        "/job:worker/task:0/device:GPU:3",
+    ]
+    device_list = [
+        session._DeviceAttributes(
+            name, "GPU", 1024, 0) for name in device_names
+    ]
+    mock_list_devices.return_value = device_list
+
+    resolver = MockBaseClusterResolver()
+    self.assertEqual(resolver.num_accelerators(), {"GPU": 4})
+
+  @mock.patch.object(session.BaseSession, "list_devices")
+  def testNumAcceleratorsMultiDeviceSuccess(self, mock_list_devices):
+    device_names = [
+        "/job:worker/task:0/device:TPU:0",
+        "/job:worker/task:0/device:TPU:1",
+        "/job:worker/task:0/device:TPU:2",
+        "/job:worker/task:0/device:TPU:3",
+        "/job:worker/task:0/device:GPU:0",
+        "/job:worker/task:0/device:GPU:1",
+        "/job:worker/task:0/device:GPU:2",
+        "/job:worker/task:0/device:GPU:3",
+    ]
+    device_list = [
+        session._DeviceAttributes(
+            name, name[26:29], 1024, 0) for name in device_names
+    ]
+    mock_list_devices.return_value = device_list
+
+    resolver = MockBaseClusterResolver()
+    self.assertEqual(resolver.num_accelerators(), {"TPU": 4, "GPU": 4})
 
 
 class UnionClusterResolverTest(test.TestCase):
@@ -64,14 +121,14 @@ class UnionClusterResolverTest(test.TestCase):
     })
 
     simple_resolver = SimpleClusterResolver(base_cluster_spec, task_type="ps",
-                                            task_index=1, environment="cloud",
-                                            num_accelerators_per_worker=8,
+                                            task_id=1, environment="cloud",
+                                            num_accelerators=8,
                                             rpc_layer="grpc")
 
     self.assertEqual(simple_resolver.task_type, "ps")
-    self.assertEqual(simple_resolver.task_index, 1)
+    self.assertEqual(simple_resolver.task_id, 1)
     self.assertEqual(simple_resolver.environment, "cloud")
-    self.assertEqual(simple_resolver.num_accelerators_per_worker(), 8)
+    self.assertEqual(simple_resolver.num_accelerators(), 8)
     self.assertEqual(simple_resolver.rpc_layer, "grpc")
 
   def testOverrideSimpleClusterResolver(self):
@@ -81,16 +138,16 @@ class UnionClusterResolverTest(test.TestCase):
     })
 
     simple_resolver = SimpleClusterResolver(base_cluster_spec, task_type="ps",
-                                            task_index=1, environment="cloud",
-                                            num_accelerators_per_worker=8,
+                                            task_id=1, environment="cloud",
+                                            num_accelerators=8,
                                             rpc_layer="grpc")
 
     simple_resolver.task_type = "worker"
-    simple_resolver.task_index = 2
+    simple_resolver.task_id = 2
     simple_resolver.rpc_layer = "http"
 
     self.assertEqual(simple_resolver.task_type, "worker")
-    self.assertEqual(simple_resolver.task_index, 2)
+    self.assertEqual(simple_resolver.task_id, 2)
     self.assertEqual(simple_resolver.rpc_layer, "http")
 
   def testSimpleOverrideMasterWithTaskIndexZero(self):
@@ -129,8 +186,8 @@ class UnionClusterResolverTest(test.TestCase):
         "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
     })
     resolver1 = SimpleClusterResolver(cluster_spec_1, task_type="ps",
-                                      task_index=1, environment="cloud",
-                                      num_accelerators_per_worker=8,
+                                      task_id=1, environment="cloud",
+                                      num_accelerators=8,
                                       rpc_layer="grpc")
 
     cluster_spec_2 = server_lib.ClusterSpec({
@@ -138,24 +195,24 @@ class UnionClusterResolverTest(test.TestCase):
         "worker": ["worker3:2222", "worker4:2222", "worker5:2222"]
     })
     resolver2 = SimpleClusterResolver(cluster_spec_2, task_type="worker",
-                                      task_index=2, environment="local",
-                                      num_accelerators_per_worker=16,
+                                      task_id=2, environment="local",
+                                      num_accelerators=16,
                                       rpc_layer="http")
 
     union_resolver = UnionClusterResolver(resolver1, resolver2)
 
     self.assertEqual(union_resolver.task_type, "ps")
-    self.assertEqual(union_resolver.task_index, 1)
+    self.assertEqual(union_resolver.task_id, 1)
     self.assertEqual(union_resolver.environment, "cloud")
-    self.assertEqual(union_resolver.num_accelerators_per_worker(), 8)
+    self.assertEqual(union_resolver.num_accelerators(), 8)
     self.assertEqual(union_resolver.rpc_layer, "grpc")
 
     union_resolver.task_type = "worker"
-    union_resolver.task_index = 2
+    union_resolver.task_id = 2
     union_resolver.rpc_layer = "http"
 
     self.assertEqual(union_resolver.task_type, "worker")
-    self.assertEqual(union_resolver.task_index, 2)
+    self.assertEqual(union_resolver.task_id, 2)
     self.assertEqual(union_resolver.rpc_layer, "http")
 
   def testTwoNonOverlappingJobMergedClusterResolver(self):

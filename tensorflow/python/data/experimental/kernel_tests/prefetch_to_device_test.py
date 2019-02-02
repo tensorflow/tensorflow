@@ -29,6 +29,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+# TODO(b/117581999): add eager coverage when supported.
 class PrefetchToDeviceTest(test_base.DatasetTestBase):
 
   @test_util.run_deprecated_v1
@@ -38,7 +39,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.prefetch_to_device("/cpu:1"))
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -66,7 +67,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
             "/job:localhost/replica:0/task:0/device:CPU:0"))
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -92,7 +93,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.prefetch_to_device("/cpu:1"))
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -123,7 +124,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.prefetch_to_device("/cpu:1"))
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -153,10 +154,12 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     device_dataset = host_dataset.apply(
         prefetching_ops.prefetch_to_device("/gpu:0"))
 
-    iterator = device_dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_initializable_iterator(device_dataset)
     next_element = iterator.get_next()
 
-    with self.cached_session():
+    with self.cached_session(
+        config=config_pb2.ConfigProto(allow_soft_placement=False)):
+      self.evaluate(iterator.initializer)
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -169,7 +172,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
         prefetching_ops.prefetch_to_device("/cpu:1"))
 
     with ops.device("/cpu:1"):
-      iterator = device_dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(device_dataset)
       next_element = iterator.get_next()
 
     self.assertEqual(host_dataset.output_types, device_dataset.output_types)
@@ -201,10 +204,11 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     device_dataset = host_dataset.apply(
         prefetching_ops.prefetch_to_device("/gpu:0"))
 
-    iterator = device_dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(device_dataset)
     next_element = iterator.get_next()
 
-    with self.cached_session():
+    with self.cached_session(
+        config=config_pb2.ConfigProto(allow_soft_placement=False)):
       self.evaluate(iterator.initializer)
       for i in range(5):
         self.assertEqual(i, self.evaluate(next_element))

@@ -1,0 +1,11 @@
+--- a/Eigen/src/Core/products/GeneralBlockPanelKernel.h	2019-01-22 20:46:51.000000000 -0800
++++ b/Eigen/src/Core/products/GeneralBlockPanelKernel.h	2019-01-25 13:48:49.000000000 -0800
+@@ -1031,7 +1031,7 @@
+ 
+   EIGEN_STRONG_INLINE void madd(const LhsPacket& a, const RhsPacket& b, AccPacket& c, RhsPacket& /*tmp*/, const FixedInt<0>&) const
+   {
+-    c += a * b;
++    c = vfmaq_n_f32(c, a, b);
+   }
+ 
+   EIGEN_STRONG_INLINE void madd(const LhsPacket& a, const RhsPacketx4& b, AccPacket& c, RhsPacket& /*tmp*/, const FixedInt<0>&) const

@@ -533,10 +533,13 @@ class FlattenTest(test.TestCase):
     self.assertEqual(y.get_shape().as_list(), [None, 6])
 
   @test_util.run_deprecated_v1
-  def testFlattenValueError(self):
+  def testFlatten0D(self):
     x = array_ops.placeholder(shape=(None,), dtype='float32')
-    with self.assertRaises(ValueError):
-      core_layers.Flatten()(x)
+    y = core_layers.Flatten()(x)
+    with self.cached_session() as sess:
+      np_output = sess.run(y, feed_dict={x: np.zeros((5,))})
+    self.assertEqual(list(np_output.shape), [5, 1])
+    self.assertEqual(y.shape.as_list(), [None, 1])
 
   @test_util.run_deprecated_v1
   def testFlattenUnknownAxes(self):

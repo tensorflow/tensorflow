@@ -45,19 +45,20 @@ DOCLINES = __doc__.split('\n')
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.12.0-rc0'
+_VERSION = '1.12.0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
     'astor >= 0.6.0',
     'gast >= 0.2.0',
+    'google_pasta >= 0.1.1',
     'keras_applications >= 1.0.6',
     'keras_preprocessing >= 1.0.5',
-    'numpy >= 1.13.3',
+    'numpy >= 1.14.5, < 2.0',
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
     'tensorboard >= 1.12.0, < 1.13.0',
-    'tensorflow_estimator >= 1.10.0',
+    'tensorflow_estimator >= 1.13.0rc0, < 1.14.0rc0',
     'termcolor >= 1.1.0',
 ]
 
@@ -87,7 +88,9 @@ if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
       REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.13.0a0, < 1.14.0a0'
-    if 'tensorflow_estimator' in pkg:
+    elif 'tensorflow_estimator' in pkg and '2.0' in project_name:
+      REQUIRED_PACKAGES[i] = 'tensorflow-estimator-2.0-preview'
+    elif 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly'
 
 # weakref.finalize and enum were introduced in Python 3.4
@@ -246,7 +249,7 @@ setup(
     url='https://www.tensorflow.org/',
     download_url='https://github.com/tensorflow/tensorflow/tags',
     author='Google Inc.',
-    author_email='opensource@google.com',
+    author_email='packages@tensorflow.org',
     # Contained modules and scripts.
     packages=find_packages(),
     entry_points={

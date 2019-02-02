@@ -26,6 +26,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training import moving_averages
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import saver
+from tensorflow.python.training.saving import saveable_object_util
 
 
 class MovingAverageOptimizer(optimizer.Optimizer):
@@ -165,7 +166,7 @@ class MovingAverageOptimizer(optimizer.Optimizer):
     if var_list is None:
       var_list = variables.global_variables()
     if not isinstance(var_list, dict):
-      var_list = saver.BaseSaverBuilder.OpListToDict(var_list)
+      var_list = saveable_object_util.op_list_to_dict(var_list)
 
     v_name_to_tensor = {}
     for k, tensor_or_list in six.iteritems(var_list):

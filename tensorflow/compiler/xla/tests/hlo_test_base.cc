@@ -139,7 +139,8 @@ std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
     const string& name) {
   return absl::make_unique<VerifiedHloModule>(
       name, GetModuleConfigForTest(), verifier_layout_sensitive_,
-      allow_mixed_precision_in_hlo_verifier_);
+      allow_mixed_precision_in_hlo_verifier_,
+      backend().compiler()->ShapeSizeBytesFunction());
 }
 
 StatusOr<std::unique_ptr<VerifiedHloModule>>
@@ -147,7 +148,8 @@ HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
                                           const HloModuleConfig& config) {
   auto module = absl::make_unique<VerifiedHloModule>(
       TestName(), config, verifier_layout_sensitive_,
-      allow_mixed_precision_in_hlo_verifier_);
+      allow_mixed_precision_in_hlo_verifier_,
+      backend().compiler()->ShapeSizeBytesFunction());
   TF_RETURN_IF_ERROR(ParseHloString(hlo_text, module.get()));
   TF_RETURN_IF_ERROR(module->Verify());
   return std::move(module);
@@ -181,6 +183,7 @@ DebugOptions HloTestBase::GetDebugOptionsForTest() {
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
+  debug_options.set_xla_hlo_evaluator_use_fast_path(true);
   return debug_options;
 }
 

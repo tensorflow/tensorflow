@@ -142,21 +142,18 @@ def StreamingFilesDataset(files,
       source_dataset = source_dataset.shuffle(
           buffer_size=filename_shuffle_buffer_size)
 
-    # NOTE: We perform the `repeat` on the source dataset, because the output
-    # dataset does not currently have enough information to recreate an iterator
-    # over the source dataset when it reaches the end.
-    source_dataset = source_dataset.repeat(num_epochs)
-
     source_dataset = source_dataset.apply(
         interleave_ops.parallel_interleave(
             reader_fn, cycle_length=num_parallel_reads, sloppy=sloppy))
+
+    source_dataset = source_dataset.repeat(num_epochs)
 
     if batch_transfer_size:
       source_dataset = source_dataset.batch(batch_transfer_size)
 
     source_dataset = source_dataset.prefetch(1)
 
-    source_iterator = source_dataset.make_one_shot_iterator()
+    source_iterator = dataset_ops.make_one_shot_iterator(source_dataset)
     source_handle = source_iterator.string_handle()
 
   @function.Defun(dtypes.string)

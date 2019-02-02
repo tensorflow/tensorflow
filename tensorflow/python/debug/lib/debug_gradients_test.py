@@ -36,6 +36,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training import gradient_descent
 
 
+@test_util.run_deprecated_v1
 class IdentifyGradientTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -54,7 +55,6 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
     debug_gradients.clear_gradient_debuggers()
 
-  @test_util.run_deprecated_v1
   def testIdentifyGradientGivesCorrectTensorObjectWithoutContextManager(self):
     grad_debugger = debug_gradients.GradientsDebugger()
     id_grad_w = grad_debugger.identify_gradient(self.w)
@@ -85,7 +85,6 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
     self.assertIsInstance(w_grad, ops.Tensor)
     self.assertAllClose(1.0, self.sess.run(w_grad))
 
-  @test_util.run_deprecated_v1
   def testIdentifyGradientGivesCorrectTensorObjectWithTfGradients(self):
     grad_debugger = debug_gradients.GradientsDebugger()
     id_grad_w = grad_debugger.identify_gradient(self.w)
@@ -117,7 +116,6 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
     self.assertIsInstance(w_grad, ops.Tensor)
     self.assertAllClose(1.0, self.sess.run(w_grad))
 
-  @test_util.run_deprecated_v1
   def testCallingIdentifyGradientTwiceWithTheSameGradientsDebuggerErrors(self):
     grad_debugger = debug_gradients.GradientsDebugger()
     grad_debugger.identify_gradient(self.w)
@@ -125,7 +123,6 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
                                  "The graph already contains an op named .*"):
       grad_debugger.identify_gradient(self.w)
 
-  @test_util.run_deprecated_v1
   def testIdentifyGradientWorksOnMultipleLosses(self):
     grad_debugger_1 = debug_gradients.GradientsDebugger()
     grad_debugger_2 = debug_gradients.GradientsDebugger()
@@ -154,7 +151,6 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
     self.assertAllClose(2.0 * 5.0, self.sess.run(dz1_dy))
     self.assertAllClose(0.5 * (5.0**-0.5), self.sess.run(dz2_dy))
 
-  @test_util.run_deprecated_v1
   def testIdentifyGradientRaisesLookupErrorForUnknownXTensor(self):
     grad_debugger_1 = debug_gradients.GradientsDebugger()
     grad_debugger_2 = debug_gradients.GradientsDebugger()
@@ -175,7 +171,6 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
         r"This GradientsDebugger has not received any gradient tensor for "):
       grad_debugger_2.gradient_tensor(self.w)
 
-  @test_util.run_deprecated_v1
   def testIdentifyGradientRaisesTypeErrorForNonTensorOrTensorNameInput(self):
     grad_debugger = debug_gradients.GradientsDebugger()
     with self.assertRaisesRegexp(
@@ -184,7 +179,6 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
         r"has type .*Operation.*"):
       grad_debugger.gradient_tensor(variables.global_variables_initializer())
 
-  @test_util.run_deprecated_v1
   def testIdentifyGradientTensorWorksWithGradientDescentOptimizer(self):
     grad_debugger = debug_gradients.GradientsDebugger()
     id_grad_w = grad_debugger.identify_gradient(self.w)
@@ -200,7 +194,6 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
     self.assertIsInstance(w_grad, ops.Tensor)
     self.assertAllClose(1.0, self.sess.run(w_grad))
 
-  @test_util.run_deprecated_v1
   def testWatchGradientsByXTensorNamesWorks(self):
     y = math_ops.add(self.w, -1.0, name="y")
 
@@ -227,7 +220,6 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
     self.assertIsInstance(w_grad, ops.Tensor)
     self.assertAllClose(1.0, self.sess.run(w_grad))
 
-  @test_util.run_deprecated_v1
   def testWatchGradientsByXTensorNamesWorksWithoutContextManager(self):
     y = math_ops.add(self.w, -1.0, name="y")
 
@@ -254,7 +246,6 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
     self.assertIsInstance(w_grad, ops.Tensor)
     self.assertAllClose(1.0, self.sess.run(w_grad))
 
-  @test_util.run_deprecated_v1
   def testWatchGradientsWorksOnRefTensor(self):
     y = math_ops.add(self.w, -1.0, name="y")
 
@@ -273,7 +264,6 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
     self.assertAllClose(3.0, self.sess.run(
         grad_debugger.gradient_tensor("u:0")))
 
-  @test_util.run_deprecated_v1
   def testWatchGradientsWorksOnMultipleTensors(self):
     y = math_ops.add(self.w, -1.0, name="y")
 
@@ -294,7 +284,6 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
     self.assertAllClose(3.0, self.sess.run(
         grad_debugger.gradient_tensor("u:0")))
 
-  @test_util.run_deprecated_v1
   def testWatchGradientsByXTensorsWorks(self):
     y = math_ops.add(self.w, -1.0, name="foo/y")
     z = math_ops.square(y, name="foo/z")
@@ -317,7 +306,6 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
     self.assertAllClose(10.0, self.sess.run(w_grad))
     self.assertAllClose(30.0, self.sess.run(u_grad))
 
-  @test_util.run_deprecated_v1
   def testWatchGradientsByTensorCanWorkOnMultipleLosses(self):
     y = math_ops.add(self.w, -1.0, name="y")
     z1 = math_ops.square(y, name="z1")
@@ -343,7 +331,6 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
     self.assertAllClose(2.0 * 5.0, self.sess.run(dz1_dy))
     self.assertAllClose(0.5 * (5.0**-0.5), self.sess.run(dz2_dy))
 
-  @test_util.run_deprecated_v1
   def testGradientsValuesFromDumpWorks(self):
     y = math_ops.add(self.w, -1.0, name="y")
     z = math_ops.square(y, name="z")

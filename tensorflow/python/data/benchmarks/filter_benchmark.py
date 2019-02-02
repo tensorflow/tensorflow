@@ -36,7 +36,10 @@ class FilterBenchmark(test.Benchmark):
     with ops.Graph().as_default():
       dataset = (
           dataset_ops.Dataset.from_tensors(True).repeat(None).filter(predicate))
-      iterator = dataset.make_one_shot_iterator()
+      options = dataset_ops.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      dataset = dataset.with_options(options)
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
       next_element = iterator.get_next()
 
       with session.Session() as sess:
@@ -51,12 +54,7 @@ class FilterBenchmark(test.Benchmark):
           deltas.append(end - start)
 
         median_wall_time = np.median(deltas) / 100
-        print("Filter dataset using %s. Median wall time: %f" %
-              (name, median_wall_time))
-        self.report_benchmark(
-            iters=100,
-            wall_time=median_wall_time,
-            name=name)
+        self.report_benchmark(iters=100, wall_time=median_wall_time, name=name)
 
   def benchmarkSimpleFunction(self):
     self._benchmark(array_ops.identity, "simple_function")

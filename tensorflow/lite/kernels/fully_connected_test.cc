@@ -296,6 +296,10 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
     SymmetricQuantizeAndPopulate(weights_, data);
   }
 
+  void SetSignedWeights(std::initializer_list<float> f) {
+    SignedSymmetricQuantizeAndPopulate(weights_, f);
+  }
+
   void SetInput(const std::vector<float>& f) { PopulateTensor(input_, f); }
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 
@@ -577,13 +581,41 @@ TEST_P(QuantizedFullyConnectedOpTest,
   }
 }
 
-TEST(HybridFullyConnectedOpTest, SimpleTestQuantized) {
+TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedUint8) {
   HybridFullyConnectedOpModel m(
       /*units=*/3, /*batches=*/2,
       /*input=*/{TensorType_FLOAT32, {2, 10}},
-      /*weights=*/{TensorType_UINT8, {3, 10}, -63.5, 64});  // PIE
+      /*weights=*/{TensorType_UINT8, {3, 10}, -63.5, 64});  // Hybrid
 
   m.SetWeights({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {
+                                     24, 25, 26,  //
+                                     58, 59, 60,  //
+                                 },
+                                 /*max_abs_error=*/1.3f)));
+}
+
+TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt8) {
+  HybridFullyConnectedOpModel m(
+      /*units=*/3, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {2, 10}},
+      /*weights=*/{TensorType_INT8, {3, 10}, -63.5, 64});  // Hybrid
+
+  m.SetSignedWeights({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
@@ -693,11 +725,11 @@ TEST_P(QuantizedFullyConnectedOpTest,
               ElementsAre(175, 177, 179, 243, 245, 247));
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     FloatFullyConnectedOpTest, FloatFullyConnectedOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     QuantizedFullyConnectedOpTest, QuantizedFullyConnectedOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMapNoPie)));
 

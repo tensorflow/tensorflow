@@ -101,27 +101,30 @@ TEST_F(LoopOptimizerTest, Basic) {
   LoopOptimizer optimizer;
   EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  std::unique_ptr<NodeMap> node_map;
-  std::unordered_map<const NodeDef*, std::vector<int>> frames;
-  int num_frames;
+  {  // Original graph.
+    GraphView view(&graph);
+    FrameView frames;
+    TF_EXPECT_OK(frames.InferFromGraphView(view));
 
-  node_map.reset(new NodeMap(&graph));
-  EXPECT_TRUE(IdentifyFrames(graph, &frames, &num_frames).ok());
-  EXPECT_EQ(num_frames, 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd")).size(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd")).back(), 0);
-  EXPECT_EQ(frames.at(node_map->GetNode("VariantAdd")).size(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("VariantAdd")).back(), 0);
+    EXPECT_EQ(frames.num_frames(), 1);
+    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).size(), 1);
+    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).back(), 0);
+    ASSERT_EQ(frames.Frames(*view.GetNode("VariantAdd")).size(), 1);
+    EXPECT_EQ(frames.Frames(*view.GetNode("VariantAdd")).back(), 0);
+  }
 
-  node_map.reset(new NodeMap(&output));
-  EXPECT_TRUE(IdentifyFrames(output, &frames, &num_frames).ok());
-  EXPECT_EQ(num_frames, 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd")).size(), 0);
-  EXPECT_EQ(frames.at(node_map->GetNode("VariantAdd")).size(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("VariantAdd")).back(), 0);
+  {  // Optimized graph.
+    GraphView view(&output);
+    FrameView frames;
+    TF_EXPECT_OK(frames.InferFromGraphView(view));
+
+    EXPECT_EQ(frames.num_frames(), 1);
+    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).size(), 0);
+    ASSERT_EQ(frames.Frames(*view.GetNode("VariantAdd")).size(), 1);
+    EXPECT_EQ(frames.Frames(*view.GetNode("VariantAdd")).back(), 0);
+  }
 }
 
 TEST_F(LoopOptimizerTest, Const) {
@@ -149,26 +152,29 @@ TEST_F(LoopOptimizerTest, Const) {
   LoopOptimizer optimizer;
   EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  std::unique_ptr<NodeMap> node_map;
-  std::unordered_map<const NodeDef*, std::vector<int>> frames;
-  int num_frames;
+  {  // Original graph.
+    GraphView view(&graph);
+    FrameView frames;
+    TF_EXPECT_OK(frames.InferFromGraphView(view));
 
-  node_map.reset(new NodeMap(&graph));
-  EXPECT_TRUE(IdentifyFrames(graph, &frames, &num_frames).ok());
-  EXPECT_EQ(num_frames, 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd")).size(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd")).back(), 0);
-  EXPECT_EQ(frames.at(node_map->GetNode("Const")).size(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("Const")).back(), 0);
+    EXPECT_EQ(frames.num_frames(), 1);
+    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).size(), 1);
+    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).back(), 0);
+    ASSERT_EQ(frames.Frames(*view.GetNode("Const")).size(), 1);
+    EXPECT_EQ(frames.Frames(*view.GetNode("Const")).back(), 0);
+  }
 
-  node_map.reset(new NodeMap(&output));
-  EXPECT_TRUE(IdentifyFrames(output, &frames, &num_frames).ok());
-  EXPECT_EQ(num_frames, 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd")).size(), 0);
-  EXPECT_EQ(frames.at(node_map->GetNode("Const")).size(), 0);
+  {  // Optimized graph.
+    GraphView view(&output);
+    FrameView frames;
+    TF_EXPECT_OK(frames.InferFromGraphView(view));
+
+    EXPECT_EQ(frames.num_frames(), 1);
+    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).size(), 0);
+    ASSERT_EQ(frames.Frames(*view.GetNode("Const")).size(), 0);
+  }
 }
 
 TEST_F(LoopOptimizerTest, ControlOutput) {
@@ -197,24 +203,27 @@ TEST_F(LoopOptimizerTest, ControlOutput) {
   LoopOptimizer optimizer;
   EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  std::unique_ptr<NodeMap> node_map;
-  std::unordered_map<const NodeDef*, std::vector<int>> frames;
-  int num_frames;
+  {  // Original graph.
+    GraphView view(&graph);
+    FrameView frames;
+    TF_EXPECT_OK(frames.InferFromGraphView(view));
 
-  node_map.reset(new NodeMap(&graph));
-  EXPECT_TRUE(IdentifyFrames(graph, &frames, &num_frames).ok());
-  EXPECT_EQ(num_frames, 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd")).size(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd")).back(), 0);
+    EXPECT_EQ(frames.num_frames(), 1);
+    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).size(), 1);
+    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).back(), 0);
+  }
 
-  node_map.reset(new NodeMap(&output));
-  EXPECT_TRUE(IdentifyFrames(output, &frames, &num_frames).ok());
-  EXPECT_EQ(num_frames, 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd")).size(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd")).back(), 0);
+  {  // Optimized graph.
+    GraphView view(&output);
+    FrameView frames;
+    TF_EXPECT_OK(frames.InferFromGraphView(view));
+
+    EXPECT_EQ(frames.num_frames(), 1);
+    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).size(), 1);
+    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).back(), 0);
+  }
 }
 
 TEST_F(LoopOptimizerTest, NestedLoop1) {
@@ -258,31 +267,34 @@ TEST_F(LoopOptimizerTest, NestedLoop1) {
   LoopOptimizer optimizer;
   EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  std::unique_ptr<NodeMap> node_map;
-  std::unordered_map<const NodeDef*, std::vector<int>> frames;
-  int num_frames;
+  {  // Original graph.
+    GraphView view(&graph);
+    FrameView frames;
+    TF_EXPECT_OK(frames.InferFromGraphView(view));
 
-  node_map.reset(new NodeMap(&graph));
-  EXPECT_TRUE(IdentifyFrames(graph, &frames, &num_frames).ok());
-  EXPECT_EQ(num_frames, 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd2")).size(), 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd2")).back(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("VariantAdd2")).size(), 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("VariantAdd2")).back(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd")).size(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd")).back(), 0);
+    EXPECT_EQ(frames.num_frames(), 2);
+    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).size(), 2);
+    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).back(), 1);
+    ASSERT_EQ(frames.Frames(*view.GetNode("VariantAdd2")).size(), 2);
+    EXPECT_EQ(frames.Frames(*view.GetNode("VariantAdd2")).back(), 1);
+    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).size(), 1);
+    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).back(), 0);
+  }
 
-  node_map.reset(new NodeMap(&output));
-  EXPECT_TRUE(IdentifyFrames(output, &frames, &num_frames).ok());
-  EXPECT_EQ(num_frames, 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd2")).size(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd2")).back(), 0);
-  EXPECT_EQ(frames.at(node_map->GetNode("VariantAdd2")).size(), 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("VariantAdd2")).back(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd")).size(), 0);
+  {  // Optimized graph.
+    GraphView view(&output);
+    FrameView frames;
+    TF_EXPECT_OK(frames.InferFromGraphView(view));
+
+    EXPECT_EQ(frames.num_frames(), 2);
+    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).size(), 1);
+    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).back(), 0);
+    ASSERT_EQ(frames.Frames(*view.GetNode("VariantAdd2")).size(), 2);
+    EXPECT_EQ(frames.Frames(*view.GetNode("VariantAdd2")).back(), 1);
+    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd")).size(), 0);
+  }
 }
 
 TEST_F(LoopOptimizerTest, NestedLoop2) {
@@ -326,27 +338,30 @@ TEST_F(LoopOptimizerTest, NestedLoop2) {
   LoopOptimizer optimizer;
   EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  std::unique_ptr<NodeMap> node_map;
-  std::unordered_map<const NodeDef*, std::vector<int>> frames;
-  int num_frames;
+  {  // Original graph.
+    GraphView view(&graph);
+    FrameView frames;
+    TF_EXPECT_OK(frames.InferFromGraphView(view));
 
-  node_map.reset(new NodeMap(&graph));
-  EXPECT_TRUE(IdentifyFrames(graph, &frames, &num_frames).ok());
-  EXPECT_EQ(num_frames, 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd2")).size(), 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd2")).back(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("VariantAdd2")).size(), 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("VariantAdd2")).back(), 1);
+    EXPECT_EQ(frames.num_frames(), 2);
+    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).size(), 2);
+    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).back(), 1);
+    ASSERT_EQ(frames.Frames(*view.GetNode("VariantAdd2")).size(), 2);
+    EXPECT_EQ(frames.Frames(*view.GetNode("VariantAdd2")).back(), 1);
+  }
 
-  node_map.reset(new NodeMap(&output));
-  EXPECT_TRUE(IdentifyFrames(output, &frames, &num_frames).ok());
-  EXPECT_EQ(num_frames, 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd2")).size(), 0);
-  EXPECT_EQ(frames.at(node_map->GetNode("VariantAdd2")).size(), 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("VariantAdd2")).back(), 1);
+  {  // Optimized graph.
+    GraphView view(&output);
+    FrameView frames;
+    TF_EXPECT_OK(frames.InferFromGraphView(view));
+
+    EXPECT_EQ(frames.num_frames(), 2);
+    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).size(), 0);
+    ASSERT_EQ(frames.Frames(*view.GetNode("VariantAdd2")).size(), 2);
+    EXPECT_EQ(frames.Frames(*view.GetNode("VariantAdd2")).back(), 1);
+  }
 }
 
 TEST_F(LoopOptimizerTest, NestedLoopConst1) {
@@ -390,28 +405,31 @@ TEST_F(LoopOptimizerTest, NestedLoopConst1) {
   LoopOptimizer optimizer;
   EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  std::unique_ptr<NodeMap> node_map;
-  std::unordered_map<const NodeDef*, std::vector<int>> frames;
-  int num_frames;
+  {  // Original graph.
+    GraphView view(&graph);
+    FrameView frames;
+    TF_EXPECT_OK(frames.InferFromGraphView(view));
 
-  node_map.reset(new NodeMap(&graph));
-  EXPECT_TRUE(IdentifyFrames(graph, &frames, &num_frames).ok());
-  EXPECT_EQ(num_frames, 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd2")).size(), 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd2")).back(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("Const2")).size(), 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("Const2")).back(), 1);
+    EXPECT_EQ(frames.num_frames(), 2);
+    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).size(), 2);
+    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).back(), 1);
+    ASSERT_EQ(frames.Frames(*view.GetNode("Const2")).size(), 2);
+    EXPECT_EQ(frames.Frames(*view.GetNode("Const2")).back(), 1);
+  }
 
-  node_map.reset(new NodeMap(&output));
-  EXPECT_TRUE(IdentifyFrames(output, &frames, &num_frames).ok());
-  EXPECT_EQ(num_frames, 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd2")).size(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd2")).back(), 0);
-  EXPECT_EQ(frames.at(node_map->GetNode("Const2")).size(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("Const2")).back(), 0);
+  {  // Optimized graph.
+    GraphView view(&output);
+    FrameView frames;
+    TF_EXPECT_OK(frames.InferFromGraphView(view));
+
+    EXPECT_EQ(frames.num_frames(), 2);
+    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).size(), 1);
+    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).back(), 0);
+    ASSERT_EQ(frames.Frames(*view.GetNode("Const2")).size(), 1);
+    EXPECT_EQ(frames.Frames(*view.GetNode("Const2")).back(), 0);
+  }
 }
 
 TEST_F(LoopOptimizerTest, NestedLoopConst2) {
@@ -455,26 +473,29 @@ TEST_F(LoopOptimizerTest, NestedLoopConst2) {
   LoopOptimizer optimizer;
   EnableOnlyLoopInvariantNodeMotion(&optimizer);
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_EXPECT_OK(status);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  std::unique_ptr<NodeMap> node_map;
-  std::unordered_map<const NodeDef*, std::vector<int>> frames;
-  int num_frames;
+  {  // Original graph.
+    GraphView view(&graph);
+    FrameView frames;
+    TF_EXPECT_OK(frames.InferFromGraphView(view));
 
-  node_map.reset(new NodeMap(&graph));
-  EXPECT_TRUE(IdentifyFrames(graph, &frames, &num_frames).ok());
-  EXPECT_EQ(num_frames, 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd2")).size(), 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd2")).back(), 1);
-  EXPECT_EQ(frames.at(node_map->GetNode("Const2")).size(), 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("Const2")).back(), 1);
+    EXPECT_EQ(frames.num_frames(), 2);
+    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).size(), 2);
+    EXPECT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).back(), 1);
+    ASSERT_EQ(frames.Frames(*view.GetNode("Const2")).size(), 2);
+    EXPECT_EQ(frames.Frames(*view.GetNode("Const2")).back(), 1);
+  }
 
-  node_map.reset(new NodeMap(&output));
-  EXPECT_TRUE(IdentifyFrames(output, &frames, &num_frames).ok());
-  EXPECT_EQ(num_frames, 2);
-  EXPECT_EQ(frames.at(node_map->GetNode("InvariantAdd2")).size(), 0);
-  EXPECT_EQ(frames.at(node_map->GetNode("Const2")).size(), 0);
+  {  // Optimized graph.
+    GraphView view(&output);
+    FrameView frames;
+    TF_EXPECT_OK(frames.InferFromGraphView(view));
+
+    EXPECT_EQ(frames.num_frames(), 2);
+    ASSERT_EQ(frames.Frames(*view.GetNode("InvariantAdd2")).size(), 0);
+    ASSERT_EQ(frames.Frames(*view.GetNode("Const2")).size(), 0);
+  }
 }
 
 void VerifyGraphsEqual(const GraphDef& original_graph,

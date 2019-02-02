@@ -63,8 +63,8 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Concatenate")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Concatenate")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -77,6 +77,18 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
 
     string DebugString() const override {
       return "ConcatenateDatasetOp::Dataset";
+    }
+
+    int64 Cardinality() const override {
+      int64 n1 = input_->Cardinality();
+      int64 n2 = to_concatenate_->Cardinality();
+      if (n1 == kInfiniteCardinality || n2 == kInfiniteCardinality) {
+        return kInfiniteCardinality;
+      }
+      if (n1 == kUnknownCardinality || n2 == kUnknownCardinality) {
+        return kUnknownCardinality;
+      }
+      return n1 + n2;
     }
 
    protected:

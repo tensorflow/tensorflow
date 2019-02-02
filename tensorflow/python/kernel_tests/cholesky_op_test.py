@@ -155,6 +155,7 @@ class CholeskyOpTest(test.TestCase):
           np.array([[[1., 2., 3.], [3., 4., 5.]], [[1., 2., 3.], [3., 4., 5.]]
                    ]))
 
+  @test_util.run_v1_only("b/120545219")
   def testWrongDimensions(self):
     tensor3 = constant_op.constant([1., 2.])
     with self.assertRaises(ValueError):
@@ -162,6 +163,7 @@ class CholeskyOpTest(test.TestCase):
     with self.assertRaises(ValueError):
       linalg_ops.cholesky(tensor3)
 
+  @test_util.disable_xla("This test never passed for XLA")  # all nan on XLA
   def testNotInvertibleCPU(self):
     # The input should be invertible.
     with self.session(use_gpu=True):
@@ -233,6 +235,7 @@ class CholeskyGradTest(test.TestCase):
     self.runFiniteDifferences(
         shapes, dtypes=(dtypes_lib.float64,), scalarTest=True)
 
+  @test_util.run_v1_only("b/120545219")
   def testTwoBlockMatrixComplexFloat(self):
     np.random.seed(0)
     shapes = self.getShapes([2 * self._backprop_block_size + 1])

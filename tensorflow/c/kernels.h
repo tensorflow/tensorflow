@@ -35,9 +35,9 @@ extern "C" {
 // `TF_RegisterKernelBuilder`, which will allow TF to construct user-provided
 // kernels when necessary.
 
-struct TF_KernelBuilder;
-struct TF_OpKernelConstruction;
-struct TF_OpKernelContext;
+typedef struct TF_KernelBuilder TF_KernelBuilder;
+typedef struct TF_OpKernelConstruction TF_OpKernelConstruction;
+typedef struct TF_OpKernelContext TF_OpKernelContext;
 
 // Allocates a new kernel builder and returns a pointer to it.
 //
@@ -84,6 +84,67 @@ TF_CAPI_EXPORT extern void TF_RegisterKernelBuilder(const char* kernel_name,
 // Deletes the given TF_KernelBuilder. This should be called only if the kernel
 // builder is not registered with TensorFlow via TF_RegisterKernelBuilder.
 TF_CAPI_EXPORT extern void TF_DeleteKernelBuilder(TF_KernelBuilder* builder);
+
+// --------------------------------------------------------------------------
+// OpKernelContext routines
+
+// TF_NumInputs returns the number of inputs available in ctx.
+TF_CAPI_EXPORT extern int TF_NumInputs(TF_OpKernelContext* ctx);
+
+// TF_NumOutputs returns the number of outputs to be placed in *ctx by the
+// kernel.
+TF_CAPI_EXPORT extern int TF_NumOutputs(TF_OpKernelContext* ctx);
+
+// Retrieves the ith input from ctx. If TF_GetCode(status) is TF_OK, *tensor is
+// populated and its ownership is passed to the caller. In any other case,
+// *tensor is not modified.
+//
+// If i < 0 or i >= TF_NumInputs(ctx), *status is set to TF_OUT_OF_RANGE.
+TF_CAPI_EXPORT extern void TF_GetInput(TF_OpKernelContext* ctx, int i,
+                                       TF_Tensor** tensor, TF_Status* status);
+
+// Sets the ith output of ctx to tensor. If TF_GetCode(status) is anything but
+// TF_OK, ctx is left unmodified.
+//
+// If i < 0 or i >= TF_NumOutputs(ctx), *status is set to TF_OUT_OF_RANGE.
+TF_CAPI_EXPORT extern void TF_SetOutput(TF_OpKernelContext* ctx, int i,
+                                        const TF_Tensor* tensor,
+                                        TF_Status* status);
+
+// Notifies the given OpKernelConstruction that kernel construction has failed.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_Failure(
+    TF_OpKernelConstruction* ctx, TF_Status* status);
+
+// Notifies the given OpKernelContext that the kernel's compute function has
+// failed.
+TF_CAPI_EXPORT extern void TF_OpKernelContext_Failure(TF_OpKernelContext* ctx,
+                                                      TF_Status* status);
+
+// Returns the expected output data type of the ith output. If i < 0 or
+// i >= TF_NumOutputs(ctx), the program aborts.
+TF_CAPI_EXPORT extern TF_DataType TF_ExpectedOutputDataType(
+    TF_OpKernelContext* ctx, int i);
+
+// Returns the step ID of the given context.
+TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);
+
+// Interprets the named kernel construction attribute as a TF_DataType and
+// places it into *val. *status is set to TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// TF_DataType, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrType(
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_DataType* val,
+    TF_Status* status);
+
+// Interprets the named kernel context attribute as a TF_DataType and places it
+// into *val. *status is set to TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// TF_DataType, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelContext_GetAttrType(
+    TF_OpKernelContext* ctx, const char* attr_name, TF_DataType* val,
+    TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

@@ -23,26 +23,24 @@ from tensorflow.python.data.experimental.ops import writers
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
-from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.lib.io import tf_record
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class TFRecordWriterTest(test_base.DatasetTestBase):
 
   def setUp(self):
     super(TFRecordWriterTest, self).setUp()
     self._num_records = 7
-    self.filename = array_ops.placeholder(dtypes.string, shape=[])
-    self.compression_type = array_ops.placeholder_with_default("", shape=[])
 
-    input_dataset = readers.TFRecordDataset([self.filename],
-                                            self.compression_type)
-    self.writer = writers.TFRecordWriter(
-        self._outputFilename(), self.compression_type).write(input_dataset)
+  def writer_fn(self, filename, compression_type=""):
+    input_dataset = readers.TFRecordDataset([filename], compression_type)
+    return writers.TFRecordWriter(self._outputFilename(),
+                                  compression_type).write(input_dataset)
 
   def _record(self, i):
     return compat.as_bytes("Record %d" % (i))
@@ -62,56 +60,39 @@ class TFRecordWriterTest(test_base.DatasetTestBase):
     return os.path.join(self.get_temp_dir(), "tf_record.out.txt")
 
   def testWrite(self):
-    with self.cached_session() as sess:
-      sess.run(
-          self.writer, feed_dict={
-              self.filename: self._createFile(),
-          })
+    self.evaluate(self.writer_fn(self._createFile()))
     for i, r in enumerate(tf_record.tf_record_iterator(self._outputFilename())):
       self.assertAllEqual(self._record(i), r)
 
   def testWriteZLIB(self):
     options = tf_record.TFRecordOptions(tf_record.TFRecordCompressionType.ZLIB)
-    with self.cached_session() as sess:
-      sess.run(
-          self.writer,
-          feed_dict={
-              self.filename: self._createFile(options),
-              self.compression_type: "ZLIB",
-          })
+    self.evaluate(
+        self.writer_fn(self._createFile(options), compression_type="ZLIB"))
     for i, r in enumerate(
         tf_record.tf_record_iterator(self._outputFilename(), options=options)):
       self.assertAllEqual(self._record(i), r)
 
   def testWriteGZIP(self):
     options = tf_record.TFRecordOptions(tf_record.TFRecordCompressionType.GZIP)
-    with self.cached_session() as sess:
-      sess.run(
-          self.writer,
-          feed_dict={
-              self.filename: self._createFile(options),
-              self.compression_type: "GZIP",
-          })
+    self.evaluate(
+        self.writer_fn(self._createFile(options), compression_type="GZIP"))
     for i, r in enumerate(
         tf_record.tf_record_iterator(self._outputFilename(), options=options)):
       self.assertAllEqual(self._record(i), r)
 
   def testFailDataset(self):
     with self.assertRaises(TypeError):
-      writers.TFRecordWriter(self._outputFilename(),
-                             self.compression_type).write("whoops")
+      writers.TFRecordWriter(self._outputFilename(), "").write("whoops")
 
   def testFailDType(self):
     input_dataset = dataset_ops.Dataset.from_tensors(10)
     with self.assertRaises(TypeError):
-      writers.TFRecordWriter(self._outputFilename(),
-                             self.compression_type).write(input_dataset)
+      writers.TFRecordWriter(self._outputFilename(), "").write(input_dataset)
 
   def testFailShape(self):
     input_dataset = dataset_ops.Dataset.from_tensors([["hello"], ["world"]])
     with self.assertRaises(TypeError):
-      writers.TFRecordWriter(self._outputFilename(),
-                             self.compression_type).write(input_dataset)
+      writers.TFRecordWriter(self._outputFilename(), "").write(input_dataset)
 
 
 if __name__ == "__main__":

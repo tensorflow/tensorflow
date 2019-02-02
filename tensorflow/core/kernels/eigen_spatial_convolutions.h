@@ -871,11 +871,9 @@ struct gemm_pack_rhs<
             const bool pad_col2 = dm2.padCol(c);
             const bool pad_col3 = dm3.padCol(c);
 
-            // We can squeeze reads along the `row` and `depth` dimensions if
-            // the row stride is `1`, which means that `row` and `depth`
-            // dimensions are contiguous (two innermost dimensions).
-            if (rhs.rowStride() == 1 &&                                //
-                !pad_col0 && !pad_col1 && !pad_col2 && !pad_col3 &&    //
+            // Check if we can squeeze reads along the `row` and `depth`
+            // dimensions (two innermost dimensions).
+            if (!pad_col0 && !pad_col1 && !pad_col2 && !pad_col3 &&    //
                 !dm0.padRow(start_row) && !dm0.padRow(max_row - 1) &&  //
                 !dm1.padRow(start_row) && !dm1.padRow(max_row - 1) &&  //
                 !dm2.padRow(start_row) && !dm2.padRow(max_row - 1) &&  //
@@ -1685,8 +1683,6 @@ EIGEN_DEVICE_FUNC
     kernel_dims[0] = kernelChannels * kernelRows * kernelCols;
     kernel_dims[1] = kernelFilters;
   }
-  // TODO(yangke): choose() is defined in TensorContraction.h -- consider
-  // moving it to somewhere more "common".
   return choose(
       Cond<internal::traits<Input>::Layout == ColMajor>(),
       kernel.reshape(kernel_dims)

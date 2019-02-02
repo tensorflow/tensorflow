@@ -46,7 +46,7 @@ class AssertElementShapeTest(test_base.DatasetTestBase):
     result = dataset.apply(batching.assert_element_shape(expected_shapes))
     self.assertEqual(expected_shapes, result.output_shapes)
 
-    iterator = result.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(result)
     init_op = iterator.initializer
     get_next = iterator.get_next()
     with self.cached_session() as sess:
@@ -88,7 +88,7 @@ class AssertElementShapeTest(test_base.DatasetTestBase):
     result = dataset.apply(batching.assert_element_shape(expected_shapes))
     self.assertEqual(expected_shapes, result.output_shapes)
 
-    iterator = result.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(result)
     init_op = iterator.initializer
     get_next = iterator.get_next()
     with self.cached_session() as sess:
@@ -115,9 +115,8 @@ class AssertElementShapeTest(test_base.DatasetTestBase):
 
     wrong_shapes = (tensor_shape.TensorShape(2),
                     tensor_shape.TensorShape((3, 10)))
-    iterator = (
-        dataset.apply(batching.assert_element_shape(wrong_shapes))
-        .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset.apply(batching.assert_element_shape(wrong_shapes)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
     with self.cached_session() as sess:
@@ -142,7 +141,7 @@ class AssertElementShapeTest(test_base.DatasetTestBase):
                      tensor_shape.TensorShape((3, 4)))
     self.assertEqual(actual_shapes, result.output_shapes)
 
-    iterator = result.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(result)
     init_op = iterator.initializer
     get_next = iterator.get_next()
     with self.cached_session() as sess:
@@ -184,7 +183,7 @@ class AssertElementShapeTest(test_base.DatasetTestBase):
     result = dataset.apply(batching.assert_element_shape(expected_shapes))
     self.assertEqual(expected_shapes, result.output_shapes)
 
-    iterator = result.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(result)
     init_op = iterator.initializer
     get_next = iterator.get_next()
     with self.cached_session() as sess:
@@ -211,9 +210,8 @@ class AssertElementShapeTest(test_base.DatasetTestBase):
 
     wrong_shapes = (tensor_shape.TensorShape(2),
                     tensor_shape.TensorShape((None, 10)))
-    iterator = (
-        dataset.apply(batching.assert_element_shape(wrong_shapes))
-        .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset.apply(batching.assert_element_shape(wrong_shapes)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
     with self.cached_session() as sess:

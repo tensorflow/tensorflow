@@ -146,6 +146,12 @@ class TransferManager {
   Status WriteTupleIndexTablesAsync(se::Stream* stream,
                                     const ShapedBuffer& device_buffer);
 
+  // Writes a tuple index buffer for the root of 'device_buffer', which must
+  // be a tuple. Unlike WriteTupleIndexTables, only writes the root buffer,
+  // rather than writing all subbuffers. This method is always asynchronous.
+  Status WriteRootTupleIndexTable(se::Stream* stream,
+                                  const ShapedBuffer& device_buffer);
+
   // Determines the byte size requirement for the given shape on the underlying
   // architecture. This will be used to allocate an appropriately sized memory
   // region for a host-to-device transfer.

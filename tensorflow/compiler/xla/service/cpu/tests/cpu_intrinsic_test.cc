@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <cctype>
 #include <string>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
@@ -59,8 +59,9 @@ class CpuUnaryIntrinsicTest
 
     string features{spec.features.data(), spec.features.size()};
     if (!features.empty()) {
-      std::replace_if(features.begin(), features.end(),
-                      [](char c) { return c != '_' && !isalnum(c); }, '_');
+      std::replace_if(
+          features.begin(), features.end(),
+          [](char c) { return c != '_' && !absl::ascii_isalnum(c); }, '_');
     } else {
       features = "";
     }
@@ -140,10 +141,10 @@ IntrinsicTestSpec CpuUnaryIntrinsicTestCases[] = {
         HloOpcode::kLog, kTriple_android_arm, "",
         R"(CHECK: fadd fast <4 x float> <float 0x3FBDE4A340000000, float 0x3FBDE4A340000000, float 0x3FBDE4A340000000, float 0x3FBDE4A340000000>)"}};
 
-INSTANTIATE_TEST_CASE_P(CpuUnaryIntrinsicTestInstantiation,
-                        CpuUnaryIntrinsicTest,
-                        ::testing::ValuesIn(CpuUnaryIntrinsicTestCases),
-                        CpuUnaryIntrinsicTest::Name);
+INSTANTIATE_TEST_SUITE_P(CpuUnaryIntrinsicTestInstantiation,
+                         CpuUnaryIntrinsicTest,
+                         ::testing::ValuesIn(CpuUnaryIntrinsicTestCases),
+                         CpuUnaryIntrinsicTest::Name);
 
 }  // namespace
 }  // namespace cpu

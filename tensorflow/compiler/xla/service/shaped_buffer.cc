@@ -85,7 +85,7 @@ string ShapedBuffer::ToString() const {
       on_device_shape(),
       [this, &s](const Shape& subshape, const ShapeIndex& index) {
         string shape_str;
-        if (ShapeUtil::IsTuple(subshape)) {
+        if (subshape.IsTuple()) {
           shape_str = "tuple";
         } else {
           shape_str = ShapeUtil::HumanStringWithLayout(subshape);

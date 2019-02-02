@@ -43,27 +43,18 @@ the workers.
 
 Let's see how to scale to multiple GPUs on one machine using `MirroredStrategy` with [tf.keras] (https://www.tensorflow.org/guide/keras).
 
-Take a very simple model consisting of a single layer:
+Let's define a simple input dataset for training this model. Note that currently we require using
+[`tf.data.Dataset`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset)
+with `DistributionStrategy`.
 
 ```python
 import tensorflow as tf
 from tensorflow import keras
 
-inputs = tf.keras.layers.Input(shape=(1,))
-predictions = tf.keras.layers.Dense(1)(inputs)
-model = tf.keras.models.Model(inputs=inputs, outputs=predictions)
-```
-
-Let's also define a simple input dataset for training this model. Note that currently we require using
-[`tf.data.Dataset`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset)
-with `DistributionStrategy`.
-
-```python
 features = tf.data.Dataset.from_tensors([1.]).repeat(10000).batch(10)
 labels = tf.data.Dataset.from_tensors([1.]).repeat(10000).batch(10)
 train_dataset = tf.data.Dataset.zip((features, labels))
 ```
-
 
 To distribute this Keras model on multiple GPUs using `MirroredStrategy` we
 first instantiate a `MirroredStrategy` object.
@@ -72,14 +63,17 @@ first instantiate a `MirroredStrategy` object.
 distribution = tf.contrib.distribute.MirroredStrategy()
 ```
 
-We then compile the Keras model and pass the `MirroredStrategy` object in the
-`distribute` argument (apart from other usual arguments like `loss` and
-`optimizer`).
+Take a very simple model consisting of a single layer. We need to create and compile
+the model under the distribution strategy scope.
 
 ```python
-model.compile(loss='mean_squared_error',
-              optimizer=tf.train.GradientDescentOptimizer(learning_rate=0.2),
-              distribute=distribution)
+with distribution.scope():
+  inputs = tf.keras.layers.Input(shape=(1,))
+  predictions = tf.keras.layers.Dense(1)(inputs)
+  model = tf.keras.models.Model(inputs=inputs, outputs=predictions)
+
+  model.compile(loss='mean_squared_error',
+                optimizer=tf.train.GradientDescentOptimizer(learning_rate=0.2))
 ```
 
 To train the model we call Keras `fit` API using the input dataset that we

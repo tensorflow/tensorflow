@@ -528,7 +528,7 @@ class ScopedMetaGraphTest(test.TestCase):
         actual_grad_value = self.evaluate(grad)
         self.assertEqual(expected_grad_value, actual_grad_value)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testImportWhileLoopInWhileLoop(self):
     # Create a simple while loop.
     with ops.Graph().as_default():
@@ -706,6 +706,26 @@ class ScopedMetaGraphTest(test.TestCase):
         test_dir, "exported_queue1.pbtxt", "exported_new_queue1.pbtxt")
     test_util.assert_meta_graph_protos_equal(self, orig_meta_graph,
                                              new_meta_graph)
+
+  def testExportDebugInfo(self):
+    graph1 = ops.Graph()
+    with graph1.as_default():
+      with ops.name_scope("hidden1/hidden2/hidden3"):
+        images = constant_op.constant(
+            1.0, dtypes.float32, shape=[3, 2], name="images")
+        weights1 = variables.Variable([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+                                      name="weights")
+        biases1 = resource_variable_ops.ResourceVariable(
+            [0.1] * 3, name="biases")
+        nn_ops.relu(math_ops.matmul(images, weights1) + biases1, name="relu")
+    debug_info_def = meta_graph.create_graph_debug_info_def(
+        operations=graph1.get_operations())
+
+    # The unique file names in all the stack traces should be larger or equal
+    # than 1.
+    self.assertTrue(len(debug_info_def.files) >= 1)
+    # All the nodes from the exported graphdef are included.
+    self.assertEqual(len(debug_info_def.traces), len(graph1.get_operations()))
 
   # Verifies that we can export a subgraph in a nested name scope containing a
   # "hidden1/hidden2" and import it into "new_hidden1/new_hidden2" in a new

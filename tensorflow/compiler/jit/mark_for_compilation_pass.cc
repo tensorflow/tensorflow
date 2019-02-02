@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -41,7 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
-#include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
@@ -86,7 +87,7 @@ bool IsDummyImplOp(absl::string_view op_name) {
 bool IsStatefulRandomOp(absl::string_view op_name) {
   return op_name == "RandomUniform" || op_name == "RandomShuffle" ||
          op_name == "RandomUniformInt" || op_name == "RandomStandardNormal" ||
-         op_name == "TruncatedNormal";
+         op_name == "TruncatedNormal" || op_name == "Multinomial";
 }
 
 bool OpProducesOrConsumesVariant(const Node& node) {
@@ -677,10 +678,26 @@ Status MarkForCompilationPass::Run(
   VLOG(1) << "flags->tf_xla_auto_jit = " << flags->tf_xla_auto_jit;
   const FunctionLibraryDefinition* fld = options.flib_def;
 
+  // Deadness analysis expects a graph with source and sink edges properly
+  // connected but sometimes the incoming graph does not follow this invariant.
+  // So fix up the source and sink edges before calling into deadness analysis.
+  FixupSourceAndSinkEdges(options.graph->get());
+
   std::unique_ptr<DeadnessAnalysis> deadness;
   {
     XLA_SCOPED_LOGGING_TIMER_LEVEL("DeadnessAnalysis", 1);
     TF_RETURN_IF_ERROR(DeadnessAnalysis::Run(**options.graph, &deadness));
+  }
+
+  bool deadness_analysis_disabled =
+      GetMarkForCompilationPassFlags()
+          ->tf_xla_disable_deadness_safety_checks_for_debugging;
+
+  if (deadness_analysis_disabled) {
+    LOG(WARNING) << "Deadness analysis was manually disabled via "
+                    "--tf_xla_disable_deadness_safety_checks_for_debugging; "
+                    "auto-clustering "
+                    "is unsound!";
   }
 
   auto is_compilable = [&](const Node* node, const DeviceType& device_type) {
@@ -715,9 +732,12 @@ Status MarkForCompilationPass::Run(
     // and some are dead) then don't compile it.  XLA cannot represent the
     // deadness semantics of these nodes correctly and auto-clustering these
     // nodes can cause deadness to propagate to nodes that should be live.
-    if (node->IsMerge() || deadness->HasInputsWithMismatchingDeadness(*node)) {
-      VLOG(2) << "Rejecting " << node->name() << ": mismatching deadness.";
-      return false;
+    if (!deadness_analysis_disabled) {
+      if (node->IsMerge() ||
+          deadness->HasInputsWithMismatchingDeadness(*node)) {
+        VLOG(2) << "Rejecting " << node->name() << ": mismatching deadness.";
+        return false;
+      }
     }
 
     // Check for fusable ops only if requested.
@@ -1144,6 +1164,27 @@ Status MarkForCompilationPass::RunImpl(
 
   if (flags->tf_xla_clustering_debug) {
     dump_graph::DumpGraphToFile("mark_for_compilation", **options.graph,
+                                options.flib_def);
+
+    // We also dump out an annoated version of the TF graph where the nodes
+    // names are prefixed with the cluster names.  This can help visualizing the
+    // clustering decisions on TensorBoard.
+    Graph new_graph((*options.graph)->op_registry());
+    CopyGraph(**options.graph, &new_graph);
+
+    for (Node* n : new_graph.nodes()) {
+      if (absl::optional<absl::string_view> cluster_name =
+              GetXlaClusterForNode(*n)) {
+        n->set_name(absl::StrCat(*cluster_name, "/", n->name()));
+      } else {
+        // There is room for improvement here.  In particular, it may help to
+        // split these unclustered nodes into classes where every node in a
+        // specific class has edges to and from the same set of clusters.
+        n->set_name(absl::StrCat("unclustered/", n->name()));
+      }
+    }
+
+    dump_graph::DumpGraphToFile("mark_for_compilation_annotated", new_graph,
                                 options.flib_def);
   }
 

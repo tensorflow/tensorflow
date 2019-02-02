@@ -57,23 +57,33 @@ void InceptionPreprocessingStage::AddToGraph(const Scope& scope,
   tensorflow::Output cropped_image;
   CentralCropImage(s, decoded_jpeg, params_.cropping_fraction, &cropped_image);
   auto dims_expander = ops::ExpandDims(s, cropped_image, 0);
-  auto resized_image = ops::ResizeBilinear(
-      s, dims_expander,
-      ops::Const(s.WithOpName("size"), {image_height_, image_width_}));
-  if (is_quantized_) {
-    this->stage_output_ =
-        ops::Cast(s.WithOpName(output_name()), resized_image, DT_UINT8);
-  } else {
-    auto squeezed_image = ops::Squeeze(s, resized_image);
-    auto normalized_image =
-        ops::Div(s,
-                 ops::Sub(s, squeezed_image,
-                          {params_.input_means[0], params_.input_means[1],
-                           params_.input_means[2]}),
-                 {params_.scale});
-    this->stage_output_ =
-        ops::ExpandDims(s.WithOpName(output_name()), normalized_image, {0});
+  auto resized_image =
+      ops::ResizeBilinear(s.WithOpName("resize"), dims_expander,
+                          ops::Const(s, {image_height_, image_width_}));
+
+  ::tensorflow::Output preprocessed_image = resized_image;
+
+  if (!params_.input_means.empty()) {
+    preprocessed_image =
+        ops::Sub(s.WithOpName("sub"), preprocessed_image,
+                 {params_.input_means[0], params_.input_means[1],
+                  params_.input_means[2]});
   }
+
+  if (std::abs(params_.scale) > 1e-7f) {
+    auto squeezed_image = ops::Squeeze(s, preprocessed_image);
+    preprocessed_image = ops::Div(s, squeezed_image, {params_.scale});
+    preprocessed_image = ops::ExpandDims(s, preprocessed_image, {0});
+  }
+
+  // Cast the output from float to output datatype.
+  if (output_datatype_ != DT_FLOAT) {
+    preprocessed_image =
+        ops::Cast(s.WithOpName("cast"), preprocessed_image, output_datatype_);
+  }
+
+  this->stage_output_ =
+      ops::Identity(s.WithOpName(output_name()), preprocessed_image);
 }
 
 }  // namespace metrics

@@ -33,7 +33,7 @@ except ImportError:
   from distutils.spawn import find_executable as which
 # pylint: enable=g-import-not-at-top
 
-_DEFAULT_CUDA_VERSION = '9.0'
+_DEFAULT_CUDA_VERSION = '10.0'
 _DEFAULT_CUDNN_VERSION = '7'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 _DEFAULT_CUDA_PATH = '/usr/local/cuda'
@@ -255,18 +255,6 @@ def setup_python(environ_cp):
 def reset_tf_configure_bazelrc():
   """Reset file that contains customized config settings."""
   open(_TF_BAZELRC, 'w').close()
-  bazelrc_path = os.path.join(_TF_WORKSPACE_ROOT, '.bazelrc')
-
-  data = []
-  if os.path.exists(bazelrc_path):
-    with open(bazelrc_path, 'r') as f:
-      data = f.read().splitlines()
-  with open(bazelrc_path, 'w') as f:
-    for l in data:
-      if _TF_BAZELRC_FILENAME in l:
-        continue
-      f.write('%s\n' % l)
-    f.write('import %%workspace%%/%s\n' % _TF_BAZELRC_FILENAME)
 
 def cleanup_makefile():
   """Delete any leftover BUILD files from the Makefile build.
@@ -488,11 +476,14 @@ def check_bazel_version(min_version, max_version):
   if curr_version_int < min_version_int:
     print('Please upgrade your bazel installation to version %s or higher to '
           'build TensorFlow!' % min_version)
-    sys.exit(0)
-  if curr_version_int > max_version_int:
+    sys.exit(1)
+  if (curr_version_int > max_version_int and
+      'TF_IGNORE_MAX_BAZEL_VERSION' not in os.environ):
     print('Please downgrade your bazel installation to version %s or lower to '
-          'build TensorFlow!' % min_version)
-    sys.exit(0)
+          'build TensorFlow! To downgrade: download the installer for the old '
+          'version (from https://github.com/bazelbuild/bazel/releases) then '
+          'run the installer.' % max_version)
+    sys.exit(1)
   return curr_version
 
 
@@ -1491,7 +1482,7 @@ def set_other_mpi_vars(environ_cp):
   else:
     raise ValueError(
         'Cannot find the MPI library file in %s/lib or %s/lib64 or %s/lib32' %
-        mpi_home, mpi_home, mpi_home)
+        (mpi_home, mpi_home, mpi_home))
 
 
 def set_system_libs_flag(environ_cp):
@@ -1565,11 +1556,9 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  check_bazel_version('0.15.0', '0.19.2')
+  check_bazel_version('0.19.0', '0.21.0')
 
   reset_tf_configure_bazelrc()
-  # Explicitly import tools/bazel.rc, this is needed for Bazel 0.19.0 or later
-  write_to_bazelrc('import %workspace%/tools/bazel.rc')
 
   cleanup_makefile()
   setup_python(environ_cp)
@@ -1705,7 +1694,7 @@ def main():
   config_info_line('noaws', 'Disable AWS S3 filesystem support.')
   config_info_line('nogcp', 'Disable GCP support.')
   config_info_line('nohdfs', 'Disable HDFS support.')
-  config_info_line('noignite', 'Disable Apacha Ignite support.')
+  config_info_line('noignite', 'Disable Apache Ignite support.')
   config_info_line('nokafka', 'Disable Apache Kafka support.')
   config_info_line('nonccl', 'Disable NVIDIA NCCL support.')
 

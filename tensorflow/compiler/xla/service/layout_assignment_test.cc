@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -529,8 +528,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
     for (int64 operand_no = 0; operand_no < instruction->operand_count();
          ++operand_no) {
       const HloInstruction* operand = instruction->operand(operand_no);
-      if (ShapeUtil::Rank(instruction->shape()) !=
-          ShapeUtil::Rank(operand->shape())) {
+      if (instruction->shape().rank() != operand->shape().rank()) {
         continue;
       }
       TF_RETURN_IF_ERROR(constraints->SetArrayOperandLayout(
@@ -848,12 +846,12 @@ TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
     ENTRY entry_computation {
       param = (f32[2,2]) parameter(0)
       gte = f32[2,2] get-tuple-element(param), index=0
-      token = token[] after-all()
-      recv = (f32[2,2], u32[], token[]) recv(token), channel_id=1, sharding={maximal device=1}
+      token0 = token[] after-all()
+      recv = (f32[2,2], u32[], token[]) recv(token0), channel_id=1, sharding={maximal device=1}
       recv-done = (f32[2,2], token[]) recv-done(recv), channel_id=1,
         sharding={maximal device=1}
       ROOT root = f32[2,2] get-tuple-element(recv-done), index=0
-      send = (f32[2,2], u32[], token[]) send(gte, token), channel_id=1,
+      send = (f32[2,2], u32[], token[]) send(gte, token0), channel_id=1,
         sharding={maximal device=0}
       send-done = token[] send-done(send), channel_id=1, sharding={maximal device=0}
     }
@@ -895,11 +893,11 @@ TEST_F(LayoutAssignmentTest, AllReduceLayoutMissmatch) {
     ENTRY entry_computation {
       param = (f32[2,2]) parameter(0)
       gte = f32[2,2] get-tuple-element(param), index=0
-      ar.0 = f32[2,2] cross-replica-sum(gte),
+      ar.0 = f32[2,2] all-reduce(gte),
         all_reduce_id=1, replica_groups={{0}}, to_apply=add,
         sharding={maximal device=0}
-      const = f32[2,2] constant(f32[2,2]{{0,1},{2,3}})
-      ROOT ar.1 = f32[2,2] cross-replica-sum(const),
+      const = f32[2,2] constant({{0,1},{2,3}})
+      ROOT ar.1 = f32[2,2] all-reduce(const),
         all_reduce_id=1, replica_groups={{0}}, to_apply=add,
         sharding={maximal device=1}
     })";
@@ -962,8 +960,9 @@ TEST_F(LayoutAssignmentTest, CopyDSliceOperandToAvoidImplicitLayoutChange) {
     ENTRY CopyDSliceOperandToAvoidImplicitLayoutChange {
       par0 = f32[3,4]{1,0} parameter(0)
       par1 = f32[4,5]{0,1} parameter(1)
-      par2 = s32[2] parameter(2)
-      dslice0 = f32[3,4] dynamic-slice(par1, par2), dynamic_slice_sizes={3,4}
+      par2 = s32[] parameter(2)
+      par3 = s32[] parameter(3)
+      dslice0 = f32[3,4] dynamic-slice(par1, par2, par3), dynamic_slice_sizes={3,4}
       ROOT add0 = f32[3,4]{1,0} add(par0,dslice0)
     }
   )";
@@ -984,7 +983,7 @@ TEST_F(LayoutAssignmentTest, CopyDSliceOperandToAvoidImplicitLayoutChange) {
                   m::Parameter(),
                   m::DynamicSlice(
                       m::Copy(m::Parameter(1)).WithShapeEqualTo(&shape_copy),
-                      m::Parameter(2)))));
+                      m::Parameter(2), m::Parameter(3)))));
 }
 
 TEST_F(LayoutAssignmentTest, CopyConcatOperandToAvoidImplicitLayoutChange) {

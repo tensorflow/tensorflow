@@ -18,20 +18,11 @@ limitations under the License.
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/model_settings.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/timer.h"
-
-namespace {
-// Stores the timestamp for the previous fetch of audio data, so that we can
-// avoid recalculating all the features from scratch if some earlier timeslices
-// are still present.
-int32_t g_last_time_in_ms = 0;
-// Make sure we don't try to use cached information if this is the first call
-// into the provider.
-bool g_is_first_run = true;
-}  // namespace
 
 FeatureProvider::FeatureProvider(int feature_size, uint8_t* feature_data)
-    : feature_size_(feature_size), feature_data_(feature_data) {
+    : feature_size_(feature_size),
+      feature_data_(feature_data),
+      is_first_run_(true) {
   // Initialize the feature data to default values.
   for (int n = 0; n < feature_size_; ++n) {
     feature_data_[n] = 0;
@@ -41,24 +32,23 @@ FeatureProvider::FeatureProvider(int feature_size, uint8_t* feature_data)
 FeatureProvider::~FeatureProvider() {}
 
 TfLiteStatus FeatureProvider::PopulateFeatureData(
-    tflite::ErrorReporter* error_reporter, int* how_many_new_slices) {
+    tflite::ErrorReporter* error_reporter, int32_t last_time_in_ms,
+    int32_t time_in_ms, int* how_many_new_slices) {
   if (feature_size_ != kFeatureElementCount) {
     error_reporter->Report("Requested feature_data_ size %d doesn't match %d",
                            feature_size_, kFeatureElementCount);
     return kTfLiteError;
   }
 
-  const int32_t time_in_ms = TimeInMilliseconds();
   // Quantize the time into steps as long as each window stride, so we can
   // figure out which audio data we need to fetch.
-  const int last_step = (g_last_time_in_ms / kFeatureSliceStrideMs);
+  const int last_step = (last_time_in_ms / kFeatureSliceStrideMs);
   const int current_step = (time_in_ms / kFeatureSliceStrideMs);
-  g_last_time_in_ms = time_in_ms;
 
   int slices_needed = current_step - last_step;
   // If this is the first call, make sure we don't use any cached information.
-  if (g_is_first_run) {
-    g_is_first_run = false;
+  if (is_first_run_) {
+    is_first_run_ = false;
     slices_needed = kFeatureSliceCount;
   }
   if (slices_needed > kFeatureSliceCount) {

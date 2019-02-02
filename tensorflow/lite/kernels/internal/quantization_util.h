@@ -275,6 +275,17 @@ void FakeQuantizeArray(const float nudged_scale, const float nudged_min,
 // returns false.
 bool CheckedLog2(const float x, int* log2_result);
 
+// Decomposes an array of double multipliers into a Q0.31 int32 representation
+// of its significand, and shift representation of its exponent.
+//
+// Handles an arbitrary multiplier. The 'shift' output-value is
+// basically the 'floating-point exponent' of the multiplier:
+// Negative for a right-shift (when the multiplier is <1), positive for a
+// left-shift (when the multiplier is >1)
+void QuantizeMultiplierArray(const double* effective_scales, size_t size,
+                             int32_t* effective_scale_significand,
+                             int* effective_shift);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_QUANTIZATION_UTIL_H_

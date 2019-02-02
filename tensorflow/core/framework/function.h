@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -35,6 +36,8 @@ namespace tensorflow {
 
 class CancellationManager;
 class CollectiveExecutor;
+class DeviceSet;
+class Graph;
 class GraphDef;
 class OpKernel;
 class ProcessFunctionLibraryRuntime;
@@ -114,6 +117,7 @@ class FunctionDefHelper {
     std::vector<string> arg;
     std::vector<std::pair<string, AttrValueWrapper>> attr;
     std::vector<string> dep;
+    string device;
 
     NodeDef ToNodeDef() const;
   };
@@ -382,6 +386,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   static constexpr const char* const kDeviceArgOp = "_DeviceArg";
   static constexpr const char* const kRetOp = "_Retval";
   static constexpr const char* const kDeviceRetOp = "_DeviceRetval";
+  static constexpr const char* const kIntsOnDeviceAttr =
+      "experimental_ints_on_device";
 
   static constexpr const char* const kGradientOp = "SymbolicGradient";
   static constexpr const char* const kFuncAttr = "f";
@@ -489,6 +495,27 @@ class FunctionLibraryRuntime {
     // instantiated on the local device.
     string target;
 
+    // Should the function be instantiated as a multi-device function?
+    bool is_multi_device_function = false;
+
+    // For multi-device functions, a vector of canonical device names for
+    // function's inputs. The device of resource inputs must be the device
+    // backing the resource, not the CPU device backing the resource handle.
+    // Must have the same length as number of inputs to the function.
+    std::vector<string> input_devices;
+
+    // For multi-device functions, a vector of canonical device names for
+    // function's outputs. The device of resource outputs should be the CPU
+    // device, not the device backing the resource.
+    // If specified, must have the same length as the number of function
+    // outputs.
+    // If not specified, output devices are picked automatically. If operations
+    // producing the output tensors have explicit device specification, they
+    // will be respected. These device specifications must identify a unique
+    // device, i.e.  a general specification like "job:foo" matching multiple
+    // devices will result in an error.
+    std::vector<string> output_devices;
+
     // This interface is EXPERIMENTAL and subject to change.
     //
     // If non-null, the runtime will use `overlay_lib` to resolve
@@ -523,6 +550,17 @@ class FunctionLibraryRuntime {
     // instantiation time, rather than on the first run. This can be used to
     // surface errors earlier.
     bool create_kernels_eagerly = false;
+
+    // If provided, this optimization function will be invoked before
+    // the placer for multi-device functions.
+    std::function<Status(std::vector<string> /*ret_node_names*/,
+                         FunctionLibraryDefinition*, const DeviceSet&,
+                         Device* /*cpu_device*/, std::unique_ptr<Graph>*)>
+        optimize_graph_fn;
+
+    // If set, partitioned functions will be added to `graph_collector`.
+    // `graph_collector` must be alive during the call to Instantiate.
+    GraphCollector* graph_collector = nullptr;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const string& function_name, AttrSlice attrs,

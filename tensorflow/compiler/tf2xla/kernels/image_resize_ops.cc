@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -73,10 +72,10 @@ namespace {
 // from in_size to out_size.
 struct ResizeConvolutionDims {
   // Size of the kernel to use.
-  std::vector<int64> kernel_size;
+  std::vector<int64> kernel_size;  // k
 
   // Stride of the convolution to use.
-  std::vector<int64> stride;
+  std::vector<int64> stride;  // S
 };
 ResizeConvolutionDims ComputeResizeConvolutionParameters(
     absl::Span<const int64> in_size, absl::Span<const int64> out_size,
@@ -118,8 +117,10 @@ ResizeConvolutionDims ComputeResizeConvolutionParameters(
 //                        + dims.stride * (out_size - 1)
 int64 CalculateUpperPadding(int64 in_size, int64 out_size, int64 kernel_size,
                             int64 stride) {
-  return (2 * kernel_size - 1) + (out_size - 1) * stride - (kernel_size - 1) -
-         1 - (kernel_size * (in_size - 1));
+  int64 padding = (2 * kernel_size - 1) + (out_size - 1) * stride -
+                  (kernel_size - 1) - 1 - (kernel_size * (in_size - 1));
+
+  return padding;
 }
 
 // Form a 2D convolution kernel like:
@@ -133,7 +134,7 @@ int64 CalculateUpperPadding(int64 in_size, int64 out_size, int64 kernel_size,
 // If the 2D kernel would be very large, the 1D kernel can be applied once in
 // each dimension due to the symmetry of the kernel along all axis to reduce the
 // computational intensity.
-xla::XlaOp Make1DKernel(xla::XlaBuilder* builder, int64 n) {
+xla::XlaOp MakeBilinear1DKernel(xla::XlaBuilder* builder, int64 n) {
   std::vector<float> kernel(n * 2 - 1);
   for (int64 i = 0; i < n; ++i) {
     float v = (i + 1.0f) / n;
@@ -143,43 +144,64 @@ xla::XlaOp Make1DKernel(xla::XlaBuilder* builder, int64 n) {
   return xla::ConstantR1<float>(builder, kernel);
 }
 
+// Unlike the bilinear kernel, which is triangular, the nearest neighbor
+// kernel is a square. For example, a 1D kernel with n=3 would look like
+// [0 1 1 1 0]
+// and n=4 would look like
+// [0 0 1 1 1 1 0].
+// Note that in the second case, the kernel is not symmetric and we default
+// to the right (because an existing non TPU kernel
+// for nearest neighbor resize already chose to default to the right,
+// so we want to be consistent).
+xla::XlaOp MakeNearestNeighbor1DKernel(xla::XlaBuilder* builder, int64 n) {
+  std::vector<float> kernel(n * 2 - 1, 0.0f);
+  std::fill(&kernel[n / 2], &kernel[(3 * n) / 2], 1.0f);
+
+  return xla::ConstantR1<float>(builder, kernel);
+}
+
 // Kernels with more than 16 spatial elements are considered intense and the
-// kernel should applied to each dimension independently.
+// kernel should be applied to each dimension independently.
 const int64 kMax2DKernelSize = 16;
 
-xla::XlaOp MakeBilinearResizeKernel(xla::XlaBuilder* builder,
-                                    absl::Span<const int64> kernel_size,
-                                    int64 channels) {
+xla::XlaOp MakeGeneralResizeKernel(xla::XlaBuilder* builder,
+                                   absl::Span<const int64> kernel_size,
+                                   int64 channels, bool is_kernel_bilinear) {
+  auto make_kernel_func =
+      is_kernel_bilinear ? MakeBilinear1DKernel : MakeNearestNeighbor1DKernel;
+
   auto depthwise_kernel = xla::Broadcast(
       xla::Zero(builder, xla::F32),
       {(2 * kernel_size[0] - 1), (2 * kernel_size[1] - 1), channels, 1});
 
   return xla::Mul(
-      xla::Add(depthwise_kernel, Make1DKernel(builder, kernel_size[1]),
+      xla::Add(depthwise_kernel, make_kernel_func(builder, kernel_size[1]),
                /*broadcast_dimensions=*/{1}),
-      Make1DKernel(builder, kernel_size[0]),
+      make_kernel_func(builder, kernel_size[0]),
       /*broadcast_dimensions=*/{0});
 }
 
-xla::XlaOp MakeBilinearResizeKernelInDim(xla::XlaBuilder* builder,
-                                         absl::Span<const int64> kernel_size,
-                                         int64 channels, int64 dim) {
+xla::XlaOp MakeGeneralResizeKernelInDim(xla::XlaBuilder* builder,
+                                        absl::Span<const int64> kernel_size,
+                                        int64 channels, int64 dim,
+                                        bool is_kernel_bilinear) {
+  auto make_kernel_func =
+      is_kernel_bilinear ? MakeBilinear1DKernel : MakeNearestNeighbor1DKernel;
+
   auto depthwise_kernel =
       xla::Broadcast(xla::Zero(builder, xla::F32),
                      {dim == 0 ? (2 * kernel_size[0] - 1) : 1,
                       dim == 1 ? (2 * kernel_size[1] - 1) : 1, channels, 1});
-  return xla::Add(depthwise_kernel, Make1DKernel(builder, kernel_size[dim]),
+  return xla::Add(depthwise_kernel, make_kernel_func(builder, kernel_size[dim]),
                   /*broadcast_dimensions=*/{dim});
 }
 
-xla::XlaOp ResizeUsingDilationAndConvolution(xla::XlaBuilder* builder,
-                                             const xla::XlaOp& input,
-                                             const int num_spatial_dims,
-                                             std::vector<int64> in_size,
-                                             std::vector<int64> out_size,
-                                             const int64 channels,
-                                             const bool align_corners) {
-  // Picture for a 1x3 to 1x4 resize:
+xla::XlaOp ResizeUsingDilationAndConvolution(
+    xla::XlaBuilder* builder, const xla::XlaOp& input,
+    const int num_spatial_dims, std::vector<int64> in_size,
+    std::vector<int64> out_size, const int64 channels, const bool align_corners,
+    bool is_kernel_bilinear) {
+  // Picture for a 1x3 to 1x4 bilinear resize:
   // stride = 2, kernel size = 3
   // Input:
   // 3 6 9
@@ -265,8 +287,8 @@ xla::XlaOp ResizeUsingDilationAndConvolution(xla::XlaBuilder* builder,
   // Split convolutions into independent dimensions if they would be a very
   // large kernel.
   if (dims.kernel_size[0] * dims.kernel_size[1] < kMax2DKernelSize) {
-    xla::XlaOp kernel =
-        MakeBilinearResizeKernel(builder, dims.kernel_size, channels);
+    xla::XlaOp kernel = MakeGeneralResizeKernel(builder, dims.kernel_size,
+                                                channels, is_kernel_bilinear);
     output =
         xla::ConvGeneralDilated(input_data, kernel, dims.stride,
                                 /*padding=*/
@@ -276,8 +298,8 @@ xla::XlaOp ResizeUsingDilationAndConvolution(xla::XlaBuilder* builder,
                                 /*rhs_dilation=*/{1, 1}, dimension_numbers,
                                 /*feature_group_count=*/channels);
   } else {
-    xla::XlaOp kernel0 =
-        MakeBilinearResizeKernelInDim(builder, dims.kernel_size, channels, 0);
+    xla::XlaOp kernel0 = MakeGeneralResizeKernelInDim(
+        builder, dims.kernel_size, channels, 0, is_kernel_bilinear);
     output = xla::ConvGeneralDilated(
         input_data, kernel0, {dims.stride[0], 1},
         /*padding=*/
@@ -285,8 +307,8 @@ xla::XlaOp ResizeUsingDilationAndConvolution(xla::XlaBuilder* builder,
         /*lhs_dilation=*/{dims.kernel_size[0], 1},
         /*rhs_dilation=*/{1, 1}, dimension_numbers,
         /*feature_group_count=*/channels);
-    xla::XlaOp kernel1 =
-        MakeBilinearResizeKernelInDim(builder, dims.kernel_size, channels, 1);
+    xla::XlaOp kernel1 = MakeGeneralResizeKernelInDim(
+        builder, dims.kernel_size, channels, 1, is_kernel_bilinear);
     output = xla::ConvGeneralDilated(
         output, kernel1, {1, dims.stride[1]},
         /*padding=*/
@@ -307,13 +329,11 @@ xla::XlaOp ResizeUsingDilationAndConvolution(xla::XlaBuilder* builder,
   return output;
 }
 
-xla::XlaOp ResizeUsingDilationAndConvolutionGradOp(xla::XlaBuilder* builder,
-                                                   const xla::XlaOp& grad,
-                                                   const int num_spatial_dims,
-                                                   std::vector<int64> in_size,
-                                                   std::vector<int64> grad_size,
-                                                   const int64 channels,
-                                                   const bool align_corners) {
+xla::XlaOp ResizeUsingDilationAndConvolutionGradOp(
+    xla::XlaBuilder* builder, const xla::XlaOp& grad,
+    const int num_spatial_dims, std::vector<int64> in_size,
+    std::vector<int64> grad_size, const int64 channels,
+    const bool align_corners, bool is_kernel_bilinear) {
   ResizeConvolutionDims dims =
       ComputeResizeConvolutionParameters(in_size, grad_size, align_corners);
 
@@ -333,8 +353,8 @@ xla::XlaOp ResizeUsingDilationAndConvolutionGradOp(xla::XlaBuilder* builder,
   dimension_numbers.set_kernel_output_feature_dimension(num_spatial_dims);
   xla::XlaOp output;
   if (dims.kernel_size[0] * dims.kernel_size[1] < kMax2DKernelSize) {
-    xla::XlaOp kernel =
-        MakeBilinearResizeKernel(builder, dims.kernel_size, channels);
+    xla::XlaOp kernel = MakeGeneralResizeKernel(builder, dims.kernel_size,
+                                                channels, is_kernel_bilinear);
 
     // Broadcast the input kernel where the forward op expanded from a size == 1
     // dimension to a size > 1 dimension. This has the effect of summing the
@@ -356,14 +376,14 @@ xla::XlaOp ResizeUsingDilationAndConvolutionGradOp(xla::XlaBuilder* builder,
         /*rhs_dilation=*/{1, 1}, dimension_numbers,
         /*feature_group_count=*/channels);
   } else {
-    xla::XlaOp kernel0 =
-        MakeBilinearResizeKernelInDim(builder, dims.kernel_size, channels, 0);
-    xla::XlaOp kernel1 =
-        MakeBilinearResizeKernelInDim(builder, dims.kernel_size, channels, 1);
+    xla::XlaOp kernel0 = MakeGeneralResizeKernelInDim(
+        builder, dims.kernel_size, channels, 0, is_kernel_bilinear);
+    xla::XlaOp kernel1 = MakeGeneralResizeKernelInDim(
+        builder, dims.kernel_size, channels, 1, is_kernel_bilinear);
 
-    // Broadcast the input kernel where the forward op expanded from a size == 1
-    // dimension to a size > 1 dimension. This has the effect of summing the
-    // gradient contributions in that dimension.
+    // Broadcast the input kernel where the forward op expanded from a
+    // size == 1 dimension to a size > 1 dimension. This has the effect of
+    // summing the gradient contributions in that dimension.
     if (in_size[0] == 1 && grad_size[0] > 1) {
       kernel0 =
           xla::Add(kernel0, xla::ConstantR1<float>(builder, grad_size[0], 0),
@@ -408,6 +428,126 @@ xla::XlaOp ResizeUsingDilationAndConvolutionGradOp(xla::XlaBuilder* builder,
   return output;
 }
 
+void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
+                    bool is_kernel_bilinear) {
+  xla::XlaBuilder* b = ctx->builder();
+
+  TensorShape input_shape = ctx->InputShape(0);
+  OP_REQUIRES(ctx, input_shape.dims() == 4,
+              errors::InvalidArgument("input must be 4-dimensional",
+                                      input_shape.DebugString()));
+  // First dimension always assumed to be batch
+  const int64 batch = input_shape.dim_size(0);
+  std::vector<int64> in_size = {input_shape.dim_size(1),
+                                input_shape.dim_size(2)};
+  // Last/4th dimension always assumed to be num channels
+  const int64 channels = input_shape.dim_size(3);
+  OP_REQUIRES(ctx, in_size[0] > 0 && in_size[1] > 0,
+              errors::InvalidArgument("input size must be positive, got [",
+                                      in_size[0], ",", in_size[1], "]"));
+
+  std::vector<int64> out_size;
+  OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &out_size));
+  OP_REQUIRES(ctx, out_size.size() == 2,
+              errors::InvalidArgument("output size must be length 2, got ",
+                                      out_size.size()));
+  OP_REQUIRES(ctx, out_size[0] > 0 && out_size[1] > 0,
+              errors::InvalidArgument("output size must be positive, got [",
+                                      out_size[0], ",", out_size[1], "]"));
+
+  const int num_spatial_dims = 2;
+
+  xla::XlaOp input = ctx->Input(0);
+
+  // If in_size[i] > 1 and out_size[i] == 1, slice out the first input in
+  // dimension i.
+  bool slice_input = false;
+  for (int i = 0; i < num_spatial_dims; ++i) {
+    if (in_size[i] > 1 && out_size[i] == 1) {
+      // If in_size[i] > 1 but out_size[i] == 1, then we slice out the first
+      // entry before resizing.
+      slice_input = true;
+      in_size[i] = 1;
+    }
+  }
+  if (slice_input) {
+    input = xla::Slice(input, {0, 0, 0, 0},
+                       {batch, in_size[0], in_size[1], channels}, {1, 1, 1, 1});
+  }
+
+  // Output is always type float.
+  input = xla::ConvertElementType(input, xla::F32);
+
+  // Special Case:
+  // Instead of doing a ResizeUsingDilationAndConvolution directly,
+  // while (out_size[0]-1) = c * 2^x * (in_size[0]-1) for x>1 c>1, resize the
+  // image to 2*(in_size[0]-1)+1 x-times and then resize by scale c(int here).
+  // Instead of resizing directly we resize it iteratively.
+  //
+  // Since bilinear resize can be broken down as 2 sequential linear
+  // operations along different dimensions.
+  // Given sufficient numerical stability and a<e<c and b<f<d, bilinear resize
+  // from image of size axb -> cxd is same as resizing axb -> exf -> cxd.
+  // This does not work in the case of align_corners_=false because of special
+  // padding requirements that cause multiple resizes to be very different
+  // from a single resize.
+  //
+  // This makes the convolutions kernels smaller and the operation faster.
+  xla::XlaOp output = input;
+  while (in_size != out_size) {
+    if (in_size[0] != 1 && in_size[1] != 1) {
+      std::vector<float> k = {
+          (static_cast<float>(out_size[0]) - 1) / ((in_size[0] - 1) * 2),
+          (static_cast<float>(out_size[1]) - 1) / ((in_size[1] - 1) * 2)};
+      if ((k[0] == std::floor(k[0])) && (k[1] == std::floor(k[1])) &&
+          k[0] > 1 && k[1] > 1 && align_corners_) {
+        std::vector<int64> next_out_size = {(in_size[0] - 1) * 2 + 1,
+                                            (in_size[1] - 1) * 2 + 1};
+        output = ResizeUsingDilationAndConvolution(
+            b, input, num_spatial_dims, in_size, next_out_size, channels,
+            align_corners_, is_kernel_bilinear);
+        input = output;
+        in_size = next_out_size;
+      } else {
+        output = ResizeUsingDilationAndConvolution(
+            b, input, num_spatial_dims, in_size, out_size, channels,
+            align_corners_, is_kernel_bilinear);
+        in_size = out_size;
+      }
+    } else {
+      output = ResizeUsingDilationAndConvolution(
+          b, input, num_spatial_dims, in_size, out_size, channels,
+          align_corners_, is_kernel_bilinear);
+      in_size = out_size;
+    }
+  }
+
+  ctx->SetOutput(0, output);
+}
+
+class ResizeNearestNeighborOp : public XlaOpKernel {
+ public:
+  explicit ResizeNearestNeighborOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
+    OP_REQUIRES(
+        ctx, align_corners_ == true,
+        errors::Unimplemented("ResizeNearestNeighbor with align_corners=False "
+                              "is not yet implemented"));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    GeneralCompile(ctx, align_corners_, is_kernel_bilinear_);
+  }
+
+ private:
+  bool align_corners_ = true;
+  bool is_kernel_bilinear_ = false;
+};
+
+REGISTER_XLA_OP(Name("ResizeNearestNeighbor").CompileTimeConstantInput("size"),
+                ResizeNearestNeighborOp);
+
 class ResizeBilinearOp : public XlaOpKernel {
  public:
   explicit ResizeBilinearOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
@@ -415,102 +555,12 @@ class ResizeBilinearOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* b = ctx->builder();
-
-    TensorShape input_shape = ctx->InputShape(0);
-    OP_REQUIRES(ctx, input_shape.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
-                                        input_shape.DebugString()));
-    const int64 batch = input_shape.dim_size(0);
-    std::vector<int64> in_size = {input_shape.dim_size(1),
-                                  input_shape.dim_size(2)};
-    const int64 channels = input_shape.dim_size(3);
-    OP_REQUIRES(ctx, in_size[0] > 0 && in_size[1] > 0,
-                errors::InvalidArgument("input size must be positive, got [",
-                                        in_size[0], ",", in_size[1], "]"));
-
-    std::vector<int64> out_size;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &out_size));
-    OP_REQUIRES(ctx, out_size.size() == 2,
-                errors::InvalidArgument("output size must be length 2, got ",
-                                        out_size.size()));
-    OP_REQUIRES(ctx, out_size[0] > 0 && out_size[1] > 0,
-                errors::InvalidArgument("output size must be positive, got [",
-                                        out_size[0], ",", out_size[1], "]"));
-
-    const int num_spatial_dims = 2;
-
-    xla::XlaOp input = ctx->Input(0);
-
-    // If in_size[i] > 1 and out_size[i] == 1, slice out the first input in
-    // dimension i.
-    bool slice_input = false;
-    for (int i = 0; i < num_spatial_dims; ++i) {
-      if (in_size[i] > 1 && out_size[i] == 1) {
-        // If in_size[i] > 1 but out_size[i] == 1, then we slice out the first
-        // entry before resizing.
-        slice_input = true;
-        in_size[i] = 1;
-      }
-    }
-    if (slice_input) {
-      input =
-          xla::Slice(input, {0, 0, 0, 0},
-                     {batch, in_size[0], in_size[1], channels}, {1, 1, 1, 1});
-    }
-
-    // Output is always type float.
-    input = xla::ConvertElementType(input, xla::F32);
-
-    // Special Case:
-    // Instead of doing a ResizeUsingDilationAndConvolution directly,
-    // while (out_size[0]-1) = c * 2^x * (in_size[0]-1) for x>1 c>1, resize the
-    // image to 2*(in_size[0]-1)+1 x-times and then resize by scale c(int here).
-    // Instead of resizing directly we resize it iteratively.
-    //
-    // Since bilinear resize can be broken down as 2 sequential linear
-    // operations along different dimensions.
-    // Given sufficient numerical stability and a<e<c and b<f<d, bilinear resize
-    // from image of size axb -> cxd is same as resizing axb -> exf -> cxd.
-    // This does not work in the case of align_corners_=false because of special
-    // padding requirements that cause multiple resizes to be very different
-    // from a single resize.
-    //
-    // This makes the convolutions kernels smaller and the operation faster.
-    xla::XlaOp output = input;
-    while (in_size != out_size) {
-      if (in_size[0] != 1 && in_size[1] != 1) {
-        std::vector<float> k = {
-            (static_cast<float>(out_size[0]) - 1) / ((in_size[0] - 1) * 2),
-            (static_cast<float>(out_size[1]) - 1) / ((in_size[1] - 1) * 2)};
-        if ((k[0] == std::floor(k[0])) && (k[1] == std::floor(k[1])) &&
-            k[0] > 1 && k[1] > 1 && align_corners_) {
-          std::vector<int64> next_out_size = {(in_size[0] - 1) * 2 + 1,
-                                              (in_size[1] - 1) * 2 + 1};
-          output = ResizeUsingDilationAndConvolution(b, input, num_spatial_dims,
-                                                     in_size, next_out_size,
-                                                     channels, align_corners_);
-          input = output;
-          in_size = next_out_size;
-        } else {
-          output = ResizeUsingDilationAndConvolution(b, input, num_spatial_dims,
-                                                     in_size, out_size,
-                                                     channels, align_corners_);
-          in_size = out_size;
-        }
-      } else {
-        output = ResizeUsingDilationAndConvolution(b, input, num_spatial_dims,
-                                                   in_size, out_size, channels,
-                                                   align_corners_);
-        in_size = out_size;
-      }
-    }
-
-    ctx->SetOutput(0, output);
+    GeneralCompile(ctx, align_corners_, is_kernel_bilinear_);
   }
 
  private:
-  bool align_corners_;
+  bool align_corners_ = true;
+  bool is_kernel_bilinear_ = true;
 };
 
 REGISTER_XLA_OP(Name("ResizeBilinear").CompileTimeConstantInput("size"),
@@ -582,19 +632,19 @@ class ResizeBilinearGradOp : public XlaOpKernel {
                                                (in_size[1] - 1) * 2 + 1};
           output = ResizeUsingDilationAndConvolutionGradOp(
               b, grad, num_spatial_dims, in_size, next_grad_size, channels,
-              align_corners_);
+              align_corners_, true);
           grad = output;
           in_size = next_grad_size;
         } else {
           output = ResizeUsingDilationAndConvolutionGradOp(
               b, grad, num_spatial_dims, in_size, grad_size, channels,
-              align_corners_);
+              align_corners_, true);
           in_size = grad_size;
         }
       } else {
         output = ResizeUsingDilationAndConvolutionGradOp(
             b, grad, num_spatial_dims, in_size, grad_size, channels,
-            align_corners_);
+            align_corners_, true);
         in_size = grad_size;
       }
     }

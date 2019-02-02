@@ -34,7 +34,7 @@ class SameVariablesNoClearTest(test.TestCase):
   # TODO(b/34465411): Starting multiple servers with different configurations
   # in the same test is flaky. Move this test case back into
   # "server_lib_test.py" when this is no longer the case.
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSameVariablesNoClear(self):
     server = server_lib.Server.create_local_server()
 

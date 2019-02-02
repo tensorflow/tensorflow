@@ -8,11 +8,8 @@ cc_library(
     name = "fuzz_session",
     hdrs = ["fuzz_session.h"],
     deps = [
-        "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:direct_session",
-        "//tensorflow/core:ops",
         "//tensorflow/core:tensorflow",
     ],
 )
@@ -64,3 +61,15 @@ tf_ops_fuzz_target_lib("parse_tensor_op")
 tf_ops_fuzz_target_lib("decode_compressed")
 
 tf_ops_fuzz_target_lib("decode_json_example")
+
+tf_oss_fuzz_corpus("decode_json_example")
+
+tf_oss_fuzz_dict("decode_json_example")
+
+tf_ops_fuzz_target_lib("check_numerics")
+
+tf_ops_fuzz_target_lib("one_hot")
+
+tf_ops_fuzz_target_lib("scatter_nd")
+
+tf_oss_fuzz_corpus("scatter_nd")

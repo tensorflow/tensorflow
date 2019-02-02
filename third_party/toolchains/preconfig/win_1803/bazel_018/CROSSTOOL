@@ -14,42 +14,6 @@
 
 major_version: "local"
 minor_version: ""
-default_target_cpu: "same_as_host"
-
-default_toolchain {
-  cpu: "x64_windows"
-  toolchain_identifier: "msvc_x64"
-}
-
-default_toolchain {
-  cpu: "local"
-  toolchain_identifier: "stub_armeabi-v7a"
-}
-
-default_toolchain {
-  cpu: "armeabi-v7a"
-  toolchain_identifier: "stub_armeabi-v7a"
-}
-
-default_toolchain {
-  cpu: "x64_windows"
-  toolchain_identifier: "msvc_x64"
-}
-
-default_toolchain {
-  cpu: "x64_windows_msvc"
-  toolchain_identifier: "msvc_x64"
-}
-
-default_toolchain {
-  cpu: "x64_windows_msys"
-  toolchain_identifier: "msys_x64"
-}
-
-default_toolchain {
-  cpu: "s390x"
-  toolchain_identifier: "msys_x64"
-}
 
 # Android tooling requires a default toolchain for the armeabi-v7a cpu.
 toolchain {

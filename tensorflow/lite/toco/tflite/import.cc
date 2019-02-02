@@ -165,21 +165,28 @@ void ImportOperators(
   }
 }
 
-void ImportIOTensors(const ::tflite::Model& input_model,
+void ImportIOTensors(const ModelFlags& model_flags,
+                     const ::tflite::Model& input_model,
                      const details::TensorsTable& tensors_table, Model* model) {
-  auto inputs = (*input_model.subgraphs())[0]->inputs();
-  if (inputs) {
-    for (int input : *inputs) {
-      const string& input_name = tensors_table.at(input);
-      model->flags.add_input_arrays()->set_name(input_name);
+  // Import from the first subgraph if input arrays have not been specified.
+  if (model_flags.input_arrays().empty()) {
+    auto inputs = (*input_model.subgraphs())[0]->inputs();
+    if (inputs) {
+      for (int input : *inputs) {
+        const string& input_name = tensors_table.at(input);
+        model->flags.add_input_arrays()->set_name(input_name);
+      }
     }
   }
 
-  auto outputs = (*input_model.subgraphs())[0]->outputs();
-  if (outputs) {
-    for (int output : *outputs) {
-      const string& output_name = tensors_table.at(output);
-      model->flags.add_output_arrays(output_name);
+  // Import from the first subgraph if output arrays have not been specified.
+  if (model_flags.output_arrays().empty()) {
+    auto outputs = (*input_model.subgraphs())[0]->outputs();
+    if (outputs) {
+      for (int output : *outputs) {
+        const string& output_name = tensors_table.at(output);
+        model->flags.add_output_arrays(output_name);
+      }
     }
   }
 }
@@ -219,7 +226,8 @@ std::unique_ptr<Model> Import(const ModelFlags& model_flags,
   ImportTensors(*input_model, model.get());
   ImportOperators(*input_model, ops_by_name, tensors_table, operators_table,
                   model.get());
-  ImportIOTensors(*input_model, tensors_table, model.get());
+
+  ImportIOTensors(model_flags, *input_model, tensors_table, model.get());
 
   UndoWeightsShuffling(model.get());
 

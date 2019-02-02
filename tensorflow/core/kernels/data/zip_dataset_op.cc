@@ -62,8 +62,8 @@ class ZipDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Zip")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Zip")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -75,6 +75,21 @@ class ZipDatasetOp : public DatasetOpKernel {
     }
 
     string DebugString() const override { return "ZipDatasetOp::Dataset"; }
+
+    int64 Cardinality() const override {
+      int64 result = kInfiniteCardinality;
+      for (const auto& input : inputs_) {
+        int64 n = input->Cardinality();
+        if (n == kUnknownCardinality) {
+          return kUnknownCardinality;
+        }
+        if (n != kInfiniteCardinality &&
+            (result == kInfiniteCardinality || n < result)) {
+          result = n;
+        }
+      }
+      return result;
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,

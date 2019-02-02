@@ -18,17 +18,21 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import weakref
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
@@ -51,6 +55,28 @@ class _ModelWithOptimizer(training.Model):
     gradients = tape.gradient(loss, trainable_variables)
     self.optimizer.apply_gradients(zip(gradients, trainable_variables))
     return {'loss': loss}
+
+
+class _HasDecoratedMethod(object):
+
+  @def_function.function
+  def f(self, x):
+    return x * 3.
+
+# pylint: disable=bad-continuation,anomalous-backslash-in-string
+MIXING_GRAPH_EAGER_TENSORS_ERROR = (
+"""An op outside of the function building code is being passed
+a "Graph" tensor. It is possible to have Graph tensors
+leak out of the function building context by including a
+tf.init_scope in your function building code.
+For example, the following function will fail:
+  @tf.function
+  def has_init_scope\(\):
+    my_constant = tf.constant\(1.\)
+    with tf.init_scope\(\):
+      added = my_constant \* 2
+The graph tensor has name: Const:0""")
+# pylint: enable=bad-continuation,anomalous-backslash-in-string
 
 
 class DefFunctionTest(test.TestCase):
@@ -183,7 +209,7 @@ class DefFunctionTest(test.TestCase):
           state.append(variables.Variable(2.0 * x))
         return state[0] * x
 
-      with self.assertRaises(ValueError):
+      with self.assertRaises(lift_to_graph.UnliftableError):
         fn(constant_op.constant(3.0))
 
   def testMethod(self):
@@ -238,6 +264,134 @@ class DefFunctionTest(test.TestCase):
     concrete = compute.get_concrete_function(
         tensor_spec.TensorSpec(None, dtypes.float32))
     self.assertAllClose(4., concrete(constant_op.constant(2.)))
+    signature_args, _ = concrete.structured_input_signature
+    self.assertEqual(signature_args,
+                     (tensor_spec.TensorSpec(None, dtypes.float32),))
+
+  def test_serialization_signature_cache(self):
+
+    @def_function.function
+    def f(x, y):
+      return x, y
+
+    f(constant_op.constant([[3., 4.]]), constant_op.constant([2.]))
+    f(constant_op.constant([[3, 4, 5]]), constant_op.constant([2]))
+
+    signatures_args = set()
+    concrete_functions = f._list_all_concrete_functions_for_serialization()
+    for concrete_function in concrete_functions:
+      args, kwargs = concrete_function.structured_input_signature
+      signatures_args.add(args)
+      self.assertEqual(dict(), kwargs)
+
+    self.assertEqual(
+        signatures_args,
+        set(((tensor_spec.TensorSpec([1, 2], dtypes.float32),
+              tensor_spec.TensorSpec([1], dtypes.float32)),
+             (tensor_spec.TensorSpec([1, 3], dtypes.int32),
+              tensor_spec.TensorSpec([1], dtypes.int32)))))
+
+  @test_util.assert_no_garbage_created
+  def testFunctionReferenceCycles(self):
+    fn = def_function.function(lambda x: 2. * x)
+    fn(constant_op.constant(4.0))
+    weak_fn = weakref.ref(fn)
+    del fn
+    # Tests that the weak reference we made to the function is now dead, which
+    # means the object has been deleted. This should be true as long as the
+    # function itself is not involved in a reference cycle.
+    self.assertIs(None, weak_fn())
+
+  @test_util.assert_no_garbage_created
+  def testMethodReferenceCycles(self):
+    has_decorated_method = _HasDecoratedMethod()
+    has_decorated_method.f(constant_op.constant(5.))
+    weak_fn = weakref.ref(has_decorated_method.f)
+    del has_decorated_method
+    # Tests that the weak reference we made to the function is now dead, which
+    # means the object has been deleted. This should be true as long as the
+    # function itself is not involved in a reference cycle.
+    self.assertIs(None, weak_fn())
+
+  def testErrorMessageWhenGraphTensorIsPassedToEager(self):
+
+    @def_function.function
+    def failing_function():
+      a = constant_op.constant(1.)
+
+      with ops.init_scope():
+        _ = a + a
+
+    with self.assertRaisesRegexp(TypeError, MIXING_GRAPH_EAGER_TENSORS_ERROR):
+      failing_function()
+
+  def testVariableCreatorScope(self):
+    created_variables = []
+    captured_variables = []
+
+    @def_function.function
+    def f():
+      if not created_variables:
+        created_variables.append(variables.Variable(1.))
+      return created_variables[0] + 1.
+
+    def capture_creator(next_creator, **kwargs):
+      created = next_creator(**kwargs)
+      captured_variables.append(created)
+      return created
+
+    with variable_scope.variable_creator_scope(capture_creator):
+      f()
+    self.assertEqual(created_variables, captured_variables)
+
+  def testVarAlreadyInitializedNoClobbering(self):
+    v_holder = []
+
+    @def_function.function
+    def add_var(x):
+      if not v_holder:
+        v = variables.Variable([1., 2.])
+        v_holder.append(v)
+        already_initialized = variables.Variable(3.)
+        with ops.init_scope():
+          already_initialized.assign(10.)
+        v_holder.append(already_initialized)
+      return v_holder[0] + v_holder[1] + x
+
+    add_var.get_concrete_function(constant_op.constant(2.))
+    self.assertAllClose([13., 14.], add_var(constant_op.constant(2.)))
+
+  def testSameVariableTwice(self):
+
+    v = variables.Variable(1.0)
+
+    @def_function.function
+    def add(a, b):
+      return a + b
+
+    self.assertAllEqual(add(v, v), 2.0)
+
+  def testInitializationInNestedCall(self):
+    v_holder = []
+
+    @def_function.function
+    def add_var(x):
+      if not v_holder:
+        v = variables.Variable([1., 2.])
+        v_holder.append(v)
+        already_initialized = variables.Variable(3.)
+        with ops.init_scope():
+          already_initialized.assign(10.)
+        v_holder.append(already_initialized)
+      return v_holder[0] + v_holder[1] + x
+
+    @def_function.function
+    def wrapper(x):
+      return add_var(x)
+
+    self.assertAllClose([13., 14.], wrapper(constant_op.constant(2.)))
+    v_holder[1].assign(11.)
+    self.assertAllClose([14., 15.], wrapper(constant_op.constant(2.)))
 
 
 if __name__ == '__main__':

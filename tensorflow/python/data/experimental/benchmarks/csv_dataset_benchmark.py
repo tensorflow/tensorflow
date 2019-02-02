@@ -27,6 +27,7 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import readers
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import gfile
@@ -62,9 +63,12 @@ class CsvDatasetBenchmark(test.Benchmark):
 
   def _runBenchmark(self, dataset, num_cols, prefix):
     dataset = dataset.skip(self._num_per_iter - 1)
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
     deltas = []
     for _ in range(10):
-      next_element = dataset.make_one_shot_iterator().get_next()
+      next_element = dataset_ops.make_one_shot_iterator(dataset).get_next()
       with session.Session() as sess:
         start = time.time()
         # NOTE: This depends on the underlying implementation of skip, to have
@@ -78,8 +82,6 @@ class CsvDatasetBenchmark(test.Benchmark):
       deltas.append(end - start)
     # Median wall time per CSV record read and decoded
     median_wall_time = np.median(deltas) / self._num_per_iter
-    print('%s num_cols: %d Median wall time: %f' % (prefix, num_cols,
-                                                    median_wall_time))
     self.report_benchmark(
         iters=self._num_per_iter,
         wall_time=median_wall_time,

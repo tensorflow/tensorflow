@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -235,7 +236,7 @@ class StatefulScatterNdTest(test.TestCase):
         self._VariableRankTest(
             np_scatter, tf_scatter, vtype, itype, repeat_indices=True)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testScatterRepeatIndices(self):
     """This tests scatter_add using indices that repeat."""
     self._ScatterRepeatIndicesTest(_NumpyAdd, state_ops.scatter_nd_add)
@@ -257,7 +258,7 @@ class StatefulScatterNdTest(test.TestCase):
   #     session.run([update0, update1])
   #     self.assertAllEqual([False, True], self.evaluate(var))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testScatterOutOfRangeCpu(self):
     # TODO(simister): Re-enable once binary size increase due to
     # scatter_nd ops is under control.
@@ -294,7 +295,8 @@ class StatefulScatterNdTest(test.TestCase):
         state_ops.scatter_nd_update(ref, indices,
                                     updates).get_shape().as_list(), shape)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
+  @test_util.disable_xla("This test never passed for XLA")
   def testResVarInvalidOutputShape(self):
     res = variables.Variable(
         initial_value=lambda: array_ops.zeros(shape=[], dtype=dtypes.float32),
@@ -325,7 +327,7 @@ class StatefulScatterNdTest(test.TestCase):
     shape = np.array([2, 2, 2])
     ref = variables.Variable(array_ops.zeros(shape, dtypes.int32))
     with self.assertRaisesWithPredicateMatch(
-        ValueError, "The outer \\d+ dimensions of indices\\.shape="):
+        ValueError, r"The outer \d+ dimensions of indices\.shape="):
       state_ops.scatter_nd_update(ref, indices, updates)
 
   @test_util.run_deprecated_v1
@@ -335,7 +337,7 @@ class StatefulScatterNdTest(test.TestCase):
     shape = np.array([2, 2, 2])
     ref = variables.Variable(array_ops.zeros(shape, dtypes.int32))
     with self.assertRaisesWithPredicateMatch(
-        ValueError, "The inner \\d+ dimensions of input\\.shape="):
+        ValueError, r"The inner \d+ dimensions of input\.shape="):
       state_ops.scatter_nd_update(ref, indices, updates)
 
   @test_util.run_deprecated_v1
@@ -509,7 +511,7 @@ class ScatterNdTest(test.TestCase):
         ValueError, "Indices and updates specified for empty output shape"):
       self.scatter_nd(indices, updates, shape)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testEmptyOutputShape2(self):
     indices = array_ops.placeholder(dtypes.int32, shape=None)
     updates = array_ops.placeholder(dtypes.int32, shape=None)
@@ -539,7 +541,7 @@ class ScatterNdTest(test.TestCase):
     updates = array_ops.zeros([2, 2, 2], dtypes.int32)
     shape = np.array([2, 2, 2])
     with self.assertRaisesWithPredicateMatch(
-        ValueError, "The outer \\d+ dimensions of indices\\.shape="):
+        ValueError, r"The outer \d+ dimensions of indices\.shape="):
       self.scatter_nd(indices, updates, shape)
 
   @test_util.run_deprecated_v1
@@ -548,7 +550,7 @@ class ScatterNdTest(test.TestCase):
     updates = array_ops.zeros([2, 2], dtypes.int32)
     shape = np.array([2, 2, 2])
     with self.assertRaisesWithPredicateMatch(
-        ValueError, "The inner \\d+ dimensions of (input|output)\\.shape="):
+        ValueError, r"The inner \d+ dimensions of (input|output)\.shape="):
       self.scatter_nd(indices, updates, shape)
 
   @test_util.run_deprecated_v1
@@ -717,6 +719,7 @@ class ScatterNdTensorTest(test.TestCase):
     self.assertAllEqual(subbed,
                         constant_op.constant([1, -10, 1, -9, -8, 1, 1, -11]))
 
+  @test_util.run_v1_only("b/120545219")
   def testUpdateAddSubGradients(self):
 
     with self.cached_session():
@@ -748,6 +751,16 @@ class ScatterNdTensorTest(test.TestCase):
       self.assertLess(err_added_wrt_updates, 2e-4)
       self.assertLess(err_subbed_wrt_updates, 2e-4)
 
+  def testTensorScatterUpdateWithForwarding(self):
+    @def_function.function
+    def _TestFn():
+      indices = constant_op.constant([[4], [3], [1], [7]])
+      updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
+      t = array_ops.ones([8], dtype=dtypes.float32)
+
+      return array_ops.tensor_scatter_update(t, indices, updates)
+
+    self.assertAllEqual(_TestFn(), [1, 11, 1, 10, 9, 1, 1, 12])
 
 if __name__ == "__main__":
   test.main()

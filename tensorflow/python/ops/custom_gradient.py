@@ -56,7 +56,9 @@ def copy_handle_data(source_t, target_t):
       handle_data = source_t._handle_data  # pylint: disable=protected-access
     else:
       handle_data = resource_variable_ops.get_resource_handle_data(source_t)
-    if handle_data is not None and handle_data.is_set:
+    if (handle_data is not None
+        and handle_data.is_set
+        and handle_data.shape_and_type):
       # pylint: disable=protected-access
       pywrap_tensorflow.SetHandleShapeAndType(target_t.graph._c_graph,
                                               target_t._as_tf_output(),
@@ -236,6 +238,10 @@ def _graph_mode_decorator(f, *args, **kwargs):
   original_tensors = all_tensors
   with ops.get_default_graph().gradient_override_map({"IdentityN": name}):
     all_tensors = array_ops.identity_n(all_tensors)
+  # Propagate handle data for happier shape inference for resource variables.
+  for i, t in enumerate(original_tensors):
+    if t.dtype == dtypes.resource and hasattr(t, "_handle_data"):
+      all_tensors[i]._handle_data = t._handle_data  # pylint: disable=protected-access
   tape_lib.record_operation(
       f.__name__, all_tensors, original_tensors, tape_grad_fn)
   for ot, t in zip(original_tensors, all_tensors):

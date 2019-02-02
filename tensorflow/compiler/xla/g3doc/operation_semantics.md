@@ -38,25 +38,25 @@ Alltoall is a collective operation that sends data from all cores to all cores.
 It has two phases:
 
 1.  the scatter phase. On each core, the operand is split into `split_count`
-    number of blocks along the `split_dimensions`, and the blocks are scattered
-    to all cores, e.g., the ith block is send to the ith core.
+number of blocks along the `split_dimensions`, and the blocks are scattered
+to all cores, e.g., the ith block is send to the ith core.
 2.  the gather phase. Each core concatenates the received blocks along the
-    `concat_dimension`.
+`concat_dimension`.
 
 The participating cores can be configured by:
 
 -   `replica_groups`: each ReplicaGroup contains a list of replica id. If empty,
-    all replicas belong to one group in the order of 0 - (n-1). Alltoall will be
-    applied within subgroups in the specified order. For example, replica
-    groups = {{1,2,3},{4,5,0}} means, an Alltoall will be applied within replica
-    1, 2, 3, and in the gather phase, the received blocks will be concatenated
-    in the order of 1, 2, 3; another Alltoall will be applied within replica 4,
-    5, 0, and the concatenation order is 4, 5, 0.
+all replicas belong to one group in the order of 0 - (n-1). Alltoall will be
+applied within subgroups in the specified order. For example, replica
+groups = {{1,2,3},{4,5,0}} means, an Alltoall will be applied within replica
+1, 2, 3, and in the gather phase, the received blocks will be concatenated
+in the order of 1, 2, 3; another Alltoall will be applied within replica 4,
+5, 0, and the concatenation order is 4, 5, 0.
 
 Prerequisites:
 
 -   The dimension size of the operand on the split_dimension is divisible by
-    split_count.
+split_count.
 -   The operand's shape is not tuple.
 
 <b> `AllToAll(operand, split_dimension, concat_dimension, split_count,
@@ -93,7 +93,7 @@ AllToAll(x, /*split_dimension=*/1, /*concat_dimension=*/0, /*split_count=*/4);
 ```
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="./images/ops_alltoall.png">
+<img style="width:100%" src="./images/ops_alltoall.png">
 </div>
 
 In this example, there are 4 cores participating the Alltoall. On each core, the
@@ -387,34 +387,34 @@ For example, let v be an array of 24 elements:
 
 ```
 let v = f32[4x2x3] {{{10, 11, 12},  {15, 16, 17}},
-                    {{20, 21, 22},  {25, 26, 27}},
-                    {{30, 31, 32},  {35, 36, 37}},
-                    {{40, 41, 42},  {45, 46, 47}}};
+{{20, 21, 22},  {25, 26, 27}},
+{{30, 31, 32},  {35, 36, 37}},
+{{40, 41, 42},  {45, 46, 47}}};
 
 // Collapse to a single dimension, leaving one dimension.
 let v012 = Collapse(v, {0,1,2});
 then v012 == f32[24] {10, 11, 12, 15, 16, 17,
-                      20, 21, 22, 25, 26, 27,
-                      30, 31, 32, 35, 36, 37,
-                      40, 41, 42, 45, 46, 47};
+20, 21, 22, 25, 26, 27,
+30, 31, 32, 35, 36, 37,
+40, 41, 42, 45, 46, 47};
 
 // Collapse the two lower dimensions, leaving two dimensions.
 let v01 = Collapse(v, {0,1});
 then v01 == f32[4x6] {{10, 11, 12, 15, 16, 17},
-                      {20, 21, 22, 25, 26, 27},
-                      {30, 31, 32, 35, 36, 37},
-                      {40, 41, 42, 45, 46, 47}};
+{20, 21, 22, 25, 26, 27},
+{30, 31, 32, 35, 36, 37},
+{40, 41, 42, 45, 46, 47}};
 
 // Collapse the two higher dimensions, leaving two dimensions.
 let v12 = Collapse(v, {1,2});
 then v12 == f32[8x3] {{10, 11, 12},
-                      {15, 16, 17},
-                      {20, 21, 22},
-                      {25, 26, 27},
-                      {30, 31, 32},
-                      {35, 36, 37},
-                      {40, 41, 42},
-                      {45, 46, 47}};
+{15, 16, 17},
+{20, 21, 22},
+{25, 26, 27},
+{30, 31, 32},
+{35, 36, 37},
+{40, 41, 42},
+{45, 46, 47}};
 
 ```
 
@@ -441,9 +441,9 @@ replicas.
 Note that there are the following restrictions on the `source_target_pair`:
 
 -   Any two pairs should not have the same target replica id, and they should
-    not have the same source replica id.
+not have the same source replica id.
 -   If a replica id is not a target in any pair, then the output on that replica
-    is a tensor consists of 0(s) with the same shape as the input.
+is a tensor consists of 0(s) with the same shape as the input.
 
 ## Concatenate
 
@@ -480,25 +480,25 @@ Concat({{2, 3}, {4, 5}, {6, 7}}, 0)
 
 ```
 let a = {
-  {1, 2},
-  {3, 4},
-  {5, 6},
+{1, 2},
+{3, 4},
+{5, 6},
 };
 let b = {
-  {7, 8},
+{7, 8},
 };
 Concat({a, b}, 0)
 >>> {
-  {1, 2},
-  {3, 4},
-  {5, 6},
-  {7, 8},
+{1, 2},
+{3, 4},
+{5, 6},
+{7, 8},
 }
 ```
 
 Diagram:
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="./images/ops_concatenate.png">
+<img style="width:100%" src="./images/ops_concatenate.png">
 </div>
 
 ## Conditional
@@ -548,17 +548,23 @@ Computes a convolution of the kind used in neural networks. Here, a convolution
 can be thought of as a n-dimensional window moving across a n-dimensional base
 area and a computation is performed for each possible position of the window.
 
-| Arguments             | Type                 | Semantics                     |
-| --------------------- | -------------------- | ----------------------------- |
-| `lhs`                 | `XlaOp`              | rank n+2 array of inputs      |
-| `rhs`                 | `XlaOp`              | rank n+2 array of kernel      |
-:                       :                      : weights                       :
-| `window_strides`      | `ArraySlice<int64>`  | n-d array of kernel strides   |
-| `padding`             | `ArraySlice<         | n-d array of (low, high)      |
-:                       : pair<int64, int64>>` : padding                       :
-| `lhs_dilation`        | `ArraySlice<int64>`  | n-d lhs dilation factor array |
-| `rhs_dilation`        | `ArraySlice<int64>`  | n-d rhs dilation factor array |
-| `feature_group_count` | int64                | the number of feature groups  |
+| Arguments             | Type                     | Semantics                |
+| --------------------- | ------------------------ | ------------------------ |
+| `lhs`                 | `XlaOp`                  | rank n+2 array of inputs |
+| `rhs`                 | `XlaOp`                  | rank n+2 array of kernel |
+:                       :                          : weights                  :
+| `window_strides`      | `ArraySlice<int64>`      | n-d array of kernel      |
+:                       :                          : strides                  :
+| `padding`             | `ArraySlice< pair<int64, | n-d array of (low, high) |
+:                       : int64>>`                 : padding                  :
+| `lhs_dilation`        | `ArraySlice<int64>`      | n-d lhs dilation factor  |
+:                       :                          : array                    :
+| `rhs_dilation`        | `ArraySlice<int64>`      | n-d rhs dilation factor  |
+:                       :                          : array                    :
+| `feature_group_count` | int64                    | the number of feature    |
+:                       :                          : groups                   :
+| `batch_group_count`   | int64                    | the number of batch      |
+:                       :                          : groups                   :
 
 Let n be the number of spatial dimensions. The `lhs` argument is a rank n+2
 array describing the base area. This is called the input, even though of course
@@ -566,20 +572,20 @@ the rhs is also an input. In a neural network, these are the input activations.
 The n+2 dimensions are, in this order:
 
 *   `batch`: Each coordinate in this dimension represents an independent input
-    for which convolution is carried out.
+for which convolution is carried out.
 *   `z/depth/features`: Each (y,x) position in the base area has a vector
-    associated to it, which goes into this dimension.
+associated to it, which goes into this dimension.
 *   `spatial_dims`: Describes the `n` spatial dimensions that define the base
-    area that the window moves across.
+area that the window moves across.
 
 The `rhs` argument is a rank n+2 array describing the convolutional
 filter/kernel/window. The dimensions are, in this order:
 
 *   `output-z`: The `z` dimension of the output.
 *   `input-z`: The size of this dimension times `feature_group_count` should
-    equal the size of the `z` dimension in lhs.
+equal the size of the `z` dimension in lhs.
 *   `spatial_dims`: Describes the `n` spatial dimensions that define the n-d
-    window that moves across the base area.
+window that moves across the base area.
 
 The `window_strides` argument specifies the stride of the convolutional window
 in the spatial dimensions. For example, if the stride in the first spatial
@@ -628,9 +634,22 @@ input feature dimension, and the filter would be reshaped from
 `[filter_height, filter_width, 1, in_channels * channel_multiplier]`. For more
 details, see `tf.nn.depthwise_conv2d`.
 
+The `batch_group_count` (default value 1) argument can be used for depthwise
+filters during backpropagation. `batch_group_count` needs to be a divisor of the
+size of the `lhs` (input) batch dimension. If `batch_group_count` is greater
+than 1, it means that the output batch dimension should be of size
+`batch_group_size` where `batch_group_size = input batch / batch_group_count`.
+For convolutions with `batch_group_count` greater than 1, the input batch size
+must evenly divide into batch_group_size and output feature size, which implies
+that the output feature size must be equal to batch_group_count. Conceptually,
+this can be achieved by performing the usual convolution, and then scraping
+`batch_group_size` number of elements on the diagonal of the matrix formed by
+output batch and output feature.
+
 The output shape has these dimensions, in this order:
 
-*   `batch`: Same size as `batch` on the input (`lhs`).
+*   `batch`: The size of this dimension times `batch_group_count` should equal
+    the size of the `batch` dimension in lhs.
 *   `z`: Same size as `output-z` on the kernel (`rhs`).
 *   `spatial_dims`: One value for each valid placement of the convolutional
     window.
@@ -658,15 +677,15 @@ Here is pseudo-code for a 2d convolution with padding and striding:
 
 ```
 for (b, oz, oy, ox) {  // output coordinates
-  value = 0;
-  for (iz, ky, kx) {  // kernel coordinates and input z
-    iy = oy*stride_y + ky - pad_low_y;
-    ix = ox*stride_x + kx - pad_low_x;
-    if ((iy, ix) inside the base area considered without padding) {
-      value += input(b, iz, iy, ix) * kernel(oz, iz, ky, kx);
-    }
-  }
-  output(b, oz, oy, ox) = value;
+value = 0;
+for (iz, ky, kx) {  // kernel coordinates and input z
+iy = oy*stride_y + ky - pad_low_y;
+ix = ox*stride_x + kx - pad_low_x;
+if ((iy, ix) inside the base area considered without padding) {
+value += input(b, iz, iy, ix) * kernel(oz, iz, ky, kx);
+}
+}
+output(b, oz, oy, ox) = value;
 }
 ```
 
@@ -777,19 +796,19 @@ Here is an example of an implementation of `myfunc`:
 
 ```
 extern "C" void myfunc(void* out, void** in) {
-  float (&x)[2] = *static_cast<float(*)[2]>(in[0]);
-  float (&y)[2][3] = *static_cast<float(*)[2][3]>(in[1]);
-  EXPECT_EQ(1, x[0]);
-  EXPECT_EQ(2, x[1]);
-  EXPECT_EQ(10, y[0][0]);
-  EXPECT_EQ(20, y[0][1]);
-  EXPECT_EQ(30, y[0][2]);
-  EXPECT_EQ(40, y[1][0]);
-  EXPECT_EQ(50, y[1][1]);
-  EXPECT_EQ(60, y[1][2]);
-  float (&z)[3][3] = *static_cast<float(*)[3][3]>(out);
-  z[0][0] = x[1] + y[1][0];
-  // ...
+float (&x)[2] = *static_cast<float(*)[2]>(in[0]);
+float (&y)[2][3] = *static_cast<float(*)[2][3]>(in[1]);
+EXPECT_EQ(1, x[0]);
+EXPECT_EQ(2, x[1]);
+EXPECT_EQ(10, y[0][0]);
+EXPECT_EQ(20, y[0][1]);
+EXPECT_EQ(30, y[0][2]);
+EXPECT_EQ(40, y[1][0]);
+EXPECT_EQ(50, y[1][1]);
+EXPECT_EQ(60, y[1][2]);
+float (&z)[3][3] = *static_cast<float(*)[3][3]>(out);
+z[0][0] = x[1] + y[1][0];
+// ...
 }
 ```
 
@@ -856,44 +875,40 @@ DotGeneral performs the sum of products over contracting dimensions specified
 in 'dimension_numbers'.
 
 Associated contracting dimension numbers from the 'lhs' and 'rhs' do not need
-to be the same, but must be listed in the same order in both
-'lhs/rhs_contracting_dimensions' arrays and have the same dimension sizes.
-There must be exactly one contracting dimension on both 'lhs' and 'rhs'.
+to be the same and but must have the same dimension sizes.
 
 Example with contracting dimension numbers:
 
 ```
 lhs = { {1.0, 2.0, 3.0},
-        {4.0, 5.0, 6.0} }
+{4.0, 5.0, 6.0} }
 
 rhs = { {1.0, 1.0, 1.0},
-        {2.0, 2.0, 2.0} }
+{2.0, 2.0, 2.0} }
 
 DotDimensionNumbers dnums;
 dnums.add_lhs_contracting_dimensions(1);
 dnums.add_rhs_contracting_dimensions(1);
 
 DotGeneral(lhs, rhs, dnums) -> { {6.0, 12.0},
-                                 {15.0, 30.0} }
+{15.0, 30.0} }
 ```
 
-Associated batch dimension numbers from the 'lhs' and 'rhs' must have the same
-dimension number, must be listed in the same order in both arrays, must
-have the same dimension sizes, and must be ordered before contracting and
-non-contracting/non-batch dimension numbers.
+Associated batch dimension numbers from the 'lhs' and 'rhs' must
+have the same dimension sizes.
 
 Example with batch dimension numbers (batch size 2, 2x2 matrices):
 
 ```
 lhs = { { {1.0, 2.0},
-          {3.0, 4.0} },
-        { {5.0, 6.0},
-          {7.0, 8.0} } }
+{3.0, 4.0} },
+{ {5.0, 6.0},
+{7.0, 8.0} } }
 
 rhs = { { {1.0, 0.0},
-          {0.0, 1.0} },
-        { {1.0, 0.0},
-          {0.0, 1.0} } }
+{0.0, 1.0} },
+{ {1.0, 0.0},
+{0.0, 1.0} } }
 
 DotDimensionNumbers dnums;
 dnums.add_lhs_contracting_dimensions(2);
@@ -902,9 +917,9 @@ dnums.add_lhs_batch_dimensions(0);
 dnums.add_rhs_batch_dimensions(0);
 
 DotGeneral(lhs, rhs, dnums) -> { { {1.0, 2.0},
-                                   {3.0, 4.0} },
-                                 { {5.0, 6.0},
-                                   {7.0, 8.0} } }
+{3.0, 4.0} },
+{ {5.0, 6.0},
+{7.0, 8.0} } }
 ```
 
 | Input                               | Output            | Semantics        |
@@ -929,21 +944,21 @@ dimension: [start, start + size). The shape of `start_indices` must be rank ==
 
 <b> `DynamicSlice(operand, start_indices, size_indices)` </b>
 
-| Arguments       | Type                | Semantics                           |
-| --------------- | ------------------- | ----------------------------------- |
-| `operand`       | `XlaOp`             | N dimensional array of type T       |
-| `start_indices` | `XlaOp`             | Rank 1 array of N integers          |
-:                 :                     : containing the starting indices of  :
-:                 :                     : the slice for each dimension. Value :
-:                 :                     : must be greater than or equal to    :
-:                 :                     : zero.                               :
-| `size_indices`  | `ArraySlice<int64>` | List of N integers containing the   |
-:                 :                     : slice size for each dimension. Each :
-:                 :                     : value must be strictly greater than :
-:                 :                     : zero, and start + size must be less :
-:                 :                     : than or equal to the size of the    :
-:                 :                     : dimension to avoid wrapping modulo  :
-:                 :                     : dimension size.                     :
+| Arguments       | Type                  | Semantics                          |
+| --------------- | --------------------- | ---------------------------------- |
+| `operand`       | `XlaOp`               | N dimensional array of type T      |
+| `start_indices` | sequence of N `XlaOp` | List of N scalar integers          |
+:                 :                       : containing the starting indices of :
+:                 :                       : the slice for each dimension.      :
+:                 :                       : Value must be greater than or      :
+:                 :                       : equal to zero.                     :
+| `size_indices`  | `ArraySlice<int64>`   | List of N integers containing the  |
+:                 :                       : slice size for each dimension.     :
+:                 :                       : Each value must be strictly        :
+:                 :                       : greater than zero, and start +     :
+:                 :                       : size must be less than or equal to :
+:                 :                       : the size of the dimension to avoid :
+:                 :                       : wrapping modulo dimension size.    :
 
 The effective slice indices are computed by applying the following
 transformation for each index `i` in `[1, N)` before performing the slice:
@@ -963,22 +978,22 @@ let a = {0.0, 1.0, 2.0, 3.0, 4.0}
 let s = {2}
 
 DynamicSlice(a, s, {2}) produces:
-  {2.0, 3.0}
+{2.0, 3.0}
 ```
 
 2-dimensional example:
 
 ```
 let b =
- { {0.0,  1.0,  2.0},
-   {3.0,  4.0,  5.0},
-   {6.0,  7.0,  8.0},
-   {9.0, 10.0, 11.0} }
+{ {0.0,  1.0,  2.0},
+{3.0,  4.0,  5.0},
+{6.0,  7.0,  8.0},
+{9.0, 10.0, 11.0} }
 let s = {2, 1}
 
 DynamicSlice(b, s, {2, 2}) produces:
-  { { 7.0,  8.0},
-    {10.0, 11.0} }
+{ { 7.0,  8.0},
+{10.0, 11.0} }
 ```
 ## DynamicUpdateSlice
 
@@ -994,19 +1009,22 @@ the rank of `operand`.
 
 <b> `DynamicUpdateSlice(operand, update, start_indices)` </b>
 
-| Arguments       | Type    | Semantics                                        |
-| --------------- | ------- | ------------------------------------------------ |
-| `operand`       | `XlaOp` | N dimensional array of type T                    |
-| `update`        | `XlaOp` | N dimensional array of type T containing the     |
-:                 :         : slice update. Each dimension of update shape     :
-:                 :         : must be strictly greater than zero, and start +  :
-:                 :         : update must be less than or equal to the operand :
-:                 :         : size for each dimension to avoid generating      :
-:                 :         : out-of-bounds update indices.                    :
-| `start_indices` | `XlaOp` | Rank 1 array of N integers containing the        |
-:                 :         : starting indices of the slice for each           :
-:                 :         : dimension. Value must be greater than or equal   :
-:                 :         : to zero.                                         :
+| Arguments       | Type                  | Semantics                          |
+| --------------- | --------------------- | ---------------------------------- |
+| `operand`       | `XlaOp`               | N dimensional array of type T      |
+| `update`        | `XlaOp`               | N dimensional array of type T      |
+:                 :                       : containing the slice update. Each  :
+:                 :                       : dimension of update shape must be  :
+:                 :                       : strictly greater than zero, and    :
+:                 :                       : start + update must be less than   :
+:                 :                       : or equal to the operand size for   :
+:                 :                       : each dimension to avoid generating :
+:                 :                       : out-of-bounds update indices.      :
+| `start_indices` | sequence of N `XlaOp` | List of N scalar integers          |
+:                 :                       : containing the starting indices of :
+:                 :                       : the slice for each dimension.      :
+:                 :                       : Value must be greater than or      :
+:                 :                       : equal to zero.                     :
 
 The effective slice indices are computed by applying the following
 transformation for each index `i` in `[1, N)` before performing the slice:
@@ -1027,29 +1045,29 @@ let u = {5.0, 6.0}
 let s = {2}
 
 DynamicUpdateSlice(a, u, s) produces:
-  {0.0, 1.0, 5.0, 6.0, 4.0}
+{0.0, 1.0, 5.0, 6.0, 4.0}
 ```
 
 2-dimensional example:
 
 ```
 let b =
- { {0.0,  1.0,  2.0},
-   {3.0,  4.0,  5.0},
-   {6.0,  7.0,  8.0},
-   {9.0, 10.0, 11.0} }
+{ {0.0,  1.0,  2.0},
+{3.0,  4.0,  5.0},
+{6.0,  7.0,  8.0},
+{9.0, 10.0, 11.0} }
 let u =
- { {12.0,  13.0},
-   {14.0,  15.0},
-   {16.0,  17.0} }
+{ {12.0,  13.0},
+{14.0,  15.0},
+{16.0,  17.0} }
 
 let s = {1, 1}
 
 DynamicUpdateSlice(b, u, s) produces:
- { {0.0,  1.0,  2.0},
-   {3.0, 12.0, 13.0},
-   {6.0, 14.0, 15.0},
-   {9.0, 16.0, 17.0} }
+{ {0.0,  1.0,  2.0},
+{3.0, 12.0, 13.0},
+{6.0, 14.0, 15.0},
+{9.0, 16.0, 17.0} }
 ```
 
 ## Element-wise binary arithmetic operations
@@ -1080,7 +1098,7 @@ When `Op` is `Rem`, the sign of the result is taken from the dividend, and the
 absolute value of the result is always less than the divisor's absolute value.
 
 Integer division overflow (signed/unsigned division/remainder by zero or signed
-divison/remainder of `INT_SMIN` with `-1`) produces an implementation defined
+division/remainder of `INT_SMIN` with `-1`) produces an implementation defined
 value.
 
 An alternative variant with different-rank broadcasting support exists for these
@@ -1235,42 +1253,42 @@ shape of `start_indices` to be `[6,7,1]`).
 
 The bounds for the output array along dimension `i` is computed as follows:
 
-  1. If `i` is present in `batch_dims` (i.e. is equal to `batch_dims[k]` for
-     some `k`) then we pick the corresponding dimension bounds out of
-     `start_indices.shape`, skipping `index_vector_dim` (i.e. pick
-     `start_indices.shape.dims`[`k`] if `k` < `index_vector_dim` and
-     `start_indices.shape.dims`[`k`+`1`] otherwise).
+1. If `i` is present in `batch_dims` (i.e. is equal to `batch_dims[k]` for
+some `k`) then we pick the corresponding dimension bounds out of
+`start_indices.shape`, skipping `index_vector_dim` (i.e. pick
+`start_indices.shape.dims`[`k`] if `k` < `index_vector_dim` and
+`start_indices.shape.dims`[`k`+`1`] otherwise).
 
-  2. If `i` is present in `offset_dims` (i.e. equal to `offset_dims`[`k`] for
-     some `k`) then we pick the corresponding bound out of `slice_sizes` after
-     accounting for `collapsed_slice_dims` (i.e. we pick
-     `adjusted_slice_sizes`[`k`] where `adjusted_slice_sizes` is `slice_sizes`
-     with the bounds at indices `collapsed_slice_dims` removed).
+2. If `i` is present in `offset_dims` (i.e. equal to `offset_dims`[`k`] for
+some `k`) then we pick the corresponding bound out of `slice_sizes` after
+accounting for `collapsed_slice_dims` (i.e. we pick
+`adjusted_slice_sizes`[`k`] where `adjusted_slice_sizes` is `slice_sizes`
+with the bounds at indices `collapsed_slice_dims` removed).
 
 Formally, the operand index `In` corresponding to an output index `Out` is
 computed as follows:
 
-  1. Let `G` = { `Out`[`k`] for `k` in `batch_dims` }.  Use `G` to slice out
-     vector `S` such that `S`[`i`] = `start_indices`[Combine(`G`, `i`)] where
-     Combine(A, b) inserts b at position `index_vector_dim` into A.  Note that
-     this is well defined even if `G` is empty -- if `G` is empty then `S` =
-     `start_indices`.
+1. Let `G` = { `Out`[`k`] for `k` in `batch_dims` }.  Use `G` to slice out
+vector `S` such that `S`[`i`] = `start_indices`[Combine(`G`, `i`)] where
+Combine(A, b) inserts b at position `index_vector_dim` into A.  Note that
+this is well defined even if `G` is empty -- if `G` is empty then `S` =
+`start_indices`.
 
-  2. Create a starting index, `S`<sub>`in`</sub>, into `operand` using `S` by
-     scattering `S` using `start_index_map`.  More precisely:
-       1. `S`<sub>`in`</sub>[`start_index_map`[`k`]] = `S`[`k`] if `k` <
-          `start_index_map.size`.
-       2. `S`<sub>`in`</sub>[`_`] = `0` otherwise.
+2. Create a starting index, `S`<sub>`in`</sub>, into `operand` using `S` by
+scattering `S` using `start_index_map`.  More precisely:
+1. `S`<sub>`in`</sub>[`start_index_map`[`k`]] = `S`[`k`] if `k` <
+`start_index_map.size`.
+2. `S`<sub>`in`</sub>[`_`] = `0` otherwise.
 
-  3. Create an index `O`<sub>`in`</sub> into `operand` by scattering the indices
-     at the offset dimensions in `Out` according to the `collapsed_slice_dims`
-     set.  More precisely:
-       1. `O`<sub>`in`</sub>[`expand_offset_dims`(`k`)] =
-          `Out`[`offset_dims`[`k`]] if `k` < `offset_dims.size`
-          (`expand_offset_dims` is defined below).
-       2. `O`<sub>`in`</sub>[`_`] = `0` otherwise.
-  4. `In` is `O`<sub>`in`</sub> + `S`<sub>`in`</sub> where + is element-wise
-     addition.
+3. Create an index `O`<sub>`in`</sub> into `operand` by scattering the indices
+at the offset dimensions in `Out` according to the `collapsed_slice_dims`
+set.  More precisely:
+1. `O`<sub>`in`</sub>[`expand_offset_dims`(`k`)] =
+`Out`[`offset_dims`[`k`]] if `k` < `offset_dims.size`
+(`expand_offset_dims` is defined below).
+2. `O`<sub>`in`</sub>[`_`] = `0` otherwise.
+4. `In` is `O`<sub>`in`</sub> + `S`<sub>`in`</sub> where + is element-wise
+addition.
 
 `expand_offset_dims` is the monotonic function with domain [`0`, `offset.size`)
 and range [`0`, `operand.rank`) \ `collapsed_slice_dims`.  So if, e.g.,
@@ -1282,21 +1300,21 @@ and range [`0`, `operand.rank`) \ `collapsed_slice_dims`.  So if, e.g.,
 Informally, every index `Out` in the output array corresponds to an element `E`
 in the operand array, computed as follows:
 
-  - We use the batch dimensions in `Out` to look up a starting index from
-    `start_indices`.
+- We use the batch dimensions in `Out` to look up a starting index from
+`start_indices`.
 
-  - We use `start_index_map` to map the starting index (which may have size less
-    than operand.rank) to a "full" starting index into operand.
+- We use `start_index_map` to map the starting index (which may have size less
+than operand.rank) to a "full" starting index into operand.
 
-  - We dynamic-slice out a slice with size `slice_sizes` using the full starting
-    index.
+- We dynamic-slice out a slice with size `slice_sizes` using the full starting
+index.
 
-  - We reshape the slice by collapsing the `collapsed_slice_dims` dimensions.
-    Since all collapsed slice dimensions have to have bound 1 this reshape is
-    always legal.
+- We reshape the slice by collapsing the `collapsed_slice_dims` dimensions.
+Since all collapsed slice dimensions have to have bound 1 this reshape is
+always legal.
 
-  - We use the offset dimensions in `Out` to index into this slice to get the
-    input element, `E`, corresponding to output index `Out`.
+- We use the offset dimensions in `Out` to index into this slice to get the
+input element, `E`, corresponding to output index `Out`.
 
 `index_vector_dim` is set to `start_indices.rank` - `1` in all of the
 examples that follow.  More interesting values for `index_vector_dim` does not
@@ -1315,7 +1333,7 @@ the output shape, and maps it to an element in the input array in the following
 way:
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="./images/ops_xla_gather_0.svg">
+<img style="width:100%" src="./images/ops_xla_gather_0.svg">
 </div>
 
 We first select an (`X`,`Y`) vector from the gather indices array using `G`.
@@ -1334,7 +1352,7 @@ version of the example above using a "gather indices" array of shape `[4,5,2]`
 would translate indices like this:
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="./images/ops_xla_gather_1.svg">
+<img style="width:100%" src="./images/ops_xla_gather_1.svg">
 </div>
 
 Again, this acts as a batch dynamic slice `G`<sub>`0`</sub> and
@@ -1343,27 +1361,27 @@ Again, this acts as a batch dynamic slice `G`<sub>`0`</sub> and
 The gather operation in XLA generalizes the informal semantics outlined above in
 the following ways:
 
- 1. We can configure which dimensions in the output shape are the offset
-    dimensions (dimensions containing `O`<sub>`0`</sub>, `O`<sub>`1`</sub> in
-    the last example).  The output batch dimensions (dimensions containing
-    `G`<sub>`0`</sub>, `G`<sub>`1`</sub> in the last example) are defined to be
-    the output dimensions that are not offset dimensions.
+1. We can configure which dimensions in the output shape are the offset
+dimensions (dimensions containing `O`<sub>`0`</sub>, `O`<sub>`1`</sub> in
+the last example).  The output batch dimensions (dimensions containing
+`G`<sub>`0`</sub>, `G`<sub>`1`</sub> in the last example) are defined to be
+the output dimensions that are not offset dimensions.
 
- 2. The number of output offset dimensions explicitly present in the output
-    shape may be smaller than the input rank.  These "missing" dimensions, which
-    are listed explicitly as `collapsed_slice_dims`, must have a slice size of
-    `1`.  Since they have a slice size of `1` the only valid index for them is
-    `0` and eliding them does not introduce ambiguity.
+2. The number of output offset dimensions explicitly present in the output
+shape may be smaller than the input rank.  These "missing" dimensions, which
+are listed explicitly as `collapsed_slice_dims`, must have a slice size of
+`1`.  Since they have a slice size of `1` the only valid index for them is
+`0` and eliding them does not introduce ambiguity.
 
- 3. The slice extracted from the "Gather Indices" array ((`X`, `Y`) in the last
-    example) may have fewer elements than the input array rank, and an explicit
-    mapping dictates how the index should be expanded to have the same rank as
-    the input.
+3. The slice extracted from the "Gather Indices" array ((`X`, `Y`) in the last
+example) may have fewer elements than the input array rank, and an explicit
+mapping dictates how the index should be expanded to have the same rank as
+the input.
 
 As a final example, we use (2) and (3) to implement `tf.gather_nd`:
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="./images/ops_xla_gather_2.svg">
+<img style="width:100%" src="./images/ops_xla_gather_2.svg">
 </div>
 
 `G`<sub>`0`</sub> and `G`<sub>`1`</sub> are used to slice out a starting index
@@ -1442,11 +1460,11 @@ dependency between the while loops.
 
 ```
 result1 = while (condition, init = init_value) {
-  Infeed(shape)
+Infeed(shape)
 }
 
 result2 = while (condition, init = result1) {
-  Infeed(shape)
+Infeed(shape)
 }
 ```
 
@@ -1464,7 +1482,9 @@ Infeed of the device.
 
 Builds a constant literal on device rather than a potentially large host
 transfer. Creates a rank 1 array of values starting at zero and incrementing by
-one.
+one. For floating-point types, the produced array is equivalent to
+`ConvertElementType(Iota(...))` where the `Iota` is of integral type and the
+conversion is to the floating-point type.
 
 Arguments        | Type            | Semantics
 ---------------- | --------------- | ------------------------------------
@@ -1852,6 +1872,20 @@ The evaluation order of the reduction function is arbitrary and may be
 non-deterministic. Therefore, the reduction function should not be overly
 sensitive to reassociation. See the discussion about associativity in the
 context of [`Reduce`](#reduce) for more details.
+
+## ReplicaId
+
+See also
+[`XlaBuilder::ReplicaId`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Returns the unique ID (U32 scalar) of the replica.
+
+<b> `ReplicaId()` </b>
+
+The unique ID of each replica is an unsigned integer in the interval `[0, N)`,
+where `N` is the number of replicas. Since all the replicas are running the same
+program, a `ReplicaId()` call in the program will return a different value on
+each replica.
 
 ## Reshape
 

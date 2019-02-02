@@ -22,304 +22,223 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.layers import core as tf_core_layers
-from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_ops as nn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.platform import test
 
 
-class KerasIntegrationTest(test.TestCase):
+@keras_parameterized.run_with_all_model_types
+@keras_parameterized.run_all_keras_modes
+class VectorClassificationIntegrationTest(keras_parameterized.TestCase):
 
-  def test_version(self):
-    self.assertTrue(keras.__version__.endswith('-tf'))
+  def test_vector_classification(self):
+    np.random.seed(1337)
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=100,
+        test_samples=0,
+        input_shape=(10,),
+        num_classes=2)
+    y_train = keras.utils.to_categorical(y_train)
 
-  @test_util.run_deprecated_v1
-  def test_vector_classification_sequential(self):
-    with self.cached_session():
-      np.random.seed(1337)
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=100,
-          test_samples=0,
-          input_shape=(10,),
-          num_classes=2)
-      y_train = keras.utils.to_categorical(y_train)
+    model = testing_utils.get_model_from_layers(
+        [keras.layers.Dense(16, activation='relu'),
+         keras.layers.Dropout(0.1),
+         keras.layers.Dense(y_train.shape[-1], activation='softmax')],
+        input_shape=x_train.shape[1:])
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
+                  metrics=['accuracy'],
+                  run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(x_train, y_train, epochs=10, batch_size=10,
+                        validation_data=(x_train, y_train),
+                        verbose=2)
+    self.assertGreater(history.history['val_acc'][-1], 0.7)
+    _, val_acc = model.evaluate(x_train, y_train)
+    self.assertAlmostEqual(history.history['val_acc'][-1], val_acc)
+    predictions = model.predict(x_train)
+    self.assertEqual(predictions.shape, (x_train.shape[0], 2))
 
-      model = keras.models.Sequential([
-          keras.layers.Dense(16,
-                             activation='relu',
-                             input_shape=x_train.shape[1:]),
-          keras.layers.Dropout(0.1),
-          keras.layers.Dense(y_train.shape[-1], activation='softmax')
-      ])
-      model.compile(loss='categorical_crossentropy',
-                    optimizer=keras.optimizers.Adam(lr=0.1),
-                    metrics=['accuracy'])
-      history = model.fit(x_train, y_train, epochs=10, batch_size=16,
-                          validation_data=(x_train, y_train),
-                          verbose=2)
-      self.assertGreater(history.history['val_acc'][-1], 0.7)
-
-  @test_util.run_deprecated_v1
-  def test_vector_classification_functional(self):
-    with self.cached_session():
-      np.random.seed(1337)
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=100,
-          test_samples=0,
-          input_shape=(20,),
-          num_classes=2)
-      y_train = keras.utils.to_categorical(y_train)
-
-      inputs = keras.layers.Input(shape=x_train.shape[1:])
-      x = keras.layers.Dense(16, activation='relu')(inputs)
-      x = keras.layers.Dropout(0.1)(x)
-      outputs = keras.layers.Dense(y_train.shape[-1], activation='softmax')(x)
-
-      model = keras.models.Model(inputs, outputs)
-      model.compile(loss='categorical_crossentropy',
-                    optimizer=keras.optimizers.Adam(lr=0.1),
-                    metrics=['accuracy'])
-      history = model.fit(x_train, y_train, epochs=10, batch_size=16,
-                          validation_data=(x_train, y_train),
-                          verbose=2)
-      self.assertGreater(history.history['val_acc'][-1], 0.7)
-
-  @test_util.run_deprecated_v1
-  def test_temporal_classification_sequential(self):
-    with self.cached_session():
-      np.random.seed(1337)
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=100,
-          test_samples=0,
-          input_shape=(4, 10),
-          num_classes=2)
-      y_train = keras.utils.to_categorical(y_train)
-
-      model = keras.models.Sequential()
-      model.add(keras.layers.LSTM(5, return_sequences=True,
-                                  input_shape=x_train.shape[1:]))
-      model.add(keras.layers.GRU(y_train.shape[-1], activation='softmax'))
-      model.compile(loss='categorical_crossentropy',
-                    optimizer=keras.optimizers.Adam(lr=0.1),
-                    metrics=['accuracy'])
-      history = model.fit(x_train, y_train, epochs=15, batch_size=16,
-                          validation_data=(x_train, y_train),
-                          verbose=2)
-      self.assertGreater(history.history['val_acc'][-1], 0.7)
-
-  @test_util.run_deprecated_v1
-  def test_temporal_classification_sequential_tf_rnn(self):
-    with self.cached_session():
-      np.random.seed(1337)
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=100,
-          test_samples=0,
-          input_shape=(4, 10),
-          num_classes=2)
-      y_train = keras.utils.to_categorical(y_train)
-
-      model = keras.models.Sequential()
-      model.add(keras.layers.RNN(rnn_cell.LSTMCell(5), return_sequences=True,
-                                 input_shape=x_train.shape[1:]))
-      model.add(keras.layers.RNN(rnn_cell.GRUCell(y_train.shape[-1],
-                                                  activation='softmax',
-                                                  dtype=dtypes.float32)))
-      model.compile(loss='categorical_crossentropy',
-                    optimizer=keras.optimizers.Adam(lr=0.1),
-                    metrics=['accuracy'])
-      history = model.fit(x_train, y_train, epochs=15, batch_size=16,
-                          validation_data=(x_train, y_train),
-                          verbose=2)
-      self.assertGreater(history.history['val_acc'][-1], 0.7)
-
-  def test_image_classification_sequential(self):
-    with self.cached_session():
-      np.random.seed(1337)
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=100,
-          test_samples=0,
-          input_shape=(12, 12, 3),
-          num_classes=2)
-      y_train = keras.utils.to_categorical(y_train)
-
-      model = keras.models.Sequential()
-      model.add(keras.layers.Conv2D(
-          4, 3,
-          padding='same',
-          activation='relu',
-          input_shape=x_train.shape[1:]))
-      model.add(keras.layers.Conv2D(
-          8, 3,
-          padding='same',
-          activation='relu'))
-      model.add(keras.layers.Conv2D(
-          16, 3,
-          padding='same',
-          activation='relu'))
-      model.add(keras.layers.Flatten())
-      model.add(keras.layers.Dense(y_train.shape[-1], activation='softmax'))
-      model.compile(loss='categorical_crossentropy',
-                    optimizer=keras.optimizers.SGD(lr=0.01, momentum=0.8),
-                    metrics=['accuracy'])
-      history = model.fit(x_train, y_train, epochs=10, batch_size=16,
-                          validation_data=(x_train, y_train),
-                          verbose=2)
-      self.assertGreater(history.history['val_acc'][-1], 0.7)
-
-  @test_util.run_deprecated_v1
-  def test_video_classification_functional(self):
-    with self.cached_session():
-      np.random.seed(1337)
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=100,
-          test_samples=0,
-          input_shape=(4, 8, 8, 3),
-          num_classes=3)
-      y_train = keras.utils.to_categorical(y_train)
-
-      inputs = keras.layers.Input(shape=x_train.shape[1:])
-      x = keras.layers.TimeDistributed(
-          keras.layers.Conv2D(4, 3, activation='relu'))(inputs)
-      x = keras.layers.BatchNormalization()(x)
-      x = keras.layers.TimeDistributed(keras.layers.GlobalMaxPooling2D())(x)
-      x = keras.layers.Conv1D(8, 3, activation='relu')(x)
-      x = keras.layers.Flatten()(x)
-      outputs = keras.layers.Dense(y_train.shape[-1], activation='softmax')(x)
-
-      model = keras.models.Model(inputs, outputs)
-      model.compile(loss='categorical_crossentropy',
-                    optimizer=keras.optimizers.SGD(lr=0.01, momentum=0.8),
-                    metrics=['accuracy'])
-      history = model.fit(x_train, y_train, epochs=10, batch_size=16,
-                          validation_data=(x_train, y_train),
-                          verbose=2)
-      self.assertGreater(history.history['val_acc'][-1], 0.7)
-
-  @test_util.run_deprecated_v1
-  def test_vector_classification_shared_sequential(self):
+  def test_vector_classification_shared_model(self):
     # Test that Sequential models that feature internal updates
     # and internal losses can be shared.
-    with self.cached_session():
-      np.random.seed(1337)
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=100,
-          test_samples=0,
-          input_shape=(10,),
-          num_classes=2)
-      y_train = keras.utils.to_categorical(y_train)
+    np.random.seed(1337)
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=100,
+        test_samples=0,
+        input_shape=(10,),
+        num_classes=2)
+    y_train = keras.utils.to_categorical(y_train)
 
-      base_model = keras.models.Sequential([
-          keras.layers.Dense(16,
-                             activation='relu',
-                             kernel_regularizer=keras.regularizers.l2(1e-5),
-                             bias_regularizer=keras.regularizers.l2(1e-5),
-                             input_shape=x_train.shape[1:]),
-          keras.layers.BatchNormalization(),
-      ])
-      x = keras.layers.Input(x_train.shape[1:])
-      y = base_model(x)
-      y = keras.layers.Dense(y_train.shape[-1], activation='softmax')(y)
-      model = keras.models.Model(x, y)
-      model.compile(loss='categorical_crossentropy',
-                    optimizer=keras.optimizers.Adam(lr=0.1),
-                    metrics=['accuracy'])
+    base_model = testing_utils.get_model_from_layers(
+        [keras.layers.Dense(16,
+                            activation='relu',
+                            kernel_regularizer=keras.regularizers.l2(1e-5),
+                            bias_regularizer=keras.regularizers.l2(1e-5)),
+         keras.layers.BatchNormalization()],
+        input_shape=x_train.shape[1:])
+    x = keras.layers.Input(x_train.shape[1:])
+    y = base_model(x)
+    y = keras.layers.Dense(y_train.shape[-1], activation='softmax')(y)
+    model = keras.models.Model(x, y)
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
+                  metrics=['accuracy'],
+                  run_eagerly=testing_utils.should_run_eagerly())
+    if not testing_utils.should_run_eagerly():
       self.assertEqual(len(model.losses), 2)
       self.assertEqual(len(model.updates), 2)
-      history = model.fit(x_train, y_train, epochs=10, batch_size=16,
-                          validation_data=(x_train, y_train),
-                          verbose=2)
-      self.assertGreater(history.history['val_acc'][-1], 0.7)
+    history = model.fit(x_train, y_train, epochs=10, batch_size=10,
+                        validation_data=(x_train, y_train),
+                        verbose=2)
+    self.assertGreater(history.history['val_acc'][-1], 0.7)
+    _, val_acc = model.evaluate(x_train, y_train)
+    self.assertAlmostEqual(history.history['val_acc'][-1], val_acc)
+    predictions = model.predict(x_train)
+    self.assertEqual(predictions.shape, (x_train.shape[0], 2))
 
-  @test_util.run_deprecated_v1
-  def test_vector_classification_shared_model(self):
-    # Test that functional models that feature internal updates
-    # and internal losses can be shared.
-    with self.cached_session():
-      np.random.seed(1337)
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=100,
-          test_samples=0,
-          input_shape=(10,),
-          num_classes=2)
-      y_train = keras.utils.to_categorical(y_train)
 
-      inputs = keras.layers.Input(x_train.shape[1:])
-      x = keras.layers.Dense(16,
-                             activation='relu',
-                             kernel_regularizer=keras.regularizers.l2(1e-5),
-                             bias_regularizer=keras.regularizers.l2(1e-5),
-                             input_shape=x_train.shape[1:])(inputs)
-      x = keras.layers.BatchNormalization()(x)
-      base_model = keras.models.Model(inputs, x)
+# See b/122473407
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
 
-      x = keras.layers.Input(x_train.shape[1:])
-      y = base_model(x)
-      y = keras.layers.Dense(y_train.shape[-1], activation='softmax')(y)
-      model = keras.models.Model(x, y)
-      model.compile(loss='categorical_crossentropy',
-                    optimizer=keras.optimizers.Adam(lr=0.1),
-                    metrics=['accuracy'])
-      history = model.fit(x_train, y_train, epochs=10, batch_size=16,
-                          validation_data=(x_train, y_train),
-                          verbose=2)
-      self.assertGreater(history.history['val_acc'][-1], 0.7)
+  @keras_parameterized.run_with_all_model_types
+  def test_timeseries_classification(self):
+    np.random.seed(1337)
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=100,
+        test_samples=0,
+        input_shape=(4, 10),
+        num_classes=2)
+    y_train = keras.utils.to_categorical(y_train)
 
-  def test_embedding_with_clipnorm(self):
-    with self.cached_session():
-      model = keras.models.Sequential()
-      model.add(keras.layers.Embedding(input_dim=1, output_dim=1))
-      model.compile(optimizer=keras.optimizers.SGD(clipnorm=0.1), loss='mse')
-      model.fit(np.array([[0]]), np.array([[[0.5]]]), epochs=1)
+    layers = [
+        keras.layers.LSTM(5, return_sequences=True),
+        keras.layers.GRU(y_train.shape[-1], activation='softmax')
+    ]
+    model = testing_utils.get_model_from_layers(
+        layers, input_shape=x_train.shape[1:])
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
+                  metrics=['accuracy'],
+                  run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(x_train, y_train, epochs=15, batch_size=10,
+                        validation_data=(x_train, y_train),
+                        verbose=2)
+    self.assertGreater(history.history['val_acc'][-1], 0.7)
+    _, val_acc = model.evaluate(x_train, y_train)
+    self.assertAlmostEqual(history.history['val_acc'][-1], val_acc)
+    predictions = model.predict(x_train)
+    self.assertEqual(predictions.shape, (x_train.shape[0], 2))
 
-  def test_using_tf_layers_in_keras_sequential_model(self):
-    with self.cached_session():
-      np.random.seed(1337)
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=100,
-          test_samples=0,
-          input_shape=(10,),
-          num_classes=2)
+  def test_timeseries_classification_sequential_tf_rnn(self):
+    np.random.seed(1337)
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=100,
+        test_samples=0,
+        input_shape=(4, 10),
+        num_classes=2)
+    y_train = keras.utils.to_categorical(y_train)
 
-      model = keras.models.Sequential()
-      model.add(tf_core_layers.Dense(32, activation=nn.relu, input_shape=(10,)))
-      model.add(tf_core_layers.Dense(2, activation=nn.softmax))
-      model.summary()
+    model = keras.models.Sequential()
+    model.add(keras.layers.RNN(rnn_cell.LSTMCell(5), return_sequences=True,
+                               input_shape=x_train.shape[1:]))
+    model.add(keras.layers.RNN(rnn_cell.GRUCell(y_train.shape[-1],
+                                                activation='softmax',
+                                                dtype=dtypes.float32)))
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
+                  metrics=['accuracy'],
+                  run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(x_train, y_train, epochs=15, batch_size=10,
+                        validation_data=(x_train, y_train),
+                        verbose=2)
+    self.assertGreater(history.history['val_acc'][-1], 0.7)
+    _, val_acc = model.evaluate(x_train, y_train)
+    self.assertAlmostEqual(history.history['val_acc'][-1], val_acc)
+    predictions = model.predict(x_train)
+    self.assertEqual(predictions.shape, (x_train.shape[0], 2))
 
-      y_train = keras.utils.to_categorical(y_train)
-      model.compile(loss='categorical_crossentropy',
-                    optimizer=keras.optimizers.Adam(lr=0.1),
-                    metrics=['accuracy'])
-      history = model.fit(x_train, y_train, epochs=10, batch_size=16,
-                          validation_data=(x_train, y_train),
-                          verbose=0)
-      self.assertGreater(history.history['val_acc'][-1], 0.7)
 
-  def test_using_tf_layers_in_keras_functional_model(self):
-    with self.cached_session():
-      np.random.seed(1337)
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=100,
-          test_samples=0,
-          input_shape=(10,),
-          num_classes=2)
-      y_train = keras.utils.to_categorical(y_train)
+@keras_parameterized.run_with_all_model_types
+@keras_parameterized.run_all_keras_modes
+class ImageClassificationIntegrationTest(keras_parameterized.TestCase):
 
-      inputs = keras.Input(shape=(10,))
-      x = tf_core_layers.Dense(32, activation=nn.relu)(inputs)
-      outputs = tf_core_layers.Dense(2, activation=nn.softmax)(x)
-      model = keras.Model(inputs, outputs)
-      model.summary()
+  def test_image_classification(self):
+    np.random.seed(1337)
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=100,
+        test_samples=0,
+        input_shape=(10, 10, 3),
+        num_classes=2)
+    y_train = keras.utils.to_categorical(y_train)
 
-      model.compile(loss='categorical_crossentropy',
-                    optimizer=keras.optimizers.Adam(lr=0.1),
-                    metrics=['accuracy'])
-      history = model.fit(x_train, y_train, epochs=10, batch_size=16,
-                          validation_data=(x_train, y_train),
-                          verbose=0)
-      self.assertGreater(history.history['val_acc'][-1], 0.7)
+    layers = [
+        keras.layers.Conv2D(4, 3, padding='same', activation='relu'),
+        keras.layers.Conv2D(8, 3, padding='same'),
+        keras.layers.BatchNormalization(),
+        keras.layers.Conv2D(8, 3, padding='same'),
+        keras.layers.Flatten(),
+        keras.layers.Dense(y_train.shape[-1], activation='softmax')
+    ]
+    model = testing_utils.get_model_from_layers(
+        layers, input_shape=x_train.shape[1:])
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
+                  metrics=['accuracy'],
+                  run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(x_train, y_train, epochs=10, batch_size=10,
+                        validation_data=(x_train, y_train),
+                        verbose=2)
+    self.assertGreater(history.history['val_acc'][-1], 0.7)
+    _, val_acc = model.evaluate(x_train, y_train)
+    self.assertAlmostEqual(history.history['val_acc'][-1], val_acc)
+    predictions = model.predict(x_train)
+    self.assertEqual(predictions.shape, (x_train.shape[0], 2))
 
+
+@keras_parameterized.run_all_keras_modes
+class ActivationV2IntegrationTest(keras_parameterized.TestCase):
+  """Tests activation function V2 in model exporting and loading.
+
+  This test is to verify in TF 2.x, when 'tf.nn.softmax' is used as an
+  activition function, its model exporting and loading work as expected.
+  Check b/123041942 for details.
+  """
+
+  def test_serialization_v2_model(self):
+    np.random.seed(1337)
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=100,
+        test_samples=0,
+        input_shape=(10,),
+        num_classes=2)
+    y_train = keras.utils.to_categorical(y_train)
+
+    model = keras.Sequential([
+        keras.layers.Flatten(input_shape=x_train.shape[1:]),
+        keras.layers.Dense(10, activation=nn.relu),
+        # To mimic 'tf.nn.softmax' used in TF 2.x.
+        keras.layers.Dense(y_train.shape[-1], activation=nn.softmax_v2),
+    ])
+
+    # Check if 'softmax' is in model.get_config().
+    last_layer_activation = model.get_layer(index=2).get_config()['activation']
+    self.assertEqual(last_layer_activation, 'softmax')
+
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
+                  metrics=['accuracy'],
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x_train, y_train, epochs=2, batch_size=10,
+              validation_data=(x_train, y_train),
+              verbose=2)
+
+    output_path = keras.saving.saved_model.export(
+        model, '/tmp/tf_keras_saved_model')
+    loaded_model = keras.saving.saved_model.load_from_saved_model(output_path)
+    self.assertEqual(model.summary(), loaded_model.summary())
 
 if __name__ == '__main__':
   test.main()

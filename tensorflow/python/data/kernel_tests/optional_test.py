@@ -25,6 +25,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.util import structure
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -74,7 +75,6 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertAllEqual(expected.dense_shape,
                           self.evaluate(actual.dense_shape))
 
-  @test_util.run_deprecated_v1
   def testFromNone(self):
     value_structure = structure.TensorStructure(dtypes.float32, [])
     opt = optional_ops.Optional.none_from_structure(value_structure)
@@ -268,9 +268,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
        optional_ops.OptionalStructure(
            structure.TensorStructure(dtypes.float32, []))),
   )
-  @test_util.run_deprecated_v1
-  def testSkipEagerOptionalStructure(self, tf_value_fn,
-                                     expected_value_structure):
+  def testOptionalStructure(self, tf_value_fn, expected_value_structure):
     tf_value = tf_value_fn()
     opt = optional_ops.Optional.from_value(tf_value)
 
@@ -305,6 +303,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(
           self.evaluate(tf_value), self.evaluate(round_trip_opt.get_value()))
 
+  # NOTE: This test is specific to graph mode and is skipped in eager mode.
   @parameterized.named_parameters(
       ("Tensor", np.array([1, 2, 3], dtype=np.int32),
        lambda: constant_op.constant([4, 5, 6], dtype=dtypes.int32), True),
@@ -360,6 +359,25 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.assertFalse(sess.run(elem_has_value_t))
         with self.assertRaises(errors.InvalidArgumentError):
           sess.run(elem_value_t)
+
+  def testFunctionBoundaries(self):
+    @def_function.function
+    def get_optional():
+      x = constant_op.constant(1.0)
+      opt = optional_ops.Optional.from_value(x)
+      # TODO(skyewm): support returning Optionals from functions?
+      return opt._variant_tensor
+
+    # TODO(skyewm): support Optional arguments?
+    @def_function.function
+    def consume_optional(opt_tensor):
+      value_structure = structure.TensorStructure(dtypes.float32, [])
+      opt = optional_ops._OptionalImpl(opt_tensor, value_structure)
+      return opt.get_value()
+
+    opt_tensor = get_optional()
+    val = consume_optional(opt_tensor)
+    self.assertEqual(self.evaluate(val), 1.0)
 
 
 if __name__ == "__main__":

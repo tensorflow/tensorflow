@@ -120,6 +120,10 @@ class Node {
   int assigned_device_name_index() const { return assigned_device_name_index_; }
   void set_assigned_device_name_index(int index);
 
+  // Sets 'original_node_names' field of this node's DebugInfo proto to
+  // 'names'.
+  void set_original_node_names(const std::vector<string>& names);
+
   // Read only access to attributes
   AttrSlice attrs() const;
 
@@ -169,6 +173,8 @@ class Node {
 
   bool IsMetadata() const { return class_ == NC_METADATA; }
   bool IsFakeParam() const { return class_ == NC_FAKE_PARAM; }
+
+  bool IsDataset() const { return class_ == NC_DATASET; }
 
   template <typename T>
   void AddAttr(const string& name, const T& val) {
@@ -250,6 +256,7 @@ class Node {
     NC_SCOPED_ALLOCATOR,
     NC_COLLECTIVE,
     NC_FAKE_PARAM,
+    NC_DATASET,
     NC_OTHER  // Not a special kind of node
   };
 
@@ -288,6 +295,15 @@ class Node {
   WhileContext* while_ctx_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Node);
+};
+
+// Stores debug information associated with the Node.
+struct NodeDebugInfo {
+  const string name;
+  std::vector<string> original_node_names;
+
+  NodeDebugInfo(const Node& n);
+  NodeDebugInfo(const NodeDef& ndef);
 };
 
 // Represents an input of a node, i.e., the `index`-th input to `node`.
@@ -493,10 +509,16 @@ class Graph {
   // the corresponding NodeDef to reflect the change.
   // REQUIRES: The control edge must exist.
   void RemoveControlEdge(const Edge* e);
+
   // Updates the input to a node.  The existing edge to `dst` is removed and an
   // edge from `new_src` to `dst` is created. The NodeDef associated with `dst`
   // is also updated.
   Status UpdateEdge(Node* new_src, int new_src_index, Node* dst, int dst_index);
+
+  // Like AddEdge but updates dst's NodeDef. Used to add an input edge to a
+  // "While" op during gradient construction, see AddInputWhileHack in
+  // python_api.h for more details.
+  Status AddWhileInputHack(Node* new_src, int new_src_index, Node* dst);
 
   // Adds the function and gradient definitions in `fdef_lib` to this graph's op
   // registry. Ignores duplicate functions, and returns a bad status if an

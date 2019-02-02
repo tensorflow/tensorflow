@@ -27,12 +27,14 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
+@test_util.run_v1_only("PriorityQueue removed from v2")
 class PriorityQueueTest(test.TestCase):
 
   def testRoundTripInsertReadOnceSorts(self):

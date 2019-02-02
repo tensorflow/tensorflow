@@ -202,4 +202,4 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-%{cuda_include_genrules}
+%{copy_rules}

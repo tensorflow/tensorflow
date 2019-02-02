@@ -107,6 +107,28 @@ std::map<string, string> kBrokenTests = {
     {R"(^\/strided_slice_buggy)", "119786029"},
 };
 
+// Additional list of tests that are expected to fail when
+//   --test_arg=--ignore_known_bugs=false
+// and
+//   --test_arg=--use_nnapi=true
+// Note that issues related to lack of NNAPI support for a particular op are
+// handled separately; this list is specifically for broken cases where
+// execution produces broken output.
+// Key is a substring of the test name and value is a bug number.
+std::map<string, string> kBrokenNnapiTests = {
+    // Certain NNAPI kernels silently fail with int32 types.
+    {R"(^\/add.*dtype=tf\.int32)", "122987564"},
+    {R"(^\/concat.*dtype=tf\.int32)", "122987564"},
+    {R"(^\/mul.*dtype=tf\.int32)", "122987564"},
+    {R"(^\/space_to_depth.*dtype=tf\.int32)", "122987564"},
+
+    // Certain NNAPI fully_connected shape permutations fail.
+    {R"(^\/fully_connected_constant_filter=True.*shape1=\[3,3\])", "122987564"},
+    {R"(^\/fully_connected_constant_filter=True.*shape1=\[4,4\])", "122987564"},
+    {R"(^\/fully_connected.*shape1=\[3,3\].*transpose_b=True)", "122987564"},
+    {R"(^\/fully_connected.*shape1=\[4,4\].*shape2=\[4,1\])", "122987564"},
+};
+
 // Allows test data to be unarchived into a temporary directory and makes
 // sure those temporary directories are removed later.
 class ArchiveEnvironment : public ::testing::Environment {
@@ -205,7 +227,7 @@ tensorflow::Status ReadManifest(const string& original_file, const string& dir,
   }
   if (!added) {
     string message = "Test had no examples: " + original_file;
-    return tensorflow::Status(tensorflow::error::UNKNOWN, message.c_str());
+    return tensorflow::Status(tensorflow::error::UNKNOWN, message);
   }
   return tensorflow::Status::OK();
 }
@@ -242,8 +264,13 @@ TEST_P(OpsTest, RunZipTests) {
   tflite::testing::TfLiteDriver test_driver(FLAGS_use_nnapi);
   test_driver.SetModelBaseDir(tflite_dir);
 
+  auto broken_tests = kBrokenTests;
+  if (FLAGS_use_nnapi) {
+    broken_tests.insert(kBrokenNnapiTests.begin(), kBrokenNnapiTests.end());
+  }
+
   string bug_number;
-  for (const auto& p : kBrokenTests) {
+  for (const auto& p : broken_tests) {
     if (RE2::PartialMatch(test_name, p.first)) {
       bug_number = p.second;
     }

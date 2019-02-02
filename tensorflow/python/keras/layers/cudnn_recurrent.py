@@ -26,11 +26,12 @@ from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine.input_spec import InputSpec
+from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.layers.recurrent import RNN
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
 class _CuDNNRNN(RNN):
@@ -79,11 +80,6 @@ class _CuDNNRNN(RNN):
     self._num_constants = None
     self._num_inputs = None
     self._vector_shape = constant_op.constant([-1])
-
-  def _canonical_to_params(self, weights, biases):
-    weights = [array_ops.reshape(x, self._vector_shape) for x in weights]
-    biases = [array_ops.reshape(x, self._vector_shape) for x in biases]
-    return array_ops.concat(weights + biases, axis=0)
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     if isinstance(mask, list):
@@ -162,7 +158,7 @@ class _CuDNNRNN(RNN):
         RNN, self).get_losses_for(inputs=inputs)
 
 
-@tf_export('keras.layers.CuDNNGRU')
+@keras_export(v1=['keras.layers.CuDNNGRU'])
 class CuDNNGRU(_CuDNNRNN):
   """Fast GRU implementation backed by cuDNN.
 
@@ -279,7 +275,7 @@ class CuDNNGRU(_CuDNNRNN):
     input_h = initial_state[0]
     input_h = array_ops.expand_dims(input_h, axis=0)
 
-    params = self._canonical_to_params(
+    params = recurrent._canonical_to_params(    # pylint: disable=protected-access
         weights=[
             self.kernel[:, self.units:self.units * 2],
             self.kernel[:, :self.units],
@@ -296,7 +292,7 @@ class CuDNNGRU(_CuDNNRNN):
             self.bias[self.units * 3:self.units * 4],
             self.bias[self.units * 5:],
         ],
-    )
+        shape=self._vector_shape)
 
     outputs, h, _, _ = gen_cudnn_rnn_ops.cudnn_rnn(
         inputs,
@@ -339,7 +335,7 @@ class CuDNNGRU(_CuDNNRNN):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.CuDNNLSTM')
+@keras_export(v1=['keras.layers.CuDNNLSTM'])
 class CuDNNLSTM(_CuDNNRNN):
   """Fast LSTM implementation backed by cuDNN.
 
@@ -474,7 +470,7 @@ class CuDNNLSTM(_CuDNNRNN):
     input_h = array_ops.expand_dims(input_h, axis=0)
     input_c = array_ops.expand_dims(input_c, axis=0)
 
-    params = self._canonical_to_params(
+    params = recurrent._canonical_to_params(    # pylint: disable=protected-access
         weights=[
             self.kernel[:, :self.units],
             self.kernel[:, self.units:self.units * 2],
@@ -495,7 +491,7 @@ class CuDNNLSTM(_CuDNNRNN):
             self.bias[self.units * 6:self.units * 7],
             self.bias[self.units * 7:],
         ],
-    )
+        shape=self._vector_shape)
 
     outputs, h, c, _ = gen_cudnn_rnn_ops.cudnn_rnn(
         inputs,

@@ -237,7 +237,8 @@ class VariableScopeTest(test.TestCase):
         _ = d2(x)
         self.assertEqual(len(d2.variables), 2)
         v3, v4 = d2.variables
-        self.assertAllEqual([v1, v2], [v3, v4])
+        self.assertEqual(v1, v3)
+        self.assertEqual(v2, v4)
       f()
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
@@ -1684,7 +1685,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
       with variable_scope.variable_creator_scope(creator_b):
         variable_scope.variable(1.0, name="one_name")
 
-    self.assertAllEqual(variable_names, ["forced_name"])
+    self.assertEqual(variable_names[0], "forced_name")
 
     called = [False]
 

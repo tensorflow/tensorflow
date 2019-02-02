@@ -116,13 +116,26 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                 orc_jit_memory_mapper::GetInstance());
             result.Resolver = symbol_resolver_;
             return result;
+          },
+          /*NotifyLoaded=*/
+          llvm::orc::LegacyRTDyldObjectLinkingLayer::NotifyLoadedFtor(),
+          /*NotifyFinalized=*/
+          [this](VModuleKeyT, const llvm::object::ObjectFile& object,
+                 const llvm::RuntimeDyld::LoadedObjectInfo& object_info) {
+            this->NotifyObjectFinalized(object, object_info);
+          },
+          /*NotifyFreed=*/
+          [this](VModuleKeyT, const llvm::object::ObjectFile& object) {
+            this->NotifyObjectFreed(object);
           }),
       compile_layer_(object_layer_,
                      CompilerFunctor(target_machine_.get(), &disassembler_,
                                      opt_level, optimize_for_size,
                                      enable_fast_math, disable_expensive_passes,
                                      std::move(pre_optimization_hook),
-                                     std::move(post_optimization_hook))) {
+                                     std::move(post_optimization_hook))),
+      gdb_jit_event_listener_(
+          llvm::JITEventListener::createGDBRegistrationListener()) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
 }
@@ -139,12 +152,26 @@ llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
   }
 
   if (func_addr == nullptr) {
-    VLOG(2) << "Unable to resolve runtime symbol: " << name;
+    LOG(ERROR) << "Unable to resolve runtime symbol: " << name;
     return nullptr;
   }
   llvm::JITEvaluatedSymbol symbol_info(reinterpret_cast<uint64_t>(func_addr),
                                        llvm::JITSymbolFlags::None);
   return symbol_info;
+}
+
+void SimpleOrcJIT::NotifyObjectFinalized(
+    const llvm::object::ObjectFile& object,
+    const llvm::RuntimeDyld::LoadedObjectInfo& object_info) {
+  uint64_t key = static_cast<uint64_t>(
+      reinterpret_cast<uintptr_t>(object.getData().data()));
+  gdb_jit_event_listener_->notifyObjectLoaded(key, object, object_info);
+}
+
+void SimpleOrcJIT::NotifyObjectFreed(const llvm::object::ObjectFile& object) {
+  uint64_t key = static_cast<uint64_t>(
+      reinterpret_cast<uintptr_t>(object.getData().data()));
+  gdb_jit_event_listener_->notifyFreeingObject(key);
 }
 
 SimpleOrcJIT::VModuleKeyT SimpleOrcJIT::AddModule(
@@ -213,18 +240,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseOutfeedBufferAfterPopulation);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortPRED);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS8);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU8);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS16);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU16);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF16);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS32);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU32);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS64);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU64);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF64);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSort);
 
   registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee));
   registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee));
@@ -296,6 +312,9 @@ bool RegisterKnownJITSymbols() {
   REGISTER_LIBM_SYMBOL(sin, double (*)(double));
 #ifdef __APPLE__
   REGISTER_LIBM_SYMBOL(__sincos, void (*)(double, double*, double*));
+  registry->Register("__sincosf_stret",
+                     reinterpret_cast<void*>(__sincosf_stret));
+  registry->Register("__sincos_stret", reinterpret_cast<void*>(__sincos_stret));
 #else
   REGISTER_LIBM_SYMBOL(sincos, void (*)(double, double*, double*));
 #endif
@@ -311,6 +330,13 @@ bool RegisterKnownJITSymbols() {
   registry->Register("memcpy", reinterpret_cast<void*>(memcpy));
   registry->Register("memmove", reinterpret_cast<void*>(memmove));
   registry->Register("memset", reinterpret_cast<void*>(memset));
+
+#ifdef __APPLE__
+  registry->Register("__bzero", reinterpret_cast<void*>(bzero));
+  registry->Register("memset_pattern16",
+                     reinterpret_cast<void*>(memset_pattern16));
+#endif
+
   return true;
 }
 

@@ -59,7 +59,7 @@ class MultiDeviceIterator : public ResourceBase {
     DCHECK(lib_ != nullptr);
   }
 
-  string DebugString() override {
+  string DebugString() const override {
     return strings::StrCat("MultiDeviceIterator for ", devices_.size(),
                            " devices");
   }
@@ -81,9 +81,8 @@ class MultiDeviceIterator : public ResourceBase {
     ++incarnation_id_;
     *incarnation_id = incarnation_id_;
 
-    multi_device_buffer_.reset(
-        new MultiDeviceBuffer(devices_.size(), max_buffer_size, incarnation_id_,
-                              std::move(iterator)));
+    multi_device_buffer_ = absl::make_unique<MultiDeviceBuffer>(
+        devices_.size(), max_buffer_size, incarnation_id_, std::move(iterator));
     return Status::OK();
   }
 
@@ -98,6 +97,7 @@ class MultiDeviceIterator : public ResourceBase {
       IteratorContext::Params params(ctx);
       params.lib = lib_;
       params.function_handle_cache = function_handle_cache_.get();
+      params.resource_mgr = &resource_mgr_;
       IteratorContext iter_ctx(std::move(params));
       tf_shared_lock l(mu_);
       multi_device_buffer_->GetNextFromShard(
@@ -125,6 +125,8 @@ class MultiDeviceIterator : public ResourceBase {
     return function_handle_cache_.get();
   }
 
+  ResourceMgr* resource_mgr() { return &resource_mgr_; }
+
  private:
   // A private class that uses a background thread to keep a per device buffer
   // full.
@@ -149,7 +151,7 @@ class MultiDeviceIterator : public ResourceBase {
     void Reset() LOCKS_EXCLUDED(mu_) {
       {
         mutex_lock l(mu_);
-        if (!background_thread_finished_) {
+        if (background_thread_ && !background_thread_finished_) {
           cancelled_ = true;
           // Wake up the background thread.
           for (int i = 0; i < size_; ++i) {
@@ -214,10 +216,11 @@ class MultiDeviceIterator : public ResourceBase {
     void EnsureBackgroundThreadStarted(IteratorContext* ctx)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!background_thread_) {
-        background_thread_.reset(ctx->env()->StartThread(
+        auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
+        background_thread_ = absl::WrapUnique<Thread>(ctx->env()->StartThread(
             {}, "tf_data_multi_device_iterator",
             std::bind(&MultiDeviceIterator::MultiDeviceBuffer::BackgroundThread,
-                      this, new IteratorContext(*ctx))));
+                      this, std::move(ctx_copy))));
       }
     }
 
@@ -255,12 +258,11 @@ class MultiDeviceIterator : public ResourceBase {
       }
     }
 
-    void BackgroundThread(IteratorContext* ctx) {
+    void BackgroundThread(std::shared_ptr<IteratorContext> ctx) {
       {
         mutex_lock l(mu_);
         background_thread_started_ = true;
       }
-      std::unique_ptr<IteratorContext> cleanup(ctx);
       int shard_to_fetch = 0;
       while (true) {
         HostBufferElement elem;
@@ -281,8 +283,8 @@ class MultiDeviceIterator : public ResourceBase {
           }
         }
 
-        elem.status =
-            host_iterator_->GetNext(ctx, &elem.value, &elem.end_of_sequence);
+        elem.status = host_iterator_->GetNext(ctx.get(), &elem.value,
+                                              &elem.end_of_sequence);
 
         if (elem.status.ok() && elem.end_of_sequence) {
           end_of_iterator = true;
@@ -350,11 +352,15 @@ class MultiDeviceIterator : public ResourceBase {
   const std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
   FunctionLibraryRuntime* const lib_ = nullptr;  // not owned.
   const std::unique_ptr<FunctionHandleCache> function_handle_cache_;
+  ResourceMgr resource_mgr_;
   std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
 
   int64 incarnation_id_ GUARDED_BY(mu_) = 0;
   std::unique_ptr<MultiDeviceBuffer> multi_device_buffer_ GUARDED_BY(mu_);
 };
+
+// Used to generate unique names for anonymous multi device iterators.
+static std::atomic<int64> current_id_;
 
 // Just creates a MultiDeviceIterator and returns it.
 class MultiDeviceIteratorHandleOp : public OpKernel {
@@ -385,6 +391,8 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override LOCKS_EXCLUDED(mu_) {
+    string unique_name = cinfo_.name();
+    string container_name = cinfo_.container();
     {
       mutex_lock l(mu_);
       if (resource_ == nullptr) {
@@ -393,37 +401,55 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
         std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
         OP_REQUIRES_OK(context, context->function_library()->Clone(
                                     &flib_def, &pflr, &lib));
-        std::unique_ptr<FunctionHandleCache> function_handle_cache(
-            new FunctionHandleCache(lib));
+        std::unique_ptr<FunctionHandleCache> function_handle_cache =
+            absl::make_unique<FunctionHandleCache>(lib);
         ResourceMgr* mgr = context->resource_manager();
         OP_REQUIRES_OK(context, cinfo_.Init(mgr, def()));
 
         MultiDeviceIterator* resource;
-        OP_REQUIRES_OK(context,
-                       mgr->LookupOrCreate<MultiDeviceIterator>(
-                           cinfo_.container(), cinfo_.name(), &resource,
-                           [this, lib, &flib_def, &pflr,
-                            &function_handle_cache](MultiDeviceIterator** ret)
-                               EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-                                 *ret = new MultiDeviceIterator(
-                                     output_types_, output_shapes_, devices_,
-                                     std::move(flib_def), std::move(pflr), lib,
-                                     std::move(function_handle_cache));
-                                 return Status::OK();
-                               }));
 
-        Status s = VerifyResource(resource);
-        if (TF_PREDICT_FALSE(!s.ok())) {
-          resource->Unref();
-          context->SetStatus(s);
-          return;
+        if (name_ == ResourceHandle::ANONYMOUS_NAME) {
+          unique_name = strings::StrCat("_AnonymousMultiDeviceIterator",
+                                        current_id_.fetch_add(1));
+          container_name = "AnonymousMultiDeviceIterator";
+          resource = new MultiDeviceIterator(
+              output_types_, output_shapes_, devices_, std::move(flib_def),
+              std::move(pflr), lib, std::move(function_handle_cache));
+          OP_REQUIRES_OK(context, mgr->Create<MultiDeviceIterator>(
+                                      container_name, unique_name, resource));
+          Status s = VerifyResource(resource);
+          if (TF_PREDICT_FALSE(!s.ok())) {
+            resource->Unref();
+            context->SetStatus(s);
+            return;
+          }
+        } else {
+          unique_name = cinfo_.name();
+          container_name = cinfo_.container();
+          OP_REQUIRES_OK(context,
+                         mgr->LookupOrCreate<MultiDeviceIterator>(
+                             container_name, unique_name, &resource,
+                             [this, lib, &flib_def, &pflr,
+                              &function_handle_cache](MultiDeviceIterator** ret)
+                                 EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                                   *ret = new MultiDeviceIterator(
+                                       output_types_, output_shapes_, devices_,
+                                       std::move(flib_def), std::move(pflr),
+                                       lib, std::move(function_handle_cache));
+                                   return Status::OK();
+                                 }));
+          Status s = VerifyResource(resource);
+          if (TF_PREDICT_FALSE(!s.ok())) {
+            resource->Unref();
+            context->SetStatus(s);
+            return;
+          }
+          resource_ = resource;
         }
-
-        resource_ = resource;
       }
     }
     OP_REQUIRES_OK(context, MakeResourceHandleToOutput(
-                                context, 0, cinfo_.container(), cinfo_.name(),
+                                context, 0, container_name, unique_name,
                                 MakeTypeIndex<MultiDeviceIterator>()));
   }
 
@@ -477,6 +503,7 @@ class MultiDeviceIteratorInitOp : public OpKernel {
     IteratorContext::Params params(ctx);
     params.lib = resource->lib();
     params.function_handle_cache = resource->function_handle_cache();
+    params.resource_mgr = resource->resource_mgr();
     IteratorContext iter_ctx(std::move(params));
     OP_REQUIRES_OK(
         ctx, dataset->MakeIterator(std::move(iter_ctx), "Iterator", &iterator));

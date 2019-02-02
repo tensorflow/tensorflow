@@ -25,7 +25,7 @@ class FuzzParseTensor : public FuzzSession {
   void BuildGraph(const Scope& scope) final {
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
     // The serialized proto.
-    auto input = Placeholder(scope.WithOpName("input1"), DT_STRING);
+    auto input = Placeholder(scope.WithOpName("input"), DT_STRING);
 
     (void)ParseTensor(scope.WithOpName("output"), input, DT_FLOAT);
   }
@@ -62,8 +62,7 @@ class FuzzParseTensor : public FuzzSession {
     // Now we can do the actual fuzz implementation
     Tensor input_tensor(tensorflow::DT_STRING, TensorShape({}));
     input_tensor.scalar<string>()() = as_string;
-    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-    RunOneInput(input_tensor).IgnoreError();
+    RunInputs({{"input", input_tensor}});
   }
 };
 

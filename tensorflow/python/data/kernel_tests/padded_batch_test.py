@@ -156,6 +156,7 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     next_element = self.getNext(padded_dataset)
     self.evaluate(next_element())
 
+  # NOTE: This test is specific to graph mode and is skipped in eager mode.
   @test_util.run_deprecated_v1
   def testSkipEagerPaddedBatchDatasetShapeSpecifications(self):
     int_placeholder = array_ops.placeholder(dtypes.int32)
@@ -228,6 +229,7 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       _ = dataset_ops.Dataset.range(10).padded_batch(
           5, padded_shapes=shape_as_tensor)
 
+  # NOTE: This test is specific to graph mode and is skipped in eager mode.
   @test_util.run_deprecated_v1
   def testSkipEagerPaddedBatchShapeError(self):
     with self.assertRaisesRegexp(

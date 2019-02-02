@@ -14,6 +14,7 @@ py_library(
     name = "opt_py",
     srcs = [
         "__init__.py",
+        "python/training/adam_gs_optimizer.py",
         "python/training/adamax.py",
         "python/training/addsign.py",
         "python/training/agn_optimizer.py",
@@ -22,6 +23,7 @@ py_library(
         "python/training/external_optimizer.py",
         "python/training/ggt.py",
         "python/training/lars_optimizer.py",
+        "python/training/lazy_adam_gs_optimizer.py",
         "python/training/lazy_adam_optimizer.py",
         "python/training/matrix_functions.py",
         "python/training/model_average_optimizer.py",
@@ -57,6 +59,21 @@ py_library(
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "adam_gs_optimizer_test",
+    srcs = ["python/training/adam_gs_optimizer_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -145,6 +162,25 @@ py_test(
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "lazy_adam_gs_optimizer_test",
+    srcs = ["python/training/lazy_adam_gs_optimizer_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -282,6 +318,9 @@ tf_py_test(
         "//tensorflow/python:ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//third_party/py/numpy",
+    ],
+    tags = [
+        "oss_serial",
     ],
 )
 

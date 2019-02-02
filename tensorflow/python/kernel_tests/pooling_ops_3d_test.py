@@ -253,6 +253,7 @@ class PoolingTest(test.TestCase):
         ksize = test_util.NHWCToNCHW(ksize)
         strides = test_util.NHWCToNCHW(strides)
         t = test_util.NHWCToNCHW(t)
+        output_sizes = test_util.NHWCToNCHW(output_sizes)
 
       t = pool_func(
           t,

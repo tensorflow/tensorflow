@@ -685,7 +685,7 @@ def _InsertQuantOp(context,
       [1; 2^bits - 1] or wide range [0; 2^bits - 1].
     producer_scope: The restriction of producer scope. If not None, the new op
       will be inserted only when the producer is in this scope.
-    consumer_scope: The restriction of producer scope. If not None, the new op
+    consumer_scope: The restriction of consumer scope. If not None, the new op
       will be inserted only when all the consumers are in this scope.
   Raises:
     ValueError: When producer operation is not directly connected to the

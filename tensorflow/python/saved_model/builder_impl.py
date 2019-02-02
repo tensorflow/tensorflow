@@ -108,26 +108,6 @@ class _SavedModelBuilder(object):
     # weights.
     self._has_saved_variables = False
 
-  def _copy_assets_to_destination_dir(self, asset_filename_map):
-    """Copy all assets from source path to destination path."""
-    assets_destination_dir = saved_model_utils.get_or_create_assets_dir(
-        self._export_dir)
-
-    # Copy each asset from source path to destination path.
-    for asset_basename, asset_source_filepath in asset_filename_map.items():
-      asset_destination_filepath = os.path.join(
-          compat.as_bytes(assets_destination_dir),
-          compat.as_bytes(asset_basename))
-
-      # Only copy the asset file to the destination if it does not already
-      # exist. This is to ensure that an asset with the same name defined as
-      # part of multiple graphs is only copied the first time.
-      if not file_io.file_exists(asset_destination_filepath):
-        file_io.copy(asset_source_filepath, asset_destination_filepath)
-
-    tf_logging.info("Assets written to: %s",
-                    compat.as_text(assets_destination_dir))
-
   def _save_and_write_assets(self, meta_graph_def, assets_list=None):
     """Saves asset to the meta graph and writes asset files to disk.
 
@@ -145,7 +125,7 @@ class _SavedModelBuilder(object):
       return
 
     # Copy assets from source path to destination path.
-    self._copy_assets_to_destination_dir(asset_filename_map)
+    copy_assets_to_destination_dir(asset_filename_map, self._export_dir)
 
   def _tag_and_add_meta_graph(self, meta_graph_def, tags, signature_def_map):
     """Tags the meta graph def and adds it to the SavedModel.
@@ -470,7 +450,7 @@ class SavedModelBuilder(_SavedModelBuilder):
       return
 
     # Copy assets from source path to destination path.
-    self._copy_assets_to_destination_dir(asset_filename_map)
+    copy_assets_to_destination_dir(asset_filename_map, self._export_dir)
 
   def _maybe_add_main_op(self, main_op):
     """Adds main op to the SavedModel.
@@ -656,7 +636,7 @@ def _maybe_save_assets(write_fn, assets_to_add=None):
     if not asset_source_filepath:
       raise ValueError("Invalid asset filepath tensor %s" % asset_tensor)
 
-    asset_filename = _get_asset_filename_to_add(
+    asset_filename = get_asset_filename_to_add(
         asset_source_filepath, asset_filename_map)
 
     # Call the passed-in function that builds AssetFileDef proto and adds it
@@ -675,7 +655,7 @@ def _maybe_save_assets(write_fn, assets_to_add=None):
   return asset_filename_map
 
 
-def _get_asset_filename_to_add(asset_filepath, asset_filename_map):
+def get_asset_filename_to_add(asset_filepath, asset_filename_map):
   """Get a unique basename to add to the SavedModel if this file is unseen.
 
   Assets come from users as full paths, and we save them out to the
@@ -760,6 +740,27 @@ def _add_asset_to_metagraph(meta_graph_def, asset_filename, asset_tensor):
   asset_proto = meta_graph_def.asset_file_def.add()
   asset_proto.filename = asset_filename
   asset_proto.tensor_info.name = asset_tensor.name
+
+
+def copy_assets_to_destination_dir(asset_filename_map, destination_dir):
+  """Copy all assets from source path to destination path."""
+  assets_destination_dir = saved_model_utils.get_or_create_assets_dir(
+      destination_dir)
+
+  # Copy each asset from source path to destination path.
+  for asset_basename, asset_source_filepath in asset_filename_map.items():
+    asset_destination_filepath = os.path.join(
+        compat.as_bytes(assets_destination_dir),
+        compat.as_bytes(asset_basename))
+
+    # Only copy the asset file to the destination if it does not already
+    # exist. This is to ensure that an asset with the same name defined as
+    # part of multiple graphs is only copied the first time.
+    if not file_io.file_exists(asset_destination_filepath):
+      file_io.copy(asset_source_filepath, asset_destination_filepath)
+
+  tf_logging.info("Assets written to: %s",
+                  compat.as_text(assets_destination_dir))
 
 
 def _add_asset_to_collection(asset_filename, asset_tensor):

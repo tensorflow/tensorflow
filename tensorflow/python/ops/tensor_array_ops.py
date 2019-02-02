@@ -20,10 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
-import os
 import weakref
 
-from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -32,16 +30,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.tf_export import tf_export
-
-
-ENABLE_TENSOR_ARRAY_V2 = (
-    tf2.enabled() or os.getenv("TF_ENABLE_TENSOR_ARRAY_V2") is not None)
 
 
 # _GraphTensorArray accesses many of the hidden generated ops, but is in
@@ -119,6 +114,7 @@ class _GraphTensorArray(object):
 
     if clear_after_read is None:
       clear_after_read = True
+    self._dynamic_size = None
     dynamic_size = dynamic_size or False
 
     self._dtype = dtype
@@ -226,7 +222,9 @@ class _GraphTensorArray(object):
     """See TensorArray."""
     flow = array_ops.identity(self._flow)
     ta = TensorArray(
-        dtype=self._dtype, handle=self._handle, flow=flow,
+        dtype=self._dtype,
+        handle=self._handle,
+        flow=flow,
         infer_shape=self._infer_shape,
         colocate_with_first_write_call=self._colocate_with_first_write_call)
     ta._element_shape = self._element_shape
@@ -283,7 +281,9 @@ class _GraphTensorArray(object):
             flow_in=self._flow,
             name=name)
       ta = TensorArray(
-          dtype=self._dtype, handle=self._handle, flow=flow_out,
+          dtype=self._dtype,
+          handle=self._handle,
+          flow=flow_out,
           colocate_with_first_write_call=self._colocate_with_first_write_call)
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
@@ -354,7 +354,9 @@ class _GraphTensorArray(object):
             flow_in=self._flow,
             name=name)
       ta = TensorArray(
-          dtype=self._dtype, handle=self._handle, flow=flow_out,
+          dtype=self._dtype,
+          handle=self._handle,
+          flow=flow_out,
           colocate_with_first_write_call=self._colocate_with_first_write_call)
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
@@ -383,7 +385,9 @@ class _GraphTensorArray(object):
             flow_in=self._flow,
             name=name)
       ta = TensorArray(
-          dtype=self._dtype, handle=self._handle, flow=flow_out,
+          dtype=self._dtype,
+          handle=self._handle,
+          flow=flow_out,
           colocate_with_first_write_call=self._colocate_with_first_write_call)
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
@@ -453,7 +457,7 @@ class _GraphTensorArrayV2(object):
     del tensor_array_name
     del colocate_with_first_write_call
 
-    del dynamic_size  # TODO(b/117943489): Unused for now.
+    self._dynamic_size = dynamic_size
 
     if (flow is not None and
         (not isinstance(flow, ops.Tensor) or flow.dtype != dtypes.variant)):
@@ -530,10 +534,7 @@ class _GraphTensorArrayV2(object):
   def identity(self):
     """See TensorArray."""
     flow = array_ops.identity(self._flow)
-    ta = TensorArray(
-        dtype=self._dtype, flow=flow, infer_shape=self._infer_shape)
-    ta._element_shape = self._element_shape
-    return ta
+    return build_ta_with_new_flow(self, flow)
 
   def grad(self, source, flow=None, name=None):
     """Not supported."""
@@ -541,14 +542,20 @@ class _GraphTensorArrayV2(object):
 
   def read(self, index, name=None):
     """See TensorArray."""
-    value = list_ops.tensor_list_get_item(
-        input_handle=self._flow,
-        index=index,
-        element_dtype=self._dtype,
-        name=name)
-    if self._element_shape:
-      value.set_shape(self._element_shape[0].dims)
-    return value
+    with ops.name_scope(name, "TensorArrayV2Read", [self._flow, index]):
+      if self._element_shape:
+        element_shape = self._element_shape[0]
+      else:
+        element_shape = tensor_shape.TensorShape(None)
+      value = list_ops.tensor_list_get_item(
+          input_handle=self._flow,
+          index=index,
+          element_dtype=self._dtype,
+          element_shape=element_shape,
+          name=name)
+      if self._element_shape:
+        value.set_shape(self._element_shape[0].dims)
+      return value
 
   @tf_should_use.should_use_result
   def write(self, index, value, name=None):
@@ -558,11 +565,12 @@ class _GraphTensorArrayV2(object):
       if self._infer_shape:
         self._merge_element_shape(value.shape)
       flow_out = list_ops.tensor_list_set_item(
-          input_handle=self._flow, index=index, item=value, name=name)
-      ta = TensorArray(dtype=self._dtype, handle=None, flow=flow_out)
-      ta._infer_shape = self._infer_shape
-      ta._element_shape = self._element_shape
-      return ta
+          input_handle=self._flow,
+          index=index,
+          item=value,
+          resize_if_index_out_of_bounds=self._dynamic_size,
+          name=name)
+      return build_ta_with_new_flow(self, flow_out)
 
   def stack(self, name=None):
     """See TensorArray."""
@@ -586,10 +594,16 @@ class _GraphTensorArrayV2(object):
 
   def concat(self, name=None):
     """See TensorArray."""
-    value = list_ops.tensor_list_concat(
-        input_handle=self._flow, element_dtype=self._dtype, name=name)
     if self._element_shape and self._element_shape[0].dims is not None:
-      value.set_shape([None] + self._element_shape[0].dims[1:])
+      element_shape = [None] + self._element_shape[0].dims[1:]
+    else:
+      element_shape = None
+
+    value = list_ops.tensor_list_concat(
+        input_handle=self._flow,
+        element_dtype=self._dtype,
+        element_shape=element_shape,
+        name=name)
     return value
 
   @tf_should_use.should_use_result
@@ -601,15 +615,7 @@ class _GraphTensorArrayV2(object):
         self._merge_element_shape(value.shape[1:])
       flow_out = list_ops.tensor_list_from_tensor(
           tensor=value, element_shape=value.shape[1:])
-      ta = TensorArray(
-          dtype=self._dtype,
-          handle=self.handle,
-          flow=flow_out,
-          colocate_with_first_write_call=self._colocate_with_first_write_call)
-      ta._infer_shape = self._infer_shape
-      ta._element_shape = self._element_shape
-      ta._colocate_with = self._colocate_with
-      return ta
+      return build_ta_with_new_flow(self, flow_out)
 
   @tf_should_use.should_use_result
   def scatter(self, indices, value, name=None):
@@ -619,17 +625,10 @@ class _GraphTensorArrayV2(object):
       value = ops.convert_to_tensor(value, name="value")
       if self._infer_shape and not context.executing_eagerly():
         self._merge_element_shape(value.shape[1:])
+      element_shape = self._element_shape[0] if self._element_shape else None
       flow_out = list_ops.tensor_list_scatter(
-          tensor=value, indices=indices, element_shape=-1)
-      ta = TensorArray(
-          dtype=self._dtype,
-          handle=self.handle,
-          flow=flow_out,
-          colocate_with_first_write_call=self._colocate_with_first_write_call)
-      ta._infer_shape = self._infer_shape
-      ta._element_shape = self._element_shape
-      ta._colocate_with = self._colocate_with
-      return ta
+          tensor=value, indices=indices, element_shape=element_shape)
+      return build_ta_with_new_flow(self, flow_out)
 
   @tf_should_use.should_use_result
   def split(self, value, lengths, name=None):
@@ -649,15 +648,7 @@ class _GraphTensorArrayV2(object):
           lengths=lengths_64,
           element_shape=self._element_shape[0] if self._element_shape else None,
           name=name)
-      ta = TensorArray(
-          dtype=self._dtype,
-          handle=self.handle,
-          flow=flow_out,
-          colocate_with_first_write_call=self._colocate_with_first_write_call)
-      ta._infer_shape = self._infer_shape
-      ta._element_shape = self._element_shape
-      ta._colocate_with = self._colocate_with
-      return ta
+      return build_ta_with_new_flow(self, flow_out)
 
   def size(self, name=None):
     """See TensorArray."""
@@ -863,7 +854,8 @@ class _EagerTensorArray(object):
     if self._tensor_array:
       for ix in range(len(self._tensor_array)):
         self._maybe_zero(ix)
-    return array_ops.stack(self._tensor_array, name=name)
+    return ops.convert_to_tensor(
+        self._tensor_array, name=name, dtype=self._dtype)
 
   def gather(self, indices, name=None):
     """See TensorArray."""
@@ -1013,7 +1005,7 @@ class TensorArray(object):
     if context.executing_eagerly():
       implementation = _EagerTensorArray
     else:
-      if ENABLE_TENSOR_ARRAY_V2:
+      if control_flow_util.EnableControlFlowV2(ops.get_default_graph()):
         implementation = _GraphTensorArrayV2
       else:
         implementation = _GraphTensorArray
@@ -1046,6 +1038,10 @@ class TensorArray(object):
   def handle(self):
     """The reference to the TensorArray."""
     return self._implementation.handle
+
+  @property
+  def _dynamic_size(self):
+    return self._implementation._dynamic_size
 
   @property
   def _infer_shape(self):
@@ -1232,8 +1228,10 @@ class TensorArray(object):
 
 
 def build_ta_with_new_flow(old_ta, flow):
+  """Builds a TensorArray with a new `flow` tensor."""
   ta = TensorArray(
       dtype=old_ta.dtype,
+      dynamic_size=old_ta._dynamic_size,
       handle=old_ta.handle,
       flow=flow,
       infer_shape=old_ta._infer_shape,

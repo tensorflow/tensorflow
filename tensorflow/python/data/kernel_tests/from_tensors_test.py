@@ -50,7 +50,7 @@ class FromTensorsTest(test_base.DatasetTestBase):
 
     self.assertDatasetProduces(dataset, expected_output=[components])
 
-  def testSkipEagerFromTensorsSparse(self):
+  def testFromTensorsSparse(self):
     """Test a dataset that represents a single tuple of tensors."""
     components = (sparse_tensor.SparseTensorValue(
         indices=np.array([[0]]),
@@ -224,6 +224,7 @@ class FromTensorsTest(test_base.DatasetTestBase):
     self.assertEquals(dtypes.int64, get_next().dtype)
     self.assertEquals([3], get_next().shape)
 
+  # TODO(b/121264236): needs mechanism for multiple device in eager mode.
   def testSkipEagerSplitPipelineFailsWithPlacementError(self):
     with session.Session(
         target="",
@@ -246,7 +247,7 @@ class FromTensorsTest(test_base.DatasetTestBase):
         dataset = dataset.map(lambda x: x + var_1.read_value())
       sess.run(var_1.initializer)
 
-      iterator = dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(dataset)
       sess.run(iterator.initializer)
 
       with self.assertRaisesRegexp(

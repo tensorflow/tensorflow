@@ -85,11 +85,26 @@ class SideEffectGuardTransformer(converter.Base):
         new_alias_map.update(alias_map)
         alias_map = new_alias_map
         current_dest = new_dest
-    if reindent_requested and not current_dest:
-      # TODO(mdan): There may still be something that could be done.
-      raise ValueError('Unable to insert statement into the computation flow: '
-                       'it is not followed by any computation which '
-                       'the statement could gate.')
+
+    if reindent_requested:
+      no_controls_to_gate = False
+      if not current_dest:
+        no_controls_to_gate = True
+      if len(current_dest) == 1:
+        if ast_util.matches(current_dest[0], 'return'):
+          no_controls_to_gate = True
+        if ast_util.matches(current_dest[0], 'return ()'):
+          no_controls_to_gate = True
+        if ast_util.matches(current_dest[0], 'return []'):
+          no_controls_to_gate = True
+        if ast_util.matches(current_dest[0], 'return {}'):
+          no_controls_to_gate = True
+      if no_controls_to_gate:
+        # TODO(mdan): There may still be something that could be done.
+        raise ValueError(
+            'Unable to insert statement into the computation flow: it is not'
+            ' followed by any computation which the statement could gate.')
+
     return new_nodes
 
   def visit_FunctionDef(self, node):

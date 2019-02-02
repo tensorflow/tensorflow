@@ -186,7 +186,7 @@ def group_norm(inputs,
 
   Args:
     inputs: A Tensor with at least 2 dimensions one which is channels. All
-     shape dimensions must be fully defined.
+     shape dimensions except for batch must be fully defined.
     groups: Integer. Divide the channels into this number of groups over which
       normalization statistics are computed. This number must be commensurate
       with the number of channels in `inputs`.
@@ -249,12 +249,20 @@ def group_norm(inputs,
   """
   # TODO(shlens): Support partially defined shapes for the inputs.
   inputs = ops.convert_to_tensor(inputs)
-  original_shape = inputs.shape
 
   if inputs.shape.ndims is None:
     raise ValueError('Inputs %s has undefined rank.' % inputs.name)
   if channels_axis > (inputs.shape.ndims - 1):
     raise ValueError('Axis is out of bounds.')
+
+  # Use dynamic shape for not fully defined dimensions in the inputs.
+  dyanmic_shape = array_ops.shape(inputs)
+  input_shape_list = []
+  for i, dim in enumerate(inputs.shape):
+    if dim.value is None:
+      input_shape_list.append(dyanmic_shape[i])
+    else:
+      input_shape_list.append(dim)
 
   # Standardize the channels_axis to be positive and identify # of channels.
   if channels_axis < 0:
@@ -289,8 +297,8 @@ def group_norm(inputs,
   # Determine axes before channels. Some examples of common image formats:
   #  'NCHW': before = [N], after = [HW]
   #  'NHWC': before = [NHW], after = []
-  axes_before_channels = inputs.shape.as_list()[:channels_axis]
-  axes_after_channels = inputs.shape.as_list()[channels_axis+1:]
+  axes_before_channels = input_shape_list[:channels_axis]
+  axes_after_channels = input_shape_list[channels_axis+1:]
 
   # Manually broadcast the parameters to conform to the number of groups.
   params_shape_broadcast = ([1] * len(axes_before_channels) +
@@ -369,7 +377,7 @@ def group_norm(inputs,
     outputs = inputs * gain + offset
 
     # Collapse the groups into the channel dimension.
-    outputs = array_ops.reshape(outputs, original_shape)
+    outputs = array_ops.reshape(outputs, input_shape_list)
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)

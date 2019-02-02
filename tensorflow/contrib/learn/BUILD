@@ -274,6 +274,7 @@ py_test(
     name = "estimator_test",
     size = "medium",
     srcs = ["python/learn/estimators/estimator_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     tags = [
         "manual",
@@ -356,9 +357,9 @@ py_test(
 
 py_test(
     name = "dnn_linear_combined_test",
-    size = "large",
+    size = "medium",
     srcs = ["python/learn/estimators/dnn_linear_combined_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     srcs_version = "PY2AND3",
     tags = ["no_oss"],  # flaky b/70524820
     deps = [

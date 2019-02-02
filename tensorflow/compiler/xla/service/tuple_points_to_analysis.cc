@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -55,11 +56,10 @@ bool PointsToSet::IsAmbiguous() const {
 
 bool PointsToSet::IsDistinct() const {
   bool distinct = true;
-  std::set<const LogicalBuffer*> all_points_to;
-  ForEachElement([&distinct, &all_points_to](const ShapeIndex& /*index*/,
-                                             const BufferList& points_to) {
+  absl::flat_hash_set<const LogicalBuffer*> all_points_to;
+  ForEachElement([&](const ShapeIndex& /*index*/, const BufferList& points_to) {
     for (auto& buffer : points_to) {
-      if (all_points_to.count(buffer) != 0) {
+      if (all_points_to.contains(buffer)) {
         distinct = false;
       }
       all_points_to.insert(buffer);
@@ -87,9 +87,7 @@ bool PointsToSet::ContainsBuffer(const LogicalBuffer& buffer) const {
   bool found = false;
   ForEachElement([&found, &buffer](const ShapeIndex& /*index*/,
                                    const BufferList& pointed_to_buffers) {
-    if (!found &&
-        std::find(pointed_to_buffers.begin(), pointed_to_buffers.end(),
-                  &buffer) != pointed_to_buffers.end()) {
+    if (!found && absl::c_linear_search(pointed_to_buffers, &buffer)) {
       found = true;
     }
   });
@@ -99,8 +97,7 @@ bool PointsToSet::ContainsBuffer(const LogicalBuffer& buffer) const {
 bool PointsToSet::ContainsBufferAtIndex(const LogicalBuffer& buffer,
                                         const ShapeIndex& index) const {
   const auto& pointed_to_buffers = element(index);
-  return std::find(pointed_to_buffers.begin(), pointed_to_buffers.end(),
-                   &buffer) != pointed_to_buffers.end();
+  return absl::c_linear_search(pointed_to_buffers, &buffer);
 }
 
 void PointsToSet::AddPointedToBuffer(const LogicalBuffer& buffer,
@@ -210,7 +207,7 @@ Status TuplePointsToAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
             &logical_buffer_analysis_->GetBuffer(hlo_instruction, index));
       });
 
-  if (ShapeUtil::IsTuple(hlo_instruction->shape())) {
+  if (hlo_instruction->shape().IsTuple()) {
     // If the hlo instruction is a tuple-shaped, then trivially the instruction
     // itself is the source of the tuple.
     points_to_set.add_tuple_source({}, hlo_instruction);
@@ -604,9 +601,8 @@ bool TuplePointsToAnalysis::DoesNotUseOperandBuffer(
   } else if (user->opcode() == HloOpcode::kFusion &&
              user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
     // Find fusion parameter associated with 'operand'.
-    auto it = std::find_if(
-        user->fused_parameters().begin(), user->fused_parameters().end(),
-        [=](HloInstruction* fused_param) {
+    auto it = absl::c_find_if(
+        user->fused_parameters(), [&](HloInstruction* fused_param) {
           return user->operand(fused_param->parameter_number()) == operand;
         });
     CHECK(it != user->fused_parameters().end());
@@ -672,9 +668,8 @@ bool TuplePointsToAnalysis::HasUniqueFusedUseOfOperandAt(
   }
   // Find fusion parameter associated with 'operand'.
   const auto& fused_params = fusion->fused_parameters();
-  auto fused_param_it = std::find_if(
-      fused_params.begin(), fused_params.end(),
-      [&](HloInstruction* fused_param) {
+  auto fused_param_it =
+      absl::c_find_if(fused_params, [&](HloInstruction* fused_param) {
         return fusion->operand(fused_param->parameter_number()) == operand;
       });
   if (fused_param_it == fused_params.end()) {
@@ -743,11 +738,10 @@ bool TuplePointsToAnalysis::CanShareOperandBufferWithUser(
       // Check if one operand of kAdd fused root is kDot or kConvolution.
       auto* add = user->fused_expression_root();
       auto add_operand_it =
-          std::find_if(add->operands().begin(), add->operands().end(),
-                       [&](HloInstruction* operand) {
-                         return operand->opcode() == HloOpcode::kConvolution ||
-                                operand->opcode() == HloOpcode::kDot;
-                       });
+          absl::c_find_if(add->operands(), [&](HloInstruction* operand) {
+            return operand->opcode() == HloOpcode::kConvolution ||
+                   operand->opcode() == HloOpcode::kDot;
+          });
       if (add_operand_it == add->operands().end()) {
         return false;
       }

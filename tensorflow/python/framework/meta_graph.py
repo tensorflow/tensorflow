@@ -29,10 +29,12 @@ from google.protobuf import text_format
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import op_def_pb2
+from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
+from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import op_def_registry
@@ -509,6 +511,52 @@ def strip_graph_default_valued_attrs(meta_graph_def):
   meta_graph_def.meta_info_def.stripped_default_attrs = True
 
 
+def create_graph_debug_info_def(operations):
+  """Construct and returns a `GraphDebugInfo` protocol buffer.
+
+  Args:
+    operations: An iterable of op.Operation objects having _traceback members.
+
+  Returns:
+    GraphDebugInfo protocol buffer.
+
+  Raises:
+    TypeError: If the arguments are not of the correct proto buffer type.
+  """
+  # Creates an empty GraphDebugInfoDef proto.
+  graph_debug_info_def = graph_debug_info_pb2.GraphDebugInfo()
+
+  # Gets the file names and line numbers for the exported node names. Also
+  # collects the unique file names.
+  all_file_names = set()
+  node_to_trace = {}
+  for op in operations:
+    # Gets the stack trace of the operation and then the file location.
+    node_name = op.name
+    node_to_trace[node_name] = error_interpolation.compute_useful_stack(op)
+    for trace in node_to_trace[node_name]:
+      all_file_names.add(trace[0])
+
+  # Sets the `files` field in the GraphDebugInfo proto
+  graph_debug_info_def.files.extend(sorted(all_file_names))
+
+  # Builds a mapping between file names and index of the `files` field, so we
+  # only store the indexes for the nodes in the GraphDebugInfo.
+  file_to_index = dict(
+      [(y, x) for x, y in enumerate(graph_debug_info_def.files)])
+
+  # Creates the FileLineCol proto for each node and sets the value in the
+  # GraphDebugInfo proto. We only store the file name index for each node to
+  # save the storage space.
+  for node_name, trace in node_to_trace.items():
+    trace_def = graph_debug_info_def.traces[node_name]
+    for file_line in trace:
+      file_index = file_to_index[file_line[0]]
+      trace_def.file_line_cols.add(file_index=file_index, line=file_line[1])
+
+  return graph_debug_info_def
+
+
 def create_meta_graph_def(meta_info_def=None,
                           graph_def=None,
                           saver_def=None,
@@ -881,6 +929,7 @@ def export_scoped_meta_graph(filename=None,
                              saver_def=None,
                              clear_extraneous_savers=False,
                              strip_default_attrs=False,
+                             save_debug_info=False,
                              **kwargs):
   """Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
@@ -910,7 +959,10 @@ def export_scoped_meta_graph(filename=None,
         graph (both Save/Restore ops and SaverDefs) that are not associated
         with the provided SaverDef.
     strip_default_attrs: Set to true if default valued attributes must be
-        removed while exporting the GraphDef.
+      removed while exporting the GraphDef.
+    save_debug_info: If `True`, save the GraphDebugInfo to a separate file,
+      which in the same directory of filename and with `_debug` added before the
+      file extension.
     **kwargs: Optional keyed arguments, including meta_info_def and
         collection_list.
 
@@ -1005,6 +1057,23 @@ def export_scoped_meta_graph(filename=None,
         os.path.dirname(filename),
         os.path.basename(filename),
         as_text=as_text)
+    if save_debug_info:
+      name, _ = os.path.splitext(filename)
+      debug_filename = "{name}{ext}".format(name=name, ext=".debug")
+
+      # Gets the operation from the graph by the name.
+      ops_to_export = {}
+      for node in scoped_meta_graph_def.graph_def.node:
+        scoped_op_name = ops.prepend_name_scope(node.name, export_scope)
+        ops_to_export.add(graph.get_operation_by_name(scoped_op_name))
+
+      graph_debug_info = create_graph_debug_info_def(ops_to_export)
+
+      graph_io.write_graph(
+          graph_debug_info,
+          os.path.dirname(debug_filename),
+          os.path.basename(debug_filename),
+          as_text=as_text)
 
   return scoped_meta_graph_def, var_list
 

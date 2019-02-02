@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "MaxPoolV2"
+  endpoint {
+    name: "nn.MaxPool"
+  }
+}

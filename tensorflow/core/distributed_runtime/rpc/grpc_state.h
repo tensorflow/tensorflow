@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/notification.h"
 
 namespace tensorflow {
@@ -92,6 +93,12 @@ class RPCState : public GrpcClientCQTag {
       }
     } else {
       VLOG(2) << "Call returned with non-ok status: " << s;
+
+      // Attach additional GRPC error information if any
+      s = Status(s.code(),
+                 strings::StrCat(s.error_message(),
+                                 "\nAdditional GRPC error information:\n",
+                                 context_.debug_error_string()));
       done_(s);
       delete this;
     }

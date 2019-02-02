@@ -33,7 +33,6 @@ from tensorflow.python.autograph.converters import call_trees
 from tensorflow.python.autograph.converters import conditional_expressions
 from tensorflow.python.autograph.converters import continue_statements
 from tensorflow.python.autograph.converters import control_flow
-from tensorflow.python.autograph.converters import decorators
 from tensorflow.python.autograph.converters import directives
 from tensorflow.python.autograph.converters import error_handlers
 from tensorflow.python.autograph.converters import function_scopes
@@ -44,18 +43,19 @@ from tensorflow.python.autograph.converters import side_effect_guards
 from tensorflow.python.autograph.converters import slices
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.core import errors
+from tensorflow.python.autograph.core import errors as ag_errors
 from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.autograph.utils import ag_logging as logging
 from tensorflow.python.util import tf_inspect
 
 
@@ -73,17 +73,72 @@ def is_whitelisted_for_graph(o):
   Returns:
     Boolean
   """
+  # TODO(b/120224672): Fix this.
   if isinstance(o, functools.partial):
     # tf_inspect.getmodule(functools.partial(...)) otherwise returns None since
     # functools.partial objects do not have a __module__ attribute.
     m = functools
   else:
     m = tf_inspect.getmodule(o)
+  if not hasattr(m, '__name__'):
+    # Note: typically it's builtins that fall in this category. Builtins will
+    # be handled by specific code that follows this screening layer.
+    logging.log(2, '%s is NOT whitelisted: unknown module name', o)
+    return False
+
   for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
     if m.__name__.startswith(prefix):
+      logging.log(2, '%s is whitelisted: name starts with "%s"', o, prefix)
       return True
-  if hasattr(o, 'autograph_info__'):
+
+  if hasattr(o, 'autograph_info__') or hasattr(o, '__ag_compiled'):
+    logging.log(2, '%s is whitelisted: already converted', o)
     return True
+
+  if (not inspect_utils.isweakrefself(o) and not tf_inspect.isclass(o) and
+      hasattr(o, '__call__') and hasattr(o, '__class__')):
+    # Callable objects: whitelisted if their __call__ method is.
+    call_whitelisted = is_whitelisted_for_graph(o.__call__)
+    if call_whitelisted:
+      logging.log(2, '%s is whitelisted: object __call__ whitelisted', o)
+      return call_whitelisted
+
+  if tf_inspect.ismethod(o):
+    # Methods of whitelisted classes are also whitelisted, even if they are
+    # bound via user subclasses.
+    #
+    # For example, suppose `tf.Foo` has a method called `bar`, and `baz` is
+    # defined as below. `tf.Foo` is whitelisted. Then `baz.bar` is also
+    # whitelisted.
+    #
+    #   class Custom(tf.Foo):
+    #     pass
+    #
+    #   baz = Custom()
+    #
+    # For the example above, if `Custom` did overload `bar`, then it would no
+    # longer be whitelisted.
+
+    owner_class = inspect_utils.getmethodclass(o)
+    if owner_class is not None:
+      owner_class = inspect_utils.getdefiningclass(o, owner_class)
+      if is_whitelisted_for_graph(owner_class):
+        logging.log(2, '%s is whitelisted: owner is whitelisted %s', o,
+                    owner_class)
+        return True
+
+  if inspect_utils.isnamedtuple(o):
+    # Due to the way they're constructed, namedtuple types cannot be converted
+    # because they don't expose source code. But we assume they are safe for
+    # graph mode since they are just containers.
+    if tf_inspect.isclass(o) and len(o.__bases__) > 1:
+      logging.warn_first_n(
+          'Entity {} looks like a namedtuple subclass. If it has any custom'
+          ' methods, they will not be converted by AutoGraph.'.format(o), 1)
+    logging.log(2, '%s is whitelisted: named tuple', o)
+    return True
+
+  logging.log(2, '%s is NOT whitelisted', o)
   return False
 
 
@@ -115,8 +170,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   Raises:
     ValueError: if the entity type is not supported.
   """
-  if program_ctx.options.verbose == converter.Verbosity.VERBOSE:
-    logging.info('Converting {}'.format(o))
+  logging.log(1, 'Converting %s', o)
 
   if tf_inspect.isclass(o):
     node, name, ns = class_to_graph(o, program_ctx)
@@ -150,9 +204,9 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
 
   program_ctx.add_to_cache(o, node)
 
-  if program_ctx.options.verbose == converter.Verbosity.VERBOSE:
-    logging.info('Compiled output of {}:\n\n{}\n'.format(
-        o, compiler.ast_to_source(node)))
+  if logging.has_verbosity(2):
+    logging.log(2, 'Compiled output of %s:\n\n%s\n', o,
+                compiler.ast_to_source(node))
 
   if program_ctx.options.recursive:
     while True:
@@ -264,10 +318,12 @@ def _add_self_references(namespace, autograph_module):
     # internal modules.
     ag_internal = imp.new_module('autograph')
     ag_internal.__dict__.update(autograph_module.__dict__)
+    ag_internal.ConversionOptions = converter.ConversionOptions
+    ag_internal.Feature = converter.Feature
     ag_internal.utils = utils
     ag_internal.function_scope = function_wrapping.function_scope
     ag_internal.rewrite_graph_construction_error = (
-        errors.rewrite_graph_construction_error)
+        ag_errors.rewrite_graph_construction_error)
     # TODO(mdan): Add safeguards against name clashes.
     # We don't want to create a submodule because we want the operators to be
     # accessible as ag__.<operator>
@@ -285,27 +341,23 @@ def function_to_graph(f,
   """Specialization of `entity_to_graph` for callable functions."""
 
   node, source = parser.parse_entity(f)
+  logging.log(3, 'Source code of %s:\n%s', f, source)
   node = node.body[0]
 
-  # In general, the output of inspect.getsource is inexact because it uses
-  # regex matching to adjust the exact location around the line number that
-  # CPython records. This is particularly problematic for lambda functions,
-  # where the entire containing lines are returned.
-  nodes = ast_util.find_matching_definitions(node, f)
-  if len(nodes) != 1:
-    if f.__name__ == '<lambda>':
+  # In general, the output of inspect.getsource is inexact for lambdas because
+  # it uses regex matching to adjust the exact location around the line number
+  # that CPython records. Then, the entire containing line is returned, which
+  # we may have trouble disambiguating. For example:
+  # x, y = lambda: 1, lambda: 2
+  if f.__name__ == '<lambda>':
+    nodes = ast_util.find_matching_definitions(node, f)
+    if len(nodes) != 1:
       raise ValueError(
           'Unable to identify source code of lambda function {}. It was'
           ' defined on this line: {}, which must contain a single lambda with'
           ' matching signature. To avoid ambiguity, define each lambda'
           ' in a separate expression.'.format(f, source))
-    else:
-      raise ValueError(
-          'Unable to identify source code of function {}. The source code'
-          ' reported by Python did not include exactly one matching signature:'
-          '\n{}\n. This is an extremely rare occurrence. Please report it to'
-          ' the TensorFlow team.'.format(f, source))
-  node, = nodes
+    node, = nodes
 
   # TODO(znado): Place inside standard_analysis.
   origin_info.resolve(node, source, f)
@@ -321,7 +373,12 @@ def function_to_graph(f,
       arg_types=arg_types,
       owner_type=owner_type)
   context = converter.EntityContext(namer, entity_info, program_ctx)
-  node = node_to_graph(node, context)
+  try:
+    node = node_to_graph(node, context)
+  except (ValueError, AttributeError, KeyError, NotImplementedError) as e:
+    logging.error(1, 'Error converting %s', f, exc_info=True)
+    raise errors.InternalError('conversion', e)
+    # TODO(mdan): Catch and rethrow syntax errors.
 
   if isinstance(node, gast.Lambda):
     new_name = namer.new_symbol('tf__lambda', ())
@@ -364,13 +421,11 @@ def node_to_graph(node, context):
   # source.
   # TODO(mdan): Is it feasible to reconstruct intermediate source code?
   context.info.source_code = None
-
-  if context.program.options.uses(converter.Feature.DECORATORS):
-    node = converter.apply_(node, context, decorators)
   node = converter.apply_(node, context, arg_defaults)
   node = converter.apply_(node, context, directives)
   node = converter.apply_(node, context, break_statements)
-  node = converter.apply_(node, context, asserts)
+  if context.program.options.uses(converter.Feature.ASSERT_STATEMENTS):
+    node = converter.apply_(node, context, asserts)
   # Note: sequencing continue canonicalization before for loop one avoids
   # dealing with the extra loop increment operation that the for
   # canonicalization creates.
@@ -379,11 +434,13 @@ def node_to_graph(node, context):
   if context.program.options.uses(converter.Feature.LISTS):
     node = converter.apply_(node, context, lists)
     node = converter.apply_(node, context, slices)
-  node = converter.apply_(node, context, builtin_functions)
+  if context.program.options.uses(converter.Feature.BUILTIN_FUNCTIONS):
+    node = converter.apply_(node, context, builtin_functions)
   node = converter.apply_(node, context, call_trees)
   node = converter.apply_(node, context, control_flow)
   node = converter.apply_(node, context, conditional_expressions)
-  node = converter.apply_(node, context, logical_expressions)
+  if context.program.options.uses(converter.Feature.LOGICAL_EXPRESSIONS):
+    node = converter.apply_(node, context, logical_expressions)
   if context.program.options.uses(converter.Feature.AUTO_CONTROL_DEPS):
     node = converter.apply_(node, context, side_effect_guards)
   # TODO(mdan): If function scopes ever does more, the toggle will need moving.

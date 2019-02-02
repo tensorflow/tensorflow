@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/dequantize.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
@@ -57,7 +58,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   OpContext op_context(context, node);
 
-  TF_LITE_ENSURE(context, op_context.input->type == kTfLiteUInt8);
+  TF_LITE_ENSURE(context, op_context.input->type == kTfLiteUInt8 ||
+                              op_context.input->type == kTfLiteInt8);
 
   op_context.output->type = kTfLiteFloat32;
   // If the input tensor is constant, we can persist the dequantized value in
@@ -80,10 +82,25 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   tflite::DequantizationParams op_params;
   op_params.zero_point = op_context.input->params.zero_point;
   op_params.scale = op_context.input->params.scale;
-  optimized_ops::Dequantize(op_params, GetTensorShape(op_context.input),
-                            GetTensorData<uint8_t>(op_context.input),
-                            GetTensorShape(op_context.output),
-                            GetTensorData<float>(op_context.output));
+  switch (op_context.input->type) {
+    case kTfLiteUInt8:
+      optimized_ops::Dequantize(op_params, GetTensorShape(op_context.input),
+                                GetTensorData<uint8_t>(op_context.input),
+                                GetTensorShape(op_context.output),
+                                GetTensorData<float>(op_context.output));
+      break;
+    case kTfLiteInt8:
+      reference_integer_ops::Dequantize(
+          op_params, GetTensorShape(op_context.input),
+          GetTensorData<int8_t>(op_context.input),
+          GetTensorShape(op_context.output),
+          GetTensorData<float>(op_context.output));
+      break;
+    default:
+      context->ReportError(context, "Type %d not supported.",
+                           op_context.input->type);
+      return kTfLiteError;
+  }
 
   if (IsConstantTensor(op_context.input)) {
     op_data->float_dequantized_weights_initialized = true;

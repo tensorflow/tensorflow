@@ -33,10 +33,19 @@ limitations under the License.
 //   #endif
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "third_party/intel_mkl_dnn/include/mkldnn.h"
+
+#if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
+#include "mkldnn.h"
+#endif
 
 namespace Eigen {
 namespace internal {
+
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+// Returns `true` iff we can use custom contraction kernels. This is a runtime
+// check, that uses environment variables.
+bool UseCustomContractionKernels();
+#endif  // TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL
 
 // Enabled by build option: "--define tensorflow_mkldnn_contraction_kernel=1"
 #if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
@@ -126,6 +135,11 @@ struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
                                       &alpha, blockA, &ldA, blockB, &ldB, &beta,
                                       const_cast<float*>(output.data()), &ldC);
     eigen_assert(st == 0);
+
+    // eigen_assert is a no-op in optimized mode so we add these to avoid
+    // compiler's unused-variable errors.
+    EIGEN_UNUSED_VARIABLE(max_index);
+    EIGEN_UNUSED_VARIABLE(st);
   }
 };
 
@@ -143,8 +157,8 @@ class TensorContractionBlocking<float, float, float, StorageIndex,
   // Multiply default choice of block size along M and N dimensions.
   // TODO(ezhulenev): Explore if this can work in general (kScaleM=2.0 worked
   // well in some of models).
-  static const float kScaleM = 1.5;
-  static const float kScaleN = 1.0;
+  static constexpr float kScaleM = 1.5;
+  static constexpr float kScaleN = 1.0;
 
   // Mkldnn Avx/Avx2/Avx512 unroll factors are: 8/16/48.
   static const StorageIndex kUnrollM = 48;
@@ -165,6 +179,13 @@ class TensorContractionBlocking<float, float, float, StorageIndex,
                                                      num_threads);
     }
 
+    // If dimensions do not pass basic sanity checks return immediately.
+    if (kc_ <= 0 || mc_ <= 0 || nc_ <= 0) return;
+
+    // If we are using default Eigen gebp kernel there is no need to adjust the
+    // block sizes for MKL-DNN.
+    if (!UseCustomContractionKernels()) return;
+
     // 2. And refine them to work well with mkldnn sgemm.
     mc_ = (std::min)(
         m, Eigen::divup(static_cast<StorageIndex>(mc_ * kScaleM), kUnrollM) *
@@ -176,7 +197,8 @@ class TensorContractionBlocking<float, float, float, StorageIndex,
     // We split Kth dimensions in roughly equal slices.
     StorageIndex target_k_slices =
         (std::max)(StorageIndex(1), Eigen::divup(k, kc_));
-    StorageIndex packet_size = 8;
+    StorageIndex packet_size = internal::packet_traits<Scalar>::size;
+    if (packet_size < 8) packet_size = 8;
     StorageIndex target_bk =
         Eigen::divup(k / target_k_slices, packet_size) * packet_size;
     kc_ = (std::min)(k, target_bk);
@@ -206,23 +228,52 @@ struct TensorContractionKernel<float, float, float, StorageIndex, OutputMapper,
                                      typename RhsMapper::SubMapper, ColMajor>;
   using GemmKernel = mkldnn_gemm_kernel<Scalar, StorageIndex, OutputMapper>;
 
+  // Fallback on default Eigen pack and GEBP kernel if custom contraction
+  // kernels disabled at runtime.
+  using EigenLhsPacker =
+      gemm_pack_lhs<Scalar, StorageIndex, typename LhsMapper::SubMapper,
+                    Traits::mr, Traits::LhsProgress,
+                    typename Traits::LhsPacket4Packing, ColMajor>;
+  using EigenRhsPacker =
+      gemm_pack_rhs<Scalar, StorageIndex, typename RhsMapper::SubMapper,
+                    Traits::nr, ColMajor>;
+  using GebpKernel =
+      gebp_kernel<Scalar, Scalar, StorageIndex, OutputMapper, Traits::mr,
+                  Traits::nr,
+                  /*ConjugateLhs*/ false, /*ConjugateRhs*/ false>;
+
   EIGEN_DEVICE_FUNC EIGEN_DONT_INLINE static void packLhs(
       Scalar* lhsBlock, const typename LhsMapper::SubMapper& data_mapper,
       const StorageIndex depth, const StorageIndex rows) {
-    LhsPacker()(lhsBlock, data_mapper, rows, depth);
+    if (UseCustomContractionKernels()) {
+      LhsPacker()(lhsBlock, data_mapper, rows, depth);
+    } else {
+      EigenLhsPacker()(lhsBlock, data_mapper, depth, rows, /*stride*/ 0,
+                       /*offset*/ 0);
+    }
   }
 
   EIGEN_DEVICE_FUNC EIGEN_DONT_INLINE static void packRhs(
       Scalar* rhsBlock, const typename RhsMapper::SubMapper& data_mapper,
       const StorageIndex depth, const StorageIndex cols) {
-    RhsPacker()(rhsBlock, data_mapper, depth, cols);
+    if (UseCustomContractionKernels()) {
+      RhsPacker()(rhsBlock, data_mapper, depth, cols);
+    } else {
+      EigenRhsPacker()(rhsBlock, data_mapper, depth, cols);
+    }
   }
 
   EIGEN_DEVICE_FUNC EIGEN_DONT_INLINE static void invoke(
       const OutputMapper& output_mapper, const Scalar* lhsBlock,
       const Scalar* rhsBlock, const StorageIndex rows, const StorageIndex depth,
       const StorageIndex cols, const Scalar alpha) {
-    GemmKernel()(output_mapper, lhsBlock, rhsBlock, rows, depth, cols, alpha);
+    if (UseCustomContractionKernels()) {
+      GemmKernel()(output_mapper, lhsBlock, rhsBlock, rows, depth, cols, alpha);
+    } else {
+      GebpKernel()(output_mapper, lhsBlock, rhsBlock, rows, depth, cols, alpha,
+                   /*strideA*/ -1, /*strideB*/ -1,
+                   /*offsetA*/ 0, /*offsetB*/ 0);
+    }
   }
 };
 

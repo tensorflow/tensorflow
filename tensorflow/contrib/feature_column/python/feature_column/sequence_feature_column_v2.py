@@ -27,6 +27,7 @@ import collections
 
 from tensorflow.python.feature_column import feature_column as fc_old
 from tensorflow.python.feature_column import feature_column_lib as fc
+from tensorflow.python.feature_column import feature_column_v2 as fc_v2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -34,107 +35,115 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.ops import variable_scope
 
 # pylint: disable=protected-access
 
 
-def sequence_input_layer(
-    features,
-    feature_columns,
-    weight_collections=None,
-    trainable=True):
-  """"Builds input layer for sequence input.
+class SequenceFeatures(fc_v2._BaseFeaturesLayer):
+  """A layer for sequence input.
 
-  All `feature_columns` must be sequence dense columns with the same
-  `sequence_length`. The output of this method can be fed into sequence
-  networks, such as RNN.
+    All `feature_columns` must be sequence dense columns with the same
+    `sequence_length`. The output of this method can be fed into sequence
+    networks, such as RNN.
 
-  The output of this method is a 3D `Tensor` of shape `[batch_size, T, D]`.
-  `T` is the maximum sequence length for this batch, which could differ from
-  batch to batch.
+    The output of this method is a 3D `Tensor` of shape `[batch_size, T, D]`.
+    `T` is the maximum sequence length for this batch, which could differ from
+    batch to batch.
 
-  If multiple `feature_columns` are given with `Di` `num_elements` each, their
-  outputs are concatenated. So, the final `Tensor` has shape
-  `[batch_size, T, D0 + D1 + ... + Dn]`.
+    If multiple `feature_columns` are given with `Di` `num_elements` each, their
+    outputs are concatenated. So, the final `Tensor` has shape
+    `[batch_size, T, D0 + D1 + ... + Dn]`.
 
-  Example:
+    Example:
 
-  ```python
-  rating = sequence_numeric_column('rating')
-  watches = sequence_categorical_column_with_identity(
-      'watches', num_buckets=1000)
-  watches_embedding = embedding_column(watches, dimension=10)
-  columns = [rating, watches]
+    ```python
+    rating = sequence_numeric_column('rating')
+    watches = sequence_categorical_column_with_identity(
+        'watches', num_buckets=1000)
+    watches_embedding = embedding_column(watches, dimension=10)
+    columns = [rating, watches]
 
-  features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  input_layer, sequence_length = sequence_input_layer(features, columns)
+    features = tf.parse_example(..., features=make_parse_example_spec(columns))
+    sequence_input_layer = SequenceFeatures(columns)
+    sequence_input, sequence_length = sequence_input_layer(features)
+    sequence_length_mask = tf.sequence_mask(sequence_length)
 
-  rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
-  outputs, state = tf.nn.dynamic_rnn(
-      rnn_cell, inputs=input_layer, sequence_length=sequence_length)
-  ```
-
-  Args:
-    features: A dict mapping keys to tensors.
-    feature_columns: An iterable of dense sequence columns. Valid columns are
-      - `embedding_column` that wraps a `sequence_categorical_column_with_*`
-      - `sequence_numeric_column`.
-    weight_collections: A list of collection names to which the Variable will be
-      added. Note that variables will also be added to collections
-      `tf.GraphKeys.GLOBAL_VARIABLES` and `ops.GraphKeys.MODEL_VARIABLES`.
-    trainable: If `True` also add the variable to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES`.
-
-  Returns:
-    An `(input_layer, sequence_length)` tuple where:
-    - input_layer: A float `Tensor` of shape `[batch_size, T, D]`.
-        `T` is the maximum sequence length for this batch, which could differ
-        from batch to batch. `D` is the sum of `num_elements` for all
-        `feature_columns`.
-    - sequence_length: An int `Tensor` of shape `[batch_size]`. The sequence
-        length for each example.
-
-  Raises:
-    ValueError: If any of the `feature_columns` is the wrong type.
+    rnn_cell = tf.keras.layers.SimpleRNNCell(hidden_size)
+    rnn_layer = tf.keras.layers.RNN(rnn_cell)
+    outputs, state = rnn_layer(sequence_input, mask=sequence_length_mask)
+    ```
   """
-  feature_columns = fc_old._normalize_feature_columns(feature_columns)
-  for c in feature_columns:
-    if not isinstance(c, fc_old._SequenceDenseColumn):
-      raise ValueError(
-          'All feature_columns must be of type _SequenceDenseColumn. '
-          'You can wrap a sequence_categorical_column with an embedding_column '
-          'or indicator_column. '
-          'Given (type {}): {}'.format(type(c), c))
 
-  with variable_scope.variable_scope(
-      None, default_name='sequence_input_layer', values=features.values()):
-    builder = fc_old._LazyBuilder(features)
+  def __init__(
+      self,
+      feature_columns,
+      trainable=True,
+      name=None,
+      **kwargs):
+    """"Constructs a SequenceFeatures layer.
+
+    Args:
+      feature_columns: An iterable of dense sequence columns. Valid columns are
+        - `embedding_column` that wraps a `sequence_categorical_column_with_*`
+        - `sequence_numeric_column`.
+      trainable: Boolean, whether the layer's variables will be updated via
+        gradient descent during training.
+      name: Name to give to the SequenceFeatures.
+      **kwargs: Keyword arguments to construct a layer.
+
+    Raises:
+      ValueError: If any of the `feature_columns` is not a
+        `SequenceDenseColumn`.
+    """
+    super(SequenceFeatures, self).__init__(
+        feature_columns=feature_columns,
+        trainable=trainable,
+        name=name,
+        expected_column_type=fc_v2.SequenceDenseColumn,
+        **kwargs)
+
+  def _target_shape(self, input_shape, total_elements):
+    return (input_shape[0], input_shape[1], total_elements)
+
+  def call(self, features):
+    """Returns sequence input corresponding to the `feature_columns`.
+
+    Args:
+      features: A dict mapping keys to tensors.
+
+    Returns:
+      An `(input_layer, sequence_length)` tuple where:
+      - input_layer: A float `Tensor` of shape `[batch_size, T, D]`.
+          `T` is the maximum sequence length for this batch, which could differ
+          from batch to batch. `D` is the sum of `num_elements` for all
+          `feature_columns`.
+      - sequence_length: An int `Tensor` of shape `[batch_size]`. The sequence
+          length for each example.
+
+    Raises:
+      ValueError: If features are not a dictionary.
+    """
+    if not isinstance(features, dict):
+      raise ValueError('We expected a dictionary here. Instead we got: ',
+                       features)
+    transformation_cache = fc.FeatureTransformationCache(features)
     output_tensors = []
     sequence_lengths = []
-    ordered_columns = []
 
-    for column in sorted(feature_columns, key=lambda x: x.name):
-      ordered_columns.append(column)
-      with variable_scope.variable_scope(
-          None, default_name=column._var_scope_name):
-        dense_tensor, sequence_length = column._get_sequence_dense_tensor(
-            builder,
-            weight_collections=weight_collections,
-            trainable=trainable)
+    for column in self._feature_columns:
+      with ops.name_scope(column.name):
+        dense_tensor, sequence_length = column.get_sequence_dense_tensor(
+            transformation_cache, self._state_manager)
         # Flattens the final dimension to produce a 3D Tensor.
-        num_elements = column._variable_shape.num_elements()
-        shape = array_ops.shape(dense_tensor)
-        target_shape = [shape[0], shape[1], num_elements]
-        output_tensors.append(
-            array_ops.reshape(dense_tensor, shape=target_shape))
+        output_tensors.append(self._process_dense_tensor(column, dense_tensor))
         sequence_lengths.append(sequence_length)
 
-    fc_old._verify_static_batch_size_equality(output_tensors, ordered_columns)
-    fc_old._verify_static_batch_size_equality(sequence_lengths, ordered_columns)
+    # Check and process sequence lengths.
+    fc_v2._verify_static_batch_size_equality(sequence_lengths,
+                                             self._feature_columns)
     sequence_length = _assert_all_equal_and_return(sequence_lengths)
 
-    return array_ops.concat(output_tensors, -1), sequence_length
+    return self._verify_and_concat_tensors(output_tensors), sequence_length
 
 
 def concatenate_context_input(context_input, sequence_input):
@@ -203,11 +212,13 @@ def sequence_categorical_column_with_identity(
   columns = [watches_embedding]
 
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  input_layer, sequence_length = sequence_input_layer(features, columns)
+  sequence_feature_layer = SequenceFeatures(columns)
+  sequence_input, sequence_length = sequence_feature_layer(features)
+  sequence_length_mask = tf.sequence_mask(sequence_length)
 
-  rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
-  outputs, state = tf.nn.dynamic_rnn(
-      rnn_cell, inputs=input_layer, sequence_length=sequence_length)
+  rnn_cell = tf.keras.layers.SimpleRNNCell(hidden_size)
+  rnn_layer = tf.keras.layers.RNN(rnn_cell)
+  outputs, state = rnn_layer(sequence_input, mask=sequence_length_mask)
   ```
 
   Args:
@@ -219,15 +230,17 @@ def sequence_categorical_column_with_identity(
       `[0, num_buckets)`, and will replace out-of-range inputs.
 
   Returns:
-    A `_SequenceCategoricalColumn`.
+    A `SequenceCategoricalColumn`.
 
   Raises:
     ValueError: if `num_buckets` is less than one.
     ValueError: if `default_value` is not in range `[0, num_buckets)`.
   """
-  return fc_old._SequenceCategoricalColumn(
-      fc_old._categorical_column_with_identity(
-          key=key, num_buckets=num_buckets, default_value=default_value))
+  return fc.SequenceCategoricalColumn(
+      fc.categorical_column_with_identity(
+          key=key,
+          num_buckets=num_buckets,
+          default_value=default_value))
 
 
 def sequence_categorical_column_with_hash_bucket(
@@ -247,11 +260,13 @@ def sequence_categorical_column_with_hash_bucket(
   columns = [tokens_embedding]
 
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  input_layer, sequence_length = sequence_input_layer(features, columns)
+  sequence_feature_layer = SequenceFeatures(columns)
+  sequence_input, sequence_length = sequence_feature_layer(features)
+  sequence_length_mask = tf.sequence_mask(sequence_length)
 
-  rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
-  outputs, state = tf.nn.dynamic_rnn(
-      rnn_cell, inputs=input_layer, sequence_length=sequence_length)
+  rnn_cell = tf.keras.layers.SimpleRNNCell(hidden_size)
+  rnn_layer = tf.keras.layers.RNN(rnn_cell)
+  outputs, state = rnn_layer(sequence_input, mask=sequence_length_mask)
   ```
 
   Args:
@@ -260,15 +275,17 @@ def sequence_categorical_column_with_hash_bucket(
     dtype: The type of features. Only string and integer types are supported.
 
   Returns:
-    A `_SequenceCategoricalColumn`.
+    A `SequenceCategoricalColumn`.
 
   Raises:
     ValueError: `hash_bucket_size` is not greater than 1.
     ValueError: `dtype` is neither string nor integer.
   """
-  return fc_old._SequenceCategoricalColumn(
-      fc_old._categorical_column_with_hash_bucket(
-          key=key, hash_bucket_size=hash_bucket_size, dtype=dtype))
+  return fc.SequenceCategoricalColumn(
+      fc.categorical_column_with_hash_bucket(
+          key=key,
+          hash_bucket_size=hash_bucket_size,
+          dtype=dtype))
 
 
 def sequence_categorical_column_with_vocabulary_file(
@@ -290,11 +307,13 @@ def sequence_categorical_column_with_vocabulary_file(
   columns = [states_embedding]
 
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  input_layer, sequence_length = sequence_input_layer(features, columns)
+  sequence_feature_layer = SequenceFeatures(columns)
+  sequence_input, sequence_length = sequence_feature_layer(features)
+  sequence_length_mask = tf.sequence_mask(sequence_length)
 
-  rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
-  outputs, state = tf.nn.dynamic_rnn(
-      rnn_cell, inputs=input_layer, sequence_length=sequence_length)
+  rnn_cell = tf.keras.layers.SimpleRNNCell(hidden_size)
+  rnn_layer = tf.keras.layers.RNN(rnn_cell)
+  outputs, state = rnn_layer(sequence_input, mask=sequence_length_mask)
   ```
 
   Args:
@@ -314,7 +333,7 @@ def sequence_categorical_column_with_vocabulary_file(
     dtype: The type of features. Only string and integer types are supported.
 
   Returns:
-    A `_SequenceCategoricalColumn`.
+    A `SequenceCategoricalColumn`.
 
   Raises:
     ValueError: `vocabulary_file` is missing or cannot be opened.
@@ -323,8 +342,8 @@ def sequence_categorical_column_with_vocabulary_file(
     ValueError: `num_oov_buckets` and `default_value` are both specified.
     ValueError: `dtype` is neither string nor integer.
   """
-  return fc_old._SequenceCategoricalColumn(
-      fc_old._categorical_column_with_vocabulary_file(
+  return fc.SequenceCategoricalColumn(
+      fc.categorical_column_with_vocabulary_file(
           key=key,
           vocabulary_file=vocabulary_file,
           vocabulary_size=vocabulary_size,
@@ -351,11 +370,13 @@ def sequence_categorical_column_with_vocabulary_list(
   columns = [colors_embedding]
 
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  input_layer, sequence_length = sequence_input_layer(features, columns)
+  sequence_feature_layer = SequenceFeatures(columns)
+  sequence_input, sequence_length = sequence_feature_layer(features)
+  sequence_length_mask = tf.sequence_mask(sequence_length)
 
-  rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
-  outputs, state = tf.nn.dynamic_rnn(
-      rnn_cell, inputs=input_layer, sequence_length=sequence_length)
+  rnn_cell = tf.keras.layers.SimpleRNNCell(hidden_size)
+  rnn_layer = tf.keras.layers.RNN(rnn_cell)
+  outputs, state = rnn_layer(sequence_input, mask=sequence_length_mask)
   ```
 
   Args:
@@ -375,7 +396,7 @@ def sequence_categorical_column_with_vocabulary_list(
       with `default_value`.
 
   Returns:
-    A `_SequenceCategoricalColumn`.
+    A `SequenceCategoricalColumn`.
 
   Raises:
     ValueError: if `vocabulary_list` is empty, or contains duplicate keys.
@@ -383,8 +404,8 @@ def sequence_categorical_column_with_vocabulary_list(
     ValueError: `num_oov_buckets` and `default_value` are both specified.
     ValueError: if `dtype` is not integer or string.
   """
-  return fc_old._SequenceCategoricalColumn(
-      fc_old._categorical_column_with_vocabulary_list(
+  return fc.SequenceCategoricalColumn(
+      fc.categorical_column_with_vocabulary_list(
           key=key,
           vocabulary_list=vocabulary_list,
           dtype=dtype,
@@ -407,12 +428,13 @@ def sequence_numeric_column(
   columns = [temperature]
 
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  sequence_feature_layer = SequenceFeatureLayer(columns)
-  input_layer, sequence_length = sequence_feature_layer(features)
+  sequence_feature_layer = SequenceFeatures(columns)
+  sequence_input, sequence_length = sequence_feature_layer(features)
+  sequence_length_mask = tf.sequence_mask(sequence_length)
 
-  rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
-  outputs, state = tf.nn.dynamic_rnn(
-      rnn_cell, inputs=input_layer, sequence_length=sequence_length)
+  rnn_cell = tf.keras.layers.SimpleRNNCell(hidden_size)
+  rnn_layer = tf.keras.layers.RNN(rnn_cell)
+  outputs, state = rnn_layer(sequence_input, mask=sequence_length_mask)
   ```
 
   Args:
@@ -437,7 +459,7 @@ def sequence_numeric_column(
     ValueError: if any dimension in shape is not a positive integer.
     ValueError: if `dtype` is not convertible to `tf.float32`.
   """
-  shape = fc_old._check_shape(shape=shape, key=key)
+  shape = fc_v2._check_shape(shape=shape, key=key)
   if not (dtype.is_integer or dtype.is_floating):
     raise ValueError('dtype must be convertible to float. '
                      'dtype: {}, key: {}'.format(dtype, key))
@@ -532,8 +554,10 @@ class SequenceNumericColumn(
     # For the 2D case, the raw values are grouped according to num_elements;
     # for the 3D case, the grouping happens in the third dimension, and
     # sequence length is not affected.
-    num_elements = (self.variable_shape.num_elements()
-                    if sp_tensor.shape.ndims == 2 else 1)
+    if sp_tensor.shape.ndims == 2:
+      num_elements = self.variable_shape.num_elements()
+    else:
+      num_elements = 1
     seq_length = fc_old._sequence_length_from_sparse_tensor(
         sp_tensor, num_elements=num_elements)
 

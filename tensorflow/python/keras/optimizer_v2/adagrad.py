@@ -18,15 +18,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export('keras.optimizers.Adagrad')
 class Adagrad(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the Adagrad algorithm.
 
@@ -66,7 +71,11 @@ class Adagrad(optimizer_v2.OptimizerV2):
         Starting value for the accumulators, must be positive.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Adagrad".
-      **kwargs: keyword arguments. Allowed to be {`decay`}
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
 
     Raises:
       ValueError: If the `initial_accumulator_value` or `epsilon` is invalid.
@@ -78,13 +87,15 @@ class Adagrad(optimizer_v2.OptimizerV2):
     functions.
     @end_compatibility
     """
-    if initial_accumulator_value <= 0.0:
-      raise ValueError('initial_accumulator_value must be positive: %s' %
+    if initial_accumulator_value < 0.0:
+      raise ValueError('initial_accumulator_value must be non-negative: %s' %
                        initial_accumulator_value)
+    if epsilon is None:
+      epsilon = backend_config.epsilon()
     if epsilon < 1e-7:
       raise ValueError('epsilon must be larger than 1e-7: %s' % epsilon)
     super(Adagrad, self).__init__(name, **kwargs)
-    self._set_hyper('learning_rate', learning_rate)
+    self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)
     self._initial_accumulator_value = initial_accumulator_value
     self._set_hyper('epsilon', epsilon)
@@ -95,6 +106,38 @@ class Adagrad(optimizer_v2.OptimizerV2):
       init = init_ops.constant_initializer(
           self._initial_accumulator_value, dtype=dtype)
       self.add_slot(var, 'accumulator', init)
+
+  def set_weights(self, weights):
+    params = self.weights
+    # Override set_weights for backward compatibility of Keras V1 optimizer
+    # since it does not include iteration at head of the weight list. Set
+    # iteration to 0.
+    if len(params) == len(weights) + 1:
+      weights = [np.array(0)] + weights
+    super(Adagrad, self).set_weights(weights)
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    """Creates an optimizer from its config.
+
+    This method is the reverse of `get_config`,
+    capable of instantiating the same optimizer from the config
+    dictionary.
+
+    Arguments:
+        config: A Python dictionary, typically the output of get_config.
+        custom_objects: A Python dictionary mapping names to additional Python
+          objects used to create this optimizer, such as a function used for a
+          hyperparameter.
+
+    Returns:
+        An optimizer instance.
+    """
+    if 'initial_accumulator_value' not in config:
+      config['initial_accumulator_value'] = 0.
+    if 'lr' in config:
+      config['learning_rate'] = config.pop('lr')
+    return cls(**config)
 
   def _resource_apply_dense(self, grad, var):
     var_dtype = var.dtype.base_dtype

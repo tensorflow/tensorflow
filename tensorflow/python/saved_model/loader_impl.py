@@ -39,7 +39,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-def _parse_saved_model(export_dir):
+def parse_saved_model(export_dir):
   """Reads the savedmodel.pb or savedmodel.pbtxt file containing `SavedModel`.
 
   Args:
@@ -81,6 +81,11 @@ def _parse_saved_model(export_dir):
                   (export_dir,
                    constants.SAVED_MODEL_FILENAME_PBTXT,
                    constants.SAVED_MODEL_FILENAME_PB))
+
+
+# TODO(b/120594573): Make this symbol also available as private, so that
+# tensorflow_transform and tensorflow_estimator do not break.
+_parse_saved_model = parse_saved_model
 
 
 def _get_asset_tensors(export_dir, meta_graph_def_to_load, import_scope=None):
@@ -276,7 +281,7 @@ class SavedModelLoader(object):
     """
     self._export_dir = export_dir
     self._variables_path = saved_model_utils.get_variables_path(export_dir)
-    self._saved_model = _parse_saved_model(export_dir)
+    self._saved_model = parse_saved_model(export_dir)
 
   @property
   def export_dir(self):

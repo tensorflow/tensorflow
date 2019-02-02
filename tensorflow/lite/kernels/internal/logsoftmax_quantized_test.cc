@@ -225,7 +225,7 @@ bool TryOneSkyscraperLogSoftmax(bool small_depth) {
 }
 
 TEST(TestQuantizedLogSoftmax, UniformLogSoftmaxTests) {
-  const int kTestsToRun = 1000;
+  const int kTestsToRun = 100;
   for (int i = 0; i < kTestsToRun; i++) {
     while (!TryOneUniformLogSoftmax()) {
     }
@@ -233,7 +233,7 @@ TEST(TestQuantizedLogSoftmax, UniformLogSoftmaxTests) {
 }
 
 TEST(TestQuantizedLogSoftmax, SkyscraperLogSoftmaxTests) {
-  const int kTestsToRun = 1000;
+  const int kTestsToRun = 100;
   for (int i = 0; i < kTestsToRun; i++) {
     while (!TryOneSkyscraperLogSoftmax(false)) {
     }
@@ -241,7 +241,7 @@ TEST(TestQuantizedLogSoftmax, SkyscraperLogSoftmaxTests) {
 }
 
 TEST(TestQuantizedLogSoftmax, SmallSkyscraperLogSoftmaxTests) {
-  const int kTestsToRun = 1000;
+  const int kTestsToRun = 100;
   for (int i = 0; i < kTestsToRun; i++) {
     while (!TryOneSkyscraperLogSoftmax(true)) {
     }

@@ -216,13 +216,31 @@ class CPUAllocatorFactory : public AllocatorFactory {
 REGISTER_MEM_ALLOCATOR("DefaultCPUAllocator", 100, CPUAllocatorFactory);
 }  // namespace
 
-Allocator* cpu_allocator() {
+Allocator* cpu_allocator_base() {
   static Allocator* cpu_alloc =
       AllocatorFactoryRegistry::singleton()->GetAllocator();
+  // TODO(tucker): This really seems wrong.  It's only going to be effective on
+  // the first call in a process (but the desired effect is associated with a
+  // session), and we probably ought to be tracking the highest level Allocator,
+  // not the lowest.  Revisit the advertised semantics of the triggering option.
   if (cpu_allocator_collect_full_stats && !cpu_alloc->TracksAllocationSizes()) {
     cpu_alloc = new TrackingAllocator(cpu_alloc, true);
   }
   return cpu_alloc;
+}
+
+Allocator* cpu_allocator(int numa_node) {
+  // Correctness relies on devices being created prior to the first call
+  // to cpu_allocator, if devices are ever to be created in the process.
+  // Device creation in turn triggers ProcessState creation and the availability
+  // of the correct access pointer via this function call.
+  static ProcessStateInterface* ps =
+      AllocatorFactoryRegistry::singleton()->process_state();
+  if (ps) {
+    return ps->GetCPUAllocator(numa_node);
+  } else {
+    return cpu_allocator_base();
+  }
 }
 
 SubAllocator::SubAllocator(const std::vector<Visitor>& alloc_visitors,

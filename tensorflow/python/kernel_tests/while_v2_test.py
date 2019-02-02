@@ -22,6 +22,9 @@ from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
@@ -29,12 +32,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
-from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_v2
 from tensorflow.python.ops.control_flow_ops import while_loop as while_loop_v1
 from tensorflow.python.ops.while_v2 import while_loop as while_loop_v2
@@ -53,6 +55,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(ret), 16.)
       self.assertSequenceEqual(self.evaluate(grad), [32.])
 
+  @test_util.run_v1_only("b/120545219")
   def testReturnSameStructureTrue(self):
     x = constant_op.constant(2.)
     ret = while_loop_v2(
@@ -64,6 +67,21 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertLen(eval_result, 1)
       self.assertEqual(16., eval_result[0])
       self.assertSequenceEqual(sess.run(grad), [32.])
+
+  def testGradientTapeResourceVariable(self):
+    with context.eager_mode():
+      v = variables.Variable(1.)
+
+      @def_function.function
+      def fnWithLoop():  # pylint: disable=invalid-name
+        with backprop.GradientTape() as tape:
+          _, x = while_loop_v2(
+              lambda i, _: i < 2,
+              lambda i, x: (i + 1, x * v),
+              [0, 2.])
+        return tape.gradient(x, v)
+
+      self.assertAllEqual(fnWithLoop(), 4.0)
 
   @test_util.run_deprecated_v1
   def testMultipleLoopVarsBasic(self):
@@ -118,6 +136,18 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertSequenceEqual(self.evaluate(grady_2), [61.])
 
   @test_util.run_deprecated_v1
+  def testGradientTape(self):
+    with backprop.GradientTape() as t:
+      x = constant_op.constant(2.)
+      t.watch(x)
+      ret = while_loop_v2(
+          lambda v: v < 4., lambda v: v * v, [x],
+          return_same_structure=False)  # x**2
+    grad = t.gradient(ret, x)
+    with self.cached_session() as sess:
+      self.assertAllEqual(sess.run(grad), 4.0)
+
+  @test_util.run_deprecated_v1
   def testMultipleWhileLoops(self):
     x = constant_op.constant(2.)
     ret1 = while_loop_v2(
@@ -145,7 +175,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertSequenceEqual(self.evaluate(grad), [32.])
       self.assertSequenceEqual(self.evaluate(grad_grad), [48.])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testPruning(self):
     x = constant_op.constant(1)
 
@@ -252,7 +282,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       if op.type == "While":
         while_op = op
 
-    body_graph = while_v2._get_body_graph(while_op)
+    body_graph = while_v2._get_graph(while_op, "body")
     # body_graph.inputs: [counter_arg, x_arg, tl_arg, *accumulators]
     x_input_t = body_graph.inputs[1]
     accumulator_count = len(
@@ -283,22 +313,26 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         self.assertListEqual(actual_tensor_shape.as_list(), shape)
 
     def GetAccumulatorForInputAtIndex(while_op, idx):
-      body_graph = while_v2._get_body_graph(while_op)
+      body_graph = while_v2._get_graph(while_op, "body")
       y_input_t = body_graph.inputs[idx]
       push_back_node = [c for c in y_input_t.consumers()
                         if c.type == "TensorListPushBack"][0]
       output_idx = body_graph.outputs.index(push_back_node.outputs[0])
       return while_op.outputs[output_idx]
 
-    x = constant_op.constant(2.)
+    x = array_ops.placeholder(dtype=dtypes.float32, shape=shape)
     y = array_ops.placeholder(dtype=dtypes.float32, shape=shape)
 
     # Forward pass.
-    ret = while_loop_v2(
-        lambda v, u: v < 8.,
-        lambda v, u: (v * v, u), [x, y],
-        return_same_structure=False)
+    ret = while_loop_v2(lambda v, u: v < 8.,
+                        lambda v, u: (math_ops.pow(v, u), u),
+                        [x, y],
+                        return_same_structure=True)
     while_op = ret[0].op.inputs[0].op
+    # Gradient pass.
+    grad = gradients_impl.gradients(ret[0], x)
+    grad_while_op = grad[0].op.inputs[0].op
+
     # Get the TensorList output of While op containing the accumulated values
     # of y.
     # while_op.inputs: [counter_arg, x_arg, y_arg, *accumulators]
@@ -307,14 +341,14 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
                                            element_dtype=dtypes.float32)
     MatchShape(val.shape)
 
-    # Gradient pass.
-    grad = gradients_impl.gradients(ret[1], y)
-    grad_while_op = grad[0].op.inputs[0].op
+    # Take second derivative to generate intermediate grad_while_op outputs
+    gradients_impl.gradients(grad, x)
+
     # Get the TensorList output of gradient While op containing the accumulated
-    # values of grad_y.
+    # values of grad_x (note that grad_x is needed by the second derivative).
     # grad_while_op.inputs:
     # [counter_arg, total_iters_arg, grad_x_arg, grad_y_arg, *other_args]
-    grad_output = GetAccumulatorForInputAtIndex(grad_while_op, 3)
+    grad_output = GetAccumulatorForInputAtIndex(grad_while_op, 2)
     _, val = list_ops.tensor_list_pop_back(grad_output,
                                            element_dtype=dtypes.float32)
     MatchShape(val.shape)
@@ -357,14 +391,13 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
   @test_util.enable_control_flow_v2
   @test_util.run_deprecated_v1
   def testWhileAndTensorArray(self):
-    with self.cached_session() as sess:
-      param = constant_op.constant(2.0)
-      y0 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="elems")
-      # map_fn uses TensorArray internally.
-      r = functional_ops.map_fn(lambda x: math_ops.multiply(x, param), y0)
-      self.assertAllClose([2.0, 4.0, 6.0, 8.0, 10.0, 12.0], self.evaluate(r))
-      r = gradients_impl.gradients(r, param)[0]
-      self.assertAllClose(21.0, self.evaluate(r))
+    param = constant_op.constant(2.0)
+    y0 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="elems")
+    # map_fn uses TensorArray internally.
+    r = map_fn.map_fn(lambda x: math_ops.multiply(x, param), y0)
+    grad = gradients_impl.gradients(r, param)[0]
+    self.assertAllClose([2.0, 4.0, 6.0, 8.0, 10.0, 12.0], self.evaluate(r))
+    self.assertAllClose(21.0, self.evaluate(grad))
 
   @test_util.run_deprecated_v1
   def testNestedWhile(self):
@@ -407,36 +440,24 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertSequenceEqual(self.evaluate(grad), [32.])
 
   @test_util.run_deprecated_v1
-  def testNestedWhileAndTensorArray(self):
-    n = constant_op.constant(3.0)
+  def testForwardPassRewrite(self):
+    x = constant_op.constant(1.0, name="x")
+    output = while_v2.while_loop(lambda x: x < 10.0,
+                                 lambda x: x * 2.0,
+                                 [x])[0]
+    while_op = output.op.inputs[0].op
+    self.assertEqual(while_op.type, "While")
+    # outputs = [loop_counter, x]
+    self.assertLen(while_op.outputs, 2)
 
-    def Body(row, ta, n):
+    gradients_impl.gradients(output, x)
+    # while_op should have been rewritten to output 2.0 intermediate.
+    # outputs = [loop_counter, x, 2.0_accumulator, x_accumulator]
+    self.assertLen(while_op.outputs, 4)
 
-      def InnerBody(row, col, ta, n):
-        # Note: row and col are 1-based.
-        ta = ta.write(
-            math_ops.cast(n * (row - 1.) + col - 1., dtypes.int32), row * col)
-        return row, col + 1., ta, n
-
-      # TODO(b/118457764): Remove n from loop_vars from both loops once fixed.
-      ta = while_loop_v2(
-          lambda _, col, _1, n: col <= n,
-          InnerBody, [row, constant_op.constant(1.), ta, n],
-          return_same_structure=False)[2]
-      return row + 1., ta, n
-
-    ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=9)
-    ta = while_loop_v2(
-        lambda row, _, _1: row <= n,
-        Body, [constant_op.constant(1.), ta, n],
-        return_same_structure=False)[1]
-
-    output = array_ops.reshape(ta.stack(), [3, 3])
-    self.assertAllEqual(
-        self.evaluate(output), [[1., 2., 3.], [2., 4., 6.], [3., 6., 9.]])
-    # TODO(b/117675481): This does not work with current TA. Enable with new TA.
-    # grad = gradients_impl.gradients(output, [n])
-    # self.assertEqual(self.evaluate(grad), 3.5)
+    gradients_impl.gradients(output, x)
+    # Computing the gradient again shouldn't rewrite while_op again.
+    self.assertLen(while_op.outputs, 4)
 
 
 def ScalarShape():

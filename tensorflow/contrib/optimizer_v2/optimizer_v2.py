@@ -25,6 +25,7 @@ import abc
 import six
 
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -36,7 +37,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.training import distribution_strategy_context as distribute_ctx
 from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.training import slot_creator
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -843,8 +843,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
       scale_loss_by_num_replicas = (
           distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN)
     if scale_loss_by_num_replicas:
-      num_replicas = \
-        distribute_ctx.get_distribution_strategy().num_replicas_in_sync
+      num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
       if num_replicas > 1:
         loss_value *= 1. / num_replicas
     return loss_value
@@ -997,10 +996,10 @@ class OptimizerV2(optimizer_v1.Optimizer):
       with ops.control_dependencies([update_ops]):
         finish_updates = distribution.extended.update_non_slot(
             non_slot_devices, finish, group=False)
-      # We said grouped=False, which means finish_updates is always a list.
-      # It will be [None] when finish() returns None.
-      if finish_updates == [None]:
-        finish_updates = [update_ops]
+      # We said group=False, which means finish_updates is always a tuple.
+      # It will be (None,) when finish() returns None.
+      if finish_updates == (None,):
+        finish_updates = (update_ops,)
 
       # Update `global_step` (if any).
       if global_step is None:

@@ -29,13 +29,24 @@ def _graph_inputs(op):
   return [x.op for x in op.inputs] + list(op.control_inputs)
 
 
+def _as_operation(op_or_tensor):
+  if isinstance(op_or_tensor, ops.Tensor):
+    return op_or_tensor.op
+  return op_or_tensor
+
+
+class UnliftableError(Exception):
+  """Raised if a Tensor cannot be lifted from the graph."""
+  pass
+
+
 def lift_to_graph(init_tensor, graph, sources=None):
   """Copies the tensor and all its inputs recursively to the outer graph."""
   # Check that the initializer does not depend on any placeholders.
   if sources is None:
     sources = set([])
   visited_ops = set([x.op for x in sources])
-  ops_to_visit = [init_tensor.op]
+  ops_to_visit = [_as_operation(init_tensor)]
   op_outputs = collections.defaultdict(set)
   while ops_to_visit:
     op = ops_to_visit.pop()
@@ -46,7 +57,7 @@ def lift_to_graph(init_tensor, graph, sources=None):
     # and placeholders the user might directly use to initialize
     # variables.
     if op.type == "Placeholder":
-      raise ValueError(
+      raise UnliftableError(
           "Unable to lift tensor", init_tensor,
           "because it depends transitively on placeholder ", op)
     for inp in _graph_inputs(op):
@@ -57,7 +68,7 @@ def lift_to_graph(init_tensor, graph, sources=None):
   # outputs are part of this subgraph.
   ops_to_copy = []
   marked_ops = set([])
-  ops_to_visit = [init_tensor.op]
+  ops_to_visit = [_as_operation(init_tensor)]
   while ops_to_visit:
     op = ops_to_visit.pop()
     if op in marked_ops:
@@ -67,15 +78,18 @@ def lift_to_graph(init_tensor, graph, sources=None):
     for inp in _graph_inputs(op):
       if all(x in marked_ops for x in op_outputs[inp]) and inp not in sources:
         ops_to_visit.append(inp)
-  assert len(ops_to_copy) == len(visited_ops)
   # ops_to_copy now holds a reverse topologically sorted list of ops which
   # ends in the initializer. We copy those to the outermost graph and
   # build the initialization op there.
   with graph.as_default():
     op_map = {}
+    source_ops = set()
     for s in sources:
+      source_ops.add(s.op)
       op_map[s] = array_ops.placeholder(dtype=s.dtype, shape=s.shape)
     for op in reversed(ops_to_copy):
+      if op in source_ops:
+        continue
       copied_inputs = [op_map[x] for x in op.inputs]
       copied_control_inputs = [op_map[x] for x in op.control_inputs]
       with ops.control_dependencies(copied_control_inputs):

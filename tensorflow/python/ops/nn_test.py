@@ -41,6 +41,7 @@ from tensorflow.python.ops.nn_impl import _compute_sampled_logits
 from tensorflow.python.platform import test as test_lib
 
 
+@test_util.disable_all_xla("This test never passed for XLA")
 class ZeroFractionTest(test_lib.TestCase):
 
   def _ZeroFraction(self, x):
@@ -451,6 +452,18 @@ class DropoutTest(test_lib.TestCase):
       nn_ops.dropout(t, array_ops.placeholder(dtypes.float32, shape=[2]))
 
   @test_util.run_deprecated_v1
+  def testInvalidRate(self):
+    x_dim = 40
+    y_dim = 30
+    t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
+    with self.assertRaises(ValueError):
+      nn_ops.dropout_v2(t, -1.0)
+    with self.assertRaises(ValueError):
+      nn_ops.dropout_v2(t, 1.1)
+    with self.assertRaises(ValueError):
+      nn_ops.dropout_v2(t, [0.0, 1.0])
+
+  @test_util.run_deprecated_v1
   def testShapedDropoutShapeError(self):
     # Runs shaped dropout and verifies an error is thrown on misshapen noise.
     x_dim = 40
@@ -471,12 +484,13 @@ class DropoutTest(test_lib.TestCase):
     _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, 1])
     _ = nn_ops.dropout(t, keep_prob, noise_shape=[1, 1])
 
-  @test_util.run_deprecated_v1
   def testNoDropoutFast(self):
     x = array_ops.zeros((5,))
-    for p in 1, constant_op.constant(1.0):
-      y = nn_ops.dropout(x, keep_prob=p)
-      self.assertTrue(x is y)
+    y = nn_ops.dropout(x, keep_prob=1)
+    self.assertTrue(x is y)
+
+    y = nn_ops.dropout_v2(x, rate=0)
+    self.assertTrue(x is y)
 
   def testDropoutWithIntegerInputs(self):
     x = constant_op.constant([1, 1, 1, 1, 1])
@@ -790,7 +804,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
     exp_nce_loss = np.sum(
         _SigmoidCrossEntropyWithLogits(exp_logits, exp_labels), 1)
 
-    got_nce_loss = nn_impl.nce_loss(
+    got_nce_loss = nn_impl.nce_loss_v2(
         weights=constant_op.constant(weights),
         biases=constant_op.constant(biases),
         labels=constant_op.constant(labels, shape=(batch_size, 1)),
@@ -798,15 +812,14 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
         num_sampled=4,
         num_classes=num_classes,
         num_true=1,
-        sampled_values=sampled_vals,
-        partition_strategy="div")
+        sampled_values=sampled_vals)
 
     self.assertAllClose(exp_nce_loss, self.evaluate(got_nce_loss), 1e-4)
 
     # Test with sharded weights and sharded biases.
     weight_shards, bias_shards = self._ShardTestEmbeddings(
         weights, biases, num_shards=3)
-    got_nce_loss = nn_impl.nce_loss(
+    got_nce_loss = nn_impl.nce_loss_v2(
         weights=[constant_op.constant(shard) for shard in weight_shards],
         biases=[constant_op.constant(shard) for shard in bias_shards],
         labels=constant_op.constant(labels, shape=(batch_size, 1)),
@@ -814,8 +827,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
         num_sampled=4,
         num_classes=num_classes,
         num_true=1,
-        sampled_values=sampled_vals,
-        partition_strategy="div")
+        sampled_values=sampled_vals)
 
     self.assertAllClose(exp_nce_loss, self.evaluate(got_nce_loss), 1e-4)
 
@@ -846,7 +858,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
     exp_sampled_softmax_loss = _SoftmaxCrossEntropyWithLogits(
         exp_logits, exp_labels)
 
-    got_sampled_softmax_loss = nn_impl.sampled_softmax_loss(
+    got_sampled_softmax_loss = nn_impl.sampled_softmax_loss_v2(
         weights=constant_op.constant(weights),
         biases=constant_op.constant(biases),
         labels=constant_op.constant(labels, shape=(batch_size, 1)),
@@ -855,8 +867,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
         num_classes=num_classes,
         num_true=1,
         sampled_values=sampled_vals,
-        remove_accidental_hits=False,
-        partition_strategy="div")
+        remove_accidental_hits=False)
 
     self.assertAllClose(exp_sampled_softmax_loss,
                         self.evaluate(got_sampled_softmax_loss), 1e-4)
@@ -864,7 +875,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
     # Test with sharded weights and sharded biases.
     weight_shards, bias_shards = self._ShardTestEmbeddings(
         weights, biases, num_shards=3)
-    got_sampled_softmax_loss = nn_impl.sampled_softmax_loss(
+    got_sampled_softmax_loss = nn_impl.sampled_softmax_loss_v2(
         weights=[constant_op.constant(shard) for shard in weight_shards],
         biases=[constant_op.constant(shard) for shard in bias_shards],
         labels=constant_op.constant(labels, shape=(batch_size, 1)),
@@ -873,8 +884,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
         num_classes=num_classes,
         num_true=1,
         sampled_values=sampled_vals,
-        remove_accidental_hits=False,
-        partition_strategy="div")
+        remove_accidental_hits=False)
 
     self.assertAllClose(exp_sampled_softmax_loss,
                         self.evaluate(got_sampled_softmax_loss), 1e-4)
@@ -915,7 +925,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
     sampled_vals_bf16 = (sampled, true_exp_bf16, sampled_exp_bf16)
 
     got_sampled_softmax_loss = math_ops.cast(
-        nn_impl.sampled_softmax_loss(
+        nn_impl.sampled_softmax_loss_v2(
             weights=constant_op.constant(weights, dtype=dtypes.bfloat16),
             biases=constant_op.constant(biases, dtype=dtypes.bfloat16),
             labels=constant_op.constant(
@@ -925,8 +935,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
             num_classes=num_classes,
             num_true=1,
             sampled_values=sampled_vals_bf16,
-            remove_accidental_hits=False,
-            partition_strategy="div"), dtypes.float32)
+            remove_accidental_hits=False), dtypes.float32)
 
     self.assertAllClose(exp_sampled_softmax_loss,
                         self.evaluate(got_sampled_softmax_loss), 1e-1)
@@ -1009,6 +1018,7 @@ class LeakyReluTest(test_lib.TestCase):
 class SwishTest(test_lib.TestCase):
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("This test never passed for XLA")
   def testValues(self):
     np_values = np.array(
         [np.linspace(-10.0, 0.0, 100),

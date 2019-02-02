@@ -61,7 +61,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     side = constant_op.constant(0.)
     add = lambda x: x + side
     dataset = dataset_ops.Dataset.from_tensor_slices(component).map(add)
-    value = dataset.make_one_shot_iterator().get_next()
+    value = dataset_ops.make_one_shot_iterator(dataset).get_next()
     self.assertIsNone(gradients_impl.gradients(value, component)[0])
     self.assertIsNone(gradients_impl.gradients(value, side)[0])
     self.assertIsNone(gradients_impl.gradients(value, [component, side])[0])
@@ -75,7 +75,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(
         ValueError, r"`Dataset.make_one_shot_iterator\(\)` does not support "
         "datasets that capture stateful objects.+myvar"):
-      dataset.make_one_shot_iterator()
+      dataset_ops.make_one_shot_iterator(dataset)
 
   @test_util.run_deprecated_v1
   def testOneShotIterator(self):
@@ -86,9 +86,9 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     def _map_fn(x, y, z):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
-    iterator = (
+    iterator = dataset_ops.make_one_shot_iterator(
         dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
-        .repeat(14).make_one_shot_iterator())
+        .repeat(14))
     get_next = iterator.get_next()
 
     self.assertEqual([c.shape[1:] for c in components],
@@ -113,9 +113,9 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     def _map_fn(x, y, z):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
-    iterator = (
+    iterator = dataset_ops.make_one_shot_iterator(
         dataset_ops.Dataset.from_tensor_slices(tensor_components)
-        .map(_map_fn).repeat(14).make_one_shot_iterator())
+        .map(_map_fn).repeat(14))
     get_next = iterator.get_next()
 
     self.assertEqual([c.shape[1:] for c in components],
@@ -140,9 +140,9 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
       def _map_fn(x, y, z):
         return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
-      iterator = (
+      iterator = dataset_ops.make_one_shot_iterator(
           dataset_ops.Dataset.from_tensor_slices(components)
-          .map(_map_fn).repeat(14).make_one_shot_iterator())
+          .map(_map_fn).repeat(14))
       return iterator.get_next()
 
     server = server_lib.Server.create_local_server()
@@ -169,7 +169,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
   @test_util.run_deprecated_v1
   def testOneShotIteratorNonBlocking(self):
     dataset = dataset_ops.Dataset.from_tensors([1, 2, 3]).map(lambda x: x * x)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     next_element = iterator.get_next()
 
     # Create a session with a single thread to ensure that the
@@ -211,7 +211,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensors(
         array_ops.check_numerics(
             constant_op.constant(1.0) / constant_op.constant(0.0), "oops"))
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -289,9 +289,8 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
   @test_util.run_deprecated_v1
   def testNotInitializedError(self):
     components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
-    iterator = (
-        dataset_ops.Dataset.from_tensors(components)
-        .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.from_tensors(components))
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -404,8 +403,8 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
     dataset_4 = dataset_ops.Dataset.from_tensor_slices([10, 20, 30, 40])
 
-    iterator_3 = dataset_3.make_one_shot_iterator()
-    iterator_4 = dataset_4.make_one_shot_iterator()
+    iterator_3 = dataset_ops.make_one_shot_iterator(dataset_3)
+    iterator_4 = dataset_ops.make_one_shot_iterator(dataset_4)
 
     handle_placeholder = array_ops.placeholder(dtypes.string, shape=[])
     feedable_iterator = iterator_ops.Iterator.from_string_handle(
@@ -461,8 +460,8 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
       dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
       dataset_4 = dataset_ops.Dataset.from_tensor_slices([10, 20, 30, 40])
 
-      iterator_3 = dataset_3.make_one_shot_iterator()
-      iterator_4 = dataset_4.make_one_shot_iterator()
+      iterator_3 = dataset_ops.make_one_shot_iterator(dataset_3)
+      iterator_4 = dataset_ops.make_one_shot_iterator(dataset_4)
 
       handle_placeholder = array_ops.placeholder(dtypes.string, shape=[])
       feedable_iterator = iterator_ops.Iterator.from_string_handle(
@@ -522,8 +521,8 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
   @test_util.run_deprecated_v1
   def testIteratorStringHandleReuseTensorObject(self):
     dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
-    one_shot_iterator = dataset.make_one_shot_iterator()
-    initializable_iterator = dataset.make_initializable_iterator()
+    one_shot_iterator = dataset_ops.make_one_shot_iterator(dataset)
+    initializable_iterator = dataset_ops.make_initializable_iterator(dataset)
     structure_iterator = iterator_ops.Iterator.from_structure(
         dataset.output_types)
 
@@ -564,10 +563,10 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
         handle_placeholder, dtypes.int32)
 
     with self.cached_session() as sess:
-      handle_int_scalar = sess.run(
-          dataset_int_scalar.make_one_shot_iterator().string_handle())
-      handle_float_vector = sess.run(
-          dataset_float_vector.make_one_shot_iterator().string_handle())
+      handle_int_scalar = sess.run(dataset_ops.make_one_shot_iterator(
+          dataset_int_scalar).string_handle())
+      handle_float_vector = sess.run(dataset_ops.make_one_shot_iterator(
+          dataset_float_vector).string_handle())
 
       self.assertEqual(1,
                        sess.run(
@@ -596,7 +595,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
 
     with ops.device("/job:localhost/replica:0/task:0/cpu:1"):
       dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
-      iterator_3 = dataset_3.make_one_shot_iterator()
+      iterator_3 = dataset_ops.make_one_shot_iterator(dataset_3)
       iterator_3_handle = iterator_3.string_handle()
 
     @function.Defun(dtypes.string)
@@ -669,7 +668,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     for device in worker_devices:
       with ops.device(device):
         src = dataset_ops.Dataset.from_tensor_slices([device])
-        itr = src.make_one_shot_iterator()
+        itr = dataset_ops.make_one_shot_iterator(src)
         itr_handles.append(itr.string_handle())
 
     targets = dataset_ops.Dataset.from_tensor_slices(worker_devices)
@@ -687,7 +686,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
 
     with ops.device("/job:client"):
       client_dataset = dataset_ops.Dataset.zip((targets, handles)).map(map_fn)
-      itr = client_dataset.make_initializable_iterator()
+      itr = dataset_ops.make_initializable_iterator(client_dataset)
       n = itr.get_next()
 
     with session.Session(s3.target, config=config) as sess:
@@ -705,7 +704,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
 
     with ops.device("/job:localhost/replica:0/task:0/cpu:0"):
       dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
-      iterator_3 = dataset_3.make_one_shot_iterator()
+      iterator_3 = dataset_ops.make_one_shot_iterator(dataset_3)
       iterator_3_handle = iterator_3.string_handle()
 
     def _encode_raw(byte_array):
@@ -777,8 +776,8 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     def _build_range_dataset_graph():
       start = 1
       stop = 10
-      iterator = dataset_ops.Dataset.range(start,
-                                           stop).make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(
+          dataset_ops.Dataset.range(start, stop))
       init_op = iterator.initializer
       get_next = iterator.get_next()
       save_op = _save_op(iterator._iterator_resource)
@@ -787,8 +786,8 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
 
     def _build_reader_dataset_graph():
       filenames = ["test"]  # Does not exist but we don't care in this test.
-      iterator = readers.FixedLengthRecordDataset(
-          filenames, 1, 0, 0).make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(
+          readers.FixedLengthRecordDataset(filenames, 1, 0, 0))
       init_op = iterator.initializer
       get_next_op = iterator.get_next()
       save_op = _save_op(iterator._iterator_resource)
@@ -815,7 +814,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testRepeatedGetNextWarning(self):
-    iterator = dataset_ops.Dataset.range(10).make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset_ops.Dataset.range(10))
     warnings.simplefilter("always")
     with warnings.catch_warnings(record=True) as w:
       for _ in range(100):
@@ -858,8 +857,8 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
                             expected_output_classes, expected_output_types,
                             expected_output_shapes):
     tf_value = tf_value_fn()
-    iterator = dataset_ops.Dataset.from_tensors(
-        tf_value).make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(
+        dataset_ops.Dataset.from_tensors(tf_value))
 
     self.assertTrue(expected_element_structure.is_compatible_with(
         iterator._element_structure))
@@ -872,7 +871,8 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
 
   def testIteratorGetNextName(self):
     with ops.Graph().as_default():
-      iterator = dataset_ops.Dataset.from_tensors(37.0).make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(
+          dataset_ops.Dataset.from_tensors(37.0))
       next_element = iterator.get_next(name="overridden_name")
       self.assertEqual("overridden_name", next_element.op.name)
 

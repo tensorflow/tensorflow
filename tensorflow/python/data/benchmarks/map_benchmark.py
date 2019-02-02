@@ -38,17 +38,14 @@ class MapBenchmark(test.Benchmark):
         if mode == "general":
           map_fn = lambda x: x + 1
           use_inter_op_parallelism = True
-          print_label = ""
           benchmark_label = ""
         if mode == "single-threaded":
           map_fn = lambda x: x + 1
           use_inter_op_parallelism = False
-          print_label = " (single threaded mode)"
           benchmark_label = "_single_threaded"
         if mode == "short-circuit":
           map_fn = lambda x: x
           use_inter_op_parallelism = True  # should not have any significance
-          print_label = " (short circuit mode)"
           benchmark_label = "_short_circuit"
 
         with ops.Graph().as_default():
@@ -58,7 +55,10 @@ class MapBenchmark(test.Benchmark):
                 dataset,
                 map_fn,
                 use_inter_op_parallelism=use_inter_op_parallelism)
-          iterator = dataset.make_one_shot_iterator()
+          options = dataset_ops.Options()
+          options.experimental_optimization.apply_default_optimizations = False
+          dataset = dataset.with_options(options)
+          iterator = dataset_ops.make_one_shot_iterator(dataset)
           next_element = iterator.get_next()
 
           with session.Session() as sess:
@@ -73,13 +73,10 @@ class MapBenchmark(test.Benchmark):
               deltas.append(end - start)
 
             median_wall_time = np.median(deltas) / 100
-            print("Map dataset chain length%s: %d Median wall time: %f" %
-                  (print_label, chain_length, median_wall_time))
             self.report_benchmark(
                 iters=1000,
                 wall_time=median_wall_time,
-                name="map_dataset_chain_length_%d%s" % (chain_length,
-                                                        benchmark_label))
+                name="chain_length_%d%s" % (chain_length, benchmark_label))
 
   def benchmarkMapFanOut(self):
     fan_outs = [1, 2, 5, 10, 20, 50, 100]
@@ -88,17 +85,14 @@ class MapBenchmark(test.Benchmark):
         if mode == "general":
           map_fn = lambda *xs: [x + 1 for x in xs]
           use_inter_op_parallelism = True
-          print_label = ""
           benchmark_label = ""
         if mode == "single-threaded":
           map_fn = lambda *xs: [x + 1 for x in xs]
           use_inter_op_parallelism = False
-          print_label = " (single threaded mode)"
           benchmark_label = "_single_threaded"
         if mode == "short-circuit":
           map_fn = lambda *xs: xs
           use_inter_op_parallelism = True  # should not have any significance
-          print_label = " (short circuit mode)"
           benchmark_label = "_short_circuit"
 
         with ops.Graph().as_default():
@@ -108,7 +102,10 @@ class MapBenchmark(test.Benchmark):
               dataset,
               map_fn,
               use_inter_op_parallelism=use_inter_op_parallelism)
-          iterator = dataset.make_one_shot_iterator()
+          options = dataset_ops.Options()
+          options.experimental_optimization.apply_default_optimizations = False
+          dataset = dataset.with_options(options)
+          iterator = dataset_ops.make_one_shot_iterator(dataset)
           next_element = iterator.get_next()
 
           with session.Session() as sess:
@@ -123,12 +120,10 @@ class MapBenchmark(test.Benchmark):
               deltas.append(end - start)
 
             median_wall_time = np.median(deltas) / 100
-            print("Map dataset fan out%s: %d Median wall time: %f" %
-                  (print_label, fan_out, median_wall_time))
             self.report_benchmark(
                 iters=1000,
                 wall_time=median_wall_time,
-                name="map_dataset_fan_out_%d%s" % (fan_out, benchmark_label))
+                name="fan_out_%d%s" % (fan_out, benchmark_label))
 
 
 if __name__ == "__main__":

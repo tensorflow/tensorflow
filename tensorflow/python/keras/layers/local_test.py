@@ -294,8 +294,8 @@ class LocallyConnectedImplementationModeTest(test.TestCase):
                         # Compare outputs after a few training steps.
                         out_1 = model_1.call(inputs)
                         out_2 = model_2.call(inputs)
-                        self.assertAllCloseAccordingToType(out_1, out_2,
-                                                           atol=1e-4)
+                        self.assertAllCloseAccordingToType(
+                            out_1, out_2, atol=2e-4)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_make_2d(self):

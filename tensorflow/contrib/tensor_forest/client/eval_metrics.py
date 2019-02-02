@@ -50,9 +50,10 @@ def _accuracy(predictions, targets, weights=None):
 def _r2(probabilities, targets, weights=None):
   targets = math_ops.to_float(targets)
   y_mean = math_ops.reduce_mean(targets, 0)
-  squares_total = math_ops.reduce_sum(math_ops.square(targets - y_mean), 0)
+  squares_total = math_ops.reduce_sum(
+      math_ops.squared_difference(targets, y_mean), 0)
   squares_residuals = math_ops.reduce_sum(
-      math_ops.square(targets - probabilities), 0)
+      math_ops.squared_difference(targets, probabilities), 0)
   score = 1 - math_ops.reduce_sum(squares_residuals / squares_total)
   return metrics.mean(score, weights=weights)
 

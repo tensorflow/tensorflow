@@ -52,6 +52,12 @@ class Client {
   //   need to live beyond this call.)
   // * If execution_options.device_handles should be empty. If you need
   //   non-empty device handles, call 'Execute' instead.
+  //
+  // TODO(b/122731460): This call caches the resulting Executable in the Service
+  // *forever*.  If you're only going to run the computation once, you may want
+  // to call the Execute(const XlaComputation&) overload.  If you're going to
+  // run the computation more than once but you want control over when the
+  // Executable is unloaded, use the LocalClient API.
   StatusOr<ExecutionHandle> Compile(
       const XlaComputation& computation,
       absl::Span<const Shape> argument_shapes,
@@ -76,6 +82,10 @@ class Client {
   //   device is chosen by the service.
   // * If execution_profile is not nullptr then the pointed-to ExecutionProfile
   //   will be filled with profile data from the execution.
+  //
+  // TODO(b/122731460): The given computation is compiled and then thrown away
+  // immediately after it's run.  If you want control over how long the
+  // resulting Executable lives, use the LocalClient API.
   StatusOr<std::unique_ptr<GlobalData>> Execute(
       const XlaComputation& computation,
       absl::Span<GlobalData* const> arguments,

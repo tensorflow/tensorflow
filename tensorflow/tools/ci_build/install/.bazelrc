@@ -5,7 +5,7 @@ startup --batch
 
 # Similarly, we need to workaround sandboxing issues:
 #   https://github.com/bazelbuild/bazel/issues/418
-build  --verbose_failures --spawn_strategy=standalone --genrule_strategy=standalone
+build  --verbose_failures --spawn_strategy=standalone --strategy=Genrule=standalone
 test --spawn_strategy=standalone
 
 # Force bazel output to use colors (good for jenkins) and print useful errors.

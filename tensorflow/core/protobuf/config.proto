@@ -425,6 +425,10 @@ message ConfigProto {
     // use NUMA affinity where applicable.  One consequence will be the
     // existence of as many CPU devices as there are available NUMA nodes.
     bool use_numa_affinity = 5;
+
+    // If true, make collective op execution order sequential and deterministic
+    // for potentially concurrent collective instances.
+    bool collective_deterministic_sequential_execution = 6;
   };
 
   Experimental experimental = 16;

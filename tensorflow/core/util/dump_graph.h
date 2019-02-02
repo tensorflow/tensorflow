@@ -29,19 +29,23 @@ namespace tensorflow {
 // chosen.
 //
 // Automatically picks a file name. Prefixes 'name' with the value of the
-// TF_DUMP_GRAPH_PREFIX environment variable and suffixes it with ".pbtxt" to
-// form a name. If a graph has already been dumped by this process with the same
-// name, suffixes with "_n.pbtxt", where 'n' is a sequence number.
-string DumpGraphDefToFile(const string& name, GraphDef const& graph_def);
+// TF_DUMP_GRAPH_PREFIX environment variable if 'dirname' is empty, and suffixes
+// 'name' with ".pbtxt" to form a name. If a graph has already been dumped by
+// this process with the same name, suffixes with "_n.pbtxt", where 'n' is a
+// sequence number.
+string DumpGraphDefToFile(const string& name, GraphDef const& graph_def,
+                          const string& dirname = "");
 
 // Similar to DumpGraphDefToFile, but builds the GraphDef to dump from a 'graph'
 // and an optional function library 'flib_def'. Returns the file name chosen.
 string DumpGraphToFile(const string& name, Graph const& graph,
-                       const FunctionLibraryDefinition* flib_def = nullptr);
+                       const FunctionLibraryDefinition* flib_def = nullptr,
+                       const string& dirname = "");
 
 // Similar to DumpGraphDefToFile, but dumps a function as a FunctionDef text
 // proto. Returns the file name chosen.
-string DumpFunctionDefToFile(const string& name, FunctionDef const& fdef);
+string DumpFunctionDefToFile(const string& name, FunctionDef const& fdef,
+                             const string& dirname = "");
 
 }  // namespace tensorflow
 
