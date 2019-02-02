@@ -63,7 +63,7 @@ Token Lexer::emitError(const char *loc, const Twine &message) {
 
 Token Lexer::lexToken() {
   // Ignore whitespace.
-  while (curPtr) {
+  while (true) {
     switch (*curPtr) {
     case ' ':
     case '\t':
@@ -72,6 +72,9 @@ Token Lexer::lexToken() {
       ++curPtr;
       continue;
     default:
+      // Terminate loop on non-whitespace, including either an embedded or
+      // final terminating nul character that llvm::MemoryBuffer guarantees
+      // will be there.
       break;
     }
     break;
