@@ -130,8 +130,10 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
     Status status GUARDED_BY(out_mu);
 
     // These fields are used to count the instances that have called
-    // in and become known while resolving broadcast source identity.
+    // in and become known while resolving broadcast source identity and
+    // communicator key.
     int source_rank GUARDED_BY(out_mu);
+    string communicator_key GUARDED_BY(out_mu);
     int known_count GUARDED_BY(out_mu);
     std::vector<bool> known GUARDED_BY(out_mu);
     std::vector<IRConsumer> known_waiters GUARDED_BY(out_mu);
@@ -197,10 +199,10 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
                                            const StatusCallback& done)
       LOCKS_EXCLUDED(ir->out_mu);
 
-  // Complete source data for a broadcast instance.
+  // Complete source data and/or nccl communicator key.
   // Precondition: *cp has complete group data and default_rank.
-  void CompleteInstanceSource(InstanceRec* ir, CollectiveParams* cp,
-                              bool is_source, const IRConsumer& f)
+  void WaitForGroup(InstanceRec* ir, CollectiveParams* cp, bool is_source,
+                    bool init_source, bool init_nccl, const IRConsumer& f)
       LOCKS_EXCLUDED(ir->out_mu);
 
   // If cp.device_names contains only devices local to this process
@@ -216,10 +218,15 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   // current ordering of cp->instance.device_names.
   void SetDefaultRank(const string& device, CollectiveParams* cp);
 
+  // Sets cp->instance.type based on collective op type, and attempts to assign
+  // best implementation.
+  void AssignCollectiveType(CollectiveParams* cp);
+
   // Helper to grab status under lock, invoke callback out of lock.
   void CallbackWithStatus(const InstanceRecCallback& done, InstanceRec* irec)
       LOCKS_EXCLUDED(irec->out_mu);
 
+  const bool nccl_;
   const DeviceMgr* dev_mgr_;
   DeviceResolverInterface* dev_resolver_;  // Not owned.
   string task_name_;

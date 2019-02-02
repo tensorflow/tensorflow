@@ -32,7 +32,12 @@ void compute(void* kernel, TF_OpKernelContext* ctx) {
   TF_Status* s = TF_NewStatus();
   TF_GetInput(ctx, 0, &input, s);
   TF_DeleteTensor(input);
+
+  TF_DataType type;
+  TF_OpKernelContext_GetAttrType(ctx, "foobar", &type, s);
+
   TF_DeleteStatus(s);
+
 }
 
 // Exercises tensorflow's C API.

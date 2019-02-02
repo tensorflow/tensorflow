@@ -636,11 +636,15 @@ details, see `tf.nn.depthwise_conv2d`.
 
 The `batch_group_count` (default value 1) argument can be used for depthwise
 filters during backpropagation. `batch_group_count` needs to be a divisor of the
-size of the `lhs` batch dimension. If `batch_group_count` is greater than 1, it
-means that conceptually the output batch dimension is split evenely in
-`batch_group_count` groups, such that each group consists of a consecutive
-subsequence of batches. Each output batch element is the reduced value of the
-batch group size.
+size of the `lhs` (input) batch dimension. If `batch_group_count` is greater
+than 1, it means that the output batch dimension should be of size
+`batch_group_size` where `batch_group_size = input batch / batch_group_count`.
+For convolutions with `batch_group_count` greater than 1, the input batch size
+must evenly divide into batch_group_size and output feature size, which implies
+that the output feature size must be equal to batch_group_count. Conceptually,
+this can be achieved by performing the usual convolution, and then scraping
+`batch_group_size` number of elements on the diagonal of the matrix formed by
+output batch and output feature.
 
 The output shape has these dimensions, in this order:
 
@@ -871,9 +875,7 @@ DotGeneral performs the sum of products over contracting dimensions specified
 in 'dimension_numbers'.
 
 Associated contracting dimension numbers from the 'lhs' and 'rhs' do not need
-to be the same, but must be listed in the same order in both
-'lhs/rhs_contracting_dimensions' arrays and have the same dimension sizes.
-There must be exactly one contracting dimension on both 'lhs' and 'rhs'.
+to be the same and but must have the same dimension sizes.
 
 Example with contracting dimension numbers:
 
@@ -892,10 +894,8 @@ DotGeneral(lhs, rhs, dnums) -> { {6.0, 12.0},
 {15.0, 30.0} }
 ```
 
-Associated batch dimension numbers from the 'lhs' and 'rhs' must have the same
-dimension number, must be listed in the same order in both arrays, must
-have the same dimension sizes, and must be ordered before contracting and
-non-contracting/non-batch dimension numbers.
+Associated batch dimension numbers from the 'lhs' and 'rhs' must
+have the same dimension sizes.
 
 Example with batch dimension numbers (batch size 2, 2x2 matrices):
 
@@ -1872,6 +1872,20 @@ The evaluation order of the reduction function is arbitrary and may be
 non-deterministic. Therefore, the reduction function should not be overly
 sensitive to reassociation. See the discussion about associativity in the
 context of [`Reduce`](#reduce) for more details.
+
+## ReplicaId
+
+See also
+[`XlaBuilder::ReplicaId`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Returns the unique ID (U32 scalar) of the replica.
+
+<b> `ReplicaId()` </b>
+
+The unique ID of each replica is an unsigned integer in the interval `[0, N)`,
+where `N` is the number of replicas. Since all the replicas are running the same
+program, a `ReplicaId()` call in the program will return a different value on
+each replica.
 
 ## Reshape
 

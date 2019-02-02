@@ -1,4 +1,8 @@
+
 MAKEFILE_DIR := tensorflow/lite/experimental/micro/tools/make
+
+# Pull in some convenience functions.
+include $(MAKEFILE_DIR)/helper_functions.inc
 
 # Try to figure out the host system
 HOST_OS :=
@@ -21,50 +25,22 @@ HOST_ARCH := $(shell if [[ $(shell uname -m) =~ i[345678]86 ]]; then echo x86_32
 TARGET := $(HOST_OS)
 TARGET_ARCH := $(HOST_ARCH)
 
-# Look for platform or target-specific implementation files to replace reference
-# implementations with, given a tag. These are expected to occur in subfolders
-# of a directory where a reference implementation exists, and have the same
-# interface and header file. For example,
-# tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.cc
-# defines a module for supplying audio data, but since no platform or OS can be
-# presumed, it just always returns zeroes for its samples. The MacOS-specific
-# tensorflow/lite/experimental/micro/examples/micro_speech/osx/audio_provider.cc
-# has an implementation that relies on CoreAudio, and there are equivalent
-# versions for other operating systems. 
-# All lists of source files are put through this substitution process with the
-# tags of their target OS and architecture, so that implementations can be added
-# by simply placing them in the file tree, with no changes to the build files
-# needed.
-# One confusing thing about this implementation is that we're using wildcard to
-# act as a 'does file exist?' function, rather than expanding an expression.
-# Wildcard will return an empty string if given a plain file path with no actual
-# wildcards, if the file doesn't exist, so taking the first word of the list
-# between that and the reference path will pick the specialized one if it's
-# available.
-substitute_specialized_implementation = \
-  $(firstword $(wildcard $(dir $(1))$(2)/$(notdir $(1))) $(wildcard $(1)))
-substitute_specialized_implementations = \
-  $(foreach source,$(1),$(call substitute_specialized_implementation,$(source),$(2)))
-# Here we're first looking for specialized implementations in ref_dir/$(TARGET)
-# and then ref_dir/$(TARGET_ARCH), before falling back to ref_dir's
-# implementation.
-# The argument to this function should be a list of space-separated file paths,
-# with any wildcards already expanded.
-specialize = \
-  $(call substitute_specialized_implementations,$(call substitute_specialized_implementations,$(1),$(TARGET)),$(TARGET_ARCH))
+# Specify TAGS on the command line to add a particular set of specialized
+# implementations, for example TAGS="CMSIS disco_f746ng" to target a Discovery
+# STM32F746NG board, using the CMSIS library's implementations where possible.
+ALL_TAGS := $(TAGS) $(TARGET)
 
 INCLUDES := \
 -I. \
--I$(MAKEFILE_DIR)/../../../../../ \
--I$(MAKEFILE_DIR)/../../../../../../ \
--I$(MAKEFILE_DIR)/../../../../../../../ \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
--I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
--I$(OBJDIR)
-# This is at the end so any globally-installed frameworks like protobuf don't
-# override local versions in the source tree.
-INCLUDES += -I/usr/local/include
+-I$(MAKEFILE_DIR)/downloads/flatbuffers/include
+
+# These are the include paths added to any generated project file.
+PROJECT_INCLUDES := \
+. \
+third_party/gemmlowp \
+third_party/flatbuffers/include
 
 TEST_SCRIPT := tensorflow/lite/experimental/micro/testing/test_linux_binary.sh
 
@@ -89,6 +65,9 @@ MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/experimental/micro/*test.cc) \
 $(wildcard tensorflow/lite/experimental/micro/kernels/*test.cc)
 
+MICROLITE_TEST_HDRS := \
+$(wildcard tensorflow/lite/experimental/micro/testing/*.h)
+
 MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/experimental/micro/*.cc) \
 $(wildcard tensorflow/lite/experimental/micro/kernels/*.cc) \
@@ -101,11 +80,61 @@ tensorflow/lite/kernels/internal/quantization_util.cc
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
 MICROLITE_CC_SRCS := $(call specialize,$(MICROLITE_CC_SRCS))
 
+MICROLITE_CC_HDRS := \
+$(wildcard tensorflow/lite/experimental/micro/*.h) \
+$(wildcard tensorflow/lite/experimental/micro/kernels/*.h) \
+LICENSE \
+tensorflow/lite/c/c_api_internal.h \
+tensorflow/lite/c/builtin_op_data.h \
+tensorflow/lite/core/api/error_reporter.h \
+tensorflow/lite/core/api/flatbuffer_conversions.h \
+tensorflow/lite/core/api/op_resolver.h \
+tensorflow/lite/kernels/kernel_util.h \
+tensorflow/lite/kernels/op_macros.h \
+tensorflow/lite/kernels/padding.h \
+tensorflow/lite/kernels/internal/common.h \
+tensorflow/lite/kernels/internal/compatibility.h \
+tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h \
+tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
+tensorflow/lite/kernels/internal/reference/fully_connected.h \
+tensorflow/lite/kernels/internal/reference/softmax.h \
+tensorflow/lite/kernels/internal/round.h \
+tensorflow/lite/kernels/internal/tensor_ctypes.h \
+tensorflow/lite/kernels/internal/types.h \
+tensorflow/lite/kernels/internal/quantization_util.h \
+tensorflow/lite/schema/schema_generated.h \
+tensorflow/lite/version.h
+
+THIRD_PARTY_CC_HDRS := \
+third_party/gemmlowp/fixedpoint/fixedpoint.h \
+third_party/gemmlowp/fixedpoint/fixedpoint_sse.h \
+third_party/gemmlowp/internal/detect_platform.h \
+third_party/gemmlowp/LICENSE \
+third_party/flatbuffers/include/flatbuffers/base.h \
+third_party/flatbuffers/include/flatbuffers/stl_emulation.h \
+third_party/flatbuffers/include/flatbuffers/flatbuffers.h \
+third_party/flatbuffers/LICENSE.txt
+
+MAKE_PROJECT_FILES := \
+  README_MAKE.md \
+  Makefile
+
+MBED_PROJECT_FILES := \
+  README_MBED.md \
+  mbed-os.lib \
+  mbed_app.json
+
+KEIL_PROJECT_FILES := \
+  README_KEIL.md \
+  keil_project.uvprojx
+
 # These target-specific makefiles should modify or replace options like
 # CXXFLAGS or LIBS to work for a specific targetted architecture. All logic
 # based on platforms or architectures should happen within these files, to
 # keep this main makefile focused on the sources and dependencies.
 include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
+
+ALL_TAGS += $(TARGET_ARCH)
 
 ALL_SRCS := \
 	$(MICROLITE_CC_SRCS) \
@@ -116,6 +145,7 @@ GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)/
 OBJDIR := $(GENDIR)obj/
 BINDIR := $(GENDIR)bin/
 LIBDIR := $(GENDIR)lib/
+PRJDIR := $(GENDIR)prj/
 
 MICROLITE_LIB_PATH := $(LIBDIR)$(MICROLITE_LIB_NAME)
 
@@ -129,8 +159,8 @@ include $(wildcard tensorflow/lite/experimental/micro/examples/*/Makefile.inc)
 MICROLITE_LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MICROLITE_CC_SRCS))))
 
-MICROLITE_TEST_TARGETS := $(addprefix $(BINDIR), \
-$(patsubst %_test.cc,%.test_target,$(MICROLITE_TEST_SRCS)))
+MICROLITE_LIB_OBJS += $(addprefix $(OBJDIR), \
+$(patsubst %.S,%.o,$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(THIRD_PARTY_CC_SRCS)))))
 
 # For normal manually-created TensorFlow C++ source files.
 $(OBJDIR)%.o: %.cc
@@ -142,7 +172,7 @@ $(OBJDIR)%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 
-  # For normal manually-created TensorFlow ASM source files.
+# For normal manually-created TensorFlow ASM source files.
 $(OBJDIR)%.o: %.S
 	@mkdir -p $(dir $@)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
@@ -170,15 +200,11 @@ $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 $(BINDIR)%.test_target: $(BINDIR)%_test
 	$(TEST_SCRIPT) $< '~~~ALL TESTS PASSED~~~'
 
-# snease: Add %.bin rule here since BINDIR is now defined
-# These are microcontroller-specific rules for converting the ELF output
-# of the linker into a binary image that can be loaded directly.
-OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
-$(BINDIR)%.bin: $(BINDIR)%
-	@mkdir -p $(dir $@)
-	$(OBJCOPY) $< $@ -O binary
+# Generate standalone makefile projects for all of the test targets.
+$(foreach TEST_TARGET,$(MICROLITE_TEST_SRCS),\
+$(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 
-test: test_micro_speech $(MICROLITE_TEST_TARGETS)
+test: $(MICROLITE_TEST_TARGETS)
 
 # Gets rid of all generated files.
 clean:

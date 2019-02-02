@@ -36,6 +36,7 @@ limitations under the License.
 //  DotDimensionNumbers proto          <-  corresponding Python proto
 //  GatherDimensionNumbers proto       <-  corresponding Python proto
 //  ScatterDimensionNumbers proto      <-  corresponding Python proto
+//  Span<ReplicaGroup proto>           <-  sequence of ReplicaGroup Python proto
 //
 // Arrows indicate whether a conversion only ever occurs in one
 // direction, or whether it is maintained bidirectionally.
@@ -171,7 +172,7 @@ bool HandleStringAttribute(PyObject* o,
 
 bool HandleRepeatedInt64Attribute(
     PyObject* o, const char* attr_name,
-    tensorflow::protobuf::RepeatedField<int64>* field) {
+    tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>* field) {
   PyObject* seq = PyObject_GetAttrString(o, attr_name);
   if (!seq) {
     return false;
@@ -794,8 +795,6 @@ tensorflow::ImportNumpy();
   }
   dimension_numbers.set_kernel_input_feature_dimension(value);
 
-  PyObject* o;
-
   if (!HandleRepeatedInt64Attribute(
         $input, "input_spatial_dimensions",
         dimension_numbers.mutable_input_spatial_dimensions())) {
@@ -873,6 +872,31 @@ tensorflow::ImportNumpy();
   $1 = &dimension_numbers;
 }
 
+// Span<const ReplicaGroup>
+
+%typemap(in) absl::Span<const ReplicaGroup >
+    (std::vector<ReplicaGroup > temps) {
+  if (!PySequence_Check($input)) {
+    PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
+    SWIG_fail;
+  }
+  const int size = PySequence_Size($input);
+  temps.reserve(size);
+  for (int i = 0; i < size; ++i) {
+    PyObject* o = PySequence_GetItem($input, i);
+    ReplicaGroup rgrp;
+    if (!HandleRepeatedInt64Attribute(
+            o, "replica_ids",
+            rgrp.mutable_replica_ids())) {
+        SWIG_fail;
+    }
+    temps.push_back(rgrp);
+    Py_DECREF(o);
+  }
+  $1 = temps;
+}
+
+
 // ExecutableBuildOptions
 
 %typemap(in) const ExecutableBuildOptions*
@@ -928,6 +952,12 @@ tensorflow::ImportNumpy();
       build_options.set_result_layout(statusor.ValueOrDie());
     }
     Py_DECREF(o);
+
+    int64 num_replicas;
+    if (!GetIntAttr($input, "num_replicas", &num_replicas)) {
+      SWIG_fail;
+    }
+    build_options.set_num_replicas(num_replicas);
 
     $1 = &build_options;
   }
@@ -988,6 +1018,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Pad;
 %unignore xla::swig::LocalComputationBuilder::Reshape;
 %unignore xla::swig::LocalComputationBuilder::Collapse;
+%unignore xla::swig::LocalComputationBuilder::AllToAll;
 %unignore xla::swig::LocalComputationBuilder::CrossReplicaSum;
 %unignore xla::swig::LocalComputationBuilder::Slice;
 %unignore xla::swig::LocalComputationBuilder::SliceInDim;

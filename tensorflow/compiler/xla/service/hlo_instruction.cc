@@ -372,6 +372,13 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           CreateCollectivePermute(shape, operands(0), source_target_pairs);
       break;
     }
+    case HloOpcode::kReplicaId: {
+      TF_RET_CHECK(proto.operand_ids_size() == 0)
+          << "ReplicaId instruction should have 0 operand but sees "
+          << proto.operand_ids_size();
+      instruction = CreateReplicaId();
+      break;
+    }
     case HloOpcode::kConvolution: {
       TF_RET_CHECK(proto.operand_ids_size() == 2)
           << "Convolution instruction should have 2 operands but sees "
@@ -458,21 +465,17 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "DynamicSlice instruction should have at least 1 operands but "
              "sees "
           << proto.operand_ids_size();
-      if (proto.operand_ids_size() == 2 && operands(1)->shape().rank() == 1) {
-        // TODO(b/118437727): Old form, remove this path.
-        instruction =
-            CreateDynamicSlice(shape, operands(0), operands(1), slice_sizes);
-      } else {
-        // New form
+      // TODO(b/118437727): Old form, make the check unconditional.
+      if (proto.operand_ids_size() != 2 || operands(1)->shape().rank() != 1) {
         auto expected_operands = 1 + operands(0)->shape().rank();
         TF_RET_CHECK(proto.operand_ids_size() == expected_operands)
             << "DynamicSlice instruction should have " << expected_operands
             << " operands, but has " << proto.operand_ids_size();
-        const auto& operand_vector = all_operands();
-        instruction = CreateDynamicSlice(
-            shape, operands(0), absl::MakeSpan(operand_vector).subspan(1),
-            slice_sizes);
       }
+      const auto& operand_vector = all_operands();
+      instruction = CreateDynamicSlice(
+          shape, operands(0), absl::MakeSpan(operand_vector).subspan(1),
+          slice_sizes);
       break;
     }
     case HloOpcode::kDynamicUpdateSlice: {
@@ -480,22 +483,19 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "DynamicUpdateSlice instruction should have at least 2 operands "
              "but sees "
           << proto.operand_ids_size();
-      if (proto.operand_ids_size() == 3 && operands(2)->shape().rank() == 1) {
-        // TODO(b/118437727): Old form, remove this path.
-        instruction = CreateDynamicUpdateSlice(shape, operands(0), operands(1),
-                                               operands(2));
-      } else {
-        // New form
+      // TODO(b/118437727): Old form, make the check unconditional.
+      if (proto.operand_ids_size() != 3 || operands(2)->shape().rank() != 1) {
         auto expected_operands = 2 + operands(0)->shape().rank();
         TF_RET_CHECK(proto.operand_ids_size() == expected_operands)
             << "DynamicUpdateSlice instruction should have "
             << expected_operands << " operands, but has "
             << proto.operand_ids_size();
-        const auto& operand_vector = all_operands();
-        instruction =
-            CreateDynamicUpdateSlice(shape, operands(0), operands(1),
-                                     absl::MakeSpan(operand_vector).subspan(2));
       }
+      const auto& operand_vector = all_operands();
+      instruction =
+          CreateDynamicUpdateSlice(shape, operands(0), operands(1),
+                                   absl::MakeSpan(operand_vector).subspan(2));
+
       break;
     }
     case HloOpcode::kGather: {
@@ -832,6 +832,11 @@ HloInstruction::CreateCollectivePermute(
       shape, operand, source_target_pairs);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReplicaId() {
+  return absl::WrapUnique(
+      new HloInstruction(HloOpcode::kReplicaId, ShapeUtil::MakeShape(U32, {})));
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
     const Shape& infeed_shape, HloInstruction* token_operand,
     const string& config) {
@@ -948,27 +953,11 @@ HloInstruction::CreateAddDependency(HloInstruction* data_operand,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDynamicSlice(
-    const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
-    absl::Span<const int64> slice_sizes) {
-  return absl::make_unique<HloDynamicSliceInstruction>(
-      shape, operand, start_indices, slice_sizes);
-}
-
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDynamicSlice(
     const Shape& shape, HloInstruction* operand,
     absl::Span<HloInstruction* const> start_indices,
     absl::Span<const int64> slice_sizes) {
   return absl::make_unique<HloDynamicSliceInstruction>(
       shape, operand, start_indices, slice_sizes);
-}
-
-/* static */ std::unique_ptr<HloInstruction>
-HloInstruction::CreateDynamicUpdateSlice(const Shape& shape,
-                                         HloInstruction* operand,
-                                         HloInstruction* update,
-                                         HloInstruction* start_indices) {
-  return absl::make_unique<HloDynamicUpdateSliceInstruction>(
-      shape, operand, update, start_indices);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1464,6 +1453,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 2);
       clone = CreateAddDependency(new_operands[0], new_operands[1]);
       break;
+    case HloOpcode::kReplicaId:
+      CHECK_EQ(new_operands.size(), 0);
+      clone = CreateReplicaId();
+      break;
   }
   // SetupDerivedInstruction will setup the precision_config_ field.
   SetupDerivedInstruction(clone.get());
@@ -1733,6 +1726,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
     case HloOpcode::kReshape:
+    case HloOpcode::kReplicaId:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
@@ -2487,6 +2481,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleAllToAll(this);
     case HloOpcode::kCollectivePermute:
       return visitor->HandleCollectivePermute(this);
+    case HloOpcode::kReplicaId:
+      return visitor->HandleReplicaId(this);
     case HloOpcode::kTuple:
       return visitor->HandleTuple(this);
     case HloOpcode::kMap:

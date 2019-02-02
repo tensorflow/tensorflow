@@ -257,8 +257,8 @@ std::vector<tensorflow::DataType> TestTypes() {
   return {DT_FLOAT, DT_INT32, DT_INT64, DT_BOOL, DT_QUINT8, DT_COMPLEX64};
 }
 
-INSTANTIATE_TEST_CASE_P(ShapeImportTest, ShapeImportTest,
-                        ::testing::ValuesIn(TestTypes()));
+INSTANTIATE_TEST_SUITE_P(ShapeImportTest, ShapeImportTest,
+                         ::testing::ValuesIn(TestTypes()));
 
 class ContentImportTest : public ::testing::Test {
  public:
@@ -418,8 +418,8 @@ TEST_P(TypeImportTest, BasicTypeInference) {
           model.operators[0].get());
   ASSERT_THAT(op->output_data_types, ::testing::ElementsAre(GetParam().second));
 }
-INSTANTIATE_TEST_CASE_P(BasicTypeInference, TypeImportTest,
-                        ::testing::ValuesIn(UnaryTestTypes()));
+INSTANTIATE_TEST_SUITE_P(BasicTypeInference, TypeImportTest,
+                         ::testing::ValuesIn(UnaryTestTypes()));
 
 TEST(ImportTest, TypeInferenceWithFixedOutputType) {
   // Create an op that has a fixed output type (bool).

@@ -81,6 +81,12 @@ bool IsCropWindowValid(const UncompressFlags& flags, int input_image_width,
          flags.crop_x + flags.crop_width <= input_image_width;
 }
 
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+// If in fuzzing mode, don't print any error message as that slows down fuzzing.
+// See also http://llvm.org/docs/LibFuzzer.html#fuzzer-friendly-build-mode
+void no_print(j_common_ptr cinfo) {}
+#endif
+
 uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   // unpack the argball
   const int datasize = argball->datasize_;
@@ -112,9 +118,14 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   struct jpeg_decompress_struct cinfo;
   struct jpeg_error_mgr jerr;
   cinfo.err = jpeg_std_error(&jerr);
+  jerr.error_exit = CatchError;
+
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+  jerr.output_message = no_print;
+#endif
+
   jmp_buf jpeg_jmpbuf;
   cinfo.client_data = &jpeg_jmpbuf;
-  jerr.error_exit = CatchError;
   if (setjmp(jpeg_jmpbuf)) {
     delete[] tempdata;
     return nullptr;
@@ -157,7 +168,8 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   jpeg_calc_output_dimensions(&cinfo);
 
   int64 total_size = static_cast<int64>(cinfo.output_height) *
-                     static_cast<int64>(cinfo.output_width);
+                     static_cast<int64>(cinfo.output_width) *
+                     static_cast<int64>(cinfo.num_components);
   // Some of the internal routines do not gracefully handle ridiculously
   // large images, so fail fast.
   if (cinfo.output_width <= 0 || cinfo.output_height <= 0) {

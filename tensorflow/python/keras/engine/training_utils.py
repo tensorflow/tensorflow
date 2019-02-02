@@ -19,22 +19,22 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 from collections import OrderedDict
 import copy
 
 import numpy as np
 import six
 
+from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
@@ -46,6 +46,7 @@ from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensi
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
@@ -108,6 +109,8 @@ class MetricsAggregator(Aggregator):
     self.results[1:] = batch_outs[1:]
 
   def finalize(self):
+    if not self.results:
+      raise ValueError('Empty training data.')
     self.results[0] /= self.num_samples_or_steps
 
 
@@ -471,14 +474,16 @@ def check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
       ValueError: if a loss function or target array
           is incompatible with an output.
   """
-  key_losses = {
+  key_loss_fns = {
       losses.mean_squared_error, losses.binary_crossentropy,
       losses.categorical_crossentropy
   }
+  key_loss_classes = (losses.MeanSquaredError, losses.BinaryCrossentropy,
+                      losses.CategoricalCrossentropy)
   for y, loss, shape in zip(targets, loss_fns, output_shapes):
     if y is None or loss is None or tensor_util.is_tensor(y):
       continue
-    if loss is losses.categorical_crossentropy:
+    if losses.is_categorical_crossentropy(loss):
       if y.shape[-1] == 1:
         raise ValueError('You are passing a target array of shape ' + str(
             y.shape) + ' while using as loss `categorical_crossentropy`. '
@@ -495,14 +500,20 @@ def check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
                          'Alternatively, you can use the loss function '
                          '`sparse_categorical_crossentropy` instead, '
                          'which does expect integer targets.')
-    if loss in key_losses:
+
+    is_loss_wrapper = isinstance(loss, losses.LossFunctionWrapper)
+    if (isinstance(loss, key_loss_classes) or (is_loss_wrapper and
+                                               (loss.fn in key_loss_fns))):
       for target_dim, out_dim in zip(y.shape[1:], shape[1:]):
         if out_dim is not None and target_dim != out_dim:
+          loss_name = loss.name
+          if loss_name is None:
+            loss_type = loss.fn if is_loss_wrapper else type(loss)
+            loss_name = loss_type.__name__
           raise ValueError('A target array with shape ' + str(y.shape) +
                            ' was passed for an output of shape ' + str(shape) +
-                           ' while using as loss `' + loss.__name__ + '`. '
-                           'This loss expects '
-                           'targets to have the same shape '
+                           ' while using as loss `' + loss_name + '`. '
+                           'This loss expects targets to have the same shape '
                            'as the output.')
 
 
@@ -830,22 +841,34 @@ def get_metric_function(metric, output_shape=None, loss_fn=None):
   Returns:
       The metric function.
   """
+  if metric not in ['accuracy', 'acc', 'crossentropy', 'ce']:
+    return metrics_module.get(metric)
+
+  is_sparse_categorical_crossentropy = (
+      isinstance(loss_fn, losses.SparseCategoricalCrossentropy) or
+      (isinstance(loss_fn, losses.LossFunctionWrapper) and
+       loss_fn.fn == losses.sparse_categorical_crossentropy))
+
+  is_binary_crossentropy = (
+      isinstance(loss_fn, losses.BinaryCrossentropy) or
+      (isinstance(loss_fn, losses.LossFunctionWrapper) and
+       loss_fn.fn == losses.binary_crossentropy))
+
   if metric in ['accuracy', 'acc']:
-    if output_shape[-1] == 1 or loss_fn == losses.binary_crossentropy:
-      return metrics_module.binary_accuracy  # case: binary accuracy
-    elif loss_fn == losses.sparse_categorical_crossentropy:
-      # case: categorical accuracy with sparse targets
+    if output_shape[-1] == 1 or is_binary_crossentropy:
+      return metrics_module.binary_accuracy
+    elif is_sparse_categorical_crossentropy:
       return metrics_module.sparse_categorical_accuracy
-    return metrics_module.categorical_accuracy  # case: categorical accuracy
-  elif metric in ['crossentropy', 'ce']:
-    if output_shape[-1] == 1 or loss_fn == losses.binary_crossentropy:
-      return metrics_module.binary_crossentropy  # case: binary cross-entropy
-    elif loss_fn == losses.sparse_categorical_crossentropy:
-      # case: categorical cross-entropy with sparse targets
+    # If the output_shape[-1] is not 1, then we know output is `categorical`.
+    # We assume it is sparse categorical only if loss is explicitly given
+    # as sparse categorical crossentropy loss.
+    return metrics_module.categorical_accuracy
+  else:
+    if output_shape[-1] == 1 or is_binary_crossentropy:
+      return metrics_module.binary_crossentropy
+    elif is_sparse_categorical_crossentropy:
       return metrics_module.sparse_categorical_crossentropy
-    # case: categorical cross-entropy
     return metrics_module.categorical_crossentropy
-  return metrics_module.get(metric)
 
 
 def call_metric_function(metric_fn, y_true, y_pred, weights=None, mask=None):
@@ -869,10 +892,18 @@ def get_loss_function(loss):
   if loss is None or isinstance(loss, losses.Loss):
     return loss
 
-  # TODO(psv): After we have added all V2 losses, update this function.
-  if loss in ['mse', 'MSE', 'mean_squared_error']:
-    return losses.MeanSquaredError()
-  return losses.get(loss)
+  # Deserialize loss configuration, if needed.
+  if isinstance(loss, collections.Mapping):
+    loss = losses.get(loss)
+
+  # Custom callable class.
+  if callable(loss) and not hasattr(loss, '__name__'):
+    return loss
+
+  # Wrap loss function with signature `(y_true, y_pred, **kwargs)`
+  # in `LossFunctionWrapper` class.
+  loss_fn = losses.get(loss)
+  return losses.LossFunctionWrapper(loss_fn, name=loss_fn.__name__)
 
 
 def validate_dataset_input(x, y, sample_weight, validation_split=None):
@@ -954,13 +985,12 @@ def check_steps_argument(input_data, steps, steps_name):
         but not provided.
   """
   # TODO(fchollet): allow datasets with steps=None if cardinality is known.
-  is_x_dataset = isinstance(input_data, (iterator_ops.Iterator,
-                                         iterator_ops.EagerIterator,
-                                         dataset_ops.DatasetV2))
-  if (input_data is None or is_x_dataset or has_symbolic_tensors(input_data) or
+  is_x_iterator = isinstance(input_data, (iterator_ops.Iterator,
+                                          iterator_ops.EagerIterator))
+  if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
       (isinstance(input_data, list) and not input_data)):
     if steps is None:
-      input_type_str = 'a Dataset' if is_x_dataset else 'data tensors'
+      input_type_str = 'a Dataset iterator' if is_x_iterator else 'data tensors'
       raise ValueError('When using {input_type} as input to a model, you should'
                        ' specify the `{steps_name}` argument.'.format(
                            input_type=input_type_str, steps_name=steps_name))
@@ -1200,6 +1230,26 @@ def assert_not_shuffled(dataset):
     raise ValueError('Could not assert that dataset is not shuffled.')
 
 
+def verify_dataset_shuffled(x):
+  """Verifies that the dataset is shuffled.
+
+  Args:
+    x: Dataset passed as an input to the model.
+
+  Raises:
+    ValueError: if the dataset is not already shuffled.
+  """
+  assert isinstance(x, dataset_ops.DatasetV2)
+  try:
+    assert_not_shuffled(x)
+  except ValueError:
+    # Dataset may or may not be shuffled.
+    return
+  else:
+    logging.warning('Expected a shuffled dataset but input dataset `x` is '
+                    'not shuffled. Please invoke `shuffle()` on input dataset.')
+
+
 def is_dataset_or_iterator(data):
   return isinstance(data, (dataset_ops.DatasetV1,
                            dataset_ops.DatasetV2,
@@ -1207,10 +1257,21 @@ def is_dataset_or_iterator(data):
                            iterator_ops.Iterator))
 
 
+def get_iterator(dataset):
+  """Create and initialize an iterator from a dataset."""
+  iterator = dataset_ops.make_initializable_iterator(dataset)
+  initialize_iterator(iterator)
+  return iterator
+
+
+def initialize_iterator(iterator):
+  init_op = iterator.initializer
+  if not context.executing_eagerly():
+    K.get_session().run(init_op)
+
+
 def extract_tensors_from_dataset(dataset):
   """Extract a tuple of tensors `inputs, targets, sample_weight` from a dataset.
-
-  Works only for graph mode.
 
   Arguments:
     dataset: Dataset instance.
@@ -1218,8 +1279,7 @@ def extract_tensors_from_dataset(dataset):
   Returns:
     Tuple of tensors `x, y, weights`. `y` and `weights` entry may be None.
   """
-  iterator = dataset_ops.make_initializable_iterator(dataset)
-  K.get_session().run(iterator.initializer)
+  iterator = get_iterator(dataset)
   inputs, targets, sample_weight = unpack_iterator_input(iterator)
   return inputs, targets, sample_weight
 
@@ -1256,6 +1316,51 @@ def unpack_iterator_input(iterator):
     y = None
     weights = None
   return x, y, weights
+
+
+def infer_steps_for_dataset(dataset, steps, epochs=1, steps_name='steps'):
+  """Infers steps_per_epoch needed to loop through a dataset.
+
+  Arguments:
+      dataset: Input data of type tf.data.Dataset.
+      steps: Number of steps to draw from the dataset (may be None if unknown).
+      epochs: Number of times to iterate over the dataset.
+      steps_name: The string name of the steps argument, either `steps`,
+        `validation_steps`, or `steps_per_epoch`. Only used for error message
+        formatting.
+
+  Returns:
+    Integer or `None`. Inferred number of steps to loop through the dataset.
+    `None` is returned if the size of the dataset is unknown and `steps` was
+    not specified.
+
+  Raises:
+    ValueError: In case of invalid argument values.
+  """
+  assert isinstance(dataset, dataset_ops.DatasetV2)
+  size = K.get_value(cardinality.cardinality(dataset))
+  if size == cardinality.INFINITE and steps is None:
+    raise ValueError('When passing an infinitely repeating dataset, you '
+                     'must specify the `%s` argument.' % (steps_name,))
+  if size >= 0:
+    if steps is not None and steps * epochs > size:
+      if epochs > 1:
+        raise ValueError('The dataset you passed contains %s batches, but you '
+                         'passed `epochs=%s` and `%s=%s`, which is a total of '
+                         '%s steps. We cannot draw that many steps from this '
+                         'dataset. We suggest to set `%s=%s`.' %
+                         (size, epochs, steps_name, steps, steps * epochs,
+                          steps_name, size // epochs))
+      else:
+        raise ValueError('The dataset you passed contains %s batches, but you '
+                         'passed `%s=%s`. We cannot draw that many steps from '
+                         'this dataset. We suggest to set `%s=%s`.' %
+                         (size, steps_name, steps, steps_name, size))
+  if steps is None:
+    if size >= 0:
+      return size
+    return None
+  return steps
 
 
 class ModelInputs(object):
@@ -1387,60 +1492,6 @@ def generic_output_names(outputs_list):
   return ['output_%d' % (i + 1) for i in range(len(outputs_list))]
 
 
-def trace_model_call(model, input_signature=None):
-  """Trace the model call to create a tf.function for exporting a Keras model.
-
-  Args:
-    model: A Keras model.
-    input_signature: optional, a list of tf.TensorSpec objects specifying the
-      inputs to the model.
-
-  Returns:
-    A tf.function wrapping the model's call function with input signatures set.
-
-  Raises:
-    ValueError: if input signature cannot be inferred from the model.
-  """
-  if input_signature is None:
-    if isinstance(model.call, def_function.PolymorphicFunction):
-      input_signature = model.call.input_signature
-
-  if input_signature is None:
-    try:
-      inputs = model.inputs
-      input_names = model.input_names
-    except AttributeError:
-      raise ValueError(
-          'Model {} cannot be saved because the input shapes have not been '
-          'set. Usually, input shapes are automatically determined from calling'
-          ' .fit() or .predict(). To manually set the shapes, call '
-          'model._set_inputs(inputs).'.format(model))
-    input_specs = []
-    for input_tensor, input_name in zip(inputs, input_names):
-      input_specs.append(tensor_spec.TensorSpec(
-          shape=input_tensor.shape, dtype=input_tensor.dtype,
-          name=input_name))
-    # The input signature of the call function is a list with one element, since
-    # all tensor inputs must be passed in as the first argument.
-    input_signature = [input_specs] if len(input_specs) > 1 else input_specs
-
-  # TODO(mdan): Should the model's call be autographed by default?
-  @def_function.function(input_signature=input_signature, autograph=False)
-  def _wrapped_model(*args):
-    """A concrete tf.function that wraps the model's call function."""
-    # When given a single input, Keras models will call the model on the tensor
-    # rather than a list consisting of the single tensor.
-    inputs = args[0] if len(input_signature) == 1 else list(args)
-    outputs_list = nest.flatten(model(inputs=inputs))
-    try:
-      output_names = model.output_names
-    except AttributeError:
-      output_names = generic_output_names(outputs_list)
-    return {name: output for name, output in zip(output_names, outputs_list)}
-
-  return _wrapped_model
-
-
 def set_run_eagerly_for_dict_structure(model, x):
   """Set model.run_eagerly to true if x is dict structure.
 
@@ -1480,3 +1531,33 @@ def convert_eager_tensors_to_numpy(structure):
     return element
 
   return nest.map_structure(_convert, structure)
+
+
+def should_run_validation(validation_freq, epoch):
+  """Checks if validation should be run this epoch.
+
+  Arguments:
+    validation_freq: Integer or list. If an integer, specifies how many training
+      epochs to run before a new validation run is performed. If a list,
+      specifies the epochs on which to run validation.
+    epoch: Integer, the number of the training epoch just completed.
+
+  Returns:
+    Bool, True if validation should be run.
+
+  Raises:
+    ValueError: if `validation_freq` is an Integer and less than 1, or if
+    it is neither an Integer nor a Sequence.
+  """
+  # `epoch` is 0-indexed internally but 1-indexed in the public API.
+  one_indexed_epoch = epoch + 1
+
+  if isinstance(validation_freq, int):
+    if validation_freq < 1:
+      raise ValueError('`validation_freq` can not be less than 1.')
+    return one_indexed_epoch % validation_freq == 0
+
+  if not isinstance(validation_freq, collections.Container):
+    raise ValueError('`validation_freq` must be an Integer or '
+                     '`collections.Container` (e.g. list, tuple, etc.)')
+  return one_indexed_epoch in validation_freq

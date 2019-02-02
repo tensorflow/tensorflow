@@ -199,6 +199,7 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     xla_data_pb2.F32: np.dtype('float32'),
     xla_data_pb2.F64: np.dtype('float64'),
     xla_data_pb2.C64: np.dtype('complex64'),
+    xla_data_pb2.C128: np.dtype('complex128'),
     xla_data_pb2.TUPLE: np.dtype(np.object),
 }
 
@@ -458,6 +459,7 @@ class CompileOptions(object):
     self.dump_unoptimized_hlo_proto_to = None
     self.dump_per_pass_hlo_proto_to = None
     self.hlo_profile = False
+    self.num_replicas = get_replica_count()
 
 
 def transfer_to_infeed(value, replica_number=None):
@@ -671,6 +673,12 @@ class LocalComputation(object):
 
   def __del__(self):
     self._delete(self._c_computation)
+
+
+def _make_replica_group_proto(replica_group):
+  replica_group_proto = xla_data_pb2.ReplicaGroup()
+  replica_group_proto.replica_ids.extend(replica_group)
+  return replica_group_proto
 
 
 class ComputationBuilder(object):
@@ -963,16 +971,60 @@ class ComputationBuilder(object):
       dimensions = tuple(range(ndim))
     return self._client.Reshape(operand, dimensions, new_sizes)
 
-  def CrossReplicaSum(self, operand):
+  def AllToAll(self,
+               operand,
+               split_dimension,
+               concat_dimension,
+               replica_groups=None):
+    """AllToAll op.
+
+    Args:
+      operand: LocalOp representing the input array
+      split_dimension: the dimension along which the operand is split
+      concat_dimension: the dimension along which the split blocks are
+        concatenated
+      replica_groups: optional, list of lists of ints encoding a partition of
+        the set {0, 1, ..., num_replicas} into equally-sized replica groups
+        within which the all-to-all is performed. If not supplied or None (the
+        default), all replicas belong to the same group.
+
+    Returns:
+      A LocalOp that represents the all-to-all concatenation.
+    """
+    if replica_groups is None:
+      replica_groups_protos = []  # special value for XLA API
+    else:
+      replica_groups = list(replica_groups)
+      replica_groups_protos = [
+          _make_replica_group_proto(group) for group in replica_groups]
+    if not replica_groups:
+      split_count = get_replica_count()
+    else:
+      split_count = len(replica_groups[0])
+      if not all(split_count == len(g) for g in replica_groups):
+        raise ValueError('Replica groups must be equally sized')
+    return self._client.AllToAll(operand, split_dimension, concat_dimension,
+                                 split_count, replica_groups_protos)
+
+  def CrossReplicaSum(self, operand, replica_groups=None):
     """CrossReplicaSum op.
 
     Args:
       operand: the operand to sum across replica instances.
+      replica_groups: optional, list of lists of ints encoding a partition of
+        the set {0, 1, ..., num_replicas} into equally-sized replica groups
+        within which the cross-replica sum is performed. If not supplied or None
+        (the default), all replicas belong to the same group.
 
     Returns:
-      A LocalOp that has the sum of the value among all replicas.
+      A LocalOp that represents on each replica the sum of its group's values.
     """
-    return self._client.CrossReplicaSum(operand)
+    if replica_groups is None:
+      replica_groups = []  # special value for XLA API
+    else:
+      replica_groups = [
+          _make_replica_group_proto(group) for group in replica_groups]
+    return self._client.CrossReplicaSum(operand, replica_groups)
 
   def Collapse(self, operand, dimensions):
     """Collapse op."""

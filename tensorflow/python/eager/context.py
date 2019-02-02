@@ -158,7 +158,8 @@ class _EagerContext(threading.local):
 
 
 ContextSwitch = collections.namedtuple(
-    "ContextSwitch", ["is_building_function", "enter_context_fn"])
+    "ContextSwitch", ["is_building_function", "enter_context_fn",
+                      "device_stack"])
 
 
 # `_ContextSwitchStack` is a `threading.local` to match the semantics of
@@ -175,23 +176,28 @@ class _ContextSwitchStack(threading.local):
       # across threads, since (1) `enable_eager_execution` modifies a
       # process-level flag (`default_execution_mode`) and (2) `__init__` is
       # called each time a threading.local object is used in a separate thread.
-      self.push(is_building_function=False, enter_context_fn=eager_mode)
+      self.push(is_building_function=False, enter_context_fn=eager_mode,
+                device_stack=None)
 
-  def push(self, is_building_function, enter_context_fn):
+  def push(self, is_building_function, enter_context_fn, device_stack):
     """Push metadata about a context switch onto the stack.
 
-    A context switch can take one of two forms: installing a graph as the
-    default graph, or entering the eager context. For each context switch,
+    A context switch can take any one of the two forms: installing a graph as
+    the default graph, or entering the eager context. For each context switch,
     we record whether or not the entered context is building a function.
 
     Args:
       is_building_function: (bool.) Whether the context is building a function.
       enter_context_fn: (function.) A callable that executes the context switch.
         For example, `graph.as_default` or `eager_mode`.
+      device_stack: If applicable, the device function stack for this
+        graph. When breaking out of graphs in init_scope, the innermost nonempty
+        device stack is used. Eager contexts put `None` here and the value is
+        never used.
     """
 
     self.stack.append(
-        ContextSwitch(is_building_function, enter_context_fn))
+        ContextSwitch(is_building_function, enter_context_fn, device_stack))
 
   def pop(self):
     """Pop the stack."""
@@ -442,7 +448,7 @@ class Context(object):
       # Entering graph mode does not provide us with sufficient information to
       # record a context switch; graph-based context switches are only logged
       # when a graph is registered as the default graph.
-      self.context_switches.push(False, eager_mode)
+      self.context_switches.push(False, eager_mode, None)
     try:
       yield
     finally:
@@ -642,6 +648,10 @@ class Context(object):
     fdef_string = fdef.SerializeToString()
     pywrap_tensorflow.TFE_ContextAddFunctionDef(
         self._handle, fdef_string, len(fdef_string))
+
+  def has_function(self, name):
+    """Check if a function `name` is registered."""
+    return bool(pywrap_tensorflow.TFE_ContextHasFunction(self._handle, name))
 
   def add_post_execution_callback(self, callback):
     """Add a post-execution callback to the context.

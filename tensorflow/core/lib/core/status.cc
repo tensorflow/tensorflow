@@ -200,7 +200,7 @@ Status StatusGroup::as_status() const {
          const std::pair<error::Code, int>& b) { return a.second < b.second; });
 
   fmt.push_back(
-      strings::Printf("Combined status information from %lu operations:\n",
+      strings::Printf("Combined status information from %zu operations:\n",
                       num_ok_ + children_.size()));
 
   for (const auto& p : count_vec) {

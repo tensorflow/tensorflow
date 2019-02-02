@@ -471,6 +471,20 @@ py_library(
 )
 
 py_test(
+    name = "rebatch_dataset_test",
+    size = "small",
+    srcs = ["rebatch_dataset_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+    ],
+)
+
+py_test(
     name = "rejection_resample_test",
     size = "medium",
     srcs = ["rejection_resample_test.py"],
@@ -636,6 +650,28 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/kernel_tests:test_base",
+    ],
+)
+
+py_test(
+    name = "take_while_test",
+    size = "small",
+    srcs = ["take_while_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/experimental/ops:take_while_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

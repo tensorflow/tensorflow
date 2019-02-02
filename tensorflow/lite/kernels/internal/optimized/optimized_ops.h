@@ -85,6 +85,7 @@ using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
 using reference_ops::StridedSlice;
+using reference_ops::Sub16;
 using reference_ops::Transpose;
 
 // TODO(b/80247582) Remove this constant.
@@ -5052,6 +5053,14 @@ inline void Floor(const RuntimeShape& input_shape, const float* input_data,
   output_map.array() = Eigen::floor(input_map.array());
 }
 
+inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Ceil");
+  auto input_map = MapAsVector(input_data, input_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
+  output_map.array() = Eigen::ceil(input_map.array());
+}
+
 #ifdef USE_NEON
 inline void ResizeBilinearKernel(const float* input_ptr, int32 depth,
                                  float scale, float* output_ptr) {
@@ -6079,7 +6088,27 @@ inline void TransposeConv(
     const float* filter_data, const RuntimeShape& output_shape,
     float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
   gemmlowp::ScopedProfilingLabel label("TransposeConv");
-
+  // The complexity of the reference implementation is input.flat_size() *
+  // filter.flat_size() / in_channel.
+  //
+  // While the complexity of im2col->gemm
+  // implmentation is batch * output_height * output_width *
+  // (filter.flat_size() / out_channel)^2 * out_channel.
+  //
+  // so if input.flat_size() * out_channel^2 is much smaller than
+  // output.flat_size() * filter.size() * in_channel we should fall back to the
+  // reference implementation.
+  //
+  // TODO(b/122331966): optimize the intuitive implementation.
+  const int out_channel = output_shape.Dims(3);
+  const int in_channel = input_shape.Dims(3);
+  if ((input_shape.FlatSize() * out_channel * out_channel * 4) <
+      (filter_shape.FlatSize() * output_shape.FlatSize() * in_channel)) {
+    reference_ops::TransposeConv(params, input_shape, input_data, filter_shape,
+                                 filter_data, output_shape, output_data,
+                                 im2col_shape, im2col_data);
+    return;
+  }
   // Note we could use transposed weights with forward conv for unstrided
   // cases. But we are already getting good performance with this code as-is.
   TFLITE_DCHECK(im2col_data);

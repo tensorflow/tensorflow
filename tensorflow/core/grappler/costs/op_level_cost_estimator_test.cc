@@ -28,6 +28,31 @@ namespace tensorflow {
 namespace grappler {
 
 namespace {
+
+// TODO(dyoon): Consider to use this Test class for all the test cases, and then
+// remove friend in the OpLevelCostEstimator class header.
+class TestOpLevelCostEstimator : public OpLevelCostEstimator {
+ public:
+  TestOpLevelCostEstimator() {
+    compute_memory_overlap_ = true;
+    device_info_ = DeviceInfo();
+  }
+  ~TestOpLevelCostEstimator() override {}
+
+  void SetDeviceInfo(const DeviceInfo& device_info) {
+    device_info_ = device_info;
+  }
+
+  void SetComputeMemoryOverlap(bool value) { compute_memory_overlap_ = value; }
+
+ protected:
+  DeviceInfo GetDeviceInfo(const DeviceProperties& device) const override {
+    return device_info_;
+  }
+
+  DeviceInfo device_info_;
+};
+
 // Wrangles the minimum number of proto fields to set up a matrix.
 void DescribeMatrix(int rows, int columns, OpInfo* op_info) {
   auto input = op_info->add_inputs();
@@ -945,7 +970,7 @@ TEST_F(OpLevelCostEstimatorTest, PredictMaxPoolGrad) {
   };
 
   {
-    // Typical 3xz3 window with 2x2 stride.
+    // Typical 3x3 window with 2x2 stride.
     auto costs = predict_max_pool_grad(10, 20, 384, 3, 2, "SAME");
     EXPECT_EQ(Costs::Duration(1996800), costs.execution_time);
     EXPECT_EQ(Costs::Duration(614400), costs.compute_time);
@@ -986,7 +1011,7 @@ TEST_F(OpLevelCostEstimatorTest, PredictAvgPool) {
   };
 
   {
-    // Typical 3xz3 window with 2x2 stride.
+    // Typical 3x3 window with 2x2 stride.
     auto costs = predict_avg_pool(10, 20, 384, 3, 2, "SAME");
     EXPECT_EQ(Costs::Duration(1113600), costs.execution_time);
     EXPECT_EQ(Costs::Duration(345600), costs.compute_time);
@@ -1207,6 +1232,60 @@ TEST_F(OpLevelCostEstimatorTest, MaybeGetMinimumShape) {
     EXPECT_TRUE(unknown_shapes);
     ExpectTensorShape({10, 20}, y);
   }
+}
+
+TEST_F(OpLevelCostEstimatorTest, IntermediateRdWrBandwidth) {
+  TestOpLevelCostEstimator estimator;
+
+  // Compute limited.
+  estimator.SetDeviceInfo(DeviceInfo(/*gigaops=*/1,
+                                     /*gb_per_sec=*/1));
+  estimator.SetComputeMemoryOverlap(true);
+  auto cost = estimator.PredictCosts(
+      DescribeConvolution(16, 19, 19, 48, 48, 5, 5, 256));
+  EXPECT_EQ(Costs::Duration(3548774400), cost.execution_time);
+  EXPECT_EQ(cost.execution_time, cost.compute_time);
+
+  estimator.SetComputeMemoryOverlap(false);
+  cost = estimator.PredictCosts(
+      DescribeConvolution(16, 19, 19, 48, 48, 5, 5, 256));
+  EXPECT_EQ(Costs::Duration(3551112192), cost.execution_time);
+  EXPECT_EQ(cost.execution_time, cost.compute_time + cost.memory_time +
+                                     cost.intermediate_memory_time);
+
+  // Memory limited.
+  estimator.SetDeviceInfo(DeviceInfo(/*gigaops=*/99999,
+                                     /*gb_per_sec=*/1));
+  estimator.SetComputeMemoryOverlap(true);
+  cost = estimator.PredictCosts(
+      DescribeConvolution(16, 19, 19, 48, 48, 5, 5, 256));
+  EXPECT_EQ(Costs::Duration(2337792), cost.execution_time);
+  EXPECT_EQ(cost.execution_time, cost.memory_time);
+
+  estimator.SetComputeMemoryOverlap(false);
+  cost = estimator.PredictCosts(
+      DescribeConvolution(16, 19, 19, 48, 48, 5, 5, 256));
+  EXPECT_EQ(Costs::Duration(2373281), cost.execution_time);
+  EXPECT_EQ(cost.execution_time, cost.compute_time + cost.memory_time +
+                                     cost.intermediate_memory_time);
+
+  // Intermediate memory bandwidth limited.
+  estimator.SetDeviceInfo(DeviceInfo(/*gigaops=*/99999,
+                                     /*gb_per_sec=*/9999,
+                                     /*intermediate_read_gb_per_sec=*/1,
+                                     /*intermediate_write_gb_per_sec=*/1));
+  estimator.SetComputeMemoryOverlap(true);
+  cost = estimator.PredictCosts(
+      DescribeConvolution(16, 19, 19, 48, 48, 5, 5, 256));
+  EXPECT_EQ(Costs::Duration(2337792), cost.execution_time);
+  EXPECT_EQ(cost.execution_time, cost.intermediate_memory_time);
+
+  estimator.SetComputeMemoryOverlap(false);
+  cost = estimator.PredictCosts(
+      DescribeConvolution(16, 19, 19, 48, 48, 5, 5, 256));
+  EXPECT_EQ(Costs::Duration(2373515), cost.execution_time);
+  EXPECT_EQ(cost.execution_time, cost.compute_time + cost.memory_time +
+                                     cost.intermediate_memory_time);
 }
 }  // end namespace grappler
 }  // end namespace tensorflow

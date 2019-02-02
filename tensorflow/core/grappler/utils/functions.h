@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -32,6 +33,21 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+// WARNING(ezhulenev): Currently we do not support functions with inputs or
+// outputs instantiated into multiple tensors. This can happen if the
+// input/output type is 'T*N' or 'list(type)'. This is enforced by multiple
+// checks across this file and also function_optimizer.cc. InputArgExpansion and
+// OutputArgExpansion already support lists of tensors, but that's pretty much
+// it, all other code is written with assumption that expansions are always of
+// size 1. MakeGrapplerFunctionItem will gracefully fail with Status error.
+//
+// This is a low priority feature, because in practice we don't see a lot (any
+// at all?) functions with such arguments. Tensorflow-Eager always produces
+// functions with plain input/output arguments.
+
+// TODO(ezhulenev): Support inputs and outputs of type 'T*N'.
+// TODO(ezhulenev): Support inputs and outputs of type 'list(type)'.
+
 // Depending on the function instantiation attributes, input argument to the
 // function might be a single tensor, list of tensors of the same type, or a
 // list of tensors of different types.
@@ -39,30 +55,23 @@ namespace grappler {
 // InputArgExpansion keeps track of the placeholders that were added to the
 // function body in place of function inputs and a resolved input data type.
 struct InputArgExpansion {
-  // TODO(ezhulenev): Add support for functions with tensor sequence inputs of
-  // different data types.
-  // TODO(ezhulenev): Support type parametrized inputs?
-  string input_name;                 // name of the function input argument
-  DataType data_type;                // input data type
-  bool is_ref;                       // if true, inputs are required to be refs
-  std::vector<string> placeholders;  // names of placeholder nodes in the
-                                     // function body
+  string input_name;
+  DataType data_type;
+  bool is_ref;
+  absl::InlinedVector<string, 1> placeholders;
 };
 
 // Depending on the function instantiation attributes, output argument is mapped
 // to one or more outputs of one of the function body nodes.
 //
-// OutputArgExpansion keeps mapping from a function output arg to the output
-// tensors of a function body nodes and a resolved output data type
+// OutputArgExpansion keeps track of the Identity nodes that were added to the
+// function body to forward output tensors. Adding these output nodes allows
+// nested function inlining and specialization (see function optimizer).
 struct OutputArgExpansion {
-  // TODO(ezhulenev): Add support for functions with tensor sequence outputs of
-  // different data types.
-  // TODO(ezhulenev): Support type parametrized outputs?
-  string output_name;                  // name of the function output argument
-  DataType data_type;                  // output data type
-  bool is_ref;                         // if true, outputs are refs
-  std::vector<string> output_tensors;  // names of output tensor from the
-                                       // function body nodes
+  string output_name;
+  DataType data_type;
+  bool is_ref;
+  absl::InlinedVector<string, 1> output_nodes;
 };
 
 // FunctionDef uses different connectivity encoding for the function body nodes,
@@ -87,7 +96,7 @@ class GrapplerFunctionConnectivity {
   // When expanding inputs in function def format, single input might be
   // expanded into multiple tensors. When converting back to the function def
   // format from graph def format, it's always a 1-to-1 relationship.
-  // FunctionDef built from GrapplerFunctionItem is always specialized to it's
+  // FunctionDef built from GrapplerFunctionItem is always specialized to its
   // instantiation attributes and length of input args (and node def outputs) is
   // known.
 
@@ -144,8 +153,6 @@ class GrapplerFunctionItem : public GrapplerItem {
 
   const string& description() const;
 
-  bool IsInputPlaceholder(const string& node_name) const;
-
   const std::vector<InputArgExpansion>& inputs() const;
   const InputArgExpansion& input(int i) const;
   const std::size_t input_size() const;
@@ -168,10 +175,9 @@ class GrapplerFunctionItem : public GrapplerItem {
                                          GrapplerFunctionItem*);
   friend Status ReplaceInputWithConst(const NodeDef&, int,
                                       GrapplerFunctionItem*);
-  friend Status RemoveUnusedOutputs(
-      const absl::flat_hash_set<int>& active_outputs,
-      GrapplerFunctionItem* item,
-      std::vector<std::pair<int, int>>* output_mapping);
+  friend Status RemoveFunctionOutputs(const absl::flat_hash_set<int>&,
+                                      GrapplerFunctionItem*,
+                                      std::vector<std::pair<int, int>>*);
 
   GrapplerFunctionItem(string func_name, string description,
                        AttrSlice func_attr,
@@ -187,16 +193,14 @@ class GrapplerFunctionItem : public GrapplerItem {
   std::vector<InputArgExpansion> input_arg_expansions_;
   std::vector<OutputArgExpansion> output_arg_expansions_;
 
-  std::set<string> input_arg_placeholders_;
-
   bool is_stateful_ = false;
 };
 
 // Check if function input/output types are fully defined only at instantiation
-// time (parametrized by it's instantiation node).
+// time (parametrized by its instantiation node).
 bool HasParametrizedType(const FunctionDef& func);
 
-// Check if a function body is parametrized by it's instantiation node. Function
+// Check if a function body is parametrized by its instantiation node. Function
 // body is parametrized, if it has at least one node with a 'placeholder'
 // attribute.
 bool HasParametrizedBody(const FunctionDef& func);
@@ -228,15 +232,16 @@ Status RegisterGrapplerFunctionConnectivity(
 Status ReplaceInputWithConst(const NodeDef& input_const, int input_index,
                              GrapplerFunctionItem* item);
 
-// Remove function output arguments that do not have any active outputs (output
-// tensor connected to other node inputs or in a fetch set). Active outputs uses
-// GraphDef output position encoding, and multiple active outputs could
-// potentially be connected to the same output argument (in case of tensor list
-// outputs). Add output mapping for all active outputs that changed it's output
-// position (std::pair<old position, new position>).
-Status RemoveUnusedOutputs(const absl::flat_hash_set<int>& active_outputs,
-                           GrapplerFunctionItem* item,
-                           std::vector<std::pair<int, int>>* output_mapping);
+// Removes outputs from instantiated grappler function item. Function node
+// outputs use GraphDef output index encoding, and multiple outputs might belong
+// to the same output argument expansion (in case of tensor list outputs). For
+// all active function outputs that changed its output index, this function adds
+// an output mapping (std::pair<old index, new index>).
+Status RemoveFunctionOutputs(const absl::flat_hash_set<int>& remove_outputs,
+                             GrapplerFunctionItem* item,
+                             std::vector<std::pair<int, int>>* output_mapping);
+
+// TODO(ezhulennev, b/120103818): Add RemoveFunctionInputs.
 
 // Make a GrapplerFunctionItem from the function definition and function
 // instantiation attributes (caller node attributes). Returns error if the given
@@ -251,7 +256,7 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
 // fully defined (no type or body parametrization).
 // TODO(ezhulenev): Support parametrized functions without fully defined
 // instantiation attributes? Do we ever want to optimize parametrized function
-// without specializing it to it's instantiation attributes (at least types)?
+// without specializing it to its instantiation attributes (at least types)?
 Status MakeGrapplerFunctionItem(const FunctionDef& func,
                                 const FunctionLibraryDefinition& flib,
                                 int graph_def_version,

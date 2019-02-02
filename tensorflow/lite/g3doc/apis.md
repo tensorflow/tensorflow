@@ -1,4 +1,3 @@
-
 # TensorFlow Lite APIs
 
 TensorFlow Lite provides programming APIs in C++ and Java, and in both cases
@@ -8,8 +7,7 @@ no surprise that the APIs try to avoid unnecessary copies at the expense of
 convenience.  Similarly, consistency with TensorFlow APIs was not an explicit
 goal and some variance is to be expected.
 
-There is also a Python API for TensorFlow Lite described
-[here](../toco/g3doc/python_api.md#interpreter).
+There is also a [Python API for TensorFlow Lite](./convert/python_api.md).
 
 ## C++
 

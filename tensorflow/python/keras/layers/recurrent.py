@@ -468,7 +468,7 @@ class RNN(Layer):
     self.zero_output_for_mask = kwargs.pop('zero_output_for_mask', False)
     super(RNN, self).__init__(**kwargs)
     self.cell = cell
-    if isinstance(cell, checkpointable.CheckpointableBase):
+    if isinstance(cell, checkpointable.Checkpointable):
       self._track_checkpointable(self.cell, name='cell')
     self.return_sequences = return_sequences
     self.return_state = return_state

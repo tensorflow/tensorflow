@@ -100,8 +100,7 @@ TEST_F(AnalyticalCostEstimatorTest, SimpleTest) {
 
   RunMetadata run_metadata;
   Costs summary;
-  TF_ASSERT_OK(estimator.PredictCostsAndReturnRunMetadata(
-      item.graph, &run_metadata, &summary));
+  TF_ASSERT_OK(estimator.PredictCosts(item.graph, &run_metadata, &summary));
 
   EXPECT_EQ(Costs::NanoSeconds(9151), summary.execution_time);
   // Note there are totally 17 nodes (RandomUniform creates 2 nodes), but

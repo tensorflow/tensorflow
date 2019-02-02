@@ -69,8 +69,8 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new FileIterator({this, strings::StrCat(prefix, "::FileCache")}));
+      return absl::make_unique<FileIterator>(
+          FileIterator::Params{this, strings::StrCat(prefix, "::FileCache")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -325,7 +325,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
           }
           filename_ = strings::StrCat(dataset()->filename_, "_", shard_id_);
           lockfile_ = strings::StrCat(filename_, ".lockfile");
-          writer_.reset(new BundleWriter(dataset()->env_, filename_));
+          writer_ = absl::make_unique<BundleWriter>(dataset()->env_, filename_);
           return Status::OK();
         }
 
@@ -385,7 +385,8 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
             // conditions are not met since BundleWriter's constructor creates
             // new temp files which can delete the temp files created by a
             // BundleWriter in another Session.
-            writer_.reset(new BundleWriter(dataset()->env_, filename_));
+            writer_ =
+                absl::make_unique<BundleWriter>(dataset()->env_, filename_);
             lockfile_created_ = true;
             return Status::OK();
           }
@@ -537,12 +538,14 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         // `FileReaderIterator` and seek to the `cur_index`.
         switch (mode_) {
           case Mode::read:
-            iterator_.reset(new FileReaderIterator(
-                {dataset(), strings::StrCat(prefix(), "Impl")}));
+            iterator_ = absl::make_unique<FileReaderIterator>(
+                FileReaderIterator::Params{dataset(),
+                                           strings::StrCat(prefix(), "Impl")});
             break;
           case Mode::write:
-            iterator_.reset(new FileWriterIterator(
-                {dataset(), strings::StrCat(prefix(), "Impl")}));
+            iterator_ = absl::make_unique<FileWriterIterator>(
+                FileWriterIterator::Params{dataset(),
+                                           strings::StrCat(prefix(), "Impl")});
         }
       }
 
@@ -573,8 +576,8 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new MemoryIterator({this, strings::StrCat(prefix, "::MemoryCache")}));
+      return absl::make_unique<MemoryIterator>(MemoryIterator::Params{
+          this, strings::StrCat(prefix, "::MemoryCache")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -933,12 +936,16 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
       void InitializeIterator() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         switch (mode_) {
           case Mode::read:
-            iterator_.reset(new MemoryReaderIterator(
-                {dataset(), strings::StrCat(prefix(), "Impl")}, cache_));
+            iterator_ = absl::make_unique<MemoryReaderIterator>(
+                MemoryReaderIterator::Params{dataset(),
+                                             strings::StrCat(prefix(), "Impl")},
+                cache_);
             break;
           case Mode::write:
-            iterator_.reset(new MemoryWriterIterator(
-                {dataset(), strings::StrCat(prefix(), "Impl")}, cache_));
+            iterator_ = absl::make_unique<MemoryWriterIterator>(
+                MemoryWriterIterator::Params{dataset(),
+                                             strings::StrCat(prefix(), "Impl")},
+                cache_);
         }
       }
 

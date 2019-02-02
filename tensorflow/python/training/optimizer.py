@@ -218,7 +218,7 @@ class Optimizer(
     # Optimizers inherit from CheckpointableBase rather than Checkpointable
     # since they do most of their dependency management themselves (slot
     # variables are special-cased, and non-slot variables are keyed to graphs).
-    checkpointable.CheckpointableBase):
+    checkpointable.Checkpointable):
   """Base class for optimizers.
 
   This class defines the API to add Ops to train a model.  You never use this
@@ -521,8 +521,7 @@ class Optimizer(
   @staticmethod
   def _scale_loss(loss_value):
     if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
-      num_replicas = \
-        distribute_ctx.get_distribution_strategy().num_replicas_in_sync
+      num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
       if num_replicas > 1:
         loss_value *= (1. / num_replicas)
     return loss_value
@@ -554,14 +553,15 @@ class Optimizer(
     # by most optimizers.  It relies on the subclass implementing the following
     # methods: _create_slots(), _prepare(), _apply_dense(), and _apply_sparse().
 
-    # Handle DistributionStrategy case.
-    if distribute_ctx.get_cross_replica_context():
-      raise RuntimeError("Use `_distributed_apply()` instead of "
-                         "`apply_gradients()` in a cross-replica context.")
-    # TODO(isaprykin): Get rid of `has_distribution_strategy()` check by
+    # TODO(isaprykin): Get rid of `has_strategy()` check by
     # always calling _distributed_apply(), using the default distribution
     # as needed.
-    if distribute_ctx.has_distribution_strategy():
+    if distribute_ctx.has_strategy():
+      # Handle DistributionStrategy case.
+      if distribute_ctx.in_cross_replica_context():
+        raise RuntimeError("Use `_distributed_apply()` instead of "
+                           "`apply_gradients()` in a cross-replica context.")
+
       grads_and_vars = get_filtered_grad_fn(lambda: grads_and_vars)()
       return distribute_ctx.get_replica_context().merge_call(
           self._distributed_apply, args=(grads_and_vars, global_step, name))
@@ -815,8 +815,8 @@ class Optimizer(
     v = self._non_slot_dict.get(key, None)
     if v is None:
       self._maybe_initialize_checkpointable()
-      distribution_strategy = distribute_ctx.get_distribution_strategy()
-      with distribution_strategy.colocate_vars_with(colocate_with):
+      distribution_strategy = distribute_ctx.get_strategy()
+      with distribution_strategy.extended.colocate_vars_with(colocate_with):
         if eager:
           restored_initial_value = self._preload_simple_restoration(
               name=name, shape=None)

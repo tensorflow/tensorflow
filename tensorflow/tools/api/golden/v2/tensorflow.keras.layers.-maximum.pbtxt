@@ -3,7 +3,7 @@ tf_class {
   is_instance: "<class \'tensorflow.python.keras.layers.merge.Maximum\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.merge._Merge\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
-  is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.base.Checkpointable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"

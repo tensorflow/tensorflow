@@ -72,6 +72,34 @@ bool HasDynamicTensor(const TfLiteContext& context,
   return HasDynamicTensorImpl(context, TfLiteIntArrayView{int_array});
 }
 
+// Gets the legacy TfLiteQuantizationParams from the current TfLiteQuantization.
+TfLiteQuantizationParams GetLegacyQuantization(
+    const TfLiteQuantization& quantization) {
+  TfLiteQuantizationParams legacy_quantization;
+  legacy_quantization.scale = 0;
+  legacy_quantization.zero_point = 0;
+
+  // If the quantization type isn't affine, return the empty
+  // legacy_quantization.
+  if (quantization.type != kTfLiteAffineQuantization) {
+    return legacy_quantization;
+  }
+
+  auto* affine_quantization =
+      reinterpret_cast<TfLiteAffineQuantization*>(quantization.params);
+  if (!affine_quantization || !affine_quantization->scale ||
+      !affine_quantization->zero_point ||
+      affine_quantization->scale->size != 1 ||
+      affine_quantization->zero_point->size != 1) {
+    return legacy_quantization;
+  }
+
+  // We know its per-layer quantization now.
+  legacy_quantization.scale = affine_quantization->scale->data[0];
+  legacy_quantization.zero_point = affine_quantization->zero_point->data[0];
+  return legacy_quantization;
+}
+
 }  // namespace
 
 // A trivial implementation of GraphInfo around the Interpreter.
@@ -369,6 +397,10 @@ void Subgraph::SetCancellationFunction(void* data,
   check_cancelled_func_ = check_cancelled_func;
 }
 
+void Subgraph::ReserveNodes(int count) {
+  nodes_and_registration_.reserve(count);
+}
+
 TfLiteStatus Subgraph::CheckTensorIndices(const char* label, const int* indices,
                                           int length) {
   // Making sure kOptionalTensor is not re-defined to something other than -1.
@@ -382,7 +414,9 @@ TfLiteStatus Subgraph::CheckTensorIndices(const char* label, const int* indices,
       continue;
     }
     if (index < 0 || static_cast<size_t>(index) >= context_->tensors_size) {
-      ReportError("Invalid tensor index %d in %s\n", index, label);
+      ReportError(
+          "Invalid tensor index %d in %s. The subgraph has %d tensors\n", index,
+          label, context_->tensors_size);
       consistent_ = false;
       return kTfLiteError;
     }
@@ -779,7 +813,7 @@ TfLiteStatus Subgraph::GetNodeAndRegistration(
 
 TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
-    const int* dims, TfLiteQuantizationParams quantization, const char* buffer,
+    const int* dims, TfLiteQuantization quantization, const char* buffer,
     size_t bytes, const Allocation* allocation) {
   if (state_ == kStateInvokableAndImmutable) {
     ReportError(
@@ -804,16 +838,22 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
       EqualArrayAndTfLiteIntArray(tensor.dims, rank, dims)) {
     // Fast path which does not invalidate the invokable property.
     TfLiteTensorDataFree(&tensor);
+    TfLiteQuantizationFree(&tensor.quantization);
     tensor.data.raw = const_cast<char*>(buffer);
     if (!tensor.dims) tensor.dims = ConvertArrayToTfLiteIntArray(rank, dims);
-    tensor.params = quantization;
+    tensor.params = GetLegacyQuantization(quantization);
+    tensor.quantization = quantization;
     tensor.allocation_type = kTfLiteMmapRo;
     tensor.allocation = allocation;
   } else {
     state_ = kStateUninvokable;
     TfLiteTensorReset(type, name, ConvertArrayToTfLiteIntArray(rank, dims),
-                      quantization, const_cast<char*>(buffer), bytes,
-                      kTfLiteMmapRo, allocation, false, &tensor);
+                      GetLegacyQuantization(quantization),
+                      const_cast<char*>(buffer), bytes, kTfLiteMmapRo,
+                      allocation, false, &tensor);
+    // TODO(suharshs): Update TfLiteTensorReset to include the new quantization
+    // if there are other required callers.
+    tensor.quantization = quantization;
   }
   return kTfLiteOk;
 }
@@ -824,7 +864,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
 // to Interpreter.
 TfLiteStatus Subgraph::SetTensorParametersReadWrite(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
-    const int* dims, TfLiteQuantizationParams quantization, bool is_variable) {
+    const int* dims, TfLiteQuantization quantization, bool is_variable) {
   if (state_ == kStateInvokableAndImmutable) {
     ReportError(
         "SetTensorParametersReadWrite is disallowed when graph is immutable.");
@@ -854,10 +894,14 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
     allocation_type = kTfLiteArenaRwPersistent;
   }
 
+  TfLiteTensor& tensor = context_->tensors[tensor_index];
   TfLiteTensorReset(type, name, ConvertArrayToTfLiteIntArray(rank, dims),
-                    quantization,
+                    GetLegacyQuantization(quantization),
                     /*buffer=*/nullptr, required_bytes, allocation_type,
-                    nullptr, is_variable, &context_->tensors[tensor_index]);
+                    nullptr, is_variable, &tensor);
+  // TODO(suharshs): Update TfLiteTensorReset to include the new quantization
+  // if there are other required callers.
+  tensor.quantization = quantization;
   return kTfLiteOk;
 }
 

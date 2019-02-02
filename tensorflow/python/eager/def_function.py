@@ -25,12 +25,14 @@ import weakref
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 
@@ -53,6 +55,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
                dtype=None,
                constraint=None,
                add_initializers_to=None,
+               lifted_initializer_graph=None,
                **unused_kwargs):
     """Creates a variable.
 
@@ -84,8 +87,9 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
       add_initializers_to: if not None and not in legacy graph mode, the
-        initializer tensor will be added to this map instead of adding the
+        initializer tensor will be added to this map in addition to adding the
         assignment to the function.
+      lifted_initializer_graph: FuncGraph to try to lift initializers to.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -139,8 +143,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
             name="initial_value", dtype=dtype)
       with ops.init_scope():
         self._handle = resource_variable_ops.eager_safe_variable_handle(
-            shape=initial_value.get_shape(),
-            dtype=initial_value.dtype.base_dtype,
+            initial_value=initial_value,
             shared_name=shared_name,
             name=name,
             graph_mode=self._in_graph_mode)
@@ -174,22 +177,21 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       else:
         if add_initializers_to is not None:
           add_initializers_to[self] = initial_value
-        else:
-          def assign_fn():
-            with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
-              resource_variable_ops.assign_variable_op(
-                  self._handle,
-                  initial_value,
-                  name=n)
-              # Returning values to keep tf.cond happy.
-            return ops.convert_to_tensor(1)
-          def not_assign_fn():
-            return ops.convert_to_tensor(0)
-          # Note: this cond is always guaranteed to run because we're inside a
-          # defun which will insert automatic control dependencies.
-          control_flow_ops.cond(
-              resource_variable_ops.var_is_initialized_op(self._handle),
-              not_assign_fn, assign_fn)
+        def assign_fn():
+          with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
+            resource_variable_ops.assign_variable_op(
+                self._handle,
+                initial_value,
+                name=n)
+            # Returning values to keep tf.cond happy.
+          return ops.convert_to_tensor(1)
+        def not_assign_fn():
+          return ops.convert_to_tensor(0)
+        # Note: this cond is always guaranteed to run because we're inside a
+        # defun which will insert automatic control dependencies.
+        control_flow_ops.cond(
+            resource_variable_ops.var_is_initialized_op(self._handle),
+            not_assign_fn, assign_fn)
 
     # After the handle has been created, set up a way to clean it up when
     # executing eagerly. We'll hold the only reference to the deleter, so that
@@ -202,13 +204,26 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
     self._cached_shape_as_list = None
 
 
-class PolymorphicFunction(object):
+class FunctionDeleter(object):
+
+  def __init__(self, func_graph):
+    self.func_graph = func_graph
+
+  def __del__(self):
+    try:
+      func_graph_module.dismantle_func_graph(self.func_graph)
+    except:  # pylint: disable=bare-except
+      # Note: bare except here because this can be noisy at shutdown time.
+      pass
+
+
+class Function(object):
   """Wrapper class for the graph functions defined for a Python function.
 
   See the documentation for `tf.function` for more information on the semantics
   of defined functions.
 
-  PolymorphicFunction is thread-compatible.
+  `Function` is thread-compatible.
   """
 
   def __init__(self,
@@ -217,7 +232,7 @@ class PolymorphicFunction(object):
                input_signature=None,
                autograph=True,
                experimental_autograph_options=None):
-    """Initializes a polymorphic function.
+    """Initializes a `Function`.
 
     Args:
       python_function: the function to be wrapped.
@@ -243,8 +258,6 @@ class PolymorphicFunction(object):
         python_function, input_signature)
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
-    if self._experimental_autograph_options is not None:
-      raise NotImplementedError()
     self._created_variables = None
     self._stateful_fn = None
     self._stateless_fn = None
@@ -256,7 +269,20 @@ class PolymorphicFunction(object):
 
     weak_wrapped_fn = None
     def wrapped_fn(*args, **kwds):
-      with variable_scope.variable_creator_scope(scope):
+      """Wraps `self._python_function` in a variable creator scope."""
+      # We register a variable creator with reduced priority. If an outer
+      # variable creator is just modifying keyword arguments to the variable
+      # constructor, this will work harmoniously. Since the `scope` registered
+      # here actually creates the variable, it taking priority would otherwise
+      # ignore the outer creator.
+      #
+      # If an outer variable creator calls the variable constructor manually,
+      # for example creating a MirroredVariable, then they won't call our
+      # creator. This means we won't be able to trace the initialization graph,
+      # and so variable initializers can't depend on function arguments. This is
+      # better than the alternative, tracing the initialization graph but giving
+      # the user a variable type they didn't want.
+      with ops.get_default_graph()._variable_creator_scope(scope, priority=50):  # pylint: disable=protected-access
         # __wrapped__ allows AutoGraph to swap in a converted function. We give
         # the function a weak reference to itself to avoid a reference cycle.
         return weak_wrapped_fn().__wrapped__(*args, **kwds)
@@ -266,7 +292,8 @@ class PolymorphicFunction(object):
     return function_lib.defun(
         tf_decorator.make_decorator(self._python_function, wrapped_fn),
         input_signature=self._input_signature,
-        autograph=self._autograph)
+        autograph=self._autograph,
+        experimental_autograph_options=self._experimental_autograph_options)
 
   def _canonicalize_function_inputs(self, args, kwds):
     """Canonicalize the inputs to the Python function."""
@@ -280,10 +307,10 @@ class PolymorphicFunction(object):
   def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call.
 
-    Creates two polymorphic functions, one that will allow creation of variables
+    Creates two `Function`s, one that will allow creation of variables
     and one that won't.
 
-    Additionally runs a trace for the polymorphic function that allows creation
+    Additionally runs a trace for the `Function` that allows creation
     of variables.
 
     Args:
@@ -293,11 +320,13 @@ class PolymorphicFunction(object):
     """
 
     created_variables = []
+    lifted_initializer_graph = func_graph_module.FuncGraph("initializer")
 
     def variable_capturing_scope(unused_next_creator, **kwds):
       """Creates UnliftedInitializerVariables and saves references to them."""
       v = UnliftedInitializerVariable(
-          add_initializers_to=add_initializers_to, **kwds)
+          add_initializers_to=add_initializers_to,
+          lifted_initializer_graph=lifted_initializer_graph, **kwds)
       created_variables.append(weakref.ref(v))
       return v
 
@@ -305,6 +334,8 @@ class PolymorphicFunction(object):
     self._stateful_fn = self._defun_with_scope(variable_capturing_scope)
     self._stateful_fn._name = self._name  # pylint: disable=protected-access
     # Force the definition of the function for these arguments
+    self._lifted_initializer_graph = lifted_initializer_graph
+    self._graph_deleter = FunctionDeleter(self._lifted_initializer_graph)
     self._concrete_stateful_fn = (
         self._stateful_fn._get_concrete_function_internal_garbage_collected(  # pylint: disable=protected-access
             *args, **kwds))
@@ -334,10 +365,22 @@ class PolymorphicFunction(object):
       return results
 
     # This is the first call of __call__, so we have to initialize.
-    self._initialize(args, kwds)
-    canon_args, canon_kwds = self._canonicalize_function_inputs(args, kwds)
-
-    if not self._created_variables:
+    initializer_map = {}
+    self._initialize(args, kwds, add_initializers_to=initializer_map)
+    if self._created_variables:
+      try:
+        # Attempt to initialize variables eagerly and without conds by lifting
+        # out initialization graphs. This is the only initialization strategy
+        # compatible with XLA at the moment.
+        self._initialize_uninitialized_variables(initializer_map)
+      except lift_to_graph.UnliftableError:
+        pass  # Fall through to cond-based initialization.
+      else:
+        # Lifting succeeded, so variables are initialized and we can run the
+        # stateless function.
+        return self._stateless_fn(*args, **kwds)
+    else:
+      canon_args, canon_kwds = self._canonicalize_function_inputs(args, kwds)
       # If we did not create any variables the trace we have is good enough.
       return self._concrete_stateful_fn._filtered_call(canon_args, canon_kwds)  # pylint: disable=protected-access
 
@@ -392,6 +435,9 @@ class PolymorphicFunction(object):
           functools.partial(self._concrete_stateful_fn._filtered_call,  # pylint: disable=protected-access
                             inner_args, inner_kwds))
 
+    # We've created variables and are unable to lift the initialization graphs,
+    # so we fall back to initializing with conds while running the function.
+    canon_args, canon_kwds = self._canonicalize_function_inputs(args, kwds)
     return function_lib.defun(fn_with_cond)(*canon_args, **canon_kwds)
 
   @property
@@ -407,20 +453,41 @@ class PolymorphicFunction(object):
   def function_spec(self):
     return self._function_spec
 
+  def _initialize_uninitialized_variables(self, initializer_map):
+    """Make and call a `ConcreteFunction` which initializes variables."""
+
+    # Note: using defun here avoids an infinite recursion.
+    @function_lib.defun
+    def initialize_variables():
+      for v, init in initializer_map.items():
+        with ops.init_scope():
+          if resource_variable_ops.var_is_initialized_op(v.handle):
+            # Ignore variables which are already initialized at trace time.
+            continue
+        v.assign(lift_to_graph.lift_to_graph(
+            init, ops.get_default_graph())[init])
+
+    with ops.init_scope():
+      return initialize_variables.get_concrete_function()()
+
   def get_initialization_function(self, *args, **kwargs):
-    """Returns a `Function` object which initializes this function's variables.
+    """Returns a `ConcreteFunction` which initializes this function's variables.
 
     Requires that this function hasn't been accessed yet through either calling
     it or calling get_concrete_function. Fails if we cannot build an initializer
     function which does not depend on the concrete values of the inputs to this
     function.
 
+    Note that running this function will overwrite any values currently assigned
+    to variables, for example restores from a checkpoint.
+
     Args:
       *args: arguments to the underlying python callable.
       **kwargs: keyword arguments to the python callable.
 
     Returns:
-      A `Function` object which initializes the variables of this function.
+      A `ConcreteFunction` object which initializes the variables of this
+      function.
 
     Raises:
       RuntimeError: if called after the variables have been initialized.
@@ -443,38 +510,55 @@ class PolymorphicFunction(object):
 
     return initialize_variables.get_concrete_function()
 
-  @property
-  def _cached_input_signatures(self):
-    """All input signatures used to call this PolymorphicFunction."""
-    seen = set()
-    # Preserves signature ordering rather than returning a set() so that we
-    # don't need to re-sort signatures later to work around Python 2's set
-    # nondeterminism.
-    # pylint: disable=protected-access
+  def _list_all_concrete_functions_for_serialization(self):
+    """Returns all concrete functions for serialization.
+
+    Returns:
+      A list of instances of `Function`.
+    """
+    if self._input_signature is not None:
+      self.get_concrete_function()
     concrete_functions = []
+    # pylint: disable=protected-access
     if self._stateful_fn:
       concrete_functions.extend(self._stateful_fn._function_cache.values())
     if self._stateless_fn:
       concrete_functions.extend(self._stateless_fn._function_cache.values())
-    for concrete_function in concrete_functions:
-      signature = concrete_function._python_call_signature
-      if signature not in seen:
-        yield signature
-        seen.add(signature)
     # pylint: enable=protected-access
+    deduplicated_concrete_functions = list()
+    seen_signatures = list()
+    # We are using a list so that:
+    #  - the returned collection is deterministic, and
+    #  - we can use a custom equality operator (is_same_structure).
+    # This is run only at serialization time on likely very small inputs so we
+    # are not concerned about O(n^2) runtime.
+    for concrete_function in concrete_functions:
+      signature, _ = concrete_function.structured_input_signature
+      flattened = nest.flatten(signature)
+      if any(
+          isinstance(arg, func_graph_module.UnknownArgument)
+          for arg in flattened):
+        logging.info("Unsupported signature for serialization: %s.", signature)
+        continue
+      equal_to_signature = functools.partial(
+          function_lib.is_same_structure, signature, check_values=True)
+      if not any(equal_to_signature(s) for s in seen_signatures):
+        deduplicated_concrete_functions.append(concrete_function)
+        seen_signatures.append(signature)
+    return deduplicated_concrete_functions
 
   def get_concrete_function(self, *args, **kwargs):
-    """Returns a `Function` object specialized to inputs and execution context.
+    """Returns a `ConcreteFunction` specialized to inputs and execution context.
 
-    If this `PolymorphicFunction` was created with an `input_signature`, `args`
-    and `kwargs` may be omitted. With an input signature there is only one
-    concrete function associated with this `PolymorphicFunction`.
+    If this `Function` was created with an `input_signature`, `args` and
+    `kwargs` may be omitted. With an input signature there is only one
+    concrete function associated with this `Function`.
 
     If there is no fixed `input_signature` associated with this
-    `PolymorphicFunction`, positional and keyword arguments to
-    `get_concrete_function` follow the same rules as input signature
-    specification, with `tf.TensorSpec` objects describing `tf.Tensor`s which
-    will be passed to the concrete function.
+    `Function`, positional and keyword arguments to `get_concrete_function`
+    follow the same rules as input signature specification, with `tf.TensorSpec`
+    objects describing `tf.Tensor`s which will be passed to the concrete
+    function.
 
     Each `tf.Tensor` argument to the concrete function must have a unique name,
     either because it is the only one associated with a named argument of the
@@ -541,7 +625,9 @@ class PolymorphicFunction(object):
     """
     assert context.executing_eagerly()
     if self._stateful_fn is None:
-      self.get_initialization_function(*args, **kwargs)()
+      initializer_map = {}
+      self._initialize(args, kwargs, add_initializers_to=initializer_map)
+      self._initialize_uninitialized_variables(initializer_map)
 
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the
@@ -559,8 +645,8 @@ class PolymorphicFunction(object):
   def __get__(self, instance, owner):
     """Makes it possible to defun instance methods."""
     del owner
-    # `instance` here is the instance that this `PolymorphicFunction` was
-    # accessed through; e.g., for
+    # `instance` here is the instance that this `Function` was accessed through
+    # e.g., for
     #
     #   class Foo(object):
     #
@@ -569,10 +655,10 @@ class PolymorphicFunction(object):
     #       ...
     #
     #   foo = Foo()
-    #   foo.bar()  # `foo.bar` is a `PolymorphicFunction` instance
+    #   foo.bar()  # `foo.bar` is a `Function` instance
     #
     # then `instance` will be `foo` (and `owner` will be `Foo`).  We create a
-    # new instance of PolymorphicFunction here to allow different instances each
+    # new instance of `Function` here to allow different instances each
     # to create variables once, thereby allowing methods to be decorated with
     # tf.function. Keeps a cache to avoid retracing the function every time the
     # descriptor is accessed.
@@ -584,8 +670,7 @@ class PolymorphicFunction(object):
     return self._descriptor_cache[instance]
 
 
-# In TensorFlow 1.x, exported as tf.contrib.eager.function
-@tf_export("function", v1=[])
+@tf_export("function")
 def function(func=None,
              input_signature=None,
              autograph=True,
@@ -766,7 +851,7 @@ def function(func=None,
   ```
 
   `add_noise()` will return a different output every time it is invoked.
-  However, `add_noise` will return the same value every time it is called,
+  However, `traced()` will return the same value every time it is called,
   since a particular random value generated by the `np.random.randn` call will
   be inserted in the traced/staged TensorFlow graph as a constant. In this
   particular example, replacing `np.random.randn(5, 5)` with
@@ -828,7 +913,7 @@ def function(func=None,
       name = "function"
     return tf_decorator.make_decorator(
         inner_function,
-        PolymorphicFunction(
+        Function(
             inner_function,
             name,
             input_signature=input_signature,

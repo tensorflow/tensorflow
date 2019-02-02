@@ -31,7 +31,6 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_device_kernel_check.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
@@ -389,7 +388,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
     }
   }
 
-  return CheckGPU();
+  return Status::OK();
 }
 
 bool BaseGPUDevice::RequiresRecordingAccessedTensors() const {
@@ -906,54 +905,6 @@ Allocator* BaseGPUDevice::GetScopedAllocator(AllocatorAttributes attr,
   LOG(FATAL) << "Unexpected call to BaseGPUDevice::GetScopedAllocator "
              << "attr.scope_id = " << attr.scope_id;
   return gpu_allocator_;
-}
-
-Status BaseGPUDevice::CheckGPU() {
-  se::Stream* stream = tensorflow_gpu_device_info()->stream;
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-  Tensor device_tensor(gpu_allocator_, DT_FLOAT, {});
-  if (!device_tensor.IsInitialized()) {
-    return errors::ResourceExhausted("Failed to allocate ", sizeof(float),
-                                     " bytes on the GPU for initialization "
-                                     "checks");
-  }
-  float* val_dev = device_tensor.scalar<float>().data();
-  const cudaStream_t cu_stream = *reinterpret_cast<const cudaStream_t*>(
-      stream->implementation()->GpuStreamMemberHack());
-  {
-    se::cuda::ScopedActivateExecutorContext scoped_activation{stream->parent()};
-    run_test_kernel(val_dev, cu_stream);
-    // We have to use the CUDA runtime function cudaPeekAtLastError here,
-    // because 'stream' does not provide a way to check if a kernel launch
-    // succeeds. Calling 'stream->BlockHostUntilDone()', which internally calls
-    // 'cuCtxSynchronize()', does not catch all kernel launch errors.
-    cudaError_t cuda_error = cudaPeekAtLastError();
-    if (cuda_error == cudaSuccess) {
-      cuda_error = cudaDeviceSynchronize();
-    }
-    TF_RETURN_IF_ERROR(CudaErrorToStatus(cuda_error, *stream));
-  }
-
-  float val_host = 0.;
-  stream->ThenMemcpy(&val_host, se::DeviceMemoryBase(val_dev, sizeof(float)),
-                     sizeof(float));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-  if (val_host != 12345.) {
-    return errors::Internal(
-        "GPU kernel for initialization returned wrong value: ", val_host);
-  }
-  return Status::OK();
-}
-
-Status BaseGPUDevice::CudaErrorToStatus(cudaError_t cuda_error,
-                                        const se::Stream& stream) {
-  if (cuda_error != cudaSuccess) {
-    return errors::Internal(
-        "Failed to run GPU kernel for the initialization check. Received "
-        "error ",
-        cudaGetErrorName(cuda_error), " after running GPU kernel.");
-  }
-  return Status::OK();
 }
 
 const int BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength = 1000;

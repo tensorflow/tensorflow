@@ -66,6 +66,7 @@ TEST(LowerWhileOpTest, Simple) {
                    .Attr("T", {DT_INT32})
                    .Attr("cond", cond_func)
                    .Attr("body", body_func)
+                   .Attr("parallel_iterations", 100)
                    .Attr(LowerIfWhilePass::kLowerUsingSwitchMergeAttr, true)
                    .Finalize(root.graph(), &while_node));
   TF_ASSERT_OK(root.DoShapeInference(while_node));
@@ -97,6 +98,7 @@ TEST(LowerWhileOpTest, Simple) {
   for (const auto* op : graph->op_nodes()) {
     if (op->IsEnter()) {
       ++enter_count;
+      ASSERT_EQ(op->attrs().Find("parallel_iterations")->i(), 100);
     }
     if (op->IsExit()) {
       ++exit_count;

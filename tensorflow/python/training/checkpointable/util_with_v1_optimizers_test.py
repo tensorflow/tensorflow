@@ -47,7 +47,7 @@ from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
-class NonLayerCheckpointable(tracking.Checkpointable):
+class NonLayerCheckpointable(tracking.AutoCheckpointable):
 
   def __init__(self):
     super(NonLayerCheckpointable, self).__init__()
@@ -461,7 +461,7 @@ class CheckpointingTests(test.TestCase):
   # pylint: enable=cell-var-from-loop
 
   def _get_checkpoint_name(self, name):
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     checkpointable_utils.add_variable(
         root, name=name, shape=[1, 2], dtype=dtypes.float64)
     (named_variable,), _, _ = checkpointable_utils._serialize_object_graph(
@@ -503,7 +503,7 @@ class CheckpointingTests(test.TestCase):
   def testDeferredSlotRestoration(self):
     checkpoint_directory = self.get_temp_dir()
 
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     root.var = checkpointable_utils.add_variable(
         root, name="var", initializer=0.)
     optimizer = adam.AdamOptimizer(0.1)
@@ -526,7 +526,7 @@ class CheckpointingTests(test.TestCase):
                                    14.))
     slots_path = checkpointable_utils.CheckpointableSaver(root).save(
         os.path.join(checkpoint_directory, "with_slots"))
-    new_root = tracking.Checkpointable()
+    new_root = tracking.AutoCheckpointable()
     # Load the slot-containing checkpoint (deferred), then immediately overwrite
     # the non-slot variable (also deferred).
     slot_status = checkpointable_utils.CheckpointableSaver(
@@ -572,7 +572,7 @@ class CheckpointingTests(test.TestCase):
       with graph.as_default(), self.session(graph):
         checkpoint_directory = self.get_temp_dir()
         checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-        obj = tracking.Checkpointable()
+        obj = tracking.AutoCheckpointable()
         obj.var = variable_scope.get_variable(name="v", initializer=0.)
         obj.opt = adam.AdamOptimizer(0.1)
         obj.opt.minimize(obj.var.read_value())
@@ -590,7 +590,7 @@ class CheckpointingTests(test.TestCase):
       with graph.as_default(), self.session(graph):
         checkpoint_directory = self.get_temp_dir()
         checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-        obj = tracking.Checkpointable()
+        obj = tracking.AutoCheckpointable()
         obj.var = variable_scope.get_variable(name="v", initializer=0.)
         obj.opt = adam.AdamOptimizer(0.1)
         obj.opt.minimize(obj.var.read_value())
@@ -739,7 +739,7 @@ class CheckpointingTests(test.TestCase):
       self.assertEqual(42., self.evaluate(optimizer.variables()[0]))
 
 
-class _ManualScope(tracking.Checkpointable):
+class _ManualScope(tracking.AutoCheckpointable):
 
   def __call__(self):
     with variable_scope.variable_scope("ManualScope") as vs:

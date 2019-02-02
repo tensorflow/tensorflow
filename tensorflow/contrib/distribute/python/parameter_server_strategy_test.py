@@ -90,7 +90,7 @@ def create_test_objects(cluster_spec=None,
       cluster_resolver = SimpleClusterResolver(
           cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
           task_type=task_type,
-          task_index=task_id,
+          task_id=task_id,
           num_accelerators=num_gpus)
       target = 'grpc://' + cluster_spec[WORKER][task_id]
     else:
@@ -190,7 +190,7 @@ class ParameterServerStrategyTestBase(
                          '/job:worker/replica:0/task:0/%s' % last_part_device)
 
         # The colocate_vars_with can override the distribution's device.
-        with d.colocate_vars_with(x):
+        with d.extended.colocate_vars_with(x):
           y = variable_scope.get_variable(
               'y', initializer=20.0,
               aggregation=variable_scope.VariableAggregation.SUM)
@@ -236,7 +236,7 @@ class ParameterServerStrategyTestBase(
         self.assertIn('/job:ps/', h.device)
         return y_add, z_add, f
 
-      y, z, f = d.call_for_each_replica(model_fn)
+      y, z, f = d.extended.call_for_each_replica(model_fn)
       self.assertNotEqual(y, None)
       self.assertNotEqual(z, None)
       self.assertNotEqual(f, None)
@@ -252,7 +252,7 @@ class ParameterServerStrategyTestBase(
       self, task_type, task_id, num_gpus, use_core_strategy=False):
     d, _, sess_config = self._get_test_objects(
         task_type, task_id, num_gpus, use_core_strategy=use_core_strategy)
-    num_shards = len(d.parameter_devices)
+    num_shards = len(d.extended.parameter_devices)
     partitioner = partitioned_variables.fixed_size_partitioner(num_shards)
     with ops.Graph().as_default(), \
          self.cached_session(target=self._default_target,
@@ -286,7 +286,7 @@ class ParameterServerStrategyTestBase(
 
         return x_add
 
-      x = d.call_for_each_replica(model_fn)
+      x = d.extended.call_for_each_replica(model_fn)
 
       if context.num_gpus() >= 1:
         variables.global_variables_initializer().run()
@@ -344,7 +344,7 @@ class ParameterServerStrategyTestBase(
         self.assertEqual(e.device, device_util.canonicalize('/device:GPU:2'))
 
         # The colocate_vars_with can override the distribution's device.
-        with d.colocate_vars_with(x):
+        with d.extended.colocate_vars_with(x):
           y = variable_scope.get_variable(
               'y', initializer=20.0,
               aggregation=variable_scope.VariableAggregation.SUM)
@@ -387,7 +387,7 @@ class ParameterServerStrategyTestBase(
             device_util.canonicalize(h.device))
         return y_add, z_add, f
 
-      y, z, f = d.call_for_each_replica(model_fn)
+      y, z, f = d.extended.call_for_each_replica(model_fn)
       self.assertNotEqual(y, None)
       self.assertNotEqual(z, None)
       self.assertNotEqual(f, None)
@@ -438,7 +438,7 @@ class ParameterServerStrategyTestBase(
         train_op = control_flow_ops.group(x_add, y_add, z_add)
         return x, y, z, train_op
 
-      x, y, z, train_op = d.call_for_each_replica(model_fn)
+      x, y, z, train_op = d.extended.call_for_each_replica(model_fn)
       train_op = d.group(train_op)
 
       if context.num_gpus() < d.extended._num_gpus_per_worker:
@@ -519,7 +519,7 @@ class ParameterServerStrategyTestBase(
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_replica(grad_fn, args=(one,))
+        g_v = d.extended.call_for_each_replica(grad_fn, args=(one,))
         # Update the variables using the gradients and the update() function.
         before_list = []
         after_list = []
@@ -531,7 +531,7 @@ class ParameterServerStrategyTestBase(
             g = d.extended.reduce_to(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(
-                d.update(v, update, g, grouped=False)):
+                d.extended.update(v, update, args=(g,), group=False)):
               after_list.append(d.extended.read_var(v))
         return before_list, after_list
 
@@ -571,6 +571,7 @@ class ParameterServerStrategyTestBase(
                               num_gpus,
                               input_fn,
                               expected_values,
+                              test_reinitialize=True,
                               use_core_strategy=False):
     distribution, master_target, config = self._get_test_objects(
         task_type, task_id, num_gpus, use_core_strategy=use_core_strategy)
@@ -594,13 +595,14 @@ class ParameterServerStrategyTestBase(
                   for r in range(len(devices))])
 
       # After re-initializing the iterator, should be able to iterate again.
-      sess.run(iterator.initialize())
+      if test_reinitialize:
+        sess.run(iterator.initialize())
 
-      for expected_value in expected_values:
-        next_element = iterator.get_next()
-        computed_value = sess.run([values.select_replica(r, next_element)
-                                   for r in range(len(devices))])
-        self.assertEqual(expected_value, computed_value)
+        for expected_value in expected_values:
+          next_element = iterator.get_next()
+          computed_value = sess.run([values.select_replica(r, next_element)
+                                     for r in range(len(devices))])
+          self.assertEqual(expected_value, computed_value)
 
 
 class ParameterServerStrategyTest(
@@ -700,16 +702,24 @@ class ParameterServerStrategyTest(
           mode=['graph'],
           num_gpus=[1, 2],
           required_gpus=1,
-          use_core_strategy=[True, False]))
-  def testMakeInputFnIteratorDistributed(self, num_gpus, use_core_strategy):
+          use_core_strategy=[True, False],
+          use_dataset=[True, False]))
+  def testMakeInputFnIteratorDistributed(self, num_gpus, use_core_strategy,
+                                         use_dataset):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
-    dataset_fn = lambda: dataset_ops.Dataset.range(100)
+    if use_dataset:
+      fn = lambda: dataset_ops.Dataset.range(100)
+    else:
+      def fn():
+        dataset = dataset_ops.Dataset.range(100)
+        it = dataset.make_one_shot_iterator()
+        return it.get_next
     expected_values = [[i+j for j in range(num_gpus)]
                        for i in range(0, 100, num_gpus)]
 
     input_fn = self._input_fn_to_test_input_context(
-        dataset_fn,
+        fn,
         expected_num_replicas_in_sync=num_gpus,
         expected_num_input_pipelines=3,
         expected_input_pipeline_id=1)  # because task_id = 1
@@ -719,6 +729,7 @@ class ParameterServerStrategyTest(
         num_gpus,
         input_fn,
         expected_values,
+        test_reinitialize=use_dataset,
         use_core_strategy=use_core_strategy)
 
   @combinations.generate(
@@ -726,16 +737,24 @@ class ParameterServerStrategyTest(
           mode=['graph'],
           num_gpus=[1, 2],
           required_gpus=1,
-          use_core_strategy=[True, False]))
-  def testMakeInputFnIteratorLocal(self, num_gpus, use_core_strategy):
+          use_core_strategy=[True, False],
+          use_dataset=[True, False]))
+  def testMakeInputFnIteratorLocal(self, num_gpus, use_core_strategy,
+                                   use_dataset):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
-    dataset_fn = lambda: dataset_ops.Dataset.range(100)
+    if use_dataset:
+      fn = lambda: dataset_ops.Dataset.range(100)
+    else:
+      def fn():
+        dataset = dataset_ops.Dataset.range(100)
+        it = dataset.make_one_shot_iterator()
+        return it.get_next
     expected_values = [[i+j for j in range(num_gpus)]
                        for i in range(0, 100, num_gpus)]
 
     input_fn = self._input_fn_to_test_input_context(
-        dataset_fn,
+        fn,
         expected_num_replicas_in_sync=num_gpus,
         expected_num_input_pipelines=1,
         expected_input_pipeline_id=0)  # only one worker and pipeline for local.
@@ -745,6 +764,7 @@ class ParameterServerStrategyTest(
         num_gpus,
         input_fn,
         expected_values,
+        test_reinitialize=use_dataset,
         use_core_strategy=use_core_strategy)
 
   @combinations.generate(
@@ -873,7 +893,10 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                              id(get_step), get_step.__class__.__name__)))
       self.assertIs(resource_variable_ops.ResourceVariable, type(created_step))
       self.assertIs(resource_variable_ops.ResourceVariable, type(get_step))
-      self.assertIs(strategy, created_step.distribute_strategy)
+      # All variables have an _distribute_strategy parameter. Only variable
+      # subclasses in distribution strategy expose it publicly.
+      self.assertFalse(hasattr(strategy, 'distribute_strategy'))
+      self.assertIs(strategy, created_step._distribute_strategy)
 
   @combinations.generate(
       combinations.combine(mode=['graph'], use_core_strategy=[True, False]))
@@ -891,6 +914,18 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
         self.assertIs(values.AggregatingVariable, type(w))
 
       strategy.extended.call_for_each_replica(f)
+
+
+class LocalParameterServerStrategyTest(strategy_test_lib.DistributionTestBase,
+                                       parameterized.TestCase):
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager'],
+                                              use_core_strategy=[True, False],
+                                              required_gpus=2))
+  def testNumpyIterator(self, use_core_strategy):
+    strategy, _, _ = create_test_objects(
+        num_gpus=2, use_core_strategy=use_core_strategy)
+    self._test_numpy_iterator(strategy)
 
 
 if __name__ == '__main__':

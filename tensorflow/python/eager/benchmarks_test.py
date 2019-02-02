@@ -140,7 +140,7 @@ class MicroBenchmarks(test.Benchmark):
     self._m_2_by_2 = random_ops.random_uniform((2, 2))
     self._m_100_by_784 = random_ops.random_uniform((100, 784))
     self._num_iters_2_by_2 = 30000
-    self._num_iters_100_by_784 = 1000
+    self._num_iters_100_by_784 = 30000
 
   def _run(self, func, num_iters, execution_mode=None):
     # call func to maybe warm up the GPU
@@ -370,6 +370,19 @@ class MicroBenchmarks(test.Benchmark):
     func = lambda: f(m, m, transpose_b=transpose_b)
     self._run(func, num_iters, execution_mode=execution_mode)
 
+  def _benchmark_nested_defun_matmul(self, m, transpose_b, num_iters):
+    inner = function.defun(math_ops.matmul)
+
+    @function.defun
+    def outer(a, b, c, transpose_b):
+      return math_ops.matmul(inner(a, b, transpose_b=transpose_b), c)
+
+    func = lambda: outer(m, m, m, transpose_b=transpose_b)
+    # Warmup before benchmark
+    for _ in range(1000):
+      func()
+    self._run(func, num_iters)
+
   def _benchmark_defun_matmul_forward_backward(self,
                                                m,
                                                transpose_b,
@@ -525,6 +538,11 @@ class MicroBenchmarks(test.Benchmark):
           num_iters=self._num_iters_2_by_2,
           execution_mode=context.ASYNC)
 
+  def benchmark_nested_defun_matmul_2_by_2(self):
+    m = self._m_2_by_2.cpu()
+    self._benchmark_nested_defun_matmul(
+        m, transpose_b=False, num_iters=self._num_iters_2_by_2)
+
   # Benchmarks for AA.T, A of dimension 100 by 784.
   def benchmark_np_matmul_100_by_784(self):
     self._benchmark_np_matmul(
@@ -613,6 +631,11 @@ class MicroBenchmarks(test.Benchmark):
       m = self._m_100_by_784.gpu()
       self._benchmark_defun_matmul(
           m, transpose_b=True, num_iters=self._num_iters_100_by_784)
+
+  def benchmark_nested_defun_matmul_100_by_784(self):
+    m = self._m_100_by_784.gpu()
+    self._benchmark_nested_defun_matmul(
+        m, transpose_b=True, num_iters=self._num_iters_100_by_784)
 
   def benchmark_defun_without_signature(self):
 
@@ -867,10 +890,6 @@ class MicroBenchmarks(test.Benchmark):
     self._run(scan, 100)
 
   def benchmarkScanDefun(self):
-    if context.num_gpus():
-      # TODO(b/122081934): Re-enable this after figuring out why this became
-      # really slow with control flow V2
-      return
     elems = math_ops.range(1600)
 
     @function.defun

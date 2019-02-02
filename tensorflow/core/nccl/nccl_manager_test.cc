@@ -209,7 +209,7 @@ const Scalar NcclManagerTest<Scalar>::max_ =
 
 // Instantiate tests for float and double.
 using TypeList = ::testing::Types<float, double>;
-TYPED_TEST_CASE(NcclManagerTest, TypeList);
+TYPED_TEST_SUITE(NcclManagerTest, TypeList);
 
 // Test basic sum reduction.
 TYPED_TEST(NcclManagerTest, BasicSumReduction) {

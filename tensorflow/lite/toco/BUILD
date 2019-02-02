@@ -133,6 +133,7 @@ cc_library(
 cc_library(
     name = "model_cmdline_flags",
     srcs = [
+        "args.cc",
         "model_cmdline_flags.cc",
     ],
     hdrs = [
@@ -192,6 +193,7 @@ cc_library(
         "graph_transformations/fuse_binary_into_preceding_affine.cc",
         "graph_transformations/fuse_broadcast_into_following_binary.cc",
         "graph_transformations/graph_transformations.cc",
+        "graph_transformations/group_bidirectional_sequence_ops.cc",
         "graph_transformations/hardcode_min_max.cc",
         "graph_transformations/identify_dilated_conv.cc",
         "graph_transformations/identify_l2_normalization.cc",
@@ -473,6 +475,19 @@ tf_cc_test(
     ],
     deps = [
         ":toco_port",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "model_cmdline_flags_test",
+    srcs = [
+        "model_cmdline_flags_test.cc",
+    ],
+    deps = [
+        ":model_cmdline_flags",
+        ":model_flags_proto_cc",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],

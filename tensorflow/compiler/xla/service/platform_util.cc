@@ -70,6 +70,9 @@ PlatformUtil::GetSupportedPlatforms() {
   for (se::Platform* platform : all_platforms) {
     auto compiler_status = Compiler::GetForPlatform(platform);
     if (compiler_status.ok()) {
+      if (!platform->Initialized()) {
+        TF_RETURN_IF_ERROR(platform->Initialize({}));
+      }
       platforms.push_back(platform);
     } else {
       LOG(INFO) << "platform " << platform->Name() << " present but no "

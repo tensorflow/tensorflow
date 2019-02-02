@@ -130,6 +130,11 @@ class IrArray {
       CHECK_LE(index, size());
       mutable_multidim().insert(mutable_multidim().begin() + index, value);
     }
+    void InsertAt(int64 index, int64 count, llvm::Value* value) {
+      CHECK_LE(index, size());
+      mutable_multidim().insert(mutable_multidim().begin() + index, count,
+                                value);
+    }
 
     using iterator = std::vector<llvm::Value*>::iterator;
     using const_iterator = std::vector<llvm::Value*>::const_iterator;
@@ -222,11 +227,11 @@ class IrArray {
   };
 
   // Default constructor. Constructs an IrArray in a null status.
-  IrArray() : base_ptr_(nullptr), shape_(nullptr) {}
+  IrArray() : base_ptr_(nullptr) {}
 
   // Construct an IrArray with the given base pointer and shape. base_ptr is a
   // pointer type pointing to the first element(lowest address) of the array.
-  IrArray(llvm::Value* base_ptr, const Shape& shape);
+  IrArray(llvm::Value* base_ptr, Shape shape);
 
   // Default implementations of copying and moving.
   IrArray(IrArray&& other) = default;
@@ -238,7 +243,6 @@ class IrArray {
   llvm::Type* GetElementLlvmType() const { return element_type_; }
 
   const Shape& GetShape() const {
-    CHECK(shape_ != nullptr);
     return *shape_;
   }
 
@@ -333,7 +337,7 @@ class IrArray {
   llvm::Type* element_type_;
 
   // Shape of the XLA array.
-  const Shape* shape_;
+  absl::optional<Shape> shape_;
 
   // The list of key/value pairs used when attaching metadata to emitted
   // loads/stores for this array.  They keys are the metadata kinds and the

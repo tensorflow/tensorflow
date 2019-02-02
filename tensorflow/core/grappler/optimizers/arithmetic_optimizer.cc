@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
+using tensorflow::str_util::StringReplace;
 using tensorflow::strings::StrCat;
 
 namespace tensorflow {
@@ -2721,7 +2722,8 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
   ~OptimizeMaxOrMinOfMonotonicStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsMax(*node) || IsMin(*node);
+    return IsAnyMax(*node) || IsAnyMin(*node) || IsArgMax(*node) ||
+           IsArgMin(*node);
   }
 
   Status TrySimplify(NodeDef* reduction_node,
@@ -2752,9 +2754,15 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
       if (!is_non_decreasing) {
         // Flip Min<->Max if the function is non-increasing, e.g.
         // Max(Neg(x)) = Neg(Min(x)).
-        const string opposite = IsMax(*reduction_node) ? "Min" : "Max";
+        const string opposite = FlipMinMax(*reduction_node);
         reduction_node->set_op(opposite);
       }
+
+      if (IsArgMax(*reduction_node) || IsArgMin(*reduction_node)) {
+        // ArgMax(Sqrt(x)) = ArgMax(x)
+        inner_function->set_op("Identity");
+      }
+
       AddToOptimizationQueue(reduction_node);
       AddToOptimizationQueue(inner_function);
       AddToOptimizationQueue(inner_input);
@@ -2773,6 +2781,16 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
         }
       }
       AddToOptimizationQueue(consumer);
+    }
+  }
+
+ private:
+  string FlipMinMax(const NodeDef& node) {
+    const string& op = node.op();
+    if (IsAnyMax(node) || IsArgMax(node)) {
+      return str_util::StringReplace(op, "Max", "Min", false);
+    } else {
+      return str_util::StringReplace(op, "Min", "Max", false);
     }
   }
 };
@@ -3239,13 +3257,17 @@ class UniqueNodes {
   }
 
  private:
-  uint64 ComputeSignature(const NodeDef& node) const;
+  uint64 ComputeSignature(const NodeDef& node);
   bool SameNode(const NodeDef& node1, const NodeDef& node2) const;
 
-  std::unordered_map<uint64, std::vector<NodeDef*>> rep_;
+  absl::flat_hash_map<uint64, std::vector<NodeDef*>> rep_;
+  absl::flat_hash_map<const NodeDef*, uint64> memoized_signatures_;
 };
 
-uint64 UniqueNodes::ComputeSignature(const NodeDef& node) const {
+uint64 UniqueNodes::ComputeSignature(const NodeDef& node) {
+  auto it = memoized_signatures_.find(&node);
+  if (it != memoized_signatures_.end()) return it->second;
+
   uint64 h = Hash64(node.op());
   h = Hash64Combine(Hash64(node.device()), h);
 
@@ -3259,6 +3281,7 @@ uint64 UniqueNodes::ComputeSignature(const NodeDef& node) const {
     h = Hash64CombineUnordered(Hash64(attr.first), h);
     h = Hash64CombineUnordered(FastAttrValueHash(attr.second), h);
   }
+  memoized_signatures_.emplace(&node, h);
   return h;
 }
 
@@ -3279,31 +3302,29 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
   // Compare inputs.
   if (IsCommutative(node1)) {
     std::vector<string> inputs1(node1.input().begin(), node1.input().end());
-    std::vector<string> inputs2(node2.input().begin(), node2.input().end());
     std::sort(inputs1.begin(), inputs1.end());
+    std::vector<string> inputs2(node2.input().begin(), node2.input().end());
     std::sort(inputs2.begin(), inputs2.end());
     return inputs1 == inputs2;
   } else {
-    std::vector<string> regular_inputs1;
-    std::vector<string> regular_inputs2;
-    std::vector<string> ctrl_inputs1;
-    std::vector<string> ctrl_inputs2;
-    for (int index = 0; index < node1.input_size(); ++index) {
+    // The order or ordinary inputs matters.
+    int index = 0;
+    for (; index < node1.input_size(); ++index) {
       if (IsControlInput(node1.input(index))) {
-        ctrl_inputs1.push_back(node1.input(index));
-        ctrl_inputs2.push_back(node2.input(index));
-      } else {
-        regular_inputs1.push_back(node1.input(index));
-        regular_inputs2.push_back(node2.input(index));
+        break;
+      } else if (node1.input(index) != node2.input(index)) {
+        return false;
       }
     }
-    if (regular_inputs1 != regular_inputs2) {
-      return false;
-    }
-    std::sort(ctrl_inputs1.begin(), ctrl_inputs1.end());
-    std::sort(ctrl_inputs2.begin(), ctrl_inputs2.end());
-    if (ctrl_inputs1 != ctrl_inputs2) {
-      return false;
+    // The order of control inputs does not matter.
+    if (index < node1.input_size()) {
+      std::vector<string> ctrl_inputs1(node1.input().begin() + index,
+                                       node1.input().end());
+      std::sort(ctrl_inputs1.begin(), ctrl_inputs1.end());
+      std::vector<string> ctrl_inputs2(node2.input().begin() + index,
+                                       node2.input().end());
+      std::sort(ctrl_inputs2.begin(), ctrl_inputs2.end());
+      return ctrl_inputs1 != ctrl_inputs2;
     }
   }
 
@@ -3330,8 +3351,8 @@ bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
   if (node.device().find("SPU") != string::npos) {
     return false;
   }
-  // Workaround for Assert mistakenly being labeled as stateful.
-  if (IsAssert(node)) {
+  // Workaround for Assert and Print mistakenly being labeled as stateful.
+  if (IsAssert(node) || IsPrint(node)) {
     return true;
   }
   return IsFreeOfSideEffect(node);
@@ -3369,9 +3390,9 @@ void ArithmeticOptimizer::DedupComputations() {
 
   bool stop = true;
   std::set<int> duplicates;
+  UniqueNodes nodes;
   do {
     stop = true;
-    UniqueNodes nodes;
     for (int i = 0; i < optimized_graph_->node_size(); ++i) {
       if (duplicates.find(i) != duplicates.end()) {
         continue;
@@ -3576,7 +3597,7 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
 
   // Disable restricted graph rewrites.
   options_.unary_ops_composition &=
-      item.allowed_optimizations().non_differentiable_rewrites;
+      item.optimization_options().allow_non_differentiable_rewrites;
 
   if (options_.dedup_computations) {
     DedupComputations();

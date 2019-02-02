@@ -10,6 +10,7 @@ load("//third_party/py:python_configure.bzl", "python_configure")
 
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
+load("//third_party/toolchains/remote:configure.bzl", "remote_execution_configure")
 load("//third_party/toolchains/clang6:repo.bzl", "clang6_configure")
 load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compiler_configure")
 load("//third_party:repo.bzl", "tf_http_archive")
@@ -64,6 +65,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     syslibs_configure(name = "local_config_syslibs")
     python_configure(name = "local_config_python")
     rocm_configure(name = "local_config_rocm")
+    remote_execution_configure(name = "local_config_remote_execution")
 
     initialize_third_party()
 
@@ -138,11 +140,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
-        sha256 = "9de38f2d162c51599b802f7c36d9f3773980d19ac908c61638f8344d2c10e1ca",
-        strip_prefix = "eigen-eigen-88fc23324517",
+        patch_file = clean_dep("//third_party/eigen3:gebp_neon.patch"),
+        sha256 = "48678550a32665331d729be87076e576f2502fff325f5b6c2c78ebf7b1b22c7b",
+        strip_prefix = "eigen-eigen-bcc817c0ba98",
         urls = [
-            "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/88fc23324517..tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/88fc23324517.tar.gz",
+            "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/bcc817c0ba98.tar.gz",
+            "https://bitbucket.org/eigen/eigen/get/bcc817c0ba98.tar.gz",
         ],
     )
 
@@ -183,15 +186,15 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_github_googlecloudplatform_google_cloud_cpp",
-        sha256 = "44eee8bd47cbd5ff192e895b45f9f913e2e117f10fdb9af0fd3b1a87a7b53bc3",
-        strip_prefix = "google-cloud-cpp-0.4.0",
+        sha256 = "886bcba3616d5f362838a2d86ae0198dd3670a84a84c82291cda6c30e14779fc",
+        strip_prefix = "google-cloud-cpp-0.5.0",
         system_build_file = clean_dep("//third_party/systemlibs:google_cloud_cpp.BUILD"),
         system_link_files = {
             "//third_party/systemlibs:google_cloud_cpp.google.cloud.bigtable.BUILD": "google/cloud/bigtable/BUILD",
         },
         urls = [
-            "https://mirror.bazel.build/github.com/GoogleCloudPlatform/google-cloud-cpp/archive/v0.4.0.tar.gz",
-            "https://github.com/GoogleCloudPlatform/google-cloud-cpp/archive/v0.4.0.tar.gz",
+            "https://mirror.bazel.build/github.com/GoogleCloudPlatform/google-cloud-cpp/archive/v0.5.0.tar.gz",
+            "https://github.com/GoogleCloudPlatform/google-cloud-cpp/archive/v0.5.0.tar.gz",
         ],
     )
 
@@ -285,7 +288,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         system_build_file = clean_dep("//third_party/systemlibs:astor.BUILD"),
         urls = [
             "https://mirror.bazel.build/pypi.python.org/packages/99/80/f9482277c919d28bebd85813c0a70117214149a96b08981b72b63240b84c/astor-0.7.1.tar.gz",
-            "https://files.pythonhosted.org/packages/99/80/f9482277c919d28bebd85813c0a70117214149a96b08981b72b63240b84c/astor-0.7.1.tar.gz",
+            "https://pypi.python.org/packages/99/80/f9482277c919d28bebd85813c0a70117214149a96b08981b72b63240b84c/astor-0.7.1.tar.gz",
         ],
     )
 
@@ -315,17 +318,28 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "absl_py",
-        sha256 = "95160f778a62c7a60ddeadc7bf2d83f85a23a27359814aca12cf949e896fa82c",
-        strip_prefix = "abseil-py-pypi-v0.2.2",
+        sha256 = "595726be4bf3f7e6d64a1a255fa03717b693c01b913768abd52649cbb7ddf2bd",
+        strip_prefix = "abseil-py-pypi-v0.7.0",
         system_build_file = clean_dep("//third_party/systemlibs:absl_py.BUILD"),
         system_link_files = {
             "//third_party/systemlibs:absl_py.absl.flags.BUILD": "absl/flags/BUILD",
             "//third_party/systemlibs:absl_py.absl.testing.BUILD": "absl/testing/BUILD",
         },
         urls = [
-            "https://mirror.bazel.build/github.com/abseil/abseil-py/archive/pypi-v0.2.2.tar.gz",
-            "https://github.com/abseil/abseil-py/archive/pypi-v0.2.2.tar.gz",
+            "https://mirror.bazel.build/github.com/abseil/abseil-py/archive/pypi-v0.7.0.tar.gz",
+            "https://github.com/abseil/abseil-py/archive/pypi-v0.7.0.tar.gz",
         ],
+    )
+
+    tf_http_archive(
+        name = "enum34_archive",
+        urls = [
+            "https://mirror.bazel.build/pypi.python.org/packages/bf/3e/31d502c25302814a7c2f1d3959d2a3b3f78e509002ba91aea64993936876/enum34-1.1.6.tar.gz",
+            "https://pypi.python.org/packages/bf/3e/31d502c25302814a7c2f1d3959d2a3b3f78e509002ba91aea64993936876/enum34-1.1.6.tar.gz",
+        ],
+        sha256 = "8ad8c4783bf61ded74527bffb48ed9b54166685e4230386a9ed9b1279e2df5b1",
+        build_file = clean_dep("//third_party:enum34.BUILD"),
+        strip_prefix = "enum34-1.1.6/enum",
     )
 
     tf_http_archive(
@@ -406,11 +420,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_google_googletest",
-        sha256 = "61eee610f136c1edc693d979647a4bb2ca253d60e6964724b61af85d32a41251",
-        strip_prefix = "googletest-6729a1361150131bc5d394d5cd2b4cdf0953ee7b",
+        sha256 = "ff7a82736e158c077e76188232eac77913a15dac0b22508c390ab3f88e6d6d86",
+        strip_prefix = "googletest-b6cd405286ed8635ece71c72f118e659f4ade3fb",
         urls = [
-            "https://mirror.bazel.build/github.com/google/googletest/archive/6729a1361150131bc5d394d5cd2b4cdf0953ee7b.zip",
-            "https://github.com/google/googletest/archive/6729a1361150131bc5d394d5cd2b4cdf0953ee7b.zip",
+            "https://mirror.bazel.build/github.com/google/googletest/archive/b6cd405286ed8635ece71c72f118e659f4ade3fb.zip",
+            "https://github.com/google/googletest/archive/b6cd405286ed8635ece71c72f118e659f4ade3fb.zip",
         ],
     )
 
@@ -500,11 +514,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "llvm",
         build_file = clean_dep("//third_party/llvm:llvm.autogenerated.BUILD"),
-        sha256 = "83a4f199742f3d6892994dd6dc46d6a53019aedaa28590b460c120f3dfc7bc47",
-        strip_prefix = "llvm-671f057a2cf137914be6c786daf8000469adebab",
+        sha256 = "ec524f6c8e4d7514b1753131e844c73df4cef1a22d8773b0e43ccd9f813bbd48",
+        strip_prefix = "llvm-ba3936b0ea89935ab8ea943c1b372d69923691d9",
         urls = [
-            "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/671f057a2cf137914be6c786daf8000469adebab.tar.gz",
-            "https://github.com/llvm-mirror/llvm/archive/671f057a2cf137914be6c786daf8000469adebab.tar.gz",
+            "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/ba3936b0ea89935ab8ea943c1b372d69923691d9.tar.gz",
+            "https://github.com/llvm-mirror/llvm/archive/ba3936b0ea89935ab8ea943c1b372d69923691d9.tar.gz",
         ],
     )
 

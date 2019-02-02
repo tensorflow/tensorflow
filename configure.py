@@ -1482,7 +1482,7 @@ def set_other_mpi_vars(environ_cp):
   else:
     raise ValueError(
         'Cannot find the MPI library file in %s/lib or %s/lib64 or %s/lib32' %
-        mpi_home, mpi_home, mpi_home)
+        (mpi_home, mpi_home, mpi_home))
 
 
 def set_system_libs_flag(environ_cp):
@@ -1694,7 +1694,7 @@ def main():
   config_info_line('noaws', 'Disable AWS S3 filesystem support.')
   config_info_line('nogcp', 'Disable GCP support.')
   config_info_line('nohdfs', 'Disable HDFS support.')
-  config_info_line('noignite', 'Disable Apacha Ignite support.')
+  config_info_line('noignite', 'Disable Apache Ignite support.')
   config_info_line('nokafka', 'Disable Apache Kafka support.')
   config_info_line('nonccl', 'Disable NVIDIA NCCL support.')
 

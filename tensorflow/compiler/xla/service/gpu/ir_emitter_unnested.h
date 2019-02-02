@@ -217,9 +217,13 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitReductionToVector(HloInstruction* unnested_hlo);
 
   // Computes the KernelMappingScheme for the reduce HLO and indicates whether
-  // the reduction is a row reduction.
+  // the reduction is a row reduction. For an un-fused reduce op, unnested_hlo
+  // and first_reduce are the same instruction. For a kInput fusion,
+  // unnested_hlo is the fusion instruction while first_reduce is the first
+  // reduce op.
   std::tuple<llvm_ir::KernelMappingScheme, bool>
-  ComputeMappingSchemeAndReductionKind(const HloInstruction* first_reduce);
+  ComputeMappingSchemeAndReductionKind(const HloInstruction* unnested_hlo,
+                                       const HloInstruction* first_reduce);
 
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. `scatter` may be fused, scatter indices are taken from

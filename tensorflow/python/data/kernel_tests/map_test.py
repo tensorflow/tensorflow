@@ -25,6 +25,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -39,8 +40,8 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
@@ -84,7 +85,7 @@ def _make_coordinated_sloppy_dataset(num_elements, num_parallel_calls):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
+class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _buildMapDataset(self, components, count):
 
@@ -391,6 +392,71 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
+  @test_util.run_v1_only("b/121264236")
+  def testSkipEagerCaptureConstantsWithConflictingDevices(self):
+    config = config_pb2.ConfigProto(
+        device_count={"CPU": 3}, log_device_placement=True)
+    with self.cached_session(config=config):
+      with ops.device("/device:CPU:0"):
+        a = constant_op.constant(3.0)
+      with ops.device("/device:CPU:1"):
+        b = constant_op.constant(5.0)
+
+      def func(_):
+        return math_ops.add(a, b)
+
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).map(func)
+      expected_output = [8.0] * 10
+      self.assertDatasetProduces(dataset, expected_output=expected_output)
+
+  # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
+  @test_util.run_v1_only(
+      "defun will convert RefVariables to ResourceVariables.")
+  def testSkipEagerRefVariablesWithConflictingDevices(self):
+    config = config_pb2.ConfigProto(
+        device_count={"CPU": 3}, log_device_placement=True)
+    with self.cached_session(config=config):
+
+      def func(_):
+        with ops.device("/device:CPU:0"):
+          a = variables.VariableV1(3.0)
+        with ops.device("/device:CPU:1"):
+          b = variables.VariableV1(5.0)
+        return math_ops.add(a, b)
+
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).map(func)
+      self.evaluate(variables.global_variables_initializer())
+      expected_output = [8.0] * 10
+      self.assertDatasetProduces(
+          dataset,
+          expected_output=expected_output,
+          requires_initialization=True)
+
+  # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
+  @test_util.run_v1_only("b/121264236")
+  def testSkipEagerResourceVariablesWithConflictingDevices(self):
+    config = config_pb2.ConfigProto(
+        device_count={"CPU": 3}, log_device_placement=True)
+    with self.cached_session(config=config):
+
+      def func(_):
+        with ops.device("/device:CPU:0"):
+          a = variables.Variable(3.0)
+        with ops.device("/device:CPU:1"):
+          b = variables.Variable(5.0)
+        return math_ops.add(a, b)
+
+      # The MapDataset node ends up with two ResourceVariable inputs, one on
+      # device CPU:0 and the other on device CPU:1. The placer cannot resolve
+      # this as it cannot place the MapDatasetOp on both devices.
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).map(func)
+      expected_error = (
+          errors.InvalidArgumentError,
+          "Could not colocate node with its resource and reference inputs")
+      self.assertDatasetProduces(
+          dataset, expected_error=expected_error, requires_initialization=True)
+
   def testCaptureVariable(self):
     counter_var = variable_scope.get_variable(
         "counter", (), dtypes.int32, use_resource=True)
@@ -522,7 +588,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testUseStepContainerInMap(self):
     row = np.arange(6)
     dataset = dataset_ops.Dataset.from_tensors(
-        row).map(lambda elems: functional_ops.map_fn(lambda x: x * x, elems))
+        row).map(lambda elems: map_fn.map_fn(lambda x: x * x, elems))
     self.assertDatasetProduces(dataset, expected_output=[row**2])
 
   def testCaseAndCondInMap(self):
@@ -586,7 +652,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     def build_dataset(row, num):
       # pylint: disable=g-long-lambda
       dataset = dataset_ops.Dataset.from_tensors(
-          row).map(lambda elems: functional_ops.map_fn(
+          row).map(lambda elems: map_fn.map_fn(
               lambda x: control_map_fn(x, num), elems))
       return self.getNext(dataset)
 
@@ -628,7 +694,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     num = 2
     # pylint: disable=g-long-lambda
     dataset = dataset_ops.Dataset.from_tensors(
-        row).map(lambda elems: functional_ops.map_fn(
+        row).map(lambda elems: map_fn.map_fn(
             lambda x: control_map_fn(x, num), elems))
     # pylint: enable=g-long-lambda
     get_next = self.getNext(dataset)

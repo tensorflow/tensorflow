@@ -47,6 +47,7 @@ enum class TokKind {
   kRbrace,  // {  }
   kLparen,
   kRparen,  // (  )
+  kDots,    // ...
 
   kArrow,  // ->
   kLeq,    // <=

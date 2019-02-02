@@ -341,6 +341,44 @@ TEST_F(GraphPropertiesTest, VarHandles) {
   EXPECT_EQ(7, prop.shape().dim(1).size());
 }
 
+TEST_F(GraphPropertiesTest, WhileLoopWithVarHandleOpInput) {
+  // Test graph is first generated in python using:
+  /*
+    i0 = tf.constant(0)
+    v = tf.get_variable(initializer=i0, name='loop_var', use_resource=True)
+    def cond(i, x):
+      return i < 3
+    def body(i, x):
+      return i + 1, x + x
+    v, y = tf.while_loop(cond, body, loop_vars=[v, tf.constant(1)])
+  */
+  // and then modified by hand such that the ReadVariableOp is inside the loop
+  // body instead of outside the while loop (which is the case when constructed
+  // using the python API), such that we have the following pattern: VarHandleOp
+  // -> Enter -> Switch -> ReadVariableOp -> other parts of loop body. Note
+  // DT_RESOURCE is passed all the way until ReadVariableOp.
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "while_loop_var_handle_op.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+
+  std::vector<string> resource_nodes{
+      "loop_var",       "while/Enter",         "while/Merge", "while/Switch",
+      "while/Identity", "while/NextIteration", "while/Exit"};
+  for (const string& node : resource_nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    EXPECT_GE(props.size(), 1);  // Merge has 2 outputs.
+    EXPECT_EQ("resource: []", PropToString(props[0]));
+  }
+
+  // After ReadVariableOp, the shape should be recovered.
+  const auto props = properties.GetOutputProperties("while/ReadVariableOp");
+  EXPECT_EQ(1, props.size());
+  EXPECT_EQ("int32: []", PropToString(props[0]));
+}
+
 TEST_F(GraphPropertiesTest, QueueWithOnlyDequeue_NoShapeAttr) {
   tensorflow::Scope root = tensorflow::Scope::NewRootScope();
   auto q1 = ops::FIFOQueue(root.WithOpName("Queue1"), {DataType::DT_FLOAT});

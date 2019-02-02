@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import gfile
@@ -125,6 +126,7 @@ class BenchmarkTest(test.TestCase):
     self.assertFalse(_ran_somebenchmark_2[0])
     self.assertFalse(_ran_somebenchmark_but_shouldnt[0])
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testReportingBenchmark(self):
     tempdir = test.get_temp_dir()
     try:

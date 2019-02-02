@@ -34,6 +34,73 @@ FIND_OPEN = re.compile(r"^\s*(\[).*$")
 FIND_STRING_CHARS = re.compile(r"['\"]")
 
 
+INFO = "INFO"
+WARNING = "WARNING"
+ERROR = "ERROR"
+
+
+def full_name_node(name, ctx=ast.Load()):
+  """Make an Attribute or Name node for name.
+
+  Translate a qualified name into nested Attribute nodes (and a Name node).
+
+  Args:
+    name: The name to translate to a node.
+    ctx: What context this name is used in. Defaults to Load()
+
+  Returns:
+    A Name or Attribute node.
+  """
+  names = name.split(".")
+  names.reverse()
+  node = ast.Name(id=names.pop(), ctx=ast.Load())
+  while names:
+    node = ast.Attribute(value=node, attr=names.pop(), ctx=ast.Load())
+
+  # Change outermost ctx to the one given to us (inner ones should be Load).
+  node.ctx = ctx
+  return node
+
+
+def get_arg_value(node, arg_name, arg_pos=None):
+  """Get the value of an argument from a ast.Call node.
+
+  This function goes through the positional and keyword arguments to check
+  whether a given argument was used, and if so, returns its value (the node
+  representing its value).
+
+  This cannot introspect *args or **args, but it safely handles *args in
+  Python3.5+.
+
+  Args:
+    node: The ast.Call node to extract arg values from.
+    arg_name: The name of the argument to extract.
+    arg_pos: The position of the argument (in case it's passed as a positional
+      argument).
+
+  Returns:
+    A tuple (arg_present, arg_value) containing a boolean indicating whether
+    the argument is present, and its value in case it is.
+  """
+  # Check keyword args
+  if arg_name is not None:
+    for kw in node.keywords:
+      if kw.arg == arg_name:
+        return (True, kw.value)
+
+  # Check positional args
+  if arg_pos is not None:
+    idx = 0
+    for arg in node.args:
+      if sys.version_info[:2] >= (3, 5) and isinstance(arg, ast.Starred):
+        continue  # Can't parse Starred
+      if idx == arg_pos:
+        return (True, arg)
+      idx += 1
+
+  return (False, None)
+
+
 class APIChangeSpec(object):
   """This class defines the transformations that need to happen.
 
@@ -49,6 +116,8 @@ class APIChangeSpec(object):
   * `function_warnings`: maps full names of functions to warnings that will be
     printed out if the function is used. (e.g. tf.nn.convolution())
   * `function_transformers`: maps function names to custom handlers
+  * `module_deprecations`: maps module names to warnings that will be printed
+    if the module is still used after all other transformations have run
 
   For an example, see `TFAPIChangeSpec`.
   """
@@ -63,8 +132,7 @@ class _PastaEditVisitor(ast.NodeVisitor):
 
   def __init__(self, api_change_spec):
     self._api_change_spec = api_change_spec
-    self._log = []   # Holds 3-tuples: line, col, msg.
-    self._errors = []  # Same structure as _log.
+    self._log = []   # Holds 4-tuples: severity, line, col, msg.
     self._stack = []  # Allow easy access to parents.
 
   # Overridden to maintain a stack of nodes to allow for parent access
@@ -75,55 +143,42 @@ class _PastaEditVisitor(ast.NodeVisitor):
 
   @property
   def errors(self):
-    return self._errors
+    return [log for log in self._log if log[0] == ERROR]
+
+  @property
+  def warnings(self):
+    return [log for log in self._log if log[0] == WARNING]
+
+  @property
+  def warnings_and_errors(self):
+    return [log for log in self._log if log[0] in (WARNING, ERROR)]
+
+  @property
+  def info(self):
+    return [log for log in self._log if log[0] == INFO]
 
   @property
   def log(self):
     return self._log
 
-  def _format_log(self, log):
-    text = ""
-    for log_entry in log:
-      text += "Line %d:%d: %s\n" % log_entry
-    return text
-
-  def log_text(self):
-    return self._format_log(self.log)
-
-  def add_log(self, lineno, col, msg):
-    self._log.append((lineno, col, msg))
-    print("Line %d:%d: %s" % (lineno, col, msg))
-
-  def add_error(self, lineno, col, msg):
-    # All errors are also added to the regular log.
-    self.add_log(lineno, col, msg)
-    self._errors.append((lineno, col, msg))
+  def add_log(self, severity, lineno, col, msg):
+    self._log.append((severity, lineno, col, msg))
+    print("%s line %d:%d: %s" % (severity, lineno, col, msg))
 
   def add_logs(self, logs):
     """Record a log and print it.
 
-    The log should be a tuple (lineno, col_offset, msg), which will be printed
-    and then recorded. It is part of the log available in the self.log property.
+    The log should be a tuple `(severity, lineno, col_offset, msg)`, which will
+    be printed and recorded. It is part of the log available in the `self.log`
+    property.
 
     Args:
-      logs: The log to add. Must be a tuple (lineno, col_offset, msg).
+      logs: The logs to add. Must be a list of tuples
+        `(severity, lineno, col_offset, msg)`.
     """
     self._log.extend(logs)
     for log in logs:
-      print("Line %d:%d: %s" % log)
-
-  def add_errors(self, errors):
-    """Record an error and print it.
-
-    The error must be a tuple (lineno, col_offset, msg), which will be printed
-    and then recorded as both a log and an error. It is therefore part of the
-    log available in the self.log as well as the self.errors property.
-
-    Args:
-      errors: The log to add. Must be a tuple (lineno, col_offset, msg).
-    """
-    self.add_logs(errors)
-    self._errors.extend(errors)
+      print("%s line %d:%d: %s" % log)
 
   def _get_applicable_entries(self, transformer_field, full_name, name):
     """Get all list entries indexed by name that apply to full_name or name."""
@@ -158,7 +213,7 @@ class _PastaEditVisitor(ast.NodeVisitor):
   def _get_full_name(self, node):
     """Traverse an Attribute node to generate a full name, e.g., "tf.foo.bar".
 
-    This is the inverse of _full_name_node.
+    This is the inverse of `full_name_node`.
 
     Args:
       node: A Node of type Attribute.
@@ -177,43 +232,34 @@ class _PastaEditVisitor(ast.NodeVisitor):
     items.append(curr.id)
     return ".".join(reversed(items))
 
-  def _full_name_node(self, name, ctx=ast.Load()):
-    """Make an Attribute or Name node for name.
-
-    Translate a qualified name into nested Attribute nodes (and a Name node).
-
-    Args:
-      name: The name to translate to a node.
-      ctx: What context this name is used in. Defaults to Load()
-
-    Returns:
-      A Name or Attribute node.
-    """
-    names = name.split(".")
-    names.reverse()
-    node = ast.Name(id=names.pop(), ctx=ast.Load())
-    while names:
-      node = ast.Attribute(value=node, attr=names.pop(), ctx=ast.Load())
-
-    # Change outermost ctx to the one given to us (inner ones should be Load).
-    node.ctx = ctx
-    return node
-
   def _maybe_add_warning(self, node, full_name):
     """Adds an error to be printed about full_name at node."""
     function_warnings = self._api_change_spec.function_warnings
     if full_name in function_warnings:
-      warning_message = function_warnings[full_name]
-      warning_message = warning_message.replace("<function name>", full_name)
-      self.add_error(node.lineno, node.col_offset,
-                     "%s requires manual check: %s." % (full_name,
-                                                        warning_message))
+      level, message = function_warnings[full_name]
+      message = message.replace("<function name>", full_name)
+      self.add_log(level, node.lineno, node.col_offset,
+                   "%s requires manual check. %s" % (full_name, message))
+      return True
+    else:
+      return False
+
+  def _maybe_add_module_deprecation_warning(self, node, full_name, whole_name):
+    """Adds a warning if full_name is a deprecated module."""
+    warnings = self._api_change_spec.module_deprecations
+    if full_name in warnings:
+      level, message = warnings[full_name]
+      message = message.replace("<function name>", whole_name)
+      self.add_log(level, node.lineno, node.col_offset,
+                   "Using member %s in deprecated module %s. %s" % (whole_name,
+                                                                    full_name,
+                                                                    message))
       return True
     else:
       return False
 
   def _maybe_add_call_warning(self, node, full_name, name):
-    """Print a warning when specific functions are called.
+    """Print a warning when specific functions are called with selected args.
 
     The function _print_warning_for_function matches the full name of the called
     function, e.g., tf.foo.bar(). This function matches the function name that
@@ -240,14 +286,14 @@ class _PastaEditVisitor(ast.NodeVisitor):
     arg_warnings = self._get_applicable_dict("function_arg_warnings",
                                              full_name, name)
 
-    used_args = [kw.arg for kw in node.keywords]
-    for arg, warning in arg_warnings.items():
-      if arg in used_args:
+    for (kwarg, arg), (level, warning) in arg_warnings.items():
+      present, _ = get_arg_value(node, kwarg, arg)
+      if present:
         warned = True
         warning_message = warning.replace("<function name>", full_name or name)
-        self.add_error(node.lineno, node.col_offset,
-                       "%s called with %s argument requires manual check: %s." %
-                       (full_name or name, arg, warning_message))
+        self.add_log(level, node.lineno, node.col_offset,
+                     "%s called with %s argument requires manual check: %s" %
+                     (full_name or name, kwarg, warning_message))
 
     return warned
 
@@ -255,9 +301,9 @@ class _PastaEditVisitor(ast.NodeVisitor):
     """Replace node (Attribute or Name) with a node representing full_name."""
     new_name = self._api_change_spec.symbol_renames.get(full_name, None)
     if new_name:
-      self.add_log(node.lineno, node.col_offset,
+      self.add_log(INFO, node.lineno, node.col_offset,
                    "Renamed %r to %r" % (full_name, new_name))
-      new_node = self._full_name_node(new_name, node.ctx)
+      new_node = full_name_node(new_name, node.ctx)
       ast.copy_location(new_node, node)
       pasta.ast_utils.replace_child(parent, node, new_node)
       return True
@@ -276,7 +322,7 @@ class _PastaEditVisitor(ast.NodeVisitor):
           new_node = ast.Call(node, [], [])
         pasta.ast_utils.replace_child(parent, node, new_node)
         ast.copy_location(new_node, node)
-        self.add_log(node.lineno, node.col_offset,
+        self.add_log(INFO, node.lineno, node.col_offset,
                      "Changed %r to a function call" % full_name)
         return True
     return False
@@ -288,12 +334,17 @@ class _PastaEditVisitor(ast.NodeVisitor):
     if full_name in function_reorders:
       reordered = function_reorders[full_name]
       new_keywords = []
-      for idx, arg in enumerate(node.args):
+      idx = 0
+      for arg in node.args:
+        if sys.version_info[:2] >= (3, 5) and isinstance(arg, ast.Starred):
+          continue  # Can't move Starred to keywords
         keyword_arg = reordered[idx]
-        new_keywords.append(ast.keyword(arg=keyword_arg, value=arg))
+        keyword = ast.keyword(arg=keyword_arg, value=arg)
+        new_keywords.append(keyword)
+        idx += 1
 
       if new_keywords:
-        self.add_log(node.lineno, node.col_offset,
+        self.add_log(INFO, node.lineno, node.col_offset,
                      "Added keywords to args of function %r" % full_name)
         node.args = []
         node.keywords = new_keywords + (node.keywords or [])
@@ -317,14 +368,14 @@ class _PastaEditVisitor(ast.NodeVisitor):
         if renamed_keywords[argkey] is None:
           lineno = getattr(keyword, "lineno", node.lineno)
           col_offset = getattr(keyword, "col_offset", node.col_offset)
-          self.add_log(lineno, col_offset,
+          self.add_log(INFO, lineno, col_offset,
                        "Removed argument %s for function %s" % (
                            argkey, full_name or name))
         else:
           keyword.arg = renamed_keywords[argkey]
           lineno = getattr(keyword, "lineno", node.lineno)
           col_offset = getattr(keyword, "col_offset", node.col_offset)
-          self.add_log(lineno, col_offset,
+          self.add_log(INFO, lineno, col_offset,
                        "Renamed keyword argument for %s from %s to %s" % (
                            full_name, argkey, renamed_keywords[argkey]))
           new_keywords.append(keyword)
@@ -377,15 +428,12 @@ class _PastaEditVisitor(ast.NodeVisitor):
 
     for transformer in transformers:
       logs = []
-      errors = []
-      new_node = transformer(parent, node, full_name, name, logs, errors)
+      new_node = transformer(parent, node, full_name, name, logs)
       self.add_logs(logs)
-      self.add_errors(errors)
-      if new_node:
-        if new_node is not node:
-          pasta.ast_utils.replace_child(parent, node, new_node)
-          node = new_node
-          self._stack[-1] = node
+      if new_node and new_node is not node:
+        pasta.ast_utils.replace_child(parent, node, new_node)
+        node = new_node
+        self._stack[-1] = node
 
     self.generic_visit(node)
 
@@ -407,6 +455,14 @@ class _PastaEditVisitor(ast.NodeVisitor):
         return
       if self._maybe_change_to_function_call(parent, node, full_name):
         return
+
+      # The isinstance check is enough -- a bare Attribute is never root.
+      i = 2
+      while isinstance(self._stack[-i], ast.Attribute):
+        i += 1
+      whole_name = pasta.dump(self._stack[-(i-1)])
+
+      self._maybe_add_module_deprecation_warning(node, full_name, whole_name)
 
     self.generic_visit(node)
 
@@ -441,29 +497,35 @@ class ASTCodeUpgrader(object):
     shutil.move(temp_file.name, out_filename)
     return ret
 
-  def _format_errors(self, errors, in_filename):
-    return ["%s:%d:%d: %s" % ((in_filename,) + error) for error in errors]
+  def format_log(self, log, in_filename):
+    log_string = "%d:%d: %s: %s" % (log[1], log[2], log[0], log[3])
+    if in_filename:
+      return in_filename + ":" + log_string
+    else:
+      return log_string
 
   def update_string_pasta(self, text, in_filename):
     """Updates a file using pasta."""
     try:
       t = pasta.parse(text)
     except (SyntaxError, ValueError, TypeError):
-      log = "Failed to parse.\n\n" + traceback.format_exc()
+      log = ["ERROR: Failed to parse.\n" + traceback.format_exc()]
       return 0, "", log, []
 
     visitor = _PastaEditVisitor(self._api_change_spec)
     visitor.visit(t)
 
-    errors = self._format_errors(visitor.errors, in_filename)
-    return 1, pasta.dump(t), visitor.log_text(), errors
+    logs = [self.format_log(log, None) for log in visitor.log]
+    errors = [self.format_log(error, in_filename)
+              for error in visitor.warnings_and_errors]
+    return 1, pasta.dump(t), logs, errors
 
   def _format_log(self, log, in_filename, out_filename):
     text = "-" * 80 + "\n"
     text += "Processing file %r\n outputting to %r\n" % (in_filename,
                                                          out_filename)
     text += "-" * 80 + "\n\n"
-    text += log
+    text += "\n".join(log)
     text += "-" * 80 + "\n\n"
     return text
 
@@ -506,7 +568,8 @@ class ASTCodeUpgrader(object):
       in_place: Allow the conversion of an entire directory in place.
 
     Returns:
-      A tuple of files processed, the report string ofr all files, and errors
+      A tuple of files processed, the report string ofr all files, and a dict
+        mapping filenames to errors encountered in that file.
     """
 
     if output_root_directory == root_directory:
@@ -553,7 +616,7 @@ class ASTCodeUpgrader(object):
           files_to_copy.append((fullpath, fullpath_output))
 
     file_count = 0
-    tree_errors = []
+    tree_errors = {}
     report = ""
     report += ("=" * 80) + "\n"
     report += "Input tree: %r\n" % root_directory
@@ -565,7 +628,7 @@ class ASTCodeUpgrader(object):
         os.makedirs(output_directory)
       file_count += 1
       _, l_report, l_errors = self.process_file(input_path, output_path)
-      tree_errors += l_errors
+      tree_errors[input_path] = l_errors
       report += l_report
     for input_path, output_path in files_to_copy:
       output_directory = os.path.dirname(output_path)
@@ -583,7 +646,7 @@ class ASTCodeUpgrader(object):
       files_to_process += py_files
 
     file_count = 0
-    tree_errors = []
+    tree_errors = {}
     report = ""
     report += ("=" * 80) + "\n"
     report += "Input tree: %r\n" % root_directory
@@ -592,7 +655,7 @@ class ASTCodeUpgrader(object):
     for path in files_to_process:
       file_count += 1
       _, l_report, l_errors = self.process_file(path, path)
-      tree_errors += l_errors
+      tree_errors[path] = l_errors
       report += l_report
 
     return file_count, report, tree_errors

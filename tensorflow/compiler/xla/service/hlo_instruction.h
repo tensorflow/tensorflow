@@ -494,6 +494,9 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       const std::vector<std::pair<int64, int64>>& source_target_pairs);
 
+  // Creates an instruction that returns a U32 replica ID.
+  static std::unique_ptr<HloInstruction> CreateReplicaId();
+
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
   static std::unique_ptr<HloInstruction> CreateConvert(const Shape& shape,
@@ -556,11 +559,6 @@ class HloInstruction {
   // Creates a slice instruction, where the first operand is sliced by
   // start indices specified in the second operand, and by size specified in
   // 'slice_sizes'.
-  ABSL_DEPRECATED("Use span-of-indices form instead")
-  static std::unique_ptr<HloInstruction> CreateDynamicSlice(
-      const Shape& shape, HloInstruction* operand,
-      HloInstruction* start_indices, absl::Span<const int64> slice_sizes);
-  // Same as above, but expects a span of scalar start indices.
   static std::unique_ptr<HloInstruction> CreateDynamicSlice(
       const Shape& shape, HloInstruction* operand,
       absl::Span<HloInstruction* const> start_indices,
@@ -568,11 +566,6 @@ class HloInstruction {
 
   // Creates a dynamic update slice instruction, which updates a slice
   // of 'operand' with 'update' and 'start_indices'.
-  ABSL_DEPRECATED("Use span-of-indices form instead")
-  static std::unique_ptr<HloInstruction> CreateDynamicUpdateSlice(
-      const Shape& shape, HloInstruction* operand, HloInstruction* update,
-      HloInstruction* start_indices);
-  // Same as above, but expects a span of scalar start indices.
   static std::unique_ptr<HloInstruction> CreateDynamicUpdateSlice(
       const Shape& shape, HloInstruction* operand, HloInstruction* update,
       absl::Span<HloInstruction* const> start_indices);

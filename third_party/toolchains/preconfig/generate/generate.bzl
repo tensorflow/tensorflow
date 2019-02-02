@@ -21,6 +21,8 @@ def _tensorflow_rbe_config(name, compiler, python_version, cuda_version = None, 
         "CC": compiler,
         "PYTHON_BIN_PATH": "/usr/bin/python%s" % python_version,
         "CLEAR_CACHE": "1",
+        "HOST_CXX_COMPILER": compiler,
+        "HOST_C_COMPILER": compiler,
     }
 
     if cuda_version != None:
@@ -43,6 +45,7 @@ def _tensorflow_rbe_config(name, compiler, python_version, cuda_version = None, 
             "TF_NEED_TENSORRT" : "1",
             "TF_TENSORRT_VERSION": tensorrt_version,
             "TENSORRT_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
+            "GCC_HOST_COMPILER_PATH": compiler if compiler != "clang" else "",
         })
 
     docker_toolchain_autoconfig(

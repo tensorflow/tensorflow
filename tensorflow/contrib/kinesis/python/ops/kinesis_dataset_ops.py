@@ -71,7 +71,6 @@ class KinesisDataset(dataset_ops.DatasetSource):
       interval: The interval for the Kinesis Client to wait before
         it tries to get records again (in millisecond).
     """
-    super(KinesisDataset, self).__init__()
     self._stream = ops.convert_to_tensor(
         stream, dtype=dtypes.string, name="stream")
     self._shard = ops.convert_to_tensor(
@@ -80,6 +79,7 @@ class KinesisDataset(dataset_ops.DatasetSource):
         read_indefinitely, dtype=dtypes.bool, name="read_indefinitely")
     self._interval = ops.convert_to_tensor(
         interval, dtype=dtypes.int64, name="interval")
+    super(KinesisDataset, self).__init__(self._as_variant_tensor())
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.kinesis_dataset(

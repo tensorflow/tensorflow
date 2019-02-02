@@ -1529,6 +1529,20 @@ tensorflow::Status ConvertFloorOperator(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertCeilOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "Ceil");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
+  const auto data_type = GetDataTypeAttr(node, "T");
+  CHECK(data_type == DT_FLOAT);
+  auto* op = new CeilOperator;
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
 tensorflow::Status ConvertGatherOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
@@ -2317,6 +2331,27 @@ tensorflow::Status ConvertLeakyReluOperator(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertUnidirectionalSequenceRnn(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  DCHECK_EQ(node.op(), "UnidirectionalSequenceRnn");
+
+  auto* op = new UnidirectionalSequenceRnnOperator();
+  const auto& indices = GetListAttr(node, "_tflite_input_indices");
+  if (indices.i_size() != node.input().size()) {
+    return tensorflow::errors::InvalidArgument("Input size does not match.");
+  }
+
+  for (const string& input : node.input()) {
+    op->inputs.push_back(input);
+  }
+  // Only use the last one as input.
+  op->outputs.push_back(node.name() + ":1");
+  model->operators.emplace_back(op);
+
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
 
 namespace internal {
@@ -2354,6 +2389,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"BatchToSpaceND", ConvertBatchToSpaceNDOperator},
       {"BiasAdd", ConvertBiasAddOperator},
       {"Cast", ConvertCastOperator},
+      {"Ceil", ConvertCeilOperator},
       {"CheckNumerics", ConvertIdentityOperator},
       {"Concat", ConvertConcatOperator},
       {"ConcatV2", ConvertConcatOperator},
@@ -2423,6 +2459,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Reshape", ConvertSimpleOperator<TensorFlowReshapeOperator, 2, 1>},
       {"ResizeBilinear", ConvertResizeBilinearOperator},
       {"ResizeNearestNeighbor", ConvertResizeNearestNeighborOperator},
+      {"ReverseV2", ConvertSimpleOperator<ReverseV2Operator, 2, 1>},
       {"Rsqrt", ConvertSimpleOperator<TensorFlowRsqrtOperator, 1, 1>},
       {"Select", ConvertSimpleOperator<SelectOperator, 3, 1>},
       {"Shape", ConvertShapeOperator},
@@ -2454,6 +2491,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Unpack", ConvertUnpackOperator},
       {"ZerosLike", ConvertSimpleOperator<TensorFlowZerosLikeOperator, 1, 1>},
       {"UnidirectionalSequenceLstm", ConvertUnidirectionalSequenceLstm},
+      {"UnidirectionalSequenceRnn", ConvertUnidirectionalSequenceRnn},
       {"MirrorPad", ConvertMirrorPadOperator},
       {"Unique", ConvertSimpleOperator<UniqueOperator, 1, 2>},
   });

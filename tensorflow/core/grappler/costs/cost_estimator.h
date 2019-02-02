@@ -216,27 +216,14 @@ class CostEstimator {
 
   // Predicts the cost of running the given optimized version of the grappler
   // item.
-  // If a CostGraphDef is passed, it will be populated with detailed information
+  // If a RunMetadata is passed, it will be populated with detailed information
   // about the cost of running each operation of the optimized graph.
   // if a double value is passed, it will be set to a value that reflects the
   // overall cost of running the graph (e.g. the latency of the computation).
   // Returns a status that indicate is the performance could be estimated or
   // not.
   virtual Status PredictCosts(const GraphDef& optimized_graph,
-                              CostGraphDef* cost_graph, Costs* cost) const = 0;
-
-  // TODO(dyoon): Delete PredictCosts() with CostGraphDef as RunMetadata is a
-  // superset of CostGraphDef.
-  // Same method, but returns RunMetadata.
-  virtual Status PredictCostsAndReturnRunMetadata(
-      const GraphDef& optimized_graph, RunMetadata* run_metadata,
-      Costs* cost) const {
-    CostGraphDef* cost_graph = nullptr;
-    if (run_metadata) {
-      cost_graph = run_metadata->mutable_cost_graph();
-    }
-    return PredictCosts(optimized_graph, cost_graph, cost);
-  }
+                              RunMetadata* run_metadata, Costs* cost) const = 0;
 };
 
 }  // end namespace grappler

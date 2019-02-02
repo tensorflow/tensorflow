@@ -646,6 +646,10 @@ class OpKernelContext {
     static const int kNoReservation = -1;
     // Values in [0,...) represent reservations for the indexed output.
     const int* forward_from_array = nullptr;
+
+    // For tracking actively running deferred ops.
+    std::function<void()> inc_num_deferred_ops_function = []() {};
+    std::function<void()> dec_num_deferred_ops_function = []() {};
   };
 
   // params must outlive the OpKernelContext.
@@ -1171,6 +1175,24 @@ class OpKernelContext {
   void clear_recorded_memory() LOCKS_EXCLUDED(stats_mu_);
 
   bool input_is_ref(int index) const;
+
+  // Used by OpKernel implementations to track actively running deferred ops.
+  //
+  // A deferred op is one whose Compute method returns (or whose ComputeAsync
+  // method invokes the callback) when work is scheduled onto a device. At that
+  // point, we don't know when the work will actually complete (or if it has
+  // already completed) on the device. These functions allow the executor to
+  // track the status of deferred ops and act accordingly.
+  //
+  // Deferred OpKernel implementations must use these methods to get two
+  // functions. It then must call these two functions in pairs, before and after
+  // device execution, respectively.
+  TF_MUST_USE_RESULT std::function<void()> inc_num_deferred_ops_function() {
+    return params_->inc_num_deferred_ops_function;
+  }
+  TF_MUST_USE_RESULT std::function<void()> dec_num_deferred_ops_function() {
+    return params_->dec_num_deferred_ops_function;
+  }
 
  private:
   Allocator* get_allocator(AllocatorAttributes attr);

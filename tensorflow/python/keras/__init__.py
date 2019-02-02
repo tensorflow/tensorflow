@@ -42,8 +42,6 @@ from tensorflow.python.keras import wrappers
 from tensorflow.python.keras.layers import Input
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.models import Sequential
-from tensorflow.python.keras.saving.saved_model import export
-from tensorflow.python.keras.saving.saved_model import load_from_saved_model
 
 from tensorflow.python.util.tf_export import keras_export
 

@@ -294,9 +294,7 @@ def _create_local_python_repository(repository_ctx):
 def _create_remote_python_repository(repository_ctx, remote_config_repo):
   """Creates pointers to a remotely configured repo set up to build with Python.
   """
-  _tpl(repository_ctx, "remote.BUILD", {
-      "%{REMOTE_PYTHON_REPO}": remote_config_repo,
-  }, "BUILD")
+  repository_ctx.template("BUILD", Label(remote_config_repo + ":BUILD"), {})
 
 
 def _python_autoconf_impl(repository_ctx):

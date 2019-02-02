@@ -22,6 +22,7 @@ import io
 import logging
 import sys
 
+from absl.testing import parameterized
 import numpy as np
 import six
 
@@ -350,16 +351,21 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertEqual(len(out), 2)
 
   @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_with_all_model_types
   def test_activity_regularizer_fit(self):
     loss = {}
     for reg in [None, 'l2']:
-      inputs = keras.layers.Input(shape=(10,))
-      x = keras.layers.Dense(
-          10, activation='relu', activity_regularizer=reg,
-          kernel_initializer='ones', use_bias=False)(inputs)
-      outputs = keras.layers.Dense(1, activation='sigmoid',
-                                   kernel_initializer='ones', use_bias=False)(x)
-      model = keras.Model(inputs, outputs)
+      layers = [
+          keras.layers.Dense(
+              10, activation='relu', activity_regularizer=reg,
+              kernel_initializer='ones', use_bias=False),
+          keras.layers.Dense(
+              1, activation='sigmoid', kernel_initializer='ones',
+              use_bias=False),
+      ]
+
+      model = testing_utils.get_model_from_layers(
+          layers, input_shape=(10,))
 
       x = np.ones((10, 10), 'float32')
       y = np.ones((10, 1), 'float32')
@@ -372,15 +378,14 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertLess(loss[None], loss['l2'])
 
   @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_with_all_model_types
   def test_activity_regularizer_loss_value(self):
-    inputs = keras.layers.Input(shape=(10,))
-    outputs = keras.layers.Dense(
-        1,
-        kernel_initializer=keras.initializers.zeros(),
-        bias_initializer=keras.initializers.ones(),
-        activity_regularizer='l2')(
-            inputs)
-    model = keras.Model(inputs, outputs)
+    layer = keras.layers.Dense(
+        1, kernel_initializer=keras.initializers.zeros(),
+        bias_initializer=keras.initializers.ones(), activity_regularizer='l2')
+
+    model = testing_utils.get_model_from_layers([layer], input_shape=(10,))
+
     x = np.ones((10, 10), 'float32')
     y = np.ones((10, 1), 'float32')
     optimizer = RMSPropOptimizer(learning_rate=0.001)
@@ -798,6 +803,34 @@ class TrainingTest(keras_parameterized.TestCase):
       test_model.set_weights(fixed_weights)
       test_model_loss = test_model.train_on_batch(train_x, train_y)
       self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  @parameterized.named_parameters(
+      ('default', 1, 4), ('integer_two', 2, 2), ('integer_four', 4, 1),
+      ('simple_list', [1, 3, 4], 3), ('duplicated_list', [4, 2, 2], 2))
+  def test_validation_freq(self, validation_freq, expected_runs):
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    model = testing_utils.get_small_mlp(2, 1, 10)
+    model.compile('sgd', 'mse')
+
+    class ValCounter(keras.callbacks.Callback):
+
+      def __init__(self):
+        self.val_runs = 0
+
+      def on_test_begin(self, logs=None):
+        self.val_runs += 1
+
+    val_counter = ValCounter()
+    model.fit(
+        x,
+        y,
+        epochs=4,
+        validation_data=(x, y),
+        validation_freq=validation_freq,
+        callbacks=[val_counter])
+    self.assertEqual(val_counter.val_runs, expected_runs)
 
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):

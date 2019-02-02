@@ -32,7 +32,6 @@ from tensorflow.python.keras.optimizer_v2 import adamax as adamax_v2
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.keras.optimizer_v2 import nadam as nadam_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
@@ -169,10 +168,13 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   # See b/120160788 for more details. This should be mitigated after 2.0.
   model = keras.models.Model(x, layer(x))
   if _thread_local_data.run_eagerly is not None:
-    model.compile(RMSPropOptimizer(0.01), 'mse', weighted_metrics=['acc'],
-                  run_eagerly=should_run_eagerly())
+    model.compile(
+        'rmsprop',
+        'mse',
+        weighted_metrics=['acc'],
+        run_eagerly=should_run_eagerly())
   else:
-    model.compile(RMSPropOptimizer(0.01), 'mse', weighted_metrics=['acc'])
+    model.compile('rmsprop', 'mse', weighted_metrics=['acc'])
   model.train_on_batch(input_data, actual_output)
 
   # test as first layer in Sequential API

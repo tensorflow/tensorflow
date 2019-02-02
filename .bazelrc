@@ -80,7 +80,7 @@ build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
 
 build --spawn_strategy=standalone
-build --genrule_strategy=standalone
+build --strategy=Genrule=standalone
 build -c opt
 
 # Other build flags.
@@ -89,6 +89,12 @@ build --define=grpc_no_ares=true
 # Modular TF build options
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
 build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
+
+# Build TF with C++ 17 features.
+build:c++17 --cxxopt=-std=c++1z
+build:c++17 --cxxopt=-stdlib=libc++
+build:c++1z --cxxopt=-std=c++1z
+build:c++1z --cxxopt=-stdlib=libc++
 
 # Default paths for TF_SYSTEM_LIBS
 build --define=PREFIX=/usr

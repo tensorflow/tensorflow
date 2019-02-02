@@ -21,11 +21,11 @@ import time
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -186,7 +186,7 @@ class SessionManager(object):
     # This is required to so that we initialize the TPU device before
     # restoring from checkpoint since we'll be placing variables on the device
     # and TPUInitialize wipes out the memory of the device.
-    strategy = distribution_strategy_context.get_distribution_strategy()
+    strategy = distribution_strategy_context.get_strategy()
     if strategy and hasattr(strategy.extended,
                             "_experimental_initialize_system"):
       strategy.extended._experimental_initialize_system()  # pylint: disable=protected-access

@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
@@ -45,7 +46,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/kernels:op_macros",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -59,7 +59,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/kernels:op_macros",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -253,9 +252,6 @@ cc_library(
 cc_test(
     name = "tensor_test",
     srcs = ["tensor_test.cc"],
-    tags = [
-        "tflite_not_portable_ios",  # TODO(b/117786830)
-    ],
     deps = [
         ":tensor",
         "@com_google_googletest//:gtest",
@@ -285,9 +281,6 @@ cc_library(
 cc_test(
     name = "quantization_util_test",
     srcs = ["quantization_util_test.cc"],
-    tags = [
-        "tflite_not_portable_ios",  # TODO(b/117786830)
-    ],
     deps = [
         ":quantization_util",
         "@com_google_googletest//:gtest",
@@ -313,6 +306,8 @@ cc_library(
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/fully_connected.h",
+        "reference/integer_ops/conv.h",
+        "reference/integer_ops/depthwise_conv.h",
         "reference/integer_ops/dequantize.h",
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/softmax.h",
@@ -412,6 +407,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:activation_functor",
         "//tensorflow/lite/kernels:op_macros",
+        "//tensorflow/lite/kernels/internal:types",
     ],
 )
 
@@ -551,14 +547,14 @@ cc_library(
     }),
     deps = [
         ":types",
-        "//tensorflow/lite:string",
     ],
 )
 
-cc_test(
+# TODO(b/122597976): Eliminate TF dependency from lite/kernels:test_util,
+# in turn eliminating the need to use tf_cc_test for any dependent tests.
+tf_cc_test(
     name = "tensor_utils_test",
     srcs = ["tensor_utils_test.cc"],
-    copts = NEON_FLAGS_IF_APPLICABLE,
     linkopts = select({
         "//tensorflow:android": [
             "-fPIE -pie",
@@ -566,9 +562,6 @@ cc_test(
         "//conditions:default": [],
     }),
     linkstatic = 1,
-    tags = [
-        "tflite_not_portable_ios",
-    ],
     deps = [
         ":tensor_utils",
         "//tensorflow/lite/c:c_api_internal",
@@ -593,9 +586,6 @@ cc_test(
     name = "depthwiseconv_quantized_test",
     srcs = ["depthwiseconv_quantized_test.cc"],
     shard_count = 2,
-    tags = [
-        "tflite_not_portable_ios",
-    ],
     deps = [
         ":optimized_base",
         ":reference_base",
@@ -608,9 +598,6 @@ cc_test(
 cc_test(
     name = "resize_bilinear_test",
     srcs = ["resize_bilinear_test.cc"],
-    tags = [
-        "tflite_not_portable",
-    ],
     deps = [
         ":optimized_base",
         ":reference_base",
@@ -623,9 +610,6 @@ cc_test(
 cc_test(
     name = "resize_nearest_neighbor_test",
     srcs = ["resize_nearest_neighbor_test.cc"],
-    tags = [
-        "tflite_not_portable",
-    ],
     deps = [
         ":optimized_base",
         ":reference_base",
@@ -677,6 +661,10 @@ cc_test(
 cc_test(
     name = "log_quantized_test",
     srcs = ["log_quantized_test.cc"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":optimized_base",
         ":reference_base",
@@ -711,5 +699,79 @@ cc_test(
 )
 
 exports_files(["optimized/eigen_tensor_reduced_instantiations_oss.h"])
+
+filegroup(
+    name = "optimized_op_headers",
+    srcs = glob([
+        "optimized/*.h",
+    ]),
+    visibility = ["//tensorflow/lite:__subpackages__"],
+)
+
+filegroup(
+    name = "reference_op_headers",
+    srcs = glob([
+        "reference/*.h",
+    ]),
+    visibility = ["//tensorflow/lite:__subpackages__"],
+)
+
+filegroup(
+    name = "headers",
+    srcs = glob([
+        "*.h",
+    ]),
+    visibility = ["//tensorflow/lite:__subpackages__"],
+)
+
+transitive_hdrs(
+    name = "nnapi_external_headers",
+    visibility = ["//tensorflow/lite:__subpackages__"],
+    deps = [
+        "//third_party/eigen3",
+        "@gemmlowp",
+    ],
+)
+
+# ---------------------------------------------------------
+# The public target "install_nnapi_extra_headers" is only
+# used for external targets that requires exporting optmized
+# and reference op headers.
+
+genrule(
+    name = "install_nnapi_extra_headers",
+    srcs = [
+        ":nnapi_external_headers",
+        ":headers",
+        ":optimized_op_headers",
+        ":reference_op_headers",
+    ],
+    outs = ["include"],
+    cmd = """
+    mkdir $@
+    for f in $(SRCS); do
+      d="$${f%/*}"
+      d="$${d#bazel-out*genfiles/}"
+      d="$${d#*external/eigen_archive/}"
+
+      if [[ $${d} == *local_config_* ]]; then
+        continue
+      fi
+
+      if [[ $${d} == external* ]]; then
+        extname="$${d#*external/}"
+        extname="$${extname%%/*}"
+        if [[ $${TF_SYSTEM_LIBS:-} == *$${extname}* ]]; then
+          continue
+        fi
+      fi
+
+      mkdir -p "$@/$${d}"
+      cp "$${f}" "$@/$${d}/"
+    done
+    """,
+    tags = ["manual"],
+    visibility = ["//visibility:private"],
+)
 
 tflite_portable_test_suite()

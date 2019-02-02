@@ -291,7 +291,10 @@ class CheckpointingTests(keras_parameterized.TestCase):
         optimizer=opt, loss='mse',
         run_eagerly=testing_utils.should_run_eagerly())
 
-    model.fit(x=np.array([[1., 2., 3., 4.]]), y=np.array([1.]), epochs=2)
+    model.fit(
+        x=np.array([[1., 2., 3., 4.]]),
+        y=np.array([[1., 1., 1., 1.]]),
+        epochs=2)
     save_prefix = os.path.join(self.get_temp_dir(), 'ckpt')
     beta1_power, _ = opt._get_beta_accumulators()
     self.evaluate(beta1_power.assign(12.))

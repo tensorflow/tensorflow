@@ -294,6 +294,9 @@ class ConcatTest(xla_test.XLATestCase):
   # The purpose of this is to ensure that XLA on GPU will not run out of memory
   # with too many arguments.
   def testConcatLargeNumberOfTensors(self):
+    if "CPU" in self.device:
+      self.skipTest("This test can time out on CPU, so we will just allow "
+                    "other backends to catch this specific error.")
     with self.cached_session():
       with self.test_scope():
         for concat_dim in range(2):

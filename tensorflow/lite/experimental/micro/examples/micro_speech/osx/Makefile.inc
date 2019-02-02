@@ -1,6 +1,8 @@
-#Settings for Mac OS platforms.
+# Settings for Mac OS platforms.
 ifeq ($(TARGET), osx)
-  MICROLITE_LIBS += \
+  LINKER_FLAGS := \
     -framework Foundation \
     -framework AudioToolbox
+
+  MICROLITE_LIBS += $(LINKER_FLAGS)
 endif

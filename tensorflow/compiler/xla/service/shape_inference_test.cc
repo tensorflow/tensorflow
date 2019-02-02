@@ -35,6 +35,7 @@ class ShapeInferenceTest : public ::testing::Test {
  protected:
   // Some handy scalar shapes.
   const Shape s32_ = ShapeUtil::MakeShape(S32, {});
+  const Shape f16_ = ShapeUtil::MakeShape(F16, {});
   const Shape f32_ = ShapeUtil::MakeShape(F32, {});
   const Shape f64_ = ShapeUtil::MakeShape(F64, {});
   const Shape pred_ = ShapeUtil::MakeShape(PRED, {});
@@ -260,8 +261,8 @@ TEST_F(ShapeInferenceTest, Complex) {
   ASSERT_FALSE(complex_shape(pred_, pred_, {}).ok());
   // Component types must match.
   ASSERT_FALSE(complex_shape(f32_, f64_, {}).ok());
-  // Only F32->C64 supported.
-  ASSERT_FALSE(complex_shape(f64_, f64_, {}).ok());
+  // Only F32->C64 and F64->C128 supported.
+  ASSERT_FALSE(complex_shape(f16_, f16_, {}).ok());
   // Validate correct uses.
   Shape c64_32 = ShapeUtil::MakeShape(C64, {32});
   TF_ASSERT_OK_AND_ASSIGN(Shape result, complex_shape(f32_, f32_, {}));
@@ -285,6 +286,9 @@ TEST_F(ShapeInferenceTest, Complex) {
   ASSERT_TRUE(ShapeUtil::Equal(result, c64_32_64));
   TF_ASSERT_OK_AND_ASSIGN(result, complex_shape(matrix_32_64_, f32_, {}));
   ASSERT_TRUE(ShapeUtil::Equal(result, c64_32_64));
+
+  TF_ASSERT_OK_AND_ASSIGN(result, complex_shape(f64_, f64_, {}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, ShapeUtil::MakeShape(C128, {})));
 }
 
 TEST_F(ShapeInferenceTest, VariadicOpTuplify) {

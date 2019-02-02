@@ -266,6 +266,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           round_trip_dataset, [self.evaluate(tf_value_fn())],
           requires_initialization=True)
 
+  # NOTE: This test is specific to graph mode and is skipped in eager mode.
   @test_util.run_deprecated_v1
   def testSkipEagerSameGraphErrorOneShot(self):
     dataset = dataset_ops.Dataset.range(10)
@@ -273,6 +274,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
         dataset = dataset.batch(2)
 
+  # NOTE: This test is specific to graph mode and is skipped in eager mode.
   @test_util.run_deprecated_v1
   def testSkipEagerSameGraphErrorOneShotSimple(self):
     dataset = dataset_ops.Dataset.range(10)
@@ -283,6 +285,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
             str(mock_log.call_args), "Please ensure that all datasets in the "
             "pipeline are created in the same graph as the iterator.")
 
+  # NOTE: This test is specific to graph mode and is skipped in eager mode.
   @test_util.run_deprecated_v1
   def testSkipEagerSameGraphErrorInitializable(self):
     dataset = dataset_ops.Dataset.range(10)

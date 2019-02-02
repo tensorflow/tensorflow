@@ -33,26 +33,26 @@ namespace stream_executor {
 
 class Stream;
 
-namespace cuda {
+namespace gpu {
 
 // Opaque and unique identifier for the cuBLAS plugin.
 extern const PluginId kCuBlasPlugin;
 
-class CUDAExecutor;
+class GpuExecutor;
 
 // BLAS plugin for CUDA platform via cuBLAS library.
 //
 // This satisfies the platform-agnostic BlasSupport interface.
 //
 // Note that the cuBLAS handle that this encapsulates is implicitly tied to the
-// context (and, as a result, the device) that the parent CUDAExecutor is tied
+// context (and, as a result, the device) that the parent GpuExecutor is tied
 // to. This simply happens as an artifact of creating the cuBLAS handle when a
 // CUDA context is active.
 //
 // Thread-safe post-initialization.
 class CUDABlas : public blas::BlasSupport {
  public:
-  explicit CUDABlas(CUDAExecutor *parent);
+  explicit CUDABlas(GpuExecutor *parent);
 
   // Allocates a cuBLAS handle.
   bool Init();
@@ -145,9 +145,9 @@ class CUDABlas : public blas::BlasSupport {
   // mutex that guards the cuBLAS handle for this device.
   mutex mu_;
 
-  // CUDAExecutor which instantiated this CUDABlas.
+  // GpuExecutor which instantiated this CUDABlas.
   // Immutable post-initialization.
-  CUDAExecutor *parent_;
+  GpuExecutor *parent_;
 
   // cuBLAS library handle on the device.
   cublasHandle_t blas_ GUARDED_BY(mu_);
@@ -155,7 +155,7 @@ class CUDABlas : public blas::BlasSupport {
   SE_DISALLOW_COPY_AND_ASSIGN(CUDABlas);
 };
 
-}  // namespace cuda
+}  // namespace gpu
 }  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_

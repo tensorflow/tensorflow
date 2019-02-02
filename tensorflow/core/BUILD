@@ -70,6 +70,9 @@ package(default_visibility = [
 
 licenses(["notice"])  # Apache 2.0
 
+# Export the BUILD file so automated tooling can check licenses
+exports_files(["BUILD"])
+
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
@@ -87,7 +90,6 @@ load(
     "tf_gen_op_libs",
     "tf_generate_proto_text_sources",
     "tf_genrule_cmd_append_to_srcs",
-    "tf_gpu_kernel_library",
     "tf_opts_nortti_if_android",
     "transitive_hdrs",
 )
@@ -179,7 +181,6 @@ COMMON_PROTO_SRCS = [
     "framework/function.proto",
     "framework/graph.proto",
     "framework/graph_transfer_info.proto",
-    "framework/iterator.proto",
     "framework/kernel_def.proto",
     "framework/log_memory.proto",
     "framework/node_def.proto",
@@ -200,10 +201,12 @@ COMMON_PROTO_SRCS = [
     "protobuf/cluster.proto",
     "protobuf/debug.proto",
     "protobuf/device_properties.proto",
+    "protobuf/graph_debug_info.proto",
     "protobuf/queue_runner.proto",
     "protobuf/rewriter_config.proto",
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
+    "protobuf/verifier_config.proto",
     "util/event.proto",
     "util/memmapped_file_system.proto",
     "util/saved_tensor_slice.proto",
@@ -505,6 +508,7 @@ cc_library(
         ":platform_port",
         ":platform_protobuf",
         "//tensorflow/core/platform/default/build_config:env",
+        "//tensorflow/core/platform/default/build_config:port",
     ],
 )
 
@@ -1018,6 +1022,7 @@ cc_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
+        "//tensorflow/core/util/proto:proto_utils",
     ],
 )
 
@@ -1075,6 +1080,7 @@ tf_gen_op_libs(
         "tensor_forest_ops",
         "candidate_sampling_ops",
         "checkpoint_ops",
+        "clustering_ops",
         "collective_ops",
         "control_flow_ops",
         "ctc_ops",
@@ -1100,6 +1106,7 @@ tf_gen_op_libs(
         "parsing_ops",
         "random_grad",
         "random_ops",
+        "stateful_random_ops",
         "remote_fused_graph_ops",
         "rpc_ops",
         "scoped_allocator_ops",
@@ -1229,6 +1236,7 @@ cc_library(
         ":tensor_forest_ops_op_lib",
         ":candidate_sampling_ops_op_lib",
         ":checkpoint_ops_op_lib",
+        ":clustering_ops_op_lib",
         ":collective_ops_op_lib",
         ":control_flow_ops_op_lib",
         ":ctc_ops_op_lib",
@@ -1254,6 +1262,7 @@ cc_library(
         ":parsing_ops_op_lib",
         ":ragged_ops",
         ":random_ops_op_lib",
+        ":stateful_random_ops_op_lib",
         ":remote_fused_graph_ops_op_lib",
         ":resource_variable_ops_op_lib",
         ":rpc_ops_op_lib",
@@ -1383,6 +1392,7 @@ cc_library(
         "//tensorflow/core/kernels:tensor_forest_ops",
         "//tensorflow/core/kernels:candidate_sampler_ops",
         "//tensorflow/core/kernels:checkpoint_ops",
+        "//tensorflow/core/kernels:clustering_ops",
         "//tensorflow/core/kernels:collective_ops",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:ctc_ops",
@@ -1403,12 +1413,15 @@ cc_library(
         "//tensorflow/core/kernels:manip",
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/kernels:multinomial_op",
+        "//tensorflow/core/kernels:mutex_ops",
         "//tensorflow/core/kernels:nn",
         "//tensorflow/core/kernels:parameterized_truncated_normal_op",
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/core/kernels:partitioned_function_ops",
+        "//tensorflow/core/kernels:pooling_ops",
         "//tensorflow/core/kernels:ragged_ops",
         "//tensorflow/core/kernels:random_ops",
+        "//tensorflow/core/kernels:stateful_random_ops",
         "//tensorflow/core/kernels:random_poisson_op",
         "//tensorflow/core/kernels:remote_fused_graph_ops",
         "//tensorflow/core/kernels:required",
@@ -1952,6 +1965,14 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "rocm",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:rocm",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Clif-related proto libraries.
 
@@ -2210,7 +2231,6 @@ cc_library(
             "lib/**/*.cc",
             "platform/*.cc",
             "platform/profile_utils/**/*.cc",
-        ] + [
             "framework/resource_handle.cc",
             "util/env_var.cc",
         ],
@@ -2820,6 +2840,8 @@ tf_cuda_library(
         ":protos_all_cc",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3025,6 +3047,7 @@ tf_cuda_library(
         ":framework",
         ":graph",
         ":lib",
+        ":metrics",
         ":proto_text",
         ":protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
@@ -3163,15 +3186,6 @@ cc_library(
     ],
 )
 
-tf_gpu_kernel_library(
-    name = "gpu_device_kernel_check",
-    srcs = ["common_runtime/gpu/gpu_device_kernel_check.cu.cc"],
-    hdrs = ["common_runtime/gpu/gpu_device_kernel_check.h"],
-    deps = [
-        "//tensorflow/core:stream_executor",
-    ],
-)
-
 GPU_RUNTIME_HEADERS = [
     "common_runtime/gpu/cuda_host_allocator.h",
     "common_runtime/gpu/gpu_bfc_allocator.h",
@@ -3210,7 +3224,6 @@ tf_cuda_library(
         ":core_cpu_lib",
         ":framework",
         ":framework_internal",
-        ":gpu_device_kernel_check",
         ":gpu_id_impl",
         ":gpu_init_impl",
         ":gpu_lib",
@@ -3718,7 +3731,6 @@ tf_cc_tests(
     srcs = [
         "common_runtime/buf_rendezvous_test.cc",
         "common_runtime/collective_executor_mgr_test.cc",
-        "common_runtime/collective_param_resolver_local_test.cc",
         "common_runtime/collective_rma_local_test.cc",
         "common_runtime/device_resolver_local_test.cc",
         "common_runtime/device_set_test.cc",
@@ -3834,6 +3846,7 @@ tf_cc_tests(
     name = "higher_level_tests_needing_kernels",
     size = "small",
     srcs = [
+        "common_runtime/collective_param_resolver_local_test.cc",
         "graph/graph_constructor_test.cc",
     ],
     linkopts = select({

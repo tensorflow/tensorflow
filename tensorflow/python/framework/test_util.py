@@ -82,6 +82,19 @@ from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.tf_export import tf_export
 
 
+# If the above import is made available through the BUILD rule, then this
+# function is overridden and will instead return True and cause Tensorflow
+# graphs to be compiled with XLA.
+def is_xla_enabled():
+  return False
+
+
+try:
+  from tensorflow.python.framework.is_xla_test_true import is_xla_enabled  # pylint: disable=g-import-not-at-top
+except:
+  pass
+
+
 @tf_export("test.gpu_device_name")
 def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
@@ -97,6 +110,7 @@ def assert_ops_in_graph(expected_ops, graph):
   Args:
     expected_ops: `dict<string, string>` of op name to op type.
     graph: Graph to check.
+
   Returns:
     `dict<string, node>` of node name to node.
 
@@ -118,7 +132,7 @@ def assert_ops_in_graph(expected_ops, graph):
 
 
 @tf_export("test.assert_equal_graph_def", v1=[])
-def assert_equal_graph_def_v2(actual, expected):
+def assert_equal_graph_def_v2(expected, actual):
   """Asserts that two `GraphDef`s are (mostly) the same.
 
   Compares two `GraphDef` protos for equality, ignoring versions and ordering of
@@ -127,8 +141,8 @@ def assert_equal_graph_def_v2(actual, expected):
   ignores randomized attribute values that may appear in V2 checkpoints.
 
   Args:
-    actual: The `GraphDef` we have.
     expected: The `GraphDef` we expected.
+    actual: The `GraphDef` we have.
 
   Raises:
     AssertionError: If the `GraphDef`s do not match.
@@ -149,7 +163,7 @@ def assert_equal_graph_def_v1(actual, expected, checkpoint_v2=False):
     actual: The `GraphDef` we have.
     expected: The `GraphDef` we expected.
     checkpoint_v2: boolean determining whether to ignore randomized attribute
-        values that appear in V2 checkpoints.
+      values that appear in V2 checkpoints.
 
   Raises:
     AssertionError: If the `GraphDef`s do not match.
@@ -360,7 +374,8 @@ def skip_if(condition):
 
   Args:
     condition: Either an expression that can be used in "if not condition"
-               statement, or a callable whose result should be a boolean.
+      statement, or a callable whose result should be a boolean.
+
   Returns:
     The wrapped function
   """
@@ -483,9 +498,11 @@ def disable_control_flow_v2(unused_msg):
   Returns:
     The wrapped function with _disable_control_flow_v2 attr set to True.
   """
+
   def wrapper(func):
     func._disable_control_flow_v2 = True
     return func
+
   return wrapper
 
 
@@ -568,6 +585,7 @@ def assert_no_new_tensors(f):
 
   Args:
     f: The test case to run.
+
   Returns:
     The decorated test case.
   """
@@ -727,6 +745,7 @@ def assert_no_garbage_created(f):
 
   Args:
     f: The function to decorate.
+
   Returns:
     The decorated function.
   """
@@ -735,7 +754,7 @@ def assert_no_garbage_created(f):
     """Sets DEBUG_SAVEALL, runs the test, and checks for new garbage."""
     # Force-load `distribution_strategy_context` to prevent GC at
     # test time when using eager. Remove once b/117329403 is resolved.
-    tape.distribution_strategy_context.get_distribution_strategy()
+    tape.distribution_strategy_context.get_strategy()
 
     gc.disable()
     previous_debug_flags = gc.get_debug()
@@ -799,8 +818,8 @@ def _combine_named_parameters(**kwargs):
   can be computed using `times()`.
 
   Args:
-    **kwargs: keyword arguments of form `option=[possibilities, ...]`
-         or `option=the_only_possibility`.
+    **kwargs: keyword arguments of form `option=[possibilities, ...]` or
+      `option=the_only_possibility`.
 
   Returns:
     a list of dictionaries for each combination. Keys in the dictionaries are
@@ -838,8 +857,8 @@ def generate_combinations_with_testcase_name(**kwargs):
   parameterized tests.
 
   Args:
-    **kwargs: keyword arguments of form `option=[possibilities, ...]`
-         or `option=the_only_possibility`.
+    **kwargs: keyword arguments of form `option=[possibilities, ...]` or
+      `option=the_only_possibility`.
 
   Returns:
     a list of dictionaries for each combination. Keys in the dictionaries are
@@ -867,10 +886,10 @@ def run_all_in_graph_and_eager_modes(cls):
   """Execute all test methods in the given class with and without eager."""
   base_decorator = run_in_graph_and_eager_modes
   for name, value in cls.__dict__.copy().items():
-    if (callable(value) and
-        name.startswith(unittest.TestLoader.testMethodPrefix) and
-        not (name.startswith("testSkipEager")
-             or name.startswith("test_skip_eager"))):
+    if callable(value) and name.startswith(
+        unittest.TestLoader.testMethodPrefix) and not (
+            name.startswith("testSkipEager") or
+            name.startswith("test_skip_eager") or name == "test_session"):
       setattr(cls, name, base_decorator(value))
   return cls
 
@@ -917,8 +936,8 @@ def run_in_graph_and_eager_modes(func=None,
     func: function to be annotated. If `func` is None, this method returns a
       decorator the can be applied to a function. If `func` is not None this
       returns the decorator applied to `func`.
-    config: An optional config_pb2.ConfigProto to use to configure the
-      session when executing graphs.
+    config: An optional config_pb2.ConfigProto to use to configure the session
+      when executing graphs.
     use_gpu: If True, attempt to run as many operations as possible on GPU.
     reset_test: If True, tearDown and SetUp the test case between the two
       executions of the test (once with and once without eager execution).
@@ -932,6 +951,7 @@ def run_in_graph_and_eager_modes(func=None,
       collected elsewhere in the unit test file will not work). Additionally,
       checks that nothing still has a reference to Tensors that the test
       allocated.
+
   Returns:
     Returns a decorator that will run the decorated test method twice:
     once by constructing and executing a graph in a session and once with
@@ -992,9 +1012,10 @@ def py_func_if_in_function(f):
     if not ops.get_default_graph()._building_function:
       return f(*args, **kwds)
 
-    tensor_args, tensor_indices = zip(
-        *[(x, i) for i, x in enumerate(args)
-          if isinstance(x, (ops.Tensor, variables.Variable))])
+    tensor_args, tensor_indices = zip(*[(x, i)
+                                        for i, x in enumerate(args)
+                                        if isinstance(x, (ops.Tensor,
+                                                          variables.Variable))])
 
     def inner_f(*inner_tensor_args):
       my_args = list(args)
@@ -1056,6 +1077,7 @@ def deprecated_graph_mode_only(func=None):
     func: function to be annotated. If `func` is None, this method returns a
       decorator the can be applied to a function. If `func` is not None this
       returns the decorator applied to `func`.
+
   Returns:
     Returns a decorator that will run the decorated test method in graph mode.
   """
@@ -1390,8 +1412,7 @@ class FakeEagerSession(object):
 
 
 class ErrorLoggingSession(session.Session):
-  """Wrapper around a Session that logs errors in run().
-  """
+  """Wrapper around a Session that logs errors in run()."""
 
   def run(self, *args, **kwargs):
     try:
@@ -1405,13 +1426,68 @@ class ErrorLoggingSession(session.Session):
       raise
 
 
+# The description is just for documentation purposes.
+def disable_xla(description):
+
+  def disable_xla_impl(func):
+    """Execute the test method only if xla is not enabled."""
+
+    def decorator(func):
+
+      def decorated(self, *args, **kwargs):
+        if is_xla_enabled():
+          return
+        else:
+          return func(self, *args, **kwargs)
+
+      return decorated
+
+    if func is not None:
+      return decorator(func)
+
+    return decorator
+
+  return disable_xla_impl
+
+
+# The description is just for documentation purposes.
+def disable_all_xla(description):
+
+  def disable_all_impl(cls):
+    """Execute all test methods in this class only if xla is not enabled."""
+    base_decorator = disable_xla
+    for name in dir(cls):
+      value = getattr(cls, name)
+      if callable(value) and name.startswith(
+          "test") and not name == "test_session":
+        setattr(cls, name, base_decorator(value))
+    return cls
+
+  return disable_all_impl
+
+
+class EagerSessionWarner(object):
+
+  def __getattr__(self, attr):
+    raise AttributeError(
+        "Trying to access properties or call methods on the result of "
+        "self.session(), self.cached_session(), etc while eager execution "
+        "is enabled. If you're porting this test case to TF 2.0, either "
+        "adapt the test to work with eager execution or insert a call to "
+        "tf.disable_eager_execution() in the main() function of this test "
+        "file.")
+
+
 @tf_export("test.TestCase")
 class TensorFlowTestCase(googletest.TestCase):
-  """Base class for tests that need to test TensorFlow.
-  """
+  """Base class for tests that need to test TensorFlow."""
 
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TensorFlowTestCase, self).__init__(methodName)
+    if is_xla_enabled():
+      os.putenv(
+          "TF_XLA_FLAGS", "--tf_xla_auto_jit=2 --tf_xla_min_cluster_size=1 "
+          "--tf_xla_enable_lazy_compilation=false")
     self._threads = []
     self._tempdir = None
     self._cached_session = None
@@ -1489,9 +1565,9 @@ class TensorFlowTestCase(googletest.TestCase):
     ```
 
     Args:
-      stream: The stream whose writes should be captured. This
-        stream must have a file descriptor, support writing via using that
-        file descriptor, and must have a `.flush()` method.
+      stream: The stream whose writes should be captured. This stream must have
+        a file descriptor, support writing via using that file descriptor, and
+        must have a `.flush()` method.
 
     Yields:
       A `CapturedWrites` object that contains all writes to the specified stream
@@ -1582,8 +1658,13 @@ class TensorFlowTestCase(googletest.TestCase):
     else:
       try:
         if sparse_tensor.is_sparse(tensor):
-          return sparse_tensor.SparseTensorValue(tensor.indices, tensor.values,
-                                                 tensor.dense_shape)
+          return sparse_tensor.SparseTensorValue(tensor.indices.numpy(),
+                                                 tensor.values.numpy(),
+                                                 tensor.dense_shape.numpy())
+        elif isinstance(tensor, ops.IndexedSlices):
+          return ops.IndexedSlicesValue(values=tensor.values.numpy(),
+                                        indices=tensor.indices.numpy(),
+                                        dense_shape=tensor.dense_shape.numpy())
         return tensor.numpy()
       except AttributeError as e:
         six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)
@@ -1650,7 +1731,7 @@ class TensorFlowTestCase(googletest.TestCase):
       the graph building and execution code in a test case.
     """
     if context.executing_eagerly():
-      yield None
+      yield EagerSessionWarner()
     else:
       with self._create_session(graph, config, force_gpu) as sess:
         with self._constrain_devices_and_set_default(sess, use_gpu, force_gpu):
@@ -1840,7 +1921,6 @@ class TensorFlowTestCase(googletest.TestCase):
     self._threads.append(ret)
     return ret
 
-
   # pylint: enable=invalid-name
   @py_func_if_in_function
   def assertNear(self, f1, f2, err, msg=None):
@@ -1857,9 +1937,8 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     # f1 == f2 is needed here as we might have: f1, f2 = inf, inf
     self.assertTrue(
-        f1 == f2 or math.fabs(f1 - f2) <= err,
-        "%f != %f +/- %f%s" % (f1, f2, err, " (%s)" % msg
-                               if msg is not None else ""))
+        f1 == f2 or math.fabs(f1 - f2) <= err, "%f != %f +/- %f%s" %
+        (f1, f2, err, " (%s)" % msg if msg is not None else ""))
 
   @py_func_if_in_function
   def assertArrayNear(self, farray1, farray2, err, msg=None):
@@ -2028,11 +2107,11 @@ class TensorFlowTestCase(googletest.TestCase):
 
     Args:
       a: The expected numpy `ndarray`, or anything that can be converted into a
-         numpy `ndarray` (including Tensor), or any arbitrarily nested of
-         structure of these.
+        numpy `ndarray` (including Tensor), or any arbitrarily nested of
+        structure of these.
       b: The actual numpy `ndarray`, or anything that can be converted into a
-         numpy `ndarray` (including Tensor), or any arbitrarily nested of
-         structure of these.
+        numpy `ndarray` (including Tensor), or any arbitrarily nested of
+        structure of these.
       rtol: relative tolerance.
       atol: absolute tolerance.
       msg: Optional message to report on failure.
@@ -2160,8 +2239,8 @@ class TensorFlowTestCase(googletest.TestCase):
     """Assert element values are all greater than a target value.
 
     Args:
-      a: The numpy `ndarray`, or anything that can be converted into a
-         numpy `ndarray` (including Tensor).
+      a: The numpy `ndarray`, or anything that can be converted into a numpy
+        `ndarray` (including Tensor).
       comparison_target: The target value of comparison.
     """
     a = self._GetNdArray(a)
@@ -2172,8 +2251,8 @@ class TensorFlowTestCase(googletest.TestCase):
     """Assert element values are all less than a target value.
 
     Args:
-      a: The numpy `ndarray`, or anything that can be converted into a
-         numpy `ndarray` (including Tensor).
+      a: The numpy `ndarray`, or anything that can be converted into a numpy
+        `ndarray` (including Tensor).
       comparison_target: The target value of comparison.
     """
     a = self._GetNdArray(a)
@@ -2184,8 +2263,8 @@ class TensorFlowTestCase(googletest.TestCase):
     """Assert element values are all greater than or equal to a target value.
 
     Args:
-      a: The numpy `ndarray`, or anything that can be converted into a
-         numpy `ndarray` (including Tensor).
+      a: The numpy `ndarray`, or anything that can be converted into a numpy
+        `ndarray` (including Tensor).
       comparison_target: The target value of comparison.
     """
     a = self._GetNdArray(a)
@@ -2196,8 +2275,8 @@ class TensorFlowTestCase(googletest.TestCase):
     """Assert element values are all less than or equal to a target value.
 
     Args:
-      a: The numpy `ndarray`, or anything that can be converted into a
-         numpy `ndarray` (including Tensor).
+      a: The numpy `ndarray`, or anything that can be converted into a numpy
+        `ndarray` (including Tensor).
       comparison_target: The target value of comparison.
     """
     a = self._GetNdArray(a)
@@ -2245,7 +2324,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
     Args:
       target: The numpy `ndarray`, or anything that can be converted into a
-         numpy `ndarray` (including Tensor).
+        numpy `ndarray` (including Tensor).
       lower_bound: lower bound of the range
       upper_bound: upper bound of the range
       open_lower_bound: (`bool`) whether the lower bound is open (i.e., > rather
@@ -2279,8 +2358,8 @@ class TensorFlowTestCase(googletest.TestCase):
                  str(upper_bound) + (")" if open_upper_bound else "]"))
 
     violations = (
-        np.less_equal(target, lower_bound)
-        if open_lower_bound else np.less(target, lower_bound))
+        np.less_equal(target, lower_bound) if open_lower_bound else np.less(
+            target, lower_bound))
     violations = np.logical_or(
         violations,
         np.greater_equal(target, upper_bound)
@@ -2299,7 +2378,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
     Args:
       target: The numpy `ndarray`, or anything that can be converted into a
-         numpy `ndarray` (including Tensor).
+        numpy `ndarray` (including Tensor).
       expected_set: (`list`, `tuple` or `set`) The closed set that the elements
         of the value of `target` are expected to fall into.
 
@@ -2321,7 +2400,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
     Args:
       target: The numpy `ndarray`, or anything that can be converted into a
-         numpy `ndarray` (including Tensor).
+        numpy `ndarray` (including Tensor).
       expected_dtype: Expected data type.
     """
     target = self._GetNdArray(target)
@@ -2342,9 +2421,9 @@ class TensorFlowTestCase(googletest.TestCase):
     Args:
       exception_type: The expected type of exception that should be raised.
       expected_err_re_or_predicate: If this is callable, it should be a function
-        of one argument that inspects the passed-in exception and
-        returns True (success) or False (please fail the test). Otherwise, the
-        error message is expected to match this regular expression partially.
+        of one argument that inspects the passed-in exception and returns True
+        (success) or False (please fail the test). Otherwise, the error message
+        is expected to match this regular expression partially.
 
     Returns:
       A context manager to surround code that is expected to raise an
@@ -2445,6 +2524,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
   def _create_session(self, graph, config, force_gpu):
     """See session() for details."""
+
     def prepare_config(config):
       """Returns a config for sessions.
 
@@ -2547,10 +2627,10 @@ def create_local_cluster(num_workers,
   Args:
     num_workers: Number of worker servers to start.
     num_ps: Number of PS servers to start.
-    protocol: Communication protocol.  Allowed values are documented in
-      the documentation of `tf.train.Server`.
-    worker_config: (optional) ConfigProto to initialize workers. Can be used
-      to instantiate multiple devices etc.
+    protocol: Communication protocol.  Allowed values are documented in the
+      documentation of `tf.train.Server`.
+    worker_config: (optional) ConfigProto to initialize workers. Can be used to
+      instantiate multiple devices etc.
     ps_config: (optional) ConfigProto to initialize PS servers.
 
   Returns:

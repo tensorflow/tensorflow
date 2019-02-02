@@ -34,6 +34,7 @@ from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_de
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop
+from tensorflow.python.training.mode_keys import ModeKeys
 
 _RANDOM_SEED = 1337
 _TRAIN_SIZE = 200
@@ -316,15 +317,19 @@ def all_strategy_combinations():
   return strategy_minus_tpu_combinations() + tpu_strategy_combinations()
 
 
-# TODO(priyag): Add v2 optimizers here.
 def strategy_and_optimizer_combinations():
   return combinations.times(
       all_strategy_combinations(),
-      combinations.combine(
-          optimizer=[combinations.adagrad_optimizer_v1_fn,
-                     combinations.adam_optimizer_v1_fn,
-                     combinations.gradient_descent_optimizer_v1_fn,
-                     combinations.rmsprop_optimizer_v1_fn]))
+      combinations.combine(optimizer=[
+          combinations.adagrad_optimizer_v1_fn,
+          combinations.adagrad_optimizer_keras_v2_fn,
+          combinations.adam_optimizer_v1_fn,
+          combinations.adam_optimizer_keras_v2_fn,
+          combinations.gradient_descent_optimizer_v1_fn,
+          combinations.gradient_descent_optimizer_keras_v2_fn,
+          combinations.rmsprop_optimizer_v1_fn,
+          combinations.rmsprop_optimizer_keras_v2_fn
+      ]))
 
 
 def strategy_and_input_combinations():
@@ -741,7 +746,9 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                 callbacks=[keras.callbacks.LearningRateScheduler(schedule)])
-      grouped_models = distribution.unwrap(model._distributed_model)
+      grouped_models = distribution.unwrap(
+          distributed_training_utils.get_distributed_model(
+              model, ModeKeys.TRAIN))
       with distribution.scope():
         for m in grouped_models:
           self.assertAllClose(0.001, keras.backend.get_value(
@@ -787,16 +794,21 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
             verbose=0,
             sample_weight=sample_weight)
 
-      # Test with not specifying the `steps` argument.
-      with self.assertRaisesRegexp(
-          ValueError, 'the `steps_per_epoch` argument'):
+      # Test with not specifying the `steps` argument for dataset with
+      # infinite cardinality.
+      dataset = dataset.repeat()
+      with self.assertRaisesRegexp(ValueError, 'When passing an infinitely '
+                                   'repeating dataset, you must specify the '
+                                   '`steps_per_epoch` argument'):
         model.fit(dataset, epochs=1, verbose=0)
-      with self.assertRaisesRegexp(ValueError,
-                                   'the `steps` argument'):
+      with self.assertRaisesRegexp(ValueError, 'When passing an infinitely '
+                                   'repeating dataset, you must specify the '
+                                   '`steps` argument'):
         model.evaluate(dataset, verbose=0)
 
-      with self.assertRaisesRegexp(ValueError,
-                                   'the `steps` argument'):
+      with self.assertRaisesRegexp(ValueError, 'When passing an infinitely '
+                                   'repeating dataset, you must specify the '
+                                   '`steps` argument'):
         model.predict(dataset, verbose=0)
 
   @combinations.generate(combinations.combine(

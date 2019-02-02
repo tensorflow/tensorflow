@@ -25,6 +25,7 @@ import copy
 import weakref
 
 import gast
+import six
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import qual_names
@@ -149,6 +150,14 @@ class _Lambda(object):
     self.args = set()
 
 
+class _Comprehension(object):
+
+  no_root = True
+
+  def __init__(self):
+    self.targets = set()
+
+
 class ActivityAnalyzer(transformer.Base):
   """Annotates nodes with local scope information.
 
@@ -199,12 +208,27 @@ class ActivityAnalyzer(transformer.Base):
       if qn.owner_set & set(l.args):
         return
 
+    # When inside a comprehension, ignore any of the comprehensions's targets.
+    # This includes attributes or slices of those arguments.
+    # This is not true in Python2, which leaks symbols.
+    if six.PY3:
+      for l in self.state[_Comprehension]:
+        if qn in l.targets:
+          return
+        if qn.owner_set & set(l.targets):
+          return
+
     if isinstance(node.ctx, gast.Store):
-      self.scope.mark_modified(qn)
-      if qn.is_composite and composite_writes_alter_parent:
-        self.scope.mark_modified(qn.parent)
-      if self._in_aug_assign:
-        self.scope.mark_read(qn)
+      # In comprehensions, modified symbols are the comprehension targets.
+      if six.PY3 and self.state[_Comprehension].level > 0:
+        # Like a lambda's args, they are tracked separately in Python3.
+        self.state[_Comprehension].targets.add(qn)
+      else:
+        self.scope.mark_modified(qn)
+        if qn.is_composite and composite_writes_alter_parent:
+          self.scope.mark_modified(qn.parent)
+        if self._in_aug_assign:
+          self.scope.mark_read(qn)
     elif isinstance(node.ctx, gast.Load):
       self.scope.mark_read(qn)
     elif isinstance(node.ctx, gast.Param):
@@ -338,12 +362,41 @@ class ActivityAnalyzer(transformer.Base):
     self.state[_Lambda].exit()
     return node
 
+  def _process_iterable_comprehension(self, node):
+    # This handles ListComp, SetComp, GeneratorExp.
+    self.state[_Comprehension].enter()
+    # Note: it's important to visit the generators first to properly account
+    # for the variables local to these generators. Example: `x` is local to the
+    # expression `x for x in y`.
+    node.generators = self.visit_block(node.generators)
+    node.elt = self.visit(node.elt)
+    self.state[_Comprehension].exit()
+    return node
+
+  def visit_DictComp(self, node):
+    # Identical to _process_iterable_comprehension, different node names.
+    self.state[_Comprehension].enter()
+    node.generators = self.visit_block(node.generators)
+    node.key = self.visit(node.key)
+    node.value = self.visit(node.value)
+    self.state[_Comprehension].exit()
+    return node
+
+  def visit_ListComp(self, node):
+    return self._process_iterable_comprehension(node)
+
+  def visit_SetComp(self, node):
+    return self._process_iterable_comprehension(node)
+
+  def visit_GeneratorExp(self, node):
+    return self._process_iterable_comprehension(node)
+
   def visit_arguments(self, node):
     return self._process_statement(node)
 
   def visit_FunctionDef(self, node):
     # The FunctionDef node itself has a Scope object that tracks the creation
-    # of its name, along with the usage of any decorator accompany it.
+    # of its name, along with the usage of any decorator accompanying it.
     self._enter_scope(False)
     node.decorator_list = self.visit_block(node.decorator_list)
     self.scope.mark_modified(qual_names.QN(node.name))

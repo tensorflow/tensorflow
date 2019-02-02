@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/colocation.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/grappler/verifiers/structure_verifier.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/dump_graph.h"
@@ -123,7 +124,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("scoped_allocator",
          new ScopedAllocatorOptimizer(cfg_.scoped_allocator_optimization(),
                                       cfg_.scoped_allocator_opts()));
-  MK_OPT("small_op", new PinToHostOptimizer(cfg_.pin_to_host_optimization()));
+  MK_OPT("pin_to_host",
+         new PinToHostOptimizer(cfg_.pin_to_host_optimization()));
 
   return std::unique_ptr<GraphOptimizer>();
 }
@@ -163,7 +165,7 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.remapping() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
-  if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
+  if (cfg_.pin_to_host_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
@@ -284,6 +286,20 @@ MetaOptimizer::GetCustomGraphOptimizerConfig(const string& name) const {
   return nullptr;
 }
 
+void MetaOptimizer::InitializeVerifiers(
+    std::vector<std::unique_ptr<GraphVerifier>>* inter_optimizer_verifiers,
+    std::vector<std::unique_ptr<GraphVerifier>>* post_optimization_verifiers)
+    const {
+  if (cfg_.inter_optimizer_verifier_config().structure_verifier() ==
+      VerifierConfig::ON) {
+    inter_optimizer_verifiers->push_back(MakeUnique<StructureVerifier>());
+  }
+  if (cfg_.post_optimization_verifier_config().structure_verifier() ==
+      VerifierConfig::ON) {
+    post_optimization_verifiers->push_back(MakeUnique<StructureVerifier>());
+  }
+}
+
 #define RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer)                            \
   {                                                                            \
     const Status status = RunOptimizer(optimizer, cluster, &optimized_item,    \
@@ -312,6 +328,23 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
     TF_RETURN_IF_ERROR(InitializeOptimizers(&optimizers));
   } else {
     TF_RETURN_IF_ERROR(InitializeOptimizersByName(&optimizers));
+  }
+
+  // Initialize the configured verifiers.
+  std::vector<std::unique_ptr<GraphVerifier>> inter_optimizer_verifiers;
+  std::vector<std::unique_ptr<GraphVerifier>> post_optimization_verifiers;
+  InitializeVerifiers(&inter_optimizer_verifiers, &post_optimization_verifiers);
+  if (inter_optimizer_verifiers.empty()) {
+    VLOG(2) << "No inter optimizer verifiers have been configured";
+  } else {
+    VLOG(2) << inter_optimizer_verifiers.size()
+            << " inter optimizer verifiers have been configured";
+  }
+  if (post_optimization_verifiers.empty()) {
+    VLOG(2) << "No post optimization verifiers have been configured";
+  } else {
+    VLOG(2) << post_optimization_verifiers.size()
+            << " post optimization verifiers have been configured";
   }
 
   VLOG(2) << "Optimize GrapplerItem: item.id=" << item.id
@@ -344,6 +377,12 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
     }
 
     VLOG(4) << "Starting optimization iteration " << iteration;
+    if (VLOG_IS_ON(4)) {
+      DumpGraphDefToFile(
+          strings::StrCat("before_MetaOptimizer_iteration_", iteration, "_",
+                          reinterpret_cast<uintptr_t>(optimized_graph)),
+          *optimized_graph);
+    }
     for (const auto& optimizer : optimizers) {
       GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
       // Some optimizers can run only once.
@@ -358,6 +397,28 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
       RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer.get());
+
+      if (VLOG_IS_ON(4)) {
+        DumpGraphDefToFile(
+            strings::StrCat("after_MetaOptimizer_iteration_", iteration, "_",
+                            optimizer->name(), "_",
+                            reinterpret_cast<uintptr_t>(optimized_graph)),
+            *optimized_graph);
+      }
+      for (const auto& verifier : inter_optimizer_verifiers) {
+        // TODO(ashwinm): Need to enforce verification_deadline.
+        TF_RETURN_IF_ERROR(verifier->Verify(*optimized_graph));
+      }
+    }
+    if (VLOG_IS_ON(4)) {
+      DumpGraphDefToFile(
+          strings::StrCat("after_MetaOptimizer_iteration_", iteration, "_",
+                          reinterpret_cast<uintptr_t>(optimized_graph)),
+          *optimized_graph);
+    }
+    // TODO(ashwinm): Need to enforce verification_deadline.
+    for (const auto& verifier : post_optimization_verifiers) {
+      TF_RETURN_IF_ERROR(verifier->Verify(*optimized_graph));
     }
   }
 
@@ -470,7 +531,10 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   if (IsTPUGraphDef(*optimized_graph)) {
     VLOG(2) << "Skipping optimizing funcs for TPU graphs";
     if (VLOG_IS_ON(1)) {
-      DumpGraphDefToFile("after_MetaOptimizer", *optimized_graph);
+      DumpGraphDefToFile(
+          strings::StrCat("after_MetaOptimizer_",
+                          reinterpret_cast<uintptr_t>(optimized_graph)),
+          *optimized_graph);
     }
     return Status::OK();
   }
@@ -489,7 +553,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Optimize each function only once.
   absl::flat_hash_set<string> optimized_funcs;
-  bool optimize_function_library = true;
+  bool optimize_function_library =
+      item.optimization_options().optimize_function_library;
 
   while (optimize_function_library) {
     optimize_function_library = false;
@@ -527,7 +592,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // can't perform non-differentiable rewrites.
       if (differentiable_functions.find(func_name) !=
           differentiable_functions.end()) {
-        func_item.allowed_optimizations().non_differentiable_rewrites = false;
+        func_item.optimization_options().allow_non_differentiable_rewrites =
+            false;
       }
 
       // Function item is allowed to use all devices from the main graph.
@@ -536,10 +602,12 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         VLOG(3) << added_devices.error_message();
       }
 
-      // We are not allowed to prune side effects from the graph instantiated
-      // by the function definition, because we must guarantee function
-      // execution semantics wrt side effects (see function_optimizer.cc).
-      func_item.allowed_optimizations().prune_ops_with_side_effects = false;
+      // We are not allowed to prune certain types of ops from the graph
+      // instantiated by the function definition, because we must guarantee
+      // function execution semantics wrt side effects (see
+      // function_optimizer.cc).
+      func_item.optimization_options().allow_pruning_stateful_and_dataset_ops =
+          false;
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;
@@ -574,7 +642,10 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           << " functions: " << str_util::Join(optimized_funcs, ", ");
 
   if (VLOG_IS_ON(1)) {
-    DumpGraphDefToFile("after_MetaOptimizer", *optimized_graph);
+    DumpGraphDefToFile(
+        strings::StrCat("after_MetaOptimizer_",
+                        reinterpret_cast<uintptr_t>(optimized_graph)),
+        *optimized_graph);
   }
   return Status::OK();
 }
@@ -611,7 +682,7 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          rewrite_cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          rewrite_cfg.debug_stripper() == RewriterConfig::ON ||
          rewrite_cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
-         rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
+         rewrite_cfg.pin_to_host_optimization() != RewriterConfig::OFF ||
          !rewrite_cfg.optimizers().empty() ||
          !rewrite_cfg.custom_optimizers().empty();
 }
@@ -629,16 +700,19 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
   return status;
 }
 
-Status OptimizeGraph(std::vector<string> ret_node_names,
-                     FunctionLibraryDefinition* flib,
-                     const DeviceSet& device_set, Device* cpu_device,
-                     const ConfigProto& config_proto,
-                     std::unique_ptr<tensorflow::Graph>* g) {
+Status OptimizeGraph(
+    std::vector<string> ret_node_names, FunctionLibraryDefinition* flib,
+    const DeviceSet& device_set, Device* cpu_device,
+    const ConfigProto& config_proto, const string& grappler_item_id,
+    const GrapplerItem::OptimizationOptions& optimization_options,
+    std::unique_ptr<tensorflow::Graph>* g) {
   if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto)) {
     return Status::OK();
   }
 
   tensorflow::grappler::GrapplerItem item;
+  item.id = grappler_item_id;
+  item.optimization_options() = optimization_options;
 
   // Add all available devices so that inlined function can be placed.
   for (const Device* d : device_set.devices()) {

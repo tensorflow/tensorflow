@@ -29,6 +29,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import string_ops
@@ -121,9 +122,15 @@ BINARY_BOOL_OPS = [
     math_ops.logical_xor,
 ]
 UNARY_INT_OPS = [
+    gen_bitwise_ops.invert,
     string_ops.unicode_script,
 ]
 BINARY_INT_OPS = [
+    gen_bitwise_ops.bitwise_and,
+    gen_bitwise_ops.bitwise_or,
+    gen_bitwise_ops.bitwise_xor,
+    gen_bitwise_ops.left_shift,
+    gen_bitwise_ops.right_shift,
     math_ops.truncatediv,
     math_ops.truncatemod,
 ]
@@ -680,6 +687,14 @@ class RaggedElementwiseOpsTest(ragged_test_util.RaggedTensorTestCase,
           op=array_ops.rank,
           kwargs={'input': ragged_factory_ops.constant_value([[8, 3], [5]])},
           expected=2),
+      dict(
+          op=array_ops.size,
+          kwargs={'input': ragged_factory_ops.constant_value([[8, 3], [5]])},
+          expected=3),
+      dict(
+          op=array_ops.size_v2,
+          kwargs={'input': ragged_factory_ops.constant_value([[8, 3], [5]])},
+          expected=3),
   ])
   def testRaggedDispatch(self, op, expected, args=(), kwargs=None):
     if kwargs is None: kwargs = {}

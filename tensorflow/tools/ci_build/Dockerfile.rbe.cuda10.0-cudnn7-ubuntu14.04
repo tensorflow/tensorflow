@@ -3,7 +3,7 @@
 #       --tag "gcr.io/tensorflow-testing/nosla-cuda10.0-cudnn7-ubuntu14.04" .
 # $ docker push gcr.io/tensorflow-testing/nosla-cuda10.0-cudnn7-ubuntu14.04
 
-FROM ubuntu:14.04
+FROM gcr.io/clang-docker-builder/clang-ubuntu14_04
 LABEL maintainer="Manuel Klimek <klimek@google.com>"
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates apt-transport-https gnupg-curl && \
@@ -59,13 +59,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # https://github.com/NVIDIA/nvidia-docker/issues/775
 RUN ln -s libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
 
-# Install a newer version of libstdc++, as new clang versions do not work
-# with the stock ubuntu 14.04 libstdc++.
+# Install a newer version of g++:
+# - we need a new libstdc++, because new clang versions do not work with a stock
+#   ubuntu 14.04 libstdc++.
+# - we want to compile with g++-7 to get ahead of LLVM dropping support for
+#   gcc 4.8.
 RUN apt-get update && \
     apt-get install -y software-properties-common && \
     add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
     apt-get update && \
-    apt-get install -y libstdc++-7-dev && \
+    apt-get install -y --no-install-recommends g++-7 && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy and run the install scripts.

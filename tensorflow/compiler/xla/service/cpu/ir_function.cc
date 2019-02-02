@@ -266,9 +266,11 @@ Status EmitCallToParallelForkJoin(
       /*Params=*/compute_function_params,
       /*isVarArg=*/false);
 
-  llvm::Function* fork_join_func =
-      llvm::cast<llvm::Function>(module->getOrInsertFunction(
-          runtime::kParallelForkJoinSymbolName, fork_join_type));
+  llvm::Function* fork_join_func = llvm::dyn_cast<llvm::Function>(
+      module
+          ->getOrInsertFunction(runtime::kParallelForkJoinSymbolName,
+                                fork_join_type)
+          .getCallee());
   fork_join_func->setCallingConv(llvm::CallingConv::C);
   fork_join_func->setDoesNotThrow();
 

@@ -206,7 +206,6 @@ cc_library(
 cc_library(
     name = "stream",
     srcs = [
-        "host_buffer.h",
         "stream.cc",
     ],
     hdrs = ["stream.h"],
@@ -453,12 +452,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "host_buffer",
-    hdrs = ["host_buffer.h"],
-    deps = [":dnn"],
-)
-
 tf_proto_library(
     name = "dnn_proto",
     srcs = ["dnn.proto"],
@@ -660,4 +653,9 @@ tf_cc_test(
 alias(
     name = "cuda_platform",
     actual = "//tensorflow/stream_executor/cuda:all_runtime",
+)
+
+alias(
+    name = "rocm_platform",
+    actual = "//tensorflow/stream_executor/rocm:all_runtime",
 )

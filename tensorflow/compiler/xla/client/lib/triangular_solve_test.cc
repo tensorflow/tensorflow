@@ -439,9 +439,9 @@ std::vector<TriangularSolveTestSpec> TriangularSolveTests() {
   return specs;
 }
 
-INSTANTIATE_TEST_CASE_P(TriangularSolveParametricTestInstantiation,
-                        TriangularSolveParametricTest,
-                        ::testing::ValuesIn(TriangularSolveTests()));
+INSTANTIATE_TEST_SUITE_P(TriangularSolveParametricTestInstantiation,
+                         TriangularSolveParametricTest,
+                         ::testing::ValuesIn(TriangularSolveTests()));
 
 }  // namespace
 }  // namespace xla

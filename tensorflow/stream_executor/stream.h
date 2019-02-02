@@ -109,6 +109,17 @@ class Stream {
   // stream.
   bool ok() const { return !InErrorState(); }
 
+  // Retrieves execution status back into the stream from the underlying
+  // implementation without blocking the stream.
+  //
+  // Normally, Stream::BlockHostUntilDone is used to get execution status.
+  // However, some devices use out-of-band mechnanisms to ensure their streams
+  // have finished on-device work, without needing to block the streams. (These
+  // devices should also override AllowsSyncOnCompletion to return false.) For
+  // these devices, this method can be used after work is finished to retrieve
+  // execution status.
+  port::Status RefreshStatus() LOCKS_EXCLUDED(mu_);
+
   // Initialize the stream. This must be performed before entraining any other
   // operations.
   Stream &Init() LOCKS_EXCLUDED(mu_);
@@ -262,19 +273,6 @@ class Stream {
       DeviceMemory<float> *scale_backprop,
       DeviceMemory<float> *offset_backprop);
 
-  // TODO(leary) add double-precision version of this interface.
-  Stream &ThenFusedConvolve(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<int8> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int8> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<int8> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<int8> *output);
-
   Stream &ThenConvolve(const dnn::BatchDescriptor &input_descriptor,
                        const DeviceMemory<float> &input_data,
                        const dnn::FilterDescriptor &filter_descriptor,
@@ -302,61 +300,6 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output_data);
-
-  Stream &ThenFusedConvolveWithScratch(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<int8> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int8> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<int8> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor, DeviceMemory<int8> *output,
-      ScratchAllocator *scratch_allocator);
-
-  Stream &ThenFusedConvolveWithScratch(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<Eigen::half> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<Eigen::half> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<Eigen::half> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<Eigen::half> &biases,
-      dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator);
-
-  Stream &ThenFusedConvolveWithScratch(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<float> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<float> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<float> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator);
-
-  Stream &ThenConvolveWithScratch(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<Eigen::half> &input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<Eigen::half> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator);
-
-  Stream &ThenConvolveWithScratch(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<float> &input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<float> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator);
 
   Stream &ThenConvolveWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
@@ -458,35 +401,6 @@ class Stream {
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output);
 
-  Stream &ThenConvolveBackwardData(
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<float> &filter_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<float> *backward_input_data);
-
-  Stream &ThenConvolveBackwardDataWithScratch(
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<float> &filter_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<float> *backward_input_data,
-      ScratchAllocator *scratch_allocator);
-
-  Stream &ThenConvolveBackwardDataWithScratch(
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<Eigen::half> &filter_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<Eigen::half> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<Eigen::half> *backward_input_data,
-      ScratchAllocator *scratch_allocator);
-
   Stream &ThenConvolveBackwardDataWithAlgorithm(
       const dnn::FilterDescriptor &filter_descriptor,
       const DeviceMemory<double> &filter_data,
@@ -522,35 +436,6 @@ class Stream {
       ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
-
-  Stream &ThenConvolveBackwardFilter(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<float> &input_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<float> *backward_filter_data);
-
-  Stream &ThenConvolveBackwardFilterWithScratch(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<float> &input_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<float> *backward_filter_data,
-      ScratchAllocator *scratch_allocator);
-
-  Stream &ThenConvolveBackwardFilterWithScratch(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<Eigen::half> &input_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<Eigen::half> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<Eigen::half> *backward_filter_data,
-      ScratchAllocator *scratch_allocator);
 
   Stream &ThenConvolveBackwardFilterWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
@@ -684,12 +569,6 @@ class Stream {
                            DeviceMemory<Eigen::half> *output_diff_data,
                            ScratchAllocator *workspace_allocator = nullptr);
 
-  Stream &ThenNormalize(const dnn::NormalizeDescriptor &normalize_descriptor,
-                        const DeviceMemory<float> &input_data,
-                        DeviceMemory<float> *output_data);
-
-  // Similar to ThenNormalize, but normalizes across feature maps and allows for
-  // specifying the dimensions of the tensor.
   Stream &ThenNormalizeWithDimensions(
       const dnn::NormalizeDescriptor &normalize_descriptor,
       const dnn::BatchDescriptor &dimensions,
@@ -2098,6 +1977,9 @@ class Stream {
     mutex_lock lock(mu_);
     ok_ = false;
   }
+
+  // Checks the status and logs the error message, if any.
+  void CheckStatus(port::Status status) LOCKS_EXCLUDED(mu_);
 
   void SetError() { CheckError(false /* = operation_retcode */); }
 

@@ -301,6 +301,11 @@ StatusOr<bool> DotDecomposer::Run(HloModule* module) {
         non_canonical_dots.push_back(instruction);
         continue;
       }
+      if (dnums.lhs_batch_dimensions().empty() &&
+          dnums.lhs_contracting_dimensions().empty()) {
+        non_canonical_dots.push_back(instruction);
+        continue;
+      }
       if (dnums.lhs_batch_dimensions().empty()) {
         continue;
       }

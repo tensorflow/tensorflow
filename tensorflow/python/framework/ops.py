@@ -41,6 +41,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import c_api_util
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -101,6 +102,9 @@ class _UserDeviceSpec(object):
 
 
 class NullContextmanager(object):
+
+  def __init__(self, *args, **kwargs):
+    pass
 
   def __enter__(self):
     pass
@@ -987,7 +991,8 @@ register_dense_tensor_like_type(Tensor)
 
 
 @tf_export(v1=["convert_to_tensor"])
-def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
+def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None,
+                      dtype_hint=None):
   """Converts the given `value` to a `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -1027,15 +1032,18 @@ def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
       dtype in mind when converting to a tensor, so preferred_dtype
       can be used as a soft preference.  If the conversion to
       `preferred_dtype` is not possible, this argument has no effect.
+    dtype_hint: same meaning as preferred_dtype, and overrides it.
 
   Returns:
-    An `Tensor` based on `value`.
+    A `Tensor` based on `value`.
 
   Raises:
     TypeError: If no conversion function is registered for `value` to `dtype`.
     RuntimeError: If a registered conversion function returns an invalid value.
     ValueError: If the `value` is a tensor not of given `dtype` in graph mode.
   """
+  preferred_dtype = deprecation.deprecated_argument_lookup(
+      "dtype_hint", dtype_hint, "preferred_dtype", preferred_dtype)
   return convert_to_tensor_v2(value, dtype, preferred_dtype, name)
 
 
@@ -1082,7 +1090,7 @@ def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
     name: Optional name to use if a new `Tensor` is created.
 
   Returns:
-    An `Tensor` based on `value`.
+    A `Tensor` based on `value`.
 
   Raises:
     TypeError: If no conversion function is registered for `value` to `dtype`.
@@ -1225,7 +1233,7 @@ def internal_convert_n_to_tensor(values,
       value.
   """
   if not isinstance(values, collections.Sequence):
-    raise TypeError("values must be a list.")
+    raise TypeError("values must be a sequence.")
   ret = []
   if ctx is None: ctx = context.context()
   for i, value in enumerate(values):
@@ -1289,7 +1297,7 @@ def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
     name: (Optional.) A name to use if a new `Tensor` is created.
 
   Returns:
-    An `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
+    A `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
 
   Raises:
     ValueError: If `dtype` does not match the element type of `value`.
@@ -1302,7 +1310,7 @@ def internal_convert_to_tensor_or_indexed_slices(value,
                                                  dtype=None,
                                                  name=None,
                                                  as_ref=False):
-  """Converts the given object to an `Tensor` or an `IndexedSlices`.
+  """Converts the given object to a `Tensor` or an `IndexedSlices`.
 
   If `value` is an `IndexedSlices` or `SparseTensor` it is returned
   unmodified. Otherwise, it is converted to a `Tensor` using
@@ -1317,7 +1325,7 @@ def internal_convert_to_tensor_or_indexed_slices(value,
     as_ref: True if the caller wants the results as ref tensors.
 
   Returns:
-    An `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
+    A `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
 
   Raises:
     ValueError: If `dtype` does not match the element type of `value`.
@@ -1348,7 +1356,7 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
   Args:
     values: A list of `None`, `IndexedSlices`, `SparseTensor`, or objects that
       can be consumed by `convert_to_tensor()`.
-    dtype: (Optional.) The required `DType` of the returned `Tensor`
+    dtype: (Optional.) The required `DType` of the returned `Tensor` or
       `IndexedSlices`.
     name: (Optional.) A name prefix to used when a new `Tensor` is
       created, in which case element `i` will be given the name `name
@@ -1356,7 +1364,7 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
     as_ref: True if the caller wants the results as ref tensors.
 
   Returns:
-    A list of `Tensor`, `IndexedSlices`, and/or `SparseTensor` objects.
+    A list of `Tensor`, `IndexedSlices`, `SparseTensor` and/or `None` objects.
 
   Raises:
     TypeError: If no conversion function is registered for an element in
@@ -1365,7 +1373,7 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
       value.
   """
   if not isinstance(values, collections.Sequence):
-    raise TypeError("values must be a list.")
+    raise TypeError("values must be a sequence.")
   ret = []
   for i, value in enumerate(values):
     if value is None:
@@ -1403,6 +1411,132 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None):
       value.
   """
   return internal_convert_n_to_tensor_or_indexed_slices(
+      values=values, dtype=dtype, name=name, as_ref=False)
+
+
+def convert_to_tensor_or_composite(value, dtype=None, name=None):
+  """Converts the given object to a `Tensor` or `CompositeTensor`.
+
+  If `value` is a `CompositeTensor` it is returned unmodified. Otherwise, it
+  is converted to a `Tensor` using `convert_to_tensor()`.
+
+  Args:
+    value: A `CompositeTensor` or an object that can be consumed
+      by `convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor` or
+      `CompositeTensor`.
+    name: (Optional.) A name to use if a new `Tensor` is created.
+
+  Returns:
+    A `Tensor` or `CompositeTensor`, based on `value`.
+
+  Raises:
+    ValueError: If `dtype` does not match the element type of `value`.
+  """
+  return internal_convert_to_tensor_or_composite(
+      value=value, dtype=dtype, name=name, as_ref=False)
+
+
+def internal_convert_to_tensor_or_composite(value,
+                                            dtype=None,
+                                            name=None,
+                                            as_ref=False):
+  """Converts the given object to a `Tensor` or `CompositeTensor`.
+
+  If `value` is a `CompositeTensor` it is returned unmodified.  Otherwise, it
+  is converted to a `Tensor` using `convert_to_tensor()`.
+
+  Args:
+    value: A `CompositeTensor`, or an object that can be consumed
+      by `convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor` or
+      `CompositeTensor`.
+    name: (Optional.) A name to use if a new `Tensor` is created.
+    as_ref: True if the caller wants the results as ref tensors.
+
+  Returns:
+    A `Tensor` or `CompositeTensor`, based on `value`.
+
+  Raises:
+    ValueError: If `dtype` does not match the element type of `value`.
+  """
+  if isinstance(value, composite_tensor.CompositeTensor):
+    value_dtype = getattr(value, "dtype", None)
+    if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value_dtype):
+      raise ValueError(
+          "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
+          (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
+    return value
+  else:
+    return internal_convert_to_tensor(
+        value, dtype=dtype, name=name, as_ref=as_ref)
+
+
+def internal_convert_n_to_tensor_or_composite(values,
+                                              dtype=None,
+                                              name=None,
+                                              as_ref=False):
+  """Converts `values` to a list of `Tensor` or `CompositeTensor` objects.
+
+  Any `CompositeTensor` objects in `values` are returned unmodified.
+
+  Args:
+    values: A list of `None`, `CompositeTensor`, or objects that
+      can be consumed by `convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor`s or
+      `CompositeTensor`s.
+    name: (Optional.) A name prefix to used when a new `Tensor` is
+      created, in which case element `i` will be given the name `name
+      + '_' + i`.
+    as_ref: True if the caller wants the results as ref tensors.
+
+  Returns:
+    A list of `Tensor`, `CompositeTensor`, and/or `None` objects.
+
+  Raises:
+    TypeError: If no conversion function is registered for an element in
+      `values`.
+    RuntimeError: If a registered conversion function returns an invalid
+      value.
+  """
+  if not isinstance(values, collections.Sequence):
+    raise TypeError("values must be a sequence.")
+  ret = []
+  for i, value in enumerate(values):
+    if value is None:
+      ret.append(value)
+    else:
+      n = None if name is None else "%s_%d" % (name, i)
+      ret.append(
+          internal_convert_to_tensor_or_composite(
+              value, dtype=dtype, name=n, as_ref=as_ref))
+  return ret
+
+
+def convert_n_to_tensor_or_composite(values, dtype=None, name=None):
+  """Converts `values` to a list of `Output` or `CompositeTensor` objects.
+
+  Any `CompositeTensor` objects in `values` are returned unmodified.
+
+  Args:
+    values: A list of `None`, `CompositeTensor``, or objects that
+      can be consumed by `convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor`s or
+      `CompositeTensor`s.
+    name: (Optional.) A name prefix to used when a new `Tensor` is
+      created, in which case element `i` will be given the name `name
+      + '_' + i`.
+
+  Returns:
+    A list of `Tensor` and/or `CompositeTensor` objects.
+
+  Raises:
+    TypeError: If no conversion function is registered for an element in
+      `values`.
+    RuntimeError: If a registered conversion function returns an invalid
+      value.
+  """
+  return internal_convert_n_to_tensor_or_composite(
       values=values, dtype=dtype, name=name, as_ref=False)
 
 
@@ -1485,7 +1619,7 @@ def register_tensor_conversion_function(base_type,
 
 
 @tf_export("IndexedSlices")
-class IndexedSlices(_TensorLike):
+class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
   """A sparse representation of a set of tensor slices at given indices.
 
   This class is a simple wrapper for a pair of `Tensor` objects:
@@ -1567,6 +1701,29 @@ class IndexedSlices(_TensorLike):
 
   def __neg__(self):
     return IndexedSlices(-self.values, self.indices, self.dense_shape)
+
+  def _to_components(self):
+    if self._dense_shape is None:
+      return (self._values, self._indices)
+    else:
+      return (self._values, self._indices, self._dense_shape)
+
+  @classmethod
+  def _from_components(cls, components):
+    return cls(*components)
+
+  def _shape_invariant_to_components(self, shape=None):
+    if shape is None:
+      shape = self._values.shape
+    if self._dense_shape is None:
+      return [shape, shape[:1]]  # values, indices
+    else:
+      # values, indices, dense_shape
+      return [shape, shape[:1], tensor_shape.TensorShape([shape.ndims])]
+
+  @property
+  def _is_graph_tensor(self):
+    return hasattr(self._values, 'graph')
 
 
 IndexedSlicesValue = collections.namedtuple(
@@ -2913,11 +3070,27 @@ class Graph(object):
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
   @tf_contextlib.contextmanager
-  def _variable_creator_scope(self, creator):
+  def _variable_creator_scope(self, creator, priority=100):
+    """Scope which defines a variable creation function.
+
+    Args:
+      creator: A callable taking `next_creator` and `kwargs`. See the
+        `tf.variable_creator_scope` docstring.
+      priority: Creators with a higher `priority` are called first. Within the
+        same priority, creators are called inner-to-outer.
+
+    Yields:
+      `_variable_creator_scope` is a context manager with a side effect, but
+      doesn't return a value.
+    """
     # This step makes a copy of the existing stack, and it also initializes
     # self._thread_local._variable_creator_stack if it doesn't exist yet.
     old = list(self._variable_creator_stack)
-    self._thread_local._variable_creator_stack.append(creator)  # pylint: disable=protected-access
+    stack = self._thread_local._variable_creator_stack  # pylint: disable=protected-access
+    stack.append((priority, creator))
+    # Sorting is stable, so we'll put higher-priority creators later in the list
+    # but otherwise maintain registration order.
+    stack.sort(key=lambda item: item[0])
     try:
       yield
     finally:
@@ -4992,12 +5165,19 @@ def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
         op, gradient_uid=gradient_uid, ignore_existing=ignore_existing)
 
 
+# Internal interface to colocate_with. colocate_with has been deprecated from
+# public API. There are still a few internal uses of colocate_with. Add internal
+# only API for those uses to avoid deprecation warning.
+def colocate_with(op, ignore_existing=False):
+  return _colocate_with_for_gradient(op, None, ignore_existing=ignore_existing)
+
+
 @deprecation.deprecated(
     date=None,
     instructions="Colocations handled automatically by placer.")
 @tf_export(v1=["colocate_with"])
-def colocate_with(op, ignore_existing=False):
-  return _colocate_with_for_gradient(op, None, ignore_existing=ignore_existing)
+def _colocate_with(op, ignore_existing=False):
+  return colocate_with(op, ignore_existing)
 
 
 @tf_export("control_dependencies")
@@ -5250,7 +5430,8 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
   @tf_contextlib.contextmanager
   def get_controller(self, default):
     context.context().context_switches.push(
-        default.building_function, default.as_default)
+        default.building_function, default.as_default,
+        default._device_function_stack)
     try:
       with super(_DefaultGraphStack, self).get_controller(
           default) as g, context.graph_mode():
@@ -5330,7 +5511,7 @@ def init_scope():
       # Names that end with trailing slashes are treated by `name_scope` as
       # absolute.
       scope = scope + "/"
-    inner_device_stack = default_graph._device_function_stack  # pylint: disable=protected-access
+    innermost_nonempty_device_stack = default_graph._device_function_stack  # pylint: disable=protected-access
 
     outer_context = None
     if not _default_graph_stack.stack:
@@ -5343,6 +5524,8 @@ def init_scope():
     else:
       # Find a context that is not building a function.
       for stack_entry in reversed(context.context().context_switches.stack):
+        if not innermost_nonempty_device_stack:
+          innermost_nonempty_device_stack = stack_entry.device_stack
         if not stack_entry.is_building_function:
           outer_context = stack_entry.enter_context_fn
           break
@@ -5371,7 +5554,7 @@ def init_scope():
           # to do the same when lifting into the eager context.
           outer_graph = get_default_graph()
           outer_device_stack = outer_graph._device_function_stack  # pylint: disable=protected-access
-          outer_graph._device_function_stack = inner_device_stack  # pylint: disable=protected-access
+          outer_graph._device_function_stack = innermost_nonempty_device_stack  # pylint: disable=protected-access
         yield
     finally:
       # If an exception is raised here it may be hiding a related exception in

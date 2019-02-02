@@ -67,15 +67,13 @@ struct DupRecvKey {
                       c.recv_output_on_host);
   }
 
-  friend bool operator==(const DupRecvKey& x, const DupRecvKey& y);
+  friend bool operator==(const DupRecvKey& x, const DupRecvKey& y) {
+    return (x.src_node_id == y.src_node_id) &&
+           (x.src_output_slot == y.src_output_slot) &&
+           (x.dst_graph == y.dst_graph) &&
+           (x.recv_output_on_host == y.recv_output_on_host);
+  }
 };
-
-bool operator==(const DupRecvKey& x, const DupRecvKey& y) {
-  return (x.src_node_id == y.src_node_id) &&
-         (x.src_output_slot == y.src_output_slot) &&
-         (x.dst_graph == y.dst_graph) &&
-         (x.recv_output_on_host == y.recv_output_on_host);
-}
 
 // struct used to store the recvs, so that start times can be properly updated
 struct RecvInfo {
@@ -88,7 +86,22 @@ typedef absl::flat_hash_map<DupRecvKey, RecvInfo> DupRecvTable;
 
 // A map used to store memory types for the inputs/outputs of every node.
 // The key is a pair of ints consisting of a node id and input/output index.
-typedef absl::flat_hash_map<std::pair<int, int>, MemoryType> MemoryTypeMap;
+// TODO(power): migrate back to std::pair when absl::Hash is fixed for MSVC.
+struct NodePort {
+  int node_id;
+  int index;
+
+  friend bool operator==(const NodePort& x, const NodePort& y) {
+    return x.node_id == y.node_id && x.index == y.index;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const NodePort& c) {
+    return H::combine(std::move(h), c.node_id, c.index);
+  }
+};
+
+typedef absl::flat_hash_map<NodePort, MemoryType> MemoryTypeMap;
 
 // We collect the following information about the graph before performing
 // graph partitioning.
@@ -552,10 +565,10 @@ Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
 
     int node_id = node->id();
     info->device_types[node_id] = DeviceType(parsed.type);
-    for (size_t i = 0; i < input_memory_types.size(); ++i) {
+    for (int i = 0; i < input_memory_types.size(); ++i) {
       info->input_types[{node_id, i}] = input_memory_types[i];
     }
-    for (size_t i = 0; i < output_memory_types.size(); ++i) {
+    for (int i = 0; i < output_memory_types.size(); ++i) {
       info->output_types[{node_id, i}] = output_memory_types[i];
     }
   }

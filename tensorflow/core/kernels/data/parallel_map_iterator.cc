@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -410,7 +409,7 @@ std::unique_ptr<IteratorBase> NewParallelMapIterator(
     const DatasetBase* input_dataset,
     std::unique_ptr<ParallelMapFunctor> parallel_map_functor,
     int32 num_parallel_calls, bool sloppy, bool preserve_cardinality) {
-  return MakeUnique<ParallelMapIterator>(
+  return absl::make_unique<ParallelMapIterator>(
       params, input_dataset,
       ParallelMapIterator::Params{std::move(parallel_map_functor),
                                   num_parallel_calls, sloppy,

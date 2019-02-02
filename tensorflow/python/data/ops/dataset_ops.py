@@ -1364,6 +1364,9 @@ class DatasetV1(DatasetV2):
     Returns:
       An `Iterator` over the elements of this dataset.
     """
+    return self._make_one_shot_iterator()
+
+  def _make_one_shot_iterator(self):  # pylint: disable=missing-docstring
     if context.executing_eagerly():
       return iterator_ops.EagerIterator(self)
 
@@ -1441,6 +1444,10 @@ class DatasetV1(DatasetV2):
     Raises:
       RuntimeError: If eager execution is enabled.
     """
+
+    return self._make_initializable_iterator(shared_name)
+
+  def _make_initializable_iterator(self, shared_name=None):  # pylint: disable=missing-docstring
     if context.executing_eagerly():
       raise RuntimeError(
           "dataset.make_initializable_iterator is not supported when eager "
@@ -1725,15 +1732,15 @@ def make_one_shot_iterator(dataset):
     A `tf.data.Iterator` over the elements of this dataset.
   """
   try:
-    # Call the defined `make_one_shot_iterator()` if there is one, because some
+    # Call the defined `_make_one_shot_iterator()` if there is one, because some
     # datasets (e.g. for prefetching) override its behavior.
-    return dataset.make_one_shot_iterator()
+    return dataset._make_one_shot_iterator()  # pylint: disable=protected-access
   except AttributeError:
-    return DatasetV1Adapter(dataset).make_one_shot_iterator()
+    return DatasetV1Adapter(dataset)._make_one_shot_iterator()  # pylint: disable=protected-access
 
 
 @tf_export(v1=["data.make_initializable_iterator"])
-def make_initializable_iterator(dataset):
+def make_initializable_iterator(dataset, shared_name=None):
   """Creates a `tf.data.Iterator` for enumerating the elements of a dataset.
 
   Note: The returned iterator will be in an uninitialized state,
@@ -1741,13 +1748,16 @@ def make_initializable_iterator(dataset):
 
   ```python
   dataset = ...
-  iterator = dataset.make_initializable_iterator()
+  iterator = tf.data.make_initializable_iterator(dataset)
   # ...
   sess.run(iterator.initializer)
   ```
 
   Args:
     dataset: A `tf.data.Dataset`.
+    shared_name: (Optional.) If non-empty, the returned iterator will be
+      shared under the given name across multiple sessions that share the
+      same devices (e.g. when using a remote server).
 
   Returns:
     A `tf.data.Iterator` over the elements of `dataset`.
@@ -1756,11 +1766,11 @@ def make_initializable_iterator(dataset):
     RuntimeError: If eager execution is enabled.
   """
   try:
-    # Call the defined `make_initializable_iterator()` if there is one, because
+    # Call the defined `_make_initializable_iterator()` if there is one, because
     # some datasets (e.g. for prefetching) override its behavior.
-    return dataset.make_initializable_iterator()
+    return dataset._make_initializable_iterator(shared_name)  # pylint: disable=protected-access
   except AttributeError:
-    return DatasetV1Adapter(dataset).make_initializable_iterator()
+    return DatasetV1Adapter(dataset)._make_initializable_iterator(shared_name)  # pylint: disable=protected-access
 
 
 @tf_export("data.Options")

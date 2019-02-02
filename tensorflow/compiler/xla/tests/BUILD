@@ -314,6 +314,26 @@ xla_test(
 )
 
 xla_test(
+    name = "conv_depthwise_backprop_filter_test",
+    timeout = "long",
+    srcs = ["conv_depthwise_backprop_filter_test.cc"],
+    shard_count = 6,
+    deps = [
+        "//tensorflow/compiler/xla:execution_options_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/service:bfloat16_normalization",
+        "//tensorflow/compiler/xla/service:despecializer",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+xla_test(
     name = "grouped_convolution_test",
     timeout = "long",
     srcs = ["grouped_convolution_test.cc"],
@@ -650,22 +670,19 @@ xla_test(
 
 xla_test(
     name = "exhaustive_f32_elementwise_op_test",
-    size = "enormous",
     srcs = ["exhaustive_f32_elementwise_op_test.cc"],
-    backends = [
-        "cpu",
-        "gpu",
-    ],
+    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
-        "broken",
-        "manual",
-        "notap",
+        "optonly",
+        # This is a big test that we skip for capacity reasons in OSS testing.
+        "nooss",
     ],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
@@ -710,6 +727,7 @@ xla_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
@@ -768,6 +786,7 @@ xla_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
@@ -812,6 +831,7 @@ xla_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",

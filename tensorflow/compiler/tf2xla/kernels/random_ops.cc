@@ -160,17 +160,24 @@ class RandomShuffleOp : public XlaOpKernel {
         -> xla::StatusOr<std::vector<xla::XlaOp>> {
       auto swaps = loop_vars[0];
       auto indices = loop_vars[1];
-      i = xla::Reshape(i, {1});
+      // TODO(b/118437727): The absl::Span nonsense is only necessary because
+      // the deprecated overload creates ambiguity for the single-element span
+      // case. Remove it once the deprecated overload is gone.
       // temp = indices[i]
-      auto temp = xla::DynamicSlice(indices, i, {1});
+      auto temp =
+          xla::DynamicSlice(indices, absl::Span<const xla::XlaOp>({i}), {1});
       // swap_index = swaps[i]
-      auto swap_index = xla::DynamicSlice(swaps, i, {1});
+      auto swap_index = xla::Reshape(
+          xla::DynamicSlice(swaps, absl::Span<const xla::XlaOp>({i}), {1}), {});
       // swap_value = indices[swaps[i]]
-      auto swap_value = xla::DynamicSlice(indices, swap_index, {1});
+      auto swap_value = xla::DynamicSlice(
+          indices, absl::Span<const xla::XlaOp>({swap_index}), {1});
       // indices[i] = indices[swaps[i]]
-      indices = xla::DynamicUpdateSlice(indices, swap_value, i);
+      indices = xla::DynamicUpdateSlice(indices, swap_value,
+                                        absl::Span<const xla::XlaOp>({i}));
       // indices[swaps[i]] = temp
-      indices = xla::DynamicUpdateSlice(indices, temp, swap_index);
+      indices = xla::DynamicUpdateSlice(
+          indices, temp, absl::Span<const xla::XlaOp>({swap_index}));
       return std::vector<xla::XlaOp>{swaps, indices};
     };
     // for i in range(n):

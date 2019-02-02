@@ -400,7 +400,7 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
 // indicating whether to use quantization or not.
 class LSTMOpTest : public ::testing::TestWithParam<bool> {};
 
-INSTANTIATE_TEST_CASE_P(QuantizationOrNot, LSTMOpTest, ::testing::Bool());
+INSTANTIATE_TEST_SUITE_P(QuantizationOrNot, LSTMOpTest, ::testing::Bool());
 
 TEST_P(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
   const int n_batch = 1;

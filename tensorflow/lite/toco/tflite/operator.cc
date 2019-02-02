@@ -108,6 +108,12 @@ class Convolution
     const Array& input_array = op_signature.model->GetArray(input_name);
     const Array& filter_array = op_signature.model->GetArray(filter_name);
     const Array& output_array = op_signature.model->GetArray(output_name);
+    // If the op has signed int8 inputs and outputs, its version 3.
+    if (input_array.data_type == ArrayDataType::kInt8 &&
+        filter_array.data_type == ArrayDataType::kInt8 &&
+        output_array.data_type == ArrayDataType::kInt8) {
+      return 3;
+    }
     // If the op is a signed int8 hybrid operation, we need to return
     // version 2.
     if (input_array.data_type == ArrayDataType::kFloat &&
@@ -153,6 +159,18 @@ class DepthwiseConvolution
   int GetVersion(const OperatorSignature& op_signature) const override {
     const auto& conv_op =
         static_cast<const DepthwiseConvOperator&>(*op_signature.op);
+    const string& input_name = op_signature.op->inputs[0];
+    const string& filter_name = op_signature.op->inputs[1];
+    const string& output_name = op_signature.op->outputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    const Array& filter_array = op_signature.model->GetArray(filter_name);
+    const Array& output_array = op_signature.model->GetArray(output_name);
+    // If the op has signed int8 inputs and outputs, its version 3.
+    if (input_array.data_type == ArrayDataType::kInt8 &&
+        filter_array.data_type == ArrayDataType::kInt8 &&
+        output_array.data_type == ArrayDataType::kInt8) {
+      return 3;
+    }
     if (conv_op.dilation_width_factor != 1 ||
         conv_op.dilation_height_factor != 1) {
       return 2;
@@ -915,6 +933,94 @@ class UnidirectionalSequenceLstm
   }
 };
 
+class BidirectionalSequenceLstm
+    : public BuiltinOperator<
+          BidirectionalSequenceLstmOperator,
+          ::tflite::BidirectionalSequenceLSTMOptions,
+          ::tflite::BuiltinOptions_BidirectionalSequenceLSTMOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    // Current toco converter only supports tanh, no clip.
+    return ::tflite::CreateBidirectionalSequenceLSTMOptions(
+        *builder, /*fused_activation_function=*/
+        ::tflite::ActivationFunctionType_TANH,
+        /*cell_clip=*/0.0,
+        /*proj_clip=*/0.0,
+        /*merge_outputs=*/op.merge_outputs,
+        /*time_major=*/true);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    // Only support tanh activation, so check that tflite type is tanh.
+    DCHECK(options.fused_activation_function() ==
+           ::tflite::ActivationFunctionType_TANH);
+    op->merge_outputs = options.merge_outputs();
+  }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
+  }
+
+  std::vector<bool> GetMutatingInputVariables(
+      const Operator& op) const override {
+    std::vector<bool> mutating_input_variables(op.inputs.size(), false);
+    // Forward input activation state.
+    mutating_input_variables[35] = true;
+    // Forward input cell state.
+    mutating_input_variables[36] = true;
+    // Backward input activation state.
+    mutating_input_variables[37] = true;
+    // Backward input cell state.
+    mutating_input_variables[38] = true;
+    return mutating_input_variables;
+  }
+};
+
+class BidirectionalSequenceRnn
+    : public BuiltinOperator<
+          BidirectionalSequenceRnnOperator,
+          ::tflite::BidirectionalSequenceRNNOptions,
+          ::tflite::BuiltinOptions_BidirectionalSequenceRNNOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    // Current toco converter only supports tanh, no clip.
+    return ::tflite::CreateBidirectionalSequenceRNNOptions(
+        *builder, /*time_major=*/true,
+        /*fused_activation_function=*/
+        ::tflite::ActivationFunctionType_TANH,
+        /*merge_outputs=*/op.merge_outputs);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    // Only support tanh activation, so check that tflite type is tanh.
+    DCHECK(options.fused_activation_function() ==
+           ::tflite::ActivationFunctionType_TANH);
+    op->merge_outputs = options.merge_outputs();
+  }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
+  }
+
+  std::vector<bool> GetMutatingInputVariables(
+      const Operator& op) const override {
+    std::vector<bool> mutating_input_variables(op.inputs.size(), false);
+    // Forward hidden state.
+    mutating_input_variables[4] = true;
+    // Backward hidden state.
+    mutating_input_variables[8] = true;
+    return mutating_input_variables;
+  }
+};
+
 class Mean : public BuiltinOperator<MeanOperator, ::tflite::ReducerOptions,
                                     ::tflite::BuiltinOptions_ReducerOptions> {
  public:
@@ -1509,6 +1615,39 @@ class Unique : public BuiltinOperator<UniqueOperator, ::tflite::UniqueOptions,
   }
 };
 
+class UnidirectionalSequenceRnn
+    : public BuiltinOperator<UnidirectionalSequenceRnnOperator,
+                             ::tflite::SequenceRNNOptions,
+                             ::tflite::BuiltinOptions_SequenceRNNOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateSequenceRNNOptions(
+        *builder, /*time_major=*/true,
+        /*fused_activation_function=*/
+        ::tflite::ActivationFunctionType_TANH);
+  }
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    // Only support tanh actication, so check that tflite type is tanh.
+    DCHECK(options.fused_activation_function() ==
+           ::tflite::ActivationFunctionType_TANH);
+  }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
+  }
+
+  std::vector<bool> GetMutatingInputVariables(
+      const Operator& op) const override {
+    std::vector<bool> mutating_input_variables(op.inputs.size(), false);
+    mutating_input_variables[4] = true;
+    return mutating_input_variables;
+  }
+};
+
 std::unique_ptr<flexbuffers::Builder> WriteFlexOpOptions(
     const string& tensorflow_node_def) {
   auto fbb = absl::make_unique<flexbuffers::Builder>();
@@ -1607,9 +1746,23 @@ class TensorFlowUnsupported : public BaseOperator {
           has_valid_attr = true;
           break;
         case tensorflow::AttrValue::kList:
-          if (attr.list().i_size() > 0) {
+          if (attr.list().s_size() > 0) {
+            auto start = fbb->StartVector(key);
+            for (const string& v : attr.list().s()) {
+              fbb->Add(v);
+            }
+            fbb->EndVector(start, /*typed=*/true, /*fixed=*/false);
+            has_valid_attr = true;
+          } else if (attr.list().i_size() > 0) {
             auto start = fbb->StartVector(key);
             for (const int64_t v : attr.list().i()) {
+              fbb->Add(v);
+            }
+            fbb->EndVector(start, /*typed=*/true, /*fixed=*/false);
+            has_valid_attr = true;
+          } else if (attr.list().f_size() > 0) {
+            auto start = fbb->StartVector(key);
+            for (const float v : attr.list().f()) {
               fbb->Add(v);
             }
             fbb->EndVector(start, /*typed=*/true, /*fixed=*/false);
@@ -1671,6 +1824,22 @@ class TensorFlowUnsupported : public BaseOperator {
           const auto& vector = value.AsTypedVector();
           for (size_t i = 0; i < vector.size(); i++) {
             list->add_i(vector[i].AsInt64());
+          }
+          break;
+        }
+        case 13: {  // flexbuffers::FBT_VECTOR_FLOAT: {
+          auto* list = (*attr)[key].mutable_list();
+          const auto& vector = value.AsTypedVector();
+          for (size_t i = 0; i < vector.size(); i++) {
+            list->add_f(vector[i].AsFloat());
+          }
+          break;
+        }
+        case 15: {  // flexbuffers::FBT_VECTOR_STRING: {
+          auto* list = (*attr)[key].mutable_list();
+          const auto& vector = value.AsTypedVector();
+          for (size_t i = 0; i < vector.size(); i++) {
+            list->add_s(vector[i].AsString().str());
           }
           break;
         }
@@ -1834,6 +2003,12 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.emplace_back(MakeUnique<UnidirectionalSequenceLstm>(
       ::tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
       OperatorType::kUnidirectionalSequenceLstm));
+  ops.emplace_back(MakeUnique<BidirectionalSequenceLstm>(
+      ::tflite::BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
+      OperatorType::kBidirectionalSequenceLstm));
+  ops.emplace_back(MakeUnique<BidirectionalSequenceRnn>(
+      ::tflite::BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN,
+      OperatorType::kBidirectionalSequenceRnn));
   ops.push_back(MakeUnique<OneHot>(::tflite::BuiltinOperator_ONE_HOT,
                                    OperatorType::kOneHot));
   ops.push_back(MakeUnique<Unpack>(::tflite::BuiltinOperator_UNPACK,
@@ -1847,6 +2022,9 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                       OperatorType::kMirrorPad));
   ops.push_back(MakeUnique<Unique>(::tflite::BuiltinOperator_UNIQUE,
                                    OperatorType::kUnique));
+  ops.push_back(MakeUnique<UnidirectionalSequenceRnn>(
+      ::tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN,
+      OperatorType::kUnidirectionalSequenceRnn));
 
   // Custom Operators.
   ops.push_back(
@@ -1864,6 +2042,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   // builtins.
   ops.push_back(
       MakeUnique<SimpleOperator<FloorOperator>>("FLOOR", OperatorType::kFloor));
+  ops.push_back(
+      MakeUnique<SimpleOperator<CeilOperator>>("CEIL", OperatorType::kCeil));
   ops.push_back(
       MakeUnique<SimpleOperator<ReluOperator>>("RELU", OperatorType::kRelu));
   ops.push_back(MakeUnique<SimpleOperator<Relu1Operator>>(
@@ -1933,6 +2113,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       MakeUnique<SimpleOperator<AbsOperator>>("ABS", OperatorType::kAbs));
   ops.push_back(
       MakeUnique<SimpleOperator<FillOperator>>("FILL", OperatorType::kFill));
+  ops.push_back(MakeUnique<SimpleOperator<ReverseV2Operator>>(
+      "REVERSE_V2", OperatorType::kReverseV2));
   return ops;
 }
 }  // namespace

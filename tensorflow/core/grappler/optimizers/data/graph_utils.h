@@ -108,6 +108,10 @@ int FindGraphNodeWithOp(StringPiece op, const GraphDef& graph);
 // Gets the 0th input to a node in the graph.
 NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph);
 
+// Gets the ith input to a node in the graph.
+NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph,
+                      int64 i);
+
 // Returns the list of indices of all nodes with the given op or empty list if
 // no such node exists.
 std::vector<int> FindAllGraphNodesWithOp(const string& op,
@@ -140,8 +144,8 @@ void ConcatAttributeList(const string& attribute_name, const NodeDef& first,
 // and renaming nodes does not mutate any edges.
 Status EnsureNodeNamesUnique(Graph* g);
 
-}  // end namespace graph_utils
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace graph_utils
+}  // namespace grappler
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_GRAPH_UTILS_H_

@@ -211,11 +211,21 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
       }
       // TODO(b/32495713): We aren't checking the called computations.
       break;
+    case HloOpcode::kGetDimensionSize: {
+      int64 dimension_number = instr.dimensions(0);
+      const HloInstructionProto& operand =
+          *(LookUpInstructionByHandle(instr.operand_ids(0)).ValueOrDie());
+      Shape operand_shape(operand.shape());
+      if (operand_shape.is_dynamic_dimension(dimension_number)) {
+        *is_constant = false;
+      }
+      break;
+    }
 
     // Non functional ops.
     case HloOpcode::kRng:
     case HloOpcode::kAllReduce:
-      // TODO(b/33009255): Implmement constant folding for cross replica sum.
+      // TODO(b/33009255): Implement constant folding for cross replica sum.
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kCall:
@@ -247,6 +257,29 @@ Status XlaBuilder::SetDynamicBinding(int64 dynamic_size_param_num,
                                      int64 target_param_num,
                                      ShapeIndex target_param_index,
                                      int64 target_dim_num) {
+  bool param_exists = false;
+  for (HloInstructionProto& instr : instructions_) {
+    if (instr.opcode() == HloOpcodeString(HloOpcode::kParameter) &&
+        instr.parameter_number() == target_param_num) {
+      param_exists = true;
+      Shape param_shape(instr.shape());
+      Shape* param_shape_ptr = &param_shape;
+      for (int64 index : target_param_index) {
+        param_shape_ptr = param_shape_ptr->mutable_tuple_shapes(index);
+      }
+      param_shape_ptr->set_dynamic_dimension(target_dim_num,
+                                             /*is_dynamic=*/true);
+      *instr.mutable_shape() = param_shape.ToProto();
+    }
+  }
+
+  if (!param_exists) {
+    return InvalidArgument(
+        "Asked to mark parameter %lld as dynamic sized parameter, but the "
+        "doesn't exists",
+        target_param_num);
+  }
+
   TF_RETURN_IF_ERROR(dynamic_parameter_binding_.Bind(
       DynamicParameterBinding::DynamicParameter{dynamic_size_param_num,
                                                 dynamic_size_param_index},
@@ -266,27 +299,50 @@ XlaComputation XlaBuilder::BuildAndNoteError() {
   return build_status.ConsumeValueOrDie();
 }
 
-StatusOr<XlaComputation> XlaBuilder::Build() {
+StatusOr<XlaComputation> XlaBuilder::Build(bool remove_dynamic_dimensions) {
   if (!first_error_.ok()) {
     string backtrace;
     first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
     return AppendStatus(first_error_, backtrace);
   }
-  return Build(instructions_.back().id());
+  return Build(instructions_.back().id(), remove_dynamic_dimensions);
 }
 
-StatusOr<XlaComputation> XlaBuilder::Build(XlaOp root) {
+StatusOr<XlaComputation> XlaBuilder::Build(XlaOp root,
+                                           bool remove_dynamic_dimensions) {
   if (root.builder_ != this) {
     return InvalidArgument("Given root operation is not in this computation.");
   }
-  return Build(root.handle());
+  return Build(root.handle(), remove_dynamic_dimensions);
 }
 
-StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
+StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id,
+                                           bool remove_dynamic_dimensions) {
   if (!first_error_.ok()) {
     string backtrace;
     first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
     return AppendStatus(first_error_, backtrace);
+  }
+
+  // TODO(b/121223198): XLA backend cannot handle dynamic dimensions yet, remove
+  // all dynamic dimensions before building xla program until we have support in
+  // the backend.
+  if (remove_dynamic_dimensions) {
+    std::function<void(ShapeProto*)> remove_dynamic_dimension =
+        [&](ShapeProto* shape) {
+          if (shape->tuple_shapes_size() != 0) {
+            for (int64 i = 0; i < shape->tuple_shapes_size(); ++i) {
+              remove_dynamic_dimension(shape->mutable_tuple_shapes(i));
+            }
+          }
+          for (int64 i = 0; i < shape->dimensions_size(); ++i) {
+            shape->set_is_dynamic_dimension(i, false);
+          }
+        };
+
+    for (auto& instruction : instructions_) {
+      remove_dynamic_dimension(instruction.mutable_shape());
+    }
   }
 
   HloComputationProto entry;
@@ -445,16 +501,19 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
       const Shape& from_shape = should_broadcast_lhs ? lhs_shape : rhs_shape;
 
       std::vector<int64> to_size;
-      for (int64 size : shape.dimensions()) {
-        to_size.push_back(size);
+      std::vector<bool> to_size_is_dynamic;
+      for (int i = 0; i < shape.rank(); i++) {
+        to_size.push_back(shape.dimensions(i));
+        to_size_is_dynamic.push_back(shape.is_dynamic_dimension(i));
       }
       for (int64 from_dim = 0; from_dim < from_shape.rank(); from_dim++) {
         int64 to_dim = broadcast_dimensions[from_dim];
         to_size[to_dim] = from_shape.dimensions(from_dim);
+        to_size_is_dynamic[to_dim] = from_shape.is_dynamic_dimension(from_dim);
       }
 
-      const Shape& broadcasted_shape =
-          ShapeUtil::MakeShape(from_shape.element_type(), to_size);
+      const Shape& broadcasted_shape = ShapeUtil::MakeShape(
+          from_shape.element_type(), to_size, to_size_is_dynamic);
       TF_ASSIGN_OR_RETURN(
           XlaOp broadcasted_operand,
           InDimBroadcast(broadcasted_shape, from, broadcast_dimensions));
@@ -613,8 +672,17 @@ XlaOp XlaBuilder::BroadcastInDim(
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
     // Output shape, in the case of degenerate broadcast, the out_dim_size is
     // not necessarily the same as the dimension sizes of the output shape.
-    const auto& output_shape =
+    auto output_shape =
         ShapeUtil::MakeShape(operand_shape.element_type(), out_dim_size);
+    for (int i = 0; i < broadcast_dimensions.size(); i++) {
+      if (broadcast_dimensions[i] < 0 ||
+          broadcast_dimensions[i] > out_dim_size.size()) {
+        return InvalidArgument("Broadcast dimension %lld is out of bound",
+                               broadcast_dimensions[i]);
+      }
+      output_shape.set_dynamic_dimension(broadcast_dimensions[i],
+                                         operand_shape.is_dynamic_dimension(i));
+    }
 
     TF_RETURN_IF_ERROR(ShapeInference::InferBroadcastShape(
                            operand_shape, output_shape, broadcast_dimensions)
@@ -2201,6 +2269,14 @@ XlaOp XlaBuilder::CollectivePermute(
   });
 }
 
+XlaOp XlaBuilder::ReplicaId() {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = ShapeUtil::MakeShape(U32, {}).ToProto();
+    return AddInstruction(std::move(instr), HloOpcode::kReplicaId, {});
+  });
+}
+
 XlaOp XlaBuilder::SelectAndScatter(const XlaOp& operand,
                                    const XlaComputation& select,
                                    absl::Span<const int64> window_dimensions,
@@ -2518,21 +2594,58 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
     worklist.pop();
     TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_proto,
                         LookUpInstructionByHandle(handle));
-    for (int64 id : instr_proto->operand_ids()) {
-      if (related_ops.insert(id).second) {
-        worklist.push(id);
+
+    if (instr_proto->opcode() ==
+        HloOpcodeString(HloOpcode::kGetDimensionSize)) {
+      // At this point, BuildConstantSubGraph should never encounter a
+      // GetDimensionSize with a dynamic dimension. IsConstant check would have
+      // failed at the beginning of this function.
+      //
+      // Replace GetDimensionSize with a Constant representing the static bound
+      // of the shape.
+      int64 dimension = instr_proto->dimensions(0);
+      int64 operand_handle = instr_proto->operand_ids(0);
+      TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                          LookUpInstructionByHandle(operand_handle));
+
+      TF_RET_CHECK(!operand_proto->shape().is_dynamic_dimension(dimension));
+      auto constant_dimension_size =
+          static_cast<uint32>(operand_proto->shape().dimensions(dimension));
+
+      Literal literal = LiteralUtil::CreateR0(constant_dimension_size);
+
+      HloInstructionProto const_instr;
+      *const_instr.mutable_shape() = literal.shape().ToProto();
+      *const_instr.mutable_literal() = literal.ToProto();
+      *const_instr.mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);
+
+      const_instr.set_id(handle);
+      *const_instr.mutable_name() =
+          GetFullName(const_instr.opcode(), kNameSeparator, const_instr.id());
+      *entry.add_instructions() =
+          const_instr;  // Add to the result constant graph.
+    } else {
+      for (int64 id : instr_proto->operand_ids()) {
+        if (related_ops.insert(id).second) {
+          worklist.push(id);
+        }
       }
-    }
-    for (int64 called_id : instr_proto->called_computation_ids()) {
-      related_calls.insert(called_id);
+      for (int64 called_id : instr_proto->called_computation_ids()) {
+        related_calls.insert(called_id);
+      }
     }
   }
 
   // Add related ops to the computation.
   for (int64 id : related_ops) {
-    auto* instr = entry.add_instructions();
     TF_ASSIGN_OR_RETURN(const HloInstructionProto* instr_src,
                         LookUpInstructionByHandle(id));
+
+    if (instr_src->opcode() == HloOpcodeString(HloOpcode::kGetDimensionSize)) {
+      continue;
+    }
+    auto* instr = entry.add_instructions();
+
     *instr = *instr_src;
     // Ensures that the instruction names are unique among the graph.
     const string& new_name =
@@ -3113,6 +3226,8 @@ XlaOp CollectivePermute(
     const std::vector<std::pair<int64, int64>>& source_target_pairs) {
   return operand.builder()->CollectivePermute(operand, source_target_pairs);
 }
+
+XlaOp ReplicaId(XlaBuilder* builder) { return builder->ReplicaId(); }
 
 XlaOp SelectAndScatter(const XlaOp& operand, const XlaComputation& select,
                        absl::Span<const int64> window_dimensions,

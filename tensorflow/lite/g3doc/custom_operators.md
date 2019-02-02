@@ -137,9 +137,9 @@ operations instead of a single operator.
 
 ## Special TF Graph Attributes
 
-When Toco converts a TF graph into TFLite format, it makes some assumption about
-custom operations that might be not correct. In this case, the generated graph
-can be not executable.
+When `tflite_convert` converts a TensorFlow graph into TFLite format, it makes
+some assumption about custom operations that might be not correct. In this case,
+the generated graph may not execute.
 
 It is possible to add aditional information about your custom op output to TF
 graph before it is converted. The following attributes are supported:

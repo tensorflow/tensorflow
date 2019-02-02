@@ -40,8 +40,22 @@ class SubgraphQuantizer {
  private:
   // Quantizes ops with bias tensors.
   TfLiteStatus QuantizeOpWithBias(BuiltinOperator op_code, OperatorT* op);
+
+  // Average and Max pool need special treatement. The scales are propagated
+  // from inputs to outputs.
+  TfLiteStatus PropagateMinMaxForAvgAndMaxPool(BuiltinOperator op_code,
+                                               OperatorT* op);
+
+  // Asymmetric quantizes inputs and outputs of an Op that has single input and
+  // single output. E.g. Squeeze.
+  TfLiteStatus AsymmetricQuantizeSingleInputOutputOp(BuiltinOperator op_code,
+                                                     OperatorT* op);
+
   TfLiteStatus AsymmetricQuantizeTensor(BuiltinOperator op_code,
                                         int32_t tensor_idx);
+
+  // Returns true if |tensor_idx| is one of the inputs in the subgraph.
+  bool IsSubgraphInput(int32_t tensor_idx) const;
 
   ModelT* model_;
   SubGraphT* subgraph_;

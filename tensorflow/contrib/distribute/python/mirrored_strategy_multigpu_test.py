@@ -38,8 +38,8 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.keras.layers import core as keras_core
@@ -103,7 +103,7 @@ class MirroredTwoDeviceDistributionTest(
       expected = sum(range(distribution.num_replicas_in_sync))
       self.assertEqual(expected, self.evaluate(reduced))
 
-  def testMakeInputFnIterator(self, distribution):
+  def testMakeInputFnIteratorWithDataset(self, distribution):
     dataset_fn = lambda: dataset_ops.Dataset.range(10)
     expected_values = [[i, i+1] for i in range(0, 10, 2)]
 
@@ -115,6 +115,26 @@ class MirroredTwoDeviceDistributionTest(
     iterator = distribution.make_input_fn_iterator(input_fn)
     self._test_input_fn_iterator(iterator, distribution.extended.worker_devices,
                                  expected_values)
+
+  def testMakeInputFnIteratorWithCallable(self, distribution):
+    def fn():
+      dataset = dataset_ops.Dataset.range(2).interleave(
+          (lambda _: dataset_ops.Dataset.range(10)), cycle_length=2)
+      it = dataset.make_one_shot_iterator()
+      return it.get_next
+    expected_values = [[i, i] for i in range(0, 10)]
+
+    input_fn = self._input_fn_to_test_input_context(
+        fn,
+        expected_num_replicas_in_sync=2,
+        expected_num_input_pipelines=1,
+        expected_input_pipeline_id=0)
+    iterator = distribution.make_input_fn_iterator(input_fn)
+    self._test_input_fn_iterator(iterator, distribution.extended.worker_devices,
+                                 expected_values, test_reinitialize=False)
+
+  def testNumpyIterator(self, distribution):
+    self._test_numpy_iterator(distribution)
 
   def testGlobalStepUpdate(self, distribution):
     self._test_global_step_update(distribution)
@@ -264,7 +284,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
     self.assertIs(strategy, var.distribute_strategy)
     for d in var.devices:
       self.assertEqual(d, var.get(d).device)
-      self.assertIs(strategy, var.get(d).distribute_strategy)
+      self.assertIs(strategy, var.get(d)._distribute_strategy)  # pylint: disable=protected-access
 
   def testVariableInFuncGraph(self, distribution):
     def model_fn():
@@ -363,14 +383,9 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
                 (layer2.kernel, layer2.bias),
                 (layer3.kernel, layer3.bias)]
 
-    ds = distribution.distribute_dataset(
-        lambda: dataset_ops.Dataset.from_tensors([[1.]]).repeat(10))
-    if context.executing_eagerly():
-      iterator = ds.make_one_shot_iterator()
-    else:
-      iterator = ds.make_initializable_iterator()
-      self.evaluate([iterator.initializer])
-
+    iterator = distribution.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.from_tensors([[1.]]).repeat(10))
+    self.evaluate(iterator.initialize())
     features = iterator.get_next()
 
     with distribution.scope():
@@ -1263,7 +1278,7 @@ class MirroredStrategyDefunTest(test.TestCase):
                             self.evaluate(device_result))
 
       for defun in defuns:
-        # PolymorphicFunctions are specialized to the current device stack, so
+        # `Function`s are specialized to the current device stack, so
         # call_for_each has one trace per device. To check that the expected set
         # of variables was accessed on each trace, we first retrieve each
         # device-specific graph function.
@@ -1418,7 +1433,7 @@ class MultiWorkerMirroredStrategyTest(
       self.assertEqual(a.device, "/job:worker/task:0")
       self.assertEqual(b.device, "/job:worker/task:0/device:CPU:0")
 
-  def testMakeInputFnIterator(self, distribution):
+  def testMakeInputFnIteratorWithDataset(self, distribution):
     self._configure_distribution_strategy(distribution)
     dataset_fn = lambda: dataset_ops.Dataset.range(100)
     num_gpus = context.num_gpus()
@@ -1438,6 +1453,32 @@ class MultiWorkerMirroredStrategyTest(
       iterator = distribution.make_input_fn_iterator(input_fn)
       self._test_input_fn_iterator(
           iterator, distribution.extended.worker_devices, expected_values, sess)
+
+  def testMakeInputFnIteratorWithCallable(self, distribution):
+    self._configure_distribution_strategy(distribution)
+    def fn():
+      dataset = dataset_ops.Dataset.range(100)
+      it = dataset.make_one_shot_iterator()
+      return it.get_next
+    num_gpus = context.num_gpus()
+    num_workers = 2
+
+    expected_values = []
+    for i in range(0, 100, num_gpus):
+      expected_values.append([i+j for j in range(num_gpus)] * num_workers)
+
+    with context.graph_mode(), self.cached_session() as sess:
+      # `expected_input_pipeline_id` is None because the input_fn will be called
+      # multiple times, each with a different input_pipeline_id.
+      input_fn = self._input_fn_to_test_input_context(
+          fn,
+          expected_num_replicas_in_sync=num_workers*num_gpus,
+          expected_num_input_pipelines=num_workers,
+          expected_input_pipeline_id=None)
+      iterator = distribution.make_input_fn_iterator(input_fn)
+      self._test_input_fn_iterator(
+          iterator, distribution.extended.worker_devices, expected_values, sess,
+          test_reinitialize=False)
 
   def testUpdateConfigProto(self, distribution):
     distribution.configure(cluster_spec={"worker": ["fake1", "fake2"]})

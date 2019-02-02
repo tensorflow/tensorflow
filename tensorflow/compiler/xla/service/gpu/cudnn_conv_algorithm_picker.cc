@@ -250,7 +250,7 @@ CudnnConvAlgorithmPicker::PickBestAlgorithm(
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
 
-    // Use assignment insetad of brace-list to make GCC 4.9 happy.
+    // Use assignment instead of brace-list to make GCC 4.9 happy.
     RunConvOptions options;
     options.profile_result = &profile_result;
     options.algo_override = alg;

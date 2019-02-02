@@ -91,11 +91,6 @@ class TypeResolver {
 
 Type TypeResolver::TypeOf(const OpDef_ArgDef& arg_def, bool* iterable_out) {
   *iterable_out = false;
-  if (!arg_def.number_attr().empty()) {
-    // when number_attr is set, argument has to be a list of tensors
-    *iterable_out = true;
-    visited_attrs_.insert(std::make_pair(arg_def.number_attr(), Type::Int()));
-  }
   Type type = Type::Wildcard();
   if (arg_def.type() != DataType::DT_INVALID) {
     type = Type::ForDataType(arg_def.type());
@@ -121,6 +116,11 @@ Type TypeResolver::TypeOf(const OpDef_ArgDef& arg_def, bool* iterable_out) {
   } else {
     LOG(FATAL) << "Cannot resolve data type of argument \"" << arg_def.name()
                << "\" in operation \"" << op_def_.name() << "\"";
+  }
+  if (!arg_def.number_attr().empty()) {
+    // when number_attr is set, argument has to be a list of tensors
+    *iterable_out = true;
+    visited_attrs_.insert(std::make_pair(arg_def.number_attr(), Type::Int()));
   }
   return type;
 }

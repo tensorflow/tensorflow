@@ -18,10 +18,10 @@ set -e
 
 # We don't apt-get install so that we can install a newer version of pip.
 # Only needed for Ubuntu 14.04 and 16.04; not needed for 18.04 and Debian 8,9?
-# Run easy_install before easy_install3, so that the default pip points to pip2,
+# Run easy_install after easy_install3, so that the default pip points to pip2,
 # to match the default python version of 2.7.
-easy_install3 -U pip==9.0.3
-easy_install -U pip==9.0.3
+easy_install3 -U pip==18.1
+easy_install -U pip==18.1
 
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
@@ -60,8 +60,8 @@ pip2 install --upgrade markdown==2.6.8
 pip3 install --upgrade markdown==2.6.8
 
 # Install protobuf.
-pip2 install --upgrade protobuf==3.6.0
-pip3 install --upgrade protobuf==3.6.0
+pip2 install --upgrade protobuf==3.6.1
+pip3 install --upgrade protobuf==3.6.1
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*

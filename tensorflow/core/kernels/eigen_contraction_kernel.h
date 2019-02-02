@@ -197,7 +197,8 @@ class TensorContractionBlocking<float, float, float, StorageIndex,
     // We split Kth dimensions in roughly equal slices.
     StorageIndex target_k_slices =
         (std::max)(StorageIndex(1), Eigen::divup(k, kc_));
-    StorageIndex packet_size = 8;
+    StorageIndex packet_size = internal::packet_traits<Scalar>::size;
+    if (packet_size < 8) packet_size = 8;
     StorageIndex target_bk =
         Eigen::divup(k / target_k_slices, packet_size) * packet_size;
     kc_ = (std::min)(k, target_bk);

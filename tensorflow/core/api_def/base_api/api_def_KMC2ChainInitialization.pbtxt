@@ -1,0 +1,30 @@
+op {
+  graph_op_name: "KMC2ChainInitialization"
+  visibility: HIDDEN
+  in_arg {
+    name: "distances"
+    description: <<END
+Vector with squared distances to the closest previously sampled cluster center
+for each candidate point.
+END
+  }
+  in_arg {
+    name: "seed"
+    description: <<END
+Scalar. Seed for initializing the random number generator.
+END
+  }
+  out_arg {
+    name: "index"
+    description: <<END
+Scalar with the index of the sampled point.
+END
+  }
+  summary: "Returns the index of a data point that should be added to the seed set."
+  description: <<END
+Entries in distances are assumed to be squared distances of candidate points to
+the already sampled centers in the seed set. The op constructs one Markov chain
+of the k-MC^2 algorithm and returns the index of one candidate point to be added
+as an additional cluster center.
+END
+}

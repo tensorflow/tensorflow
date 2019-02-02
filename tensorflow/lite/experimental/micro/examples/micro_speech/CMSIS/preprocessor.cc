@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 extern "C" {
-#define ARM_MATH_CM4
 #define IFFT_FLAG_R 0
 #define BIT_REVERSE_FLAG 1
 #define FFT_SIZE 512

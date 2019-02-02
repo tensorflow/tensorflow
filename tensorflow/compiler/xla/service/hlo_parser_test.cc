@@ -553,6 +553,17 @@ ENTRY %Transpose.v2 () -> s32[1,2,3] {
 
 )"
 },
+{
+"TransposeC128",
+R"(HloModule TransposeC128_module
+
+ENTRY %Transpose.v3 (input: c128[1,2,3]) -> c128[1,2,3] {
+  %input = c128[1,2,3]{2,1,0} parameter(0)
+  ROOT %transpose = c128[1,2,3]{2,1,0} transpose(c128[1,2,3]{2,1,0} %input), dimensions={0,1,2}
+}
+
+)"
+},
 // Dynamic slice
 {
 "DynamicSlice",
@@ -771,7 +782,17 @@ ENTRY %fusion.v3 () -> f32[3,2,1,1] {
 R"(HloModule sparse_f32
 
 ENTRY %sparse () -> f32[2,3,4] {
-  ROOT %foo = f32[2,3,4]sparse{10} constant({[0, 1, 2]: 1, [1, 2, 3]: 2, [2, 3, 4]: 3})
+  ROOT %foo = f32[2,3,4]sparse{10} constant({[0, 1, 2]: 1, [1, 2, 2]: 2, [1, 2, 3]: 3})
+}
+
+)"
+},
+{
+"SparseC128",
+R"(HloModule sparse_c128
+
+ENTRY %sparse () -> c128[2,3,4] {
+  ROOT %foo = c128[2,3,4]sparse{10} constant({[0, 1, 2]: (1, 0), [1, 2, 2]: (2, 5), [1, 2, 3]: (3, 10)})
 }
 
 )"
@@ -881,6 +902,28 @@ ENTRY %CustomCallWithLayoutConstraints (p0: (f32[2,2], f32[42,2,3]), p1: f32[123
   %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
   %p1 = f32[123,4]{0,1} parameter(1)
   ROOT %custom-call = (f32[1,2,3]{0,2,1}, f32[1,2,3]{1,2,0}) custom-call((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) %p0, f32[123,4]{0,1} %p1), custom_call_target="baz", operand_layout_constraints={(f32[2,2]{1,0}, f32[42,2,3]{2,0,1}), f32[123,4]{1,0}}
+}
+
+)"
+},
+// Parse c64 literal
+{
+"ParseC64Literal",
+R"(HloModule ParseC64Literal
+
+ENTRY %ParseC64Literal () -> c64[2] {
+  ROOT %c = c64[2]{0} constant({(1, 2), (-inf, nan)})
+}
+
+)"
+},
+// Parse c128 literal
+{
+"ParseC128Literal",
+R"(HloModule ParseC128Literal
+
+ENTRY %ParseC128Literal () -> c128[2] {
+  ROOT %c = c128[2]{0} constant({(1, 2), (-inf, nan)})
 }
 
 )"
@@ -1305,6 +1348,30 @@ ENTRY AddDependency {
 
 )"
 },
+
+// A module containing constants equal to the min/max values of various data
+// types.
+{
+"MinMaxValues",
+R"(HloModule MinMaxValues
+
+ENTRY MinMaxValues {
+  x.s8 = s8[2]{0} constant({-128, 127})
+  x.s16 = s16[2]{0} constant({-32768, 32767})
+  x.s32 = s32[2]{0} constant({-2147483648, 2147483647})
+  x.u8 = u8[2]{0} constant({0, 255})
+  x.u16 = u16[2]{0} constant({0, 65535})
+  x.u32 = u32[2]{0} constant({0, 4294967295})
+  x.f16 = f16[2]{0} constant({-65504, 65504})
+  x.bf16 = bf16[2]{0} constant({-3.38953e+38, 3.38953e+38})
+  x.f32 = f32[2]{0} constant({-3.40282e+38, 3.40282e+38})
+  x.f64 = f64[2]{0} constant({-1.79769e+308, 1.79769e+308})
+  x.c64 = c64[2]{0} constant({(-3.40282e+38, 3.40282e+38), (3.40282e+38, -3.40282e+38)})
+  ROOT c.c128 = c128[2]{0} constant({(-1.79769e+308, 1.79769e+308), (1.79769e+308, -1.79769e+308)})
+}
+
+)"
+},
 });
   // clang-format on
 }
@@ -1360,20 +1427,20 @@ TEST_P(HloParserTestLongProto, Run) { ExpectEqual(); }
 TEST_P(HloParserTestShort, Run) { ExpectEqual(); }
 TEST_P(HloParserTestShortProto, Run) { ExpectEqual(); }
 
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTestLong,
-                        ::testing::ValuesIn(CreateTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation,
-                        HloParserTestLongProto,
-                        ::testing::ValuesIn(CreateTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTestShort,
-                        ::testing::ValuesIn(CreateShortTestCases()),
-                        TestDataToString);
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation,
-                        HloParserTestShortProto,
-                        ::testing::ValuesIn(CreateShortTestCases()),
-                        TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation, HloParserTestLong,
+                         ::testing::ValuesIn(CreateTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation,
+                         HloParserTestLongProto,
+                         ::testing::ValuesIn(CreateTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation, HloParserTestShort,
+                         ::testing::ValuesIn(CreateShortTestCases()),
+                         TestDataToString);
+INSTANTIATE_TEST_SUITE_P(HloParserTestSuccessInstantiation,
+                         HloParserTestShortProto,
+                         ::testing::ValuesIn(CreateShortTestCases()),
+                         TestDataToString);
 
 class HloParserTest : public ::testing::Test {
  protected:
@@ -1532,6 +1599,37 @@ ENTRY %ConstantF16Overflow.v4 () -> f16[] {
                   "is out of range for literal's primitive type F16");
 }
 
+TEST_F(HloParserTest, ConstantBf16NoOverflow) {
+  // 65505 is in range for bf16.
+  const string original = R"(
+  HloModule test_module
+  ENTRY test {
+    ROOT c = bf16[] constant(-65505)
+  })";
+  EXPECT_EQ(Status::OK(), ParseHloString(original).status());
+}
+
+TEST_F(HloParserTest, ConstantBf16Overflow) {
+  // 1e100 is out of range for bf16.
+  const string original = R"(
+  HloModule test_module
+  ENTRY test {
+    ROOT c = bf16[] constant(1e100)
+  })";
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "out of range");
+}
+
+TEST_F(HloParserTest, ConstantF16OverflowInSparseArray) {
+  const string original = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT c = f16[5]sparse{10} constant({[0]: 0, [1]: -65505})
+    })";
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "is out of range for literal's primitive type F16");
+}
+
 TEST_F(HloParserTest, ConstantUnsignedUnderflow) {
   const string original = R"(
       HloModule ConstantUnsignedUnderflow_module
@@ -1566,6 +1664,46 @@ TEST_F(HloParserTest, ConstantUnsignedInt64Overflow) {
   EXPECT_NE(Status::OK(), result.status());
 }
 
+TEST_F(HloParserTest, ConstantC64Overflow) {
+  const string original = R"(
+      HloModule test_module
+      ENTRY test () -> c64[] {
+        ROOT c = c64[] constant((1e100, 0))
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+}
+
+TEST_F(HloParserTest, ConstantC64Underflow) {
+  const string original = R"(
+      HloModule test_module
+      ENTRY test () -> c64[] {
+        ROOT c = c64[] constant((0, -1e100))
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+}
+
+TEST_F(HloParserTest, ConstantF64Overflow) {
+  const string original = R"(
+      HloModule test_module
+      ENTRY test {
+        ROOT c = f64[] constant(1.8e308)
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+}
+
+TEST_F(HloParserTest, ConstantF64Underflow) {
+  const string original = R"(
+      HloModule test_module
+      ENTRY test {
+        ROOT c = f64[] constant(-1.8e308)
+      })";
+  auto result = ParseHloString(original);
+  EXPECT_NE(Status::OK(), result.status());
+}
+
 TEST_F(HloParserTest, ConstantWithExp) {
   const string original = R"(HloModule ConstantWithExp_module
 
@@ -1579,6 +1717,19 @@ ENTRY %ConstantWithExp.v4 () -> f32[] {
   // The string will be parsed successfully but the output strings are not
   // exactly the same, because "3e2" is parsed into value 300 and will be
   // printed as "300".
+}
+
+TEST_F(HloParserTest, ShortConstant) {
+  const string original = R"(HloModule ShortCOnstant_module
+
+ENTRY %ShortConstant.v4 () -> f32[67,89] {
+  ROOT %constant.1 = f32[67,89]{1,0} constant({...})
+}
+
+)";
+  auto result = ParseHloString(original);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
 }
 
 TEST_F(HloParserTest, AttibutesAnyOrder) {
@@ -2280,6 +2431,46 @@ ENTRY %entrycomp (p: f32[2,2]) -> f32[2,2] {
                   " with the shape of the operand instruction f32[2,2]{1,0}.");
 }
 
+TEST_F(HloParserTest, OutOfRangeSparseIndex) {
+  const string original = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT c = f16[5]sparse{10} constant({[100]: 0})
+    })";
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "Invalid sparse index");
+}
+
+TEST_F(HloParserTest, NegativeSparseIndex) {
+  const string original = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT c = f16[5]sparse{10} constant({-1: 0})
+    })";
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "Invalid sparse index");
+}
+
+TEST_F(HloParserTest, SparseIndexWithRankTooLarge) {
+  const string original = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT c = f16[5]sparse{10} constant({[0, 0]: 0})
+    })";
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "Invalid sparse index");
+}
+
+TEST_F(HloParserTest, SparseIndexWithRankTooSmall) {
+  const string original = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT c = f16[5, 5]sparse{10} constant({[0]: 0})
+    })";
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "Invalid sparse index");
+}
+
 TEST_F(HloParserTest, ParseShapeStringR2F32) {
   string shape_string = "f32[123,456]";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
@@ -2378,6 +2569,14 @@ TEST_F(HloParserTest, ParseDynamicTuple) {
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, NegativeParameterNumber) {
+  const string hlo_string = "par0 = f32[3,5] parameter(-1)";
+  auto result = ParseHloString(hlo_string);
+  ASSERT_FALSE(result.status().ok());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr("parameter number must be >= 0"));
 }
 
 }  // namespace

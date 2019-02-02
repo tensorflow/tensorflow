@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
@@ -26,7 +27,6 @@ from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
 @keras_parameterized.run_all_keras_modes
@@ -51,8 +51,8 @@ class GRULayerTest(keras_parameterized.TestCase):
     layer = keras.layers.GRU(units, input_shape=(None, embedding_dim))
     model = keras.models.Sequential()
     model.add(layer)
-    model.compile(RMSPropOptimizer(0.01), 'mse',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'rmsprop', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     x = np.random.random((num_samples, timesteps, embedding_dim))
     y = np.random.random((num_samples, units))
     model.train_on_batch(x, y)
@@ -69,17 +69,17 @@ class GRULayerTest(keras_parameterized.TestCase):
                 'recurrent_dropout': 0.1},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  def test_implementation_mode_GRU(self):
+  @parameterized.parameters([0, 1, 2])
+  def test_implementation_mode_GRU(self, implementation_mode):
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
     units = 2
-    for mode in [0, 1, 2]:
-      testing_utils.layer_test(
-          keras.layers.GRU,
-          kwargs={'units': units,
-                  'implementation': mode},
-          input_shape=(num_samples, timesteps, embedding_dim))
+    testing_utils.layer_test(
+        keras.layers.GRU,
+        kwargs={'units': units,
+                'implementation': implementation_mode},
+        input_shape=(num_samples, timesteps, embedding_dim))
 
   def test_reset_after_GRU(self):
     num_samples = 2
@@ -99,8 +99,8 @@ class GRULayerTest(keras_parameterized.TestCase):
                                  reset_after=True)
     output = gru_layer(inputs)
     gru_model = keras.models.Model(inputs, output)
-    gru_model.compile(RMSPropOptimizer(0.01), 'mse',
-                      run_eagerly=testing_utils.should_run_eagerly())
+    gru_model.compile(
+        'rmsprop', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     gru_model.fit(x_train, y_train)
     gru_model.predict(x_train)
 
@@ -112,9 +112,10 @@ class GRULayerTest(keras_parameterized.TestCase):
     model = keras.models.Sequential()
     model.add(keras.layers.Masking(input_shape=(3, 4)))
     model.add(layer_class(units=5, return_sequences=True, unroll=False))
-    model.compile(loss='categorical_crossentropy',
-                  optimizer=RMSPropOptimizer(0.01),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer='rmsprop',
+        run_eagerly=testing_utils.should_run_eagerly())
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
   def test_statefulness_GRU(self):

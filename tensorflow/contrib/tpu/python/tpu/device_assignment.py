@@ -25,6 +25,9 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib.tpu.python.tpu.topology import Topology
 
 
+SINGLE_CORE_ASSIGNMENT = [[[0, 0, 0]]]
+
+
 def _compute_task_and_cores_to_replicas(core_assignment, topology):
   """Computes a nested dict which maps task and logical core to replicas."""
   task_and_cores_to_replicas = {}

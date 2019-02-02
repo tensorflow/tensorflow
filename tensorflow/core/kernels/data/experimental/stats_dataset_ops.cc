@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -63,8 +62,8 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::LatencyStats")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::LatencyStats")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -173,8 +172,8 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::BytesProducedStats")}));
+      return absl::make_unique<Iterator>(Iterator::Params{
+          this, strings::StrCat(prefix, "::BytesProducedStats")});
     }
 
     const DataTypeVector& output_dtypes() const override {

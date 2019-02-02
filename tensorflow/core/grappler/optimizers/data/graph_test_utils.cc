@@ -107,6 +107,6 @@ NodeDef MakeParseExampleNode(StringPiece name, StringPiece input_node_name,
       });
 }
 
-}  // end namespace graph_tests_utils
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace graph_tests_utils
+}  // namespace grappler
+}  // namespace tensorflow

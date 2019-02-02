@@ -176,13 +176,13 @@ tensorflow::Status _GetOpPerformanceDataAndRunTime(
   tensorflow::Status status = cost_measure->Initialize(item);
   if (!status.ok()) return status;
 
-  tensorflow::CostGraphDef cost_graph;
+  tensorflow::RunMetadata run_metadata;
   TF_RETURN_IF_ERROR(
-      cost_measure->PredictCosts(item.graph, &cost_graph, costs));
+      cost_measure->PredictCosts(item.graph, &run_metadata, costs));
 
   if (op_performance_data) {
     *op_performance_data = tensorflow::grappler::CostGraphToOpPerformanceData(
-        cost_graph, item.graph);
+        run_metadata.cost_graph(), item.graph);
   }
   return tensorflow::Status::OK();
 }

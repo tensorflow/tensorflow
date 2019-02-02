@@ -58,8 +58,118 @@ def get_resource_handle_data(graph_op):
       compat.as_bytes(handle_data))
 
 
-def eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
-  """Creates a variable handle with information to do shape inference."""
+def get_eager_safe_handle_data(handle):
+  """Get the data handle from the Tensor `handle`."""
+  assert isinstance(handle, ops.Tensor)
+
+  if isinstance(handle, ops.EagerTensor):
+    return handle._handle_data  # pylint: disable=protected-access
+  else:
+    return get_resource_handle_data(handle)
+
+
+def _set_handle_shapes_and_types(tensor, handle_data, graph_mode):
+  """Sets the shape inference result HandleData on tensor.
+
+  Args:
+    tensor: A `Tensor` or `EagerTensor`.
+    handle_data: A `CppShapeInferenceResult.HandleData`.
+    graph_mode: A python bool.
+  """
+  tensor._handle_data = handle_data  # pylint: disable=protected-access
+  if not graph_mode:
+    return
+
+  # Not an EagerTensor, so a graph tensor.
+  shapes, types = zip(*[(pair.shape, pair.dtype)
+                        for pair in handle_data.shape_and_type])
+  ranks = [len(s.dim) if not s.unknown_rank else -1 for s in shapes]
+  shapes = [[d.size for d in s.dim]
+            if not s.unknown_rank else None for s in shapes]
+  pywrap_tensorflow.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
+      tensor._op._graph._c_graph,  # pylint: disable=protected-access
+      tensor._as_tf_output(),  # pylint: disable=protected-access
+      shapes, ranks, types)
+
+
+def _combine_handle_data(handle, initial_value):
+  """Concats HandleData from tensors `handle` and `initial_value`.
+
+  Args:
+    handle: A `Tensor` of dtype `resource`.
+    initial_value: A `Tensor`.
+
+  Returns:
+    A `CppShapeInferenceResult.HandleData`.  If `initial_value` has dtype
+    `variant`, the `HandleData` contains the concatenation of the shape_and_type
+    from both `handle` and `initial_value`.
+
+  Raises:
+    RuntimeError: If handle, which was returned by VarHandleOp, either has
+      no handle data, or its len(handle_data.shape_and_type) != 1.
+  """
+  assert handle.dtype == dtypes.resource
+
+  variable_handle_data = get_eager_safe_handle_data(handle)
+
+  if initial_value.dtype != dtypes.variant:
+    return variable_handle_data
+
+  extra_handle_data = get_eager_safe_handle_data(initial_value)
+  if extra_handle_data is not None and extra_handle_data.is_set:
+    if (variable_handle_data is None
+        or not variable_handle_data.is_set
+        or len(variable_handle_data.shape_and_type) != 1):
+      raise RuntimeError(
+          "Expected VarHandleOp to return a length==1 shape_and_type, "
+          "but saw: '%s'" % (variable_handle_data,))
+    variable_handle_data.shape_and_type.extend(
+        extra_handle_data.shape_and_type)
+  return variable_handle_data
+
+
+def eager_safe_variable_handle(initial_value, shared_name, name, graph_mode):
+  """Creates a variable handle with information to do shape inference.
+
+  The shape and dtype are read from `initial_value` and stored in the returned
+  resource tensor's handle data.
+
+  If `initial_value.dtype == tf.variant`, we additionally extract the handle
+  data (if any) from `initial_value` and append it to the `handle_data`.
+  In this case, the returned tensor's handle data is in the form
+
+  ```
+  is_set: true
+  shape_and_type {
+    shape {
+      // initial_value.shape
+    }
+    dtype: DT_VARIANT
+  }
+  shape_and_type {
+    // handle_data(initial_value).shape_and_type[0]
+  }
+  shape_and_type {
+    // handle_data(initial_value).shape_and_type[1]
+  }
+  ...
+  ```
+
+  Ops that read from this tensor, such as `ReadVariableOp` and
+  `AssignVariableOp`, know that `handle_data(handle).shape_and_type[1:]`
+  correspond to the handle data of the variant(s) stored in the Variable.
+
+  Args:
+    initial_value: A `Tensor`.
+    shared_name: A string.
+    name: A string.
+    graph_mode: A python bool.
+
+  Returns:
+    The handle, a `Tensor` of type `resource`.
+  """
+  shape = initial_value.get_shape()
+  dtype = initial_value.dtype.base_dtype
   container = ops.get_default_graph()._container  # pylint: disable=protected-access
   if container is None:
     container = ""
@@ -67,35 +177,38 @@ def eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
                                                    shared_name=shared_name,
                                                    name=name,
                                                    container=container)
+
   if graph_mode:
-    handle._handle_data = get_resource_handle_data(handle)  # pylint: disable=protected-access
+    full_handle_data = _combine_handle_data(handle, initial_value)
+    _set_handle_shapes_and_types(handle, full_handle_data, graph_mode)
     return handle
+  else:
+    # We do not want two distinct ResourceVariable objects for the same
+    # underlying resource in the runtime.
+    # When in eager mode, explicitly ensure so here. When in graph mode, it's
+    # ensured by always generating different variable names.
+    exists = gen_resource_variable_ops.var_is_initialized_op(handle)
+    if exists:
+      raise ValueError("variable object with name '%s' already created. Use "
+                       "get_variable() if reuse is desired." %
+                       shared_name)
+    with context.graph_mode(), ops.Graph().as_default() as graph:
+      h = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
+                                                  shared_name=shared_name,
+                                                  name=name,
+                                                  container=container)
 
-  # We do not want two distinct ResourceVariable objects for the same
-  # underlying resource in the runtime.
-  # When in eager mode, explicitly ensure so here. When in graph mode, it's
-  # ensured by always generating different variable names.
-  exists = gen_resource_variable_ops.var_is_initialized_op(handle)
-  if exists:
-    raise ValueError("variable object with name '%s' already created. Use "
-                     "get_variable() if reuse is desired." %
-                     shared_name)
-  with context.graph_mode(), ops.Graph().as_default() as graph:
-    h = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
-                                                shared_name=shared_name,
-                                                name=name,
-                                                container=container)
-
-    # Tensor._handle_data contains information for the shape-inference code to
-    # know the shape and dtype of the variable pointed to by a handle. Since
-    # shape inference doesn't run in eager mode we copy this data here for when
-    # the handle is captured by an eager mode function.
-    # pylint: disable=protected-access
-    handle._handle_data = get_resource_handle_data(h)
-    # pylint: enable=protected-access
-  # Clean up op->graph->op reference cycles.
-  ops.dismantle_graph(graph)
-  return handle
+      # Tensor._handle_data contains information for the shape-inference code to
+      # know the shape and dtype of the variable pointed to by a handle. Since
+      # shape inference doesn't run in eager mode we copy this data here for
+      # when the handle is captured by an eager mode function.
+      # pylint: disable=protected-access
+      full_handle_data = _combine_handle_data(h, initial_value)
+      _set_handle_shapes_and_types(handle, full_handle_data, graph_mode)
+      # pylint: enable=protected-access
+    # Clean up op->graph->op reference cycles.
+    ops.dismantle_graph(graph)
+    return handle
 
 
 @contextlib.contextmanager
@@ -162,6 +275,18 @@ def shape_safe_assign_variable_handle(handle, shape, value, name=None):
                                                       name=name)
 
 
+def _maybe_set_handle_data(dtype, handle, tensor):
+  if dtype == dtypes.variant:
+    # For DT_VARIANT types, the handle's shape_and_type[1:] stores the
+    # variant's handle data.  Extract it.
+    handle_data = get_eager_safe_handle_data(handle)
+    if handle_data.is_set and len(handle_data.shape_and_type) > 1:
+      tensor._handle_data = (  # pylint: disable=protected-access
+          cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData(
+              is_set=True,
+              shape_and_type=handle_data.shape_and_type[1:]))
+
+
 class ResourceVariable(variables.VariableV1):
   """Variable based on resource handles.
 
@@ -219,7 +344,7 @@ class ResourceVariable(variables.VariableV1):
                initial_value=None,
                trainable=True,
                collections=None,
-               validate_shape=True,
+               validate_shape=True,  # pylint: disable=unused-argument
                caching_device=None,
                name=None,
                dtype=None,
@@ -231,8 +356,7 @@ class ResourceVariable(variables.VariableV1):
 
     Args:
       initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
-        which is the initial value for the Variable. The initial value must have
-        a shape specified unless `validate_shape` is set to False. Can also be a
+        which is the initial value for the Variable. Can also be a
         callable with no argument that returns the initial value when called.
         (Note that initializer functions from init_ops.py must first be bound
          to a shape before being used here.)
@@ -292,7 +416,6 @@ class ResourceVariable(variables.VariableV1):
           initial_value=initial_value,
           trainable=trainable,
           collections=collections,
-          validate_shape=validate_shape,
           caching_device=caching_device,
           name=name,
           dtype=dtype,
@@ -307,12 +430,10 @@ class ResourceVariable(variables.VariableV1):
       return "<tf.Variable '%s' shape=%s dtype=%s>" % (
           self.name, self.get_shape(), self.dtype.name)
 
-  # pylint: disable=unused-argument
   def _init_from_args(self,
                       initial_value=None,
                       trainable=True,
                       collections=None,
-                      validate_shape=True,
                       caching_device=None,
                       name=None,
                       dtype=None,
@@ -413,17 +534,18 @@ class ResourceVariable(variables.VariableV1):
         # Use attr_scope and device(None) to simulate the behavior of
         # colocate_with when the variable we want to colocate with doesn't
         # yet exist.
+        device_context_manager = (
+            ops.device if self._in_graph_mode else ops.NullContextmanager)
         attr = attr_value_pb2.AttrValue(
             list=attr_value_pb2.AttrValue.ListValue(
                 s=[compat.as_bytes("loc:@%s" % handle_name)]))
         with ops.get_default_graph()._attr_scope({"_class": attr}):
-          with ops.name_scope("Initializer"), ops.device(None):
+          with ops.name_scope("Initializer"), device_context_manager(None):
             initial_value = ops.convert_to_tensor(
                 initial_value() if init_from_fn else initial_value,
                 name="initial_value", dtype=dtype)
           self._handle = eager_safe_variable_handle(
-              shape=initial_value.get_shape(),
-              dtype=initial_value.dtype.base_dtype,
+              initial_value=initial_value,
               shared_name=shared_name,
               name=name,
               graph_mode=self._in_graph_mode)
@@ -597,7 +719,7 @@ class ResourceVariable(variables.VariableV1):
         constraint=self._constraint,
         dtype=self._dtype,
         name=self._shared_name + "_copy",
-        distribute_strategy=self.distribute_strategy)
+        distribute_strategy=self._distribute_strategy)
     memo[self._unique_id] = copied_variable
     return copied_variable
 
@@ -625,11 +747,6 @@ class ResourceVariable(variables.VariableV1):
   def shape(self):
     """The shape of this variable."""
     return self._shape
-
-  @property
-  def distribute_strategy(self):
-    """The `tf.distribute.Strategy` that this variable was created under."""
-    return self._distribute_strategy
 
   def _shape_as_list(self):
     if self.shape.ndims is None:
@@ -734,22 +851,13 @@ class ResourceVariable(variables.VariableV1):
     return gen_state_ops.resource_count_up_to(self.handle, limit=limit,
                                               T=self.dtype)
 
-  def _set_save_slice_info(self, save_slice_info):
-    """Sets the slice info for this `ResourceVariable`.
-
-    Args:
-      save_slice_info: A `Variable.SaveSliceInfo` object.
-    """
-    self._save_slice_info = save_slice_info
-
-  def _get_save_slice_info(self):
-    return self._save_slice_info
-
   def _read_variable_op(self):
     if self.trainable:
       tape.variable_accessed(self)
     result = gen_resource_variable_ops.read_variable_op(self._handle,
                                                         self._dtype)
+    _maybe_set_handle_data(self._dtype, self._handle, result)
+
     if not context.executing_eagerly():
       # Note that if a control flow context is active the input of the read op
       # might not actually be the handle. This line bypasses it.
@@ -781,6 +889,17 @@ class ResourceVariable(variables.VariableV1):
         tape.variable_accessed(self)
       value = gen_resource_variable_ops.resource_gather(
           self._handle, indices, dtype=self._dtype, name=name)
+
+      if self._dtype == dtypes.variant:
+        # For DT_VARIANT types, the handle's shape_and_type[1:] stores the
+        # variant's handle data.  Extract it.
+        handle_data = get_eager_safe_handle_data(self._handle)
+        if handle_data.is_set and len(handle_data.shape_and_type) > 1:
+          value._handle_data = (  # pylint: disable=protected-access
+              cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData(
+                  is_set=True,
+                  shape_and_type=handle_data.shape_and_type[1:]))
+
     return array_ops.identity(value)
 
   def to_proto(self, export_scope=None):
@@ -948,7 +1067,7 @@ class ResourceVariable(variables.VariableV1):
         name=self._shared_name,
         dtype=self.dtype,
         constraint=self.constraint,
-        distribute_strategy=self.distribute_strategy), ()
+        distribute_strategy=self._distribute_strategy), ()
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     """Subtracts `IndexedSlices` from this variable.
@@ -1355,8 +1474,11 @@ class _UnreadVariable(ResourceVariable):
 
   def _read_variable_op(self):
     with ops.control_dependencies([self._parent_op]):
-      return gen_resource_variable_ops.read_variable_op(self._handle,
-                                                        self._dtype)
+      result = gen_resource_variable_ops.read_variable_op(self._handle,
+                                                          self._dtype)
+      _maybe_set_handle_data(self._dtype, self._handle, result)
+      return result
+
 
   @property
   def op(self):
@@ -1441,6 +1563,7 @@ class _MixedPrecisionVariable(ResourceVariable):
     with ops.colocate_with(self._handle):
       res = gen_resource_variable_ops.read_variable_op(self._handle,
                                                        self._dtype)
+      _maybe_set_handle_data(self._dtype, self._handle, res)
       if self._read_dtype != self._dtype:
         return math_ops.cast(res, self._read_dtype)
       else:

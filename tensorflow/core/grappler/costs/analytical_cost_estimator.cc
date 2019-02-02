@@ -124,22 +124,9 @@ Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {
   return Status::OK();
 }
 
-// TODO(b/67607683): unify logic with VirtualCluster logic
 Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
-                                             CostGraphDef* cost_graph,
+                                             RunMetadata* run_metadata,
                                              Costs* costs) const {
-  RunMetadata run_metadata;
-  auto s =
-      PredictCostsAndReturnRunMetadata(optimized_graph, &run_metadata, costs);
-  if (s.ok() && cost_graph) {
-    cost_graph->Swap(run_metadata.mutable_cost_graph());
-  }
-  return s;
-}
-
-Status AnalyticalCostEstimator::PredictCostsAndReturnRunMetadata(
-    const GraphDef& optimized_graph, RunMetadata* run_metadata,
-    Costs* costs) const {
   GrapplerItem item = item_;
   item.graph = optimized_graph;
 

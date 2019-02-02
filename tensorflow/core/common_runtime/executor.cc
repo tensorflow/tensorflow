@@ -1276,6 +1276,11 @@ class ExecutorState {
 
   std::atomic_int_fast32_t num_outstanding_ops_;
 
+  // Available via OpKernelContext to every OpKernel invocation.
+  mutex num_deferred_ops_mu_;
+  condition_variable num_deferred_ops_cv_;
+  int64 num_deferred_ops_ GUARDED_BY(num_deferred_ops_mu_) = 0;
+
   mutex mu_;
   Status status_ GUARDED_BY(mu_);
 
@@ -1631,6 +1636,15 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.input_alloc_attrs = &input_alloc_attrs;
   params.runner = &runner_;
   params.stats_collector = stats_collector_;
+  params.inc_num_deferred_ops_function = [this]() {
+    mutex_lock lock(num_deferred_ops_mu_);
+    num_deferred_ops_++;
+  };
+  params.dec_num_deferred_ops_function = [this]() {
+    mutex_lock lock(num_deferred_ops_mu_);
+    num_deferred_ops_--;
+    num_deferred_ops_cv_.notify_all();
+  };
 
   Status s;
   NodeExecStatsInterface* stats = nullptr;
@@ -2416,7 +2430,45 @@ void ExecutorState::Finish() {
   CHECK(done_cb != nullptr);
   Device* device = impl_->params_.device;
 
-  if ((sync_on_finish_ && status.ok()) || device->RequiresSyncOnCompletion()) {
+  // There are several potential race conditions below. To name a few:
+  // 1. Even if the device's status is OK at the precise moment when
+  // num_deferred_ops_ reaches 0, it could go bad before device->RefreshStatus()
+  // is called below, caused by work enqueued onto the same device by other
+  // concurrent ExecutorState objects.
+  // 2. Some implementations of Device::RefreshStatus, such as
+  // XlaDevice::RefreshStatus, may be inherently racy because it releases the
+  // device mutex after a stream pointer is acquired and before the stream is
+  // queried for status.
+  // 3. It's the same for some implementations of Device::Sync, such as
+  // XlaDevice::Sync.
+  //
+  // However, these race conditions are acceptable because a stream (and
+  // therefore an XlaDevice) can only go from OK to not-OK, never the opposite,
+  // which means we will at worst report errors when there isn't any, never the
+  // opposite.
+
+  // If inc_num_deferred_ops_function has ever been called, ExecutorState must
+  // wait for all corresponding dec_num_deferred_ops_function calls to happen
+  // regardless of status. This ensures that dec_num_deferred_ops_function can
+  // safely use ExecutorState's resources.
+  {
+    mutex_lock lock(num_deferred_ops_mu_);
+    while (num_deferred_ops_ > 0) {
+      num_deferred_ops_cv_.wait(lock);
+    }
+  }
+
+  // An early exit for devices don't allow sync on completion. Ops that run on
+  // these devices should have used num_deferred_ops correctly to ensure the
+  // device has finished all relevant work at this point.
+  if (!device->AllowsSyncOnCompletion()) {
+    status.Update(device->RefreshStatus());
+    delete this;
+    runner([=]() { done_cb(status); });
+    return;
+  }
+
+  if (sync_on_finish_ && status.ok()) {
     // Block until the device has finished all queued operations. For
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to
