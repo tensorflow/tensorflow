@@ -176,7 +176,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   string serialized;
   TF_RET_CHECK(SerializeToStringDeterministic(gdef, &serialized));
   uint64 fingerprint = Fingerprint64(serialized);
-  LOG(INFO) << "Subgraph fingerprint:" << fingerprint;
+  VLOG(1) << "Subgraph fingerprint:" << fingerprint;
   call_def->set_op(absl::StrCat(call_def->op(), "_", fingerprint));
   return Status::OK();
 }
