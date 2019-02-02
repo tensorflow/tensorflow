@@ -1804,6 +1804,36 @@ class FuseSquaredDiffStage : public ArithmeticOptimizerStage {
   }
 };
 
+// Performs the conversion:
+// Log(Softmax(x)) => LogSoftmax(x)
+class LogSoftmaxStage : public ArithmeticOptimizerStage {
+ public:
+  explicit LogSoftmaxStage(const GraphOptimizerContext& ctx,
+                           const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("LogSoftmaxStage", ctx, ctx_ext) {}
+  ~LogSoftmaxStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsLog(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* x;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &x));
+    // Optimize only if arg is a Softmax whose output is not being consumed
+    // elsewhere.
+    if (IsSoftmax(*x) && !IsInPreserveSet(*x) &&
+        (NumNonControlOutputs(*x, *ctx().node_map) == 1)) {
+      // Log(Softmax(x)) => LogSoftmax(Identity(x))
+      node->set_op("LogSoftmax");
+      x->set_op("Identity");
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(x);
+    }
+    return Status::OK();
+  }
+};
+
 // Bypass redundant reshape nodes:
 //
 //   Reshape                    Reshape  <-+
@@ -3552,6 +3582,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   if (options_.convert_pow) pipeline.AddStage<ConvertPowStage>(ctx, ctx_ext);
   if (options_.convert_log1p)
     pipeline.AddStage<ConvertLog1pStage>(ctx, ctx_ext);
+  if (options_.convert_log_softmax)
+    pipeline.AddStage<LogSoftmaxStage>(ctx, ctx_ext);
   if (options_.optimize_max_or_min_of_monotonic)
     pipeline.AddStage<OptimizeMaxOrMinOfMonotonicStage>(ctx, ctx_ext);
   if (options_.convert_expm1)

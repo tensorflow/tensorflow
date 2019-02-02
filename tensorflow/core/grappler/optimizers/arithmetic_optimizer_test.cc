@@ -2556,6 +2556,67 @@ TEST_F(ArithmeticOptimizerTest, DoNotFuseSquaredDiffFetchNode) {
   }
 }
 
+TEST_F(ArithmeticOptimizerTest, ConvertLogSoftmax) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  Output softmax = ops::Softmax(s.WithOpName("softmax"), x);
+  Output logsoftmax = ops::Log(s.WithOpName("output"), softmax);
+
+  GrapplerItem item;
+  item.fetch = {"output"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  const auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyLogSoftmax(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+  const auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+  EXPECT_EQ(item.graph.node_size() - 1, output.node_size());
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "output") {
+      EXPECT_EQ("LogSoftmax", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+    }
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, DoNotConvertLogSoftmaxArgFetchNode) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output floats = ops::Const(s.WithOpName("floats"),
+                             {0.7423212f, 0.19757693f, 0.53124744f}, {1, 3});
+  Output softmax = ops::Softmax(s.WithOpName("softmax"), floats);
+  Output final_output = ops::Log(s.WithOpName("final_output"), softmax);
+
+  GrapplerItem item;
+  item.fetch = {"softmax", "final_output"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  const auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(2, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyLogSoftmax(&optimizer);
+  OptimizeTwice(&optimizer, &item, &output);
+  const auto tensors = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(2, tensors.size());
+
+  // Should be a NoOp since we are not allowed to change the output of fetch
+  // nodes.
+  VerifyGraphsMatch(item.graph, output, __LINE__);
+
+  for (int i = 0; i < tensors.size(); i++) {
+    EXPECT_EQ(tensors[i].NumElements(), tensors_expected[i].NumElements());
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-6);
+  }
+}
+
 TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
