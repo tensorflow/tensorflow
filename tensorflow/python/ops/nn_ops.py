@@ -3220,13 +3220,21 @@ def max_pool_with_argmax_v1(input,  # pylint: disable=missing-docstring,invalid-
                             data_format="NHWC",
                             Targmax=dtypes.int64,  # pylint: disable=invalid-name
                             name=None,
-                            output_dtype=None):
+                            output_dtype=None,
+                            include_batch_in_index=False):
   Targmax = deprecated_argument_lookup(
       "output_dtype", output_dtype, "Targmax", Targmax)
   if output_dtype is not None:
     Targmax = output_dtype
   return gen_nn_ops.max_pool_with_argmax(
-      input, ksize, strides, padding, data_format, Targmax, name)
+      input,
+      ksize,
+      strides,
+      padding,
+      data_format,
+      Targmax,
+      include_batch_in_index,
+      name)
 
 max_pool_with_argmax_v1.__doc__ = gen_nn_ops.max_pool_with_argmax.__doc__
 # pylint: enable=redefined-builtin
