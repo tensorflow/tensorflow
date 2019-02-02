@@ -447,6 +447,8 @@ bool IsSlice(const NodeDef& node) { return node.op() == "Slice"; }
 
 bool IsSnapshot(const NodeDef& node) { return node.op() == "Snapshot"; }
 
+bool IsSoftmax(const NodeDef& node) { return node.op() == "Softmax"; }
+
 bool IsSoftplusGrad(const NodeDef& node) { return node.op() == "SoftplusGrad"; }
 
 bool IsSoftsignGrad(const NodeDef& node) { return node.op() == "SoftsignGrad"; }
