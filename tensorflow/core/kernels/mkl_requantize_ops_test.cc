@@ -69,18 +69,19 @@ void MklRequantizatedOpsTestHelper::Setup(Tensor &input_tensor_qint32,
   // Step 3: Assumption of quantizedconv on quantized input&weights(per channel)
   // ---------------------------------------------------------------------------
   // The input T and weights W1 (or W2) will be convolved.
-  // The output Tensor T is in int32 whose range is [-(2^31-1), 2^31-1)
-  // The Range of the convolved T*W1 is ((2^31)-1) * 5.0/255 * 2.0/127 = 663110.59
+  // The output Tensor T is in int32 whose range is [-2^31, 2^31).
+  // For simplicity, we truncate the range to (-2^31, 2^31) to make it symmetric.
+  // The range of the convolved T*W1 is ((2^31)-1) * 5.0/255 * 2.0/127 = 663110.59
   // So the range of convolved T*W1 in int32[-(2^31-1), 22^31-1] that maps to
-  // orig T Range in FP32[0,5.0] * [-2.0, 2.0] is [-663110.59, 663110.59]
+  // orig T range in FP32[0, 5.0] * [-2.0, 2.0] is [-663110.59, 663110.59]
 
-  // The Range of the convolved T*W2 is 2^31-1 * 5.0/255 * 3.0/127 = 994665.88
-  // So Range of convolved T*W2 in int32[-(2^31-1), 22^31-1] that maps to
-  // orig T Range in FP32 [0, 5.0] * [-3.0, 3.0]  is [-994665.88, 994665.88]
+  // The range of the convolved T*W2 is (2^31-1) * 5.0/255 * 3.0/127 = 994665.88
+  // So the range of convolved T*W1 in int32(-2^31, 2^31) that maps to
+  // orig T range in FP32 [0, 5.0] * [-3.0, 3.0]  is [-994665.88, 994665.88]
 
   // Step 4: Assumption output above is fed to Requantization_range_perchannel
   // --------------------------------------------------------------------------
-  // Here we recalculate the new Range for convolved T*W so that we
+  // Here we recalculate the new range for convolved T*W so that we
   // make good use in int8 quantization from int32 to int8.
 
   // We assume the above operations are performed and use these values above
@@ -88,7 +89,7 @@ void MklRequantizatedOpsTestHelper::Setup(Tensor &input_tensor_qint32,
   range_weights_ch1 = 663110.59;  // For W1 channel
   range_weights_ch2 = 994665.88;  // For W2 Channel
 
-  // We Fill the inputs Tensor T qint32 with arbitrary int32 values
+  // We Fill the input Tensor T qint32 with arbitrary int32 values
   test::FillValues<qint32>(
       &input_tensor_qint32,
       {-1000, -2000,  2000,   4000,   -3000,  -6000,  4000,   8000,
@@ -106,7 +107,7 @@ void MklRequantizatedOpsTestHelper::Setup(Tensor &input_tensor_qint32,
 // of the weights is calculated per channel.
 TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_Basic) {
   // Let us set up the tensor and inputs before we run this op.
-  float clip_max_value = pow(2, 31);
+  float clip_value_max = static_cast<float>((1L << 31) - 1);
   float range_weights_ch1 = 0.0;
   float range_weights_ch2 = 0.0;
 
@@ -125,75 +126,14 @@ TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_Basic) {
 
   // Step 5: Define and run requantization_range_perchannel
   // -------------------------------------------------------
-  // Define, Create and initalize the OP in question.
+  // Define, create and initialize the OP in question.
   TF_ASSERT_OK(NodeDefBuilder("requantization_range_per_channel",
                               "RequantizationRangePerChannel")
                    .Input(FakeInput(DT_QINT32))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Attr("T", DataTypeToEnum<qint32>::v())
-                   .Attr("clip_value_max", clip_max_value)
-                   .Finalize(node_def()));
-  TF_ASSERT_OK(InitOp());
-
-  // Add the Input Nodes to the Op.
-  AddInputFromArray<qint32>(input_tensor_qint32.shape(),
-                            input_tensor_qint32.flat<qint32>());
-
-  // Calculate the Min and max from the ranges
-  float ch1_min = -1.0 * range_weights_ch1;
-  float ch1_max = range_weights_ch1;
-  float ch2_min = -1.0 * range_weights_ch2;
-  float ch2_max = range_weights_ch2;
-
-  // Add the Perchannel range Nodes to the Op.
-  AddInputFromArray<float>(TensorShape({input_channels}), {ch1_min, ch2_min});
-  AddInputFromArray<float>(TensorShape({input_channels}), {ch1_max, ch2_max});
-
-  // Run the Kernel
-  TF_ASSERT_OK(RunOpKernel());
-
-  // Step 6: Verify Output and Store values to test Requantize_perchannel
-  // --------------------------------------------------------------------
-
-  // Verify the Expected Outputs
-  const float output_min = GetOutput(0)->flat<float>()(0);
-  const float output_max = GetOutput(1)->flat<float>()(0);
-  EXPECT_NEAR(-14.8217, output_min, 0.002);
-  EXPECT_NEAR(14.8217, output_max, 0.002);
-
-  // output range is made use in RequantizePerChannelTest_Basic
-}
-
-TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_ClipMax) {
-  // Let us setup the tensor and inputs before we run this op.
-  float clip_max_value = 6;  // Can be used as 6 for Relu 6 activations.
-  float range_weights_ch1 = 0.0;
-  float range_weights_ch2 = 0.0;
-
-  // Create the input tensor
-  const int input_height = 4;
-  const int input_width = 4;
-  const int input_channels = 2;
-
-  // define and input tensor T shape.
-  Tensor input_tensor_qint32(DT_QINT32,
-                             {1, input_height, input_width, input_channels});
-
-  // Explanation and setup prior to this Op. Fill T and populate range values.
-  MklRequantizatedOpsTestHelper helper;
-  helper.Setup(input_tensor_qint32, range_weights_ch1, range_weights_ch2);
-
-  // Step 5: Define and run requantization_range_perchannel
-  // -------------------------------------------------------
-  // Define, Create and initalize the OP in question.
-  TF_ASSERT_OK(NodeDefBuilder("requantization_range_per_channel",
-                              "RequantizationRangePerChannel")
-                   .Input(FakeInput(DT_QINT32))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Attr("T", DataTypeToEnum<qint32>::v())
-                   .Attr("clip_value_max", clip_max_value)
+                   .Attr("clip_value_max", clip_value_max)
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
 
@@ -220,13 +160,73 @@ TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_ClipMax) {
   // Verify the Expected Outputs
   const float output_min = GetOutput(0)->flat<float>()(0);
   const float output_max = GetOutput(1)->flat<float>()(0);
-  EXPECT_NEAR(-6.0, output_min, 0.002);  // Values are Max as with clip_value
-  EXPECT_NEAR(6.0, output_max, 0.002);   // Values are Max as with clip_value
+  EXPECT_NEAR(-14.8217, output_min, 0.02);
+  EXPECT_NEAR(14.8217, output_max, 0.02);
+
+  // output range is made use in RequantizePerChannelTest_Basic
+}
+
+TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_ClipMax) {
+  // Let us setup the tensor and inputs before we run this op.
+  float clip_value_max = 6;  // Can be used as 6 for Relu 6 activations.
+  float range_weights_ch1 = 0.0;
+  float range_weights_ch2 = 0.0;
+
+  // Create the input tensor
+  const int input_height = 4;
+  const int input_width = 4;
+  const int input_channels = 2;
+
+  // define and input tensor T shape.
+  Tensor input_tensor_qint32(DT_QINT32,
+                             {1, input_height, input_width, input_channels});
+
+  // Explanation and setup prior to this Op. Fill T and populate range values.
+  MklRequantizatedOpsTestHelper helper;
+  helper.Setup(input_tensor_qint32, range_weights_ch1, range_weights_ch2);
+
+  // Step 5: Define and run requantization_range_perchannel
+  // -------------------------------------------------------
+  // Define, Create and initalize the OP in question.
+  TF_ASSERT_OK(NodeDefBuilder("requantization_range_per_channel",
+                              "RequantizationRangePerChannel")
+                   .Input(FakeInput(DT_QINT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("T", DataTypeToEnum<qint32>::v())
+                   .Attr("clip_value_max", clip_value_max)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+
+  // Add the Input Nodes to the Op.
+  AddInputFromArray<qint32>(input_tensor_qint32.shape(),
+                            input_tensor_qint32.flat<qint32>());
+
+  // Calculate the Min and max from the ranges
+  float ch1_min = -range_weights_ch1;
+  float ch1_max = range_weights_ch1;
+  float ch2_min = -range_weights_ch2;
+  float ch2_max = range_weights_ch2;
+
+  // Add the Perchannel range Nodes to the Op.
+  AddInputFromArray<float>(TensorShape({input_channels}), {ch1_min, ch2_min});
+  AddInputFromArray<float>(TensorShape({input_channels}), {ch1_max, ch2_max});
+
+  // Run the Kernel
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Step 6: Verify Output and Store values to test Requantize_perchannel
+  // --------------------------------------------------------------------
+
+  // Verify the Expected Outputs
+  const float output_min = GetOutput(0)->flat<float>()(0);
+  const float output_max = GetOutput(1)->flat<float>()(0);
+  EXPECT_NEAR(-6.0, output_min, 0.02);  // Values are Max as with clip_value
+  EXPECT_NEAR(6.0, output_max, 0.02);   // Values are Max as with clip_value
 }
 
 TEST_F(MklRequantizatedOpsTest, RequantizePerChannelTest_Basic) {
   // Let us setup the tensor and inputs before we run this op.
-  float clip_max_value = pow(2, 31);
   float range_weights_ch1 = 0.0;
   float range_weights_ch2 = 0.0;
 
@@ -245,7 +245,7 @@ TEST_F(MklRequantizatedOpsTest, RequantizePerChannelTest_Basic) {
 
   // Step 7: Define and run requantize_perchannel
   // --------------------------------------------
-  // The Output of Requantization_range_op_per_channel which calculated the
+  // The output of Requantization_range_op_per_channel which calculated the
   // new ranges of int8 is fed to the requantize per channel op.
   // Here the Values of Convolved T*W is converted from int32 to int8.
 
@@ -290,8 +290,8 @@ TEST_F(MklRequantizatedOpsTest, RequantizePerChannelTest_Basic) {
   Tensor output = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
-  EXPECT_NEAR(range_op_output_min, output_min, 0.002);
-  EXPECT_NEAR(range_op_output_max, output_max, 0.002);
+  EXPECT_NEAR(range_op_output_min, output_min, 0.02);
+  EXPECT_NEAR(range_op_output_max, output_max, 0.02);
 }
 
 }  // namespace tensorflow
