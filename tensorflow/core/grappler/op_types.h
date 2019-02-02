@@ -148,6 +148,7 @@ bool IsShapeN(const NodeDef& node);
 bool IsShuffle(const NodeDef& node);
 bool IsSigmoidGrad(const NodeDef& node);
 bool IsSnapshot(const NodeDef& node);
+bool IsSoftmax(const NodeDef& node);
 bool IsSoftplusGrad(const NodeDef& node);
 bool IsSoftsignGrad(const NodeDef& node);
 bool IsSplit(const NodeDef& node);
