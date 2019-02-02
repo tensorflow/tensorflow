@@ -187,7 +187,7 @@ TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_ClipMax) {
 
   // Step 5: Define and run requantization_range_perchannel
   // -------------------------------------------------------
-  // Define, Create and initalize the OP in question.
+  // Define, create and initalize the OP in question.
   TF_ASSERT_OK(NodeDefBuilder("requantization_range_per_channel",
                               "RequantizationRangePerChannel")
                    .Input(FakeInput(DT_QINT32))
