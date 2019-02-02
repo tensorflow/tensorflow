@@ -162,7 +162,7 @@ void HloTfGraphBuilder::SetNodeAttrs(const HloInstruction* instruction,
       // For tuples, emit the full shape because the layout of a tuple is not
       // represented in a single Layout field.
       layout_string = ShapeUtil::HumanStringWithLayout(instruction->shape());
-    } else {
+    } else if (instruction->shape().has_layout()) {
       layout_string = StrCat(
           "{",
           absl::StrJoin(LayoutUtil::MinorToMajor(instruction->shape()), ","),
