@@ -1838,7 +1838,7 @@ tf_module {
   }
   member_method {
     name: "MaxPoolGradGradWithArgmax"
-    argspec: "args=[\'input\', \'grad\', \'argmax\', \'ksize\', \'strides\', \'padding\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'grad\', \'argmax\', \'ksize\', \'strides\', \'padding\', \'include_batch_in_index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "MaxPoolGradV2"
@@ -1846,7 +1846,7 @@ tf_module {
   }
   member_method {
     name: "MaxPoolGradWithArgmax"
-    argspec: "args=[\'input\', \'grad\', \'argmax\', \'ksize\', \'strides\', \'padding\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'grad\', \'argmax\', \'ksize\', \'strides\', \'padding\', \'include_batch_in_index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "MaxPoolV2"
@@ -1854,7 +1854,7 @@ tf_module {
   }
   member_method {
     name: "MaxPoolWithArgmax"
-    argspec: "args=[\'input\', \'ksize\', \'strides\', \'Targmax\', \'padding\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'Targmax\', \'padding\', \'include_batch_in_index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "Maximum"
