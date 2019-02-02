@@ -89,9 +89,9 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
                    .Attr("padding", "SAME")
                    .Attr("_kernel", "QuantizedMklOp")
                    .Finalize(node_def()));
-  
+
   TF_ASSERT_OK(InitOp());
- 
+
   // Image shape
   const int image_batch_count = 1;
   const int image_height = 3;
