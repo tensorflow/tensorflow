@@ -55,7 +55,7 @@ class InitializersTest(test.TestCase):
       self.assertGreater(lim, abs(output.min() - target_min))
 
   def test_uniform(self):
-    shape = [9, 6, 7]
+    shape = (9, 6, 99)
     with self.cached_session():
       for tensor_shape in [shape, tensor_shape_lib.TensorShape(shape)]:
         self._runner(
