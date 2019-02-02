@@ -1527,7 +1527,6 @@ class MklQuantizedConv2DOp
     Tensor* output_max = nullptr;
     if (std::is_same<Toutput, quint8>::value ||
         std::is_same<Toutput, qint8>::value) {
-
       AllocateOutputSetMklShape(context, 1, &output_min, {},
                                 output_min_mkl_shape);
       AllocateOutputSetMklShape(context, 2, &output_max, {},
