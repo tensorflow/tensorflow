@@ -841,6 +841,42 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       model.fit(dataset_dict, epochs=1, steps_per_epoch=2, verbose=1)
 
+  # TODO(b/122743976): Include TPUStrategy for this test as well once
+  # step inference is supported.
+  @combinations.generate(strategy_minus_tpu_combinations())
+  def test_fit_eval_and_predict_methods_on_dataset_without_steps(
+      self, distribution):
+    with self.cached_session():
+      with distribution.scope():
+        model = get_model()
+        optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+        loss = 'mse'
+        metrics = ['mae', keras.metrics.CategoricalAccuracy()]
+        model.compile(optimizer, loss, metrics=metrics)
+
+      inputs = np.zeros((1000, 3), dtype=np.float32)
+      targets = np.zeros((1000, 4), dtype=np.float32)
+      # steps/steps_per_epoch are calculated when using numpy arrays as
+      # input data.
+      fit_with_numpy = model.fit(inputs, targets, epochs=1,
+                                 batch_size=10).history
+      eval_with_numpy = model.evaluate(inputs, targets, batch_size=10)
+      predict_with_numpy = model.predict(inputs, batch_size=10)
+
+      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+      dataset = dataset.batch(10)
+      fit_with_ds = model.fit(dataset, epochs=1).history
+      eval_with_ds = model.evaluate(dataset)
+      predict_dataset = dataset_ops.Dataset.from_tensor_slices(inputs)
+      predict_dataset = predict_dataset.batch(10, drop_remainder=True)
+      predict_with_ds = model.predict(predict_dataset)
+      self.assertAllClose(
+          fit_with_numpy, fit_with_ds, atol=1e-4, rtol=1e-4)
+      self.assertAllClose(
+          eval_with_numpy, eval_with_ds, atol=1e-4, rtol=1e-4)
+      self.assertAllClose(
+          predict_with_numpy, predict_with_ds, atol=1e-4, rtol=1e-4)
+
   @combinations.generate(all_strategy_combinations())
   def test_fit_eval_and_predict_methods_on_dataset(self, distribution):
     with self.cached_session():
@@ -1120,16 +1156,7 @@ class Counter(keras.callbacks.Callback):
 class TestDistributionStrategyWithCallbacks(test.TestCase,
                                             parameterized.TestCase):
 
-  def _check_counts(self, counter, expected_counts):
-    """Checks that the counts registered by `counter` are those expected."""
-    for method_name, expected_count in expected_counts.items():
-      self.assertEqual(
-          counter.method_counts[method_name],
-          expected_count,
-          msg='For method {}: expected {}, got: {}'.format(
-              method_name, expected_count, counter.method_counts[method_name]))
-
-  @combinations.generate(strategy_minus_tpu_combinations())
+  @combinations.generate(all_strategy_combinations())
   def test_callbacks_in_fit(self, distribution):
     with distribution.scope():
       model = get_model()
@@ -1138,36 +1165,46 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
     dataset = get_dataset(distribution)
     counter = Counter()
 
+    epochs = 2
+    steps_per_epoch = 5
+    validation_steps = 3
+
     model.fit(
         dataset,
-        epochs=2,
-        steps_per_epoch=5,
+        epochs=epochs,
+        steps_per_epoch=steps_per_epoch,
         verbose=0,
         validation_data=dataset,
-        validation_steps=2,
+        validation_steps=validation_steps,
         callbacks=[counter])
 
-    self._check_counts(
-        counter, {
-            'on_batch_begin': 10,
-            'on_batch_end': 10,
-            'on_epoch_begin': 2,
-            'on_epoch_end': 2,
-            'on_predict_batch_begin': 0,
-            'on_predict_batch_end': 0,
-            'on_predict_begin': 0,
-            'on_predict_end': 0,
-            'on_test_batch_begin': 4,
-            'on_test_batch_end': 4,
-            'on_test_begin': 2,
-            'on_test_end': 2,
-            'on_train_batch_begin': 10,
-            'on_train_batch_end': 10,
+    if isinstance(distribution, tpu_strategy.TPUStrategy):
+      # TPU Strategy can have multi step training, from extended.steps_per_run
+      # if steps_per_run = 1, then num_batch_call_per_epoch = steps_per_epoch
+      steps_per_run = distribution.extended.steps_per_run
+      num_batch_call_per_epoch = steps_per_epoch // steps_per_run
+      if steps_per_epoch % steps_per_run:
+        num_batch_call_per_epoch += 1
+    else:
+      num_batch_call_per_epoch = steps_per_epoch
+
+    self.assertDictEqual(
+        counter.method_counts, {
+            'on_batch_begin': epochs * num_batch_call_per_epoch,
+            'on_batch_end': epochs * num_batch_call_per_epoch,
+            'on_epoch_begin': epochs,
+            'on_epoch_end': epochs,
+            'on_test_batch_begin': epochs * validation_steps,
+            'on_test_batch_end': epochs * validation_steps,
+            'on_test_begin': epochs,
+            'on_test_end': epochs,
+            'on_train_batch_begin': epochs * num_batch_call_per_epoch,
+            'on_train_batch_end': epochs * num_batch_call_per_epoch,
             'on_train_begin': 1,
             'on_train_end': 1
         })
 
-  @combinations.generate(strategy_minus_tpu_combinations())
+  @combinations.generate(all_strategy_combinations())
   def test_callbacks_in_eval(self, distribution):
     with distribution.scope():
       model = get_model()
@@ -1178,15 +1215,15 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
 
     model.evaluate(dataset, steps=5, callbacks=[counter])
 
-    self._check_counts(
-        counter, {
+    self.assertDictEqual(
+        counter.method_counts, {
             'on_test_batch_begin': 5,
             'on_test_batch_end': 5,
             'on_test_begin': 1,
             'on_test_end': 1
         })
 
-  @combinations.generate(strategy_minus_tpu_combinations())
+  @combinations.generate(all_strategy_combinations())
   def test_callbacks_in_predict(self, distribution):
     with distribution.scope():
       model = get_model()
@@ -1197,8 +1234,8 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
 
     model.predict(get_predict_dataset(dataset), steps=5, callbacks=[counter])
 
-    self._check_counts(
-        counter, {
+    self.assertDictEqual(
+        counter.method_counts, {
             'on_predict_batch_begin': 5,
             'on_predict_batch_end': 5,
             'on_predict_begin': 1,
@@ -1293,14 +1330,21 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
             verbose=0,
             sample_weight=sample_weight)
 
-      # Test with not specifying the `steps` argument.
-      with self.assertRaisesRegexp(
-          ValueError, 'the `steps_per_epoch` argument'):
+      # Test with not specifying the `steps` argument for dataset with infinite
+      # cardinality.
+      dataset = dataset.repeat()
+      with self.assertRaisesRegexp(ValueError, 'When passing an infinitely '
+                                   'repeating dataset, you must specify the '
+                                   '`steps_per_epoch` argument'):
         model.fit(dataset, epochs=1, verbose=0)
-      with self.assertRaisesRegexp(ValueError, 'the `steps` argument'):
+      with self.assertRaisesRegexp(ValueError, 'When passing an infinitely '
+                                   'repeating dataset, you must specify the '
+                                   '`steps` argument'):
         model.evaluate(dataset, verbose=0)
 
-      with self.assertRaisesRegexp(ValueError, 'the `steps` argument'):
+      with self.assertRaisesRegexp(ValueError, 'When passing an infinitely '
+                                   'repeating dataset, you must specify the '
+                                   '`steps` argument'):
         model.predict(dataset, verbose=0)
 
   @combinations.generate(combinations.combine(

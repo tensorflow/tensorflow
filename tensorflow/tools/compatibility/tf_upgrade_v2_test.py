@@ -409,7 +409,8 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
 
       text = "%s(a, b)\n" % decay
       _, report, unused_errors, _ = self._upgrade(text)
-      self.assertIn("%s has been changed to return a callable" % decay, report)
+      self.assertIn("switch to the schedules in "
+                    "`tf.keras.optimizers.schedules`", report)
 
   def testMetrics(self):
     metrics = [
@@ -653,15 +654,21 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     self.assertEqual(errors, [])
 
   def testColocateGradientsWithOps(self):
-    text = "tf.gradients(a, foo=False)\n"
+    text = "tf.gradients(yx=a, foo=False)\n"
     _, unused_report, errors, new_text = self._upgrade(text)
     self.assertEqual(text, new_text)
     self.assertEqual(errors, [])
 
-    text = "tf.gradients(a, colocate_gradients_with_ops=False)\n"
+    text = "tf.gradients(yx=a, colocate_gradients_with_ops=False)\n"
     _, report, unused_errors, new_text = self._upgrade(text)
-    self.assertEqual("tf.gradients(a)\n", new_text)
+    self.assertEqual("tf.gradients(yx=a)\n", new_text)
     self.assertIn("tf.gradients no longer takes", report)
+
+    text = "tf.gradients(y, x, grad_ys, name, colocate, gate)\n"
+    expected = ("tf.gradients(ys=y, xs=x, grad_ys=grad_ys, name=name, "
+                "gate_gradients=gate)\n")
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
 
   def testColocateGradientsWithOpsMinimize(self):
     text = "optimizer.minimize(a, foo=False)\n"
@@ -849,6 +856,46 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
+  def testConv2D(self):
+    text = (
+        "tf.nn.conv2d(input, filter, strides, padding, use_cudnn_on_gpu, "
+        "data_format)")
+    expected_text = (
+        "tf.nn.conv2d(input=input, filters=filter, strides=strides, "
+        "padding=padding, data_format=data_format)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = (
+        "tf.nn.conv2d(input, filter=filter, strides=strides, padding=padding, "
+        "use_cudnn_on_gpu=use_cudnn_on_gpu)")
+    expected_text = ("tf.nn.conv2d(input=input, filters=filter, "
+                     "strides=strides, padding=padding)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testConv2DBackpropFilter(self):
+    text = (
+        "tf.nn.conv2d_backprop_filter(input, filter_sizes, out_backprop, "
+        "strides, padding, use_cudnn_on_gpu, data_format)")
+    expected_text = (
+        "tf.nn.conv2d_backprop_filter(input=input, filter_sizes=filter_sizes, "
+        "out_backprop=out_backprop, strides=strides, padding=padding, "
+        "data_format=data_format)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testConv2DBackpropInput(self):
+    text = (
+        "tf.nn.conv2d_backprop_input(input_sizes, filter, out_backprop, "
+        "strides, padding, use_cudnn_on_gpu, data_format)")
+    expected_text = (
+        "tf.nn.conv2d_backprop_input(input_sizes=input_sizes, filters=filter, "
+        "out_backprop=out_backprop, strides=strides, padding=padding, "
+        "data_format=data_format)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
   def testSpacetoBatch(self):
     text = "tf.space_to_batch_nd(input, shape, paddings, name)"
     expected_text = "tf.space_to_batch(input, shape, paddings, name)"
@@ -946,19 +993,6 @@ tf.print('abc')
         "name=name, axis=axis)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
-
-  def testBatchGather(self):
-    text = "tf.batch_gather(foo, bar)"
-    expected_text1 = "tf.gather(params=foo, indices=bar, batch_dims=-1)"
-    expected_text2 = "tf.gather(batch_dims=-1, params=foo, indices=bar)"
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertIn(new_text, [expected_text1, expected_text2])
-
-    text = "tf.batch_gather(params=foo, indices=bar)"
-    expected_text1 = "tf.gather(params=foo, indices=bar, batch_dims=-1)"
-    expected_text2 = "tf.gather(batch_dims=-1, params=foo, indices=bar)"
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertIn(new_text, [expected_text1, expected_text2])
 
   def testIterators(self):
     for (text, expected) in [
@@ -1117,6 +1151,21 @@ def _log_prob(self, x):
     # pylint: enable=line-too-long
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
+
+  def test_contrib_framework_argsort(self):
+    text = "tf.contrib.framework.argsort"
+    expected = "tf.argsort"
+    # pylint: enable=line-too-long
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
+  def test_flags_bare(self):
+    _, _, errors, _ = self._upgrade("tf.flags")
+    self.assertIn("tf.flags has been removed", errors[0])
+
+  def test_flags_flags(self):
+    _, _, errors, _ = self._upgrade("tf.flags.FLAGS")
+    self.assertIn("tf.flags has been removed", errors[0])
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

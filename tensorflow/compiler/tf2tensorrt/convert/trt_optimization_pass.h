@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
 #include "tensorflow/core/platform/logging.h"
@@ -34,7 +35,7 @@ class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
   TRTOptimizationPass(const string& name = "TRTOptimizationPass")
       : name_(name),
         minimum_segment_size_(3),
-        precision_mode_(0),
+        precision_mode_(TrtPrecisionMode::FP32),
         maximum_batch_size_(-1),
         is_dynamic_op_(false),
         max_cached_batches_(1),
@@ -62,7 +63,7 @@ class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
  private:
   const string name_;
   int minimum_segment_size_;
-  int precision_mode_;
+  TrtPrecisionMode precision_mode_;
   int maximum_batch_size_;
   bool is_dynamic_op_;
   std::vector<int> batches_;

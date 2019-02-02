@@ -76,6 +76,14 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // underlying graph, which leaves subgraph in valid but undefined state.
   Status AddSubgraph(GraphDef&& subgraph);
 
+  // Updates node `node_name` op, device, and attributes. This will clear any
+  // existing attributes. If it is not possible to update the node or if the
+  // node does not exist, an error will be returned and nothing will be modified
+  // in the graph.
+  Status UpdateNode(absl::string_view node_name, absl::string_view op,
+                    absl::string_view device,
+                    absl::Span<const std::pair<string, AttrValue>> attrs);
+
   // Updates all fanouts (input ports fetching output tensors) from
   // `from_node_name` to the `to_node_name`, including control dependencies.
   //
@@ -196,6 +204,11 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   Status SwapRegularFaninsByPorts(absl::string_view node_name, int from_port,
                                   int to_port);
 
+  // Updates all regular fanins to equivalent controlling fanins. If it is not
+  // possible, an error will be returned and nothing will be modified in the
+  // graph.
+  Status UpdateAllRegularFaninsToControlling(absl::string_view node_name);
+
   // Deletes nodes from the graph. If a node can't be safely removed,
   // specifically if a node still has fanouts, an error will be returned. Nodes
   // that can't be found are ignored.
@@ -240,6 +253,21 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // dependencies will be checked first before adding. Otherwise fanin will be
   // added after existing non control dependency inputs.
   bool AddFaninInternal(NodeDef* node, const OutputPort& fanin);
+
+  // Finds control dependency node to be used based on fanin. If fanin is not a
+  // Switch node, fanin.node is simply returned. Otherwise this will try to find
+  // a candidate Identity node consuming fanin, as the control dependency. If it
+  // is not possible or will introduce a self loop, an error message will be
+  // set. If nullptr is returned with no error
+  // GetOrCreateIdentityConsumingSwitch should be called to generate the new
+  // Identity node.
+  NodeDef* GetControllingFaninToAdd(absl::string_view node_name,
+                                    const OutputPort& fanin, string* error_msg);
+
+  // Finds a generated Identity node consuming Switch node `fanin.node` at port
+  // `fanin.port_id`. If such a node does not exist, a new Identity node will be
+  // created.
+  NodeDef* GetOrCreateIdentityConsumingSwitch(const OutputPort& fanin);
 
   // Removes all instances of regular fanin `fanin` from node `node`.
   bool RemoveRegularFaninInternal(NodeDef* node, const OutputPort& fanin);

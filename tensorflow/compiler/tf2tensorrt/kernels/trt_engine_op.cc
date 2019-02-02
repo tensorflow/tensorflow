@@ -113,7 +113,7 @@ class TRTEngineOp : public AsyncOpKernel {
   GraphDef segment_graph_;
 
   // Engine Precision mode.
-  int precision_mode_;
+  TrtPrecisionMode precision_mode_;
 
   // Whether engine is constructed during the conversion or needs to be
   // constructed from protobuf segment.
@@ -210,11 +210,13 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
                  context->GetAttr("calibration_data", &calibration_data));
   OP_REQUIRES_OK(context,
                  context->GetAttr("segment_funcdef_name", &funcdef_name_));
-  OP_REQUIRES_OK(context, GetPrecisionMode(precision_string, &precision_mode_));
+  OP_REQUIRES_OK(context,
+                 TrtPrecisionModeFromName(precision_string, &precision_mode_));
   OP_REQUIRES_OK(context,
                  context->GetAttr("use_calibration", &use_calibration_));
-  calibration_mode_ = (use_calibration_ && precision_mode_ == INT8MODE &&
-                       calibration_data.size() == 0);
+  calibration_mode_ =
+      (use_calibration_ && precision_mode_ == TrtPrecisionMode::INT8 &&
+       calibration_data.size() == 0);
   if (calibration_data.size()) {
     calibrator_.reset(new TRTInt8Calibrator(calibration_data));
     calibration_data.resize(0);
@@ -712,9 +714,10 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
     // TODO(aaroey): maybe setting the max batch size using the python
     // calibration wrapper class.
     auto s = convert::ConvertGraphDefToEngine(
-        *segment_graph, INT8MODE, cres->calibrator_->getBatchSize(),
-        workspace_size_bytes, shapes, &cres->logger_, cres->allocator_.get(),
-        cres->calibrator_.get(), &cres->engine_,
+        *segment_graph, TrtPrecisionMode::INT8,
+        cres->calibrator_->getBatchSize(), workspace_size_bytes, shapes,
+        &cres->logger_, cres->allocator_.get(), cres->calibrator_.get(),
+        &cres->engine_,
         /*use_calibration=*/true,
         /*convert_successfully=*/nullptr);
     if (!s.ok()) {

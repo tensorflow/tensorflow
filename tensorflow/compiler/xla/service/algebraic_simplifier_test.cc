@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
@@ -45,6 +46,7 @@ namespace {
 
 using ::testing::ElementsAre;
 namespace m = match;
+namespace op = xla::testing::opcode_matchers;
 
 class AlgebraicSimplifierTest : public HloTestBase {
  protected:
@@ -4763,6 +4765,31 @@ ENTRY entry {
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Tuple(m::Broadcast(m::ConstantScalar(0)),
                                         m::Broadcast(m::ConstantScalar(1)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ZeroSizedReshapeWithoutLayout) {
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {1}), "param"));
+  HloInstruction* broadcast =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(
+          ShapeUtil::MakeShape(F32, {0, 1}), param, {1}));
+
+  // Create a reshape with zero sized result and without layout.
+  Shape reshaped_shape = ShapeUtil::MakeShape(F32, {0});
+  reshaped_shape.clear_layout();
+  builder.AddInstruction(
+      HloInstruction::CreateReshape(reshaped_shape, broadcast));
+
+  std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Constant());
 }
 
 }  // namespace

@@ -695,6 +695,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.debugging.assert_rank_in",
         "tf.assert_rank":
             "tf.compat.v1.assert_rank",
+        "tf.contrib.framework.argsort":
+            "tf.argsort",
     }
     # pylint: enable=line-too-long
 
@@ -721,7 +723,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.io.serialize_many_sparse",
         "tf.argmax",
         "tf.argmin",
-        "tf.batch_gather",
         "tf.batch_to_space",
         "tf.cond",
         "tf.nn.space_to_batch",
@@ -806,6 +807,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.fractional_avg_pool",
         "tf.nn.fractional_max_pool",
         "tf.image.sample_distorted_bounding_box",
+        "tf.gradients",
+        "tf.hessians",
     }
 
     # Functions that were reordered should be changed to the new keyword args
@@ -813,14 +816,23 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # positional arguments yourself, this could do the wrong thing.
     self.function_reorders = reorders_v2.reorders
 
+    contrib_warning = (
+        ast_edits.ERROR,
+        "<function name> cannot be converted automatically. tf.contrib will not"
+        " be distributed with TensorFlow 2.0, please consider an alternative in"
+        " non-contrib TensorFlow, a community-maintained repository, or fork "
+        "the required code."
+    )
+
+    flags_warning = (
+        ast_edits.ERROR,
+        "tf.flags has been removed, please use the argparse or absl"
+        " modules if you need command line parsing.")
+
     decay_function_comment = (
         ast_edits.INFO,
-        "<function name> has been changed to return a callable instead "
-        "of a tensor when graph building, but its functionality remains "
-        "unchanged during eager execution (returns a callable like "
-        "before). The converter cannot detect and fix this reliably, so "
-        "this usage has been converted to compat.v1 (even though it may already"
-        " be correct).\n"
+        "To use learning rate decay schedules with TensorFlow 2.0, switch to "
+        "the schedules in `tf.keras.optimizers.schedules`.\n"
     )
 
     assert_return_type_comment = (
@@ -860,27 +872,27 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "compat.v1 for backward compatibility. Please update these calls to "
         "the TF 2.0 versions.")
 
-# This could be done with a _rename_if_arg_not_found_transformer
+    # This could be done with a _rename_if_arg_not_found_transformer
     deprecate_partition_strategy_comment = (
         ast_edits.WARNING,
         "`partition_strategy` has been removed from <function name>. "
         " The 'div' strategy will be used by default.")
 
-# TODO(b/118888586): add default value change to update script.
+    # TODO(b/118888586): add default value change to update script.
     default_loss_reduction_changed = (
         ast_edits.WARNING,
         "default value of loss_reduction has been changed to "
         "SUM_OVER_BATCH_SIZE.\n"
     )
 
-# make change instead
+    # make change instead
     uniform_unit_scaling_initializer_comment = (
         ast_edits.ERROR,
         "uniform_unit_scaling_initializer has been removed. Please use"
         " tf.initializers.variance_scaling instead with distribution=uniform "
         "to get equivalent behaviour.")
 
-# Make change instead (issue warning about strip_...)
+    # Make change instead (issue warning about strip_...)
     export_saved_model_renamed = (
         ast_edits.ERROR,
         "(Manual edit required) Please rename the method export_savedmodel() "
@@ -966,10 +978,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             assert_rank_comment,
         "tf.debugging.assert_rank_in":
             assert_rank_comment,
-        "tf.flags": (
-            ast_edits.ERROR,
-            "tf.flags has been removed, please use the argparse or absl"
-            " modules if you need command line parsing."),
         "tf.train.exponential_decay":
             decay_function_comment,
         "tf.train.piecewise_constant_decay":
@@ -1256,7 +1264,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "*.make_initializable_iterator": _iterator_transformer,
         "*.make_one_shot_iterator": _iterator_transformer,
         "tf.nn.dropout": _dropout_transformer,
-        "tf.batch_gather": _batch_gather_transformer,
         "tf.to_bfloat16": _cast_transformer,
         "tf.to_complex128": _cast_transformer,
         "tf.to_complex64": _cast_transformer,
@@ -1311,6 +1318,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             _add_argument_transformer,
             arg_name="data_format",
             arg_value_ast=ast.Str("NHWC")),
+    }
+
+    self.module_deprecations = {
+        "tf.contrib": contrib_warning,
+        "tf.flags": flags_warning,
     }
 
 
@@ -1559,24 +1571,6 @@ def _softmax_cross_entropy_with_logits_transformer(
                    "transformation.\n"))
       _wrap_label(karg, karg.value)
       return node
-  return node
-
-
-def _batch_gather_transformer(parent, node, full_name, name, logs):
-  """Add batch_dims argument for gather calls."""
-  # Check if the call already has a batch_dims argument
-  if any([kw.arg == "batch_dims" for kw in node.keywords]):
-    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
-                 "tf.batch_gather already has batch_dims argument. Neat."))
-    return None
-
-  minus_one = ast.Num(n=-1)
-  minus_one.lineno = 0
-  minus_one.col_offset = 0
-  new_arg = ast.keyword("batch_dims", minus_one)
-  node.keywords.append(new_arg)
-  logs.append((ast_edits.INFO, node.lineno, node.col_offset,
-               "Added keyword argument batch_dims=-1 to tf.batch_gather."))
   return node
 
 

@@ -339,7 +339,7 @@ GrapplerFunctionItem::GrapplerFunctionItem(
 
   // Tensorflow functions execution semantics is different from the main graph,
   // and we need to preserve it when we do graph optimizations.
-  optimization_options().is_function_instantiation = true;
+  optimization_options().allow_pruning_stateful_and_dataset_ops = false;
 }
 
 const string& GrapplerFunctionItem::description() const { return description_; }

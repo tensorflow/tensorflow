@@ -120,6 +120,7 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
 // `device_set`: the set of devices that graph can refer to.
 // `cpu_device`: the CPU device.
 // `config_proto`: Grapper configuration.
+// `grappler_item_id': Grappler item id (e.g. optimized function name).
 // `optimization_options`: Grappler optimization constraints that are known only
 //    at runtime.
 //
@@ -130,7 +131,7 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
 Status OptimizeGraph(
     std::vector<string> ret_node_names, FunctionLibraryDefinition* lib,
     const DeviceSet& device_set, Device* cpu_device,
-    const ConfigProto& config_proto,
+    const ConfigProto& config_proto, const string& grappler_item_id,
     const GrapplerItem::OptimizationOptions& optimization_options,
     std::unique_ptr<tensorflow::Graph>* g);
 

@@ -35,6 +35,11 @@ def _as_operation(op_or_tensor):
   return op_or_tensor
 
 
+class UnliftableError(Exception):
+  """Raised if a Tensor cannot be lifted from the graph."""
+  pass
+
+
 def lift_to_graph(init_tensor, graph, sources=None):
   """Copies the tensor and all its inputs recursively to the outer graph."""
   # Check that the initializer does not depend on any placeholders.
@@ -52,7 +57,7 @@ def lift_to_graph(init_tensor, graph, sources=None):
     # and placeholders the user might directly use to initialize
     # variables.
     if op.type == "Placeholder":
-      raise ValueError(
+      raise UnliftableError(
           "Unable to lift tensor", init_tensor,
           "because it depends transitively on placeholder ", op)
     for inp in _graph_inputs(op):

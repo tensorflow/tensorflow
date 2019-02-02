@@ -33,6 +33,7 @@ _NUMPY_RANDOM_SEED = 42
 class SleepTest(test_base.DatasetTestBase):
 
   def testSleep(self):
+    self.skipTest("b/123597912")
     sleep_microseconds = 100
     dataset = dataset_ops.Dataset.range(10).apply(
         sleep.sleep(sleep_microseconds))

@@ -9,8 +9,8 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_kernel_library",
     "tf_cc_test",
+    "tf_kernel_library",
 )
 
 # TODO(mrry): Remove this empty forwarding library.
@@ -19,6 +19,27 @@ cc_library(
     srcs = [],
     hdrs = ["dataset.h"],
     deps = ["//tensorflow/core:framework"],
+)
+
+cc_library(
+    name = "dataset_test_base",
+    testonly = 1,
+    srcs = ["dataset_test_base.cc"],
+    hdrs = ["dataset_test_base.h"],
+    deps = [
+        ":dataset_utils",
+        ":iterator_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+    ],
 )
 
 cc_library(
@@ -181,6 +202,28 @@ tf_kernel_library(
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "map_dataset_op_test",
+    size = "small",
+    srcs = ["map_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":map_dataset_op",
+        ":range_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:function_ops",
     ],
 )
 
@@ -350,6 +393,23 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "range_dataset_op_test",
+    size = "small",
+    srcs = ["range_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":range_dataset_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ptr_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_kernel_library(
     name = "shuffle_dataset_op",
     srcs = ["shuffle_dataset_op.cc"],
@@ -488,17 +548,14 @@ tf_kernel_library(
     ],
 )
 
-tf_kernel_library(
-    name = "optimize_dataset_op",
-    srcs = ["optimize_dataset_op.cc"],
+cc_library(
+    name = "graph_rewrite_dataset",
+    srcs = ["graph_rewrite_dataset.cc"],
+    hdrs = ["graph_rewrite_dataset.h"],
     deps = [
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
@@ -506,6 +563,19 @@ tf_kernel_library(
         "//tensorflow/core/grappler/optimizers/data",
         "//tensorflow/core/grappler/optimizers/data:function_utils",
         "//tensorflow/core/grappler/optimizers/data:graph_utils",
+    ],
+)
+
+tf_kernel_library(
+    name = "optimize_dataset_op",
+    srcs = ["optimize_dataset_op.cc"],
+    deps = [
+        ":graph_rewrite_dataset",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 

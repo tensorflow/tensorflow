@@ -3099,6 +3099,52 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
 
 
 # pylint: disable=redefined-builtin
+@tf_export("nn.max_pool1d")
+def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
+  """Performs the max pooling on the input.
+
+  Note internally this op reshapes and uses the underlying 2d operation.
+
+  Args:
+    input: A 3-D `Tensor` of the format specified by `data_format`.
+    ksize: An int or list of `ints` that has length `1` or `3`. The size of the
+      window for each dimension of the input tensor.
+    strides: An int or list of `ints` that has length `1` or `3`. The stride of
+      the sliding window for each dimension of the input tensor.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      the "returns" section of `tf.nn.convolution` for details.
+    data_format: An optional string from: "NWC", "NCW". Defaults to "NWC".
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of format specified by `data_format`.
+    The max pooled output tensor.
+  """
+  with ops.name_scope(name, "MaxPool1d", [input]) as name:
+    if data_format is None:
+      data_format = "NWC"
+    channel_index = 1 if data_format.startswith("NC") else 2
+    ksize = [1] + _get_sequence(ksize, 1, channel_index, "ksize")
+    strides = [1] + _get_sequence(strides, 1, channel_index, "strides")
+
+    data_format = "NHWC" if data_format == "NWC" else "NCHW"
+    expanding_dim = 1 if data_format == "NWC" else 2
+
+    input = array_ops.expand_dims_v2(input, expanding_dim)
+    result = gen_nn_ops.max_pool(
+        input,
+        ksize=ksize,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        name=name)
+    return array_ops.squeeze(result, expanding_dim)
+
+
+# pylint: enable=redefined-builtin
+
+
+# pylint: disable=redefined-builtin
 @tf_export("nn.max_pool3d")
 def max_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None):
   """Performs the max pooling on the input.
@@ -3138,8 +3184,6 @@ def max_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None):
         padding=padding,
         data_format=data_format,
         name=name)
-
-
 # pylint: enable=redefined-builtin
 
 
@@ -3218,23 +3262,25 @@ def max_pool_with_argmax_v1(input,  # pylint: disable=missing-docstring,invalid-
                             strides,
                             padding,
                             data_format="NHWC",
-                            Targmax=dtypes.int64,  # pylint: disable=invalid-name
+                            Targmax=None,  # pylint: disable=invalid-name
                             name=None,
                             output_dtype=None,
                             include_batch_in_index=False):
+  if data_format != "NHWC":
+    raise ValueError("Data formats other than 'NHWC' are not yet supported")
+
   Targmax = deprecated_argument_lookup(
       "output_dtype", output_dtype, "Targmax", Targmax)
-  if output_dtype is not None:
-    Targmax = output_dtype
+  if Targmax is None:
+    Targmax = dtypes.int64
   return gen_nn_ops.max_pool_with_argmax(
-      input,
-      ksize,
-      strides,
-      padding,
-      data_format,
-      Targmax,
-      include_batch_in_index,
-      name)
+      input=input,
+      ksize=ksize,
+      strides=strides,
+      padding=padding,
+      Targmax=Targmax,
+      include_batch_in_index=include_batch_in_index,
+      name=name)
 
 max_pool_with_argmax_v1.__doc__ = gen_nn_ops.max_pool_with_argmax.__doc__
 # pylint: enable=redefined-builtin

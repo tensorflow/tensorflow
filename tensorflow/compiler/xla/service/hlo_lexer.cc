@@ -212,6 +212,15 @@ TokKind HloLexer::LexToken() {
         // A lone '/' is an error.
         return TokKind::kError;
       }
+      case '.':
+        if (PeekCurrentChar() == '.') {
+          current_ptr_++;
+          if (PeekCurrentChar() == '.') {
+            current_ptr_++;
+            return TokKind::kDots;
+          }
+        }
+        return TokKind::kError;
       case '"':
         return LexString();
     }
@@ -513,6 +522,8 @@ string TokKindToString(TokKind kind) {
       return "kInt";
     case TokKind::kDecimal:
       return "kDecimal";
+    case TokKind::kDots:
+      return "kDots";
   }
 }
 

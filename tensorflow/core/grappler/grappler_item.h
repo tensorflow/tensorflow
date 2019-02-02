@@ -91,7 +91,13 @@ struct GrapplerItem {
     // by running Grappler optimizer passes. One main difference is that
     // functions do not prune ops with side-effects and dataset-output ops (see
     // PruneFunctionBody in common_runtime/function.cc).
-    bool is_function_instantiation = false;
+    bool allow_pruning_stateful_and_dataset_ops = true;
+
+    // If true Grappler will optimize the main graph, and also all functions in
+    // the graph function library (function can't be polymorphic, it can't have
+    // undefined type parameters in the function signature, or placeholder
+    // attributes in the function body).
+    bool optimize_function_library = true;
   };
 
   const std::unordered_set<string>& devices() const;

@@ -157,25 +157,18 @@ class PartitionedCallOp : public AsyncOpKernel {
   Status Instantiate(FunctionLibraryRuntime* lib, OpKernelContext* ctx,
                      std::vector<Tensor>* inputs,
                      FunctionLibraryRuntime::Handle* handle) {
-    // We are going to execute the graph via function library runtime, and
-    // because function execution semantics is slightly different from the
-    // regular tensorlow graph, we need to make sure that Grappler respects it
-    // when doing it's optimization passes (e.g. do not prune stateful and
-    // dataset ops).
     grappler::GrapplerItem::OptimizationOptions optimization_options;
-    optimization_options.is_function_instantiation = true;
 
-    // Keras graphs expected to be executed with regular graph execution
-    // semantics (it's allowed to prune stateful and dataset ops).
-    if (absl::StrContains(func_.name(), "keras_graph")) {
-      optimization_options.is_function_instantiation = false;
-    }
+    // Tensorflow 2.0 in eager mode with automatic control dependencies will
+    // prune all nodes that are not in the transitive fanin of the fetch nodes.
+    // However because the function will be executed via FunctionLibraryRuntime,
+    // and current function implementation does not prune stateful and dataset
+    // ops, we rely on Grappler to do the correct graph pruning.
+    optimization_options.allow_pruning_stateful_and_dataset_ops = true;
 
-    // Wrapped function expects execution semantics to be the same as
-    // `session.run`, so we should prune unreachable stateful and dataset ops.
-    if (absl::StrContains(func_.name(), "wrapped_function")) {
-      optimization_options.is_function_instantiation = false;
-    }
+    // All the nested function calls will be executed and optimized via
+    // PartitionedCallOp, there is no need to optimize functions now.
+    optimization_options.optimize_function_library = false;
 
     FunctionLibraryRuntime::InstantiateOptions opts;
     opts.target = lib->device()->name();
@@ -183,7 +176,7 @@ class PartitionedCallOp : public AsyncOpKernel {
     opts.optimize_graph_fn = std::bind(
         grappler::OptimizeGraph, std::placeholders::_1, std::placeholders::_2,
         std::placeholders::_3, std::placeholders::_4, config_proto_,
-        optimization_options, std::placeholders::_5);
+        func_.name(), optimization_options, std::placeholders::_5);
     opts.graph_collector = ctx->graph_collector();
     opts.executor_type = executor_type_;
 

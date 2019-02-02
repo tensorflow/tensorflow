@@ -12,6 +12,14 @@ load("//tensorflow:tensorflow.bzl", "py_binary")
 
 py_binary(
     name = "grpc_tensorflow_server",
+    srcs = ["grpc_tensorflow_server.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [":grpc_tensorflow_server_lib"],
+)
+
+py_library(
+    name = "grpc_tensorflow_server_lib",
     srcs = [
         "grpc_tensorflow_server.py",
     ],
@@ -33,7 +41,7 @@ py_test(
     main = "parse_cluster_spec_test.py",
     srcs_version = "PY2AND3",
     deps = [
-        ":grpc_tensorflow_server",
+        ":grpc_tensorflow_server_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
     ],

@@ -190,6 +190,14 @@ REGISTER_OP("ExperimentalMapAndBatchDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("ExperimentalRebatchDataset")
+    .Input("input_dataset: variant")
+    .Input("num_workers: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ExperimentalMapDataset")
     .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")

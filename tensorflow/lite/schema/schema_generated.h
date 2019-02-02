@@ -274,6 +274,9 @@ struct UniqueOptionsT;
 struct ReverseV2Options;
 struct ReverseV2OptionsT;
 
+struct AddNOptions;
+struct AddNOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -529,11 +532,12 @@ enum BuiltinOperator {
   BuiltinOperator_UNIQUE = 103,
   BuiltinOperator_CEIL = 104,
   BuiltinOperator_REVERSE_V2 = 105,
+  BuiltinOperator_ADD_N = 106,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_REVERSE_V2
+  BuiltinOperator_MAX = BuiltinOperator_ADD_N
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[105] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[106] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -639,7 +643,8 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[105] {
     BuiltinOperator_SPLIT_V,
     BuiltinOperator_UNIQUE,
     BuiltinOperator_CEIL,
-    BuiltinOperator_REVERSE_V2
+    BuiltinOperator_REVERSE_V2,
+    BuiltinOperator_ADD_N
   };
   return values;
 }
@@ -752,6 +757,7 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "UNIQUE",
     "CEIL",
     "REVERSE_V2",
+    "ADD_N",
     nullptr
   };
   return names;
@@ -845,11 +851,12 @@ enum BuiltinOptions {
   BuiltinOptions_SplitVOptions = 79,
   BuiltinOptions_UniqueOptions = 80,
   BuiltinOptions_ReverseV2Options = 81,
+  BuiltinOptions_AddNOptions = 82,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_ReverseV2Options
+  BuiltinOptions_MAX = BuiltinOptions_AddNOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[82] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[83] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -932,7 +939,8 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[82] {
     BuiltinOptions_AbsOptions,
     BuiltinOptions_SplitVOptions,
     BuiltinOptions_UniqueOptions,
-    BuiltinOptions_ReverseV2Options
+    BuiltinOptions_ReverseV2Options,
+    BuiltinOptions_AddNOptions
   };
   return values;
 }
@@ -1021,6 +1029,7 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "SplitVOptions",
     "UniqueOptions",
     "ReverseV2Options",
+    "AddNOptions",
     nullptr
   };
   return names;
@@ -1357,6 +1366,10 @@ template<> struct BuiltinOptionsTraits<UniqueOptions> {
 
 template<> struct BuiltinOptionsTraits<ReverseV2Options> {
   static const BuiltinOptions enum_value = BuiltinOptions_ReverseV2Options;
+};
+
+template<> struct BuiltinOptionsTraits<AddNOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_AddNOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2037,6 +2050,14 @@ struct BuiltinOptionsUnion {
   const ReverseV2OptionsT *AsReverseV2Options() const {
     return type == BuiltinOptions_ReverseV2Options ?
       reinterpret_cast<const ReverseV2OptionsT *>(value) : nullptr;
+  }
+  AddNOptionsT *AsAddNOptions() {
+    return type == BuiltinOptions_AddNOptions ?
+      reinterpret_cast<AddNOptionsT *>(value) : nullptr;
+  }
+  const AddNOptionsT *AsAddNOptions() const {
+    return type == BuiltinOptions_AddNOptions ?
+      reinterpret_cast<const AddNOptionsT *>(value) : nullptr;
   }
 };
 
@@ -7174,6 +7195,46 @@ inline flatbuffers::Offset<ReverseV2Options> CreateReverseV2Options(
 
 flatbuffers::Offset<ReverseV2Options> CreateReverseV2Options(flatbuffers::FlatBufferBuilder &_fbb, const ReverseV2OptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct AddNOptionsT : public flatbuffers::NativeTable {
+  typedef AddNOptions TableType;
+  AddNOptionsT() {
+  }
+};
+
+struct AddNOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef AddNOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  AddNOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(AddNOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<AddNOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const AddNOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct AddNOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit AddNOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  AddNOptionsBuilder &operator=(const AddNOptionsBuilder &);
+  flatbuffers::Offset<AddNOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<AddNOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<AddNOptions> CreateAddNOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  AddNOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<AddNOptions> CreateAddNOptions(flatbuffers::FlatBufferBuilder &_fbb, const AddNOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -7550,6 +7611,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const ReverseV2Options *builtin_options_as_ReverseV2Options() const {
     return builtin_options_type() == BuiltinOptions_ReverseV2Options ? static_cast<const ReverseV2Options *>(builtin_options()) : nullptr;
   }
+  const AddNOptions *builtin_options_as_AddNOptions() const {
+    return builtin_options_type() == BuiltinOptions_AddNOptions ? static_cast<const AddNOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -7903,6 +7967,10 @@ template<> inline const UniqueOptions *Operator::builtin_options_as<UniqueOption
 
 template<> inline const ReverseV2Options *Operator::builtin_options_as<ReverseV2Options>() const {
   return builtin_options_as_ReverseV2Options();
+}
+
+template<> inline const AddNOptions *Operator::builtin_options_as<AddNOptions>() const {
+  return builtin_options_as_AddNOptions();
 }
 
 struct OperatorBuilder {
@@ -10575,6 +10643,29 @@ inline flatbuffers::Offset<ReverseV2Options> CreateReverseV2Options(flatbuffers:
       _fbb);
 }
 
+inline AddNOptionsT *AddNOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new AddNOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void AddNOptions::UnPackTo(AddNOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<AddNOptions> AddNOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const AddNOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateAddNOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<AddNOptions> CreateAddNOptions(flatbuffers::FlatBufferBuilder &_fbb, const AddNOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const AddNOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateAddNOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -11157,6 +11248,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const ReverseV2Options *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_AddNOptions: {
+      auto ptr = reinterpret_cast<const AddNOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -11499,6 +11594,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const ReverseV2Options *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_AddNOptions: {
+      auto ptr = reinterpret_cast<const AddNOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -11829,6 +11928,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const ReverseV2OptionsT *>(value);
       return CreateReverseV2Options(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_AddNOptions: {
+      auto ptr = reinterpret_cast<const AddNOptionsT *>(value);
+      return CreateAddNOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -12157,6 +12260,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_ReverseV2Options: {
       value = new ReverseV2OptionsT(*reinterpret_cast<ReverseV2OptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_AddNOptions: {
+      value = new AddNOptionsT(*reinterpret_cast<AddNOptionsT *>(u.value));
       break;
     }
     default:
@@ -12568,6 +12675,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_ReverseV2Options: {
       auto ptr = reinterpret_cast<ReverseV2OptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_AddNOptions: {
+      auto ptr = reinterpret_cast<AddNOptionsT *>(value);
       delete ptr;
       break;
     }

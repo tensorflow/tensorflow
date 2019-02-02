@@ -14,23 +14,20 @@ load("//tensorflow:tensorflow.bzl", "py_binary")
 py_library(
     name = "tools_pip",
     deps = [
-        ":freeze_graph",
-        ":import_pb_to_tensorboard",
-        ":inspect_checkpoint",
-        ":optimize_for_inference",
-        ":print_selective_registration_header",
-        ":saved_model_cli",
+        ":freeze_graph_lib",
+        ":import_pb_to_tensorboard_lib",
+        ":inspect_checkpoint_lib",
+        ":optimize_for_inference_lib",
+        ":print_selective_registration_header_lib",
+        ":saved_model_cli_lib",
         ":saved_model_utils",
-        ":strip_unused",
+        ":strip_unused_lib",
         # The following py_library are needed because
         # py_binary may not depend on them when --define=no_tensorflow_py_deps=true
         # is specified. See https://github.com/tensorflow/tensorflow/issues/22390
-        ":freeze_graph_lib",
-        ":optimize_for_inference_lib",
         ":selective_registration_header_lib",
-        ":strip_unused_lib",
         # Include the TF upgrade script to users can run it directly after install TF
-        "//tensorflow/tools/compatibility:tf_upgrade_v2",
+        "//tensorflow/tools/compatibility:tf_upgrade_v2_lib",
     ],
 )
 
@@ -86,6 +83,13 @@ py_binary(
     name = "import_pb_to_tensorboard",
     srcs = ["import_pb_to_tensorboard.py"],
     srcs_version = "PY2AND3",
+    deps = [":import_pb_to_tensorboard_lib"],
+)
+
+py_library(
+    name = "import_pb_to_tensorboard_lib",
+    srcs = ["import_pb_to_tensorboard.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python",
@@ -103,7 +107,7 @@ py_test(
     srcs = ["freeze_graph_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":freeze_graph",
+        ":freeze_graph_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -118,6 +122,13 @@ py_test(
 
 py_binary(
     name = "inspect_checkpoint",
+    srcs = ["inspect_checkpoint.py"],
+    srcs_version = "PY2AND3",
+    deps = [":inspect_checkpoint_lib"],
+)
+
+py_library(
+    name = "inspect_checkpoint_lib",
     srcs = ["inspect_checkpoint.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -240,6 +251,14 @@ py_binary(
     srcs = ["print_selective_registration_header.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
+    deps = [":print_selective_registration_header_lib"],
+)
+
+py_library(
+    name = "print_selective_registration_header_lib",
+    srcs = ["print_selective_registration_header.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":selective_registration_header_lib",
         "//tensorflow/python:platform",
@@ -261,6 +280,13 @@ py_binary(
     name = "saved_model_cli",
     srcs = ["saved_model_cli.py"],
     srcs_version = "PY2AND3",
+    deps = [":saved_model_cli_lib"],
+)
+
+py_library(
+    name = "saved_model_cli_lib",
+    srcs = ["saved_model_cli.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":saved_model_utils",
         "//tensorflow/python",
@@ -280,7 +306,7 @@ py_test(
         "no-internal-py3",
     ],
     deps = [
-        ":saved_model_cli",
+        ":saved_model_cli_lib",
         "//tensorflow/core:protos_all_py",
     ],
 )

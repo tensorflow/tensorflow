@@ -1097,6 +1097,10 @@ tf_module {
     argspec: "args=[\'seed\', \'seed2\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "ExperimentalRebatchDataset"
+    argspec: "args=[\'input_dataset\', \'num_workers\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "ExperimentalScanDataset"
     argspec: "args=[\'input_dataset\', \'initial_state\', \'other_arguments\', \'f\', \'output_types\', \'output_shapes\', \'preserve_cardinality\'], varargs=None, keywords=None, defaults=None"
   }
@@ -3715,6 +3719,10 @@ tf_module {
   member_method {
     name: "TensorListConcatLists"
     argspec: "args=[\'input_a\', \'input_b\', \'element_dtype\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "TensorListConcatV2"
+    argspec: "args=[\'input_handle\', \'element_shape\', \'leading_dims\', \'element_dtype\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "TensorListElementShape"

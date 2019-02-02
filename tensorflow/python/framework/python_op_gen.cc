@@ -651,7 +651,7 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
   strings::StrAppend(&result_, "  \"\"\"\n");
 
   strings::StrAppend(&result_,
-                     "  _ctx = _context._context\n"
+                     "  _ctx = _context._context or _context.context()\n"
                      "  if _ctx is not None and _ctx._eager_context.is_eager:",
                      "\n");
   if (eager_not_allowed_error.empty()) {
@@ -930,42 +930,45 @@ void GenEagerPythonOp::AddRawOpExport() {
   string function_call_parameters;
   string inputs;
   string attrs;
+
   std::map<string, string> renames;
 
-  for (const auto& input_arg : api_def_.in_arg()) {
-    renames.insert({input_arg.name(), input_arg.rename_to()});
-  }
-  for (const auto& attr : api_def_.attr()) {
-    renames.insert({attr.name(), attr.rename_to()});
+  for (const auto& param_names : param_names_) {
+    renames.insert({param_names.GetName(), param_names.GetRenameTo()});
   }
 
   for (const auto& input_arg : op_def_.input_arg()) {
+    const string input_arg_name =
+        python_op_gen_internal::AvoidPythonReserved(input_arg.name());
     if (!raw_parameters.empty()) strings::StrAppend(&raw_parameters, ", ");
-    strings::StrAppend(&raw_parameters, input_arg.name());
+    strings::StrAppend(&raw_parameters, input_arg_name);
 
     if (!inputs.empty()) strings::StrAppend(&inputs, ", ");
-    strings::StrAppend(&inputs, input_arg.name());
+    strings::StrAppend(&inputs, input_arg_name);
 
     if (!function_call_parameters.empty()) {
       strings::StrAppend(&function_call_parameters, ", ");
     }
     strings::StrAppend(&function_call_parameters, renames[input_arg.name()],
-                       "=", input_arg.name());
+                       "=", input_arg_name);
   }
   for (const auto& attr : op_def_.attr()) {
     if (inferred_attrs_.find(attr.name()) != inferred_attrs_.end()) continue;
 
+    const string attr_name =
+        python_op_gen_internal::AvoidPythonReserved(attr.name());
+
     if (!raw_parameters.empty()) strings::StrAppend(&raw_parameters, ", ");
-    strings::StrAppend(&raw_parameters, attr.name());
+    strings::StrAppend(&raw_parameters, attr_name);
 
     if (!attrs.empty()) strings::StrAppend(&attrs, ", ");
-    strings::StrAppend(&attrs, "\"", attr.name(), "\", ", attr.name());
+    strings::StrAppend(&attrs, "\"", attr_name, "\", ", attr_name);
 
     if (!function_call_parameters.empty()) {
       strings::StrAppend(&function_call_parameters, ", ");
     }
     strings::StrAppend(&function_call_parameters, renames[attr.name()], "=",
-                       attr.name());
+                       attr_name);
   }
 
   const string raw_function_name =
