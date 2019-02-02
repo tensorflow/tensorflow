@@ -267,7 +267,7 @@ TEST_F(MklRequantizatedOpsTest, RequantizePerChannelTest_Basic) {
   // Calculate the Min and max from the ranges
   float ch1_min = -1.0 * range_weights_ch1;
   float ch1_max = range_weights_ch1;
-  float ch2_min = -1.0 * range_weights_ch2;
+  float ch2_min = -range_weights_ch2;
   float ch2_max = range_weights_ch2;
 
   // Add the Perchannel range Nodes to the Op.
