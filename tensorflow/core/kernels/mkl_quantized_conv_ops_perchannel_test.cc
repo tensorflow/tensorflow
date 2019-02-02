@@ -85,11 +85,13 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
                    .Attr("T", DataTypeToEnum<quint8>::v())
                    .Attr("out_type", DataTypeToEnum<qint32>::v())
                    .Attr("strides", {1, stride, stride, 1})
+                   .Attr("is_filter_const", true)
                    .Attr("padding", "SAME")
                    .Attr("_kernel", "QuantizedMklOp")
                    .Finalize(node_def()));
+  
   TF_ASSERT_OK(InitOp());
-
+ 
   // Image shape
   const int image_batch_count = 1;
   const int image_height = 3;

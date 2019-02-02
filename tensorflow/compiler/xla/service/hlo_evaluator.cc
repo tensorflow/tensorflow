@@ -490,15 +490,52 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
 
 Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
   auto operand = is_finite->operand(0);
-  if (!ShapeUtil::ElementIsFloating(operand->shape())) {
-    return InvalidArgument(
-        "expected element type in shape to be float for IsFinite op, got: %s",
-        PrimitiveType_Name(operand->shape().element_type()));
-  }
+  auto elem_ty = operand->shape().element_type();
+  switch (elem_ty) {
+    case PRED:
+    case TUPLE:
+    case OPAQUE:
+    case TOKEN:
+    case S8:
+    case S16:
+    case S32:
+    case S64:
+    case U8:
+    case U16:
+    case U32:
+    case U64:
+    case C64:
+    case C128:
+    // Explicitly enumerate all types in this switch so that when we add a new
+    // type, we'll get a compile error here.
+    case PRIMITIVE_TYPE_INVALID:
+    case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:
+    case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
+      return InvalidArgument(
+          "expected element type in shape to be floating point, but "
+          "got: %s",
+          PrimitiveType_Name(elem_ty));
 
-  switch (operand->shape().element_type()) {
-    case F16:
-      return Unimplemented("unhandled primitive type: F16.");
+    case F16: {
+      auto result_or = ElementWiseUnaryOpImpl<bool, Eigen::half>(
+          is_finite,
+          [](Eigen::half elem_operand) {
+            return std::isfinite(static_cast<float>(elem_operand));
+          },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
+      break;
+    }
+    case BF16: {
+      auto result_or = ElementWiseUnaryOpImpl<bool, bfloat16>(
+          is_finite,
+          [](bfloat16 elem_operand) {
+            return std::isfinite(static_cast<float>(elem_operand));
+          },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
+      break;
+    }
     case F32: {
       auto result_or = ElementWiseUnaryOpImpl<bool, float>(
           is_finite,
@@ -515,9 +552,6 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
       TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
       break;
     }
-    default:
-      LOG(FATAL) << "HandleIsFinite: unknown/unhandled primitive type: "
-                 << PrimitiveType_Name(operand->shape().element_type());
   }
 
   return Status::OK();
@@ -1376,108 +1410,151 @@ StatusOr<Literal> ExtractFromIndexPositions(const Literal& from,
 }  // namespace
 
 Status HloEvaluator::HandleSort(HloInstruction* sort) {
-  if (!sort->shape().IsTuple()) {
-    return DefaultAction(sort);
-  } else {
-    TF_RET_CHECK(sort->operand_count() >= 2) << "Expected key-value sort";
-    for (int64 i = 1; i < sort->operand_count(); ++i) {
-      TF_RET_CHECK(ShapeUtil::SameDimensions(sort->operand(0)->shape(),
-                                             sort->operand(i)->shape()))
-          << "All Sort operands must have the same dimensions";
-    }
+  TF_RET_CHECK(sort->operand_count() >= 1)
+      << "Expected at least 1 operand for sort";
+  for (int64 i = 1; i < sort->operand_count(); ++i) {
+    TF_RET_CHECK(ShapeUtil::SameDimensions(sort->operand(0)->shape(),
+                                           sort->operand(i)->shape()))
+        << "All Sort operands must have the same dimensions";
+  }
 
-    if (VLOG_IS_ON(3)) {
-      for (int64 i = 0; i < sort->operand_count(); ++i) {
-        VLOG(3) << "HandleSort operand " << i << " literal: "
-                << GetEvaluatedLiteralFor(sort->operand(i)).ToString();
-      }
-    }
-    Shape key_shape = sort->operand(0)->shape();
-    auto rank = key_shape.rank();
-    PrimitiveType keys_type = key_shape.element_type();
-    if (keys_type != F32 && keys_type != U32 && keys_type != S32 &&
-        keys_type != BF16) {
-      return InvalidArgument("Unsupported type for Sort: %s",
-                             PrimitiveType_Name(keys_type));
-    }
-    std::vector<Literal> result_literals;
-    result_literals.reserve(sort->operand_count());
+  if (VLOG_IS_ON(3)) {
     for (int64 i = 0; i < sort->operand_count(); ++i) {
-      result_literals.emplace_back(sort->operand(i)->shape());
+      VLOG(3) << "HandleSort operand " << i << " literal: "
+              << GetEvaluatedLiteralFor(sort->operand(i)).ToString();
     }
-    std::vector<int64> zero_base(rank, 0);
-    std::vector<int64> increment(rank, 1);
-    int64 sort_dim = sort->dimensions(0);
-    int64 sort_dim_elements = key_shape.dimensions(sort_dim);
-    increment[sort_dim] = sort_dim_elements;
-    // Iterate through each dimension except 'sort_dim'.
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
-        key_shape, zero_base, AsInt64Slice(key_shape.dimensions()), increment,
-        [&](absl::Span<const int64> indices) -> StatusOr<bool> {
-          // Extract a slice from each operand literal that corresponds to
-          // exactly the row in dimension 'sort_dim'.
-          std::vector<int64> limit_indices(indices.begin(), indices.end());
-          absl::c_for_each(limit_indices, [](int64& index) { ++index; });
-          limit_indices[sort_dim] = sort_dim_elements;
-          std::vector<Literal> literals_to_sort;
-          literals_to_sort.reserve(sort->operand_count());
-          for (int64 i = 0; i < sort->operand_count(); ++i) {
-            TF_ASSIGN_OR_RETURN(auto literal_to_sort,
-                                GetEvaluatedLiteralFor(sort->operand(i))
-                                    .Slice(indices, limit_indices)
-                                    .Reshape({sort_dim_elements}));
-            literals_to_sort.push_back(std::move(literal_to_sort));
-          }
-          std::vector<int64> indices_to_sort(sort_dim_elements);
-          std::iota(indices_to_sort.begin(), indices_to_sort.end(), 0);
-          std::stable_sort(
-              indices_to_sort.begin(), indices_to_sort.end(),
-              [keys_type, &literals_to_sort](int64 a, int64 b) {
-                switch (keys_type) {
-                  case F32: {
-                    auto key_lhs = literals_to_sort[0].Get<float>({a});
-                    auto key_rhs = literals_to_sort[0].Get<float>({b});
-                    return SafeLess(key_lhs, key_rhs);
-                  }
-                  case U32: {
-                    auto key_lhs = literals_to_sort[0].Get<uint32>({a});
-                    auto key_rhs = literals_to_sort[0].Get<uint32>({b});
-                    return SafeLess(key_lhs, key_rhs);
-                  }
-                  case S32: {
-                    auto key_lhs = literals_to_sort[0].Get<int32>({a});
-                    auto key_rhs = literals_to_sort[0].Get<int32>({b});
-                    return SafeLess(key_lhs, key_rhs);
-                  }
-                  case BF16: {
-                    auto key_lhs = literals_to_sort[0].Get<bfloat16>({a});
-                    auto key_rhs = literals_to_sort[0].Get<bfloat16>({b});
-                    return SafeLess(key_lhs, key_rhs);
-                  }
-                  default:
-                    // We should never reach here, because we checked earlier
-                    // that 'key_type' is one of the cases above.
-                    LOG(FATAL) << "Invalid key type in Sort: %s",
-                        PrimitiveType_Name(keys_type);
-                    return false;
+  }
+  Shape key_shape = sort->operand(0)->shape();
+  auto rank = key_shape.rank();
+  PrimitiveType keys_type = key_shape.element_type();
+  if (keys_type != F64 && keys_type != U64 && keys_type != S64 &&
+      keys_type != F32 && keys_type != U32 && keys_type != S32 &&
+      keys_type != BF16 && keys_type != F16 && keys_type != U16 &&
+      keys_type != S16 && keys_type != U8 && keys_type != S8) {
+    return InvalidArgument("Unsupported type for Sort: %s",
+                           PrimitiveType_Name(keys_type));
+  }
+  std::vector<Literal> result_literals;
+  result_literals.reserve(sort->operand_count());
+  for (int64 i = 0; i < sort->operand_count(); ++i) {
+    result_literals.emplace_back(sort->operand(i)->shape());
+  }
+  std::vector<int64> zero_base(rank, 0);
+  std::vector<int64> increment(rank, 1);
+  int64 sort_dim = sort->dimensions(0);
+  int64 sort_dim_elements = key_shape.dimensions(sort_dim);
+  increment[sort_dim] = sort_dim_elements;
+  // Iterate through each dimension except 'sort_dim'.
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
+      key_shape, zero_base, AsInt64Slice(key_shape.dimensions()), increment,
+      [&](absl::Span<const int64> indices) -> StatusOr<bool> {
+        // Extract a slice from each operand literal that corresponds to
+        // exactly the row in dimension 'sort_dim'.
+        std::vector<int64> limit_indices(indices.begin(), indices.end());
+        absl::c_for_each(limit_indices, [](int64& index) { ++index; });
+        limit_indices[sort_dim] = sort_dim_elements;
+        std::vector<Literal> literals_to_sort;
+        literals_to_sort.reserve(sort->operand_count());
+        for (int64 i = 0; i < sort->operand_count(); ++i) {
+          TF_ASSIGN_OR_RETURN(auto literal_to_sort,
+                              GetEvaluatedLiteralFor(sort->operand(i))
+                                  .Slice(indices, limit_indices)
+                                  .Reshape({sort_dim_elements}));
+          literals_to_sort.push_back(std::move(literal_to_sort));
+        }
+        std::vector<int64> indices_to_sort(sort_dim_elements);
+        std::iota(indices_to_sort.begin(), indices_to_sort.end(), 0);
+        std::stable_sort(
+            indices_to_sort.begin(), indices_to_sort.end(),
+            [keys_type, &literals_to_sort](int64 a, int64 b) {
+              switch (keys_type) {
+                case F64: {
+                  auto key_lhs = literals_to_sort[0].Get<double>({a});
+                  auto key_rhs = literals_to_sort[0].Get<double>({b});
+                  return SafeLess(key_lhs, key_rhs);
                 }
-              });
-          std::vector<int64> slice_dimensions(rank, 1);
-          slice_dimensions[sort_dim] = sort_dim_elements;
-          std::vector<int64> start_indices(rank, 0);
-          for (int64 i = 0; i < sort->operand_count(); ++i) {
-            TF_ASSIGN_OR_RETURN(Literal sorted_literal,
-                                ExtractFromIndexPositions(literals_to_sort[i],
-                                                          indices_to_sort));
-            TF_ASSIGN_OR_RETURN(auto sorted_literal_reshaped,
-                                sorted_literal.Reshape(slice_dimensions));
-            TF_RETURN_IF_ERROR(result_literals[i].CopySliceFrom(
-                sorted_literal_reshaped, start_indices, indices,
-                slice_dimensions));
-          }
-          return true;
-        }));
+                case U64: {
+                  auto key_lhs = literals_to_sort[0].Get<uint64>({a});
+                  auto key_rhs = literals_to_sort[0].Get<uint64>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case S64: {
+                  auto key_lhs = literals_to_sort[0].Get<int64>({a});
+                  auto key_rhs = literals_to_sort[0].Get<int64>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case F32: {
+                  auto key_lhs = literals_to_sort[0].Get<float>({a});
+                  auto key_rhs = literals_to_sort[0].Get<float>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case U32: {
+                  auto key_lhs = literals_to_sort[0].Get<uint32>({a});
+                  auto key_rhs = literals_to_sort[0].Get<uint32>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case S32: {
+                  auto key_lhs = literals_to_sort[0].Get<int32>({a});
+                  auto key_rhs = literals_to_sort[0].Get<int32>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case BF16: {
+                  auto key_lhs = literals_to_sort[0].Get<bfloat16>({a});
+                  auto key_rhs = literals_to_sort[0].Get<bfloat16>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case F16: {
+                  auto key_lhs = literals_to_sort[0].Get<Eigen::half>({a});
+                  auto key_rhs = literals_to_sort[0].Get<Eigen::half>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case U16: {
+                  auto key_lhs = literals_to_sort[0].Get<uint16>({a});
+                  auto key_rhs = literals_to_sort[0].Get<uint16>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case S16: {
+                  auto key_lhs = literals_to_sort[0].Get<int16>({a});
+                  auto key_rhs = literals_to_sort[0].Get<int16>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case U8: {
+                  auto key_lhs = literals_to_sort[0].Get<uint8>({a});
+                  auto key_rhs = literals_to_sort[0].Get<uint8>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case S8: {
+                  auto key_lhs = literals_to_sort[0].Get<int8>({a});
+                  auto key_rhs = literals_to_sort[0].Get<int8>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                default:
+                  // We should never reach here, because we checked earlier
+                  // that 'key_type' is one of the cases above.
+                  LOG(FATAL) << "Invalid key type in Sort: %s",
+                      PrimitiveType_Name(keys_type);
+                  return false;
+              }
+            });
+        std::vector<int64> slice_dimensions(rank, 1);
+        slice_dimensions[sort_dim] = sort_dim_elements;
+        std::vector<int64> start_indices(rank, 0);
+        for (int64 i = 0; i < sort->operand_count(); ++i) {
+          TF_ASSIGN_OR_RETURN(
+              Literal sorted_literal,
+              ExtractFromIndexPositions(literals_to_sort[i], indices_to_sort));
+          TF_ASSIGN_OR_RETURN(auto sorted_literal_reshaped,
+                              sorted_literal.Reshape(slice_dimensions));
+          TF_RETURN_IF_ERROR(result_literals[i].CopySliceFrom(
+              sorted_literal_reshaped, start_indices, indices,
+              slice_dimensions));
+        }
+        return true;
+      }));
 
+  if (sort->operand_count() == 1) {
+    evaluated_[sort] = std::move(result_literals[0]);
+  } else {
     std::vector<const Literal*> literal_ptrs;
     absl::c_transform(result_literals, std::back_inserter(literal_ptrs),
                       [](const Literal& literal) { return &literal; });
@@ -1486,8 +1563,8 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
     VLOG(3) << "HandleSort result_tuple: " << result_tuple.ToString();
 
     evaluated_[sort] = std::move(result_tuple);
-    return Status::OK();
   }
+  return Status::OK();
 }
 
 Status HloEvaluator::HandleReduce(HloInstruction* reduce) {

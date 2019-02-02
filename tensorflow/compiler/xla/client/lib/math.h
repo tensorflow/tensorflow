@@ -20,6 +20,18 @@ limitations under the License.
 
 namespace xla {
 
+// Determines whether operand is +/-inf or nan.
+//
+// Raises an error if called on integral or complex values.
+XlaOp IsPosInf(XlaOp operand);
+XlaOp IsNegInf(XlaOp operand);
+XlaOp IsInf(XlaOp operand);
+XlaOp IsNan(XlaOp operand);
+
+// Returns the next number after 'from' in the direction of 'to' the same way
+// std::nextafter(from, to) would.
+XlaOp NextAfter(XlaOp from, XlaOp to);
+
 // Computes the square root of 'operand'.
 XlaOp Sqrt(XlaOp operand);
 
@@ -89,10 +101,6 @@ XlaOp Sinh(XlaOp x);
 // Applies a complex conjugation operation if 'a' is complex and 'conjugate'
 // is true, otherwise returns its argument.
 xla::XlaOp MaybeConjugate(xla::XlaOp x, bool conjugate);
-
-// Returns the next number after 'from' in the direction of 'to' the same way
-// std::nextafter(from, to) would.
-XlaOp NextAfter(XlaOp from, XlaOp to);
 
 }  // namespace xla
 

@@ -22,6 +22,7 @@ import weakref
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -31,6 +32,7 @@ from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
@@ -207,7 +209,7 @@ class DefFunctionTest(test.TestCase):
           state.append(variables.Variable(2.0 * x))
         return state[0] * x
 
-      with self.assertRaises(ValueError):
+      with self.assertRaises(lift_to_graph.UnliftableError):
         fn(constant_op.constant(3.0))
 
   def testMethod(self):
@@ -322,6 +324,64 @@ class DefFunctionTest(test.TestCase):
 
     with self.assertRaisesRegexp(TypeError, MIXING_GRAPH_EAGER_TENSORS_ERROR):
       failing_function()
+
+  def testVariableCreatorScope(self):
+    created_variables = []
+    captured_variables = []
+
+    @def_function.function
+    def f():
+      if not created_variables:
+        created_variables.append(variables.Variable(1.))
+      return created_variables[0] + 1.
+
+    def capture_creator(next_creator, **kwargs):
+      created = next_creator(**kwargs)
+      captured_variables.append(created)
+      return created
+
+    with variable_scope.variable_creator_scope(capture_creator):
+      f()
+    self.assertEqual(created_variables, captured_variables)
+
+  def testVarAlreadyInitializedNoClobbering(self):
+    v_holder = []
+
+    @def_function.function
+    def add_var(x):
+      if not v_holder:
+        v = variables.Variable([1., 2.])
+        v_holder.append(v)
+        already_initialized = variables.Variable(3.)
+        with ops.init_scope():
+          already_initialized.assign(10.)
+        v_holder.append(already_initialized)
+      return v_holder[0] + v_holder[1] + x
+
+    add_var.get_concrete_function(constant_op.constant(2.))
+    self.assertAllClose([13., 14.], add_var(constant_op.constant(2.)))
+
+  def testInitializationInNestedCall(self):
+    v_holder = []
+
+    @def_function.function
+    def add_var(x):
+      if not v_holder:
+        v = variables.Variable([1., 2.])
+        v_holder.append(v)
+        already_initialized = variables.Variable(3.)
+        with ops.init_scope():
+          already_initialized.assign(10.)
+        v_holder.append(already_initialized)
+      return v_holder[0] + v_holder[1] + x
+
+    @def_function.function
+    def wrapper(x):
+      return add_var(x)
+
+    self.assertAllClose([13., 14.], wrapper(constant_op.constant(2.)))
+    v_holder[1].assign(11.)
+    self.assertAllClose([14., 15.], wrapper(constant_op.constant(2.)))
 
 
 if __name__ == '__main__':

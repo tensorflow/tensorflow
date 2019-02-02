@@ -39,8 +39,8 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
@@ -522,7 +522,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testUseStepContainerInMap(self):
     row = np.arange(6)
     dataset = dataset_ops.Dataset.from_tensors(
-        row).map(lambda elems: functional_ops.map_fn(lambda x: x * x, elems))
+        row).map(lambda elems: map_fn.map_fn(lambda x: x * x, elems))
     self.assertDatasetProduces(dataset, expected_output=[row**2])
 
   def testCaseAndCondInMap(self):
@@ -586,7 +586,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     def build_dataset(row, num):
       # pylint: disable=g-long-lambda
       dataset = dataset_ops.Dataset.from_tensors(
-          row).map(lambda elems: functional_ops.map_fn(
+          row).map(lambda elems: map_fn.map_fn(
               lambda x: control_map_fn(x, num), elems))
       return self.getNext(dataset)
 
@@ -628,7 +628,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     num = 2
     # pylint: disable=g-long-lambda
     dataset = dataset_ops.Dataset.from_tensors(
-        row).map(lambda elems: functional_ops.map_fn(
+        row).map(lambda elems: map_fn.map_fn(
             lambda x: control_map_fn(x, num), elems))
     # pylint: enable=g-long-lambda
     get_next = self.getNext(dataset)

@@ -76,6 +76,17 @@ class AutoCheckpointable(base.Checkpointable):
           checkpointable=self, value=value, name=name)
     super(AutoCheckpointable, self).__setattr__(name, value)
 
+  def __delattr__(self, name):
+    self._maybe_initialize_checkpointable()
+    if name in self._unconditional_dependency_names:
+      del self._unconditional_dependency_names[name]
+      for index, (dep_name, _) in enumerate(
+          self._unconditional_checkpoint_dependencies):
+        if dep_name == name:
+          del self._unconditional_checkpoint_dependencies[index]
+          break
+    super(AutoCheckpointable, self).__delattr__(name)
+
   def _no_dependency(self, value):
     """Override to allow CheckpointableBase to disable dependency tracking."""
     return data_structures.NoDependency(value)

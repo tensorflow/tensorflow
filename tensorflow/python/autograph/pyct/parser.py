@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import textwrap
 
 import gast
@@ -105,7 +106,7 @@ def parse_str(src):
   """Returns the AST of given piece of code."""
   # TODO(mdan): This should exclude the module things are autowrapped in.
 
-  if six.PY2 and '.print(' in src:
+  if six.PY2 and re.search('\\Wprint\\(', src):
     # This special treatment is required because gast.parse is not aware of
     # whether print_function was present in the original context.
     src = 'from __future__ import print_function\n' + src

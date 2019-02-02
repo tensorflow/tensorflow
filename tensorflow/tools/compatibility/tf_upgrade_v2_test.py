@@ -86,18 +86,30 @@ class TestUpgrade(test_util.TensorFlowTestCase):
   @classmethod
   def setUpClass(cls):
     cls.v2_symbols = {}
-    if not hasattr(tf.compat, "v2"):
-      return
+    cls.v1_symbols = {}
+    if hasattr(tf.compat, "v2"):
 
-    def symbol_collector(unused_path, unused_parent, children):
-      for child in children:
-        _, attr = tf_decorator.unwrap(child[1])
-        api_names_v2 = tf_export.get_v2_names(attr)
-        for name in api_names_v2:
-          cls.v2_symbols["tf." + name] = attr
+      def symbol_collector(unused_path, unused_parent, children):
+        for child in children:
+          _, attr = tf_decorator.unwrap(child[1])
+          api_names_v2 = tf_export.get_v2_names(attr)
+          for name in api_names_v2:
+            cls.v2_symbols["tf." + name] = attr
 
-    visitor = public_api.PublicAPIVisitor(symbol_collector)
-    traverse.traverse(tf.compat.v2, visitor)
+      visitor = public_api.PublicAPIVisitor(symbol_collector)
+      traverse.traverse(tf.compat.v2, visitor)
+
+    if hasattr(tf.compat, "v1"):
+
+      def symbol_collector_v1(unused_path, unused_parent, children):
+        for child in children:
+          _, attr = tf_decorator.unwrap(child[1])
+          api_names_v1 = tf_export.get_v1_names(attr)
+          for name in api_names_v1:
+            cls.v1_symbols["tf." + name] = attr
+
+      visitor = public_api.PublicAPIVisitor(symbol_collector_v1)
+      traverse.traverse(tf.compat.v1, visitor)
 
   def _upgrade(self, old_file_text):
     in_file = six.StringIO(old_file_text)
@@ -145,7 +157,10 @@ class TestUpgrade(test_util.TensorFlowTestCase):
           _, _, _, text = self._upgrade("tf." + name)
           if (text and
               not text.startswith("tf.compat.v1") and
-              text not in self.v2_symbols):
+              text not in self.v2_symbols and
+              # Builds currently install old version of estimator that doesn't
+              # have some 2.0 symbols.
+              not text.startswith("tf.estimator")):
             self.assertFalse(
                 True, "Symbol %s generated from %s not in v2 API" % (
                     text, name))
@@ -287,6 +302,18 @@ class TestUpgrade(test_util.TensorFlowTestCase):
                 "Invalid argument '%s' in 2.0 when converting\n%s\nto\n%s.\n"
                 "Supported arguments: %s" % (
                     new_arg, text_input, text, str(args_v2)))
+          # 4. Verify that the argument exists in v1 as well.
+          if new_function_name in set(["tf.nn.ctc_loss",
+                                       "tf.saved_model.save"]):
+            continue
+          args_v1 = get_args(self.v1_symbols[new_function_name])
+          args_v1.extend(v2_arg_exceptions)
+          for new_arg in new_args:
+            self.assertIn(
+                new_arg, args_v1,
+                "Invalid argument '%s' in 1.0 when converting\n%s\nto\n%s.\n"
+                "Supported arguments: %s" % (
+                    new_arg, text_input, text, str(args_v1)))
 
     visitor = public_api.PublicAPIVisitor(conversion_visitor)
     visitor.do_not_descend_map["tf"].append("contrib")
@@ -376,19 +403,14 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
                   "tf.train.inverse_time_decay", "tf.train.cosine_decay",
                   "tf.train.cosine_decay_restarts",
                   "tf.train.linear_cosine_decay",
-                  "tf.train.noisy_linear_cosine_decay"]:
+                  "tf.train.noisy_linear_cosine_decay",
+                  "tf.train.piecewise_constant_decay",
+                 ]:
 
       text = "%s(a, b)\n" % decay
-      _, report, errors, _ = self._upgrade(text)
-      self.assertIn("%s requires manual check" % decay, errors[0])
-      self.assertIn("%s has been changed" % decay, report)
-
-  def testPiecewiseDecay(self):
-    text = "tf.train.piecewise_constant_decay(a, b)\n"
-    _, report, errors, _ = self._upgrade(text)
-    self.assertIn("tf.train.piecewise_constant_decay requires manual check",
-                  errors[0])
-    self.assertIn("tf.train.piecewise_constant_decay has been changed", report)
+      _, report, unused_errors, _ = self._upgrade(text)
+      self.assertIn("switch to the schedules in "
+                    "`tf.keras.optimizers.schedules`", report)
 
   def testMetrics(self):
     metrics = [
@@ -427,16 +449,11 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         "true_positives_at_thresholds",
     ]
     for m in metrics:
-      ns = "tf.metrics." + m
-      text = ns + "(a, b)"
-      _, report, errors, new_text = self._upgrade(text)
+      text = "tf.metrics." + m + "(a, b)"
+      _, report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual("tf.compat.v1.metrics." + m + "(a, b)", new_text)
-      self.assertIn("%s requires manual check" % ns, errors[0])
       self.assertIn(
-          "tf.metrics have been converted to object oriented"
-          " versions in TF 2.0 and after. The metric function calls have been "
-          "converted to compat.v1 for backward compatibility. Please update "
-          "these calls to the TF 2.0 versions.", report)
+          "tf.metrics have been replaced with object oriented versions", report)
 
   def testLosses(self):
     losses = [
@@ -458,16 +475,11 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         "sparse_softmax_cross_entropy",
     ]
     for l in losses:
-      ns = "tf.losses." + l
-      text = ns + "(a, b)"
-      _, report, errors, new_text = self._upgrade(text)
+      text = "tf.losses." + l + "(a, b)"
+      _, report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual("tf.compat.v1.losses." + l + "(a, b)", new_text)
-      self.assertIn("%s requires manual check" % ns, errors[0])
       self.assertIn(
-          "tf.losses have been converted to object oriented"
-          " versions in TF 2.0 and after. The loss function calls have been "
-          "converted to compat.v1 for backward compatibility. Please update "
-          "these calls to the TF 2.0 versions.", report)
+          "tf.losses have been replaced with object oriented versions", report)
 
   def testEstimatorLossReductionChange(self):
     classes = [
@@ -482,6 +494,49 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       self.assertEqual(text, new_text)
       self.assertIn("%s requires manual check" % ns, errors[0])
       self.assertIn("loss_reduction has been changed", report)
+
+  def testExtractGlimpse(self):
+    text = ("tf.image.extract_glimpse(x, size, off, False, "
+            "False, False, name=\"foo\")\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.image.extract_glimpse(x, size, off, False, "
+        "False, 'uniform' if (False) else 'gaussian', name=\"foo\")\n",
+    )
+
+    text = ("tf.image.extract_glimpse(x, size, off, centered=False, "
+            "normalized=False, uniform_noise=True if uniform_noise else "
+            "False, name=\"foo\")\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.image.extract_glimpse(x, size, off, centered=False, "
+        "normalized=False, noise='uniform' if (True if uniform_noise else "
+        "False) else 'gaussian', name=\"foo\")\n",
+    )
+
+    text = ("tf.image.extract_glimpse(x,\n"
+            "                         size,\n"
+            "                         off,\n"
+            "                         centered=True,\n"
+            "                         normalized=True, # Stuff before\n"
+            "                         uniform_noise=False,\n"
+            "                         name=\"foo\")# Stuff after\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text, "tf.image.extract_glimpse(x,\n"
+        "                         size,\n"
+        "                         off,\n"
+        "                         centered=True,\n"
+        "                         normalized=True, # Stuff before\n"
+        "                         noise='uniform' if (False) else 'gaussian',\n"
+        "                         name=\"foo\")# Stuff after\n")
+
+    text = "tf.image.extract_glimpse(x)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, text)
+    self.assertEqual(errors, [])
 
   def testDropout(self):
     text = "tf.nn.dropout(x, keep_prob, name=\"foo\")\n"
@@ -599,16 +654,21 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     self.assertEqual(errors, [])
 
   def testColocateGradientsWithOps(self):
-    text = "tf.gradients(a, foo=False)\n"
+    text = "tf.gradients(yx=a, foo=False)\n"
     _, unused_report, errors, new_text = self._upgrade(text)
     self.assertEqual(text, new_text)
     self.assertEqual(errors, [])
 
-    text = "tf.gradients(a, colocate_gradients_with_ops=False)\n"
+    text = "tf.gradients(yx=a, colocate_gradients_with_ops=False)\n"
+    _, report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual("tf.gradients(yx=a)\n", new_text)
+    self.assertIn("tf.gradients no longer takes", report)
+
+    text = "tf.gradients(y, x, grad_ys, name, colocate, gate)\n"
+    expected = ("tf.gradients(ys=y, xs=x, grad_ys=grad_ys, name=name, "
+                "gate_gradients=gate)\n")
     _, unused_report, errors, new_text = self._upgrade(text)
-    self.assertEqual("tf.gradients(a)\n", new_text)
-    self.assertIn("tf.gradients", errors[0])
-    self.assertIn("requires manual check", errors[0])
+    self.assertEqual(expected, new_text)
 
   def testColocateGradientsWithOpsMinimize(self):
     text = "optimizer.minimize(a, foo=False)\n"
@@ -617,10 +677,9 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     self.assertEqual(errors, [])
 
     text = "optimizer.minimize(a, colocate_gradients_with_ops=False)\n"
-    _, unused_report, errors, new_text = self._upgrade(text)
+    _, report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual("optimizer.minimize(a)\n", new_text)
-    self.assertIn("requires manual check", errors[0])
-    self.assertIn("minimize", errors[0])
+    self.assertIn("Optimizer.minimize no longer takes", report)
 
   def testColocateGradientsWithOpsComputeGradients(self):
     text = "optimizer.compute_gradients(a, foo=False)\n"
@@ -629,10 +688,9 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     self.assertEqual(errors, [])
 
     text = "optimizer.compute_gradients(a, colocate_gradients_with_ops=False)\n"
-    _, unused_report, errors, new_text = self._upgrade(text)
+    _, report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual("optimizer.compute_gradients(a)\n", new_text)
-    self.assertIn("requires manual check", errors[0])
-    self.assertIn("compute_gradients", errors[0])
+    self.assertIn("Optimizer.compute_gradients no longer takes", report)
 
   def testExportSavedModelRename(self):
     text = "self.est.export_savedmodel(path)"
@@ -798,6 +856,46 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
+  def testConv2D(self):
+    text = (
+        "tf.nn.conv2d(input, filter, strides, padding, use_cudnn_on_gpu, "
+        "data_format)")
+    expected_text = (
+        "tf.nn.conv2d(input=input, filters=filter, strides=strides, "
+        "padding=padding, data_format=data_format)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = (
+        "tf.nn.conv2d(input, filter=filter, strides=strides, padding=padding, "
+        "use_cudnn_on_gpu=use_cudnn_on_gpu)")
+    expected_text = ("tf.nn.conv2d(input=input, filters=filter, "
+                     "strides=strides, padding=padding)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testConv2DBackpropFilter(self):
+    text = (
+        "tf.nn.conv2d_backprop_filter(input, filter_sizes, out_backprop, "
+        "strides, padding, use_cudnn_on_gpu, data_format)")
+    expected_text = (
+        "tf.nn.conv2d_backprop_filter(input=input, filter_sizes=filter_sizes, "
+        "out_backprop=out_backprop, strides=strides, padding=padding, "
+        "data_format=data_format)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testConv2DBackpropInput(self):
+    text = (
+        "tf.nn.conv2d_backprop_input(input_sizes, filter, out_backprop, "
+        "strides, padding, use_cudnn_on_gpu, data_format)")
+    expected_text = (
+        "tf.nn.conv2d_backprop_input(input_sizes=input_sizes, filters=filter, "
+        "out_backprop=out_backprop, strides=strides, padding=padding, "
+        "data_format=data_format)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
   def testSpacetoBatch(self):
     text = "tf.space_to_batch_nd(input, shape, paddings, name)"
     expected_text = "tf.space_to_batch(input, shape, paddings, name)"
@@ -831,7 +929,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
             "validate_indices, max_norm)")
     expected_text = ("tf.nn.embedding_lookup(params=params, ids=ids, "
                      "partition_strategy=partition_strategy, name=name, "
-                     "validate_indices=validate_indices, max_norm=max_norm)")
+                     "max_norm=max_norm)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
@@ -1029,29 +1127,50 @@ def _log_prob(self, x):
                  "assert_scalar"]:
       text = "tf.%s(a)" % name
       expected_text = "tf.compat.v1.%s(a)" % name
-      _, unused_report, errors, new_text = self._upgrade(text)
+      _, report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual(expected_text, new_text)
-      self.assertIn("assert_* functions", errors[0])
+      self.assertIn("%s has been" % name, report)
 
       text = "tf.debugging.%s(a)" % name
       expected_text = "tf.compat.v1.debugging.%s(a)" % name
-      _, unused_report, errors, new_text = self._upgrade(text)
+      _, report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual(expected_text, new_text)
-      self.assertIn("assert_* functions", errors[0])
+      self.assertIn("%s has been" % name, report)
 
   def testAssertRankStatements(self):
     for name in ["assert_rank", "assert_rank_at_least", "assert_rank_in"]:
       text = "tf.%s(a)" % name
       expected_text = "tf.compat.v1.%s(a)" % name
-      _, unused_report, errors, new_text = self._upgrade(text)
+      _, report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual(expected_text, new_text)
-      self.assertIn("assert_rank_* functions", errors[0])
+      self.assertIn("%s has been" % name, report)
 
       text = "tf.debugging.%s(a)" % name
       expected_text = "tf.compat.v1.debugging.%s(a)" % name
-      _, unused_report, errors, new_text = self._upgrade(text)
+      _, report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual(expected_text, new_text)
-      self.assertIn("assert_rank_* functions", errors[0])
+      self.assertIn("%s has been" % name, report)
+
+  def test_assert_equal_graph_def(self):
+    text = "tf.test.assert_equal_graph_def(a, b, checkpoint_v2=x)"
+    expected = "tf.test.assert_equal_graph_def(actual=a, expected=b)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
+  def test_sample_distorted_bounding_box(self):
+    # pylint: disable=line-too-long
+    text = "tf.image.sample_distorted_bounding_box(a, b, c, d, e, f, g, h, i, j)"
+    expected = "tf.image.sample_distorted_bounding_box(image_size=a, bounding_boxes=b, seed=c, min_object_covered=e, aspect_ratio_range=f, area_range=g, max_attempts=h, use_image_if_no_bounding_boxes=i, name=j)"
+    # pylint: enable=line-too-long
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
+  def test_contrib_framework_argsort(self):
+    text = "tf.contrib.framework.argsort"
+    expected = "tf.argsort"
+    # pylint: enable=line-too-long
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

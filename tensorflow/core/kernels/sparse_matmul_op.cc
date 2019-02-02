@@ -48,6 +48,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 #endif
 
+#define ALWAYS_INLINE EIGEN_ALWAYS_INLINE
+
 namespace tensorflow {
 namespace {
 
@@ -162,6 +164,19 @@ struct SparseSlice {
 };
 
 template <typename T>
+bool IsZero(T v);
+
+template <>
+ALWAYS_INLINE bool IsZero(bfloat16 v) {
+  return v.IsZero();
+}
+
+template <>
+ALWAYS_INLINE bool IsZero(float v) {
+  return v == 0.0f;
+}
+
+template <typename T>
 template <bool Transpose>
 void SparseSlice<T>::Initialize(
     const typename SparseSlice<T>::ConstMatrixMap& mat, int col_offset) {
@@ -182,9 +197,8 @@ void SparseSlice<T>::Initialize(
   index.reserve(num_blocks * num_rows * 2);
 
   Index3 idx3;
-  Index idx;
-  int data3_size = 0;
-  static const T zero(0);
+  const int stride = Transpose ? mat.dimension(1) : 1;
+
   for (int i = 0; i < num_blocks; ++i) {
     int num_block_cols = std::min(block_size, num_cols - block_size * i);
     for (int row = 0; row < num_rows; ++row) {
@@ -196,54 +210,48 @@ void SparseSlice<T>::Initialize(
       const auto* start =
           Transpose ? &mat(col_offset, row) : &mat(row, col_offset);
       const auto* curr = start;
-      const int stride = Transpose ? mat.dimension(1) : 1;
       const auto* end = start + stride * num_block_cols;
       uint8 k = 0;
 #define NEXT_ELEM \
   curr += stride; \
   ++k;
+#define EAT_ZEROS                          \
+  while (curr < end && IsZero<T>(*curr)) { \
+    NEXT_ELEM;                             \
+  }
       while (true) {
-        while (curr < end && (*curr == zero)) {
-          NEXT_ELEM;
-        }
+        EAT_ZEROS
         if (curr >= end) break;
         idx3.k1 = k;
-        data3.push_back(*curr);
+        const T value1 = *curr;
         NEXT_ELEM;
 
-        while (curr < end && (*curr == zero)) {
-          NEXT_ELEM;
+        EAT_ZEROS
+        if (curr >= end) {
+          data.push_back(value1);
+          index.push_back({idx3.m, idx3.k1});
+          break;
         }
-        if (curr >= end) break;
         idx3.k2 = k;
-        data3.push_back(*curr);
+        const T value2 = *curr;
         NEXT_ELEM;
 
-        while (curr < end && (*curr == zero)) {
-          NEXT_ELEM;
+        EAT_ZEROS
+        if (curr >= end) {
+          data.push_back(value2);
+          index.push_back({idx3.m, idx3.k2});
+          data.push_back(value1);
+          index.push_back({idx3.m, idx3.k1});
+          break;
         }
-        if (curr >= end) break;
         idx3.k3 = k;
+        data3.push_back(value1);
+        data3.push_back(value2);
         data3.push_back(*curr);
         NEXT_ELEM;
         index3.push_back(idx3);
 #undef NEXT_ELEM
-      }
-      int num_inserted_mod = data3.size() % 3;
-      // Move some elements to index and data if needed.
-      data3_size = data3.size() - num_inserted_mod;
-      idx.m = idx3.m;
-      switch (num_inserted_mod) {
-        case 2:
-          idx.k = idx3.k2;
-          data.push_back(data3[data3_size + 1]);
-          index.push_back(idx);
-          TF_FALLTHROUGH_INTENDED;
-        case 1:
-          idx.k = idx3.k1;
-          data.push_back(data3[data3_size]);
-          index.push_back(idx);
-          data3.resize(data3_size);
+#undef EAT_ZEROS
       }
     }
     col_offset += block_size;
@@ -275,8 +283,6 @@ const int kNumOperands = (sizeof(Packet) / sizeof(float));
   const auto y = Eigen::internal::pexpand_bf16_u<Packet>(x);
 #define STORE(x, y) Eigen::internal::pstore<float>(x, y);
 #define FMA(a, b, c, d) d = Eigen::internal::pmadd<Packet>(a, b, c);
-
-#define ALWAYS_INLINE EIGEN_ALWAYS_INLINE
 
 ALWAYS_INLINE float ConvertBfloat16ToFloat(const bfloat16* src) {
   float out = 0;

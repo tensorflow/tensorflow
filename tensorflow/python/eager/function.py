@@ -22,7 +22,6 @@ from __future__ import print_function
 import collections
 import functools
 import re
-import sys
 import threading
 import types as types_lib
 import weakref
@@ -48,7 +47,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import functional_ops
-from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -58,8 +57,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
-# This is to avoid a circular dependency with gradients_impl
-gradients_impl._function = sys.modules[__name__]  # pylint: disable=protected-access
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
@@ -664,12 +661,12 @@ class ConcreteFunction(object):
         _backward_name(self._func_graph.name))
     forward_function_name = _forward_name(self._func_graph.name)
     outputs = [x for x in self._func_graph.outputs
-               if gradients_impl.IsTrainable(x)]
+               if gradients_util.IsTrainable(x)]
     with backwards_graph.as_default():
       gradients_wrt_outputs = [
           graph_placeholder(x.dtype, x.shape) for x in outputs
       ]
-      gradients_wrt_inputs = gradients_impl._GradientsHelper(  # pylint: disable=protected-access
+      gradients_wrt_inputs = gradients_util._GradientsHelper(  # pylint: disable=protected-access
           outputs,
           self._func_graph.inputs,
           grad_ys=gradients_wrt_outputs,
@@ -738,7 +735,7 @@ class ConcreteFunction(object):
     # the forward graph function so that we can compute its gradient.
     real_outputs = outputs[:self._num_outputs]
     skip_positions = [i for i, t in enumerate(real_outputs)
-                      if not gradients_impl.IsTrainable(t)]
+                      if not gradients_util.IsTrainable(t)]
     side_outputs = outputs[self._num_outputs:]
 
     def backward_function(*args):
@@ -1029,7 +1026,8 @@ class Function(object):
                name,
                input_signature=None,
                attributes=None,
-               autograph=True):
+               autograph=True,
+               autograph_options=None):
     """Initializes a `Function`.
 
     Args:
@@ -1042,7 +1040,10 @@ class Function(object):
         of the function.
       autograph: whether to use autograph to compile
         `python_function`. See https://www.tensorflow.org/guide/autograph for
-          more information.
+        more information.
+      autograph_options: Experimental knobs to control behavior
+        `when autograph=True`. See https://www.tensorflow.org/guide/autograph
+        for more information.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -1056,6 +1057,7 @@ class Function(object):
         python_function, input_signature)
     self._name = name
     self._autograph = autograph
+    self._autograph_options = autograph_options
     self._function_cache = collections.OrderedDict()
     self._garbage_collector = _FunctionGarbageCollector(self._function_cache)
     self._function_attributes = attributes or {}
@@ -1290,9 +1292,10 @@ class Function(object):
     with self._lock:
       try:
         graph_function = self._function_cache.get(cache_key, None)
-      except TypeError:
-        raise TypeError("Arguments supplied to `defun`-generated functions "
-                        "must be hashable.")
+      except TypeError as e:
+        raise TypeError(
+            "Arguments supplied to `defun`-generated functions must be"
+            " hashable.  Original error: %s" % e)
 
       if graph_function is None:
         logging.vlog(1,
@@ -1319,6 +1322,7 @@ class Function(object):
                 kwargs,
                 self._input_signature,
                 autograph=self._autograph,
+                autograph_options=self._autograph_options,
                 arg_names=arg_names), self._function_attributes)
         # pylint: disable=protected-access
         # Tell the ConcreteFunction to clean up its graph once it goes out of
@@ -1365,7 +1369,10 @@ def validate_signature(signature):
                     "a possibly nested sequence of TensorSpec objects.")
 
 
-def defun(func=None, input_signature=None, autograph=True):
+def defun(func=None,
+          input_signature=None,
+          autograph=True,
+          experimental_autograph_options=None):
   """Compiles a Python function into a callable TensorFlow graph.
 
   `defun` (short for "define function") compiles a Python function
@@ -1679,6 +1686,9 @@ def defun(func=None, input_signature=None, autograph=True):
     autograph: Whether `func` should be compiled before
       constructing the graph. See https://www.tensorflow.org/guide/autograph
       for more information.
+    experimental_autograph_options: Experimental knobs (in the form of a tuple
+      of tensorflow.autograph.Feature values) to control behavior when
+      autograph=True.
 
 
   Returns:
@@ -1694,13 +1704,15 @@ def defun(func=None, input_signature=None, autograph=True):
   return defun_with_attributes(
       func=func,
       input_signature=input_signature,
-      autograph=autograph)
+      autograph=autograph,
+      experimental_autograph_options=experimental_autograph_options)
 
 
 def defun_with_attributes(func=None,
                           input_signature=None,
                           attributes=None,
-                          autograph=True):
+                          autograph=True,
+                          experimental_autograph_options=None):
   """Compiles a Python function into a callable TensorFlow graph.
 
   This function supports adding extra function attributes. See detailed
@@ -1718,6 +1730,8 @@ def defun_with_attributes(func=None,
       the whitelisted argument which is a python string, and sets the name for
       this `ConcreteFunction` in the graph.
     autograph: same as defun()'s autograph.
+    experimental_autograph_options: same as defun()'s
+      experimental_autograph_options.
 
   Returns:
     Same as the return value of defun, with attributes added to the function in
@@ -1742,7 +1756,8 @@ def defun_with_attributes(func=None,
             name,
             input_signature=input_signature,
             attributes=attributes,
-            autograph=autograph))
+            autograph=autograph,
+            autograph_options=experimental_autograph_options))
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
   if func is not None:

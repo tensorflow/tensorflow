@@ -54,6 +54,13 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 DEFAULT_SIGNATURE_ATTR = "_default_save_signature"
+_UNCOPIABLE_DTYPES = frozenset((dtypes.resource, dtypes.variant))
+
+
+# A container for an EagerTensor constant which has been copied to the exported
+# Graph.
+_CapturedConstant = collections.namedtuple(
+    "_CapturedConstant", ["eager_tensor", "graph_tensor"])
 
 
 class _SaveableView(object):
@@ -70,6 +77,7 @@ class _SaveableView(object):
     checkpointable_objects, node_ids, slot_variables = util.find_objects(root)
     self.nodes = checkpointable_objects
     self.node_ids = node_ids
+    self.captured_tensor_node_ids = util.ObjectIdentityDictionary()
     self.slot_variables = slot_variables
     self.functions = util.ObjectIdentityDictionary()
     self.concrete_functions = []
@@ -112,7 +120,8 @@ class _SaveableView(object):
       assert self.node_ids[node] == node_id
       object_proto = proto.nodes.add()
       object_proto.slot_variables.extend(self.slot_variables.get(node, ()))
-      if isinstance(node, (def_function.Function, defun.ConcreteFunction)):
+      if isinstance(node, (def_function.Function, defun.ConcreteFunction,
+                           _CapturedConstant)):
         continue
       for child in node._checkpoint_dependencies:  # pylint: disable=protected-access
         child_proto = object_proto.children.add()
@@ -140,6 +149,65 @@ class _SaveableView(object):
                                       defun.ConcreteFunction)):
         functions[attribute_name] = attribute_value
     return functions
+
+  def map_resources(self):
+    """Makes new resource handle ops corresponding to existing resource tensors.
+
+    Creates resource handle ops in the current default graph, whereas
+    `accessible_objects` will be from an eager context. Resource mapping adds
+    resource handle ops to the main GraphDef of a SavedModel, which allows the
+    C++ loader API to interact with variables.
+
+    Returns:
+      A tuple of (object_map, resource_map, asset_info):
+        object_map: A dictionary mapping from object in `accessible_objects` to
+          replacement objects created to hold the new resource tensors.
+        resource_map: A dictionary mapping from resource tensors extracted from
+          `accessible_objects` to newly created resource tensors.
+        asset_info: An _AssetInfo tuple describing external assets referenced
+          from accessible_objects.
+    """
+    # Only makes sense when adding to the export Graph
+    assert not context.executing_eagerly()
+    # TODO(allenl): Handle MirroredVariables and other types of variables which
+    # may need special casing.
+    object_map = util.ObjectIdentityDictionary()
+    resource_map = {}
+    asset_info = _AssetInfo(
+        asset_defs=[],
+        asset_initializers_by_resource={},
+        asset_filename_map={},
+        asset_index={})
+    for node_id, obj in enumerate(self.nodes):
+      if isinstance(obj, tracking.TrackableResource):
+        new_resource = obj.create_resource()
+        resource_map[obj.resource_handle] = new_resource
+        self.captured_tensor_node_ids[obj.resource_handle] = node_id
+      elif resource_variable_ops.is_resource_variable(obj):
+        new_variable = resource_variable_ops.copy_to_graph_uninitialized(obj)
+        object_map[obj] = new_variable
+        resource_map[obj.handle] = new_variable.handle
+        self.captured_tensor_node_ids[obj.handle] = node_id
+      elif isinstance(obj, tracking.TrackableAsset):
+        _process_asset(obj, asset_info, resource_map)
+        self.captured_tensor_node_ids[obj.asset_path.handle] = node_id
+
+    for concrete_function in self.concrete_functions:
+      for capture in concrete_function.captured_inputs:
+        if (isinstance(capture, ops.EagerTensor)
+            and capture.dtype not in _UNCOPIABLE_DTYPES
+            and capture not in self.captured_tensor_node_ids):
+          copied_tensor = constant_op.constant(capture.numpy())
+          node_id = len(self.nodes)
+          node = _CapturedConstant(
+              eager_tensor=capture, graph_tensor=copied_tensor)
+          self.nodes.append(node)
+          self.node_ids[capture] = node_id
+          self.node_ids[node] = node_id
+          self.captured_tensor_node_ids[capture] = node_id
+          resource_map[capture] = copied_tensor
+
+    return object_map, resource_map, asset_info
 
 
 def _get_signature(function):
@@ -280,10 +348,6 @@ def _map_captures_to_created_tensors(
              "assigning them to an attribute of another tracked object, or to "
              "an attribute of the main object directly.")
             .format(interior))
-      else:
-        # This is a captured Tensor, but it's not a resource. We'll just add it
-        # to the graph as a constant.
-        mapped_resource = constant_op.constant(exterior.numpy())
     export_captures.append(mapped_resource)
   return export_captures
 
@@ -415,7 +479,8 @@ def _generate_signatures(signature_functions, resource_map):
         function.name, signature_key)
     signatures[signature_key] = signature_def_utils.build_signature_def(
         _tensor_dict_to_tensorinfo(exterior_argument_placeholders),
-        _tensor_dict_to_tensorinfo(outputs))
+        _tensor_dict_to_tensorinfo(outputs),
+        method_name=signature_constants.PREDICT_METHOD_NAME)
   return signatures
 
 
@@ -476,49 +541,6 @@ def _process_asset(trackable_asset, asset_info, resource_map):
   resource_map[original_variable.handle] = asset_variable.handle
 
 
-def _map_resources(accessible_objects):
-  """Makes new resource handle ops corresponding to existing resource tensors.
-
-  Creates resource handle ops in the current default graph, whereas
-  `accessible_objects` will be from an eager context. Resource mapping adds
-  resource handle ops to the main GraphDef of a SavedModel, which allows the C++
-  loader API to interact with variables.
-
-  Args:
-    accessible_objects: A list of objects, some of which may contain resources,
-      to create replacements for.
-
-  Returns:
-    A tuple of (object_map, resource_map, asset_info):
-      object_map: A dictionary mapping from object in `accessible_objects` to
-        replacement objects created to hold the new resource tensors.
-      resource_map: A dictionary mapping from resource tensors extracted from
-        `accessible_objects` to newly created resource tensors.
-      asset_info: An _AssetInfo tuple describing external assets referenced from
-        accessible_objects.
-  """
-  # TODO(allenl): Handle MirroredVariables and other types of variables which
-  # may need special casing.
-  object_map = util.ObjectIdentityDictionary()
-  resource_map = {}
-  asset_info = _AssetInfo(
-      asset_defs=[],
-      asset_initializers_by_resource={},
-      asset_filename_map={},
-      asset_index={})
-  for obj in accessible_objects:
-    if isinstance(obj, tracking.TrackableResource):
-      new_resource = obj.create_resource()
-      resource_map[obj.resource_handle] = new_resource
-    elif resource_variable_ops.is_resource_variable(obj):
-      new_variable = resource_variable_ops.copy_to_graph_uninitialized(obj)
-      object_map[obj] = new_variable
-      resource_map[obj.handle] = new_variable.handle
-    elif isinstance(obj, tracking.TrackableAsset):
-      _process_asset(obj, asset_info, resource_map)
-  return object_map, resource_map, asset_info
-
-
 def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
                          object_saver):
   """Generates a MetaGraph which calls `signature_functions`.
@@ -541,7 +563,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   exported_graph = ops.Graph()
   resource_initializer_ops = []
   with exported_graph.as_default():
-    object_map, resource_map, asset_info = _map_resources(accessible_objects)
+    object_map, resource_map, asset_info = saveable_view.map_resources()
     for resource_initializer_function in resource_initializer_functions:
       asset_dependencies = []
       for capture in resource_initializer_function.graph.external_captures:
@@ -577,9 +599,6 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
     saver_def = saver.to_proto()
     meta_graph_def.saver_def.CopyFrom(saver_def)
   graph_def = exported_graph.as_graph_def(add_shapes=True)
-  # Clean reference cycles so repeated export()s don't make work for the garbage
-  # collector.
-  ops.dismantle_graph(exported_graph)
 
   meta_graph_def.graph_def.CopyFrom(graph_def)
   meta_graph_def.meta_info_def.tags.append(tag_constants.SERVING)
@@ -587,7 +606,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   for signature_key, signature in signatures.items():
     meta_graph_def.signature_def[signature_key].CopyFrom(signature)
   meta_graph.strip_graph_default_valued_attrs(meta_graph_def)
-  return asset_info
+  return asset_info, exported_graph
 
 
 def _write_object_graph(saveable_view, export_dir, asset_file_def_index):
@@ -597,18 +616,10 @@ def _write_object_graph(saveable_view, export_dir, asset_file_def_index):
   proto = saved_object_graph_pb2.SavedObjectGraph()
   saveable_view.fill_object_graph_proto(proto)
 
-  node_ids = util.ObjectIdentityDictionary()
-  for i, obj in enumerate(saveable_view.nodes):
-    node_ids[obj] = i
-    if resource_variable_ops.is_resource_variable(obj):
-      node_ids[obj.handle] = i
-    elif isinstance(obj, tracking.TrackableAsset):
-      node_ids[obj.asset_path.handle] = i
-
   coder = nested_structure_coder.StructureCoder()
   for concrete_function in saveable_view.concrete_functions:
     serialized = function_serialization.serialize_concrete_function(
-        concrete_function, node_ids, coder)
+        concrete_function, saveable_view.captured_tensor_node_ids, coder)
     if serialized is not None:
       proto.concrete_functions[concrete_function.name].CopyFrom(
           serialized)
@@ -641,6 +652,8 @@ def _write_object_proto(obj, proto, asset_file_def_index):
   elif isinstance(obj, defun.ConcreteFunction):
     proto.bare_concrete_function.CopyFrom(
         function_serialization.serialize_bare_concrete_function(obj))
+  elif isinstance(obj, _CapturedConstant):
+    proto.constant.operation = obj.graph_tensor.op.name
   else:
     registered_type_proto = revived_types.serialize(obj)
     if registered_type_proto is None:
@@ -841,7 +854,7 @@ def save(obj, export_dir, signatures=None):
   meta_graph_def = saved_model.meta_graphs.add()
   # TODO(andresp): Should this be using saveable_view?
   object_saver = util.CheckpointableSaver(obj)
-  asset_info = _fill_meta_graph_def(
+  asset_info, exported_graph = _fill_meta_graph_def(
       meta_graph_def, saveable_view, signatures, object_saver)
   saved_model.saved_model_schema_version = (
       constants.SAVED_MODEL_SCHEMA_VERSION)
@@ -857,3 +870,7 @@ def save(obj, export_dir, signatures=None):
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
   file_io.write_string_to_file(path, saved_model.SerializeToString())
   _write_object_graph(saveable_view, export_dir, asset_info.asset_index)
+  # Clean reference cycles so repeated export()s don't make work for the garbage
+  # collector. Before this point we need to keep references to captured
+  # constants in the saved graph.
+  ops.dismantle_graph(exported_graph)

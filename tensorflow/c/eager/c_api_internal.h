@@ -52,7 +52,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/profiler/lib/eager_profiler.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/public/version.h"
 
 struct TFE_ContextOptions {
@@ -109,9 +109,9 @@ struct TFE_Op {
 
 struct TFE_Profiler {
   TFE_Profiler(TFE_Context* ctx)
-      : profiler(tensorflow::EagerProfiler::Create(&ctx->context)) {}
+      : profiler(tensorflow::ProfilerSession::Create(&ctx->context)) {}
 
-  std::unique_ptr<tensorflow::EagerProfiler> profiler;
+  std::unique_ptr<tensorflow::ProfilerSession> profiler;
 };
 
 namespace tensorflow {

@@ -21,11 +21,13 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/data_flow_ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -327,6 +329,38 @@ TEST(CachedFunctionHandles, Basic) {
 
   // Tests that ReleaseAllHandles() works.
   TF_EXPECT_OK(cached_function_handles.ReleaseAllHandles());
+}
+
+TEST(PropagateConstIntoFunctionalNodes, WhileLoopWithResourceInput) {
+  FunctionLibraryDefinition fld(OpRegistry::Global(), {});
+  {
+    // Cond graph & body graph.
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto pred = ops::_Arg(scope.WithOpName("pred"), DT_BOOL, 0);
+    auto input = ops::_Arg(scope.WithOpName("input"), DT_RESOURCE, 1);
+    auto ret = ops::_Retval(scope.WithOpName("ret"), pred, 0);
+    Graph graph(OpRegistry::Global());
+    TF_ASSERT_OK(scope.ToGraph(&graph));
+    FunctionDef cond_fdef;
+    TF_ASSERT_OK(GraphToFunctionDef(graph, "cond", &cond_fdef));
+    TF_ASSERT_OK(fld.AddFunctionDef(cond_fdef));
+    FunctionDef body_fdef;
+    TF_ASSERT_OK(GraphToFunctionDef(graph, "body", &body_fdef));
+    TF_ASSERT_OK(fld.AddFunctionDef(body_fdef));
+  }
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto pred = ops::Const(scope.WithOpName("pred"), false, TensorShape({}));
+  auto input = ops::Const(scope.WithOpName("input"), 0, TensorShape({}));
+  NameAttrList cond_fn, body_fn;
+  cond_fn.set_name("cond");
+  body_fn.set_name("body");
+  auto while_op =
+      ops::While(scope.WithOpName("while"),
+                 std::initializer_list<Input>{pred, input}, cond_fn, body_fn);
+  Graph graph(OpRegistry::Global());
+  TF_ASSERT_OK(scope.ToGraph(&graph));
+
+  TF_EXPECT_OK(PropagateConstIntoFunctionalNodes(&graph, &fld, &fld));
 }
 
 }  // namespace

@@ -63,12 +63,6 @@ class UnknownArgument(object):
   pass
 
 
-# TODO(vbardiovsky): Remove this when nest is updated with new
-# flatten_with_tuple_paths.
-def flatten_with_tuple_paths(structure):
-  return list(zip(nest.yield_flat_paths(structure), nest.flatten(structure)))
-
-
 def convert_structure_to_signature(structure, arg_names=None):
   """Convert a potentially nested structure to a signature.
 
@@ -100,7 +94,7 @@ def convert_structure_to_signature(structure, arg_names=None):
 
   # We are using the flattened paths to name the TensorSpecs. We need an
   # explicit name for them downstream.
-  flattened = flatten_with_tuple_paths(structure)
+  flattened = nest.flatten_with_tuple_paths(structure)
   if arg_names:
     if len(arg_names) != len(structure):
       raise ValueError(
@@ -404,6 +398,7 @@ def func_graph_from_py_func(name,
                             signature=None,
                             func_graph=None,
                             autograph=False,
+                            autograph_options=None,
                             add_control_dependencies=True,
                             arg_names=None,
                             op_return_value=None,
@@ -425,6 +420,8 @@ def func_graph_from_py_func(name,
     func_graph: Optional. An instance of FuncGraph. If provided, we will use
       this graph else a new one is built and returned.
     autograph: whether to use autograph to compile `python_func`.
+      See https://www.tensorflow.org/guide/autograph for more information.
+    autograph_options: additional knobs to control when `autograph=True`.
       See https://www.tensorflow.org/guide/autograph for more information.
     add_control_dependencies: If True, automatically adds control dependencies
       to ensure program order matches execution order and stateful ops always
@@ -528,7 +525,7 @@ def func_graph_from_py_func(name,
                   verbose=autograph.Verbosity.BRIEF,
                   recursive=True,
                   strip_decorators=(def_function.function,),
-                  optional_features=(),
+                  optional_features=autograph_options,
                   force_conversion=True,
               ), *args, **kwargs)
 

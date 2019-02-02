@@ -2269,6 +2269,14 @@ XlaOp XlaBuilder::CollectivePermute(
   });
 }
 
+XlaOp XlaBuilder::ReplicaId() {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = ShapeUtil::MakeShape(U32, {}).ToProto();
+    return AddInstruction(std::move(instr), HloOpcode::kReplicaId, {});
+  });
+}
+
 XlaOp XlaBuilder::SelectAndScatter(const XlaOp& operand,
                                    const XlaComputation& select,
                                    absl::Span<const int64> window_dimensions,
@@ -3218,6 +3226,8 @@ XlaOp CollectivePermute(
     const std::vector<std::pair<int64, int64>>& source_target_pairs) {
   return operand.builder()->CollectivePermute(operand, source_target_pairs);
 }
+
+XlaOp ReplicaId(XlaBuilder* builder) { return builder->ReplicaId(); }
 
 XlaOp SelectAndScatter(const XlaOp& operand, const XlaComputation& select,
                        absl::Span<const int64> window_dimensions,

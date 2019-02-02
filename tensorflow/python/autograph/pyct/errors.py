@@ -18,12 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.autograph.utils import ag_logging
+
 
 class AutoGraphError(Exception):
   pass
 
 
 class InternalError(AutoGraphError):
+  """Raised when AutoGraph finds an unexpected error."""
 
   def __init__(self, message, original_exc):
     super(InternalError, self).__init__()
@@ -35,3 +38,11 @@ class InternalError(AutoGraphError):
         type(self.original_exc).__name__, self.message, self.original_exc)
 
 
+def report_internal_error(entity, exception):
+  ag_logging.log(1, 'Error transforming %s', entity, exc_info=True)
+  # TODO(znado): Add external bug reporting instructions.
+  raise AutoGraphError(
+      'Unexpected error transforming %s. If you believe this is due to a bug,'
+      ' please set the verbosity to 10 (on Linux, `export '
+      'AUTOGRAPH_VERBOSITY=1`) and attach the full output when filing the bug '
+      'report. Caused by %s' % (entity, exception))

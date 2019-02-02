@@ -22,10 +22,6 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 #include "tensorflow/lite/toco/toco_port.h"
-#if defined(PLATFORM_GOOGLE)
-#include "strings/split.h"
-#include "strings/strip.h"
-#endif
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/lite/toco/toco_types.h"
@@ -64,7 +60,7 @@ class Arg final {
   const T& value() const { return value_; }
 
   // Parsing callback for the tensorflow::Flags code
-  bool parse(T value_in) {
+  bool Parse(T value_in) {
     value_ = value_in;
     specified_ = true;
     return true;
@@ -72,7 +68,7 @@ class Arg final {
 
   // Bind the parse member function so tensorflow::Flags can call it.
   std::function<bool(T)> bind() {
-    return std::bind(&Arg::parse, this, std::placeholders::_1);
+    return std::bind(&Arg::Parse, this, std::placeholders::_1);
   }
 
  private:
@@ -90,24 +86,10 @@ class Arg<toco::IntList> final {
   // Return true if the command line argument was specified on the command line.
   bool specified() const { return specified_; }
   // Bind the parse member function so tensorflow::Flags can call it.
-  bool parse(string text) {
-    parsed_value_.elements.clear();
-    specified_ = true;
-    // strings::Split("") produces {""}, but we need {} on empty input.
-    // TODO(aselle): Moved this from elsewhere, but ahentz recommends we could
-    // use absl::SplitLeadingDec32Values(text.c_str(), &parsed_values_.elements)
-    if (!text.empty()) {
-      int32 element;
-      for (absl::string_view part : absl::StrSplit(text, ',')) {
-        if (!SimpleAtoi(part, &element)) return false;
-        parsed_value_.elements.push_back(element);
-      }
-    }
-    return true;
-  }
+  bool Parse(string text);
 
   std::function<bool(string)> bind() {
-    return std::bind(&Arg::parse, this, std::placeholders::_1);
+    return std::bind(&Arg::Parse, this, std::placeholders::_1);
   }
 
   const toco::IntList& value() const { return parsed_value_; }
@@ -126,57 +108,10 @@ class Arg<toco::StringMapList> final {
   bool specified() const { return specified_; }
   // Bind the parse member function so tensorflow::Flags can call it.
 
-  bool parse(string text) {
-    parsed_value_.elements.clear();
-    specified_ = true;
-
-    if (text.empty()) {
-      return true;
-    }
-
-#if defined(PLATFORM_GOOGLE)
-    std::vector<absl::string_view> outer_vector;
-    absl::string_view text_disposable_copy = text;
-    SplitStructuredLine(text_disposable_copy, ',', "{}", &outer_vector);
-    for (const absl::string_view& outer_member_stringpiece : outer_vector) {
-      string outer_member(outer_member_stringpiece);
-      if (outer_member.empty()) {
-        continue;
-      }
-      string outer_member_copy = outer_member;
-      absl::StripAsciiWhitespace(&outer_member);
-      if (!strings::TryStripPrefixString(outer_member, "{", &outer_member))
-        return false;
-      if (!strings::TryStripSuffixString(outer_member, "}", &outer_member))
-        return false;
-      const std::vector<string> inner_fields_vector =
-          absl::StrSplit(outer_member, ',');
-
-      std::unordered_map<string, string> element;
-      for (const string& member_field : inner_fields_vector) {
-        std::vector<string> outer_member_key_value =
-            absl::StrSplit(member_field, ':');
-        if (outer_member_key_value.size() != 2) return false;
-        string& key = outer_member_key_value[0];
-        string& value = outer_member_key_value[1];
-        absl::StripAsciiWhitespace(&key);
-        absl::StripAsciiWhitespace(&value);
-        if (element.count(key) != 0) return false;
-        element[key] = value;
-      }
-      parsed_value_.elements.push_back(element);
-    }
-    return true;
-#else
-    // TODO(aselle): Fix argument parsing when absl supports structuredline
-    fprintf(stderr, "%s:%d StringMapList arguments not supported\n", __FILE__,
-            __LINE__);
-    abort();
-#endif
-  }
+  bool Parse(string text);
 
   std::function<bool(string)> bind() {
-    return std::bind(&Arg::parse, this, std::placeholders::_1);
+    return std::bind(&Arg::Parse, this, std::placeholders::_1);
   }
 
   const toco::StringMapList& value() const { return parsed_value_; }
