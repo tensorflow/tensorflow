@@ -734,7 +734,6 @@ def tf_additional_binary_deps():
     return ["@nsync//:nsync_cpp"] + if_cuda(
         [
             "//tensorflow/stream_executor:cuda_platform",
-            "//tensorflow/core/platform/default/build_config:cuda",
         ],
     ) + if_rocm(
         [
