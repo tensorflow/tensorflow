@@ -109,6 +109,17 @@ class Stream {
   // stream.
   bool ok() const { return !InErrorState(); }
 
+  // Retrieves execution status back into the stream from the underlying
+  // implementation without blocking the stream.
+  //
+  // Normally, Stream::BlockHostUntilDone is used to get execution status.
+  // However, some devices use out-of-band mechnanisms to ensure their streams
+  // have finished on-device work, without needing to block the streams. (These
+  // devices should also override AllowsSyncOnCompletion to return false.) For
+  // these devices, this method can be used after work is finished to retrieve
+  // execution status.
+  port::Status RefreshStatus() LOCKS_EXCLUDED(mu_);
+
   // Initialize the stream. This must be performed before entraining any other
   // operations.
   Stream &Init() LOCKS_EXCLUDED(mu_);
