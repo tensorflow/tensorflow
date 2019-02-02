@@ -519,6 +519,21 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
         [("OneShotIterator", "OneShotIterator_1", 1),
          ("IteratorGetNext", "IteratorGetNext_1", 1)])
 
+  def testOptimizationWithUnknownBatchShape(self):
+    tensor = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
+
+    # Datasets with sparse tensors have unknown output shapes.
+    base_dataset = dataset_ops.Dataset.from_tensors(tensor)
+    unoptimized = base_dataset.apply(batching.map_and_batch(lambda x: x, 2))
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    unoptimized = unoptimized.with_options(options)
+
+    options = dataset_ops.Options()
+    options.experimental_optimization.map_vectorization = True
+    optimized = unoptimized.with_options(options)
+    self.assertDatasetsEqual(unoptimized, optimized)
 
 if __name__ == "__main__":
   test.main()

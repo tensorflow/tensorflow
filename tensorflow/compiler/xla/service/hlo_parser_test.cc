@@ -1719,6 +1719,19 @@ ENTRY %ConstantWithExp.v4 () -> f32[] {
   // printed as "300".
 }
 
+TEST_F(HloParserTest, ShortConstant) {
+  const string original = R"(HloModule ShortCOnstant_module
+
+ENTRY %ShortConstant.v4 () -> f32[67,89] {
+  ROOT %constant.1 = f32[67,89]{1,0} constant({...})
+}
+
+)";
+  auto result = ParseHloString(original);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ(result.ValueOrDie()->ToString(HloPrintOptions()), original);
+}
+
 TEST_F(HloParserTest, AttibutesAnyOrder) {
   const string original = R"(HloModule any_order_module
 

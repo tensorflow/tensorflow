@@ -651,7 +651,8 @@ class CategoricalAccuracy(MeanMetricWrapper):
   For example, if `y_true` is [[0, 0, 1], [0, 1, 0]] and `y_pred` is
   [[0.1, 0.9, 0.8], [0.05, 0.95, 0]] then the categorical accuracy is 1/2 or .5.
   If the weights were specified as [0.7, 0.3] then the categorical accuracy
-  would be .3.
+  would be .3. You can provide logits of classes as `y_pred`, since argmax of
+  logits and probabilities are same.
 
   This metric creates two local variables, `total` and `count` that are used to
   compute the frequency with which `y_pred` matches `y_true`. This frequency is
@@ -701,7 +702,8 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
   For example, if `y_true` is [[2], [1]] and `y_pred` is
   [[0.1, 0.9, 0.8], [0.05, 0.95, 0]] then the categorical accuracy is 1/2 or .5.
   If the weights were specified as [0.7, 0.3] then the categorical accuracy
-  would be .3.
+  would be .3. You can provide logits of classes as `y_pred`, since argmax of
+  logits and probabilities are same.
 
   This metric creates two local variables, `total` and `count` that are used to
   compute the frequency with which `y_pred` matches `y_true`. This frequency is
@@ -1975,15 +1977,21 @@ class MeanSquaredLogarithmicError(MeanMetricWrapper):
 class Hinge(MeanMetricWrapper):
   """Computes the hinge metric between `y_true` and `y_pred`.
 
-  For example, if `y_true` is [0., 1., 1.], and `y_pred` is [1., 0., 1.]
-  the hinge metric value is 0.66.
+  `y_true` values are expected to be -1 or 1. If binary (0 or 1) labels are
+  provided we will convert them to -1 or 1.
+
+  For example, if `y_true` is [-1., 1., 1.], and `y_pred` is [0.6, -0.7, -0.5]
+  the hinge metric value is 1.6.
 
   Usage:
 
   ```python
   m = tf.keras.metrics.Hinge()
-  m.update_state([0., 1., 1.], [1., 0., 1.])
-  print('Final result: ', m.result().numpy())  # Final result: 0.66
+  m.update_state([-1., 1., 1.], [0.6, -0.7, -0.5])
+
+  # result = max(0, 1-y_true * y_pred) = [1.6 + 1.7 + 1.5] / 3
+
+  print('Final result: ', m.result().numpy())  # Final result: 1.6
   ```
 
   Usage with tf.keras API:
@@ -2002,15 +2010,21 @@ class Hinge(MeanMetricWrapper):
 class SquaredHinge(MeanMetricWrapper):
   """Computes the squared hinge metric between `y_true` and `y_pred`.
 
-  For example, if `y_true` is [0., 1., 1.], and `y_pred` is [1., 0., 1.]
-  the squared hinge metric value is 0.66.
+  `y_true` values are expected to be -1 or 1. If binary (0 or 1) labels are
+  provided we will convert them to -1 or 1.
+
+  For example, if `y_true` is [-1., 1., 1.], and `y_pred` is [0.6, -0.7, -0.5]
+  the squared hinge metric value is 2.6.
 
   Usage:
 
   ```python
   m = tf.keras.metrics.SquaredHinge()
-  m.update_state([0., 1., 1.], [1., 0., 1.])
-  print('Final result: ', m.result().numpy())  # Final result: 0.66
+  m.update_state([-1., 1., 1.], [0.6, -0.7, -0.5])
+
+  # result = max(0, 1-y_true * y_pred) = [1.6^2 + 1.7^2 + 1.5^2] / 3
+
+  print('Final result: ', m.result().numpy())  # Final result: 2.6
   ```
 
   Usage with tf.keras API:

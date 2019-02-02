@@ -720,7 +720,9 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinSvdf:
         // NNAPI only support float32 weights.
+        // Only delegate to NNAPI 1.1, as SVDF does not support rank > 1 on 1.0.
         if (version == 1 && node->inputs->size == 5 &&
+            android_sdk_version >= kMinSdkVersionForNNAPI11 &&
             context->tensors[node->inputs->data[/*kWeightsFeatureTensor*/ 1]]
                     .type == kTfLiteFloat32) {
           return [](const NNAPIOpMappingArgs& mapping_args)
@@ -746,8 +748,11 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinLstm:
         // NNAPI only support float32 weights.
+        // Only delegate to NNAPI 1.1,  as 1.0 has a bug for optional tensors
+        // which would affect LSTM.
         // TODO(miaowang): add loggings to indicate why the op is rejected.
         if (version == 1 && node->inputs->size == 20 &&
+            android_sdk_version >= kMinSdkVersionForNNAPI11 &&
             context->tensors[node->inputs
                                  ->data[/*kInputToOutputWeightsTensor*/ 4]]
                     .type == kTfLiteFloat32) {

@@ -36,7 +36,7 @@ namespace convert {
 class TrtCandidateSelector {
  public:
   TrtCandidateSelector(const grappler::GraphProperties& graph_properties,
-                       int precision_mode);
+                       TrtPrecisionMode precision_mode);
 
   // Returns OK iff 'node' is a TF-TRT conversion candidate, which will be added
   // to TRT subgraph and later converted into TRT engine.
@@ -52,7 +52,7 @@ class TrtCandidateSelector {
   const grappler::GraphProperties& graph_properties_;
 
   // Quantization ops are only converted when using quantized precisions.
-  const int precision_mode_;
+  const TrtPrecisionMode precision_mode_;
 };
 
 struct ConversionParams {
@@ -61,7 +61,7 @@ struct ConversionParams {
         max_batch_size(1),
         max_workspace_size_bytes(1 << 30),
         output_graph_def(nullptr),
-        precision_mode(1),
+        precision_mode(TrtPrecisionMode::FP32),
         minimum_segment_size(3),
         graph_properties(nullptr),
         cluster(nullptr),
@@ -74,7 +74,7 @@ struct ConversionParams {
   size_t max_batch_size;
   size_t max_workspace_size_bytes;
   tensorflow::GraphDef* output_graph_def;
-  int precision_mode;
+  TrtPrecisionMode precision_mode;
   int minimum_segment_size;
   const tensorflow::grappler::GraphProperties* graph_properties;
   const tensorflow::grappler::Cluster* cluster;
@@ -99,9 +99,10 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
     const std::vector<string>& output_names, size_t max_batch_size,
     size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
-    int precision_mode = 1, int minimum_segment_size = 3,
-    bool is_dyn_op = false, int max_cached_engines = 1,
-    std::vector<int> cached_engine_batches = {}, bool use_calibration = true);
+    TrtPrecisionMode precision_mode = TrtPrecisionMode::FP32,
+    int minimum_segment_size = 3, bool is_dyn_op = false,
+    int max_cached_engines = 1, std::vector<int> cached_engine_batches = {},
+    bool use_calibration = true);
 
 // Method to call from optimization pass
 tensorflow::Status ConvertAfterShapes(ConversionParams& params);

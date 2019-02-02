@@ -23,6 +23,7 @@ import abc
 
 import six
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend as K
@@ -31,6 +32,7 @@ from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.losses_utils import compute_weighted_loss
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_variable
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
@@ -445,12 +447,18 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
 class Hinge(LossFunctionWrapper):
   """Computes the hinge loss between `y_true` and `y_pred`.
 
+  `y_true` values are expected to be -1 or 1. If binary (0 or 1) labels are
+  provided we will convert them to -1 or 1.
+
   Usage:
 
   ```python
   h = tf.losses.Hinge()
-  loss = h([0., 1., 1.], [1., 0., 1.])
-  print('Loss: ', loss.numpy())  # Loss: 0.66
+  loss = h([-1., 1., 1.], [0.6, -0.7, -0.5])
+
+  # loss = max(0, 1 - y_true * y_pred) = [1.6 + 1.7 + 1.5] / 3
+
+  print('Loss: ', loss.numpy())  # Loss: 1.6
   ```
 
   Usage with tf.keras API:
@@ -471,12 +479,18 @@ class Hinge(LossFunctionWrapper):
 class SquaredHinge(LossFunctionWrapper):
   """Computes the squared hinge loss between `y_true` and `y_pred`.
 
+  `y_true` values are expected to be -1 or 1. If binary (0 or 1) labels are
+  provided we will convert them to -1 or 1.
+
   Usage:
 
   ```python
   sh = tf.losses.SquaredHinge()
-  loss = sh([0., 1., 1.], [1., 0., 1.])
-  print('Loss: ', loss.numpy())  # Loss: 0.66
+  loss = sh([-1., 1., 1.], [0.6, -0.7, -0.5])
+
+  # loss = (max(0, 1 - y_true * y_pred))^2 = [1.6^2 + 1.7^2 + 1.5^2] / 3
+
+  print('Loss: ', loss.numpy())  # Loss: 2.566666
   ```
 
   Usage with tf.keras API:
@@ -729,18 +743,55 @@ def mean_squared_logarithmic_error(y_true, y_pred):  # pylint: disable=missing-d
   return K.mean(math_ops.squared_difference(first_log, second_log), axis=-1)
 
 
+def _maybe_convert_labels(y_true):
+  """Converts binary labels into -1/1."""
+  are_zeros = math_ops.equal(y_true, 0)
+  are_ones = math_ops.equal(y_true, 1)
+  is_binary = math_ops.reduce_all(math_ops.logical_or(are_zeros, are_ones))
+
+  def _convert_binary_labels():
+    # Convert the binary labels to -1 or 1.
+    return 2. * y_true - 1.
+
+  updated_y_true = smart_cond.smart_cond(is_binary,
+                                         _convert_binary_labels, lambda: y_true)
+  return updated_y_true
+
+
 @keras_export('keras.metrics.squared_hinge', 'keras.losses.squared_hinge')
 def squared_hinge(y_true, y_pred):
+  """Computes the squared hinge loss between `y_true` and `y_pred`.
+
+  Args:
+    y_true: The ground truth values. `y_true` values are expected to be -1 or 1.
+      If binary (0 or 1) labels are provided we will convert them to -1 or 1.
+    y_pred: The predicted values.
+
+  Returns:
+    Tensor with one scalar loss entry per sample.
+  """
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
+  y_true = _maybe_convert_labels(y_true)
   return K.mean(
       math_ops.square(math_ops.maximum(1. - y_true * y_pred, 0.)), axis=-1)
 
 
 @keras_export('keras.metrics.hinge', 'keras.losses.hinge')
 def hinge(y_true, y_pred):
+  """Computes the hinge loss between `y_true` and `y_pred`.
+
+  Args:
+    y_true: The ground truth values. `y_true` values are expected to be -1 or 1.
+      If binary (0 or 1) labels are provided we will convert them to -1 or 1.
+    y_pred: The predicted values.
+
+  Returns:
+    Tensor with one scalar loss entry per sample.
+  """
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
+  y_true = _maybe_convert_labels(y_true)
   return K.mean(math_ops.maximum(1. - y_true * y_pred, 0.), axis=-1)
 
 

@@ -34,33 +34,32 @@ bool IsGoogleTensorRTEnabled() {
 #endif
 }
 
-Status GetPrecisionModeName(const int precision_mode, string* name) {
-  switch (precision_mode) {
-    case FP32MODE:
+Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name) {
+  switch (mode) {
+    case TrtPrecisionMode::FP32:
       *name = "FP32";
       break;
-    case FP16MODE:
+    case TrtPrecisionMode::FP16:
       *name = "FP16";
       break;
-    case INT8MODE:
+    case TrtPrecisionMode::INT8:
       *name = "INT8";
       break;
     default:
-      return tensorflow::errors::OutOfRange("Unknown precision mode");
+      return errors::OutOfRange("Unknown precision mode");
   }
   return Status::OK();
 }
 
-Status GetPrecisionMode(const string& name, int* precision_mode) {
+Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode) {
   if (name == "FP32") {
-    *precision_mode = FP32MODE;
+    *mode = TrtPrecisionMode::FP32;
   } else if (name == "FP16") {
-    *precision_mode = FP16MODE;
+    *mode = TrtPrecisionMode::FP16;
   } else if (name == "INT8") {
-    *precision_mode = INT8MODE;
+    *mode = TrtPrecisionMode::INT8;
   } else {
-    return tensorflow::errors::InvalidArgument("Invalid precision mode name: ",
-                                               name);
+    return errors::InvalidArgument("Invalid precision mode name: ", name);
   }
   return Status::OK();
 }

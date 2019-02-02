@@ -479,7 +479,7 @@ bool XlaDevice::AllowsSyncOnCompletion() const {
   return sync_on_completion_;
 }
 
-Status XlaDevice::CurrentStatus() {
+Status XlaDevice::RefreshStatus() {
   std::shared_ptr<se::Stream> stream;
   {
     mutex_lock lock(mu_);
@@ -488,7 +488,8 @@ Status XlaDevice::CurrentStatus() {
   if (!stream) {
     return Status::OK();
   }
-  return stream->ok() ? Status::OK() : errors::Internal("XlaDevice is not OK.");
+  // Stream status is XlaDevice status, no extra operations needed.
+  return stream->RefreshStatus();
 }
 
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,

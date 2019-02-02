@@ -1790,7 +1790,8 @@ class MutableHashTableOpTest(test.TestCase):
       sorted_keys = np.sort(self.evaluate(exported_keys))
       sorted_values = np.sort(self.evaluate(exported_values))
       self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
-      self.assertAllEqual([[4, 5], [2, 3], [0, 1]], sorted_values)
+      sorted_expected_values = np.sort([[4, 5], [2, 3], [0, 1]])
+      self.assertAllEqual(sorted_expected_values, sorted_values)
 
   def testMutableHashTableExportInsert(self):
     with self.cached_session():

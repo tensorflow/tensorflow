@@ -2716,13 +2716,26 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         "Select's pred operand must have PRED element type; got %s.",
         ShapeUtil::HumanString(pred));
   }
-  if (ShapeUtil::CompatibleIgnoringElementType(pred, on_true) ||
+  if (Shape::Equal()
+          .IgnoreElementType()
+          .IgnoreLayout()
+          .IgnoreDynamicDimension()(pred, on_true) ||
       ShapeUtil::IsScalar(pred)) {
     // By this stage we know that pred's element type is PRED. Therefore, this
     // check restricts pred to be a PRED scalar, or a PRED array with the same
     // dimensions as on_true and on_false.
-    return ShapeUtil::ChangeElementType(
+    Shape inferred_shape = ShapeUtil::ChangeElementType(
         on_true, ShapeUtil::HigherPrecisionElementType(on_true, on_false));
+
+    // Propagate dynamic dimensions if pred is not a scalar.
+    if (!ShapeUtil::IsScalar(pred)) {
+      for (int i = 0; i < inferred_shape.rank(); i++) {
+        if (pred.is_dynamic_dimension(i)) {
+          inferred_shape.set_dynamic_dimension(i, true);
+        }
+      }
+    }
+    return inferred_shape;
   }
   return InvalidArgument(
       "Select operation with non-scalar predicate with dimensionality "

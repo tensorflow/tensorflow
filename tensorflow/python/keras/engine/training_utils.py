@@ -1342,7 +1342,7 @@ def infer_steps_for_dataset(dataset, steps, epochs=1, steps_name='steps'):
   if size == cardinality.INFINITE and steps is None:
     raise ValueError('When passing an infinitely repeating dataset, you '
                      'must specify the `%s` argument.' % (steps_name,))
-  if size != cardinality.UNKNOWN:
+  if size >= 0:
     if steps is not None and steps * epochs > size:
       if epochs > 1:
         raise ValueError('The dataset you passed contains %s batches, but you '

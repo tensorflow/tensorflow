@@ -224,9 +224,18 @@ Status AddNewBatchNode(const NodeDef& old_batch_node, const NodeDef& input_node,
   auto& output_shapes_attr = (*batch_node.mutable_attr())["output_shapes"];
   const auto& input_shapes =
       input_node.attr().at("output_shapes").list().shape();
-  int64 batch_size =
-      old_batch_node.attr().at("output_shapes").list().shape()[0].dim(0).size();
+
+  int64 batch_size = -1;
+  for (const auto& shape :
+       old_batch_node.attr().at("output_shapes").list().shape()) {
+    if (!shape.unknown_rank()) {
+      batch_size = shape.dim(0).size();
+      break;
+    }
+  }
+
   for (size_t i = 0; i < input_shapes.size(); ++i) {
+    // Note: We already checked earlier that input shapes are all fully defined.
     TensorShapeProto* shape = output_shapes_attr.mutable_list()->add_shape();
     TensorShapeProto_Dim* dim = shape->add_dim();
     dim->set_size(batch_size);

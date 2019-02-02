@@ -431,7 +431,7 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
   ServiceInitFunction service_func = nullptr;
   GrpcServerOptions options;
   options.rendezvous_mgr_func = NewRpcRendezvousMgr;
-  Status s = ret->Init();
+  Status s = ret->Init(options);
   if (!s.ok()) {
     LOG(ERROR) << s;
     return s;
