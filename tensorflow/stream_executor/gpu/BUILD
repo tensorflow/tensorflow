@@ -25,7 +25,7 @@ filegroup(
 
 cc_library(
     name = "gpu_activation_header",
-    hdrs = if_gpu_is_configured(["gpu_activation.h"]),
+    hdrs = ["gpu_activation.h"],
     deps = ["//tensorflow/stream_executor/platform"],
 )
 
@@ -33,13 +33,13 @@ cc_library(
     name = "gpu_activation",
     srcs = if_gpu_is_configured(["gpu_activation.cc"]),
     hdrs = if_gpu_is_configured(["gpu_activation.h"]),
-    deps = [
+    deps = if_gpu_is_configured([
         ":gpu_activation_header",
         ":gpu_driver_header",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:stream_executor_internal",
         "//tensorflow/stream_executor/platform",
-    ],
+    ]),
 )
 
 cc_library(
