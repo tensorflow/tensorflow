@@ -39,8 +39,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-const int kMaxWorkerRpcRetries = 10;
-
 class GrpcRemoteWorker : public WorkerInterface {
  public:
   explicit GrpcRemoteWorker(SharedGrpcChannelPtr channel,
@@ -261,19 +259,17 @@ class GrpcRemoteWorker : public WorkerInterface {
   // given callback, `done`, will be called when the RPC completes.
   void IssueRequest(const protobuf::Message* request,
                     protobuf::Message* response, const ::grpc::string& method,
-                    StatusCallback done, CallOptions* call_opts = nullptr,
-                    int max_retries = kMaxWorkerRpcRetries) {
+                    StatusCallback done, CallOptions* call_opts = nullptr) {
     new RPCState<protobuf::Message>(&stub_, cq_, method, *request, response,
                                     std::move(done), call_opts,
-                                    callback_threadpool_, max_retries);
+                                    callback_threadpool_);
   }
   void IssueRequest(const protobuf::Message* request, TensorResponse* response,
                     const ::grpc::string& method, StatusCallback done,
-                    CallOptions* call_opts = nullptr,
-                    int max_retries = kMaxWorkerRpcRetries) {
+                    CallOptions* call_opts = nullptr) {
     new RPCState<TensorResponse>(&stub_, cq_, method, *request, response,
                                  std::move(done), call_opts,
-                                 callback_threadpool_, max_retries);
+                                 callback_threadpool_);
   }
 
   // Helper function for initializing the RpcMethod objects below.
