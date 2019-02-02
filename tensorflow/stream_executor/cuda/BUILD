@@ -96,6 +96,30 @@ cc_library(
     ] + tf_additional_cuda_driver_deps()),
 )
 
+cc_library(
+    name = "cudart_stub",
+    srcs = select({
+        # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
+        "//tensorflow:using_cuda_nvcc_with_dynamic_build": ["cudart_stub.cc"],
+        "//tensorflow:using_cuda_clang_with_dynamic_build": ["cudart_stub.cc"],
+        "//conditions:default": [],
+    }),
+    visibility = ["//visibility:public"],
+    deps = select({
+        "//tensorflow:using_cuda_nvcc_with_dynamic_build": [
+            "@local_config_cuda//cuda:cuda_headers",
+            "//tensorflow/stream_executor/lib",
+            "//tensorflow/stream_executor/platform:dso_loader",
+        ],
+        "//tensorflow:using_cuda_clang_with_dynamic_build": [
+            "@local_config_cuda//cuda:cuda_headers",
+            "//tensorflow/stream_executor/lib",
+            "//tensorflow/stream_executor/platform:dso_loader",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
 # The activation library is tightly coupled to the executor library.
 # TODO(leary) split up cuda_gpu_executor.cc so that this can stand alone.
 cc_library(

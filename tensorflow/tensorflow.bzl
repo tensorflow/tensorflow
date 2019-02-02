@@ -1132,7 +1132,7 @@ def tf_cuda_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs)
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
     native.cc_library(
         deps = deps + if_cuda_is_configured_compat(cuda_deps + [
-            clean_dep("//tensorflow/core:cuda"),
+            clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
             "@local_config_cuda//cuda:cuda_headers",
         ]) + if_rocm_is_configured(cuda_deps + [
             # rocm_header placeholder
