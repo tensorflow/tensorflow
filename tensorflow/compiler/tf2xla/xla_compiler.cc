@@ -58,7 +58,11 @@ Status CheckSignature(const DataTypeVector& types,
                             " elements while function has ", types.size());
   }
   for (int i = 0; i < types.size(); ++i) {
-    if (types[i] != args[i].type && types[i] != DT_RESOURCE) {
+    // Don't perform type checks on resource variables and tensor
+    // lists (DT_VARIANT) as we have to trick the type system in order to
+    // plumb them through. DT_VARIANTS are wrapped in a DT_UINT8 tensor.
+    if (types[i] != args[i].type && types[i] != DT_RESOURCE &&
+        types[i] != DT_VARIANT) {
       return errors::Internal(
           "Argument ", i, " has declared type ", DataTypeString(args[i].type),
           " but function parameter has type ", DataTypeString(types[i]));

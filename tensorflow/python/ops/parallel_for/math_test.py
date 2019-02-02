@@ -278,7 +278,7 @@ class MathTest(PForTestCase):
     x = random_ops.random_uniform([2, 3, 4, 5])
     for op in [
         math_ops.reduce_sum, math_ops.reduce_prod, math_ops.reduce_max,
-        math_ops.reduce_min
+        math_ops.reduce_min, math_ops.reduce_mean,
     ]:
       for axis in ([1], None, [0, 2]):
         for keepdims in (True, False):
@@ -325,26 +325,46 @@ class MathTest(PForTestCase):
           self._test_loop_fn(loop_fn, 2)
 
   def test_bias_add(self):
-    x_shape = [2, 3, 4, 5, 6]
-    x = random_ops.random_uniform(x_shape)
     for data_format in ("NCHW", "NHWC"):
-      with backprop.GradientTape(persistent=True) as g:
-        bias_dim = 2 if data_format == "NCHW" else -1
-        bias_shape = x_shape[bias_dim]
-        bias = random_ops.random_uniform([bias_shape])
-        g.watch(bias)
+      for stacked_value in (True, False):
+        x_shape = [3, 4, 5, 6]
+        if stacked_value:
+          x_shape = [2] + x_shape
+        x = random_ops.random_uniform(x_shape)
+        for stacked_bias in (True, False):
+          if not (stacked_value or stacked_bias):
+            continue
+          with backprop.GradientTape(persistent=True) as g:
+            bias_dim = -1
+            if data_format == "NCHW":
+              bias_dim = 2 if stacked_value else 1
+            bias_shape = [x_shape[bias_dim]]
+            if stacked_bias:
+              bias_shape = [2] + bias_shape
+            bias = random_ops.random_uniform(bias_shape)
+            g.watch(bias)
 
-      # pylint: disable=cell-var-from-loop
-      def loop_fn(i):
-        with g:
-          a = array_ops.gather(x, i)
-          y = nn.bias_add(a, bias, data_format=data_format)
-          loss = math_ops.reduce_sum(y * y)
-        return y, g.gradient(loss, bias)
-      # pylint: enable=cell-var-from-loop
+          # pylint: disable=cell-var-from-loop
+          def loop_fn(i):
+            with g:
+              a = array_ops.gather(x, i) if stacked_value else x
+              b = array_ops.gather(bias, i) if stacked_bias else bias
+              y = nn.bias_add(a, b, data_format=data_format)
+              loss = math_ops.reduce_sum(y * y)
+            grad = g.gradient(loss, bias)
+            if stacked_bias:
+              # If we gather over bias in loop_fn, the gradient will be an
+              # instance of `IndexedSlices` with attrs `values` and `indices`.
+              return y, grad.values, grad.indices
+            else:
+              return y, grad
+          # pylint: enable=cell-var-from-loop
 
-      self._test_loop_fn(
-          loop_fn, 2, loop_fn_dtypes=[dtypes.float32, dtypes.float32])
+          out_dtypes = [dtypes.float32, dtypes.float32]
+          if stacked_bias:
+            out_dtypes = out_dtypes + [dtypes.int32]
+          self._test_loop_fn(
+              loop_fn, 2, loop_fn_dtypes=out_dtypes)
 
   def test_unsorted_segment_sum(self):
     t = random_ops.random_uniform([3, 3, 2])

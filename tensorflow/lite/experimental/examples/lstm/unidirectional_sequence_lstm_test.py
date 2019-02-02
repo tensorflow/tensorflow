@@ -20,11 +20,13 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
+from tensorflow.lite.experimental.examples.lstm.tflite_lstm import dynamic_rnn
 from tensorflow.lite.experimental.examples.lstm.tflite_lstm import TFLiteLSTMCell
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.tools import optimize_for_inference_lib
+
 
 # Number of steps to train model.
 TRAIN_STEPS = 1
@@ -67,7 +69,7 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
         TFLiteLSTMCell(self.num_units, forget_bias=0, name="rnn4")
     ])
 
-  def buildModel(self, lstm_layer, is_dynamic_rnn, is_train):
+  def buildModel(self, lstm_layer, is_dynamic_rnn):
     # Weights and biases for output softmax layer.
     out_weights = tf.Variable(
         tf.random_normal([self.num_units, self.n_classes]))
@@ -77,16 +79,11 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     x = tf.placeholder(
         "float", [None, self.time_steps, self.n_input], name="INPUT_IMAGE")
 
-    # For dynamic_rnn, train with dynamic_rnn and inference with static_rnn.
     # x is shaped [batch_size,time_steps,num_inputs]
     if is_dynamic_rnn:
-      if is_train:
-        lstm_input = x
-        outputs, _ = tf.nn.dynamic_rnn(lstm_layer, lstm_input, dtype="float32")
-        outputs = tf.unstack(outputs, axis=1)
-      else:
-        lstm_input = tf.unstack(x, self.time_steps, 1)
-        outputs, _ = tf.nn.static_rnn(lstm_layer, lstm_input, dtype="float32")
+      lstm_input = tf.transpose(x, perm=[1, 0, 2])
+      outputs, _ = dynamic_rnn(lstm_layer, lstm_input, dtype="float32")
+      outputs = tf.unstack(outputs, axis=0)
     else:
       lstm_input = tf.unstack(x, self.time_steps, 1)
       outputs, _ = tf.nn.static_rnn(lstm_layer, lstm_input, dtype="float32")
@@ -126,8 +123,7 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
 
     # Reset the graph.
     tf.reset_default_graph()
-    x, prediction, output_class = self.buildModel(
-        lstm_layer, is_dynamic_rnn, is_train=False)
+    x, prediction, output_class = self.buildModel(lstm_layer, is_dynamic_rnn)
 
     new_sess = tf.Session(config=CONFIG)
     saver = tf.train.Saver()
@@ -157,8 +153,8 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
         curr, ["INPUT_IMAGE_LITE"], ["OUTPUT_CLASS"],
         [tf.float32.as_datatype_enum])
 
-    tflite = tf.lite.toco_convert(
-        curr, [tflite_input], [outputs], allow_custom_ops=False)
+    converter = tf.lite.TFLiteConverter(curr, [tflite_input], [outputs])
+    tflite = converter.convert()
     interpreter = tf.lite.Interpreter(model_content=tflite)
 
     try:
@@ -179,7 +175,7 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     sess = tf.Session(config=CONFIG)
 
     x, prediction, output_class = self.buildModel(
-        self.buildLstmLayer(), is_dynamic_rnn=False, is_train=True)
+        self.buildLstmLayer(), is_dynamic_rnn=False)
     self.trainModel(x, prediction, output_class, sess)
 
     saver = tf.train.Saver()
@@ -192,26 +188,15 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     result = self.tfliteInvoke(frozen_graph, test_inputs, output_class)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
+  @test_util.enable_control_flow_v2
   def testDynamicRnnMultiRnnCell(self):
     sess = tf.Session(config=CONFIG)
 
     x, prediction, output_class = self.buildModel(
-        self.buildLstmLayer(), is_dynamic_rnn=True, is_train=True)
+        self.buildLstmLayer(), is_dynamic_rnn=True)
     self.trainModel(x, prediction, output_class, sess)
 
-    # Since we don't yet support OpHints for dynamic, we will load the model
-    # back in as a static model. This requires the variables to have the same
-    # names as if they were trained as a static. Thus, we get rid of while/rnn
-    # names.
-    variables_to_save = {}
-    for i in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES):
-      op_name = i.name
-      if op_name.startswith("while/rnn/"):
-        op_name = op_name.split("while/rnn/")[1]
-      if op_name.endswith(":0"):
-        op_name = op_name.split(":0")[0]
-      variables_to_save[op_name] = i
-    saver = tf.train.Saver(variables_to_save)
+    saver = tf.train.Saver()
 
     x, prediction, output_class, new_sess = self.saveAndRestoreModel(
         self.buildLstmLayer(), sess, saver, is_dynamic_rnn=True)

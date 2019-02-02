@@ -20,7 +20,6 @@ limitations under the License.
 #include "grpcpp/support/status.h"
 #include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
-#include "tensorflow/core/profiler/lib/eager_profiler.h"
 
 namespace tensorflow {
 std::unique_ptr<TPUProfiler::Service> CreateProfilerService(

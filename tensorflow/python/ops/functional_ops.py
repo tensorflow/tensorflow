@@ -397,13 +397,15 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         ops.convert_to_tensor(elem, name="elem") for elem in elems_flat]
 
     # Convert elems to tensor array. n may be known statically.
-    n = (tensor_shape.dimension_value(elems_flat[0].shape[0])
-         or array_ops.shape(elems_flat[0])[0])
+    n = tensor_shape.dimension_value(elems_flat[0].shape[0])
+    if n is None:
+      n = array_ops.shape(elems_flat[0])[0]
 
     # TensorArrays are always flat
     elems_ta = [
         tensor_array_ops.TensorArray(dtype=elem.dtype, size=n,
                                      dynamic_size=False,
+                                     element_shape=elem.shape[1:],
                                      infer_shape=True)
         for elem in elems_flat]
     # Unpack elements

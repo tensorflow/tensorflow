@@ -33808,7 +33808,8 @@ func DecodeProtoV2Sanitize(value bool) DecodeProtoV2Attr {
 // Arguments:
 //	bytes: Tensor of serialized protos with shape `batch_shape`.
 //	message_type: Name of the proto message type to decode.
-//	field_names: List of strings containing proto field names.
+//	field_names: List of strings containing proto field names. An extension field can be decoded
+// by using its full name, e.g. EXT_PACKAGE.EXT_FIELD_NAME.
 //	output_types: List of TF types to use for the respective field in field_names.
 //
 // Returns Tensor of int32 with shape `[batch_shape, len(field_names)]`.
