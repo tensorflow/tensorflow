@@ -143,9 +143,6 @@ void Instruction::destroy() {
   case Kind::OperationInst:
     cast<OperationInst>(this)->destroy();
     break;
-  case Kind::For:
-    cast<ForInst>(this)->destroy();
-    break;
   }
 }
 
@@ -209,8 +206,6 @@ unsigned Instruction::getNumOperands() const {
   switch (getKind()) {
   case Kind::OperationInst:
     return cast<OperationInst>(this)->getNumOperands();
-  case Kind::For:
-    return cast<ForInst>(this)->getNumOperands();
   }
 }
 
@@ -218,8 +213,6 @@ MutableArrayRef<InstOperand> Instruction::getInstOperands() {
   switch (getKind()) {
   case Kind::OperationInst:
     return cast<OperationInst>(this)->getInstOperands();
-  case Kind::For:
-    return cast<ForInst>(this)->getInstOperands();
   }
 }
 
@@ -349,10 +342,6 @@ void Instruction::dropAllReferences() {
     op.drop();
 
   switch (getKind()) {
-  case Kind::For:
-    // Make sure to drop references held by instructions within the body.
-    cast<ForInst>(this)->getBody()->dropAllReferences();
-    break;
   case Kind::OperationInst: {
     auto *opInst = cast<OperationInst>(this);
     if (isTerminator())
@@ -656,217 +645,6 @@ bool OperationInst::emitOpError(const Twine &message) const {
 }
 
 //===----------------------------------------------------------------------===//
-// ForInst
-//===----------------------------------------------------------------------===//
-
-ForInst *ForInst::create(Location location, ArrayRef<Value *> lbOperands,
-                         AffineMap lbMap, ArrayRef<Value *> ubOperands,
-                         AffineMap ubMap, int64_t step) {
-  assert((!lbMap && lbOperands.empty()) ||
-         lbOperands.size() == lbMap.getNumInputs() &&
-             "lower bound operand count does not match the affine map");
-  assert((!ubMap && ubOperands.empty()) ||
-         ubOperands.size() == ubMap.getNumInputs() &&
-             "upper bound operand count does not match the affine map");
-  assert(step > 0 && "step has to be a positive integer constant");
-
-  // Compute the byte size for the instruction and the operand storage.
-  unsigned numOperands = lbOperands.size() + ubOperands.size();
-  auto byteSize = totalSizeToAlloc<detail::OperandStorage>(
-      /*detail::OperandStorage*/ 1);
-  byteSize += llvm::alignTo(detail::OperandStorage::additionalAllocSize(
-                                numOperands, /*resizable=*/true),
-                            alignof(ForInst));
-  void *rawMem = malloc(byteSize);
-
-  // Initialize the OperationInst part of the instruction.
-  ForInst *inst = ::new (rawMem) ForInst(location, lbMap, ubMap, step);
-  new (&inst->getOperandStorage())
-      detail::OperandStorage(numOperands, /*resizable=*/true);
-
-  auto operands = inst->getInstOperands();
-  unsigned i = 0;
-  for (unsigned e = lbOperands.size(); i != e; ++i)
-    new (&operands[i]) InstOperand(inst, lbOperands[i]);
-
-  for (unsigned j = 0, e = ubOperands.size(); j != e; ++i, ++j)
-    new (&operands[i]) InstOperand(inst, ubOperands[j]);
-
-  return inst;
-}
-
-ForInst::ForInst(Location location, AffineMap lbMap, AffineMap ubMap,
-                 int64_t step)
-    : Instruction(Instruction::Kind::For, location), body(this), lbMap(lbMap),
-      ubMap(ubMap), step(step) {
-
-  // The body of a for inst always has one block.
-  auto *bodyEntry = new Block();
-  body.push_back(bodyEntry);
-
-  // Add an argument to the block for the induction variable.
-  bodyEntry->addArgument(Type::getIndex(lbMap.getResult(0).getContext()));
-}
-
-ForInst::~ForInst() { getOperandStorage().~OperandStorage(); }
-
-const AffineBound ForInst::getLowerBound() const {
-  return AffineBound(*this, 0, lbMap.getNumInputs(), lbMap);
-}
-
-const AffineBound ForInst::getUpperBound() const {
-  return AffineBound(*this, lbMap.getNumInputs(), getNumOperands(), ubMap);
-}
-
-void ForInst::setLowerBound(ArrayRef<Value *> lbOperands, AffineMap map) {
-  assert(lbOperands.size() == map.getNumInputs());
-  assert(map.getNumResults() >= 1 && "bound map has at least one result");
-
-  SmallVector<Value *, 4> newOperands(lbOperands.begin(), lbOperands.end());
-
-  auto ubOperands = getUpperBoundOperands();
-  newOperands.append(ubOperands.begin(), ubOperands.end());
-  getOperandStorage().setOperands(this, newOperands);
-
-  this->lbMap = map;
-}
-
-void ForInst::setUpperBound(ArrayRef<Value *> ubOperands, AffineMap map) {
-  assert(ubOperands.size() == map.getNumInputs());
-  assert(map.getNumResults() >= 1 && "bound map has at least one result");
-
-  SmallVector<Value *, 4> newOperands(getLowerBoundOperands());
-  newOperands.append(ubOperands.begin(), ubOperands.end());
-  getOperandStorage().setOperands(this, newOperands);
-
-  this->ubMap = map;
-}
-
-void ForInst::setLowerBoundMap(AffineMap map) {
-  assert(lbMap.getNumDims() == map.getNumDims() &&
-         lbMap.getNumSymbols() == map.getNumSymbols());
-  assert(map.getNumResults() >= 1 && "bound map has at least one result");
-  this->lbMap = map;
-}
-
-void ForInst::setUpperBoundMap(AffineMap map) {
-  assert(ubMap.getNumDims() == map.getNumDims() &&
-         ubMap.getNumSymbols() == map.getNumSymbols());
-  assert(map.getNumResults() >= 1 && "bound map has at least one result");
-  this->ubMap = map;
-}
-
-bool ForInst::hasConstantLowerBound() const { return lbMap.isSingleConstant(); }
-
-bool ForInst::hasConstantUpperBound() const { return ubMap.isSingleConstant(); }
-
-int64_t ForInst::getConstantLowerBound() const {
-  return lbMap.getSingleConstantResult();
-}
-
-int64_t ForInst::getConstantUpperBound() const {
-  return ubMap.getSingleConstantResult();
-}
-
-void ForInst::setConstantLowerBound(int64_t value) {
-  setLowerBound({}, AffineMap::getConstantMap(value, getContext()));
-}
-
-void ForInst::setConstantUpperBound(int64_t value) {
-  setUpperBound({}, AffineMap::getConstantMap(value, getContext()));
-}
-
-ForInst::operand_range ForInst::getLowerBoundOperands() {
-  return {operand_begin(), operand_begin() + getLowerBoundMap().getNumInputs()};
-}
-
-ForInst::const_operand_range ForInst::getLowerBoundOperands() const {
-  return {operand_begin(), operand_begin() + getLowerBoundMap().getNumInputs()};
-}
-
-ForInst::operand_range ForInst::getUpperBoundOperands() {
-  return {operand_begin() + getLowerBoundMap().getNumInputs(), operand_end()};
-}
-
-ForInst::const_operand_range ForInst::getUpperBoundOperands() const {
-  return {operand_begin() + getLowerBoundMap().getNumInputs(), operand_end()};
-}
-
-bool ForInst::matchingBoundOperandList() const {
-  if (lbMap.getNumDims() != ubMap.getNumDims() ||
-      lbMap.getNumSymbols() != ubMap.getNumSymbols())
-    return false;
-
-  unsigned numOperands = lbMap.getNumInputs();
-  for (unsigned i = 0, e = lbMap.getNumInputs(); i < e; i++) {
-    // Compare Value *'s.
-    if (getOperand(i) != getOperand(numOperands + i))
-      return false;
-  }
-  return true;
-}
-
-void ForInst::walkOps(std::function<void(OperationInst *)> callback) {
-  struct Walker : public InstWalker<Walker> {
-    std::function<void(OperationInst *)> const &callback;
-    Walker(std::function<void(OperationInst *)> const &callback)
-        : callback(callback) {}
-
-    void visitOperationInst(OperationInst *opInst) { callback(opInst); }
-  };
-
-  Walker w(callback);
-  w.walk(this);
-}
-
-void ForInst::walkOpsPostOrder(std::function<void(OperationInst *)> callback) {
-  struct Walker : public InstWalker<Walker> {
-    std::function<void(OperationInst *)> const &callback;
-    Walker(std::function<void(OperationInst *)> const &callback)
-        : callback(callback) {}
-
-    void visitOperationInst(OperationInst *opInst) { callback(opInst); }
-  };
-
-  Walker v(callback);
-  v.walkPostOrder(this);
-}
-
-/// Returns the induction variable for this loop.
-Value *ForInst::getInductionVar() { return getBody()->getArgument(0); }
-
-void ForInst::destroy() {
-  this->~ForInst();
-  free(this);
-}
-
-/// Returns if the provided value is the induction variable of a ForInst.
-bool mlir::isForInductionVar(const Value *val) {
-  return getForInductionVarOwner(val) != nullptr;
-}
-
-/// Returns the loop parent of an induction variable. If the provided value is
-/// not an induction variable, then return nullptr.
-ForInst *mlir::getForInductionVarOwner(Value *val) {
-  const BlockArgument *ivArg = dyn_cast<BlockArgument>(val);
-  if (!ivArg || !ivArg->getOwner())
-    return nullptr;
-  return dyn_cast_or_null<ForInst>(
-      ivArg->getOwner()->getParent()->getContainingInst());
-}
-const ForInst *mlir::getForInductionVarOwner(const Value *val) {
-  return getForInductionVarOwner(const_cast<Value *>(val));
-}
-
-/// Extracts the induction variables from a list of ForInsts and returns them.
-SmallVector<Value *, 8>
-mlir::extractForInductionVars(ArrayRef<ForInst *> forInsts) {
-  SmallVector<Value *, 8> results;
-  for (auto *forInst : forInsts)
-    results.push_back(forInst->getInductionVar());
-  return results;
-}
-//===----------------------------------------------------------------------===//
 // Instruction Cloning
 //===----------------------------------------------------------------------===//
 
@@ -879,84 +657,59 @@ Instruction *Instruction::clone(BlockAndValueMapping &mapper,
                                 MLIRContext *context) const {
   SmallVector<Value *, 8> operands;
   SmallVector<Block *, 2> successors;
-  if (auto *opInst = dyn_cast<OperationInst>(this)) {
-    operands.reserve(getNumOperands() + opInst->getNumSuccessors());
 
-    if (!opInst->isTerminator()) {
-      // Non-terminators just add all the operands.
-      for (auto *opValue : getOperands())
+  auto *opInst = cast<OperationInst>(this);
+  operands.reserve(getNumOperands() + opInst->getNumSuccessors());
+
+  if (!opInst->isTerminator()) {
+    // Non-terminators just add all the operands.
+    for (auto *opValue : getOperands())
+      operands.push_back(mapper.lookupOrDefault(const_cast<Value *>(opValue)));
+  } else {
+    // We add the operands separated by nullptr's for each successor.
+    unsigned firstSuccOperand = opInst->getNumSuccessors()
+                                    ? opInst->getSuccessorOperandIndex(0)
+                                    : opInst->getNumOperands();
+    auto InstOperands = opInst->getInstOperands();
+
+    unsigned i = 0;
+    for (; i != firstSuccOperand; ++i)
+      operands.push_back(
+          mapper.lookupOrDefault(const_cast<Value *>(InstOperands[i].get())));
+
+    successors.reserve(opInst->getNumSuccessors());
+    for (unsigned succ = 0, e = opInst->getNumSuccessors(); succ != e; ++succ) {
+      successors.push_back(mapper.lookupOrDefault(
+          const_cast<Block *>(opInst->getSuccessor(succ))));
+
+      // Add sentinel to delineate successor operands.
+      operands.push_back(nullptr);
+
+      // Remap the successors operands.
+      for (auto *operand : opInst->getSuccessorOperands(succ))
         operands.push_back(
-            mapper.lookupOrDefault(const_cast<Value *>(opValue)));
-    } else {
-      // We add the operands separated by nullptr's for each successor.
-      unsigned firstSuccOperand = opInst->getNumSuccessors()
-                                      ? opInst->getSuccessorOperandIndex(0)
-                                      : opInst->getNumOperands();
-      auto InstOperands = opInst->getInstOperands();
-
-      unsigned i = 0;
-      for (; i != firstSuccOperand; ++i)
-        operands.push_back(
-            mapper.lookupOrDefault(const_cast<Value *>(InstOperands[i].get())));
-
-      successors.reserve(opInst->getNumSuccessors());
-      for (unsigned succ = 0, e = opInst->getNumSuccessors(); succ != e;
-           ++succ) {
-        successors.push_back(mapper.lookupOrDefault(
-            const_cast<Block *>(opInst->getSuccessor(succ))));
-
-        // Add sentinel to delineate successor operands.
-        operands.push_back(nullptr);
-
-        // Remap the successors operands.
-        for (auto *operand : opInst->getSuccessorOperands(succ))
-          operands.push_back(
-              mapper.lookupOrDefault(const_cast<Value *>(operand)));
-      }
+            mapper.lookupOrDefault(const_cast<Value *>(operand)));
     }
-
-    SmallVector<Type, 8> resultTypes;
-    resultTypes.reserve(opInst->getNumResults());
-    for (auto *result : opInst->getResults())
-      resultTypes.push_back(result->getType());
-
-    unsigned numBlockLists = opInst->getNumBlockLists();
-    auto *newOp = OperationInst::create(
-        getLoc(), opInst->getName(), operands, resultTypes, opInst->getAttrs(),
-        successors, numBlockLists, opInst->hasResizableOperandsList(), context);
-
-    // Clone the block lists.
-    for (unsigned i = 0; i != numBlockLists; ++i)
-      opInst->getBlockList(i).cloneInto(&newOp->getBlockList(i), mapper,
-                                        context);
-
-    // Remember the mapping of any results.
-    for (unsigned i = 0, e = opInst->getNumResults(); i != e; ++i)
-      mapper.map(opInst->getResult(i), newOp->getResult(i));
-    return newOp;
   }
 
-  operands.reserve(getNumOperands());
-  for (auto *opValue : getOperands())
-    operands.push_back(mapper.lookupOrDefault(const_cast<Value *>(opValue)));
+  SmallVector<Type, 8> resultTypes;
+  resultTypes.reserve(opInst->getNumResults());
+  for (auto *result : opInst->getResults())
+    resultTypes.push_back(result->getType());
 
-  // Otherwise, this must be a ForInst.
-  auto *forInst = cast<ForInst>(this);
-  auto lbMap = forInst->getLowerBoundMap();
-  auto ubMap = forInst->getUpperBoundMap();
+  unsigned numBlockLists = opInst->getNumBlockLists();
+  auto *newOp = OperationInst::create(
+      getLoc(), opInst->getName(), operands, resultTypes, opInst->getAttrs(),
+      successors, numBlockLists, opInst->hasResizableOperandsList(), context);
 
-  auto *newFor = ForInst::create(
-      getLoc(), ArrayRef<Value *>(operands).take_front(lbMap.getNumInputs()),
-      lbMap, ArrayRef<Value *>(operands).take_back(ubMap.getNumInputs()), ubMap,
-      forInst->getStep());
+  // Clone the block lists.
+  for (unsigned i = 0; i != numBlockLists; ++i)
+    opInst->getBlockList(i).cloneInto(&newOp->getBlockList(i), mapper, context);
 
-  // Remember the induction variable mapping.
-  mapper.map(forInst->getInductionVar(), newFor->getInductionVar());
-
-  // Recursively clone the body of the for loop.
-  for (auto &subInst : *forInst->getBody())
-    newFor->getBody()->push_back(subInst.clone(mapper, context));
-  return newFor;
+  // Remember the mapping of any results.
+  for (unsigned i = 0, e = opInst->getNumResults(); i != e; ++i)
+    mapper.map(opInst->getResult(i), newOp->getResult(i));
+  return newOp;
 }
 
 Instruction *Instruction::clone(MLIRContext *context) const {

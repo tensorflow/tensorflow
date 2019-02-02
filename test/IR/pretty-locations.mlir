@@ -17,9 +17,9 @@ func @inline_notation() -> i32 loc("mysource.cc":10:8) {
   // CHECK-NEXT:  at mysource3.cc:100:10
   %3 = constant 4 : index loc(callsite("foo" at callsite("mysource1.cc":10:8 at callsite("mysource2.cc":13:8 at "mysource3.cc":100:10))))
 
-  // CHECK: for %i0 = 0 to 8 ["foo", mysource.cc:10:8]
-  for %i0 = 0 to 8 loc(fused["foo", "mysource.cc":10:8]) {
-  }
+  // CHECK: } ["foo", mysource.cc:10:8]
+  for %i0 = 0 to 8 {
+  } loc(fused["foo", "mysource.cc":10:8])
 
   // CHECK: } <"myPass">["foo", "foo2"]
   if #set0(%2) {

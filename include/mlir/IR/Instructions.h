@@ -26,15 +26,11 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Instruction.h"
-#include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/OperationSupport.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
-class AffineBound;
-class IntegerSet;
-class AffineCondition;
 class AttributeListStorage;
 template <typename OpType> class ConstOpPointer;
 template <typename OpType> class OpPointer;
@@ -217,6 +213,13 @@ public:
   /// be added.
   bool hasResizableOperandsList() const {
     return getOperandStorage().isResizable();
+  }
+
+  /// Replace the current operands of this operation with the ones provided in
+  /// 'operands'. If the operands list is not resizable, the size of 'operands'
+  /// must be less than or equal to the current number of operands.
+  void setOperands(ArrayRef<Value *> operands) {
+    getOperandStorage().setOperands(this, operands);
   }
 
   unsigned getNumOperands() const { return getOperandStorage().size(); }
@@ -697,262 +700,6 @@ inline auto OperationInst::getResultTypes() const
   return {result_type_begin(), result_type_end()};
 }
 
-/// For instruction represents an affine loop nest.
-class ForInst final
-    : public Instruction,
-      private llvm::TrailingObjects<ForInst, detail::OperandStorage> {
-public:
-  static ForInst *create(Location location, ArrayRef<Value *> lbOperands,
-                         AffineMap lbMap, ArrayRef<Value *> ubOperands,
-                         AffineMap ubMap, int64_t step);
-
-  /// Resolve base class ambiguity.
-  using Instruction::getFunction;
-
-  /// Operand iterators.
-  using operand_iterator = OperandIterator<ForInst, Value>;
-  using const_operand_iterator = OperandIterator<const ForInst, const Value>;
-
-  /// Operand iterator range.
-  using operand_range = llvm::iterator_range<operand_iterator>;
-  using const_operand_range = llvm::iterator_range<const_operand_iterator>;
-
-  /// Get the body of the ForInst.
-  Block *getBody() { return &body.front(); }
-
-  /// Get the body of the ForInst.
-  const Block *getBody() const { return &body.front(); }
-
-  //===--------------------------------------------------------------------===//
-  // Bounds and step
-  //===--------------------------------------------------------------------===//
-
-  /// Returns information about the lower bound as a single object.
-  const AffineBound getLowerBound() const;
-
-  /// Returns information about the upper bound as a single object.
-  const AffineBound getUpperBound() const;
-
-  /// Returns loop step.
-  int64_t getStep() const { return step; }
-
-  /// Returns affine map for the lower bound.
-  AffineMap getLowerBoundMap() const { return lbMap; }
-  /// Returns affine map for the upper bound. The upper bound is exclusive.
-  AffineMap getUpperBoundMap() const { return ubMap; }
-
-  /// Set lower bound.
-  void setLowerBound(ArrayRef<Value *> operands, AffineMap map);
-  /// Set upper bound.
-  void setUpperBound(ArrayRef<Value *> operands, AffineMap map);
-
-  /// Set the lower bound map without changing operands.
-  void setLowerBoundMap(AffineMap map);
-
-  /// Set the upper bound map without changing operands.
-  void setUpperBoundMap(AffineMap map);
-
-  /// Set loop step.
-  void setStep(int64_t step) {
-    assert(step > 0 && "step has to be a positive integer constant");
-    this->step = step;
-  }
-
-  /// Returns true if the lower bound is constant.
-  bool hasConstantLowerBound() const;
-  /// Returns true if the upper bound is constant.
-  bool hasConstantUpperBound() const;
-  /// Returns true if both bounds are constant.
-  bool hasConstantBounds() const {
-    return hasConstantLowerBound() && hasConstantUpperBound();
-  }
-  /// Returns the value of the constant lower bound.
-  /// Fails assertion if the bound is non-constant.
-  int64_t getConstantLowerBound() const;
-  /// Returns the value of the constant upper bound. The upper bound is
-  /// exclusive. Fails assertion if the bound is non-constant.
-  int64_t getConstantUpperBound() const;
-  /// Sets the lower bound to the given constant value.
-  void setConstantLowerBound(int64_t value);
-  /// Sets the upper bound to the given constant value.
-  void setConstantUpperBound(int64_t value);
-
-  /// Returns true if both the lower and upper bound have the same operand lists
-  /// (same operands in the same order).
-  bool matchingBoundOperandList() const;
-
-  /// Walk the operation instructions in the 'for' instruction in preorder,
-  /// calling the callback for each operation.
-  void walkOps(std::function<void(OperationInst *)> callback);
-
-  /// Walk the operation instructions in the 'for' instruction in postorder,
-  /// calling the callback for each operation.
-  void walkOpsPostOrder(std::function<void(OperationInst *)> callback);
-
-  //===--------------------------------------------------------------------===//
-  // Operands
-  //===--------------------------------------------------------------------===//
-
-  unsigned getNumOperands() const { return getOperandStorage().size(); }
-
-  Value *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
-  const Value *getOperand(unsigned idx) const {
-    return getInstOperand(idx).get();
-  }
-  void setOperand(unsigned idx, Value *value) {
-    getInstOperand(idx).set(value);
-  }
-
-  operand_iterator operand_begin() { return operand_iterator(this, 0); }
-  operand_iterator operand_end() {
-    return operand_iterator(this, getNumOperands());
-  }
-
-  const_operand_iterator operand_begin() const {
-    return const_operand_iterator(this, 0);
-  }
-  const_operand_iterator operand_end() const {
-    return const_operand_iterator(this, getNumOperands());
-  }
-
-  ArrayRef<InstOperand> getInstOperands() const {
-    return getOperandStorage().getInstOperands();
-  }
-  MutableArrayRef<InstOperand> getInstOperands() {
-    return getOperandStorage().getInstOperands();
-  }
-  InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
-  const InstOperand &getInstOperand(unsigned idx) const {
-    return getInstOperands()[idx];
-  }
-
-  // TODO: provide iterators for the lower and upper bound operands
-  // if the current access via getLowerBound(), getUpperBound() is too slow.
-
-  /// Returns operands for the lower bound map.
-  operand_range getLowerBoundOperands();
-  const_operand_range getLowerBoundOperands() const;
-
-  /// Returns operands for the upper bound map.
-  operand_range getUpperBoundOperands();
-  const_operand_range getUpperBoundOperands() const;
-
-  //===--------------------------------------------------------------------===//
-  // Other
-  //===--------------------------------------------------------------------===//
-
-  /// Return the context this operation is associated with.
-  MLIRContext *getContext() const {
-    return getInductionVar()->getType().getContext();
-  }
-
-  using Instruction::dump;
-  using Instruction::print;
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const IROperandOwner *ptr) {
-    return ptr->getKind() == IROperandOwner::Kind::ForInst;
-  }
-
-  /// Returns the induction variable for this loop.
-  Value *getInductionVar();
-  const Value *getInductionVar() const {
-    return const_cast<ForInst *>(this)->getInductionVar();
-  }
-
-  void destroy();
-
-private:
-  // The Block for the body. By construction, this list always contains exactly
-  // one block.
-  BlockList body;
-
-  // Affine map for the lower bound.
-  AffineMap lbMap;
-  // Affine map for the upper bound. The upper bound is exclusive.
-  AffineMap ubMap;
-  // Positive constant step. Since index is stored as an int64_t, we restrict
-  // step to the set of positive integers that int64_t can represent.
-  int64_t step;
-
-  explicit ForInst(Location location, AffineMap lbMap, AffineMap ubMap,
-                   int64_t step);
-  ~ForInst();
-
-  /// Returns the operand storage object.
-  detail::OperandStorage &getOperandStorage() {
-    return *getTrailingObjects<detail::OperandStorage>();
-  }
-  const detail::OperandStorage &getOperandStorage() const {
-    return *getTrailingObjects<detail::OperandStorage>();
-  }
-
-  // This stuff is used by the TrailingObjects template.
-  friend llvm::TrailingObjects<ForInst, detail::OperandStorage>;
-};
-
-/// Returns if the provided value is the induction variable of a ForInst.
-bool isForInductionVar(const Value *val);
-
-/// Returns the loop parent of an induction variable. If the provided value is
-/// not an induction variable, then return nullptr.
-ForInst *getForInductionVarOwner(Value *val);
-const ForInst *getForInductionVarOwner(const Value *val);
-
-/// Extracts the induction variables from a list of ForInsts and returns them.
-SmallVector<Value *, 8> extractForInductionVars(ArrayRef<ForInst *> forInsts);
-
-/// AffineBound represents a lower or upper bound in the for instruction.
-/// This class does not own the underlying operands. Instead, it refers
-/// to the operands stored in the ForInst. Its life span should not exceed
-/// that of the for instruction it refers to.
-class AffineBound {
-public:
-  const ForInst *getForInst() const { return &inst; }
-  AffineMap getMap() const { return map; }
-
-  unsigned getNumOperands() const { return opEnd - opStart; }
-  const Value *getOperand(unsigned idx) const {
-    return inst.getOperand(opStart + idx);
-  }
-  const InstOperand &getInstOperand(unsigned idx) const {
-    return inst.getInstOperand(opStart + idx);
-  }
-
-  using operand_iterator = ForInst::operand_iterator;
-  using operand_range = ForInst::operand_range;
-
-  operand_iterator operand_begin() const {
-    // These are iterators over Value *. Not casting away const'ness would
-    // require the caller to use const Value *.
-    return operand_iterator(const_cast<ForInst *>(&inst), opStart);
-  }
-  operand_iterator operand_end() const {
-    return operand_iterator(const_cast<ForInst *>(&inst), opEnd);
-  }
-
-  /// Returns an iterator on the underlying Value's (Value *).
-  operand_range getOperands() const { return {operand_begin(), operand_end()}; }
-  ArrayRef<InstOperand> getInstOperands() const {
-    auto ops = inst.getInstOperands();
-    return ArrayRef<InstOperand>(ops.begin() + opStart, ops.begin() + opEnd);
-  }
-
-private:
-  // 'for' instruction that contains this bound.
-  const ForInst &inst;
-  // Start and end positions of this affine bound operands in the list of
-  // the containing 'for' instruction operands.
-  unsigned opStart, opEnd;
-  // Affine map for this bound.
-  AffineMap map;
-
-  AffineBound(const ForInst &inst, unsigned opStart, unsigned opEnd,
-              AffineMap map)
-      : inst(inst), opStart(opStart), opEnd(opEnd), map(map) {}
-
-  friend class ForInst;
-};
 } // end namespace mlir
 
 #endif // MLIR_IR_INSTRUCTIONS_H

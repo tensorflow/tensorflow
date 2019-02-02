@@ -230,7 +230,7 @@ func @complex_loops() {
 func @triang_loop(%arg0: index, %arg1: memref<?x?xi32>) {
   %c = constant 0 : i32       // CHECK: %c0_i32 = constant 0 : i32
   for %i0 = 1 to %arg0 {      // CHECK: for %i0 = 1 to %arg0 {
-    for %i1 = %i0 to %arg0 {  // CHECK:   for %i1 = #map{{[0-9]+}}(%i0) to %arg0 {
+    for %i1 = (d0)[]->(d0)(%i0)[] to %arg0 {  // CHECK:   for %i1 = #map{{[0-9]+}}(%i0) to %arg0 {
       store %c, %arg1[%i0, %i1] : memref<?x?xi32>  // CHECK: store %c0_i32, %arg1[%i0, %i1]
     }          // CHECK:     }
   }            // CHECK:   }
@@ -254,7 +254,7 @@ func @loop_bounds(%N : index) {
   // CHECK: for %i0 = %0 to %arg0
   for %i = %s to %N {
     // CHECK: for %i1 = #map{{[0-9]+}}(%i0) to 0
-    for %j = %i to 0 step 1 {
+    for %j = (d0)[]->(d0)(%i)[] to 0 step 1 {
        // CHECK: %1 = affine_apply #map{{.*}}(%i0, %i1)[%0]
        %w1 = affine_apply(d0, d1)[s0] -> (d0+d1) (%i, %j) [%s]
        // CHECK: %2 = affine_apply #map{{.*}}(%i0, %i1)[%0]
@@ -761,26 +761,6 @@ func @verbose_if(%N: index) {
   } { // The else block list.
     // CHECK-NEXT: "add"
     %z = "add"(%c, %c) : (index, index) -> index
-  }
-  return
-}
-
-// CHECK-LABEL: func @verbose_for
-func @verbose_for(%arg0 : index, %arg1 : index) {
-  // CHECK-NEXT: %0 = "for"() {lb: 1, ub: 10} : () -> index {
-  %a = "for"() {lb: 1, ub: 10 } : () -> index {
-
-    // CHECK-NEXT: %1 = "for"() {lb: 1, step: 2, ub: 100} : () -> index {
-    %b = "for"() {lb: 1, ub: 100, step: 2 } : () -> index {
-
-      // CHECK-NEXT: %2 = "for"(%arg0, %arg1) : (index, index) -> index {
-      %c = "for"(%arg0, %arg1) : (index, index) -> index {
-
-        // CHECK-NEXT: %3 = "for"(%arg0) {ub: 100} : (index) -> index {
-        %d = "for"(%arg0) {ub: 100 } : (index) -> index {
-        }
-      }
-    }
   }
   return
 }

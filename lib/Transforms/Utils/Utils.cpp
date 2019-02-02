@@ -22,6 +22,7 @@
 
 #include "mlir/Transforms/Utils.h"
 
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Dominance.h"
@@ -278,8 +279,8 @@ void mlir::createAffineComputationSlice(
 /// Folds the specified (lower or upper) bound to a constant if possible
 /// considering its operands. Returns false if the folding happens for any of
 /// the bounds, true otherwise.
-bool mlir::constantFoldBounds(ForInst *forInst) {
-  auto foldLowerOrUpperBound = [forInst](bool lower) {
+bool mlir::constantFoldBounds(OpPointer<AffineForOp> forInst) {
+  auto foldLowerOrUpperBound = [&forInst](bool lower) {
     // Check if the bound is already a constant.
     if (lower && forInst->hasConstantLowerBound())
       return true;

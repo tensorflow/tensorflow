@@ -32,7 +32,6 @@ namespace mlir {
 class Block;
 class BlockAndValueMapping;
 class Location;
-class ForInst;
 class MLIRContext;
 
 /// Terminator operations can have Block operands to represent successors.
@@ -74,7 +73,6 @@ class Instruction : public IROperandOwner,
 public:
   enum class Kind {
     OperationInst = (int)IROperandOwner::Kind::OperationInst,
-    For = (int)IROperandOwner::Kind::ForInst,
   };
 
   Kind getKind() const { return (Kind)IROperandOwner::getKind(); }

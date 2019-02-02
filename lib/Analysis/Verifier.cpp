@@ -72,7 +72,6 @@ public:
   bool verify();
   bool verifyBlock(const Block &block, bool isTopLevel);
   bool verifyOperation(const OperationInst &op);
-  bool verifyForInst(const ForInst &forInst);
   bool verifyDominance(const Block &block);
   bool verifyInstDominance(const Instruction &inst);
 
@@ -175,10 +174,6 @@ bool FuncVerifier::verifyBlock(const Block &block, bool isTopLevel) {
       if (verifyOperation(cast<OperationInst>(inst)))
         return true;
       break;
-    case Instruction::Kind::For:
-      if (verifyForInst(cast<ForInst>(inst)))
-        return true;
-      break;
     }
   }
 
@@ -240,11 +235,6 @@ bool FuncVerifier::verifyOperation(const OperationInst &op) {
   return false;
 }
 
-bool FuncVerifier::verifyForInst(const ForInst &forInst) {
-  // TODO: check that loop bounds are properly formed.
-  return verifyBlock(*forInst.getBody(), /*isTopLevel=*/false);
-}
-
 bool FuncVerifier::verifyDominance(const Block &block) {
   for (auto &inst : block) {
     // Check that all operands on the instruction are ok.
@@ -262,10 +252,6 @@ bool FuncVerifier::verifyDominance(const Block &block) {
             return true;
       break;
     }
-    case Instruction::Kind::For:
-      if (verifyDominance(*cast<ForInst>(inst).getBody()))
-        return true;
-      break;
     }
   }
   return false;

@@ -239,11 +239,6 @@ public:
   /// current function.
   Block *createBlock(Block *insertBefore = nullptr);
 
-  /// Returns a builder for the body of a 'for' instruction.
-  static FuncBuilder getForInstBodyBuilder(ForInst *forInst) {
-    return FuncBuilder(forInst->getBody(), forInst->getBody()->end());
-  }
-
   /// Returns the current block of the builder.
   Block *getBlock() const { return block; }
 
@@ -276,15 +271,6 @@ public:
     block->getInstructions().insert(insertPoint, cloneInst);
     return cloneInst;
   }
-
-  // Creates a for instruction. When step is not specified, it is set to 1.
-  ForInst *createFor(Location location, ArrayRef<Value *> lbOperands,
-                     AffineMap lbMap, ArrayRef<Value *> ubOperands,
-                     AffineMap ubMap, int64_t step = 1);
-
-  // Creates a for instruction with known (constant) lower and upper bounds.
-  // Default step is 1.
-  ForInst *createFor(Location loc, int64_t lb, int64_t ub, int64_t step = 1);
 
 private:
   Function *function;

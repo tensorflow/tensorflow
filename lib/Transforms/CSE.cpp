@@ -183,11 +183,6 @@ void CSE::simplifyBlock(Block *bb) {
       }
       break;
     }
-    case Instruction::Kind::For: {
-      ScopedMapTy::ScopeTy scope(knownValues);
-      simplifyBlock(cast<ForInst>(i).getBody());
-      break;
-    }
     }
   }
 }

@@ -22,6 +22,7 @@
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Instructions.h"
+#include "mlir/IR/IntegerSet.h"
 #include "mlir/Pass.h"
 #include "mlir/Transforms/Passes.h"
 

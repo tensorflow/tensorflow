@@ -32,7 +32,7 @@
 
 namespace mlir {
 
-class ForInst;
+class AffineForOp;
 class FuncBuilder;
 class Location;
 class Module;
@@ -115,7 +115,7 @@ void createAffineComputationSlice(
 
 /// Folds the lower and upper bounds of a 'for' inst to constants if possible.
 /// Returns false if the folding happens for at least one bound, true otherwise.
-bool constantFoldBounds(ForInst *forInst);
+bool constantFoldBounds(OpPointer<AffineForOp> forInst);
 
 /// Replaces (potentially nested) function attributes in the operation "op"
 /// with those specified in "remappingTable".

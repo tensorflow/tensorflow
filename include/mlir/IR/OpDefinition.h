@@ -68,6 +68,11 @@ public:
 
   operator bool() const { return value.getInstruction(); }
 
+  bool operator==(OpPointer rhs) const {
+    return value.getInstruction() == rhs.value.getInstruction();
+  }
+  bool operator!=(OpPointer rhs) const { return !(*this == rhs); }
+
   /// OpPointer can be implicitly converted to OpType*.
   /// Return `nullptr` if there is no associated OperationInst*.
   operator OpType *() {
@@ -87,6 +92,9 @@ public:
 
 private:
   OpType value;
+
+  // Allow access to value to enable constructing an empty ConstOpPointer.
+  friend class ConstOpPointer<OpType>;
 };
 
 /// This pointer represents a notional "const OperationInst*" but where the
@@ -96,6 +104,7 @@ class ConstOpPointer {
 public:
   explicit ConstOpPointer() : value(OperationInst::getNull<OpType>().value) {}
   explicit ConstOpPointer(OpType value) : value(value) {}
+  ConstOpPointer(OpPointer<OpType> pointer) : value(pointer.value) {}
 
   const OpType &operator*() const { return value; }
 
@@ -103,6 +112,11 @@ public:
 
   /// Return true if non-null.
   operator bool() const { return value.getInstruction(); }
+
+  bool operator==(ConstOpPointer rhs) const {
+    return value.getInstruction() == rhs.value.getInstruction();
+  }
+  bool operator!=(ConstOpPointer rhs) const { return !(*this == rhs); }
 
   /// ConstOpPointer can always be implicitly converted to const OpType*.
   /// Return `nullptr` if there is no associated OperationInst*.

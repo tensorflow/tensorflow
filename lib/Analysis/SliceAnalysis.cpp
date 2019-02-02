@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/SliceAnalysis.h"
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Instructions.h"
@@ -52,7 +53,16 @@ void mlir::getForwardSlice(Instruction *inst,
     return;
   }
 
-  if (auto *opInst = dyn_cast<OperationInst>(inst)) {
+  auto *opInst = cast<OperationInst>(inst);
+  if (auto forOp = opInst->dyn_cast<AffineForOp>()) {
+    for (auto &u : forOp->getInductionVar()->getUses()) {
+      auto *ownerInst = u.getOwner();
+      if (forwardSlice->count(ownerInst) == 0) {
+        getForwardSlice(ownerInst, forwardSlice, filter,
+                        /*topLevel=*/false);
+      }
+    }
+  } else {
     assert(opInst->getNumResults() <= 1 && "NYI: multiple results");
     if (opInst->getNumResults() > 0) {
       for (auto &u : opInst->getResult(0)->getUses()) {
@@ -63,16 +73,6 @@ void mlir::getForwardSlice(Instruction *inst,
         }
       }
     }
-  } else if (auto *forInst = dyn_cast<ForInst>(inst)) {
-    for (auto &u : forInst->getInductionVar()->getUses()) {
-      auto *ownerInst = u.getOwner();
-      if (forwardSlice->count(ownerInst) == 0) {
-        getForwardSlice(ownerInst, forwardSlice, filter,
-                        /*topLevel=*/false);
-      }
-    }
-  } else {
-    assert(false && "NYI slicing case");
   }
 
   // At the top level we reverse to get back the actual topological order.

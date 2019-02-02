@@ -21,12 +21,14 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "mlir-c/Core.h"
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/EDSC/MLIREmitter.h"
 #include "mlir/EDSC/Types.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Instructions.h"
+#include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Value.h"
 #include "mlir/StandardOps/StandardOps.h"
@@ -133,8 +135,8 @@ static void printDefininingStatement(llvm::raw_ostream &os, const Value &v) {
     inst->print(os);
     return;
   }
-  if (auto *forInst = getForInductionVarOwner(&v)) {
-    forInst->print(os);
+  if (auto forInst = getForInductionVarOwner(&v)) {
+    forInst->getInstruction()->print(os);
   } else {
     os << "unknown_ssa_value";
   }
@@ -300,7 +302,9 @@ Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
           exprs[1]->getDefiningInst()->cast<ConstantIndexOp>()->getValue();
       auto step =
           exprs[2]->getDefiningInst()->cast<ConstantIndexOp>()->getValue();
-      res = builder->createFor(location, lb, ub, step)->getInductionVar();
+      auto forOp = builder->create<AffineForOp>(location, lb, ub, step);
+      forOp->createBody();
+      res = forOp->getInductionVar();
     }
   }
 

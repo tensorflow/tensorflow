@@ -2128,23 +2128,6 @@ public:
   parseSuccessors(SmallVectorImpl<Block *> &destinations,
                   SmallVectorImpl<SmallVector<Value *, 4>> &operands);
 
-  ParseResult
-  parseOptionalBlockArgList(SmallVectorImpl<BlockArgument *> &results,
-                            Block *owner);
-
-  ParseResult parseOperationBlockList(SmallVectorImpl<Block *> &results);
-  ParseResult parseBlockListBody(SmallVectorImpl<Block *> &results);
-  ParseResult parseBlock(Block *&block);
-  ParseResult parseBlockBody(Block *block);
-
-  /// Cleans up the memory for allocated blocks when a parser error occurs.
-  void cleanupInvalidBlocks(ArrayRef<Block *> invalidBlocks) {
-    // Add the referenced blocks to the function so that they can be properly
-    // cleaned up when the function is destroyed.
-    for (auto *block : invalidBlocks)
-      function->push_back(block);
-  }
-
   /// After the function is finished parsing, this function checks to see if
   /// there are any remaining issues.
   ParseResult finalizeFunction(SMLoc loc);
@@ -2187,6 +2170,25 @@ public:
 
   // Block references.
 
+  ParseResult
+  parseOperationBlockList(SmallVectorImpl<Block *> &results,
+                          ArrayRef<std::pair<SSAUseInfo, Type>> entryArguments);
+  ParseResult parseBlockListBody(SmallVectorImpl<Block *> &results);
+  ParseResult parseBlock(Block *&block);
+  ParseResult parseBlockBody(Block *block);
+
+  ParseResult
+  parseOptionalBlockArgList(SmallVectorImpl<BlockArgument *> &results,
+                            Block *owner);
+
+  /// Cleans up the memory for allocated blocks when a parser error occurs.
+  void cleanupInvalidBlocks(ArrayRef<Block *> invalidBlocks) {
+    // Add the referenced blocks to the function so that they can be properly
+    // cleaned up when the function is destroyed.
+    for (auto *block : invalidBlocks)
+      function->push_back(block);
+  }
+
   /// Get the block with the specified name, creating it if it doesn't
   /// already exist.  The location specified is the point of use, which allows
   /// us to diagnose references to blocks that are not defined precisely.
@@ -2201,13 +2203,6 @@ public:
   OperationInst *parseGenericOperation();
   OperationInst *parseCustomOperation();
 
-  ParseResult parseForInst();
-  ParseResult parseIntConstant(int64_t &val);
-  ParseResult parseDimAndSymbolList(SmallVectorImpl<Value *> &operands,
-                                    unsigned numDims, unsigned numOperands,
-                                    const char *affineStructName);
-  ParseResult parseBound(SmallVectorImpl<Value *> &operands, AffineMap &map,
-                         bool isLower);
   ParseResult parseInstructions(Block *block);
 
 private:
@@ -2287,25 +2282,43 @@ ParseResult FunctionParser::parseFunctionBody(bool hadNamedArguments) {
 ///
 ///   block-list ::= '{' block-list-body
 ///
-ParseResult
-FunctionParser::parseOperationBlockList(SmallVectorImpl<Block *> &results) {
+ParseResult FunctionParser::parseOperationBlockList(
+    SmallVectorImpl<Block *> &results,
+    ArrayRef<std::pair<FunctionParser::SSAUseInfo, Type>> entryArguments) {
   // Parse the '{'.
   if (parseToken(Token::l_brace, "expected '{' to begin block list"))
     return ParseFailure;
+
   // Check for an empty block list.
-  if (consumeIf(Token::r_brace))
+  if (entryArguments.empty() && consumeIf(Token::r_brace))
     return ParseSuccess;
   Block *currentBlock = builder.getInsertionBlock();
 
   // Parse the first block directly to allow for it to be unnamed.
   Block *block = new Block();
+
+  // Add arguments to the entry block.
+  for (auto &placeholderArgPair : entryArguments)
+    if (addDefinition(placeholderArgPair.first,
+                      block->addArgument(placeholderArgPair.second))) {
+      delete block;
+      return ParseFailure;
+    }
+
   if (parseBlock(block)) {
-    cleanupInvalidBlocks(block);
+    delete block;
     return ParseFailure;
   }
-  results.push_back(block);
+
+  // Verify that no other arguments were parsed.
+  if (!entryArguments.empty() &&
+      block->getNumArguments() > entryArguments.size()) {
+    delete block;
+    return emitError("entry block arguments were already defined");
+  }
 
   // Parse the rest of the block list.
+  results.push_back(block);
   if (parseBlockListBody(results))
     return ParseFailure;
 
@@ -2383,10 +2396,6 @@ ParseResult FunctionParser::parseBlockBody(Block *block) {
     switch (getToken().getKind()) {
     default:
       if (parseOperation())
-        return ParseFailure;
-      break;
-    case Token::kw_for:
-      if (parseForInst())
         return ParseFailure;
       break;
     }
@@ -2859,7 +2868,7 @@ OperationInst *FunctionParser::parseGenericOperation() {
   std::vector<SmallVector<Block *, 2>> blocks;
   while (getToken().is(Token::l_brace)) {
     SmallVector<Block *, 2> newBlocks;
-    if (parseOperationBlockList(newBlocks)) {
+    if (parseOperationBlockList(newBlocks, /*entryArguments=*/llvm::None)) {
       for (auto &blockList : blocks)
         cleanupInvalidBlocks(blockList);
       return nullptr;
@@ -2884,6 +2893,27 @@ public:
   CustomOpAsmParser(SMLoc nameLoc, StringRef opName, FunctionParser &parser)
       : nameLoc(nameLoc), opName(opName), parser(parser) {}
 
+  bool parseOperation(const AbstractOperation *opDefinition,
+                      OperationState *opState) {
+    if (opDefinition->parseAssembly(this, opState))
+      return true;
+
+    // Check that enough block lists were reserved for those that were parsed.
+    if (parsedBlockLists.size() > opState->numBlockLists) {
+      return emitError(
+          nameLoc,
+          "parsed more block lists than those reserved in the operation state");
+    }
+
+    // Check there were no dangling entry block arguments.
+    if (!parsedBlockListEntryArguments.empty()) {
+      return emitError(
+          nameLoc,
+          "no block list was attached to parsed entry block arguments");
+    }
+    return false;
+  }
+
   //===--------------------------------------------------------------------===//
   // High level parsing methods.
   //===--------------------------------------------------------------------===//
@@ -2894,6 +2924,9 @@ public:
   }
   bool parseComma() override {
     return parser.parseToken(Token::comma, "expected ','");
+  }
+  bool parseEqual() override {
+    return parser.parseToken(Token::equal, "expected '='");
   }
 
   bool parseType(Type &result) override {
@@ -3083,11 +3116,33 @@ public:
 
   /// Parses a list of blocks.
   bool parseBlockList() override {
+    // Parse the block list.
     SmallVector<Block *, 2> results;
-    if (parser.parseOperationBlockList(results))
+    if (parser.parseOperationBlockList(results, parsedBlockListEntryArguments))
       return true;
+
+    parsedBlockListEntryArguments.clear();
     parsedBlockLists.emplace_back(results);
     return false;
+  }
+
+  /// Parses an argument for the entry block of the next block list to be
+  /// parsed.
+  bool parseBlockListEntryBlockArgument(Type argType) override {
+    SmallVector<Value *, 1> argValues;
+    OperandType operand;
+    if (parseOperand(operand))
+      return true;
+
+    // Create a place holder for this argument.
+    FunctionParser::SSAUseInfo operandInfo = {operand.name, operand.number,
+                                              operand.location};
+    if (auto *value = parser.resolveSSAUse(operandInfo, argType)) {
+      parsedBlockListEntryArguments.emplace_back(operandInfo, argType);
+      return false;
+    }
+
+    return true;
   }
 
   //===--------------------------------------------------------------------===//
@@ -3130,6 +3185,8 @@ public:
 
 private:
   std::vector<SmallVector<Block *, 2>> parsedBlockLists;
+  SmallVector<std::pair<FunctionParser::SSAUseInfo, Type>, 2>
+      parsedBlockListEntryArguments;
   SMLoc nameLoc;
   StringRef opName;
   FunctionParser &parser;
@@ -3161,239 +3218,24 @@ OperationInst *FunctionParser::parseCustomOperation() {
 
   // Have the op implementation take a crack and parsing this.
   OperationState opState(builder.getContext(), srcLocation, opName);
-  if (opDefinition->parseAssembly(&opAsmParser, &opState))
+  if (opAsmParser.parseOperation(opDefinition, &opState))
     return nullptr;
 
   // If it emitted an error, we failed.
   if (opAsmParser.didEmitError())
     return nullptr;
 
-  // Check that enough block lists were reserved for those that were parsed.
-  auto parsedBlockLists = opAsmParser.getParsedBlockLists();
-  if (parsedBlockLists.size() > opState.numBlockLists) {
-    opAsmParser.emitError(
-        opLoc,
-        "parsed more block lists than those reserved in the operation state");
-    return nullptr;
-  }
-
   // Otherwise, we succeeded.  Use the state it parsed as our op information.
   auto *opInst = builder.createOperation(opState);
 
   // Resolve any parsed block lists.
+  auto parsedBlockLists = opAsmParser.getParsedBlockLists();
   for (unsigned i = 0, e = parsedBlockLists.size(); i != e; ++i) {
     auto &opBlockList = opInst->getBlockList(i).getBlocks();
     opBlockList.insert(opBlockList.end(), parsedBlockLists[i].begin(),
                        parsedBlockLists[i].end());
   }
   return opInst;
-}
-
-/// For instruction.
-///
-///    ml-for-inst ::= `for` ssa-id `=` lower-bound `to` upper-bound
-///                   (`step` integer-literal)? trailing-location? `{` inst* `}`
-///
-ParseResult FunctionParser::parseForInst() {
-  consumeToken(Token::kw_for);
-
-  // Parse induction variable.
-  if (getToken().isNot(Token::percent_identifier))
-    return emitError("expected SSA identifier for the loop variable");
-
-  auto loc = getToken().getLoc();
-  StringRef inductionVariableName = getTokenSpelling();
-  consumeToken(Token::percent_identifier);
-
-  if (parseToken(Token::equal, "expected '='"))
-    return ParseFailure;
-
-  // Parse lower bound.
-  SmallVector<Value *, 4> lbOperands;
-  AffineMap lbMap;
-  if (parseBound(lbOperands, lbMap, /*isLower*/ true))
-    return ParseFailure;
-
-  if (parseToken(Token::kw_to, "expected 'to' between bounds"))
-    return ParseFailure;
-
-  // Parse upper bound.
-  SmallVector<Value *, 4> ubOperands;
-  AffineMap ubMap;
-  if (parseBound(ubOperands, ubMap, /*isLower*/ false))
-    return ParseFailure;
-
-  // Parse step.
-  int64_t step = 1;
-  if (consumeIf(Token::kw_step) && parseIntConstant(step))
-    return ParseFailure;
-
-  // The loop step is a positive integer constant. Since index is stored as an
-  // int64_t type, we restrict step to be in the set of positive integers that
-  // int64_t can represent.
-  if (step < 1) {
-    return emitError("step has to be a positive integer");
-  }
-
-  // Create for instruction.
-  ForInst *forInst =
-      builder.createFor(getEncodedSourceLocation(loc), lbOperands, lbMap,
-                        ubOperands, ubMap, step);
-
-  // Create SSA value definition for the induction variable.
-  if (addDefinition({inductionVariableName, 0, loc},
-                    forInst->getInductionVar()))
-    return ParseFailure;
-
-  // Try to parse the optional trailing location.
-  if (parseOptionalTrailingLocation(forInst))
-    return ParseFailure;
-
-  // If parsing of the for instruction body fails,
-  // MLIR contains for instruction with those nested instructions that have been
-  // successfully parsed.
-  auto *forBody = forInst->getBody();
-  if (parseToken(Token::l_brace, "expected '{' before instruction list") ||
-      parseBlock(forBody) ||
-      parseToken(Token::r_brace, "expected '}' after instruction list"))
-    return ParseFailure;
-
-  // Reset insertion point to the current block.
-  builder.setInsertionPointToEnd(forInst->getBlock());
-
-  return ParseSuccess;
-}
-
-/// Parse integer constant as affine constant expression.
-ParseResult FunctionParser::parseIntConstant(int64_t &val) {
-  bool negate = consumeIf(Token::minus);
-
-  if (getToken().isNot(Token::integer))
-    return emitError("expected integer");
-
-  auto uval = getToken().getUInt64IntegerValue();
-
-  if (!uval.hasValue() || (int64_t)uval.getValue() < 0) {
-    return emitError("bound or step is too large for index");
-  }
-
-  val = (int64_t)uval.getValue();
-  if (negate)
-    val = -val;
-  consumeToken();
-
-  return ParseSuccess;
-}
-
-/// Dimensions and symbol use list.
-///
-/// dim-use-list ::= `(` ssa-use-list? `)`
-/// symbol-use-list ::= `[` ssa-use-list? `]`
-/// dim-and-symbol-use-list ::= dim-use-list symbol-use-list?
-///
-ParseResult
-FunctionParser::parseDimAndSymbolList(SmallVectorImpl<Value *> &operands,
-                                      unsigned numDims, unsigned numOperands,
-                                      const char *affineStructName) {
-  if (parseToken(Token::l_paren, "expected '('"))
-    return ParseFailure;
-
-  SmallVector<SSAUseInfo, 4> opInfo;
-  parseOptionalSSAUseList(opInfo);
-
-  if (parseToken(Token::r_paren, "expected ')'"))
-    return ParseFailure;
-
-  if (numDims != opInfo.size())
-    return emitError("dim operand count and " + Twine(affineStructName) +
-                     " dim count must match");
-
-  if (consumeIf(Token::l_square)) {
-    parseOptionalSSAUseList(opInfo);
-    if (parseToken(Token::r_square, "expected ']'"))
-      return ParseFailure;
-  }
-
-  if (numOperands != opInfo.size())
-    return emitError("symbol operand count and " + Twine(affineStructName) +
-                     " symbol count must match");
-
-  // Resolve SSA uses.
-  Type indexType = builder.getIndexType();
-  for (unsigned i = 0, e = opInfo.size(); i != e; ++i) {
-    Value *sval = resolveSSAUse(opInfo[i], indexType);
-    if (!sval)
-      return ParseFailure;
-
-    if (i < numDims && !sval->isValidDim())
-      return emitError(opInfo[i].loc, "value '" + opInfo[i].name.str() +
-                                          "' cannot be used as a dimension id");
-    if (i >= numDims && !sval->isValidSymbol())
-      return emitError(opInfo[i].loc, "value '" + opInfo[i].name.str() +
-                                          "' cannot be used as a symbol");
-    operands.push_back(sval);
-  }
-
-  return ParseSuccess;
-}
-
-// Loop bound.
-///
-///  lower-bound ::= `max`? affine-map dim-and-symbol-use-list |
-///  shorthand-bound upper-bound ::= `min`? affine-map dim-and-symbol-use-list
-///  | shorthand-bound shorthand-bound ::= ssa-id | `-`? integer-literal
-///
-ParseResult FunctionParser::parseBound(SmallVectorImpl<Value *> &operands,
-                                       AffineMap &map, bool isLower) {
-  // 'min' / 'max' prefixes are syntactic sugar. Ignore them.
-  if (isLower)
-    consumeIf(Token::kw_max);
-  else
-    consumeIf(Token::kw_min);
-
-  // Parse full form - affine map followed by dim and symbol list.
-  if (getToken().isAny(Token::hash_identifier, Token::l_paren)) {
-    map = parseAffineMapReference();
-    if (!map)
-      return ParseFailure;
-
-    if (parseDimAndSymbolList(operands, map.getNumDims(), map.getNumInputs(),
-                              "affine map"))
-      return ParseFailure;
-    return ParseSuccess;
-  }
-
-  // Parse custom assembly form.
-  if (getToken().isAny(Token::minus, Token::integer)) {
-    int64_t val;
-    if (!parseIntConstant(val)) {
-      map = builder.getConstantAffineMap(val);
-      return ParseSuccess;
-    }
-    return ParseFailure;
-  }
-
-  // Parse ssa-id as identity map.
-  SSAUseInfo opInfo;
-  if (parseSSAUse(opInfo))
-    return ParseFailure;
-
-  // TODO: improve error message when SSA value is not an affine integer.
-  // Currently it is 'use of value ... expects different type than prior uses'
-  if (auto *value = resolveSSAUse(opInfo, builder.getIndexType()))
-    operands.push_back(value);
-  else
-    return ParseFailure;
-
-  // Create an identity map using dim id for an induction variable and
-  // symbol otherwise. This representation is optimized for storage.
-  // Analysis passes may expand it into a multi-dimensional map if desired.
-  if (isForInductionVar(operands[0]))
-    map = builder.getDimIdentityMap();
-  else
-    map = builder.getSymbolIdentityMap();
-
-  return ParseSuccess;
 }
 
 /// Parse an affine constraint.

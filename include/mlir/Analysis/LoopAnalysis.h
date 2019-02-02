@@ -29,8 +29,9 @@
 namespace mlir {
 
 class AffineExpr;
+class AffineForOp;
 class AffineMap;
-class ForInst;
+template <typename T> class ConstOpPointer;
 class MemRefType;
 class OperationInst;
 class Value;
@@ -38,19 +39,20 @@ class Value;
 /// Returns the trip count of the loop as an affine expression if the latter is
 /// expressible as an affine expression, and nullptr otherwise. The trip count
 /// expression is simplified before returning.
-AffineExpr getTripCountExpr(const ForInst &forInst);
+AffineExpr getTripCountExpr(ConstOpPointer<AffineForOp> forOp);
 
 /// Returns the trip count of the loop if it's a constant, None otherwise. This
 /// uses affine expression analysis and is able to determine constant trip count
 /// in non-trivial cases.
-llvm::Optional<uint64_t> getConstantTripCount(const ForInst &forInst);
+llvm::Optional<uint64_t>
+getConstantTripCount(ConstOpPointer<AffineForOp> forOp);
 
 /// Returns the greatest known integral divisor of the trip count. Affine
 /// expression analysis is used (indirectly through getTripCount), and
 /// this method is thus able to determine non-trivial divisors.
-uint64_t getLargestDivisorOfTripCount(const ForInst &forInst);
+uint64_t getLargestDivisorOfTripCount(ConstOpPointer<AffineForOp> forOp);
 
-/// Given an induction variable `iv` of type ForInst and an `index` of type
+/// Given an induction variable `iv` of type AffineForOp and an `index` of type
 /// IndexType, returns `true` if `index` is independent of `iv` and false
 /// otherwise.
 /// The determination supports composition with at most one AffineApplyOp.
@@ -67,7 +69,7 @@ uint64_t getLargestDivisorOfTripCount(const ForInst &forInst);
 /// conservative.
 bool isAccessInvariant(const Value &iv, const Value &index);
 
-/// Given an induction variable `iv` of type ForInst and `indices` of type
+/// Given an induction variable `iv` of type AffineForOp and `indices` of type
 /// IndexType, returns the set of `indices` that are independent of `iv`.
 ///
 /// Prerequisites (inherited from `isAccessInvariant` above):
@@ -85,21 +87,21 @@ getInvariantAccesses(const Value &iv, llvm::ArrayRef<const Value *> indices);
 /// 3. all nested load/stores are to scalar MemRefs.
 /// TODO(ntv): implement dependence semantics
 /// TODO(ntv): relax the no-conditionals restriction
-bool isVectorizableLoop(const ForInst &loop);
+bool isVectorizableLoop(ConstOpPointer<AffineForOp> loop);
 
 /// Checks whether the loop is structurally vectorizable and that all the LoadOp
 /// and StoreOp matched have access indexing functions that are are either:
 ///   1. invariant along the loop induction variable created by 'loop';
 ///   2. varying along the 'fastestVaryingDim' memory dimension.
-bool isVectorizableLoopAlongFastestVaryingMemRefDim(const ForInst &loop,
-                                                    unsigned fastestVaryingDim);
+bool isVectorizableLoopAlongFastestVaryingMemRefDim(
+    ConstOpPointer<AffineForOp> loop, unsigned fastestVaryingDim);
 
 /// Checks where SSA dominance would be violated if a for inst's body
 /// instructions are shifted by the specified shifts. This method checks if a
 /// 'def' and all its uses have the same shift factor.
 // TODO(mlir-team): extend this to check for memory-based dependence
 // violation when we have the support.
-bool isInstwiseShiftValid(const ForInst &forInst,
+bool isInstwiseShiftValid(ConstOpPointer<AffineForOp> forOp,
                           llvm::ArrayRef<uint64_t> shifts);
 } // end namespace mlir
 

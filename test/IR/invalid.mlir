@@ -204,7 +204,7 @@ func @illegaltype(i0) // expected-error {{invalid integer width}}
 // -----
 
 func @malformed_for_percent() {
-  for i = 1 to 10 { // expected-error {{expected SSA identifier for the loop variable}}
+  for i = 1 to 10 { // expected-error {{expected SSA operand}}
 
 // -----
 
@@ -222,18 +222,18 @@ func @malformed_for_to() {
 
 func @incomplete_for() {
   for %i = 1 to 10 step 2
-}        // expected-error {{expected '{' before instruction list}}
+}        // expected-error {{expected '{' to begin block list}}
 
 // -----
 
 func @nonconstant_step(%1 : i32) {
-  for %2 = 1 to 5 step %1 { // expected-error {{expected integer}}
+  for %2 = 1 to 5 step %1 { // expected-error {{expected type}}
 
 // -----
 
 func @for_negative_stride() {
   for %i = 1 to 10 step -1
-}        // expected-error {{step has to be a positive integer}}
+}        // expected-error@-1 {{expected step to be representable as a positive signed integer}}
 
 // -----
 
@@ -510,7 +510,7 @@ func @undefined_function() {
 
 func @bound_symbol_mismatch(%N : index) {
   for %i = #map1(%N) to 100 {
-  // expected-error@-1 {{symbol operand count and affine map symbol count must match}}
+  // expected-error@-1 {{symbol operand count and integer set symbol count must match}}
   }
   return
 }
@@ -521,78 +521,7 @@ func @bound_symbol_mismatch(%N : index) {
 
 func @bound_dim_mismatch(%N : index) {
   for %i = #map1(%N, %N)[%N] to 100 {
-  // expected-error@-1 {{dim operand count and affine map dim count must match}}
-  }
-  return
-}
-
-// -----
-
-#map1 = (i)[j] -> (i+j)
-
-func @invalid_dim_nested(%N : index) {
-  for %i = 1 to 100 {
-    %a = "foo"(%N) : (index)->(index)
-    for %j = 1 to #map1(%a)[%i] {
-    // expected-error@-1 {{value '%a' cannot be used as a dimension id}}
-    }
-  }
-  return
-}
-
-// -----
-
-#map1 = (i)[j] -> (i+j)
-
-func @invalid_dim_affine_apply(%N : index) {
-  for %i = 1 to 100 {
-    %a = "foo"(%N) : (index)->(index)
-    %w = affine_apply (i)->(i+1) (%a)
-    for %j = 1 to #map1(%w)[%i] {
-    // expected-error@-1 {{value '%w' cannot be used as a dimension id}}
-    }
-  }
-  return
-}
-
-// -----
-
-#map1 = (i)[j] -> (i+j)
-
-func @invalid_symbol_iv(%N : index) {
-  for %i = 1 to 100 {
-    %a = "foo"(%N) : (index)->(index)
-    for %j = 1 to #map1(%N)[%i] {
-    // expected-error@-1 {{value '%i' cannot be used as a symbol}}
-    }
-  }
-  return
-}
-
-// -----
-
-#map1 = (i)[j] -> (i+j)
-
-func @invalid_symbol_nested(%N : index) {
-  for %i = 1 to 100 {
-    %a = "foo"(%N) : (index)->(index)
-    for %j = 1 to #map1(%N)[%a] {
-    // expected-error@-1 {{value '%a' cannot be used as a symbol}}
-    }
-  }
-  return
-}
-
-// -----
-
-#map1 = (i)[j] -> (i+j)
-
-func @invalid_symbol_affine_apply(%N : index) {
-  for %i = 1 to 100 {
-    %w = affine_apply (i)->(i+1) (%i)
-    for %j = 1 to #map1(%i)[%w] {
-    // expected-error@-1 {{value '%w' cannot be used as a symbol}}
-    }
+  // expected-error@-1 {{dim operand count and integer set dim count must match}}
   }
   return
 }
@@ -601,7 +530,7 @@ func @invalid_symbol_affine_apply(%N : index) {
 
 func @large_bound() {
   for %i = 1 to 9223372036854775810 {
-  // expected-error@-1 {{bound or step is too large for index}}
+  // expected-error@-1 {{integer constant out of range for attribute}}
   }
   return
 }
@@ -609,7 +538,7 @@ func @large_bound() {
 // -----
 
 func @max_in_upper_bound(%N : index) {
-  for %i = 1 to max (i)->(N, 100) { //expected-error {{expected SSA operand}}
+  for %i = 1 to max (i)->(N, 100) { //expected-error {{expected type}}
   }
   return
 }
@@ -617,7 +546,7 @@ func @max_in_upper_bound(%N : index) {
 // -----
 
 func @step_typo() {
-  for %i = 1 to 100 step -- 1 { //expected-error {{expected integer}}
+  for %i = 1 to 100 step -- 1 { //expected-error {{expected constant integer}}
   }
   return
 }

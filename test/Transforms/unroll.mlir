@@ -40,6 +40,9 @@
 // UNROLL-BY-4: [[MAP7:#map[0-9]+]] = (d0) -> (d0 + 5)
 // UNROLL-BY-4: [[MAP8:#map[0-9]+]] = (d0) -> (d0 + 10)
 // UNROLL-BY-4: [[MAP9:#map[0-9]+]] = (d0) -> (d0 + 15)
+// UNROLL-BY-4: [[MAP10:#map[0-9]+]] = (d0) -> (0)
+// UNROLL-BY-4: [[MAP11:#map[0-9]+]] = (d0) -> (d0)
+// UNROLL-BY-4: [[MAP12:#map[0-9]+]] = ()[s0] -> (0)
 
 // CHECK-LABEL: func @loop_nest_simplest() {
 func @loop_nest_simplest() {
@@ -432,7 +435,7 @@ func @loop_nest_single_iteration_after_unroll(%N: index) {
 // UNROLL-BY-4-LABEL: func @loop_nest_operand1() {
 func @loop_nest_operand1() {
 // UNROLL-BY-4:      for %i0 = 0 to 100 step 2 {
-// UNROLL-BY-4-NEXT:   for %i1 = (d0) -> (0)(%i0) to #map{{[0-9]+}}(%i0) step 4
+// UNROLL-BY-4-NEXT:   for %i1 = [[MAP10]](%i0) to #map{{[0-9]+}}(%i0) step 4
 // UNROLL-BY-4-NEXT:      %0 = "foo"() : () -> i32
 // UNROLL-BY-4-NEXT:      %1 = "foo"() : () -> i32
 // UNROLL-BY-4-NEXT:      %2 = "foo"() : () -> i32
@@ -452,7 +455,7 @@ func @loop_nest_operand1() {
 // UNROLL-BY-4-LABEL: func @loop_nest_operand2() {
 func @loop_nest_operand2() {
 // UNROLL-BY-4:      for %i0 = 0 to 100 step 2 {
-// UNROLL-BY-4-NEXT:   for %i1 = (d0) -> (d0)(%i0) to #map{{[0-9]+}}(%i0) step 4 {
+// UNROLL-BY-4-NEXT:   for %i1 = [[MAP11]](%i0) to #map{{[0-9]+}}(%i0) step 4 {
 // UNROLL-BY-4-NEXT:     %0 = "foo"() : () -> i32
 // UNROLL-BY-4-NEXT:     %1 = "foo"() : () -> i32
 // UNROLL-BY-4-NEXT:     %2 = "foo"() : () -> i32
@@ -474,7 +477,7 @@ func @loop_nest_operand2() {
 func @loop_nest_operand3() {
   // UNROLL-BY-4: for %i0 = 0 to 100 step 2 {
   for %i = 0 to 100 step 2 {
-    // UNROLL-BY-4: for %i1 = (d0) -> (d0)(%i0) to #map{{[0-9]+}}(%i0) step 4 {
+    // UNROLL-BY-4: for %i1 = [[MAP11]](%i0) to #map{{[0-9]+}}(%i0) step 4 {
     // UNROLL-BY-4-NEXT: %0 = "foo"() : () -> i32
     // UNROLL-BY-4-NEXT: %1 = "foo"() : () -> i32
     // UNROLL-BY-4-NEXT: %2 = "foo"() : () -> i32
@@ -492,7 +495,7 @@ func @loop_nest_operand3() {
 func @loop_nest_operand4(%N : index) {
   // UNROLL-BY-4: for %i0 = 0 to 100 {
   for %i = 0 to 100 {
-    // UNROLL-BY-4: for %i1 = ()[s0] -> (0)()[%arg0] to #map{{[0-9]+}}()[%arg0] step 4 {
+    // UNROLL-BY-4: for %i1 = [[MAP12]]()[%arg0] to #map{{[0-9]+}}()[%arg0] step 4 {
     // UNROLL-BY-4: %0 = "foo"() : () -> i32
     // UNROLL-BY-4-NEXT: %1 = "foo"() : () -> i32
     // UNROLL-BY-4-NEXT: %2 = "foo"() : () -> i32

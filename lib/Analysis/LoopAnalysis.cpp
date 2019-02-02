@@ -43,27 +43,27 @@ using namespace mlir;
 /// Returns the trip count of the loop as an affine expression if the latter is
 /// expressible as an affine expression, and nullptr otherwise. The trip count
 /// expression is simplified before returning.
-AffineExpr mlir::getTripCountExpr(const ForInst &forInst) {
+AffineExpr mlir::getTripCountExpr(ConstOpPointer<AffineForOp> forOp) {
   // upper_bound - lower_bound
   int64_t loopSpan;
 
-  int64_t step = forInst.getStep();
-  auto *context = forInst.getContext();
+  int64_t step = forOp->getStep();
+  auto *context = forOp->getInstruction()->getContext();
 
-  if (forInst.hasConstantBounds()) {
-    int64_t lb = forInst.getConstantLowerBound();
-    int64_t ub = forInst.getConstantUpperBound();
+  if (forOp->hasConstantBounds()) {
+    int64_t lb = forOp->getConstantLowerBound();
+    int64_t ub = forOp->getConstantUpperBound();
     loopSpan = ub - lb;
   } else {
-    auto lbMap = forInst.getLowerBoundMap();
-    auto ubMap = forInst.getUpperBoundMap();
+    auto lbMap = forOp->getLowerBoundMap();
+    auto ubMap = forOp->getUpperBoundMap();
     // TODO(bondhugula): handle max/min of multiple expressions.
     if (lbMap.getNumResults() != 1 || ubMap.getNumResults() != 1)
       return nullptr;
 
     // TODO(bondhugula): handle bounds with different operands.
     // Bounds have different operands, unhandled for now.
-    if (!forInst.matchingBoundOperandList())
+    if (!forOp->matchingBoundOperandList())
       return nullptr;
 
     // ub_expr - lb_expr
@@ -89,8 +89,9 @@ AffineExpr mlir::getTripCountExpr(const ForInst &forInst) {
 /// Returns the trip count of the loop if it's a constant, None otherwise. This
 /// method uses affine expression analysis (in turn using getTripCount) and is
 /// able to determine constant trip count in non-trivial cases.
-llvm::Optional<uint64_t> mlir::getConstantTripCount(const ForInst &forInst) {
-  auto tripCountExpr = getTripCountExpr(forInst);
+llvm::Optional<uint64_t>
+mlir::getConstantTripCount(ConstOpPointer<AffineForOp> forOp) {
+  auto tripCountExpr = getTripCountExpr(forOp);
 
   if (!tripCountExpr)
     return None;
@@ -104,8 +105,8 @@ llvm::Optional<uint64_t> mlir::getConstantTripCount(const ForInst &forInst) {
 /// Returns the greatest known integral divisor of the trip count. Affine
 /// expression analysis is used (indirectly through getTripCount), and
 /// this method is thus able to determine non-trivial divisors.
-uint64_t mlir::getLargestDivisorOfTripCount(const ForInst &forInst) {
-  auto tripCountExpr = getTripCountExpr(forInst);
+uint64_t mlir::getLargestDivisorOfTripCount(ConstOpPointer<AffineForOp> forOp) {
+  auto tripCountExpr = getTripCountExpr(forOp);
 
   if (!tripCountExpr)
     return 1;
@@ -126,7 +127,7 @@ uint64_t mlir::getLargestDivisorOfTripCount(const ForInst &forInst) {
 }
 
 bool mlir::isAccessInvariant(const Value &iv, const Value &index) {
-  assert(isForInductionVar(&iv) && "iv must be a ForInst");
+  assert(isForInductionVar(&iv) && "iv must be a AffineForOp");
   assert(index.getType().isa<IndexType>() && "index must be of IndexType");
   SmallVector<OperationInst *, 4> affineApplyOps;
   getReachableAffineApplyOps({const_cast<Value *>(&index)}, affineApplyOps);
@@ -163,7 +164,7 @@ mlir::getInvariantAccesses(const Value &iv,
 }
 
 /// Given:
-///   1. an induction variable `iv` of type ForInst;
+///   1. an induction variable `iv` of type AffineForOp;
 ///   2. a `memoryOp` of type const LoadOp& or const StoreOp&;
 ///   3. the index of the `fastestVaryingDim` along which to check;
 /// determines whether `memoryOp`[`fastestVaryingDim`] is a contiguous access
@@ -231,17 +232,18 @@ static bool isVectorTransferReadOrWrite(const Instruction &inst) {
 }
 
 using VectorizableInstFun =
-    std::function<bool(const ForInst &, const OperationInst &)>;
+    std::function<bool(ConstOpPointer<AffineForOp>, const OperationInst &)>;
 
-static bool isVectorizableLoopWithCond(const ForInst &loop,
+static bool isVectorizableLoopWithCond(ConstOpPointer<AffineForOp> loop,
                                        VectorizableInstFun isVectorizableInst) {
-  if (!matcher::isParallelLoop(loop) && !matcher::isReductionLoop(loop)) {
+  auto *forInst = const_cast<OperationInst *>(loop->getInstruction());
+  if (!matcher::isParallelLoop(*forInst) &&
+      !matcher::isReductionLoop(*forInst)) {
     return false;
   }
 
   // No vectorization across conditionals for now.
   auto conditionals = matcher::If();
-  auto *forInst = const_cast<ForInst *>(&loop);
   SmallVector<NestedMatch, 8> conditionalsMatched;
   conditionals.match(forInst, &conditionalsMatched);
   if (!conditionalsMatched.empty()) {
@@ -251,7 +253,8 @@ static bool isVectorizableLoopWithCond(const ForInst &loop,
   // No vectorization across unknown regions.
   auto regions = matcher::Op([](const Instruction &inst) -> bool {
     auto &opInst = cast<OperationInst>(inst);
-    return opInst.getNumBlockLists() != 0 && !opInst.isa<AffineIfOp>();
+    return opInst.getNumBlockLists() != 0 &&
+           !(opInst.isa<AffineIfOp>() || opInst.isa<AffineForOp>());
   });
   SmallVector<NestedMatch, 8> regionsMatched;
   regions.match(forInst, &regionsMatched);
@@ -288,23 +291,25 @@ static bool isVectorizableLoopWithCond(const ForInst &loop,
 }
 
 bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
-    const ForInst &loop, unsigned fastestVaryingDim) {
-  VectorizableInstFun fun(
-      [fastestVaryingDim](const ForInst &loop, const OperationInst &op) {
-        auto load = op.dyn_cast<LoadOp>();
-        auto store = op.dyn_cast<StoreOp>();
-        return load ? isContiguousAccess(*loop.getInductionVar(), *load,
-                                         fastestVaryingDim)
-                    : isContiguousAccess(*loop.getInductionVar(), *store,
-                                         fastestVaryingDim);
-      });
+    ConstOpPointer<AffineForOp> loop, unsigned fastestVaryingDim) {
+  VectorizableInstFun fun([fastestVaryingDim](ConstOpPointer<AffineForOp> loop,
+                                              const OperationInst &op) {
+    auto load = op.dyn_cast<LoadOp>();
+    auto store = op.dyn_cast<StoreOp>();
+    return load ? isContiguousAccess(*loop->getInductionVar(), *load,
+                                     fastestVaryingDim)
+                : isContiguousAccess(*loop->getInductionVar(), *store,
+                                     fastestVaryingDim);
+  });
   return isVectorizableLoopWithCond(loop, fun);
 }
 
-bool mlir::isVectorizableLoop(const ForInst &loop) {
+bool mlir::isVectorizableLoop(ConstOpPointer<AffineForOp> loop) {
   VectorizableInstFun fun(
       // TODO: implement me
-      [](const ForInst &loop, const OperationInst &op) { return true; });
+      [](ConstOpPointer<AffineForOp> loop, const OperationInst &op) {
+        return true;
+      });
   return isVectorizableLoopWithCond(loop, fun);
 }
 
@@ -313,9 +318,9 @@ bool mlir::isVectorizableLoop(const ForInst &loop) {
 /// 'def' and all its uses have the same shift factor.
 // TODO(mlir-team): extend this to check for memory-based dependence
 // violation when we have the support.
-bool mlir::isInstwiseShiftValid(const ForInst &forInst,
+bool mlir::isInstwiseShiftValid(ConstOpPointer<AffineForOp> forOp,
                                 ArrayRef<uint64_t> shifts) {
-  auto *forBody = forInst.getBody();
+  auto *forBody = forOp->getBody();
   assert(shifts.size() == forBody->getInstructions().size());
   unsigned s = 0;
   for (const auto &inst : *forBody) {
@@ -325,7 +330,7 @@ bool mlir::isInstwiseShiftValid(const ForInst &forInst,
       for (unsigned i = 0, e = opInst->getNumResults(); i < e; ++i) {
         const Value *result = opInst->getResult(i);
         for (const InstOperand &use : result->getUses()) {
-          // If an ancestor instruction doesn't lie in the block of forInst,
+          // If an ancestor instruction doesn't lie in the block of forOp,
           // there is no shift to check. This is a naive way. If performance
           // becomes an issue, a map can be used to store 'shifts' - to look up
           // the shift for a instruction in constant time.

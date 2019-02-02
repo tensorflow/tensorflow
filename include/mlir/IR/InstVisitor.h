@@ -83,8 +83,6 @@ public:
                   "Must pass the derived type to this template!");
 
     switch (s->getKind()) {
-    case Instruction::Kind::For:
-      return static_cast<SubClass *>(this)->visitForInst(cast<ForInst>(s));
     case Instruction::Kind::OperationInst:
       return static_cast<SubClass *>(this)->visitOperationInst(
           cast<OperationInst>(s));
@@ -101,7 +99,6 @@ public:
 
   // When visiting a for inst, if inst, or an operation inst directly, these
   // methods get called to indicate when transitioning into a new unit.
-  void visitForInst(ForInst *forInst) {}
   void visitOperationInst(OperationInst *opInst) {}
 };
 
@@ -147,20 +144,9 @@ public:
   void walkOpInstPostOrder(OperationInst *opInst) {
     for (auto &blockList : opInst->getBlockLists())
       for (auto &block : blockList)
-        static_cast<SubClass *>(this)->walk(block.begin(), block.end());
+        static_cast<SubClass *>(this)->walkPostOrder(block.begin(),
+                                                     block.end());
     static_cast<SubClass *>(this)->visitOperationInst(opInst);
-  }
-
-  void walkForInst(ForInst *forInst) {
-    static_cast<SubClass *>(this)->visitForInst(forInst);
-    auto *body = forInst->getBody();
-    static_cast<SubClass *>(this)->walk(body->begin(), body->end());
-  }
-
-  void walkForInstPostOrder(ForInst *forInst) {
-    auto *body = forInst->getBody();
-    static_cast<SubClass *>(this)->walkPostOrder(body->begin(), body->end());
-    static_cast<SubClass *>(this)->visitForInst(forInst);
   }
 
   // Function to walk a instruction.
@@ -171,8 +157,6 @@ public:
     static_cast<SubClass *>(this)->visitInstruction(s);
 
     switch (s->getKind()) {
-    case Instruction::Kind::For:
-      return static_cast<SubClass *>(this)->walkForInst(cast<ForInst>(s));
     case Instruction::Kind::OperationInst:
       return static_cast<SubClass *>(this)->walkOpInst(cast<OperationInst>(s));
     }
@@ -185,9 +169,6 @@ public:
     static_cast<SubClass *>(this)->visitInstruction(s);
 
     switch (s->getKind()) {
-    case Instruction::Kind::For:
-      return static_cast<SubClass *>(this)->walkForInstPostOrder(
-          cast<ForInst>(s));
     case Instruction::Kind::OperationInst:
       return static_cast<SubClass *>(this)->walkOpInstPostOrder(
           cast<OperationInst>(s));
@@ -205,7 +186,6 @@ public:
   // called. These are typically O(1) complexity and shouldn't be recursively
   // processing their descendants in some way. When using RetTy, all of these
   // need to be overridden.
-  void visitForInst(ForInst *forInst) {}
   void visitOperationInst(OperationInst *opInst) {}
   void visitInstruction(Instruction *inst) {}
 };

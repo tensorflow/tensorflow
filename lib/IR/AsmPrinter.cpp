@@ -130,21 +130,8 @@ private:
 
   void recordTypeReference(Type ty) { usedTypes.insert(ty); }
 
-  // Return true if this map could be printed using the custom assembly form.
-  static bool hasCustomForm(AffineMap boundMap) {
-    if (boundMap.isSingleConstant())
-      return true;
-
-    // Check if the affine map is single dim id or single symbol identity -
-    // (i)->(i) or ()[s]->(i)
-    return boundMap.getNumInputs() == 1 && boundMap.getNumResults() == 1 &&
-           (boundMap.getResult(0).isa<AffineDimExpr>() ||
-            boundMap.getResult(0).isa<AffineSymbolExpr>());
-  }
-
   // Visit functions.
   void visitInstruction(const Instruction *inst);
-  void visitForInst(const ForInst *forInst);
   void visitOperationInst(const OperationInst *opInst);
   void visitType(Type type);
   void visitAttribute(Attribute attr);
@@ -196,16 +183,6 @@ void ModuleState::visitAttribute(Attribute attr) {
   }
 }
 
-void ModuleState::visitForInst(const ForInst *forInst) {
-  AffineMap lbMap = forInst->getLowerBoundMap();
-  if (!hasCustomForm(lbMap))
-    recordAffineMapReference(lbMap);
-
-  AffineMap ubMap = forInst->getUpperBoundMap();
-  if (!hasCustomForm(ubMap))
-    recordAffineMapReference(ubMap);
-}
-
 void ModuleState::visitOperationInst(const OperationInst *op) {
   // Visit all the types used in the operation.
   for (auto *operand : op->getOperands())
@@ -220,8 +197,6 @@ void ModuleState::visitOperationInst(const OperationInst *op) {
 
 void ModuleState::visitInstruction(const Instruction *inst) {
   switch (inst->getKind()) {
-  case Instruction::Kind::For:
-    return visitForInst(cast<ForInst>(inst));
   case Instruction::Kind::OperationInst:
     return visitOperationInst(cast<OperationInst>(inst));
   }
@@ -1069,7 +1044,6 @@ public:
   // Methods to print instructions.
   void print(const Instruction *inst);
   void print(const OperationInst *inst);
-  void print(const ForInst *inst);
   void print(const Block *block, bool printBlockArgs = true);
 
   void printOperation(const OperationInst *op);
@@ -1117,10 +1091,8 @@ public:
                                 unsigned index) override;
 
   /// Print a block list.
-  void printBlockList(const BlockList &blocks) override {
-    printBlockList(blocks, /*printEntryBlockArgs=*/true);
-  }
-  void printBlockList(const BlockList &blocks, bool printEntryBlockArgs) {
+  void printBlockList(const BlockList &blocks,
+                      bool printEntryBlockArgs) override {
     os << " {\n";
     if (!blocks.empty()) {
       auto *entryBlock = &blocks.front();
@@ -1131,10 +1103,6 @@ public:
     }
     os.indent(currentIndent) << "}";
   }
-
-  // Print if and loop bounds.
-  void printDimAndSymbolList(ArrayRef<InstOperand> ops, unsigned numDims);
-  void printBound(AffineBound bound, const char *prefix);
 
   // Number of spaces used for indenting nested instructions.
   const static unsigned indentWidth = 2;
@@ -1205,10 +1173,6 @@ void FunctionPrinter::numberValuesInBlock(const Block &block) {
           numberValuesInBlock(block);
       break;
     }
-    case Instruction::Kind::For:
-      // Recursively number the stuff in the body.
-      numberValuesInBlock(*cast<ForInst>(&inst)->getBody());
-      break;
     }
   }
 }
@@ -1404,8 +1368,6 @@ void FunctionPrinter::print(const Instruction *inst) {
   switch (inst->getKind()) {
   case Instruction::Kind::OperationInst:
     return print(cast<OperationInst>(inst));
-  case Instruction::Kind::For:
-    return print(cast<ForInst>(inst));
   }
 }
 
@@ -1413,24 +1375,6 @@ void FunctionPrinter::print(const OperationInst *inst) {
   os.indent(currentIndent);
   printOperation(inst);
   printTrailingLocation(inst->getLoc());
-}
-
-void FunctionPrinter::print(const ForInst *inst) {
-  os.indent(currentIndent) << "for ";
-  printOperand(inst->getInductionVar());
-  os << " = ";
-  printBound(inst->getLowerBound(), "max");
-  os << " to ";
-  printBound(inst->getUpperBound(), "min");
-
-  if (inst->getStep() != 1)
-    os << " step " << inst->getStep();
-
-  printTrailingLocation(inst->getLoc());
-
-  os << " {\n";
-  print(inst->getBody(), /*printBlockArgs=*/false);
-  os.indent(currentIndent) << "}";
 }
 
 void FunctionPrinter::printValueID(const Value *value,
@@ -1558,62 +1502,6 @@ void FunctionPrinter::printSuccessorAndUseList(const OperationInst *term,
     printType(operand->getType());
   });
   os << ')';
-}
-
-void FunctionPrinter::printDimAndSymbolList(ArrayRef<InstOperand> ops,
-                                            unsigned numDims) {
-  auto printComma = [&]() { os << ", "; };
-  os << '(';
-  interleave(
-      ops.begin(), ops.begin() + numDims,
-      [&](const InstOperand &v) { printOperand(v.get()); }, printComma);
-  os << ')';
-
-  if (numDims < ops.size()) {
-    os << '[';
-    interleave(
-        ops.begin() + numDims, ops.end(),
-        [&](const InstOperand &v) { printOperand(v.get()); }, printComma);
-    os << ']';
-  }
-}
-
-void FunctionPrinter::printBound(AffineBound bound, const char *prefix) {
-  AffineMap map = bound.getMap();
-
-  // Check if this bound should be printed using custom assembly form.
-  // The decision to restrict printing custom assembly form to trivial cases
-  // comes from the will to roundtrip MLIR binary -> text -> binary in a
-  // lossless way.
-  // Therefore, custom assembly form parsing and printing is only supported for
-  // zero-operand constant maps and single symbol operand identity maps.
-  if (map.getNumResults() == 1) {
-    AffineExpr expr = map.getResult(0);
-
-    // Print constant bound.
-    if (map.getNumDims() == 0 && map.getNumSymbols() == 0) {
-      if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
-        os << constExpr.getValue();
-        return;
-      }
-    }
-
-    // Print bound that consists of a single SSA symbol if the map is over a
-    // single symbol.
-    if (map.getNumDims() == 0 && map.getNumSymbols() == 1) {
-      if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>()) {
-        printOperand(bound.getOperand(0));
-        return;
-      }
-    }
-  } else {
-    // Map has multiple results. Print 'min' or 'max' prefix.
-    os << prefix << ' ';
-  }
-
-  // Print the map and its operands.
-  printAffineMapReference(map);
-  printDimAndSymbolList(bound.getInstOperands(), map.getNumDims());
 }
 
 // Prints function with initialized module state.

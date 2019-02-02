@@ -21,6 +21,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/IR/Builders.h"
@@ -71,9 +72,9 @@ struct DmaGeneration : public FunctionPass {
   }
 
   PassResult runOnFunction(Function *f) override;
-  void runOnForInst(ForInst *forInst);
+  void runOnAffineForOp(OpPointer<AffineForOp> forOp);
 
-  bool generateDma(const MemRefRegion &region, ForInst *forInst,
+  bool generateDma(const MemRefRegion &region, OpPointer<AffineForOp> forOp,
                    uint64_t *sizeInBytes);
 
   // List of memory regions to DMA for. We need a map vector to have a
@@ -174,7 +175,7 @@ static bool getFullMemRefAsRegion(OperationInst *opInst,
 
   // Just get the first numSymbols IVs, which the memref region is parametric
   // on.
-  SmallVector<ForInst *, 4> ivs;
+  SmallVector<OpPointer<AffineForOp>, 4> ivs;
   getLoopIVs(*opInst, &ivs);
   ivs.resize(numParamLoopIVs);
   SmallVector<Value *, 4> symbols = extractForInductionVars(ivs);
@@ -195,8 +196,10 @@ static bool getFullMemRefAsRegion(OperationInst *opInst,
 // generates a DMA from the lower memory space to this one, and replaces all
 // loads to load from that buffer. Returns false if DMAs could not be generated
 // due to yet unimplemented cases.
-bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
+bool DmaGeneration::generateDma(const MemRefRegion &region,
+                                OpPointer<AffineForOp> forOp,
                                 uint64_t *sizeInBytes) {
+  auto *forInst = forOp->getInstruction();
 
   // DMAs for read regions are going to be inserted just before the for loop.
   FuncBuilder prologue(forInst);
@@ -386,39 +389,43 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
     remapExprs.push_back(dimExpr - offsets[i]);
   }
   auto indexRemap = b->getAffineMap(outerIVs.size() + rank, 0, remapExprs, {});
-  // *Only* those uses within the body of 'forInst' are replaced.
+  // *Only* those uses within the body of 'forOp' are replaced.
   replaceAllMemRefUsesWith(memref, fastMemRef,
                            /*extraIndices=*/{}, indexRemap,
                            /*extraOperands=*/outerIVs,
-                           /*domInstFilter=*/&*forInst->getBody()->begin());
+                           /*domInstFilter=*/&*forOp->getBody()->begin());
   return true;
 }
 
 // TODO(bondhugula): make this run on a Block instead of a 'for' inst.
-void DmaGeneration::runOnForInst(ForInst *forInst) {
+void DmaGeneration::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
   // For now (for testing purposes), we'll run this on the outermost among 'for'
   // inst's with unit stride, i.e., right at the top of the tile if tiling has
   // been done. In the future, the DMA generation has to be done at a level
   // where the generated data fits in a higher level of the memory hierarchy; so
   // the pass has to be instantiated with additional information that we aren't
   // provided with at the moment.
-  if (forInst->getStep() != 1) {
-    if (auto *innerFor = dyn_cast<ForInst>(&*forInst->getBody()->begin())) {
-      runOnForInst(innerFor);
+  if (forOp->getStep() != 1) {
+    auto *forBody = forOp->getBody();
+    if (forBody->empty())
+      return;
+    if (auto innerFor =
+            cast<OperationInst>(forBody->front()).dyn_cast<AffineForOp>()) {
+      runOnAffineForOp(innerFor);
     }
     return;
   }
 
   // DMAs will be generated for this depth, i.e., for all data accessed by this
   // loop.
-  unsigned dmaDepth = getNestingDepth(*forInst);
+  unsigned dmaDepth = getNestingDepth(*forOp->getInstruction());
 
   readRegions.clear();
   writeRegions.clear();
   fastBufferMap.clear();
 
   // Walk this 'for' instruction to gather all memory regions.
-  forInst->walkOps([&](OperationInst *opInst) {
+  forOp->walkOps([&](OperationInst *opInst) {
     // Gather regions to promote to buffers in faster memory space.
     // TODO(bondhugula): handle store op's; only load's handled for now.
     if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
@@ -443,7 +450,7 @@ void DmaGeneration::runOnForInst(ForInst *forInst) {
       LLVM_DEBUG(llvm::dbgs() << "over-approximating to the entire memref\n");
       if (!getFullMemRefAsRegion(opInst, dmaDepth, region.get())) {
         LLVM_DEBUG(
-            forInst->emitError("Non-constant memref sizes not yet supported"));
+            forOp->emitError("Non-constant memref sizes not yet supported"));
         return;
       }
     }
@@ -472,10 +479,10 @@ void DmaGeneration::runOnForInst(ForInst *forInst) {
           // Perform a union with the existing region.
           if (!(*it).second->unionBoundingBox(*region)) {
             LLVM_DEBUG(llvm::dbgs()
-                       << "Memory region bounding box failed; "
+                       << "Memory region bounding box failed"
                           "over-approximating to the entire memref\n");
             if (!getFullMemRefAsRegion(opInst, dmaDepth, region.get())) {
-              LLVM_DEBUG(forInst->emitError(
+              LLVM_DEBUG(forOp->emitError(
                   "Non-constant memref sizes not yet supported"));
             }
           }
@@ -501,7 +508,7 @@ void DmaGeneration::runOnForInst(ForInst *forInst) {
               &regions) {
         for (const auto &regionEntry : regions) {
           uint64_t sizeInBytes;
-          bool iRet = generateDma(*regionEntry.second, forInst, &sizeInBytes);
+          bool iRet = generateDma(*regionEntry.second, forOp, &sizeInBytes);
           if (iRet)
             totalSizeInBytes += sizeInBytes;
           ret = ret & iRet;
@@ -510,7 +517,7 @@ void DmaGeneration::runOnForInst(ForInst *forInst) {
   processRegions(readRegions);
   processRegions(writeRegions);
   if (!ret) {
-    forInst->emitError("DMA generation failed for one or more memref's\n");
+    forOp->emitError("DMA generation failed for one or more memref's\n");
     return;
   }
   LLVM_DEBUG(llvm::dbgs() << Twine(llvm::divideCeil(totalSizeInBytes, 1024))
@@ -519,7 +526,7 @@ void DmaGeneration::runOnForInst(ForInst *forInst) {
   if (clFastMemoryCapacity && totalSizeInBytes > clFastMemoryCapacity) {
     // TODO(bondhugula): selecting the DMA depth so that the result DMA buffers
     // fit in fast memory is a TODO - not complex.
-    forInst->emitError(
+    forOp->emitError(
         "Total size of all DMA buffers' exceeds memory capacity\n");
   }
 }
@@ -531,8 +538,8 @@ PassResult DmaGeneration::runOnFunction(Function *f) {
 
   for (auto &block : *f) {
     for (auto &inst : block) {
-      if (auto *forInst = dyn_cast<ForInst>(&inst)) {
-        runOnForInst(forInst);
+      if (auto forOp = cast<OperationInst>(inst).dyn_cast<AffineForOp>()) {
+        runOnAffineForOp(forOp);
       }
     }
   }

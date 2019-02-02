@@ -32,10 +32,10 @@ namespace mlir {
 
 class AffineApplyOp;
 class AffineExpr;
+class AffineForOp;
 class AffineMap;
 class AffineValueMap;
 class FlatAffineConstraints;
-class ForInst;
 class FuncBuilder;
 class Instruction;
 class IntegerSet;
@@ -108,12 +108,12 @@ bool getFlattenedAffineExprs(
     FlatAffineConstraints *cst = nullptr);
 
 /// Builds a system of constraints with dimensional identifiers corresponding to
-/// the loop IVs of the forInsts appearing in that order. Bounds of the loop are
+/// the loop IVs of the forOps appearing in that order. Bounds of the loop are
 /// used to add appropriate inequalities. Any symbols founds in the bound
 /// operands are added as symbols in the system. Returns false for the yet
 /// unimplemented cases.
 //  TODO(bondhugula): handle non-unit strides.
-bool getIndexSet(llvm::ArrayRef<ForInst *> forInsts,
+bool getIndexSet(llvm::MutableArrayRef<OpPointer<AffineForOp>> forOps,
                  FlatAffineConstraints *domain);
 
 /// Encapsulates a memref load or store access information.

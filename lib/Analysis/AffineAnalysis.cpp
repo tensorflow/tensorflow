@@ -21,12 +21,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/AffineAnalysis.h"
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Instructions.h"
+#include "mlir/IR/IntegerSet.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
@@ -519,7 +521,7 @@ void mlir::getReachableAffineApplyOps(
     State &state = worklist.back();
     auto *opInst = state.value->getDefiningInst();
     // Note: getDefiningInst will return nullptr if the operand is not an
-    // OperationInst (i.e. ForInst), which is a terminator for the search.
+    // OperationInst (i.e. AffineForOp), which is a terminator for the search.
     if (opInst == nullptr || !opInst->isa<AffineApplyOp>()) {
       worklist.pop_back();
       continue;
@@ -546,21 +548,21 @@ void mlir::getReachableAffineApplyOps(
 }
 
 // Builds a system of constraints with dimensional identifiers corresponding to
-// the loop IVs of the forInsts appearing in that order. Any symbols founds in
+// the loop IVs of the forOps appearing in that order. Any symbols founds in
 // the bound operands are added as symbols in the system. Returns false for the
 // yet unimplemented cases.
 // TODO(andydavis,bondhugula) Handle non-unit steps through local variables or
 // stride information in FlatAffineConstraints. (For eg., by using iv - lb %
 // step = 0 and/or by introducing a method in FlatAffineConstraints
 // setExprStride(ArrayRef<int64_t> expr, int64_t stride)
-bool mlir::getIndexSet(ArrayRef<ForInst *> forInsts,
+bool mlir::getIndexSet(MutableArrayRef<OpPointer<AffineForOp>> forOps,
                        FlatAffineConstraints *domain) {
-  auto indices = extractForInductionVars(forInsts);
+  auto indices = extractForInductionVars(forOps);
   // Reset while associated Values in 'indices' to the domain.
-  domain->reset(forInsts.size(), /*numSymbols=*/0, /*numLocals=*/0, indices);
-  for (auto *forInst : forInsts) {
-    // Add constraints from forInst's bounds.
-    if (!domain->addForInstDomain(*forInst))
+  domain->reset(forOps.size(), /*numSymbols=*/0, /*numLocals=*/0, indices);
+  for (auto forOp : forOps) {
+    // Add constraints from forOp's bounds.
+    if (!domain->addAffineForOpDomain(forOp))
       return false;
   }
   return true;
@@ -576,7 +578,7 @@ static bool getInstIndexSet(const Instruction *inst,
                             FlatAffineConstraints *indexSet) {
   // TODO(andydavis) Extend this to gather enclosing IfInsts and consider
   // factoring it out into a utility function.
-  SmallVector<ForInst *, 4> loops;
+  SmallVector<OpPointer<AffineForOp>, 4> loops;
   getLoopIVs(*inst, &loops);
   return getIndexSet(loops, indexSet);
 }
@@ -998,9 +1000,9 @@ static const Block *getCommonBlock(const MemRefAccess &srcAccess,
     return block;
   }
   auto *commonForValue = srcDomain.getIdValue(numCommonLoops - 1);
-  auto *forInst = getForInductionVarOwner(commonForValue);
-  assert(forInst && "commonForValue was not an induction variable");
-  return forInst->getBody();
+  auto forOp = getForInductionVarOwner(commonForValue);
+  assert(forOp && "commonForValue was not an induction variable");
+  return forOp->getBody();
 }
 
 // Returns true if the ancestor operation instruction of 'srcAccess' appears
@@ -1195,7 +1197,7 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 //    until operands of the AffineValueMap are loop IVs or symbols.
 // *) Build iteration domain constraints for each access. Iteration domain
 //    constraints are pairs of inequality contraints representing the
-//    upper/lower loop bounds for each ForInst in the loop nest associated
+//    upper/lower loop bounds for each AffineForOp in the loop nest associated
 //    with each access.
 // *) Build dimension and symbol position maps for each access, which map
 //    Values from access functions and iteration domains to their position

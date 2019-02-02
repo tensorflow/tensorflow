@@ -312,19 +312,3 @@ OperationInst *FuncBuilder::createOperation(const OperationState &state) {
   block->getInstructions().insert(insertPoint, op);
   return op;
 }
-
-ForInst *FuncBuilder::createFor(Location location, ArrayRef<Value *> lbOperands,
-                                AffineMap lbMap, ArrayRef<Value *> ubOperands,
-                                AffineMap ubMap, int64_t step) {
-  auto *inst =
-      ForInst::create(location, lbOperands, lbMap, ubOperands, ubMap, step);
-  block->getInstructions().insert(insertPoint, inst);
-  return inst;
-}
-
-ForInst *FuncBuilder::createFor(Location location, int64_t lb, int64_t ub,
-                                int64_t step) {
-  auto lbMap = AffineMap::getConstantMap(lb, context);
-  auto ubMap = AffineMap::getConstantMap(ub, context);
-  return createFor(location, {}, lbMap, {}, ubMap, step);
-}

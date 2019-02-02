@@ -25,8 +25,8 @@
 namespace mlir {
 
 class AffineApplyOp;
+class AffineForOp;
 class AffineMap;
-class ForInst;
 class FuncBuilder;
 class Instruction;
 class Location;
@@ -71,7 +71,7 @@ shapeRatio(VectorType superVectorType, VectorType subVectorType);
 /// loop information is extracted.
 ///
 /// Prerequisites: `opInst` is a vectorizable load or store operation (i.e. at
-/// most one invariant index along each ForInst of `loopToVectorDim`).
+/// most one invariant index along each AffineForOp of `loopToVectorDim`).
 ///
 /// Example 1:
 /// The following MLIR snippet:
@@ -122,9 +122,9 @@ shapeRatio(VectorType superVectorType, VectorType subVectorType);
 /// Meaning that vector_transfer_read will be responsible of reading the slice
 /// `%arg0[%c0, %c0]` into vector<128xf32> which needs a 1-D vector broadcast.
 ///
-AffineMap
-makePermutationMap(OperationInst *opInst,
-                   const llvm::DenseMap<ForInst *, unsigned> &loopToVectorDim);
+AffineMap makePermutationMap(
+    OperationInst *opInst,
+    const llvm::DenseMap<Instruction *, unsigned> &loopToVectorDim);
 
 namespace matcher {
 

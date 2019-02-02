@@ -90,7 +90,8 @@ public:
   virtual void printGenericOp(const OperationInst *op) = 0;
 
   /// Prints a block list.
-  virtual void printBlockList(const BlockList &blocks) = 0;
+  virtual void printBlockList(const BlockList &blocks,
+                              bool printEntryBlockArgs = true) = 0;
 
 private:
   OpAsmPrinter(const OpAsmPrinter &) = delete;
@@ -170,6 +171,9 @@ public:
   /// This parses... a comma!
   virtual bool parseComma() = 0;
 
+  /// This parses an equal(=) token!
+  virtual bool parseEqual() = 0;
+
   /// Parse a type.
   virtual bool parseType(Type &result) = 0;
 
@@ -203,9 +207,9 @@ public:
   }
 
   /// Parse a keyword.
-  bool parseKeyword(const char *keyword) {
+  bool parseKeyword(const char *keyword, const Twine &msg = "") {
     if (parseOptionalKeyword(keyword))
-      return emitError(getNameLoc(), "expected '" + Twine(keyword) + "'");
+      return emitError(getNameLoc(), "expected '" + Twine(keyword) + "'" + msg);
     return false;
   }
 
@@ -314,6 +318,10 @@ public:
   /// Parses a block list. Any parsed blocks are filled in to the
   /// operation's block lists after the operation is created.
   virtual bool parseBlockList() = 0;
+
+  /// Parses an argument for the entry block of the next block list to be
+  /// parsed.
+  virtual bool parseBlockListEntryBlockArgument(Type argType) = 0;
 
   //===--------------------------------------------------------------------===//
   // Methods for interacting with the parser

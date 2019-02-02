@@ -21,6 +21,7 @@
 
 #include "mlir/Transforms/LoopUtils.h"
 
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -39,22 +40,22 @@ using namespace mlir;
 /// Returns the upper bound of an unrolled loop with lower bound 'lb' and with
 /// the specified trip count, stride, and unroll factor. Returns nullptr when
 /// the trip count can't be expressed as an affine expression.
-AffineMap mlir::getUnrolledLoopUpperBound(const ForInst &forInst,
+AffineMap mlir::getUnrolledLoopUpperBound(ConstOpPointer<AffineForOp> forOp,
                                           unsigned unrollFactor,
                                           FuncBuilder *builder) {
-  auto lbMap = forInst.getLowerBoundMap();
+  auto lbMap = forOp->getLowerBoundMap();
 
   // Single result lower bound map only.
   if (lbMap.getNumResults() != 1)
     return AffineMap();
 
   // Sometimes, the trip count cannot be expressed as an affine expression.
-  auto tripCount = getTripCountExpr(forInst);
+  auto tripCount = getTripCountExpr(forOp);
   if (!tripCount)
     return AffineMap();
 
   AffineExpr lb(lbMap.getResult(0));
-  unsigned step = forInst.getStep();
+  unsigned step = forOp->getStep();
   auto newUb = lb + (tripCount - tripCount % unrollFactor - 1) * step;
 
   return builder->getAffineMap(lbMap.getNumDims(), lbMap.getNumSymbols(),
@@ -65,50 +66,51 @@ AffineMap mlir::getUnrolledLoopUpperBound(const ForInst &forInst,
 /// bound 'lb' and with the specified trip count, stride, and unroll factor.
 /// Returns an AffinMap with nullptr storage (that evaluates to false)
 /// when the trip count can't be expressed as an affine expression.
-AffineMap mlir::getCleanupLoopLowerBound(const ForInst &forInst,
+AffineMap mlir::getCleanupLoopLowerBound(ConstOpPointer<AffineForOp> forOp,
                                          unsigned unrollFactor,
                                          FuncBuilder *builder) {
-  auto lbMap = forInst.getLowerBoundMap();
+  auto lbMap = forOp->getLowerBoundMap();
 
   // Single result lower bound map only.
   if (lbMap.getNumResults() != 1)
     return AffineMap();
 
   // Sometimes the trip count cannot be expressed as an affine expression.
-  AffineExpr tripCount(getTripCountExpr(forInst));
+  AffineExpr tripCount(getTripCountExpr(forOp));
   if (!tripCount)
     return AffineMap();
 
   AffineExpr lb(lbMap.getResult(0));
-  unsigned step = forInst.getStep();
+  unsigned step = forOp->getStep();
   auto newLb = lb + (tripCount - tripCount % unrollFactor) * step;
   return builder->getAffineMap(lbMap.getNumDims(), lbMap.getNumSymbols(),
                                {newLb}, {});
 }
 
-/// Promotes the loop body of a forInst to its containing block if the forInst
+/// Promotes the loop body of a forOp to its containing block if the forOp
 /// was known to have a single iteration. Returns false otherwise.
 // TODO(bondhugula): extend this for arbitrary affine bounds.
-bool mlir::promoteIfSingleIteration(ForInst *forInst) {
-  Optional<uint64_t> tripCount = getConstantTripCount(*forInst);
+bool mlir::promoteIfSingleIteration(OpPointer<AffineForOp> forOp) {
+  Optional<uint64_t> tripCount = getConstantTripCount(forOp);
   if (!tripCount.hasValue() || tripCount.getValue() != 1)
     return false;
 
   // TODO(mlir-team): there is no builder for a max.
-  if (forInst->getLowerBoundMap().getNumResults() != 1)
+  if (forOp->getLowerBoundMap().getNumResults() != 1)
     return false;
 
   // Replaces all IV uses to its single iteration value.
-  auto *iv = forInst->getInductionVar();
+  auto *iv = forOp->getInductionVar();
+  OperationInst *forInst = forOp->getInstruction();
   if (!iv->use_empty()) {
-    if (forInst->hasConstantLowerBound()) {
+    if (forOp->hasConstantLowerBound()) {
       auto *mlFunc = forInst->getFunction();
       FuncBuilder topBuilder(mlFunc);
       auto constOp = topBuilder.create<ConstantIndexOp>(
-          forInst->getLoc(), forInst->getConstantLowerBound());
+          forOp->getLoc(), forOp->getConstantLowerBound());
       iv->replaceAllUsesWith(constOp);
     } else {
-      const AffineBound lb = forInst->getLowerBound();
+      const AffineBound lb = forOp->getLowerBound();
       SmallVector<Value *, 4> lbOperands(lb.operand_begin(), lb.operand_end());
       FuncBuilder builder(forInst->getBlock(), Block::iterator(forInst));
       if (lb.getMap() == builder.getDimIdentityMap()) {
@@ -124,8 +126,8 @@ bool mlir::promoteIfSingleIteration(ForInst *forInst) {
   // Move the loop body instructions to the loop's containing block.
   auto *block = forInst->getBlock();
   block->getInstructions().splice(Block::iterator(forInst),
-                                  forInst->getBody()->getInstructions());
-  forInst->erase();
+                                  forOp->getBody()->getInstructions());
+  forOp->erase();
   return true;
 }
 
@@ -133,13 +135,10 @@ bool mlir::promoteIfSingleIteration(ForInst *forInst) {
 /// their body into the containing Block.
 void mlir::promoteSingleIterationLoops(Function *f) {
   // Gathers all innermost loops through a post order pruned walk.
-  class LoopBodyPromoter : public InstWalker<LoopBodyPromoter> {
-  public:
-    void visitForInst(ForInst *forInst) { promoteIfSingleIteration(forInst); }
-  };
-
-  LoopBodyPromoter fsw;
-  fsw.walkPostOrder(f);
+  f->walkOpsPostOrder([](OperationInst *inst) {
+    if (auto forOp = inst->dyn_cast<AffineForOp>())
+      promoteIfSingleIteration(forOp);
+  });
 }
 
 /// Generates a 'for' inst with the specified lower and upper bounds while
@@ -149,19 +148,22 @@ void mlir::promoteSingleIterationLoops(Function *f) {
 /// the pair specifies the shift applied to that group of instructions; note
 /// that the shift is multiplied by the loop step before being applied. Returns
 /// nullptr if the generated loop simplifies to a single iteration one.
-static ForInst *
+static OpPointer<AffineForOp>
 generateLoop(AffineMap lbMap, AffineMap ubMap,
              const std::vector<std::pair<uint64_t, ArrayRef<Instruction *>>>
                  &instGroupQueue,
-             unsigned offset, ForInst *srcForInst, FuncBuilder *b) {
+             unsigned offset, OpPointer<AffineForOp> srcForInst,
+             FuncBuilder *b) {
   SmallVector<Value *, 4> lbOperands(srcForInst->getLowerBoundOperands());
   SmallVector<Value *, 4> ubOperands(srcForInst->getUpperBoundOperands());
 
   assert(lbMap.getNumInputs() == lbOperands.size());
   assert(ubMap.getNumInputs() == ubOperands.size());
 
-  auto *loopChunk = b->createFor(srcForInst->getLoc(), lbOperands, lbMap,
-                                 ubOperands, ubMap, srcForInst->getStep());
+  auto loopChunk =
+      b->create<AffineForOp>(srcForInst->getLoc(), lbOperands, lbMap,
+                             ubOperands, ubMap, srcForInst->getStep());
+  loopChunk->createBody();
   auto *loopChunkIV = loopChunk->getInductionVar();
   auto *srcIV = srcForInst->getInductionVar();
 
@@ -176,7 +178,7 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
     // Generate the remapping if the shift is not zero: remappedIV = newIV -
     // shift.
     if (!srcIV->use_empty() && shift != 0) {
-      auto b = FuncBuilder::getForInstBodyBuilder(loopChunk);
+      FuncBuilder b(loopChunk->getBody());
       auto ivRemap = b.create<AffineApplyOp>(
           srcForInst->getLoc(),
           b.getSingleDimShiftAffineMap(
@@ -191,7 +193,7 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
     }
   }
   if (promoteIfSingleIteration(loopChunk))
-    return nullptr;
+    return OpPointer<AffineForOp>();
   return loopChunk;
 }
 
@@ -210,28 +212,29 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
 // asserts preservation of SSA dominance. A check for that as well as that for
 // memory-based depedence preservation check rests with the users of this
 // method.
-UtilResult mlir::instBodySkew(ForInst *forInst, ArrayRef<uint64_t> shifts,
+UtilResult mlir::instBodySkew(OpPointer<AffineForOp> forOp,
+                              ArrayRef<uint64_t> shifts,
                               bool unrollPrologueEpilogue) {
-  if (forInst->getBody()->empty())
+  if (forOp->getBody()->empty())
     return UtilResult::Success;
 
   // If the trip counts aren't constant, we would need versioning and
   // conditional guards (or context information to prevent such versioning). The
   // better way to pipeline for such loops is to first tile them and extract
   // constant trip count "full tiles" before applying this.
-  auto mayBeConstTripCount = getConstantTripCount(*forInst);
+  auto mayBeConstTripCount = getConstantTripCount(forOp);
   if (!mayBeConstTripCount.hasValue()) {
     LLVM_DEBUG(llvm::dbgs() << "non-constant trip count loop\n";);
     return UtilResult::Success;
   }
   uint64_t tripCount = mayBeConstTripCount.getValue();
 
-  assert(isInstwiseShiftValid(*forInst, shifts) &&
+  assert(isInstwiseShiftValid(forOp, shifts) &&
          "shifts will lead to an invalid transformation\n");
 
-  int64_t step = forInst->getStep();
+  int64_t step = forOp->getStep();
 
-  unsigned numChildInsts = forInst->getBody()->getInstructions().size();
+  unsigned numChildInsts = forOp->getBody()->getInstructions().size();
 
   // Do a linear time (counting) sort for the shifts.
   uint64_t maxShift = 0;
@@ -249,7 +252,7 @@ UtilResult mlir::instBodySkew(ForInst *forInst, ArrayRef<uint64_t> shifts,
   // body of the 'for' inst.
   std::vector<std::vector<Instruction *>> sortedInstGroups(maxShift + 1);
   unsigned pos = 0;
-  for (auto &inst : *forInst->getBody()) {
+  for (auto &inst : *forOp->getBody()) {
     auto shift = shifts[pos++];
     sortedInstGroups[shift].push_back(&inst);
   }
@@ -259,17 +262,17 @@ UtilResult mlir::instBodySkew(ForInst *forInst, ArrayRef<uint64_t> shifts,
   // Nevertheless, if 'unrollPrologueEpilogue' is set, we will treat the first
   // loop generated as the prologue and the last as epilogue and unroll these
   // fully.
-  ForInst *prologue = nullptr;
-  ForInst *epilogue = nullptr;
+  OpPointer<AffineForOp> prologue;
+  OpPointer<AffineForOp> epilogue;
 
   // Do a sweep over the sorted shifts while storing open groups in a
   // vector, and generating loop portions as necessary during the sweep. A block
   // of instructions is paired with its shift.
   std::vector<std::pair<uint64_t, ArrayRef<Instruction *>>> instGroupQueue;
 
-  auto origLbMap = forInst->getLowerBoundMap();
+  auto origLbMap = forOp->getLowerBoundMap();
   uint64_t lbShift = 0;
-  FuncBuilder b(forInst);
+  FuncBuilder b(forOp->getInstruction());
   for (uint64_t d = 0, e = sortedInstGroups.size(); d < e; ++d) {
     // If nothing is shifted by d, continue.
     if (sortedInstGroups[d].empty())
@@ -280,19 +283,19 @@ UtilResult mlir::instBodySkew(ForInst *forInst, ArrayRef<uint64_t> shifts,
       // The interval for which the loop needs to be generated here is:
       // [lbShift, min(lbShift + tripCount, d)) and the body of the
       // loop needs to have all instructions in instQueue in that order.
-      ForInst *res;
+      OpPointer<AffineForOp> res;
       if (lbShift + tripCount * step < d * step) {
         res = generateLoop(
             b.getShiftedAffineMap(origLbMap, lbShift),
             b.getShiftedAffineMap(origLbMap, lbShift + tripCount * step),
-            instGroupQueue, 0, forInst, &b);
+            instGroupQueue, 0, forOp, &b);
         // Entire loop for the queued inst groups generated, empty it.
         instGroupQueue.clear();
         lbShift += tripCount * step;
       } else {
         res = generateLoop(b.getShiftedAffineMap(origLbMap, lbShift),
                            b.getShiftedAffineMap(origLbMap, d), instGroupQueue,
-                           0, forInst, &b);
+                           0, forOp, &b);
         lbShift = d * step;
       }
       if (!prologue && res)
@@ -312,60 +315,63 @@ UtilResult mlir::instBodySkew(ForInst *forInst, ArrayRef<uint64_t> shifts,
     uint64_t ubShift = (instGroupQueue[i].first + tripCount) * step;
     epilogue = generateLoop(b.getShiftedAffineMap(origLbMap, lbShift),
                             b.getShiftedAffineMap(origLbMap, ubShift),
-                            instGroupQueue, i, forInst, &b);
+                            instGroupQueue, i, forOp, &b);
     lbShift = ubShift;
     if (!prologue)
       prologue = epilogue;
   }
 
   // Erase the original for inst.
-  forInst->erase();
+  forOp->erase();
 
   if (unrollPrologueEpilogue && prologue)
     loopUnrollFull(prologue);
-  if (unrollPrologueEpilogue && !epilogue && epilogue != prologue)
+  if (unrollPrologueEpilogue && !epilogue &&
+      epilogue->getInstruction() != prologue->getInstruction())
     loopUnrollFull(epilogue);
 
   return UtilResult::Success;
 }
 
 /// Unrolls this loop completely.
-bool mlir::loopUnrollFull(ForInst *forInst) {
-  Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(*forInst);
+bool mlir::loopUnrollFull(OpPointer<AffineForOp> forOp) {
+  Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(forOp);
   if (mayBeConstantTripCount.hasValue()) {
     uint64_t tripCount = mayBeConstantTripCount.getValue();
     if (tripCount == 1) {
-      return promoteIfSingleIteration(forInst);
+      return promoteIfSingleIteration(forOp);
     }
-    return loopUnrollByFactor(forInst, tripCount);
+    return loopUnrollByFactor(forOp, tripCount);
   }
   return false;
 }
 
 /// Unrolls and jams this loop by the specified factor or by the trip count (if
 /// constant) whichever is lower.
-bool mlir::loopUnrollUpToFactor(ForInst *forInst, uint64_t unrollFactor) {
-  Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(*forInst);
+bool mlir::loopUnrollUpToFactor(OpPointer<AffineForOp> forOp,
+                                uint64_t unrollFactor) {
+  Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(forOp);
 
   if (mayBeConstantTripCount.hasValue() &&
       mayBeConstantTripCount.getValue() < unrollFactor)
-    return loopUnrollByFactor(forInst, mayBeConstantTripCount.getValue());
-  return loopUnrollByFactor(forInst, unrollFactor);
+    return loopUnrollByFactor(forOp, mayBeConstantTripCount.getValue());
+  return loopUnrollByFactor(forOp, unrollFactor);
 }
 
 /// Unrolls this loop by the specified factor. Returns true if the loop
 /// is successfully unrolled.
-bool mlir::loopUnrollByFactor(ForInst *forInst, uint64_t unrollFactor) {
+bool mlir::loopUnrollByFactor(OpPointer<AffineForOp> forOp,
+                              uint64_t unrollFactor) {
   assert(unrollFactor >= 1 && "unroll factor should be >= 1");
 
   if (unrollFactor == 1)
-    return promoteIfSingleIteration(forInst);
+    return promoteIfSingleIteration(forOp);
 
-  if (forInst->getBody()->empty())
+  if (forOp->getBody()->empty())
     return false;
 
-  auto lbMap = forInst->getLowerBoundMap();
-  auto ubMap = forInst->getUpperBoundMap();
+  auto lbMap = forOp->getLowerBoundMap();
+  auto ubMap = forOp->getUpperBoundMap();
 
   // Loops with max/min expressions won't be unrolled here (the output can't be
   // expressed as a Function in the general case). However, the right way to
@@ -376,10 +382,10 @@ bool mlir::loopUnrollByFactor(ForInst *forInst, uint64_t unrollFactor) {
 
   // Same operand list for lower and upper bound for now.
   // TODO(bondhugula): handle bounds with different operand lists.
-  if (!forInst->matchingBoundOperandList())
+  if (!forOp->matchingBoundOperandList())
     return false;
 
-  Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(*forInst);
+  Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(forOp);
 
   // If the trip count is lower than the unroll factor, no unrolled body.
   // TODO(bondhugula): option to specify cleanup loop unrolling.
@@ -388,10 +394,12 @@ bool mlir::loopUnrollByFactor(ForInst *forInst, uint64_t unrollFactor) {
     return false;
 
   // Generate the cleanup loop if trip count isn't a multiple of unrollFactor.
-  if (getLargestDivisorOfTripCount(*forInst) % unrollFactor != 0) {
+  OperationInst *forInst = forOp->getInstruction();
+  if (getLargestDivisorOfTripCount(forOp) % unrollFactor != 0) {
     FuncBuilder builder(forInst->getBlock(), ++Block::iterator(forInst));
-    auto *cleanupForInst = cast<ForInst>(builder.clone(*forInst));
-    auto clLbMap = getCleanupLoopLowerBound(*forInst, unrollFactor, &builder);
+    auto cleanupForInst =
+        cast<OperationInst>(builder.clone(*forInst))->cast<AffineForOp>();
+    auto clLbMap = getCleanupLoopLowerBound(forOp, unrollFactor, &builder);
     assert(clLbMap &&
            "cleanup loop lower bound map for single result bound maps can "
            "always be determined");
@@ -401,50 +409,50 @@ bool mlir::loopUnrollByFactor(ForInst *forInst, uint64_t unrollFactor) {
 
     // Adjust upper bound.
     auto unrolledUbMap =
-        getUnrolledLoopUpperBound(*forInst, unrollFactor, &builder);
+        getUnrolledLoopUpperBound(forOp, unrollFactor, &builder);
     assert(unrolledUbMap &&
            "upper bound map can alwayys be determined for an unrolled loop "
            "with single result bounds");
-    forInst->setUpperBoundMap(unrolledUbMap);
+    forOp->setUpperBoundMap(unrolledUbMap);
   }
 
   // Scale the step of loop being unrolled by unroll factor.
-  int64_t step = forInst->getStep();
-  forInst->setStep(step * unrollFactor);
+  int64_t step = forOp->getStep();
+  forOp->setStep(step * unrollFactor);
 
   // Builder to insert unrolled bodies right after the last instruction in the
-  // body of 'forInst'.
-  FuncBuilder builder(forInst->getBody(), forInst->getBody()->end());
+  // body of 'forOp'.
+  FuncBuilder builder(forOp->getBody(), forOp->getBody()->end());
 
   // Keep a pointer to the last instruction in the original block so that we
   // know what to clone (since we are doing this in-place).
-  Block::iterator srcBlockEnd = std::prev(forInst->getBody()->end());
+  Block::iterator srcBlockEnd = std::prev(forOp->getBody()->end());
 
-  // Unroll the contents of 'forInst' (append unrollFactor-1 additional copies).
-  auto *forInstIV = forInst->getInductionVar();
+  // Unroll the contents of 'forOp' (append unrollFactor-1 additional copies).
+  auto *forOpIV = forOp->getInductionVar();
   for (unsigned i = 1; i < unrollFactor; i++) {
     BlockAndValueMapping operandMap;
 
     // If the induction variable is used, create a remapping to the value for
     // this unrolled instance.
-    if (!forInstIV->use_empty()) {
+    if (!forOpIV->use_empty()) {
       // iv' = iv + 1/2/3...unrollFactor-1;
       auto d0 = builder.getAffineDimExpr(0);
       auto bumpMap = builder.getAffineMap(1, 0, {d0 + i * step}, {});
       auto ivUnroll =
-          builder.create<AffineApplyOp>(forInst->getLoc(), bumpMap, forInstIV);
-      operandMap.map(forInstIV, ivUnroll);
+          builder.create<AffineApplyOp>(forOp->getLoc(), bumpMap, forOpIV);
+      operandMap.map(forOpIV, ivUnroll);
     }
 
-    // Clone the original body of 'forInst'.
-    for (auto it = forInst->getBody()->begin(); it != std::next(srcBlockEnd);
+    // Clone the original body of 'forOp'.
+    for (auto it = forOp->getBody()->begin(); it != std::next(srcBlockEnd);
          it++) {
       builder.clone(*it, operandMap);
     }
   }
 
   // Promote the loop body up if this has turned into a single iteration loop.
-  promoteIfSingleIteration(forInst);
+  promoteIfSingleIteration(forOp);
 
   return true;
 }

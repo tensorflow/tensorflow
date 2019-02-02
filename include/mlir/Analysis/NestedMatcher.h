@@ -127,7 +127,6 @@ private:
   struct State : public InstWalker<State> {
     State(NestedPattern &pattern, SmallVectorImpl<NestedMatch> *matches)
         : pattern(pattern), matches(matches) {}
-    void visitForInst(ForInst *forInst) { pattern.matchOne(forInst, matches); }
     void visitOperationInst(OperationInst *opInst) {
       pattern.matchOne(opInst, matches);
     }

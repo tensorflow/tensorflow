@@ -75,7 +75,7 @@
 /// Implementation details
 /// ======================
 /// The current decisions made by the super-vectorization pass guarantee that
-/// use-def chains do not escape an enclosing vectorized ForInst. In other
+/// use-def chains do not escape an enclosing vectorized AffineForOp. In other
 /// words, this pass operates on a scoped program slice. Furthermore, since we
 /// do not vectorize in the presence of conditionals for now, sliced chains are
 /// guaranteed not to escape the innermost scope, which has to be either the top
@@ -285,13 +285,12 @@ static Value *substitute(Value *v, VectorType hwVectorType,
 ///
 /// The general problem this function solves is as follows:
 /// Assume a vector_transfer operation at the super-vector granularity that has
-/// `l` enclosing loops (ForInst). Assume the vector transfer operation operates
-/// on a MemRef of rank `r`, a super-vector of rank `s` and a hardware vector of
-/// rank `h`.
-/// For the purpose of illustration assume l==4, r==3, s==2, h==1 and that the
-/// super-vector is vector<3x32xf32> and the hardware vector is vector<8xf32>.
-/// Assume the following MLIR snippet after super-vectorization has been
-/// applied:
+/// `l` enclosing loops (AffineForOp). Assume the vector transfer operation
+/// operates on a MemRef of rank `r`, a super-vector of rank `s` and a hardware
+/// vector of rank `h`. For the purpose of illustration assume l==4, r==3, s==2,
+/// h==1 and that the super-vector is vector<3x32xf32> and the hardware vector
+/// is vector<8xf32>. Assume the following MLIR snippet after
+/// super-vectorization has been applied:
 ///
 /// ```mlir
 /// for %i0 = 0 to %M {
@@ -351,7 +350,7 @@ reindexAffineIndices(FuncBuilder *b, VectorType hwVectorType,
   SmallVector<AffineExpr, 8> affineExprs;
   // TODO(ntv): support a concrete map and composition.
   unsigned i = 0;
-  // The first numMemRefIndices correspond to ForInst that have not been
+  // The first numMemRefIndices correspond to AffineForOp that have not been
   // vectorized, the transformation is the identity on those.
   for (i = 0; i < numMemRefIndices; ++i) {
     auto d_i = b->getAffineDimExpr(i);
@@ -553,9 +552,6 @@ instantiate(FuncBuilder *b, VectorTransferWriteOp *write,
 static bool instantiateMaterialization(Instruction *inst,
                                        MaterializationState *state) {
   LLVM_DEBUG(dbgs() << "\ninstantiate: " << *inst);
-
-  if (isa<ForInst>(inst))
-    return inst->emitError("NYI path ForInst");
 
   // Create a builder here for unroll-and-jam effects.
   FuncBuilder b(inst);

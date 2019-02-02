@@ -9,9 +9,9 @@ func @inline_notation() -> i32 loc("mysource.cc":10:8) {
   // CHECK: "foo"() : () -> i32 loc(unknown)
   %1 = "foo"() : () -> i32 loc("foo")
 
-  // CHECK: for %i0 = 0 to 8 loc(unknown)
-  for %i0 = 0 to 8 loc(fused["foo", "mysource.cc":10:8]) {
-  }
+  // CHECK: } loc(unknown)
+  for %i0 = 0 to 8 {
+  } loc(fused["foo", "mysource.cc":10:8])
 
   // CHECK: } loc(unknown)
   %2 = constant 4 : index

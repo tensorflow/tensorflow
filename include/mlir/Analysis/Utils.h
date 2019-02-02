@@ -33,10 +33,12 @@
 
 namespace mlir {
 
+class AffineForOp;
+template <typename T> class ConstOpPointer;
 class FlatAffineConstraints;
-class ForInst;
 class MemRefAccess;
 class OperationInst;
+template <typename T> class OpPointer;
 class Instruction;
 class Value;
 
@@ -49,7 +51,8 @@ bool properlyDominates(const Instruction &a, const Instruction &b);
 /// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from
 /// the outermost 'for' instruction to the innermost one.
 //  TODO(bondhugula): handle 'if' inst's.
-void getLoopIVs(const Instruction &inst, SmallVectorImpl<ForInst *> *loops);
+void getLoopIVs(const Instruction &inst,
+                SmallVectorImpl<OpPointer<AffineForOp>> *loops);
 
 /// Returns the nesting depth of this instruction, i.e., the number of loops
 /// surrounding this instruction.
@@ -191,12 +194,12 @@ bool getBackwardComputationSliceState(const MemRefAccess &srcAccess,
 // materialize the results of the backward slice - presenting a trade-off b/w
 // storage and redundant computation in several cases.
 // TODO(andydavis) Support computation slices with common surrounding loops.
-ForInst *insertBackwardComputationSlice(OperationInst *srcOpInst,
-                                        OperationInst *dstOpInst,
-                                        unsigned dstLoopDepth,
-                                        ComputationSliceState *sliceState);
+OpPointer<AffineForOp>
+insertBackwardComputationSlice(OperationInst *srcOpInst,
+                               OperationInst *dstOpInst, unsigned dstLoopDepth,
+                               ComputationSliceState *sliceState);
 
-Optional<int64_t> getMemoryFootprintBytes(const ForInst &forInst,
+Optional<int64_t> getMemoryFootprintBytes(ConstOpPointer<AffineForOp> forOp,
                                           int memorySpace = -1);
 
 } // end namespace mlir

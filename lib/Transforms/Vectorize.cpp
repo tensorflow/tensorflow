@@ -20,6 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Analysis/VectorAnalysis.h"
@@ -252,9 +253,9 @@ using namespace mlir;
 /// ==========
 /// The algorithm proceeds in a few steps:
 ///  1. defining super-vectorization patterns and matching them on the tree of
-///     ForInst. A super-vectorization pattern is defined as a recursive data
-///     structures that matches and captures nested, imperfectly-nested loops
-///     that have a. comformable loop annotations attached (e.g. parallel,
+///     AffineForOp. A super-vectorization pattern is defined as a recursive
+///     data structures that matches and captures nested, imperfectly-nested
+///     loops that have a. comformable loop annotations attached (e.g. parallel,
 ///     reduction, vectoriable, ...) as well as b. all contiguous load/store
 ///     operations along a specified minor dimension (not necessarily the
 ///     fastest varying) ;
@@ -279,11 +280,11 @@ using namespace mlir;
 ///       it by its vector form. Otherwise, if the scalar value is a constant,
 ///       it is vectorized into a splat. In all other cases, vectorization for
 ///       the pattern currently fails.
-///    e. if everything under the root ForInst in the current pattern vectorizes
-///       properly, we commit that loop to the IR. Otherwise we discard it and
-///       restore a previously cloned version of the loop. Thanks to the
-///       recursive scoping nature of matchers and captured patterns, this is
-///       transparently achieved by a simple RAII implementation.
+///    e. if everything under the root AffineForOp in the current pattern
+///       vectorizes properly, we commit that loop to the IR. Otherwise we
+///       discard it and restore a previously cloned version of the loop. Thanks
+///       to the recursive scoping nature of matchers and captured patterns,
+///       this is transparently achieved by a simple RAII implementation.
 ///    f. vectorization is applied on the next pattern in the list. Because
 ///       pattern interference avoidance is not yet implemented and that we do
 ///       not support further vectorizing an already vector load we need to
@@ -667,12 +668,13 @@ namespace {
 
 struct VectorizationStrategy {
   SmallVector<int64_t, 8> vectorSizes;
-  DenseMap<ForInst *, unsigned> loopToVectorDim;
+  DenseMap<Instruction *, unsigned> loopToVectorDim;
 };
 
 } // end anonymous namespace
 
-static void vectorizeLoopIfProfitable(ForInst *loop, unsigned depthInPattern,
+static void vectorizeLoopIfProfitable(Instruction *loop,
+                                      unsigned depthInPattern,
                                       unsigned patternDepth,
                                       VectorizationStrategy *strategy) {
   assert(patternDepth > depthInPattern &&
@@ -704,13 +706,13 @@ static bool analyzeProfitability(ArrayRef<NestedMatch> matches,
                                  unsigned depthInPattern, unsigned patternDepth,
                                  VectorizationStrategy *strategy) {
   for (auto m : matches) {
-    auto *loop = cast<ForInst>(m.getMatchedInstruction());
     bool fail = analyzeProfitability(m.getMatchedChildren(), depthInPattern + 1,
                                      patternDepth, strategy);
     if (fail) {
       return fail;
     }
-    vectorizeLoopIfProfitable(loop, depthInPattern, patternDepth, strategy);
+    vectorizeLoopIfProfitable(m.getMatchedInstruction(), depthInPattern,
+                              patternDepth, strategy);
   }
   return false;
 }
@@ -855,8 +857,8 @@ static bool vectorizeRootOrTerminal(Value *iv, LoadOrStoreOpPointer memoryOp,
 
 /// Coarsens the loops bounds and transforms all remaining load and store
 /// operations into the appropriate vector_transfer.
-static bool vectorizeForInst(ForInst *loop, int64_t step,
-                             VectorizationState *state) {
+static bool vectorizeAffineForOp(AffineForOp *loop, int64_t step,
+                                 VectorizationState *state) {
   using namespace functional;
   loop->setStep(step);
 
@@ -873,7 +875,7 @@ static bool vectorizeForInst(ForInst *loop, int64_t step,
       };
   auto loadAndStores = matcher::Op(notVectorizedThisPattern);
   SmallVector<NestedMatch, 8> loadAndStoresMatches;
-  loadAndStores.match(loop, &loadAndStoresMatches);
+  loadAndStores.match(loop->getInstruction(), &loadAndStoresMatches);
   for (auto ls : loadAndStoresMatches) {
     auto *opInst = cast<OperationInst>(ls.getMatchedInstruction());
     auto load = opInst->dyn_cast<LoadOp>();
@@ -898,7 +900,7 @@ static bool vectorizeForInst(ForInst *loop, int64_t step,
 static FilterFunctionType
 isVectorizableLoopPtrFactory(unsigned fastestVaryingMemRefDimension) {
   return [fastestVaryingMemRefDimension](const Instruction &forInst) {
-    const auto &loop = cast<ForInst>(forInst);
+    auto loop = cast<OperationInst>(forInst).cast<AffineForOp>();
     return isVectorizableLoopAlongFastestVaryingMemRefDim(
         loop, fastestVaryingMemRefDimension);
   };
@@ -912,7 +914,8 @@ static bool vectorizeNonRoot(ArrayRef<NestedMatch> matches,
 /// if all vectorizations in `childrenMatches` have already succeeded
 /// recursively in DFS post-order.
 static bool doVectorize(NestedMatch oneMatch, VectorizationState *state) {
-  ForInst *loop = cast<ForInst>(oneMatch.getMatchedInstruction());
+  auto *loopInst = oneMatch.getMatchedInstruction();
+  auto loop = cast<OperationInst>(loopInst)->cast<AffineForOp>();
   auto childrenMatches = oneMatch.getMatchedChildren();
 
   // 1. DFS postorder recursion, if any of my children fails, I fail too.
@@ -924,7 +927,7 @@ static bool doVectorize(NestedMatch oneMatch, VectorizationState *state) {
 
   // 2. This loop may have been omitted from vectorization for various reasons
   // (e.g. due to the performance model or pattern depth > vector size).
-  auto it = state->strategy->loopToVectorDim.find(loop);
+  auto it = state->strategy->loopToVectorDim.find(loopInst);
   if (it == state->strategy->loopToVectorDim.end()) {
     return false;
   }
@@ -939,10 +942,10 @@ static bool doVectorize(NestedMatch oneMatch, VectorizationState *state) {
   //     exploratory tradeoffs (see top of the file). Apply coarsening, i.e.:
   //        | ub -> ub
   //        | step -> step * vectorSize
-  LLVM_DEBUG(dbgs() << "\n[early-vect] vectorizeForInst by " << vectorSize
+  LLVM_DEBUG(dbgs() << "\n[early-vect] vectorizeForOp by " << vectorSize
                     << " : ");
-  LLVM_DEBUG(loop->print(dbgs()));
-  return vectorizeForInst(loop, loop->getStep() * vectorSize, state);
+  LLVM_DEBUG(loopInst->print(dbgs()));
+  return vectorizeAffineForOp(loop, loop->getStep() * vectorSize, state);
 }
 
 /// Non-root pattern iterates over the matches at this level, calls doVectorize
@@ -1186,7 +1189,8 @@ static bool vectorizeOperations(VectorizationState *state) {
 /// Each root may succeed independently but will otherwise clean after itself if
 /// anything below it fails.
 static bool vectorizeRootMatch(NestedMatch m, VectorizationStrategy *strategy) {
-  auto *loop = cast<ForInst>(m.getMatchedInstruction());
+  auto loop =
+      cast<OperationInst>(m.getMatchedInstruction())->cast<AffineForOp>();
   VectorizationState state;
   state.strategy = strategy;
 
@@ -1197,17 +1201,20 @@ static bool vectorizeRootMatch(NestedMatch m, VectorizationStrategy *strategy) {
   // vectorizable. If a pattern is not vectorizable anymore, we just skip it.
   // TODO(ntv): implement a non-greedy profitability analysis that keeps only
   // non-intersecting patterns.
-  if (!isVectorizableLoop(*loop)) {
+  if (!isVectorizableLoop(loop)) {
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ loop is not vectorizable");
     return true;
   }
-  FuncBuilder builder(loop); // builder to insert in place of loop
-  ForInst *clonedLoop = cast<ForInst>(builder.clone(*loop));
+  auto *loopInst = loop->getInstruction();
+  FuncBuilder builder(loopInst);
+  auto clonedLoop =
+      cast<OperationInst>(builder.clone(*loopInst))->cast<AffineForOp>();
+
   auto fail = doVectorize(m, &state);
   /// Sets up error handling for this root loop. This is how the root match
   /// maintains a clone for handling failure and restores the proper state via
   /// RAII.
-  ScopeGuard sg2([&fail, loop, clonedLoop]() {
+  ScopeGuard sg2([&fail, &loop, &clonedLoop]() {
     if (fail) {
       loop->getInductionVar()->replaceAllUsesWith(
           clonedLoop->getInductionVar());
@@ -1291,8 +1298,8 @@ PassResult Vectorize::runOnFunction(Function *f) {
       if (fail) {
         continue;
       }
-      auto *loop = cast<ForInst>(m.getMatchedInstruction());
-      vectorizeLoopIfProfitable(loop, 0, patternDepth, &strategy);
+      vectorizeLoopIfProfitable(m.getMatchedInstruction(), 0, patternDepth,
+                                &strategy);
       // TODO(ntv): if pattern does not apply, report it; alter the
       // cost/benefit.
       fail = vectorizeRootMatch(m, &strategy);

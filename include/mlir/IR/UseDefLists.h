@@ -75,15 +75,14 @@ private:
 };
 
 /// Subclasses of IROperandOwner can be the owner of an IROperand.  In practice
-/// this is the common base between Instruction and Instruction.
+/// this is the common base between Instructions.
 class IROperandOwner {
 public:
   enum class Kind {
     OperationInst,
-    ForInst,
 
     /// These enums define ranges used for classof implementations.
-    INST_LAST = ForInst,
+    INST_LAST = OperationInst,
   };
 
   Kind getKind() const { return locationAndKind.getInt(); }

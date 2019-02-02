@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/AffineStructures.h"
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/AffineMap.h"
@@ -1247,22 +1248,23 @@ void FlatAffineConstraints::setDimSymbolSeparation(unsigned newSymbolCount) {
   numSymbols = newSymbolCount;
 }
 
-bool FlatAffineConstraints::addForInstDomain(const ForInst &forInst) {
+bool FlatAffineConstraints::addAffineForOpDomain(
+    ConstOpPointer<AffineForOp> forOp) {
   unsigned pos;
   // Pre-condition for this method.
-  if (!findId(*forInst.getInductionVar(), &pos)) {
+  if (!findId(*forOp->getInductionVar(), &pos)) {
     assert(0 && "Value not found");
     return false;
   }
 
-  if (forInst.getStep() != 1)
+  if (forOp->getStep() != 1)
     LLVM_DEBUG(llvm::dbgs()
                << "Domain conservative: non-unit stride not handled\n");
 
   // Adds a lower or upper bound when the bounds aren't constant.
   auto addLowerOrUpperBound = [&](bool lower) -> bool {
-    auto operands = lower ? forInst.getLowerBoundOperands()
-                          : forInst.getUpperBoundOperands();
+    auto operands =
+        lower ? forOp->getLowerBoundOperands() : forOp->getUpperBoundOperands();
     for (const auto &operand : operands) {
       unsigned loc;
       if (!findId(*operand, &loc)) {
@@ -1291,7 +1293,7 @@ bool FlatAffineConstraints::addForInstDomain(const ForInst &forInst) {
     }
 
     auto boundMap =
-        lower ? forInst.getLowerBoundMap() : forInst.getUpperBoundMap();
+        lower ? forOp->getLowerBoundMap() : forOp->getUpperBoundMap();
 
     FlatAffineConstraints localVarCst;
     std::vector<SmallVector<int64_t, 8>> flatExprs;
@@ -1321,16 +1323,16 @@ bool FlatAffineConstraints::addForInstDomain(const ForInst &forInst) {
     return true;
   };
 
-  if (forInst.hasConstantLowerBound()) {
-    addConstantLowerBound(pos, forInst.getConstantLowerBound());
+  if (forOp->hasConstantLowerBound()) {
+    addConstantLowerBound(pos, forOp->getConstantLowerBound());
   } else {
     // Non-constant lower bound case.
     if (!addLowerOrUpperBound(/*lower=*/true))
       return false;
   }
 
-  if (forInst.hasConstantUpperBound()) {
-    addConstantUpperBound(pos, forInst.getConstantUpperBound() - 1);
+  if (forOp->hasConstantUpperBound()) {
+    addConstantUpperBound(pos, forOp->getConstantUpperBound() - 1);
     return true;
   }
   // Non-constant upper bound case.

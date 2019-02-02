@@ -15,6 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/InstVisitor.h"
@@ -37,7 +38,6 @@ struct ConstantFold : public FunctionPass, InstWalker<ConstantFold> {
   bool foldOperation(OperationInst *op,
                      SmallVectorImpl<Value *> &existingConstants);
   void visitOperationInst(OperationInst *inst);
-  void visitForInst(ForInst *inst);
   PassResult runOnFunction(Function *f) override;
 
   static char passID;
@@ -50,6 +50,12 @@ char ConstantFold::passID = 0;
 /// constants are found, we keep track of them in the existingConstants list.
 ///
 void ConstantFold::visitOperationInst(OperationInst *op) {
+  // If this operation is an AffineForOp, then fold the bounds.
+  if (auto forOp = op->dyn_cast<AffineForOp>()) {
+    constantFoldBounds(forOp);
+    return;
+  }
+
   // If this operation is already a constant, just remember it for cleanup
   // later, and don't try to fold it.
   if (auto constant = op->dyn_cast<ConstantOp>()) {
@@ -96,11 +102,6 @@ void ConstantFold::visitOperationInst(OperationInst *op) {
   // At this point the operation is dead, so we can remove it.  We add it to
   // a vector to avoid invalidating our walker.
   opInstsToErase.push_back(op);
-}
-
-// Override the walker's 'for' instruction visit for constant folding.
-void ConstantFold::visitForInst(ForInst *forInst) {
-  constantFoldBounds(forInst);
 }
 
 // For now, we do a simple top-down pass over a function folding constants.  We

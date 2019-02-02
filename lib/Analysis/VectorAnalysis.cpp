@@ -16,10 +16,12 @@
 // =============================================================================
 
 #include "mlir/Analysis/VectorAnalysis.h"
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Instructions.h"
+#include "mlir/IR/IntegerSet.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/Functional.h"
@@ -105,7 +107,7 @@ Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(VectorType superVectorType,
 static AffineMap makePermutationMap(
     MLIRContext *context,
     llvm::iterator_range<OperationInst::operand_iterator> indices,
-    const DenseMap<ForInst *, unsigned> &enclosingLoopToVectorDim) {
+    const DenseMap<Instruction *, unsigned> &enclosingLoopToVectorDim) {
   using functional::makePtrDynCaster;
   using functional::map;
   auto unwrappedIndices = map(makePtrDynCaster<Value, Value>(), indices);
@@ -113,8 +115,9 @@ static AffineMap makePermutationMap(
                                   getAffineConstantExpr(0, context));
   for (auto kvp : enclosingLoopToVectorDim) {
     assert(kvp.second < perm.size());
-    auto invariants =
-        getInvariantAccesses(*kvp.first->getInductionVar(), unwrappedIndices);
+    auto invariants = getInvariantAccesses(
+        *cast<OperationInst>(kvp.first)->cast<AffineForOp>()->getInductionVar(),
+        unwrappedIndices);
     unsigned numIndices = unwrappedIndices.size();
     unsigned countInvariantIndices = 0;
     for (unsigned dim = 0; dim < numIndices; ++dim) {
@@ -139,30 +142,30 @@ static AffineMap makePermutationMap(
 /// TODO(ntv): could also be implemented as a collect parents followed by a
 /// filter and made available outside this file.
 template <typename T>
-static SetVector<T *> getParentsOfType(Instruction *inst) {
-  SetVector<T *> res;
+static SetVector<OperationInst *> getParentsOfType(Instruction *inst) {
+  SetVector<OperationInst *> res;
   auto *current = inst;
   while (auto *parent = current->getParentInst()) {
-    auto *typedParent = dyn_cast<T>(parent);
-    if (typedParent) {
-      assert(res.count(typedParent) == 0 && "Already inserted");
-      res.insert(typedParent);
+    if (auto typedParent =
+            cast<OperationInst>(parent)->template dyn_cast<T>()) {
+      assert(res.count(cast<OperationInst>(parent)) == 0 && "Already inserted");
+      res.insert(cast<OperationInst>(parent));
     }
     current = parent;
   }
   return res;
 }
 
-/// Returns the enclosing ForInst, from closest to farthest.
-static SetVector<ForInst *> getEnclosingforInsts(Instruction *inst) {
-  return getParentsOfType<ForInst>(inst);
+/// Returns the enclosing AffineForOp, from closest to farthest.
+static SetVector<OperationInst *> getEnclosingforOps(Instruction *inst) {
+  return getParentsOfType<AffineForOp>(inst);
 }
 
-AffineMap
-mlir::makePermutationMap(OperationInst *opInst,
-                         const DenseMap<ForInst *, unsigned> &loopToVectorDim) {
-  DenseMap<ForInst *, unsigned> enclosingLoopToVectorDim;
-  auto enclosingLoops = getEnclosingforInsts(opInst);
+AffineMap mlir::makePermutationMap(
+    OperationInst *opInst,
+    const DenseMap<Instruction *, unsigned> &loopToVectorDim) {
+  DenseMap<Instruction *, unsigned> enclosingLoopToVectorDim;
+  auto enclosingLoops = getEnclosingforOps(opInst);
   for (auto *forInst : enclosingLoops) {
     auto it = loopToVectorDim.find(forInst);
     if (it != loopToVectorDim.end()) {

@@ -28,9 +28,10 @@ namespace mlir {
 
 class AffineApplyOp;
 class AffineBound;
+class AffineForOp;
 class AffineCondition;
 class AffineMap;
-class ForInst;
+template <typename T> class ConstOpPointer;
 class IntegerSet;
 class MLIRContext;
 class Value;
@@ -113,13 +114,12 @@ private:
 /// results, and its map can themselves change  as a result of
 /// substitutions, simplifications, and other analysis.
 // An affine value map can readily be constructed from an AffineApplyOp, or an
-// AffineBound of a ForInst. It can be further transformed, substituted into,
-// or simplified. Unlike AffineMap's, AffineValueMap's are created and destroyed
-// during analysis. Only the AffineMap expressions that are pointed by them are
-// unique'd.
-// An affine value map, and the operations on it, maintain the invariant that
-// operands are always positionally aligned with the AffineDimExpr and
-// AffineSymbolExpr in the underlying AffineMap.
+// AffineBound of a AffineForOp. It can be further transformed, substituted
+// into, or simplified. Unlike AffineMap's, AffineValueMap's are created and
+// destroyed during analysis. Only the AffineMap expressions that are pointed by
+// them are unique'd. An affine value map, and the operations on it, maintain
+// the invariant that operands are always positionally aligned with the
+// AffineDimExpr and AffineSymbolExpr in the underlying AffineMap.
 // TODO(bondhugula): Some of these classes could go into separate files.
 class AffineValueMap {
 public:
@@ -173,9 +173,6 @@ private:
 // Both, the integer set being pointed to and the operands can change during
 // analysis, simplification, and transformation.
 class IntegerValueSet {
-  // Constructs an integer value set map from an IntegerSet and operands.
-  explicit IntegerValueSet(const AffineCondition &cond);
-
   /// Constructs an integer value set from an affine value map.
   // This will lead to a single equality in 'set'.
   explicit IntegerValueSet(const AffineValueMap &avm);
@@ -403,7 +400,7 @@ public:
 
   /// Adds constraints (lower and upper bounds) for the specified 'for'
   /// instruction's Value using IR information stored in its bound maps. The
-  /// right identifier is first looked up using forInst's Value. Returns
+  /// right identifier is first looked up using forOp's Value. Returns
   /// false for the yet unimplemented/unsupported cases, and true if the
   /// information is succesfully added. Asserts if the Value corresponding to
   /// the 'for' instruction isn't found in the constraint system. Any new
@@ -411,7 +408,7 @@ public:
   /// are added as trailing identifiers (either dimensional or symbolic
   /// depending on whether the operand is a valid ML Function symbol).
   //  TODO(bondhugula): add support for non-unit strides.
-  bool addForInstDomain(const ForInst &forInst);
+  bool addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp);
 
   /// Adds a constant lower bound constraint for the specified expression.
   void addConstantLowerBound(ArrayRef<int64_t> expr, int64_t lb);
