@@ -26,12 +26,15 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/input_output_aliasing_map.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 
 namespace xla {
+class HloInfeedInstruction;
 namespace poplarplugin {
 
-using InfeedMap = std::map<const HloInstruction*, std::vector<xla::Shape>>;
-
+// The only info we currently store for infeeds is the instruction.
+using InfeedInfo = const HloInfeedInstruction*;
+using InfeedInfos = absl::flat_hash_set<InfeedInfo>;
 // This structure contains all information which we generate that pertains
 // to the XLA graph, as opposed to the poplar lowering of that graph.
 struct CompilerAnnotations {
@@ -46,7 +49,7 @@ struct CompilerAnnotations {
 
   InplaceUtil::InplaceInstructions inplace_instructions;
 
-  InfeedMap infeed_map;
+  InfeedInfos infeed_infos;
 };
 
 }  // namespace poplarplugin

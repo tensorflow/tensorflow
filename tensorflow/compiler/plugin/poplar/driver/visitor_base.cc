@@ -416,33 +416,36 @@ Status BaseVisitor::HandleReducePrecision(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleInfeed(HloInstruction* inst) {
-  std::vector<Shape> shapes = FlattenedXlaShape(inst->shape());
-
   HloInfeedInstruction* infeed = Cast<HloInfeedInstruction>(inst);
-  poplar::Graph& graph = GetGraph(resources_, inst);
+  // We allow the same infeed queue to be dequeued multiple times, however
+  // we don't support multiple infeed queues in the same program.
+  if (absl::c_any_of(resources_.annotations.infeed_infos,
+                     [&](const HloInfeedInstruction* inst) {
+                       return inst->infeed_config() != infeed->infeed_config();
+                     })) {
+    LOG(FATAL) << "Currently multiple infeed queues in the same program are "
+                  "not supported.";
+  }
+  std::vector<Shape> shapes = FlattenedXlaShape(infeed->infeed_shape());
 
+  poplar::Graph& graph = GetGraph(resources_, infeed);
   poplar::program::Sequence& seq = sequence;
-  std::vector<xla::Shape> infeed_shapes;
+
   for (unsigned i = 0; i < shapes.size(); i++) {
-    poplar::Tensor out;
-    const Shape& shape = shapes[i];
-    if (shape.IsToken()) {
-      continue;
-    }
+    const auto& shape = shapes[i];
+    TF_ASSIGN_OR_RETURN(poplar::Tensor out,
+                        AddTensor(graph, std::make_pair(infeed, i), shape,
+                                  resources_, tensor_map));
 
-    infeed_shapes.push_back(shape);
-
-    TF_ASSIGN_OR_RETURN(out, AddTensor(graph, std::make_pair(inst, i), shape,
-                                       resources_, tensor_map));
-
-    auto fifo = graph.addHostToDeviceFIFO(GetInfeedCopyHandle(inst->name(), i),
-                                          out.elementType(), out.numElements());
+    auto fifo =
+        graph.addHostToDeviceFIFO(GetInfeedCopyHandle(infeed->name(), i),
+                                  out.elementType(), out.numElements());
 
     seq.add(poplar::program::Copy(fifo, out, false));
 
-    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, out));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, infeed, i, out));
   }
-  resources_.annotations.infeed_map[inst] = infeed_shapes;
+  resources_.annotations.infeed_infos.insert(infeed);
 
   return Status::OK();
 }

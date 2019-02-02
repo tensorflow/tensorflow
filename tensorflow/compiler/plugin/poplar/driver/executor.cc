@@ -28,6 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -195,25 +197,48 @@ void PoplarExecutor::Deallocate(se::DeviceMemoryBase* mem) {
   }
 }
 
-void PoplarExecutor::ConnectInfeedToStreamCallback(
-    const InfeedMap& infeed_map) {
-  // Buffer is already placed into xfeed manager by client->TransferToInfeed
-  for (const auto& infeed : infeed_map) {
-    const auto& instr = infeed.first;
-    const auto& shapes = infeed.second;
-    for (int j = 0; j < shapes.size(); ++j) {
+void PoplarExecutor::ConnectInfeedsToStreamCallback(
+    const InfeedInfos& infeed_infos) {
+  for (const auto& infeed_info : infeed_infos) {
+    const HloInfeedInstruction* inst = infeed_info;
+
+    auto itr = infeed_dataset_iterators.find(inst->infeed_config());
+    if (itr == infeed_dataset_iterators.end()) {
+      LOG(FATAL)
+          << "Trying to access a dataset iterator which has not been created."
+          << " Did you initialize the infeed_queue?";
+    }
+    auto* infeed_dataset_iterator = itr->second.get();
+    for (int j = 0; j < infeed_dataset_iterator->shapes.size(); ++j) {
       current_engine_->connectStreamToCallback(
-          GetInfeedCopyHandle(instr->name(), j), [&](void* dest) {
-            auto* xfeed_manager = GetXfeedManager(ordinal_);
-            auto* xfeed_buffer =
-                xfeed_manager->infeed()->BlockingDequeueBuffer();
-
-            const void* src = xfeed_buffer->data();
-            auto N = xfeed_buffer->length();
-            std::memcpy(dest, src, N);
-
-            xfeed_manager->infeed()->ReleaseCurrentBuffer(
-                xfeed_buffer->length(), xfeed_buffer->data(), Shape{});
+          GetInfeedCopyHandle(inst->name(), j),
+          [j, &infeed_dataset_iterator](void* dest) {
+            std::lock_guard<std::recursive_mutex> g(
+                infeed_dataset_iterator->mutex);
+            // We make an assumption that every sub tensor from the infeed is
+            // dequeued every iteration. If all tensors have been used, then get
+            // the next set of tensors.
+            if (absl::c_all_of(infeed_dataset_iterator->used,
+                               [](bool v) { return v; })) {
+              bool end_of_sequence;
+              std::vector<tensorflow::Tensor> outputs;
+              TF_CHECK_OK(infeed_dataset_iterator->iterator->GetNext(
+                  infeed_dataset_iterator->iterator_ctx.get(), &outputs,
+                  &end_of_sequence));
+              infeed_dataset_iterator->tensors = outputs;
+              if (end_of_sequence) {
+                LOG(INFO) << "The dataset iterator has reached the end of the "
+                             "dataset.";
+              }
+              absl::c_fill(infeed_dataset_iterator->used, false);
+            }
+            // Consume the tensor and copy it into the destination.
+            infeed_dataset_iterator->used[j] = true;
+            auto tensor = infeed_dataset_iterator->tensors[j];
+            const auto tensor_data_ptr = tensor.tensor_data().data();
+            std::memcpy(
+                dest, tensor_data_ptr,
+                ShapeUtil::ByteSizeOf(infeed_dataset_iterator->shapes[j]));
           });
     }
   }
@@ -1219,6 +1244,15 @@ poplar::DeviceManager& PoplarExecutor::GetDeviceManager() {
   return device_mgr;
 }
 
+void PoplarExecutor::CreateInfeedDatasetIterator(
+    const std::string& id,
+    std::unique_ptr<tensorflow::data::IteratorBase> iterator,
+    std::unique_ptr<tensorflow::data::IteratorContext> iterator_ctx,
+    const std::vector<xla::Shape>& shapes) {
+  infeed_dataset_iterators[id] = absl::make_unique<InfeedDatasetIterator>(
+      std::move(iterator), std::move(iterator_ctx), shapes);
+}
+
 StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
     perftools::gputools::StreamExecutor* executor,
     xla::poplarplugin::PoplarExecutable& executable,
@@ -1304,9 +1338,9 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
         ConnectStreamedVariablesHostToDevice();
         ConnectStreamedVariablesDeviceToHost();
 
-        const auto& infeed_instructions = executable.InfeedInstructions();
-        if (!infeed_instructions.empty()) {
-          ConnectInfeedToStreamCallback(infeed_instructions);
+        const auto& infeed_infos = executable.GetInfeedInfos();
+        if (!infeed_infos.empty()) {
+          ConnectInfeedsToStreamCallback(infeed_infos);
         }
 
         // Run the main engine

@@ -1,250 +1,382 @@
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.contrib.compiler import xla
 from tensorflow.contrib import ipu
 from tensorflow.python.client import session as session_lib
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
 from tensorflow.python.framework import constant_op
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
+from tensorflow.python.layers import convolutional
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import logging_ops
-from tensorflow.python.training import gradient_descent
-from tensorflow.python.platform import googletest
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import googletest
+from tensorflow.python.training import gradient_descent
+
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops.dataset_ops import Dataset
-from tensorflow.python.data.experimental.ops import sleep
-from tensorflow.python.data.ops.iterator_ops import Iterator
-from tensorflow.compiler.plugin.poplar.ops import gen_pop_datastream_ops
-from threading import Thread
+from tensorflow.core.protobuf import config_pb2
 
+from tensorflow.contrib.ipu import loops
+from tensorflow.contrib.ipu import ipu_infeed_queue
 
-_N = 100
-_BATCH_SIZE = 5
-_N_ITER = _N//_BATCH_SIZE
-_features = np.reshape(np.repeat(np.arange(_N), 10), (_N,10))
-_labels = np.reshape(np.repeat(np.arange(_N), 2), (_N,2))/100.0
+def create_increasing_dataset(value, shape=[4,4], dtype=np.float32):
+  def _get_one_input(data):
+    return math_ops.cast(
+            gen_array_ops.broadcast_to(data, shape=shape), dtype=dtype)
 
-def _get_ground_truth(with_tuple=False):
-  feature_placeholder = array_ops.placeholder(np.float32, shape=(_features.shape))
-  label_placeholder = array_ops.placeholder(np.float32, shape=(_labels.shape))
-  dataset_iter = InfeedOutfeedTest.create_dataset_iter(feature_placeholder, label_placeholder)
-
-  def cond(i, acc):
-    return math_ops.less(i, _N_ITER)
-
-  def body(i, acc):
-    batch_data, batch_label = dataset_iter.get_next()
-    with ops.control_dependencies([batch_data, batch_label]):
-      i = i + 1
-      acc = InfeedOutfeedTest._loop_computation(batch_data, acc)
-      if with_tuple:
-        acc = math_ops.add(acc, math_ops.reduce_sum(batch_label))
-      return (i, acc)
-
-  i = constant_op.constant(0)
-  acc = constant_op.constant(1.0, dtype=np.float32)
-  r = control_flow_ops.while_loop(cond, body, (i, acc), maximum_iterations=_N_ITER)
-
-  with session_lib.Session() as sess:
-    sess.run(dataset_iter.initializer,
-        feed_dict={feature_placeholder: _features, label_placeholder: _labels})
-    (_, acc) = sess.run(r)
-    return acc
+  dataset = Dataset.range(value).repeat().map(_get_one_input)
+  return dataset
 
 class InfeedOutfeedTest(test_util.TensorFlowTestCase):
-  # non-commutative operation in loop to make sure tensors are
-  # pushed and popped in correct order
-  @staticmethod
-  def _loop_computation(batch_data, acc, with_tuple=False, batch_label=None):
-    x = math_ops.reduce_sum(batch_data)
-    if with_tuple:
-      x = math_ops.add(math_ops.reduce_sum(batch_label), x)
-    x = math_ops.divide(13.2, x)
-    acc = math_ops.divide(x, acc)
-    return acc
 
+  def testSingleInfeedRepeatNonTuple(self):
+    dataset = create_increasing_dataset(10)
 
-  @staticmethod
-  def create_dataset_iter(feature_placeholder, label_placeholder, sleep_in_pipeline=False):
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+
+    def body(v):
+      v = v + infeed_queue.get_next()
+      return (v)
+
+    def my_net(v):
+      r = loops.repeat(20, body, (v), infeed_queue)
+      return r
+
     with ops.device('cpu'):
-      dataset = Dataset.from_tensor_slices((feature_placeholder, label_placeholder))
-      if sleep_in_pipeline:
-        # Sleep for 10000 microseconds to ensure interleaved execution of input pipeline thread
-        # and graph execution thread. Simulates a context switch
-        dataset = dataset.apply(sleep.sleep(10000))
-      dataset = dataset.batch(batch_size=_BATCH_SIZE)
-      dataset = dataset.repeat()
-      dataset_iter = dataset.make_initializable_iterator()
-      return dataset_iter
-
-  @staticmethod
-  def create_infeed_enqueue_while_loop(dataset_iter):
-    def cond(j):
-      return math_ops.less(j, _N_ITER)
-
-    def body(j):
-      batch_data, _ = dataset_iter.get_next()
-      enqueue_op = gen_pop_datastream_ops.pop_datastream_infeed_enqueue(batch_data)
-      with ops.control_dependencies([enqueue_op]):
-        j = j + 1
-        return (j)
-
-    j = constant_op.constant(0)
-    enqueue_loop = control_flow_ops.while_loop(cond, body, (j,), maximum_iterations=_N_ITER)
-    return enqueue_loop
-
-  @staticmethod
-  def create_infeed_enqueue_tuple_while_loop(dataset_iter):
-    def cond(j):
-      return math_ops.less(j, _N_ITER)
-
-    def body(j):
-      batch_data, batch_label = dataset_iter.get_next()
-      enqueue_op = gen_pop_datastream_ops.pop_datastream_infeed_enqueue_tuple((batch_data, batch_label), shapes=[(_BATCH_SIZE, 10), (_BATCH_SIZE, 2)])
-      with ops.control_dependencies([enqueue_op]):
-        j = j + 1
-        return (j)
-
-    j = constant_op.constant(0)
-    enqueue_loop = control_flow_ops.while_loop(cond, body, (j,), maximum_iterations=_N_ITER)
-    return enqueue_loop
-
-  @staticmethod
-  def my_net():
-    def cond(i, acc):
-      return math_ops.less(i, _N_ITER)
-
-    def body(i, acc):
-      i = i + 1
-      batch_dequeued = gen_pop_datastream_ops.pop_datastream_infeed_dequeue(
-        dtype=np.float32, shape=(_BATCH_SIZE,10))
-
-      acc = InfeedOutfeedTest._loop_computation(batch_dequeued, acc)
-      return (i, acc)
-
-    i = constant_op.constant(0)
-    acc = constant_op.constant(1.0, dtype=np.float32)
-    r = control_flow_ops.while_loop(cond, body, (i, acc), maximum_iterations=_N_ITER)
-    return r
-
-  @staticmethod
-  def my_net_tuple():
-    def cond(i, acc):
-      return math_ops.less(i, _N_ITER)
-
-    def body(i, acc):
-      i = i + 1
-      batch_data, batch_label = gen_pop_datastream_ops.pop_datastream_infeed_dequeue_tuple(dtypes=[np.float32, np.float32],
-        shapes=[(_BATCH_SIZE, 10), (_BATCH_SIZE, 2)])
-
-      acc = InfeedOutfeedTest._loop_computation(batch_data, acc)
-
-      acc = math_ops.add(acc, math_ops.reduce_sum(batch_label))
-      return (i, acc)
-
-    i = constant_op.constant(0)
-    acc = constant_op.constant(1.0, dtype=np.float32)
-    r = control_flow_ops.while_loop(cond, body, (i, acc), maximum_iterations=_N_ITER)
-    return r
-
-  def testSequentialInfeedWhileLoop(self):
-    ground_truth = _get_ground_truth()
-    feature_placeholder = array_ops.placeholder(np.float32, shape=(_features.shape))
-    label_placeholder = array_ops.placeholder(np.float32, shape=(_labels.shape))
-    dataset_iter = InfeedOutfeedTest.create_dataset_iter(feature_placeholder, label_placeholder)
-    enqueue_loop = InfeedOutfeedTest.create_infeed_enqueue_while_loop(dataset_iter)
+      v = array_ops.placeholder(np.float32, [4, 4])
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      r = xla.compile(InfeedOutfeedTest.my_net)
+      res = xla.compile(my_net, inputs=[v])
+
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+      sess.run(infeed_queue.initializer)
+      result = sess.run(res, {v:np.ones([4, 4], np.float32)})
+      self.assertAllClose(result[0], np.broadcast_to(91, [4, 4]))
+
+  def testSingleInfeedRepeatTuple(self):
+    dataset = create_increasing_dataset(3)
+
+    def dataset_parser(value):
+      image_1 = value
+      image_2 = (value + 10.) / 2.0
+      return (image_1, image_2)
+    dataset = dataset.map(dataset_parser)
+
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+
+    def body(v):
+      im1, im2 = infeed_queue.get_next()
+      v = v + im1 + im2
+      return (v)
+
+    def my_net():
+      v = constant_op.constant(0.0, shape=[4,4], dtype=np.float32)
+      r = loops.repeat(5, body, [v], infeed_queue)
+      return r
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      res = xla.compile(my_net, inputs=[])
+
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+      sess.run(infeed_queue.initializer)
+      result = sess.run(res)
+      self.assertAllClose(result[0], np.broadcast_to(31, [4, 4]))
+
+  def testSingleInfeedRepeatNamed(self):
+    dataset = create_increasing_dataset(3)
+
+    def dataset_parser(value):
+      image_1 = value
+      image_2 = (value + 10.) / 2.0
+      return {"a": image_1,
+              "b": image_2}
+    dataset = dataset.map(dataset_parser)
+
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+
+    def body(v):
+      data = infeed_queue.get_next()
+      v = v + data["a"] + data["b"]
+      return (v)
+
+    def my_net():
+      v = constant_op.constant(0.0, shape=[4,4], dtype=np.float32)
+      r = loops.repeat(5, body, [v], infeed_queue)
+      return r
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      res = xla.compile(my_net, inputs=[])
+
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+      sess.run(infeed_queue.initializer)
+      result = sess.run(res)
+      self.assertAllClose(result[0], np.broadcast_to(31, [4, 4]))
+
+  def testSingleInfeedRepeatMultipleDequeues(self):
+    dataset = create_increasing_dataset(2)
+
+    def dataset_parser(value):
+      image_1 = value + 1
+      image_2 = image_1 * 2
+      return {"a": image_1,
+              "b": image_2}
+    dataset = dataset.map(dataset_parser)
+
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+
+    # Note how we get the value for a from the first dequeue and value for b
+    # from the second dequeue.
+    def body(v):
+      v = v + infeed_queue.get_next()["a"] + infeed_queue.get_next()["b"]
+      return (v)
+
+    def my_net():
+      v = constant_op.constant(0.0, shape=[4,4], dtype=np.float32)
+      r = loops.repeat(5, body, [v], infeed_queue)
+      return r
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      res = xla.compile(my_net, inputs=[])
+
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+      sess.run(infeed_queue.initializer)
+      result = sess.run(res)
+      self.assertAllClose(result[0], np.broadcast_to(25, [4, 4]))
+
+  def testSingleInfeedMultipleRepeats(self):
+    dataset = create_increasing_dataset(2)
+
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+
+    # Note how we get the value for a from the first dequeue and value for b
+    # from the second dequeue.
+    def body(v):
+      v = v + infeed_queue.get_next()
+      return (v)
+
+    def my_net():
+      v = constant_op.constant(0.0, shape=[4,4], dtype=np.float32)
+      r = loops.repeat(5, body, [v], infeed_queue)
+      r = loops.repeat(5, body, [r], infeed_queue)
+      return r
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      res = xla.compile(my_net, inputs=[])
+
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+      sess.run(infeed_queue.initializer)
+      result = sess.run(res)
+      self.assertAllClose(result[0], np.broadcast_to(5, [4, 4]))
+
+  def testSingleInfeedWhileLoopNonTuple(self):
+    dataset = create_increasing_dataset(10)
+
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+
+    def cond(i, v):
+      return i < 20
+
+    def body(i, v):
+      v = v + infeed_queue.get_next()
+      return (i + 1, v)
+
+    def my_net(v):
+      i = 0
+      r = loops.while_loop(cond, body, (i, v), infeed_queue)
+      return r[1]
+
+    with ops.device('cpu'):
+      v = array_ops.placeholder(np.float32, [4, 4])
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      res = xla.compile(my_net, inputs=[v])
+
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+      sess.run(infeed_queue.initializer)
+      result = sess.run(res, {v:np.ones([4, 4], np.float32)})
+      self.assertAllClose(result[0], np.broadcast_to(91, [4, 4]))
+
+  def testSingleInfeedWhileLoopTuple(self):
+    dataset = create_increasing_dataset(3)
+
+    def dataset_parser(value):
+      image_1 = value
+      image_2 = (value + 10.) / 2.0
+      return (image_1, image_2)
+    dataset = dataset.map(dataset_parser)
+
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+
+    def cond(i, v):
+      return i < 20
+
+    def body(i, v):
+      im1, im2 = infeed_queue.get_next()
+      v = v + im1 + im2
+      return (i + 1, v)
+
+    def my_net(v):
+      i = 0
+      r = loops.while_loop(cond, body, (i, v), infeed_queue)
+      return r[1]
+
+    with ops.device('cpu'):
+      v = array_ops.placeholder(np.float32, [4, 4])
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      res = xla.compile(my_net, inputs=[v])
+
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+      sess.run(infeed_queue.initializer)
+      result = sess.run(res, {v:np.ones([4, 4], np.float32)})
+      self.assertAllClose(result[0], np.broadcast_to(129.5, [4, 4]))
+
+  def testSingleInfeedMultipleRuns(self):
+    dataset = create_increasing_dataset(10)
+
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+
+    def program(iters):
+      def body(v):
+        v = v + infeed_queue.get_next()
+        return (v)
+
+      def my_net():
+        v = constant_op.constant(0.0, shape=[4,4], dtype=np.float32)
+        r = loops.repeat(iters, body, (v), infeed_queue)
+        return r
+
+      with ipu.ops.ipu_scope("/device:IPU:0"):
+        return xla.compile(my_net)
+
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+      sess.run(infeed_queue.initializer)
+      result = sess.run(program(0))
+      self.assertAllClose(result[0], np.broadcast_to(0, [4, 4]))
+      # The iterator has not moved - next element should be all 1s.
+      result = sess.run(program(2))
+      self.assertAllClose(result[0], np.broadcast_to(1, [4, 4]))
+      # The iterator has moved - in the next two iterations it should pull 2 and 3.
+      result = sess.run(program(2))
+      self.assertAllClose(result[0], np.broadcast_to(5, [4, 4]))
+      # The iterator has moved - in the next two iterations it should pull 4 and 5.
+      result = sess.run(program(2))
+      self.assertAllClose(result[0], np.broadcast_to(9, [4, 4]))
+
+  def testTwoInfeedsDifferentPrograms(self):
+    dataset1 = create_increasing_dataset(20)
+    dataset2 = create_increasing_dataset(3)
+
+    infeed_queue1 = ipu_infeed_queue.IPUInfeedQueue(dataset1)
+    infeed_queue2 = ipu_infeed_queue.IPUInfeedQueue(dataset2)
+
+    def program(iters, infeed_queue):
+      def body(v):
+        v = v + infeed_queue.get_next()
+        return (v)
+
+      def my_net():
+        v = constant_op.constant(0.0, shape=[4,4], dtype=np.float32)
+        r = loops.repeat(iters, body, (v), infeed_queue)
+        return r
+
+      with ipu.ops.ipu_scope("/device:IPU:0"):
+        return xla.compile(my_net)
+
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+      sess.run(infeed_queue1.initializer)
+      sess.run(infeed_queue2.initializer)
+      result = sess.run(program(5, infeed_queue1))
+      self.assertAllClose(result[0], np.broadcast_to(10, [4, 4]))
+      result = sess.run(program(5, infeed_queue2))
+      self.assertAllClose(result[0], np.broadcast_to(4, [4, 4]))
+      result = sess.run(program(5, infeed_queue1))
+      self.assertAllClose(result[0], np.broadcast_to(35, [4, 4]))
+      result = sess.run(program(5, infeed_queue2))
+      self.assertAllClose(result[0], np.broadcast_to(5, [4, 4]))
+
+  def testUndefinedShape(self):
+    dataset = create_increasing_dataset(10)
+    dataset = dataset.batch(10, drop_remainder=False)
+    with self.assertRaisesRegexp(ValueError,
+                                 'Output shape \(\?,'):
+      infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+
+  def testTrainingLoopWithInfeed(self):
+    dataset = create_increasing_dataset(10, shape=[4,4,2])
+    dataset = dataset.batch(batch_size=2, drop_remainder=True)
+
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+
+    def my_net(iters):
+      def body(loss):
+        x = infeed_queue.get_next()
+        with variable_scope.variable_scope("vs", use_resource=True):
+          y = convolutional.conv2d(x, 2, 1, use_bias=True,
+                                 kernel_initializer=init_ops.ones_initializer(),
+                                 name='conv1')
+        loss = math_ops.reduce_sum(y)
+        optimizer = gradient_descent.GradientDescentOptimizer(0.1)
+        train = optimizer.minimize(loss)
+        with ops.control_dependencies([train]):
+          return array_ops.identity(loss)
+
+      loss = 0.0
+      return loops.repeat(iters, body, (loss), infeed_queue)
+
+    with ops.device('cpu'):
+      iters = array_ops.placeholder(np.int32, shape=[])
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      r = xla.compile(my_net, inputs=[iters])
 
     with session_lib.Session() as sess:
-      sess.run(dataset_iter.initializer,
-          feed_dict={feature_placeholder: _features, label_placeholder: _labels})
-
-      sess.run(enqueue_loop)
-
-      (_, x) = sess.run(r)
-      self.assertNear(x, ground_truth, 1e-6)
-
-
-  def testMultiThreadedWhileLoop(self):
-    ground_truth = _get_ground_truth()
-    feature_placeholder = array_ops.placeholder(np.float32, shape=(_features.shape))
-    label_placeholder = array_ops.placeholder(np.float32, shape=(_labels.shape))
-
-    dataset_iter = InfeedOutfeedTest.create_dataset_iter(feature_placeholder, label_placeholder, sleep_in_pipeline=True)
-    enqueue_loop = InfeedOutfeedTest.create_infeed_enqueue_while_loop(dataset_iter)
-
-    with ipu.ops.ipu_scope("/device:IPU:0"):
-      r = xla.compile(InfeedOutfeedTest.my_net)
-
-    def input_pipeline_thread_fn(sess):
-      sess.run(enqueue_loop)
-
-    def computation_thread_fn(sess, outputs):
-      (_, x) = sess.run(r)
-      outputs.append(x)
-
-
-    # Run several times to heuristically check for race conditions
-    for i in range(10):
-      with session_lib.Session() as sess:
-        sess.run(dataset_iter.initializer,
-          feed_dict={feature_placeholder: _features, label_placeholder: _labels})
-
-        input_pipeline_thread = Thread(target=input_pipeline_thread_fn, args=(sess,))
-        results = []
-        computation_thread = Thread(target=computation_thread_fn, args=(sess, results))
-        computation_thread.start()
-        input_pipeline_thread.start()
-
-        input_pipeline_thread.join()
-        computation_thread.join()
-
-        self.assertNear(results[0], ground_truth, 1e-6)
-
-
-  def testMultiThreadedWhileLoopWithTuples(self):
-    ground_truth = _get_ground_truth(with_tuple=True)
-    feature_placeholder = array_ops.placeholder(np.float32, shape=(_features.shape))
-    label_placeholder = array_ops.placeholder(np.float32, shape=(_labels.shape))
-    dataset_iter = InfeedOutfeedTest.create_dataset_iter(feature_placeholder, label_placeholder, sleep_in_pipeline=True)
-    enqueue_loop = InfeedOutfeedTest.create_infeed_enqueue_tuple_while_loop(dataset_iter)
-
-    with ipu.ops.ipu_scope("/device:IPU:0"):
-      r = xla.compile(InfeedOutfeedTest.my_net_tuple)
-
-    def input_pipeline_thread_fn(sess):
-      sess.run(enqueue_loop)
-
-    def computation_thread_fn(sess, outputs):
-      (_, x) = sess.run(r)
-      outputs.append(x)
-
-
-    # Run several times to heuristically check for race conditions
-    for i in range(10):
-      with session_lib.Session() as sess:
-        sess.run(dataset_iter.initializer,
-            feed_dict={feature_placeholder: _features, label_placeholder: _labels})
-
-        input_pipeline_thread = Thread(target=input_pipeline_thread_fn, args=(sess,))
-        results = []
-        computation_thread = Thread(target=computation_thread_fn, args=(sess, results))
-        computation_thread.start()
-        input_pipeline_thread.start()
-
-        input_pipeline_thread.join()
-        computation_thread.join()
-        self.assertNear(results[0], ground_truth, 1e-6)
+      sess.run(infeed_queue.initializer)
+      sess.run(variables.global_variables_initializer())
+      initial_loss = sess.run(r, {iters: 1})
+      final_loss = sess.run(r, {iters: 1000})
+      self.assertTrue(initial_loss > final_loss)
 
 
 if __name__ == "__main__":

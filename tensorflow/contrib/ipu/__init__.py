@@ -22,6 +22,8 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=wildcard-import,unused-import
+from tensorflow.contrib.ipu.python import ipu_infeed_queue
+from tensorflow.contrib.ipu.python import loops
 from tensorflow.contrib.ipu.python import ops
 from tensorflow.contrib.ipu.python import popnn_normalization
 from tensorflow.contrib.ipu.python import popnn_rnn

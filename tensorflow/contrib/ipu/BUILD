@@ -12,6 +12,8 @@ py_library(
     name = "ipu",
     srcs = [
       "__init__.py",
+      "python/ipu_infeed_queue.py",
+      "python/loops.py",
       "python/ops.py",
       "python/popnn_normalization.py",
       "python/popnn_rnn.py",

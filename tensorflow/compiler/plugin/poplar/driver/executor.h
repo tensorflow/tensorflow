@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -322,6 +323,11 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   static poplar::DeviceManager& GetDeviceManager();
 
+  void CreateInfeedDatasetIterator(
+      const std::string&, std::unique_ptr<tensorflow::data::IteratorBase>,
+      std::unique_ptr<tensorflow::data::IteratorContext>,
+      const std::vector<xla::Shape>&);
+
  private:
   struct TensorControl {
     size_t size = 0;
@@ -475,7 +481,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   // Connect buffers provided by infeed transfer manager to Poplar
   // HostToDevice FIFO
-  void ConnectInfeedToStreamCallback(const InfeedMap& infeed_map);
+  void ConnectInfeedsToStreamCallback(const InfeedInfos& infeed_infos);
 
   void DeferredDeallocation();
 
@@ -507,6 +513,29 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   tensorflow::IPUOptions current_config_;
 
   std::list<tensorflow::IpuTraceEvent> reports_;
+
+  struct InfeedDatasetIterator {
+    std::unique_ptr<tensorflow::data::IteratorBase> iterator;
+    std::unique_ptr<tensorflow::data::IteratorContext> iterator_ctx;
+    const std::vector<xla::Shape> shapes;
+    std::vector<bool> used;
+    std::vector<tensorflow::Tensor> tensors;
+
+    // Mutex used to make sure only one callback is accessing the dataset
+    // iterator.
+    std::recursive_mutex mutex;
+
+    InfeedDatasetIterator(
+        std::unique_ptr<tensorflow::data::IteratorBase> iterator,
+        std::unique_ptr<tensorflow::data::IteratorContext> iterator_ctx,
+        const std::vector<xla::Shape>& shapes)
+        : iterator(std::move(iterator)),
+          iterator_ctx(std::move(iterator_ctx)),
+          shapes(std::move(shapes)),
+          used(shapes.size(), true){};
+  };
+  absl::flat_hash_map<std::string, std::unique_ptr<InfeedDatasetIterator>>
+      infeed_dataset_iterators;
 };
 
 }  // namespace poplarplugin
