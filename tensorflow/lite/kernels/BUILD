@@ -198,7 +198,6 @@ cc_library(
         "pow.cc",
         "range.cc",
         "reduce.cc",
-        "relu1.cc",
         "reshape.cc",
         "resize_bilinear.cc",
         "resize_nearest_neighbor.cc",
@@ -323,19 +322,6 @@ tf_cc_test(
     name = "detection_postprocess_test",
     size = "small",
     srcs = ["detection_postprocess_test.cc"],
-    deps = [
-        ":builtin_ops",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
-        "@flatbuffers",
-    ],
-)
-
-tf_cc_test(
-    name = "relu1_test",
-    size = "small",
-    srcs = ["relu1_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/lite:framework",
