@@ -2121,48 +2121,6 @@ TEST_F(OpConverterTest, ConvertQuantize) {
   }
 }
 
-TEST_F(OpConverterTest, ConvertRelu6) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_relu6", "Relu6", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Invalid number of inputs for Relu6, at my_relu6");
-  }
-
-  // Get the NodeDef for Relu6.
-  Scope s = Scope::NewRootScope();
-  auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-  auto relu6 = ops::Relu6(s.WithOpName("my_relu6"), input);
-  const NodeDef node_def = relu6.operation.node()->def();
-  {
-    // Input is weights, should fail.
-    Reset();
-    AddTestWeights<float>("input", {1}, {1.0f});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "Relu6 is only implemented for tensors, not weights, at my_relu6");
-  }
-  {
-    // Clip tensor values and set quantization ranges, ok.
-    Reset();
-    AddTestTensor("input", {1, 2, 3});
-    RunValidationAndConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_relu6", &output));
-    EXPECT_TRUE(output.is_tensor());
-    auto ranges = quantization_ranges();
-    EXPECT_EQ(ranges[output.tensor()], 6.0f);
-
-    const DataVec input_data{
-        {"input", test::AsTensor<float>({-100, -1, 0, 3, 5, 9})}};
-    DataVec output_data{{"my_relu6", ConstructTensor<float>(6)}};
-    BuildAndRun(input_data, &output_data);
-    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
-                ElementsAre(0, 0, 0, 3, 5, 6));
-  }
-}
-
 template <DataType dtype>
 void TestConvertSquare(OpConverterTest* test) {
   test->Reset();
@@ -2242,12 +2200,22 @@ TEST_F(OpConverterTest, ConvertActivation) {
         "Relu is only implemented for tensors, at my_act");
   }
 
+  constexpr float kAlpha = 0.2f;
+
   // Get nodedef for activation layer.
   auto get_act_nodedef = [](string op_name) -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-    if (op_name == "Relu") {
+    if (op_name == "LeakyRelu") {
+      // LeakyRelu does not have a C++ API
+      NodeDef node_def = MakeNodeDef("my_act", "LeakyRelu", {"input"});
+      (*node_def.mutable_attr())["alpha"].set_f(kAlpha);
+      return node_def;
+    } else if (op_name == "Relu") {
       auto act = ops::Relu(s.WithOpName("my_act"), input);
+      return act.operation.node()->def();
+    } else if (op_name == "Relu6") {
+      auto act = ops::Relu6(s.WithOpName("my_act"), input);
       return act.operation.node()->def();
     } else if (op_name == "Sigmoid") {
       auto act = ops::Sigmoid(s.WithOpName("my_act"), input);
@@ -2261,8 +2229,12 @@ TEST_F(OpConverterTest, ConvertActivation) {
   };
   // Get expected output for activation layer.
   auto get_act_output = [](string op_name, float input) -> float {
-    if (op_name == "Relu") {
+    if (op_name == "LeakyRelu") {
+      return (input > 0.0f) ? input : input * kAlpha;
+    } else if (op_name == "Relu") {
       return (input > 0.0f) ? input : 0.0f;
+    } else if (op_name == "Relu6") {
+      return std::min(std::max(input, 0.0f), 6.0f);
     } else if (op_name == "Sigmoid") {
       return 1.0f / (1.0f + std::exp(-input));
     } else if (op_name == "Tanh") {
@@ -2273,7 +2245,8 @@ TEST_F(OpConverterTest, ConvertActivation) {
   };
 
   // Ok.
-  for (string op_name : {"Relu", "Sigmoid", "Tanh"}) {
+  for (const string& op_name :
+       {"LeakyRelu", "Relu", "Relu6", "Sigmoid", "Tanh"}) {
     Reset();
     NodeDef node_def = get_act_nodedef(op_name);
     AddTestTensor("input", {1, 2, 3});
@@ -2282,6 +2255,11 @@ TEST_F(OpConverterTest, ConvertActivation) {
     TF_EXPECT_OK(GetTensorOrWeights("my_act", &output));
     EXPECT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions());
+    if (op_name == "Relu6") {
+      // Relu6 should set quantization range automatically.
+      auto ranges = quantization_ranges();
+      EXPECT_EQ(ranges[output.tensor()], 6.0f);
+    }
 
     const std::vector<float> input = {-100, -2, -1, 0, 1, 100};
     const DataVec input_data{{"input", test::AsTensor<float>(input)}};

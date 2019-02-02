@@ -360,6 +360,26 @@ nvinfer1::ITensor* Converter::CreateConstantLayer(
   return trt_tensor;
 }
 
+tensorflow::Status CreateBroadcastableScalarConstant(
+    OpConverterParams* params, float value, const nvinfer1::Dims& dims,
+    const nvinfer1::ITensor** tensor) {
+  // In order to be broadcastable, the number of dims has to match.
+  nvinfer1::Dims broadcastable_dims(dims);
+  for (int i = 0; i < broadcastable_dims.nbDims; i++) {
+    broadcastable_dims.d[i] = 1;
+  }
+  TRT_ShapedWeights weights = params->weight_store->GetTempWeights(
+      tensorflow::DataType::DT_FLOAT, broadcastable_dims);
+  auto weights_ptr =
+      static_cast<float*>(const_cast<void*>(weights.GetValues()));
+  weights_ptr[0] = value;
+  *tensor = params->converter->CreateConstantLayer(weights, broadcastable_dims);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, params->node_def.name());
+  params->converter->ProvideQuantizationRange(
+      const_cast<nvinfer1::ITensor*>(*tensor), value, value);
+  return Status::OK();
+}
+
 inline bool DimsEqual(const nvinfer1::Dims& dim_l,
                       const nvinfer1::Dims& dim_r) {
   if (dim_l.nbDims != dim_r.nbDims) {
@@ -2497,6 +2517,57 @@ tensorflow::Status ConvertPool(OpConverterParams* params) {
   return tensorflow::Status::OK();
 }
 
+// TODO(tmorris): Use ActivationType::kLEAKY_RELU in TRT 5.1+ once perf
+// improves.
+tensorflow::Status ConvertLeakyRelu(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  if (inputs.size() != 1) {
+    return tensorflow::errors::InvalidArgument(
+        node_def.op(), " expects one input, at ", node_def.name());
+  }
+  if (!inputs.at(0).is_tensor()) {
+    return tensorflow::errors::Unimplemented(
+        node_def.op(), " is only implemented for tensors, at ",
+        node_def.name());
+  }
+  TFAttrs attrs(node_def);
+  const float alpha = attrs.get<float>("alpha");
+  if (alpha < 0.0f || alpha > 1.0f) {
+    return tensorflow::errors::Unimplemented(
+        "Alpha value for LeakyRelu must be between 0 and 1, at ",
+        node_def.name());
+  }
+  if (params->validation_only) return tensorflow::Status::OK();
+
+  // Input Tensor
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
+  // Create const for alpha.
+  const nvinfer1::ITensor* const_alpha_tensor = nullptr;
+  TF_RETURN_IF_ERROR(CreateBroadcastableScalarConstant(
+      params, alpha, tensor->getDimensions(), &const_alpha_tensor));
+  // alpha * x
+  nvinfer1::IElementWiseLayer* mul_layer =
+      params->converter->network()->addElementWise(
+          *const_cast<nvinfer1::ITensor*>(tensor),
+          *const_cast<nvinfer1::ITensor*>(const_alpha_tensor),
+          nvinfer1::ElementWiseOperation::kPROD);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(mul_layer, node_def.name());
+  // max(x, alpha * x)
+  nvinfer1::IElementWiseLayer* max_layer =
+      params->converter->network()->addElementWise(
+          *const_cast<nvinfer1::ITensor*>(tensor),
+          *const_cast<nvinfer1::ITensor*>(mul_layer->getOutput(0)),
+          nvinfer1::ElementWiseOperation::kMAX);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(max_layer, node_def.name());
+  nvinfer1::ITensor* output_tensor = max_layer->getOutput(0);
+  params->converter->MarkQuantizationRangesAsInferrable(
+      output_tensor, const_cast<nvinfer1::ITensor*>(mul_layer->getOutput(0)));
+
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
+}
+
 tensorflow::Status ConvertActivation(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -2606,8 +2677,7 @@ Status ConvertQuantize(OpConverterParams* params) {
   return Status::OK();
 }
 
-// TODO(pdavoodi): we should update relu6 implementation once TensorRT supports
-// Relu6 natively.
+// TODO(tmorris): Use ActivationType::kCLIP in TRT 5.1+ once perf improves.
 tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -2643,24 +2713,10 @@ tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   params->converter->ProvideQuantizationRange(relu_layer->getOutput(0), 0.0f,
                                               6.0f);
 
-  // Create a constant layer to store the floating point weight i.e. 6.0f This
-  // tensor will be broadcasted uniformly during elementwise `min` operation.
-  // The constant has to have the same rank as the input in order for TRT to
-  // broadcast
-  nvinfer1::Dims dims;
-  dims.nbDims = relu_layer->getOutput(0)->getDimensions().nbDims;
-  for (int i = 0; i < dims.nbDims; i++) {
-    dims.d[i] = 1;
-  }
-  TRT_ShapedWeights weights = params->weight_store->GetTempWeights(
-      tensorflow::DataType::DT_FLOAT, dims);
-  auto weights_ptr =
-      static_cast<float*>(const_cast<void*>(weights.GetValues()));
-  weights_ptr[0] = 6.0f;
-  nvinfer1::ITensor* const6_tensor =
-      params->converter->CreateConstantLayer(weights, dims);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(const6_tensor, node_def.name());
-  params->converter->ProvideQuantizationRange(const6_tensor, 0.0f, 6.0f);
+  // Create a constant layer to store the floating point weight i.e. 6.0f
+  const nvinfer1::ITensor* const6_tensor = nullptr;
+  TF_RETURN_IF_ERROR(CreateBroadcastableScalarConstant(
+      params, 6.0f, relu_layer->getOutput(0)->getDimensions(), &const6_tensor));
 
   // ElementWise Min Operation
   // Min op is a nop for INT8 execution path, as the input tensor
@@ -2668,7 +2724,8 @@ tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   nvinfer1::IElementWiseLayer* relu6_layer =
       params->converter->network()->addElementWise(
           *const_cast<nvinfer1::ITensor*>(relu_layer->getOutput(0)),
-          *const6_tensor, nvinfer1::ElementWiseOperation::kMIN);
+          *const_cast<nvinfer1::ITensor*>(const6_tensor),
+          nvinfer1::ElementWiseOperation::kMIN);
   TFTRT_RETURN_ERROR_IF_NULLPTR(relu6_layer, node_def.name());
   nvinfer1::ITensor* output_tensor = relu6_layer->getOutput(0);
   params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 6.0f);
@@ -3661,6 +3718,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["Conv2DBackpropInput"] = ConvertConv2DBackpropInput;
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   (*registration)["ExpandDims"] = ConvertExpandDims;
+  (*registration)["LeakyRelu"] = ConvertLeakyRelu;
   (*registration)["MatMul"] = ConvertMatMul;
   (*registration)["Pad"] = ConvertPad;
   (*registration)["Relu6"] = ConvertRelu6;
