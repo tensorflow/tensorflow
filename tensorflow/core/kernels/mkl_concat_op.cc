@@ -228,9 +228,9 @@ class MklConcatOp : public OpKernel {
 
       OpInputList input_mins, input_maxes;
       if (std::is_same<T, qint8>::value || std::is_same<T, quint8>::value) {
-        // MKL DNN concat does not support input tensors that have different
-        // ranges, check if the ranges of the all input tensors are the same
-        // if not, forward it to Eigen implementation.
+        // MKL-DNN concat does not support input tensors that have different
+        // ranges. Check if the ranges of the all input tensors are the same.
+        // If not, forward it to Eigen implementation.
 
         OP_REQUIRES_OK(context, context->input_list("input_mins", &input_mins));
         OP_REQUIRES(context, (input_mins.size() == N),
@@ -247,7 +247,7 @@ class MklConcatOp : public OpKernel {
         float input_min = input_mins[0].flat<float>()(0);
         float input_max = input_maxes[0].flat<float>()(0);
         const float eps = 1.0e-6;
-        for (int i = 1; i < N; i++) {
+        for (int i = 1; i < N; ++i) {
           float min = input_mins[i].flat<float>()(0);
           float max = input_maxes[i].flat<float>()(0);
 
@@ -260,19 +260,16 @@ class MklConcatOp : public OpKernel {
 
       // Call Eigen library
       if (invoke_eigen) {
-        if (std::is_same<T, qint8>::value || std::is_same<T, quint8>::value) {
-          // MKL DNN quantized concat does not support input tensors with
-          // different ranges.
-          // TODO (mabuzain): Add quantized version of CallEigen() to support
-          // this case.
-          OP_REQUIRES(context, false,
-                      errors::Unimplemented("MKL DNN quantized concat does not "
-                                            "support input tensors that have "
-                                            "different ranges"));
-        } else {
-          CallEigenVersion(context, input_tensors, mkl_input_shapes);
-        }
-
+        // MKL-DNN quantized concat does not support input tensors with
+        // different ranges.
+        // TODO (mabuzain): Add quantized version of CallEigen() to support
+        // this case.
+        OP_REQUIRES(context, (!std::is_same<T, qint8>::value &&
+                              !std::is_same<T, quint8>::value),
+                    errors::Unimplemented("MKL DNN quantized concat does not "
+                                          "support input tensors that have "
+                                          "different ranges"));
+        CallEigenVersion(context, input_tensors, mkl_input_shapes);
         return;
       }
 
