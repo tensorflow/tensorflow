@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,8 +33,8 @@ using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 using shape_inference::UnchangedShape;
 
-// Adding QuantizedConcatV2 which is similar to the existing QuantizedConcat
-// op to be able to replace it by _MklQuantizedConcatV2 in the graph rewrite.
+// Adding QuantizedConcatV2 op to be able to replace it by
+// _MklQuantizedConcatV2 in the graph rewrite.
 REGISTER_OP("QuantizedConcatV2")
     .Input("values: N * T")
     .Input("axis: Tidx")
