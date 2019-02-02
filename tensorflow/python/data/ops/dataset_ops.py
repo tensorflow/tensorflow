@@ -1101,18 +1101,15 @@ class DatasetV2(object):
     """Filters this dataset according to `predicate`.
 
     ```python
-    # NOTE: The following examples use `{ ... }` to represent the
-    # contents of a dataset.
-    a = { 1, 2, 3 }
-    b = { 4, 5, 6, 7 }
-
-    a.filter(lambda x: x < 3) == { 1, 2 }
+    d = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+    
+    d = d.filter(lambda x: x < 3) # [1, 2]
 
     # `tf.math.equal(x, y)` is required for equality comparison
     def filter_fn(x):
-      return tf.math.equal(x, 4)
+      return tf.math.equal(x, 1)
 
-    b.filter(filter_fn) == { 4 }
+    d = d.filter(filter_fn) # [1]
     ```
 
     Args:
