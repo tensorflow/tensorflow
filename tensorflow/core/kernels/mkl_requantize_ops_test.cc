@@ -72,7 +72,7 @@ void MklRequantizatedOpsTestHelper::Setup(Tensor &input_tensor_qint32,
   // The output Tensor T is in int32 whose range is [-2^31, 2^31).
   // For simplicity, we truncate the range to (-2^31, 2^31) to make it symmetric.
   // The range of the convolved T*W1 is ((2^31)-1) * 5.0/255 * 2.0/127 = 663110.59
-  // So the range of convolved T*W1 in int32[-(2^31-1), 22^31-1] that maps to
+  // So the range of convolved T*W1 in int32(-2^31, 2^31) that maps to
   // orig T range in FP32[0, 5.0] * [-2.0, 2.0] is [-663110.59, 663110.59]
 
   // The range of the convolved T*W2 is (2^31-1) * 5.0/255 * 3.0/127 = 994665.88
