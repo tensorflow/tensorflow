@@ -46,7 +46,7 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
     const Tensor& input_min = ctx->input(kInputMinIndex);
     const Tensor& input_max = ctx->input(kInputMaxIndex);
 
-    size_t depth = input_max.NumElements();
+    const size_t depth = input_max.NumElements();
     OP_REQUIRES(ctx, input_min.dim_size(0) == depth,
                 errors::InvalidArgument("input_min has incorrect size, expected ",
                                         depth, " was ", input_min.dim_size(0)));
@@ -60,27 +60,40 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
     bool is_non_negative = true;
     Eigen::array<int, 2> shuffling({1, 0});
     auto input_matrix = input.flat_inner_dims<qint32>();
+
+    // TODO: verify performance of not transposing and finding the min max directly
+    // from input_matrix vs the one presentd below of transposing and using the
+    // transposed matrix as the transpose operation might be more costly.
+    // Note that this operation is a calibration step for quantization and will cease 
+    // to exist in the final inference graph as it will exist as a const node. 
     auto transposed_input = input_matrix.shuffle(shuffling);
 
     // Find the ranges of each channel in parallel.
-#pragma omp parallel for
+    float out_min_max = std::numeric_limits<float>::min();
+    #pragma omp parallel for //reduction(min:out_min_max)
     for (size_t i = 0; i < depth; ++i) {
       Eigen::Tensor<qint32, 0, Eigen::RowMajor> min =
           transposed_input.chip<0>(i).minimum();
       Eigen::Tensor<qint32, 0, Eigen::RowMajor> max =
           transposed_input.chip<0>(i).maximum();
-      int32_t min_per_channel = min();
-      int32_t max_per_channel = max();
-      int32_t abs_max =
+      const int32_t min_per_channel = min();
+      const int32_t max_per_channel = max();
+      const int32_t abs_max =
           std::max(std::abs(min_per_channel), std::abs(max_per_channel));
       float scale =
           std::max(std::abs(input_min_data[i]), std::abs(input_max_data[i]));
       ranges[i] = scale * static_cast<float>(abs_max) / static_cast<float>(1L << 31);
       if (min_per_channel < 0) is_non_negative = false;
-    }
 
-    // Obtain ranges of out_min_max after all parallel_for openMP threads have joined. 
-    float out_min_max = std::numeric_limits<float>::min();
+        // thread-local out_min_max. 
+        //if (out_min_max < ranges[i]) out_min_max = ranges[i];
+      } 
+      // All local out_min_max gets min-reduced into one global out_min_max at 
+      // the end of the loop by specifying reduction(min:out_min_max) along with 
+      // omp parallel for.
+    
+
+    // Obtain ranges of out_min_max after all parallel_for openMP threads have joined.     
     for (size_t i = 0; i < depth; ++i) {
       if (out_min_max < ranges[i]) out_min_max = ranges[i];
     }
@@ -99,7 +112,7 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
   float clip_value_max_ = std::numeric_limits<float>::infinity();
   const int kInputTensorIndex = 0;
   const int kInputMinIndex = 1;
-  const int kInputMaxIndexIndex = 2;
+  const int kInputMaxIndex = 2;
   const int kOutputMinIndex = 0;
   const int kOutputMaxIndex = 1;
 };

@@ -86,7 +86,7 @@ class MklRequantizePerChannelOp : public OpKernel {
         float min_max_from_vec = std::max(std::abs(input_min_vec_data[i]),
                                           std::abs(input_max_vec_data[i]));
         scales[i] =
-            factor * (min_max_from_vec / requested_min_max / (float)(1L << 31));
+            factor * (min_max_from_vec / requested_min_max / static_cast<float>(1L << 31));
       }
 
       mkldnn::primitive_attr reorder_attr;
