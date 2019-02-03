@@ -21,7 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/Dominance.h"
-#include "mlir/IR/Instructions.h"
+#include "mlir/IR/Instruction.h"
 #include "llvm/Support/GenericDomTreeConstruction.h"
 using namespace mlir;
 

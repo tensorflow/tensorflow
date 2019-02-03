@@ -28,7 +28,7 @@
 #ifndef MLIR_IR_OPDEFINITION_H
 #define MLIR_IR_OPDEFINITION_H
 
-#include "mlir/IR/Instructions.h"
+#include "mlir/IR/Instruction.h"
 #include <type_traits>
 
 namespace mlir {

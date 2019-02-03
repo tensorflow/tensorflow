@@ -36,7 +36,7 @@
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Function.h"
-#include "mlir/IR/Instructions.h"
+#include "mlir/IR/Instruction.h"
 #include "mlir/IR/Module.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/raw_ostream.h"

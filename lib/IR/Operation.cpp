@@ -17,7 +17,7 @@
 
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Function.h"
-#include "mlir/IR/Instructions.h"
+#include "mlir/IR/Instruction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"

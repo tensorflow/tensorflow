@@ -167,7 +167,7 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
   emitter.emitCanonicalizationPatterns();
   emitter.emitFolders();
 
-  os << "private:\n  friend class ::mlir::OperationInst;\n"
+  os << "private:\n  friend class ::mlir::Instruction;\n"
      << "  explicit " << emitter.op.getCppClassName()
      << "(const OperationInst* state) : Op(state) {}\n};\n";
   emitter.mapOverClassNamespaces(

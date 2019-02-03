@@ -29,8 +29,8 @@
 namespace mlir {
 class Block;
 class Function;
-class OperationInst;
 class Instruction;
+using OperationInst = Instruction;
 class Value;
 
 /// Operands contain a Value.
@@ -175,6 +175,43 @@ private:
   /// TODO: can encode this more efficiently to avoid the space hit of this
   /// through bitpacking shenanigans.
   OperationInst *const owner;
+};
+
+/// This is a helper template used to implement an iterator that contains a
+/// pointer to some object and an index into it.  The iterator moves the
+/// index but keeps the object constant.
+template <typename ConcreteType, typename ObjectType, typename ElementType>
+class IndexedAccessorIterator
+    : public llvm::iterator_facade_base<
+          ConcreteType, std::random_access_iterator_tag, ElementType *,
+          std::ptrdiff_t, ElementType *, ElementType *> {
+public:
+  ptrdiff_t operator-(const IndexedAccessorIterator &rhs) const {
+    assert(object == rhs.object && "incompatible iterators");
+    return index - rhs.index;
+  }
+  bool operator==(const IndexedAccessorIterator &rhs) const {
+    return object == rhs.object && index == rhs.index;
+  }
+  bool operator<(const IndexedAccessorIterator &rhs) const {
+    assert(object == rhs.object && "incompatible iterators");
+    return index < rhs.index;
+  }
+
+  ConcreteType &operator+=(ptrdiff_t offset) {
+    this->index += offset;
+    return static_cast<ConcreteType &>(*this);
+  }
+  ConcreteType &operator-=(ptrdiff_t offset) {
+    this->index -= offset;
+    return static_cast<ConcreteType &>(*this);
+  }
+
+protected:
+  IndexedAccessorIterator(ObjectType *object, unsigned index)
+      : object(object), index(index) {}
+  ObjectType *object;
+  unsigned index;
 };
 
 } // namespace mlir

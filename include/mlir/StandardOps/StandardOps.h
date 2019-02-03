@@ -79,7 +79,7 @@ public:
                                           MLIRContext *context);
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit AllocOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -121,7 +121,7 @@ public:
   bool verify() const;
 
 protected:
-  friend class OperationInst;
+  friend class Instruction;
   explicit CallOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -166,7 +166,7 @@ public:
                                           MLIRContext *context);
 
 protected:
-  friend class OperationInst;
+  friend class Instruction;
   explicit CallIndirectOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -233,7 +233,7 @@ public:
                          MLIRContext *context) const;
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit CmpIOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -265,7 +265,7 @@ public:
                                           MLIRContext *context);
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit DeallocOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -297,7 +297,7 @@ public:
   void print(OpAsmPrinter *p) const;
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit DimOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -459,7 +459,7 @@ public:
   }
 
 protected:
-  friend class OperationInst;
+  friend class Instruction;
   explicit DmaStartOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -511,7 +511,7 @@ public:
                                           MLIRContext *context);
 
 protected:
-  friend class OperationInst;
+  friend class Instruction;
   explicit DmaWaitOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -557,7 +557,7 @@ public:
                          MLIRContext *context) const;
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit ExtractElementOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -603,7 +603,7 @@ public:
                                           MLIRContext *context);
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit LoadOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -634,7 +634,7 @@ public:
   bool verify() const;
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit MemRefCastOp(const OperationInst *state) : CastOp(state) {}
 };
 
@@ -670,7 +670,7 @@ public:
                          MLIRContext *context) const;
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit SelectOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -723,7 +723,7 @@ public:
                                           MLIRContext *context);
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit StoreOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -749,7 +749,7 @@ public:
   bool verify() const;
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit TensorCastOp(const OperationInst *state) : CastOp(state) {}
 };
 

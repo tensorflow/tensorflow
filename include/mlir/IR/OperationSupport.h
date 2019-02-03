@@ -33,7 +33,8 @@
 namespace mlir {
 class Block;
 class Dialect;
-class OperationInst;
+class Instruction;
+using OperationInst = Instruction;
 class OperationState;
 class OpAsmParser;
 class OpAsmParserResult;

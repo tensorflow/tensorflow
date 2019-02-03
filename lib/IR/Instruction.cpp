@@ -15,6 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
+#include "mlir/IR/Instruction.h"
 #include "AttributeListStorage.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -22,7 +23,6 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/InstVisitor.h"
-#include "mlir/IR/Instructions.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
 #include "llvm/ADT/DenseMap.h"
@@ -131,24 +131,161 @@ void detail::OperandStorage::grow(ResizableStorage &resizeUtil,
 // Instruction
 //===----------------------------------------------------------------------===//
 
-// Instructions are deleted through the destroy() member because we don't have
-// a virtual destructor.
+/// Create a new Instruction with the specific fields.
+Instruction *
+Instruction::create(Location location, OperationName name,
+                    ArrayRef<Value *> operands, ArrayRef<Type> resultTypes,
+                    ArrayRef<NamedAttribute> attributes,
+                    ArrayRef<Block *> successors, unsigned numBlockLists,
+                    bool resizableOperandList, MLIRContext *context) {
+  unsigned numSuccessors = successors.size();
+
+  // Input operands are nullptr-separated for each successors in the case of
+  // terminators, the nullptr aren't actually stored.
+  unsigned numOperands = operands.size() - numSuccessors;
+
+  // Compute the byte size for the instruction and the operand storage.
+  auto byteSize = totalSizeToAlloc<InstResult, BlockOperand, unsigned,
+                                   BlockList, detail::OperandStorage>(
+      resultTypes.size(), numSuccessors, numSuccessors, numBlockLists,
+      /*detail::OperandStorage*/ 1);
+  byteSize += llvm::alignTo(detail::OperandStorage::additionalAllocSize(
+                                numOperands, resizableOperandList),
+                            alignof(Instruction));
+  void *rawMem = malloc(byteSize);
+
+  // Create the new Instruction.
+  auto inst = ::new (rawMem)
+      Instruction(location, name, resultTypes.size(), numSuccessors,
+                  numBlockLists, attributes, context);
+
+  assert((numSuccessors == 0 || inst->isTerminator()) &&
+         "unexpected successors in a non-terminator operation");
+
+  // Initialize the block lists.
+  for (unsigned i = 0; i != numBlockLists; ++i)
+    new (&inst->getBlockList(i)) BlockList(inst);
+
+  // Initialize the results and operands.
+  new (&inst->getOperandStorage())
+      detail::OperandStorage(numOperands, resizableOperandList);
+
+  auto instResults = inst->getInstResults();
+  for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
+    new (&instResults[i]) InstResult(resultTypes[i], inst);
+
+  auto InstOperands = inst->getInstOperands();
+
+  // Initialize normal operands.
+  unsigned operandIt = 0, operandE = operands.size();
+  unsigned nextOperand = 0;
+  for (; operandIt != operandE; ++operandIt) {
+    // Null operands are used as sentinals between successor operand lists. If
+    // we encounter one here, break and handle the successor operands lists
+    // separately below.
+    if (!operands[operandIt])
+      break;
+    new (&InstOperands[nextOperand++]) InstOperand(inst, operands[operandIt]);
+  }
+
+  unsigned currentSuccNum = 0;
+  if (operandIt == operandE) {
+    // Verify that the amount of sentinal operands is equivalent to the number
+    // of successors.
+    assert(currentSuccNum == numSuccessors);
+    return inst;
+  }
+
+  assert(inst->isTerminator() &&
+         "Sentinal operand found in non terminator operand list.");
+  auto instBlockOperands = inst->getBlockOperands();
+  unsigned *succOperandCountIt = inst->getTrailingObjects<unsigned>();
+  unsigned *succOperandCountE = succOperandCountIt + numSuccessors;
+  (void)succOperandCountE;
+
+  for (; operandIt != operandE; ++operandIt) {
+    // If we encounter a sentinal branch to the next operand update the count
+    // variable.
+    if (!operands[operandIt]) {
+      assert(currentSuccNum < numSuccessors);
+
+      // After the first iteration update the successor operand count
+      // variable.
+      if (currentSuccNum != 0) {
+        ++succOperandCountIt;
+        assert(succOperandCountIt != succOperandCountE &&
+               "More sentinal operands than successors.");
+      }
+
+      new (&instBlockOperands[currentSuccNum])
+          BlockOperand(inst, successors[currentSuccNum]);
+      *succOperandCountIt = 0;
+      ++currentSuccNum;
+      continue;
+    }
+    new (&InstOperands[nextOperand++]) InstOperand(inst, operands[operandIt]);
+    ++(*succOperandCountIt);
+  }
+
+  // Verify that the amount of sentinal operands is equivalent to the number of
+  // successors.
+  assert(currentSuccNum == numSuccessors);
+
+  return inst;
+}
+
+Instruction::Instruction(Location location, OperationName name,
+                         unsigned numResults, unsigned numSuccessors,
+                         unsigned numBlockLists,
+                         ArrayRef<NamedAttribute> attributes,
+                         MLIRContext *context)
+    : location(location), numResults(numResults), numSuccs(numSuccessors),
+      numBlockLists(numBlockLists), name(name) {
+  assert(llvm::all_of(attributes,
+                      [](const NamedAttribute &attr) { return attr.second; }) &&
+         "Attributes cannot have null entries");
+  this->attrs = AttributeListStorage::get(attributes, context);
+}
+
+// Instructions are deleted through the destroy() member because they are
+// allocated via malloc.
 Instruction::~Instruction() {
   assert(block == nullptr && "instruction destroyed but still in a block");
+
+  // Explicitly run the destructors for the operands and results.
+  getOperandStorage().~OperandStorage();
+
+  for (auto &result : getInstResults())
+    result.~InstResult();
+
+  // Explicitly run the destructors for the successors.
+  if (isTerminator())
+    for (auto &successor : getBlockOperands())
+      successor.~BlockOperand();
+
+  // Explicitly destroy the block list.
+  for (auto &blockList : getBlockLists())
+    blockList.~BlockList();
 }
 
 /// Destroy this instruction or one of its subclasses.
 void Instruction::destroy() {
-  switch (this->getKind()) {
-  case Kind::OperationInst:
-    cast<OperationInst>(this)->destroy();
-    break;
-  }
+  this->~Instruction();
+  free(this);
 }
 
 /// Return the context this operation is associated with.
 MLIRContext *Instruction::getContext() const {
-  return cast<OperationInst>(this)->getContext();
+  // If we have a result or operand type, that is a constant time way to get
+  // to the context.
+  if (getNumResults())
+    return getResult(0)->getType().getContext();
+  if (getNumOperands())
+    return getOperand(0)->getType().getContext();
+
+  // In the very odd case where we have no operands or results, fall back to
+  // doing a find.
+  return getFunction()->getContext();
 }
 
 Instruction *Instruction::getParentInst() const {
@@ -157,14 +294,6 @@ Instruction *Instruction::getParentInst() const {
 
 Function *Instruction::getFunction() const {
   return block ? block->getFunction() : nullptr;
-}
-
-Value *Instruction::getOperand(unsigned idx) {
-  return getInstOperand(idx).get();
-}
-
-const Value *Instruction::getOperand(unsigned idx) const {
-  return getInstOperand(idx).get();
 }
 
 // Value can be used as a dimension id if it is valid as a symbol, or
@@ -201,24 +330,6 @@ bool Value::isValidSymbol() const {
   // Otherwise, the only valid symbol is a function argument.
   auto *arg = dyn_cast<BlockArgument>(this);
   return arg && arg->isFunctionArgument();
-}
-
-void Instruction::setOperand(unsigned idx, Value *value) {
-  getInstOperand(idx).set(value);
-}
-
-unsigned Instruction::getNumOperands() const {
-  switch (getKind()) {
-  case Kind::OperationInst:
-    return cast<OperationInst>(this)->getNumOperands();
-  }
-}
-
-MutableArrayRef<InstOperand> Instruction::getInstOperands() {
-  switch (getKind()) {
-  case Kind::OperationInst:
-    return cast<OperationInst>(this)->getInstOperands();
-  }
 }
 
 /// Emit a note about this instruction, reporting up to any diagnostic
@@ -258,16 +369,35 @@ bool Instruction::isBeforeInBlock(const Instruction *other) const {
   return orderIndex < other->orderIndex;
 }
 
-/// Returns whether the Instruction is a terminator.
-bool Instruction::isTerminator() const {
-  if (auto *op = dyn_cast<OperationInst>(this))
-    return op->isTerminator();
-  return false;
-}
-
 //===----------------------------------------------------------------------===//
 // ilist_traits for Instruction
 //===----------------------------------------------------------------------===//
+
+auto llvm::ilist_detail::SpecificNodeAccess<
+    typename llvm::ilist_detail::compute_node_options<
+        ::mlir::Instruction>::type>::getNodePtr(pointer N) -> node_type * {
+  return NodeAccess::getNodePtr<OptionsT>(N);
+}
+
+auto llvm::ilist_detail::SpecificNodeAccess<
+    typename llvm::ilist_detail::compute_node_options<
+        ::mlir::Instruction>::type>::getNodePtr(const_pointer N)
+    -> const node_type * {
+  return NodeAccess::getNodePtr<OptionsT>(N);
+}
+
+auto llvm::ilist_detail::SpecificNodeAccess<
+    typename llvm::ilist_detail::compute_node_options<
+        ::mlir::Instruction>::type>::getValuePtr(node_type *N) -> pointer {
+  return NodeAccess::getValuePtr<OptionsT>(N);
+}
+
+auto llvm::ilist_detail::SpecificNodeAccess<
+    typename llvm::ilist_detail::compute_node_options<
+        ::mlir::Instruction>::type>::getValuePtr(const node_type *N)
+    -> const_pointer {
+  return NodeAccess::getValuePtr<OptionsT>(N);
+}
 
 void llvm::ilist_traits<::mlir::Instruction>::deleteNode(Instruction *inst) {
   inst->destroy();
@@ -346,211 +476,48 @@ void Instruction::dropAllReferences() {
   for (auto &op : getInstOperands())
     op.drop();
 
-  switch (getKind()) {
-  case Kind::OperationInst: {
-    auto *opInst = cast<OperationInst>(this);
-    if (isTerminator())
-      for (auto &dest : opInst->getBlockOperands())
-        dest.drop();
-    for (auto &blockList : opInst->getBlockLists())
-      for (Block &block : blockList)
-        block.dropAllReferences();
-    break;
-  }
-  }
-}
-
-//===----------------------------------------------------------------------===//
-// OperationInst
-//===----------------------------------------------------------------------===//
-
-/// Create a new OperationInst with the specific fields.
-OperationInst *
-OperationInst::create(Location location, OperationName name,
-                      ArrayRef<Value *> operands, ArrayRef<Type> resultTypes,
-                      ArrayRef<NamedAttribute> attributes,
-                      ArrayRef<Block *> successors, unsigned numBlockLists,
-                      bool resizableOperandList, MLIRContext *context) {
-  unsigned numSuccessors = successors.size();
-
-  // Input operands are nullptr-separated for each successors in the case of
-  // terminators, the nullptr aren't actually stored.
-  unsigned numOperands = operands.size() - numSuccessors;
-
-  // Compute the byte size for the instruction and the operand storage.
-  auto byteSize = totalSizeToAlloc<InstResult, BlockOperand, unsigned,
-                                   BlockList, detail::OperandStorage>(
-      resultTypes.size(), numSuccessors, numSuccessors, numBlockLists,
-      /*detail::OperandStorage*/ 1);
-  byteSize += llvm::alignTo(detail::OperandStorage::additionalAllocSize(
-                                numOperands, resizableOperandList),
-                            alignof(OperationInst));
-  void *rawMem = malloc(byteSize);
-
-  // Initialize the OperationInst part of the instruction.
-  auto inst = ::new (rawMem)
-      OperationInst(location, name, resultTypes.size(), numSuccessors,
-                    numBlockLists, attributes, context);
-
-  assert((numSuccessors == 0 || inst->isTerminator()) &&
-         "unexpected successors in a non-terminator operation");
-
-  // Initialize the block lists.
-  for (unsigned i = 0; i != numBlockLists; ++i)
-    new (&inst->getBlockList(i)) BlockList(inst);
-
-  // Initialize the results and operands.
-  new (&inst->getOperandStorage())
-      detail::OperandStorage(numOperands, resizableOperandList);
-
-  auto instResults = inst->getInstResults();
-  for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
-    new (&instResults[i]) InstResult(resultTypes[i], inst);
-
-  auto InstOperands = inst->getInstOperands();
-
-  // Initialize normal operands.
-  unsigned operandIt = 0, operandE = operands.size();
-  unsigned nextOperand = 0;
-  for (; operandIt != operandE; ++operandIt) {
-    // Null operands are used as sentinals between successor operand lists. If
-    // we encounter one here, break and handle the successor operands lists
-    // separately below.
-    if (!operands[operandIt])
-      break;
-    new (&InstOperands[nextOperand++]) InstOperand(inst, operands[operandIt]);
-  }
-
-  unsigned currentSuccNum = 0;
-  if (operandIt == operandE) {
-    // Verify that the amount of sentinal operands is equivalent to the number
-    // of successors.
-    assert(currentSuccNum == numSuccessors);
-    return inst;
-  }
-
-  assert(inst->isTerminator() &&
-         "Sentinal operand found in non terminator operand list.");
-  auto instBlockOperands = inst->getBlockOperands();
-  unsigned *succOperandCountIt = inst->getTrailingObjects<unsigned>();
-  unsigned *succOperandCountE = succOperandCountIt + numSuccessors;
-  (void)succOperandCountE;
-
-  for (; operandIt != operandE; ++operandIt) {
-    // If we encounter a sentinal branch to the next operand update the count
-    // variable.
-    if (!operands[operandIt]) {
-      assert(currentSuccNum < numSuccessors);
-
-      // After the first iteration update the successor operand count
-      // variable.
-      if (currentSuccNum != 0) {
-        ++succOperandCountIt;
-        assert(succOperandCountIt != succOperandCountE &&
-               "More sentinal operands than successors.");
-      }
-
-      new (&instBlockOperands[currentSuccNum])
-          BlockOperand(inst, successors[currentSuccNum]);
-      *succOperandCountIt = 0;
-      ++currentSuccNum;
-      continue;
-    }
-    new (&InstOperands[nextOperand++]) InstOperand(inst, operands[operandIt]);
-    ++(*succOperandCountIt);
-  }
-
-  // Verify that the amount of sentinal operands is equivalent to the number of
-  // successors.
-  assert(currentSuccNum == numSuccessors);
-
-  return inst;
-}
-
-OperationInst::OperationInst(Location location, OperationName name,
-                             unsigned numResults, unsigned numSuccessors,
-                             unsigned numBlockLists,
-                             ArrayRef<NamedAttribute> attributes,
-                             MLIRContext *context)
-    : Instruction(location), numResults(numResults), numSuccs(numSuccessors),
-      numBlockLists(numBlockLists), name(name) {
-#ifndef NDEBUG
-  for (auto elt : attributes)
-    assert(elt.second != nullptr && "Attributes cannot have null entries");
-#endif
-
-  this->attrs = AttributeListStorage::get(attributes, context);
-}
-
-OperationInst::~OperationInst() {
-  // Explicitly run the destructors for the operands and results.
-  getOperandStorage().~OperandStorage();
-
-  for (auto &result : getInstResults())
-    result.~InstResult();
-
-  // Explicitly run the destructors for the successors.
-  if (isTerminator())
-    for (auto &successor : getBlockOperands())
-      successor.~BlockOperand();
-
-  // Explicitly destroy the block list.
   for (auto &blockList : getBlockLists())
-    blockList.~BlockList();
+    for (Block &block : blockList)
+      block.dropAllReferences();
+
+  if (isTerminator())
+    for (auto &dest : getBlockOperands())
+      dest.drop();
 }
 
 /// Return true if there are no users of any results of this operation.
-bool OperationInst::use_empty() const {
+bool Instruction::use_empty() const {
   for (auto *result : getResults())
     if (!result->use_empty())
       return false;
   return true;
 }
 
-ArrayRef<NamedAttribute> OperationInst::getAttrs() const {
+ArrayRef<NamedAttribute> Instruction::getAttrs() const {
   if (!attrs)
     return {};
   return attrs->getElements();
 }
 
-void OperationInst::destroy() {
-  this->~OperationInst();
-  free(this);
-}
+bool Instruction::isReturn() const { return isa<ReturnOp>(); }
 
-/// Return the context this operation is associated with.
-MLIRContext *OperationInst::getContext() const {
-  // If we have a result or operand type, that is a constant time way to get
-  // to the context.
-  if (getNumResults())
-    return getResult(0)->getType().getContext();
-  if (getNumOperands())
-    return getOperand(0)->getType().getContext();
-
-  // In the very odd case where we have no operands or results, fall back to
-  // doing a find.
-  return getFunction()->getContext();
-}
-
-bool OperationInst::isReturn() const { return isa<ReturnOp>(); }
-
-void OperationInst::setSuccessor(Block *block, unsigned index) {
+void Instruction::setSuccessor(Block *block, unsigned index) {
   assert(index < getNumSuccessors());
   getBlockOperands()[index].set(block);
 }
 
-auto OperationInst::getNonSuccessorOperands() const
+auto Instruction::getNonSuccessorOperands() const
     -> llvm::iterator_range<const_operand_iterator> {
   return {const_operand_iterator(this, 0),
           const_operand_iterator(this, getSuccessorOperandIndex(0))};
 }
-auto OperationInst::getNonSuccessorOperands()
+auto Instruction::getNonSuccessorOperands()
     -> llvm::iterator_range<operand_iterator> {
   return {operand_iterator(this, 0),
           operand_iterator(this, getSuccessorOperandIndex(0))};
 }
 
-auto OperationInst::getSuccessorOperands(unsigned index) const
+auto Instruction::getSuccessorOperands(unsigned index) const
     -> llvm::iterator_range<const_operand_iterator> {
   assert(isTerminator() && "Only terminators have successors.");
   unsigned succOperandIndex = getSuccessorOperandIndex(index);
@@ -558,7 +525,7 @@ auto OperationInst::getSuccessorOperands(unsigned index) const
           const_operand_iterator(this, succOperandIndex +
                                            getNumSuccessorOperands(index))};
 }
-auto OperationInst::getSuccessorOperands(unsigned index)
+auto Instruction::getSuccessorOperands(unsigned index)
     -> llvm::iterator_range<operand_iterator> {
   assert(isTerminator() && "Only terminators have successors.");
   unsigned succOperandIndex = getSuccessorOperandIndex(index);
@@ -569,7 +536,7 @@ auto OperationInst::getSuccessorOperands(unsigned index)
 
 /// If an attribute exists with the specified name, change it to the new
 /// value.  Otherwise, add a new attribute with the specified name/value.
-void OperationInst::setAttr(Identifier name, Attribute value) {
+void Instruction::setAttr(Identifier name, Attribute value) {
   assert(value && "attributes may never be null");
   auto origAttrs = getAttrs();
 
@@ -591,7 +558,7 @@ void OperationInst::setAttr(Identifier name, Attribute value) {
 
 /// Remove the attribute with the specified name if it exists.  The return
 /// value indicates whether the attribute was present or not.
-auto OperationInst::removeAttr(Identifier name) -> RemoveResult {
+auto Instruction::removeAttr(Identifier name) -> RemoveResult {
   auto origAttrs = getAttrs();
   for (unsigned i = 0, e = origAttrs.size(); i != e; ++i) {
     if (origAttrs[i].first == name) {
@@ -609,8 +576,8 @@ auto OperationInst::removeAttr(Identifier name) -> RemoveResult {
 /// Attempt to constant fold this operation with the specified constant
 /// operand values.  If successful, this returns false and fills in the
 /// results vector.  If not, this returns true and results is unspecified.
-bool OperationInst::constantFold(ArrayRef<Attribute> operands,
-                                 SmallVectorImpl<Attribute> &results) const {
+bool Instruction::constantFold(ArrayRef<Attribute> operands,
+                               SmallVectorImpl<Attribute> &results) const {
   if (auto *abstractOp = getAbstractOperation()) {
     // If we have a registered operation definition matching this one, use it to
     // try to constant fold the operation.
@@ -633,7 +600,7 @@ bool OperationInst::constantFold(ArrayRef<Attribute> operands,
 }
 
 /// Attempt to fold this operation using the Op's registered foldHook.
-bool OperationInst::fold(SmallVectorImpl<Value *> &results) {
+bool Instruction::fold(SmallVectorImpl<Value *> &results) {
   if (auto *abstractOp = getAbstractOperation()) {
     // If we have a registered operation definition matching this one, use it to
     // try to constant fold the operation.
@@ -645,7 +612,7 @@ bool OperationInst::fold(SmallVectorImpl<Value *> &results) {
 
 /// Emit an error with the op name prefixed, like "'dim' op " which is
 /// convenient for verifiers.
-bool OperationInst::emitOpError(const Twine &message) const {
+bool Instruction::emitOpError(const Twine &message) const {
   return emitError(Twine('\'') + getName().getStringRef() + "' op " + message);
 }
 
@@ -663,57 +630,55 @@ Instruction *Instruction::clone(BlockAndValueMapping &mapper,
   SmallVector<Value *, 8> operands;
   SmallVector<Block *, 2> successors;
 
-  auto *opInst = cast<OperationInst>(this);
-  operands.reserve(getNumOperands() + opInst->getNumSuccessors());
+  operands.reserve(getNumOperands() + getNumSuccessors());
 
-  if (!opInst->isTerminator()) {
+  if (!isTerminator()) {
     // Non-terminators just add all the operands.
     for (auto *opValue : getOperands())
       operands.push_back(mapper.lookupOrDefault(const_cast<Value *>(opValue)));
   } else {
     // We add the operands separated by nullptr's for each successor.
-    unsigned firstSuccOperand = opInst->getNumSuccessors()
-                                    ? opInst->getSuccessorOperandIndex(0)
-                                    : opInst->getNumOperands();
-    auto InstOperands = opInst->getInstOperands();
+    unsigned firstSuccOperand =
+        getNumSuccessors() ? getSuccessorOperandIndex(0) : getNumOperands();
+    auto InstOperands = getInstOperands();
 
     unsigned i = 0;
     for (; i != firstSuccOperand; ++i)
       operands.push_back(
           mapper.lookupOrDefault(const_cast<Value *>(InstOperands[i].get())));
 
-    successors.reserve(opInst->getNumSuccessors());
-    for (unsigned succ = 0, e = opInst->getNumSuccessors(); succ != e; ++succ) {
-      successors.push_back(mapper.lookupOrDefault(
-          const_cast<Block *>(opInst->getSuccessor(succ))));
+    successors.reserve(getNumSuccessors());
+    for (unsigned succ = 0, e = getNumSuccessors(); succ != e; ++succ) {
+      successors.push_back(
+          mapper.lookupOrDefault(const_cast<Block *>(getSuccessor(succ))));
 
       // Add sentinel to delineate successor operands.
       operands.push_back(nullptr);
 
       // Remap the successors operands.
-      for (auto *operand : opInst->getSuccessorOperands(succ))
+      for (auto *operand : getSuccessorOperands(succ))
         operands.push_back(
             mapper.lookupOrDefault(const_cast<Value *>(operand)));
     }
   }
 
   SmallVector<Type, 8> resultTypes;
-  resultTypes.reserve(opInst->getNumResults());
-  for (auto *result : opInst->getResults())
+  resultTypes.reserve(getNumResults());
+  for (auto *result : getResults())
     resultTypes.push_back(result->getType());
 
-  unsigned numBlockLists = opInst->getNumBlockLists();
-  auto *newOp = OperationInst::create(
-      getLoc(), opInst->getName(), operands, resultTypes, opInst->getAttrs(),
-      successors, numBlockLists, opInst->hasResizableOperandsList(), context);
+  unsigned numBlockLists = getNumBlockLists();
+  auto *newOp = Instruction::create(getLoc(), getName(), operands, resultTypes,
+                                    getAttrs(), successors, numBlockLists,
+                                    hasResizableOperandsList(), context);
 
   // Clone the block lists.
   for (unsigned i = 0; i != numBlockLists; ++i)
-    opInst->getBlockList(i).cloneInto(&newOp->getBlockList(i), mapper, context);
+    getBlockList(i).cloneInto(&newOp->getBlockList(i), mapper, context);
 
   // Remember the mapping of any results.
-  for (unsigned i = 0, e = opInst->getNumResults(); i != e; ++i)
-    mapper.map(opInst->getResult(i), newOp->getResult(i));
+  for (unsigned i = 0, e = getNumResults(); i != e; ++i)
+    mapper.map(getResult(i), newOp->getResult(i));
   return newOp;
 }
 

@@ -31,7 +31,7 @@ class FuncBuilder;
 class Instruction;
 class Location;
 class MemRefType;
-class OperationInst;
+using OperationInst = Instruction;
 class Value;
 class VectorType;
 

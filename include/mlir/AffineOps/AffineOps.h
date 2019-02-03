@@ -189,7 +189,7 @@ public:
   void walkOpsPostOrder(std::function<void(OperationInst *)> callback);
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit AffineForOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -299,7 +299,7 @@ public:
   void print(OpAsmPrinter *p) const;
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit AffineIfOp(const OperationInst *state) : Op(state) {}
 };
 

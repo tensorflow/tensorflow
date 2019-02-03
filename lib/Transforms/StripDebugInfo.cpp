@@ -16,6 +16,7 @@
 // =============================================================================
 
 #include "mlir/IR/Function.h"
+#include "mlir/IR/Instruction.h"
 #include "mlir/Pass.h"
 #include "mlir/Transforms/Passes.h"
 

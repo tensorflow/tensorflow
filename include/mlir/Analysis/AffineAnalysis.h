@@ -41,7 +41,7 @@ class Instruction;
 class IntegerSet;
 class Location;
 class MLIRContext;
-class OperationInst;
+using OperationInst = Instruction;
 template <typename OpType> class OpPointer;
 class Value;
 

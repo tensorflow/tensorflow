@@ -22,12 +22,59 @@
 #ifndef MLIR_IR_BLOCK_H
 #define MLIR_IR_BLOCK_H
 
-#include "mlir/IR/Instruction.h"
+#include "mlir/IR/Value.h"
 #include "llvm/ADT/PointerUnion.h"
+#include "llvm/ADT/ilist.h"
+#include "llvm/ADT/ilist_node.h"
+
+//===----------------------------------------------------------------------===//
+// ilist_traits for Instruction
+//===----------------------------------------------------------------------===//
+
+namespace llvm {
+namespace ilist_detail {
+// Explicitly define the node access for the instruction list so that we can
+// break the dependence on the Instruction class in this header. This allows for
+// instructions to have trailing BlockLists without a circular include
+// dependence.
+template <>
+struct SpecificNodeAccess<
+    typename compute_node_options<::mlir::Instruction>::type> : NodeAccess {
+protected:
+  using OptionsT = typename compute_node_options<mlir::Instruction>::type;
+  using pointer = typename OptionsT::pointer;
+  using const_pointer = typename OptionsT::const_pointer;
+  using node_type = ilist_node_impl<OptionsT>;
+
+  static node_type *getNodePtr(pointer N);
+  static const node_type *getNodePtr(const_pointer N);
+
+  static pointer getValuePtr(node_type *N);
+  static const_pointer getValuePtr(const node_type *N);
+};
+} // end namespace ilist_detail
+
+template <> struct ilist_traits<::mlir::Instruction> {
+  using Instruction = ::mlir::Instruction;
+  using inst_iterator = simple_ilist<Instruction>::iterator;
+
+  static void deleteNode(Instruction *inst);
+  void addNodeToList(Instruction *inst);
+  void removeNodeFromList(Instruction *inst);
+  void transferNodesFromList(ilist_traits<Instruction> &otherList,
+                             inst_iterator first, inst_iterator last);
+
+private:
+  mlir::Block *getContainingBlock();
+};
+} // end namespace llvm
 
 namespace mlir {
-class BlockList;
 class BlockAndValueMapping;
+class BlockList;
+class Function;
+
+using BlockOperand = IROperandImpl<Block, Instruction>;
 
 template <typename BlockType> class PredecessorIterator;
 template <typename BlockType> class SuccessorIterator;
@@ -144,15 +191,7 @@ public:
   /// Returns the instructions's position in this block or -1 if the instruction
   /// is not present.
   /// TODO: This is needlessly inefficient, and should not be API on Block.
-  int64_t findInstPositionInBlock(const Instruction &inst) const {
-    int64_t j = 0;
-    for (const auto &s : instructions) {
-      if (&s == &inst)
-        return j;
-      j++;
-    }
-    return -1;
-  }
+  int64_t findInstPositionInBlock(const Instruction &inst) const;
 
   /// Returns 'inst' if 'inst' lies in this block, or otherwise finds the
   /// ancestor instruction of 'inst' that lies in this block. Returns nullptr if

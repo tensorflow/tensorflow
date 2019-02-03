@@ -125,7 +125,7 @@ public:
   bool verify() const;
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit VectorTransferReadOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -192,7 +192,7 @@ public:
   bool verify() const;
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit VectorTransferWriteOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -216,7 +216,7 @@ public:
   bool verify() const;
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit VectorTypeCastOp(const OperationInst *state) : Op(state) {}
 };
 

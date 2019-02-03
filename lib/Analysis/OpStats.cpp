@@ -16,7 +16,7 @@
 // =============================================================================
 
 #include "mlir/IR/InstVisitor.h"
-#include "mlir/IR/Instructions.h"
+#include "mlir/IR/Instruction.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Pass.h"

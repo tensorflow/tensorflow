@@ -36,8 +36,9 @@ namespace mlir {
 class AffineForOp;
 template <typename T> class ConstOpPointer;
 class FlatAffineConstraints;
+class Instruction;
 class MemRefAccess;
-class OperationInst;
+using OperationInst = Instruction;
 template <typename T> class OpPointer;
 class Instruction;
 class Value;

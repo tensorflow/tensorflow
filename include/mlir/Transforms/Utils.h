@@ -36,7 +36,6 @@ class AffineForOp;
 class FuncBuilder;
 class Location;
 class Module;
-class OperationInst;
 
 class Function;
 

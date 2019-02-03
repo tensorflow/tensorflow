@@ -23,7 +23,7 @@
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/Instructions.h"
+#include "mlir/IR/Instruction.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
 

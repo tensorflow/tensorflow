@@ -26,7 +26,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/InstVisitor.h"
-#include "mlir/IR/Instructions.h"
+#include "mlir/IR/Instruction.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
@@ -1043,7 +1043,6 @@ public:
 
   // Methods to print instructions.
   void print(const Instruction *inst);
-  void print(const OperationInst *inst);
   void print(const Block *block, bool printBlockArgs = true);
 
   void printOperation(const OperationInst *op);
@@ -1365,13 +1364,6 @@ void FunctionPrinter::print(const Block *block, bool printBlockArgs) {
 }
 
 void FunctionPrinter::print(const Instruction *inst) {
-  switch (inst->getKind()) {
-  case Instruction::Kind::OperationInst:
-    return print(cast<OperationInst>(inst));
-  }
-}
-
-void FunctionPrinter::print(const OperationInst *inst) {
   os.indent(currentIndent);
   printOperation(inst);
   printTrailingLocation(inst->getLoc());

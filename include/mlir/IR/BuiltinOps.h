@@ -81,7 +81,7 @@ public:
                                           MLIRContext *context);
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit AffineApplyOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -118,7 +118,7 @@ public:
   void eraseOperand(unsigned index);
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit BranchOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -257,7 +257,7 @@ private:
     return getTrueDestOperandIndex() + getNumTrueOperands();
   }
 
-  friend class OperationInst;
+  friend class Instruction;
   explicit CondBranchOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -286,7 +286,7 @@ public:
                          MLIRContext *context) const;
 
 protected:
-  friend class OperationInst;
+  friend class Instruction;
   explicit ConstantOp(const OperationInst *state) : Op(state) {}
 };
 
@@ -308,7 +308,7 @@ public:
   static bool isClassFor(const OperationInst *op);
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit ConstantFloatOp(const OperationInst *state) : ConstantOp(state) {}
 };
 
@@ -335,7 +335,7 @@ public:
   static bool isClassFor(const OperationInst *op);
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit ConstantIntOp(const OperationInst *state) : ConstantOp(state) {}
 };
 
@@ -356,7 +356,7 @@ public:
   static bool isClassFor(const OperationInst *op);
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit ConstantIndexOp(const OperationInst *state) : ConstantOp(state) {}
 };
 
@@ -383,7 +383,7 @@ public:
   bool verify() const;
 
 private:
-  friend class OperationInst;
+  friend class Instruction;
   explicit ReturnOp(const OperationInst *state) : Op(state) {}
 };
 
