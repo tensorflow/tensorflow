@@ -228,7 +228,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
              Register_RESIZE_NEAREST_NEIGHBOR());
   AddBuiltin(BuiltinOperator_SKIP_GRAM, Register_SKIP_GRAM());
   AddBuiltin(BuiltinOperator_SPACE_TO_DEPTH, Register_SPACE_TO_DEPTH());
-  AddBuiltin(BuiltinOperator_GATHER, Register_GATHER());
+  AddBuiltin(BuiltinOperator_GATHER, Register_GATHER(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE());
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN());
   AddBuiltin(BuiltinOperator_DIV, Register_DIV());
