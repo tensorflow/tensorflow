@@ -23,7 +23,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops.variable_scope import variable_scope
 from tensorflow.python.summary.summary import tensor_summary
 from tensorflow.python.util import tf_contextlib
-from tensorflow.contrib.compiler.jit import experimental_jit_scope
 
 def ipu_compile_summary(name, op, collections=None):
   """Create an IPU compiler summary operation.
@@ -52,11 +51,27 @@ def ipu_compile_summary(name, op, collections=None):
 
   return t_summary
 
+
+@tf_contextlib.contextmanager
+def ipu_jit_scope(ipu_scope):
+  scope = "jit_scope_ipu_" + str(ipu_scope)
+  attrs = {
+    "_XlaCompile": attr_value_pb2.AttrValue(b=True),
+    "_XlaSeparateCompiledGradients": attr_value_pb2.AttrValue(b=False),
+    "_XlaScope": attr_value_pb2.AttrValue(s=scope.encode())
+  }
+
+  # pylint: disable=protected-access
+  with ops.get_default_graph()._attr_scope(attrs):
+    yield
+  # pylint: enable=protected-access
+
+
 @tf_contextlib.contextmanager
 def ipu_scope(device):
   with variable_scope('', use_resource=True):
     with ops.device(device):
-      with experimental_jit_scope() as scope:
+      with ipu_jit_scope(0) as scope:
         yield scope
 
 @tf_contextlib.contextmanager

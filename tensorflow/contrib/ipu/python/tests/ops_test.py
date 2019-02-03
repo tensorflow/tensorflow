@@ -14,6 +14,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope
@@ -227,6 +228,41 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
       e = sess.run(events)
       self.assertEqual(len(e), 2) # compile begin/end, no load/execute
+
+
+  def testMultiScopeTest(self):
+    with ops.device('cpu'):
+      x = array_ops.placeholder(np.float32, [2, 2])
+      y = array_ops.placeholder(np.float32, [2, 2])
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with ipu.ops.ipu_scope('/device:IPU:0'):
+      z = math_ops.matmul(x, y)
+    with ipu.ops.ipu_scope('/device:IPU:0'):
+      z2 = math_ops.matmul(x, z)
+
+    cfg = ipu.utils.create_ipu_config(profiling=True)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+      sess.run(report)
+      result = sess.run(z2, {x: np.ones([2, 2]),  y: np.ones([2, 2])})
+
+      self.assertAllEqual(result, [[4, 4], [4, 4]])
+
+      rep = sess.run(report)
+      evts = ipu.utils.extract_all_types_from_event_trace(rep)
+
+      num_compiles = 0
+      num_executions = 0
+      for e in evts:
+        if e == IpuTraceEvent.COMPILE_END:
+          num_compiles += 1
+        if e == IpuTraceEvent.EXECUTE:
+          num_executions += 1
+
+      self.assertEqual(num_compiles, 1)
+      self.assertEqual(num_executions, 1)
+
 
 if __name__ == "__main__":
     googletest.main()

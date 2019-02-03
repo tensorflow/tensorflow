@@ -213,6 +213,5 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
 
       self.assertEqual(n_inter_ipu_copies, 2)
 
-
 if __name__ == "__main__":
     googletest.main()
