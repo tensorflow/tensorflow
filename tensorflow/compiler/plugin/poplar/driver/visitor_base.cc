@@ -437,11 +437,13 @@ Status BaseVisitor::HandleInfeed(HloInstruction* inst) {
                         AddTensor(graph, std::make_pair(infeed, i), shape,
                                   resources_, tensor_map));
 
-    auto fifo =
-        graph.addHostToDeviceFIFO(GetInfeedCopyHandle(infeed->name(), i),
-                                  out.elementType(), out.numElements());
+    if (!UseSyntheticData()) {
+      auto fifo =
+          graph.addHostToDeviceFIFO(GetInfeedCopyHandle(infeed->name(), i),
+                                    out.elementType(), out.numElements());
 
-    seq.add(poplar::program::Copy(fifo, out, false));
+      seq.add(poplar::program::Copy(fifo, out, false));
+    }
 
     TF_CHECK_OK(AddOutputTensor(tensor_map, infeed, i, out));
   }
