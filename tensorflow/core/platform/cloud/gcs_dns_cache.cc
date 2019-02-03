@@ -24,6 +24,11 @@ limitations under the License.
 #endif
 #include <sys/types.h>
 
+#if defined(__FreeBSD__)
+#include <sys/socket.h>
+#include <netinet/in.h>
+#endif
+
 namespace tensorflow {
 
 namespace {

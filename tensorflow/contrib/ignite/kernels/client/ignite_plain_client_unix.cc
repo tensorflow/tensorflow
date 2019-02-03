@@ -18,6 +18,9 @@ limitations under the License.
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/socket.h>
+#if defined(__FreeBSD__)
+#include <netinet/in.h>
+#endif #endif
 #include <unistd.h>
 
 #include <iostream>
