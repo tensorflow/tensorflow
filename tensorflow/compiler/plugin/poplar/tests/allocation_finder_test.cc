@@ -2453,6 +2453,158 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f3
   EXPECT_EQ(t.backward_path.size(), 0);
 }
 
+TEST_F(AllocationFinderTest, FindInfeedAllocation) {
+  // Check that allocation finder works with infeed non-tuple.
+  std::string hlo = R"(
+HloModule top
+
+%Sum-reduction.7 (x.8: f32[], y.9: f32[]) -> f32[] {
+  %x.8 = f32[] parameter(0)
+  %y.9 = f32[] parameter(1)
+  ROOT %add.10 = f32[] add(f32[] %x.8, f32[] %y.9)
+}
+
+%_body (arg_tuple.0: (s32[], f32[], f32[1,1,2,2])) -> (s32[], f32[], f32[1,1,2,2]) {
+  %arg_tuple.0 = (s32[], f32[], f32[1,1,2,2]{3,2,1,0}) parameter(0)
+  %get-tuple-element.3 = s32[] get-tuple-element((s32[], f32[], f32[1,1,2,2]{3,2,1,0}) %arg_tuple.0), index=0
+  %get-tuple-element.4 = f32[1,1,2,2]{3,2,1,0} get-tuple-element((s32[], f32[], f32[1,1,2,2]{3,2,1,0}) %arg_tuple.0), index=2
+  %constant.6 = f32[] constant(0)
+  %after-all = token[] after-all()
+  %infeed = ((f32[2,4,4,2]{3,2,1,0}), token[]) infeed(token[] %after-all), infeed_config="140121807314576"
+  %get-tuple-element.5 = (f32[2,4,4,2]{3,2,1,0}) get-tuple-element(((f32[2,4,4,2]{3,2,1,0}), token[]) %infeed), index=0
+  %get-tuple-element.6 = f32[2,4,4,2]{3,2,1,0} get-tuple-element((f32[2,4,4,2]{3,2,1,0}) %get-tuple-element.5), index=0
+  %convolution = f32[2,4,4,2]{3,2,1,0} convolution(f32[2,4,4,2]{3,2,1,0} %get-tuple-element.6, f32[1,1,2,2]{3,2,1,0} %get-tuple-element.4), window={size=1x1}, dim_labels=b01f_01io->b01f
+  %reduce = f32[] reduce(f32[2,4,4,2]{3,2,1,0} %convolution, f32[] %constant.6), dimensions={0,1,2,3}, to_apply=%Sum-reduction.7
+  ROOT %tuple.1 = (s32[], f32[], f32[1,1,2,2]{3,2,1,0}) tuple(s32[] %get-tuple-element.3, f32[] %reduce, f32[1,1,2,2]{3,2,1,0} %get-tuple-element.4)
+}
+
+%__repeat (repeat_count: s32[], input_tuple: (s32[], f32[], f32[1,1,2,2])) -> (s32[], f32[], f32[1,1,2,2]) {
+  %repeat_count = s32[] parameter(0)
+  %input_tuple = (s32[], f32[], f32[1,1,2,2]{3,2,1,0}) parameter(1)
+  ROOT %call = (s32[], f32[], f32[1,1,2,2]{3,2,1,0}) call((s32[], f32[], f32[1,1,2,2]{3,2,1,0}) %input_tuple), to_apply=%_body
+}
+
+ENTRY %top (arg0.1: f32[1,1,2,2]) -> f32[] {
+  %constant.7 = s32[] constant(100)
+  %constant.5 = f32[] constant(0)
+  %arg0.1 = f32[1,1,2,2]{3,2,1,0} parameter(0)
+  %tuple.6.clone = (s32[], f32[], f32[1,1,2,2]{3,2,1,0}) tuple(s32[] %constant.7, f32[] %constant.5, f32[1,1,2,2]{3,2,1,0} %arg0.1)
+  %call.1 = (s32[], f32[], f32[1,1,2,2]{3,2,1,0}) call(s32[] %constant.7, (s32[], f32[], f32[1,1,2,2]{3,2,1,0}) %tuple.6.clone), to_apply=%__repeat
+  ROOT %get-tuple-element.45 = f32[] get-tuple-element((s32[], f32[], f32[1,1,2,2]{3,2,1,0}) %call.1), index=1
+}
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  const auto* root = module0->entry_computation()->root_instruction();
+  const auto* repeat_call = root->operand(0);
+  const auto* ip_weights = repeat_call->operand(1)->operand(2);
+  const auto* repeat_body = GetRepeatBody(repeat_call);
+  const auto* repeat_root = repeat_body->root_instruction();
+  const auto* reduce = repeat_root->operand(1);
+  const auto* convolution = reduce->operand(0);
+  const auto* conv_input = convolution->operand(0);
+  const auto* conv_weights = convolution->operand(1);
+  const auto* infeed = conv_input->operand(0)->operand(0);
+  const auto* repeat_tuple = conv_weights->operand(0);
+
+  CompilerAnnotations annotations(module0);
+
+  AllocationFinder finder(annotations);
+  EXPECT_TRUE(finder.Run(module0).ValueOrDie());
+
+  // Will have both of the convolution parameters
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 3);
+
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(infeed, 0));
+  EXPECT_EQ(t.tgt, convolution);
+  EXPECT_EQ(t.input_index, 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip_weights, 0));
+  EXPECT_EQ(t.tgt, convolution);
+  EXPECT_EQ(t.input_index, 1);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(repeat_tuple, 2));
+  EXPECT_EQ(t.tgt, convolution);
+  EXPECT_EQ(t.input_index, 1);
+}
+
+TEST_F(AllocationFinderTest, FindInfeedAllocationTuple) {
+  // Check that allocation finder works with infeed tuple.
+  std::string hlo = R"(
+HloModule top
+
+%Sum-reduction.6 (x.7: f32[], y.8: f32[]) -> f32[] {
+  %x.7 = f32[] parameter(0)
+  %y.8 = f32[] parameter(1)
+  ROOT %add.9 = f32[] add(f32[] %x.7, f32[] %y.8)
+}
+
+%_body (arg_tuple.0: (s32[], f32[])) -> (s32[], f32[]) {
+  %arg_tuple.0 = (s32[], f32[]) parameter(0)
+  %get-tuple-element.2 = s32[] get-tuple-element((s32[], f32[]) %arg_tuple.0), index=0
+  %constant.5 = f32[] constant(0)
+  %after-all = token[] after-all()
+  %infeed = ((f32[2,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}), token[]) infeed(token[] %after-all), infeed_config="140227418928528"
+  %get-tuple-element.3 = (f32[2,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) get-tuple-element(((f32[2,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}), token[]) %infeed), index=0
+  %get-tuple-element.4 = f32[2,4,4,2]{3,2,1,0} get-tuple-element((f32[2,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %get-tuple-element.3), index=0
+  %get-tuple-element.5 = f32[1,1,2,2]{3,2,1,0} get-tuple-element((f32[2,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %get-tuple-element.3), index=1
+  %convolution = f32[2,4,4,2]{3,2,1,0} convolution(f32[2,4,4,2]{3,2,1,0} %get-tuple-element.4, f32[1,1,2,2]{3,2,1,0} %get-tuple-element.5), window={size=1x1}, dim_labels=b01f_01io->b01f
+  %reduce = f32[] reduce(f32[2,4,4,2]{3,2,1,0} %convolution, f32[] %constant.5), dimensions={0,1,2,3}, to_apply=%Sum-reduction.6
+  ROOT %tuple.1 = (s32[], f32[]) tuple(s32[] %get-tuple-element.2, f32[] %reduce)
+}
+
+%__repeat (repeat_count: s32[], input_tuple: (s32[], f32[])) -> (s32[], f32[]) {
+  %repeat_count = s32[] parameter(0)
+  %input_tuple = (s32[], f32[]) parameter(1)
+  ROOT %call = (s32[], f32[]) call((s32[], f32[]) %input_tuple), to_apply=%_body
+}
+
+ENTRY %top () -> f32[] {
+  %constant.7 = s32[] constant(100)
+  %constant.4 = f32[] constant(0)
+  %tuple.5.clone = (s32[], f32[]) tuple(s32[] %constant.7, f32[] %constant.4)
+  %call.1 = (s32[], f32[]) call(s32[] %constant.7, (s32[], f32[]) %tuple.5.clone), to_apply=%__repeat
+  ROOT %get-tuple-element.41 = f32[] get-tuple-element((s32[], f32[]) %call.1), index=1
+}
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  const auto* root = module0->entry_computation()->root_instruction();
+  const auto* repeat_call = root->operand(0);
+  const auto* repeat_body = GetRepeatBody(repeat_call);
+  const auto* repeat_root = repeat_body->root_instruction();
+  const auto* reduce = repeat_root->operand(1);
+  const auto* convolution = reduce->operand(0);
+  const auto* conv_input = convolution->operand(0);
+  const auto* infeed = conv_input->operand(0)->operand(0);
+
+  CompilerAnnotations annotations(module0);
+
+  AllocationFinder finder(annotations);
+  EXPECT_TRUE(finder.Run(module0).ValueOrDie());
+
+  // Will have both of the convolution parameters
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
+
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(infeed, 0));
+  EXPECT_EQ(t.tgt, convolution);
+  EXPECT_EQ(t.input_index, 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(infeed, 1));
+  EXPECT_EQ(t.tgt, convolution);
+  EXPECT_EQ(t.input_index, 1);
+}
+
 // TODO:
 // - can forward path traverse TUPLEs
 // - can forward path traverse in-place ops

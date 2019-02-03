@@ -19,6 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
 #include "tensorflow/core/lib/core/errors.h"
@@ -83,6 +85,15 @@ class FindAllocatingInstructions : public DfsHloVisitorWithDefault {
 
   Status HandleParameter(HloInstruction* inst) override {
     auto shapes = FlattenedXlaShape(inst->shape());
+    for (unsigned int i = 0; i < shapes.size(); i++) {
+      allocating_instructions.push_back(std::make_pair(inst, i));
+    }
+    return Status::OK();
+  }
+
+  Status HandleInfeed(HloInstruction* inst) override {
+    HloInfeedInstruction* infeed = Cast<HloInfeedInstruction>(inst);
+    auto shapes = FlattenedXlaShape(infeed->infeed_shape());
     for (unsigned int i = 0; i < shapes.size(); i++) {
       allocating_instructions.push_back(std::make_pair(inst, i));
     }
