@@ -341,16 +341,34 @@ class ConstantAttr<Attr attribute, string val> : AttrConstraint<
 class ConstF32Attr<string val> : ConstantAttr<F32Attr, val>;
 
 //===----------------------------------------------------------------------===//
-// Op Properties
+// Op Traits
 //===----------------------------------------------------------------------===//
 
-class OpProperty;
+// OpTrait represents a trait regarding an op. It corresponds to the MLIR C++
+// OpTrait mechanism. The purpose to wrap around C++ symbol string with this
+// class is to make traits specified for ops in TableGen less alien and more
+// integrated.
+class OpTrait<string prop> {
+  string trait = prop;
+}
 
-//
-// Note: These are hard coded into mlir-tblgen.
-//
-def Commutative   : OpProperty;   // X op Y == Y op X
-def NoSideEffect  : OpProperty;   // op has no side effect
+// Note: Ideally, we should be able to automatically deduce most of these traits
+// from other bits of op definitions, especially those regarding the number of
+// operands and results.
+class AtLeastNOperands<int c> : OpTrait<"AtLeastNOperands<" # c # ">::Impl">;
+
+// op supports operand broadcast behavior
+def Broadcastable    : OpTrait<"BroadcastableTwoOperandsOneResult">;
+// X op Y == Y op X
+def Commutative      : OpTrait<"IsCommutative">;
+// op has no side effect
+def NoSideEffect     : OpTrait<"HasNoSideEffect">;
+// op has the same operand and result type
+def SameValueType    : OpTrait<"SameOperandsAndResultType">;
+// op is a terminator
+def Terminator       : OpTrait<"IsTerminator">;
+// op has an unknown number of operands
+def VariadicOperands : OpTrait<"VariadicOperands">;
 
 //===----------------------------------------------------------------------===//
 // Ops
@@ -363,7 +381,7 @@ def ins;
 def outs;
 
 // Base class for all ops.
-class Op<string mnemonic, list<OpProperty> props = []> {
+class Op<string mnemonic, list<OpTrait> props = []> {
   // The mnemonic of the op.
   string opName = mnemonic;
 
@@ -425,8 +443,10 @@ class Op<string mnemonic, list<OpProperty> props = []> {
   // Whether this op has a folder.
   bit hasFolder = 0b0;
 
-  // Op properties.
-  list<OpProperty> properties = props;
+  // Op traits.
+  list<string> traits = !foldl(
+      // Collect all OpTrait's internal strings into a list
+      []<string>, props, prev, cur, !listconcat(prev, [cur.trait]));
 }
 
 // The arguments of an op.
@@ -437,13 +457,6 @@ class Arguments<dag args> {
 // The results of an op.
 class Results<dag rets> {
   dag results = rets;
-}
-
-// The traits of an op.
-// Traits are defined in C++ and need to be included for the generated
-// op definitions.
-class Traits<list<string> Traits> {
-  list<string> traits = Traits;
 }
 
 //===----------------------------------------------------------------------===//

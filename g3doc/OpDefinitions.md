@@ -15,7 +15,7 @@ and unclear, and op verification is:
 1.  worst case: no verification functions.
 
 The fix is to support op descriptions, which (in one central place per-dialect)
-contain everything you need to know about the op, its invariants, properties,
+contain everything you need to know about the op, its invariants, traits,
 textual formatting, etc. This description is also used to generate helper
 functions and classes to allow analysis/builder/verification/parsing/printing.
 
@@ -23,7 +23,7 @@ functions and classes to allow analysis/builder/verification/parsing/printing.
 
 The op description should as declarative as possible to allow a wide range of
 tools to work with them and query methods generated from them. In particular
-this means specifying properties, constraints and shape inference information in
+this means specifying traits, constraints and shape inference information in
 a way that is easily analyzable (e.g., avoid opaque calls to C++ functions where
 possible).
 
@@ -55,10 +55,8 @@ requirements that were desirable:
         reference implementation defined using, for example, EDSC.
     *   Dialects are under full control of the dialect owner and normally live
         with the framework of the dialect.
-*   The op's properties (e.g., commutative) are modelled along with the op in
+*   The op's traits (e.g., commutative) are modelled along with the op in
     the registry.
-    *   The set of properties will be fixed and geared towards
-        optimization/analysis passes (e.g., `HasSideEffects`).
 *   The op's operand/return type constraints are modelled along with the op in
     the registry (see [Type constraints](#type-constraints) discussion below),
     this allows (e.g.) optimized concise syntax in textual dumps.
@@ -90,10 +88,9 @@ intended to be a fully contained example, in practice one would create a helper
 classes that abstract out common functionality (e.g., `TF_BinaryOp`).
 
 ```tablegen
-def TF_AddOp : Op<"tf.Add", [NoSideEffect]>,
-               Arguments<(ins TF_Tensor:$lhs, TF_Tensor:$rhs)>,
-               Results<[TF_Tensor]>,
-               Traits<["BroadcastableOperandsAndResultType"]> {
+def TF_AddOp : Op<"tf.Add", [Broadcastable, NoSideEffect]>,
+               Arguments<(ins TF_Tensor:$x, TF_Tensor:$y)>,
+               Results<(outs TF_Tensor:$z)> {
   let summary = "Addition operator";
 
   let description = [{
@@ -161,19 +158,16 @@ Operation definitions consists of:
 
     The type of the value(s) returned by the operation.
 
-1.  Properties.
-
-    Properties of the operations. There are different classes of operation
-    properties that are hard-coded into `mlir::OperationInst`. Currently
-    supported is `Commutative` and `NoSideEffect`.
-
 1.  Traits.
 
-    Operations can optionally have additional traits. This is an open set at
-    present but include traits such as `SameOperandsAndResultType`.
-
-    TODO: Should there be a differentiation between traits and properties?
-    Preference to merging these.
+    Traits of the operations. They are operation properties that affect syntax
+    or semantics. MLIR C++ models various traits in the `mlir::OpTrait`
+    namespace. In TableGen, we have the corresponding `OpTrait` class to
+    wrap around any C++ trait symbol and use it in operation definition.
+    For example, `NoSideEffect` is just a definition that expands to
+    `OpTrait<"HasNoSideEffect">`; having such a definition makes the trait
+    inside TableGen more integrated and easier to parse as a declarative
+    language.
 
 1.  Reference description.
 
@@ -194,7 +188,7 @@ Operation definitions consists of:
 1.  Custom verifier code.
 
     Additional verification to perform in addition to those generated due to
-    operands, attributes, properties and traits.
+    operands, attributes, and traits.
 
 1.  hasCanonicalizer and hasConstantFolder.
 

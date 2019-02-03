@@ -36,9 +36,8 @@ def LLVM_Type : Type<CPred<"{0}.isa<::mlir::LLVM::LLVMType>()">,
 // their name automatically.  LLVM operations have either zero or one result,
 // this class is specialized below for both cases and should not be used
 // directly.
-class LLVM_Op<string mnemonic, list<OpProperty> props = [],
-             list<string> traits = []> :
-    Op<!strconcat("llvm.", mnemonic), props>, Traits<traits> {
+class LLVM_Op<string mnemonic, list<OpTrait> traits = []> :
+    Op<!strconcat("llvm.", mnemonic), traits> {
   // No need for custom parsing since custom printer uses the default syntax
   // instead.
   let parser =
@@ -49,9 +48,8 @@ class LLVM_Op<string mnemonic, list<OpProperty> props = [],
 }
 
 // Base class for LLVM operations with one result.
-class LLVM_OneResultOp<string mnemonic, list<OpProperty> props = [],
-                      list<string> traits = []> :
-    LLVM_Op<mnemonic, props, traits>, Results<(outs LLVM_Type)> {
+class LLVM_OneResultOp<string mnemonic, list<OpTrait> traits = []> :
+    LLVM_Op<mnemonic, traits>, Results<(outs LLVM_Type)> {
   let builder = [{
     static void build(Builder *builder, OperationState *result, Type resultType,
                       ArrayRef<Value *> operands,
@@ -67,9 +65,8 @@ class LLVM_OneResultOp<string mnemonic, list<OpProperty> props = [],
 }
 
 // Base class for LLVM operations with zero results.
-class LLVM_ZeroResultOp<string mnemonic, list<OpProperty> props = [],
-                       list<string> traits = []> :
-    LLVM_Op<mnemonic, props, traits>, Results<(outs)> {
+class LLVM_ZeroResultOp<string mnemonic, list<OpTrait> traits = []> :
+    LLVM_Op<mnemonic, traits>, Results<(outs)> {
   let builder = [{
     // Compatibility builder that takes an instance of wrapped llvm::VoidType
     // to indicate no result.
@@ -99,10 +96,8 @@ class LLVM_ZeroResultOp<string mnemonic, list<OpProperty> props = [],
 
 // Base class for LLVM terminator operations.  All terminator operations have
 // zero results and an optional list of successors.
-class LLVM_TerminatorOp<string mnemonic, list<OpProperty> props = [],
-                       list<string> traits = []> :
-    LLVM_Op<mnemonic, props,
-            !listconcat(["IsTerminator", "VariadicOperands"], traits)>,
+class LLVM_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
+    LLVM_Op<mnemonic, !listconcat(traits, [Terminator, VariadicOperands])>,
     Results<(outs)> {
   let builder = [{
       static void build(Builder *builder, OperationState *result,
@@ -123,18 +118,14 @@ class LLVM_TerminatorOp<string mnemonic, list<OpProperty> props = [],
 }
 
 // Class for arithmetic binary instructions.
-class LLVM_ArithmeticOp<string mnemonic, list<OpProperty> props = [],
-                        list<string> traits = []> :
+class LLVM_ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
     LLVM_OneResultOp<mnemonic,
-           !listconcat([NoSideEffect], props),
-           !listconcat(["SameOperandsAndResultType"], traits)>,
+           !listconcat([NoSideEffect, SameValueType], traits)>,
     Arguments<(ins LLVM_Type:$lhs, LLVM_Type:$rhs)>;
 
 // Class for variadic instructions.
-class LLVM_VariadicOneResultOp<string mnemonic, list<OpProperty> props = [],
-                               list<string> traits = []> :
-    LLVM_OneResultOp<mnemonic, props,
-                     !listconcat(["VariadicOperands"], traits)>;
+class LLVM_VariadicOneResultOp<string mnemonic, list<OpTrait> traits = []> :
+    LLVM_OneResultOp<mnemonic, !listconcat(traits, [VariadicOperands])>;
 
 // Integer binary instructions.
 def LLVM_AddOp : LLVM_ArithmeticOp<"add", [Commutative]>;
@@ -146,8 +137,7 @@ def LLVM_URemOp : LLVM_ArithmeticOp<"urem">;
 def LLVM_SRemOp : LLVM_ArithmeticOp<"srem">;
 
 // Other integer instructions.
-def LLVM_ICmpOp : LLVM_OneResultOp<"icmp", [NoSideEffect],
-                         ["SameOperandsAndResultShape"]>,
+def LLVM_ICmpOp : LLVM_OneResultOp<"icmp", [NoSideEffect]>,
                   Arguments<(ins LLVM_Type:$lhs, LLVM_Type:$rhs)>;
 
 // Floating point binary instructions.
@@ -169,7 +159,7 @@ def LLVM_BitcastOp : LLVM_OneResultOp<"bitcast", [NoSideEffect]>,
 
 // Call-related instructions.
 def LLVM_CallOp : LLVM_VariadicOneResultOp<"call">;
-def LLVM_Call0Op : LLVM_ZeroResultOp<"call0", [], ["VariadicOperands"]>;
+def LLVM_Call0Op : LLVM_ZeroResultOp<"call0", [VariadicOperands]>;
 def LLVM_ExtractValueOp : LLVM_OneResultOp<"extractvalue", [NoSideEffect]>,
                           Arguments<(ins LLVM_Type)>;
 def LLVM_InsertValueOp : LLVM_OneResultOp<"insertvalue", [NoSideEffect]>,

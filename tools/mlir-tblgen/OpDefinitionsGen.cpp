@@ -466,22 +466,19 @@ void OpEmitter::emitTraits() {
     break;
   }
 
-  // Add explicitly added traits. Note that some traits might implicitly defines
-  // the number of operands.
-  // TODO(jpienaar): Improve Trait specification to make adding them in the
-  // tblgen file better.
+  // Track explicitly added operand size traits. Note that some ops might
+  // implicitly defines the number of operands via the Argument dag.
   bool hasVariadicOperands = false;
   bool hasAtLeastNOperands = false;
-  auto *recordVal = def.getValue("traits");
-  if (recordVal && recordVal->getValue()) {
-    auto traitList = dyn_cast<ListInit>(recordVal->getValue())->getValues();
-    for (Init *trait : traitList) {
-      std::string traitStr = trait->getAsUnquotedString();
-      auto ref = StringRef(traitStr).trim();
-      hasVariadicOperands = ref == "VariadicOperands";
-      hasAtLeastNOperands = ref == "AtLeastNOperands";
-      os << ", OpTrait::" << ref;
+
+  // Add variadic size trait and normal op traits.
+  for (StringRef trait : def.getValueAsListOfStrings("traits")) {
+    if (trait == "VariadicOperands") {
+      hasVariadicOperands = true;
+    } else if (trait.startswith("AtLeastNOperands")) {
+      hasAtLeastNOperands = true;
     }
+    os << ", OpTrait::" << trait;
   }
 
   if ((hasVariadicOperands || hasAtLeastNOperands) && op.getNumOperands() > 0) {
@@ -489,7 +486,7 @@ void OpEmitter::emitTraits() {
                     "Operands number definition is not consistent.");
   }
 
-  // Add operand size trait if defined explicitly.
+  // Add operand size trait.
   switch (op.getNumOperands()) {
   case 0:
     if (!hasVariadicOperands && !hasAtLeastNOperands)
@@ -501,16 +498,6 @@ void OpEmitter::emitTraits() {
   default:
     os << ", OpTrait::NOperands<" << op.getNumOperands() << ">::Impl";
     break;
-  }
-
-  // Add op property traits. These match the propoerties specified in the table
-  // with the OperationProperty specified in OperationSupport.h.
-  for (Record *property : def.getValueAsListOfDefs("properties")) {
-    if (property->getName() == "Commutative") {
-      os << ", OpTrait::IsCommutative";
-    } else if (property->getName() == "NoSideEffect") {
-      os << ", OpTrait::HasNoSideEffect";
-    }
   }
 }
 

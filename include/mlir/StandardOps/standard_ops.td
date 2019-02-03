@@ -33,10 +33,8 @@ def AnyType : Type<CPred<"true">, "any type">;
 // Base class for standard arithmetic operations.  Requires operands and
 // results to be of the same type, but does not constrain them to specific
 // types.  Individual classes will have `lhs` and `rhs` accessor to operands.
-class ArithmeticOp<string mnemonic, list<OpProperty> props = [],
-                   list<string> traits = []> :
-    Op<mnemonic, !listconcat(props, [NoSideEffect])>,
-    Traits<!listconcat(traits, ["SameOperandsAndResultType"])>,
+class ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
+    Op<mnemonic, !listconcat(traits, [NoSideEffect, SameValueType])>,
     Results<(outs AnyType)> {
 
   let opName = mnemonic;
@@ -64,9 +62,8 @@ class ArithmeticOp<string mnemonic, list<OpProperty> props = [],
 // integer tensor.  The custom assembly form of the operaton is as follows
 //
 //     <op>i %0, %1 : i32
-class IntArithmeticOp<string mnemonic, list<OpProperty> props = [],
-                      list<string> traits = []> :
-    ArithmeticOp<mnemonic, props, traits>,
+class IntArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
+    ArithmeticOp<mnemonic, traits>,
     Arguments<(ins IntegerLike:$lhs, IntegerLike:$rhs)>;
 
 // Base class for standard arithmetic binary operations on floats, vectors and
@@ -77,9 +74,8 @@ class IntArithmeticOp<string mnemonic, list<OpProperty> props = [],
 // is as follows
 //
 //     <op>f %0, %1 : f32
-class FloatArithmeticOp<string mnemonic, list<OpProperty> props = [],
-                        list<string> traits = []> :
-    ArithmeticOp<mnemonic, props, traits>,
+class FloatArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
+    ArithmeticOp<mnemonic, traits>,
     Arguments<(ins FloatLike:$lhs, FloatLike:$rhs)>;
 
 def AddFOp : FloatArithmeticOp<"addf"> {
