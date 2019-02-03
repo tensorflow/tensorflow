@@ -86,6 +86,25 @@ Status ScaleAndTranslateGradHelper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("ScaleAndTranslate", ScaleAndTranslateGradHelper);
 
+Status CropAndResizeGradHelper(const Scope& scope, const Operation& op,
+                               const std::vector<Output>& grad_inputs,
+                               std::vector<Output>* grad_outputs) {
+  DataType input_type;
+  string method;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "method", &method));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "T", &input_type));
+  auto image_shape = Shape(scope, op.input(0));
+  grad_outputs->push_back(CropAndResizeGradImage(
+      scope, grad_inputs[0], op.input(1), op.input(2), image_shape, input_type,
+      CropAndResizeGradImage::Method(method)));
+  grad_outputs->push_back(CropAndResizeGradBoxes(
+      scope, grad_inputs[0], op.input(0), op.input(1), op.input(2)));
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+
+REGISTER_GRADIENT_OP("CropAndResize", CropAndResizeGradHelper);
 }  // anonymous namespace
 }  // namespace ops
 }  // namespace tensorflow
