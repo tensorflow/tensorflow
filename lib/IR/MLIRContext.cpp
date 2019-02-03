@@ -721,6 +721,7 @@ BoolAttr BoolAttr::get(bool value, MLIRContext *context) {
   result = context->getImpl().allocator.Allocate<BoolAttributeStorage>();
   new (result) BoolAttributeStorage{{Attribute::Kind::Bool,
                                      /*isOrContainsFunction=*/false},
+                                    IntegerType::get(1, context),
                                     value};
   return result;
 }
@@ -1030,8 +1031,11 @@ static bool attrIsOfType(Attribute attr, Type type) {
 
 SplatElementsAttr SplatElementsAttr::get(VectorOrTensorType type,
                                          Attribute elt) {
-  assert(attrIsOfType(elt, type.getElementType()) &&
-         "attribute's type should be the given type's element type");
+  auto attr = elt.dyn_cast<NumericAttr>();
+  assert(attr && "expected numeric value");
+  assert(attr.getType() == type.getElementType() &&
+         "value should be of the given type");
+  (void)attr;
 
   auto &impl = type.getContext()->getImpl();
 

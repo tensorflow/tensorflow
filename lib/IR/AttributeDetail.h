@@ -43,6 +43,7 @@ struct AttributeStorage {
 
 /// An attribute representing a boolean value.
 struct BoolAttributeStorage : public AttributeStorage {
+  const Type type;
   bool value;
 };
 

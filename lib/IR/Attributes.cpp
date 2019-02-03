@@ -64,9 +64,31 @@ Attribute Attribute::remapFunctionAttrs(
   return ArrayAttr::get(remappedElts, context);
 }
 
+/// NumericAttr
+
+Type NumericAttr::getType() const {
+  if (auto boolAttr = dyn_cast<BoolAttr>())
+    return boolAttr.getType();
+  if (auto intAttr = dyn_cast<IntegerAttr>())
+    return intAttr.getType();
+  if (auto floatAttr = dyn_cast<FloatAttr>())
+    return floatAttr.getType();
+  if (auto elemAttr = dyn_cast<ElementsAttr>())
+    return elemAttr.getType();
+
+  llvm_unreachable("unhandled NumericAttr subclass");
+}
+
+bool NumericAttr::kindof(Kind kind) {
+  return BoolAttr::kindof(kind) || IntegerAttr::kindof(kind) ||
+         FloatAttr::kindof(kind) || ElementsAttr::kindof(kind);
+}
+
 /// BoolAttr
 
 bool BoolAttr::getValue() const { return static_cast<ImplType *>(attr)->value; }
+
+Type BoolAttr::getType() const { return static_cast<ImplType *>(attr)->type; }
 
 /// IntegerAttr
 

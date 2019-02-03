@@ -135,9 +135,21 @@ inline raw_ostream &operator<<(raw_ostream &os, Attribute attr) {
   return os;
 }
 
-class BoolAttr : public Attribute {
+/// Numeric attributes are (vector/tensor of) bool, integer, or floating-point
+/// constants. For all the attributes, we can only build constant op out of
+/// numeric attributes.
+class NumericAttr : public Attribute {
 public:
   using Attribute::Attribute;
+
+  Type getType() const;
+
+  static bool kindof(Kind kind);
+};
+
+class BoolAttr : public NumericAttr {
+public:
+  using NumericAttr::NumericAttr;
   using ImplType = detail::BoolAttributeStorage;
   using ValueType = bool;
 
@@ -145,13 +157,15 @@ public:
 
   bool getValue() const;
 
+  Type getType() const;
+
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::Bool; }
 };
 
-class IntegerAttr : public Attribute {
+class IntegerAttr : public NumericAttr {
 public:
-  using Attribute::Attribute;
+  using NumericAttr::NumericAttr;
   using ImplType = detail::IntegerAttributeStorage;
   using ValueType = APInt;
 
@@ -168,9 +182,9 @@ public:
   static bool kindof(Kind kind) { return kind == Kind::Integer; }
 };
 
-class FloatAttr : public Attribute {
+class FloatAttr : public NumericAttr {
 public:
-  using Attribute::Attribute;
+  using NumericAttr::NumericAttr;
   using ImplType = detail::FloatAttributeStorage;
   using ValueType = APFloat;
 
@@ -301,10 +315,10 @@ public:
 };
 
 /// A base attribute represents a reference to a vector or tensor constant.
-class ElementsAttr : public Attribute {
+class ElementsAttr : public NumericAttr {
 public:
-  using Attribute::Attribute;
-  typedef detail::ElementsAttributeStorage ImplType;
+  using NumericAttr::NumericAttr;
+  using ImplType = detail::ElementsAttributeStorage;
 
   VectorOrTensorType getType() const;
 
