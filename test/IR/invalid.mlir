@@ -802,10 +802,6 @@ func @invalid_tensor_literal() {
 
 // -----
 
-#set_without_constraints = (i, j) : () // expected-error {{expected a valid affine constraint}}
-
-// -----
-
 func @invalid_affine_structure() {
   %c0 = constant 0 : index
   %idx = affine_apply (d0, d1) (%c0, %c0) // expected-error {{expected '->' or ':'}}

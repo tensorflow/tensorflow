@@ -460,7 +460,7 @@ name.
 integer-set-id ::= `#` suffix-id
 
 integer-set-inline
-   ::= dim-and-symbol-id-lists `:` affine-constraint-conjunction
+   ::= dim-and-symbol-id-lists `:` '(' affine-constraint-conjunction? ')'
 
 // Declarations of integer sets are at the top of the file.
 integer-set-decl ::= integer-set-id `=` integer-set-inline

@@ -3279,10 +3279,9 @@ AffineExpr AffineParser::parseAffineConstraint(bool *isEq) {
 /// Parse the constraints that are part of an integer set definition.
 ///  integer-set-inline
 ///                ::= dim-and-symbol-id-lists `:`
-///                affine-constraint-conjunction
-///  affine-constraint-conjunction ::= /*empty*/
-///                                 | affine-constraint (`,`
-///                                 affine-constraint)*
+///                '(' affine-constraint-conjunction? ')'
+///  affine-constraint-conjunction ::= affine-constraint (`,`
+///                                       affine-constraint)*
 ///
 IntegerSet AffineParser::parseIntegerSetConstraints(unsigned numDims,
                                                     unsigned numSymbols) {
@@ -3303,17 +3302,15 @@ IntegerSet AffineParser::parseIntegerSetConstraints(unsigned numDims,
     return res;
   };
 
-  // Parse a list of affine constraints (comma-separated) .
-  // Grammar: affine-constraint-conjunct ::= `(` affine-constraint (`,`
-  // affine-constraint)* `)
-  auto constraintListLoc = getToken().getLoc();
+  // Parse a list of affine constraints (comma-separated).
   if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, true))
     return IntegerSet();
 
-  // Check that at least one constraint was parsed.
+  // If no constraints were parsed, then treat this as a degenerate 'true' case.
   if (constraints.empty()) {
-    emitError(constraintListLoc, "expected a valid affine constraint");
-    return IntegerSet();
+    /* 0 == 0 */
+    auto zero = getAffineConstantExpr(0, getContext());
+    return builder.getIntegerSet(numDims, numSymbols, zero, true);
   }
 
   // Parsed a valid integer set.

@@ -42,6 +42,8 @@
 // CHECK-DAG: #set{{[0-9]+}} = (d0) : (d0 - 1 == 0)
 #set2 = (d0) : (d0 - 1 == 0)
 
+// CHECK-DAG: [[SET_TRUE:#set[0-9]+]] = () : (0 == 0)
+
 // CHECK-DAG: #set{{[0-9]+}} = (d0)[s0] : (d0 - 2 >= 0, -d0 + 4 >= 0)
 
 // CHECK: func @foo(i32, i64) -> f32
@@ -747,6 +749,14 @@ func @type_alias() -> !i32_type_alias {
   // Return a non-aliased i32 type.
   %0 = "foo"() : () -> i32
   return %0 : i32
+}
+
+// CHECK-LABEL: func @no_integer_set_constraints(
+func @no_integer_set_constraints() {
+  // CHECK: if [[SET_TRUE]]() {
+  if () : () () {
+  }
+  return
 }
 
 // CHECK-LABEL: func @verbose_if(
