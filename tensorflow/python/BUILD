@@ -497,6 +497,7 @@ tf_cc_shared_object(
         ],
         "//tensorflow:darwin": [],
         "//tensorflow:windows": [],
+ 	 "//tensorflow:freebsd": ["-lexecinfo",],
     }),
     deps = [
         "//tensorflow/core:framework_headers_lib",

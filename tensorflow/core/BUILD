@@ -2386,7 +2386,11 @@ cc_library(
         "platform/types.h",
     ] + if_windows(["platform/windows/integral_types.h"]) + if_ios(["platform/env_time.h"]),
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-ldl"],
+    }),
     deps = [
         "//tensorflow/core/platform/default/build_config:logging",
     ],
@@ -2415,7 +2419,11 @@ cc_library(
         "platform/types.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-ldl"],
+    }),
     deps = [
         "//tensorflow/core/platform/default/build_config:jpeg",
         "//tensorflow/core/platform/default/build_config:logging",
@@ -2448,7 +2456,11 @@ cc_library(
         "platform/types.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-ldl"],
+    }),
     deps = [
         "//tensorflow/core/platform/default/build_config:gif",
         "//tensorflow/core/platform/default/build_config:logging",
@@ -2477,7 +2489,11 @@ cc_library(
         "platform/types.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-ldl"],
+    }),
     deps = [
         "//tensorflow/core/platform/default/build_config:logging",
         "@com_google_absl//absl/strings",
@@ -2688,7 +2704,7 @@ tf_cuda_library(
     hdrs = FRAMEWORK_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     linkopts = select({
-        "//tensorflow:freebsd": ["-lm"],
+        "//tensorflow:freebsd": ["-lm", "-lexecinfo"],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-ldl",
@@ -3373,6 +3389,7 @@ cc_library(
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:windows": [],
+	 "//tensorflow:freebsd": ["-lm", "-lexecinfo"],
         "//conditions:default": ["-lm"],
     }),
     visibility = ["//tensorflow:internal"],

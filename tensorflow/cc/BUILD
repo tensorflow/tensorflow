@@ -674,6 +674,12 @@ tf_cc_binary(
             "-lm",
             "-lpthread",
         ],
+         "//tensorflow:freebsd": [
+            "-lm",
+            "-lpthread",
+            "-lrt",
+            "-lexecinfo",
+        ],
         "//conditions:default": [
             "-lm",
             "-lpthread",
