@@ -146,6 +146,11 @@ void Instruction::destroy() {
   }
 }
 
+/// Return the context this operation is associated with.
+MLIRContext *Instruction::getContext() const {
+  return cast<OperationInst>(this)->getContext();
+}
+
 Instruction *Instruction::getParentInst() const {
   return block ? block->getContainingInst() : nullptr;
 }
@@ -467,8 +472,8 @@ OperationInst::OperationInst(Location location, OperationName name,
                              unsigned numBlockLists,
                              ArrayRef<NamedAttribute> attributes,
                              MLIRContext *context)
-    : Instruction(Kind::OperationInst, location), numResults(numResults),
-      numSuccs(numSuccessors), numBlockLists(numBlockLists), name(name) {
+    : Instruction(location), numResults(numResults), numSuccs(numSuccessors),
+      numBlockLists(numBlockLists), name(name) {
 #ifndef NDEBUG
   for (auto elt : attributes)
     assert(elt.second != nullptr && "Attributes cannot have null entries");

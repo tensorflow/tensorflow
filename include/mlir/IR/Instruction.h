@@ -68,14 +68,11 @@ template <typename ObjectType, typename ElementType> class OperandIterator;
 /// Instructions can be nested within for and if instructions effectively
 /// forming a tree. Child instructions are organized into instruction blocks
 /// represented by a 'Block' class.
-class Instruction : public IROperandOwner,
-                    public llvm::ilist_node_with_parent<Instruction, Block> {
+class Instruction : public llvm::ilist_node_with_parent<Instruction, Block> {
 public:
-  enum class Kind {
-    OperationInst = (int)IROperandOwner::Kind::OperationInst,
-  };
+  enum class Kind { OperationInst };
 
-  Kind getKind() const { return (Kind)IROperandOwner::getKind(); }
+  Kind getKind() const { return Kind::OperationInst; }
 
   /// Remove this instruction from its parent block and delete it.
   void erase();
@@ -91,6 +88,15 @@ public:
   /// Returns the instruction block that contains this instruction.
   const Block *getBlock() const { return block; }
   Block *getBlock() { return block; }
+
+  /// Return the context this operation is associated with.
+  MLIRContext *getContext() const;
+
+  /// The source location the operation was defined or derived from.
+  Location getLoc() const { return location; }
+
+  /// Set the source location the operation was defined or derived from.
+  void setLoc(Location loc) { location = loc; }
 
   /// Returns the closest surrounding instruction that contains this instruction
   /// or nullptr if this is a top-level instruction.
@@ -186,14 +192,8 @@ public:
   /// handlers that may be listening.
   void emitNote(const Twine &message) const;
 
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const IROperandOwner *ptr) {
-    return ptr->getKind() <= IROperandOwner::Kind::INST_LAST;
-  }
-
 protected:
-  Instruction(Kind kind, Location location)
-      : IROperandOwner((IROperandOwner::Kind)kind, location) {}
+  Instruction(Location location) : location(location) {}
 
   // Instructions are deleted through the destroy() member because this class
   // does not have a virtual destructor.
@@ -202,6 +202,10 @@ protected:
 private:
   /// The instruction block that containts this instruction.
   Block *block = nullptr;
+
+  /// This holds information about the source location the operation was defined
+  /// or derived from.
+  Location location;
 
   /// Relative order of this instruction in its parent block. Used for
   /// O(1) local dominance checks between instructions.

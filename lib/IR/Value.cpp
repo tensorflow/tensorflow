@@ -39,7 +39,7 @@ Function *Value::getFunction() {
 }
 
 //===----------------------------------------------------------------------===//
-// IROperandOwner implementation.
+// IRObjectWithUseList implementation.
 //===----------------------------------------------------------------------===//
 
 /// Replace all uses of 'this' value with the new value, updating anything in
@@ -56,14 +56,6 @@ void IRObjectWithUseList::replaceAllUsesWith(IRObjectWithUseList *newValue) {
 void IRObjectWithUseList::dropAllUses() {
   while (!use_empty()) {
     use_begin()->drop();
-  }
-}
-
-/// Return the context this operation is associated with.
-MLIRContext *IROperandOwner::getContext() const {
-  switch (getKind()) {
-  case Kind::OperationInst:
-    return cast<OperationInst>(this)->getContext();
   }
 }
 

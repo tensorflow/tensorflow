@@ -100,7 +100,7 @@ protected:
   Value(Kind kind, Type type) : typeAndKind(type, kind) {}
 
 private:
-  const llvm::PointerIntPair<Type, 3, Kind> typeAndKind;
+  const llvm::PointerIntPair<Type, 1, Kind> typeAndKind;
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, const Value &value) {

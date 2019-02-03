@@ -570,9 +570,7 @@ public:
   void destroy();
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const IROperandOwner *ptr) {
-    return ptr->getKind() == IROperandOwner::Kind::OperationInst;
-  }
+  static bool classof(const Instruction *ptr) { return true; }
 
 private:
   const unsigned numResults, numSuccs, numBlockLists;

@@ -28,8 +28,8 @@
 
 namespace mlir {
 
+class Instruction;
 class IROperand;
-class IROperandOwner;
 template <typename OperandType, typename OwnerType> class ValueUseIterator;
 
 class IRObjectWithUseList {
@@ -44,7 +44,7 @@ public:
   /// Returns true if this value has exactly one use.
   inline bool hasOneUse() const;
 
-  using use_iterator = ValueUseIterator<IROperand, IROperandOwner>;
+  using use_iterator = ValueUseIterator<IROperand, Instruction>;
   using use_range = llvm::iterator_range<use_iterator>;
 
   inline use_iterator use_begin() const;
@@ -74,44 +74,11 @@ private:
   IROperand *firstUse = nullptr;
 };
 
-/// Subclasses of IROperandOwner can be the owner of an IROperand.  In practice
-/// this is the common base between Instructions.
-class IROperandOwner {
-public:
-  enum class Kind {
-    OperationInst,
-
-    /// These enums define ranges used for classof implementations.
-    INST_LAST = OperationInst,
-  };
-
-  Kind getKind() const { return locationAndKind.getInt(); }
-
-  /// The source location the operation was defined or derived from.
-  Location getLoc() const { return locationAndKind.getPointer(); }
-
-  /// Set the source location the operation was defined or derived from.
-  void setLoc(Location loc) { locationAndKind.setPointer(loc); }
-
-  /// Return the context this operation is associated with.
-  MLIRContext *getContext() const;
-
-protected:
-  IROperandOwner(Kind kind, Location location)
-      : locationAndKind(location, kind) {}
-
-private:
-  /// This holds information about the source location the operation was defined
-  /// or derived from, along with the kind of subclass this is.
-  llvm::PointerIntPair<Location, 3, Kind> locationAndKind;
-};
-
-/// A reference to a value, suitable for use as an operand of an instruction,
-/// instruction, etc.
+/// A reference to a value, suitable for use as an operand of an instruction.
 class IROperand {
 public:
-  IROperand(IROperandOwner *owner) : owner(owner) {}
-  IROperand(IROperandOwner *owner, IRObjectWithUseList *value)
+  IROperand(Instruction *owner) : owner(owner) {}
+  IROperand(Instruction *owner, IRObjectWithUseList *value)
       : value(value), owner(owner) {
     insertIntoCurrent();
   }
@@ -130,8 +97,8 @@ public:
 
   /// Return the owner of this operand, for example, the OperationInst that
   /// contains an InstOperand.
-  IROperandOwner *getOwner() { return owner; }
-  const IROperandOwner *getOwner() const { return owner; }
+  Instruction *getOwner() { return owner; }
+  const Instruction *getOwner() const { return owner; }
 
   /// \brief Remove this use of the operand.
   void drop() {
@@ -176,9 +143,8 @@ private:
   /// This points to the previous link in the use-chain.
   IROperand **back = nullptr;
 
-  /// The owner of this operand, for example, the OperationInst that contains an
-  /// InstOperand.
-  IROperandOwner *const owner;
+  /// The instruction owner of this operand.
+  Instruction *const owner;
 
   /// Operands are not copyable or assignable.
   IROperand(const IROperand &use) = delete;
