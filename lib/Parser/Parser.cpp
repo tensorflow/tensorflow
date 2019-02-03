@@ -2416,7 +2416,7 @@ Value *FunctionParser::createForwardReferencePlaceholder(SMLoc loc, Type type) {
   auto *inst = OperationInst::create(
       getEncodedSourceLocation(loc), name, /*operands=*/{}, type,
       /*attributes=*/{}, /*successors=*/{}, /*numBlockLists=*/0,
-      /*resizableOperandList=*/true, getContext());
+      /*resizableOperandList=*/false, getContext());
   forwardReferencePlaceholders[inst->getResult(0)] = loc;
   return inst->getResult(0);
 }

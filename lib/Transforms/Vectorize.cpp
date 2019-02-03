@@ -1124,8 +1124,8 @@ static OperationInst *vectorizeOneOperationInst(FuncBuilder *b,
   // boilerplate?
   OperationState newOp(b->getContext(), opInst->getLoc(),
                        opInst->getName().getStringRef(), operands, types,
-                       opInst->getAttrs());
-  newOp.setOperandListToResizable(opInst->hasResizableOperandsList());
+                       opInst->getAttrs(), /*successors=*/{},
+                       /*numBlockLists=*/0, opInst->hasResizableOperandsList());
   return b->createOperation(newOp);
 }
 
