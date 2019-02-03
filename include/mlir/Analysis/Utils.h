@@ -38,7 +38,6 @@ template <typename T> class ConstOpPointer;
 class FlatAffineConstraints;
 class Instruction;
 class MemRefAccess;
-using OperationInst = Instruction;
 template <typename T> class OpPointer;
 class Instruction;
 class Value;
@@ -143,7 +142,7 @@ private:
 ///   {memref = %A, write = false, {%i <= m0 <= %i + 7} }
 /// The last field is a 2-d FlatAffineConstraints symbolic in %i.
 ///
-bool getMemRefRegion(OperationInst *opInst, unsigned loopDepth,
+bool getMemRefRegion(Instruction *opInst, unsigned loopDepth,
                      MemRefRegion *region);
 
 /// Returns the size of memref data in bytes if it's statically shaped, None
@@ -196,8 +195,8 @@ bool getBackwardComputationSliceState(const MemRefAccess &srcAccess,
 // storage and redundant computation in several cases.
 // TODO(andydavis) Support computation slices with common surrounding loops.
 OpPointer<AffineForOp>
-insertBackwardComputationSlice(OperationInst *srcOpInst,
-                               OperationInst *dstOpInst, unsigned dstLoopDepth,
+insertBackwardComputationSlice(Instruction *srcOpInst, Instruction *dstOpInst,
+                               unsigned dstLoopDepth,
                                ComputationSliceState *sliceState);
 
 Optional<int64_t> getMemoryFootprintBytes(ConstOpPointer<AffineForOp> forOp,

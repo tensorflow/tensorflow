@@ -97,7 +97,7 @@ private:
 using FilterFunctionType = std::function<bool(const Instruction &)>;
 static bool defaultFilterFunction(const Instruction &) { return true; };
 struct NestedPattern {
-  NestedPattern(Instruction::Kind k, ArrayRef<NestedPattern> nested,
+  NestedPattern(ArrayRef<NestedPattern> nested,
                 FilterFunctionType filter = defaultFilterFunction);
   NestedPattern(const NestedPattern &) = default;
   NestedPattern &operator=(const NestedPattern &) = default;
@@ -127,7 +127,7 @@ private:
   struct State : public InstWalker<State> {
     State(NestedPattern &pattern, SmallVectorImpl<NestedMatch> *matches)
         : pattern(pattern), matches(matches) {}
-    void visitOperationInst(OperationInst *opInst) {
+    void visitOperationInst(Instruction *opInst) {
       pattern.matchOne(opInst, matches);
     }
 
@@ -142,9 +142,6 @@ private:
   /// Matches this pattern against a single `inst` and fills matches with the
   /// result.
   void matchOne(Instruction *inst, SmallVectorImpl<NestedMatch> *matches);
-
-  /// Instruction kind matched by this pattern.
-  Instruction::Kind kind;
 
   /// Nested patterns to be matched.
   ArrayRef<NestedPattern> nestedPatterns;

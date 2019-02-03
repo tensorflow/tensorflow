@@ -108,7 +108,7 @@ public:
   }
 
   /// Returns the function that this block is part of, even if the block is
-  /// nested under an OperationInst or ForInst.
+  /// nested under an operation region.
   Function *getFunction();
   const Function *getFunction() const {
     return const_cast<Block *>(this)->getFunction();
@@ -233,9 +233,9 @@ public:
 
   /// Get the terminator instruction of this block, or null if the block is
   /// malformed.
-  OperationInst *getTerminator();
+  Instruction *getTerminator();
 
-  const OperationInst *getTerminator() const {
+  const Instruction *getTerminator() const {
     return const_cast<Block *>(this)->getTerminator();
   }
 
@@ -363,7 +363,7 @@ private:
 namespace mlir {
 
 /// This class contains a list of basic blocks and has a notion of the object it
-/// is part of - a Function or OperationInst or ForInst.
+/// is part of - a Function or an operation region.
 class BlockList {
 public:
   explicit BlockList(Function *container);
@@ -475,7 +475,7 @@ public:
   }
 
 private:
-  using BBUseIterator = ValueUseIterator<BlockOperand, OperationInst>;
+  using BBUseIterator = ValueUseIterator<BlockOperand, Instruction>;
   BBUseIterator bbUseIterator;
 };
 

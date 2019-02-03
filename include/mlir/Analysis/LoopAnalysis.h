@@ -34,7 +34,6 @@ class AffineMap;
 template <typename T> class ConstOpPointer;
 class Instruction;
 class MemRefType;
-using OperationInst = Instruction;
 class Value;
 
 /// Returns the trip count of the loop as an affine expression if the latter is

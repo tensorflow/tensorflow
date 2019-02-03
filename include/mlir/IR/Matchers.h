@@ -68,7 +68,7 @@ struct constant_int_op_binder {
   /// Creates a matcher instance that binds the value to bv if match succeeds.
   constant_int_op_binder(IntegerAttr::ValueType *bv) : bind_value(bv) {}
 
-  bool match(OperationInst *op) {
+  bool match(Instruction *op) {
     if (auto constOp = op->dyn_cast<ConstantOp>()) {
       auto type = constOp->getResult()->getType();
       auto attr = constOp->getAttr("value");
@@ -90,7 +90,7 @@ struct constant_int_op_binder {
 // The matcher that matches a given target constant scalar / vector splat /
 // tensor splat integer value.
 template <int64_t TargetValue> struct constant_int_value_matcher {
-  bool match(OperationInst *op) {
+  bool match(Instruction *op) {
     APInt value;
 
     return constant_int_op_binder(&value).match(op) && TargetValue == value;
@@ -99,7 +99,7 @@ template <int64_t TargetValue> struct constant_int_value_matcher {
 
 /// The matcher that matches a certain kind of op.
 template <typename OpClass> struct op_matcher {
-  bool match(OperationInst *op) { return op->isa<OpClass>(); }
+  bool match(Instruction *op) { return op->isa<OpClass>(); }
 };
 
 } // end namespace detail

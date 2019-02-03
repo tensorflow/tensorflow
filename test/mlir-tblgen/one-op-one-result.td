@@ -21,8 +21,8 @@ def : Pat<(X_AddOp $lhs, $rhs), (Y_AddOp $lhs, U:$rhs, T_Const_Attr:$x)>;
 
 // CHECK: struct GeneratedConvert0 : public RewritePattern
 // CHECK: RewritePattern("x.add", 1, context)
-// CHECK: PatternMatchResult match(OperationInst *
-// CHECK: void rewrite(OperationInst *op, std::unique_ptr<PatternState>
+// CHECK: PatternMatchResult match(Instruction *
+// CHECK: void rewrite(Instruction *op, std::unique_ptr<PatternState>
 // CHECK:              PatternRewriter &rewriter)
 // CHECK: rewriter.replaceOpWithNewOp<AddOp>(op, op->getResult(0)->getType()
 // CHECK: void populateWithGenerated

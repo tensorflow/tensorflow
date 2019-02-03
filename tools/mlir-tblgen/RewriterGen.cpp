@@ -222,7 +222,7 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int index, int depth,
 void PatternEmitter::emitMatchMethod(DagNode tree) {
   // Emit the heading.
   os << R"(
-  PatternMatchResult match(OperationInst *op0) const override {
+  PatternMatchResult match(Instruction *op0) const override {
     // TODO: This just handle 1 result
     if (op0->getNumResults() != 1) return matchFailure();
     auto ctx = op0->getContext(); (void)ctx;
@@ -280,7 +280,7 @@ void PatternEmitter::emitRewriteMethod() {
       PrintFatalError(loc, "only single op result supported");
 
   os << R"(
-  void rewrite(OperationInst *op, std::unique_ptr<PatternState> state,
+  void rewrite(Instruction *op, std::unique_ptr<PatternState> state,
                PatternRewriter &rewriter) const override {
     auto& s = *static_cast<MatchedState *>(state.get());
 )";

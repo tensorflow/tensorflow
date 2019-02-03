@@ -44,8 +44,8 @@
 //    lc.walk(function);
 //    numLoops = lc.numLoops;
 //
-// There  are 'visit' methods for OperationInst, ForInst, and
-// Function, which recursively process all contained instructions.
+// There  are 'visit' methods for Instruction and Function, which recursively
+// process all contained instructions.
 //
 // Note that if you don't implement visitXXX for some instruction type,
 // the visitXXX method for Instruction superclass will be invoked.
@@ -55,9 +55,7 @@
 // an implementation of every visit<#Instruction>(InstType *).
 //
 // Note that these classes are specifically designed as a template to avoid
-// virtual function call overhead.  Defining and using a InstVisitor is just
-// as efficient as having your own switch instruction over the instruction
-// opcode.
+// virtual function call overhead.
 
 //
 //===----------------------------------------------------------------------===//
@@ -81,12 +79,7 @@ public:
   RetTy visit(Instruction *s) {
     static_assert(std::is_base_of<InstVisitor, SubClass>::value,
                   "Must pass the derived type to this template!");
-
-    switch (s->getKind()) {
-    case Instruction::Kind::OperationInst:
-      return static_cast<SubClass *>(this)->visitOperationInst(
-          cast<OperationInst>(s));
-    }
+    return static_cast<SubClass *>(this)->visitOperationInst(s);
   }
 
   //===--------------------------------------------------------------------===//
@@ -99,7 +92,7 @@ public:
 
   // When visiting a for inst, if inst, or an operation inst directly, these
   // methods get called to indicate when transitioning into a new unit.
-  void visitOperationInst(OperationInst *opInst) {}
+  void visitOperationInst(Instruction *opInst) {}
 };
 
 /// Base class for instruction walkers. A walker can traverse depth first in
@@ -134,14 +127,14 @@ public:
       static_cast<SubClass *>(this)->walkPostOrder(it->begin(), it->end());
   }
 
-  void walkOpInst(OperationInst *opInst) {
+  void walkOpInst(Instruction *opInst) {
     static_cast<SubClass *>(this)->visitOperationInst(opInst);
     for (auto &blockList : opInst->getBlockLists())
       for (auto &block : blockList)
         static_cast<SubClass *>(this)->walk(block.begin(), block.end());
   }
 
-  void walkOpInstPostOrder(OperationInst *opInst) {
+  void walkOpInstPostOrder(Instruction *opInst) {
     for (auto &blockList : opInst->getBlockLists())
       for (auto &block : blockList)
         static_cast<SubClass *>(this)->walkPostOrder(block.begin(),
@@ -155,11 +148,7 @@ public:
                   "Must pass the derived type to this template!");
 
     static_cast<SubClass *>(this)->visitInstruction(s);
-
-    switch (s->getKind()) {
-    case Instruction::Kind::OperationInst:
-      return static_cast<SubClass *>(this)->walkOpInst(cast<OperationInst>(s));
-    }
+    return static_cast<SubClass *>(this)->walkOpInst(s);
   }
 
   // Function to walk a instruction in post order DFS.
@@ -167,12 +156,7 @@ public:
     static_assert(std::is_base_of<InstWalker, SubClass>::value,
                   "Must pass the derived type to this template!");
     static_cast<SubClass *>(this)->visitInstruction(s);
-
-    switch (s->getKind()) {
-    case Instruction::Kind::OperationInst:
-      return static_cast<SubClass *>(this)->walkOpInstPostOrder(
-          cast<OperationInst>(s));
-    }
+    return static_cast<SubClass *>(this)->walkOpInstPostOrder(s);
   }
 
   //===--------------------------------------------------------------------===//
@@ -186,7 +170,7 @@ public:
   // called. These are typically O(1) complexity and shouldn't be recursively
   // processing their descendants in some way. When using RetTy, all of these
   // need to be overridden.
-  void visitOperationInst(OperationInst *opInst) {}
+  void visitOperationInst(Instruction *opInst) {}
   void visitInstruction(Instruction *inst) {}
 };
 

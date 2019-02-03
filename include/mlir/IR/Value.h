@@ -30,7 +30,6 @@ namespace mlir {
 class Block;
 class Function;
 class Instruction;
-using OperationInst = Instruction;
 class Value;
 
 /// Operands contain a Value.
@@ -79,8 +78,8 @@ public:
 
   /// If this value is the result of an operation, return the instruction
   /// that defines it.
-  OperationInst *getDefiningInst();
-  const OperationInst *getDefiningInst() const {
+  Instruction *getDefiningInst();
+  const Instruction *getDefiningInst() const {
     return const_cast<Value *>(this)->getDefiningInst();
   }
 
@@ -157,15 +156,15 @@ private:
 /// This is a value defined by a result of an operation instruction.
 class InstResult : public Value {
 public:
-  InstResult(Type type, OperationInst *owner)
+  InstResult(Type type, Instruction *owner)
       : Value(Value::Kind::InstResult, type), owner(owner) {}
 
   static bool classof(const Value *value) {
     return value->getKind() == Kind::InstResult;
   }
 
-  OperationInst *getOwner() { return owner; }
-  const OperationInst *getOwner() const { return owner; }
+  Instruction *getOwner() { return owner; }
+  const Instruction *getOwner() const { return owner; }
 
   /// Returns the number of this result.
   unsigned getResultNumber() const;
@@ -174,7 +173,7 @@ private:
   /// The owner of this operand.
   /// TODO: can encode this more efficiently to avoid the space hit of this
   /// through bitpacking shenanigans.
-  OperationInst *const owner;
+  Instruction *const owner;
 };
 
 /// This is a helper template used to implement an iterator that contains a

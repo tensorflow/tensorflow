@@ -49,7 +49,7 @@ namespace {
 ///
 class FuncVerifier {
 public:
-  bool failure(const Twine &message, const OperationInst &value) {
+  bool failure(const Twine &message, const Instruction &value) {
     return value.emitError(message);
   }
 
@@ -60,18 +60,17 @@ public:
   bool failure(const Twine &message, const Block &bb) {
     // Take the location information for the first instruction in the block.
     if (!bb.empty())
-      if (auto *op = dyn_cast<OperationInst>(&bb.front()))
-        return failure(message, *op);
+      return failure(message, bb.front());
 
     // Worst case, fall back to using the function's location.
     return failure(message, fn);
   }
 
-  bool verifyAttribute(Attribute attr, const OperationInst &op);
+  bool verifyAttribute(Attribute attr, const Instruction &op);
 
   bool verify();
   bool verifyBlock(const Block &block, bool isTopLevel);
-  bool verifyOperation(const OperationInst &op);
+  bool verifyOperation(const Instruction &op);
   bool verifyDominance(const Block &block);
   bool verifyInstDominance(const Instruction &inst);
 
@@ -135,7 +134,7 @@ bool FuncVerifier::verify() {
 }
 
 // Check that function attributes are all well formed.
-bool FuncVerifier::verifyAttribute(Attribute attr, const OperationInst &op) {
+bool FuncVerifier::verifyAttribute(Attribute attr, const Instruction &op) {
   if (!attr.isOrContainsFunction())
     return false;
 
@@ -168,14 +167,9 @@ bool FuncVerifier::verifyBlock(const Block &block, bool isTopLevel) {
       return failure("block argument not owned by block", block);
   }
 
-  for (auto &inst : block) {
-    switch (inst.getKind()) {
-    case Instruction::Kind::OperationInst:
-      if (verifyOperation(cast<OperationInst>(inst)))
-        return true;
-      break;
-    }
-  }
+  for (auto &inst : block)
+    if (verifyOperation(inst))
+      return true;
 
   // If this block is at the function level, then verify that it has a
   // terminator.
@@ -199,7 +193,7 @@ bool FuncVerifier::verifyBlock(const Block &block, bool isTopLevel) {
 }
 
 /// Check the invariants of the specified operation.
-bool FuncVerifier::verifyOperation(const OperationInst &op) {
+bool FuncVerifier::verifyOperation(const Instruction &op) {
   if (op.getFunction() != &fn)
     return failure("operation in the wrong function", op);
 
@@ -240,19 +234,12 @@ bool FuncVerifier::verifyDominance(const Block &block) {
     // Check that all operands on the instruction are ok.
     if (verifyInstDominance(inst))
       return true;
-
-    switch (inst.getKind()) {
-    case Instruction::Kind::OperationInst: {
-      auto &opInst = cast<OperationInst>(inst);
-      if (verifyOperation(opInst))
-        return true;
-      for (auto &blockList : opInst.getBlockLists())
-        for (auto &block : blockList)
-          if (verifyDominance(block))
-            return true;
-      break;
-    }
-    }
+    if (verifyOperation(inst))
+      return true;
+    for (auto &blockList : inst.getBlockLists())
+      for (auto &block : blockList)
+        if (verifyDominance(block))
+          return true;
   }
   return false;
 }

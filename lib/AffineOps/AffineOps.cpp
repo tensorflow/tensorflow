@@ -410,13 +410,13 @@ bool AffineForOp::matchingBoundOperandList() const {
   return true;
 }
 
-void AffineForOp::walkOps(std::function<void(OperationInst *)> callback) {
+void AffineForOp::walkOps(std::function<void(Instruction *)> callback) {
   struct Walker : public InstWalker<Walker> {
-    std::function<void(OperationInst *)> const &callback;
-    Walker(std::function<void(OperationInst *)> const &callback)
+    std::function<void(Instruction *)> const &callback;
+    Walker(std::function<void(Instruction *)> const &callback)
         : callback(callback) {}
 
-    void visitOperationInst(OperationInst *opInst) { callback(opInst); }
+    void visitOperationInst(Instruction *opInst) { callback(opInst); }
   };
 
   Walker w(callback);
@@ -424,13 +424,13 @@ void AffineForOp::walkOps(std::function<void(OperationInst *)> callback) {
 }
 
 void AffineForOp::walkOpsPostOrder(
-    std::function<void(OperationInst *)> callback) {
+    std::function<void(Instruction *)> callback) {
   struct Walker : public InstWalker<Walker> {
-    std::function<void(OperationInst *)> const &callback;
-    Walker(std::function<void(OperationInst *)> const &callback)
+    std::function<void(Instruction *)> const &callback;
+    Walker(std::function<void(Instruction *)> const &callback)
         : callback(callback) {}
 
-    void visitOperationInst(OperationInst *opInst) { callback(opInst); }
+    void visitOperationInst(Instruction *opInst) { callback(opInst); }
   };
 
   Walker v(callback);
@@ -454,7 +454,7 @@ OpPointer<AffineForOp> mlir::getForInductionVarOwner(Value *val) {
   auto *containingInst = ivArg->getOwner()->getParent()->getContainingInst();
   if (!containingInst)
     return OpPointer<AffineForOp>();
-  return cast<OperationInst>(containingInst)->dyn_cast<AffineForOp>();
+  return containingInst->dyn_cast<AffineForOp>();
 }
 ConstOpPointer<AffineForOp> mlir::getForInductionVarOwner(const Value *val) {
   auto nonConstOwner = getForInductionVarOwner(const_cast<Value *>(val));

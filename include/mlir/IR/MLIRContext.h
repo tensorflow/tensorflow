@@ -65,7 +65,7 @@ public:
   // Diagnostic handler registration and use.  MLIR supports the ability for the
   // IR to carry arbitrary metadata about operation location information.  If an
   // problem is detected by the compiler, it can invoke the emitError /
-  // emitWarning / emitNote method on an OperationInst and have it get reported
+  // emitWarning / emitNote method on an Instruction and have it get reported
   // through this interface.
   //
   // Tools using MLIR are encouraged to register error handlers and define a
@@ -85,7 +85,7 @@ public:
 
   /// Emit a diagnostic using the registered issue handle if present, or with
   /// the default behavior if not.  The MLIR compiler should not generally
-  /// interact with this, it should use methods on OperationInst instead.
+  /// interact with this, it should use methods on Instruction instead.
   void emitDiagnostic(Location location, const Twine &message,
                       DiagnosticKind kind) const;
 

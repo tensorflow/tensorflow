@@ -75,7 +75,7 @@ public:
 
   /// Print a successor, and use list, of a terminator operation given the
   /// terminator and the successor index.
-  virtual void printSuccessorAndUseList(const OperationInst *term,
+  virtual void printSuccessorAndUseList(const Instruction *term,
                                         unsigned index) = 0;
 
   /// If the specified operation has attributes, print out an attribute
@@ -87,7 +87,7 @@ public:
                         ArrayRef<const char *> elidedAttrs = {}) = 0;
 
   /// Print the entire operation with the default generic assembly form.
-  virtual void printGenericOp(const OperationInst *op) = 0;
+  virtual void printGenericOp(const Instruction *op) = 0;
 
   /// Prints a block list.
   virtual void printBlockList(const BlockList &blocks,

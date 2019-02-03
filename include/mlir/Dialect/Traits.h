@@ -32,7 +32,7 @@ namespace OpTrait {
 // corresponding trait classes.  This avoids them being template
 // instantiated/duplicated.
 namespace impl {
-bool verifyCompatibleOperandBroadcast(const OperationInst *op);
+bool verifyCompatibleOperandBroadcast(const Instruction *op);
 } // namespace impl
 
 namespace util {
@@ -54,7 +54,7 @@ template <typename ConcreteType>
 class BroadcastableTwoOperandsOneResult
     : public TraitBase<ConcreteType, BroadcastableTwoOperandsOneResult> {
 public:
-  static bool verifyTrait(const OperationInst *op) {
+  static bool verifyTrait(const Instruction *op) {
     return impl::verifyCompatibleOperandBroadcast(op);
   }
 };

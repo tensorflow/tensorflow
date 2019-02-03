@@ -129,7 +129,7 @@ uint64_t mlir::getLargestDivisorOfTripCount(ConstOpPointer<AffineForOp> forOp) {
 bool mlir::isAccessInvariant(const Value &iv, const Value &index) {
   assert(isForInductionVar(&iv) && "iv must be a AffineForOp");
   assert(index.getType().isa<IndexType>() && "index must be of IndexType");
-  SmallVector<OperationInst *, 4> affineApplyOps;
+  SmallVector<Instruction *, 4> affineApplyOps;
   getReachableAffineApplyOps({const_cast<Value *>(&index)}, affineApplyOps);
 
   if (affineApplyOps.empty()) {
@@ -226,17 +226,15 @@ static bool isVectorElement(LoadOrStoreOpPointer memoryOp) {
 }
 
 static bool isVectorTransferReadOrWrite(const Instruction &inst) {
-  const auto *opInst = cast<OperationInst>(&inst);
-  return opInst->isa<VectorTransferReadOp>() ||
-         opInst->isa<VectorTransferWriteOp>();
+  return inst.isa<VectorTransferReadOp>() || inst.isa<VectorTransferWriteOp>();
 }
 
 using VectorizableInstFun =
-    std::function<bool(ConstOpPointer<AffineForOp>, const OperationInst &)>;
+    std::function<bool(ConstOpPointer<AffineForOp>, const Instruction &)>;
 
 static bool isVectorizableLoopWithCond(ConstOpPointer<AffineForOp> loop,
                                        VectorizableInstFun isVectorizableInst) {
-  auto *forInst = const_cast<OperationInst *>(loop->getInstruction());
+  auto *forInst = const_cast<Instruction *>(loop->getInstruction());
   if (!matcher::isParallelLoop(*forInst) &&
       !matcher::isReductionLoop(*forInst)) {
     return false;
@@ -252,9 +250,8 @@ static bool isVectorizableLoopWithCond(ConstOpPointer<AffineForOp> loop,
 
   // No vectorization across unknown regions.
   auto regions = matcher::Op([](const Instruction &inst) -> bool {
-    auto &opInst = cast<OperationInst>(inst);
-    return opInst.getNumBlockLists() != 0 &&
-           !(opInst.isa<AffineIfOp>() || opInst.isa<AffineForOp>());
+    return inst.getNumBlockLists() != 0 &&
+           !(inst.isa<AffineIfOp>() || inst.isa<AffineForOp>());
   });
   SmallVector<NestedMatch, 8> regionsMatched;
   regions.match(forInst, &regionsMatched);
@@ -273,7 +270,7 @@ static bool isVectorizableLoopWithCond(ConstOpPointer<AffineForOp> loop,
   SmallVector<NestedMatch, 8> loadAndStoresMatched;
   loadAndStores.match(forInst, &loadAndStoresMatched);
   for (auto ls : loadAndStoresMatched) {
-    auto *op = cast<OperationInst>(ls.getMatchedInstruction());
+    auto *op = ls.getMatchedInstruction();
     auto load = op->dyn_cast<LoadOp>();
     auto store = op->dyn_cast<StoreOp>();
     // Only scalar types are considered vectorizable, all load/store must be
@@ -293,7 +290,7 @@ static bool isVectorizableLoopWithCond(ConstOpPointer<AffineForOp> loop,
 bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
     ConstOpPointer<AffineForOp> loop, unsigned fastestVaryingDim) {
   VectorizableInstFun fun([fastestVaryingDim](ConstOpPointer<AffineForOp> loop,
-                                              const OperationInst &op) {
+                                              const Instruction &op) {
     auto load = op.dyn_cast<LoadOp>();
     auto store = op.dyn_cast<StoreOp>();
     return load ? isContiguousAccess(*loop->getInductionVar(), *load,
@@ -307,7 +304,7 @@ bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
 bool mlir::isVectorizableLoop(ConstOpPointer<AffineForOp> loop) {
   VectorizableInstFun fun(
       // TODO: implement me
-      [](ConstOpPointer<AffineForOp> loop, const OperationInst &op) {
+      [](ConstOpPointer<AffineForOp> loop, const Instruction &op) {
         return true;
       });
   return isVectorizableLoopWithCond(loop, fun);
@@ -324,20 +321,16 @@ bool mlir::isInstwiseShiftValid(ConstOpPointer<AffineForOp> forOp,
   assert(shifts.size() == forBody->getInstructions().size());
   unsigned s = 0;
   for (const auto &inst : *forBody) {
-    // A for or if inst does not produce any def/results (that are used
-    // outside).
-    if (const auto *opInst = dyn_cast<OperationInst>(&inst)) {
-      for (unsigned i = 0, e = opInst->getNumResults(); i < e; ++i) {
-        const Value *result = opInst->getResult(i);
-        for (const InstOperand &use : result->getUses()) {
-          // If an ancestor instruction doesn't lie in the block of forOp,
-          // there is no shift to check. This is a naive way. If performance
-          // becomes an issue, a map can be used to store 'shifts' - to look up
-          // the shift for a instruction in constant time.
-          if (auto *ancInst = forBody->findAncestorInstInBlock(*use.getOwner()))
-            if (shifts[s] != shifts[forBody->findInstPositionInBlock(*ancInst)])
-              return false;
-        }
+    for (unsigned i = 0, e = inst.getNumResults(); i < e; ++i) {
+      const Value *result = inst.getResult(i);
+      for (const InstOperand &use : result->getUses()) {
+        // If an ancestor instruction doesn't lie in the block of forOp,
+        // there is no shift to check. This is a naive way. If performance
+        // becomes an issue, a map can be used to store 'shifts' - to look up
+        // the shift for a instruction in constant time.
+        if (auto *ancInst = forBody->findAncestorInstInBlock(*use.getOwner()))
+          if (shifts[s] != shifts[forBody->findInstPositionInBlock(*ancInst)])
+            return false;
       }
     }
     s++;

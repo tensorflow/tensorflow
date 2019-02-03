@@ -37,7 +37,7 @@ public:
 
   FuncBuilder *getBuilder() { return builder; }
 
-  OperationInst *createOperation(const OperationState &state) override {
+  Instruction *createOperation(const OperationState &state) override {
     auto *result = builder->createOperation(state);
     return result;
   }
@@ -66,7 +66,7 @@ public:
   /// must override).  It will be passed the function-wise state, common to all
   /// matches, and the state returned by the `match` call, if any.  The subclass
   /// must use `rewriter` to modify the function.
-  virtual void rewriteOpInst(OperationInst *op,
+  virtual void rewriteOpInst(Instruction *op,
                              MLFuncGlobalLoweringState *funcWiseState,
                              std::unique_ptr<PatternState> opState,
                              MLFuncLoweringRewriter *rewriter) const = 0;
@@ -143,10 +143,10 @@ PassResult MLPatternLoweringPass<Patterns...>::runOnFunction(Function *f) {
   FuncBuilder builder(f);
   MLFuncLoweringRewriter rewriter(&builder);
 
-  llvm::SmallVector<OperationInst *, 16> ops;
-  f->walkOps([&ops](OperationInst *inst) { ops.push_back(inst); });
+  llvm::SmallVector<Instruction *, 16> ops;
+  f->walkOps([&ops](Instruction *inst) { ops.push_back(inst); });
 
-  for (OperationInst *inst : ops) {
+  for (Instruction *inst : ops) {
     for (const auto &pattern : patterns) {
       rewriter.getBuilder()->setInsertionPoint(inst);
       auto matchResult = pattern->match(inst);

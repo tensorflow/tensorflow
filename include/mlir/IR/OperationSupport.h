@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines a number of support types that OperationInst and related
+// This file defines a number of support types that Instruction and related
 // classes build on top of.
 //
 //===----------------------------------------------------------------------===//
@@ -34,7 +34,6 @@ namespace mlir {
 class Block;
 class Dialect;
 class Instruction;
-using OperationInst = Instruction;
 class OperationState;
 class OpAsmParser;
 class OpAsmParserResult;
@@ -78,24 +77,23 @@ public:
   Dialect &dialect;
 
   /// Return true if this "op class" can match against the specified operation.
-  bool (&isClassFor)(const OperationInst *op);
+  bool (&isClassFor)(const Instruction *op);
 
   /// Use the specified object to parse this ops custom assembly format.
   bool (&parseAssembly)(OpAsmParser *parser, OperationState *result);
 
   /// This hook implements the AsmPrinter for this operation.
-  void (&printAssembly)(const OperationInst *op, OpAsmPrinter *p);
+  void (&printAssembly)(const Instruction *op, OpAsmPrinter *p);
 
   /// This hook implements the verifier for this operation.  It should emits an
   /// error message and returns true if a problem is detected, or returns false
   /// if everything is ok.
-  bool (&verifyInvariants)(const OperationInst *op);
+  bool (&verifyInvariants)(const Instruction *op);
 
   /// This hook implements a constant folder for this operation.  It returns
   /// true if folding failed, or returns false and fills in `results` on
   /// success.
-  bool (&constantFoldHook)(const OperationInst *op,
-                           ArrayRef<Attribute> operands,
+  bool (&constantFoldHook)(const Instruction *op, ArrayRef<Attribute> operands,
                            SmallVectorImpl<Attribute> &results);
 
   /// This hook implements a generalized folder for this operation.  Operations
@@ -118,7 +116,7 @@ public:
   /// "x+0 -> x", "min(x,y,x,z) -> min(x,y,z)", "x+y-x -> y", etc), but does
   /// not allow for canonicalizations that need to introduce new operations, not
   /// even constants (e.g. "x-x -> 0" cannot be expressed).
-  bool (&foldHook)(OperationInst *op, SmallVectorImpl<Value *> &results);
+  bool (&foldHook)(Instruction *op, SmallVectorImpl<Value *> &results);
 
   /// This hook returns any canonicalization pattern rewrites that the operation
   /// supports, for use by the canonicalization pass.
@@ -147,14 +145,14 @@ public:
 private:
   AbstractOperation(
       StringRef name, Dialect &dialect, OperationProperties opProperties,
-      bool (&isClassFor)(const OperationInst *op),
+      bool (&isClassFor)(const Instruction *op),
       bool (&parseAssembly)(OpAsmParser *parser, OperationState *result),
-      void (&printAssembly)(const OperationInst *op, OpAsmPrinter *p),
-      bool (&verifyInvariants)(const OperationInst *op),
-      bool (&constantFoldHook)(const OperationInst *op,
+      void (&printAssembly)(const Instruction *op, OpAsmPrinter *p),
+      bool (&verifyInvariants)(const Instruction *op),
+      bool (&constantFoldHook)(const Instruction *op,
                                ArrayRef<Attribute> operands,
                                SmallVectorImpl<Attribute> &results),
-      bool (&foldHook)(OperationInst *op, SmallVectorImpl<Value *> &results),
+      bool (&foldHook)(Instruction *op, SmallVectorImpl<Value *> &results),
       void (&getCanonicalizationPatterns)(OwningRewritePatternList &results,
                                           MLIRContext *context))
       : name(name), dialect(dialect), isClassFor(isClassFor),

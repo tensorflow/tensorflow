@@ -43,10 +43,8 @@ void mlir::getLoopIVs(const Instruction &inst,
   OpPointer<AffineForOp> currAffineForOp;
   // Traverse up the hierarchy collecing all 'for' instruction while skipping
   // over 'if' instructions.
-  while (currInst &&
-         ((currAffineForOp =
-               cast<OperationInst>(currInst)->dyn_cast<AffineForOp>()) ||
-          cast<OperationInst>(currInst)->isa<AffineIfOp>())) {
+  while (currInst && ((currAffineForOp = currInst->dyn_cast<AffineForOp>()) ||
+                      currInst->isa<AffineIfOp>())) {
     if (currAffineForOp)
       loops->push_back(currAffineForOp);
     currInst = currInst->getParentInst();
@@ -124,7 +122,7 @@ bool MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
 //
 // TODO(bondhugula): extend this to any other memref dereferencing ops
 // (dma_start, dma_wait).
-bool mlir::getMemRefRegion(OperationInst *opInst, unsigned loopDepth,
+bool mlir::getMemRefRegion(Instruction *opInst, unsigned loopDepth,
                            MemRefRegion *region) {
   unsigned rank;
   SmallVector<Value *, 4> indices;
@@ -279,7 +277,7 @@ bool mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
           std::is_same<LoadOrStoreOpPointer, OpPointer<StoreOp>>::value,
       "argument should be either a LoadOp or a StoreOp");
 
-  OperationInst *opInst = loadOrStoreOp->getInstruction();
+  Instruction *opInst = loadOrStoreOp->getInstruction();
   MemRefRegion region;
   if (!getMemRefRegion(opInst, /*loopDepth=*/0, &region))
     return false;
@@ -359,12 +357,11 @@ static Instruction *getInstAtPosition(ArrayRef<unsigned> positions,
     }
     if (level == positions.size() - 1)
       return &inst;
-    if (auto childAffineForOp =
-            cast<OperationInst>(inst).dyn_cast<AffineForOp>())
+    if (auto childAffineForOp = inst.dyn_cast<AffineForOp>())
       return getInstAtPosition(positions, level + 1,
                                childAffineForOp->getBody());
 
-    for (auto &blockList : cast<OperationInst>(&inst)->getBlockLists()) {
+    for (auto &blockList : inst.getBlockLists()) {
       for (auto &b : blockList)
         if (auto *ret = getInstAtPosition(positions, level + 1, &b))
           return ret;
@@ -442,7 +439,7 @@ bool mlir::getBackwardComputationSliceState(const MemRefAccess &srcAccess,
 // TODO(andydavis) Remove dependence on 'srcLoopDepth' here. Instead project
 // out loop IVs we don't care about and produce smaller slice.
 OpPointer<AffineForOp> mlir::insertBackwardComputationSlice(
-    OperationInst *srcOpInst, OperationInst *dstOpInst, unsigned dstLoopDepth,
+    Instruction *srcOpInst, Instruction *dstOpInst, unsigned dstLoopDepth,
     ComputationSliceState *sliceState) {
   // Get loop nest surrounding src operation.
   SmallVector<OpPointer<AffineForOp>, 4> srcLoopIVs;
@@ -469,8 +466,7 @@ OpPointer<AffineForOp> mlir::insertBackwardComputationSlice(
   auto dstAffineForOp = dstLoopIVs[dstLoopDepth - 1];
   FuncBuilder b(dstAffineForOp->getBody(), dstAffineForOp->getBody()->begin());
   auto sliceLoopNest =
-      cast<OperationInst>(b.clone(*srcLoopIVs[0]->getInstruction()))
-          ->cast<AffineForOp>();
+      b.clone(*srcLoopIVs[0]->getInstruction())->cast<AffineForOp>();
 
   Instruction *sliceInst =
       getInstAtPosition(positions, /*level=*/0, sliceLoopNest->getBody());
@@ -499,7 +495,7 @@ OpPointer<AffineForOp> mlir::insertBackwardComputationSlice(
 
 // Constructs  MemRefAccess populating it with the memref, its indices and
 // opinst from 'loadOrStoreOpInst'.
-MemRefAccess::MemRefAccess(OperationInst *loadOrStoreOpInst) {
+MemRefAccess::MemRefAccess(Instruction *loadOrStoreOpInst) {
   if (auto loadOp = loadOrStoreOpInst->dyn_cast<LoadOp>()) {
     memref = loadOp->getMemRef();
     opInst = loadOrStoreOpInst;
@@ -527,7 +523,7 @@ unsigned mlir::getNestingDepth(const Instruction &stmt) {
   const Instruction *currInst = &stmt;
   unsigned depth = 0;
   while ((currInst = currInst->getParentInst())) {
-    if (cast<OperationInst>(currInst)->isa<AffineForOp>())
+    if (currInst->isa<AffineForOp>())
       depth++;
   }
   return depth;
@@ -585,7 +581,7 @@ mlir::getMemoryFootprintBytes(ConstOpPointer<AffineForOp> forOp,
 
   // Walk this 'for' instruction to gather all memory regions.
   bool error = false;
-  const_cast<AffineForOp &>(*forOp).walkOps([&](OperationInst *opInst) {
+  const_cast<AffineForOp &>(*forOp).walkOps([&](Instruction *opInst) {
     if (!opInst->isa<LoadOp>() && !opInst->isa<StoreOp>()) {
       // Neither load nor a store op.
       return;

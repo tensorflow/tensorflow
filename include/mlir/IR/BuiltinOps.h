@@ -82,7 +82,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit AffineApplyOp(const OperationInst *state) : Op(state) {}
+  explicit AffineApplyOp(const Instruction *state) : Op(state) {}
 };
 
 /// The "br" operation represents a branch instruction in a CFG function.
@@ -119,7 +119,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit BranchOp(const OperationInst *state) : Op(state) {}
+  explicit BranchOp(const Instruction *state) : Op(state) {}
 };
 
 /// The "cond_br" operation represents a conditional branch instruction in a
@@ -258,7 +258,7 @@ private:
   }
 
   friend class Instruction;
-  explicit CondBranchOp(const OperationInst *state) : Op(state) {}
+  explicit CondBranchOp(const Instruction *state) : Op(state) {}
 };
 
 /// The "constant" operation requires a single attribute named "value".
@@ -287,7 +287,7 @@ public:
 
 protected:
   friend class Instruction;
-  explicit ConstantOp(const OperationInst *state) : Op(state) {}
+  explicit ConstantOp(const Instruction *state) : Op(state) {}
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -305,11 +305,11 @@ public:
     return getAttrOfType<FloatAttr>("value").getValue();
   }
 
-  static bool isClassFor(const OperationInst *op);
+  static bool isClassFor(const Instruction *op);
 
 private:
   friend class Instruction;
-  explicit ConstantFloatOp(const OperationInst *state) : ConstantOp(state) {}
+  explicit ConstantFloatOp(const Instruction *state) : ConstantOp(state) {}
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -332,11 +332,11 @@ public:
     return getAttrOfType<IntegerAttr>("value").getInt();
   }
 
-  static bool isClassFor(const OperationInst *op);
+  static bool isClassFor(const Instruction *op);
 
 private:
   friend class Instruction;
-  explicit ConstantIntOp(const OperationInst *state) : ConstantOp(state) {}
+  explicit ConstantIntOp(const Instruction *state) : ConstantOp(state) {}
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -353,11 +353,11 @@ public:
     return getAttrOfType<IntegerAttr>("value").getInt();
   }
 
-  static bool isClassFor(const OperationInst *op);
+  static bool isClassFor(const Instruction *op);
 
 private:
   friend class Instruction;
-  explicit ConstantIndexOp(const OperationInst *state) : ConstantOp(state) {}
+  explicit ConstantIndexOp(const Instruction *state) : ConstantOp(state) {}
 };
 
 /// The "return" operation represents a return instruction within a function.
@@ -384,12 +384,12 @@ public:
 
 private:
   friend class Instruction;
-  explicit ReturnOp(const OperationInst *state) : Op(state) {}
+  explicit ReturnOp(const Instruction *state) : Op(state) {}
 };
 
 /// Prints dimension and symbol list.
-void printDimAndSymbolList(OperationInst::const_operand_iterator begin,
-                           OperationInst::const_operand_iterator end,
+void printDimAndSymbolList(Instruction::const_operand_iterator begin,
+                           Instruction::const_operand_iterator end,
                            unsigned numDims, OpAsmPrinter *p);
 
 /// Parses dimension and symbol list and returns true if parsing failed.

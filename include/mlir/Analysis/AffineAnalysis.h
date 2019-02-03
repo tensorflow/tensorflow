@@ -41,7 +41,6 @@ class Instruction;
 class IntegerSet;
 class Location;
 class MLIRContext;
-using OperationInst = Instruction;
 template <typename OpType> class OpPointer;
 class Value;
 
@@ -74,11 +73,11 @@ void fullyComposeAffineMapAndOperands(AffineMap *map,
                                       llvm::SmallVectorImpl<Value *> *operands);
 
 /// Returns in `affineApplyOps`, the sequence of those AffineApplyOp
-/// OperationInsts that are reachable via a search starting from `operands` and
+/// Instructions that are reachable via a search starting from `operands` and
 /// ending at those operands that are not the result of an AffineApplyOp.
 void getReachableAffineApplyOps(
     llvm::ArrayRef<Value *> operands,
-    llvm::SmallVectorImpl<OperationInst *> &affineApplyOps);
+    llvm::SmallVectorImpl<Instruction *> &affineApplyOps);
 
 /// Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
 /// if 'expr' could not be flattened (i.e., semi-affine is not yet handled).
@@ -119,13 +118,13 @@ bool getIndexSet(llvm::MutableArrayRef<OpPointer<AffineForOp>> forOps,
 /// Encapsulates a memref load or store access information.
 struct MemRefAccess {
   const Value *memref;
-  const OperationInst *opInst;
+  const Instruction *opInst;
   llvm::SmallVector<Value *, 4> indices;
 
   /// Constructs a MemRefAccess from a load or store operation instruction.
   // TODO(b/119949820): add accessors to standard op's load, store, DMA op's to
   // return MemRefAccess, i.e., loadOp->getAccess(), dmaOp->getRead/WriteAccess.
-  explicit MemRefAccess(OperationInst *opInst);
+  explicit MemRefAccess(Instruction *opInst);
 
   /// Populates 'accessMap' with composition of AffineApplyOps reachable from
   // 'indices'.

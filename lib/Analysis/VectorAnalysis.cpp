@@ -106,7 +106,7 @@ Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(VectorType superVectorType,
 /// header file.
 static AffineMap makePermutationMap(
     MLIRContext *context,
-    llvm::iterator_range<OperationInst::operand_iterator> indices,
+    llvm::iterator_range<Instruction::operand_iterator> indices,
     const DenseMap<Instruction *, unsigned> &enclosingLoopToVectorDim) {
   using functional::makePtrDynCaster;
   using functional::map;
@@ -116,8 +116,7 @@ static AffineMap makePermutationMap(
   for (auto kvp : enclosingLoopToVectorDim) {
     assert(kvp.second < perm.size());
     auto invariants = getInvariantAccesses(
-        *cast<OperationInst>(kvp.first)->cast<AffineForOp>()->getInductionVar(),
-        unwrappedIndices);
+        *kvp.first->cast<AffineForOp>()->getInductionVar(), unwrappedIndices);
     unsigned numIndices = unwrappedIndices.size();
     unsigned countInvariantIndices = 0;
     for (unsigned dim = 0; dim < numIndices; ++dim) {
@@ -142,14 +141,13 @@ static AffineMap makePermutationMap(
 /// TODO(ntv): could also be implemented as a collect parents followed by a
 /// filter and made available outside this file.
 template <typename T>
-static SetVector<OperationInst *> getParentsOfType(Instruction *inst) {
-  SetVector<OperationInst *> res;
+static SetVector<Instruction *> getParentsOfType(Instruction *inst) {
+  SetVector<Instruction *> res;
   auto *current = inst;
   while (auto *parent = current->getParentInst()) {
-    if (auto typedParent =
-            cast<OperationInst>(parent)->template dyn_cast<T>()) {
-      assert(res.count(cast<OperationInst>(parent)) == 0 && "Already inserted");
-      res.insert(cast<OperationInst>(parent));
+    if (auto typedParent = parent->template dyn_cast<T>()) {
+      assert(res.count(parent) == 0 && "Already inserted");
+      res.insert(parent);
     }
     current = parent;
   }
@@ -157,12 +155,12 @@ static SetVector<OperationInst *> getParentsOfType(Instruction *inst) {
 }
 
 /// Returns the enclosing AffineForOp, from closest to farthest.
-static SetVector<OperationInst *> getEnclosingforOps(Instruction *inst) {
+static SetVector<Instruction *> getEnclosingforOps(Instruction *inst) {
   return getParentsOfType<AffineForOp>(inst);
 }
 
 AffineMap mlir::makePermutationMap(
-    OperationInst *opInst,
+    Instruction *opInst,
     const DenseMap<Instruction *, unsigned> &loopToVectorDim) {
   DenseMap<Instruction *, unsigned> enclosingLoopToVectorDim;
   auto enclosingLoops = getEnclosingforOps(opInst);
@@ -183,7 +181,7 @@ AffineMap mlir::makePermutationMap(
                               enclosingLoopToVectorDim);
 }
 
-bool mlir::matcher::operatesOnSuperVectors(const OperationInst &opInst,
+bool mlir::matcher::operatesOnSuperVectors(const Instruction &opInst,
                                            VectorType subVectorType) {
   // First, extract the vector type and ditinguish between:
   //   a. ops that *must* lower a super-vector (i.e. vector_transfer_read,

@@ -35,7 +35,7 @@ struct PrintOpStatsPass : public ModulePass, InstWalker<PrintOpStatsPass> {
   PassResult runOnModule(Module *m) override;
 
   // Updates the operation statistics for the given instruction.
-  void visitOperationInst(OperationInst *inst);
+  void visitInstruction(Instruction *inst);
 
   // Print summary of op stats.
   void printSummary();
@@ -58,7 +58,7 @@ PassResult PrintOpStatsPass::runOnModule(Module *m) {
   return success();
 }
 
-void PrintOpStatsPass::visitOperationInst(OperationInst *inst) {
+void PrintOpStatsPass::visitInstruction(Instruction *inst) {
   ++opCount[inst->getName().getStringRef()];
 }
 

@@ -22,7 +22,7 @@ using namespace mlir;
 
 /// If this value is the result of an Instruction, return the instruction
 /// that defines it.
-OperationInst *Value::getDefiningInst() {
+Instruction *Value::getDefiningInst() {
   if (auto *result = dyn_cast<InstResult>(this))
     return result->getOwner();
   return nullptr;

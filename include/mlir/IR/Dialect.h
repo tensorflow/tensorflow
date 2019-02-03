@@ -30,7 +30,7 @@ class IntegerSet;
 class Type;
 
 using DialectConstantFoldHook = std::function<bool(
-    const OperationInst *, ArrayRef<Attribute>, SmallVectorImpl<Attribute> &)>;
+    const Instruction *, ArrayRef<Attribute>, SmallVectorImpl<Attribute> &)>;
 using DialectTypeParserHook =
     std::function<Type(StringRef, Location, MLIRContext *)>;
 using DialectTypePrinterHook = std::function<void(Type, raw_ostream &)>;
@@ -56,7 +56,7 @@ public:
   /// and fills in the `results` vector.  If not, this returns true and
   /// `results` is unspecified.
   DialectConstantFoldHook constantFoldHook =
-      [](const OperationInst *op, ArrayRef<Attribute> operands,
+      [](const Instruction *op, ArrayRef<Attribute> operands,
          SmallVectorImpl<Attribute> &results) { return true; };
 
   /// Registered parsing/printing hooks for types registered to the dialect.

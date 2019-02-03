@@ -75,11 +75,10 @@ bool replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
 /// these will also be collected into a single (multi-result) affine apply op.
 /// The final results of the composed AffineApplyOp are returned in output
 /// parameter 'results'. Returns the affine apply op created.
-OperationInst *
-createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
-                            ArrayRef<Value *> operands,
-                            ArrayRef<OperationInst *> affineApplyOps,
-                            SmallVectorImpl<Value *> *results);
+Instruction *createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
+                                         ArrayRef<Value *> operands,
+                                         ArrayRef<Instruction *> affineApplyOps,
+                                         SmallVectorImpl<Value *> *results);
 
 /// Given an operation instruction, inserts one or more single result affine
 /// apply operations, results of which are exclusively used by this operation
@@ -110,7 +109,7 @@ createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
 /// uses other than those in this opInst. The method otherwise returns the list
 /// of affine_apply operations created in output argument `sliceOps`.
 void createAffineComputationSlice(
-    OperationInst *opInst, SmallVectorImpl<OpPointer<AffineApplyOp>> *sliceOps);
+    Instruction *opInst, SmallVectorImpl<OpPointer<AffineApplyOp>> *sliceOps);
 
 /// Folds the lower and upper bounds of a 'for' inst to constants if possible.
 /// Returns false if the folding happens for at least one bound, true otherwise.
@@ -119,7 +118,7 @@ bool constantFoldBounds(OpPointer<AffineForOp> forInst);
 /// Replaces (potentially nested) function attributes in the operation "op"
 /// with those specified in "remappingTable".
 void remapFunctionAttrs(
-    OperationInst &op, const DenseMap<Attribute, FunctionAttr> &remappingTable);
+    Instruction &op, const DenseMap<Attribute, FunctionAttr> &remappingTable);
 
 /// Replaces (potentially nested) function attributes all operations of the
 /// Function "fn" with those specified in "remappingTable".

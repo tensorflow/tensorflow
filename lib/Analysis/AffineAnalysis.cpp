@@ -498,14 +498,14 @@ bool mlir::getFlattenedAffineExprs(
                                    localVarCst);
 }
 
-/// Returns the sequence of AffineApplyOp OperationInsts operation in
+/// Returns the sequence of AffineApplyOp Instructions operation in
 /// 'affineApplyOps', which are reachable via a search starting from 'operands',
 /// and ending at operands which are not defined by AffineApplyOps.
 // TODO(andydavis) Add a method to AffineApplyOp which forward substitutes
 // the AffineApplyOp into any user AffineApplyOps.
 void mlir::getReachableAffineApplyOps(
     ArrayRef<Value *> operands,
-    SmallVectorImpl<OperationInst *> &affineApplyOps) {
+    SmallVectorImpl<Instruction *> &affineApplyOps) {
   struct State {
     // The ssa value for this node in the DFS traversal.
     Value *value;
@@ -521,7 +521,7 @@ void mlir::getReachableAffineApplyOps(
     State &state = worklist.back();
     auto *opInst = state.value->getDefiningInst();
     // Note: getDefiningInst will return nullptr if the operand is not an
-    // OperationInst (i.e. AffineForOp), which is a terminator for the search.
+    // Instruction (i.e. AffineForOp), which is a terminator for the search.
     if (opInst == nullptr || !opInst->isa<AffineApplyOp>()) {
       worklist.pop_back();
       continue;

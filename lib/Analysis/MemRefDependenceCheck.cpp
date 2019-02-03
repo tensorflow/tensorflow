@@ -40,13 +40,13 @@ namespace {
 /// Checks dependences between all pairs of memref accesses in a Function.
 struct MemRefDependenceCheck : public FunctionPass,
                                InstWalker<MemRefDependenceCheck> {
-  SmallVector<OperationInst *, 4> loadsAndStores;
+  SmallVector<Instruction *, 4> loadsAndStores;
   explicit MemRefDependenceCheck()
       : FunctionPass(&MemRefDependenceCheck::passID) {}
 
   PassResult runOnFunction(Function *f) override;
 
-  void visitOperationInst(OperationInst *opInst) {
+  void visitOperationInst(Instruction *opInst) {
     if (opInst->isa<LoadOp>() || opInst->isa<StoreOp>()) {
       loadsAndStores.push_back(opInst);
     }
@@ -88,7 +88,7 @@ getDirectionVectorStr(bool ret, unsigned numCommonLoops, unsigned loopNestDepth,
 // "source" access and all subsequent "destination" accesses in
 // 'loadsAndStores'. Emits the result of the dependence check as a note with
 // the source access.
-static void checkDependences(ArrayRef<OperationInst *> loadsAndStores) {
+static void checkDependences(ArrayRef<Instruction *> loadsAndStores) {
   for (unsigned i = 0, e = loadsAndStores.size(); i < e; ++i) {
     auto *srcOpInst = loadsAndStores[i];
     MemRefAccess srcAccess(srcOpInst);

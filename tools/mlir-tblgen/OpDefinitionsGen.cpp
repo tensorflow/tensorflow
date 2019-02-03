@@ -169,7 +169,7 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
 
   os << "private:\n  friend class ::mlir::Instruction;\n"
      << "  explicit " << emitter.op.getCppClassName()
-     << "(const OperationInst* state) : Op(state) {}\n};\n";
+     << "(const Instruction* state) : Op(state) {}\n};\n";
   emitter.mapOverClassNamespaces(
       [&os](StringRef ns) { os << "} // end namespace " << ns << "\n"; });
 }

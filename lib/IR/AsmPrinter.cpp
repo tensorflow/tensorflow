@@ -132,7 +132,6 @@ private:
 
   // Visit functions.
   void visitInstruction(const Instruction *inst);
-  void visitOperationInst(const OperationInst *opInst);
   void visitType(Type type);
   void visitAttribute(Attribute attr);
 
@@ -183,23 +182,16 @@ void ModuleState::visitAttribute(Attribute attr) {
   }
 }
 
-void ModuleState::visitOperationInst(const OperationInst *op) {
+void ModuleState::visitInstruction(const Instruction *inst) {
   // Visit all the types used in the operation.
-  for (auto *operand : op->getOperands())
+  for (auto *operand : inst->getOperands())
     visitType(operand->getType());
-  for (auto *result : op->getResults())
+  for (auto *result : inst->getResults())
     visitType(result->getType());
 
   // Visit each of the attributes.
-  for (auto elt : op->getAttrs())
+  for (auto elt : inst->getAttrs())
     visitAttribute(elt.second);
-}
-
-void ModuleState::visitInstruction(const Instruction *inst) {
-  switch (inst->getKind()) {
-  case Instruction::Kind::OperationInst:
-    return visitOperationInst(cast<OperationInst>(inst));
-  }
 }
 
 // Utility to generate a function to register a symbol alias.
@@ -1045,8 +1037,8 @@ public:
   void print(const Instruction *inst);
   void print(const Block *block, bool printBlockArgs = true);
 
-  void printOperation(const OperationInst *op);
-  void printGenericOp(const OperationInst *op);
+  void printOperation(const Instruction *op);
+  void printGenericOp(const Instruction *op);
 
   // Implement OpAsmPrinter.
   raw_ostream &getStream() const { return os; }
@@ -1086,7 +1078,7 @@ public:
     return it != blockIDs.end() ? it->second : ~0U;
   }
 
-  void printSuccessorAndUseList(const OperationInst *term,
+  void printSuccessorAndUseList(const Instruction *term,
                                 unsigned index) override;
 
   /// Print a block list.
@@ -1162,17 +1154,11 @@ void FunctionPrinter::numberValuesInBlock(const Block &block) {
   for (auto &inst : block) {
     // We number instruction that have results, and we only number the first
     // result.
-    switch (inst.getKind()) {
-    case Instruction::Kind::OperationInst: {
-      auto *opInst = cast<OperationInst>(&inst);
-      if (opInst->getNumResults() != 0)
-        numberValueID(opInst->getResult(0));
-      for (auto &blockList : opInst->getBlockLists())
-        for (const auto &block : blockList)
-          numberValuesInBlock(block);
-      break;
-    }
-    }
+    if (inst.getNumResults() != 0)
+      numberValueID(inst.getResult(0));
+    for (auto &blockList : inst.getBlockLists())
+      for (const auto &block : blockList)
+        numberValuesInBlock(block);
   }
 }
 
@@ -1408,7 +1394,7 @@ void FunctionPrinter::printValueID(const Value *value,
     os << '#' << resultNo;
 }
 
-void FunctionPrinter::printOperation(const OperationInst *op) {
+void FunctionPrinter::printOperation(const Instruction *op) {
   if (op->getNumResults()) {
     printValueID(op->getResult(0), /*printResultNo=*/false);
     os << " = ";
@@ -1425,7 +1411,7 @@ void FunctionPrinter::printOperation(const OperationInst *op) {
   printGenericOp(op);
 }
 
-void FunctionPrinter::printGenericOp(const OperationInst *op) {
+void FunctionPrinter::printGenericOp(const Instruction *op) {
   os << '"';
   printEscapedString(op->getName().getStringRef(), os);
   os << "\"(";
@@ -1478,7 +1464,7 @@ void FunctionPrinter::printGenericOp(const OperationInst *op) {
     printBlockList(blockList, /*printEntryBlockArgs=*/true);
 }
 
-void FunctionPrinter::printSuccessorAndUseList(const OperationInst *term,
+void FunctionPrinter::printSuccessorAndUseList(const Instruction *term,
                                                unsigned index) {
   printBlockName(term->getSuccessor(index));
 

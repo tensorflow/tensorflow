@@ -43,7 +43,7 @@ struct MemRefBoundCheck : public FunctionPass, InstWalker<MemRefBoundCheck> {
 
   PassResult runOnFunction(Function *f) override;
 
-  void visitOperationInst(OperationInst *opInst);
+  void visitInstruction(Instruction *opInst);
 
   static char passID;
 };
@@ -56,7 +56,7 @@ FunctionPass *mlir::createMemRefBoundCheckPass() {
   return new MemRefBoundCheck();
 }
 
-void MemRefBoundCheck::visitOperationInst(OperationInst *opInst) {
+void MemRefBoundCheck::visitInstruction(Instruction *opInst) {
   if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
     boundCheckLoadOrStoreOp(loadOp);
   } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {

@@ -53,8 +53,7 @@ void mlir::getForwardSlice(Instruction *inst,
     return;
   }
 
-  auto *opInst = cast<OperationInst>(inst);
-  if (auto forOp = opInst->dyn_cast<AffineForOp>()) {
+  if (auto forOp = inst->dyn_cast<AffineForOp>()) {
     for (auto &u : forOp->getInductionVar()->getUses()) {
       auto *ownerInst = u.getOwner();
       if (forwardSlice->count(ownerInst) == 0) {
@@ -63,9 +62,9 @@ void mlir::getForwardSlice(Instruction *inst,
       }
     }
   } else {
-    assert(opInst->getNumResults() <= 1 && "NYI: multiple results");
-    if (opInst->getNumResults() > 0) {
-      for (auto &u : opInst->getResult(0)->getUses()) {
+    assert(inst->getNumResults() <= 1 && "NYI: multiple results");
+    if (inst->getNumResults() > 0) {
+      for (auto &u : inst->getResult(0)->getUses()) {
         auto *ownerInst = u.getOwner();
         if (forwardSlice->count(ownerInst) == 0) {
           getForwardSlice(ownerInst, forwardSlice, filter,
@@ -156,10 +155,9 @@ struct DFSState {
 } // namespace
 
 static void DFSPostorder(Instruction *current, DFSState *state) {
-  auto *opInst = cast<OperationInst>(current);
-  assert(opInst->getNumResults() <= 1 && "NYI: multi-result");
-  if (opInst->getNumResults() > 0) {
-    for (auto &u : opInst->getResult(0)->getUses()) {
+  assert(current->getNumResults() <= 1 && "NYI: multi-result");
+  if (current->getNumResults() > 0) {
+    for (auto &u : current->getResult(0)->getUses()) {
       auto *inst = u.getOwner();
       DFSPostorder(inst, state);
     }

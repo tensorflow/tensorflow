@@ -95,8 +95,7 @@ public:
     insertIntoCurrent();
   }
 
-  /// Return the owner of this operand, for example, the OperationInst that
-  /// contains an InstOperand.
+  /// Return the owner of this operand.
   Instruction *getOwner() { return owner; }
   const Instruction *getOwner() const { return owner; }
 

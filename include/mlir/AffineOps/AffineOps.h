@@ -182,15 +182,15 @@ public:
 
   /// Walk the operation instructions in the 'for' instruction in preorder,
   /// calling the callback for each operation.
-  void walkOps(std::function<void(OperationInst *)> callback);
+  void walkOps(std::function<void(Instruction *)> callback);
 
   /// Walk the operation instructions in the 'for' instruction in postorder,
   /// calling the callback for each operation.
-  void walkOpsPostOrder(std::function<void(OperationInst *)> callback);
+  void walkOpsPostOrder(std::function<void(Instruction *)> callback);
 
 private:
   friend class Instruction;
-  explicit AffineForOp(const OperationInst *state) : Op(state) {}
+  explicit AffineForOp(const Instruction *state) : Op(state) {}
 };
 
 /// Returns if the provided value is the induction variable of a AffineForOp.
@@ -224,13 +224,11 @@ public:
   using operand_range = AffineForOp::operand_range;
 
   operand_iterator operand_begin() const {
-    return const_cast<OperationInst *>(inst->getInstruction())
-               ->operand_begin() +
+    return const_cast<Instruction *>(inst->getInstruction())->operand_begin() +
            opStart;
   }
   operand_iterator operand_end() const {
-    return const_cast<OperationInst *>(inst->getInstruction())
-               ->operand_begin() +
+    return const_cast<Instruction *>(inst->getInstruction())->operand_begin() +
            opEnd;
   }
   operand_range getOperands() const { return {operand_begin(), operand_end()}; }
@@ -300,7 +298,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit AffineIfOp(const OperationInst *state) : Op(state) {}
+  explicit AffineIfOp(const Instruction *state) : Op(state) {}
 };
 
 } // end namespace mlir

@@ -243,7 +243,7 @@ public:
   Block *getBlock() const { return block; }
 
   /// Creates an operation given the fields represented as an OperationState.
-  OperationInst *createOperation(const OperationState &state);
+  Instruction *createOperation(const OperationState &state);
 
   /// Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
