@@ -410,27 +410,26 @@ bool AffineForOp::matchingBoundOperandList() const {
   return true;
 }
 
-void AffineForOp::walkOps(std::function<void(Instruction *)> callback) {
+void AffineForOp::walk(std::function<void(Instruction *)> callback) {
   struct Walker : public InstWalker<Walker> {
     std::function<void(Instruction *)> const &callback;
     Walker(std::function<void(Instruction *)> const &callback)
         : callback(callback) {}
 
-    void visitOperationInst(Instruction *opInst) { callback(opInst); }
+    void visitInstruction(Instruction *opInst) { callback(opInst); }
   };
 
   Walker w(callback);
   w.walk(getInstruction());
 }
 
-void AffineForOp::walkOpsPostOrder(
-    std::function<void(Instruction *)> callback) {
+void AffineForOp::walkPostOrder(std::function<void(Instruction *)> callback) {
   struct Walker : public InstWalker<Walker> {
     std::function<void(Instruction *)> const &callback;
     Walker(std::function<void(Instruction *)> const &callback)
         : callback(callback) {}
 
-    void visitOperationInst(Instruction *opInst) { callback(opInst); }
+    void visitInstruction(Instruction *opInst) { callback(opInst); }
   };
 
   Walker v(callback);

@@ -46,7 +46,7 @@ struct MemRefDependenceCheck : public FunctionPass,
 
   PassResult runOnFunction(Function *f) override;
 
-  void visitOperationInst(Instruction *opInst) {
+  void visitInstruction(Instruction *opInst) {
     if (opInst->isa<LoadOp>() || opInst->isa<StoreOp>()) {
       loadsAndStores.push_back(opInst);
     }

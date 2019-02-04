@@ -117,13 +117,11 @@ public:
 
   /// Walk the instructions in the function in preorder, calling the callback
   /// for each instruction or operation.
-  void walkInsts(std::function<void(Instruction *)> callback);
-  void walkOps(std::function<void(Instruction *)> callback);
+  void walk(std::function<void(Instruction *)> callback);
 
   /// Walk the instructions in the function in postorder, calling the callback
   /// for each instruction or operation.
-  void walkInstsPostOrder(std::function<void(Instruction *)> callback);
-  void walkOpsPostOrder(std::function<void(Instruction *)> callback);
+  void walkPostOrder(std::function<void(Instruction *)> callback);
 
   //===--------------------------------------------------------------------===//
   // Arguments

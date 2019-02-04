@@ -67,34 +67,6 @@
 #include "mlir/IR/Instruction.h"
 
 namespace mlir {
-
-/// Base class for instruction visitors.
-template <typename SubClass, typename RetTy = void> class InstVisitor {
-  //===--------------------------------------------------------------------===//
-  // Interface code - This is the public interface of the InstVisitor that you
-  // use to visit instructions.
-
-public:
-  // Function to visit a instruction.
-  RetTy visit(Instruction *s) {
-    static_assert(std::is_base_of<InstVisitor, SubClass>::value,
-                  "Must pass the derived type to this template!");
-    return static_cast<SubClass *>(this)->visitOperationInst(s);
-  }
-
-  //===--------------------------------------------------------------------===//
-  // Visitation functions... these functions provide default fallbacks in case
-  // the user does not specify what to do for a particular instruction type.
-  // The default behavior is to generalize the instruction type to its subtype
-  // and try visiting the subtype.  All of this should be inlined perfectly,
-  // because there are no virtual functions to get in the way.
-  //
-
-  // When visiting a for inst, if inst, or an operation inst directly, these
-  // methods get called to indicate when transitioning into a new unit.
-  void visitOperationInst(Instruction *opInst) {}
-};
-
 /// Base class for instruction walkers. A walker can traverse depth first in
 /// pre-order or post order. The walk methods without a suffix do a pre-order
 /// traversal while those that traverse in post order have a PostOrder suffix.
@@ -127,36 +99,26 @@ public:
       static_cast<SubClass *>(this)->walkPostOrder(it->begin(), it->end());
   }
 
-  void walkOpInst(Instruction *opInst) {
-    static_cast<SubClass *>(this)->visitOperationInst(opInst);
-    for (auto &blockList : opInst->getBlockLists())
-      for (auto &block : blockList)
-        static_cast<SubClass *>(this)->walk(block.begin(), block.end());
-  }
-
-  void walkOpInstPostOrder(Instruction *opInst) {
-    for (auto &blockList : opInst->getBlockLists())
-      for (auto &block : blockList)
-        static_cast<SubClass *>(this)->walkPostOrder(block.begin(),
-                                                     block.end());
-    static_cast<SubClass *>(this)->visitOperationInst(opInst);
-  }
-
   // Function to walk a instruction.
   RetTy walk(Instruction *s) {
     static_assert(std::is_base_of<InstWalker, SubClass>::value,
                   "Must pass the derived type to this template!");
 
     static_cast<SubClass *>(this)->visitInstruction(s);
-    return static_cast<SubClass *>(this)->walkOpInst(s);
+    for (auto &blockList : s->getBlockLists())
+      for (auto &block : blockList)
+        static_cast<SubClass *>(this)->walk(block.begin(), block.end());
   }
 
   // Function to walk a instruction in post order DFS.
   RetTy walkPostOrder(Instruction *s) {
     static_assert(std::is_base_of<InstWalker, SubClass>::value,
                   "Must pass the derived type to this template!");
+    for (auto &blockList : s->getBlockLists())
+      for (auto &block : blockList)
+        static_cast<SubClass *>(this)->walkPostOrder(block.begin(),
+                                                     block.end());
     static_cast<SubClass *>(this)->visitInstruction(s);
-    return static_cast<SubClass *>(this)->walkOpInstPostOrder(s);
   }
 
   //===--------------------------------------------------------------------===//
@@ -170,7 +132,6 @@ public:
   // called. These are typically O(1) complexity and shouldn't be recursively
   // processing their descendants in some way. When using RetTy, all of these
   // need to be overridden.
-  void visitOperationInst(Instruction *opInst) {}
   void visitInstruction(Instruction *inst) {}
 };
 

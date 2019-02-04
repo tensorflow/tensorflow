@@ -256,31 +256,31 @@ Block *Block::splitBlock(iterator splitBefore) {
   return newBB;
 }
 
-void Block::walk(std::function<void(OperationInst *)> callback) {
+void Block::walk(std::function<void(Instruction *)> callback) {
   walk(begin(), end(), callback);
 }
 
 void Block::walk(Block::iterator begin, Block::iterator end,
-                 std::function<void(OperationInst *)> callback) {
+                 std::function<void(Instruction *)> callback) {
   struct Walker : public InstWalker<Walker> {
-    std::function<void(OperationInst *)> const &callback;
-    Walker(std::function<void(OperationInst *)> const &callback)
+    std::function<void(Instruction *)> const &callback;
+    Walker(std::function<void(Instruction *)> const &callback)
         : callback(callback) {}
 
-    void visitOperationInst(OperationInst *opInst) { callback(opInst); }
+    void visitInstruction(Instruction *opInst) { callback(opInst); }
   };
 
   Walker w(callback);
   w.walk(begin, end);
 }
 
-void Block::walkPostOrder(std::function<void(OperationInst *)> callback) {
+void Block::walkPostOrder(std::function<void(Instruction *)> callback) {
   struct Walker : public InstWalker<Walker> {
-    std::function<void(OperationInst *)> const &callback;
-    Walker(std::function<void(OperationInst *)> const &callback)
+    std::function<void(Instruction *)> const &callback;
+    Walker(std::function<void(Instruction *)> const &callback)
         : callback(callback) {}
 
-    void visitOperationInst(OperationInst *opInst) { callback(opInst); }
+    void visitInstruction(Instruction *opInst) { callback(opInst); }
   };
 
   Walker v(callback);
@@ -338,19 +338,15 @@ void BlockList::cloneInto(BlockList *dest, BlockAndValueMapping &mapper,
     BlockAndValueMapping &mapper;
     Walker(BlockAndValueMapping &mapper) : mapper(mapper) {}
 
-    /// Remap the instruction operands.
-    void visitInstruction(Instruction *inst) {
+    /// Remap the instruction and successor block operands.
+    void visitInstruction(OperationInst *inst) {
       for (auto &instOp : inst->getInstOperands())
         if (auto *mappedOp = mapper.lookupOrNull(instOp.get()))
           instOp.set(mappedOp);
-    }
-    // Remap the successor block operands.
-    void visitOperationInst(OperationInst *opInst) {
-      if (!opInst->isTerminator())
-        return;
-      for (auto &succOp : opInst->getBlockOperands())
-        if (auto *mappedOp = mapper.lookupOrNull(succOp.get()))
-          succOp.set(mappedOp);
+      if (inst->isTerminator())
+        for (auto &succOp : inst->getBlockOperands())
+          if (auto *mappedOp = mapper.lookupOrNull(succOp.get()))
+            succOp.set(mappedOp);
     }
   };
 

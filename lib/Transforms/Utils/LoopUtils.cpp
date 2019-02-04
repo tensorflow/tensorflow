@@ -135,7 +135,7 @@ bool mlir::promoteIfSingleIteration(OpPointer<AffineForOp> forOp) {
 /// their body into the containing Block.
 void mlir::promoteSingleIterationLoops(Function *f) {
   // Gathers all innermost loops through a post order pruned walk.
-  f->walkOpsPostOrder([](OperationInst *inst) {
+  f->walkPostOrder([](OperationInst *inst) {
     if (auto forOp = inst->dyn_cast<AffineForOp>())
       promoteIfSingleIteration(forOp);
   });

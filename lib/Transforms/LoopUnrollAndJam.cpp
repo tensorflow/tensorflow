@@ -196,7 +196,7 @@ bool mlir::loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
 
   // Gather all sub-blocks to jam upon the loop being unrolled.
   JamBlockGatherer jbg;
-  jbg.walkOpInst(forInst);
+  jbg.walk(forInst);
   auto &subBlocks = jbg.subBlocks;
 
   // Generate the cleanup loop if trip count isn't a multiple of

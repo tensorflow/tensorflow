@@ -118,7 +118,7 @@ public:
   SmallVector<OperationInst *, 4> storeOpInsts;
   bool hasNonForRegion = false;
 
-  void visitOperationInst(OperationInst *opInst) {
+  void visitInstruction(OperationInst *opInst) {
     if (opInst->isa<AffineForOp>())
       forOps.push_back(opInst->cast<AffineForOp>());
     else if (opInst->getNumBlockLists() != 0)
@@ -619,7 +619,7 @@ public:
 
   LoopNestStatsCollector(LoopNestStats *stats) : stats(stats) {}
 
-  void visitOperationInst(OperationInst *opInst) {
+  void visitInstruction(OperationInst *opInst) {
     auto forOp = opInst->dyn_cast<AffineForOp>();
     if (!forOp)
       return;

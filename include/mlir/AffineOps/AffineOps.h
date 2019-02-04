@@ -182,11 +182,11 @@ public:
 
   /// Walk the operation instructions in the 'for' instruction in preorder,
   /// calling the callback for each operation.
-  void walkOps(std::function<void(Instruction *)> callback);
+  void walk(std::function<void(Instruction *)> callback);
 
   /// Walk the operation instructions in the 'for' instruction in postorder,
   /// calling the callback for each operation.
-  void walkOpsPostOrder(std::function<void(Instruction *)> callback);
+  void walkPostOrder(std::function<void(Instruction *)> callback);
 
 private:
   friend class Instruction;

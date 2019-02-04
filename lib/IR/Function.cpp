@@ -214,7 +214,7 @@ void Function::addEntryBlock() {
   entry->addArguments(type.getInputs());
 }
 
-void Function::walkInsts(std::function<void(Instruction *)> callback) {
+void Function::walk(std::function<void(Instruction *)> callback) {
   struct Walker : public InstWalker<Walker> {
     std::function<void(Instruction *)> const &callback;
     Walker(std::function<void(Instruction *)> const &callback)
@@ -227,39 +227,13 @@ void Function::walkInsts(std::function<void(Instruction *)> callback) {
   v.walk(this);
 }
 
-void Function::walkOps(std::function<void(OperationInst *)> callback) {
-  struct Walker : public InstWalker<Walker> {
-    std::function<void(OperationInst *)> const &callback;
-    Walker(std::function<void(OperationInst *)> const &callback)
-        : callback(callback) {}
-
-    void visitOperationInst(OperationInst *opInst) { callback(opInst); }
-  };
-
-  Walker v(callback);
-  v.walk(this);
-}
-
-void Function::walkInstsPostOrder(std::function<void(Instruction *)> callback) {
+void Function::walkPostOrder(std::function<void(Instruction *)> callback) {
   struct Walker : public InstWalker<Walker> {
     std::function<void(Instruction *)> const &callback;
     Walker(std::function<void(Instruction *)> const &callback)
         : callback(callback) {}
 
-    void visitOperationInst(Instruction *inst) { callback(inst); }
-  };
-
-  Walker v(callback);
-  v.walkPostOrder(this);
-}
-
-void Function::walkOpsPostOrder(std::function<void(OperationInst *)> callback) {
-  struct Walker : public InstWalker<Walker> {
-    std::function<void(OperationInst *)> const &callback;
-    Walker(std::function<void(OperationInst *)> const &callback)
-        : callback(callback) {}
-
-    void visitOperationInst(OperationInst *opInst) { callback(opInst); }
+    void visitInstruction(Instruction *inst) { callback(inst); }
   };
 
   Walker v(callback);

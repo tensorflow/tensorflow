@@ -311,12 +311,12 @@ public:
     return &Block::instructions;
   }
 
-  /// Walk the operation instructions of this block in preorder, calling the
-  /// callback for each operation.
+  /// Walk the instructions of this block in preorder, calling the callback for
+  /// each operation.
   void walk(std::function<void(Instruction *)> callback);
 
-  /// Walk the operation instructions in this block in postorder, calling the
-  /// callback for each operation.
+  /// Walk the instructions in this block in postorder, calling the callback for
+  /// each operation.
   void walkPostOrder(std::function<void(Instruction *)> callback);
 
   /// Walk the operation instructions in the specified [begin, end) range of

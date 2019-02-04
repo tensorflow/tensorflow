@@ -39,7 +39,7 @@ PassResult StripDebugInfo::runOnFunction(Function *f) {
 
   // Strip the debug info from the function and its instructions.
   f->setLoc(unknownLoc);
-  f->walkInsts([&](Instruction *inst) { inst->setLoc(unknownLoc); });
+  f->walk([&](Instruction *inst) { inst->setLoc(unknownLoc); });
   return success();
 }
 

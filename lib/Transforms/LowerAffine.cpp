@@ -615,7 +615,7 @@ PassResult LowerAffinePass::runOnFunction(Function *function) {
 
   // Collect all the For instructions as well as AffineIfOps and AffineApplyOps.
   // We do this as a prepass to avoid invalidating the walker with our rewrite.
-  function->walkInsts([&](Instruction *inst) {
+  function->walk([&](Instruction *inst) {
     auto op = cast<OperationInst>(inst);
     if (op->isa<AffineApplyOp>() || op->isa<AffineForOp>() ||
         op->isa<AffineIfOp>())

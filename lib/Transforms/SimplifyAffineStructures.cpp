@@ -64,7 +64,7 @@ static IntegerSet simplifyIntegerSet(IntegerSet set) {
 }
 
 PassResult SimplifyAffineStructures::runOnFunction(Function *f) {
-  f->walkOps([&](OperationInst *opInst) {
+  f->walk([&](OperationInst *opInst) {
     for (auto attr : opInst->getAttrs()) {
       if (auto mapAttr = attr.second.dyn_cast<AffineMapAttr>()) {
         MutableAffineMap mMap(mapAttr.getValue());

@@ -38,7 +38,7 @@ public:
     worklist.reserve(64);
 
     // Add all operations to the worklist.
-    fn->walkOps([&](OperationInst *inst) { addToWorklist(inst); });
+    fn->walk([&](OperationInst *inst) { addToWorklist(inst); });
   }
 
   /// Perform the rewrites.

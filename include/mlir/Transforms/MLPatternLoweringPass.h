@@ -144,7 +144,7 @@ PassResult MLPatternLoweringPass<Patterns...>::runOnFunction(Function *f) {
   MLFuncLoweringRewriter rewriter(&builder);
 
   llvm::SmallVector<Instruction *, 16> ops;
-  f->walkOps([&ops](Instruction *inst) { ops.push_back(inst); });
+  f->walk([&ops](Instruction *inst) { ops.push_back(inst); });
 
   for (Instruction *inst : ops) {
     for (const auto &pattern : patterns) {

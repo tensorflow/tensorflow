@@ -45,7 +45,7 @@ char LowerEDSCTestPass::passID = 0;
 #include "mlir/EDSC/reference-impl.inc"
 
 PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
-  f->walkOps([](OperationInst *op) {
+  f->walk([](OperationInst *op) {
     if (op->getName().getStringRef() == "print") {
       auto opName = op->getAttrOfType<StringAttr>("op");
       if (!opName) {

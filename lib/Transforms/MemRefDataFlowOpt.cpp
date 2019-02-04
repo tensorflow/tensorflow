@@ -75,7 +75,7 @@ struct MemRefDataFlowOpt : public FunctionPass, InstWalker<MemRefDataFlowOpt> {
 
   PassResult runOnFunction(Function *f) override;
 
-  void visitOperationInst(OperationInst *opInst);
+  void visitInstruction(OperationInst *opInst);
 
   // A list of memref's that are potentially dead / could be eliminated.
   SmallPtrSet<Value *, 4> memrefsToErase;
@@ -100,7 +100,7 @@ FunctionPass *mlir::createMemRefDataFlowOptPass() {
 
 // This is a straightforward implementation not optimized for speed. Optimize
 // this in the future if needed.
-void MemRefDataFlowOpt::visitOperationInst(OperationInst *opInst) {
+void MemRefDataFlowOpt::visitInstruction(OperationInst *opInst) {
   OperationInst *lastWriteStoreOp = nullptr;
 
   auto loadOp = opInst->dyn_cast<LoadOp>();

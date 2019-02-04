@@ -37,7 +37,7 @@ struct ConstantFold : public FunctionPass, InstWalker<ConstantFold> {
 
   bool foldOperation(OperationInst *op,
                      SmallVectorImpl<Value *> &existingConstants);
-  void visitOperationInst(OperationInst *inst);
+  void visitInstruction(OperationInst *op);
   PassResult runOnFunction(Function *f) override;
 
   static char passID;
@@ -49,7 +49,7 @@ char ConstantFold::passID = 0;
 /// Attempt to fold the specified operation, updating the IR to match.  If
 /// constants are found, we keep track of them in the existingConstants list.
 ///
-void ConstantFold::visitOperationInst(OperationInst *op) {
+void ConstantFold::visitInstruction(OperationInst *op) {
   // If this operation is an AffineForOp, then fold the bounds.
   if (auto forOp = op->dyn_cast<AffineForOp>()) {
     constantFoldBounds(forOp);

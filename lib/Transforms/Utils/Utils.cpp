@@ -362,8 +362,8 @@ void mlir::remapFunctionAttrs(
     Function &fn, const DenseMap<Attribute, FunctionAttr> &remappingTable) {
 
   // Look at all instructions in a Function.
-  fn.walkOps(
-      [&](OperationInst *inst) { remapFunctionAttrs(*inst, remappingTable); });
+  fn.walk(
+      [&](Instruction *inst) { remapFunctionAttrs(*inst, remappingTable); });
 }
 
 void mlir::remapFunctionAttrs(

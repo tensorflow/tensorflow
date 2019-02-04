@@ -263,7 +263,7 @@ void ModuleState::initialize(const Module *module) {
   for (auto &fn : *module) {
     visitType(fn.getType());
 
-    const_cast<Function &>(fn).walkInsts(
+    const_cast<Function &>(fn).walk(
         [&](Instruction *op) { ModuleState::visitInstruction(op); });
   }
 

@@ -113,7 +113,7 @@ PassResult LoopUnroll::runOnFunction(Function *f) {
       return hasInnerLoops;
     }
 
-    bool walkOpInstPostOrder(OperationInst *opInst) {
+    bool walkPostOrder(OperationInst *opInst) {
       bool hasInnerLoops = false;
       for (auto &blockList : opInst->getBlockLists())
         for (auto &block : blockList)
@@ -140,7 +140,7 @@ PassResult LoopUnroll::runOnFunction(Function *f) {
     const unsigned minTripCount;
     ShortLoopGatherer(unsigned minTripCount) : minTripCount(minTripCount) {}
 
-    void visitOperationInst(OperationInst *opInst) {
+    void visitInstruction(OperationInst *opInst) {
       auto forOp = opInst->dyn_cast<AffineForOp>();
       if (!forOp)
         return;
