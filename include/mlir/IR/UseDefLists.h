@@ -30,7 +30,7 @@ namespace mlir {
 
 class Instruction;
 class IROperand;
-template <typename OperandType, typename OwnerType> class ValueUseIterator;
+template <typename OperandType> class ValueUseIterator;
 
 class IRObjectWithUseList {
 public:
@@ -44,7 +44,7 @@ public:
   /// Returns true if this value has exactly one use.
   inline bool hasOneUse() const;
 
-  using use_iterator = ValueUseIterator<IROperand, Instruction>;
+  using use_iterator = ValueUseIterator<IROperand>;
   using use_range = llvm::iterator_range<use_iterator>;
 
   inline use_iterator use_begin() const;
@@ -169,11 +169,11 @@ private:
 /// A reference to a value, suitable for use as an operand of an instruction,
 /// instruction, etc.  IRValueTy is the root type to use for values this tracks,
 /// and SSAUserTy is the type that will contain operands.
-template <typename IRValueTy, typename IROwnerTy>
-class IROperandImpl : public IROperand {
+template <typename IRValueTy> class IROperandImpl : public IROperand {
 public:
-  IROperandImpl(IROwnerTy *owner) : IROperand(owner) {}
-  IROperandImpl(IROwnerTy *owner, IRValueTy *value) : IROperand(owner, value) {}
+  IROperandImpl(Instruction *owner) : IROperand(owner) {}
+  IROperandImpl(Instruction *owner, IRValueTy *value)
+      : IROperand(owner, value) {}
 
   /// Return the current value being used by this operand.
   IRValueTy *get() const { return (IRValueTy *)IROperand::get(); }
@@ -181,18 +181,12 @@ public:
   /// Set the current value being used by this operand.
   void set(IRValueTy *newValue) { IROperand::set(newValue); }
 
-  /// Return the user that owns this use.
-  IROwnerTy *getOwner() { return (IROwnerTy *)IROperand::getOwner(); }
-  const IROwnerTy *getOwner() const {
-    return (IROwnerTy *)IROperand::getOwner();
-  }
-
   /// Return which operand this is in the operand list of the User.
   unsigned getOperandNumber() const;
 };
 
 /// An iterator over all uses of a ValueBase.
-template <typename OperandType, typename OwnerType>
+template <typename OperandType>
 class ValueUseIterator
     : public std::iterator<std::forward_iterator_tag, IROperand> {
 public:
@@ -201,7 +195,7 @@ public:
   OperandType *operator->() const { return current; }
   OperandType &operator*() const { return *current; }
 
-  OwnerType *getUser() const { return current->getOwner(); }
+  Instruction *getUser() const { return current->getOwner(); }
 
   ValueUseIterator &operator++() {
     assert(current && "incrementing past end()!");

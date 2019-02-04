@@ -74,7 +74,7 @@ class BlockAndValueMapping;
 class BlockList;
 class Function;
 
-using BlockOperand = IROperandImpl<Block, Instruction>;
+using BlockOperand = IROperandImpl<Block>;
 
 template <typename BlockType> class PredecessorIterator;
 template <typename BlockType> class SuccessorIterator;
@@ -319,7 +319,7 @@ public:
   /// each operation.
   void walkPostOrder(std::function<void(Instruction *)> callback);
 
-  /// Walk the operation instructions in the specified [begin, end) range of
+  /// Walk the instructions in the specified [begin, end) range of
   /// this block, calling the callback for each operation.
   void walk(Block::iterator begin, Block::iterator end,
             std::function<void(Instruction *)> callback);
@@ -488,7 +488,7 @@ public:
   }
 
 private:
-  using BBUseIterator = ValueUseIterator<BlockOperand, Instruction>;
+  using BBUseIterator = ValueUseIterator<BlockOperand>;
   BBUseIterator bbUseIterator;
 };
 

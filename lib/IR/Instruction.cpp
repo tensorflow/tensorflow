@@ -49,6 +49,10 @@ template <> unsigned InstOperand::getOperandNumber() const {
   return this - &getOwner()->getInstOperands()[0];
 }
 
+//===----------------------------------------------------------------------===//
+// BlockOperand
+//===----------------------------------------------------------------------===//
+
 /// Return which operand this is in the operand list.
 template <> unsigned BlockOperand::getOperandNumber() const {
   return this - &getOwner()->getBlockOperands()[0];

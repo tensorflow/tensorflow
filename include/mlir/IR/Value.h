@@ -33,7 +33,7 @@ class Instruction;
 class Value;
 
 /// Operands contain a Value.
-using InstOperand = IROperandImpl<Value, Instruction>;
+using InstOperand = IROperandImpl<Value>;
 
 /// This is the common base class for all SSA values in the MLIR system,
 /// representing a computable value that has a type and a set of users.
@@ -83,7 +83,7 @@ public:
     return const_cast<Value *>(this)->getDefiningInst();
   }
 
-  using use_iterator = ValueUseIterator<InstOperand, Instruction>;
+  using use_iterator = ValueUseIterator<InstOperand>;
   using use_range = llvm::iterator_range<use_iterator>;
 
   inline use_iterator use_begin() const;

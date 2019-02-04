@@ -44,7 +44,7 @@ template <typename ObjectType, typename ElementType> class ResultIterator;
 template <typename ObjectType, typename ElementType> class ResultTypeIterator;
 
 /// Terminator operations can have Block operands to represent successors.
-using BlockOperand = IROperandImpl<Block, Instruction>;
+using BlockOperand = IROperandImpl<Block>;
 
 } // namespace mlir
 
