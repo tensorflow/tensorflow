@@ -3049,7 +3049,7 @@ void PrintToPythonStdout(const char* msg) {
     int CHUNK_SIZE = 900;
     auto len = string_msg.length();
     for (int i = 0; i < len; i += CHUNK_SIZE) {
-      PySys_WriteStdout("%s", string_msg.substr(i, CHUNK_SIZE).data());
+      PySys_WriteStdout("%s", string_msg.substr(i, CHUNK_SIZE).c_str());
     }
     PySys_WriteStdout("\n");
 
