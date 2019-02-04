@@ -1675,7 +1675,8 @@ def assert_shapes(shapes, data=None, summarize=None,
 
       innermost_dims = False
       if _contains_variable_num_outer_dims_prefix(symbolic_sizes):
-        symbolic_sizes = symbolic_sizes[1:] # inner-most symbolic sizes, i.e. (..., sizes)
+        # inner-most symbolic sizes, i.e. (..., sizes)
+        symbolic_sizes = symbolic_sizes[1:]
         innermost_dims = True
 
       for i, size_symbol in enumerate(symbolic_sizes):
@@ -1700,8 +1701,9 @@ def assert_shapes(shapes, data=None, summarize=None,
               name_y = _shape_and_dtype_str(specified_by_y)
             else:
               name_y = specified_by_y.name
-            size_check_message = 'Specified by tensor %s dimension %d' % \
-                                 (name_y, specified_at_dim)
+            size_check_message = (
+                'Specified by tensor %s dimension %d' %
+                (name_y, specified_at_dim))
 
           if executing_eagerly:
             name = _shape_and_dtype_str(x)

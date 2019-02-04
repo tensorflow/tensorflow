@@ -1467,7 +1467,10 @@ class AssertShapesTest(test.TestCase):
       x: ('N', 'Q'),
       y: ('N', 'D'),
     }
-    regex = "Specified by tensor .* dimension 0.  Tensor .* dimension 0 must have size 3.  Received size 2"
+    regex = (
+        r"Specified by tensor .* dimension 0.  "
+        r"Tensor .* dimension 0 must have size 3.  "
+        r"Received size 2")
     self.raises_static_error(shapes=shapes, regex=regex)
 
   def test_raise_dynamic_shape_mismatch(self):
@@ -1478,7 +1481,9 @@ class AssertShapesTest(test.TestCase):
         x: ('N', 'Q'),
         y: ('N', 'D'),
       }
-      regex = "\[Specified by tensor x.* dimension 0\] \[Tensor y.* dimension\] \[0\] \[must have size\] \[3\]"
+      regex = (
+          "\[Specified by tensor x.* dimension 0\] "
+          "\[Tensor y.* dimension\] \[0\] \[must have size\] \[3\]")
       feed_dict = {
         x: np.ones([3, 2]),
         y: np.ones([2, 3])
@@ -1493,7 +1498,10 @@ class AssertShapesTest(test.TestCase):
       x: (3, 'Q'),
       y: (3, 'D'),
     }
-    regex = "Specified explicitly.  Tensor .* dimension 0 must have size 3.  Received size 2"
+    regex = (
+        r"Specified explicitly.  "
+        r"Tensor .* dimension 0 must have size 3.  "
+        r"Received size 2")
     self.raises_static_error(shapes=shapes, regex=regex)
 
   @test_util.run_in_graph_and_eager_modes
@@ -1504,7 +1512,10 @@ class AssertShapesTest(test.TestCase):
       x: (3, 'Q'),
       y: (..., 3, 'D'),
     }
-    regex = "Specified explicitly.  Tensor .* dimension -2 must have size 3.  Received size 2"
+    regex = (
+        r"Specified explicitly.  "
+        r"Tensor .* dimension -2 must have size 3.  "
+        r"Received size 2")
     self.raises_static_error(shapes=shapes, regex=regex)
 
   def test_raise_dynamic_shape_explicit_mismatch(self):
@@ -1515,7 +1526,9 @@ class AssertShapesTest(test.TestCase):
         x: (3, 'Q'),
         y: (3, 'D'),
       }
-      regex = "\[Specified explicitly\] \[Tensor y.* dimension\] \[0\] \[must have size\] \[3\]"
+      regex = (
+          r"\[Specified explicitly\] "
+          r"\[Tensor y.* dimension\] \[0\] \[must have size\] \[3\]")
       feed_dict = {
         x: np.ones([3, 2]),
         y: np.ones([2, 3])
@@ -1540,8 +1553,9 @@ class AssertShapesTest(test.TestCase):
     shapes={
       x: ('N', ..., 'Q'),
     }
-    regex = r"Tensor .*.  Symbol `...` for variable number of " \
-            r"unspecified dimensions is only allowed as the first entry"
+    regex = (
+        r"Tensor .*.  Symbol `...` for variable number of "
+        r"unspecified dimensions is only allowed as the first entry")
     self.raises_static_error(shapes=shapes, regex=regex)
 
   @test_util.run_in_graph_and_eager_modes
@@ -1583,12 +1597,17 @@ class AssertShapesTest(test.TestCase):
 
     def raises_static_rank_error(shapes, x, correct_rank, actual_rank):
       for shape in shapes:
-        regex = "Tensor .* must have rank %d.  Received rank %d" % (correct_rank, actual_rank)
+        regex = (
+            r"Tensor .* must have rank %d.  Received rank %d"
+            % (correct_rank, actual_rank))
         self.raises_static_error(shapes={x: shape}, regex=regex)
 
-    raises_static_rank_error(rank_two_shapes, array_ops.ones([1]), correct_rank=2, actual_rank=1)
-    raises_static_rank_error(rank_three_shapes, array_ops.ones([1, 1]), correct_rank=3, actual_rank=2)
-    raises_static_rank_error(rank_three_shapes, array_ops.constant(1), correct_rank=3, actual_rank=0)
+    raises_static_rank_error(rank_two_shapes, array_ops.ones([1]),
+                             correct_rank=2, actual_rank=1)
+    raises_static_rank_error(rank_three_shapes, array_ops.ones([1, 1]),
+                             correct_rank=3, actual_rank=2)
+    raises_static_rank_error(rank_three_shapes, array_ops.constant(1),
+                             correct_rank=3, actual_rank=0)
 
   def test_raises_dynamic_incorrect_rank(self):
     x_value = 5
@@ -1602,8 +1621,9 @@ class AssertShapesTest(test.TestCase):
       x = array_ops.placeholder(dtypes.float32, None)
 
       for shape in rank_two_shapes:
-        regex = "Tensor .* must have rank\] \[2\]"
-        self.raises_dynamic_error(shapes={x: shape}, regex=regex, feed_dict={x: x_value})
+        regex = r"Tensor .* must have rank\] \[2\]"
+        self.raises_dynamic_error(shapes={x: shape}, regex=regex,
+                                  feed_dict={x: x_value})
 
   @test_util.run_in_graph_and_eager_modes
   def test_correctly_matching(self):
