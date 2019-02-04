@@ -46,7 +46,7 @@ py_test(
         "//tensorflow/lite/python:lite",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
-        "//tensorflow/python/tools:optimize_for_inference",
+        "//tensorflow/python/tools:optimize_for_inference_lib",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],

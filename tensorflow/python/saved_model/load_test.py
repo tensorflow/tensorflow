@@ -29,6 +29,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
@@ -37,6 +38,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
+from tensorflow.python.training import monitored_session
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
 
@@ -535,6 +537,50 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(callable(imported))
     x = constant_op.constant(1.0)
     self.assertAllEqual(imported(x).numpy(), 3.0)
+
+  def test_load_in_graph_mode(self, cycles):
+    root = tracking.AutoCheckpointable()
+    root.v1 = variables.Variable(1.)
+    root.v2 = variables.Variable(2.)
+    root.f = def_function.function(
+        lambda x: root.v2 * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+
+    if cycles > 1:
+      root = self.cycle(root, cycles - 1)
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+
+    with ops.Graph().as_default():
+      imported = load.load(path)
+      var_v1 = imported.v1
+      output = imported.f(constant_op.constant(2.))
+      with monitored_session.MonitoredSession() as sess:
+        self.assertEqual(1.0, sess.run(var_v1))
+        self.assertEqual(4.0, sess.run(output))
+
+  def test_load_in_func_graph(self, cycles):
+    root = tracking.AutoCheckpointable()
+    root.v1 = variables.Variable(1.)
+    root.v2 = variables.Variable(2.)
+    root.f = def_function.function(
+        lambda x: root.v2 * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+
+    if cycles > 1:
+      root = self.cycle(root, cycles - 1)
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+
+    closure = tracking.AutoCheckpointable()
+    @def_function.function
+    def func(x):
+      if not hasattr(closure, "model"):
+        closure.model = load.load(path)
+      return closure.model.f(x)
+
+    inputs = constant_op.constant(2.)
+    self.assertEqual(4.0, func(inputs).numpy())
 
   def test_soft_matching(self, cycles):
 

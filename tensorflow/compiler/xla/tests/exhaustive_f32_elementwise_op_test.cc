@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cmath>
 #include "absl/base/casts.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -176,6 +177,9 @@ class ExhaustiveF32ElementwiseOpTest
 };
 
 XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, LogF32) {
+#if !defined(XLA_TEST_BACKEND_CPU) && !defined(XLA_TEST_BACKEND_GPU)
+  error_spec_ = ErrorSpec{0.001, 0.001};
+#endif
   ExhaustivelyTestF32Op(
       [](XlaBuilder* builder, const XlaOp& input) { Log(input); }, std::log,
       /*known_incorrect_range=*/{0, 0});
@@ -200,6 +204,18 @@ XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, ExpF32) {
 XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, TanhF32) {
   ExhaustivelyTestF32Op(
       [](XlaBuilder* builder, const XlaOp& input) { Tanh(input); }, std::tanh,
+      /*known_incorrect_range=*/{0, 0});
+}
+
+XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, ErfF32) {
+  ExhaustivelyTestF32Op(
+      [](XlaBuilder* builder, const XlaOp& input) { Erf(input); }, std::erf,
+      /*known_incorrect_range=*/{0, 0});
+}
+
+XLA_TEST_P(ExhaustiveF32ElementwiseOpTest, ErfcF32) {
+  ExhaustivelyTestF32Op(
+      [](XlaBuilder* builder, const XlaOp& input) { Erfc(input); }, std::erfc,
       /*known_incorrect_range=*/{0, 0});
 }
 

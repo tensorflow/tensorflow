@@ -281,6 +281,12 @@ Stream::~Stream() {
   }
 }
 
+port::Status Stream::RefreshStatus() {
+  port::Status status = parent_->GetStatus(this);
+  CheckStatus(status);
+  return status;
+}
+
 Stream &Stream::Init() {
   VLOG_CALL();
 
