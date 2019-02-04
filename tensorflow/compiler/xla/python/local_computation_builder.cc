@@ -92,7 +92,12 @@ Status InitializePlatformName(const string& platform_name) {
         "previously created with a platform name of %s.",
         platform_name, *g_platform_name);
   }
-  TF_RETURN_IF_ERROR(PlatformUtil::GetPlatform(platform_name).status());
+  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                      PlatformUtil::GetPlatform(platform_name));
+  if (platform->VisibleDeviceCount() <= 0) {
+    return InvalidArgument("Platform %s has no visible devices.",
+                           platform_name);
+  }
   *g_platform_name = platform_name;
   return Status::OK();
 }
