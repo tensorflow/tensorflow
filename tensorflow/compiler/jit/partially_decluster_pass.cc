@@ -29,6 +29,31 @@ namespace {
 
 bool NotBackedge(const Edge& edge) { return !edge.src()->IsNextIteration(); }
 
+bool IsMustCompileDevice(const DeviceType& device_type) {
+  const XlaOpRegistry::DeviceRegistration* registration;
+  if (XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
+    return registration->autoclustering_policy ==
+           XlaOpRegistry::AutoclusteringPolicy::kAlways;
+  }
+
+  return false;
+}
+
+Status MustCompileNode(const Node* n, bool* must_compile) {
+  DeviceType device_type("");
+  TF_RETURN_IF_ERROR(
+      DeviceToDeviceType(n->assigned_device_name(), &device_type));
+
+  if (IsMustCompileDevice(device_type)) {
+    *must_compile = true;
+    return Status::OK();
+  }
+
+  // We must compile `n` if it does not have a TensorFlow kernel.
+  *must_compile = !FindKernelDef(device_type, n->def(), nullptr, nullptr).ok();
+  return Status::OK();
+}
+
 namespace reduce_device_to_host_copies {
 Status FindNodesToDecluster(const Graph& graph,
                             absl::flat_hash_set<Node*>* result,
@@ -48,6 +73,12 @@ Status FindNodesToDecluster(const Graph& graph,
     // We assume the only XLA-auto-clusterable operations with side effects are
     // resource variable updates.  We can't execute these twice.
     if (HasResourceInputOrOutput(*n)) {
+      continue;
+    }
+
+    bool must_compile;
+    TF_RETURN_IF_ERROR(MustCompileNode(n, &must_compile));
+    if (must_compile) {
       continue;
     }
 
@@ -218,31 +249,6 @@ bool IsIntraClusterEdge(const Edge& edge) {
   absl::optional<absl::string_view> dst_cluster_name =
       GetXlaClusterForNode(*edge.dst());
   return src_cluster_name.has_value() && src_cluster_name == dst_cluster_name;
-}
-
-bool IsMustCompileDevice(const DeviceType& device_type) {
-  const XlaOpRegistry::DeviceRegistration* registration;
-  if (XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
-    return registration->autoclustering_policy ==
-           XlaOpRegistry::AutoclusteringPolicy::kAlways;
-  }
-
-  return false;
-}
-
-Status MustCompileNode(const Node* n, bool* must_compile) {
-  DeviceType device_type("");
-  TF_RETURN_IF_ERROR(
-      DeviceToDeviceType(n->assigned_device_name(), &device_type));
-
-  if (IsMustCompileDevice(device_type)) {
-    *must_compile = true;
-    return Status::OK();
-  }
-
-  // We must compile `n` if it does not have a TensorFlow kernel.
-  *must_compile = !FindKernelDef(device_type, n->def(), nullptr, nullptr).ok();
-  return Status::OK();
 }
 
 // Declusters nodes to reduce the number of times we think we need to recompile
