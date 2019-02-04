@@ -579,16 +579,14 @@ def _slice_helper(tensor, slice_spec, var=None):
     TypeError: If the slice indices aren't int, slice, ellipsis,
       tf.newaxis or scalar int32/int64 tensors.
   """
-  def convert_if_possible(slice_spec):
-    try:
-      return ops.convert_to_tensor(slice_spec)
-    except:
-      pass
-    return None
+  if isinstance(slice_spec, bool) or \
+    (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \
+    (isinstance(slice_spec, np.ndarray) and slice_spec.dtype == bool) or \
+    (isinstance(slice_spec, (list, tuple)) and np.asarray(slice_spec).dtype == bool):
+    return boolean_mask(tensor=tensor, mask=slice_spec)
 
-  bool_spec = convert_if_possible(slice_spec)
-  if bool_spec is not None and bool_spec.dtype == dtypes.bool:
-    return boolean_mask(tensor=tensor, mask=bool_spec)
+  if not isinstance(slice_spec, (list, tuple)):
+    slice_spec = [slice_spec]
 
   begin, end, strides = [], [], []
   index = 0
