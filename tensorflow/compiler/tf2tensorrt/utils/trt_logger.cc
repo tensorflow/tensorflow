@@ -26,7 +26,7 @@ namespace tensorrt {
 void Logger::log(Severity severity, const char* msg) {
   // Suppress info-level messages
   switch (severity) {
-#if NV_TENSORRT_MAJOR >= 5 && NV_TENSORRT_MINOR >= 1
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
     case Severity::kVERBOSE:
 #endif
     case Severity::kINFO: {  // Mark TRT info messages as debug!
