@@ -81,7 +81,8 @@ EagerContext::EagerContext(const SessionOptions& opts,
   std::unique_ptr<DeviceResolverInterface> drl(
       new DeviceResolverLocal(local_device_mgr()));
   std::unique_ptr<ParamResolverInterface> cprl(new CollectiveParamResolverLocal(
-      local_device_mgr(), drl.get(), "/job:localhost/replica:0/task:0"));
+      opts.config, local_device_mgr(), drl.get(),
+      "/job:localhost/replica:0/task:0"));
   collective_executor_mgr_.reset(new CollectiveExecutorMgr(
       opts.config, local_device_mgr(), std::move(drl), std::move(cprl)));
 }
