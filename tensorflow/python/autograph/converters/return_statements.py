@@ -108,13 +108,6 @@ class ConditionalReturnRewriter(converter.Base):
     node.orelse, _ = self._visit_statement_block(node, node.orelse)
     return node
 
-  def visit_With(self, node):
-    node.items = self.visit_block(node.items)
-    node.body, definitely_returns = self._visit_statement_block(node, node.body)
-    if definitely_returns:
-      anno.setanno(node, STMT_DEFINITELY_RETURNS, True)
-    return node
-
   def visit_If(self, node):
     node.test = self.visit(node.test)
 
@@ -310,11 +303,6 @@ class ReturnStatementsTransformer(converter.Base):
       anno.setanno(node, 'extra_test', extra_test)
 
     node.orelse = self._visit_statement_block(node, node.orelse)
-    return node
-
-  def visit_With(self, node):
-    node.items = self.visit_block(node.items)
-    node.body = self._visit_statement_block(node, node.body)
     return node
 
   def visit_If(self, node):
