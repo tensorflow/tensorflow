@@ -37,15 +37,7 @@ def LLVM_Type : Type<CPred<"{0}.isa<::mlir::LLVM::LLVMType>()">,
 // this class is specialized below for both cases and should not be used
 // directly.
 class LLVM_Op<string mnemonic, list<OpTrait> traits = []> :
-    Op<!strconcat("llvm.", mnemonic), traits> {
-  // No need for custom parsing since custom printer uses the default syntax
-  // instead.
-  let parser =
-      [{ llvm_unreachable("custom parsing triggered instead of default"); }];
-
-  // Just use the generic assembly form.
-  let printer = [{ p->printGenericOp(this->getInstruction()); }];
-}
+    Op<!strconcat("llvm.", mnemonic), traits>;
 
 // Base class for LLVM operations with one result.
 class LLVM_OneResultOp<string mnemonic, list<OpTrait> traits = []> :
