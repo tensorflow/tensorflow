@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/while_loop.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
+#include "tensorflow/core/kernels/logging_ops.h"
 #endif
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -2954,4 +2955,11 @@ void TF_DeleteServer(TF_Server* server) {
   delete server;
 #endif
 }
+
+void TF_RegisterLogListener(void (*listener)(const char*)) {
+#ifndef __ANDROID__
+  tensorflow::logging::RegisterListener(listener);
+#endif
+}
+
 }  // end extern "C"
