@@ -38,7 +38,7 @@ def parse_entity(entity):
   """Returns the AST of given entity."""
   try:
     with _parse_lock:
-      source = tf_inspect.getsource(entity)
+      source = tf_inspect.getsource_no_unwrap(entity)
   except (IOError, OSError) as e:
     raise ValueError(
         'Unable to locate the source code of {}. Note that functions defined'
