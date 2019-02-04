@@ -514,17 +514,12 @@ class StridedSliceChecker(object):
       except AttributeError:
         return x
 
-    def convert_if_possible(spec):
-      try:
-        return ops.convert_to_tensor(spec)
-      except:
-        pass
-      return None
-
-    bool_spec = convert_if_possible(spec)
-    if bool_spec is not None and bool_spec.dtype == dtypes.bool:
+    if isinstance(spec, bool) or \
+      (isinstance(spec, ops.Tensor) and spec.dtype == dtypes.bool) or \
+      (isinstance(spec, np.ndarray) and spec.dtype == bool) or \
+      (isinstance(spec, (list, tuple)) and np.asarray(spec).dtype == bool):
       tensor = op.eval()
-      np_spec = eval_if_tensor(bool_spec)
+      np_spec = eval_if_tensor(spec)
       self.test.assertAllEqual(self.x_np[np_spec], tensor)
       return tensor
 
@@ -752,7 +747,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
 
       # Test numpy array type mask
       raw = np.array([[[[[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]]],
-        [[[13, 14, 15, 16], [17, 18, 19, 20], [21, 22, 23, 24]]]]])
+                       [[[13, 14, 15, 16], [17, 18, 19, 20], [21, 22, 23, 24]]]]])
       checker1 = StridedSliceChecker(self, raw)
       _ = checker1[raw >= 4]
       _ = checker1[raw < 19]
