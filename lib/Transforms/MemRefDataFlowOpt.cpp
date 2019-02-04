@@ -178,8 +178,9 @@ void MemRefDataFlowOpt::visitInstruction(Instruction *opInst) {
       // is trivially loading from a single location at that depth; so there
       // isn't a need to call isRangeOneToOne.
       if (getNestingDepth(*storeOpInst) < loadOpDepth) {
-        auto region = getMemRefRegion(loadOpInst, nsLoops);
-        if (!region->getConstraints()->isRangeOneToOne(
+        MemRefRegion region(loadOpInst->getLoc());
+        region.compute(loadOpInst, nsLoops);
+        if (!region.getConstraints()->isRangeOneToOne(
                 /*start=*/0, /*limit=*/loadOp->getMemRefType().getRank()))
           break;
       }

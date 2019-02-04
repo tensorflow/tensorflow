@@ -76,8 +76,30 @@ unsigned getNestingDepth(const Instruction &stmt);
 // The last field is a 2-d FlatAffineConstraints symbolic in %i.
 //
 struct MemRefRegion {
-  MemRefRegion(Value *memref, Location loc, bool write)
-      : memref(memref), write(write), loc(loc) {}
+  explicit MemRefRegion(Location loc) : loc(loc) {}
+
+  /// Computes the memory region accessed by this memref with the region
+  /// represented as constraints symbolic/parameteric in 'loopDepth' loops
+  /// surrounding opInst. Returns false if this fails due to yet unimplemented
+  /// cases. The computed region's 'cst' field has exactly as many dimensional
+  /// identifiers as the rank of the memref, and *potentially* additional
+  /// symbolic identifiers which could include any of the loop IVs surrounding
+  /// opInst up until 'loopDepth' and another additional Function symbols
+  /// involved with the access (for eg., those appear in affine_apply's, loop
+  /// bounds, etc.).
+  ///  For example, the memref region for this operation at loopDepth = 1 will
+  ///  be:
+  ///
+  ///    for %i = 0 to 32 {
+  ///      for %ii = %i to (d0) -> (d0 + 8) (%i) {
+  ///        load %A[%ii]
+  ///      }
+  ///    }
+  ///
+  ///   {memref = %A, write = false, {%i <= m0 <= %i + 7} }
+  /// The last field is a 2-d FlatAffineConstraints symbolic in %i.
+  ///
+  bool compute(Instruction *inst, unsigned loopDepth);
 
   FlatAffineConstraints *getConstraints() { return &cst; }
   const FlatAffineConstraints *getConstraints() const { return &cst; }
@@ -131,28 +153,6 @@ struct MemRefRegion {
   // TODO(bondhugula): Replace this to exploit HyperRectangularSet.
   FlatAffineConstraints cst;
 };
-
-/// Computes the memory region accessed by this memref with the region
-/// represented as constraints symbolic/parameteric in 'loopDepth' loops
-/// surrounding opInst. Returns nullptr if this fails due to yet unimplemented
-/// cases. The computed region's 'cst' field has exactly as many dimensional
-/// identifiers as the rank of the memref, and *potentially* additional symbolic
-/// identifiers which could include any of the loop IVs surrounding opInst up
-/// until 'loopDepth' and another additional Function symbols involved with
-/// the access (for eg., those appear in affine_apply's, loop bounds, etc.).
-///  For example, the memref region for this operation at loopDepth = 1 will be:
-///
-///    for %i = 0 to 32 {
-///      for %ii = %i to (d0) -> (d0 + 8) (%i) {
-///        load %A[%ii]
-///      }
-///    }
-///
-///   {memref = %A, write = false, {%i <= m0 <= %i + 7} }
-/// The last field is a 2-d FlatAffineConstraints symbolic in %i.
-///
-std::unique_ptr<MemRefRegion> getMemRefRegion(Instruction *opInst,
-                                              unsigned loopDepth);
 
 /// Returns the size of memref data in bytes if it's statically shaped, None
 /// otherwise.

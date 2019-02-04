@@ -122,55 +122,36 @@ bool MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
 //
 // TODO(bondhugula): extend this to any other memref dereferencing ops
 // (dma_start, dma_wait).
-std::unique_ptr<MemRefRegion> mlir::getMemRefRegion(Instruction *opInst,
-                                                    unsigned loopDepth) {
-  unsigned rank;
-  std::unique_ptr<MemRefRegion> region;
-  SmallVector<Value *, 4> indices;
-  if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
-    rank = loadOp->getMemRefType().getRank();
-    indices.reserve(rank);
-    indices.append(loadOp->getIndices().begin(), loadOp->getIndices().end());
-    region = std::make_unique<MemRefRegion>(loadOp->getMemRef(),
-                                            loadOp->getLoc(), false);
-  } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {
-    rank = storeOp->getMemRefType().getRank();
-    indices.reserve(rank);
-    indices.append(storeOp->getIndices().begin(), storeOp->getIndices().end());
-    region = std::make_unique<MemRefRegion>(storeOp->getMemRef(),
-                                            storeOp->getLoc(), true);
-  } else {
-    assert(false && "expected load or store op");
-    return nullptr;
+bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth) {
+  assert((inst->isa<LoadOp>() || inst->isa<StoreOp>()) &&
+         "load/store op expected");
+
+  MemRefAccess access(inst);
+  memref = access.memref;
+  write = access.isStore();
+
+  unsigned rank = access.getRank();
+
+  if (rank == 0) {
+    SmallVector<OpPointer<AffineForOp>, 4> ivs;
+    getLoopIVs(*inst, &ivs);
+    SmallVector<Value *, 8> regionSymbols;
+    extractForInductionVars(ivs, &regionSymbols);
+    // A rank 0 memref has a 0-d region.
+    cst.reset(rank, loopDepth, 0, regionSymbols);
+    return true;
   }
 
   // Build the constraints for this region.
-  FlatAffineConstraints *regionCst = region->getConstraints();
-
-  if (rank == 0) {
-    // A rank 0 memref has a 0-d region.
-    SmallVector<OpPointer<AffineForOp>, 4> ivs;
-    getLoopIVs(*opInst, &ivs);
-
-    SmallVector<Value *, 8> regionSymbols = extractForInductionVars(ivs);
-    regionCst->reset(0, loopDepth, 0, regionSymbols);
-    return region;
-  }
-
-  FuncBuilder b(opInst);
-  auto idMap = b.getMultiDimIdentityMap(rank);
-  // Initialize 'accessValueMap' and compose with reachable AffineApplyOps.
-  fullyComposeAffineMapAndOperands(&idMap, &indices);
-  // Remove any duplicates.
-  canonicalizeMapAndOperands(&idMap, &indices);
-  AffineValueMap accessValueMap(idMap, indices);
+  AffineValueMap accessValueMap;
+  access.getAccessMap(&accessValueMap);
   AffineMap accessMap = accessValueMap.getAffineMap();
 
   // We'll first associate the dims and symbols of the access map to the dims
-  // and symbols resp. of regionCst. This will change below once regionCst is
+  // and symbols resp. of cst. This will change below once cst is
   // fully constructed out.
-  regionCst->reset(accessMap.getNumDims(), accessMap.getNumSymbols(), 0,
-                   accessValueMap.getOperands());
+  cst.reset(accessMap.getNumDims(), accessMap.getNumSymbols(), 0,
+            accessValueMap.getOperands());
 
   // Add equality constraints.
   unsigned numDims = accessMap.getNumDims();
@@ -178,65 +159,63 @@ std::unique_ptr<MemRefRegion> mlir::getMemRefRegion(Instruction *opInst,
   // Add inequalties for loop lower/upper bounds.
   for (unsigned i = 0; i < numDims + numSymbols; ++i) {
     if (auto loop = getForInductionVarOwner(accessValueMap.getOperand(i))) {
-      // Note that regionCst can now have more dimensions than accessMap if the
+      // Note that cst can now have more dimensions than accessMap if the
       // bounds expressions involve outer loops or other symbols.
       // TODO(bondhugula): rewrite this to use getInstIndexSet; this way
       // conditionals will be handled when the latter supports it.
-      if (!regionCst->addAffineForOpDomain(loop))
-        return nullptr;
+      if (!cst.addAffineForOpDomain(loop))
+        return false;
     } else {
       // Has to be a valid symbol.
       auto *symbol = accessValueMap.getOperand(i);
       assert(symbol->isValidSymbol());
       // Check if the symbol is a constant.
-      if (auto *opInst = symbol->getDefiningInst()) {
-        if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
-          regionCst->setIdToConstant(*symbol, constOp->getValue());
+      if (auto *inst = symbol->getDefiningInst()) {
+        if (auto constOp = inst->dyn_cast<ConstantIndexOp>()) {
+          cst.setIdToConstant(*symbol, constOp->getValue());
         }
       }
     }
   }
 
   // Add access function equalities to connect loop IVs to data dimensions.
-  if (!regionCst->composeMap(&accessValueMap)) {
+  if (!cst.composeMap(&accessValueMap)) {
     LLVM_DEBUG(llvm::dbgs() << "getMemRefRegion: compose affine map failed\n");
     LLVM_DEBUG(accessValueMap.getAffineMap().dump());
-    return nullptr;
+    return false;
   }
 
   // Eliminate any loop IVs other than the outermost 'loopDepth' IVs, on which
   // this memref region is symbolic.
   SmallVector<OpPointer<AffineForOp>, 4> outerIVs;
-  getLoopIVs(*opInst, &outerIVs);
+  getLoopIVs(*inst, &outerIVs);
   assert(loopDepth <= outerIVs.size() && "invalid loop depth");
   outerIVs.resize(loopDepth);
   for (auto *operand : accessValueMap.getOperands()) {
     OpPointer<AffineForOp> iv;
     if ((iv = getForInductionVarOwner(operand)) &&
         llvm::is_contained(outerIVs, iv) == false) {
-      regionCst->projectOut(operand);
+      cst.projectOut(operand);
     }
   }
   // Project out any local variables (these would have been added for any
   // mod/divs).
-  regionCst->projectOut(regionCst->getNumDimAndSymbolIds(),
-                        regionCst->getNumLocalIds());
+  cst.projectOut(cst.getNumDimAndSymbolIds(), cst.getNumLocalIds());
 
   // Set all identifiers appearing after the first 'rank' identifiers as
   // symbolic identifiers - so that the ones correspoding to the memref
   // dimensions are the dimensional identifiers for the memref region.
-  regionCst->setDimSymbolSeparation(regionCst->getNumDimAndSymbolIds() - rank);
+  cst.setDimSymbolSeparation(cst.getNumDimAndSymbolIds() - rank);
 
   // Constant fold any symbolic identifiers.
-  regionCst->constantFoldIdRange(/*pos=*/regionCst->getNumDimIds(),
-                                 /*num=*/regionCst->getNumSymbolIds());
+  cst.constantFoldIdRange(/*pos=*/cst.getNumDimIds(),
+                          /*num=*/cst.getNumSymbolIds());
 
-  assert(regionCst->getNumDimIds() == rank && "unexpected MemRefRegion format");
+  assert(cst.getNumDimIds() == rank && "unexpected MemRefRegion format");
 
   LLVM_DEBUG(llvm::dbgs() << "Memory region:\n");
-  LLVM_DEBUG(region->getConstraints()->dump());
-
-  return region;
+  LLVM_DEBUG(cst.dump());
+  return true;
 }
 
 //  TODO(mlir-team): improve/complete this when we have target data.
@@ -282,19 +261,19 @@ bool mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
 
   Instruction *opInst = loadOrStoreOp->getInstruction();
 
-  auto region = getMemRefRegion(opInst, /*loopDepth=*/0);
-  if (!region)
+  MemRefRegion region(opInst->getLoc());
+  if (!region.compute(opInst, /*loopDepth=*/0))
     return false;
 
   LLVM_DEBUG(llvm::dbgs() << "Memory region");
-  LLVM_DEBUG(region->getConstraints()->dump());
+  LLVM_DEBUG(region.getConstraints()->dump());
 
   bool outOfBounds = false;
   unsigned rank = loadOrStoreOp->getMemRefType().getRank();
 
   // For each dimension, check for out of bounds.
   for (unsigned r = 0; r < rank; r++) {
-    FlatAffineConstraints ucst(*region->getConstraints());
+    FlatAffineConstraints ucst(*region.getConstraints());
 
     // Intersect memory region with constraint capturing out of bounds (both out
     // of upper and out of lower), and check if the constraint system is
@@ -314,7 +293,7 @@ bool mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
     }
 
     // Check for a negative index.
-    FlatAffineConstraints lcst(*region->getConstraints());
+    FlatAffineConstraints lcst(*region.getConstraints());
     std::fill(ineq.begin(), ineq.end(), 0);
     // d_i <= -1;
     lcst.addConstantUpperBound(r, -1);
@@ -521,6 +500,12 @@ MemRefAccess::MemRefAccess(Instruction *loadOrStoreOpInst) {
   }
 }
 
+unsigned MemRefAccess::getRank() const {
+  return memref->getType().cast<MemRefType>().getRank();
+}
+
+bool MemRefAccess::isStore() const { return opInst->isa<StoreOp>(); }
+
 /// Returns the nesting depth of this statement, i.e., the number of loops
 /// surrounding this statement.
 unsigned mlir::getNestingDepth(const Instruction &inst) {
@@ -600,8 +585,8 @@ Optional<int64_t> mlir::getMemoryFootprintBytes(const Block &block,
     // all regions for a given memref instead of creating one region per
     // memory op. This way we would be allocating O(num of memref's) sets
     // instead of O(num of load/store op's).
-    auto region = getMemRefRegion(opInst, 0);
-    if (!region) {
+    auto region = std::make_unique<MemRefRegion>(opInst->getLoc());
+    if (!region->compute(opInst, /*loopDepth=*/0)) {
       LLVM_DEBUG(llvm::dbgs() << "Error obtaining memory region\n");
       // TODO: stop the walk if an error occurred.
       error = true;

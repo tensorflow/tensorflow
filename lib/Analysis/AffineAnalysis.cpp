@@ -557,7 +557,8 @@ void mlir::getReachableAffineApplyOps(
 // setExprStride(ArrayRef<int64_t> expr, int64_t stride)
 bool mlir::getIndexSet(MutableArrayRef<OpPointer<AffineForOp>> forOps,
                        FlatAffineConstraints *domain) {
-  auto indices = extractForInductionVars(forOps);
+  SmallVector<Value *, 4> indices;
+  extractForInductionVars(forOps, &indices);
   // Reset while associated Values in 'indices' to the domain.
   domain->reset(forOps.size(), /*numSymbols=*/0, /*numLocals=*/0, indices);
   for (auto forOp : forOps) {

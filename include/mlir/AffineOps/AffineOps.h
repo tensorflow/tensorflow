@@ -201,10 +201,10 @@ bool isForInductionVar(const Value *val);
 OpPointer<AffineForOp> getForInductionVarOwner(Value *val);
 ConstOpPointer<AffineForOp> getForInductionVarOwner(const Value *val);
 
-/// Extracts the induction variables from a list of AffineForOps and returns
-/// them.
-SmallVector<Value *, 8>
-extractForInductionVars(MutableArrayRef<OpPointer<AffineForOp>> forInsts);
+/// Extracts the induction variables from a list of AffineForOps and places them
+/// in the output argument `ivs`.
+void extractForInductionVars(ArrayRef<OpPointer<AffineForOp>> forInsts,
+                             SmallVectorImpl<Value *> *ivs);
 
 /// AffineBound represents a lower or upper bound in the for instruction.
 /// This class does not own the underlying operands. Instead, it refers

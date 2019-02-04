@@ -201,7 +201,8 @@ UtilResult mlir::tileCodeGen(MutableArrayRef<OpPointer<AffineForOp>> band,
   // Move the loop body of the original nest to the new one.
   moveLoopBody(origLoops[origLoops.size() - 1], innermostPointLoop);
 
-  SmallVector<Value *, 8> origLoopIVs = extractForInductionVars(band);
+  SmallVector<Value *, 8> origLoopIVs;
+  extractForInductionVars(band, &origLoopIVs);
   SmallVector<Optional<Value *>, 6> ids(origLoopIVs.begin(), origLoopIVs.end());
   FlatAffineConstraints cst;
   getIndexSet(band, &cst);

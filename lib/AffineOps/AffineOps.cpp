@@ -462,12 +462,11 @@ ConstOpPointer<AffineForOp> mlir::getForInductionVarOwner(const Value *val) {
 
 /// Extracts the induction variables from a list of AffineForOps and returns
 /// them.
-SmallVector<Value *, 8> mlir::extractForInductionVars(
-    MutableArrayRef<OpPointer<AffineForOp>> forInsts) {
-  SmallVector<Value *, 8> results;
+void mlir::extractForInductionVars(ArrayRef<OpPointer<AffineForOp>> forInsts,
+                                   SmallVectorImpl<Value *> *ivs) {
+  ivs->reserve(forInsts.size());
   for (auto forInst : forInsts)
-    results.push_back(forInst->getInductionVar());
-  return results;
+    ivs->push_back(forInst->getInductionVar());
 }
 
 //===----------------------------------------------------------------------===//

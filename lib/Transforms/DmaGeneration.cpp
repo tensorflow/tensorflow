@@ -183,7 +183,8 @@ static bool getFullMemRefAsRegion(Instruction *opInst, unsigned numParamLoopIVs,
   SmallVector<OpPointer<AffineForOp>, 4> ivs;
   getLoopIVs(*opInst, &ivs);
   ivs.resize(numParamLoopIVs);
-  SmallVector<Value *, 4> symbols = extractForInductionVars(ivs);
+  SmallVector<Value *, 4> symbols;
+  extractForInductionVars(ivs, &symbols);
   regionCst->reset(rank, numParamLoopIVs, 0);
   regionCst->setIdValues(rank, rank + numParamLoopIVs, symbols);
 
@@ -576,8 +577,8 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
     }
 
     // Compute the MemRefRegion accessed.
-    auto region = getMemRefRegion(opInst, dmaDepth);
-    if (!region) {
+    auto region = std::make_unique<MemRefRegion>(opInst->getLoc());
+    if (!region->compute(opInst, dmaDepth)) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Error obtaining memory region: semi-affine maps?\n");
       LLVM_DEBUG(llvm::dbgs() << "over-approximating to the entire memref\n");

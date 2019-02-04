@@ -117,14 +117,19 @@ bool getIndexSet(llvm::MutableArrayRef<OpPointer<AffineForOp>> forOps,
 
 /// Encapsulates a memref load or store access information.
 struct MemRefAccess {
-  const Value *memref;
-  const Instruction *opInst;
+  Value *memref;
+  Instruction *opInst;
   llvm::SmallVector<Value *, 4> indices;
 
   /// Constructs a MemRefAccess from a load or store operation instruction.
   // TODO(b/119949820): add accessors to standard op's load, store, DMA op's to
   // return MemRefAccess, i.e., loadOp->getAccess(), dmaOp->getRead/WriteAccess.
   explicit MemRefAccess(Instruction *opInst);
+
+  // Returns the rank of the memref associated with this access.
+  unsigned getRank() const;
+  // Returns true if this access is of a store op.
+  bool isStore() const;
 
   /// Populates 'accessMap' with composition of AffineApplyOps reachable from
   // 'indices'.
