@@ -187,14 +187,14 @@ class PythonStringStateSaveable(PythonStateSaveable):
     return control_flow_ops.no_op()
 
 
-class _CheckpointPosition(object):
-  """Indicates a position within a `_Checkpoint`."""
+class CheckpointPosition(object):
+  """Indicates a position within a `_CheckpointRestoreCoordinator`."""
 
   def __init__(self, checkpoint, proto_id):
     """Specify an object within a checkpoint.
 
     Args:
-      checkpoint: A _Checkpoint object.
+      checkpoint: A _CheckpointRestoreCoordinator object.
       proto_id: The index of this object in CheckpointableObjectGraph.nodes.
     """
     self._checkpoint = checkpoint
@@ -229,7 +229,7 @@ class _CheckpointPosition(object):
       for deferred_slot_restoration in (
           checkpoint.deferred_slot_restorations.pop(self._proto_id, ())):
         checkpointable._create_or_restore_slot_variable(  # pylint: disable=protected-access
-            slot_variable_position=_CheckpointPosition(
+            slot_variable_position=CheckpointPosition(
                 checkpoint=checkpoint,
                 proto_id=deferred_slot_restoration.slot_variable_id),
             variable=deferred_slot_restoration.original_variable,
@@ -249,7 +249,7 @@ class _CheckpointPosition(object):
                       slot_name=slot_restoration.slot_name))
         else:
           optimizer_object._create_or_restore_slot_variable(  # pylint: disable=protected-access
-              slot_variable_position=_CheckpointPosition(
+              slot_variable_position=CheckpointPosition(
                   checkpoint=checkpoint,
                   proto_id=slot_restoration.slot_variable_id),
               variable=checkpointable,
@@ -325,14 +325,15 @@ class _CheckpointPosition(object):
       # the SaveableObject itself has been cached. If not, we'll make it, and
       # either way we'll extract new ops from it (or if it has Python state to
       # restore, we'll run that).
-      if self._checkpoint.saveable_object_cache is None:
+      saveables_cache = self._checkpoint.graph_view.saveables_cache
+      if saveables_cache is None:
         # No SaveableObject caching when executing eagerly.
         saveable = None
       else:
         # If we've already created and cached a SaveableObject for this
         # attribute, we can re-use it to avoid re-creating some ops when graph
         # building.
-        saveable_list = self._checkpoint.saveable_object_cache.get(
+        saveable_list = saveables_cache.get(
             self.checkpointable, {}).get(serialized_tensor.name, (None,))
         if len(saveable_list) == 1:
           # Almost every attribute will have exactly one SaveableObject.
@@ -347,7 +348,7 @@ class _CheckpointPosition(object):
         # the SaveableObject.
         if serialized_tensor.checkpoint_key not in saveable.name:
           saveable = None
-          del self._checkpoint.saveable_object_cache[self.checkpointable]
+          del saveables_cache[self.checkpointable]
           break
       if saveable is None:
         # If there was no cached SaveableObject, we should check if the Python
@@ -366,8 +367,8 @@ class _CheckpointPosition(object):
           saveable = saveable_factory(name=serialized_tensor.checkpoint_key)
         else:
           saveable = saveable_factory
-        if self._checkpoint.saveable_object_cache is not None:
-          self._checkpoint.saveable_object_cache.setdefault(
+        if saveables_cache is not None:
+          saveables_cache.setdefault(
               self.checkpointable, {})[serialized_tensor.name] = [saveable]
       if isinstance(saveable, PythonStateSaveable):
         python_saveables.append(saveable)
@@ -491,7 +492,7 @@ class Checkpointable(object):
     # Maps names -> Checkpointable objects
     self._unconditional_dependency_names = {}
     # Restorations for other Checkpointable objects on which this object may
-    # eventually depend. Maps local name -> _CheckpointPosition list. Optimizers
+    # eventually depend. Maps local name -> CheckpointPosition list. Optimizers
     # tack on conditional dependencies, and so need separate management of
     # deferred dependencies too.
     self._unconditional_deferred_dependencies = {}
@@ -545,7 +546,7 @@ class Checkpointable(object):
     management of deferred dependencies too).
 
     Returns:
-      A dictionary mapping from local name to a list of _CheckpointPosition
+      A dictionary mapping from local name to a list of CheckpointPosition
       objects.
     """
     return self._unconditional_deferred_dependencies
@@ -791,7 +792,7 @@ class Checkpointable(object):
     else:
       restore_ops = ()
     for child in checkpoint_position.object_proto.children:
-      child_position = _CheckpointPosition(
+      child_position = CheckpointPosition(
           checkpoint=checkpoint,
           proto_id=child.node_id)
       local_object = self._lookup_dependency(child.local_name)

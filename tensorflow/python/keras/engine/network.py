@@ -22,7 +22,6 @@ from __future__ import print_function
 import copy
 import json
 import os
-import weakref
 
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
@@ -207,8 +206,8 @@ class Network(base_layer.Layer):
     self._outbound_nodes = []
     self._inbound_nodes = []
 
-    self._checkpointable_saver = checkpointable_utils.CheckpointableSaver(
-        weakref.ref(self))
+    self._checkpointable_saver = (
+        checkpointable_utils.saver_with_op_caching(self))
 
   @checkpointable.no_automatic_dependency_tracking
   def _init_graph_network(self, inputs, outputs, name=None):
