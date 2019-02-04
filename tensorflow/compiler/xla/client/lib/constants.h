@@ -142,6 +142,9 @@ XlaOp MaxValue(XlaBuilder* builder, PrimitiveType type);
 // Returns the maximum representable finite value for 'type'.
 XlaOp MaxFiniteValue(XlaBuilder* builder, PrimitiveType type);
 
+// Returns a nan for the given type.  Only valid for real-valued fp types.
+XlaOp NanValue(XlaBuilder* builder, PrimitiveType type);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_CONSTANTS_H_
