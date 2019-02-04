@@ -4,7 +4,7 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
@@ -190,7 +190,7 @@ cc_library(
         ":string",
         ":util",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/core/api:api",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
