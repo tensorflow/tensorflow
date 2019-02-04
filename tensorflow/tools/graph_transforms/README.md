@@ -18,6 +18,8 @@
     *   [fold_batch_norms](#fold_batch_norms)
     *   [fold_constants](#fold_constants)
     *   [fold_old_batch_norms](#fold_old_batch_norms)
+    *   [fold_moments](#fold_moments)
+    *   [fold_batch_norms_algebraic](#fold_batch_norms_algebraic)
     *   [freeze_requantization_ranges](#freeze_requantization_ranges)
     *   [fuse_convolutions](#fuse_convolutions)
     *   [insert_logging](#insert_logging)
@@ -412,6 +414,22 @@ ops instead, to achieve the same effect without special-purpose code. If you
 have a graph that uses the older-style, this transform will recognize and
 optimize those ops for inference, in the same way that the
 [fold_batch_norms](#fold_batch_norms) transform does for the new approach.
+
+### fold_moments
+
+Args: None
+Prerequisites: None
+nn.moments() compute the mean and variance of the input tensor, unfortunately the python
+op is unfolded into algebraic expressions, which is not efficient at inference time, this
+transform will recognize and optimize those ops for inference according to folding algebraic
+expressions to only one op(Moments).
+
+### fold_batch_norms_algebraic
+Args: None
+Prerequisites: remove_nodes(op=Identity), fold_moments
+When using tf.contrib.layers.instance_norm, the python op instance norm will be unfolded into 
+series of algebraic expressions, this transform will recognize and optimize those ops for inference.
+And this transform should be used after remove_nodes(op=Identity) and before fold_moments.
 
 ### freeze_requantization_ranges
 
