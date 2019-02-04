@@ -1586,8 +1586,10 @@ def assert_shapes(shapes, innermost_dims=False, data=None, summarize=None,
     tuple/list of size entries or a single size entry.
     innermost_dims: `bool`, if to apply constraints on the inner-most
     dimensions only.
-    message: A string to prefix to the default message.
+    data: The tensors to print out if the condition is False.  Defaults to
+    error message and first few entries of the violating tensor.
     summarize: Print this many entries of each tensor.
+    message: A string to prefix to the default message.
     name: A name for this operation (optional).  Defaults to "assert_shapes".
 
   Returns:
