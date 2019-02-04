@@ -100,4 +100,28 @@ XlaOp MaxFiniteValue(XlaBuilder* builder, PrimitiveType type) {
   }
 }
 
+XlaOp NanValue(XlaBuilder* builder, PrimitiveType type) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    switch (type) {
+      case F16:
+        return ConstantR0<Eigen::half>(
+            builder, Eigen::NumTraits<Eigen::half>::quiet_NaN());
+      case BF16:
+        return ConstantR0<bfloat16>(
+            builder, bfloat16(std::numeric_limits<float>::quiet_NaN()));
+      case F32:
+        return ConstantR0<float>(builder,
+                                 std::numeric_limits<float>::quiet_NaN());
+      case F64:
+        return ConstantR0<double>(builder,
+                                  std::numeric_limits<double>::quiet_NaN());
+      default:
+        return InvalidArgument(
+            "Operand to NanValue was %s, but must be a real-valued "
+            "floating-point type.",
+            PrimitiveType_Name(type));
+    }
+  });
+}
+
 }  // namespace xla
