@@ -1613,8 +1613,8 @@ def assert_shapes(shapes, data=None, summarize=None,
   with ops.name_scope(name, 'assert_shapes', [shapes, data]):
 
     shapes = {
-      ops.convert_to_tensor(x): shapes[x]
-      for x in shapes
+        ops.convert_to_tensor(x): shapes[x]
+        for x in shapes
     }
 
     executing_eagerly = context.executing_eagerly()
@@ -1629,8 +1629,8 @@ def assert_shapes(shapes, data=None, summarize=None,
         else:
           name = x.name
         raise ValueError(
-          '%s.  Tensor %s.  Symbol `...` for variable number of unspecified '
-          'dimensions is only allowed as the first entry' % (message, name))
+            '%s.  Tensor %s.  Symbol `...` for variable number of unspecified '
+            'dimensions is only allowed as the first entry' % (message, name))
 
     # Shape specified as None implies no constraint
     shapes = {
