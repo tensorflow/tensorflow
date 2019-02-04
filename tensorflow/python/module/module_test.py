@@ -332,12 +332,42 @@ class WalkTest(parameterized.TestCase, test.TestCase):
     child = parent.c
 
     self.assertEqual(
-        list(module.walk(parent, predicate=IS_MEMBER)),
+        list(parent._flatten(recursive=False, predicate=IS_MEMBER)),
         [parent.a[0], parent.a[1], parent.z])
 
     self.assertEqual(
-        list(module.walk(parent, recurse_if=IS_MODULE, predicate=IS_MEMBER)),
+        list(parent._flatten(predicate=IS_MEMBER)),
         [parent.a[0], parent.a[1], parent.z, child.a[0], child.a[1], child.z])
+
+  def test_attribute_traversal_key(self):
+    mod = LayerModule()
+    self.assertEqual(
+        mod.variables,
+        mod._trainable_variables + mod._non_trainable_variables + [mod._bonus])
+
+
+class LayerModule(module.Module):
+
+  def __init__(self):
+    super(LayerModule, self).__init__()
+    self._trainable_variables = [
+        variables.Variable(1., name="a"),
+        variables.Variable(2., name="b"),
+    ]
+    self._non_trainable_variables = [
+        variables.Variable(3., name="c"),
+        variables.Variable(4., name="d"),
+    ]
+    self._bonus = variables.Variable(5., name="e")
+
+  @property
+  def variables(self):
+    def key_function(name):
+      indexes = {"_trainable_variables": 0, "_non_trainable_variables": 1}
+      return indexes.get(name, 2), name
+
+    return list(self._flatten(predicate=module._IS_VARIABLE,
+                              attribute_traversal_key=key_function))
 
 
 class MemberType(object):
