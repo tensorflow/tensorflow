@@ -467,7 +467,11 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
     self._feed_error = None
     self._finished = False
-    self._should_initialize_tpu = True
+    # When using model parallelism, the TPU is pre-initialized at startup to
+    # fetch mesh information.  We skip re-initializing it here to avoid
+    # suspected issues due to the mesh layout changing on the second
+    # initialization.
+    self._should_initialize_tpu = not ctx.model_parallelism_enabled
     self._tpu_compile_op = tpu_compile_op
 
   def begin(self):
