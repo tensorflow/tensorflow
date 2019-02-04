@@ -197,10 +197,6 @@ class Instruction final
                                     unsigned, BlockList,
                                     detail::OperandStorage> {
 public:
-  enum class Kind { OperationInst };
-
-  Kind getKind() const { return Kind::OperationInst; }
-
   /// Create a new Instruction with the specific fields.
   static Instruction *
   create(Location location, OperationName name, ArrayRef<Value *> operands,
@@ -702,9 +698,6 @@ private:
   }
   size_t numTrailingObjects(OverloadToken<unsigned>) const { return numSuccs; }
 };
-
-// TODO(riverriddle) Remove this.
-using OperationInst = Instruction;
 
 inline raw_ostream &operator<<(raw_ostream &os, const Instruction &inst) {
   inst.print(os);
