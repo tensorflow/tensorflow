@@ -70,15 +70,21 @@ class TrtPrecisionMode(object):
     return [TrtPrecisionMode.FP32, TrtPrecisionMode.FP16, TrtPrecisionMode.INT8]
 
 
-def get_tensorrt_rewriter_config(rewriter_config=None,
-                                 max_batch_size=1,
-                                 max_workspace_size_bytes=2 << 20,
-                                 precision_mode=TrtPrecisionMode.FP32,
-                                 minimum_segment_size=3,
-                                 is_dynamic_op=False,
-                                 maximum_cached_engines=1,
-                                 cached_engine_batches=None,
-                                 use_calibration=True):
+# Use a large enough number as the default max_workspace_size for TRT engines,
+# so it can produce reasonable performance results with the default.
+DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
+
+
+def get_tensorrt_rewriter_config(
+    rewriter_config=None,
+    max_batch_size=1,
+    max_workspace_size_bytes=DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES,
+    precision_mode=TrtPrecisionMode.FP32,
+    minimum_segment_size=3,
+    is_dynamic_op=False,
+    maximum_cached_engines=1,
+    cached_engine_batches=None,
+    use_calibration=True):
   """Returns a RewriterConfig proto for TRT transformation.
 
   Args:
@@ -97,12 +103,12 @@ def get_tensorrt_rewriter_config(rewriter_config=None,
       If the number of cached engines is already at max but none of them can
       serve the input, the TRTEngineOp will fall back to run the TF function
       based on which the TRTEngineOp is created.
-    cached_engine_batches: a list of batch sizes used to create cached
-      engines, only used when is_dynamic_op is True. The length of the list
-      should be <= maximum_cached_engines, and the dynamic TRT op will
-      use this list to determine the batch sizes of the cached engines, instead
-      of making the decision on the fly. This is useful when we know the most
-      common batch size(s) the application is going to generate.
+    cached_engine_batches: a list of batch sizes used to create cached engines,
+      only used when is_dynamic_op is True. The length of the list should be <=
+      maximum_cached_engines, and the dynamic TRT op will use this list to
+      determine the batch sizes of the cached engines, instead of making the
+      decision on the fly. This is useful when we know the most common batch
+      size(s) the application is going to generate.
     use_calibration: this argument is ignored if precision_mode is not INT8. If
       set to True, a calibration graph will be created to calibrate the missing
       ranges. The calibration graph must be converted to an inference graph
@@ -162,20 +168,21 @@ def get_tensorrt_rewriter_config(rewriter_config=None,
   return rewriter_config_with_trt
 
 
-def create_inference_graph(input_graph_def,
-                           outputs,
-                           max_batch_size=1,
-                           max_workspace_size_bytes=2 << 20,
-                           precision_mode=TrtPrecisionMode.FP32,
-                           minimum_segment_size=3,
-                           is_dynamic_op=False,
-                           maximum_cached_engines=1,
-                           cached_engine_batches=None,
-                           use_calibration=True,
-                           input_saved_model_dir=None,
-                           input_saved_model_tags=None,
-                           output_saved_model_dir=None,
-                           session_config=None):
+def create_inference_graph(
+    input_graph_def,
+    outputs,
+    max_batch_size=1,
+    max_workspace_size_bytes=DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES,
+    precision_mode=TrtPrecisionMode.FP32,
+    minimum_segment_size=3,
+    is_dynamic_op=False,
+    maximum_cached_engines=1,
+    cached_engine_batches=None,
+    use_calibration=True,
+    input_saved_model_dir=None,
+    input_saved_model_tags=None,
+    output_saved_model_dir=None,
+    session_config=None):
   """Python wrapper for the TRT transformation.
 
   Args:
@@ -197,12 +204,12 @@ def create_inference_graph(input_graph_def,
       If the number of cached engines is already at max but none of them can
       serve the input, the TRTEngineOp will fall back to run the TF function
       based on which the TRTEngineOp is created.
-    cached_engine_batches: a list of batch sizes used to create cached
-      engines, only used when is_dynamic_op is True. The length of the list
-      should be <= maximum_cached_engines, and the dynamic TRT op will
-      use this list to determine the batch sizes of the cached engines, instead
-      of making the decision on the fly. This is useful when we know the most
-      common batch size(s) the application is going to generate.
+    cached_engine_batches: a list of batch sizes used to create cached engines,
+      only used when is_dynamic_op is True. The length of the list should be <=
+      maximum_cached_engines, and the dynamic TRT op will use this list to
+      determine the batch sizes of the cached engines, instead of making the
+      decision on the fly. This is useful when we know the most common batch
+      size(s) the application is going to generate.
     use_calibration: this argument is ignored if precision_mode is not INT8. If
       set to True, a calibration graph will be created to calibrate the missing
       ranges. The calibration graph must be converted to an inference graph
