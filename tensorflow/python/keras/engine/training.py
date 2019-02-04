@@ -47,6 +47,7 @@ from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -313,8 +314,10 @@ class Model(Network):
                          ' outputs, but you passed loss=' + str(loss))
       loss_functions = [training_utils.get_loss_function(l) for l in loss]
     else:
-      loss_function = training_utils.get_loss_function(loss)
-      loss_functions = [loss_function for _ in range(len(self.outputs))]
+      loss_functions = [
+          training_utils.get_loss_function(loss)
+          for _ in range(len(self.outputs))
+      ]
     self.loss_functions = loss_functions
 
     skip_target_indices = []
@@ -485,13 +488,15 @@ class Model(Network):
                                           '_loss'] = output_loss
 
             # Keep track of stateful result tensor and function for the loss.
-            mean_wrapped_loss = metrics_module.MeanMetricWrapper(
+            # Reset reduction here as metric wrapper will take care of that.
+            loss_fn.reduction = losses_impl.ReductionV2.NONE
+            output_loss_metric = metrics_module.SumOverBatchSizeMetricWrapper(
                 loss_fn, name=loss_fn.name)
-            result_tensor = self._call_metric_fn(mean_wrapped_loss, y_true,
+            result_tensor = self._call_metric_fn(output_loss_metric, y_true,
                                                  y_pred, sample_weight, mask)
             self._compile_stateful_metrics_tensors[self.output_names[i] +
                                                    '_loss'] = result_tensor
-            self._compile_stateful_metric_functions.append(mean_wrapped_loss)
+            self._compile_stateful_metric_functions.append(output_loss_metric)
 
             self._compile_metrics_names.append(self.output_names[i] + '_loss')
           if total_loss is None:
@@ -1814,7 +1819,7 @@ class Model(Network):
     self._per_output_weighted_metrics = \
         training_utils.collect_per_output_metric_info(
             weighted_metrics, self.output_names, output_shapes,
-            self.loss_functions, self.sample_weights)
+            self.loss_functions, is_weighted=True)
 
   def _add_unique_metric_name(self, metric_name, output_index):
     """Makes the metric name unique and adds it to the model's metric name list.

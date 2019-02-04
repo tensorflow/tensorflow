@@ -21,7 +21,6 @@ from __future__ import print_function
 import abc
 import collections
 from collections import OrderedDict
-import copy
 
 import numpy as np
 import six
@@ -521,7 +520,7 @@ def collect_per_output_metric_info(metrics,
                                    output_names,
                                    output_shapes,
                                    loss_fns,
-                                   sample_weights=None):
+                                   is_weighted=False):
   """Maps metric names and functions to model outputs.
 
   Arguments:
@@ -529,7 +528,7 @@ def collect_per_output_metric_info(metrics,
       output_names: a list of the names (strings) of model outputs.
       output_shapes: a list of the shapes (strings) of model outputs.
       loss_fns: a list of the loss functions corresponding to the model outputs.
-      sample_weights: a list of weights to be applied on the model outputs.
+      is_weighted: Boolean indicating whether the given metrics are weighted.
 
   Returns:
       A list (one entry per model output) of dicts.
@@ -553,7 +552,12 @@ def collect_per_output_metric_info(metrics,
     return [{} for _ in output_names]
   if isinstance(metrics, list):
     # we then apply all metrics to all outputs.
-    nested_metrics = [copy.copy(metrics) for _ in output_names]
+    if len(output_names) > 1:
+      nested_metrics = []
+      for _ in output_names:
+        nested_metrics.append([metrics_module.clone_metric(m) for m in metrics])
+    else:
+      nested_metrics = [metrics]
   elif isinstance(metrics, dict):
     nested_metrics = []
     for name in output_names:
@@ -569,9 +573,7 @@ def collect_per_output_metric_info(metrics,
   for i, metrics in enumerate(nested_metrics):
     metrics_dict = OrderedDict()
     for metric in metrics:
-      weighted = False if (sample_weights is None) else (
-          sample_weights[i] is not None)
-      metric_name = get_metric_name(metric, weighted)
+      metric_name = get_metric_name(metric, is_weighted)
       metric_fn = get_metric_function(
           metric, output_shape=output_shapes[i], loss_fn=loss_fns[i])
 
