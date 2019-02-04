@@ -1505,6 +1505,55 @@ def assert_type(tensor, tf_type, message=None, name=None):
     return control_flow_ops.no_op('statically_determined_correct_type')
 
 
+def _dimension_sizes(x):
+  """Gets the dimension sizes of a tensor `x`.
+
+  If a size can be determined statically it is returned as an integer,
+  otherwise as a tensor.
+  If `x` is a scalar it is treated as having a single dimension.
+
+  Args:
+    x: A `Tensor`.
+
+  Returns:
+    Dimension sizes.
+  """
+  dynamic_shape = array_ops.shape(x)
+  dynamic_size = array_ops.size(x)
+  rank = x.get_shape().rank
+  rank_is_known = rank is not None
+  if rank_is_known and rank == 0:
+    static_size = tensor_util.constant_value(dynamic_size)
+    if static_size is not None:
+      return tuple([static_size])
+    return array_ops.reshape(dynamic_size, [-1])
+  if rank_is_known and rank > 0:
+    static_shape = x.get_shape().as_list()
+    sizes = [
+        size if size is not None else
+        dynamic_shape[i]
+        for i, size in enumerate(static_shape)
+    ]
+    return sizes
+  has_rank_zero = math_ops.equal(array_ops.rank(x), 0)
+  return control_flow_ops.cond(
+      has_rank_zero,
+      lambda: array_ops.reshape(dynamic_size, [-1]),
+      lambda: dynamic_shape
+  )
+
+
+def _symbolic_dimension_sizes(symbolic_shape):
+  if not isinstance(symbolic_shape, (tuple, list)):
+    # Shape of rank zero returns [symbolic_size]
+    return tuple([symbolic_shape])
+  return symbolic_shape
+
+
+def _has_known_value(dimension_size):
+  return dimension_size is not None and isinstance(dimension_size, int)
+
+
 @tf_export('debugging.assert_shapes', 'assert_shapes')
 def assert_shapes(shapes, event_shape_only=False, data=None, summarize=None,
                   message=None, name=None):
@@ -1567,9 +1616,9 @@ def assert_shapes(shapes, event_shape_only=False, data=None, summarize=None,
 
     executing_eagerly = context.executing_eagerly()
 
-    def rank(shape):
-      if isinstance(shape, (tuple, list)):
-        return len(shape)
+    def rank(symbolic_shape):
+      if isinstance(symbolic_shape, (tuple, list)):
+        return len(symbolic_shape)
       return 0
 
     rank_assertions = []
@@ -1585,47 +1634,12 @@ def assert_shapes(shapes, event_shape_only=False, data=None, summarize=None,
             message=message, name=name)
       rank_assertions.append(assertion)
 
-    def actual_dimension_sizes(x):
-      # x of rank zero returns [size]
-      dynamic_shape = array_ops.shape(x)
-      dynamic_size = array_ops.size(x)
-      rank = x.get_shape().rank
-      rank_is_known = rank is not None
-      if rank_is_known and rank == 0:
-        static_size = tensor_util.constant_value(dynamic_size)
-        if static_size is not None:
-          return tuple([static_size])
-        return array_ops.reshape(dynamic_size, [-1])
-      if rank_is_known and rank > 0:
-        static_shape = x.get_shape().as_list()
-        sizes = [
-            size if size is not None else
-            dynamic_shape[i]
-            for i, size in enumerate(static_shape)
-        ]
-        return sizes
-      has_rank_zero = math_ops.equal(array_ops.rank(x), 0)
-      return control_flow_ops.cond(
-          has_rank_zero,
-          lambda: array_ops.reshape(dynamic_size, [-1]),
-          lambda: dynamic_shape
-      )
-
-    def specified_symbolic_dimension_sizes(shape):
-      # shape of rank zero returns [symbolic_size]
-      if not isinstance(shape, (tuple, list)):
-        return tuple([shape])
-      return shape
-
-    def has_known_value(size):
-      return size is not None and isinstance(size, int)
-
     actual_sizes_by_tensor = {
-        tensor: actual_dimension_sizes(tensor)
+        tensor: _dimension_sizes(tensor)
         for tensor in shapes
     }
     specified_symbolic_sizes_by_tensor = {
-        tensor: specified_symbolic_dimension_sizes(shapes[tensor])
+        tensor: _symbolic_dimension_sizes(shapes[tensor])
         for tensor in shapes
     }
 
@@ -1646,8 +1660,8 @@ def assert_shapes(shapes, event_shape_only=False, data=None, summarize=None,
         else:
           tensor_dim = i
 
-        if size_symbol in size_specifications or has_known_value(size_symbol):
-          if has_known_value(size_symbol):
+        if size_symbol in size_specifications or _has_known_value(size_symbol):
+          if _has_known_value(size_symbol):
             specified_size = size_symbol
             size_check_message = 'Specified explicitly'
           else:
@@ -1666,7 +1680,7 @@ def assert_shapes(shapes, event_shape_only=False, data=None, summarize=None,
             name = x.name
 
           actual_size = actual_sizes[tensor_dim]
-          if has_known_value(actual_size) and has_known_value(specified_size):
+          if _has_known_value(actual_size) and _has_known_value(specified_size):
             if actual_size != specified_size:
               raise ValueError(
                   '%s.  %s.  Tensor %s dimension %s must have size %d.  '
