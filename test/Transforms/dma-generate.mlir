@@ -262,7 +262,7 @@ func @dma_unknown_size(%arg0: memref<?x?xf32>) {
       // size -- not yet implemented.
       // CHECK: %2 = load %arg0[%i0, %i1] : memref<?x?xf32>
       load %arg0[%i, %j] : memref<? x ? x f32>
-      // expected-error@-6 {{DMA generation failed for one or more memref's}}
+      // expected-error@-6 {{DMA generation failed for one or more memref's in this block}}
     }
   }
   return
@@ -282,7 +282,7 @@ func @dma_memref_3d(%arg0: memref<1024x1024x1024xf32>) {
         // not yet implemented.
         // CHECK: %5 = load %arg0[%2, %3, %4] : memref<1024x1024x1024xf32>
         %v = load %arg0[%idx, %idy, %idz] : memref<1024 x 1024 x 1024 x f32>
-        // expected-error@-10 {{DMA generation failed for one or more memref's}}
+        // expected-error@-10 {{DMA generation failed for one or more memref's in this block}}
       }
     }
   }
@@ -359,3 +359,73 @@ func @multi_load_store_union() {
 // CHECK-NEXT:  dma_wait %3[%c0], %c170372 : memref<1xi32>
 // CHECK-NEXT:  return
 // CHECK-NEXT:}
+
+// -----
+
+// CHECK-DAG: [[MAP_MINUS_ONE:#map[0-9]+]] = (d0) -> (d0 - 1)
+
+// CHECK-LABEL: func @dma_loop_straightline_interspersed() {
+func @dma_loop_straightline_interspersed() {
+  %c0 = constant 0 : index
+  %c255 = constant 255 : index
+  %A = alloc() : memref<256 x f32>
+  %v = load %A[%c0] : memref<256 x f32>
+  for %i = 1 to 255 {
+    load %A[%i] : memref<256 x f32>
+  }
+  %l = load %A[%c255] : memref<256 x f32>
+  store %l, %A[%c0] : memref<256 x f32>
+  return
+}
+// There are three regions here - the 'load' preceding the loop, the loop
+// itself, and the instructions appearing after the loop.
+// CHECK:       %0 = alloc() : memref<256xf32>
+// CHECK-NEXT:  %1 = alloc() : memref<1xf32, 1>
+// CHECK-NEXT:  %2 = alloc() : memref<1xi32>
+// CHECK-NEXT:  dma_start %0[%c0], %1[%c0], %c1_1, %2[%c0] : memref<256xf32>, memref<1xf32, 1>, memref<1xi32>
+// CHECK-NEXT:  dma_wait %2[%c0], %c1_1 : memref<1xi32>
+// CHECK-NEXT:  %3 = load %1[%c0_2] : memref<1xf32, 1>
+// CHECK-NEXT:  %4 = alloc() : memref<254xf32, 1>
+// CHECK-NEXT:  %5 = alloc() : memref<1xi32>
+// CHECK-NEXT:  dma_start %0[%c1_0], %4[%c0], %c254, %5[%c0] : memref<256xf32>, memref<254xf32, 1>, memref<1xi32>
+// CHECK-NEXT:  dma_wait %5[%c0], %c254 : memref<1xi32>
+// CHECK-NEXT:  for %i0 = 1 to 255 {
+// CHECK-NEXT:    %6 = affine_apply [[MAP_MINUS_ONE]](%i0)
+// CHECK-NEXT:    %7 = load %4[%6] : memref<254xf32, 1>
+// CHECK-NEXT:  }
+// CHECK-NEXT:  %8 = alloc() : memref<256xf32, 1>
+// CHECK-NEXT:  %9 = alloc() : memref<1xi32>
+// CHECK-NEXT:  dma_start %0[%c0], %8[%c0], %c256, %9[%c0] : memref<256xf32>, memref<256xf32, 1>, memref<1xi32>
+// CHECK-NEXT:  dma_wait %9[%c0], %c256 : memref<1xi32>
+// CHECK-NEXT:  %10 = alloc() : memref<1xi32>
+// CHECK-NEXT:  %11 = load %8[%c255] : memref<256xf32, 1>
+// CHECK-NEXT:  store %11, %8[%c0_2] : memref<256xf32, 1>
+// CHECK-NEXT:  dma_start %8[%c0], %0[%c0], %c1, %10[%c0] : memref<256xf32, 1>, memref<256xf32>, memref<1xi32>
+// CHECK-NEXT:  dma_wait %10[%c0], %c1 : memref<1xi32>
+// CHECK-NEXT:  return
+
+// -----
+
+// CHECK-LABEL: func @dma_mixed_loop_blocks() {
+func @dma_mixed_loop_blocks() {
+  %c0 = constant 0 : index
+  %A = alloc() : memref<256 x 256 x vector<8 x f32>>
+  for %i = 0 to 256 {
+    %v = load %A[%c0, %c0] : memref<256 x 256 x vector<8 x f32>>
+    "foo"(%v) : (vector<8 x f32>) -> ()
+    for %j = 0 to 256 {
+      %w = load %A[%i, %j] : memref<256 x 256 x vector<8 x f32>>
+      "bar"(%w) : (vector<8 x f32>) -> ()
+    }
+  }
+  return
+}
+// CHECK-DAG:   [[MEM:%[0-9]+]] = alloc() : memref<256x256xvector<8xf32>>
+// CHECK-DAG:   [[BUF:%[0-9]+]] = alloc() : memref<256x256xvector<8xf32>, 1>
+// CHECK-DAG:   [[TAG:%[0-9]+]] = alloc() : memref<1xi32>
+// CHECK:       dma_start [[MEM]][%c0, %c0], [[BUF]][%c0, %c0], %c65536, [[TAG]][%c0] : memref<256x256xvector<8xf32>>, memref<256x256xvector<8xf32>, 1>, memref<1xi32>
+// CHECK-NEXT:  dma_wait [[TAG]][%c0], %c65536 : memref<1xi32>
+// CHECK-NEXT:  for %i0 = 0 to 256 {
+// CHECK-NEXT:    %3 = load [[BUF]][%c0_0, %c0_0] : memref<256x256xvector<8xf32>, 1>
+// CHECK:         for %i1 = 0 to 256 {
+// CHECK-NEXT:      %4 = load [[BUF]][%i0, %i1] : memref<256x256xvector<8xf32>, 1>

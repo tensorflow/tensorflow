@@ -24,6 +24,7 @@
 #define MLIR_TRANSFORMS_PASSES_H
 
 #include "mlir/Support/LLVM.h"
+#include <limits>
 
 namespace mlir {
 
@@ -91,9 +92,10 @@ FunctionPass *createLoopTilingPass();
 
 /// Promotes all accessed memref regions to the specified faster memory space
 /// while generating DMAs to move data.
-FunctionPass *createDmaGenerationPass(unsigned lowMemorySpace,
-                                      unsigned highMemorySpace,
-                                      int minDmaTransferSize = 1024);
+FunctionPass *createDmaGenerationPass(
+    unsigned slowMemorySpace, unsigned fastMemorySpace,
+    int minDmaTransferSize = 1024,
+    uint64_t fastMemCapacityBytes = std::numeric_limits<uint64_t>::max());
 
 /// Creates a pass to lower VectorTransferReadOp and VectorTransferWriteOp.
 FunctionPass *createLowerVectorTransfersPass();

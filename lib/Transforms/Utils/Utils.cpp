@@ -48,7 +48,8 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
                                     ArrayRef<Value *> extraIndices,
                                     AffineMap indexRemap,
                                     ArrayRef<Value *> extraOperands,
-                                    const Instruction *domInstFilter) {
+                                    const Instruction *domInstFilter,
+                                    const Instruction *postDomInstFilter) {
   unsigned newMemRefRank = newMemRef->getType().cast<MemRefType>().getRank();
   (void)newMemRefRank; // unused in opt mode
   unsigned oldMemRefRank = oldMemRef->getType().cast<MemRefType>().getRank();
@@ -66,8 +67,13 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
          newMemRef->getType().cast<MemRefType>().getElementType());
 
   std::unique_ptr<DominanceInfo> domInfo;
+  std::unique_ptr<PostDominanceInfo> postDomInfo;
   if (domInstFilter)
     domInfo = std::make_unique<DominanceInfo>(domInstFilter->getFunction());
+
+  if (postDomInstFilter)
+    postDomInfo =
+        std::make_unique<PostDominanceInfo>(postDomInstFilter->getFunction());
 
   // The ops where memref replacement succeeds are replaced with new ones.
   SmallVector<OperationInst *, 8> opsToErase;
@@ -79,6 +85,11 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
 
     // Skip this use if it's not dominated by domInstFilter.
     if (domInstFilter && !domInfo->dominates(domInstFilter, opInst))
+      continue;
+
+    // Skip this use if it's not post-dominated by postDomInstFilter.
+    if (postDomInstFilter &&
+        !postDomInfo->postDominates(postDomInstFilter, opInst))
       continue;
 
     // Check if the memref was used in a non-deferencing context. It is fine for
@@ -167,7 +178,7 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
       res->replaceAllUsesWith(repOp->getResult(r++));
     }
     // Collect and erase at the end since one of these op's could be
-    // domInstFilter!
+    // domInstFilter or postDomInstFilter as well!
     opsToErase.push_back(opInst);
   }
 

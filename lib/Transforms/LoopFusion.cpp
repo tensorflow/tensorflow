@@ -929,8 +929,7 @@ static Value *createPrivateMemRef(OpPointer<AffineForOp> forOp,
   unsigned rank = oldMemRefType.getRank();
 
   // Compute MemRefRegion for 'srcStoreOpInst' at depth 'dstLoopDepth'.
-  MemRefRegion region;
-  getMemRefRegion(srcStoreOpInst, dstLoopDepth, &region);
+  auto region = getMemRefRegion(srcStoreOpInst, dstLoopDepth);
   SmallVector<int64_t, 4> newShape;
   std::vector<SmallVector<int64_t, 4>> lbs;
   SmallVector<int64_t, 8> lbDivisors;
@@ -938,11 +937,11 @@ static Value *createPrivateMemRef(OpPointer<AffineForOp> forOp,
   // Query 'region' for 'newShape' and lower bounds of MemRefRegion accessed
   // by 'srcStoreOpInst' at depth 'dstLoopDepth'.
   Optional<int64_t> numElements =
-      region.getConstantBoundingSizeAndShape(&newShape, &lbs, &lbDivisors);
+      region->getConstantBoundingSizeAndShape(&newShape, &lbs, &lbDivisors);
   assert(numElements.hasValue() &&
          "non-constant number of elts in local buffer");
 
-  const FlatAffineConstraints *cst = region.getConstraints();
+  const FlatAffineConstraints *cst = region->getConstraints();
   // 'outerIVs' holds the values that this memory region is symbolic/paramteric
   // on; this would correspond to loop IVs surrounding the level at which the
   // slice is being materialized.

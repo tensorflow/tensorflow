@@ -2130,7 +2130,7 @@ bool FlatAffineConstraints::unionBoundingBox(
 
     // Identify max.
     auto uRes = compareBounds(ub, otherUb);
-    if (uRes == BoundCmpResult::Greater || res == BoundCmpResult::Equal) {
+    if (uRes == BoundCmpResult::Greater || uRes == BoundCmpResult::Equal) {
       maxUb = ub;
     } else if (uRes == BoundCmpResult::Less) {
       maxUb = otherUb;

@@ -27,6 +27,7 @@
 
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Location.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/SmallVector.h"
 #include <memory>
@@ -35,8 +36,10 @@ namespace mlir {
 
 class AffineForOp;
 template <typename T> class ConstOpPointer;
+class Block;
 class FlatAffineConstraints;
 class Instruction;
+class Location;
 class MemRefAccess;
 template <typename T> class OpPointer;
 class Instruction;
@@ -73,6 +76,9 @@ unsigned getNestingDepth(const Instruction &stmt);
 // The last field is a 2-d FlatAffineConstraints symbolic in %i.
 //
 struct MemRefRegion {
+  MemRefRegion(Value *memref, Location loc, bool write)
+      : memref(memref), write(write), loc(loc) {}
+
   FlatAffineConstraints *getConstraints() { return &cst; }
   const FlatAffineConstraints *getConstraints() const { return &cst; }
   bool isWrite() const { return write; }
@@ -108,9 +114,12 @@ struct MemRefRegion {
   /// Memref that this region corresponds to.
   Value *memref;
 
-private:
   /// Read or write.
   bool write;
+
+  /// If there is more than one load/store op associated with the region, the
+  /// location information would correspond to one of those op's.
+  Location loc;
 
   /// Region (data space) of the memref accessed. This set will thus have at
   /// least as many dimensional identifiers as the shape dimensionality of the
@@ -125,7 +134,7 @@ private:
 
 /// Computes the memory region accessed by this memref with the region
 /// represented as constraints symbolic/parameteric in 'loopDepth' loops
-/// surrounding opInst. Returns false if this fails due to yet unimplemented
+/// surrounding opInst. Returns nullptr if this fails due to yet unimplemented
 /// cases. The computed region's 'cst' field has exactly as many dimensional
 /// identifiers as the rank of the memref, and *potentially* additional symbolic
 /// identifiers which could include any of the loop IVs surrounding opInst up
@@ -142,8 +151,8 @@ private:
 ///   {memref = %A, write = false, {%i <= m0 <= %i + 7} }
 /// The last field is a 2-d FlatAffineConstraints symbolic in %i.
 ///
-bool getMemRefRegion(Instruction *opInst, unsigned loopDepth,
-                     MemRefRegion *region);
+std::unique_ptr<MemRefRegion> getMemRefRegion(Instruction *opInst,
+                                              unsigned loopDepth);
 
 /// Returns the size of memref data in bytes if it's statically shaped, None
 /// otherwise.
@@ -199,7 +208,11 @@ insertBackwardComputationSlice(Instruction *srcOpInst, Instruction *dstOpInst,
                                unsigned dstLoopDepth,
                                ComputationSliceState *sliceState);
 
+/// Gets the memory footprint of all data touched in the specified memory space
+/// in bytes; if the memory space is unspecified, considers all memory spaces.
 Optional<int64_t> getMemoryFootprintBytes(ConstOpPointer<AffineForOp> forOp,
+                                          int memorySpace = -1);
+Optional<int64_t> getMemoryFootprintBytes(const Block &block,
                                           int memorySpace = -1);
 
 } // end namespace mlir

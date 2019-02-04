@@ -311,6 +311,19 @@ public:
     return &Block::instructions;
   }
 
+  /// Walk the operation instructions of this block in preorder, calling the
+  /// callback for each operation.
+  void walk(std::function<void(Instruction *)> callback);
+
+  /// Walk the operation instructions in this block in postorder, calling the
+  /// callback for each operation.
+  void walkPostOrder(std::function<void(Instruction *)> callback);
+
+  /// Walk the operation instructions in the specified [begin, end) range of
+  /// this block, calling the callback for each operation.
+  void walk(Block::iterator begin, Block::iterator end,
+            std::function<void(Instruction *)> callback);
+
   void print(raw_ostream &os) const;
   void dump() const;
 

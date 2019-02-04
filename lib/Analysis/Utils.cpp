@@ -122,25 +122,26 @@ bool MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
 //
 // TODO(bondhugula): extend this to any other memref dereferencing ops
 // (dma_start, dma_wait).
-bool mlir::getMemRefRegion(Instruction *opInst, unsigned loopDepth,
-                           MemRefRegion *region) {
+std::unique_ptr<MemRefRegion> mlir::getMemRefRegion(Instruction *opInst,
+                                                    unsigned loopDepth) {
   unsigned rank;
+  std::unique_ptr<MemRefRegion> region;
   SmallVector<Value *, 4> indices;
   if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
     rank = loadOp->getMemRefType().getRank();
     indices.reserve(rank);
     indices.append(loadOp->getIndices().begin(), loadOp->getIndices().end());
-    region->memref = loadOp->getMemRef();
-    region->setWrite(false);
+    region = std::make_unique<MemRefRegion>(loadOp->getMemRef(),
+                                            loadOp->getLoc(), false);
   } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {
     rank = storeOp->getMemRefType().getRank();
     indices.reserve(rank);
     indices.append(storeOp->getIndices().begin(), storeOp->getIndices().end());
-    region->memref = storeOp->getMemRef();
-    region->setWrite(true);
+    region = std::make_unique<MemRefRegion>(storeOp->getMemRef(),
+                                            storeOp->getLoc(), true);
   } else {
     assert(false && "expected load or store op");
-    return false;
+    return nullptr;
   }
 
   // Build the constraints for this region.
@@ -153,13 +154,15 @@ bool mlir::getMemRefRegion(Instruction *opInst, unsigned loopDepth,
 
     SmallVector<Value *, 8> regionSymbols = extractForInductionVars(ivs);
     regionCst->reset(0, loopDepth, 0, regionSymbols);
-    return true;
+    return region;
   }
 
   FuncBuilder b(opInst);
   auto idMap = b.getMultiDimIdentityMap(rank);
   // Initialize 'accessValueMap' and compose with reachable AffineApplyOps.
   fullyComposeAffineMapAndOperands(&idMap, &indices);
+  // Remove any duplicates.
+  canonicalizeMapAndOperands(&idMap, &indices);
   AffineValueMap accessValueMap(idMap, indices);
   AffineMap accessMap = accessValueMap.getAffineMap();
 
@@ -180,7 +183,7 @@ bool mlir::getMemRefRegion(Instruction *opInst, unsigned loopDepth,
       // TODO(bondhugula): rewrite this to use getInstIndexSet; this way
       // conditionals will be handled when the latter supports it.
       if (!regionCst->addAffineForOpDomain(loop))
-        return false;
+        return nullptr;
     } else {
       // Has to be a valid symbol.
       auto *symbol = accessValueMap.getOperand(i);
@@ -198,7 +201,7 @@ bool mlir::getMemRefRegion(Instruction *opInst, unsigned loopDepth,
   if (!regionCst->composeMap(&accessValueMap)) {
     LLVM_DEBUG(llvm::dbgs() << "getMemRefRegion: compose affine map failed\n");
     LLVM_DEBUG(accessValueMap.getAffineMap().dump());
-    return false;
+    return nullptr;
   }
 
   // Eliminate any loop IVs other than the outermost 'loopDepth' IVs, on which
@@ -233,7 +236,7 @@ bool mlir::getMemRefRegion(Instruction *opInst, unsigned loopDepth,
   LLVM_DEBUG(llvm::dbgs() << "Memory region:\n");
   LLVM_DEBUG(region->getConstraints()->dump());
 
-  return true;
+  return region;
 }
 
 //  TODO(mlir-team): improve/complete this when we have target data.
@@ -278,19 +281,20 @@ bool mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
       "argument should be either a LoadOp or a StoreOp");
 
   Instruction *opInst = loadOrStoreOp->getInstruction();
-  MemRefRegion region;
-  if (!getMemRefRegion(opInst, /*loopDepth=*/0, &region))
+
+  auto region = getMemRefRegion(opInst, /*loopDepth=*/0);
+  if (!region)
     return false;
 
   LLVM_DEBUG(llvm::dbgs() << "Memory region");
-  LLVM_DEBUG(region.getConstraints()->dump());
+  LLVM_DEBUG(region->getConstraints()->dump());
 
   bool outOfBounds = false;
   unsigned rank = loadOrStoreOp->getMemRefType().getRank();
 
   // For each dimension, check for out of bounds.
   for (unsigned r = 0; r < rank; r++) {
-    FlatAffineConstraints ucst(*region.getConstraints());
+    FlatAffineConstraints ucst(*region->getConstraints());
 
     // Intersect memory region with constraint capturing out of bounds (both out
     // of upper and out of lower), and check if the constraint system is
@@ -310,7 +314,7 @@ bool mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
     }
 
     // Check for a negative index.
-    FlatAffineConstraints lcst(*region.getConstraints());
+    FlatAffineConstraints lcst(*region->getConstraints());
     std::fill(ineq.begin(), ineq.end(), 0);
     // d_i <= -1;
     lcst.addConstantUpperBound(r, -1);
@@ -519,8 +523,8 @@ MemRefAccess::MemRefAccess(Instruction *loadOrStoreOpInst) {
 
 /// Returns the nesting depth of this statement, i.e., the number of loops
 /// surrounding this statement.
-unsigned mlir::getNestingDepth(const Instruction &stmt) {
-  const Instruction *currInst = &stmt;
+unsigned mlir::getNestingDepth(const Instruction &inst) {
+  const Instruction *currInst = &inst;
   unsigned depth = 0;
   while ((currInst = currInst->getParentInst())) {
     if (currInst->isa<AffineForOp>())
@@ -577,11 +581,16 @@ static Optional<int64_t> getRegionSize(const MemRefRegion &region) {
 Optional<int64_t>
 mlir::getMemoryFootprintBytes(ConstOpPointer<AffineForOp> forOp,
                               int memorySpace) {
+  return getMemoryFootprintBytes(*forOp->getBody(), memorySpace);
+}
+
+Optional<int64_t> mlir::getMemoryFootprintBytes(const Block &block,
+                                                int memorySpace) {
   std::vector<std::unique_ptr<MemRefRegion>> regions;
 
   // Walk this 'for' instruction to gather all memory regions.
   bool error = false;
-  const_cast<AffineForOp &>(*forOp).walkOps([&](Instruction *opInst) {
+  const_cast<Block *>(&block)->walk([&](Instruction *opInst) {
     if (!opInst->isa<LoadOp>() && !opInst->isa<StoreOp>()) {
       // Neither load nor a store op.
       return;
@@ -591,8 +600,8 @@ mlir::getMemoryFootprintBytes(ConstOpPointer<AffineForOp> forOp,
     // all regions for a given memref instead of creating one region per
     // memory op. This way we would be allocating O(num of memref's) sets
     // instead of O(num of load/store op's).
-    auto region = std::make_unique<MemRefRegion>();
-    if (!getMemRefRegion(opInst, 0, region.get())) {
+    auto region = getMemRefRegion(opInst, 0);
+    if (!region) {
       LLVM_DEBUG(llvm::dbgs() << "Error obtaining memory region\n");
       // TODO: stop the walk if an error occurred.
       error = true;

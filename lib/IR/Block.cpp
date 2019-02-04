@@ -256,6 +256,37 @@ Block *Block::splitBlock(iterator splitBefore) {
   return newBB;
 }
 
+void Block::walk(std::function<void(OperationInst *)> callback) {
+  walk(begin(), end(), callback);
+}
+
+void Block::walk(Block::iterator begin, Block::iterator end,
+                 std::function<void(OperationInst *)> callback) {
+  struct Walker : public InstWalker<Walker> {
+    std::function<void(OperationInst *)> const &callback;
+    Walker(std::function<void(OperationInst *)> const &callback)
+        : callback(callback) {}
+
+    void visitOperationInst(OperationInst *opInst) { callback(opInst); }
+  };
+
+  Walker w(callback);
+  w.walk(begin, end);
+}
+
+void Block::walkPostOrder(std::function<void(OperationInst *)> callback) {
+  struct Walker : public InstWalker<Walker> {
+    std::function<void(OperationInst *)> const &callback;
+    Walker(std::function<void(OperationInst *)> const &callback)
+        : callback(callback) {}
+
+    void visitOperationInst(OperationInst *opInst) { callback(opInst); }
+  };
+
+  Walker v(callback);
+  v.walkPostOrder(begin(), end());
+}
+
 //===----------------------------------------------------------------------===//
 // BlockList
 //===----------------------------------------------------------------------===//
