@@ -56,11 +56,15 @@ void MklRequantizatedOpsTestHelper::Setup(Tensor &input_tensor_qint32,
   // T and W are quantized using a Quantize Op.
   // The input Tensor T (NHWC) is quantized to unsigned int8.
   // The input Filter W (NHWC) is quantized to signed int8.
-  // Hence T's max value is mapped to ((2^8-1) = 255), while W's to ((2^7)-1 = 127)).
+  // Hence T's max value is mapped to ((2^8-1) = 255), while W's to ((2^7)-1 =
+  // 127)).
 
-  // Range of Quantized T  in uint8[0   , 255] maps to orig T  in FP32[0   , 5.0]
-  // Range of Quantized W1 in int8[-127, 127]  maps to orig W1 in FP32[-2.0, 2.0]
-  // Range of Quantized W2 in int8[-127, 127]  maps to orig W2 in FP32[-3.0, 3.0]
+  // Range of Quantized T  in uint8[0   , 255] maps to orig T  in FP32[0   ,
+  // 5.0]
+  // Range of Quantized W1 in int8[-127, 127]  maps to orig W1 in FP32[-2.0,
+  // 2.0]
+  // Range of Quantized W2 in int8[-127, 127]  maps to orig W2 in FP32[-3.0,
+  // 3.0]
 
   // Hence the resolution of Quantized T will be 5.0/255
   // Hence the resolution of Quantized W1 will be 2.0/127
@@ -70,8 +74,10 @@ void MklRequantizatedOpsTestHelper::Setup(Tensor &input_tensor_qint32,
   // ---------------------------------------------------------------------------
   // The input T and weights W1 (or W2) will be convolved.
   // The output Tensor T is in int32 whose range is [-2^31, 2^31).
-  // For simplicity, we truncate the range to (-2^31, 2^31) to make it symmetric.
-  // The range of the convolved T*W1 is ((2^31)-1) * 5.0/255 * 2.0/127 = 663110.59
+  // For simplicity, we truncate the range to (-2^31, 2^31) to make it
+  // symmetric.
+  // The range of the convolved T*W1 is ((2^31)-1) * 5.0/255 * 2.0/127 =
+  // 663110.59
   // So the range of convolved T*W1 in int32(-2^31, 2^31) that maps to
   // orig T range in FP32[0, 5.0] * [-2.0, 2.0] is [-663110.59, 663110.59]
 
@@ -160,8 +166,8 @@ TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_Basic) {
   // Verify the Expected Outputs
   const float output_min = GetOutput(0)->flat<float>()(0);
   const float output_max = GetOutput(1)->flat<float>()(0);
-  EXPECT_NEAR(-14.8217, output_min, 0.02);
-  EXPECT_NEAR(14.8217, output_max, 0.02);
+  EXPECT_NEAR(-14.8217, output_min, 0.002);
+  EXPECT_NEAR(14.8217, output_max, 0.002);
 
   // output range is made use in RequantizePerChannelTest_Basic
 }
@@ -221,8 +227,8 @@ TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_ClipMax) {
   // Verify the Expected Outputs
   const float output_min = GetOutput(0)->flat<float>()(0);
   const float output_max = GetOutput(1)->flat<float>()(0);
-  EXPECT_NEAR(-6.0, output_min, 0.02);  // Values are Max as with clip_value
-  EXPECT_NEAR(6.0, output_max, 0.02);   // Values are Max as with clip_value
+  EXPECT_NEAR(-6.0, output_min, 0.002);  // Values are Max as with clip_value
+  EXPECT_NEAR(6.0, output_max, 0.002);   // Values are Max as with clip_value
 }
 
 TEST_F(MklRequantizatedOpsTest, RequantizePerChannelTest_Basic) {
@@ -290,8 +296,8 @@ TEST_F(MklRequantizatedOpsTest, RequantizePerChannelTest_Basic) {
   Tensor output = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
-  EXPECT_NEAR(range_op_output_min, output_min, 0.02);
-  EXPECT_NEAR(range_op_output_max, output_max, 0.02);
+  EXPECT_NEAR(range_op_output_min, output_min, 0.002);
+  EXPECT_NEAR(range_op_output_max, output_max, 0.002);
 }
 
 }  // namespace tensorflow
