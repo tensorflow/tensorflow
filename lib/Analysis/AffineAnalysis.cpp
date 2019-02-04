@@ -1179,6 +1179,7 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
                                                memref->getType().getContext());
   SmallVector<Value *, 8> operands(indices.begin(), indices.end());
   fullyComposeAffineMapAndOperands(&map, &operands);
+  canonicalizeMapAndOperands(&map, &operands);
   accessMap->reset(map, operands);
 }
 
