@@ -37,7 +37,7 @@ using namespace mlir;
 /// Return true if this operation dereferences one or more memref's.
 // Temporary utility: will be replaced when this is modeled through
 // side-effects/op traits. TODO(b/117228571)
-static bool isMemRefDereferencingOp(const OperationInst &op) {
+static bool isMemRefDereferencingOp(const Instruction &op) {
   if (op.isa<LoadOp>() || op.isa<StoreOp>() || op.isa<DmaStartOp>() ||
       op.isa<DmaWaitOp>())
     return true;
@@ -76,12 +76,11 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
         std::make_unique<PostDominanceInfo>(postDomInstFilter->getFunction());
 
   // The ops where memref replacement succeeds are replaced with new ones.
-  SmallVector<OperationInst *, 8> opsToErase;
+  SmallVector<Instruction *, 8> opsToErase;
 
   // Walk all uses of old memref. Operation using the memref gets replaced.
-  for (auto it = oldMemRef->use_begin(); it != oldMemRef->use_end();) {
-    InstOperand &use = *(it++);
-    auto *opInst = cast<OperationInst>(use.getOwner());
+  for (auto &use : llvm::make_early_inc_range(oldMemRef->getUses())) {
+    auto *opInst = use.getOwner();
 
     // Skip this use if it's not dominated by domInstFilter.
     if (domInstFilter && !domInfo->dominates(domInstFilter, opInst))
@@ -217,8 +216,7 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
 /// uses besides this opInst; otherwise returns the list of affine_apply
 /// operations created in output argument `sliceOps`.
 void mlir::createAffineComputationSlice(
-    OperationInst *opInst,
-    SmallVectorImpl<OpPointer<AffineApplyOp>> *sliceOps) {
+    Instruction *opInst, SmallVectorImpl<OpPointer<AffineApplyOp>> *sliceOps) {
   // Collect all operands that are results of affine apply ops.
   SmallVector<Value *, 4> subOperands;
   subOperands.reserve(opInst->getNumOperands());
@@ -230,7 +228,7 @@ void mlir::createAffineComputationSlice(
   }
 
   // Gather sequence of AffineApplyOps reachable from 'subOperands'.
-  SmallVector<OperationInst *, 4> affineApplyOps;
+  SmallVector<Instruction *, 4> affineApplyOps;
   getReachableAffineApplyOps(subOperands, affineApplyOps);
   // Skip transforming if there are no affine maps to compose.
   if (affineApplyOps.empty())
@@ -341,8 +339,7 @@ bool mlir::constantFoldBounds(OpPointer<AffineForOp> forInst) {
 }
 
 void mlir::remapFunctionAttrs(
-    OperationInst &op,
-    const DenseMap<Attribute, FunctionAttr> &remappingTable) {
+    Instruction &op, const DenseMap<Attribute, FunctionAttr> &remappingTable) {
   for (auto attr : op.getAttrs()) {
     // Do the remapping, if we got the same thing back, then it must contain
     // functions that aren't getting remapped.

@@ -100,8 +100,7 @@ PassResult LoopUnrollAndJam::runOnFunction(Function *f) {
   // any for Inst.
   auto &entryBlock = f->front();
   if (!entryBlock.empty())
-    if (auto forOp =
-            cast<OperationInst>(entryBlock.front()).dyn_cast<AffineForOp>())
+    if (auto forOp = entryBlock.front().dyn_cast<AffineForOp>())
       runOnAffineForOp(forOp);
 
   return success();
@@ -149,12 +148,12 @@ bool mlir::loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
     void walk(InstListType::iterator Start, InstListType::iterator End) {
       for (auto it = Start; it != End;) {
         auto subBlockStart = it;
-        while (it != End && !cast<OperationInst>(it)->isa<AffineForOp>())
+        while (it != End && !it->isa<AffineForOp>())
           ++it;
         if (it != subBlockStart)
           subBlocks.push_back({subBlockStart, std::prev(it)});
         // Process all for insts that appear next.
-        while (it != End && cast<OperationInst>(it)->isa<AffineForOp>())
+        while (it != End && it->isa<AffineForOp>())
           walk(&*it++);
       }
     }
@@ -206,8 +205,7 @@ bool mlir::loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
     // Insert the cleanup loop right after 'forOp'.
     FuncBuilder builder(forInst->getBlock(),
                         std::next(Block::iterator(forInst)));
-    auto cleanupAffineForOp =
-        cast<OperationInst>(builder.clone(*forInst))->cast<AffineForOp>();
+    auto cleanupAffineForOp = builder.clone(*forInst)->cast<AffineForOp>();
     cleanupAffineForOp->setLowerBoundMap(
         getCleanupLoopLowerBound(forOp, unrollJamFactor, &builder));
 

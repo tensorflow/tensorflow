@@ -616,23 +616,21 @@ PassResult LowerAffinePass::runOnFunction(Function *function) {
   // Collect all the For instructions as well as AffineIfOps and AffineApplyOps.
   // We do this as a prepass to avoid invalidating the walker with our rewrite.
   function->walk([&](Instruction *inst) {
-    auto op = cast<OperationInst>(inst);
-    if (op->isa<AffineApplyOp>() || op->isa<AffineForOp>() ||
-        op->isa<AffineIfOp>())
+    if (inst->isa<AffineApplyOp>() || inst->isa<AffineForOp>() ||
+        inst->isa<AffineIfOp>())
       instsToRewrite.push_back(inst);
   });
 
   // Rewrite all of the ifs and fors.  We walked the instructions in preorder,
   // so we know that we will rewrite them in the same order.
   for (auto *inst : instsToRewrite) {
-    auto op = cast<OperationInst>(inst);
-    if (auto ifOp = op->dyn_cast<AffineIfOp>()) {
+    if (auto ifOp = inst->dyn_cast<AffineIfOp>()) {
       if (lowerAffineIf(ifOp))
         return failure();
-    } else if (auto forOp = op->dyn_cast<AffineForOp>()) {
+    } else if (auto forOp = inst->dyn_cast<AffineForOp>()) {
       if (lowerAffineFor(forOp))
         return failure();
-    } else if (lowerAffineApply(op->cast<AffineApplyOp>())) {
+    } else if (lowerAffineApply(inst->cast<AffineApplyOp>())) {
       return failure();
     }
   }

@@ -723,22 +723,22 @@ namespace {
 
 struct VectorizationState {
   /// Adds an entry of pre/post vectorization instructions in the state.
-  void registerReplacement(OperationInst *key, OperationInst *value);
+  void registerReplacement(Instruction *key, Instruction *value);
   /// When the current vectorization pattern is successful, this erases the
   /// instructions that were marked for erasure in the proper order and resets
   /// the internal state for the next pattern.
   void finishVectorizationPattern();
 
-  // In-order tracking of original OperationInst that have been vectorized.
+  // In-order tracking of original Instruction that have been vectorized.
   // Erase in reverse order.
-  SmallVector<OperationInst *, 16> toErase;
-  // Set of OperationInst that have been vectorized (the values in the
+  SmallVector<Instruction *, 16> toErase;
+  // Set of Instruction that have been vectorized (the values in the
   // vectorizationMap for hashed access). The vectorizedSet is used in
   // particular to filter the instructions that have already been vectorized by
   // this pattern, when iterating over nested loops in this pattern.
-  DenseSet<OperationInst *> vectorizedSet;
-  // Map of old scalar OperationInst to new vectorized OperationInst.
-  DenseMap<OperationInst *, OperationInst *> vectorizationMap;
+  DenseSet<Instruction *> vectorizedSet;
+  // Map of old scalar Instruction to new vectorized Instruction.
+  DenseMap<Instruction *, Instruction *> vectorizationMap;
   // Map of old scalar Value to new vectorized Value.
   DenseMap<const Value *, Value *> replacementMap;
   // The strategy drives which loop to vectorize by which amount.
@@ -747,17 +747,17 @@ struct VectorizationState {
   // vectorizeOperations function. They consist of the subset of load operations
   // that have been vectorized. They can be retrieved from `vectorizationMap`
   // but it is convenient to keep track of them in a separate data structure.
-  DenseSet<OperationInst *> roots;
+  DenseSet<Instruction *> roots;
   // Terminator instructions for the worklist in the vectorizeOperations
   // function. They consist of the subset of store operations that have been
   // vectorized. They can be retrieved from `vectorizationMap` but it is
   // convenient to keep track of them in a separate data structure. Since they
   // do not necessarily belong to use-def chains starting from loads (e.g
   // storing a constant), we need to handle them in a post-pass.
-  DenseSet<OperationInst *> terminators;
+  DenseSet<Instruction *> terminators;
   // Checks that the type of `inst` is StoreOp and adds it to the terminators
   // set.
-  void registerTerminator(OperationInst *inst);
+  void registerTerminator(Instruction *inst);
 
 private:
   void registerReplacement(const Value *key, Value *value);
@@ -765,8 +765,8 @@ private:
 
 } // end namespace
 
-void VectorizationState::registerReplacement(OperationInst *key,
-                                             OperationInst *value) {
+void VectorizationState::registerReplacement(Instruction *key,
+                                             Instruction *value) {
   LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ commit vectorized op: ");
   LLVM_DEBUG(key->print(dbgs()));
   LLVM_DEBUG(dbgs() << "  into  ");
@@ -785,7 +785,7 @@ void VectorizationState::registerReplacement(OperationInst *key,
   }
 }
 
-void VectorizationState::registerTerminator(OperationInst *inst) {
+void VectorizationState::registerTerminator(Instruction *inst) {
   assert(inst->isa<StoreOp>() && "terminator must be a StoreOp");
   assert(terminators.count(inst) == 0 &&
          "terminator was already inserted previously");
@@ -867,17 +867,16 @@ static bool vectorizeAffineForOp(AffineForOp *loop, int64_t step,
         if (!matcher::isLoadOrStore(inst)) {
           return false;
         }
-        auto *opInst = cast<OperationInst>(&inst);
-        return state->vectorizationMap.count(opInst) == 0 &&
-               state->vectorizedSet.count(opInst) == 0 &&
-               state->roots.count(opInst) == 0 &&
-               state->terminators.count(opInst) == 0;
+        return state->vectorizationMap.count(&inst) == 0 &&
+               state->vectorizedSet.count(&inst) == 0 &&
+               state->roots.count(&inst) == 0 &&
+               state->terminators.count(&inst) == 0;
       };
   auto loadAndStores = matcher::Op(notVectorizedThisPattern);
   SmallVector<NestedMatch, 8> loadAndStoresMatches;
   loadAndStores.match(loop->getInstruction(), &loadAndStoresMatches);
   for (auto ls : loadAndStoresMatches) {
-    auto *opInst = cast<OperationInst>(ls.getMatchedInstruction());
+    auto *opInst = ls.getMatchedInstruction();
     auto load = opInst->dyn_cast<LoadOp>();
     auto store = opInst->dyn_cast<StoreOp>();
     LLVM_DEBUG(opInst->print(dbgs()));
@@ -900,7 +899,7 @@ static bool vectorizeAffineForOp(AffineForOp *loop, int64_t step,
 static FilterFunctionType
 isVectorizableLoopPtrFactory(unsigned fastestVaryingMemRefDimension) {
   return [fastestVaryingMemRefDimension](const Instruction &forInst) {
-    auto loop = cast<OperationInst>(forInst).cast<AffineForOp>();
+    auto loop = forInst.cast<AffineForOp>();
     return isVectorizableLoopAlongFastestVaryingMemRefDim(
         loop, fastestVaryingMemRefDimension);
   };
@@ -915,7 +914,7 @@ static bool vectorizeNonRoot(ArrayRef<NestedMatch> matches,
 /// recursively in DFS post-order.
 static bool doVectorize(NestedMatch oneMatch, VectorizationState *state) {
   auto *loopInst = oneMatch.getMatchedInstruction();
-  auto loop = cast<OperationInst>(loopInst)->cast<AffineForOp>();
+  auto loop = loopInst->cast<AffineForOp>();
   auto childrenMatches = oneMatch.getMatchedChildren();
 
   // 1. DFS postorder recursion, if any of my children fails, I fail too.
@@ -977,15 +976,14 @@ static Value *vectorizeConstant(Instruction *inst, const ConstantOp &constant,
   Location loc = inst->getLoc();
   auto vectorType = type.cast<VectorType>();
   auto attr = SplatElementsAttr::get(vectorType, constant.getValue());
-  auto *constantOpInst = cast<OperationInst>(constant.getInstruction());
+  auto *constantOpInst = constant.getInstruction();
 
   OperationState state(
       b.getContext(), loc, constantOpInst->getName().getStringRef(), {},
       {vectorType},
       {make_pair(Identifier::get("value", b.getContext()), attr)});
 
-  auto *splat = cast<OperationInst>(b.createOperation(state));
-  return splat->getResult(0);
+  return b.createOperation(state)->getResult(0);
 }
 
 /// Returns a uniqu'ed VectorType.
@@ -997,8 +995,7 @@ static Type getVectorType(Value *v, const VectorizationState &state) {
   if (!VectorType::isValidElementType(v->getType())) {
     return Type();
   }
-  auto *definingOpInst = cast<OperationInst>(v->getDefiningInst());
-  if (state.vectorizedSet.count(definingOpInst) > 0) {
+  if (state.vectorizedSet.count(v->getDefiningInst()) > 0) {
     return v->getType().cast<VectorType>();
   }
   return VectorType::get(state.strategy->vectorSizes, v->getType());
@@ -1029,9 +1026,8 @@ static Value *vectorizeOperand(Value *operand, Instruction *inst,
                                VectorizationState *state) {
   LLVM_DEBUG(dbgs() << "\n[early-vect]vectorize operand: ");
   LLVM_DEBUG(operand->print(dbgs()));
-  auto *definingInstruction = cast<OperationInst>(operand->getDefiningInst());
   // 1. If this value has already been vectorized this round, we are done.
-  if (state->vectorizedSet.count(definingInstruction) > 0) {
+  if (state->vectorizedSet.count(operand->getDefiningInst()) > 0) {
     LLVM_DEBUG(dbgs() << " -> already vector operand");
     return operand;
   }
@@ -1062,7 +1058,7 @@ static Value *vectorizeOperand(Value *operand, Instruction *inst,
   return nullptr;
 };
 
-/// Encodes OperationInst-specific behavior for vectorization. In general we
+/// Encodes Instruction-specific behavior for vectorization. In general we
 /// assume that all operands of an op must be vectorized but this is not always
 /// true. In the future, it would be nice to have a trait that describes how a
 /// particular operation vectorizes. For now we implement the case distinction
@@ -1071,9 +1067,8 @@ static Value *vectorizeOperand(Value *operand, Instruction *inst,
 /// TODO(ntv): consider adding a trait to Op to describe how it gets vectorized.
 /// Maybe some Ops are not vectorizable or require some tricky logic, we cannot
 /// do one-off logic here; ideally it would be TableGen'd.
-static OperationInst *vectorizeOneOperationInst(FuncBuilder *b,
-                                                OperationInst *opInst,
-                                                VectorizationState *state) {
+static Instruction *vectorizeOneInstruction(FuncBuilder *b, Instruction *opInst,
+                                            VectorizationState *state) {
   // Sanity checks.
   assert(!opInst->isa<LoadOp>() &&
          "all loads must have already been fully vectorized independently");
@@ -1094,7 +1089,7 @@ static OperationInst *vectorizeOneOperationInst(FuncBuilder *b,
     LLVM_DEBUG(permutationMap.print(dbgs()));
     auto transfer = b.create<VectorTransferWriteOp>(
         opInst->getLoc(), vectorValue, memRef, indices, permutationMap);
-    auto *res = cast<OperationInst>(transfer->getInstruction());
+    auto *res = transfer->getInstruction();
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ vectorized store: " << *res);
     // "Terminators" (i.e. StoreOps) are erased on the spot.
     opInst->erase();
@@ -1119,8 +1114,8 @@ static OperationInst *vectorizeOneOperationInst(FuncBuilder *b,
   // Create a clone of the op with the proper operands and return types.
   // TODO(ntv): The following assumes there is always an op with a fixed
   // name that works both in scalar mode and vector mode.
-  // TODO(ntv): Is it worth considering an OperationInst.clone operation
-  // which changes the type so we can promote an OperationInst with less
+  // TODO(ntv): Is it worth considering an Instruction.clone operation
+  // which changes the type so we can promote an Instruction with less
   // boilerplate?
   OperationState newOp(b->getContext(), opInst->getLoc(),
                        opInst->getName().getStringRef(), operands, types,
@@ -1129,22 +1124,22 @@ static OperationInst *vectorizeOneOperationInst(FuncBuilder *b,
   return b->createOperation(newOp);
 }
 
-/// Iterates over the OperationInst in the loop and rewrites them using their
+/// Iterates over the Instruction in the loop and rewrites them using their
 /// vectorized counterpart by:
-///   1. iteratively building a worklist of uses of the OperationInst vectorized
+///   1. iteratively building a worklist of uses of the Instruction vectorized
 ///   so far by this pattern;
-///   2. for each OperationInst in the worklist, create the vector form of this
+///   2. for each Instruction in the worklist, create the vector form of this
 ///   operation and replace all its uses by the vectorized form. For this step,
 ///   the worklist must be traversed in order;
 ///   3. verify that all operands of the newly vectorized operation have been
 ///   vectorized by this pattern.
 static bool vectorizeOperations(VectorizationState *state) {
   // 1. create initial worklist with the uses of the roots.
-  SetVector<OperationInst *> worklist;
-  auto insertUsesOf = [&worklist, state](OperationInst *vectorized) {
+  SetVector<Instruction *> worklist;
+  auto insertUsesOf = [&worklist, state](Instruction *vectorized) {
     for (auto *r : vectorized->getResults())
       for (auto &u : r->getUses()) {
-        auto *inst = cast<OperationInst>(u.getOwner());
+        auto *inst = u.getOwner();
         // Don't propagate to terminals, a separate pass is needed for those.
         // TODO(ntv)[b/119759136]: use isa<> once Op is implemented.
         if (state->terminators.count(inst) > 0) {
@@ -1166,7 +1161,7 @@ static bool vectorizeOperations(VectorizationState *state) {
     // 2. Create vectorized form of the instruction.
     // Insert it just before inst, on success register inst as replaced.
     FuncBuilder b(inst);
-    auto *vectorizedInst = vectorizeOneOperationInst(&b, inst, state);
+    auto *vectorizedInst = vectorizeOneInstruction(&b, inst, state);
     if (!vectorizedInst) {
       return true;
     }
@@ -1179,7 +1174,7 @@ static bool vectorizeOperations(VectorizationState *state) {
 
     // 4. Augment the worklist with uses of the instruction we just vectorized.
     // This preserves the proper order in the worklist.
-    apply(insertUsesOf, ArrayRef<OperationInst *>{inst});
+    apply(insertUsesOf, ArrayRef<Instruction *>{inst});
   }
   return false;
 }
@@ -1189,8 +1184,7 @@ static bool vectorizeOperations(VectorizationState *state) {
 /// Each root may succeed independently but will otherwise clean after itself if
 /// anything below it fails.
 static bool vectorizeRootMatch(NestedMatch m, VectorizationStrategy *strategy) {
-  auto loop =
-      cast<OperationInst>(m.getMatchedInstruction())->cast<AffineForOp>();
+  auto loop = m.getMatchedInstruction()->cast<AffineForOp>();
   VectorizationState state;
   state.strategy = strategy;
 
@@ -1207,8 +1201,7 @@ static bool vectorizeRootMatch(NestedMatch m, VectorizationStrategy *strategy) {
   }
   auto *loopInst = loop->getInstruction();
   FuncBuilder builder(loopInst);
-  auto clonedLoop =
-      cast<OperationInst>(builder.clone(*loopInst))->cast<AffineForOp>();
+  auto clonedLoop = builder.clone(*loopInst)->cast<AffineForOp>();
 
   auto fail = doVectorize(m, &state);
   /// Sets up error handling for this root loop. This is how the root match
@@ -1248,12 +1241,12 @@ static bool vectorizeRootMatch(NestedMatch m, VectorizationStrategy *strategy) {
   }
 
   // Finally, vectorize the terminators. If anything fails to vectorize, skip.
-  auto vectorizeOrFail = [&fail, &state](OperationInst *inst) {
+  auto vectorizeOrFail = [&fail, &state](Instruction *inst) {
     if (fail) {
       return;
     }
     FuncBuilder b(inst);
-    auto *res = vectorizeOneOperationInst(&b, inst, &state);
+    auto *res = vectorizeOneInstruction(&b, inst, &state);
     if (res == nullptr) {
       fail = true;
     }

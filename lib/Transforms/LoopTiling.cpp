@@ -237,14 +237,13 @@ getTileableBands(Function *f,
     do {
       band.push_back(currInst);
     } while (currInst->getBody()->getInstructions().size() == 1 &&
-             (currInst = cast<OperationInst>(currInst->getBody()->front())
-                             .dyn_cast<AffineForOp>()));
+             (currInst = currInst->getBody()->front().dyn_cast<AffineForOp>()));
     bands->push_back(band);
   };
 
   for (auto &block : *f)
     for (auto &inst : block)
-      if (auto forOp = cast<OperationInst>(inst).dyn_cast<AffineForOp>())
+      if (auto forOp = inst.dyn_cast<AffineForOp>())
         getMaximalPerfectLoopNest(forOp);
 }
 

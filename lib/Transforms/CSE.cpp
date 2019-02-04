@@ -39,10 +39,10 @@ using namespace mlir;
 
 namespace {
 // TODO(riverriddle) Handle commutative operations.
-struct SimpleOperationInfo : public llvm::DenseMapInfo<OperationInst *> {
-  static unsigned getHashValue(const OperationInst *op) {
+struct SimpleOperationInfo : public llvm::DenseMapInfo<Instruction *> {
+  static unsigned getHashValue(const Instruction *op) {
     // Hash the operations based upon their:
-    //   - OperationInst Name
+    //   - Instruction Name
     //   - Attributes
     //   - Result Types
     //   - Operands
@@ -51,7 +51,7 @@ struct SimpleOperationInfo : public llvm::DenseMapInfo<OperationInst *> {
         hash_combine_range(op->result_type_begin(), op->result_type_end()),
         hash_combine_range(op->operand_begin(), op->operand_end()));
   }
-  static bool isEqual(const OperationInst *lhs, const OperationInst *rhs) {
+  static bool isEqual(const Instruction *lhs, const Instruction *rhs) {
     if (lhs == rhs)
       return true;
     if (lhs == getTombstoneKey() || lhs == getEmptyKey() ||
@@ -89,8 +89,8 @@ struct CSE : public FunctionPass {
   /// Shared implementation of operation elimination and scoped map definitions.
   using AllocatorTy = llvm::RecyclingAllocator<
       llvm::BumpPtrAllocator,
-      llvm::ScopedHashTableVal<OperationInst *, OperationInst *>>;
-  using ScopedMapTy = llvm::ScopedHashTable<OperationInst *, OperationInst *,
+      llvm::ScopedHashTableVal<Instruction *, Instruction *>>;
+  using ScopedMapTy = llvm::ScopedHashTable<Instruction *, Instruction *,
                                             SimpleOperationInfo, AllocatorTy>;
 
   /// Represents a single entry in the depth first traversal of a CFG.
@@ -111,7 +111,7 @@ struct CSE : public FunctionPass {
 
   /// Attempt to eliminate a redundant operation. Returns true if the operation
   /// was marked for removal, false otherwise.
-  bool simplifyOperation(OperationInst *op);
+  bool simplifyOperation(Instruction *op);
 
   void simplifyBlock(Block *bb);
 
@@ -122,14 +122,14 @@ private:
   ScopedMapTy knownValues;
 
   /// Operations marked as dead and to be erased.
-  std::vector<OperationInst *> opsToErase;
+  std::vector<Instruction *> opsToErase;
 };
 } // end anonymous namespace
 
 char CSE::passID = 0;
 
 /// Attempt to eliminate a redundant operation.
-bool CSE::simplifyOperation(OperationInst *op) {
+bool CSE::simplifyOperation(Instruction *op) {
   // TODO(riverriddle) We currently only eliminate non side-effecting
   // operations.
   if (!op->hasNoSideEffect())
@@ -166,23 +166,16 @@ bool CSE::simplifyOperation(OperationInst *op) {
 
 void CSE::simplifyBlock(Block *bb) {
   for (auto &i : *bb) {
-    switch (i.getKind()) {
-    case Instruction::Kind::OperationInst: {
-      auto *opInst = cast<OperationInst>(&i);
+    // If the operation is simplified, we don't process any held block lists.
+    if (simplifyOperation(&i))
+      continue;
 
-      // If the operation is simplified, we don't process any held block lists.
-      if (simplifyOperation(opInst))
-        continue;
-
-      // Simplify any held blocks.
-      for (auto &blockList : opInst->getBlockLists()) {
-        for (auto &b : blockList) {
-          ScopedMapTy::ScopeTy scope(knownValues);
-          simplifyBlock(&b);
-        }
+    // Simplify any held blocks.
+    for (auto &blockList : i.getBlockLists()) {
+      for (auto &b : blockList) {
+        ScopedMapTy::ScopeTy scope(knownValues);
+        simplifyBlock(&b);
       }
-      break;
-    }
     }
   }
 }

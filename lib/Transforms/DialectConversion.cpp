@@ -50,7 +50,7 @@ private:
   // Utility that looks up a list of value in the value remapping table. Returns
   // an empty vector if one of the values is not mapped yet.
   SmallVector<Value *, 4>
-  lookupValues(const llvm::iterator_range<OperationInst::const_operand_iterator>
+  lookupValues(const llvm::iterator_range<Instruction::const_operand_iterator>
                    &operands);
 
   // Converts the given function to the dialect using hooks defined in
@@ -61,13 +61,13 @@ private:
   // from `valueRemapping` and the converted blocks from `blockRemapping`, and
   // passes them to `converter->rewriteTerminator` function defined in the
   // pattern, together with `builder`.
-  bool convertOpWithSuccessors(DialectOpConversion *converter,
-                               OperationInst *op, FuncBuilder &builder);
+  bool convertOpWithSuccessors(DialectOpConversion *converter, Instruction *op,
+                               FuncBuilder &builder);
 
   // Converts an operation without successors.  Extracts the converted operands
   // from `valueRemapping` and passes them to the `converter->rewrite` function
   // defined in the pattern, together with `builder`.
-  bool convertOp(DialectOpConversion *converter, OperationInst *op,
+  bool convertOp(DialectOpConversion *converter, Instruction *op,
                  FuncBuilder &builder);
 
   // Converts a block by traversing its instructions sequentially, looking for
@@ -104,8 +104,7 @@ private:
 } // end namespace mlir
 
 SmallVector<Value *, 4> impl::FunctionConversion::lookupValues(
-    const llvm::iterator_range<OperationInst::const_operand_iterator>
-        &operands) {
+    const llvm::iterator_range<Instruction::const_operand_iterator> &operands) {
   SmallVector<Value *, 4> remapped;
   remapped.reserve(llvm::size(operands));
   for (const Value *operand : operands) {
@@ -118,7 +117,7 @@ SmallVector<Value *, 4> impl::FunctionConversion::lookupValues(
 }
 
 bool impl::FunctionConversion::convertOpWithSuccessors(
-    DialectOpConversion *converter, OperationInst *op, FuncBuilder &builder) {
+    DialectOpConversion *converter, Instruction *op, FuncBuilder &builder) {
   SmallVector<Block *, 2> destinations;
   destinations.reserve(op->getNumSuccessors());
   SmallVector<Value *, 4> operands = lookupValues(op->getOperands());
@@ -149,7 +148,7 @@ bool impl::FunctionConversion::convertOpWithSuccessors(
 }
 
 bool impl::FunctionConversion::convertOp(DialectOpConversion *converter,
-                                         OperationInst *op,
+                                         Instruction *op,
                                          FuncBuilder &builder) {
   auto operands = lookupValues(op->getOperands());
   assert((!operands.empty() || op->getNumOperands() == 0) &&
@@ -174,24 +173,22 @@ bool impl::FunctionConversion::convertBlock(
 
   // Iterate over ops and convert them.
   for (Instruction &inst : *block) {
-    auto op = dyn_cast<OperationInst>(&inst);
-    if (!op) {
-      inst.emitError("unsupported instruction (For/If)");
+    if (inst.getNumBlockLists() != 0) {
+      inst.emitError("unsupported region instruction");
       return true;
     }
 
     // Find the first matching conversion and apply it.
     bool converted = false;
     for (auto *conversion : conversions) {
-      if (!conversion->match(op))
+      if (!conversion->match(&inst))
         continue;
 
-      if (op->isTerminator() && op->getNumSuccessors() > 0) {
-        if (convertOpWithSuccessors(conversion, op, builder))
+      if (inst.isTerminator() && inst.getNumSuccessors() > 0) {
+        if (convertOpWithSuccessors(conversion, &inst, builder))
           return true;
-      } else {
-        if (convertOp(conversion, op, builder))
-          return true;
+      } else if (convertOp(conversion, &inst, builder)) {
+        return true;
       }
       converted = true;
       break;

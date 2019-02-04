@@ -157,8 +157,7 @@ static void getMultiLevelStrides(const MemRefRegion &region,
 /// dynamic shaped memref's for now. `numParamLoopIVs` is the number of
 /// enclosing loop IVs of opInst (starting from the outermost) that the region
 /// is parametric on.
-static bool getFullMemRefAsRegion(OperationInst *opInst,
-                                  unsigned numParamLoopIVs,
+static bool getFullMemRefAsRegion(Instruction *opInst, unsigned numParamLoopIVs,
                                   MemRefRegion *region) {
   unsigned rank;
   if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
@@ -563,7 +562,7 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   fastBufferMap.clear();
 
   // Walk this range of instructions  to gather all memory regions.
-  block->walk(begin, end, [&](OperationInst *opInst) {
+  block->walk(begin, end, [&](Instruction *opInst) {
     // Gather regions to allocate to buffers in faster memory space.
     if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
       if (loadOp->getMemRefType().getMemorySpace() != slowMemorySpace)

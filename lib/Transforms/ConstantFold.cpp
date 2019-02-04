@@ -33,11 +33,11 @@ struct ConstantFold : public FunctionPass, InstWalker<ConstantFold> {
   // All constants in the function post folding.
   SmallVector<Value *, 8> existingConstants;
   // Operations that were folded and that need to be erased.
-  std::vector<OperationInst *> opInstsToErase;
+  std::vector<Instruction *> opInstsToErase;
 
-  bool foldOperation(OperationInst *op,
+  bool foldOperation(Instruction *op,
                      SmallVectorImpl<Value *> &existingConstants);
-  void visitInstruction(OperationInst *op);
+  void visitInstruction(Instruction *op);
   PassResult runOnFunction(Function *f) override;
 
   static char passID;
@@ -49,7 +49,7 @@ char ConstantFold::passID = 0;
 /// Attempt to fold the specified operation, updating the IR to match.  If
 /// constants are found, we keep track of them in the existingConstants list.
 ///
-void ConstantFold::visitInstruction(OperationInst *op) {
+void ConstantFold::visitInstruction(Instruction *op) {
   // If this operation is an AffineForOp, then fold the bounds.
   if (auto forOp = op->dyn_cast<AffineForOp>()) {
     constantFoldBounds(forOp);

@@ -75,12 +75,12 @@ struct MemRefDataFlowOpt : public FunctionPass, InstWalker<MemRefDataFlowOpt> {
 
   PassResult runOnFunction(Function *f) override;
 
-  void visitInstruction(OperationInst *opInst);
+  void visitInstruction(Instruction *opInst);
 
   // A list of memref's that are potentially dead / could be eliminated.
   SmallPtrSet<Value *, 4> memrefsToErase;
   // Load op's whose results were replaced by those forwarded from stores.
-  std::vector<OperationInst *> loadOpsToErase;
+  std::vector<Instruction *> loadOpsToErase;
 
   DominanceInfo *domInfo = nullptr;
   PostDominanceInfo *postDomInfo = nullptr;
@@ -100,22 +100,22 @@ FunctionPass *mlir::createMemRefDataFlowOptPass() {
 
 // This is a straightforward implementation not optimized for speed. Optimize
 // this in the future if needed.
-void MemRefDataFlowOpt::visitInstruction(OperationInst *opInst) {
-  OperationInst *lastWriteStoreOp = nullptr;
+void MemRefDataFlowOpt::visitInstruction(Instruction *opInst) {
+  Instruction *lastWriteStoreOp = nullptr;
 
   auto loadOp = opInst->dyn_cast<LoadOp>();
   if (!loadOp)
     return;
 
-  OperationInst *loadOpInst = opInst;
+  Instruction *loadOpInst = opInst;
 
   // First pass over the use list to get minimum number of surrounding
   // loops common between the load op and the store op, with min taken across
   // all store ops.
-  SmallVector<OperationInst *, 8> storeOps;
+  SmallVector<Instruction *, 8> storeOps;
   unsigned minSurroundingLoops = getNestingDepth(*loadOpInst);
   for (InstOperand &use : loadOp->getMemRef()->getUses()) {
-    auto storeOp = cast<OperationInst>(use.getOwner())->dyn_cast<StoreOp>();
+    auto storeOp = use.getOwner()->dyn_cast<StoreOp>();
     if (!storeOp)
       continue;
     auto *storeOpInst = storeOp->getInstruction();
@@ -131,11 +131,11 @@ void MemRefDataFlowOpt::visitInstruction(OperationInst *opInst) {
   // and loadOp.
   // The list of store op candidates for forwarding - need to satisfy the
   // conditions listed at the top.
-  SmallVector<OperationInst *, 8> fwdingCandidates;
+  SmallVector<Instruction *, 8> fwdingCandidates;
   // Store ops that have a dependence into the load (even if they aren't
   // forwarding candidates). Each forwarding candidate will be checked for a
   // post-dominance on these. 'fwdingCandidates' are a subset of depSrcStores.
-  SmallVector<OperationInst *, 8> depSrcStores;
+  SmallVector<Instruction *, 8> depSrcStores;
   for (auto *storeOpInst : storeOps) {
     MemRefAccess srcAccess(storeOpInst);
     MemRefAccess destAccess(loadOpInst);
@@ -197,7 +197,7 @@ void MemRefDataFlowOpt::visitInstruction(OperationInst *opInst) {
     // that postdominates all 'depSrcStores' (if such a store exists) is the
     // unique store providing the value to the load, i.e., provably the last
     // writer to that memref loc.
-    if (llvm::all_of(depSrcStores, [&](OperationInst *depStore) {
+    if (llvm::all_of(depSrcStores, [&](Instruction *depStore) {
           return postDomInfo->postDominates(storeOpInst, depStore);
         })) {
       lastWriteStoreOp = storeOpInst;
@@ -246,24 +246,22 @@ PassResult MemRefDataFlowOpt::runOnFunction(Function *f) {
   // to do this as well, but we'll do it here since we collected these anyway.
   for (auto *memref : memrefsToErase) {
     // If the memref hasn't been alloc'ed in this function, skip.
-    OperationInst *defInst = memref->getDefiningInst();
+    Instruction *defInst = memref->getDefiningInst();
     if (!defInst || !defInst->isa<AllocOp>())
       // TODO(mlir-team): if the memref was returned by a 'call' instruction, we
       // could still erase it if the call had no side-effects.
       continue;
     if (std::any_of(memref->use_begin(), memref->use_end(),
                     [&](InstOperand &use) {
-                      auto *ownerInst = cast<OperationInst>(use.getOwner());
+                      auto *ownerInst = use.getOwner();
                       return (!ownerInst->isa<StoreOp>() &&
                               !ownerInst->isa<DeallocOp>());
                     }))
       continue;
 
     // Erase all stores, the dealloc, and the alloc on the memref.
-    for (auto it = memref->use_begin(), e = memref->use_end(); it != e;) {
-      auto &use = *(it++);
-      cast<OperationInst>(use.getOwner())->erase();
-    }
+    for (auto &use : llvm::make_early_inc_range(memref->getUses()))
+      use.getOwner()->erase();
     defInst->erase();
   }
 

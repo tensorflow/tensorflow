@@ -110,17 +110,13 @@ void VectorizerTestPass::testVectorShapeRatio(Function *f) {
   // Only filter instructions that operate on a strict super-vector and have one
   // return. This makes testing easier.
   auto filter = [subVectorType](const Instruction &inst) {
-    auto *opInst = dyn_cast<OperationInst>(&inst);
-    if (!opInst) {
-      return false;
-    }
     assert(subVectorType.getElementType() ==
                Type::getF32(subVectorType.getContext()) &&
            "Only f32 supported for now");
-    if (!matcher::operatesOnSuperVectors(*opInst, subVectorType)) {
+    if (!matcher::operatesOnSuperVectors(inst, subVectorType)) {
       return false;
     }
-    if (opInst->getNumResults() != 1) {
+    if (inst.getNumResults() != 1) {
       return false;
     }
     return true;
@@ -129,7 +125,7 @@ void VectorizerTestPass::testVectorShapeRatio(Function *f) {
   SmallVector<NestedMatch, 8> matches;
   pat.match(f, &matches);
   for (auto m : matches) {
-    auto *opInst = cast<OperationInst>(m.getMatchedInstruction());
+    auto *opInst = m.getMatchedInstruction();
     // This is a unit test that only checks and prints shape ratio.
     // As a consequence we write only Ops with a single return type for the
     // purpose of this test. If we need to test more intricate behavior in the
@@ -159,8 +155,7 @@ static NestedPattern patternTestSlicingOps() {
   using matcher::Op;
   // Match all OpInstructions with the kTestSlicingOpName name.
   auto filter = [](const Instruction &inst) {
-    const auto &opInst = cast<OperationInst>(inst);
-    return opInst.getName().getStringRef() == kTestSlicingOpName;
+    return inst.getName().getStringRef() == kTestSlicingOpName;
   };
   return Op(filter);
 }
@@ -209,8 +204,7 @@ void VectorizerTestPass::testSlicing(Function *f) {
 }
 
 static bool customOpWithAffineMapAttribute(const Instruction &inst) {
-  const auto &opInst = cast<OperationInst>(inst);
-  return opInst.getName().getStringRef() ==
+  return inst.getName().getStringRef() ==
          VectorizerTestPass::kTestAffineMapOpName;
 }
 
@@ -222,7 +216,7 @@ void VectorizerTestPass::testComposeMaps(Function *f) {
   SmallVector<AffineMap, 4> maps;
   maps.reserve(matches.size());
   for (auto m : llvm::reverse(matches)) {
-    auto *opInst = cast<OperationInst>(m.getMatchedInstruction());
+    auto *opInst = m.getMatchedInstruction();
     auto map = opInst->getAttr(VectorizerTestPass::kTestAffineMapAttrName)
                    .cast<AffineMapAttr>()
                    .getValue();
@@ -236,13 +230,11 @@ void VectorizerTestPass::testComposeMaps(Function *f) {
 }
 
 static bool affineApplyOp(const Instruction &inst) {
-  const auto &opInst = cast<OperationInst>(inst);
-  return opInst.isa<AffineApplyOp>();
+  return inst.isa<AffineApplyOp>();
 }
 
 static bool singleResultAffineApplyOpWithoutUses(const Instruction &inst) {
-  const auto &opInst = cast<OperationInst>(inst);
-  auto app = opInst.dyn_cast<AffineApplyOp>();
+  auto app = inst.dyn_cast<AffineApplyOp>();
   return app && app->use_empty();
 }
 
@@ -259,8 +251,7 @@ void VectorizerTestPass::testNormalizeMaps(Function *f) {
     SmallVector<NestedMatch, 8> matches;
     pattern.match(f, &matches);
     for (auto m : matches) {
-      auto app =
-          cast<OperationInst>(m.getMatchedInstruction())->cast<AffineApplyOp>();
+      auto app = m.getMatchedInstruction()->cast<AffineApplyOp>();
       FuncBuilder b(m.getMatchedInstruction());
       SmallVector<Value *, 8> operands(app->getOperands());
       makeComposedAffineApply(&b, app->getLoc(), app->getAffineMap(), operands);

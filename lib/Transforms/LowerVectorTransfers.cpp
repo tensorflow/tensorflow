@@ -401,13 +401,12 @@ public:
   explicit VectorTransferExpander(MLIRContext *context)
       : MLLoweringPattern(VectorTransferOpTy::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(OperationInst *op) const override {
+  PatternMatchResult match(Instruction *op) const override {
     if (m_Op<VectorTransferOpTy>().match(op))
       return matchSuccess();
     return matchFailure();
   }
-  void rewriteOpInst(OperationInst *op,
-                     MLFuncGlobalLoweringState *funcWiseState,
+  void rewriteOpInst(Instruction *op, MLFuncGlobalLoweringState *funcWiseState,
                      std::unique_ptr<PatternState> opState,
                      MLFuncLoweringRewriter *rewriter) const override {
     VectorTransferRewriter<VectorTransferOpTy>(

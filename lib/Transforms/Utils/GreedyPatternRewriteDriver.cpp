@@ -38,13 +38,13 @@ public:
     worklist.reserve(64);
 
     // Add all operations to the worklist.
-    fn->walk([&](OperationInst *inst) { addToWorklist(inst); });
+    fn->walk([&](Instruction *inst) { addToWorklist(inst); });
   }
 
   /// Perform the rewrites.
   void simplifyFunction();
 
-  void addToWorklist(OperationInst *op) {
+  void addToWorklist(Instruction *op) {
     // Check to see if the worklist already contains this op.
     if (worklistMap.count(op))
       return;
@@ -53,7 +53,7 @@ public:
     worklist.push_back(op);
   }
 
-  OperationInst *popFromWorklist() {
+  Instruction *popFromWorklist() {
     auto *op = worklist.back();
     worklist.pop_back();
 
@@ -65,7 +65,7 @@ public:
 
   /// If the specified operation is in the worklist, remove it.  If not, this is
   /// a no-op.
-  void removeFromWorklist(OperationInst *op) {
+  void removeFromWorklist(Instruction *op) {
     auto it = worklistMap.find(op);
     if (it != worklistMap.end()) {
       assert(worklist[it->second] == op && "malformed worklist data structure");
@@ -77,7 +77,7 @@ public:
 protected:
   // Implement the hook for creating operations, and make sure that newly
   // created ops are added to the worklist for processing.
-  OperationInst *createOperation(const OperationState &state) override {
+  Instruction *createOperation(const OperationState &state) override {
     auto *result = builder.createOperation(state);
     addToWorklist(result);
     return result;
@@ -85,20 +85,18 @@ protected:
 
   // If an operation is about to be removed, make sure it is not in our
   // worklist anymore because we'd get dangling references to it.
-  void notifyOperationRemoved(OperationInst *op) override {
+  void notifyOperationRemoved(Instruction *op) override {
     removeFromWorklist(op);
   }
 
   // When the root of a pattern is about to be replaced, it can trigger
   // simplifications to its users - make sure to add them to the worklist
   // before the root is changed.
-  void notifyRootReplaced(OperationInst *op) override {
+  void notifyRootReplaced(Instruction *op) override {
     for (auto *result : op->getResults())
       // TODO: Add a result->getUsers() iterator.
-      for (auto &user : result->getUses()) {
-        if (auto *op = dyn_cast<OperationInst>(user.getOwner()))
-          addToWorklist(op);
-      }
+      for (auto &user : result->getUses())
+        addToWorklist(user.getOwner());
 
     // TODO: Walk the operand list dropping them as we go.  If any of them
     // drop to zero uses, then add them to the worklist to allow them to be
@@ -116,13 +114,13 @@ private:
   /// need to be revisited, plus their index in the worklist.  This allows us to
   /// efficiently remove operations from the worklist when they are erased from
   /// the function, even if they aren't the root of a pattern.
-  std::vector<OperationInst *> worklist;
-  DenseMap<OperationInst *, unsigned> worklistMap;
+  std::vector<Instruction *> worklist;
+  DenseMap<Instruction *, unsigned> worklistMap;
 
   /// As part of canonicalization, we move constants to the top of the entry
   /// block of the current function and de-duplicate them.  This keeps track of
   /// constants we have done this for.
-  DenseMap<std::pair<Attribute, Type>, OperationInst *> uniquedConstants;
+  DenseMap<std::pair<Attribute, Type>, Instruction *> uniquedConstants;
 };
 }; // end anonymous namespace
 
@@ -229,10 +227,8 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
         // revisit them.
         //
         // TODO: Add a result->getUsers() iterator.
-        for (auto &operand : op->getResult(i)->getUses()) {
-          if (auto *op = dyn_cast<OperationInst>(operand.getOwner()))
-            addToWorklist(op);
-        }
+        for (auto &operand : op->getResult(i)->getUses())
+          addToWorklist(operand.getOwner());
 
         res->replaceAllUsesWith(cstValue);
       }
@@ -267,10 +263,8 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
           if (res->use_empty()) // ignore dead uses.
             continue;
 
-          for (auto &operand : op->getResult(i)->getUses()) {
-            if (auto *op = dyn_cast<OperationInst>(operand.getOwner()))
-              addToWorklist(op);
-          }
+          for (auto &operand : op->getResult(i)->getUses())
+            addToWorklist(operand.getOwner());
           res->replaceAllUsesWith(resultValues[i]);
         }
       }

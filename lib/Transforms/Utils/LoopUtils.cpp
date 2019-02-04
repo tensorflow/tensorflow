@@ -101,7 +101,7 @@ bool mlir::promoteIfSingleIteration(OpPointer<AffineForOp> forOp) {
 
   // Replaces all IV uses to its single iteration value.
   auto *iv = forOp->getInductionVar();
-  OperationInst *forInst = forOp->getInstruction();
+  Instruction *forInst = forOp->getInstruction();
   if (!iv->use_empty()) {
     if (forOp->hasConstantLowerBound()) {
       auto *mlFunc = forInst->getFunction();
@@ -135,7 +135,7 @@ bool mlir::promoteIfSingleIteration(OpPointer<AffineForOp> forOp) {
 /// their body into the containing Block.
 void mlir::promoteSingleIterationLoops(Function *f) {
   // Gathers all innermost loops through a post order pruned walk.
-  f->walkPostOrder([](OperationInst *inst) {
+  f->walkPostOrder([](Instruction *inst) {
     if (auto forOp = inst->dyn_cast<AffineForOp>())
       promoteIfSingleIteration(forOp);
   });
@@ -394,11 +394,10 @@ bool mlir::loopUnrollByFactor(OpPointer<AffineForOp> forOp,
     return false;
 
   // Generate the cleanup loop if trip count isn't a multiple of unrollFactor.
-  OperationInst *forInst = forOp->getInstruction();
+  Instruction *forInst = forOp->getInstruction();
   if (getLargestDivisorOfTripCount(forOp) % unrollFactor != 0) {
     FuncBuilder builder(forInst->getBlock(), ++Block::iterator(forInst));
-    auto cleanupForInst =
-        cast<OperationInst>(builder.clone(*forInst))->cast<AffineForOp>();
+    auto cleanupForInst = builder.clone(*forInst)->cast<AffineForOp>();
     auto clLbMap = getCleanupLoopLowerBound(forOp, unrollFactor, &builder);
     assert(clLbMap &&
            "cleanup loop lower bound map for single result bound maps can "

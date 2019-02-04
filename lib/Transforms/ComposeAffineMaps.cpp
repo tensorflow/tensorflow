@@ -48,7 +48,7 @@ namespace {
 struct ComposeAffineMaps : public FunctionPass, InstWalker<ComposeAffineMaps> {
   explicit ComposeAffineMaps() : FunctionPass(&ComposeAffineMaps::passID) {}
   PassResult runOnFunction(Function *f) override;
-  void visitInstruction(OperationInst *opInst);
+  void visitInstruction(Instruction *opInst);
 
   SmallVector<OpPointer<AffineApplyOp>, 8> affineApplyOps;
 
@@ -64,14 +64,12 @@ FunctionPass *mlir::createComposeAffineMapsPass() {
 }
 
 static bool affineApplyOp(const Instruction &inst) {
-  const auto &opInst = cast<OperationInst>(inst);
-  return opInst.isa<AffineApplyOp>();
+  return inst.isa<AffineApplyOp>();
 }
 
-void ComposeAffineMaps::visitInstruction(OperationInst *opInst) {
-  if (auto afOp = opInst->dyn_cast<AffineApplyOp>()) {
+void ComposeAffineMaps::visitInstruction(Instruction *opInst) {
+  if (auto afOp = opInst->dyn_cast<AffineApplyOp>())
     affineApplyOps.push_back(afOp);
-  }
 }
 
 PassResult ComposeAffineMaps::runOnFunction(Function *f) {
