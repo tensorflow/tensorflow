@@ -705,6 +705,13 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  def testNestedListMapDataset(self):
+    dataset = dataset_ops.Dataset.from_tensors(
+        [0, 1, 2]).repeat(10).map(lambda a: ([a[1], a[0] + a[2]], a[1]))
+
+    expected_output = [(np.array([1, 2]), 1)] * 10
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
+
   def testPrefetch(self):
     # We will use this event to test that `_map_py_func()` has been
     # invoked a certain number of times (6 times, to be exact) after
