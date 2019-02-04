@@ -1496,6 +1496,17 @@ class AssertShapesTest(test.TestCase):
     regex = "Specified explicitly.  Tensor .* dimension 0 must have size 3.  Received size 2"
     self.raises_static_error(shapes=shapes, regex=regex)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_raise_static_shape_explicit_mismatch_innermost_dims(self):
+    x = array_ops.ones([3, 2], name="x")
+    y = array_ops.ones([2, 3], name="y")
+    shapes = {
+      x: (3, 'Q'),
+      y: (..., 3, 'D'),
+    }
+    regex = "Specified explicitly.  Tensor .* dimension -2 must have size 3.  Received size 2"
+    self.raises_static_error(shapes=shapes, regex=regex)
+
   def test_raise_dynamic_shape_explicit_mismatch(self):
     with ops.Graph().as_default():
       x = array_ops.placeholder(dtypes.float32, [None, 2], name="xa")
@@ -1512,19 +1523,26 @@ class AssertShapesTest(test.TestCase):
       self.raises_dynamic_error(shapes=shapes, regex=regex, feed_dict=feed_dict)
 
   @test_util.run_in_graph_and_eager_modes
-  def test_checking_event_shape_only(self):
+  def test_correctly_matching_innermost_dims(self):
     x = array_ops.ones([1, 2, 3, 2], name="x")
     y = array_ops.ones([2, 3, 3], name="y")
-    assertion = check_ops.assert_shapes(
-      {
-        x: ('N', 'Q'),
-        y: ('N', 'D'),
-      },
-      event_shape_only=True
-    )
+    assertion = check_ops.assert_shapes({
+        x: (..., 'N', 'Q'),
+        y: (..., 'N', 'D'),
+    })
     with ops.control_dependencies([assertion]):
       out = array_ops.identity(x)
     self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_raise_variable_num_outer_dims_prefix_misuse(self):
+    x = array_ops.ones([1, 2], name="x")
+    shapes={
+      x: ('N', ..., 'Q'),
+    }
+    regex = r"Tensor .*.  Symbol `...` for variable number of " \
+            r"unspecified dimensions is only allowed as the first entry"
+    self.raises_static_error(shapes=shapes, regex=regex)
 
   @test_util.run_in_graph_and_eager_modes
   def test_no_op_when_specified_as_unknown(self):
@@ -1554,7 +1572,7 @@ class AssertShapesTest(test.TestCase):
       (1, 1),
       (1, 3),
       ('a', 'b'),
-      (None, None)
+      (None, None),
     ]
     rank_three_shapes = [
       (1, 1, 1),

@@ -1550,12 +1550,18 @@ def _symbolic_dimension_sizes(symbolic_shape):
   return symbolic_shape
 
 
+def _contains_variable_num_outer_dims_prefix(symbolic_shape):
+  if isinstance(symbolic_shape, (tuple, list)):
+    return len(symbolic_shape) > 0 and symbolic_shape[0] is ...
+  return symbolic_shape is ...
+
+
 def _has_known_value(dimension_size):
   return dimension_size is not None and isinstance(dimension_size, int)
 
 
 @tf_export('debugging.assert_shapes', 'assert_shapes')
-def assert_shapes(shapes, innermost_dims=False, data=None, summarize=None,
+def assert_shapes(shapes, data=None, summarize=None,
                   message=None, name=None):
   """Assert tensor shapes and dimension size relationships between tensors.
 
@@ -1581,14 +1587,16 @@ def assert_shapes(shapes, innermost_dims=False, data=None, summarize=None,
   Size entries in the specified shapes are checked explicitly if of type `int`,
   else checked against other entries by their __hash__.
 
+  If the first entry of a shape is `...` (type `Ellipsis`) that indicates a
+  variable number of outer dimensions of unspecified size, i.e. the constraint
+  applies to the inner-most dimensions only.
+
   Args:
     shapes: dictionary with (`Tensor` to shape) items. A shape is either a
     tuple/list of size entries or a single size entry.
-    innermost_dims: `bool`, if to apply constraints on the inner-most
-    dimensions only.
     data: The tensors to print out if the condition is False.  Defaults to
     error message and first few entries of the violating tensor.
-    summarize: Print this many entries of each tensor.
+    summarize: Print this many entries of the tensor.
     message: A string to prefix to the default message.
     name: A name for this operation (optional).  Defaults to "assert_shapes".
 
@@ -1604,19 +1612,32 @@ def assert_shapes(shapes, innermost_dims=False, data=None, summarize=None,
   message = message or ''
   with ops.name_scope(name, 'assert_shapes', [shapes, data]):
 
+    shapes = {
+      ops.convert_to_tensor(x): shapes[x]
+      for x in shapes
+    }
+
+    executing_eagerly = context.executing_eagerly()
+
+    for x in shapes:
+      symbolic_shape = shapes[x]
+      if not isinstance(symbolic_shape, (tuple, list)):
+        continue
+      if len(symbolic_shape) > 1 and ... in symbolic_shape[1:]:
+        if executing_eagerly:
+          name = _shape_and_dtype_str(x)
+        else:
+          name = x.name
+        raise ValueError(
+          '%s.  Tensor %s.  Symbol `...` for variable number of unspecified '
+          'dimensions is only allowed as the first entry' % (message, name))
+
     # Shape specified as None implies no constraint
     shapes = {
         x: shapes[x]
         for x in shapes
         if shapes[x] is not None
     }
-
-    shapes = {
-        ops.convert_to_tensor(x): shapes[x]
-        for x in shapes
-    }
-
-    executing_eagerly = context.executing_eagerly()
 
     def rank(symbolic_shape):
       if isinstance(symbolic_shape, (tuple, list)):
@@ -1626,9 +1647,10 @@ def assert_shapes(shapes, innermost_dims=False, data=None, summarize=None,
     rank_assertions = []
     for x in shapes.keys():
       shape = shapes[x]
-      if innermost_dims:
+
+      if _contains_variable_num_outer_dims_prefix(shape):
         assertion = assert_rank_at_least(
-            x=x, rank=rank(shape), data=data, summarize=summarize,
+            x=x, rank=rank(shape) - 1, data=data, summarize=summarize,
             message=message, name=name)
       else:
         assertion = assert_rank(
@@ -1650,6 +1672,11 @@ def assert_shapes(shapes, innermost_dims=False, data=None, summarize=None,
     for x in shapes.keys():
       actual_sizes = actual_sizes_by_tensor[x]
       symbolic_sizes = specified_symbolic_sizes_by_tensor[x]
+
+      innermost_dims = False
+      if _contains_variable_num_outer_dims_prefix(symbolic_sizes):
+        symbolic_sizes = symbolic_sizes[1:] # inner-most symbolic sizes, i.e. (..., sizes)
+        innermost_dims = True
 
       for i, size_symbol in enumerate(symbolic_sizes):
 
