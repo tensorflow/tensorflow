@@ -1555,7 +1555,7 @@ def _has_known_value(dimension_size):
 
 
 @tf_export('debugging.assert_shapes', 'assert_shapes')
-def assert_shapes(shapes, event_shape_only=False, data=None, summarize=None,
+def assert_shapes(shapes, innermost_dims=False, data=None, summarize=None,
                   message=None, name=None):
   """Assert tensor shapes and dimension size relationships between tensors.
 
@@ -1584,8 +1584,8 @@ def assert_shapes(shapes, event_shape_only=False, data=None, summarize=None,
   Args:
     shapes: dictionary with (`Tensor` to shape) items. A shape is either a
     tuple/list of size entries or a single size entry.
-    event_shape_only: `bool`, if to apply constraints on only
-      the rightmost dimensions or on the whole shapes (default).
+    innermost_dims: `bool`, if to apply constraints on the inner-most
+    dimensions only.
     message: A string to prefix to the default message.
     summarize: Print this many entries of each tensor.
     name: A name for this operation (optional).  Defaults to "assert_shapes".
@@ -1624,7 +1624,7 @@ def assert_shapes(shapes, event_shape_only=False, data=None, summarize=None,
     rank_assertions = []
     for x in shapes.keys():
       shape = shapes[x]
-      if event_shape_only:
+      if innermost_dims:
         assertion = assert_rank_at_least(
             x=x, rank=rank(shape), data=data, summarize=summarize,
             message=message, name=name)
@@ -1655,7 +1655,7 @@ def assert_shapes(shapes, event_shape_only=False, data=None, summarize=None,
           # Size specified with None implies no constraint
           continue
 
-        if event_shape_only:
+        if innermost_dims:
           tensor_dim = i - len(symbolic_sizes)
         else:
           tensor_dim = i
