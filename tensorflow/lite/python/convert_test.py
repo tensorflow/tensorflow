@@ -317,14 +317,16 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
                          aggregate=op_hint.OpHint.AGGREGATE_STACK)
     d = custom.add_input(d, tag="mytag2",
                          aggregate=op_hint.OpHint.AGGREGATE_STACK)
-    res = math_ops.add(math_ops.mul(a, b), math_ops.mul(c, b))
+    res = math_ops.add(math_ops.mul(a, b), math_ops.mul(c, d))
     custom.add_outputs([res])
     with self.cached_session():
       self.assertEqual(self._get_input_index(a), 0)
       self.assertEqual(self._get_sort_index(a), 0)
       self.assertEqual(self._get_input_index(b), 1)
       self.assertEqual(self._get_input_index(c), 0)
-      self.assertEqual(self._get_sort_index(c), 1)
+      self.assertEqual(self._get_input_index(c), 1)
+      self.assertEqual(self._get_input_index(d), 2)
+      self.assertEqual(self._get_input_index(d), 0)
 
   def testOverrideIndex(self):
     a = array_ops.constant([1.])
