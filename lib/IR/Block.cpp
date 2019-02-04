@@ -185,16 +185,13 @@ void Block::eraseArgument(unsigned index) {
 // Terminator management
 //===----------------------------------------------------------------------===//
 
-OperationInst *Block::getTerminator() {
+Instruction *Block::getTerminator() {
   if (empty())
     return nullptr;
 
   // Check if the last instruction is a terminator.
   auto &backInst = back();
-  auto *opInst = dyn_cast<OperationInst>(&backInst);
-  if (!opInst || !opInst->isTerminator())
-    return nullptr;
-  return opInst;
+  return backInst.isTerminator() ? &backInst : nullptr;
 }
 
 /// Return true if this block has no predecessors.
@@ -339,7 +336,7 @@ void BlockList::cloneInto(BlockList *dest, BlockAndValueMapping &mapper,
     Walker(BlockAndValueMapping &mapper) : mapper(mapper) {}
 
     /// Remap the instruction and successor block operands.
-    void visitInstruction(OperationInst *inst) {
+    void visitInstruction(Instruction *inst) {
       for (auto &instOp : inst->getInstOperands())
         if (auto *mappedOp = mapper.lookupOrNull(instOp.get()))
           instOp.set(mappedOp);

@@ -135,7 +135,7 @@ Type OpTrait::util::getBroadcastedType(Type type1, Type type2) {
   return scalarType;
 }
 
-bool OpTrait::impl::verifyCompatibleOperandBroadcast(const OperationInst *op) {
+bool OpTrait::impl::verifyCompatibleOperandBroadcast(const Instruction *op) {
   assert(op->getNumOperands() == 2 &&
          "only support broadcast check on two operands");
   assert(op->getNumResults() == 1 &&

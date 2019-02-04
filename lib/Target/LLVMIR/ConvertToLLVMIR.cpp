@@ -56,7 +56,7 @@ private:
   bool convertBlock(const Block &bb, bool ignoreArguments = false);
   bool convertFunction(const Function &func, llvm::Function &llvmFunc);
   bool convertFunctions(const Module &mlirModule, llvm::Module &llvmModule);
-  bool convertInstruction(const OperationInst &inst);
+  bool convertInstruction(const Instruction &inst);
 
   void connectPHINodes(const Function &func);
 
@@ -112,8 +112,8 @@ private:
   /// descriptor and get the pointer to the element indexed by the linearized
   /// subscript.  Return nullptr on errors.
   llvm::Value *emitMemRefElementAccess(
-      const Value *memRef, const OperationInst &op,
-      llvm::iterator_range<OperationInst::const_operand_iterator> opIndices);
+      const Value *memRef, const Instruction &op,
+      llvm::iterator_range<Instruction::const_operand_iterator> opIndices);
 
   /// Emit LLVM IR corresponding to the given Alloc `op`.  In particular, create
   /// a Value for the MemRef descriptor, store any dynamic sizes passed to
@@ -305,7 +305,7 @@ ModuleLowerer::linearizeSubscripts(ArrayRef<llvm::Value *> indices,
 // the location of `op` and return true.  Return false if the type is supported.
 // TODO(zinenko): this function should disappear when the conversion fully
 // supports MemRefs.
-static bool checkSupportedMemRefType(MemRefType type, const OperationInst &op) {
+static bool checkSupportedMemRefType(MemRefType type, const Instruction &op) {
   if (!type.getAffineMaps().empty())
     return op.emitError("NYI: memrefs with affine maps");
   if (type.getMemorySpace() != 0)
@@ -314,8 +314,8 @@ static bool checkSupportedMemRefType(MemRefType type, const OperationInst &op) {
 }
 
 llvm::Value *ModuleLowerer::emitMemRefElementAccess(
-    const Value *memRef, const OperationInst &op,
-    llvm::iterator_range<OperationInst::const_operand_iterator> opIndices) {
+    const Value *memRef, const Instruction &op,
+    llvm::iterator_range<Instruction::const_operand_iterator> opIndices) {
   auto type = memRef->getType().dyn_cast<MemRefType>();
   assert(type && "expected memRef value to have a MemRef type");
   if (checkSupportedMemRefType(type, op))
@@ -423,7 +423,7 @@ ModuleLowerer::emitMemRefDealloc(ConstOpPointer<DeallocOp> deallocOp) {
 // This forcibly recreates the APFloat with IEEESingle semantics to make sure
 // LLVM constructs a `float` constant.
 static llvm::ConstantFP *getFloatConstant(APFloat APvalue,
-                                          const OperationInst &inst,
+                                          const Instruction &inst,
                                           llvm::LLVMContext *context) {
   bool unused;
   APFloat::opStatus status = APvalue.convert(
@@ -515,7 +515,7 @@ static llvm::CmpInst::Predicate getLLVMCmpPredicate(CmpIPredicate p) {
 // FIXME(zinenko): this should eventually become a separate MLIR pass that
 // converts MLIR standard operations into LLVM IR dialect; the translation in
 // that case would become a simple 1:1 instruction and value remapping.
-bool ModuleLowerer::convertInstruction(const OperationInst &inst) {
+bool ModuleLowerer::convertInstruction(const Instruction &inst) {
   if (auto op = inst.dyn_cast<AddIOp>())
     return valueMapping[op->getResult()] =
                builder.CreateAdd(valueMapping[op->getOperand(0)],
@@ -788,11 +788,10 @@ bool ModuleLowerer::convertBlock(const Block &bb, bool ignoreArguments) {
 
   // Traverse instructions.
   for (const auto &inst : bb) {
-    auto *op = dyn_cast<OperationInst>(&inst);
-    if (!op)
-      return inst.emitError("unsupported operation");
+    if (inst.getNumBlockLists() != 0)
+      return inst.emitError("unsupported region operation");
 
-    if (convertInstruction(*op))
+    if (convertInstruction(inst))
       return true;
   }
 

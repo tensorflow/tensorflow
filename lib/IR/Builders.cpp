@@ -304,11 +304,11 @@ Block *FuncBuilder::createBlock(Block *insertBefore) {
 }
 
 /// Create an operation given the fields represented as an OperationState.
-OperationInst *FuncBuilder::createOperation(const OperationState &state) {
-  auto *op = OperationInst::create(state.location, state.name, state.operands,
-                                   state.types, state.attributes,
-                                   state.successors, state.numBlockLists,
-                                   state.resizableOperandList, context);
+Instruction *FuncBuilder::createOperation(const OperationState &state) {
+  auto *op = Instruction::create(state.location, state.name, state.operands,
+                                 state.types, state.attributes,
+                                 state.successors, state.numBlockLists,
+                                 state.resizableOperandList, context);
   block->getInstructions().insert(insertPoint, op);
   return op;
 }

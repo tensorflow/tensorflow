@@ -283,7 +283,7 @@ public:
         dialect(dialect) {}
 
   // Match by type.
-  PatternMatchResult match(OperationInst *op) const override {
+  PatternMatchResult match(Instruction *op) const override {
     if (op->isa<SourceOp>())
       return this->matchSuccess();
     return this->matchFailure();
@@ -327,7 +327,7 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
 
   // Convert the type of the result to an LLVM type, pass operands as is,
   // preserve attributes.
-  SmallVector<Value *, 4> rewrite(OperationInst *op, ArrayRef<Value *> operands,
+  SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     unsigned numResults = op->getNumResults();
     auto *mlirContext = op->getContext();
@@ -412,7 +412,7 @@ struct CmpIOpLowering : public OneToOneLLVMOpLowering<CmpIOp, LLVM::ICmpOp> {
 // that have 0 or 1 result (LLVM calls cannot have more than 1).
 struct CallOpLowering : public OneToOneLLVMOpLowering<CallOp, LLVM::CallOp> {
   using Super::Super;
-  PatternMatchResult match(OperationInst *op) const override {
+  PatternMatchResult match(Instruction *op) const override {
     if (op->getNumResults() > 0)
       return Super::match(op);
     return matchFailure();
@@ -424,7 +424,7 @@ struct CallOpLowering : public OneToOneLLVMOpLowering<CallOp, LLVM::CallOp> {
 // that have 0 or 1 result (LLVM calls cannot have more than 1).
 struct Call0OpLowering : public OneToOneLLVMOpLowering<CallOp, LLVM::Call0Op> {
   using Super::Super;
-  PatternMatchResult match(OperationInst *op) const override {
+  PatternMatchResult match(Instruction *op) const override {
     if (op->getNumResults() == 0)
       return Super::match(op);
     return matchFailure();
@@ -443,7 +443,7 @@ struct OneToOneLLVMTerminatorLowering
   using LLVMLegalizationPattern<SourceOp>::LLVMLegalizationPattern;
   using Super = OneToOneLLVMTerminatorLowering<SourceOp, TargetOp>;
 
-  void rewriteTerminator(OperationInst *op, ArrayRef<Value *> properOperands,
+  void rewriteTerminator(Instruction *op, ArrayRef<Value *> properOperands,
                          ArrayRef<Block *> destinations,
                          ArrayRef<ArrayRef<Value *>> operands,
                          FuncBuilder &rewriter) const override {
@@ -461,7 +461,7 @@ struct OneToOneLLVMTerminatorLowering
 struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
   using LLVMLegalizationPattern<ReturnOp>::LLVMLegalizationPattern;
 
-  SmallVector<Value *, 4> rewrite(OperationInst *op, ArrayRef<Value *> operands,
+  SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     unsigned numArguments = op->getNumOperands();
 

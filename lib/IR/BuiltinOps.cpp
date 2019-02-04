@@ -43,8 +43,8 @@ BuiltinDialect::BuiltinDialect(MLIRContext *context)
            VectorType, RankedTensorType, UnrankedTensorType, MemRefType>();
 }
 
-void mlir::printDimAndSymbolList(OperationInst::const_operand_iterator begin,
-                                 OperationInst::const_operand_iterator end,
+void mlir::printDimAndSymbolList(Instruction::const_operand_iterator begin,
+                                 Instruction::const_operand_iterator end,
                                  unsigned numDims, OpAsmPrinter *p) {
   *p << '(';
   p->printOperands(begin, begin + numDims);
@@ -176,8 +176,8 @@ struct SimplifyAffineApply : public RewritePattern {
   SimplifyAffineApply(MLIRContext *context)
       : RewritePattern(AffineApplyOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(OperationInst *op) const override;
-  void rewrite(OperationInst *op, std::unique_ptr<PatternState> state,
+  PatternMatchResult match(Instruction *op) const override;
+  void rewrite(Instruction *op, std::unique_ptr<PatternState> state,
                PatternRewriter &rewriter) const override;
 };
 } // end anonymous namespace.
@@ -255,7 +255,7 @@ void mlir::canonicalizeMapAndOperands(
   *operands = resultOperands;
 }
 
-PatternMatchResult SimplifyAffineApply::match(OperationInst *op) const {
+PatternMatchResult SimplifyAffineApply::match(Instruction *op) const {
   auto apply = op->cast<AffineApplyOp>();
   auto map = apply->getAffineMap();
 
@@ -270,7 +270,7 @@ PatternMatchResult SimplifyAffineApply::match(OperationInst *op) const {
   return matchFailure();
 }
 
-void SimplifyAffineApply::rewrite(OperationInst *op,
+void SimplifyAffineApply::rewrite(Instruction *op,
                                   std::unique_ptr<PatternState> state,
                                   PatternRewriter &rewriter) const {
   auto *applyState = static_cast<SimplifyAffineApplyState *>(state.get());
@@ -328,14 +328,14 @@ struct SimplifyConstCondBranchPred : public RewritePattern {
   SimplifyConstCondBranchPred(MLIRContext *context)
       : RewritePattern(CondBranchOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(OperationInst *op) const override {
+  PatternMatchResult match(Instruction *op) const override {
     auto condbr = op->cast<CondBranchOp>();
     if (matchPattern(condbr->getCondition(), m_Op<ConstantOp>()))
       return matchSuccess();
 
     return matchFailure();
   }
-  void rewrite(OperationInst *op, PatternRewriter &rewriter) const override {
+  void rewrite(Instruction *op, PatternRewriter &rewriter) const override {
     auto condbr = op->cast<CondBranchOp>();
     Block *foldedDest;
     SmallVector<Value *, 4> branchArgs;
@@ -549,13 +549,13 @@ void ConstantFloatOp::build(Builder *builder, OperationState *result,
   ConstantOp::build(builder, result, type, builder->getFloatAttr(type, value));
 }
 
-bool ConstantFloatOp::isClassFor(const OperationInst *op) {
+bool ConstantFloatOp::isClassFor(const Instruction *op) {
   return ConstantOp::isClassFor(op) &&
          op->getResult(0)->getType().isa<FloatType>();
 }
 
 /// ConstantIntOp only matches values whose result type is an IntegerType.
-bool ConstantIntOp::isClassFor(const OperationInst *op) {
+bool ConstantIntOp::isClassFor(const Instruction *op) {
   return ConstantOp::isClassFor(op) &&
          op->getResult(0)->getType().isa<IntegerType>();
 }
@@ -577,7 +577,7 @@ void ConstantIntOp::build(Builder *builder, OperationState *result,
 }
 
 /// ConstantIndexOp only matches values whose result type is Index.
-bool ConstantIndexOp::isClassFor(const OperationInst *op) {
+bool ConstantIndexOp::isClassFor(const Instruction *op) {
   return ConstantOp::isClassFor(op) && op->getResult(0)->getType().isIndex();
 }
 

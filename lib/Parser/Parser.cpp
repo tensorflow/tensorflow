@@ -2200,8 +2200,8 @@ public:
 
   // Operations
   ParseResult parseOperation();
-  OperationInst *parseGenericOperation();
-  OperationInst *parseCustomOperation();
+  Instruction *parseGenericOperation();
+  Instruction *parseCustomOperation();
 
   ParseResult parseInstructions(Block *block);
 
@@ -2413,7 +2413,7 @@ Value *FunctionParser::createForwardReferencePlaceholder(SMLoc loc, Type type) {
   // cannot be created through normal user input, allowing us to distinguish
   // them.
   auto name = OperationName("placeholder", getContext());
-  auto *inst = OperationInst::create(
+  auto *inst = Instruction::create(
       getEncodedSourceLocation(loc), name, /*operands=*/{}, type,
       /*attributes=*/{}, /*successors=*/{}, /*numBlockLists=*/0,
       /*resizableOperandList=*/false, getContext());
@@ -2753,7 +2753,7 @@ ParseResult FunctionParser::parseOperation() {
       return ParseFailure;
   }
 
-  OperationInst *op;
+  Instruction *op;
   if (getToken().is(Token::bare_identifier) || getToken().isKeyword())
     op = parseCustomOperation();
   else if (getToken().is(Token::string))
@@ -2782,8 +2782,7 @@ ParseResult FunctionParser::parseOperation() {
   return ParseSuccess;
 }
 
-OperationInst *FunctionParser::parseGenericOperation() {
-
+Instruction *FunctionParser::parseGenericOperation() {
   // Get location information for the operation.
   auto srcLocation = getEncodedSourceLocation(getToken().getLoc());
 
@@ -3194,7 +3193,7 @@ private:
 };
 } // end anonymous namespace.
 
-OperationInst *FunctionParser::parseCustomOperation() {
+Instruction *FunctionParser::parseCustomOperation() {
   auto opLoc = getToken().getLoc();
   auto opName = getTokenSpelling();
   CustomOpAsmParser opAsmParser(opLoc, opName, *this);
