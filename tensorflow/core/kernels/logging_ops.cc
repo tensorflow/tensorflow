@@ -179,7 +179,7 @@ class PrintV2Op : public OpKernel {
     auto listeners = logging::GetListeners();
     if (!listeners->empty()) {
       for (auto& listener : *listeners) {
-        listener(msg.data());
+        listener(msg.c_str());
       }
     } else if (output_stream_ == "stdout") {
       std::cout << msg << std::endl;
