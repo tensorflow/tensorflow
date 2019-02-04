@@ -21,9 +21,18 @@ namespace tensorflow {
 bool SerializeToStringDeterministic(const protobuf::MessageLite& msg,
                                     string* result) {
   DCHECK_LE(msg.ByteSizeLong(), static_cast<size_t>(INT_MAX));
-  const int size = static_cast<int>(msg.ByteSizeLong());
-  *result = string(size, '\0');
-  protobuf::io::ArrayOutputStream array_stream(&(*result)[0], size);
+  *result = string(msg.ByteSizeLong(), '\0');
+  return SerializeToBufferDeterministic(msg, const_cast<char*>(result->data()),
+                                        result->size());
+}
+
+// As above, but takes a pre-allocated buffer wrapped by result.
+// PRECONDITION: result.size() == msg.ByteSizeLong().
+bool SerializeToBufferDeterministic(const protobuf::MessageLite& msg,
+                                    char* buffer, int size) {
+  DCHECK_LE(msg.ByteSizeLong(), static_cast<size_t>(INT_MAX));
+  DCHECK_EQ(msg.ByteSizeLong(), size);
+  protobuf::io::ArrayOutputStream array_stream(buffer, size);
   protobuf::io::CodedOutputStream output_stream(&array_stream);
   output_stream.SetSerializationDeterministic(true);
   msg.SerializeWithCachedSizes(&output_stream);

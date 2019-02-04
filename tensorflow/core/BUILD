@@ -3706,6 +3706,19 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "lib_strings_proto_serialization_test",
+    srcs = ["lib/strings/proto_serialization_test.cc"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
     name = "lib_random_weighted_picker_test",
     size = "medium",
     srcs = ["lib/random/weighted_picker_test.cc"],
