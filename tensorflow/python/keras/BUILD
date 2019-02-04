@@ -484,6 +484,19 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "metrics_correctness_test",
+    size = "medium",
+    srcs = ["metrics_correctness_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
+)
+
+tf_py_test(
     name = "applications_test",
     size = "enormous",
     srcs = ["applications/applications_test.py"],
