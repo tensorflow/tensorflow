@@ -1052,7 +1052,7 @@ class Model(Network):
         # Multi-Worker mode runs the Keras evaluation loop on multiple
         # servers via the Distribute Coordinator.
         def _worker_fn(_):
-          """Run training inside the distributed coordinator."""
+          """Run evaluation inside the distributed coordinator."""
           return training_distributed.evaluate_distributed(
               self,
               x=x,
