@@ -3012,13 +3012,13 @@ class CheckpointableCompatibilityTests(test.TestCase):
     save_graph = ops_lib.Graph()
     with save_graph.as_default(), self.session(graph=save_graph) as sess:
       root = self._initialized_model()
-      object_saver = checkpointable_utils.CheckpointableSaver(root)
+      object_saver = checkpointable_utils.Checkpoint(root=root)
       save_path = object_saver.save(file_prefix=checkpoint_prefix)
 
       # An incompatible object-based checkpoint to check error messages
       var = resource_variable_ops.ResourceVariable(1., name="a")
       self.evaluate(var.initializer)
-      second_saver = checkpointable_utils.CheckpointableSaver(var)
+      second_saver = checkpointable_utils.Checkpoint(v=var)
       second_path = second_saver.save(file_prefix=os.path.join(
           checkpoint_directory, "second"))
 
@@ -3046,7 +3046,7 @@ class CheckpointableCompatibilityTests(test.TestCase):
     save_graph = ops_lib.Graph()
     with save_graph.as_default(), self.session(graph=save_graph):
       root = self._initialized_model()
-      object_saver = checkpointable_utils.CheckpointableSaver(root)
+      object_saver = checkpointable_utils.Checkpoint(root=root)
       save_path = object_saver.save(file_prefix=checkpoint_prefix)
 
     with context.eager_mode():

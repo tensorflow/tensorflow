@@ -29,6 +29,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/saving:saveable_object",
+        "@six_archive//:six",
     ],
 )
 
@@ -95,23 +96,48 @@ tf_py_test(
 )
 
 py_library(
+    name = "object_identity",
+    srcs = ["object_identity.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "graph_view",
+    srcs = ["graph_view.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base",
+        ":object_identity",
+        ":tracking",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/training/saving:saveable_object",
+        "//tensorflow/python/training/saving:saveable_object_util",
+    ],
+)
+
+py_library(
     name = "util",
     srcs = ["util.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":base",
         ":data_structures",
+        ":graph_view",
+        ":object_identity",
         ":tracking",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:io_ops_gen",
+        "//tensorflow/python:lib",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:saver",
         "//tensorflow/python:session",
@@ -122,7 +148,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/training/saving:functional_saver",
-        "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
     ],
 )
@@ -132,10 +157,12 @@ tf_py_test(
     srcs = ["util_test.py"],
     additional_deps = [
         ":base",
+        ":graph_view",
         ":tracking",
         ":util",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
+        "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -149,8 +176,8 @@ tf_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:template",
-        "//tensorflow/python:training",
         "//tensorflow/python:training_util",
+        "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -158,6 +185,7 @@ tf_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:layers",
+        "//tensorflow/python:variables",
     ],
     tags = ["notsan"],  # b/74395663
 )
@@ -190,6 +218,7 @@ tf_py_test(
     srcs = ["util_with_v1_optimizers_test.py"],
     additional_deps = [
         ":base",
+        ":graph_view",
         ":tracking",
         ":util",
         "@absl_py//absl/testing:parameterized",
