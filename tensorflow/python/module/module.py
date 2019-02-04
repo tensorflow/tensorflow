@@ -131,7 +131,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
 
   >>> class Dense(tf.Module):
   ...   def __init__(self, in_features, output_features):
-  ...     super(Linear, self).__init__()
+  ...     super(Dense, self).__init__()
   ...     self.w = tf.Variable(
   ...         tf.random_normal([input_features, output_features]), name='w')
   ...     self.b = tf.Variable(tf.zeros([output_features]), name='b')
@@ -150,7 +150,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
   By subclassing `tf.Module` instead of `object` any variables created inside
   the module are automatically created within the modules name scope:
 
-  >> d.w.name
+  >>> d.w.name
   "dense/w:0"
 
   In eager mode this is useful for debugging, and when used with `@tf.function`
@@ -209,7 +209,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
       A collection of variables for the current module (sorted by attribute
       name) followed by variables from all submodules recursively (depth first).
     """
-    return tuple(walk(self, recurse_if=_IS_MODULE, predicate=_IS_VARIABLE))
+    return tuple(self._flatten(predicate=_IS_VARIABLE))
 
   @property
   def owned_variables(self):
@@ -223,7 +223,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
       yield variables inside nested structures (lists etc) but not in other
       modules.
     """
-    return tuple(walk(self, predicate=_IS_VARIABLE))
+    return tuple(self._flatten(recursive=False, predicate=_IS_VARIABLE))
 
   @property
   def trainable_variables(self):
@@ -237,8 +237,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
       A collection of variables for the current module (sorted by attribute
       name) followed by variables from all submodules recursively (depth first).
     """
-    return tuple(
-        walk(self, recurse_if=_IS_MODULE, predicate=_IS_TRAINABLE_VARIABLE))
+    return tuple(self._flatten(predicate=_IS_TRAINABLE_VARIABLE))
 
   @property
   def owned_trainable_variables(self):
@@ -252,7 +251,8 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
       yield variables inside nested structures (lists etc) but not in other
       modules.
     """
-    return tuple(walk(self, predicate=_IS_TRAINABLE_VARIABLE))
+    return tuple(
+        self._flatten(recursive=False, predicate=_IS_TRAINABLE_VARIABLE))
 
   @property
   def owned_submodules(self):
@@ -273,7 +273,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
     Returns:
       A collection of all child modules.
     """
-    return tuple(walk(self, predicate=_IS_MODULE))
+    return tuple(self._flatten(recursive=False, predicate=_IS_MODULE))
 
   @property
   def submodules(self):
@@ -294,7 +294,60 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
     Returns:
       A collection of all submodules.
     """
-    return tuple(walk(self, recurse_if=_IS_MODULE, predicate=_IS_MODULE))
+    return tuple(self._flatten(predicate=_IS_MODULE))
+
+  def _flatten(self,
+               recursive=True,
+               predicate=None,
+               attribute_traversal_key=None):
+    """Flattened attribute values in sorted order by attribute name.
+
+    Modules are flattened by first walking their attributes in name order.
+    Each attribute value is then flattened to find leaf values. If flatten is
+    to be applied `recursive`ly then if the leaf is a `Module` it will also be
+    flattened to find leaves. Finally every leaf value is optionally tested
+    against the given `predicate` and finally yielded.
+
+    >>> class Foo(tf.experimental.Module):
+    ...   def __init__(self):
+    ...     super(Foo, self).__init__()
+    ...     self.x = [tf.constant('a'), tf.constant('b')]
+    ...     self.y = {'i': tf.constant('c'), 'j': tf.constant('d')}
+    ...     self.z = tf.constant('e')
+    ...
+    ...   @property
+    ...   def tensors(self):
+    ...     return tuple(self._flatten(predicate=is_tensor))
+
+    >>> foo = Foo()
+    >>> foo.tensors
+    (<tf.Tensor...'a'>, <tf.Tensor...'b'>, ...'c'>, ...'d'>, ...'e'>)
+
+    `attribute_traversal_key` controls the order object properties are visited.
+    If not set objects are visited in ascending order by name.
+
+    Args:
+      recursive: Whether to recurse into child modules or not.
+      predicate: (Optional) If set then only values matching predicate are
+        yielded. A value of `None` (the default) means no items will be
+        filtered.
+      attribute_traversal_key: (Optional) Method to rekey object attributes
+        before they are sorted. Contract is the same as `key` argument to
+        builtin `sorted` and only applies to object properties.
+
+    Returns:
+      Flat generator for leaves of the current module and optionally all
+      submodules.
+    """
+    if predicate is None:
+      predicate = lambda _: True
+
+    return _flatten_module(
+        self,
+        recursive=recursive,
+        predicate=predicate,
+        attribute_traversal_key=attribute_traversal_key,
+        seen=set())
 
   @classmethod
   def no_name_scope(cls, method):
@@ -334,77 +387,37 @@ def camel_to_snake(value):
   return _CAMEL_TO_SNAKE_R.sub(r"_\1", value).lower()
 
 
-def walk(o, recurse_if=None, predicate=None):
-  """Flattened attributes of `o` in sorted order by attribute name.
-
-  >>> class Foo(object):
-  ...   def __init__(self, prefix=''):
-  ...     self.z = prefix + 'c'
-  ...     self.a = [prefix + 'a', prefix + 'b']
-
-  >>> tuple(walk(Foo()))
-  ('a', 'b', 'c')
-
-  If `predicate` is not None, then only values matching predicate are returned:
-
-  >>> tuple(walk(Foo(), predicate=lambda v: v != 'a'))
-  ('b', 'c')
-
-  If `recurse_if` is not None then it should be a callable which tests if the
-  given leaf should be expanded:
-
-  >>> is_string = lambda v: isinstance(v, str)
-  >>> is_foo = lambda l: isinstance(l, Foo)
-  >>> o = Foo(prefix='root_')
-  >>> o.b = Foo(prefix='child_')
-  >>> tuple(walk(o, predicate=is_string))
-  ('root_a', 'root_b', 'root_c')
-  >>> tuple(walk(o, recurse_if=is_foo, predicate=is_string))
-  ('root_a', 'root_b', 'root_c', 'child_a', 'child_b', 'child_c')
-
-  Args:
-    o: An object who's attributes are walked.
-    recurse_if: (Optional) Visited items of this type will be walked to extract
-      more leaves. If `None`, it will not recurse into leaves.
-    predicate: (Optional) If set then only values matching predicate are
-      yielded.
-
-  Returns:
-    Attributes of `o` in name order. If `recurse_if` is not `None` then
-    attributes for which `recurse_if(attribute) == True` will be walked
-    recursively. If `predicate` is not `None` then only attributes for which
-    `predicate(attribute) == True` will be yielded.
-  """
-  if predicate is None:
-    predicate = lambda _: True
-  return _walk_internal(
-      o, recurse_if=recurse_if, predicate=predicate, seen=set())
-
-
-def _walk_internal(o, recurse_if, predicate, seen):
-  """Implementation of `walk`."""
+def _flatten_module(module, recursive, predicate, attribute_traversal_key,
+                    seen):
+  """Implementation of `flatten`."""
   if seen is None:
-    seen = set([id(o)])
+    seen = set([id(module)])
 
-  o_dict = vars(o)
-  to_walk = []
+  module_dict = vars(module)
+  submodules = []
 
-  for key in sorted(o_dict):
-    values = nest.flatten(o_dict[key])
-    for value in values:
-      value_id = id(value)
-      if value_id in seen:
+  for key in sorted(module_dict, key=attribute_traversal_key):
+    for leaf in nest.flatten(module_dict[key]):
+      leaf_id = id(leaf)
+      if leaf_id in seen:
         continue
 
-      seen.add(value_id)
-      if predicate(value):
-        yield value
+      seen.add(leaf_id)
+      if predicate(leaf):
+        yield leaf
 
-      if recurse_if is not None and recurse_if(value):
+      if recursive and isinstance(leaf, Module):
         # Walk direct properties first then recurse.
-        to_walk.append(value)
+        submodules.append(leaf)
 
-  for value in to_walk:
-    for subvalue in _walk_internal(value, recurse_if, predicate, seen):
+  for submodule in submodules:
+    subvalues = _flatten_module(
+        submodule,
+        recursive=recursive,
+        predicate=predicate,
+        attribute_traversal_key=attribute_traversal_key,
+        seen=seen)
+
+    for subvalue in subvalues:
       # Predicate is already tested for these values.
       yield subvalue
