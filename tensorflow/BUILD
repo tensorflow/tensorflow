@@ -95,6 +95,12 @@ config_setting(
 )
 
 config_setting(
+    name = "emscripten",
+    values = {"crosstool_top": "//external:android/emscripten"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "raspberry_pi_armeabi",
     values = {
         "crosstool_top": "@local_config_arm_compiler//:toolchain",
