@@ -206,7 +206,7 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
   finally:
     # Must manually cleanup files.
     for filename in [
-        toco_filename, input_filename, model_filename, output_filename]:
+            toco_filename, input_filename, model_filename, output_filename]:
       try:
         _os.unlink(filename)
       except (OSError, TypeError):
@@ -395,7 +395,7 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
     input_array = model_flags.input_arrays.add()
     if toco_flags.inference_input_type == _types_pb2.QUANTIZED_UINT8:
       if (("quantized_input_stats" not in kwargs) or
-          (not kwargs["quantized_input_stats"])):
+              (not kwargs["quantized_input_stats"])):
         raise ValueError("std_dev and mean must be defined when "
                          "inference_input_type is QUANTIZED_UINT8.")
       input_array.mean_value, input_array.std_value = kwargs[
