@@ -97,6 +97,38 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
     model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     model.fit(np.ones((10, 10)), np.ones((10, 1)), batch_size=2)
 
+  def test_rrelu_with_invalid_arg(self):
+    """Testing the Random ReLU lower and upper bound."""
+    with self.assertRaisesRegexp(
+        ValueError, 'lower/upper bound for RandomizedRectifierLayer needs to be > 0.'):
+      testing_utils.layer_test(keras.layers.RReLU,
+                               kwargs={'lower': -10},
+                               input_shape=(2, 3, 4))
+    with self.assertRaisesRegexp(
+        ValueError,
+        'lower/upper bound for RandomizedRectifierLayer needs to be > 0.'):
+      with self.cached_session():
+        testing_utils.layer_test(
+            keras.layers.RReLU,
+            kwargs={'upper': -2},
+            input_shape=(2, 3, 4))
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Upper bound for RandomizedRectifierLayer needs to be higher than lower bound.'):
+      with self.cached_session():
+        testing_utils.layer_test(
+            keras.layers.RReLU,
+            kwargs={'upper': 2,
+                    'lower': 3},
+            input_shape=(2, 3, 4))
+
+  def test_rrelu(self):
+    """Testing the Random ReLU function."""
+    testing_utils.layer_test(keras.layers.RReLU,
+                             kwargs={'seed': 1},
+                             input_shape=(2, 3, 4))
+
 
 if __name__ == '__main__':
   test.main()

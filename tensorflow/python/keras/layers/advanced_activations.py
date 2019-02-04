@@ -27,6 +27,7 @@ from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.framework import ops
 
 
 @keras_export('keras.layers.LeakyReLU')
@@ -328,6 +329,76 @@ class ReLU(Layer):
         'threshold': self.threshold
     }
     base_config = super(ReLU, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @tf_utils.shape_type_conversion
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
+@keras_export('keras.layers.RReLU')
+class RReLU(Layer):
+  """Randomized Leaky Rectified Linear Unit function
+  It Randomizes the alpha passed to the leaky Relu function
+
+  'f(x) = alpha * x for x <0',
+  'f(x) = x for x>=0'.
+
+  where alpha is randomly sampled from uniform distribution U(lower,upper).
+
+  See: https://arxiv.org/pdf/1505.00853.pdf
+
+  Input shape:
+      Arbitrary. Use the keyword argument `input_shape`
+      (tuple of integers, does not include the samples axis)
+      when using this layer as the first layer in a model.
+
+  Output shape:
+      Same shape as the input.
+
+  Arguments:
+      lower: lower bound of the uniform distribution.
+      upper: upper bound of the uniform distribution.
+      seed: Used to create random seeds.
+  """
+
+  def __init__(self, lower=0.125, upper=0.333, seed=None, **kwargs):
+    super(RReLU, self).__init__(**kwargs)
+    if lower < 0 or upper < 0:
+      raise ValueError('lower/upper bound for RandomizedRectifierLayer needs '
+                       'to be > 0. ')
+    if lower > upper:
+      raise ValueError('Upper bound for RandomizedRectifierLayer needs '
+                       'to be higher than lower bound. ')
+
+    self.lower = lower
+    self.upper = upper
+    self.seed = seed
+    self.alpha = K.random_range(low=lower, high=upper)
+
+  def call(self, inputs):
+
+    def rrelu_inputs_testing():
+      """Random ReLU testing output."""
+      with ops.name_scope("random_relu_testing"):
+           alpha = 1/(0.5 *(self.lower+ self.upper))
+           return K.relu(inputs, alpha=alpha)
+
+    def rrelu_input_training():
+      """Random ReLU training output."""
+      return K.relu(inputs, alpha=self.alpha)
+
+    with ops.name_scope(self.name, "random-relu", [inputs]):
+      output = tf_utils.smart_cond(K.learning_phase(),
+                                   true_fn=rrelu_input_training, false_fn=rrelu_inputs_testing)
+    return output
+
+  def get_config(self):
+    config = {
+        'lower': self.lower,
+        'upper': self.upper,
+        'seed': self.seed,
+    }
+    base_config = super(RReLU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
   @tf_utils.shape_type_conversion

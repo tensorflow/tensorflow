@@ -1151,6 +1151,21 @@ def identity(x, name=None):
   return array_ops.identity(x, name=name)
 
 
+def random_range(low=0, high=1, size=None):
+  """Returns a random variable withn the range including low,
+     excluding high
+
+  Arguments:
+      low: low value.
+      high: high value.
+      size: output shape.
+
+  Returns:
+      A scalar of the size.
+  """
+  return np.random.uniform(low, high, size)
+
+
 @keras_export('keras.backend.random_uniform_variable')
 def random_uniform_variable(shape, low, high, dtype=None, name=None, seed=None):
   """Instantiates a variable with values drawn from a uniform distribution.
