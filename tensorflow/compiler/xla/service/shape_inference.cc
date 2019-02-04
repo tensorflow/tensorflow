@@ -1858,6 +1858,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
               fft_length[i]);
         }
       }
+      if (ShapeUtil::IsZeroElementArray(in)) {
+        return in;
+      }
       Shape result = ShapeUtil::ChangeElementType(in, C64);
       result.set_dimensions(result.dimensions_size() - 1,
                             fft_length[fft_rank - 1] / 2 + 1);
