@@ -312,7 +312,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported = self.cycle(root, cycles)
 
     with self.assertRaisesRegexp(AssertionError,
-                                 "Could not find matching function to call.*"):
+                                 "Could not find matching function to call"):
       imported.f(input2)
 
     self.assertEqual(31, imported.f(input1).numpy())
@@ -611,6 +611,36 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                         imported.f(constant_op.constant([1, 2, 3, 4])).numpy())
     self.assertAllEqual([2, 4, 6],
                         imported.f(constant_op.constant([1, 2, 3])).numpy())
+
+  def test_get_concrete_function(self, cycles):
+
+    @def_function.function
+    def func(x, training=False):
+      if training:
+        return 2 * x
+      else:
+        return 3 * x
+
+    func.get_concrete_function(
+        tensor_spec.TensorSpec([None], dtypes.int32), True)
+    func.get_concrete_function(tensor_spec.TensorSpec([None], dtypes.float32))
+
+    root = tracking.AutoCheckpointable()
+    root.f = func
+
+    imported = self.cycle(root, cycles)
+
+    concrete = imported.f.get_concrete_function(
+        training=True, x=tensor_spec.TensorSpec([None], dtypes.int32))
+
+    self.assertAllEqual([2, 4, 6, 8],
+                        concrete(x=constant_op.constant([1, 2, 3, 4])).numpy())
+    with self.assertRaisesRegexp(AssertionError,
+                                 "Could not find matching function to call"):
+      imported.f.get_concrete_function(
+          tensor_spec.TensorSpec([None], dtypes.int32))
+    imported.f.get_concrete_function(
+        tensor_spec.TensorSpec([None], dtypes.int32), True)
 
   def test_concrete_function(self, cycles):
 
