@@ -1602,6 +1602,8 @@ def initialize_platform_name(platform_name):
 
   Raises:
     A runtime exception if the XLA service has already been initialized.
+    A runtime exception if the platform does not exist, or there are no devices
+    with that platform.
   """
   platform_name = _maybe_encode_string(platform_name)
   c_api.InitializePlatformName(platform_name)
