@@ -1,6 +1,8 @@
 // RUN: mlir-opt %s | FileCheck %s
 // Verify the printed output can be parsed.
 // RUN: mlir-opt %s | mlir-opt | FileCheck %s
+// TODO(b/123888077): The following fails due to constant with function pointer.
+// Disabled: mlir-opt -mlir-print-op-generic %s | mlir-opt | FileCheck %s
 
 // CHECK: #map0 = (d0) -> (d0 + 1)
 

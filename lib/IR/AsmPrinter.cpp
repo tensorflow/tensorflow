@@ -70,6 +70,13 @@ static llvm::cl::opt<bool> printPrettyDebugInfo(
     llvm::cl::desc("Print pretty debug info in MLIR output"),
     llvm::cl::init(false));
 
+// Use the generic op output form in the function printer even if the custom
+// form is defined.
+static llvm::cl::opt<bool>
+    printGenericOpForm("mlir-print-op-generic",
+                       llvm::cl::desc("Print the generic op form"),
+                       llvm::cl::init(false), llvm::cl::Hidden);
+
 namespace {
 class ModuleState {
 public:
@@ -1399,6 +1406,9 @@ void FunctionPrinter::printOperation(const Instruction *op) {
     printValueID(op->getResult(0), /*printResultNo=*/false);
     os << " = ";
   }
+
+  if (printGenericOpForm)
+    return printGenericOp(op);
 
   // Check to see if this is a known operation.  If so, use the registered
   // custom printer hook.
