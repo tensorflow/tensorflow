@@ -337,7 +337,7 @@ def converted_call(f, owner, options, *args, **kwargs):
         'Entity %s could not be transformed and will be staged without change.'
         ' Error details can be found in the logs when running with the env'
         ' variable AUTOGRAPH_VERBOSITY=5. Please report this to the AutoGraph'
-        ' team. Cause: %s', e)
+        ' team. Cause: %s', target_entity, e)
 
     return f(*args, **kwargs)
 
