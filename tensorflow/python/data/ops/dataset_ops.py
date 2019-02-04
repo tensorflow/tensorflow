@@ -1331,9 +1331,6 @@ class DatasetV1(DatasetV2):
     Returns:
       An `Iterator` over the elements of this dataset.
     """
-    return self._make_one_shot_iterator()
-
-  def _make_one_shot_iterator(self):  # pylint: disable=missing-docstring
     if context.executing_eagerly():
       return iterator_ops.EagerIterator(self)
 
@@ -1403,9 +1400,6 @@ class DatasetV1(DatasetV2):
     Raises:
       RuntimeError: If eager execution is enabled.
     """
-    return self._make_initializable_iterator(shared_name)
-
-  def _make_initializable_iterator(self, shared_name=None):  # pylint: disable=missing-docstring
     if context.executing_eagerly():
       raise RuntimeError(
           "dataset.make_initializable_iterator is not supported when eager "
@@ -1690,11 +1684,11 @@ def make_one_shot_iterator(dataset):
     A `tf.data.Iterator` over the elements of this dataset.
   """
   try:
-    # Call the defined `_make_one_shot_iterator()` if there is one, because some
+    # Call the defined `make_one_shot_iterator()` if there is one, because some
     # datasets (e.g. for prefetching) override its behavior.
-    return dataset._make_one_shot_iterator()  # pylint: disable=protected-access
+    return dataset.make_one_shot_iterator()
   except AttributeError:
-    return DatasetV1Adapter(dataset)._make_one_shot_iterator()  # pylint: disable=protected-access
+    return DatasetV1Adapter(dataset).make_one_shot_iterator()
 
 
 @tf_export(v1=["data.make_initializable_iterator"])
@@ -1721,11 +1715,11 @@ def make_initializable_iterator(dataset):
     RuntimeError: If eager execution is enabled.
   """
   try:
-    # Call the defined `_make_initializable_iterator()` if there is one, because
-    # some datasets (e.g. for prefetching) override its behavior.
-    return dataset._make_initializable_iterator()  # pylint: disable=protected-access
+    # Call the defined `make_one_shot_iterator()` if there is one, because some
+    # datasets (e.g. for prefetching) override its behavior.
+    return dataset.make_initializable_iterator()
   except AttributeError:
-    return DatasetV1Adapter(dataset)._make_initializable_iterator()  # pylint: disable=protected-access
+    return DatasetV1Adapter(dataset).make_initializable_iterator()
 
 
 @tf_export("data.Options")
