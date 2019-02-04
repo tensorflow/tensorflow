@@ -25,6 +25,7 @@ tf_kernel_library(
         "clip_by_value_op.cc",
         "concat_op.cc",
         "const_op.cc",
+        "control_flow_ops.cc",
         "conv_ops.cc",
         "cross_op.cc",
         "cwise_ops.cc",
