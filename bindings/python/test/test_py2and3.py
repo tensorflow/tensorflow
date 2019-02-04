@@ -90,6 +90,14 @@ class EdscTest(unittest.TestCase):
       str = stmt.__str__()
       self.assertIn("(($1 + ($2 * $3)) - $4)", str)
 
+  def testBoolean(self):
+    with E.ContextManager():
+      i, j, k, l = list(map(E.Expr, [E.Bindable() for _ in range(4)]))
+      stmt1 = E.And(i < j, j < k)
+      stmt2 = E.Negate(E.Or(stmt1, k < l))
+      str = stmt2.__str__()
+      self.assertIn("~((($1 < $2) && ($2 < $3)) || ($3 < $4))", str)
+
   def testSelect(self):
     with E.ContextManager():
       i, j, k = list(map(E.Expr, [E.Bindable() for _ in range(3)]))
@@ -164,6 +172,36 @@ class EdscTest(unittest.TestCase):
       self.assertIn("constant 123 : i32", str)
       self.assertIn("constant 123 : index", str)
 
+  def testMLIRBooleanEmission(self):
+    module = E.MLIRModule()
+    t = module.make_scalar_type("i", 1)
+    m = module.make_memref_type(t, [10]) # i1 tensor
+    f = module.make_function("mkbooltensor", [m, m], [])
+    with E.ContextManager():
+      emitter = E.MLIRFunctionEmitter(f)
+      input, output = list(map(E.Indexed, emitter.bind_function_arguments()))
+      i = E.Expr(E.Bindable())
+      j = E.Expr(E.Bindable())
+      k = E.Expr(E.Bindable())
+      idxs = [i, j, k]
+      zero = emitter.bind_constant_index(0)
+      one = emitter.bind_constant_index(1)
+      ten = emitter.bind_constant_index(10)
+      b1 = E.And(i < j, j < k)
+      b2 = E.Negate(b1)
+      b3 = E.Or(b2, k < j)
+      loop = E.Block([
+          E.For(idxs, [zero]*3, [ten]*3, [one]*3, [
+              output.store([i], E.And(input.load([i]), b3))
+          ]),
+          E.Return()
+      ])
+      emitter.emit(loop)
+      # str = f.__str__()
+      # print(str)
+      module.compile()
+      self.assertNotEqual(module.get_engine_address(), 0)
+
   # TODO(ntv): support symbolic For bounds with EDSCs
   def testMLIREmission(self):
     shape = [3, 4, 5]
@@ -199,7 +237,6 @@ class EdscTest(unittest.TestCase):
 
       module.compile()
       self.assertNotEqual(module.get_engine_address(), 0)
-
 
 if __name__ == "__main__":
   unittest.main()

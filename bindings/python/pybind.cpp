@@ -388,8 +388,17 @@ PYBIND11_MODULE(pybind, m) {
   DEFINE_PYBIND_BINARY_OP("LE", LE);
   DEFINE_PYBIND_BINARY_OP("GT", GT);
   DEFINE_PYBIND_BINARY_OP("GE", GE);
+  DEFINE_PYBIND_BINARY_OP("And", And);
+  DEFINE_PYBIND_BINARY_OP("Or", Or);
 
 #undef DEFINE_PYBIND_BINARY_OP
+
+#define DEFINE_PYBIND_UNARY_OP(PYTHON_NAME, C_NAME)                            \
+  m.def(PYTHON_NAME, [](PythonExpr e1) { return PythonExpr(::C_NAME(e1)); });
+
+  DEFINE_PYBIND_UNARY_OP("Negate", Negate);
+
+#undef DEFINE_PYBIND_UNARY_OP
 
   py::class_<PythonFunction>(m, "Function",
                              "Wrapping class for mlir::Function.")

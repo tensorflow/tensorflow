@@ -174,10 +174,21 @@ Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
     if (un.getKind() == ExprKind::Dealloc) {
       builder->create<DeallocOp>(location, emitExpr(un.getExpr()));
       return nullptr;
+    } else if (un.getKind() == ExprKind::Negate) {
+      auto ctrue = builder->create<mlir::ConstantIntOp>(location, 1,
+                                                        builder->getI1Type());
+      // TODO(dvytin): worth binding constant in ssaBindings in the future?
+      // TODO(dvytin): no need to cast getExpr() to I1?
+      auto val = emitExpr(un.getExpr());
+      assert(val->getType().isInteger(1) &&
+             "Logical Negate expects i1 operand");
+      return sub(builder, location, ctrue, val);
     }
   } else if (auto bin = e.dyn_cast<BinaryExpr>()) {
-    auto *a = emitExpr(bin.getLHS());
-    auto *b = emitExpr(bin.getRHS());
+    auto lhs = bin.getLHS();
+    auto rhs = bin.getRHS();
+    auto *a = emitExpr(lhs);
+    auto *b = emitExpr(rhs);
     if (!a || !b) {
       return nullptr;
     }
@@ -187,22 +198,19 @@ Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
       res = sub(builder, location, a, b);
     } else if (bin.getKind() == ExprKind::Mul) {
       res = mul(builder, location, a, b);
-    }
-    // Vanilla comparisons operators.
-    // else if (bin.getKind() == ExprKind::And) {
-    //   // impl i1
-    //   res = add(builder, location, a, b); // MulIOp on i1
-    // }
-    // else if (bin.getKind() == ExprKind::Not) {
-    //   res = ...; // 1 - cast<i1>()
-    // }
-    // else if (bin.getKind() == ExprKind::Or) {
-    //   res = ...; // not(not(a) and not(b))
-    // }
-
-    // TODO(ntv): signed vs unsiged ??
-    // TODO(ntv): integer vs not ??
-    // TODO(ntv): float cmp
+    } else if (bin.getKind() == ExprKind::And) {
+      // Operands should both be i1
+      assert(a->getType().isInteger(1) && "Logical And expects i1 LHS");
+      assert(b->getType().isInteger(1) && "Logical And expects i1 RHS");
+      res = mul(builder, location, a, b);
+    } else if (bin.getKind() == ExprKind::Or) {
+      assert(a->getType().isInteger(1) && "Logical Or expects i1 LHS");
+      assert(b->getType().isInteger(1) && "Logical Or expects i1 RHS");
+      // a || b = not (not a && not b)
+      res = emitExpr(!(!lhs && !rhs));
+    } // TODO(ntv): signed vs unsiged ??
+      // TODO(ntv): integer vs not ??
+      // TODO(ntv): float cmp
     else if (bin.getKind() == ExprKind::EQ) {
       res = builder->create<CmpIOp>(location, mlir::CmpIPredicate::EQ, a, b);
     } else if (bin.getKind() == ExprKind::NE) {
@@ -628,5 +636,14 @@ DEFINE_EDSL_BINARY_OP(LT, <);
 DEFINE_EDSL_BINARY_OP(LE, <=);
 DEFINE_EDSL_BINARY_OP(GT, >);
 DEFINE_EDSL_BINARY_OP(GE, >=);
+DEFINE_EDSL_BINARY_OP(And, &&);
+DEFINE_EDSL_BINARY_OP(Or, ||);
 
 #undef DEFINE_EDSL_BINARY_OP
+
+#define DEFINE_EDSL_UNARY_OP(FUN_NAME, OP_SYMBOL)                              \
+  edsc_expr_t FUN_NAME(edsc_expr_t e) { return (OP_SYMBOL(Expr(e))); }
+
+DEFINE_EDSL_UNARY_OP(Negate, !);
+
+#undef DEFINE_EDSL_UNARY_OP

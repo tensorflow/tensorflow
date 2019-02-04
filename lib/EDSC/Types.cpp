@@ -142,8 +142,10 @@ Expr mlir::edsc::Expr::operator&&(Expr other) const {
 Expr mlir::edsc::Expr::operator||(Expr other) const {
   return BinaryExpr(ExprKind::Or, *this, other);
 }
+Expr mlir::edsc::Expr::operator!() const {
+  return UnaryExpr(ExprKind::Negate, *this);
+}
 
-// Free functions.
 llvm::SmallVector<Expr, 8> mlir::edsc::makeNewExprs(unsigned n) {
   llvm::SmallVector<Expr, 8> res;
   res.reserve(n);
@@ -288,7 +290,15 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
     os << "$" << unbound.getId();
     return;
   } else if (auto un = this->dyn_cast<UnaryExpr>()) {
-    os << "unknown_unary";
+    switch (un.getKind()) {
+    case ExprKind::Negate:
+      os << "~";
+      break;
+    default: {
+      os << "unknown_unary";
+    }
+    }
+    os << un.getExpr();
   } else if (auto bin = this->dyn_cast<BinaryExpr>()) {
     os << "(" << bin.getLHS();
     switch (bin.getKind()) {
@@ -315,6 +325,12 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
       break;
     case ExprKind::GE:
       os << " >= ";
+      break;
+    case ExprKind::And:
+      os << " && ";
+      break;
+    case ExprKind::Or:
+      os << " || ";
       break;
     default: {
       os << "unknown_binary";

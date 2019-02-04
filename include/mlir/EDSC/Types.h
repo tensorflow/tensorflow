@@ -178,9 +178,6 @@ public:
   Expr(const Expr &other) = default;
   Expr &operator=(const Expr &other) = default;
 
-  explicit operator bool() { return storage; }
-  bool operator!() { return storage == nullptr; }
-
   template <typename U> bool isa() const;
   template <typename U> U dyn_cast() const;
   template <typename U> U cast() const;
@@ -206,8 +203,10 @@ public:
   Expr operator<=(Expr other) const;
   Expr operator>(Expr other) const;
   Expr operator>=(Expr other) const;
+  /// NB: Unlike boolean && and || these do not short-circuit.
   Expr operator&&(Expr other) const;
   Expr operator||(Expr other) const;
+  Expr operator!() const;
 
   /// For debugging purposes.
   const void *getStoragePtr() const { return storage; }
@@ -376,12 +375,13 @@ struct Stmt {
   Expr operator-(Stmt other) const { return getLHS() - other.getLHS(); }
   Expr operator*(Stmt other) const { return getLHS() * other.getLHS(); }
 
-  Expr operator<(Stmt other) const { return getLHS() + other.getLHS(); }
-  Expr operator<=(Stmt other) const { return getLHS() + other.getLHS(); }
-  Expr operator>(Stmt other) const { return getLHS() + other.getLHS(); }
-  Expr operator>=(Stmt other) const { return getLHS() + other.getLHS(); }
-  Expr operator&&(Stmt other) const { return getLHS() + other.getLHS(); }
-  Expr operator||(Stmt other) const { return getLHS() + other.getLHS(); }
+  Expr operator<(Stmt other) const { return getLHS() < other.getLHS(); }
+  Expr operator<=(Stmt other) const { return getLHS() <= other.getLHS(); }
+  Expr operator>(Stmt other) const { return getLHS() > other.getLHS(); }
+  Expr operator>=(Stmt other) const { return getLHS() >= other.getLHS(); }
+  Expr operator&&(Stmt other) const { return getLHS() && other.getLHS(); }
+  Expr operator||(Stmt other) const { return getLHS() || other.getLHS(); }
+  Expr operator!() const { return !getLHS(); }
 
 protected:
   ImplType *storage;
