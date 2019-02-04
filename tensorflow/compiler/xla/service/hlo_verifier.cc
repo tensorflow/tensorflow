@@ -376,6 +376,24 @@ Status ShapeVerifier::HandleGetTupleElement(HloInstruction* get_tuple_element) {
                         get_tuple_element->tuple_index()));
 }
 
+namespace {
+Status SameElementTypesForOperandsAndToApplyParameters(
+    const HloInstruction& instruction, int64 num_operands_to_check) {
+  const ProgramShape& to_apply = instruction.to_apply()->ComputeProgramShape();
+  for (int i = 0; i < num_operands_to_check; ++i) {
+    const Shape& parameter_shape = to_apply.parameters(i);
+    const Shape& operand_shape = instruction.operands()[i]->shape();
+    if (!ShapeUtil::SameElementType(parameter_shape, operand_shape)) {
+      return InvalidArgument(
+          "Shape mismatch between to_apply computation"
+          " parameter and operand %d in %s.",
+          i, instruction.ToString().c_str());
+    }
+  }
+  return Status::OK();
+}
+}  // namespace
+
 Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
   if (reduce->operand_count() % 2 != 0) {
     return InternalError(
@@ -387,9 +405,15 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
   for (const HloInstruction* operand : reduce->operands()) {
     operand_shapes.push_back(&operand->shape());
   }
-  return CheckShape(reduce, ShapeInference::InferReduceShape(
-                                operand_shapes, reduce->dimensions(),
-                                reduce->to_apply()->ComputeProgramShape()));
+  TF_RETURN_IF_ERROR(
+      CheckShape(reduce, ShapeInference::InferReduceShape(
+                             operand_shapes, reduce->dimensions(),
+                             reduce->to_apply()->ComputeProgramShape())));
+
+  return allow_mixed_precision_
+             ? Status::OK()
+             : SameElementTypesForOperandsAndToApplyParameters(
+                   *reduce, reduce->operands().size() - 1);
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
@@ -545,19 +569,31 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
   // arbitrary map dimensions.
   std::vector<int64> map_dims(max_operand_rank);
   std::iota(map_dims.begin(), map_dims.end(), 0);
-  return CheckShape(map, ShapeInference::InferMapShape(
-                             operand_shapes,
-                             map->to_apply()->ComputeProgramShape(), map_dims));
+
+  TF_RETURN_IF_ERROR(CheckShape(
+      map,
+      ShapeInference::InferMapShape(
+          operand_shapes, map->to_apply()->ComputeProgramShape(), map_dims)));
+
+  return allow_mixed_precision_
+             ? Status::OK()
+             : SameElementTypesForOperandsAndToApplyParameters(
+                   *map, map->operands().size());
 }
 
 Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
   TF_RETURN_IF_ERROR(CheckOperandCount(reduce_window, 2));
-  return CheckShape(
+  TF_RETURN_IF_ERROR(CheckShape(
       reduce_window,
       ShapeInference::InferReduceWindowShape(
           reduce_window->operand(0)->shape(),
           reduce_window->operand(1)->shape(), reduce_window->window(),
-          reduce_window->to_apply()->ComputeProgramShape()));
+          reduce_window->to_apply()->ComputeProgramShape())));
+
+  return allow_mixed_precision_
+             ? Status::OK()
+             : SameElementTypesForOperandsAndToApplyParameters(*reduce_window,
+                                                               1);
 }
 
 Status ShapeVerifier::HandleSelectAndScatter(HloInstruction* instruction) {
