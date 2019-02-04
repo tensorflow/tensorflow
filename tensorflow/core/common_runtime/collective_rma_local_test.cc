@@ -46,8 +46,8 @@ class CollectiveRemoteAccessLocalTest : public ::testing::Test {
     TF_CHECK_OK(DeviceFactory::AddDevices(options, kTaskName, &devices));
     device_mgr_.reset(new DeviceMgr(std::move(devices)));
     drl_.reset(new DeviceResolverLocal(device_mgr_.get()));
-    prl_.reset(new CollectiveParamResolverLocal(device_mgr_.get(), drl_.get(),
-                                                kTaskName));
+    prl_.reset(new CollectiveParamResolverLocal(cp, device_mgr_.get(),
+                                                drl_.get(), kTaskName));
     rma_.reset(new CollectiveRemoteAccessLocal(device_mgr_.get(), drl_.get(),
                                                kStepId));
   }
