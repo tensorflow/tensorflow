@@ -26,14 +26,35 @@ namespace {
 
 class TensorDatasetOp : public DatasetOpKernel {
  public:
-  explicit TensorDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
+  explicit TensorDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("Toutput_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     OpInputList inputs;
     OP_REQUIRES_OK(ctx, ctx->input_list("components", &inputs));
-    // TODO(mrry): Validate that the shapes of the "components" tensors match
-    // the "shapes" attr.;
     std::vector<Tensor> components(inputs.begin(), inputs.end());
+    OP_REQUIRES(ctx, components.size() == output_shapes_.size(),
+                errors::InvalidArgument(
+                    "The size of components should be same with that of "
+                    "output_shapes, but got ",
+                    components.size(), " vs. ", output_shapes_.size()));
+    OP_REQUIRES(ctx, components.size() == output_types_.size(),
+                errors::InvalidArgument(
+                    "The size of components should be same with that of "
+                    "Toutput_types, but got ",
+                    components.size(), " vs. ", output_types_.size()));
+
+    for (int i = 0; i < components.size(); ++i) {
+      OP_REQUIRES(ctx, components[i].dtype() == output_types_[i],
+                  errors::InvalidArgument("The dtypes of components should be "
+                                          "same with Toutput_types"));
+      OP_REQUIRES(ctx, output_shapes_[i].IsIdenticalTo(components[i].shape()),
+                  errors::InvalidArgument("The shapes of components should be "
+                                          "same with output_shapes"));
+    }
+
     *output = new Dataset(ctx, std::move(components));
   }
 
@@ -137,6 +158,9 @@ class TensorDatasetOp : public DatasetOpKernel {
     DataTypeVector dtypes_;
     std::vector<PartialTensorShape> shapes_;
   };
+
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TensorDataset").Device(DEVICE_CPU),
