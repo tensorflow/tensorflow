@@ -1707,13 +1707,6 @@ def assert_shapes(shapes, event_shape_only=False, data=None, summarize=None,
           size = actual_sizes[tensor_dim]
           size_specifications[size_symbol] = (size, x, tensor_dim)
 
-    if not rank_assertions:
-      rank_assertions = \
-        [control_flow_ops.no_op(name='static_checks_determined_all_ok')]
-    if not size_assertions:
-      size_assertions = \
-        [control_flow_ops.no_op(name='static_checks_determined_all_ok')]
-
     with ops.control_dependencies(rank_assertions):
       shapes_assertion = control_flow_ops.group(size_assertions)
     return shapes_assertion
