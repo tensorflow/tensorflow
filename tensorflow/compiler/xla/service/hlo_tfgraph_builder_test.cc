@@ -178,6 +178,23 @@ TEST_F(HloTfGraphBuilderTest, EmbeddedComputationsDiamond) {
   EXPECT_GT(generator_.GetGraphDef().node_size(), 0);
 }
 
+TEST_F(HloTfGraphBuilderTest, TokenHasNoLayout) {
+  auto builder = HloComputation::Builder("Token");
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
+  OpMetadata metadata;
+  metadata.set_op_name("x");
+  metadata.set_op_type("y");
+  token->set_metadata(metadata);
+  TF_CHECK_OK(generator_.AddComputation(*builder.Build()));
+  GraphDef graph_def = generator_.GetGraphDef();
+  EXPECT_EQ(graph_def.node_size(), 1);
+  const auto &node = graph_def.node(0);
+  EXPECT_EQ(GetNodeAttr(node, "type").s(), "TOKEN");
+  EXPECT_EQ(GetNodeAttr(node, "layout").s(), "");
+  EXPECT_EQ(GetNodeAttr(node, "tf_op_name").s(), "x");
+  EXPECT_EQ(GetNodeAttr(node, "tf_op_type").s(), "y");
+}
+
 }  // namespace
 }  // namespace hlo_graph_dumper
 }  // namespace xla
