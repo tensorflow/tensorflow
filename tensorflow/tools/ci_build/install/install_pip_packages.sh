@@ -40,8 +40,8 @@ pip2 install virtualenv
 pip3 install virtualenv
 
 # Install six.
-pip2 install --upgrade six==1.10.0
-pip3 install --upgrade six==1.10.0
+pip2 install --upgrade six==1.11.0
+pip3 install --upgrade six==1.11.0
 
 # Install absl-py.
 pip2 install --upgrade absl-py
