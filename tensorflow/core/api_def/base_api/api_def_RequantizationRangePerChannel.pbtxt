@@ -40,7 +40,7 @@ END
   attr {
     name: "clip_value_max"
     description: <<END
-The maximum value of the output that needs to to be clipped.
+The maximum value of the output that needs to be clipped.
 Example: set this to 6 for Relu6. 
 END
   }

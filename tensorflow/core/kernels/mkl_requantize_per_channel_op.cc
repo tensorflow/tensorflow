@@ -65,18 +65,19 @@ class MklRequantizePerChannelOp : public OpKernel {
       size_t depth = input_min_vec.NumElements();
       OP_REQUIRES(
           ctx, input_min_vec.dim_size(0) == depth,
-          errors::InvalidArgument("input_min has incorrect size, expected ", depth,
-                                  " was ", input_min_vec.dim_size(0)));
+          errors::InvalidArgument("input_min has incorrect size, expected ",
+                                  depth, " was ", input_min_vec.dim_size(0)));
       OP_REQUIRES(
           ctx, input_max_vec.dim_size(0) == depth,
-          errors::InvalidArgument("input_max has incorrect size, expected ", depth,
-                                  " was ", input_max_vec.dim_size(0)));
+          errors::InvalidArgument("input_max has incorrect size, expected ",
+                                  depth, " was ", input_max_vec.dim_size(0)));
 
       if (out_type_ == DT_QINT8) DCHECK(input_requested_min_float < 0.0f);
 
       const float factor = (out_type_ == DT_QINT8) ? 127.0f : 255.0f;
-      float requested_min_max = std::max(std::abs(input_requested_min_float),
-                                         std::abs(input_requested_max_float));
+      const float requested_min_max =
+          std::max(std::abs(input_requested_min_float),
+                   std::abs(input_requested_max_float));
       Tensor* output = nullptr;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(kOutputTensorIndex,
                                                input.shape(), &output));
@@ -85,8 +86,8 @@ class MklRequantizePerChannelOp : public OpKernel {
       for (int i = 0; i < depth; ++i) {
         float min_max_from_vec = std::max(std::abs(input_min_vec_data[i]),
                                           std::abs(input_max_vec_data[i]));
-        scales[i] =
-            factor * (min_max_from_vec / requested_min_max / static_cast<float>(1L << 31));
+        scales[i] = factor * (min_max_from_vec / requested_min_max /
+                              static_cast<float>(1L << 31));
       }
 
       mkldnn::primitive_attr reorder_attr;
@@ -132,8 +133,10 @@ class MklRequantizePerChannelOp : public OpKernel {
 
       Tensor* output_min = nullptr;
       Tensor* output_max = nullptr;
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(kOutputMinIndex, {}, &output_min));
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(kOutputMaxIndex, {}, &output_max));
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_output(kOutputMinIndex, {}, &output_min));
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_output(kOutputMaxIndex, {}, &output_max));
 
       output_min->flat<float>()(0) = input_requested_min_float;
       output_max->flat<float>()(0) = input_requested_max_float;

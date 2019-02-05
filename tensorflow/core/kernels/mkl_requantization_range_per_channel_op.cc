@@ -64,12 +64,11 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
     auto input_matrix = input.flat_inner_dims<qint32>();
 
     // TODO: verify performance of not transposing and finding the min max
-    // directly
-    // from input_matrix vs the one presentd below of transposing and using the
-    // transposed matrix as the transpose operation might be more costly.
+    // directly from input_matrix vs the one presented below of transposing and
+    // using the transposed matrix as the transposing operation in itself might
+    // be more costly.
     // Note that this operation is a calibration step for quantization and will
-    // cease
-    // to exist in the final inference graph as it will exist as a const node.
+    // cease to exist in the final inference graph(will exist as a const node).
     auto transposed_input = input_matrix.shuffle(shuffling);
 
     // Find the ranges of each channel in parallel.
