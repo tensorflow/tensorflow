@@ -29,7 +29,6 @@ import os
 from absl.testing import parameterized
 
 from tensorflow.contrib.distribute.python import combinations
-from tensorflow.python.distribute import values
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
