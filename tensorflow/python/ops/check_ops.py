@@ -1629,7 +1629,7 @@ def assert_shapes(shapes, data=None, summarize=None,
         else:
           name = x.name
         raise ValueError(
-            '%s.  Tensor %s.  Symbol `...` for variable number of unspecified '
+            '%s.  Tensor %s.  Symbol `...` for a variable number of unspecified '
             'dimensions is only allowed as the first entry' % (message, name))
 
     # Shape specified as None implies no constraint
@@ -1675,7 +1675,7 @@ def assert_shapes(shapes, data=None, summarize=None,
 
       innermost_dims = False
       if _contains_variable_num_outer_dims_prefix(symbolic_sizes):
-        # inner-most symbolic sizes, i.e. (..., sizes)
+        # Inner-most symbolic sizes, i.e. (..., sizes)
         symbolic_sizes = symbolic_sizes[1:]
         innermost_dims = True
 

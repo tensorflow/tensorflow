@@ -1554,7 +1554,7 @@ class AssertShapesTest(test.TestCase):
         x: ('N', ..., 'Q'),
     }
     regex = (
-        r"Tensor .*.  Symbol `...` for variable number of "
+        r"Tensor .*.  Symbol `...` for a variable number of "
         r"unspecified dimensions is only allowed as the first entry")
     self.raises_static_error(shapes=shapes, regex=regex)
 
