@@ -60,9 +60,9 @@ namespace {
 TfLiteStatus CheckOutputQuantParams(TfLiteContext* context,
                                     const TfLiteTensor* input,
                                     const TfLiteTensor* output) {
+  TF_LITE_ENSURE(context, output->params.scale == 1. / 256);
   if (input->type == kTfLiteUInt8) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
-    TF_LITE_ENSURE(context, output->params.scale == 1. / 256);
   } else {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, -128);
   }
