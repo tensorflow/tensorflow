@@ -17,7 +17,6 @@ limitations under the License.
 #include <string>
 #include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"

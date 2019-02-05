@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/analytical_cost_estimator.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
