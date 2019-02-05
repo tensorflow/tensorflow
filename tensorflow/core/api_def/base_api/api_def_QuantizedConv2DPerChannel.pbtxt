@@ -70,20 +70,19 @@ END
   attr {
     name: "out_type"
     description: <<END
-The quantized type of output tensor that needs to be converted. 
-input tensor.
+The quantized type of output tensor that needs to be converted.
 END
   }
   attr {
     name: "strides"
     description: <<END
-list of strides.
+list of stride values.
 END
   }
   attr {
     name: "dilations"
     description: <<END
-list of strides.
+list of dilation values.
 END
   }
   summary: "Computes QuantizedConv2D per channel."
