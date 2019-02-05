@@ -52,9 +52,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
   _TRT_MAX_WORKSPACE_SIZE_BYTES = 2 << 20
 
   def testGetTensorrtRewriterConfig(self):
-    """Test case for trt_convert.get_tensorrt_rewriter_config()."""
-    rewriter_cfg = trt_convert.get_tensorrt_rewriter_config(
-        rewriter_config=None,
+    """Test case for TrtGraphConverter.get_tensorrt_rewriter_config()."""
+    rewriter_cfg = trt_convert.TrtGraphConverter.get_tensorrt_rewriter_config(
+        rewriter_config_template=None,
         max_batch_size=128,
         max_workspace_size_bytes=1234,
         precision_mode="INT8",
