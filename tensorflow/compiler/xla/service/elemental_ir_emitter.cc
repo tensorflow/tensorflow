@@ -440,14 +440,16 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
                                           {operand_value},
                                           {operand_value->getType()}, b_);
     case HloOpcode::kSign: {
-      // TODO(b/32151903): Ensure consistent sign behavior for -0.0.
       auto type = operand_value->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
-      auto oeq = FCmpOEQ(operand_value, zero);
-      auto olt = FCmpOLT(operand_value, zero);
-      return Select(oeq, zero,
-                    Select(olt, llvm::ConstantFP::get(type, -1.0),
-                           llvm::ConstantFP::get(type, 1.0)));
+      auto ne0_i1 = FCmpONE(operand_value, zero);
+      auto ne0_float = UIToFP(ne0_i1, type);
+      llvm::Value* result = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign, {ne0_float, operand_value},
+          {operand_value->getType()}, b_);
+      auto is_nan = FCmpUNO(operand_value, operand_value);
+      result = Select(is_nan, operand_value, result);
+      return result;
     }
     case HloOpcode::kIsFinite: {
       // abs(x) o!= inf, this works because the comparison returns false if
