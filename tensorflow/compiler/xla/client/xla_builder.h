@@ -315,38 +315,6 @@ class XlaBuilder {
 
   XlaOp ConstantLiteral(const LiteralSlice& literal);
 
-  template <typename NativeT>
-  XlaOp ConstantR0(NativeT value);
-  template <typename NativeT>
-  XlaOp ConstantR1(absl::Span<const NativeT> values);
-  XlaOp ConstantR1(const tensorflow::core::Bitmap& values);
-  template <typename NativeT>
-  XlaOp ConstantR2(
-      std::initializer_list<std::initializer_list<NativeT>> values);
-  template <typename NativeT>
-  XlaOp ConstantFromArrayWithLayout(const Array<NativeT>& values,
-                                    const Layout& layout);
-  template <typename NativeT>
-  XlaOp ConstantFromArray(const Array<NativeT>& values);
-  template <typename NativeT>
-  XlaOp ConstantR2FromArray2DWithLayout(const Array2D<NativeT>& values,
-                                        const Layout& layout);
-  template <typename NativeT>
-  XlaOp ConstantR2FromArray2D(const Array2D<NativeT>& values);
-  template <typename NativeT>
-  XlaOp ConstantR3FromArray3DWithLayout(const Array3D<NativeT>& values,
-                                        const Layout& layout);
-  template <typename NativeT>
-  XlaOp ConstantR3FromArray3D(const Array3D<NativeT>& values);
-  template <typename NativeT>
-  XlaOp ConstantR4FromArray4DWithLayout(const Array4D<NativeT>& values,
-                                        const Layout& layout);
-  template <typename NativeT>
-  XlaOp ConstantR4FromArray4D(const Array4D<NativeT>& values);
-
-  template <typename NativeT>
-  XlaOp ConstantR1(int64 length, NativeT value);
-
   XlaOp Broadcast(const XlaOp& operand,
                   absl::Span<const int64> broadcast_sizes);
 
@@ -1969,81 +1937,6 @@ XlaOp GetDimensionSize(const XlaOp& operand, int64 dimension);
 
 // Implementation details below this point.
 //
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR0(NativeT value) {
-  return ConstantLiteral(LiteralUtil::CreateR0<NativeT>(value));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR1(absl::Span<const NativeT> values) {
-  return ConstantLiteral(LiteralUtil::CreateR1<NativeT>(values));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR1(int64 length, NativeT value) {
-  Literal literal(ShapeUtil::MakeShape(
-      primitive_util::NativeToPrimitiveType<NativeT>(), {length}));
-  literal.PopulateWithValue(value);
-  return ConstantLiteral(literal);
-}
-
-inline XlaOp XlaBuilder::ConstantR1(const tensorflow::core::Bitmap& values) {
-  return ConstantLiteral(LiteralUtil::CreateR1(values));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR2(
-    std::initializer_list<std::initializer_list<NativeT>> values) {
-  return ConstantLiteral(LiteralUtil::CreateR2<NativeT>(values));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantFromArrayWithLayout(const Array<NativeT>& values,
-                                              const Layout& layout) {
-  return ConstantLiteral(
-      LiteralUtil::CreateFromArrayWithLayout<NativeT>(values, layout));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantFromArray(const Array<NativeT>& values) {
-  return ConstantLiteral(LiteralUtil::CreateFromArray<NativeT>(values));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR2FromArray2DWithLayout(
-    const Array2D<NativeT>& values, const Layout& layout) {
-  return ConstantLiteral(
-      LiteralUtil::CreateFromArrayWithLayout<NativeT>(values, layout));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR2FromArray2D(const Array2D<NativeT>& values) {
-  return ConstantLiteral(LiteralUtil::CreateR2FromArray2D<NativeT>(values));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR3FromArray3DWithLayout(
-    const Array3D<NativeT>& values, const Layout& layout) {
-  return ConstantLiteral(
-      LiteralUtil::CreateR3FromArray3DWithLayout<NativeT>(values, layout));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR3FromArray3D(const Array3D<NativeT>& values) {
-  return ConstantFromArray(values);
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR4FromArray4DWithLayout(
-    const Array4D<NativeT>& values, const Layout& layout) {
-  return ConstantFromArrayWithLayout(values, layout);
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR4FromArray4D(const Array4D<NativeT>& values) {
-  return ConstantFromArray(values);
-}
 
 // Free function template implementations.
 
