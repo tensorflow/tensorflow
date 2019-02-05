@@ -2501,6 +2501,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(
       MakeUnique<SimpleOperator<EluOperator>>("ELU", OperatorType::kElu));
   ops.push_back(
+      MakeUnique<SimpleOperator<RoundOperator>>("ROUND", OperatorType::kRound));
+  ops.push_back(
       MakeUnique<SimpleOperator<ReluOperator>>("RELU", OperatorType::kRelu));
   ops.push_back(MakeUnique<SimpleOperator<Relu1Operator>>(
       "RELU_N1_TO_1", OperatorType::kRelu1));
