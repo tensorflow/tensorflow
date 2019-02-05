@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 
 #include <string>
+#include "absl/memory/memory.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -51,12 +52,11 @@ static void BM_ProtoSerializationToBuffer(int iters, int num_nodes) {
     node->set_op(strings::StrCat("op", i % 10));
   }
   testing::StartTiming();
-  int size = graph_def.ByteSizeLong();
+  const size_t size = graph_def.ByteSizeLong();
   for (int i = 0; i < iters; ++i) {
-    char* buf = new char[size];
+    auto buf = absl::make_unique<char[]>(size);
     testing::DoNotOptimize(
-        SerializeToBufferDeterministic(graph_def, buf, size));
-    delete[] buf;
+        SerializeToBufferDeterministic(graph_def, buf.get(), size));
   }
   testing::StopTiming();
 }

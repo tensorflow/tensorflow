@@ -2300,6 +2300,8 @@ cc_library(
         ":lib_proto_parsing",
         ":abi",
         ":core_stringpiece",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@snappy",
@@ -2679,7 +2681,6 @@ tf_cuda_library(
             "example/**/*.cc",
             "framework/**/*.cc",
             "util/**/*.cc",
-        ] + [
             "graph/edgeset.cc",
             "graph/graph.cc",
             "graph/graph_def_builder.cc",
@@ -3715,6 +3716,7 @@ tf_cc_test(
         ":protos_all_cc",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/memory",
     ],
 )
 
