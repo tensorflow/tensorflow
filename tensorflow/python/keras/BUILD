@@ -292,6 +292,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
+        "//tensorflow/python/distribute:distribute_lib",
     ],
 )
 
