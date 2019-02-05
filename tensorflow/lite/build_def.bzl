@@ -306,6 +306,7 @@ def generated_test_models():
         "resolve_constant_strided_slice",
         "reverse_sequence",
         "reverse_v2",
+        "round",
         "rsqrt",
         "shape",
         "sigmoid",
