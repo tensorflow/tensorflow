@@ -444,7 +444,6 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
 /// starting and ending with a load or store op, or just a loop (which could
 /// have other loops nested within). Returns false on an error, true otherwise.
 bool DmaGeneration::runOnBlock(Block *block, uint64_t consumedCapacityBytes) {
-  block->dump();
   if (block->empty())
     return true;
 
