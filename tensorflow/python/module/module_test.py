@@ -151,12 +151,6 @@ class VariableTrackingTest(test.TestCase):
     self.assertEqual(m.child.variables, (m.child.w, m.child.child.w))
     self.assertEqual(m.child.child.variables, (m.child.child.w,))
 
-  def test_owned_variables(self):
-    m = RecursiveModule(3)
-    self.assertEqual(m.owned_variables, (m.w,))
-    self.assertEqual(m.child.owned_variables, (m.child.w,))
-    self.assertEqual(m.child.child.owned_variables, (m.child.child.w,))
-
   def test_trainable_variables(self):
     m = RecursiveModule(3)
     self.assertEqual(m.trainable_variables,
@@ -171,27 +165,8 @@ class VariableTrackingTest(test.TestCase):
     self.assertEqual(len(m.child.trainable_variables), 0)
     self.assertEqual(len(m.child.child.trainable_variables), 0)
 
-  def test_owned_trainable_variables(self):
-    m = RecursiveModule(3)
-    self.assertEqual(m.owned_trainable_variables, (m.w,))
-    self.assertEqual(m.child.owned_trainable_variables, (m.child.w,))
-    self.assertEqual(m.child.child.owned_trainable_variables,
-                     (m.child.child.w,))
-
-  def test_owned_trainable_variables_ignores_non_trainable(self):
-    m = RecursiveModule(3, trainable=False)
-    self.assertEqual(len(m.owned_trainable_variables), 0)
-    self.assertEqual(len(m.child.owned_trainable_variables), 0)
-    self.assertEqual(len(m.child.child.owned_trainable_variables), 0)
-
 
 class ModuleTrackingTest(test.TestCase):
-
-  def test_owned_submodules(self):
-    m = RecursiveModule(3)
-    self.assertEqual(list(m.owned_submodules), [m.child])
-    self.assertEqual(list(m.child.owned_submodules), [m.child.child])
-    self.assertEqual(list(m.child.child.owned_submodules), [])
 
   def test_submodules(self):
     m = RecursiveModule(3)
