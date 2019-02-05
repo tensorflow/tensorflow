@@ -164,7 +164,7 @@ TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_Basic) {
   EXPECT_NEAR(-14.8217, output_min, 0.002);
   EXPECT_NEAR(14.8217, output_max, 0.002);
 
-  // output range is made use in RequantizePerChannelTest_Basic
+  // Output range is made use in RequantizePerChannelTest_Basic
 }
 
 TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_ClipMax) {
