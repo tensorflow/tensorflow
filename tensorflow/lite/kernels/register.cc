@@ -22,10 +22,8 @@ namespace ops {
 namespace custom {
 
 TfLiteRegistration* Register_AUDIO_SPECTROGRAM();
-TfLiteRegistration* Register_LAYER_NORM_LSTM();
 TfLiteRegistration* Register_MFCC();
 TfLiteRegistration* Register_DETECTION_POSTPROCESS();
-TfLiteRegistration* Register_RELU_1();
 TfLiteRegistration* Register_IF();
 
 }  // namespace custom
@@ -230,7 +228,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
              Register_RESIZE_NEAREST_NEIGHBOR());
   AddBuiltin(BuiltinOperator_SKIP_GRAM, Register_SKIP_GRAM());
   AddBuiltin(BuiltinOperator_SPACE_TO_DEPTH, Register_SPACE_TO_DEPTH());
-  AddBuiltin(BuiltinOperator_GATHER, Register_GATHER());
+  AddBuiltin(BuiltinOperator_GATHER, Register_GATHER(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE());
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN());
   AddBuiltin(BuiltinOperator_DIV, Register_DIV());
@@ -301,8 +301,6 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddCustom("Mfcc", tflite::ops::custom::Register_MFCC());
   AddCustom("AudioSpectrogram",
             tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
-  AddCustom("LayerNormLstm", tflite::ops::custom::Register_LAYER_NORM_LSTM());
-  AddCustom("Relu1", tflite::ops::custom::Register_RELU_1());
   AddCustom("TFLite_Detection_PostProcess",
             tflite::ops::custom::Register_DETECTION_POSTPROCESS());
 

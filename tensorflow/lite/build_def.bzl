@@ -2,6 +2,7 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_binary_additional_srcs",
     "tf_cc_shared_object",
     "tf_cc_test",
 )
@@ -168,7 +169,7 @@ def tf_to_tflite(name, src, options, out):
         srcs = [src],
         outs = [out],
         cmd = toco_cmdline,
-        tools = ["//tensorflow/lite/toco:toco"],
+        tools = ["//tensorflow/lite/toco:toco"] + tf_binary_additional_srcs(),
     )
 
 def tflite_to_json(name, src, out):

@@ -6,6 +6,7 @@ load("//tensorflow/core:platform/default/build_config.bzl", "tf_protos_all")
 package(default_visibility = [
     "//tensorflow/core/grappler/optimizers/data:__subpackages__",
     "//tensorflow/core/kernels/data:__pkg__",
+    "//tensorflow/core/kernels/data/experimental:__pkg__",
 ])
 
 cc_library(
@@ -537,6 +538,20 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ptr_util",
     ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "rebatch",
+    srcs = ["rebatch.cc"],
+    hdrs = ["rebatch.h"],
+    deps = [
+        ":graph_utils",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ],
     alwayslink = 1,
 )
 

@@ -198,15 +198,17 @@ llvm::Value* GenerateVF32Log(llvm::IRBuilder<>* b, llvm::Value* input,
   // The smallest non denormalized float number.
   const llvm::APFloat min_norm_pos = GetIeeeF32FromBitwiseRep(0x00800000);
   const llvm::APFloat minus_inf = GetIeeeF32FromBitwiseRep(0xff800000);
+  const llvm::APFloat pos_inf = GetIeeeF32FromBitwiseRep(0x7f800000);
   const llvm::APFloat inv_mant_mask = GetIeeeF32FromBitwiseRep(~0x7f800000);
 
   // invalid_mask is set if x is negative or NaN (and therefore output
   // must be NaN).
   llvm::Value* invalid_mask = vsl.FCmpULEMask(input, vsl.GetZeroVector());
-  llvm::Value* iszero_mask = vsl.FCmpEQMask(input, vsl.GetZeroVector());
+  llvm::Value* is_zero_mask = vsl.FCmpEQMask(input, vsl.GetZeroVector());
+  llvm::Value* is_pos_inf_mask = vsl.FCmpEQMask(input, pos_inf);
 
   // Cut off denormalized stuff.
-  input = vsl.Max(min_norm_pos, input);
+  llvm::Value* tmp0 = vsl.Max(min_norm_pos, input);
 
   // VectorSupportLibrary (intentionally) can't juggle more than one type at a
   // time so drop down to IRBuilder for this bit.
@@ -217,12 +219,12 @@ llvm::Value* GenerateVF32Log(llvm::IRBuilder<>* b, llvm::Value* input,
   llvm::Type* i32_vector_type =
       llvm::VectorType::get(b->getInt32Ty(), vector_width);
 
-  llvm::Value* emm0 = b->CreateLShr(b->CreateBitCast(input, i32_vector_type),
+  llvm::Value* emm0 = b->CreateLShr(b->CreateBitCast(tmp0, i32_vector_type),
                                     vector_constant_23);
 
   // Keep only the fractional part.
-  input = vsl.FloatAnd(input, inv_mant_mask);
-  input = vsl.FloatOr(input, half);
+  tmp0 = vsl.FloatAnd(tmp0, inv_mant_mask);
+  tmp0 = vsl.FloatOr(tmp0, half);
 
   emm0 = b->CreateSub(emm0, vector_constant_0x7f);
   llvm::Value* e = vsl.Add(one, b->CreateSIToFP(emm0, vsl.vector_type()));
@@ -232,39 +234,48 @@ llvm::Value* GenerateVF32Log(llvm::IRBuilder<>* b, llvm::Value* input,
   //     e -= 1;
   //     x = x + x - 1.0;
   //   } else { x = x - 1.0; }
-  llvm::Value* mask = vsl.FCmpOLTMask(input, cephes_SQRTHF);
-  llvm::Value* tmp = vsl.FloatAnd(input, mask);
-  input = vsl.Sub(input, one);
+  llvm::Value* mask = vsl.FCmpOLTMask(tmp0, cephes_SQRTHF);
+  llvm::Value* tmp1 = vsl.FloatAnd(tmp0, mask);
+  tmp0 = vsl.Sub(tmp0, one);
   e = vsl.Sub(e, vsl.FloatAnd(mask, one));
-  input = vsl.Add(input, tmp);
+  tmp0 = vsl.Add(tmp0, tmp1);
 
-  llvm::Value* x2 = vsl.Mul(input, input);
-  llvm::Value* x3 = vsl.Mul(x2, input);
+  llvm::Value* x2 = vsl.Mul(tmp0, tmp0);
+  llvm::Value* x3 = vsl.Mul(x2, tmp0);
 
   llvm::Value *y, *y1, *y2;
-  y = vsl.MulAdd(input, cephes_log_p0, cephes_log_p1);
-  y1 = vsl.MulAdd(input, cephes_log_p3, cephes_log_p4);
-  y2 = vsl.MulAdd(input, cephes_log_p6, cephes_log_p7);
-  y = vsl.MulAdd(y, input, cephes_log_p2);
-  y1 = vsl.MulAdd(y1, input, cephes_log_p5);
-  y2 = vsl.MulAdd(y2, input, cephes_log_p8);
+  y = vsl.MulAdd(tmp0, cephes_log_p0, cephes_log_p1);
+  y1 = vsl.MulAdd(tmp0, cephes_log_p3, cephes_log_p4);
+  y2 = vsl.MulAdd(tmp0, cephes_log_p6, cephes_log_p7);
+  y = vsl.MulAdd(y, tmp0, cephes_log_p2);
+  y1 = vsl.MulAdd(y1, tmp0, cephes_log_p5);
+  y2 = vsl.MulAdd(y2, tmp0, cephes_log_p8);
   y = vsl.MulAdd(y, x3, y1);
   y = vsl.MulAdd(y, x3, y2);
   y = vsl.Mul(y, x3);
 
   y1 = vsl.Mul(cephes_log_q1, e);
-  tmp = vsl.Mul(half, x2);
+  llvm::Value* tmp2 = vsl.Mul(half, x2);
   y = vsl.Add(y, y1);
-  input = vsl.Sub(input, tmp);
+  tmp0 = vsl.Sub(tmp0, tmp2);
   y2 = vsl.Mul(cephes_log_q2, e);
-  input = vsl.Add(input, y);
-  input = vsl.Add(input, y2);
+  tmp0 = vsl.Add(tmp0, y);
+  tmp0 = vsl.Add(tmp0, y2);
 
-  // Negative arg will be NAN, 0 will be -INF.
-  llvm::Value* or_lhs =
-      vsl.FloatAndNot(iszero_mask, vsl.FloatOr(input, invalid_mask));
-  llvm::Value* or_rhs = vsl.FloatAnd(iszero_mask, minus_inf);
-  return vsl.FloatOr(or_lhs, or_rhs);
+  // Contains +/-inf where +/-inf is the correct answer, otherwise 0.
+  llvm::Value* result_inf = vsl.FloatOr(vsl.FloatAnd(is_zero_mask, minus_inf),
+                                        vsl.FloatAnd(is_pos_inf_mask, pos_inf));
+
+  // Contains a finite result or nan.  This is the correct answer only if both
+  // result_minus_inf and result_pos_inf are both 0.
+  //
+  // (This implementation works because 0xffffffff is a nan.)
+  llvm::Value* result_finite_or_nan = vsl.FloatOr(tmp0, invalid_mask);
+
+  // Combine the above into a final result.
+  return vsl.FloatOr(result_inf,
+                     vsl.FloatAndNot(vsl.FloatOr(is_zero_mask, is_pos_inf_mask),
+                                     result_finite_or_nan));
 }
 }  // namespace
 

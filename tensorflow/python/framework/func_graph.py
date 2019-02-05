@@ -556,7 +556,9 @@ def func_graph_from_py_func(name,
         # Even if an argument variable was not used in the function, we've
         # already manually captured the resource Tensor when creating argument
         # placeholders.
-        resource_placeholder = func_graph.captures.pop(arg.handle)
+        resource_placeholder = func_graph.captures.pop(arg.handle, None)
+        if resource_placeholder is None:
+          continue
         arg_variables.add(arg)
         inputs.append(resource_placeholder)
       elif isinstance(arg, ops.Tensor):

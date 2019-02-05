@@ -994,19 +994,6 @@ tf.print('abc')
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
-  def testBatchGather(self):
-    text = "tf.batch_gather(foo, bar)"
-    expected_text1 = "tf.gather(params=foo, indices=bar, batch_dims=-1)"
-    expected_text2 = "tf.gather(batch_dims=-1, params=foo, indices=bar)"
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertIn(new_text, [expected_text1, expected_text2])
-
-    text = "tf.batch_gather(params=foo, indices=bar)"
-    expected_text1 = "tf.gather(params=foo, indices=bar, batch_dims=-1)"
-    expected_text2 = "tf.gather(batch_dims=-1, params=foo, indices=bar)"
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertIn(new_text, [expected_text1, expected_text2])
-
   def testIterators(self):
     for (text, expected) in [
         ("(expr + yielding(data)).make_one_shot_iterator()",
@@ -1171,6 +1158,14 @@ def _log_prob(self, x):
     # pylint: enable=line-too-long
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
+
+  def test_flags_bare(self):
+    _, _, errors, _ = self._upgrade("tf.flags")
+    self.assertIn("tf.flags has been removed", errors[0])
+
+  def test_flags_flags(self):
+    _, _, errors, _ = self._upgrade("tf.flags.FLAGS")
+    self.assertIn("tf.flags has been removed", errors[0])
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

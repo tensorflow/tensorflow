@@ -361,6 +361,16 @@ class DefFunctionTest(test.TestCase):
     add_var.get_concrete_function(constant_op.constant(2.))
     self.assertAllClose([13., 14.], add_var(constant_op.constant(2.)))
 
+  def testSameVariableTwice(self):
+
+    v = variables.Variable(1.0)
+
+    @def_function.function
+    def add(a, b):
+      return a + b
+
+    self.assertAllEqual(add(v, v), 2.0)
+
   def testInitializationInNestedCall(self):
     v_holder = []
 

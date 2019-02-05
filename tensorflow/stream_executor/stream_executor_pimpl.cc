@@ -492,6 +492,10 @@ port::Status StreamExecutor::BlockHostUntilDone(Stream *stream) {
   return result;
 }
 
+port::Status StreamExecutor::GetStatus(Stream *stream) {
+  return implementation_->GetStatus(stream);
+}
+
 void *StreamExecutor::Allocate(uint64 size) {
   if (memory_limit_bytes_ > 0 &&
       mem_alloc_bytes_ + size > memory_limit_bytes_) {

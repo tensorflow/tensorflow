@@ -645,3 +645,34 @@ def map_and_batch(map_func,
                                num_parallel_calls, drop_remainder)
 
   return _apply_fn
+
+
+class _RebatchDataset(dataset_ops.UnaryDataset):
+  """A `Dataset` that divides the batch size by `num_workers`."""
+
+  def __init__(self, input_dataset, num_workers):
+    self._input_dataset = input_dataset
+    output_shapes = input_dataset.output_shapes
+    if len(output_shapes) < 1:
+      raise ValueError("Input shape should have at least one dimension.")
+    if not output_shapes.dims[0].value:
+      raise ValueError("Cannot rebatch unknown batch size datasets.")
+    if output_shapes.dims[0].value % num_workers != 0:
+      raise ValueError(
+          "First dim of input shape: %d is not divisible by num_workers: %d" %
+          (output_shapes[0], num_workers))
+    output_dims = [d for d in output_shapes.dims]
+    output_dims[0] = output_dims[0] // num_workers
+    output_shapes = tensor_shape.TensorShapeV1(output_dims)
+    self._structure = structure.convert_legacy_structure(
+        self._input_dataset.output_types, output_shapes,
+        self._input_dataset.output_classes)
+    variant_tensor = ged_ops.experimental_rebatch_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        num_workers=num_workers,
+        **dataset_ops.flat_structure(self))
+    super(_RebatchDataset, self).__init__(input_dataset, variant_tensor)
+
+  @property
+  def _element_structure(self):
+    return self._structure

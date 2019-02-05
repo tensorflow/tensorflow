@@ -136,19 +136,9 @@ py_library(
     srcs = ["collective_all_reduce_strategy.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":mirrored_strategy",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:collective_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python/distribute:cross_device_ops",
-        "//tensorflow/python/distribute:cross_device_utils",
-        "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python/distribute:multi_worker_util",
-        "//tensorflow/python/distribute:numpy_dataset",
-        "//tensorflow/python/distribute:values",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
     ],
 )
 

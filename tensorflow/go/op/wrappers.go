@@ -22887,6 +22887,34 @@ func SparseSliceGrad(scope *Scope, backprop_val_grad tf.Output, input_indices tf
 	return op.Output(0)
 }
 
+// Creates a dataset that changes the batch size.
+//
+// Creates a dataset that changes the batch size of the dataset to current batch
+// size // num_workers.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+//	num_workers: A scalar representing the number of workers to distribute this batch across. As
+// a result of this transformation the current batch size would end up being
+// divided  by this parameter.
+//
+//
+func ExperimentalRebatchDataset(scope *Scope, input_dataset tf.Output, num_workers tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ExperimentalRebatchDataset",
+		Input: []tf.Input{
+			input_dataset, num_workers,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the gradient of the sigmoid of `x` wrt its input.
 //
 // Specifically, `grad = dy * y * (1 - y)`, where `y = sigmoid(x)`, and
@@ -23985,6 +24013,36 @@ func SdcaOptimizer(scope *Scope, sparse_example_indices []tf.Output, sparse_feat
 		return
 	}
 	return out_example_state_data, out_delta_sparse_weights, out_delta_dense_weights
+}
+
+// Concats all tensors in the list along the 0th dimension.
+//
+// Requires that all tensors have the same shape except the first dimension.
+//
+// input_handle: The input list.
+// element_shape: The shape of the uninitialized elements in the list. If the first
+//   dimension is not -1, it is assumed that all list elements have the same
+//   leading dim.
+// leading_dims: The list of leading dims of uninitialized list elements. Used if
+//   the leading dim of input_handle.element_shape or the element_shape input arg
+//   is not already set.
+// tensor: The concated result.
+// lengths: Output tensor containing sizes of the 0th dimension of tensors in the list, used for computing the gradient.
+//
+func TensorListConcatV2(scope *Scope, input_handle tf.Output, element_shape tf.Output, leading_dims tf.Output, element_dtype tf.DataType) (tensor tf.Output, lengths tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"element_dtype": element_dtype}
+	opspec := tf.OpSpec{
+		Type: "TensorListConcatV2",
+		Input: []tf.Input{
+			input_handle, element_shape, leading_dims,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // MatrixTriangularSolveAttr is an optional argument to MatrixTriangularSolve.
@@ -29120,6 +29178,103 @@ func TensorListScatter(scope *Scope, tensor tf.Output, indices tf.Output, elemen
 		Input: []tf.Input{
 			tensor, indices, element_shape,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Deprecated. Use TensorArrayScatterV3
+//
+// DEPRECATED at GraphDef version 26: Use TensorArrayScatterV3
+func TensorArrayScatterV2(scope *Scope, handle tf.Output, indices tf.Output, value tf.Output, flow_in tf.Output) (flow_out tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorArrayScatterV2",
+		Input: []tf.Input{
+			handle, indices, value, flow_in,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// AsStringAttr is an optional argument to AsString.
+type AsStringAttr func(optionalAttr)
+
+// AsStringPrecision sets the optional precision attribute to value.
+//
+// value: The post-decimal precision to use for floating point numbers.
+// Only used if precision > -1.
+// If not specified, defaults to -1
+func AsStringPrecision(value int64) AsStringAttr {
+	return func(m optionalAttr) {
+		m["precision"] = value
+	}
+}
+
+// AsStringScientific sets the optional scientific attribute to value.
+//
+// value: Use scientific notation for floating point numbers.
+// If not specified, defaults to false
+func AsStringScientific(value bool) AsStringAttr {
+	return func(m optionalAttr) {
+		m["scientific"] = value
+	}
+}
+
+// AsStringShortest sets the optional shortest attribute to value.
+//
+// value: Use shortest representation (either scientific or standard) for
+// floating point numbers.
+// If not specified, defaults to false
+func AsStringShortest(value bool) AsStringAttr {
+	return func(m optionalAttr) {
+		m["shortest"] = value
+	}
+}
+
+// AsStringWidth sets the optional width attribute to value.
+//
+// value: Pad pre-decimal numbers to this width.
+// Applies to both floating point and integer numbers.
+// Only used if width > -1.
+// If not specified, defaults to -1
+func AsStringWidth(value int64) AsStringAttr {
+	return func(m optionalAttr) {
+		m["width"] = value
+	}
+}
+
+// AsStringFill sets the optional fill attribute to value.
+//
+// value: The value to pad if width > -1.  If empty, pads with spaces.
+// Another typical value is '0'.  String cannot be longer than 1 character.
+// If not specified, defaults to ""
+func AsStringFill(value string) AsStringAttr {
+	return func(m optionalAttr) {
+		m["fill"] = value
+	}
+}
+
+// Converts each entry in the given tensor to strings.  Supports many numeric
+//
+// types and boolean.
+func AsString(scope *Scope, input tf.Output, optional ...AsStringAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "AsString",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -35580,103 +35735,6 @@ func TensorArrayGradV2(scope *Scope, handle tf.Output, flow_in tf.Output, source
 			handle, flow_in,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// AsStringAttr is an optional argument to AsString.
-type AsStringAttr func(optionalAttr)
-
-// AsStringPrecision sets the optional precision attribute to value.
-//
-// value: The post-decimal precision to use for floating point numbers.
-// Only used if precision > -1.
-// If not specified, defaults to -1
-func AsStringPrecision(value int64) AsStringAttr {
-	return func(m optionalAttr) {
-		m["precision"] = value
-	}
-}
-
-// AsStringScientific sets the optional scientific attribute to value.
-//
-// value: Use scientific notation for floating point numbers.
-// If not specified, defaults to false
-func AsStringScientific(value bool) AsStringAttr {
-	return func(m optionalAttr) {
-		m["scientific"] = value
-	}
-}
-
-// AsStringShortest sets the optional shortest attribute to value.
-//
-// value: Use shortest representation (either scientific or standard) for
-// floating point numbers.
-// If not specified, defaults to false
-func AsStringShortest(value bool) AsStringAttr {
-	return func(m optionalAttr) {
-		m["shortest"] = value
-	}
-}
-
-// AsStringWidth sets the optional width attribute to value.
-//
-// value: Pad pre-decimal numbers to this width.
-// Applies to both floating point and integer numbers.
-// Only used if width > -1.
-// If not specified, defaults to -1
-func AsStringWidth(value int64) AsStringAttr {
-	return func(m optionalAttr) {
-		m["width"] = value
-	}
-}
-
-// AsStringFill sets the optional fill attribute to value.
-//
-// value: The value to pad if width > -1.  If empty, pads with spaces.
-// Another typical value is '0'.  String cannot be longer than 1 character.
-// If not specified, defaults to ""
-func AsStringFill(value string) AsStringAttr {
-	return func(m optionalAttr) {
-		m["fill"] = value
-	}
-}
-
-// Converts each entry in the given tensor to strings.  Supports many numeric
-//
-// types and boolean.
-func AsString(scope *Scope, input tf.Output, optional ...AsStringAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "AsString",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Deprecated. Use TensorArrayScatterV3
-//
-// DEPRECATED at GraphDef version 26: Use TensorArrayScatterV3
-func TensorArrayScatterV2(scope *Scope, handle tf.Output, indices tf.Output, value tf.Output, flow_in tf.Output) (flow_out tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorArrayScatterV2",
-		Input: []tf.Input{
-			handle, indices, value, flow_in,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

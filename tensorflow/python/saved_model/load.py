@@ -22,6 +22,7 @@ import functools
 import os
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import init_ops
@@ -34,6 +35,7 @@ from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
+from tensorflow.python.training.checkpointable import base
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
 from tensorflow.python.util import compat
@@ -127,9 +129,34 @@ class _Loader(object):
           setattr(type(obj), "__call__", _call_attribute)
 
   def _restore_checkpoint(self):
+    """Load state from checkpoint into the deserialized objects."""
     variables_path = saved_model_utils.get_variables_path(self._export_dir)
+    # TODO(andresp): Clean use of private methods of CheckpointableSaver.
+    # pylint: disable=protected-access
     saver = util.CheckpointableSaver(self.get(0))
-    saver.restore(variables_path).assert_consumed()
+    saver._file_prefix_placeholder = constant_op.constant(variables_path)
+    load_status = saver.restore(variables_path)
+    load_status.assert_existing_objects_matched()
+    checkpoint = load_status._checkpoint
+
+    # When running in eager mode, the `restore` call above has already run and
+    # restored the state of checkpointables, call `position.restore_ops()` will
+    # return an empty list as there is nothing left to do. In graph mode, that
+    # will return the list of ops that must run to restore the object on that
+    # position. We have to wire them in the initializers of the objects so that
+    # they get initialized properly when using common practices (e.g. the ones
+    # used by ManagedSession) without further user action.
+    for object_id, obj in dict(checkpoint.object_by_proto_id).items():
+      position = base._CheckpointPosition(checkpoint=checkpoint,
+                                          proto_id=object_id)
+      restore_ops = position.restore_ops()
+      if restore_ops:
+        if resource_variable_ops.is_resource_variable(obj):
+          obj._initializer_op = restore_ops
+        else:
+          raise NotImplementedError(
+              ("Missing functionality to restore state of object "
+               "%r from the checkpoint." % obj))
 
   def get(self, node_id):
     return self._nodes[node_id]
@@ -210,10 +237,11 @@ def load(export_dir):
       compat.as_bytes("object_graph.pb"))
   if file_io.file_exists(object_graph_filename):
     object_graph_proto = _load_saved_object_graph_proto(object_graph_filename)
-    loader = _Loader(object_graph_proto,
-                     saved_model_proto,
-                     export_dir)
-    root = loader.get(0)
+    with ops.init_scope():
+      loader = _Loader(object_graph_proto,
+                       saved_model_proto,
+                       export_dir)
+      root = loader.get(0)
   else:
     raise NotImplementedError(
         "Currently only SavedModels exported with `tf.saved_model.save` may be "
