@@ -327,6 +327,7 @@ class BackendLinearAlgebraTest(test.TestCase):
         (keras.backend.abs, np.abs),
         (keras.backend.round, np.round),
         (keras.backend.floor, np.floor),
+        (keras.backend.ceil, np.ceil),
         (keras.backend.sign, np.sign),
         (keras.backend.sin, np.sin),
         (keras.backend.cos, np.cos),
