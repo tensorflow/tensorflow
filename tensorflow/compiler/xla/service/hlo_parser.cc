@@ -853,11 +853,8 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kReplicaId: {
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+      if (!ParseOperands(&operands, /*expected_size=*/0) ||
           !ParseAttributes(attrs)) {
-        return false;
-      }
-      if (!operands.empty()) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateReplicaId());
