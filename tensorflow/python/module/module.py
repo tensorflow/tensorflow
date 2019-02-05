@@ -199,27 +199,27 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
 
   @property
   def variables(self):
-    """Collection of variables owned by this module and it's submodules.
+    """Sequence of variables owned by this module and it's submodules.
 
     Note: this method uses reflection to find variables on the current instance
     and submodules. For performance reasons you may wish to cache the result
     of calling this method if you don't expect the return value to change.
 
     Returns:
-      A collection of variables for the current module (sorted by attribute
+      A sequence of variables for the current module (sorted by attribute
       name) followed by variables from all submodules recursively (depth first).
     """
     return tuple(self._flatten(predicate=_IS_VARIABLE))
 
   @property
   def owned_variables(self):
-    """Collection of variables that are attributes of the current module.
+    """Sequence of variables that are attributes of the current module.
 
     See `variables` for a property which returns all variables from the current
     module and all it's submodules recursively.
 
     Returns:
-      A collection of variables which are attributes of the current module. Will
+      A sequence of variables which are attributes of the current module. Will
       yield variables inside nested structures (lists etc) but not in other
       modules.
     """
@@ -227,27 +227,27 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
 
   @property
   def trainable_variables(self):
-    """Collection of variables owned by this module and it's submodules.
+    """Sequence of variables owned by this module and it's submodules.
 
     Note: this method uses reflection to find variables on the current instance
     and submodules. For performance reasons you may wish to cache the result
     of calling this method if you don't expect the return value to change.
 
     Returns:
-      A collection of variables for the current module (sorted by attribute
+      A sequence of variables for the current module (sorted by attribute
       name) followed by variables from all submodules recursively (depth first).
     """
     return tuple(self._flatten(predicate=_IS_TRAINABLE_VARIABLE))
 
   @property
   def owned_trainable_variables(self):
-    """Collection of variables that are attributes of the current module.
+    """Sequence of variables that are attributes of the current module.
 
     See `variables` for a property which returns all variables from the current
     module and all it's submodules recursively.
 
     Returns:
-      A collection of variables which are attributes of the current module. Will
+      A sequence of variables which are attributes of the current module. Will
       yield variables inside nested structures (lists etc) but not in other
       modules.
     """
@@ -256,7 +256,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
 
   @property
   def owned_submodules(self):
-    """Collection of immediate child modules.
+    """Sequence of immediate child modules.
 
     Child modules are modules which are found as properties of the current
     module.
@@ -271,13 +271,13 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
     >>> assert list(c.owned_submodules) == []
 
     Returns:
-      A collection of all child modules.
+      A sequence of all child modules.
     """
     return tuple(self._flatten(recursive=False, predicate=_IS_MODULE))
 
   @property
   def submodules(self):
-    """Collection of all sub-modules.
+    """Sequence of all sub-modules.
 
     Submodules are modules which are properties of this module, or found as
     properties of modules which are properties of this module (and so on).
@@ -292,7 +292,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
     >>> assert list(c.submodules) == []
 
     Returns:
-      A collection of all submodules.
+      A sequence of all submodules.
     """
     return tuple(self._flatten(predicate=_IS_MODULE))
 
