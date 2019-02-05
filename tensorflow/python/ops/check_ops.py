@@ -1629,7 +1629,8 @@ def assert_shapes(shapes, data=None, summarize=None,
         else:
           name = x.name
         raise ValueError(
-            '%s.  Tensor %s.  Symbol `...` for a variable number of unspecified '
+            '%s.  '
+            'Tensor %s.  Symbol `...` for a variable number of unspecified '
             'dimensions is only allowed as the first entry' % (message, name))
 
     # Shape specified as None implies no constraint
