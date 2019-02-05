@@ -1146,13 +1146,6 @@ tf_gen_op_libs(
 
 tf_gen_op_libs(
     op_lib_names = [
-        "mkl_array_ops",
-    ],
-    deps = [":protos_all_cc"],
-)
-
-tf_gen_op_libs(
-    op_lib_names = [
         "audio_ops",
     ],
     deps = [":lib"],
@@ -1290,10 +1283,7 @@ cc_library(
         ":training_ops_op_lib",
         ":user_ops_op_lib",
         ":word2vec_ops",
-    ] + if_mkl([
-        ":mkl_array_ops_op_lib",
-        ":mkl_nn_ops_op_lib",
-    ]) + tf_additional_cloud_op_deps(),
+    ] + if_mkl([":mkl_nn_ops_op_lib"]) + tf_additional_cloud_op_deps(),
     alwayslink = 1,
 )
 
@@ -4533,7 +4523,7 @@ tf_cc_test(
         "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:cwise_op",
         "//third_party/eigen3",
-    ] + if_mkl([":mkl_array_ops_op_lib"]),
+    ],
 )
 
 tf_cc_test(
