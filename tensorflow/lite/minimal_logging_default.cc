@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,20 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/stderr_reporter.h"
 
 #include "tensorflow/lite/minimal_logging.h"
 
+#include <cstdio>
+
 namespace tflite {
+namespace logging_internal {
 
-int StderrReporter::Report(const char* format, va_list args) {
-  logging_internal::MinimalLogger::VLog(TFLITE_LOG_ERROR, format, args);
-  return 0;
+void MinimalLogger::VLog(LogSeverity severity, const char* format,
+                         va_list args) {
+  fprintf(stderr, "%s: ", GetSeverityName(severity));
+  vfprintf(stderr, format, args);
+  fputc('\n', stderr);
 }
 
-ErrorReporter* DefaultErrorReporter() {
-  static StderrReporter* error_reporter = new StderrReporter;
-  return error_reporter;
-}
-
+}  // namespace logging_internal
 }  // namespace tflite

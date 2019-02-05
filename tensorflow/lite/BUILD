@@ -173,18 +173,11 @@ cc_library(
         "stderr_reporter.h",
     ],
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
-    linkopts = [
-    ] + select({
-        "//tensorflow:android": [
-            "-llog",
-        ],
-        "//conditions:default": [
-        ],
-    }),
     deps = [
         ":arena_planner",
         ":graph_info",
         ":memory_planner",
+        ":minimal_logging",
         ":schema_fbs_version",
         ":simple_memory_arena",
         ":string",
@@ -364,6 +357,43 @@ cc_test(
     deps = [
         ":util",
         "//tensorflow/lite/c:c_api_internal",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "minimal_logging",
+    srcs = [
+        "minimal_logging.cc",
+    ] + select({
+        "//tensorflow:android": [
+            "minimal_logging_android.cc",
+        ],
+        "//tensorflow:ios": [
+            "minimal_logging_ios.cc",
+        ],
+        "//conditions:default": [
+            "minimal_logging_default.cc",
+        ],
+    }),
+    hdrs = ["minimal_logging.h"],
+    copts = TFLITE_DEFAULT_COPTS + tflite_copts(),
+    linkopts = select({
+        "//tensorflow:android": ["-llog"],
+        "//conditions:default": [],
+    }),
+    visibility = ["//visibility:private"],
+)
+
+cc_test(
+    name = "minimal_logging_test",
+    size = "small",
+    srcs = ["minimal_logging_test.cc"],
+    tags = [
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
+    deps = [
+        ":minimal_logging",
         "@com_google_googletest//:gtest",
     ],
 )
