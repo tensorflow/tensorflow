@@ -37,6 +37,7 @@ bool IsElementwiseOperator(OperatorType optype) {
     case OperatorType::kRelu:
     case OperatorType::kRelu1:
     case OperatorType::kRelu6:
+    case OperatorType::kRound:
     case OperatorType::kTanh:
     case OperatorType::kSqrt:
     case OperatorType::kSquare:

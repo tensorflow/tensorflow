@@ -82,6 +82,7 @@ enum class OperatorType : uint8 {
   kTransposeConv,
   kCast,
   kFloor,
+  kRound,
   kGather,
   kResizeBilinear,
   kSin,
@@ -1714,6 +1715,16 @@ struct FloorOperator : Operator {
 // TensorFlow equivalent: Ceil
 struct CeilOperator : Operator {
   CeilOperator() : Operator(OperatorType::kCeil) {}
+};
+
+// Round operator.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Round
+struct RoundOperator : Operator {
+  RoundOperator() : Operator(OperatorType::kRound) {}
 };
 
 // Gather operator. It gathers slices from params according to indices.

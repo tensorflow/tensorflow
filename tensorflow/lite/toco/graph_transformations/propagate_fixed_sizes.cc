@@ -2140,6 +2140,7 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
     case OperatorType::kCast:
     case OperatorType::kFloor:
     case OperatorType::kCeil:
+    case OperatorType::kRound:
     case OperatorType::kExp:
     case OperatorType::kSin:
     case OperatorType::kCos:
