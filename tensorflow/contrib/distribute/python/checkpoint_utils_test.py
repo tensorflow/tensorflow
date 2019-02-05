@@ -124,6 +124,8 @@ class CheckpointUtilsWithDistributionStrategyTest(
       if in_replica_mode:
         distribution.extended.call_for_each_replica(
             init_and_verify, [g])
+      else:
+        init_and_verify(g)
 
 
 if __name__ == "__main__":
