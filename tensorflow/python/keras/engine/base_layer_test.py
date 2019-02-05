@@ -369,6 +369,27 @@ class BaseLayerTest(keras_parameterized.TestCase):
       function_name = last_entry[2]
       self.assertEqual(function_name, 'easily_identifiable_name')
 
+  # Cannot be enabled with `run_eagerly=True`, see b/123904578
+  @test_util.run_all_in_graph_and_eager_modes
+  def test_layer_can_return_variable(self):
+
+    class ComputeSum(keras.layers.Layer):
+
+      def __init__(self):
+        super(ComputeSum, self).__init__()
+        self.total = variables.Variable(
+            initial_value=array_ops.zeros((1, 1)), trainable=False)
+        if not context.executing_eagerly():
+          keras.backend.get_session().run(self.total.initializer)
+
+      def call(self, inputs):
+        self.total.assign_add(inputs)
+        return self.total
+
+    inputs = keras.Input(shape=(1,))
+    model = keras.Model(inputs, ComputeSum()(inputs))
+    model.predict(np.ones((1, 1)))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class NestedTrackingTest(test.TestCase):

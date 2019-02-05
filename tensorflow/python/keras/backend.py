@@ -2893,7 +2893,7 @@ class GraphExecutionFunction(object):
                       'should be a list or tuple.')
     self.inputs = nest.flatten(inputs)
     self._outputs_structure = outputs
-    self.outputs = nest.flatten(outputs)
+    self.outputs = cast_variables_to_tensor(nest.flatten(outputs))
     with ops.control_dependencies(self.outputs):
       updates_ops = []
       for update in updates:
@@ -3053,14 +3053,13 @@ class EagerExecutionFunction(object):
     if not isinstance(updates, (list, tuple)):
       raise TypeError('`updates` in a Keras backend function '
                       'should be a list or tuple.')
+    self.name = name
     self.inputs = nest.flatten(inputs)
     self._outputs_structure = outputs
-    self.outputs = nest.flatten(outputs)
-    self.name = name
-
     graph = get_graph()
     # Consolidate updates
     with graph.as_default():
+      self.outputs = cast_variables_to_tensor(nest.flatten(outputs))
       with ops.control_dependencies(self.outputs):
         # In general, updates should be run after the outputs have been
         # computed. However, we can only ensure this when we create
@@ -5262,3 +5261,13 @@ def configure_and_create_distributed_session(distribution_strategy):
 def is_tpu_strategy(strategy):
   """We're executing TPU Strategy."""
   return strategy is not None and strategy.__class__.__name__ == 'TPUStrategy'
+
+
+def cast_variables_to_tensor(tensors):
+
+  def _cast_variables_to_tensor(tensor):
+    if isinstance(tensor, variables_module.Variable):
+      return array_ops.identity(tensor)
+    return tensor
+
+  return nest.map_structure(_cast_variables_to_tensor, tensors)
