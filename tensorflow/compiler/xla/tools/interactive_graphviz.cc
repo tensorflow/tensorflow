@@ -139,9 +139,10 @@ HloComputation* FindComputation(const HloModule& module,
 // Print a help message describing the various available commands.
 void DoHelpCommand() {
   std::cout << R"(Commands:
-  <instruction> [<width>]
-    Renders a neighborhood of <width> nodes around <instruction>.  If <width>
-    is not provided, the default value is )"
+  <instruction> [<width>] [/ <boundary_instruction>+]
+    Renders a neighborhood of <width> nodes around <instruction>, without going
+    beyond the optional boundary instructions.  If <width> is not provided, 
+    the default value is )"
             << kDefaultWidth << R"(.
   allpaths <instruction> <instruction> [<n>]
     Renders a subset of all paths from one instruction to the other.  Either
@@ -457,12 +458,6 @@ void DoAllPathsCommand(const Options& opts, const HloModule& module,
 // Plot a given instruction neighborhood or computation with graphviz.
 void DoPlotCommand(const Options& opts, const HloModule& module,
                    const std::vector<string>& tokens) {
-  if (tokens.size() > 2) {
-    std::cerr << R"(Illegal input.  Enter e.g. "%fusion.1 42" or "%fusion.1".)"
-              << std::endl;
-    return;
-  }
-
   string node_name = tokens[0];
 
   // Find the node with the given name.
@@ -475,16 +470,43 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
   }
 
   uint64 graph_width = kDefaultWidth;
-  if (tokens.size() == 2) {
+  std::set<const HloInstruction*> boundary;
+  if (tokens.size() >= 2) {
     if (comp) {
       std::cerr << "Can only use graph-size parameter with instructions, but "
                 << node_name << " is a computation." << std::endl;
       return;
     }
+
+    int bound_index = tokens.size();
     if (!absl::SimpleAtoi(tokens[1], &graph_width)) {
-      std::cerr << "Can't parse '" << tokens[1] << "' as an integer."
-                << std::endl;
-      return;
+      if (tokens[1] != "/") {
+        std::cerr << "Can't parse '" << tokens[1] << "' as an integer."
+                  << std::endl;
+        return;
+      }
+      graph_width = kDefaultWidth;
+      bound_index = 2;
+    } else {
+      if (tokens.size() > 2) {
+        if (tokens[2] != "/") {
+          std::cerr << "Expect a /, but get a '" << tokens[1] << "'."
+                    << std::endl;
+          return;
+        }
+        bound_index = 3;
+      }
+    }
+    while (bound_index < tokens.size()) {
+      string bnode_name = tokens[bound_index];
+      const HloInstruction* binstr = FindInstruction(module, bnode_name);
+      if (!binstr) {
+        std::cerr << "Couldn't find HloInstruction named " << node_name << "."
+                  << std::endl;
+        return;
+      }
+      boundary.insert(binstr);
+      bound_index++;
     }
   }
 
@@ -496,7 +518,9 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
         /*show_backend_config=*/show_backend_config));
   } else {
     DisplayGraphHandle(opts, hlo_graph_dumper::DumpNeighborhoodAround(
-        *instr, graph_width, /*show_backend_config=*/show_backend_config));
+                                 *instr, graph_width,
+                                 /*boundary=*/&boundary,
+                                 /*show_backend_config=*/show_backend_config));
   }
 }
 
