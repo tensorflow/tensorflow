@@ -223,6 +223,7 @@ void QuantizedConcatTest::TestSecondDim8Bit(float first_min, float first_max,
   const float output_max = GetOutput(2)->flat<float>()(0);
   Tensor output_float =
       QuantizedTensorToFloat<quint8>(output_quantized, output_min, output_max);
+  // Using the same error tolerance as in Eigen QuantizedConcat test
   test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
 }
 
