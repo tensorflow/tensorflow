@@ -1784,9 +1784,10 @@ class Model(Network):
       batch_size = 32
     return batch_size
 
-  @property
-  def _default_save_signature(self):
-    return saving_utils.trace_model_call(self)
+  def _list_functions_for_serialization(self):
+    return {
+        '_default_save_signature': saving_utils.trace_model_call(self)
+    }
 
   def _set_sample_weight_attributes(self, sample_weight_mode,
                                     skip_target_weighing_indices):
