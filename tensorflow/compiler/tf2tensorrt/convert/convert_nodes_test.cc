@@ -2832,6 +2832,9 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
 
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_strided_slice", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
 
     const DataVec input_data{
         {"input", test::AsTensor<float>({1, 2, 3, 4, 5, 6})}};
@@ -2863,21 +2866,19 @@ TEST_F(OpConverterTest, ConvertSlice) {
     AddTestWeights<int32>("begin", {4}, {0, 0, -1, 0});
     AddTestWeights<int32>("size", {4}, {1, 1, 2, 3});
     RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "ellipsis_mask is not supported for StridedSlice, at "
-        "my_strided_slice");
+        node_def, error::INVALID_ARGUMENT,
+        "\"begin\" for dimension 2 in Slice is out of range, at my_slice");
   }
   {
     // Begin is above bounds, should fail.
     Reset();
     NodeDef node_def = get_slice_nodedef();
     AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<int32>("begin", {4}, {0, 0, 2, 0});
+    AddTestWeights<int32>("begin", {4}, {0, 0, 3, 0});
     AddTestWeights<int32>("size", {4}, {1, 1, 2, 3});
     RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "ellipsis_mask is not supported for StridedSlice, at "
-        "my_strided_slice");
+        node_def, error::INVALID_ARGUMENT,
+        "\"begin\" for dimension 2 in Slice is out of range, at my_slice");
   }
   {
     // Size is below bounds, should fail.
@@ -2885,11 +2886,11 @@ TEST_F(OpConverterTest, ConvertSlice) {
     NodeDef node_def = get_slice_nodedef();
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
-    AddTestWeights<int32>("size", {4}, {1, 1, -2, 3});
+    AddTestWeights<int32>("size", {4}, {1, 1, 2, -2});
     RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "ellipsis_mask is not supported for StridedSlice, at "
-        "my_strided_slice");
+        node_def, error::INVALID_ARGUMENT,
+        "\"begin\" + \"size\" for dimension 3 in Slice is out of range, at "
+        "my_slice");
   }
   {
     // Size is above bounds, should fail.
@@ -2899,9 +2900,64 @@ TEST_F(OpConverterTest, ConvertSlice) {
     AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
     AddTestWeights<int32>("size", {4}, {1, 1, 3, 3});
     RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "ellipsis_mask is not supported for StridedSlice, at "
-        "my_strided_slice");
+        node_def, error::INVALID_ARGUMENT,
+        "\"begin\" + \"size\" for dimension 2 in Slice is out of range, at "
+        "my_slice");
+  }
+
+  struct TestParams {
+    TestParams(const std::vector<int>& input_dims,
+               const std::vector<int>& begin, const std::vector<int>& size,
+               const std::vector<int>& expected_output_dims,
+               const std::vector<int>& expected_output)
+        : input_dims(input_dims),
+          begin(begin),
+          size(size),
+          expected_output_dims(expected_output_dims),
+          expected_output(expected_output) {}
+
+    std::vector<int> input_dims;
+    std::vector<int> begin;
+    std::vector<int> size;
+    std::vector<int> expected_output_dims;
+    std::vector<int> expected_output;
+  };
+
+  // Ok.
+  const int kSliceOKCases = 5;
+  TestParams ok_params[kSliceOKCases] = {
+    TestParams{{1, 2, 3}, {0, 0, 0, 0}, {-1, -1, -1, -1},  {1, 2, 3}, {1, 2, 3, 4, 5, 6}},
+    TestParams{{1, 2, 3}, {0, 0, 0, 0}, {1, 1, 2, 3}, {1, 2, 3}, {1, 2, 3, 4, 5, 6}},
+    TestParams{{1, 2, 3}, {0, 0, 0, 0}, {1, -1, 2, 2}, {1, 2, 2}, {1, 2, 4, 5}},
+    TestParams{{6}, {0, 1}, {1, 5}, {5}, {2, 3, 4, 5, 6}},
+    TestParams{{6}, {0, 1}, {-1, 3}, {3}, {2, 3, 4}},
+  };
+
+  for (int i = 0; i < kSliceOKCases; i++) {
+    Reset();
+    NodeDef node_def = get_slice_nodedef();
+    AddTestTensor("input", ok_params[i].input_dims);
+    AddTestWeights<int32>("begin",
+                          {static_cast<int>(ok_params[i].begin.size())},
+                          ok_params[i].begin);
+    AddTestWeights<int32>("size", {static_cast<int>(ok_params[i].size.size())},
+                          ok_params[i].size);
+    RunValidationAndConversion(node_def);
+
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_slice", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+
+    const DataVec input_data{
+        {"input", test::AsTensor<float>({1, 2, 3, 4, 5, 6})}};
+    DataVec output_data{
+        {"my_slice",
+         ConstructTensor<float>(ok_params[i].expected_output.size())}};
+    BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                ElementsAreArray(ok_params[i].expected_output));
   }
 }
 
