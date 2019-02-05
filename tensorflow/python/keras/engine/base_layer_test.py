@@ -456,6 +456,34 @@ class NestedTrackingTest(test.TestCase):
       self.assertEqual(len(layer.updates), 3)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class NameScopingTest(keras_parameterized.TestCase):
+
+  def test_name_scope_layer(self):
+    x = keras.backend.placeholder(shape=(10, 10))
+    layer = keras.layers.Dense(10, name='MyName')
+    layer(x)
+    self.assertEqual(layer.bias.name, 'MyName/bias:0')
+    self.assertEqual(layer.kernel.name, 'MyName/kernel:0')
+
+  def test_name_scope_sublayer(self):
+    x = keras.backend.placeholder(shape=(10, 10))
+    layer = keras.layers.Dense(
+        10, activation=keras.layers.ReLU(name='MyAct'), name='MyName2')
+    y = layer(x)
+    self.assertEqual(layer.bias.name, 'MyName2/bias:0')
+    self.assertEqual(layer.kernel.name, 'MyName2/kernel:0')
+    self.assertEqual(y.name, 'MyName2/MyAct/Relu:0')
+
+  def test_name_scope_tf_tensor(self):
+    x = ops.convert_to_tensor(np.ones((10, 10)))
+    layer = keras.layers.Dense(
+        10, activation=keras.layers.ReLU(name='MyAct'), name='MyName3')
+    layer(x)
+    self.assertEqual(layer.bias.name, 'MyName3/bias:0')
+    self.assertEqual(layer.kernel.name, 'MyName3/kernel:0')
+
+
 if __name__ == '__main__':
   ops.enable_eager_execution()
   test.main()
