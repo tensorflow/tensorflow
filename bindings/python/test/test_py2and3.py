@@ -93,8 +93,8 @@ class EdscTest(unittest.TestCase):
   def testBoolean(self):
     with E.ContextManager():
       i, j, k, l = list(map(E.Expr, [E.Bindable() for _ in range(4)]))
-      stmt1 = E.And(i < j, j >= k)
-      stmt2 = E.Negate(E.Or(stmt1, k == l))
+      stmt1 = (i < j) & (j >= k)
+      stmt2 = ~(stmt1 | (k == l))
       str = stmt2.__str__()
       self.assertIn("~((($1 < $2) && ($2 >= $3)) || ($3 == $4))", str)
 

@@ -529,6 +529,11 @@ PYBIND11_MODULE(pybind, m) {
                         PythonExpr e2) { return PythonExpr(::EQ(e1, e2)); })
       .def("__ne__", [](PythonExpr e1,
                         PythonExpr e2) { return PythonExpr(::NE(e1, e2)); })
+      .def("__and__", [](PythonExpr e1,
+                         PythonExpr e2) { return PythonExpr(::And(e1, e2)); })
+      .def("__or__", [](PythonExpr e1,
+                        PythonExpr e2) { return PythonExpr(::Or(e1, e2)); })
+      .def("__invert__", [](PythonExpr e) { return PythonExpr(::Negate(e)); })
       .def("__str__", &PythonExpr::str,
            R"DOC(Returns the string value for the Expr)DOC");
 
