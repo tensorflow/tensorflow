@@ -5,7 +5,7 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 exports_files(glob([
@@ -395,6 +395,32 @@ cc_test(
     deps = [
         ":minimal_logging",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+# Shared lib target for convenience, pulls in the core runtime and builtin ops.
+# Note: This target is not yet finalized, and the exact set of exported (C/C++)
+# APIs is subject to change.
+tflite_cc_shared_object(
+    name = "libtensorflowlite.so",
+    linkopts = select({
+        "//tensorflow:darwin": [
+            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
+            "$(location //tensorflow/lite:tflite_exported_symbols.lds)",
+            "-Wl,-install_name,@rpath/libtensorflowlite.so",
+        ],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-z defs",
+            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
+            "$(location //tensorflow/lite:tflite_version_script.lds)",
+        ],
+    }),
+    deps = [
+        ":framework",
+        ":tflite_exported_symbols.lds",
+        ":tflite_version_script.lds",
+        "//tensorflow/lite/kernels:builtin_ops",
     ],
 )
 
