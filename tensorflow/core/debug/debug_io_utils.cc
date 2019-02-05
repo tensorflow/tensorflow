@@ -730,7 +730,7 @@ Status DebugGrpcChannel::Connect(const int64 timeout_micros) {
   ::grpc::ChannelArguments args;
   args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
   // Avoid problems where default reconnect backoff is too long (e.g., 20 s).
-  args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
+  args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
   channel_ = ::grpc::CreateCustomChannel(
       server_stream_addr_, ::grpc::InsecureChannelCredentials(), args);
   if (!channel_->WaitForConnected(
