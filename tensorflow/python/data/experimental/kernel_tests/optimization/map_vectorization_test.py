@@ -26,6 +26,7 @@ from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -378,6 +379,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     def map_fn(x):
       # x has leading dimension 5, this will raise an error
       return array_ops.gather(x, 10)
+
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  r"indices = 10 is not in \[0, 5\)"):
       base_dataset = dataset_ops.Dataset.range(5).repeat(5).batch(
@@ -478,8 +480,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertDatasetsEqual(optimized, unoptimized)
 
-  # TODO(b/117581999): Add eager coverage for the following tests.
-  def testSkipEagerOptimizationIgnoreStateful(self):
+  def testOptimizationIgnoreStateful(self):
 
     def map_fn(x):
       with ops.control_dependencies([check_ops.assert_equal(x, 0)]):
@@ -489,10 +490,13 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
                                                            [3, 4]]).repeat(5)
     unoptimized, optimized = self._get_test_datasets(
         base_dataset, map_fn, expect_optimized=False)
-    self.assertDatasetsRaiseSameError(
-        unoptimized, optimized, errors.InvalidArgumentError,
-        [("OneShotIterator", "OneShotIterator_1", 1),
-         ("IteratorGetNext", "IteratorGetNext_1", 1)])
+    replacements = None
+    if not context.executing_eagerly():
+      # In graph mode, the ops have unique names.
+      replacements = [("OneShotIterator", "OneShotIterator_1", 1),
+                      ("IteratorGetNext", "IteratorGetNext_1", 1)]
+    self.assertDatasetsRaiseSameError(unoptimized, optimized,
+                                      errors.InvalidArgumentError, replacements)
 
   def testOptimizationIgnoreRagged(self):
     # Make sure we ignore inputs that might not be uniformly sized
@@ -505,8 +509,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
         base_dataset, map_fn, expect_optimized=False)
     self.assertDatasetsEqual(unoptimized, optimized)
 
-  # TODO(b/117581999): Add eager coverage for the following tests.
-  def testSkipEagerOptimizationIgnoreRaggedMap(self):
+  def testOptimizationIgnoreRaggedMap(self):
     # Don't optimize when the output of the map fn shapes are unknown.
     def map_fn(x):
       return array_ops.tile(x, x)
@@ -514,10 +517,13 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     base_dataset = dataset_ops.Dataset.range(20).batch(1, drop_remainder=True)
     unoptimized, optimized = self._get_test_datasets(
         base_dataset, map_fn, expect_optimized=False)
-    self.assertDatasetsRaiseSameError(
-        unoptimized, optimized, errors.InvalidArgumentError,
-        [("OneShotIterator", "OneShotIterator_1", 1),
-         ("IteratorGetNext", "IteratorGetNext_1", 1)])
+    replacements = None
+    if not context.executing_eagerly():
+      # In graph mode, the ops have unique names.
+      replacements = [("OneShotIterator", "OneShotIterator_1", 1),
+                      ("IteratorGetNext", "IteratorGetNext_1", 1)]
+    self.assertDatasetsRaiseSameError(unoptimized, optimized,
+                                      errors.InvalidArgumentError, replacements)
 
   def testOptimizationWithUnknownBatchShape(self):
     tensor = sparse_tensor.SparseTensor(
@@ -534,6 +540,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.map_vectorization = True
     optimized = unoptimized.with_options(options)
     self.assertDatasetsEqual(unoptimized, optimized)
+
 
 if __name__ == "__main__":
   test.main()
