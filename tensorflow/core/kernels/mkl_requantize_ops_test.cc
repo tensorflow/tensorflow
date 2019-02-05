@@ -71,14 +71,12 @@ void MklRequantizatedOpsTestHelper::Setup(Tensor &input_tensor_qint32,
   // ---------------------------------------------------------------------------
   // The input T and weights W1 (or W2) will be convolved.
   // The output tensor T is in int32 whose range is [-2^31, 2^31).
-  // For simplicity, we truncate the range to (-2^31, 2^31) to make it
-  // symmetric.
-  // The range of the convolved T*W1 is ((2^31)-1) * 5.0/255 * 2.0/127 =
-  // 663110.59
+  // For simplicity and symmetry, we truncate the above range to (-2^31, 2^31).
+  // The range of convolved T*W1 is ((2^31)-1) * 5.0/255 * 2.0/127 = 663110.59
   // So the range of convolved T*W1 in int32(-2^31, 2^31) that maps to
-  // orig T range in FP32[0, 5.0] * [-2.0, 2.0] is [-663110.59, 663110.59]
+  // orig T range in FP32[0, 5.0] * [-2.0, 2.0] is [-663110.59, 663110.59].
 
-  // The range of the convolved T*W2 is (2^31-1) * 5.0/255 * 3.0/127 = 994665.88
+  // The range of convolved T*W2 is (2^31-1) * 5.0/255 * 3.0/127 = 994665.88
   // So the range of convolved T*W2 in int32(-2^31, 2^31) that maps to
   // orig T range in FP32 [0, 5.0] * [-3.0, 3.0]  is [-994665.88, 994665.88]
 
@@ -166,7 +164,7 @@ TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_Basic) {
   EXPECT_NEAR(-14.8217, output_min, 0.002);
   EXPECT_NEAR(14.8217, output_max, 0.002);
 
-  // output range is made use in requantizePerChannelTest_Basic
+  // output range is made use in RequantizePerChannelTest_Basic
 }
 
 TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_ClipMax) {

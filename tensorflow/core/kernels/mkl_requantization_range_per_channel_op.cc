@@ -89,7 +89,7 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
           scale * static_cast<float>(abs_max) / static_cast<float>(1L << 31);
       if (min_per_channel < 0) is_non_negative = false;
 
-      // thread-local out_min_max.
+      // Thread-local out_min_max.
       out_min_max = std::max(out_min_max, ranges[i]);
     }
     // All local out_min_max gets max-reduced into one global out_min_max at
