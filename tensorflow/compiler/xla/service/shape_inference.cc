@@ -534,6 +534,10 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                     p.edge_padding_high() +
                     std::max<int64>(operand_shape.dimensions(i) - 1, 0LL) *
                         p.interior_padding();
+    if (dimensions[i] < 0) {
+      return InvalidArgument("Padding result in negative size for dimension %d",
+                             i);
+    }
     is_dynamic[i] = operand_shape.is_dynamic_dimension(i);
   }
 
