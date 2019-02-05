@@ -624,6 +624,24 @@ py_test(
 )
 
 py_test(
+    name = "shard_dataset_serialization_test",
+    size = "medium",
+    srcs = ["shard_dataset_serialization_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
     name = "shuffle_and_repeat_dataset_serialization_test",
     size = "medium",
     srcs = ["shuffle_and_repeat_dataset_serialization_test.py"],

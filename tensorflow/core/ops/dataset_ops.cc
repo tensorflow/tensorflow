@@ -275,6 +275,22 @@ REGISTER_OP("BatchDatasetV2")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("ShardDataset")
+    .Input("input_dataset: variant")
+    .Input("num_shards: int64")
+    .Input("index: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // num_shards should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      // index should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 // TODO(mrry): Validate that `padded_shapes` are all vectors, the lengths of
 // `output_types` and `output_shapes` are `N` the `output_shapes` are (as far as
 // possible to tell statically) compatible with `padded_shapes`, and that
