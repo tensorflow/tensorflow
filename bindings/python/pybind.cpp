@@ -388,6 +388,8 @@ PYBIND11_MODULE(pybind, m) {
   DEFINE_PYBIND_BINARY_OP("LE", LE);
   DEFINE_PYBIND_BINARY_OP("GT", GT);
   DEFINE_PYBIND_BINARY_OP("GE", GE);
+  DEFINE_PYBIND_BINARY_OP("EQ", EQ);
+  DEFINE_PYBIND_BINARY_OP("NE", NE);
   DEFINE_PYBIND_BINARY_OP("And", And);
   DEFINE_PYBIND_BINARY_OP("Or", Or);
 
@@ -523,6 +525,10 @@ PYBIND11_MODULE(pybind, m) {
                         PythonExpr e2) { return PythonExpr(::GT(e1, e2)); })
       .def("__ge__", [](PythonExpr e1,
                         PythonExpr e2) { return PythonExpr(::GE(e1, e2)); })
+      .def("__eq__", [](PythonExpr e1,
+                        PythonExpr e2) { return PythonExpr(::EQ(e1, e2)); })
+      .def("__ne__", [](PythonExpr e1,
+                        PythonExpr e2) { return PythonExpr(::NE(e1, e2)); })
       .def("__str__", &PythonExpr::str,
            R"DOC(Returns the string value for the Expr)DOC");
 

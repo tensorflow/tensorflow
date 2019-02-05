@@ -326,6 +326,12 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
     case ExprKind::GE:
       os << " >= ";
       break;
+    case ExprKind::EQ:
+      os << " == ";
+      break;
+    case ExprKind::NE:
+      os << " != ";
+      break;
     case ExprKind::And:
       os << " && ";
       break;

@@ -240,6 +240,8 @@ edsc_expr_t LT(edsc_expr_t e1, edsc_expr_t e2);
 edsc_expr_t LE(edsc_expr_t e1, edsc_expr_t e2);
 edsc_expr_t GT(edsc_expr_t e1, edsc_expr_t e2);
 edsc_expr_t GE(edsc_expr_t e1, edsc_expr_t e2);
+edsc_expr_t EQ(edsc_expr_t e1, edsc_expr_t e2);
+edsc_expr_t NE(edsc_expr_t e1, edsc_expr_t e2);
 
 edsc_expr_t And(edsc_expr_t e1, edsc_expr_t e2);
 edsc_expr_t Or(edsc_expr_t e1, edsc_expr_t e2);
