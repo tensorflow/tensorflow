@@ -54,12 +54,14 @@ namespace xla {
 // `conjugate_a` is a boolean indicating whether the entries of `a` are complex
 // conjugated (independently of whether they are transposed), so that when both
 // transpose_a and conjugate_a are true the effect is a Hermitian adjoint.
+// If `unit_diagonal` elements on the matrix diagonal are assumed to be '1' and
+// are not read by the triangular solve..
 //
 // Uses a blocked algorithm if `block_size` is > 1; if block_size == 1 then no
 // blocking is used.
 XlaOp TriangularSolve(
     XlaOp a, XlaOp b, bool left_side, bool lower, bool transpose_a,
-    bool conjugate_a, int64 block_size = 128,
+    bool conjugate_a, bool unit_diagonal, int64 block_size = 128,
     PrecisionConfig::Precision precision = PrecisionConfig::HIGHEST);
 
 }  // namespace xla

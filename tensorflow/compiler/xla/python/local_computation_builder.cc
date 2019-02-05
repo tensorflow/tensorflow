@@ -928,13 +928,11 @@ LocalOp LocalComputationBuilder::QR(const LocalOp& a, bool full_matrices) {
   });
 }
 
-LocalOp LocalComputationBuilder::TriangularSolve(const LocalOp& a,
-                                                 const LocalOp& b,
-                                                 bool left_side, bool lower,
-                                                 bool transpose_a,
-                                                 bool conjugate_a) {
+LocalOp LocalComputationBuilder::TriangularSolve(
+    const LocalOp& a, const LocalOp& b, bool left_side, bool lower,
+    bool transpose_a, bool conjugate_a, bool unit_diagonal) {
   return xla::TriangularSolve(a.op(), b.op(), left_side, lower, transpose_a,
-                              conjugate_a);
+                              conjugate_a, unit_diagonal);
 }
 
 LocalOp LocalComputationBuilder::Gather(
