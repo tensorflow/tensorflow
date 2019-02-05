@@ -975,6 +975,52 @@ TEST_F(GraphPropertiesTest, IdentityPassingShape) {
   EXPECT_EQ("float: [5,5]", PropToString(out_prop0));
 }
 
+TEST_F(GraphPropertiesTest, SkippingValueInferenceForLargeTensors) {
+  // When using aggressive_shape_inference, we run EvaluateNode() for
+  // whitelisted ops and small input / output tensors. For instance, Fill op is
+  // evaluated and produces output tensor value if output tensor size is smal
+  // (currently, fewer than 17 elements); otherwise we don't run EvalauteNode().
+  // This is to avoid wasting time and memory for producing huge tensors (e.g.,
+  // initializing a large table using Fill.
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output a = ops::Const(s.WithOpName("a"), 4, {2});  // 4x4
+    Output b = ops::Const(s.WithOpName("const"), 0.1f, {});
+    // Shape described by a is small; expect output values of Fill op.
+    Output c = ops::Fill(s.WithOpName("fill"), a, b);
+
+    GrapplerItem item;
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    GraphProperties properties(item);
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/false,
+        /*aggressive_shape_inference=*/true));
+    const auto out_props = properties.GetOutputProperties("fill");
+    const OpInfo::TensorProperties out_prop0 = out_props[0];
+    EXPECT_EQ("float: [4,4]", PropToString(out_prop0));
+    EXPECT_TRUE(out_prop0.has_value());
+  }
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output a = ops::Const(s.WithOpName("a"), 1000, {4});  // 1000x1000x1000x1000
+    Output b = ops::Const(s.WithOpName("const"), 0.1f, {});
+    // Shape described by a is huge; in that case we skip value inference.
+    // Otherwise, it'd be too much overhead.
+    Output c = ops::Fill(s.WithOpName("fill"), a, b);
+
+    GrapplerItem item;
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    GraphProperties properties(item);
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/false,
+        /*aggressive_shape_inference=*/true));
+    const auto out_props = properties.GetOutputProperties("fill");
+    const OpInfo::TensorProperties out_prop0 = out_props[0];
+    EXPECT_EQ("float: [1000,1000,1000,1000]", PropToString(out_prop0));
+    EXPECT_FALSE(out_prop0.has_value());
+  }
+}
+
 TEST_F(GraphPropertiesTest, PackWithConstInput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output a = ops::Const(s.WithOpName("a"), 1, {});
