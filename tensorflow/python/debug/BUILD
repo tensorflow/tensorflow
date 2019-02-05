@@ -1015,6 +1015,12 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    tags = [
+        "manual",
+        "no_pip",
+        "no_windows",
+        "notap",
+    ],
 )
 
 cuda_py_test(
