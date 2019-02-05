@@ -27,7 +27,7 @@ namespace tflite {
 // Used in tests and template parameters to control which version of depthwise
 // convolution is called. Primarily for reference code, and specializations
 // forced in tests.
-enum class DepthwiseConvKernelInvocation {
+enum class DepthwiseConvInvocation {
   // Run all tests against kUseStandardEntry even if also testing another
   // kernel, since we need to be sure that the main DepthwiseConv() function in
   // optimized_ops.h dispatches to a correctly-executing kernel.
@@ -42,6 +42,12 @@ enum class DepthwiseConvKernelInvocation {
   kUseUnwound3x3DotProduct,  // 3x3 kernel, reference C model with unwound loops
                              // and some arrays.
   kUseIntrinsics3x3DotProduct,  // 3x3 kernel using NEON intrinsics.
+};
+
+// Category of depthwise convolution depth multiplication.
+enum class DepthwiseConvDepthMultiplication {
+  kNoMultiplication = 0,  // Depth multiplier = 1.
+  kUnitInputDepth,        // Input depth = 1, output depth = depth multiplier.
 };
 
 namespace reference_ops {
