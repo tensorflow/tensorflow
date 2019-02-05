@@ -1,0 +1,31 @@
+path: "tensorflow.lite"
+tf_module {
+  member {
+    name: "Interpreter"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "OpHint"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "OpsSet"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "TFLiteConverter"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TocoConverter"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "constants"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "toco_convert"
+    argspec: "args=[\'input_data\', \'input_tensors\', \'output_tensors\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+}

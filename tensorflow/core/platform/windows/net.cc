@@ -26,7 +26,7 @@ limitations under the License.
 
 #undef ERROR
 
-#pragma comment(lib,"Ws2_32.lib")
+#pragma comment(lib, "Ws2_32.lib")
 
 namespace tensorflow {
 namespace internal {
@@ -44,8 +44,8 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   CHECK_GE(*port, 0);
   CHECK_LE(*port, 65535);
   if (sock == INVALID_SOCKET) {
-    LOG(ERROR) << "socket() failed: " <<
-        GetWindowsErrorMessage(WSAGetLastError());
+    LOG(ERROR) << "socket() failed: "
+               << GetWindowsErrorMessage(WSAGetLastError());
     return false;
   }
 
@@ -54,8 +54,8 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   int result = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
                           reinterpret_cast<const char*>(&one), sizeof(one));
   if (result == SOCKET_ERROR) {
-    LOG(ERROR) << "setsockopt() failed: " <<
-        GetWindowsErrorMessage(WSAGetLastError());
+    LOG(ERROR) << "setsockopt() failed: "
+               << GetWindowsErrorMessage(WSAGetLastError());
     closesocket(sock);
     return false;
   }
@@ -66,8 +66,8 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   addr.sin_port = htons((uint16_t)*port);
   result = bind(sock, (struct sockaddr*)&addr, sizeof(addr));
   if (result == SOCKET_ERROR) {
-    LOG(WARNING) << "bind(port=" << *port << ") failed: " <<
-        GetWindowsErrorMessage(WSAGetLastError());
+    LOG(WARNING) << "bind(port=" << *port
+                 << ") failed: " << GetWindowsErrorMessage(WSAGetLastError());
     closesocket(sock);
     return false;
   }
@@ -75,8 +75,8 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   // Get the bound port number.
   result = getsockname(sock, (struct sockaddr*)&addr, &addr_len);
   if (result == SOCKET_ERROR) {
-    LOG(WARNING) << "getsockname() failed: " <<
-        GetWindowsErrorMessage(WSAGetLastError());
+    LOG(WARNING) << "getsockname() failed: "
+                 << GetWindowsErrorMessage(WSAGetLastError());
     closesocket(sock);
     return false;
   }

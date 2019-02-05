@@ -12,33 +12,41 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.one_hot_op."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 
 
-class OneHotTest(tf.test.TestCase):
+class OneHotTest(test.TestCase):
 
-  def _testOneHot(self, truth, use_gpu=False, expected_err_re=None, 
-                  raises=None, **inputs):
-    with self.test_session(use_gpu=use_gpu):
+  def _testOneHot(self,
+                  truth,
+                  use_gpu=False,
+                  expected_err_re=None,
+                  raises=None,
+                  **inputs):
+    with self.cached_session(use_gpu=use_gpu):
       if raises is not None:
         with self.assertRaises(raises):
-          tf.one_hot(**inputs)
+          array_ops.one_hot(**inputs)
       else:
-        ans = tf.one_hot(**inputs)
+        ans = array_ops.one_hot(**inputs)
         if expected_err_re is None:
-          tf_ans = ans.eval()
+          tf_ans = self.evaluate(ans)
           self.assertAllEqual(tf_ans, truth)
           self.assertEqual(tf_ans.shape, ans.get_shape())
         else:
           with self.assertRaisesOpError(expected_err_re):
-            ans.eval()
+            self.evaluate(ans)
 
   def _testBothOneHot(self, truth, expected_err_re=None, raises=None, **inputs):
     self._testOneHot(truth, True, expected_err_re, raises, **inputs)
@@ -51,9 +59,7 @@ class OneHotTest(tf.test.TestCase):
     off_value = np.asarray(-1.0, dtype=dtype)
 
     truth = np.asarray(
-        [[1.0, -1.0, -1.0],
-         [-1.0, -1.0, 1.0],
-         [-1.0, -1.0, -1.0],
+        [[1.0, -1.0, -1.0], [-1.0, -1.0, 1.0], [-1.0, -1.0, -1.0],
          [-1.0, 1.0, -1.0]],
         dtype=dtype)
 
@@ -81,23 +87,15 @@ class OneHotTest(tf.test.TestCase):
     depth = 3
 
     truth = np.asarray(
-            [[1.0, 0.0, 0.0],
-             [0.0, 0.0, 1.0],
-             [0.0, 0.0, 0.0],
-             [0.0, 1.0, 0.0]],
-            dtype=dtype)
+        [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        dtype=dtype)
 
     # axis == -1
-    self._testBothOneHot(
-        indices=indices,
-        depth=depth,
-        truth=truth)
+    self._testBothOneHot(indices=indices, depth=depth, truth=truth)
 
     # axis == 0
     self._testBothOneHot(
-        indices=indices,
-        depth=depth,
-        axis=0,
+        indices=indices, depth=depth, axis=0,
         truth=truth.T)  # Output is transpose version in this case
 
   def testFloatBasic(self):
@@ -125,22 +123,15 @@ class OneHotTest(tf.test.TestCase):
     self._testDefaultBasic(np.complex128)
 
   def _testBatch(self, dtype):
-    indices = np.asarray([[0, 2, -1, 1],
-                          [1, 0, 1, -1]],
-                         dtype=np.int64)
+    indices = np.asarray([[0, 2, -1, 1], [1, 0, 1, -1]], dtype=np.int64)
     depth = 3
     on_value = np.asarray(1.0, dtype=dtype)
     off_value = np.asarray(-1.0, dtype=dtype)
 
     truth = np.asarray(
-        [[[1.0, -1.0, -1.0],
-          [-1.0, -1.0, 1.0],
-          [-1.0, -1.0, -1.0],
-          [-1.0, 1.0, -1.0]],
-         [[-1.0, 1.0, -1.0],
-          [1.0, -1.0, -1.0],
-          [-1.0, 1.0, -1.0],
-          [-1.0, -1.0, -1.0]]],
+        [[[1.0, -1.0, -1.0], [-1.0, -1.0, 1.0], [-1.0, -1.0, -1.0],
+          [-1.0, 1.0, -1.0]], [[-1.0, 1.0, -1.0], [1.0, -1.0, -1.0],
+                               [-1.0, 1.0, -1.0], [-1.0, -1.0, -1.0]]],
         dtype=dtype)
 
     # axis == -1
@@ -163,75 +154,56 @@ class OneHotTest(tf.test.TestCase):
         truth=[truth[0].T, truth[1].T])  # Do not transpose the batch
 
   def _testDefaultValuesBatch(self, dtype):
-    indices = np.asarray([[0, 2, -1, 1],
-                          [1, 0, 1, -1]],
-                         dtype=np.int64)
+    indices = np.asarray([[0, 2, -1, 1], [1, 0, 1, -1]], dtype=np.int64)
     depth = 3
 
     truth = np.asarray(
-            [[[1.0, 0.0, 0.0],
-              [0.0, 0.0, 1.0],
-              [0.0, 0.0, 0.0],
-              [0.0, 1.0, 0.0]],
-             [[0.0, 1.0, 0.0],
-              [1.0, 0.0, 0.0],
-              [0.0, 1.0, 0.0],
-              [0.0, 0.0, 0.0]]],
-            dtype=dtype)
+        [[[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+         [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]]],
+        dtype=dtype)
 
     # axis == -1
-    self._testBothOneHot(
-            indices=indices,
-            depth=depth,
-            dtype=dtype,
-            truth=truth)
+    self._testBothOneHot(indices=indices, depth=depth, dtype=dtype, truth=truth)
 
     # axis == 1
     self._testBothOneHot(
-            indices=indices,
-            depth=depth,
-            axis=1,
-            dtype=dtype,
-            truth=[truth[0].T, truth[1].T])  # Do not transpose the batch
+        indices=indices,
+        depth=depth,
+        axis=1,
+        dtype=dtype,
+        truth=[truth[0].T, truth[1].T])  # Do not transpose the batch
 
   def _testValueTypeBatch(self, dtype):
-    indices = np.asarray([[0, 2, -1, 1],
-                          [1, 0, 1, -1]],
-                         dtype=np.int64)
+    indices = np.asarray([[0, 2, -1, 1], [1, 0, 1, -1]], dtype=np.int64)
     depth = 3
 
     on_value = np.asarray(1.0, dtype=dtype)
     off_value = np.asarray(-1.0, dtype=dtype)
 
     truth = np.asarray(
-        [[[1.0, -1.0, -1.0],
-          [-1.0, -1.0, 1.0],
-          [-1.0, -1.0, -1.0],
-          [-1.0, 1.0, -1.0]],
-         [[-1.0, 1.0, -1.0],
-          [1.0, -1.0, -1.0],
-          [-1.0, 1.0, -1.0],
-          [-1.0, -1.0, -1.0]]],
+        [[[1.0, -1.0, -1.0], [-1.0, -1.0, 1.0], [-1.0, -1.0, -1.0],
+          [-1.0, 1.0, -1.0]], [[-1.0, 1.0, -1.0], [1.0, -1.0, -1.0],
+                               [-1.0, 1.0, -1.0], [-1.0, -1.0, -1.0]]],
         dtype=dtype)
 
     # axis == -1
     self._testBothOneHot(
-            indices=indices,
-            on_value=on_value,
-            off_value=off_value,
-            depth=depth,
-            dtype=dtype,
-            truth=truth)
+        indices=indices,
+        on_value=on_value,
+        off_value=off_value,
+        depth=depth,
+        dtype=dtype,
+        truth=truth)
 
     # axis == 1
     self._testBothOneHot(
-            indices=indices,
-            on_value=on_value,
-            off_value=off_value,
-            depth=depth,
-            axis=1,
-            dtype=dtype,
-            truth=[truth[0].T, truth[1].T])  # Do not transpose the batch
+        indices=indices,
+        on_value=on_value,
+        off_value=off_value,
+        depth=depth,
+        axis=1,
+        dtype=dtype,
+        truth=[truth[0].T, truth[1].T])  # Do not transpose the batch
 
   def _testEmpty(self, dtype):
     indices = np.zeros((0, 16), dtype=np.int64)
@@ -286,133 +258,119 @@ class OneHotTest(tf.test.TestCase):
     self._testValueTypeBatch(np.complex64)
 
   def testSimpleCases(self):
-    indices = [0,1,2]
+    indices = [0, 1, 2]
     depth = 3
     truth = np.asarray(
-      [[1.0, 0.0, 0.0],
-       [0.0, 1.0, 0.0],
-       [0.0, 0.0, 1.0]],
-       dtype=np.float32)
+        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], dtype=np.float32)
     self._testBothOneHot(indices=indices, depth=depth, truth=truth)
 
-    indices = [0,1,2]
+    indices = [0, 1, 2]
     depth = 3
-    truth = np.asarray(
-      [[1, 0, 0],
-       [0, 1, 0],
-       [0, 0, 1]],
-       dtype=np.int32)
-    self._testBothOneHot(indices=indices, depth=depth, dtype=np.int32, 
-                         truth=truth)
+    truth = np.asarray([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.int32)
+    self._testBothOneHot(
+        indices=indices, depth=depth, dtype=np.int32, truth=truth)
 
-    indices = [0,1,2]
+    indices = [0, 1, 2]
     depth = 3
-    truth = np.asarray(
-      [[1, -1, -1],
-       [-1, 1, -1],
-       [-1, -1, 1]],
-       dtype=np.int32)
-    self._testBothOneHot(indices=indices, depth=depth, on_value=1,
-                         off_value=-1, truth=truth)
+    truth = np.asarray([[1, -1, -1], [-1, 1, -1], [-1, -1, 1]], dtype=np.int32)
+    self._testBothOneHot(
+        indices=indices, depth=depth, on_value=1, off_value=-1, truth=truth)
 
   def testSingleValueGiven(self):
     # Only on_value provided
-    indices = [0,1,2]
+    indices = [0, 1, 2]
     depth = 3
-    truth = np.asarray(
-      [[1, 0, 0],
-       [0, 1, 0],
-       [0, 0, 1]],
-       dtype=np.int32)
+    truth = np.asarray([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.int32)
     self._testBothOneHot(indices=indices, depth=depth, on_value=1, truth=truth)
 
     # Only off_value provided
-    indices = [0,1,2]
+    indices = [0, 1, 2]
     depth = 3
-    truth = np.asarray(
-      [[1, 0, 0],
-       [0, 1, 0],
-       [0, 0, 1]],
-       dtype=np.float32)
-    self._testBothOneHot(indices=indices, depth=depth,
-                         off_value=0.0, truth=truth)
+    truth = np.asarray([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float32)
+    self._testBothOneHot(
+        indices=indices, depth=depth, off_value=0.0, truth=truth)
 
   def testString(self):
-    indices = [0,1,2]
+    indices = [0, 1, 2]
     depth = 3
-    truth = np.asarray(
-      [[b"1.0", b"0.0", b"0.0"],
-       [b"0.0", b"1.0", b"0.0"],
-       [b"0.0", b"0.0", b"1.0"]])
+    truth = np.asarray([[b"1.0", b"0.0", b"0.0"], [b"0.0", b"1.0", b"0.0"],
+                        [b"0.0", b"0.0", b"1.0"]])
     on_value = np.asarray(b"1.0")
     off_value = np.asarray(b"0.0")
 
-    self._testBothOneHot(indices=indices, depth=depth, on_value=on_value,
-                         off_value=off_value, dtype=tf.string, truth=truth)
+    self._testBothOneHot(
+        indices=indices,
+        depth=depth,
+        on_value=on_value,
+        off_value=off_value,
+        dtype=dtypes.string,
+        truth=truth)
 
-    on_value = tf.constant(b"1.0")
-    off_value = tf.constant(b"0.0")
-    self._testBothOneHot(indices=indices, depth=depth, on_value=on_value,
-                         off_value=off_value, dtype=tf.string, truth=truth)
+    on_value = constant_op.constant(b"1.0")
+    off_value = constant_op.constant(b"0.0")
+    self._testBothOneHot(
+        indices=indices,
+        depth=depth,
+        on_value=on_value,
+        off_value=off_value,
+        dtype=dtypes.string,
+        truth=truth)
 
     on_value = b"1.0"
     off_value = b"0.0"
-    self._testBothOneHot(indices=indices, depth=depth, on_value=on_value,
-                         off_value=off_value, dtype=tf.string, truth=truth)
+    self._testBothOneHot(
+        indices=indices,
+        depth=depth,
+        on_value=on_value,
+        off_value=off_value,
+        dtype=dtypes.string,
+        truth=truth)
 
   def testIndicesTypes(self):
-    tf_types = [tf.uint8, tf.int32, tf.int64]
+    tf_types = [dtypes.uint8, dtypes.int32, dtypes.int64]
     np_types = [np.int32, np.int64]
     for itype in tf_types + np_types:
       # Note: to keep the tests simple in the case of uint8 the index -1 below
       # maps to 255 which is out of the depth range, just like -1.
       if itype in tf_types:
-        indices = tf.constant([[0, 2, -1, 1],
-                               [1, 0, 1, -1]],
-                              dtype=itype)
+        indices = constant_op.constant(
+            [[0, 2, -1, 1], [1, 0, 1, -1]], dtype=itype)
       elif itype in np_types:
-        indices = np.asarray([[0, 2, -1, 1],
-                              [1, 0, 1, -1]],
-                             dtype=itype)
+        indices = np.asarray([[0, 2, -1, 1], [1, 0, 1, -1]], dtype=itype)
       depth = 3
 
       on_value = np.asarray(1.0, dtype=np.float32)
       off_value = np.asarray(-1.0, dtype=np.float32)
 
       truth = np.asarray(
-          [[[1.0, -1.0, -1.0],
-            [-1.0, -1.0, 1.0],
-            [-1.0, -1.0, -1.0],
-            [-1.0, 1.0, -1.0]],
-           [[-1.0, 1.0, -1.0],
-            [1.0, -1.0, -1.0],
-            [-1.0, 1.0, -1.0],
-            [-1.0, -1.0, -1.0]]],
+          [[[1.0, -1.0, -1.0], [-1.0, -1.0, 1.0], [-1.0, -1.0, -1.0],
+            [-1.0, 1.0, -1.0]], [[-1.0, 1.0, -1.0], [1.0, -1.0, -1.0],
+                                 [-1.0, 1.0, -1.0], [-1.0, -1.0, -1.0]]],
           dtype=np.float32)
 
       # axis == -1
       self._testBothOneHot(
-            indices=indices,
-            on_value=on_value,
-            off_value=off_value,
-            depth=depth,
-            truth=truth)
+          indices=indices,
+          on_value=on_value,
+          off_value=off_value,
+          depth=depth,
+          truth=truth)
 
       # axis == 1
       self._testBothOneHot(
-            indices=indices,
-            on_value=on_value,
-            off_value=off_value,
-            depth=depth,
-            axis=1,
-            truth=[truth[0].T, truth[1].T])  # Do not transpose the batch
+          indices=indices,
+          on_value=on_value,
+          off_value=off_value,
+          depth=depth,
+          axis=1,
+          truth=[truth[0].T, truth[1].T])  # Do not transpose the batch
 
   def testPrefixDimOverflow(self):
-    for itype in [tf.int32, tf.int64, tf.uint8]:
+    for itype in [dtypes.int32, dtypes.int64, dtypes.uint8]:
       prefix_dim_size = 65536
       depth = 2
       x = [i % depth for i in range(prefix_dim_size)]
-      indices = tf.constant(x, dtype=itype)
+      indices = constant_op.constant(x, dtype=itype)
 
       truth = np.zeros((prefix_dim_size, depth), np.float32)
       for i in range(prefix_dim_size):
@@ -432,12 +390,12 @@ class OneHotTest(tf.test.TestCase):
     off_value = np.asarray(0.0, np.float32)
 
     self._testBothOneHot(
-            indices=indices,
-            depth=depth,
-            on_value=on_value,
-            off_value=off_value,
-            truth=None,
-            raises=TypeError)
+        indices=indices,
+        depth=depth,
+        on_value=on_value,
+        off_value=off_value,
+        truth=None,
+        raises=TypeError)
 
   def testDtypeMismatchTypeError(self):
     indices = [0, 1, 2]
@@ -447,21 +405,21 @@ class OneHotTest(tf.test.TestCase):
     dtype = np.int32
 
     self._testBothOneHot(
-          indices=indices,
-          depth=depth,
-          on_value=on_value,
-          dtype=dtype,
-          truth=None,
-          raises=TypeError)
+        indices=indices,
+        depth=depth,
+        on_value=on_value,
+        dtype=dtype,
+        truth=None,
+        raises=TypeError)
 
     self._testBothOneHot(
-          indices=indices,
-          depth=depth,
-          on_value=off_value,
-          dtype=dtype,
-          truth=None,
-          raises=TypeError)
+        indices=indices,
+        depth=depth,
+        on_value=off_value,
+        dtype=dtype,
+        truth=None,
+        raises=TypeError)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

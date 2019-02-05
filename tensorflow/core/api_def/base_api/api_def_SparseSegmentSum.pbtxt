@@ -1,0 +1,54 @@
+op {
+  graph_op_name: "SparseSegmentSum"
+  in_arg {
+    name: "indices"
+    description: <<END
+A 1-D tensor. Has same rank as `segment_ids`.
+END
+  }
+  in_arg {
+    name: "segment_ids"
+    description: <<END
+A 1-D tensor. Values should be sorted and can be repeated.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Has same shape as data, except for dimension 0 which
+has size `k`, the number of segments.
+END
+  }
+  summary: "Computes the sum along sparse segments of a tensor."
+  description: <<END
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
+dimension, selecting a subset of dimension 0, specified by `indices`.
+
+For example:
+
+```python
+c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
+
+# Select two rows, one segment.
+tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
+# => [[0 0 0 0]]
+
+# Select two rows, two segment.
+tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
+# => [[ 1  2  3  4]
+#     [-1 -2 -3 -4]]
+
+# Select all rows, two segments.
+tf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))
+# => [[0 0 0 0]
+#     [5 6 7 8]]
+
+# Which is equivalent to:
+tf.segment_sum(c, tf.constant([0, 0, 1]))
+```
+END
+}

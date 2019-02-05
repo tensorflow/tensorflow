@@ -13,21 +13,28 @@
 # limitations under the License.
 # ==============================================================================
 
-"""TensorFlow Ops for Sequence to Sequence models."""
+"""TensorFlow Ops for Sequence to Sequence models (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.learn.python.learn.ops import array_ops
+from tensorflow.contrib import rnn
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops as array_ops_
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.util.deprecation import deprecated
 
 
+@deprecated(None, 'Please use tf.nn/tf.layers directly.')
 def sequence_classifier(decoding, labels, sampling_decoding=None, name=None):
   """Returns predictions and loss for sequence of predictions.
 
@@ -46,7 +53,7 @@ def sequence_classifier(decoding, labels, sampling_decoding=None, name=None):
     predictions, xent_list = [], []
     for i, pred in enumerate(decoding):
       xent_list.append(nn.softmax_cross_entropy_with_logits(
-          pred, labels[i],
+          labels=labels[i], logits=pred,
           name="sequence_loss/xent_raw{0}".format(i)))
       if sampling_decoding:
         predictions.append(nn.softmax(sampling_decoding[i]))
@@ -54,9 +61,10 @@ def sequence_classifier(decoding, labels, sampling_decoding=None, name=None):
         predictions.append(nn.softmax(pred))
     xent = math_ops.add_n(xent_list, name="sequence_loss/xent")
     loss = math_ops.reduce_sum(xent, name="sequence_loss")
-    return array_ops_.pack(predictions, axis=1), loss
+    return array_ops.stack(predictions, axis=1), loss
 
 
+@deprecated(None, 'Please use tf.nn/tf.layers directly.')
 def seq2seq_inputs(x, y, input_length, output_length, sentinel=None, name=None):
   """Processes inputs for Sequence to Sequence models.
 
@@ -74,19 +82,20 @@ def seq2seq_inputs(x, y, input_length, output_length, sentinel=None, name=None):
     Encoder input from x, and decoder inputs and outputs from y.
   """
   with ops.name_scope(name, "seq2seq_inputs", [x, y]):
-    in_x = array_ops_.unpack(x, axis=1)
-    y = array_ops_.unpack(y, axis=1)
+    in_x = array_ops.unstack(x, axis=1)
+    y = array_ops.unstack(y, axis=1)
     if not sentinel:
       # Set to zeros of shape of y[0], using x for batch size.
-      sentinel_shape = array_ops_.pack(
-          [array_ops_.shape(x)[0], y[0].get_shape()[1]])
-      sentinel = array_ops_.zeros(sentinel_shape)
+      sentinel_shape = array_ops.stack(
+          [array_ops.shape(x)[0], y[0].get_shape()[1]])
+      sentinel = array_ops.zeros(sentinel_shape)
       sentinel.set_shape(y[0].get_shape())
     in_y = [sentinel] + y
     out_y = y + [sentinel]
     return in_x, in_y, out_y
 
 
+@deprecated(None, 'Please use tf.nn/tf.layers directly.')
 def rnn_decoder(decoder_inputs, initial_state, cell, scope=None):
   """RNN Decoder that creates training and sampling sub-graphs.
 
@@ -123,6 +132,7 @@ def rnn_decoder(decoder_inputs, initial_state, cell, scope=None):
   return outputs, states, sampling_outputs, sampling_states
 
 
+@deprecated(None, 'Please use tf.nn/tf.layers directly.')
 def rnn_seq2seq(encoder_inputs,
                 decoder_inputs,
                 encoder_cell,
@@ -140,9 +150,10 @@ def rnn_seq2seq(encoder_inputs,
     scope: Scope to use, if None new will be produced.
 
   Returns:
-    List of tensors for outputs and states for trianing and sampling sub-graphs.
+    List of tensors for outputs and states for training and sampling sub-graphs.
   """
   with vs.variable_scope(scope or "rnn_seq2seq"):
-    _, last_enc_state = nn.rnn(encoder_cell, encoder_inputs, dtype=dtype)
+    _, last_enc_state = rnn.static_rnn(
+        encoder_cell, encoder_inputs, dtype=dtype)
     return rnn_decoder(decoder_inputs, last_enc_state, decoder_cell or
                        encoder_cell)

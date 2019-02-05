@@ -16,11 +16,11 @@ limitations under the License.
 // See docs in ../ops/data_flow_ops.cc.
 
 #include <vector>
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/util/util.h"
 
@@ -103,7 +103,9 @@ class DynamicPartitionOp : public DynamicPartitionOp_Shared {
       // Walk through data and copy the data to the appropriate output tensor
       const auto data_flat = data->flat<T>();
       std::vector<Eigen::TensorMap<Eigen::Tensor<T, 1, Eigen::RowMajor>,
-                                   Eigen::Aligned> > out_vec;
+                                   Eigen::Aligned> >
+          out_vec;
+      out_vec.reserve(num_partitions_);
       for (int p = 0; p < num_partitions_; p++) {
         out_vec.push_back(outputs[p]->vec<T>());
       }
@@ -123,7 +125,9 @@ class DynamicPartitionOp : public DynamicPartitionOp_Shared {
     } else {
       // If data has extra dimensions, use Eigen slices
       std::vector<Eigen::TensorMap<Eigen::Tensor<T, 2, Eigen::RowMajor>,
-                                   Eigen::Aligned> > out_flat;
+                                   Eigen::Aligned> >
+          out_flat;
+      out_flat.reserve(num_partitions_);
       for (int p = 0; p < num_partitions_; p++) {
         out_flat.push_back(outputs[p]->flat_outer_dims<T>());
       }
@@ -138,7 +142,7 @@ class DynamicPartitionOp : public DynamicPartitionOp_Shared {
         OP_REQUIRES(
             c, FastBoundsCheck(p, num_partitions_),
             errors::InvalidArgument("indices[", i,
-                                    "] has been asynchronously overwitten and "
+                                    "] has been asynchronously overwritten and "
                                     "is no longer in range!"));
         auto oi = output_index[p];
         OP_REQUIRES(c, FastBoundsCheck(oi, out_flat[p].dimension(0)),

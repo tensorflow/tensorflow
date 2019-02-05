@@ -24,20 +24,24 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 // Instantiates functor specializations for GPU.
-#define DEFINE_GPU_SPECS_OP(T, Index, op) \
-  template struct functor::ScatterFunctor<GPUDevice, T, Index, op>;
+#define DEFINE_GPU_SPECS_OP(T, Index, op)                           \
+  template struct functor::ScatterFunctor<GPUDevice, T, Index, op>; \
+  template struct functor::ScatterScalarFunctor<GPUDevice, T, Index, op>;
 
 #define DEFINE_GPU_SPECS_INDEX(T, Index)                       \
   DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::ASSIGN); \
   DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::ADD);    \
   DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::SUB);    \
   DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::MUL);    \
-  DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::DIV);
+  DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::DIV);    \
+  DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::MIN);    \
+  DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::MAX);
 
 #define DEFINE_GPU_SPECS(T)         \
   DEFINE_GPU_SPECS_INDEX(T, int32); \
   DEFINE_GPU_SPECS_INDEX(T, int64);
 
+DEFINE_GPU_SPECS(Eigen::half);
 DEFINE_GPU_SPECS(float);
 DEFINE_GPU_SPECS(double);
 // TODO: The following fails to compile.

@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""An estimator is a rule for calculating an estimate of a given quantity.
+"""An estimator is a rule for calculating an estimate of a given quantity (deprecated).
+
+These classes are deprecated and replaced with `tf.estimator`.
+
+See [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 # Estimators
 
@@ -28,16 +33,16 @@ They support regression and classification problems.
     * `LinearRegressor`: Uses linear model.
     * `DNNRegressor`: Uses DNN.
     * `DNNLinearCombinedRegressor`: Uses Wide & Deep.
-    * `TensorForestEstimator`: Uses RandomForest. Use `.predict()` for
-       regression problems.
+    * `TensorForestEstimator`: Uses RandomForest.
+      See tf.contrib.tensor_forest.client.random_forest.TensorForestEstimator.
     * `Estimator`: Use when you need a custom model.
 
 * For **Classification** problems use one of the following:
     * `LinearClassifier`: Multiclass classifier using Linear model.
     * `DNNClassifier`: Multiclass classifier using DNN.
     * `DNNLinearCombinedClassifier`: Multiclass classifier using Wide & Deep.
-    * `TensorForestEstimator`: Uses RandomForest. Use `.predict_proba()` when
-      using for binary classification problems.
+    * `TensorForestEstimator`: Uses RandomForest.
+      See tf.contrib.tensor_forest.client.random_forest.TensorForestEstimator.
     * `SVM`: Binary classifier using linear SVMs.
     * `LogisticRegressor`: Use when you need custom model for binary
        classification.
@@ -173,6 +178,25 @@ estimator = LinearRegressor(
     feature_columns=my_features)
 ```
 
+### LogisticRegressor
+
+Logistic regression estimator for binary classification.
+
+```python
+# See tf.contrib.learn.Estimator(...) for details on model_fn structure
+def my_model_fn(...):
+  pass
+
+estimator = LogisticRegressor(model_fn=my_model_fn)
+
+# Input builders
+def input_fn_train:
+  pass
+
+estimator.fit(input_fn=input_fn_train)
+estimator.predict(x=x)
+```
+
 #### SVM - Support Vector Machine
 
 Support Vector Machine (SVM) model for binary classification.
@@ -187,9 +211,18 @@ estimator = SVM(
     l2_regularization=10.0)
 ```
 
-#### TensorForestEstimator
+#### DynamicRnnEstimator
 
-Supports regression and binary classification.
+An `Estimator` that uses a recurrent neural network with dynamic unrolling.
+
+```python
+problem_type = ProblemType.CLASSIFICATION  # or REGRESSION
+prediction_type = PredictionType.SINGLE_VALUE  # or MULTIPLE_VALUE
+
+estimator = DynamicRnnEstimator(problem_type,
+                                prediction_type,
+                                my_feature_columns)
+```
 
 ### Use the estimator
 
@@ -244,10 +277,9 @@ tutorial for building a custom estimator.
 
 ## Additional Estimators
 
-There are two additional estimators under
+There is an additional estimators under
 `tensorflow.contrib.factorization.python.ops`:
 
-*   K-Means
 *   Gaussian mixture model (GMM) clustering
 
 ## Further reading
@@ -266,23 +298,41 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
-from tensorflow.contrib.learn.python.learn.estimators.classifier import Classifier
+from tensorflow.contrib.learn.python.learn.estimators.constants import ProblemType
 from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNClassifier
+from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNEstimator
 from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNRegressor
 from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import DNNLinearCombinedClassifier
+from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import DNNLinearCombinedEstimator
 from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import DNNLinearCombinedRegressor
+from tensorflow.contrib.learn.python.learn.estimators.dynamic_rnn_estimator import DynamicRnnEstimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import BaseEstimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import Estimator
+from tensorflow.contrib.learn.python.learn.estimators.estimator import GraphRewriteSpec
 from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input
 from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input_fn
-from tensorflow.contrib.learn.python.learn.estimators.estimator import ModeKeys
 from tensorflow.contrib.learn.python.learn.estimators.estimator import SKCompat
+from tensorflow.contrib.learn.python.learn.estimators.head import binary_svm_head
+from tensorflow.contrib.learn.python.learn.estimators.head import Head
+from tensorflow.contrib.learn.python.learn.estimators.head import loss_only_head
+from tensorflow.contrib.learn.python.learn.estimators.head import multi_class_head
+from tensorflow.contrib.learn.python.learn.estimators.head import multi_head
+from tensorflow.contrib.learn.python.learn.estimators.head import multi_label_head
+from tensorflow.contrib.learn.python.learn.estimators.head import no_op_train_fn
+from tensorflow.contrib.learn.python.learn.estimators.head import poisson_regression_head
+from tensorflow.contrib.learn.python.learn.estimators.head import regression_head
+from tensorflow.contrib.learn.python.learn.estimators.kmeans import KMeansClustering
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearClassifier
+from tensorflow.contrib.learn.python.learn.estimators.linear import LinearEstimator
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearRegressor
 from tensorflow.contrib.learn.python.learn.estimators.logistic_regressor import LogisticRegressor
 from tensorflow.contrib.learn.python.learn.estimators.metric_key import MetricKey
+from tensorflow.contrib.learn.python.learn.estimators.model_fn import ModeKeys
+from tensorflow.contrib.learn.python.learn.estimators.model_fn import ModelFnOps
 from tensorflow.contrib.learn.python.learn.estimators.prediction_key import PredictionKey
-from tensorflow.contrib.learn.python.learn.estimators.random_forest import TensorForestEstimator
-from tensorflow.contrib.learn.python.learn.estimators.random_forest import TensorForestLossHook
+from tensorflow.contrib.learn.python.learn.estimators.rnn_common import PredictionType
+from tensorflow.contrib.learn.python.learn.estimators.run_config import ClusterConfig
+from tensorflow.contrib.learn.python.learn.estimators.run_config import Environment
 from tensorflow.contrib.learn.python.learn.estimators.run_config import RunConfig
+from tensorflow.contrib.learn.python.learn.estimators.run_config import TaskType
 from tensorflow.contrib.learn.python.learn.estimators.svm import SVM

@@ -1,0 +1,43 @@
+op {
+  graph_op_name: "SegmentMax"
+  in_arg {
+    name: "segment_ids"
+    description: <<END
+A 1-D tensor whose size is equal to the size of `data`'s
+first dimension.  Values should be sorted and can be repeated.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Has same shape as data, except for dimension 0 which
+has size `k`, the number of segments.
+END
+  }
+  summary: "Computes the maximum along segments of a tensor."
+  description: <<END
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Computes a tensor such that
+\\(output_i = \max_j(data_j)\\) where `max` is over `j` such
+that `segment_ids[j] == i`.
+
+If the max is empty for a given segment ID `i`, `output[i] = 0`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
+</div>
+
+For example:
+
+```
+c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+tf.segment_max(c, tf.constant([0, 0, 1]))
+# ==> [[4, 3, 3, 4],
+#      [5, 6, 7, 8]]
+```
+
+END
+}

@@ -16,7 +16,11 @@ limitations under the License.
 #include "tensorflow/cc/framework/cc_op_gen.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -24,10 +28,28 @@ namespace tensorflow {
 namespace {
 
 void PrintAllCCOps(const std::string& dot_h, const std::string& dot_cc,
-                   bool include_internal) {
+                   bool include_internal,
+                   const std::vector<string>& api_def_dirs) {
   OpList ops;
   OpRegistry::Global()->Export(include_internal, &ops);
-  WriteCCOps(ops, dot_h, dot_cc);
+  ApiDefMap api_def_map(ops);
+  if (!api_def_dirs.empty()) {
+    Env* env = Env::Default();
+    // Only load files that correspond to "ops".
+    for (const auto& op : ops.op()) {
+      for (const auto& api_def_dir : api_def_dirs) {
+        const std::string api_def_file_pattern =
+            io::JoinPath(api_def_dir, "api_def_" + op.name() + ".pbtxt");
+        if (env->FileExists(api_def_file_pattern).ok()) {
+          TF_CHECK_OK(api_def_map.LoadFile(env, api_def_file_pattern));
+        }
+      }
+    }
+  }
+
+  api_def_map.UpdateDocs();
+
+  WriteCCOps(ops, api_def_map, dot_h, dot_cc);
 }
 
 }  // namespace
@@ -35,15 +57,21 @@ void PrintAllCCOps(const std::string& dot_h, const std::string& dot_cc,
 
 int main(int argc, char* argv[]) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
-  if (argc != 4) {
+  if (argc != 5) {
+    for (int i = 1; i < argc; ++i) {
+      fprintf(stderr, "Arg %d = %s\n", i, argv[i]);
+    }
     fprintf(stderr,
-            "Usage: %s out.h out.cc include_internal\n"
+            "Usage: %s out.h out.cc include_internal "
+            "api_def_dirs1,api_def_dir2 ...\n"
             "  include_internal: 1 means include internal ops\n",
             argv[0]);
     exit(1);
   }
 
   bool include_internal = tensorflow::StringPiece("1") == argv[3];
-  tensorflow::PrintAllCCOps(argv[1], argv[2], include_internal);
+  std::vector<tensorflow::string> api_def_dirs = tensorflow::str_util::Split(
+      argv[4], ",", tensorflow::str_util::SkipEmpty());
+  tensorflow::PrintAllCCOps(argv[1], argv[2], include_internal, api_def_dirs);
   return 0;
 }

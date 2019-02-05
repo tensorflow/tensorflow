@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_PROTOBUF_INTERNAL_H_
-#define TENSORFLOW_PLATFORM_PROTOBUF_INTERNAL_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_PROTOBUF_INTERNAL_H_
+#define TENSORFLOW_CORE_PLATFORM_PROTOBUF_INTERNAL_H_
 
 #include "google/protobuf/any.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -45,8 +45,8 @@ Status ParseAny(const google::protobuf::Any& any, T* message,
 #ifdef TENSORFLOW_LITE_PROTOS
   if (any.type_url() != strings::StrCat("type.googleapis.com/", type_name)) {
     return errors::FailedPrecondition(
-        "Expected Any type_url for: ", type_name, ". Got: ",
-        string(any.type_url().data(), any.type_url().size()), ".");
+        "Expected Any type_url for: ", type_name,
+        ". Got: ", string(any.type_url().data(), any.type_url().size()), ".");
   }
   if (!message->ParseFromString(any.value())) {
     return errors::FailedPrecondition("Failed to unpack: ",
@@ -69,4 +69,4 @@ Status ParseAny(const google::protobuf::Any& any, T* message,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_PROTOBUF_INTERNAL_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_PROTOBUF_INTERNAL_H_

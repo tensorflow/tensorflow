@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -74,9 +75,12 @@ TEST_F(HadoopFileSystemTest, RandomAccessFile) {
   std::unique_ptr<RandomAccessFile> reader;
   TF_EXPECT_OK(hdfs.NewRandomAccessFile(fname, &reader));
 
+  StringPiece result;
+  TF_EXPECT_OK(reader->Name(&result));
+  EXPECT_EQ(result, fname);
+
   string got;
   got.resize(content.size());
-  StringPiece result;
   TF_EXPECT_OK(
       reader->Read(0, content.size(), &result, gtl::string_as_array(&got)));
   EXPECT_EQ(content.size(), result.size());
@@ -93,7 +97,13 @@ TEST_F(HadoopFileSystemTest, WritableFile) {
   std::unique_ptr<WritableFile> writer;
   const string fname = TmpDir("WritableFile");
   TF_EXPECT_OK(hdfs.NewWritableFile(fname, &writer));
+  StringPiece result;
+  TF_EXPECT_OK(writer->Name(&result));
+  EXPECT_EQ(result, fname);
   TF_EXPECT_OK(writer->Append("content1,"));
+  int64 pos;
+  TF_EXPECT_OK(writer->Tell(&pos));
+  EXPECT_EQ(pos, 9);
   TF_EXPECT_OK(writer->Append("content2"));
   TF_EXPECT_OK(writer->Flush());
   TF_EXPECT_OK(writer->Sync());
@@ -189,6 +199,44 @@ TEST_F(HadoopFileSystemTest, StatFile) {
   TF_EXPECT_OK(hdfs.Stat(fname, &stat));
   EXPECT_EQ(4, stat.length);
   EXPECT_FALSE(stat.is_directory);
+}
+
+TEST_F(HadoopFileSystemTest, WriteWhileReading) {
+  std::unique_ptr<WritableFile> writer;
+  const string fname = TmpDir("WriteWhileReading");
+  // Skip the test if we're not testing on HDFS. Hadoop's local filesystem
+  // implementation makes no guarantees that writable files are readable while
+  // being written.
+  if (!str_util::StartsWith(fname, "hdfs://")) {
+    return;
+  }
+
+  TF_EXPECT_OK(hdfs.NewWritableFile(fname, &writer));
+
+  const string content1 = "content1";
+  TF_EXPECT_OK(writer->Append(content1));
+  TF_EXPECT_OK(writer->Flush());
+
+  std::unique_ptr<RandomAccessFile> reader;
+  TF_EXPECT_OK(hdfs.NewRandomAccessFile(fname, &reader));
+
+  string got;
+  got.resize(content1.size());
+  StringPiece result;
+  TF_EXPECT_OK(
+      reader->Read(0, content1.size(), &result, gtl::string_as_array(&got)));
+  EXPECT_EQ(content1, result);
+
+  string content2 = "content2";
+  TF_EXPECT_OK(writer->Append(content2));
+  TF_EXPECT_OK(writer->Flush());
+
+  got.resize(content2.size());
+  TF_EXPECT_OK(reader->Read(content1.size(), content2.size(), &result,
+                            gtl::string_as_array(&got)));
+  EXPECT_EQ(content2, result);
+
+  TF_EXPECT_OK(writer->Close());
 }
 
 // NewAppendableFile() is not testable. Local filesystem maps to

@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
@@ -78,6 +77,26 @@ TEST(IoOpsTest, Restore_ShapeFn) {
   // Both inputs must be scalars.
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[?];[]");
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[];[?]");
+}
+
+TEST(IoOpsTest, RestoreV2_ShapeFn) {
+  ShapeInferenceTestOp op("RestoreV2");
+
+  TF_ASSERT_OK(NodeDefBuilder("test", op.name)
+                   .Input({"prefix", 0, DT_STRING})
+                   .Input({"tensor_names", 0, DT_STRING})
+                   .Input({"shapes_and_slices", 0, DT_STRING})
+                   .Attr("dtypes", {DT_FLOAT, DT_INT64})
+                   .Finalize(&op.node_def));
+
+  INFER_OK(op, "?;?;?", "?;?");
+  INFER_OK(op, "[];[10];[10]", "?;?");
+
+  // Input shape validation.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[?];[?];[?]");
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "[];[?,?];[?]");
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "[];[?];[?,?]");
+  INFER_ERROR("in both shapes must be equal", op, "[];[10];[20]");
 }
 
 TEST(IoOpsTest, RestoreSlice_ShapeFn) {
@@ -185,7 +204,8 @@ TEST(IoOpsTest, MatchingFiles_ShapeFn) {
 
   INFER_OK(op, "?", "[?]");
   INFER_OK(op, "[]", "[?]");
-  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[?]");
+  INFER_OK(op, "[42]", "[?]");
+  INFER_ERROR("Shape must be at most rank 1 but is rank 2", op, "[?,?]");
 }
 
 }  // end namespace tensorflow

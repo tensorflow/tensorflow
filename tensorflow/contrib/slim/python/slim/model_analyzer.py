@@ -84,7 +84,7 @@ def analyze_vars(variables, print_info=False):
   """Prints the names and shapes of the variables.
 
   Args:
-    variables: list of variables, for example tf.all_variables().
+    variables: list of variables, for example tf.global_variables().
     print_info: Optional, if true print variables and their shape.
 
   Returns:

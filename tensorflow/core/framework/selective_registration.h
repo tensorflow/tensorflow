@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_SELECTIVE_REGISTRATION_H_
-#define TENSORFLOW_FRAMEWORK_SELECTIVE_REGISTRATION_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_SELECTIVE_REGISTRATION_H_
+#define TENSORFLOW_CORE_FRAMEWORK_SELECTIVE_REGISTRATION_H_
 
 #include <string.h>
 
@@ -31,8 +31,8 @@ limitations under the License.
 //    functions should be defined as valid constexpr functions, so that they are
 //    evaluated at compile time: this is needed to make symbols referenced by
 //    un-registered objects unused, and therefore allow the linker to strip them
-//    out.  See tools/print_required_ops/print_selective_registration_header.py
-//    for a tool that can be used to generate ops_to_register.h.
+//    out.  See python/tools/print_selective_registration_header.py for a tool
+//    that can be used to generate ops_to_register.h.
 //
 // ops_to_register.h should define macros for:
 //   // Ops for which this is false will not be registered.
@@ -55,4 +55,4 @@ static_assert(false, "ops_to_register.h must define SHOULD_REGISTER macros");
 #define SHOULD_REGISTER_OP_KERNEL(clz) true
 #endif
 
-#endif  // TENSORFLOW_FRAMEWORK_SELECTIVE_REGISTRATION_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_SELECTIVE_REGISTRATION_H_

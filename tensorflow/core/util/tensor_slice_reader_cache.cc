@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
+#include <utility>
+
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -36,7 +38,8 @@ const TensorSliceReader* TensorSliceReaderCacheWrapper::GetReader(
   if (!cache_) {
     cache_ = new TensorSliceReaderCache;
   }
-  return cache_->GetReader(filepattern, open_function, preferred_shard);
+  return cache_->GetReader(filepattern, std::move(open_function),
+                           preferred_shard);
 }
 
 TensorSliceReaderCache::TensorSliceReaderCache() {}
@@ -52,7 +55,7 @@ const TensorSliceReader* TensorSliceReaderCache::GetReader(
     TensorSliceReader::OpenTableFunction open_function, int preferred_shard) {
   mutex_lock l(mu_);
 
-#ifdef __GXX_RTTI
+#if defined(__GXX_RTTI) || defined(_CPPRTTI)
   // Get the function pointer from the open_function value.
   TensorSliceReaderCache::OpenFuncType* func_ptr =
       open_function.target<TensorSliceReaderCache::OpenFuncType>();
@@ -88,7 +91,7 @@ const TensorSliceReader* TensorSliceReaderCache::GetReader(
     mu_.lock();
     if (tmp_reader->status().ok()) {
       reader = tmp_reader;
-      readers_[filepattern] = make_pair(*func_ptr, reader);
+      readers_[filepattern] = std::make_pair(*func_ptr, reader);
     } else {
       delete tmp_reader;
     }

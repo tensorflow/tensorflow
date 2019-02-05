@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_WORK_SHARDER_H_
-#define TENSORFLOW_UTIL_WORK_SHARDER_H_
+#ifndef TENSORFLOW_CORE_UTIL_WORK_SHARDER_H_
+#define TENSORFLOW_CORE_UTIL_WORK_SHARDER_H_
 
 #include <functional>
 
@@ -23,6 +23,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+// DEPRECATED: Prefer threadpool->TransformRangeConcurrently, which allows you
+// to directly specify the shard size. Use this function only if you want to
+// manually cap parallelism.
 // Shards the "total" unit of work assuming each unit of work having
 // roughly "cost_per_unit". Each unit of work is indexed 0, 1, ...,
 // total - 1. Each shard contains 1 or more units of work and the
@@ -41,6 +44,12 @@ namespace tensorflow {
 // work(start, limit) computes the work units from [start,
 // limit), i.e., [start, limit) is a shard.
 //
+// Too much parallelism can also cause excessive thread switches,
+// therefore, Shard() often limits the maximum parallelism. Each
+// caller can provide the 1st argument max_parallelism. A thread can
+// call SetMaxParallelism() so that all Shard() calls later limits the
+// thread parallelism.
+//
 // REQUIRES: max_parallelism >= 0
 // REQUIRES: workers != nullptr
 // REQUIRES: total >= 0
@@ -48,6 +57,45 @@ namespace tensorflow {
 void Shard(int max_parallelism, thread::ThreadPool* workers, int64 total,
            int64 cost_per_unit, std::function<void(int64, int64)> work);
 
+// Each thread has an associated option to express the desired maximum
+// parallelism. Its default is a very large quantity.
+//
+// Within TF runtime, per-thread max parallelism affects Shard() and
+// intra-op parallelism. E.g., if SetPerThreadMaxParallelism(1) is
+// arranged to be called by a tf_compute thread, Shard() calls and
+// eigen device assignment happens in that thread afterwards becomes
+// single-threaded.
+void SetPerThreadMaxParallelism(int max_parallelism);
+int GetPerThreadMaxParallelism();
+
+// Helper to set and unset per-thread max parallelism.
+class ScopedPerThreadMaxParallelism {
+ public:
+  ScopedPerThreadMaxParallelism(int max_parallelism)
+      : previous_(GetPerThreadMaxParallelism()) {
+    SetPerThreadMaxParallelism(max_parallelism);
+  }
+
+  ~ScopedPerThreadMaxParallelism() { SetPerThreadMaxParallelism(previous_); }
+
+ private:
+  int previous_ = -1;
+};
+
+// Implementation details for Shard().
+class Sharder {
+ public:
+  typedef std::function<void()> Closure;
+  typedef std::function<void(Closure)> Runner;
+  typedef std::function<void(int64, int64)> Work;
+
+  // Refers to Shard()'s comment for the meaning of total,
+  // cost_per_unit, work, max_parallelism. runner is an interface to
+  // schedule a closure. Shard() uses thread::ThreadPool instead.
+  static void Do(int64 total, int64 cost_per_unit, const Work& work,
+                 const Runner& runner, int max_parallelism);
+};
+
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_WORK_SHARDER_H_
+#endif  // TENSORFLOW_CORE_UTIL_WORK_SHARDER_H_

@@ -30,8 +30,6 @@ limitations under the License.
 namespace tensorflow {
 namespace ctc {
 
-using strings::StrCat;
-
 class CTCLossCalculator {
   // Connectionist Temporal Classification Loss
   //
@@ -48,7 +46,7 @@ class CTCLossCalculator {
   // these examples.
   //
   // Reference materials:
-  //  GravesTh: Alex Graves, "Supervised Sequence Labelling with Recurrent
+  //  GravesTh: Alex Graves, "Supervised Sequence Labeling with Recurrent
   //    Neural Networks" (PhD Thesis), Technische Universit¨at M¨unchen.
  public:
   typedef std::vector<std::vector<int>> LabelSequences;
@@ -65,7 +63,8 @@ class CTCLossCalculator {
   Status CalculateLoss(const VectorIn& seq_len, const LabelSequences& labels,
                        const std::vector<MatrixIn>& inputs,
                        bool preprocess_collapse_repeated,
-                       bool ctc_merge_repeated, VectorOut* loss,
+                       bool ctc_merge_repeated,
+                       bool ignore_longer_outputs_than_inputs, VectorOut* loss,
                        std::vector<MatrixOut>* gradients,
                        DeviceBase::CpuWorkerThreads* workers = nullptr) const;
 
@@ -90,7 +89,8 @@ class CTCLossCalculator {
   // batch.  Return value:
   //    max_{b in batch_size} l_primes[b].size()
   template <typename Vector>
-  Status PopulateLPrimes(bool preprocess_collapse_repeated, int batch_size,
+  Status PopulateLPrimes(bool preprocess_collapse_repeated,
+                         bool ignore_longer_outputs_than_inputs, int batch_size,
                          int num_classes, const Vector& seq_len,
                          const LabelSequences& labels, size_t* max_u_prime,
                          LabelSequences* l_primes) const;
@@ -108,7 +108,8 @@ template <typename VectorIn, typename VectorOut, typename MatrixIn,
 Status CTCLossCalculator::CalculateLoss(
     const VectorIn& seq_len, const LabelSequences& labels,
     const std::vector<MatrixIn>& inputs, bool preprocess_collapse_repeated,
-    bool ctc_merge_repeated, VectorOut* loss, std::vector<MatrixOut>* gradients,
+    bool ctc_merge_repeated, bool ignore_longer_outputs_than_inputs,
+    VectorOut* loss, std::vector<MatrixOut>* gradients,
     DeviceBase::CpuWorkerThreads* workers) const {
   auto num_time_steps = inputs.size();
 
@@ -129,13 +130,13 @@ Status CTCLossCalculator::CalculateLoss(
   for (int t = 1; t < num_time_steps; ++t) {
     if (inputs[t].rows() != batch_size) {
       return errors::InvalidArgument("Expected batch size at t: ", t,
-                                     " to be: ", batch_size, " but got: ",
-                                     inputs[t].rows());
+                                     " to be: ", batch_size,
+                                     " but got: ", inputs[t].rows());
     }
     if (inputs[t].cols() != num_classes) {
       return errors::InvalidArgument("Expected class count at t: ", t,
-                                     " to be: ", num_classes, " but got: ",
-                                     inputs[t].cols());
+                                     " to be: ", num_classes,
+                                     " but got: ", inputs[t].cols());
     }
   }
 
@@ -155,20 +156,31 @@ Status CTCLossCalculator::CalculateLoss(
   // and calculate the maximum necessary allocation size.
   LabelSequences l_primes(batch_size);
   size_t max_u_prime = 0;
-  Status l_p_ret =
-      PopulateLPrimes(preprocess_collapse_repeated, batch_size, num_classes,
-                      seq_len, labels, &max_u_prime, &l_primes);
+  Status l_p_ret = PopulateLPrimes(
+      preprocess_collapse_repeated, ignore_longer_outputs_than_inputs,
+      batch_size, num_classes, seq_len, labels, &max_u_prime, &l_primes);
   if (!l_p_ret.ok()) {
     return l_p_ret;
   }
 
   // Process each item in a batch in parallel, using at most kMaxThreads.
-  auto ComputeLossAndGradients = [this, num_classes, &l_primes, &seq_len,
-                                  &inputs, requires_backprop,
-                                  ctc_merge_repeated, &loss, &gradients](
-      int64 start_row, int64 limit_row) {
+  auto ComputeLossAndGradients = [this, num_classes, &labels, &l_primes,
+                                  &seq_len, &inputs, requires_backprop,
+                                  ctc_merge_repeated,
+                                  ignore_longer_outputs_than_inputs, &loss,
+                                  &gradients](int64 start_row,
+                                              int64 limit_row) {
     for (int b = start_row; b < limit_row; b++) {
-      if (seq_len(b) == 0) {
+      // Return zero gradient for empty sequences or sequences with labels
+      // longer than input, which is not supported by CTC.
+      if (seq_len(b) == 0 ||
+          (ignore_longer_outputs_than_inputs &&
+           labels[b].size() > seq_len(b) - this->output_delay_)) {
+        VLOG(1) << "The sequence length is either zero or shorter than the "
+                   "target output (CTC works only with shorter target sequence "
+                   "than input sequence). You can turn this into a warning by "
+                   "using the flag ignore_longer_outputs_than_inputs - "
+                << b << ": " << str_util::Join(labels[b], " ");
         continue;
       }
 
@@ -263,16 +275,15 @@ Status CTCLossCalculator::CalculateLoss(
 }
 
 template <typename Vector>
-Status CTCLossCalculator::PopulateLPrimes(bool preprocess_collapse_repeated,
-                                          int batch_size, int num_classes,
-                                          const Vector& seq_len,
-                                          const LabelSequences& labels,
-                                          size_t* max_u_prime,
-                                          LabelSequences* l_primes) const {
+Status CTCLossCalculator::PopulateLPrimes(
+    bool preprocess_collapse_repeated, bool ignore_longer_outputs_than_inputs,
+    int batch_size, int num_classes, const Vector& seq_len,
+    const LabelSequences& labels, size_t* max_u_prime,
+    LabelSequences* l_primes) const {
   // labels is a Label array of size batch_size
   if (labels.size() != batch_size) {
-    return errors::InvalidArgument("labels.size() != batch_size: ",
-                                   labels.size(), " vs. ", batch_size);
+    return errors::InvalidArgument(
+        "labels.size() != batch_size: ", labels.size(), " vs. ", batch_size);
   }
 
   *max_u_prime = 0;  // keep track of longest l' modified label sequence.
@@ -311,28 +322,31 @@ Status CTCLossCalculator::PopulateLPrimes(bool preprocess_collapse_repeated,
       }
     }
 
-    // Make sure there is enough time to output the target indices.
-    int time = seq_len(b) - output_delay_;
-    int required_time = label.size();
     for (int l_i : l) {
       if (l_i < 0) {
         return errors::InvalidArgument(
-            "All labels must be nonnegative integers, batch: ", b, " labels: ",
-            str_util::Join(l, ","));
+            "All labels must be nonnegative integers, batch: ", b,
+            " labels: ", str_util::Join(l, ","));
       } else if (l_i >= num_classes) {
         return errors::InvalidArgument(
-            "No label may be greater than num_classes. ", "num_classes: ",
-            num_classes, ", batch: ", b, " labels: ", str_util::Join(l, ","));
+            "No label may be greater than num_classes. ",
+            "num_classes: ", num_classes, ", batch: ", b,
+            " labels: ", str_util::Join(l, ","));
       }
     }
-    if (required_time > time) {
-      return errors::InvalidArgument(
-          "Not enough time for target transition sequence ("
-          "required: ",
-          required_time, ", available: ", time,
-          "), skipping data instance in batch: ", b);
+    if (!ignore_longer_outputs_than_inputs) {
+      // Make sure there is enough time to output the target indices.
+      int time = seq_len(b) - output_delay_;
+      int required_time = label.size();
+      if (required_time > time) {
+        return errors::InvalidArgument(
+            "Not enough time for target transition sequence ("
+            "required: ",
+            required_time, ", available: ", time, ")", b,
+            "You can turn this error into a warning by using the flag "
+            "ignore_longer_outputs_than_inputs");
+      }
     }
-
     // Target indices with blanks before each index and a blank at the end.
     // Length U' = 2U + 1.
     // Convert l to l_prime

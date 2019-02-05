@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -58,6 +59,14 @@ TEST(TensorUtil, DeepCopy0d) {
   EXPECT_EQ(DT_FLOAT, x.dtype());
   EXPECT_EQ(DT_FLOAT, y.dtype());
   EXPECT_EQ(DT_FLOAT, z.dtype());
+}
+
+TEST(TensorUtil, DeepCopyZeroElements) {
+  Tensor x;
+  Tensor y = tensor::DeepCopy(x);
+  EXPECT_EQ(TensorShape({0}), y.shape());
+  EXPECT_EQ(DT_FLOAT, y.dtype());
+  EXPECT_EQ(0, y.NumElements());
 }
 
 TEST(TensorUtil, DeepCopy) {
@@ -154,7 +163,8 @@ TEST(TensorUtil, Concat) {
     offset += size;
   }
 
-  Tensor concated = tensor::Concat(to_concat);
+  Tensor concated;
+  TF_ASSERT_OK(tensor::Concat(to_concat, &concated));
   ASSERT_EQ(TensorShape({total_size, 2}), concated.shape());
   for (int i = 0; i < total_size; ++i) {
     for (int j = 0; j < 2; ++j) {
@@ -172,7 +182,8 @@ TEST(TensorUtil, Split) {
   }
 
   std::vector<int64> sizes = {1, 4, 5};
-  std::vector<Tensor> splits = tensor::Split(to_split, sizes);
+  std::vector<Tensor> splits;
+  TF_ASSERT_OK(tensor::Split(to_split, sizes, &splits));
   ASSERT_EQ(sizes.size(), splits.size());
 
   int offset = 0;
@@ -197,7 +208,10 @@ TEST(TensorUtil, ConcatSplitStrings) {
     x.flat<string>()(i) = strings::StrCat("foo_", i);
   }
 
-  Tensor x_round_tripped = tensor::Concat(tensor::Split(x, {2, 1, 1}));
+  std::vector<Tensor> split;
+  TF_ASSERT_OK(tensor::Split(x, {2, 1, 1}, &split));
+  Tensor x_round_tripped;
+  TF_ASSERT_OK(tensor::Concat(split, &x_round_tripped));
   ASSERT_EQ(x.shape(), x_round_tripped.shape());
   for (int i = 0; i < 4 * 3; ++i) {
     EXPECT_EQ(x.flat<string>()(i), x_round_tripped.flat<string>()(i));
@@ -210,6 +224,146 @@ TEST(TensorUtil, ConcatSplitStrings) {
   for (int i = 0; i < 4 * 3; ++i) {
     EXPECT_NE(x.flat<string>()(i), x_round_tripped.flat<string>()(i));
   }
+}
+
+TEST(TensorProtoUtil, CreatesStringTensorProto) {
+  std::vector<string> values{"a", "b", "c"};
+  std::vector<size_t> shape{1, 3};
+
+  auto proto = tensor::CreateTensorProto(values, shape);
+
+  EXPECT_EQ(proto.DebugString(),
+            "dtype: DT_STRING\n"
+            "tensor_shape {\n"
+            "  dim {\n"
+            "    size: 1\n"
+            "  }\n"
+            "  dim {\n"
+            "    size: 3\n"
+            "  }\n"
+            "}\n"
+            "string_val: \"a\"\n"
+            "string_val: \"b\"\n"
+            "string_val: \"c\"\n");
+}
+
+TEST(TensorProtoUtil, CreatesInt32TensorProto) {
+  std::vector<int32> values{1, 2};
+  std::vector<size_t> shape{2};
+
+  auto proto = tensor::CreateTensorProto(values, shape);
+
+  EXPECT_EQ(proto.DebugString(),
+            "dtype: DT_INT32\n"
+            "tensor_shape {\n"
+            "  dim {\n"
+            "    size: 2\n"
+            "  }\n"
+            "}\n"
+            "int_val: 1\n"
+            "int_val: 2\n");
+}
+
+TEST(TensorProtoUtil, CreatesInt64TensorProto) {
+  std::vector<int64> values{1, 2};
+  std::vector<size_t> shape{2};
+
+  auto proto = tensor::CreateTensorProto(values, shape);
+
+  EXPECT_EQ(proto.DebugString(),
+            "dtype: DT_INT64\n"
+            "tensor_shape {\n"
+            "  dim {\n"
+            "    size: 2\n"
+            "  }\n"
+            "}\n"
+            "int64_val: 1\n"
+            "int64_val: 2\n");
+}
+
+TEST(TensorProtoUtil, CreatesUInt32TensorProto) {
+  std::vector<uint32> values{1, 2};
+  std::vector<size_t> shape{2};
+
+  auto proto = tensor::CreateTensorProto(values, shape);
+
+  EXPECT_EQ(proto.DebugString(),
+            "dtype: DT_UINT32\n"
+            "tensor_shape {\n"
+            "  dim {\n"
+            "    size: 2\n"
+            "  }\n"
+            "}\n"
+            "uint32_val: 1\n"
+            "uint32_val: 2\n");
+}
+
+TEST(TensorProtoUtil, CreatesUInt64TensorProto) {
+  std::vector<uint64> values{1, 2};
+  std::vector<size_t> shape{2};
+
+  auto proto = tensor::CreateTensorProto(values, shape);
+
+  EXPECT_EQ(proto.DebugString(),
+            "dtype: DT_UINT64\n"
+            "tensor_shape {\n"
+            "  dim {\n"
+            "    size: 2\n"
+            "  }\n"
+            "}\n"
+            "uint64_val: 1\n"
+            "uint64_val: 2\n");
+}
+
+TEST(TensorProtoUtil, CreatesFloatTensorProto) {
+  std::vector<float> values{1.1, 2.2};
+  std::vector<size_t> shape{2};
+
+  auto proto = tensor::CreateTensorProto(values, shape);
+
+  EXPECT_EQ(proto.DebugString(),
+            "dtype: DT_FLOAT\n"
+            "tensor_shape {\n"
+            "  dim {\n"
+            "    size: 2\n"
+            "  }\n"
+            "}\n"
+            "float_val: 1.1\n"
+            "float_val: 2.2\n");
+}
+
+TEST(TensorProtoUtil, CreatesDoubleTensorProto) {
+  std::vector<double> values{1.1, 2.2};
+  std::vector<size_t> shape{2};
+
+  auto proto = tensor::CreateTensorProto(values, shape);
+
+  EXPECT_EQ(proto.DebugString(),
+            "dtype: DT_DOUBLE\n"
+            "tensor_shape {\n"
+            "  dim {\n"
+            "    size: 2\n"
+            "  }\n"
+            "}\n"
+            "double_val: 1.1\n"
+            "double_val: 2.2\n");
+}
+
+TEST(TensorProtoUtil, CreatesBoolTensorProto) {
+  std::vector<bool> values{true, false};
+  std::vector<size_t> shape{2};
+
+  auto proto = tensor::CreateTensorProto(values, shape);
+
+  EXPECT_EQ(proto.DebugString(),
+            "dtype: DT_BOOL\n"
+            "tensor_shape {\n"
+            "  dim {\n"
+            "    size: 2\n"
+            "  }\n"
+            "}\n"
+            "bool_val: true\n"
+            "bool_val: false\n");
 }
 
 }  // namespace

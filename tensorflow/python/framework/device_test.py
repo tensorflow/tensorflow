@@ -18,8 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import device
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
@@ -79,17 +82,17 @@ class DeviceTest(test_util.TensorFlowTestCase):
     self.assertEquals("/replica:1/task:0/device:CPU:0", d.to_string())
     d.parse_from_string("/replica:1/task:0/device:CPU:0")
     self.assertEquals("/replica:1/task:0/device:CPU:0", d.to_string())
-    d.parse_from_string("/job:muu/gpu:2")
+    d.parse_from_string("/job:muu/device:GPU:2")
     self.assertEquals("/job:muu/device:GPU:2", d.to_string())
     with self.assertRaises(Exception) as e:
-      d.parse_from_string("/job:muu/gpu:2/cpu:0")
+      d.parse_from_string("/job:muu/device:GPU:2/cpu:0")
     self.assertTrue("Cannot specify multiple device" in str(e.exception))
 
   def testFromString(self):
     d = device.DeviceSpec.from_string("/job:foo/replica:0")
     self.assertEquals("/job:foo/replica:0", d.to_string())
     with self.assertRaises(Exception) as e:
-      d = device.DeviceSpec.from_string("/job:muu/gpu:2/cpu:0")
+      d = device.DeviceSpec.from_string("/job:muu/device:GPU:2/cpu:0")
     self.assertTrue("Cannot specify multiple device" in str(e.exception))
 
     d = device.DeviceSpec.from_string("/job:foo/replica:0/task:3/cpu:*")
@@ -102,19 +105,33 @@ class DeviceTest(test_util.TensorFlowTestCase):
   def testMerge(self):
     d = device.DeviceSpec.from_string("/job:foo/replica:0")
     self.assertEquals("/job:foo/replica:0", d.to_string())
-    d.merge_from(device.DeviceSpec.from_string("/task:1/gpu:2"))
+    d.merge_from(device.DeviceSpec.from_string("/task:1/device:GPU:2"))
     self.assertEquals("/job:foo/replica:0/task:1/device:GPU:2", d.to_string())
 
     d = device.DeviceSpec()
     d.merge_from(device.DeviceSpec.from_string("/task:1/cpu:0"))
     self.assertEquals("/task:1/device:CPU:0", d.to_string())
-    d.merge_from(device.DeviceSpec.from_string("/job:boo/gpu:0"))
+    d.merge_from(device.DeviceSpec.from_string("/job:boo/device:GPU:0"))
     self.assertEquals("/job:boo/task:1/device:GPU:0", d.to_string())
     d.merge_from(device.DeviceSpec.from_string("/job:muu/cpu:2"))
     self.assertEquals("/job:muu/task:1/device:CPU:2", d.to_string())
     d.merge_from(device.DeviceSpec.from_string(
         "/job:muu/device:MyFunnyDevice:2"))
     self.assertEquals("/job:muu/task:1/device:MyFunnyDevice:2", d.to_string())
+
+    if not context.executing_eagerly():
+      with ops.device(device.merge_device("/device:GPU:0")):
+        var1 = variables.Variable(1.0)
+        self.assertEquals("/device:GPU:0", var1.device)
+        with ops.device(device.merge_device("/job:worker")):
+          var2 = variables.Variable(1.0)
+          self.assertEquals("/job:worker/device:GPU:0", var2.device)
+          with ops.device(device.merge_device("/device:CPU:0")):
+            var3 = variables.Variable(1.0)
+            self.assertEquals("/job:worker/device:CPU:0", var3.device)
+            with ops.device(device.merge_device("/job:ps")):
+              var4 = variables.Variable(1.0)
+              self.assertEquals("/job:ps/device:CPU:0", var4.device)
 
   def testCanonicalName(self):
     self.assertEqual("/job:foo/replica:0",
@@ -134,10 +151,10 @@ class DeviceTest(test_util.TensorFlowTestCase):
 
     self.assertEqual("/job:foo/replica:0/task:0/device:GPU:0",
                      device.canonical_name(
-                         "/job:foo/replica:0/task:0/gpu:0"))
+                         "/job:foo/replica:0/task:0/device:GPU:0"))
     self.assertEqual("/job:foo/replica:0/task:0/device:GPU:0",
                      device.canonical_name(
-                         "/gpu:0/task:0/replica:0/job:foo"))
+                         "/device:GPU:0/task:0/replica:0/job:foo"))
 
   def testCheckValid(self):
     device.check_valid("/job:foo/replica:0")
@@ -155,7 +172,7 @@ class DeviceTest(test_util.TensorFlowTestCase):
     self.assertTrue("Unknown attribute: 'bar'" in str(e.exception))
 
     with self.assertRaises(Exception) as e:
-      device.check_valid("/cpu:0/gpu:2")
+      device.check_valid("/cpu:0/device:GPU:2")
     self.assertTrue("Cannot specify multiple device" in str(e.exception))
 
 

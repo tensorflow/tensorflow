@@ -45,8 +45,9 @@ def _DynamicPartitionGrads(op, *grads):
 
 
 @ops.RegisterGradient("DynamicStitch")
+@ops.RegisterGradient("ParallelDynamicStitch")
 def _DynamicStitchGrads(op, grad):
-  """Gradients for DynamicStitch."""
+  """Gradients for DynamicStitch and ParallelDynamicStitch."""
 
   num_values = len(op.inputs) // 2
   indices_grad = [None] * num_values
@@ -78,5 +79,6 @@ ops.NotDifferentiable("StackPop")
 ops.NotDifferentiable("StackClose")
 
 ops.NotDifferentiable("GetSessionHandle")
+ops.NotDifferentiable("GetSessionHandleV2")
 ops.NotDifferentiable("GetSessionTensor")
 ops.NotDifferentiable("DeleteSessionTensor")

@@ -9,11 +9,11 @@ exports_files(["LICENSE"])
 
 # For platform specific build config
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 tf_proto_library(
     name = "protos_all",
     srcs = glob(["**/*.proto"]),
-    go_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
@@ -30,7 +30,9 @@ py_library(
     name = "plugins",
     srcs = ["plugins/__init__.py"],
     srcs_version = "PY2AND3",
-    deps = [":projector"],
+    deps = [
+        ":projector",
+    ],
 )
 
 # API methods and protos in `tf.contrib.tensorboard.plugins.projector` package.
@@ -51,18 +53,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":projector",
-        "//tensorflow:tensorflow_py",
+        ":protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

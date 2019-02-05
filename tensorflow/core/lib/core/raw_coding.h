@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_CORE_RAW_CODING_H_
-#define TENSORFLOW_LIB_CORE_RAW_CODING_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_RAW_CODING_H_
+#define TENSORFLOW_CORE_LIB_CORE_RAW_CODING_H_
 
 #include <string.h>
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -68,4 +68,4 @@ inline uint64 DecodeFixed64(const char* ptr) {
 }  // namespace core
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_CORE_RAW_CODING_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_RAW_CODING_H_

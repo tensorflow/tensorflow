@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -49,7 +50,7 @@ class StringSource : public TensorResponse::Source {
  public:
   explicit StringSource(const string* s, int block_size)
       : s_(s), stream_(nullptr), block_size_(block_size) {}
-  virtual ~StringSource() { DeleteStream(); }
+  ~StringSource() override { DeleteStream(); }
 
   protobuf::io::ZeroCopyInputStream* contents() override {
     DeleteStream();

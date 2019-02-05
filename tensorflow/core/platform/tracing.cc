@@ -15,24 +15,24 @@ limitations under the License.
 
 #include "tensorflow/core/platform/tracing.h"
 
+#include <array>
 #include <atomic>
 #include <map>
 #include <string>
 #include <vector>
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
+namespace tracing {
+namespace {
+std::atomic<uint64> unique_arg{1};
+std::atomic<const TraceCollector*> trace_collector;
+}  // namespace
 
-namespace port {
-
-int32 Tracing::category_id_[kEventCategoryMax];
-uint64 Tracing::event_mask_ = 0;
-std::map<string, int32>* Tracing::name_map_ = new std::map<string, int32>;
-
-// This needs to be kept in sync with the EventCategory enumeration.
-const char* Tracing::EventCategoryString(EventCategory category) {
+const char* GetEventCategoryName(EventCategory category) {
   switch (category) {
     case EventCategory::kScheduleClosure:
       return "ScheduleClosure";
@@ -40,63 +40,45 @@ const char* Tracing::EventCategoryString(EventCategory category) {
       return "RunClosure";
     case EventCategory::kCompute:
       return "Compute";
-    case EventCategory::kEventCategoryMax:
-      return "EventCategoryMax";
+    default:
+      return "Unknown";
   }
-  return "Unknown";
 }
 
-// This function allows the user to specify arbitrary subsets of the
-// supported Threadscape events and activities.
-bool Tracing::ParseEventMask(const char* flagname, const string& value) {
-  VLOG(1) << flagname << " set to " << value;
-  int64 new_mask = 0;
-  std::vector<string> events =
-      str_util::Split(value, ',', str_util::SkipEmpty());
-  for (string name : events) {
-    bool clear = false;
-    int64 mask = 0;
-    if (name[0] == '!') {
-      // invert the sense of the flag
-      clear = true;
-      name = name.substr(1);
-    }
-    if (name == "ALL") {
-      mask = ~0;
-    } else {
-      auto it = name_map_->find(name);
-      int32 id;
-      if (it == name_map_->end()) {
-        id = -1;
-      } else {
-        id = it->second;
-      }
-      if (id < 0) {
-        LOG(ERROR) << "Can't parse event mask name " << name;
-        return false;
-      }
-      mask = 1 << id;
-    }
-    if (clear) {
-      new_mask &= ~mask;
-    } else {
-      new_mask |= mask;
-    }
-  }
-  // parsing was successful; set the permanent event mask
-  event_mask_ = new_mask;
-  return true;
+std::array<const EventCollector*, GetNumEventCategories()>
+    EventCollector::instances_;
+
+void SetEventCollector(EventCategory category,
+                       const EventCollector* collector) {
+  EventCollector::instances_[static_cast<unsigned>(category)] = collector;
 }
 
-/*static*/ std::atomic<Tracing::Engine*> Tracing::tracing_engine_;
-
-void Tracing::RegisterEngine(Engine* e) {
-  tracing_engine_.store(e, std::memory_order_release);
+uint64 GetUniqueArg() {
+  return unique_arg.fetch_add(1, std::memory_order_relaxed);
 }
 
-Tracing::Engine::~Engine() {}
-Tracing::Engine::Annotation::~Annotation() {}
-Tracing::Engine::Tracer::~Tracer() {}
+uint64 GetArgForName(StringPiece name) {
+  return Hash64(name.data(), name.size());
+}
 
-}  // namespace port
+string TraceCollector::ConcatenateNames(StringPiece first, StringPiece second) {
+  std::string result;
+  bool has_two_parts = !first.empty() && !second.empty();
+  result.reserve(first.size() + second.size() +
+                 static_cast<int>(has_two_parts));
+  result.append(first.data(), first.size());
+  if (has_two_parts) result.append({':'});
+  result.append(second.data(), second.size());
+  return result;
+}
+
+void SetTraceCollector(const TraceCollector* collector) {
+  return trace_collector.store(collector, std::memory_order_release);
+}
+
+const TraceCollector* GetTraceCollector() {
+  return trace_collector.load(std::memory_order_acquire);
+}
+
+}  // namespace tracing
 }  // namespace tensorflow

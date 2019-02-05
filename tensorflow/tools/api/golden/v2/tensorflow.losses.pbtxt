@@ -1,0 +1,7 @@
+path: "tensorflow.losses"
+tf_module {
+  member {
+    name: "Reduction"
+    mtype: "<type \'type\'>"
+  }
+}

@@ -32,14 +32,12 @@ namespace tensorflow {
 namespace ffmpeg {
 namespace {
 
-const char kTestWavFilename[] =
-    "contrib/ffmpeg/testdata/mono_10khz.wav";
-const char kTestMp3Filename[] =
-    "contrib/ffmpeg/testdata/test_sound1.mp3";
+const char kTestWavFilename[] = "contrib/ffmpeg/testdata/mono_10khz.wav";
+const char kTestMp3Filename[] = "contrib/ffmpeg/testdata/test_sound1.mp3";
 
 // Set to true via a command line flag iff the test is expected to have FFmpeg
 // installed.
-mutex mu;
+mutex mu(LINKER_INITIALIZED);
 bool should_ffmpeg_be_installed GUARDED_BY(mu) = false;
 
 string ParseTestFlags(int* argc, char** argv) {
@@ -94,6 +92,7 @@ TEST(FfmpegLibTest, TestRoundTripGeneratedWav) {
   }
 
   std::vector<float> sine_wave;
+  sine_wave.reserve(20000);
   for (int i = 0; i < 20000; ++i) {
     sine_wave.push_back(std::sin(6.28 * 440.0 * i / 20000.0));
   }
@@ -138,7 +137,7 @@ TEST(FfmpegLibTest, TestRoundTripWav) {
 }  // namespace ffmpeg
 }  // namespace tensorflow
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   tensorflow::string usage = tensorflow::ffmpeg::ParseTestFlags(&argc, argv);
   testing::InitGoogleTest(&argc, argv);
   if (argc != 1) {

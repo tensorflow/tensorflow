@@ -20,18 +20,26 @@ limitations under the License.
 #include <math.h>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-template <class T1>
+void CalculateUsedRange(const Tensor& input, qint32* used_min_quantized,
+                        qint32* used_max_quantized) {
+  auto input_array = input.flat<qint32>();
+  Eigen::Tensor<qint32, 0, Eigen::RowMajor> min = input_array.minimum();
+  Eigen::Tensor<qint32, 0, Eigen::RowMajor> max = input_array.maximum();
+  *used_min_quantized = min();
+  *used_max_quantized = max();
+}
+
 class RequantizationRangeOp : public OpKernel {
  public:
   explicit RequantizationRangeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
@@ -45,36 +53,26 @@ class RequantizationRangeOp : public OpKernel {
     Tensor* output_max = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(1, TensorShape({}), &output_max));
 
-    // See the deprecated QuantizeDownAndShrinkRangeOp as well, which has a copy
-    // of this logic.
-    auto input_array = input.flat<T1>();
-    const int32 input_lowest_quantized =
-        static_cast<int32>(Eigen::NumTraits<T1>::lowest());
-    const int32 input_highest_quantized =
-        static_cast<int32>(Eigen::NumTraits<T1>::highest());
-    T1 actual_min_quantized = input_highest_quantized;
-    T1 actual_max_quantized = input_lowest_quantized;
-    for (int i = 0; i < input_array.size(); ++i) {
-      const T1 value = input_array(i);
-      actual_min_quantized = std::min(actual_min_quantized, value);
-      actual_max_quantized = std::max(actual_max_quantized, value);
-    }
+    qint32 used_min_quantized;
+    qint32 used_max_quantized;
+    CalculateUsedRange(input, &used_min_quantized, &used_max_quantized);
+
     // We want to make sure that the minimum is no larger than zero, so that the
     // convolution operation can run efficiently.
-    const float actual_min_float =
-        std::min(0.0f, QuantizedToFloat(actual_min_quantized, input_min_float,
-                                        input_max_float));
-    const float actual_max_float = QuantizedToFloat(
-        actual_max_quantized, input_min_float, input_max_float);
+    const float used_min_float = std::min(
+        0.0f,
+        QuantizedToFloat(used_min_quantized, input_min_float, input_max_float));
+    const float used_max_float =
+        QuantizedToFloat(used_max_quantized, input_min_float, input_max_float);
 
-    output_min->flat<float>().setConstant(actual_min_float);
-    output_max->flat<float>().setConstant(actual_max_float);
+    output_min->flat<float>().setConstant(used_min_float);
+    output_max->flat<float>().setConstant(used_max_float);
   }
 };
 
 REGISTER_KERNEL_BUILDER(Name("RequantizationRange")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<qint32>("Tinput"),
-                        RequantizationRangeOp<qint32>);
+                        RequantizationRangeOp);
 
 }  // namespace tensorflow

@@ -1,0 +1,42 @@
+syntax = "proto2";
+
+import "google/protobuf/descriptor.proto";
+
+package third_party.tensorflow.tools.api;
+
+message TFAPIMember {
+  optional string name = 1;
+  optional string mtype = 2;
+};
+
+message TFAPIMethod {
+  optional string name = 1;
+  optional string path = 2;
+  optional string argspec = 3;
+};
+
+message TFAPIModule {
+  repeated TFAPIMember member = 1;
+  repeated TFAPIMethod member_method = 2;
+};
+
+message TFAPIClass {
+  repeated string is_instance = 1;
+  repeated TFAPIMember member = 2;
+  repeated TFAPIMethod member_method = 3;
+};
+
+message TFAPIProto {
+  // Suppress generation of the proto API's descriptor() method lest it
+  // conflict with the standard accessor for the field having the same name.
+  option no_standard_descriptor_accessor = true;
+
+  optional google.protobuf.DescriptorProto descriptor = 1;
+};
+
+message TFAPIObject {
+  optional string path = 1;
+  optional TFAPIModule tf_module = 2;
+  optional TFAPIClass tf_class = 3;
+  optional TFAPIProto tf_proto = 4;
+};

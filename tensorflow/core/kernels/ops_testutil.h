@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_OPS_TESTUTIL_H_
-#define TENSORFLOW_KERNELS_OPS_TESTUTIL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_OPS_TESTUTIL_H_
+#define TENSORFLOW_CORE_KERNELS_OPS_TESTUTIL_H_
 
 #include <memory>
 #include <vector>
@@ -24,7 +24,9 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
@@ -45,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
-
 namespace test {
 
 inline void SetOutputAttrs(OpKernelContext::Params* params,
@@ -69,17 +70,22 @@ inline void SetOutputAttrs(OpKernelContext::Params* params,
 // to use the BrainClient interface.
 class OpsTestBase : public ::testing::Test {
  public:
-  OpsTestBase() : device_type_(DEVICE_CPU) {
-    device_.reset(
-        DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
+  OpsTestBase()
+      : device_(DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0")),
+        device_type_(DEVICE_CPU) {
     CHECK(device_.get()) << "Could not create CPU device";
+    allocator_ = device_->GetAllocator(AllocatorAttributes());
   }
 
   ~OpsTestBase() override {
     gtl::STLDeleteElements(&tensors_);
+    gtl::STLDeleteElements(&managed_outputs_);
     context_.reset(nullptr);
     params_.reset(nullptr);
   }
+
+  // Allow kernel unit tests to run on GPU
+  void SetDevice(const DeviceType& device_type, std::unique_ptr<Device> device);
 
   void set_node_def(const NodeDef& node_def) { node_def_.CopyFrom(node_def); }
 
@@ -108,42 +114,14 @@ class OpsTestBase : public ::testing::Test {
   // TODO(vrv): Replace with something like a BrainClient Feed.
   template <typename T>
   void AddInput(const TensorShape& shape, std::function<T(int)> input_mapping) {
-    CHECK_GT(input_types_.size(), inputs_.size())
-        << "Adding more inputs than types; perhaps you need to call MakeOp";
-    bool is_ref = IsRefType(input_types_[inputs_.size()]);
-    Tensor* input = new Tensor(device_->GetAllocator(AllocatorAttributes()),
-                               DataTypeToEnum<T>::v(), shape);
-    test::FillFn(input, input_mapping);
-    tensors_.push_back(input);
-    if (is_ref) {
-      CHECK_EQ(RemoveRefType(input_types_[inputs_.size()]),
-               DataTypeToEnum<T>::v());
-      inputs_.push_back({&lock_for_refs_, input});
-    } else {
-      CHECK_EQ(input_types_[inputs_.size()], DataTypeToEnum<T>::v());
-      inputs_.push_back({nullptr, input});
-    }
+    test::FillFn(AddInput(DataTypeToEnum<T>::v(), shape), input_mapping);
   }
 
   // Like AddInput but takes in an explicit arrayslice of data.
   template <typename T>
   void AddInputFromArray(const TensorShape& shape,
                          const gtl::ArraySlice<T>& data) {
-    CHECK_GT(input_types_.size(), inputs_.size())
-        << "Adding more inputs than types; perhaps you need to call MakeOp";
-    bool is_ref = IsRefType(input_types_[inputs_.size()]);
-    Tensor* input = new Tensor(device_->GetAllocator(AllocatorAttributes()),
-                               DataTypeToEnum<T>::v(), shape);
-    test::FillValues<T>(input, data);
-    tensors_.push_back(input);
-    if (is_ref) {
-      CHECK_EQ(RemoveRefType(input_types_[inputs_.size()]),
-               DataTypeToEnum<T>::v());
-      inputs_.push_back({&lock_for_refs_, input});
-    } else {
-      CHECK_EQ(input_types_[inputs_.size()], DataTypeToEnum<T>::v());
-      inputs_.push_back({nullptr, input});
-    }
+    test::FillValues<T>(AddInput(DataTypeToEnum<T>::v(), shape), data);
   }
 
   // Convenience function to add an input and populate it with the elements from
@@ -151,21 +129,32 @@ class OpsTestBase : public ::testing::Test {
   template <typename T, typename SrcType>
   void AddInputFromList(const TensorShape& shape,
                         std::initializer_list<SrcType> data) {
+    test::FillValues<T>(AddInput(DataTypeToEnum<T>::v(), shape), data);
+  }
+
+  // Adds a Resource type as input. If <container> is empty, uses the default
+  // container name.
+  template <typename T>
+  void AddResourceInput(const string& container, const string& name,
+                        T* resource) {
     CHECK_GT(input_types_.size(), inputs_.size())
         << "Adding more inputs than types; perhaps you need to call MakeOp";
-    bool is_ref = IsRefType(input_types_[inputs_.size()]);
-    Tensor* input = new Tensor(device_->GetAllocator(AllocatorAttributes()),
-                               DataTypeToEnum<T>::v(), shape);
-    test::FillValues<T>(input, data);
+    ResourceMgr* rm = device_->resource_manager();
+    EXPECT_TRUE(
+        rm->Create(container == "" ? rm->default_container() : container, name,
+                   resource)
+            .ok());
+    TypeIndex type_index = MakeTypeIndex<T>();
+    ResourceHandle handle;
+    handle.set_device(device_->name());
+    handle.set_container(container);
+    handle.set_name(name);
+    handle.set_hash_code(type_index.hash_code());
+    handle.set_maybe_type_name(type_index.name());
+    Tensor* input = new Tensor(allocator(), DT_RESOURCE, TensorShape({}));
+    input->scalar<ResourceHandle>()() = handle;
     tensors_.push_back(input);
-    if (is_ref) {
-      CHECK_EQ(RemoveRefType(input_types_[inputs_.size()]),
-               DataTypeToEnum<T>::v());
-      inputs_.push_back({&lock_for_refs_, input});
-    } else {
-      CHECK_EQ(input_types_[inputs_.size()], DataTypeToEnum<T>::v());
-      inputs_.push_back({nullptr, input});
-    }
+    inputs_.push_back({nullptr, input});
   }
 
   // Runs an operation producing 'num_outputs' outputs.
@@ -181,6 +170,8 @@ class OpsTestBase : public ::testing::Test {
     params_.get()->frame_iter = FrameAndIter(0, 0);
     params_.get()->inputs = &inputs_;
     params_.get()->op_kernel = kernel_.get();
+    step_container_.reset(new ScopedStepContainer(0, [](const string&) {}));
+    params_->step_container = step_container_.get();
     std::vector<AllocatorAttributes> attrs;
     test::SetOutputAttrs(params_.get(), &attrs);
     checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
@@ -208,21 +199,36 @@ class OpsTestBase : public ::testing::Test {
   // Returns the tensor output for 'output_index'.
   //
   // REQUIRES: 0 <= output_index < context_->num_outputs()
-  Tensor* GetOutput(int output_index) {
-    CHECK_LT(output_index, context_->num_outputs());
-    return context_->mutable_output(output_index);
-  }
+  Tensor* GetOutput(int output_index);
 
-  Allocator* allocator() {
-    return device_->GetAllocator(AllocatorAttributes());
-  }
+  Allocator* allocator() { return allocator_; }
 
   const DataTypeVector& output_types() const { return kernel_->output_types(); }
 
+ private:
+  Tensor* AddInput(DataType dtype, const TensorShape& shape) {
+    CHECK_GT(input_types_.size(), inputs_.size())
+        << "Adding more inputs than types; perhaps you need to call MakeOp";
+    bool is_ref = IsRefType(input_types_[inputs_.size()]);
+    Tensor* input = new Tensor(allocator(), dtype, shape);
+    tensors_.push_back(input);
+    if (is_ref) {
+      CHECK_EQ(RemoveRefType(input_types_[inputs_.size()]), dtype);
+      inputs_.push_back({&lock_for_refs_, input});
+    } else {
+      CHECK_EQ(input_types_[inputs_.size()], dtype);
+      inputs_.push_back({nullptr, input});
+    }
+    return input;
+  }
+
  protected:
   std::unique_ptr<Device> device_;
+  // The device allocator, or the managed_allocator_ below if running on GPU.
+  Allocator* allocator_;
 
   std::unique_ptr<OpKernel> kernel_;
+  std::unique_ptr<ScopedStepContainer> step_container_;
   NodeDef node_def_;
   DataTypeVector input_types_;
   DeviceType device_type_;
@@ -232,9 +238,13 @@ class OpsTestBase : public ::testing::Test {
   gtl::InlinedVector<TensorValue, 4> inputs_;
   // Owns Tensors.
   std::vector<Tensor*> tensors_;
+  // Copies of the outputs in unified memory (host and device accessible).
+  std::vector<Tensor*> managed_outputs_;
 
   std::unique_ptr<OpKernelContext::Params> params_;
   std::unique_ptr<OpKernelContext> context_;
+  // Unified memory allocator, only used when running on GPU.
+  std::unique_ptr<Allocator> managed_allocator_;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(OpsTestBase);
@@ -242,4 +252,4 @@ class OpsTestBase : public ::testing::Test {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_OPS_TESTUTIL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_OPS_TESTUTIL_H_

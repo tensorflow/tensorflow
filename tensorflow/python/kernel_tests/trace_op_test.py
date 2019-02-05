@@ -18,20 +18,24 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class TraceTest(tf.test.TestCase):
+class TraceTest(test.TestCase):
 
   def setUp(self):
     x = np.random.seed(0)
 
   def compare(self, x):
     np_ans = np.trace(x, axis1=-2, axis2=-1)
-    with self.test_session(use_gpu=True):
-      tf_ans = tf.trace(x).eval()
+    with self.cached_session(use_gpu=True):
+      tf_ans = math_ops.trace(x).eval()
     self.assertAllClose(tf_ans, np_ans)
 
+  @test_util.run_deprecated_v1
   def testTrace(self):
     for dtype in [np.int32, np.float32, np.float64]:
       for shape in [[2, 2], [2, 3], [3, 2], [2, 3, 2], [2, 2, 2, 3]]:
@@ -40,4 +44,4 @@ class TraceTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

@@ -12,55 +12,85 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.argmax_op."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
-class ArgMaxTest(tf.test.TestCase):
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
-  def _testArg(self, method, x, dimension,
-               expected_values, use_gpu=False, expected_err_re=None):
-    with self.test_session(use_gpu=use_gpu):
-      ans = method(x, dimension=dimension)
+
+class ArgMaxTest(test.TestCase):
+
+  def _testArg(self,
+               method,
+               x,
+               axis,
+               expected_values,
+               use_gpu=False,
+               expected_err_re=None):
+    with self.session(use_gpu=use_gpu):
+      ans = method(x, axis=axis)
       if expected_err_re is None:
-        tf_ans = ans.eval()
+        tf_ans = self.evaluate(ans)
+        # Defaults to int64 output.
+        self.assertEqual(np.int64, tf_ans.dtype)
         self.assertAllEqual(tf_ans, expected_values)
         self.assertShapeEqual(expected_values, ans)
       else:
         with self.assertRaisesOpError(expected_err_re):
-          ans.eval()
+          self.evaluate(ans)
 
-  def _testBothArg(self, method, x, dimension,
-                   expected_values, expected_err_re=None):
-    self._testArg(method, x, dimension,
-                  expected_values, True, expected_err_re)
-    self._testArg(method, x, dimension,
-                  expected_values, False, expected_err_re)
+  def _testBothArg(self,
+                   method,
+                   x,
+                   axis,
+                   expected_values,
+                   expected_err_re=None):
+    self._testArg(method, x, axis, expected_values, True, expected_err_re)
+    self._testArg(method, x, axis, expected_values, False, expected_err_re)
 
   def _testBasic(self, dtype):
-    x = np.asarray(100*np.random.randn(200), dtype=dtype)
+    x = np.asarray(100 * np.random.randn(200), dtype=dtype)
 
-    # Check that argmin and argmax match numpy along the primary
-    # dimension
-    self._testBothArg(tf.argmax, x, 0, x.argmax())
-    self._testBothArg(tf.argmin, x, 0, x.argmin())
+    # Check that argmin and argmax match numpy along the primary axis
+    self._testBothArg(math_ops.argmax, x, 0, x.argmax())
+    self._testBothArg(math_ops.argmin, x, 0, x.argmin())
 
   def _testDim(self, dtype):
-    x = np.asarray(100*np.random.randn(3, 2, 4, 5, 6), dtype=dtype)
+    x = np.asarray(100 * np.random.randn(3, 2, 4, 5, 6), dtype=dtype)
 
-    # Check that argmin and argmax match numpy along all dimensions
-    for dim in range(5):
-      self._testBothArg(tf.argmax, x, dim, x.argmax(dim))
-      self._testBothArg(tf.argmin, x, dim, x.argmin(dim))
+    # Check that argmin and argmax match numpy along all axes
+    for axis in range(-5, 5):
+      self._testBothArg(math_ops.argmax, x, axis, x.argmax(axis))
+      self._testBothArg(math_ops.argmin, x, axis, x.argmin(axis))
 
   def testFloat(self):
     self._testBasic(np.float32)
     self._testDim(np.float32)
+
+  def testFloatInt32Output(self):
+    x = np.asarray(100 * np.random.randn(200), dtype=np.float32)
+    expected_values = x.argmax()
+    with self.session(use_gpu=True):
+      ans = math_ops.argmax(x, axis=0, output_type=dtypes.int32)
+      tf_ans = self.evaluate(ans)
+      self.assertEqual(np.int32, tf_ans.dtype)
+      # The values are equal when comparing int32 to int64 because
+      # the values don't have a range that exceeds 32-bit integers.
+      self.assertAllEqual(tf_ans, expected_values)
+    expected_values = x.argmin()
+    with self.session(use_gpu=True):
+      ans = math_ops.argmin(x, axis=0, output_type=dtypes.int32)
+      tf_ans = self.evaluate(ans)
+      self.assertEqual(np.int32, tf_ans.dtype)
+      self.assertAllEqual(tf_ans, expected_values)
 
   def testDouble(self):
     self._testBasic(np.float64)
@@ -75,12 +105,26 @@ class ArgMaxTest(tf.test.TestCase):
     self._testDim(np.int64)
 
   def testEmpty(self):
-    with self.test_session():
-      for op in tf.argmin, tf.argmax:
+    with self.cached_session():
+      for op in math_ops.argmin, math_ops.argmax:
         with self.assertRaisesOpError(
             r"Reduction axis 0 is empty in shape \[0\]"):
           op([], 0).eval()
 
+  @test_util.run_deprecated_v1
+  def testDefaultAxis(self):
+    with self.cached_session():
+      for op in math_ops.argmin, math_ops.argmax:
+        ans = op([1]).eval()
+        self.assertAllEqual(ans, 0)
+
+  @test_util.run_deprecated_v1
+  def testOutputEmpty(self):
+    with self.cached_session():
+      for op in math_ops.argmin, math_ops.argmax:
+        ret = op(array_ops.zeros(shape=[1, 0, 2]), axis=-1).eval()
+        self.assertEqual(ret.shape, (1, 0))
+
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

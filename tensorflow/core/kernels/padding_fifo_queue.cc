@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 
@@ -76,7 +78,8 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
       Tensor element;
       // Here, ManyOutShape returns zeros for undetermined shapes,
       // which is exactly what we want to use.
-      ctx->allocate_temp(component_dtypes_[i], ManyOutShape(i, 0), &element);
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(component_dtypes_[i],
+                                             ManyOutShape(i, 0), &element));
       tuple.emplace_back(element);
     }
     callback(tuple);
@@ -118,7 +121,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                   }
                 }
               }
-              if (allow_small_batch && queues_[0].size() > 0) {
+              if (allow_small_batch && !queues_[0].empty()) {
                 // Request all remaining elements in the queue.
                 queue_size = queues_[0].size();
                 attempt->tuples.clear();
@@ -154,7 +157,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                 // Finished.  Allocate attempt->tuple and
                 // copy from attempt->tuples to attempt->tuple.
                 attempt->tuple.reserve(num_components());
-                const std::vector<Tuple>& tuples = attempt->tuples;
+                std::vector<Tuple>& tuples = attempt->tuples;
 
                 std::vector<bool> dynamic_shape;
                 const int64 batch_size = tuples.size();
@@ -179,8 +182,9 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                   }
 
                   Tensor element;
-                  attempt->context->allocate_temp(component_dtypes_[i], shape,
-                                                  &element);
+                  attempt->context->SetStatus(attempt->context->allocate_temp(
+                      component_dtypes_[i], shape, &element));
+                  if (!attempt->context->status().ok()) return kComplete;
 
                   bool has_dynamic_shape = !partial_shape.IsFullyDefined();
                   if (has_dynamic_shape) {
@@ -203,8 +207,10 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       attempt->context->SetStatus(CopyElementToLargerSlice(
                           tuples[index][i], &attempt->tuple[i], index));
                     } else {
-                      attempt->context->SetStatus(CopyElementToSlice(
-                          tuples[index][i], &attempt->tuple[i], index));
+                      attempt->context->SetStatus(
+                          batch_util::CopyElementToSlice(
+                              std::move(tuples[index][i]), &attempt->tuple[i],
+                              index));
                     }
                     if (!attempt->context->status().ok()) return kComplete;
                   }
@@ -276,7 +282,11 @@ Status PaddingFIFOQueue::CompatibleNodeDefShapes(
 }
 
 Status PaddingFIFOQueue::MatchesNodeDef(const NodeDef& node_def) {
-  TF_RETURN_IF_ERROR(MatchesNodeDefOp(node_def, "PaddingFIFOQueue"));
+  if (!MatchesNodeDefOp(node_def, "PaddingFIFOQueue").ok() &&
+      !MatchesNodeDefOp(node_def, "PaddingFIFOQueueV2").ok()) {
+    return errors::InvalidArgument("Expected PaddingFIFOQueue, found ",
+                                   node_def.op());
+  }
   TF_RETURN_IF_ERROR(MatchesNodeDefCapacity(node_def, capacity_));
   TF_RETURN_IF_ERROR(MatchesNodeDefTypes(node_def));
   TF_RETURN_IF_ERROR(CompatibleNodeDefShapes(node_def));
@@ -337,7 +347,7 @@ Status HandleElementToLargerSliceWithRank(const Tensor& element, Tensor* parent,
     default:
       return errors::Unimplemented(
           "HandleElementToLargerSliceWithRank Unhandled data type: ",
-          element.dtype());
+          DataTypeString(element.dtype()));
   }
 }
 
@@ -382,7 +392,7 @@ Status PaddingFIFOQueue::SetElementZero(Tensor* element) {
   TF_CALL_ALL_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
   return errors::Unimplemented("SetElementZero Unhandled data type: ",
-                               element->dtype());
+                               DataTypeString(element->dtype()));
 }
 
 std::vector<TensorShape> PaddingFIFOQueue::ConvertShapesPartialDimensionsToZero(

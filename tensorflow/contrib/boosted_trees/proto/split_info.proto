@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+option cc_enable_arenas = true;
+
+package tensorflow.boosted_trees.learner;
+
+import "tensorflow/contrib/boosted_trees/proto/tree_config.proto";
+
+// Gathered information for a split node.
+message SplitInfo {
+  // The split node without the child nodes attached.
+  tensorflow.boosted_trees.trees.TreeNode split_node = 1;
+
+  // Left Leaf node.
+  tensorflow.boosted_trees.trees.Leaf left_child = 2;
+
+  // Right Leaf node.
+  tensorflow.boosted_trees.trees.Leaf right_child = 3;
+}
+
+message ObliviousSplitInfo {
+  tensorflow.boosted_trees.trees.TreeNode split_node = 1;
+  repeated tensorflow.boosted_trees.trees.Leaf children = 2;
+  // For each child, children_parent_id stores the node_id of its parent when it
+  // was a leaf. For the idx-th child it corresponds the idx/2-th
+  // children_parent_id.
+  repeated int32 children_parent_id = 3;
+}

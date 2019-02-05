@@ -23,7 +23,13 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-using namespace ops;  // NOLINT(build/namespaces)
+namespace {
+
+using ops::Add;
+using ops::Const;
+using ops::Mul;
+using ops::Placeholder;
+using ops::Sub;
 
 TEST(ClientSessionTest, Basic) {
   Scope root = Scope::NewRootScope();
@@ -49,7 +55,7 @@ TEST(ClientSessionTest, Feed) {
 
 TEST(ClientSessionTest, Extend) {
   Scope root = Scope::NewRootScope();
-  auto a = Placeholder(root, DT_INT32);
+  auto a = Placeholder(root, DT_INT32, Placeholder::Shape({2}));
   auto c = Add(root, a, {2, 2});
   ClientSession session(root);
   std::vector<Tensor> outputs;
@@ -89,4 +95,26 @@ TEST(ClientSessionTest, MultiThreaded) {
   test::ExpectTensorEqual<int>(outputs[0], test::AsTensor<int>({-1, 2}, {2}));
 }
 
-}  // end namespace tensorflow
+TEST(ClientSessionTest, Callable) {
+  Scope root = Scope::NewRootScope();
+  auto a = Placeholder(root, DT_INT32);
+  auto b = Placeholder(root, DT_INT32);
+  auto c = Add(root, a, b);
+  ClientSession session(root);
+  std::vector<Tensor> outputs;
+
+  CallableOptions options;
+  options.add_feed(a.node()->name());
+  options.add_feed(b.node()->name());
+  options.add_fetch(c.node()->name());
+  ClientSession::CallableHandle callable;
+  TF_CHECK_OK(session.MakeCallable(options, &callable));
+  TF_EXPECT_OK(session.RunCallable(
+      callable, {test::AsTensor<int>({1}, {}), test::AsTensor<int>({41}, {})},
+      &outputs, nullptr));
+  test::ExpectTensorEqual<int>(outputs[0], test::AsTensor<int>({42}, {}));
+  TF_EXPECT_OK(session.ReleaseCallable(callable));
+}
+
+}  // namespace
+}  // namespace tensorflow

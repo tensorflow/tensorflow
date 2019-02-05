@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_DEFAULT_DEVICE_H_
-#define TENSORFLOW_GRAPH_DEFAULT_DEVICE_H_
+#ifndef TENSORFLOW_CORE_GRAPH_DEFAULT_DEVICE_H_
+#define TENSORFLOW_CORE_GRAPH_DEFAULT_DEVICE_H_
 
 #include <string>
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 
 namespace tensorflow {
 namespace graph {
@@ -37,4 +38,4 @@ inline void SetDefaultDevice(const string& device, GraphDef* graph_def) {
 }  // namespace graph
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_DEFAULT_DEVICE_H_
+#endif  // TENSORFLOW_CORE_GRAPH_DEFAULT_DEVICE_H_

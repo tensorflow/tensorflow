@@ -42,7 +42,7 @@ inline void FileExists(const string& filename, TF_Status* out_status) {
 inline void FileExists(const tensorflow::StringPiece& filename,
     TF_Status* out_status) {
   tensorflow::Status status =
-      tensorflow::Env::Default()->FileExists(filename.ToString());
+      tensorflow::Env::Default()->FileExists(string(filename));
   if (!status.ok()) {
     Set_TF_Status_from_Status(out_status, status);
   }
@@ -110,21 +110,15 @@ void RecursivelyCreateDir(const string& dirname, TF_Status* out_status) {
   }
 }
 
-void CopyFile(const string& oldpath, const string& newpath, bool overwrite,
+void CopyFile(const string& src, const string& target, bool overwrite,
               TF_Status* out_status) {
-  // If overwrite is false and the newpath file exists then it's an error.
-  if (!overwrite && tensorflow::Env::Default()->FileExists(newpath).ok()) {
+  // If overwrite is false and the target file exists then its an error.
+  if (!overwrite && tensorflow::Env::Default()->FileExists(target).ok()) {
     TF_SetStatus(out_status, TF_ALREADY_EXISTS, "file already exists");
     return;
   }
-  string file_content;
-  tensorflow::Status status = ReadFileToString(tensorflow::Env::Default(),
-      oldpath, &file_content);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
-    return;
-  }
-  status = WriteStringToFile(tensorflow::Env::Default(), newpath, file_content);
+  tensorflow::Status status =
+      tensorflow::Env::Default()->CopyFile(src, target);
   if (!status.ok()) {
     Set_TF_Status_from_Status(out_status, status);
   }
@@ -226,12 +220,22 @@ void AppendToFile(const string& file_content, tensorflow::WritableFile* file,
   }
 }
 
+int64 TellFile(tensorflow::WritableFile* file, TF_Status* out_status) {
+  int64 position = -1;
+  tensorflow::Status status = file->Tell(&position);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+  }
+  return position;
+}
+
+
 string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
                       size_t bytes,
                       TF_Status* out_status) {
   string result;
   tensorflow::Status status = stream->ReadNBytes(bytes, &result);
-  if (!status.ok()) {
+  if (!status.ok() && status.code() != tensorflow::error::OUT_OF_RANGE) {
     Set_TF_Status_from_Status(out_status, status);
     result.clear();
   }
@@ -271,6 +275,7 @@ tensorflow::WritableFile* CreateWritableFile(const string& filename,
                                              TF_Status* out_status);
 void AppendToFile(const string& file_content, tensorflow::WritableFile* file,
                   TF_Status* out_status);
+int64 TellFile(tensorflow::WritableFile* file, TF_Status* out_status);
 string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
                       size_t bytes,
                       TF_Status* out_status);

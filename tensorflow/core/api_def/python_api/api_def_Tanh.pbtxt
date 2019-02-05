@@ -1,0 +1,12 @@
+op {
+  graph_op_name: "Tanh"
+  endpoint {
+    name: "math.tanh"
+  }
+  endpoint {
+    name: "nn.tanh"
+  }
+  endpoint {
+    name: "tanh"
+  }
+}

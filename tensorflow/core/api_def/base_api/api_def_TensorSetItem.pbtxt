@@ -1,0 +1,11 @@
+op {
+  graph_op_name: "TensorListSetItem"
+  summary: "Sets the index-th position of the list to contain the given tensor."
+  description: <<END
+input_handle: the list
+index: the position in the list to which the tensor will be assigned
+item: the element to be assigned to that position
+output_handle: the new list, with the element in the proper position
+
+END
+}

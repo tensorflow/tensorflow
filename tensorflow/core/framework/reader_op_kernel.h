@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_READER_OP_KERNEL_H_
-#define TENSORFLOW_FRAMEWORK_READER_OP_KERNEL_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_READER_OP_KERNEL_H_
+#define TENSORFLOW_CORE_FRAMEWORK_READER_OP_KERNEL_H_
 
 #include <functional>
 #include <string>
@@ -22,37 +22,67 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/reader_interface.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-// Implementation for ops providing a Reader.
-class ReaderOpKernel : public OpKernel {
- public:
-  explicit ReaderOpKernel(OpKernelConstruction* context);
-  ~ReaderOpKernel() override;
+// NOTE: This is now a very thin layer over ResourceOpKernel.
+// TODO(sjhwang): Remove dependencies to this class, then delete this.
 
-  void Compute(OpKernelContext* context) override;
+// Implementation for ops providing a Reader.
+class ReaderOpKernel : public ResourceOpKernel<ReaderInterface> {
+ public:
+  using ResourceOpKernel::ResourceOpKernel;
 
   // Must be called by descendants before the first call to Compute()
   // (typically called during construction).  factory must return a
   // ReaderInterface descendant allocated with new that ReaderOpKernel
   // will take ownership of.
-  void SetReaderFactory(std::function<ReaderInterface*()> factory) {
+  void SetReaderFactory(std::function<ReaderInterface*()> factory)
+      LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
-    DCHECK(!have_handle_);
+    DCHECK(resource_ == nullptr);
     factory_ = factory;
   }
 
+  void Compute(OpKernelContext* context) override {
+    if (!IsCancellable()) {
+      ResourceOpKernel<ReaderInterface>::Compute(context);
+    } else {
+      // Install cancellation
+      CancellationManager* cm = context->cancellation_manager();
+      CancellationToken token = cm->get_cancellation_token();
+      bool already_cancelled =
+          !cm->RegisterCallback(token, [this]() { this->Cancel(); });
+
+      if (!already_cancelled) {
+        ResourceOpKernel<ReaderInterface>::Compute(context);
+      } else {
+        context->SetStatus(errors::Cancelled("read operation was cancelled"));
+      }
+    }
+  }
+
  private:
-  mutex mu_;
-  bool have_handle_ GUARDED_BY(mu_);
-  PersistentTensor handle_ GUARDED_BY(mu_);
-  ContainerInfo cinfo_;
-  std::function<ReaderInterface*()> factory_;
+  virtual bool IsCancellable() const { return false; }
+  virtual void Cancel() {}
+
+  Status CreateResource(ReaderInterface** reader)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) override {
+    *reader = factory_();
+    if (*reader == nullptr) {
+      return errors::ResourceExhausted("Failed to allocate reader");
+    }
+    std::function<ReaderInterface*()> temp = nullptr;
+    factory_.swap(temp);
+    return Status::OK();
+  }
+
+  std::function<ReaderInterface*()> factory_ GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_READER_OP_KERNEL_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_READER_OP_KERNEL_H_

@@ -17,10 +17,19 @@ limitations under the License.
 
 #include <unistd.h>
 
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 
 namespace tensorflow {
 namespace {
+
+string RemoveSuffix(const string& name, const string& suffix) {
+  string output(name);
+  StringPiece piece(output);
+  str_util::ConsumeSuffix(&piece, suffix);
+  return string(piece);
+}
 
 // Closes the given AAsset when variable is destructed.
 class ScopedAsset {
@@ -89,7 +98,7 @@ class RandomAccessFileFromAsset : public RandomAccessFile {
     off64_t new_offset = AAsset_seek64(asset.get(), offset, SEEK_SET);
     off64_t length = AAsset_getLength64(asset.get());
     if (new_offset < 0) {
-      result->set(scratch, 0);
+      *result = StringPiece(scratch, 0);
       return errors::OutOfRange("Read after file end.");
     }
     const off64_t region_left =
@@ -98,7 +107,7 @@ class RandomAccessFileFromAsset : public RandomAccessFile {
     if (read < 0) {
       return errors::Internal("Error reading from asset.");
     }
-    result->set(scratch, region_left);
+    *result = StringPiece(scratch, region_left);
     return (region_left == to_read)
                ? Status::OK()
                : errors::OutOfRange("Read less bytes than requested.");
@@ -174,23 +183,29 @@ Status AssetManagerFileSystem::NewReadOnlyMemoryRegionFromFile(
   return Status::OK();
 }
 
-Status AssetManagerFileSystem::GetChildren(const string& dir_name,
+Status AssetManagerFileSystem::GetChildren(const string& prefixed_dir,
                                            std::vector<string>* r) {
-  string path = RemoveAssetPrefix(dir_name);
+  std::string path = NormalizeDirectoryPath(prefixed_dir);
   auto dir =
       ScopedAssetDir(AAssetManager_openDir(asset_manager_, path.c_str()));
   if (dir.get() == nullptr) {
-    return errors::NotFound("Directory ", dir_name, " not found.");
+    return errors::NotFound("Directory ", prefixed_dir, " not found.");
   }
   const char* next_file = AAssetDir_getNextFileName(dir.get());
   while (next_file != nullptr) {
-    r->push_back(string(next_file));
+    r->push_back(next_file);
     next_file = AAssetDir_getNextFileName(dir.get());
   }
   return Status::OK();
 }
 
 Status AssetManagerFileSystem::GetFileSize(const string& fname, uint64* s) {
+  // If fname corresponds to a directory, return early. It doesn't map to an
+  // AAsset, and would otherwise return NotFound.
+  if (DirectoryExists(fname)) {
+    *s = 0;
+    return Status::OK();
+  }
   string path = RemoveAssetPrefix(fname);
   auto asset = ScopedAsset(
       AAssetManager_open(asset_manager_, path.c_str(), AASSET_MODE_RANDOM));
@@ -203,16 +218,34 @@ Status AssetManagerFileSystem::GetFileSize(const string& fname, uint64* s) {
 
 Status AssetManagerFileSystem::Stat(const string& fname, FileStatistics* stat) {
   uint64 size;
+  stat->is_directory = DirectoryExists(fname);
   TF_RETURN_IF_ERROR(GetFileSize(fname, &size));
   stat->length = size;
   return Status::OK();
 }
 
+string AssetManagerFileSystem::NormalizeDirectoryPath(const string& fname) {
+  return RemoveSuffix(RemoveAssetPrefix(fname), "/");
+}
+
 string AssetManagerFileSystem::RemoveAssetPrefix(const string& name) {
-  string output(name);
-  StringPiece piece(output);
-  piece.Consume(prefix_);
-  return piece.ToString();
+  StringPiece piece(name);
+  str_util::ConsumePrefix(&piece, prefix_);
+  return string(piece);
+}
+
+bool AssetManagerFileSystem::DirectoryExists(const std::string& fname) {
+  std::string path = NormalizeDirectoryPath(fname);
+  auto dir =
+      ScopedAssetDir(AAssetManager_openDir(asset_manager_, path.c_str()));
+  // Note that openDir will return something even if the directory doesn't
+  // exist. Therefore, we need to ensure one file exists in the folder.
+  return AAssetDir_getNextFileName(dir.get()) != NULL;
+}
+
+Status AssetManagerFileSystem::GetMatchingPaths(const string& pattern,
+                                                std::vector<string>* results) {
+  return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
 }
 
 Status AssetManagerFileSystem::NewWritableFile(

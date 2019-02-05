@@ -20,15 +20,17 @@ limitations under the License.
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace io {
+namespace {
 
 // Construct a string of the specified length made out of the supplied
 // partial string.
-static string BigString(const string& partial_string, size_t n) {
+string BigString(const string& partial_string, size_t n) {
   string result;
   while (result.size() < n) {
     result.append(partial_string);
@@ -38,62 +40,70 @@ static string BigString(const string& partial_string, size_t n) {
 }
 
 // Construct a string from a number
-static string NumberString(int n) {
+string NumberString(int n) {
   char buf[50];
   snprintf(buf, sizeof(buf), "%d.", n);
   return string(buf);
 }
 
 // Return a skewed potentially long string
-static string RandomSkewedString(int i, random::SimplePhilox* rnd) {
+string RandomSkewedString(int i, random::SimplePhilox* rnd) {
   return BigString(NumberString(i), rnd->Skewed(17));
 }
 
+class StringDest : public WritableFile {
+ public:
+  explicit StringDest(string* contents) : contents_(contents) {}
+
+  Status Close() override { return Status::OK(); }
+  Status Flush() override { return Status::OK(); }
+  Status Sync() override { return Status::OK(); }
+  Status Append(StringPiece slice) override {
+    contents_->append(slice.data(), slice.size());
+    return Status::OK();
+  }
+  Status Tell(int64* pos) override {
+    *pos = contents_->size();
+    return Status::OK();
+  }
+
+ private:
+  string* contents_;
+};
+
+class StringSource : public RandomAccessFile {
+ public:
+  explicit StringSource(string* contents)
+      : contents_(contents), force_error_(false) {}
+
+  Status Read(uint64 offset, size_t n, StringPiece* result,
+              char* scratch) const override {
+    if (force_error_) {
+      force_error_ = false;
+      return errors::DataLoss("read error");
+    }
+
+    if (offset >= contents_->size()) {
+      return errors::OutOfRange("end of file");
+    }
+
+    if (contents_->size() < offset + n) {
+      n = contents_->size() - offset;
+    }
+    *result = StringPiece(contents_->data() + offset, n);
+    return Status::OK();
+  }
+
+  void force_error() { force_error_ = true; }
+
+ private:
+  string* contents_;
+  mutable bool force_error_;
+};
+
 class RecordioTest : public ::testing::Test {
  private:
-  class StringDest : public WritableFile {
-   public:
-    string contents_;
-
-    Status Close() override { return Status::OK(); }
-    Status Flush() override { return Status::OK(); }
-    Status Sync() override { return Status::OK(); }
-    Status Append(const StringPiece& slice) override {
-      contents_.append(slice.data(), slice.size());
-      return Status::OK();
-    }
-  };
-
-  class StringSource : public RandomAccessFile {
-   public:
-    StringPiece contents_;
-    mutable bool force_error_;
-    mutable bool returned_partial_;
-    StringSource() : force_error_(false), returned_partial_(false) {}
-
-    Status Read(uint64 offset, size_t n, StringPiece* result,
-                char* scratch) const override {
-      EXPECT_FALSE(returned_partial_) << "must not Read() after eof/error";
-
-      if (force_error_) {
-        force_error_ = false;
-        returned_partial_ = true;
-        return errors::DataLoss("read error");
-      }
-
-      if (offset >= contents_.size()) {
-        return errors::OutOfRange("end of file");
-      }
-
-      if (contents_.size() < offset + n) {
-        n = contents_.size() - offset;
-        returned_partial_ = true;
-      }
-      *result = StringPiece(contents_.data() + offset, n);
-      return Status::OK();
-    }
-  };
-
+  string contents_;
   StringDest dest_;
   StringSource source_;
   bool reading_;
@@ -103,7 +113,9 @@ class RecordioTest : public ::testing::Test {
 
  public:
   RecordioTest()
-      : reading_(false),
+      : dest_(&contents_),
+        source_(&contents_),
+        reading_(false),
         readpos_(0),
         writer_(new RecordWriter(&dest_)),
         reader_(new RecordReader(&source_)) {}
@@ -118,12 +130,11 @@ class RecordioTest : public ::testing::Test {
     TF_ASSERT_OK(writer_->WriteRecord(StringPiece(msg)));
   }
 
-  size_t WrittenBytes() const { return dest_.contents_.size(); }
+  size_t WrittenBytes() const { return contents_.size(); }
 
   string Read() {
     if (!reading_) {
       reading_ = true;
-      source_.contents_ = StringPiece(dest_.contents_);
     }
     string record;
     Status s = reader_->ReadRecord(&readpos_, &record);
@@ -136,26 +147,20 @@ class RecordioTest : public ::testing::Test {
     }
   }
 
-  void IncrementByte(int offset, int delta) {
-    dest_.contents_[offset] += delta;
-  }
+  void IncrementByte(int offset, int delta) { contents_[offset] += delta; }
 
-  void SetByte(int offset, char new_byte) {
-    dest_.contents_[offset] = new_byte;
-  }
+  void SetByte(int offset, char new_byte) { contents_[offset] = new_byte; }
 
-  void ShrinkSize(int bytes) {
-    dest_.contents_.resize(dest_.contents_.size() - bytes);
-  }
+  void ShrinkSize(int bytes) { contents_.resize(contents_.size() - bytes); }
 
   void FixChecksum(int header_offset, int len) {
     // Compute crc of type/len/data
-    uint32_t crc = crc32c::Value(&dest_.contents_[header_offset + 6], 1 + len);
+    uint32_t crc = crc32c::Value(&contents_[header_offset + 6], 1 + len);
     crc = crc32c::Mask(crc);
-    core::EncodeFixed32(&dest_.contents_[header_offset], crc);
+    core::EncodeFixed32(&contents_[header_offset], crc);
   }
 
-  void ForceError() { source_.force_error_ = true; }
+  void ForceError() { source_.force_error(); }
 
   void StartReadingAt(uint64_t initial_offset) { readpos_ = initial_offset; }
 
@@ -164,7 +169,6 @@ class RecordioTest : public ::testing::Test {
     Write("bar");
     Write(BigString("x", 10000));
     reading_ = true;
-    source_.contents_ = StringPiece(dest_.contents_);
     uint64 offset = WrittenBytes() + offset_past_end;
     string record;
     Status s = reader_->ReadRecord(&offset, &record);
@@ -216,16 +220,100 @@ TEST_F(RecordioTest, RandomRead) {
   ASSERT_EQ("EOF", Read());
 }
 
+void TestNonSequentialReads(const RecordWriterOptions& writer_options,
+                            const RecordReaderOptions& reader_options) {
+  string contents;
+  StringDest dst(&contents);
+  RecordWriter writer(&dst, writer_options);
+  for (int i = 0; i < 10; ++i) {
+    TF_ASSERT_OK(writer.WriteRecord(NumberString(i))) << i;
+  }
+  TF_ASSERT_OK(writer.Close());
+
+  StringSource file(&contents);
+  RecordReader reader(&file, reader_options);
+
+  string record;
+  // First read sequentially to fill in the offsets table.
+  uint64 offsets[10] = {0};
+  uint64 offset = 0;
+  for (int i = 0; i < 10; ++i) {
+    offsets[i] = offset;
+    TF_ASSERT_OK(reader.ReadRecord(&offset, &record)) << i;
+  }
+
+  // Read randomly: First go back to record #3 then forward to #8.
+  offset = offsets[3];
+  TF_ASSERT_OK(reader.ReadRecord(&offset, &record));
+  EXPECT_EQ("3.", record);
+  EXPECT_EQ(offsets[4], offset);
+
+  offset = offsets[8];
+  TF_ASSERT_OK(reader.ReadRecord(&offset, &record));
+  EXPECT_EQ("8.", record);
+  EXPECT_EQ(offsets[9], offset);
+}
+
+TEST_F(RecordioTest, NonSequentialReads) {
+  TestNonSequentialReads(RecordWriterOptions(), RecordReaderOptions());
+}
+
+TEST_F(RecordioTest, NonSequentialReadsWithReadBuffer) {
+  RecordReaderOptions options;
+  options.buffer_size = 1 << 10;
+  TestNonSequentialReads(RecordWriterOptions(), options);
+}
+
+TEST_F(RecordioTest, NonSequentialReadsWithCompression) {
+  TestNonSequentialReads(
+      RecordWriterOptions::CreateRecordWriterOptions("ZLIB"),
+      RecordReaderOptions::CreateRecordReaderOptions("ZLIB"));
+}
+
 // Tests of all the error paths in log_reader.cc follow:
-static void AssertHasSubstr(StringPiece s, StringPiece expected) {
-  EXPECT_TRUE(StringPiece(s).contains(expected)) << s << " does not contain "
-                                                 << expected;
+void AssertHasSubstr(StringPiece s, StringPiece expected) {
+  EXPECT_TRUE(str_util::StrContains(s, expected))
+      << s << " does not contain " << expected;
+}
+
+void TestReadError(const RecordWriterOptions& writer_options,
+                   const RecordReaderOptions& reader_options) {
+  const string wrote = BigString("well hello there!", 100);
+  string contents;
+  StringDest dst(&contents);
+  TF_ASSERT_OK(RecordWriter(&dst, writer_options).WriteRecord(wrote));
+
+  StringSource file(&contents);
+  RecordReader reader(&file, reader_options);
+
+  uint64 offset = 0;
+  string read;
+  file.force_error();
+  Status status = reader.ReadRecord(&offset, &read);
+  ASSERT_TRUE(errors::IsDataLoss(status));
+  ASSERT_EQ(0, offset);
+
+  // A failed Read() shouldn't update the offset, and thus a retry shouldn't
+  // lose the record.
+  status = reader.ReadRecord(&offset, &read);
+  ASSERT_TRUE(status.ok()) << status;
+  EXPECT_GT(offset, 0);
+  EXPECT_EQ(wrote, read);
 }
 
 TEST_F(RecordioTest, ReadError) {
-  Write("foo");
-  ForceError();
-  AssertHasSubstr(Read(), "Data loss");
+  TestReadError(RecordWriterOptions(), RecordReaderOptions());
+}
+
+TEST_F(RecordioTest, ReadErrorWithBuffering) {
+  RecordReaderOptions options;
+  options.buffer_size = 1 << 20;
+  TestReadError(RecordWriterOptions(), options);
+}
+
+TEST_F(RecordioTest, ReadErrorWithCompression) {
+  TestReadError(RecordWriterOptions::CreateRecordWriterOptions("ZLIB"),
+                RecordReaderOptions::CreateRecordReaderOptions("ZLIB"));
 }
 
 TEST_F(RecordioTest, CorruptLength) {
@@ -256,5 +344,6 @@ TEST_F(RecordioTest, ReadEnd) { CheckOffsetPastEndReturnsNoRecords(0); }
 
 TEST_F(RecordioTest, ReadPastEnd) { CheckOffsetPastEndReturnsNoRecords(5); }
 
+}  // namespace
 }  // namespace io
 }  // namespace tensorflow

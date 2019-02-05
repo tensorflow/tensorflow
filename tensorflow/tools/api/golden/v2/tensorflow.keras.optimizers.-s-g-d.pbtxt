@@ -1,0 +1,71 @@
+path: "tensorflow.keras.optimizers.SGD"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras.optimizer_v2.gradient_descent.SGD\'>"
+  is_instance: "<class \'tensorflow.python.keras.optimizer_v2.optimizer_v2.OptimizerV2\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.base.Checkpointable\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "iterations"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "weights"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'learning_rate\', \'momentum\', \'nesterov\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'0.001\', \'0.0\', \'False\', \'SGD\'], "
+  }
+  member_method {
+    name: "add_slot"
+    argspec: "args=[\'self\', \'var\', \'slot_name\', \'initializer\'], varargs=None, keywords=None, defaults=[\'zeros\'], "
+  }
+  member_method {
+    name: "add_weight"
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'trainable\', \'synchronization\', \'aggregation\'], varargs=None, keywords=None, defaults=[\'None\', \'zeros\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
+  }
+  member_method {
+    name: "apply_gradients"
+    argspec: "args=[\'self\', \'grads_and_vars\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "from_config"
+    argspec: "args=[\'cls\', \'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_gradients"
+    argspec: "args=[\'self\', \'loss\', \'params\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_slot"
+    argspec: "args=[\'self\', \'var\', \'slot_name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_slot_names"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_updates"
+    argspec: "args=[\'self\', \'loss\', \'params\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_weights"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "minimize"
+    argspec: "args=[\'self\', \'loss\', \'var_list\', \'grad_loss\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "set_weights"
+    argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "variables"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

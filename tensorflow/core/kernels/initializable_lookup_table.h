@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_INITIALIZABLE_LOOKUP_TABLE_H_
-#define TENSORFLOW_KERNELS_INITIALIZABLE_LOOKUP_TABLE_H_
+#ifndef TENSORFLOW_CORE_KERNELS_INITIALIZABLE_LOOKUP_TABLE_H_
+#define TENSORFLOW_CORE_KERNELS_INITIALIZABLE_LOOKUP_TABLE_H_
 
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/platform/macros.h"
@@ -51,18 +51,20 @@ class InitializableLookupTable : public LookupInterface {
         "Insert not supported by InitializableLookupTable implementations");
   }
 
-  Status ExportValues(OpKernelContext* context) final {
+  // Returns errors::Unimplemented.
+  Status Remove(OpKernelContext* ctx, const Tensor& keys) final {
+    return errors::Unimplemented(
+        "Remove not supported by InitializableLookupTable implementations");
+  }
+
+  Status ExportValues(OpKernelContext* context) override {
     return errors::Unimplemented(
         "ExportValues not supported by InitializableLookupTable "
         "implementations");
   }
 
   Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
-                      const Tensor& values) final {
-    return errors::Unimplemented(
-        "ImportValues not supported by InitializableLookupTable "
-        "implementations");
-  }
+                      const Tensor& values) final;
 
   TensorShape key_shape() const final { return TensorShape(); }
 
@@ -92,6 +94,8 @@ class InitializableLookupTable : public LookupInterface {
   //
   // Then the iterator is exhausted, valid returns false and status returns
   // Status::OutOfRange.
+  //
+  // This class is Thread-unsafe.
   class InitTableIterator {
    public:
     InitTableIterator() {}
@@ -114,6 +118,7 @@ class InitializableLookupTable : public LookupInterface {
     virtual Status status() const = 0;
 
     // Returns the total number of elements that the iterator will produce.
+    // It might return -1 in case of error.
     virtual int64 total_size() const = 0;
 
    private:
@@ -129,6 +134,17 @@ class InitializableLookupTable : public LookupInterface {
   // number of expected elements.
   virtual Status DoPrepare(size_t expected_num_elements) = 0;
 
+  // Same as DoPrepare() but derived implementations might choose to skip
+  // calling get_expected_num_elements if size is not needed for DoPrepare.
+  virtual Status DoLazyPrepare(
+      std::function<int64(void)> get_expected_num_elements) {
+    int64 expected_num_elements = get_expected_num_elements();
+    if (expected_num_elements < 0) {
+      return errors::FailedPrecondition("Got negative expected_num_elements.");
+    }
+    return DoPrepare(expected_num_elements);
+  }
+
   // Populates the table in batches given keys and values as tensors into the
   // underlying data structure.
   virtual Status DoInsert(const Tensor& keys, const Tensor& values) = 0;
@@ -141,7 +157,58 @@ class InitializableLookupTable : public LookupInterface {
   bool is_initialized_ = false;
 };
 
+// Iterator to initialize tables given 'keys' and 'values' tensors.
+//
+// The two tensors are returned in the first iteration. It doesn't loop
+// over each element of the tensor since insertions in the lookup table can
+// process batches.
+class KeyValueTensorIterator
+    : public InitializableLookupTable::InitTableIterator {
+ public:
+  // keys and values are not owned by the iterator.
+  explicit KeyValueTensorIterator(const Tensor* keys, const Tensor* values)
+      : keys_(keys), values_(values), valid_(true), status_(Status::OK()) {
+    TensorShape key_shape = keys_->shape();
+    if (!key_shape.IsSameSize(values_->shape())) {
+      valid_ = false;
+      status_ = errors::InvalidArgument(
+          "keys and values should have the same dimension.",
+          key_shape.DebugString(), " vs ", values_->shape().DebugString());
+    }
+    if (key_shape.num_elements() == 0) {
+      valid_ = false;
+      status_ =
+          errors::InvalidArgument("keys and values cannot be empty tensors.");
+    }
+  }
+
+  bool Valid() const override { return valid_; }
+
+  void Next() override {
+    valid_ = false;
+    status_ = errors::OutOfRange("No more data.");
+  }
+
+  const Tensor& keys() const override { return *keys_; }
+
+  const Tensor& values() const override { return *values_; }
+
+  Status status() const override { return status_; }
+
+  int64 total_size() const override {
+    return keys_ == nullptr ? -1 : keys_->NumElements();
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(KeyValueTensorIterator);
+
+  const Tensor* keys_;    // Doesn't own it.
+  const Tensor* values_;  // Doesn't own it.
+  bool valid_;            // true if the iterator points to an existing range.
+  Status status_;
+};
+
 }  // namespace lookup
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_INITIALIZABLE_LOOKUP_TABLE_H_
+#endif  // TENSORFLOW_CORE_KERNELS_INITIALIZABLE_LOOKUP_TABLE_H_

@@ -1,0 +1,30 @@
+path: "tensorflow.train.StopAtStepHook"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.basic_session_run_hooks.StopAtStepHook\'>"
+  is_instance: "<class \'tensorflow.python.training.session_run_hook.SessionRunHook\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'num_steps\', \'last_step\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "after_create_session"
+    argspec: "args=[\'self\', \'session\', \'coord\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "after_run"
+    argspec: "args=[\'self\', \'run_context\', \'run_values\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "before_run"
+    argspec: "args=[\'self\', \'run_context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "begin"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "end"
+    argspec: "args=[\'self\', \'session\'], varargs=None, keywords=None, defaults=None"
+  }
+}

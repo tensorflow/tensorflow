@@ -33,7 +33,8 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename Device, typename T>
 class SoftplusOp : public UnaryElementWiseOp<T, SoftplusOp<Device, T>> {
  public:
-  using UnaryElementWiseOp<T, SoftplusOp<Device, T>>::UnaryElementWiseOp;
+  explicit SoftplusOp(OpKernelConstruction* context)
+      : UnaryElementWiseOp<T, SoftplusOp<Device, T>>(context) {}
 
   void Operate(OpKernelContext* context, const Tensor& input, Tensor* output) {
     functor::Softplus<Device, T> functor;
@@ -46,7 +47,8 @@ template <typename Device, typename T>
 class SoftplusGradOp
     : public BinaryElementWiseOp<T, SoftplusGradOp<Device, T>> {
  public:
-  using BinaryElementWiseOp<T, SoftplusGradOp<Device, T>>::BinaryElementWiseOp;
+  explicit SoftplusGradOp(OpKernelConstruction* context)
+      : BinaryElementWiseOp<T, SoftplusGradOp<Device, T>>(context) {}
 
   void OperateNoTemplate(OpKernelContext* context, const Tensor& g,
                          const Tensor& a, Tensor* output);
@@ -82,7 +84,7 @@ void SoftplusGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
       Name("SoftplusGrad").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       SoftplusGradOp<CPUDevice, type>);
 
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
+TF_CALL_FLOAT_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA

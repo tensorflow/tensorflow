@@ -16,7 +16,6 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -30,11 +29,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-class AdjustContrastOpTest : public OpsTestBase {
-};
+class AdjustContrastOpTest : public OpsTestBase {};
 
 TEST_F(AdjustContrastOpTest, Simple_1113) {
-  TF_EXPECT_OK(NodeDefBuilder("adjust_constrast_op", "AdjustContrastv2")
+  TF_EXPECT_OK(NodeDefBuilder("adjust_contrast_op", "AdjustContrastv2")
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Finalize(node_def()));
@@ -49,14 +47,14 @@ TEST_F(AdjustContrastOpTest, Simple_1113) {
 }
 
 TEST_F(AdjustContrastOpTest, Simple_1223) {
-  TF_EXPECT_OK(NodeDefBuilder("adjust_constrast_op", "AdjustContrastv2")
+  TF_EXPECT_OK(NodeDefBuilder("adjust_contrast_op", "AdjustContrastv2")
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Finalize(node_def()));
   TF_EXPECT_OK(InitOp());
   AddInputFromArray<float>(TensorShape({1, 2, 2, 3}),
                            {1, 5, 9, 2, 6, 10, 3, 7, 11, 4, 8, 12});
-  AddInputFromArray<float>(TensorShape({}), {0.2});
+  AddInputFromArray<float>(TensorShape({}), {0.2f});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 2, 3}));
@@ -66,19 +64,20 @@ TEST_F(AdjustContrastOpTest, Simple_1223) {
 }
 
 TEST_F(AdjustContrastOpTest, Big_99x99x3) {
-  TF_EXPECT_OK(NodeDefBuilder("adjust_constrast_op", "AdjustContrastv2")
+  TF_EXPECT_OK(NodeDefBuilder("adjust_contrast_op", "AdjustContrastv2")
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Finalize(node_def()));
   TF_EXPECT_OK(InitOp());
 
   std::vector<float> values;
+  values.reserve(99 * 99 * 3);
   for (int i = 0; i < 99 * 99 * 3; ++i) {
     values.push_back(i % 255);
   }
 
   AddInputFromArray<float>(TensorShape({1, 99, 99, 3}), values);
-  AddInputFromArray<float>(TensorShape({}), {0.2});
+  AddInputFromArray<float>(TensorShape({}), {0.2f});
   TF_ASSERT_OK(RunOpKernel());
 }
 

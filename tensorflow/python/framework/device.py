@@ -19,8 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import threading
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export(v1=["DeviceSpec"])
 class DeviceSpec(object):
   """Represents a (possibly partial) specification for a TensorFlow device.
 
@@ -84,6 +87,7 @@ class DeviceSpec(object):
     else:
       self.device_type = device_type
     self.device_index = device_index
+    self._hash = hash(self.to_string())
 
   def _clear(self):
     self._job = None
@@ -227,6 +231,12 @@ class DeviceSpec(object):
     """
     return DeviceSpec().parse_from_string(spec)
 
+  def __eq__(self, other):
+    return self.to_string() == other.to_string()
+
+  def __hash__(self):
+    return self._hash
+
 
 def check_valid(spec):
   """Check that a device spec is valid.
@@ -250,6 +260,15 @@ def canonical_name(device):
   else:
     device = DeviceSpec.from_string(device)
     return device.to_string()
+
+
+# Cache from DeviceSpec objects to their corresponding device functions.
+# This cache is maintained for correctness, not performance: it makes it
+# possible to compare the device function stacks belonging to different
+# graphs in a meaningful way.
+_cached_device_functions = {}
+_cached_device_specs = {}
+_cache_lock = threading.Lock()
 
 
 def merge_device(spec):
@@ -278,11 +297,24 @@ def merge_device(spec):
   Raises:
     ValueError: if the spec was not valid.
   """
-  if not isinstance(spec, DeviceSpec):
-    spec = DeviceSpec.from_string(spec or "")
-  def _device_function(node_def):
-    current_device = DeviceSpec.from_string(node_def.device or "")
-    copy_spec = copy.copy(spec)
-    copy_spec.merge_from(current_device)  # current_device takes precedence.
-    return copy_spec
-  return _device_function
+  with _cache_lock:
+    if not isinstance(spec, DeviceSpec):
+      cached_device_spec = _cached_device_specs.get(spec, None)
+      if cached_device_spec is None:
+        device_spec = DeviceSpec.from_string(spec or "")
+        _cached_device_specs[spec] = device_spec
+        spec = device_spec
+      else:
+        spec = cached_device_spec
+    cached_function = _cached_device_functions.get(spec, None)
+    if cached_function is not None:
+      return cached_function
+
+    def _device_function(node_def):
+      current_device = DeviceSpec.from_string(node_def.device or "")
+      copy_spec = copy.copy(spec)
+      copy_spec.merge_from(current_device)  # current_device takes precedence.
+      return copy_spec
+
+    _cached_device_functions[spec] = _device_function
+    return _device_function

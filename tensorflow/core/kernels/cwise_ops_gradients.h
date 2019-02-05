@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_CWISE_OPS_GRADIENTS_H_
-#define TENSORFLOW_KERNELS_CWISE_OPS_GRADIENTS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CWISE_OPS_GRADIENTS_H_
+#define TENSORFLOW_CORE_KERNELS_CWISE_OPS_GRADIENTS_H_
 
 #define EIGEN_USE_THREADS
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -171,6 +171,20 @@ struct SimpleBinaryFunctor<CPUDevice, Functor> {
   }
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+// Partial specialization of BinaryFunctor for SYCL devices
+typedef Eigen::SyclDevice SYCLDevice;
+template <typename Functor>
+struct SimpleBinaryFunctor<SYCLDevice, Functor> {
+  void operator()(const SYCLDevice& d, typename Functor::tout_type out,
+                  typename Functor::tin_type in0,
+                  typename Functor::tin_type in1) {
+    out.device(d) = in0.binaryExpr(in1, typename Functor::func());
+  }
+};
+
+#endif  // TENSORFLOW_USE_SYCL
+
 template <typename T>
 struct tanh_grad : base<T, Eigen::internal::scalar_tanh_gradient_op<T>> {};
 
@@ -188,7 +202,10 @@ struct sqrt_grad : base<T, Eigen::internal::scalar_sqrt_gradient_op<T>> {};
 template <typename T>
 struct rsqrt_grad : base<T, Eigen::internal::scalar_rsqrt_gradient_op<T>> {};
 
+template <typename T>
+struct igamma_grad_a : base<T, Eigen::internal::scalar_igamma_der_a_op<T>> {};
+
 }  // end namespace functor
 
 }  // end namespace tensorflow
-#endif  // TENSORFLOW_KERNELS_CWISE_OPS_GRADIENTS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CWISE_OPS_GRADIENTS_H_

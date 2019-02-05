@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "SquaredDifference"
+  endpoint {
+    name: "math.squared_difference"
+  }
+  endpoint {
+    name: "squared_difference"
+    deprecation_version: 2
+  }
+}

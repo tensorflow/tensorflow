@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_TENSOR_REFERENCE_H_
 #define TENSORFLOW_FRAMEWORK_TENSOR_REFERENCE_H_
 
-#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 

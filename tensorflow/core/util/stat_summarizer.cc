@@ -21,349 +21,216 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor_description.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph) {
-  LOG(INFO) << "StatSummarizer found " << tensorflow_graph.node_size()
-            << " nodes";
-  for (const auto& node : tensorflow_graph.node()) {
-    nodes_in_def_order_.push_back(node.name());
-    node_types_[node.name()] = node.op();
-  }
-}
+using Detail = StatsCalculator::Detail;
 
-void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
-  int64 curr_total = 0;
-  int64 mem_total = 0;
-  if (timing_details_.empty() && !step_stats.dev_stats().empty() &&
-      !step_stats.dev_stats(0).node_stats().empty()) {
-    first_node_start_micros_ =
-        step_stats.dev_stats(0).node_stats(0).all_start_micros();
-  }
+StatSummarizer::StatSummarizer(const StatSummarizerOptions& options)
+    : stats_calculator_(new StatsCalculator(options)) {}
 
-  for (const auto& ds : step_stats.dev_stats()) {
-    for (const auto& ns : ds.node_stats()) {
-      // timing stats
-      const int64 curr_time = ns.all_end_rel_micros();
-      curr_total += curr_time;
-      auto result = timing_details_.emplace(ns.node_name(), Detail());
-      Detail* detail = &(result.first->second);
-      if (result.second) {
-        detail->first_rel_end = curr_time;
-        detail->first_start = ns.all_start_micros() - first_node_start_micros_;
-        detail->total = curr_time;
-        detail->outputs.resize(ns.output_size());
-        for (const auto& output : ns.output()) {
-          const int32 slot = output.slot();
-          if ((slot < 0) || (slot >= ns.output_size())) {
-            LOG(ERROR) << "Bad output slot '" << slot << "' for '"
-                       << ns.node_name() << "'";
-            continue;
-          }
-          detail->outputs[slot] = output.tensor_description();
-        }
-      } else {
-        detail->total += curr_time;
-        if (detail->outputs.size() != ns.output_size()) {
-          LOG(WARNING) << "Number of outputs changed between runs for '"
-                       << ns.node_name() << "' - was " << detail->outputs.size()
-                       << ", now " << ns.output_size();
-        } else {
-          for (const auto& output : ns.output()) {
-            const int32 slot = output.slot();
-            if ((slot < 0) || (slot >= ns.output_size())) {
-              LOG(ERROR) << "Bad output slot '" << slot << "' for '"
-                         << ns.node_name() << "'";
-              continue;
-            }
-            const auto& stored = detail->outputs[slot];
-            const auto& current = output.tensor_description();
-            bool do_shapes_match = true;
-            if (stored.shape().dim_size() != current.shape().dim_size()) {
-              do_shapes_match = false;
-            } else {
-              for (int i = 0; i < stored.shape().dim_size(); ++i) {
-                if (stored.shape().dim(i).size() !=
-                    current.shape().dim(i).size()) {
-                  do_shapes_match = false;
-                }
-              }
+StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph)
+    : stats_calculator_(new StatsCalculator(StatSummarizerOptions())) {}
 
-              if ((stored.dtype() != current.dtype()) || !do_shapes_match) {
-                LOG(WARNING) << "Output tensor changed between runs for '"
-                             << ns.node_name();
-              }
-            }
+StatSummarizer::~StatSummarizer() {}
+
+void StatSummarizer::Validate(const std::vector<TensorDescription>* outputs,
+                              const NodeExecStats& ns) const {
+  if (outputs->size() != ns.output_size()) {
+    LOG(WARNING) << "Number of outputs changed between runs for '"
+                 << ns.node_name() << "' - was " << outputs->size() << ", now "
+                 << ns.output_size();
+  } else {
+    for (const auto& output : ns.output()) {
+      const int32 slot = output.slot();
+      if ((slot < 0) || (slot >= ns.output_size())) {
+        // This is not a hard error for Switch ops, so just pass.
+        continue;
+      }
+      const auto& stored = (*outputs)[slot];
+      const auto& current = output.tensor_description();
+
+      bool do_tensors_match =
+          (stored.dtype() == current.dtype()) &&
+          (stored.shape().dim_size() == current.shape().dim_size());
+
+      if (do_tensors_match) {
+        for (int i = 0; i < stored.shape().dim_size(); ++i) {
+          if (stored.shape().dim(i).size() != current.shape().dim(i).size()) {
+            do_tensors_match = false;
+            break;
           }
         }
       }
 
-      // memory stats
-      auto mem_result = memory_details_.emplace(ns.node_name(), Detail());
-      bool first = mem_result.second;
-      auto& val = mem_result.first->second;
-      for (const auto& mem : ns.memory()) {
-        const int64 mem_usage = mem.total_bytes();
-        mem_total += mem_usage;
-
-        if (first) {
-          first = false;
-          val.first_start = mem_total - mem_usage;
-          val.first_rel_end = mem_usage;
-          val.total = 0;
-        } else if (mem_result.second) {
-          val.first_rel_end += mem_usage;
-        }
-        val.total += mem_usage;
+      if (!do_tensors_match) {
+        LOG(WARNING) << "Output tensor changed between runs for '"
+                     << ns.node_name();
       }
     }
   }
-  run_total_micros_.UpdateStat(curr_total);
-  memory_.UpdateStat(mem_total);
-}
-
-std::string StatSummarizer::ShortSummary() const {
-  std::stringstream stream;
-  stream << run_total_micros_.count() << " runs, avg " << std::setprecision(4)
-         << run_total_micros_.avg() / 1000.0 << " ms, " << node_types_.size()
-         << " nodes defined " << timing_details_.size() << " nodes observed"
-         << std::endl;
-  stream << std::setprecision(9) << memory_.avg() / 1000.0 << " avg KB per run."
-         << std::endl;
-  return stream.str();
-}
-
-std::string StatSummarizer::HeaderString() const {
-  std::stringstream stream;
-  stream << std::setw(9) << "[start]" << std::setw(9) << "[first]"
-         << std::setw(9) << "[avg]";
-  stream << "\t" << std::setw(8) << "[%]"
-         << " ";
-  stream << "\t" << std::setw(8) << "[cdf%]"
-         << " ";
-  stream << "\t" << std::setw(10) << "[Op]";
-  stream << "\t"
-         << "[Name]";
-  return stream.str();
-}
-
-std::string StatSummarizer::ColumnString(const std::string& name,
-                                         const Detail& detail,
-                                         int64 cumulative_stat_on_node,
-                                         Stat<int64> stat) const {
-  std::stringstream stream;
-  stream << std::fixed << std::setprecision(3) << std::setw(9)
-         << detail.first_start / 1000.0;
-  stream << std::fixed << std::setprecision(3) << std::setw(9)
-         << detail.first_rel_end / 1000.0;
-
-  double avg_time_ms = detail.total / 1000.0 / num_runs();
-  stream << std::fixed << std::setprecision(3) << std::setw(9) << avg_time_ms;
-
-  double percentage = detail.total * 100.0 / stat.sum();
-  stream << "\t" << std::fixed << std::setprecision(3) << std::setw(7)
-         << percentage << "%";
-
-  double cdf_percentage = cumulative_stat_on_node * 100.0 / stat.sum();
-  stream << "\t" << std::fixed << std::setprecision(3) << std::setw(7)
-         << cdf_percentage << "%";
-
-  stream << "\t" << std::setw(10);
-  auto op_it = node_types_.find(name);
-  if (op_it != node_types_.end()) {
-    stream << op_it->second;
-  } else {
-    stream << " ";
-  }
-
-  stream << "\t" << name;
-
-  return stream.str();
-}
-
-std::string StatSummarizer::GetStatsBySorting(SortingMetric sorting_metric,
-                                              double cdf_cutoff_ratio,
-                                              int num_max_nodes_to_print,
-                                              bool use_memory) const {
-  std::map<std::string, Detail> details;
-  Stat<int64> stat;
-  if (use_memory) {
-    details = memory_details_;
-    stat = memory_;
-  } else {
-    details = timing_details_;
-    stat = run_total_micros_;
-  }
-  num_max_nodes_to_print =
-      std::min<int>(num_max_nodes_to_print, details.size());
-
-  std::stringstream stream;
-  stream << ShortSummary() << std::endl;
-  string out_opt = "duration";
-  string unit = "ms";
-  if (use_memory) {
-    out_opt = "memory usage";
-    unit = "KB";
-  }
-  if (sorting_metric == SortingMetric::BY_TOTAL) {
-    stream << "============ Top by " << out_opt << " in " << unit
-           << " =================" << std::endl;
-  } else {
-    CHECK(sorting_metric == SortingMetric::BY_RUN_ORDER);
-    stream << "============ By run order (" << unit
-           << ") =================" << std::endl;
-  }
-  stream << HeaderString() << std::endl;
-
-  std::priority_queue<
-      std::pair<int64, const std::pair<const std::string, Detail>*>>
-      statistics;
-  for (const auto& entry : details) {
-    statistics.emplace(sorting_metric == SortingMetric::BY_TOTAL
-                           ? entry.second.total
-                           : -entry.second.first_start,
-                       &entry);
-  }
-
-  const int64 cutoff_point = stat.sum() * cdf_cutoff_ratio;
-  int64 accumulated_us = 0;
-
-  for (int i = 0; !statistics.empty() && i < num_max_nodes_to_print &&
-                  accumulated_us <= cutoff_point;
-       ++i) {
-    accumulated_us += statistics.top().second->second.total;
-    stream << ColumnString(statistics.top().second->first,
-                           statistics.top().second->second, accumulated_us,
-                           stat)
-           << std::endl;
-    statistics.pop();
-  }
-
-  return stream.str();
-}
-
-std::string StatSummarizer::GetStatsByTopDurations(
-    double cdf_cutoff, int num_max_nodes_to_print) const {
-  return GetTimingStatsByTopDurations(cdf_cutoff, num_max_nodes_to_print);
-}
-
-std::string StatSummarizer::GetStatsByRunOrder() const {
-  return GetTimingStatsByRunOrder();
-}
-
-std::string StatSummarizer::GetStatsByOrderOfNodeDefinitions() const {
-  return GetTimingStatsByOrderOfNodeDefinitions();
-}
-
-std::string StatSummarizer::GetTimingStatsByTopDurations(
-    double cdf_cutoff, int num_max_nodes_to_print) const {
-  return GetStatsBySorting(SortingMetric::BY_TOTAL, cdf_cutoff,
-                           num_max_nodes_to_print, false);
-}
-
-std::string StatSummarizer::GetTimingStatsByRunOrder() const {
-  return GetStatsBySorting(SortingMetric::BY_RUN_ORDER, 1.0,
-                           std::numeric_limits<int>::max(), false);
-}
-
-std::string StatSummarizer::GetTimingStatsByOrderOfNodeDefinitions() const {
-  return GetStatsByOrderOfNodeDefinitions(false);
-}
-
-std::string StatSummarizer::GetMemoryStatsByUsage(
-    double cdf_cutoff, int num_max_nodes_to_print) const {
-  return GetStatsBySorting(SortingMetric::BY_TOTAL, cdf_cutoff,
-                           num_max_nodes_to_print, true);
-}
-
-std::string StatSummarizer::GetMemoryStatsByRunOrder() const {
-  return GetStatsBySorting(SortingMetric::BY_RUN_ORDER, 1.0,
-                           std::numeric_limits<int>::max(), true);
-}
-
-std::string StatSummarizer::GetMemoryStatsByOrderOfNodeDefinitions() const {
-  return GetStatsByOrderOfNodeDefinitions(true);
-}
-
-std::string StatSummarizer::GetStatsByOrderOfNodeDefinitions(
-    bool use_memory) const {
-  string type;
-  if (use_memory) {
-    type = "Memory Usage";
-  } else {
-    type = "Timings";
-  }
-  std::stringstream stream;
-  stream << ShortSummary() << std::endl;
-  stream << "============ " << type
-         << " by order of graph definition =================" << std::endl;
-  stream << HeaderString() << std::endl;
-
-  int64 accumulated_us = 0;
-  auto details = use_memory ? memory_details_ : timing_details_;
-  Stat<int64> stat = use_memory ? memory_ : run_total_micros_;
-
-  for (const auto& node_name_op : nodes_in_def_order_) {
-    auto detail_it = details.find(node_name_op);
-    if (detail_it == details.end()) {
-      continue;
-    }
-    accumulated_us += detail_it->second.total;
-    stream << ColumnString(detail_it->first, detail_it->second, accumulated_us,
-                           stat)
-           << std::endl;
-    details.erase(detail_it);
-  }
-
-  if (!details.empty()) {
-    stream << "============ "
-           << "The rest have different names between NodeExecStats and GraphDef"
-           << "============ " << std::endl;
-
-    for (const auto& entry : details) {
-      // Prints the remaining nodes whose names are different from the name in
-      // graph definition.
-      accumulated_us += entry.second.total;
-      stream << ColumnString(entry.first, entry.second, accumulated_us, stat)
-             << std::endl;
-    }
-  }
-
-  return stream.str();
 }
 
 void StatSummarizer::PrintStepStats() const {
-  LOG(INFO) << "Total time (us): " << run_total_micros_;
-  LOG(INFO) << GetTimingStatsByRunOrder();
-  LOG(INFO) << GetTimingStatsByTopDurations();
-  LOG(INFO) << "Total Memory (bytes): " << memory_;
-  LOG(INFO) << GetMemoryStatsByRunOrder();
-  LOG(INFO) << GetMemoryStatsByUsage();
-  LOG(INFO);
+  string output = GetOutputString();
+  std::istringstream iss(output);
+  for (std::string line; std::getline(iss, line);) {
+    LOG(INFO) << line;
+  }
 }
+
+namespace {
+std::string OpType(const DeviceStepStats& ds, const NodeExecStats& ns) {
+  // There is no published specification of how DeviceStats and NodeStats
+  // are filled in. Thus, we live with the fragility of this implementation.
+  //
+  // Note that NodeStats.node_name may NOT refer to a node in the Graph.
+  // This can happen if, either:
+  // (1) The DeviceStats corresponds to statistics from the GPUTracer
+  //     logging (which adds devices whose name contains either "/stream"
+  //     or "/memcpy" to the StepStats), OR
+  // (2) The graph was partitioned, and thus the NodeStats refers to
+  //     the SendTensor or RecvTensor operations added.
+  // For these cases, return "<>" as the "type" of the operation.
+  //
+  // The StatSummarizer was initially aimed at CPU execution on mobile, where
+  // there was no GPUTracing and no graph partitioning, so the conditions above
+  // do not occur.
+  //
+  // It would be nice to have a clearer spec for StepStats so utilities such as
+  // this class can handle nodes that do not appear in the original graph
+  // gracefully. Till then, duplicate what is done by:
+  // https://www.tensorflow.org/code/tensorflow/python/client/timeline.py
+  // and rely on the unittest.
+  if (ds.device().find("/stream") != std::string::npos ||
+      ds.device().find("/memcpy") != std::string::npos) {
+    // Stats from the GPUTracer, does not correspond to TensorFlow ops.
+    return "<>";
+  }
+  // timeline_label should be of the format: <node_name> = <op_type>(<args>)
+  // Extract <op_type>.
+  const std::string sep(" = ");
+  const std::string& label = ns.timeline_label();
+  std::string::size_type start = label.find(sep);
+  if (start == std::string::npos) return "<>";
+  start += sep.size();
+  std::string::size_type end = label.find("(", start);
+  if (end == std::string::npos) return "<>";
+  return label.substr(start, end - start);
+}
+}  // namespace
+
+void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
+  int64 curr_total_us = 0;
+  int64 mem_total = 0;
+
+  int64 first_node_start_us =
+      step_stats.dev_stats(0).node_stats(0).all_start_micros();
+
+  int node_num = 0;
+  for (const auto& ds : step_stats.dev_stats()) {
+    for (const auto& ns : ds.node_stats()) {
+      // NOTE(blackhc): To better support GPUs:
+      // GPU kernels are duplicated both in /stream:all and their
+      // /stream:$index. GPU memcpys are duplicated both in /memcpy and their
+      // /stream:$index. So only keep /stream:all and /memcpy and ignore all
+      // /stream:$index to only count GPU executions once.
+      if (ds.device().find("/stream") != std::string::npos &&
+          ds.device().find("/stream:all") == std::string::npos) {
+        continue;
+      }
+
+      std::string name = ns.node_name();
+      std::string op_type = "<>";
+      // NOTE(blackhc): we have to ensure that all keys into the detail map
+      // are unique, so we add [Kernel] or [MemCpy] as a suffix to the name.
+      // To make the node type summary work better, we prefix "gpu:" to
+      // the op type when the info is from a /gpu/stream or /memcpy channel.
+      if (ds.device().find("/stream") != std::string::npos) {
+        // node_name: name ":" opType
+        auto parts = str_util::Split(ns.node_name(), ':');
+        if (parts.size() == 2) {
+          name = parts[0] + " [Kernel]";
+          op_type = "gpu:" + parts[1];
+        }
+      } else if (ds.device().find("/memcpy") != std::string::npos) {
+        // node_name: name (":" opType)? ":" memCpyType
+        auto parts = str_util::Split(ns.node_name(), ':');
+        if (parts.size() == 2 || parts.size() == 3) {
+          name = parts.front() + " [MemCpy]";
+          // We don't care about the actual op type (it might not be available
+          // for edge_ memcpys). We only care that it's a memcpy for now.
+          op_type = "gpu:" + parts.back();
+        }
+      } else {
+        op_type = OpType(ds, ns);
+      }
+
+      ++node_num;
+      const int64 curr_time = ns.all_end_rel_micros();
+      curr_total_us += curr_time;
+      auto output_result =
+          outputs_.emplace(name, std::vector<TensorDescription>());
+      std::vector<TensorDescription>* outputs = &(output_result.first->second);
+
+      int64_t start_us = (ns.all_start_micros() - first_node_start_us);
+      int64_t rel_end_us = curr_time;
+
+      // If this is the first pass, initialize some values.
+      if (output_result.second) {
+        outputs->resize(ns.output_size());
+        for (const auto& output : ns.output()) {
+          const int32 slot = output.slot();
+          if ((slot < 0) || (slot >= ns.output_size())) {
+            // This is not a hard error for Switch ops, so just pass.
+            continue;
+          }
+          (*outputs)[slot] = output.tensor_description();
+        }
+      }
+
+      int64 curr_node_mem = 0;
+      for (const auto& mem : ns.memory()) {
+        const int64 mem_usage = mem.total_bytes();
+        curr_node_mem += mem_usage;
+      }
+      stats_calculator_->AddNodeStats(name, op_type, node_num, start_us,
+                                      rel_end_us, curr_node_mem);
+
+      mem_total += curr_node_mem;
+
+      Validate(outputs, ns);
+    }
+  }
+
+  stats_calculator_->UpdateRunTotalUs(curr_total_us);
+  stats_calculator_->UpdateMemoryUsed(mem_total);
+}
+
 
 void StatSummarizer::PrintOutputs() const {
   std::priority_queue<
       std::pair<int64, const std::pair<const std::string, Detail>*>>
       timings;
-  for (const auto& entry : timing_details_) {
-    timings.emplace(-entry.second.first_start, &entry);
+  for (const auto& entry : stats_calculator_->GetDetails()) {
+    timings.emplace(-entry.second.start_us.avg(), &entry);
   }
 
   LOG(INFO) << "============ Node output tensor sizes in run order ========";
   while (!timings.empty()) {
     auto entry = timings.top();
     timings.pop();
-    const Detail& detail = entry.second->second;
     std::stringstream stream;
-    stream << entry.second->first << "\t" << detail.outputs.size();
-    for (const auto& tensor : detail.outputs) {
+    const auto detail_outputs = outputs_.at(entry.second->first);
+    stream << entry.second->first << "\t" << detail_outputs.size();
+    for (const auto& tensor : detail_outputs) {
       stream << "\t" << DataTypeString(tensor.dtype());
       stream << "\t" << tensor.shape().dim_size();
       for (const auto& d : tensor.shape().dim()) {

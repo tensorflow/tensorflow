@@ -17,8 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow  # pylint: disable=unused-import
-
+from tensorflow.contrib.tensor_forest.hybrid.ops import gen_training_ops
 from tensorflow.contrib.tensor_forest.hybrid.python.ops import training_ops
 from tensorflow.contrib.tensor_forest.python import tensor_forest
 
@@ -59,8 +58,8 @@ class KFeatureRoutingFunctionTest(test_util.TensorFlowTestCase):
     self.assertEquals(self.params.num_features_per_node, 2)
 
   def testRoutingFunction(self):
-    with self.test_session():
-      route_tensor = self.ops.k_feature_routing_function(
+    with self.cached_session():
+      route_tensor = gen_training_ops.k_feature_routing_function(
           self.input_data,
           self.tree_weights,
           self.tree_thresholds,

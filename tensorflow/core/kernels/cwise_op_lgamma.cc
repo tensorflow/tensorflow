@@ -16,11 +16,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-#if EIGEN_HAS_C99_MATH
 REGISTER3(UnaryOp, CPU, "Lgamma", functor::lgamma, float, Eigen::half, double);
 #if GOOGLE_CUDA
 REGISTER3(UnaryOp, GPU, "Lgamma", functor::lgamma, float, Eigen::half, double);
 #endif
-#endif  // EIGEN_HAS_C99_MATH
 
 }  // namespace tensorflow

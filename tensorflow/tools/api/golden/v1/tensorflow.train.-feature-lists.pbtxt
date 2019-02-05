@@ -1,0 +1,32 @@
+path: "tensorflow.train.FeatureLists"
+tf_proto {
+  descriptor {
+    name: "FeatureLists"
+    field {
+      name: "feature_list"
+      number: 1
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.FeatureLists.FeatureListEntry"
+    }
+    nested_type {
+      name: "FeatureListEntry"
+      field {
+        name: "key"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      field {
+        name: "value"
+        number: 2
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.FeatureList"
+      }
+      options {
+        map_entry: true
+      }
+    }
+  }
+}

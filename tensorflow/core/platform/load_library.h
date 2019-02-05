@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_LOAD_LIBRARY_H_
-#define TENSORFLOW_PLATFORM_LOAD_LIBRARY_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_LOAD_LIBRARY_H_
+#define TENSORFLOW_CORE_PLATFORM_LOAD_LIBRARY_H_
 
 #include "tensorflow/core/lib/core/status.h"
 
@@ -31,4 +31,4 @@ string FormatLibraryFileName(const string& name, const string& version);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_LOAD_LIBRARY_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_LOAD_LIBRARY_H_

@@ -34,16 +34,15 @@ limitations under the License.
 // between output O of layer A and input I of layer B using
 // "input index" and "output index" labels per edge.
 
-#ifndef TENSORFLOW_GRAPH_GRAPH_H_
-#define TENSORFLOW_GRAPH_GRAPH_H_
+#ifndef TENSORFLOW_CORE_GRAPH_GRAPH_H_
+#define TENSORFLOW_CORE_GRAPH_GRAPH_H_
 
 #include <functional>
 #include <string>
 #include <vector>
-#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/lib/core/arena.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -58,42 +57,81 @@ namespace tensorflow {
 class Edge;
 class EdgeSetTest;
 class Graph;
+class GraphDef;
 class Node;
+struct OutputTensor;
+class VersionDef;
+class WhileContext;
 
-class NeighborIter;  // Declared below
-class NodeIter;      // Declared below
+class NeighborIter;    // Declared below
+class NodeIter;        // Declared below
+struct NodeProperties;  // Defined in .cc
 
 class Node {
  public:
   string DebugString() const;
   int id() const { return id_; }
   int cost_id() const { return cost_id_; }
-  const string& name() const { return props_->node_def_.name(); }
-  const string& type_string() const { return props_->node_def_.op(); }
-  const NodeDef& def() const { return props_->node_def_; }
-  const OpDef& op_def() const { return *props_->op_def_; }
+  const string& name() const;
+  void set_name(string name);
+  const string& type_string() const;
+
+  // def() provides the NodeDef the user supplied, but the specifics
+  // of this Node may have changed due to placement, optimization, etc.
+  // In particular:
+  // * def().name() will match name();
+  // * def().op() will match type_string() and op_def().name();
+  // * def().input() is not reliable, use "in_edges()" below instead;
+  // * def().device() is the "user's requested device" and may not match
+  //   the actual assigned device, see assigned_device_name() below;
+  // * def().attr() is authoritative.
+  // TODO(irving): Replace with NodeInfo.
+  const NodeDef& def() const;
+  const OpDef& op_def() const;
 
   // input and output types
-  int num_inputs() const { return props_->input_types_.size(); }
-  DataType input_type(int i) const { return props_->input_types_[i]; }
-  const DataTypeVector& input_types() const { return props_->input_types_; }
+  int32 num_inputs() const;
+  DataType input_type(int32 i) const;
+  const DataTypeVector& input_types() const;
 
-  int num_outputs() const { return props_->output_types_.size(); }
-  DataType output_type(int o) const { return props_->output_types_[o]; }
-  const DataTypeVector& output_types() const { return props_->output_types_; }
+  int32 num_outputs() const;
+  DataType output_type(int32 o) const;
+  const DataTypeVector& output_types() const;
+
+  // The device requested by the user.  For the actual assigned device,
+  // use assigned_device_name() below.
+  const string& requested_device() const;
+
+  // This changes the user requested device but not necessarily the device that
+  // on which the operation will run.
+  void set_requested_device(const string& device);
 
   // This gives the device the runtime has assigned this node to.  If
   // you want the device the user requested, use def().device() instead.
   // TODO(josh11b): Validate that the assigned_device, if not empty:
   // fully specifies a device, and satisfies def().device().
-  // TODO(josh11b): Move device_name outside of Node into a NodeId->DeviceName
-  // map.
-  string assigned_device_name() const { return assigned_device_name_; }
-  void set_assigned_device_name(const string& device_name) {
-    assigned_device_name_ = device_name;
+  // TODO(josh11b): Move assigned_device_name outside of Node into a
+  // NodeId->DeviceName map.
+  const string& assigned_device_name() const;
+  void set_assigned_device_name(const string& device_name);
+  bool has_assigned_device_name() const {
+    return assigned_device_name_index_ > 0;
   }
+  int assigned_device_name_index() const { return assigned_device_name_index_; }
+  void set_assigned_device_name_index(int index);
 
-  // Get the neighboring nodes via edges either in or out of this node.
+  // Sets 'original_node_names' field of this node's DebugInfo proto to
+  // 'names'.
+  void set_original_node_names(const std::vector<string>& names);
+
+  // Read only access to attributes
+  AttrSlice attrs() const;
+
+  // Inputs requested by the NodeDef.  For the actual inputs, use in_edges.
+  const protobuf::RepeatedPtrField<string>& requested_inputs() const;
+
+  // Get the neighboring nodes via edges either in or out of this node.  This
+  // includes control edges.
   gtl::iterator_range<NeighborIter> in_nodes() const;
   gtl::iterator_range<NeighborIter> out_nodes() const;
   const EdgeSet& in_edges() const { return in_edges_; }
@@ -130,11 +168,18 @@ class Node {
   }
   bool IsHostSend() const { return class_ == NC_HOST_SEND; }
   bool IsHostRecv() const { return class_ == NC_HOST_RECV; }
+  bool IsScopedAllocator() const { return class_ == NC_SCOPED_ALLOCATOR; }
+  bool IsCollective() const { return class_ == NC_COLLECTIVE; }
+
+  bool IsMetadata() const { return class_ == NC_METADATA; }
+  bool IsFakeParam() const { return class_ == NC_FAKE_PARAM; }
+
+  bool IsDataset() const { return class_ == NC_DATASET; }
 
   template <typename T>
   void AddAttr(const string& name, const T& val) {
-    MaybeCopyOnWrite();
-    SetAttrValue(val, &((*props_->node_def_.mutable_attr())[name]));
+    SetAttrValue(val, AddAttrHelper(name));
+    UpdateProperties();
   }
 
   void ClearAttr(const string& name);
@@ -142,44 +187,48 @@ class Node {
   // Returns into '*e' the edge connecting to the 'idx' input of this Node.
   Status input_edge(int idx, const Edge** e) const;
 
+  // Returns into '*edges' the input data edges of this Node, indexed by input
+  // number. Does not return control edges.
+  Status input_edges(std::vector<const Edge*>* edges) const;
+
   // Returns into '*n' the node that has an output connected to the
   // 'idx' input of this Node.
   Status input_node(int idx, const Node** n) const;
+  Status input_node(int idx, Node** n) const;
+
+  // Returns into '*t' the idx-th input tensor of this node, represented as the
+  // output tensor of input_node(idx).
+  Status input_tensor(int idx, OutputTensor* t) const;
+
+  WhileContext* while_ctx() const { return while_ctx_; }
+  void set_while_ctx(WhileContext* while_ctx) {
+    DCHECK(IsExit());
+    DCHECK(while_ctx_ == nullptr);
+    while_ctx_ = while_ctx;
+  }
 
  private:
   friend class Graph;
   Node();
-  ~Node();
 
-  class Properties : public core::RefCounted {
-   public:
-    Properties(const OpDef* op_def, const NodeDef& node_def,
-               const DataTypeSlice inputs, const DataTypeSlice outputs);
+  NodeProperties* properties() const { return props_.get(); }
 
-    const OpDef* op_def_;  // not owned
-    NodeDef node_def_;
-    const DataTypeVector input_types_;
-    const DataTypeVector output_types_;
+  void Initialize(int id, int cost_id, std::shared_ptr<NodeProperties> props);
 
-   private:
-    // Destructor invoked when last reference goes away via Unref()
-    virtual ~Properties();
-    TF_DISALLOW_COPY_AND_ASSIGN(Properties);
-  };
-
-  Properties* properties() const { return props_; }
-
-  // Initialize() adopts a reference to props, and so is suitable if props was
-  // just allocated or you call props->Ref() to increment the reference
-  // count for a props being held by another Node.
-  void Initialize(int id, int cost_id, Properties* props);
   // Releases memory from props_, in addition to restoring *this to its
   // uninitialized state.
   void Clear();
+
   // Make a copy of the Node's props_ if props_ is shared with
   // other nodes. This must be called before mutating properties,
   // e.g. in AddAttr.
   void MaybeCopyOnWrite();
+
+  // Called after an attr has changed. Decides whether we need to update some
+  // property of the node (stored in props_).
+  void UpdateProperties();
+
+  AttrValue* AddAttrHelper(const string& name);
 
   // A set of mutually exclusive classes for different kinds of nodes,
   // class_ is initialized in the Node::Initialize routine based on the
@@ -203,8 +252,17 @@ class Node {
     NC_GET_SESSION_HANDLE,
     NC_GET_SESSION_TENSOR,
     NC_DELETE_SESSION_TENSOR,
+    NC_METADATA,
+    NC_SCOPED_ALLOCATOR,
+    NC_COLLECTIVE,
+    NC_FAKE_PARAM,
+    NC_DATASET,
     NC_OTHER  // Not a special kind of node
   };
+
+  static const std::unordered_map<string, NodeClass>& kNodeClassTable;
+
+  static NodeClass GetNodeClassForOp(const string& ts);
 
   int id_;       // -1 until Initialize() is called
   int cost_id_;  // -1 if there is no corresponding cost accounting node
@@ -213,12 +271,79 @@ class Node {
   EdgeSet in_edges_;
   EdgeSet out_edges_;
 
-  Properties* props_;
+  // NOTE(skyewm): inheriting from core::RefCounted may have a slight
+  // performance benefit over using shared_ptr, at the cost of manual ref
+  // counting
+  std::shared_ptr<NodeProperties> props_;
 
-  // Name of device assigned to perform this computation.
-  string assigned_device_name_;
+  // Index within Graph::device_names_ of the name of device assigned
+  // to perform this computation.
+  int assigned_device_name_index_;
+
+  // A back-pointer to the Graph that owns this node.  Currently, this exists
+  // solely to allow Node::[set_]assigned_device_name() to work. However, if all
+  // callers of Node::[set_]assigned_device_name() are modified to use the
+  // equivalent methods defined directly on Graph, then we can remove this
+  // field and reclaim that memory.
+  Graph* graph_;
+
+  // Set if this is an exit node of a while loop with an associated
+  // WhileContext. Otherwise null. (This is only set for exit nodes because
+  // they're the first nodes of a loop encountered while creating the gradient
+  // graph. Exit nodes that are part of while loop gradient graphs will not have
+  // this set.)
+  WhileContext* while_ctx_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Node);
+};
+
+// Stores debug information associated with the Node.
+struct NodeDebugInfo {
+  const string name;
+  std::vector<string> original_node_names;
+
+  NodeDebugInfo(const Node& n);
+  NodeDebugInfo(const NodeDef& ndef);
+};
+
+// Represents an input of a node, i.e., the `index`-th input to `node`.
+struct InputTensor {
+  Node* node;
+  int index;
+
+  InputTensor(Node* n, int i) : node(n), index(i) {}
+  InputTensor() : node(nullptr), index(0) {}
+
+  // Returns true if this InputTensor is identical to 'other'. Nodes are
+  // compared using pointer equality.
+  bool operator==(const InputTensor& other) const;
+
+  // A hash function for InputTensors. Nodes are hashed based on their pointer
+  // value.
+  struct Hash {
+    uint64 operator()(InputTensor const& s) const;
+  };
+};
+
+// Represents an output of a node, i.e., the `index`-th output of `node`. Note
+// that a single `OutputTensor` can correspond to multiple `Edge`s if the output
+// is consumed by multiple destination nodes.
+struct OutputTensor {
+  Node* node;
+  int index;
+
+  OutputTensor(Node* n, int i) : node(n), index(i) {}
+  OutputTensor() : node(nullptr), index(0) {}
+
+  // Returns true if this OutputTensor is identical to 'other'. Nodes are
+  // compared using pointer equality.
+  bool operator==(const OutputTensor& other) const;
+
+  // A hash function for OutputTensors. Nodes are hashed based on their pointer
+  // value.
+  struct Hash {
+    uint64 operator()(OutputTensor const& s) const;
+  };
 };
 
 class Edge {
@@ -227,12 +352,12 @@ class Edge {
   Node* dst() const { return dst_; }
   int id() const { return id_; }
 
-  // Return the number of the source output that produces the data
+  // Return the index of the source output that produces the data
   // carried by this edge.  The special value kControlSlot is used
   // for control dependencies.
   int src_output() const { return src_output_; }
 
-  // Return the number of the destination input that consumes the data
+  // Return the index of the destination input that consumes the data
   // carried by this edge.  The special value kControlSlot is used
   // for control dependencies.
   int dst_input() const { return dst_input_; }
@@ -240,6 +365,8 @@ class Edge {
   // Return true iff this is an edge that indicates a control-flow
   // (as opposed to a data-flow) dependency.
   bool IsControlEdge() const;
+
+  string DebugString() const;
 
  private:
   Edge() {}
@@ -253,21 +380,93 @@ class Edge {
   int dst_input_;
 };
 
+// Allows for iteration of the edges of a Graph, by iterating the underlying
+// Graph.edges_ vector while skipping over null entries.
+class GraphEdgesIterable {
+ private:
+  const std::vector<Edge*>& edges_;
+
+ public:
+  explicit GraphEdgesIterable(const std::vector<Edge*>& edges)
+      : edges_(edges) {}
+
+  typedef Edge* value_type;
+
+  class const_iterator {
+   private:
+    // The underlying iterator.
+    std::vector<value_type>::const_iterator iter_;
+
+    // The end of the underlying iterator.
+    std::vector<value_type>::const_iterator end_;
+
+    // Advances iter_ until it reaches a non-null item, or reaches the end.
+    void apply_filter() {
+      while (iter_ != end_ && *iter_ == nullptr) {
+        ++iter_;
+      }
+    }
+
+   public:
+    const_iterator(std::vector<value_type>::const_iterator iter,
+                   std::vector<value_type>::const_iterator end)
+        : iter_(iter), end_(end) {
+      apply_filter();
+    }
+
+    bool operator==(const const_iterator& other) const {
+      return iter_ == other.iter_;
+    }
+
+    bool operator!=(const const_iterator& other) const {
+      return iter_ != other.iter_;
+    }
+
+    // This is the prefix increment operator (++x), which is the operator
+    // used by C++ range iteration (for (x : y) ...).  We intentionally do not
+    // provide a postfix increment operator.
+    const_iterator& operator++() {
+      ++iter_;
+      apply_filter();
+      return *this;
+    }
+
+    value_type operator*() { return *iter_; }
+  };
+
+  const_iterator begin() {
+    return const_iterator(edges_.begin(), edges_.end());
+  }
+  const_iterator end() { return const_iterator(edges_.end(), edges_.end()); }
+};
+
 // Thread compatible but not thread safe.
 class Graph {
  public:
   // Constructs a graph with a single SOURCE (always id kSourceId) and a
   // single SINK (always id kSinkId) node, and an edge from SOURCE->SINK.
   //
-  // The graph can hold ops found in registry.
-  explicit Graph(const OpRegistryInterface* registry);
+  // The graph can hold ops found in the registry. `ops`s lifetime must be at
+  // least that of the constructed graph's.
+  explicit Graph(const OpRegistryInterface* ops);
+
+  // Constructs a graph with a single SOURCE (always id kSourceId) and a
+  // single SINK (always id kSinkId) node, and an edge from SOURCE->SINK.
+  //
+  // The graph can hold ops found in `flib_def`. Unlike the constructor taking
+  // an OpRegistryInterface, this constructor copies the function definitions in
+  // `flib_def` so its lifetime may be shorter than that of the graph's. The
+  // OpRegistryInterface backing `flib_def` must still have the lifetime of the
+  // graph though.
+  explicit Graph(const FunctionLibraryDefinition& flib_def);
+
   ~Graph();
 
-  static const int kControlSlot = -1;
+  static const int kControlSlot;
 
   // The GraphDef version range of this graph (see graph.proto).
-  const VersionDef& versions() const { return versions_; }
-  void set_versions(const VersionDef& versions) { versions_ = versions; }
+  const VersionDef& versions() const;
+  void set_versions(const VersionDef& versions);
 
   // Adds a new node to this graph, and returns it. Infers the Op and
   // input/output types for the node. *this owns the returned instance.
@@ -277,26 +476,55 @@ class Graph {
   // Copies *node, which may belong to another graph, to a new node,
   // which is returned.  Does not copy any edges.  *this owns the
   // returned instance.
-  Node* CopyNode(Node* node);
+  Node* CopyNode(const Node* node);
 
-  // Remove a node from this graph, including all edges from or to it.
+  // Removes a node from this graph, including all edges from or to it.
   // *node should not be accessed after calling this function.
   // REQUIRES: node->IsOp()
   void RemoveNode(Node* node);
 
-  // Add an edge that connects the xth output of "source" to the yth input
-  // of "dest".
+  // Adds an edge that connects the xth output of `source` to the yth input of
+  // `dest` and returns it. Does not update dest's NodeDef.
   const Edge* AddEdge(Node* source, int x, Node* dest, int y);
 
-  // Add a control-edge (no data flows along this edge) that
-  // connects "source" to "dest".
-  const Edge* AddControlEdge(Node* source, Node* dest) {
-    return AddEdge(source, kControlSlot, dest, kControlSlot);
-  }
+  // Adds a control edge (no data flows along this edge) that connects `source`
+  // to `dest`. If `dest`s NodeDef is missing the corresponding control input,
+  // adds the control input.
+  //
+  // If such a control edge already exists and `allow_duplicates` is false, no
+  // edge is added and the function returns nullptr. Otherwise the edge is
+  // unconditionally created and returned. The NodeDef is not updated if
+  // `allow_duplicates` is true.
+  // TODO(skyewm): // TODO(skyewm): allow_duplicates is needed only by
+  // graph_partition.cc. Figure out if we can do away with it.
+  const Edge* AddControlEdge(Node* source, Node* dest,
+                             bool allow_duplicates = false);
 
-  // Removes edge from the graph.
+  // Removes edge from the graph. Does not update the destination node's
+  // NodeDef.
   // REQUIRES: The edge must exist.
   void RemoveEdge(const Edge* edge);
+
+  // Removes control edge `edge` from the graph. Note that this also updates
+  // the corresponding NodeDef to reflect the change.
+  // REQUIRES: The control edge must exist.
+  void RemoveControlEdge(const Edge* e);
+
+  // Updates the input to a node.  The existing edge to `dst` is removed and an
+  // edge from `new_src` to `dst` is created. The NodeDef associated with `dst`
+  // is also updated.
+  Status UpdateEdge(Node* new_src, int new_src_index, Node* dst, int dst_index);
+
+  // Like AddEdge but updates dst's NodeDef. Used to add an input edge to a
+  // "While" op during gradient construction, see AddInputWhileHack in
+  // python_api.h for more details.
+  Status AddWhileInputHack(Node* new_src, int new_src_index, Node* dst);
+
+  // Adds the function and gradient definitions in `fdef_lib` to this graph's op
+  // registry. Ignores duplicate functions, and returns a bad status if an
+  // imported function differs from an existing function or op with the same
+  // name.
+  Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib);
 
   // The number of live nodes in the graph.
   //
@@ -306,19 +534,32 @@ class Graph {
   // array's size.
   int num_nodes() const { return num_nodes_; }
 
+  // The number of live nodes in the graph, excluding the Source and Sink nodes.
+  int num_op_nodes() const {
+    DCHECK_GE(num_nodes_, 2);
+    return num_nodes_ - 2;
+  }
+
   // The number of live edges in the graph.
   //
   // Because edges can be removed from the graph, num_edges() is often
   // smaller than num_edge_ids(). If one needs to create an array of
   // edges indexed by edge ids, num_edge_ids() should be used as the
   // array's size.
-  int num_edges() const { return edges().size(); }
+  int num_edges() const { return num_edges_; }
 
   // Serialize the nodes starting at `from_node_id` to a GraphDef.
   void ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const;
 
   // Serialize to a GraphDef.
   void ToGraphDef(GraphDef* graph_def) const;
+
+  // This version can be called from debugger to inspect the graph content.
+  // Use the previous version outside debug context for efficiency reasons.
+  //
+  // Note: We do not expose a DebugString() API, since GraphDef.DebugString() is
+  // not defined in some TensorFlow builds.
+  GraphDef ToGraphDefDebug() const;
 
   // Generate new node name with the specified prefix that is unique
   // across this graph.
@@ -327,6 +568,9 @@ class Graph {
   // Access to the list of all nodes.  Example usage:
   //   for (Node* node : graph.nodes()) { ... }
   gtl::iterator_range<NodeIter> nodes() const;
+
+  // Access to the list of all nodes, excluding the Source and Sink nodes.
+  gtl::iterator_range<NodeIter> op_nodes() const;
 
   // Returns one more than the maximum id assigned to any node.
   int num_node_ids() const { return nodes_.size(); }
@@ -348,30 +592,77 @@ class Graph {
 
   // Access to the set of all edges.  Example usage:
   //   for (const Edge* e : graph.edges()) { ... }
-  const EdgeSet& edges() const { return edge_set_; }
+  GraphEdgesIterable edges() const { return GraphEdgesIterable(edges_); }
 
   // The pre-defined nodes.
   enum { kSourceId = 0, kSinkId = 1 };
   Node* source_node() const { return FindNodeId(kSourceId); }
   Node* sink_node() const { return FindNodeId(kSinkId); }
 
-  const OpRegistryInterface* op_registry() const { return ops_; }
+  const OpRegistryInterface* op_registry() const { return &ops_; }
+  const FunctionLibraryDefinition& flib_def() const { return ops_; }
+
+  void CheckDeviceNameIndex(int index) {
+    DCHECK_GE(index, 0);
+    DCHECK_LT(index, static_cast<int>(device_names_.size()));
+  }
+
+  int InternDeviceName(const string& device_name);
+
+  const string& get_assigned_device_name(const Node& node) const {
+    return device_names_[node.assigned_device_name_index()];
+  }
+
+  void set_assigned_device_name_index(Node* node, int device_name_index) {
+    CheckDeviceNameIndex(device_name_index);
+    node->assigned_device_name_index_ = device_name_index;
+  }
+
+  void set_assigned_device_name(Node* node, const string& device_name) {
+    node->assigned_device_name_index_ = InternDeviceName(device_name);
+  }
+
+  // Returns OK if `node` is non-null and belongs to this graph
+  Status IsValidNode(const Node* node) const;
+
+  // Returns OK if IsValidNode(`node`) and `idx` is a valid output.  Does not
+  // accept control outputs.
+  Status IsValidOutputTensor(const Node* node, int idx) const;
+
+  // Returns OK if IsValidNode(`node`) and `idx` a valid input.  Does not accept
+  // control inputs.
+  Status IsValidInputTensor(const Node* node, int idx) const;
+
+  // Create and return a new WhileContext owned by this graph. This is called
+  // when a new while loop is created. `frame_name` must be unique among
+  // WhileContexts in this graph.
+  Status AddWhileContext(StringPiece frame_name, std::vector<Node*> enter_nodes,
+                         std::vector<Node*> exit_nodes,
+                         OutputTensor cond_output,
+                         std::vector<OutputTensor> body_inputs,
+                         std::vector<OutputTensor> body_outputs,
+                         WhileContext** result);
+
+  // Builds a node name to node pointer index for all nodes in the graph.
+  std::unordered_map<string, Node*> BuildNodeNameIndex() const;
 
   // TODO(josh11b): uint64 hash() const;
 
  private:
-  bool IsValidNode(Node* node) const;
   // If cost_node is non-null, then cost accounting (in CostModel)
   // will be associated with that node rather than the new one being
   // created.
-  Node* AllocateNode(Node::Properties* props, const Node* cost_node);
+  //
+  // Ownership of the returned Node is not transferred to caller.
+  Node* AllocateNode(std::shared_ptr<NodeProperties> props,
+                     const Node* cost_node);
   void ReleaseNode(Node* node);
 
-  // Registry of all known ops.  Not owned.
-  const OpRegistryInterface* const ops_;
+  // Registry of all known ops, including functions.
+  FunctionLibraryDefinition ops_;
 
   // GraphDef versions
-  VersionDef versions_;
+  const std::unique_ptr<VersionDef> versions_;
 
   // Allocator which will give us good locality.
   core::Arena arena_;
@@ -387,9 +678,8 @@ class Graph {
   // the edge with that id was removed from the graph.
   std::vector<Edge*> edges_;
 
-  // For ease of iteration, we currently just keep a set of all live
-  // edges.  May want to optimize by removing this copy.
-  EdgeSet edge_set_;
+  // The number of entries in edges_ that are not nullptr.
+  int num_edges_ = 0;
 
   // Allocated but free nodes and edges.
   std::vector<Node*> free_nodes_;
@@ -397,6 +687,36 @@ class Graph {
 
   // For generating unique names.
   int name_counter_ = 0;
+
+  // In most graphs, the number of unique values used for the
+  // Node::assigned_device_name() property is quite small.  If the graph is
+  // large, then this duplication of values can consume a significant amount of
+  // memory.  Instead, we represent the same information using an interning
+  // table, which consists of a vector of unique strings (device_names_), as
+  // well a map (device_names_map_) from unique strings to indices within the
+  // unique string table.
+  //
+  // The InternDeviceName() method handles adding a new entry into the table,
+  // or locating the index of an existing entry.
+  //
+  // The fact that Node::assigned_device_name() is implemented using an
+  // interning table is intentionally public.  This allows algorithms that
+  // frequently access this field to do so efficiently, especially for the case
+  // where the assigned_device_name of one Node is copied directly from that
+  // of another Node.
+
+  // A table of the unique assigned device names.  Indices do NOT correspond
+  // to node IDs.  Index 0 is always the empty string.
+  std::vector<string> device_names_;
+
+  // Maps unique device names to indices within device_names_[i].
+  std::unordered_map<string, int> device_names_map_;
+
+  // All the while contexts owned by this graph, keyed by frame name,
+  // corresponding to all the while loops contained in this graph (including
+  // nested loops). The stored contexts are usually accessed via
+  // AddWhileContext() or Node::while_ctx(), but this manages the lifetime.
+  std::map<string, WhileContext> while_ctxs_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Graph);
 };
@@ -406,6 +726,8 @@ class Graph {
 
 // Helper routines
 
+inline bool IsSource(const Node* node) { return node->IsSource(); }
+inline bool IsSink(const Node* node) { return node->IsSink(); }
 inline bool IsSwitch(const Node* node) { return node->IsSwitch(); }
 inline bool IsMerge(const Node* node) { return node->IsMerge(); }
 inline bool IsEnter(const Node* node) { return node->IsEnter(); }
@@ -427,6 +749,12 @@ inline bool IsIdentity(const Node* node) { return node->IsIdentity(); }
 
 // Returns true iff 'n' is a control flow node.
 inline bool IsControlFlow(const Node* n) { return n->IsControlFlow(); }
+
+// Returns true if the node only depends on its input's metadata
+// (shape).  Specifically, returns true for "Size", "Shape" and "Rank" ops.
+inline bool IsMetadata(const Node* n) { return n->IsMetadata(); }
+
+inline bool IsScopedAllocator(const Node* n) { return n->IsScopedAllocator(); }
 
 inline bool IsHostMemoryPreserving(const Node* node) {
   return IsIdentity(node) || IsControlFlow(node);
@@ -520,6 +848,43 @@ inline bool Edge::IsControlEdge() const {
   return src_output_ == Graph::kControlSlot;
 }
 
+inline gtl::iterator_range<NodeIter> Graph::nodes() const {
+  // Note that NodeId 0 is always valid since we don't let the source
+  // node be removed from the graph.
+  return gtl::make_range(NodeIter(this, 0), NodeIter(this, num_node_ids()));
+}
+
+inline gtl::iterator_range<NodeIter> Graph::op_nodes() const {
+  // Note that NodeId 0 is always valid since we don't let the source
+  // node be removed from the graph.
+  //
+  // The current implementation of Graph maintains the invariant that the
+  // first two nodes are the source and sink nodes, and all other nodes are op
+  // nodes. This method (op_nodes()) relies on this invariant.
+  NodeIter begin(this, 0);
+  NodeIter end(this, num_node_ids());
+  if (begin != end) {
+    ++begin;
+  }
+  if (begin != end) {
+    ++begin;
+  }
+  return gtl::make_range(begin, end);
+}
+
+inline void Node::set_assigned_device_name_index(int index) {
+  graph_->CheckDeviceNameIndex(index);
+  assigned_device_name_index_ = index;
+}
+
+inline void Node::set_assigned_device_name(const string& device_name) {
+  graph_->set_assigned_device_name(this, device_name);
+}
+
+inline const string& Node::assigned_device_name() const {
+  return graph_->get_assigned_device_name(*this);
+}
+
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_GRAPH_H_
+#endif  // TENSORFLOW_CORE_GRAPH_GRAPH_H_

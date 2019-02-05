@@ -20,11 +20,11 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/extract_image_patches_op.h"
 #include <vector>
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -42,9 +42,9 @@ static inline void ParseAttributeVec4(OpKernelConstruction* context,
   OP_REQUIRES_OK(context, context->GetAttr(attr_name, attr));
   OP_REQUIRES(
       context, (*attr)[0] == 1 && (*attr)[3] == 1,
-      errors::Unimplemented("Only support", attr_name, "across space."));
+      errors::Unimplemented("Only support ", attr_name, " across space."));
   OP_REQUIRES(context, (*attr)[1] >= 1 && (*attr)[2] >= 1,
-              errors::OutOfRange(attr_name, "is out of range."));
+              errors::OutOfRange(attr_name, " is out of range."));
 }
 
 template <typename Device, typename T>

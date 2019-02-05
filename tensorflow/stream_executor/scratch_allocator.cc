@@ -18,8 +18,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/status_macros.h"
 #include "tensorflow/stream_executor/stream.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 ScratchAllocator::~ScratchAllocator() {}
 
@@ -38,5 +37,4 @@ port::StatusOr<DeviceMemory<uint8>> OneTimeScratchAllocator::AllocateBytes(
   return temporary_->device_memory();
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -75,6 +76,15 @@ class OneHotOp : public OpKernel {
 
     // The one-hot dimension.
     const int32 depth_v = depth.scalar<int32>()();
+    OP_REQUIRES(
+        ctx, depth_v >= 0,
+        errors::InvalidArgument("depth must be non-negative, got: ", depth_v));
+    OP_REQUIRES(
+        ctx,
+        MultiplyWithoutOverflow(indices_shape.num_elements(), depth_v) >= 0,
+        errors::InvalidArgument("OneHot result would have shape ",
+                                indices_shape.DebugString(), " + [", depth_v,
+                                "], which exceeds 2**63 - 1 elements"));
 
     TensorShape output_shape = indices_shape;
     output_shape.InsertDim(axis, depth_v);
@@ -149,6 +159,9 @@ namespace functor {
   DECLARE_GPU_SPEC_INDEX(T, int64);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+TF_CALL_bool(DECLARE_GPU_SPEC);
+TF_CALL_int32(DECLARE_GPU_SPEC);
+TF_CALL_int64(DECLARE_GPU_SPEC);
 
 #undef DECLARE_GPU_SPEC_INDEX
 #undef DECLARE_GPU_SPEC
@@ -170,6 +183,9 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
   REGISTER_ONE_HOT_GPU_INDEX(type, int64);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_ONE_HOT_GPU);
+TF_CALL_bool(REGISTER_ONE_HOT_GPU);
+TF_CALL_int32(REGISTER_ONE_HOT_GPU);
+TF_CALL_int64(REGISTER_ONE_HOT_GPU);
 
 #undef REGISTER_ONE_HOT_GPU_INDEX
 #undef REGISTER_ONE_HOT_GPU

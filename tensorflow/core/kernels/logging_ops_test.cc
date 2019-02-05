@@ -13,18 +13,42 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <chrono>
+#include <thread>
+
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 namespace {
+
+class PrintingV2GraphTest : public OpsTestBase {
+ protected:
+  Status Init(const string& output_stream = "log(warning)") {
+    TF_CHECK_OK(NodeDefBuilder("op", "PrintV2")
+                    .Input(FakeInput(DT_STRING))
+                    .Attr("output_stream", output_stream)
+                    .Finalize(node_def()));
+    return InitOp();
+  }
+};
+
+TEST_F(PrintingV2GraphTest, StringSuccess) {
+  TF_ASSERT_OK(Init());
+  AddInputFromArray<string>(TensorShape({}), {"bar"});
+  TF_ASSERT_OK(RunOpKernel());
+}
+
+TEST_F(PrintingV2GraphTest, InvalidOutputStream) {
+  ASSERT_NE(::tensorflow::Status::OK(), (Init("invalid_output_stream")));
+}
 
 class PrintingGraphTest : public OpsTestBase {
  protected:
@@ -95,6 +119,28 @@ TEST_F(PrintingGraphTest, FirstNSuccess) {
   Tensor expected(allocator(), DT_INT32, TensorShape({6}));
   test::FillValues<int32>(&expected, {1, 2, 3, 4, 5, 6});
   test::ExpectTensorEqual<int32>(expected, *GetOutput(0));
+}
+
+class TimestampTest : public OpsTestBase {
+ protected:
+  Status Init() {
+    TF_CHECK_OK(NodeDefBuilder("op", "Timestamp").Finalize(node_def()));
+    return InitOp();
+  }
+};
+
+TEST_F(TimestampTest, WaitAtLeast) {
+  TF_ASSERT_OK(Init());
+  TF_ASSERT_OK(RunOpKernel());
+  double ts1 = *((*GetOutput(0)).flat<double>().data());
+
+  // wait 1 second
+  std::this_thread::sleep_for(std::chrono::seconds(1));
+
+  TF_ASSERT_OK(RunOpKernel());
+  double ts2 = *((*GetOutput(0)).flat<double>().data());
+
+  EXPECT_LE(1.0, ts2 - ts1);
 }
 
 }  // end namespace

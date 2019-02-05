@@ -1,0 +1,28 @@
+path: "tensorflow.test.StubOutForTesting"
+tf_class {
+  is_instance: "<class \'tensorflow.python.platform.googletest.StubOutForTesting\'>"
+  member_method {
+    name: "CleanUp"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "Set"
+    argspec: "args=[\'self\', \'parent\', \'child_name\', \'new_child\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "SmartSet"
+    argspec: "args=[\'self\', \'obj\', \'attr_name\', \'new_attr\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "SmartUnsetAll"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "UnsetAll"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

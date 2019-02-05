@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_STRIDED_SLICE_OP_H_
-#define TENSORFLOW_KERNELS_STRIDED_SLICE_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_STRIDED_SLICE_OP_H_
+#define TENSORFLOW_CORE_KERNELS_STRIDED_SLICE_OP_H_
 
 // Functor definition for StridedSliceOp, must be compilable by nvcc.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -54,6 +56,14 @@ template <typename T, int NDIMS, typename Device>
 struct InitOutput {
   static void run(const Device& d, typename TTypes<T, NDIMS>::Tensor output) {
     output.device(d) = output.constant(T(0));
+  }
+};
+
+template <int NDIMS, typename Device>
+struct InitOutput<ResourceHandle, NDIMS, Device> {
+  static void run(const Device& d,
+                  typename TTypes<ResourceHandle, NDIMS>::Tensor output) {
+    output.device(d) = output.constant(ResourceHandle());
   }
 };
 
@@ -127,4 +137,4 @@ struct StridedSliceAssignScalar {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_SLICE_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_STRIDED_SLICE_OP_H_

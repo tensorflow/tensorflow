@@ -20,7 +20,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
+import json
 import os
+import sys
 
 from six.moves import urllib
 import tensorflow as tf
@@ -29,31 +32,9 @@ from tensorflow.contrib.learn.python.learn import learn_runner
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 
 
-# Define command-line flags
-flags = tf.app.flags
-flags.DEFINE_string("data_dir", "/tmp/census-data",
-                    "Directory for storing the cesnsus data")
-flags.DEFINE_string("model_dir", "/tmp/census_wide_and_deep_model",
-                    "Directory for storing the model")
-flags.DEFINE_string("output_dir", "", "Base output directory.")
-flags.DEFINE_string("schedule", "local_run",
-                    "Schedule to run for this experiment.")
-flags.DEFINE_string("master_grpc_url", "",
-                    "URL to master GRPC tensorflow server, e.g.,"
-                    "grpc://127.0.0.1:2222")
-flags.DEFINE_integer("num_parameter_servers", 0,
-                     "Number of parameter servers")
-flags.DEFINE_integer("worker_index", 0,
-                     "Worker index (>=0)")
-flags.DEFINE_integer("train_steps", 1000, "Number of training steps")
-flags.DEFINE_integer("eval_steps", 1, "Number of evaluation steps")
-
-FLAGS = flags.FLAGS
-
-
 # Constants: Data download URLs
-TRAIN_DATA_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data"
-TEST_DATA_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test"
+TRAIN_DATA_URL = "http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.data"
+TEST_DATA_URL = "http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.test"
 
 
 # Define features for the model
@@ -152,7 +133,7 @@ class CensusDataSource(object):
       columns: Columns to retrieve from the data files (A list of strings)
       label_column: Name of the label column
       categorical_columns: Names of the categorical columns (A list of strings)
-      continuous_columns: Names of the continuous columsn (A list of strings)
+      continuous_columns: Names of the continuous columns (A list of strings)
     """
 
     # Retrieve data from disk (if available) or download from the web.
@@ -216,11 +197,12 @@ class CensusDataSource(object):
                        for k in self.continuous_columns}
     # Creates a dictionary mapping from each categorical feature column name (k)
     # to the values of that column stored in a tf.SparseTensor.
-    categorical_cols = {k: tf.SparseTensor(
-        indices=[[i, 0] for i in range(df[k].size)],
-        values=df[k].values,
-        shape=[df[k].size, 1])
-                        for k in self.categorical_columns}
+    categorical_cols = {
+        k: tf.SparseTensor(
+            indices=[[i, 0] for i in range(df[k].size)],
+            values=df[k].values,
+            dense_shape=[df[k].size, 1])
+        for k in self.categorical_columns}
     # Merges the two dictionaries into one.
     feature_cols = dict(continuous_cols.items() + categorical_cols.items())
     # Converts the label column into a constant Tensor.
@@ -240,9 +222,16 @@ def _create_experiment_fn(output_dir):  # pylint: disable=unused-argument
                                         categorical_columns,
                                         continuous_columns)
 
-  config = run_config.RunConfig(master=FLAGS.master_grpc_url,
-                                num_ps_replicas=FLAGS.num_parameter_servers,
-                                task=FLAGS.worker_index)
+  os.environ["TF_CONFIG"] = json.dumps({
+      "cluster": {
+          tf.contrib.learn.TaskType.PS: ["fake_ps"] *
+                                        FLAGS.num_parameter_servers
+      },
+      "task": {
+          "index": FLAGS.worker_index
+      }
+  })
+  config = run_config.RunConfig(master=FLAGS.master_grpc_url)
 
   estimator = tf.contrib.learn.DNNLinearCombinedClassifier(
       model_dir=FLAGS.model_dir,
@@ -268,4 +257,61 @@ def main(unused_argv):
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--data_dir",
+      type=str,
+      default="/tmp/census-data",
+      help="Directory for storing the census data")
+  parser.add_argument(
+      "--model_dir",
+      type=str,
+      default="/tmp/census_wide_and_deep_model",
+      help="Directory for storing the model"
+  )
+  parser.add_argument(
+      "--output_dir",
+      type=str,
+      default="",
+      help="Base output directory."
+  )
+  parser.add_argument(
+      "--schedule",
+      type=str,
+      default="local_run",
+      help="Schedule to run for this experiment."
+  )
+  parser.add_argument(
+      "--master_grpc_url",
+      type=str,
+      default="",
+      help="URL to master GRPC tensorflow server, e.g.,grpc://127.0.0.1:2222"
+  )
+  parser.add_argument(
+      "--num_parameter_servers",
+      type=int,
+      default=0,
+      help="Number of parameter servers"
+  )
+  parser.add_argument(
+      "--worker_index",
+      type=int,
+      default=0,
+      help="Worker index (>=0)"
+  )
+  parser.add_argument(
+      "--train_steps",
+      type=int,
+      default=1000,
+      help="Number of training steps"
+  )
+  parser.add_argument(
+      "--eval_steps",
+      type=int,
+      default=1,
+      help="Number of evaluation steps"
+  )
+  global FLAGS  # pylint:disable=global-at-module-level
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

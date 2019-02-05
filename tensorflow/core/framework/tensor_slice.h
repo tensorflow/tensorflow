@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_TENSOR_SLICE_H_
-#define TENSORFLOW_FRAMEWORK_TENSOR_SLICE_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_TENSOR_SLICE_H_
+#define TENSORFLOW_CORE_FRAMEWORK_TENSOR_SLICE_H_
 
 #include <string>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -126,7 +126,7 @@ class TensorSlice {
   // Interaction with other TensorSlices.
 
   // Compute the intersection with another slice and if "result" is not
-  // nullptr, store the results in *result; returns true is there is any real
+  // nullptr, store the results in *result; returns true if there is any real
   // intersection.
   bool Intersect(const TensorSlice& other, TensorSlice* result) const;
   // A short hand.
@@ -221,4 +221,4 @@ void TensorSlice::FillIndicesAndSizes(
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_TENSOR_SLICE_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_TENSOR_SLICE_H_

@@ -6,8 +6,13 @@ filegroup(
     name = "model_files",
     srcs = glob(
         [
-            "**/*.pb",
-            "**/*.txt",
+            "**/*",
+        ],
+        exclude = [
+            "**/BUILD",
+            "**/WORKSPACE",
+            "**/LICENSE",
+            "**/*.zip",
         ],
     ),
 )

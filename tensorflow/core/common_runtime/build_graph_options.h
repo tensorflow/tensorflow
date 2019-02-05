@@ -18,17 +18,27 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/core/graph/collective_order.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
 struct BuildGraphOptions {
-  std::vector<string> feed_endpoints;
-  std::vector<string> fetch_endpoints;
+  CallableOptions callable_options;
 
-  // TODO(vrv): Remove this when we unify target_nodes and fetch_endpoint,
-  // the former via "ref" fetch_endpoints.
-  std::vector<string> target_nodes;
+  // If `true`, uses Arg/Retval to implement feeds/fetches; otherwise
+  // uses Recv/Send to implement feeds/fetches.
+  // TODO(mrry): Remove this when the distributed runtime supports Arg/Retval.
+  bool use_function_convention = false;
+
+  static const int64 kNoCollectiveGraphKey = 0;
+  int64 collective_graph_key = kNoCollectiveGraphKey;
+
+  // If not `kNone`, order all CollectiveReduce operations statically and
+  // deterministically.  If `kEdges`, encode dependencies as explicit control
+  // edges, if `kAttrs` encode as attribute on collective op.
+  GraphCollectiveOrder collective_order = GraphCollectiveOrder::kNone;
 
   string DebugString() const;
 };

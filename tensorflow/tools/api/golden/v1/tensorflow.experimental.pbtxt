@@ -1,0 +1,11 @@
+path: "tensorflow.experimental"
+tf_module {
+  member {
+    name: "Module"
+    mtype: "<class \'tensorflow.python.module.module.ModuleMetaclass\'>"
+  }
+  member_method {
+    name: "function_executor_type"
+    argspec: "args=[\'executor_type\'], varargs=None, keywords=None, defaults=None"
+  }
+}

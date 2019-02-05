@@ -1,0 +1,28 @@
+op {
+  graph_op_name: "InplaceUpdate"
+  in_arg {
+    name: "x"
+    description: "A tensor of type `T`."
+  }
+  in_arg {
+    name: "i"
+    description: "A vector. Indices into the left-most dimension of `x`."
+  }
+  in_arg {
+    name: "v"
+    description:
+        "A `Tensor` of type T. Same dimension sizes as x except "
+        "the first dimension, which must be the same as i's size."
+  }
+  out_arg {
+    name: "y"
+    description:
+        "A `Tensor` of type T. An alias of `x`. The content "
+        "of `y` is undefined if there are duplicates in `i`."
+  }
+  summary: <<END
+    Updates specified rows with values in `v`.
+
+    Computes `x[i, :] = v; return x`.
+END
+}

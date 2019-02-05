@@ -21,8 +21,9 @@ limitations under the License.
 
 #include "tensorflow/contrib/framework/kernels/zero_initializer_op.h"
 
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_var.h"
 
 namespace tensorflow {
 
@@ -81,8 +82,78 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 #define REGISTER_GPU_KERNELS(T) REGISTER_KERNELS(GPU, T);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 #undef REGISTER_KERNELS
 
-} // namespace tensorflow
+template <typename Device, typename T>
+class ZeroVarInitializer : public OpKernel {
+ public:
+  explicit ZeroVarInitializer(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &shape_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    Var* variable = nullptr;
+    OP_REQUIRES_OK(ctx, LookupOrCreateResource<Var>(
+                            ctx, HandleFromInput(ctx, 0), &variable,
+                            [this, ctx](Var** var_ptr) {
+                              *var_ptr = new Var(dtype_);
+                              PersistentTensor unused;
+                              Tensor* var_tensor = nullptr;
+                              AllocatorAttributes attr;
+                              attr.set_gpu_compatible(true);
+                              attr.set_nic_compatible(true);
+                              TF_RETURN_IF_ERROR(ctx->allocate_persistent(
+                                  dtype_, shape_, &unused, &var_tensor, attr));
+
+                              functor::TensorSetZero<Device, T>()(
+                                  ctx->eigen_device<Device>(),
+                                  var_tensor->flat<T>());
+
+                              *(*var_ptr)->tensor() = *var_tensor;
+
+                              return Status::OK();
+                            }));
+
+    core::ScopedUnref scoped(variable);
+    mutex_lock ml(*variable->mu());
+
+    OP_REQUIRES(ctx, !variable->is_initialized,
+                errors::InvalidArgument("input is already initialized"));
+
+    variable->is_initialized = true;
+
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
+    output->scalar<ResourceHandle>()() = HandleFromInput(ctx, 0);
+  }
+
+ private:
+  DataType dtype_;
+  TensorShape shape_;
+};
+
+#define REGISTER_CPU_KERNELS(type)                            \
+  REGISTER_KERNEL_BUILDER(Name("ZeroVarInitializer")          \
+                              .Device(DEVICE_CPU)             \
+                              .TypeConstraint<type>("dtype"), \
+                          ZeroVarInitializer<Eigen::ThreadPoolDevice, type>);
+
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
+#undef REGISTER_CPU_KERNELS
+
+#if GOOGLE_CUDA
+#define REGISTER_GPU_KERNELS(type)                           \
+  REGISTER_KERNEL_BUILDER(Name("ZeroVarInitializer")         \
+                              .Device(DEVICE_GPU)            \
+                              .TypeConstraint<type>("dtype") \
+                              .HostMemory("var"),            \
+                          ZeroVarInitializer<GPUDevice, type>);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+#undef REGISTER_GPU_KERNELS
+#endif  // GOOGLE_CUDA
+
+}  // namespace tensorflow

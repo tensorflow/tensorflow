@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 // Functions for getting information about kernels registered in the binary.
-#ifndef THIRD_PARTY_TENSORFLOW_PYTHON_UTIL_KERNEL_REGISTRY_H_
-#define THIRD_PARTY_TENSORFLOW_PYTHON_UTIL_KERNEL_REGISTRY_H_
+#ifndef TENSORFLOW_PYTHON_UTIL_KERNEL_REGISTRY_H_
+#define TENSORFLOW_PYTHON_UTIL_KERNEL_REGISTRY_H_
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -31,4 +31,4 @@ string TryFindKernelClass(const string& serialized_node_def);
 }  // namespace swig
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_PYTHON_UTIL_KERNEL_REGISTRY_H_
+#endif  // TENSORFLOW_PYTHON_UTIL_KERNEL_REGISTRY_H_

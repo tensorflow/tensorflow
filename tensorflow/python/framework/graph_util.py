@@ -26,18 +26,5 @@ from tensorflow.python.framework.graph_util_impl import convert_variables_to_con
 from tensorflow.python.framework.graph_util_impl import extract_sub_graph
 from tensorflow.python.framework.graph_util_impl import must_run_on_cpu
 from tensorflow.python.framework.graph_util_impl import remove_training_nodes
-from tensorflow.python.framework.graph_util_impl import set_cpu0
 from tensorflow.python.framework.graph_util_impl import tensor_shape_from_node_def_name
 # pylint: enable=unused-import
-from tensorflow.python.util.all_util import remove_undocumented
-
-_allowed_symbols = [
-    # TODO(drpng): find a good place to reference this.
-    "convert_variables_to_constants",
-    "extract_sub_graph",
-    "must_run_on_cpu",
-    "set_cpu0",
-    "tensor_shape_from_node_def_name",
-    "remove_training_nodes",
-]
-remove_undocumented(__name__, _allowed_symbols)

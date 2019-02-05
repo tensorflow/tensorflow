@@ -63,15 +63,17 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import difflib
 
 import six
 
 from google.protobuf import descriptor
+from google.protobuf import descriptor_pool
 from google.protobuf import message
 from google.protobuf import text_format
 
 
-def assertProtoEqual(self, a, b, check_initialized=True,
+def assertProtoEqual(self, a, b, check_initialized=True,  # pylint: disable=invalid-name
                      normalize_numbers=False, msg=None):
   """Fails with a useful error if a and b aren't equal.
 
@@ -80,16 +82,17 @@ def assertProtoEqual(self, a, b, check_initialized=True,
 
   Args:
     self: googletest.TestCase
-    a: proto2 PB instance, or text string representing one
-    b: proto2 PB instance -- message.Message or subclass thereof
+    a: proto2 PB instance, or text string representing one.
+    b: proto2 PB instance -- message.Message or subclass thereof.
     check_initialized: boolean, whether to fail if either a or b isn't
-      initialized
+      initialized.
     normalize_numbers: boolean, whether to normalize types and precision of
       numbers before comparison.
-    msg: if specified, is used as the error message on failure
+    msg: if specified, is used as the error message on failure.
   """
+  pool = descriptor_pool.Default()
   if isinstance(a, six.string_types):
-    a = text_format.Merge(a, b.__class__())
+    a = text_format.Merge(a, b.__class__(), descriptor_pool=pool)
 
   for pb in a, b:
     if check_initialized:
@@ -99,9 +102,19 @@ def assertProtoEqual(self, a, b, check_initialized=True,
     if normalize_numbers:
       NormalizeNumberFields(pb)
 
-  self.assertMultiLineEqual(text_format.MessageToString(a),
-                            text_format.MessageToString(b),
-                            msg=msg)
+  a_str = text_format.MessageToString(a, descriptor_pool=pool)
+  b_str = text_format.MessageToString(b, descriptor_pool=pool)
+
+  # Some Python versions would perform regular diff instead of multi-line
+  # diff if string is longer than 2**16. We substitute this behavior
+  # with a call to unified_diff instead to have easier-to-read diffs.
+  # For context, see: https://bugs.python.org/issue11763.
+  if len(a_str) < 2**16 and len(b_str) < 2**16:
+    self.assertMultiLineEqual(a_str, b_str, msg=msg)
+  else:
+    diff = '\n' + ''.join(difflib.unified_diff(a_str.splitlines(True),
+                                               b_str.splitlines(True)))
+    self.fail('%s : %s' % (msg, diff))
 
 
 def NormalizeNumberFields(pb):
@@ -117,10 +130,10 @@ def NormalizeNumberFields(pb):
   Modifies pb in place. Recurses into nested objects.
 
   Args:
-    pb: proto2 message
+    pb: proto2 message.
 
   Returns:
-    the given pb, modified in place
+    the given pb, modified in place.
   """
   for desc, values in pb.ListFields():
     is_repeated = True
@@ -193,14 +206,24 @@ def ProtoEq(a, b):
   repeated fields, ie duplicates and order matter.
 
   Args:
-    a, b: proto2 messages or primitives
+    a: A proto2 message or a primitive.
+    b: A proto2 message or a primitive.
 
   Returns:
     `True` if the messages are equal.
   """
   def Format(pb):
-    """Returns a dictionary that maps tag number (for messages) or element index
-    (for repeated fields) to value, or just pb unchanged if it's neither."""
+    """Returns a dictionary or unchanged pb bases on its type.
+
+    Specifically, this function returns a dictionary that maps tag
+    number (for messages) or element index (for repeated fields) to
+    value, or just pb unchanged if it's neither.
+
+    Args:
+      pb: A proto2 message or a primitive.
+    Returns:
+      A dict or unchanged pb.
+    """
     if isinstance(pb, message.Message):
       return dict((desc.number, value) for desc, value in pb.ListFields())
     elif _IsMap(pb):

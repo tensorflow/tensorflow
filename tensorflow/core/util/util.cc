@@ -85,7 +85,7 @@ void MovingAverage::AddValue(double v) {
 
 static char hex_char[] = "0123456789abcdef";
 
-string PrintMemory(const char* ptr, int n) {
+string PrintMemory(const char* ptr, size_t n) {
   string ret;
   ret.resize(n * 3);
   for (int i = 0; i < n; ++i) {
@@ -120,4 +120,20 @@ string SliceDebugString(const TensorShape& shape, const int64 flat) {
   return result;
 }
 
+#ifdef INTEL_MKL
+bool DisableMKL() {
+  enum MklStatus { MKL_DEFAULT = 0, MKL_ON = 1, MKL_OFF = 2 };
+  static MklStatus status = MKL_DEFAULT;
+  if (status == MKL_DEFAULT) {
+    char* tf_disable_mkl = getenv("TF_DISABLE_MKL");
+    if ((tf_disable_mkl != NULL) && (std::stoi(tf_disable_mkl) == 1)) {
+      VLOG(2) << "TF-MKL: Disabling MKL";
+      status = MKL_OFF;
+    } else {
+      status = MKL_ON;
+    }
+  }
+  return status == MKL_OFF ? true : false;
+}
+#endif  // INTEL_MKL
 }  // namespace tensorflow

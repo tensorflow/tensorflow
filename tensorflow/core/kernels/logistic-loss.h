@@ -13,10 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_LOGISTIC_LOSS_H_
-#define TENSORFLOW_KERNELS_LOGISTIC_LOSS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_LOGISTIC_LOSS_H_
+#define TENSORFLOW_CORE_KERNELS_LOGISTIC_LOSS_H_
 
-#include <algorithm>
 #include <cmath>
 
 #include "tensorflow/core/kernels/loss.h"
@@ -87,7 +86,7 @@ class LogisticLossUpdater : public DualLossUpdater {
     } else {
       inverse_exp_term = 1 / (1 + exp(label * wx));
     }
-    return inverse_exp_term * label * example_weight;
+    return -inverse_exp_term * label * example_weight;
   }
 
   // The smoothness constant is 4 since the derivative of logistic loss, which
@@ -123,14 +122,13 @@ class LogisticLossUpdater : public DualLossUpdater {
                              num_loss_partitions * weighted_example_norm *
                                  example_weight *
                                  (0.5 * (1 + tanhx) / label - current_dual);
-    const double denominator = -2 * label -
-                               num_loss_partitions * weighted_example_norm *
-                                   example_weight * (1 - tanhx * tanhx) * 0.5 /
-                                   label;
+    const double denominator =
+        -2 * label - num_loss_partitions * weighted_example_norm *
+                         example_weight * (1 - tanhx * tanhx) * 0.5 / label;
     return x - numerator / denominator;
   }
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_LOGISTIC_LOSS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_LOGISTIC_LOSS_H_

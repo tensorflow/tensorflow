@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_SESSION_STATE_H_
-#define TENSORFLOW_FRAMEWORK_SESSION_STATE_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_SESSION_STATE_H_
+#define TENSORFLOW_CORE_FRAMEWORK_SESSION_STATE_H_
 
 #include <string>
 #include <unordered_map>
@@ -40,6 +40,8 @@ class SessionState {
   Status DeleteTensor(const string& handle);
 
   int64 GetNewId();
+
+  static const char* kTensorHandleResourceTypeName;
 
  private:
   mutex state_lock_;
@@ -72,6 +74,12 @@ class TensorStore {
   Status SaveTensors(const std::vector<string>& output_names,
                      SessionState* session_state);
 
+  // Returns true if no tensors have been added to this store.
+  bool empty() {
+    mutex_lock l(lock_);
+    return tensors_.empty();
+  }
+
  private:
   mutex lock_;
 
@@ -82,4 +90,4 @@ class TensorStore {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_SESSION_STATE_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_SESSION_STATE_H_

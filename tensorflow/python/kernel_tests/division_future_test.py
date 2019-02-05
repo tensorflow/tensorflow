@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for division with division imported from __future__.
 
 This file should be exactly the same as division_past_test.py except
@@ -24,26 +23,34 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.platform import test
 
 
-class DivisionTestCase(tf.test.TestCase):
+class DivisionTestCase(test.TestCase):
 
   def testDivision(self):
     """Test all the different ways to divide."""
     values = [1, 2, 7, 11]
-    functions = (lambda x: x), tf.constant
+    functions = (lambda x: x), constant_op.constant
     # TODO(irving): Test int8, int16 once we support casts for those.
     dtypes = np.int32, np.int64, np.float32, np.float64
 
+    tensors = []
+    checks = []
+
     def check(x, y):
-      if isinstance(x, tf.Tensor):
-        x = x.eval()
-      if isinstance(y, tf.Tensor):
-        y = y.eval()
-      self.assertEqual(x.dtype, y.dtype)
-      self.assertEqual(x, y)
-    with self.test_session():
+      x = ops.convert_to_tensor(x)
+      y = ops.convert_to_tensor(y)
+      tensors.append((x, y))
+      def f(x, y):
+        self.assertEqual(x.dtype, y.dtype)
+        self.assertEqual(x, y)
+      checks.append(f)
+
+    with self.cached_session() as sess:
       for dtype in dtypes:
         for x in map(dtype, values):
           for y in map(dtype, values):
@@ -57,7 +64,10 @@ class DivisionTestCase(tf.test.TestCase):
                 floordiv = x // y
                 tf_floordiv = tf_x // tf_y
                 check(floordiv, tf_floordiv)
+      # Do only one sess.run for speed
+      for f, (x, y) in zip(checks, self.evaluate(tensors)):
+        f(x, y)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

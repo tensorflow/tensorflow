@@ -16,8 +16,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER7(UnaryOp, CPU, "Square", functor::square, float, Eigen::half, double,
-          int32, int64, complex64, complex128);
+REGISTER8(UnaryOp, CPU, "Square", functor::square, float, Eigen::half, double,
+          int32, int64, complex64, complex128, bfloat16);
+
 #if GOOGLE_CUDA
 REGISTER4(UnaryOp, GPU, "Square", functor::square, float, Eigen::half, double,
           int64);
@@ -32,4 +33,14 @@ REGISTER_KERNEL_BUILDER(Name("Square")
                             .TypeConstraint<int32>("T"),
                         UnaryOp<CPUDevice, functor::square<int32>>);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER3(UnaryOp, SYCL, "Square", functor::square, float, double, int64);
+REGISTER_KERNEL_BUILDER(Name("Square")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .TypeConstraint<int32>("T"),
+                        UnaryOp<CPUDevice, functor::square<int32>>);
+#endif  // TENSORFLOW_USE_SYC
 }  // namespace tensorflow

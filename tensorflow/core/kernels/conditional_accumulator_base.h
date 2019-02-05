@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_CONDITIONAL_ACCUMULATOR_BASE_H_
-#define TENSORFLOW_KERNELS_CONDITIONAL_ACCUMULATOR_BASE_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CONDITIONAL_ACCUMULATOR_BASE_H_
+#define TENSORFLOW_CORE_KERNELS_CONDITIONAL_ACCUMULATOR_BASE_H_
 
 #include <deque>
 
@@ -52,7 +52,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
   //   name:  A name to use for the ConditionalAccumulator.
   ConditionalAccumulatorBase(const DataType& dtype,
                              const PartialTensorShape& shape,
-                             const string& name);
+                             const string& name, const string& reduction_type);
 
   typedef AsyncOpKernel::DoneCallback DoneCallback;
 
@@ -68,7 +68,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
 
   const DataType& dtype() const { return dtype_; }
 
-  string DebugString() override { return "A conditional accumulator"; }
+  string DebugString() const override { return "A conditional accumulator"; }
 
   // SetGlobalStep is a modifier method for current_global_step.
   // It returns an InvalidArgument error if the new_global_step is less than
@@ -125,6 +125,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
   const DataType dtype_;
   const PartialTensorShape shape_;
   const string name_;
+  const string reduction_type_;
   mutex mu_;
   int counter_ GUARDED_BY(mu_);
   int64 current_global_step_ GUARDED_BY(mu_);
@@ -160,20 +161,22 @@ class ConditionalAccumulatorBase : public ResourceBase {
  * Modifications to convenience macros defined in core/framework/op_kernel.h.
  * The below macros return a boolean if the test fails, so that the calling
  * function can get an indication that a failure has occurred.
-*/
-#define OP_REQUIRES_BOOLEAN(CTX, EXP, STATUS) \
-  if (!TF_PREDICT_TRUE(EXP)) {                \
-    (CTX)->CtxFailure((STATUS));              \
-    return false;                             \
-  }
+ */
+#define OP_REQUIRES_BOOLEAN(CTX, EXP, STATUS)          \
+  do {                                                 \
+    if (!TF_PREDICT_TRUE(EXP)) {                       \
+      (CTX)->CtxFailure(__FILE__, __LINE__, (STATUS)); \
+      return false;                                    \
+    }                                                  \
+  } while (0)
 
-#define OP_REQUIRES_OK_BOOLEAN(CTX, STATUS) \
-  do {                                      \
-    ::tensorflow::Status _s(STATUS);        \
-    if (!TF_PREDICT_TRUE(_s.ok())) {        \
-      (CTX)->CtxFailureWithWarning(_s);     \
-      return false;                         \
-    }                                       \
+#define OP_REQUIRES_OK_BOOLEAN(CTX, STATUS)                 \
+  do {                                                      \
+    ::tensorflow::Status _s(STATUS);                        \
+    if (!TF_PREDICT_TRUE(_s.ok())) {                        \
+      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s); \
+      return false;                                         \
+    }                                                       \
   } while (0)
 
 /*
@@ -197,4 +200,4 @@ class TypeConverter<Eigen::half, U> {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CONDITIONAL_ACCUMULATOR_BASE_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CONDITIONAL_ACCUMULATOR_BASE_H_

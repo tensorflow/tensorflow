@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_GOOGLE_AUTH_PROVIDER_H_
-#define TENSORFLOW_CORE_PLATFORM_GOOGLE_AUTH_PROVIDER_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_GOOGLE_AUTH_PROVIDER_H_
+#define TENSORFLOW_CORE_PLATFORM_CLOUD_GOOGLE_AUTH_PROVIDER_H_
 
 #include <memory>
 #include "tensorflow/core/platform/cloud/auth_provider.h"
+#include "tensorflow/core/platform/cloud/compute_engine_metadata_client.h"
 #include "tensorflow/core/platform/cloud/oauth_client.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -27,10 +28,12 @@ namespace tensorflow {
 /// Implementation based on Google Application Default Credentials.
 class GoogleAuthProvider : public AuthProvider {
  public:
-  GoogleAuthProvider();
-  explicit GoogleAuthProvider(
-      std::unique_ptr<OAuthClient> oauth_client,
-      std::unique_ptr<HttpRequest::Factory> http_request_factory, Env* env);
+  GoogleAuthProvider(std::shared_ptr<ComputeEngineMetadataClient>
+                         compute_engine_metadata_client);
+  explicit GoogleAuthProvider(std::unique_ptr<OAuthClient> oauth_client,
+                              std::shared_ptr<ComputeEngineMetadataClient>
+                                  compute_engine_metadata_client,
+                              Env* env);
   virtual ~GoogleAuthProvider() {}
 
   /// \brief Returns the short-term authentication bearer token.
@@ -43,13 +46,16 @@ class GoogleAuthProvider : public AuthProvider {
   ///
   /// Tries the file from $GOOGLE_APPLICATION_CREDENTIALS and the
   /// standard gcloud tool's location.
-  Status GetTokenFromFiles();
+  Status GetTokenFromFiles() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Gets the bearer token from Google Compute Engine environment.
-  Status GetTokenFromGce();
+  Status GetTokenFromGce() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Gets the bearer token from the systen env variable, for testing purposes.
+  Status GetTokenForTesting() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   std::unique_ptr<OAuthClient> oauth_client_;
-  std::unique_ptr<HttpRequest::Factory> http_request_factory_;
+  std::shared_ptr<ComputeEngineMetadataClient> compute_engine_metadata_client_;
   Env* env_;
   mutex mu_;
   string current_token_ GUARDED_BY(mu_);
@@ -59,4 +65,4 @@ class GoogleAuthProvider : public AuthProvider {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_GOOGLE_AUTH_PROVIDER_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_GOOGLE_AUTH_PROVIDER_H_

@@ -1,0 +1,62 @@
+op {
+  graph_op_name: "NonMaxSuppressionWithOverlaps"
+  in_arg {
+    name: "overlaps"
+    description: <<END
+A 2-D float tensor of shape `[num_boxes, num_boxes]` representing
+the n-by-n box overlap values.
+END
+  }
+  in_arg {
+    name: "scores"
+    description: <<END
+A 1-D float tensor of shape `[num_boxes]` representing a single
+score corresponding to each box (each row of boxes).
+END
+  }
+  in_arg {
+    name: "max_output_size"
+    description: <<END
+A scalar integer tensor representing the maximum number of
+boxes to be selected by non max suppression.
+END
+  }
+  in_arg {
+    name: "overlap_threshold"
+    description: <<END
+A 0-D float tensor representing the threshold for deciding whether
+boxes overlap too.
+END
+  }
+  in_arg {
+    name: "score_threshold"
+    description: <<END
+A 0-D float tensor representing the threshold for deciding when to remove
+boxes based on score.
+END
+  }
+  out_arg {
+    name: "selected_indices"
+    description: <<END
+A 1-D integer tensor of shape `[M]` representing the selected
+indices from the boxes tensor, where `M <= max_output_size`.
+END
+  }
+  summary: "Greedily selects a subset of bounding boxes in descending order of score,"
+  description: <<END
+pruning away boxes that have high overlaps
+with previously selected boxes.  Bounding boxes with score less than
+`score_threshold` are removed. N-by-n overlap values are supplied as square matrix,
+which allows for defining a custom overlap criterium (eg. intersection over union,
+intersection over area, etc.).
+
+The output of this operation is a set of integers indexing into the input
+collection of bounding boxes representing the selected boxes.  The bounding
+box coordinates corresponding to the selected indices can then be obtained
+using the `tf.gather operation`.  For example:
+
+  selected_indices = tf.image.non_max_suppression_with_overlaps(
+      overlaps, scores, max_output_size, overlap_threshold, score_threshold)
+  selected_boxes = tf.gather(boxes, selected_indices)
+END
+}

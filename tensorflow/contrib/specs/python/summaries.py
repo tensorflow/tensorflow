@@ -22,11 +22,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 import re
-import tensorflow as tf
 from tensorflow.contrib.specs.python import specs
-
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 
 # These are short abbreviations for common TensorFlow operations used
 # in test cases with tf_structure to verify that specs_lib generates a
@@ -44,9 +44,10 @@ Sigmoid sig
 Variable var
 """.split()
 
-
-SHORT_NAMES = {x: y for x, y in zip(SHORT_NAMES_SRC[::2],
-                                    SHORT_NAMES_SRC[1::2])}
+SHORT_NAMES = {
+    x: y
+    for x, y in zip(SHORT_NAMES_SRC[::2], SHORT_NAMES_SRC[1::2])
+}
 
 
 def _truncate_structure(x):
@@ -66,7 +67,8 @@ def _truncate_structure(x):
   Returns:
       A bool indicating whether the subtree should be pruned.
   """
-  if "/HorizontalLstm/" in x.name: return True
+  if "/HorizontalLstm/" in x.name:
+    return True
   return False
 
 
@@ -89,7 +91,7 @@ def tf_structure(x, include_shapes=False, finished=None):
   """
   if finished is None:
     finished = set()
-  if isinstance(x, tf.Tensor):
+  if isinstance(x, ops.Tensor):
     shape = x.get_shape().as_list()
     x = x.op
   else:
@@ -125,7 +127,7 @@ def tf_print(x, depth=0, finished=None, printer=print):
 
   if finished is None:
     finished = set()
-  if isinstance(x, tf.Tensor):
+  if isinstance(x, ops.Tensor):
     shape = x.get_shape().as_list()
     x = x.op
   else:
@@ -133,13 +135,13 @@ def tf_print(x, depth=0, finished=None, printer=print):
   if x.type == "Identity":
     x = x.inputs[0].op
   if x in finished:
-    printer("%s<%s> %s %s" % ("  "*depth, x.name, x.type, shape))
+    printer("%s<%s> %s %s" % ("  " * depth, x.name, x.type, shape))
     return
   finished |= {x}
-  printer("%s%s %s %s" % ("  "*depth, x.name, x.type, shape))
+  printer("%s%s %s %s" % ("  " * depth, x.name, x.type, shape))
   if not _truncate_structure(x):
     for y in x.inputs:
-      tf_print(y, depth+1, finished, printer=printer)
+      tf_print(y, depth + 1, finished, printer=printer)
 
 
 def tf_num_params(x):
@@ -153,10 +155,10 @@ def tf_num_params(x):
       in the subgraph.
   """
 
-  if isinstance(x, tf.Tensor):
+  if isinstance(x, ops.Tensor):
     shape = x.get_shape()
     x = x.op
-  if x.type == "Variable":
+  if x.type in ["Variable", "VariableV2"]:
     return shape.num_elements()
   totals = [tf_num_params(y) for y in x.inputs]
   return sum(totals)
@@ -191,7 +193,7 @@ def tf_parameter_iter(x):
   """
 
   while 1:
-    if isinstance(x, tf.Tensor):
+    if isinstance(x, ops.Tensor):
       shape = x.get_shape().as_list()
       x = x.op
     else:
@@ -200,7 +202,8 @@ def tf_parameter_iter(x):
     totals = [tf_num_params(y) for y in right]
     total = sum(totals)
     yield x.name, total, shape
-    if left is None: break
+    if left is None:
+      break
     x = left
 
 
@@ -232,14 +235,17 @@ def tf_parameter_summary(x, printer=print, combine=True):
       combine: combine layers by top-level scope
   """
   seq = tf_parameter_iter(x)
-  if combine: seq = _combine_filter(seq)
+  if combine:
+    seq = _combine_filter(seq)
   seq = reversed(list(seq))
   for name, total, shape in seq:
     printer("%10d %-20s %s" % (total, name, shape))
 
 
-def tf_spec_structure(spec, inputs=None, input_shape=None,
-                      input_type=tf.float32):
+def tf_spec_structure(spec,
+                      inputs=None,
+                      input_shape=None,
+                      input_type=dtypes.float32):
   """Return a postfix representation of the specification.
 
   This is intended to be used as part of test cases to
@@ -259,12 +265,15 @@ def tf_spec_structure(spec, inputs=None, input_shape=None,
   """
 
   if inputs is None:
-    inputs = tf.placeholder(input_type, input_shape)
+    inputs = array_ops.placeholder(input_type, input_shape)
   outputs = specs.create_net(spec, inputs)
   return str(tf_structure(outputs).strip())
 
 
-def tf_spec_summary(spec, inputs=None, input_shape=None, input_type=tf.float32):
+def tf_spec_summary(spec,
+                    inputs=None,
+                    input_shape=None,
+                    input_type=dtypes.float32):
   """Output a summary of the specification.
 
   This prints a list of left-most tensor operations and summarized the
@@ -280,12 +289,15 @@ def tf_spec_summary(spec, inputs=None, input_shape=None, input_type=tf.float32):
   """
 
   if inputs is None:
-    inputs = tf.placeholder(input_type, input_shape)
+    inputs = array_ops.placeholder(input_type, input_shape)
   outputs = specs.create_net(spec, inputs)
   tf_parameter_summary(outputs)
 
 
-def tf_spec_print(spec, inputs=None, input_shape=None, input_type=tf.float32):
+def tf_spec_print(spec,
+                  inputs=None,
+                  input_shape=None,
+                  input_type=dtypes.float32):
   """Print a tree representing the spec.
 
   Args:
@@ -296,6 +308,6 @@ def tf_spec_print(spec, inputs=None, input_shape=None, input_type=tf.float32):
   """
 
   if inputs is None:
-    inputs = tf.placeholder(input_type, input_shape)
+    inputs = array_ops.placeholder(input_type, input_shape)
   outputs = specs.create_net(spec, inputs)
   tf_print(outputs)

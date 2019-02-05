@@ -1,0 +1,19 @@
+
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+
+import "tensorflow/core/protobuf/worker.proto";
+
+
+message MPIRecvTensorResponse {
+    RecvTensorResponse response = 1;
+    bool              singleSend = 2;
+    string key = 3;
+    int64 step_id = 4;
+    uint64 checksum = 5;
+}
+
+
+

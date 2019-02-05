@@ -19,7 +19,7 @@ package tensorflow.grpc;
 option java_outer_classname = "WorkerServiceProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "tensorflow/core/protobuf/worker.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -38,6 +38,14 @@ import "tensorflow/core/protobuf/worker.proto";
 service WorkerService {
   // See worker.proto for details.
   rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+
+  // See worker.proto for details.
+  rpc CreateWorkerSession(CreateWorkerSessionRequest)
+      returns (CreateWorkerSessionResponse);
+
+  // See worker.proto for details.
+  rpc DeleteWorkerSession(DeleteWorkerSessionRequest)
+      returns (DeleteWorkerSessionResponse);
 
   // See worker.proto for details.
   rpc RegisterGraph(RegisterGraphRequest) returns (RegisterGraphResponse);
@@ -64,4 +72,18 @@ service WorkerService {
 
   // See worker.proto for details.
   rpc Tracing(TracingRequest) returns (TracingResponse);
+
+  // See worker.proto for details.
+  rpc RecvBuf(RecvBufRequest) returns (RecvBufResponse) {
+  }
+
+  // See worker.proto for details.
+  rpc GetStepSequence(GetStepSequenceRequest) returns (GetStepSequenceResponse);
+
+  // See worker.proto for details.
+  rpc CompleteGroup(CompleteGroupRequest) returns (CompleteGroupResponse);
+
+  // See worker.proto for details.
+  rpc CompleteInstance(CompleteInstanceRequest)
+      returns (CompleteInstanceResponse);
 }

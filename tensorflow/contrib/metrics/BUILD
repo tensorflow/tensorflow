@@ -6,95 +6,45 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
+package(default_visibility = [
+    "//engedu/ml/tf_from_scratch:__pkg__",
+    "//tensorflow:internal",
+])
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
-
-tf_custom_op_library(
-    # TODO(sibyl-Mooth6ku,ptucker): Understand why 'python/ops/_' is needed and fix it.
-    name = "python/ops/_set_ops.so",
-    srcs = [
-        "ops/set_ops.cc",
-    ],
-    deps = [
-        "//tensorflow/contrib/metrics/kernels:set_kernels",
-    ],
-)
-
-tf_gen_op_libs(
-    op_lib_names = ["set_ops"],
-)
-
-tf_gen_op_wrapper_py(
-    name = "set_ops",
-    hidden = [
-        "DenseToDenseSetOperation",
-        "DenseToSparseSetOperation",
-        "SparseToSparseSetOperation",
-        "SetSize",
-    ],
-    deps = [":set_ops_op_lib"],
-)
-
-tf_kernel_library(
-    name = "set_ops_kernels",
-    deps = [
-        "//tensorflow/contrib/metrics/kernels:set_kernels",
-        "//tensorflow/core:framework",
-    ],
-    alwayslink = 1,
-)
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "metrics_py",
-    srcs = ["__init__.py"] + glob(["python/ops/*.py"]) + glob(["python/metrics/*.py"]),
-    data = [":python/ops/_set_ops.so"],
-    srcs_version = "PY2AND3",
-    deps = [":set_ops"],
-)
-
-py_test(
-    name = "set_ops_test",
-    size = "small",
-    srcs = ["python/kernel_tests/set_ops_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":metrics_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-tf_cc_tests(
-    size = "small",
     srcs = [
-        "ops/set_ops_test.cc",
+        "__init__.py",
+        "python/metrics/__init__.py",
+        "python/metrics/classification.py",
+        "python/ops/confusion_matrix_ops.py",
+        "python/ops/histogram_ops.py",
+        "python/ops/metric_ops.py",
+        "python/ops/set_ops.py",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
+    srcs_version = "PY2AND3",
     deps = [
-        ":set_ops_op_lib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:ops",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//third_party/eigen3",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:confusion_matrix",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:distribute",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:histogram_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:sets",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:weights_broadcast_ops",
+        "//tensorflow/python/ops/distributions",
     ],
 )
 
@@ -104,22 +54,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":metrics_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-py_test(
-    name = "confusion_matrix_ops_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/confusion_matrix_ops_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":metrics_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )
 
@@ -130,32 +67,58 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":metrics_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
 py_test(
     name = "metric_ops_test",
     srcs = ["python/ops/metric_ops_test.py"],
-    shard_count = 3,
+    shard_count = 30,
     srcs_version = "PY2AND3",
+    tags = ["noasan"],  # times out b/63678675
     deps = [
         ":metrics_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
+py_test(
+    name = "metric_ops_large_test",
+    size = "large",
+    srcs = ["python/ops/metric_ops_large_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["noasan"],  # times out b/63678675
+    deps = [
+        ":metrics_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
 )

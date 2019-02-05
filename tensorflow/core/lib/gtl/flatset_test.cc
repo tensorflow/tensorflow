@@ -45,10 +45,7 @@ bool Has(const NumSet& set, int64 k) {
 // Return contents of set as a sorted list of numbers.
 typedef std::vector<int64> NumSetContents;
 NumSetContents Contents(const NumSet& set) {
-  NumSetContents result;
-  for (int64 n : set) {
-    result.push_back(n);
-  }
+  NumSetContents result(set.begin(), set.end());
   std::sort(result.begin(), result.end());
   return result;
 }
@@ -255,7 +252,7 @@ TEST(FlatSet, Copy) {
     NumSet copy2;
     copy2 = src;
     EXPECT_EQ(Contents(src), Contents(copy2));
-    copy2 = copy2;  // Self-assignment
+    copy2 = *&copy2;  // Self-assignment, avoiding -Wself-assign.
     EXPECT_EQ(Contents(src), Contents(copy2));
   }
 }
@@ -267,6 +264,18 @@ TEST(FlatSet, InitFromIter) {
     auto vec = Contents(src);
     NumSet dst(vec.begin(), vec.end());
     EXPECT_EQ(Contents(dst), vec);
+  }
+}
+
+TEST(FlatSet, InitializerList) {
+  NumSet a{1, 2, 3};
+  NumSet b({1, 2, 3});
+  NumSet c = {1, 2, 3};
+  for (NumSet* set : std::vector<NumSet*>({&a, &b, &c})) {
+    EXPECT_TRUE(Has(*set, 1));
+    EXPECT_TRUE(Has(*set, 2));
+    EXPECT_TRUE(Has(*set, 3));
+    EXPECT_EQ(Contents(*set), NumSetContents({1, 2, 3}));
   }
 }
 
@@ -371,38 +380,112 @@ TEST(FlatSet, Prefetch) {
   }
 }
 
-// Non-copyable values should work.
-struct NC {
+// Non-assignable values should work.
+struct NA {
   int64 value;
-  NC() : value(-1) {}
-  NC(int64 v) : value(v) {}
-  NC(const NC& x) : value(x.value) {}
-  bool operator==(const NC& x) const { return value == x.value; }
+  NA() : value(-1) {}
+  explicit NA(int64 v) : value(v) {}
+  NA(const NA& x) : value(x.value) {}
+  bool operator==(const NA& x) const { return value == x.value; }
 };
-struct HashNC {
-  size_t operator()(NC x) const { return x.value; }
+struct HashNA {
+  size_t operator()(NA x) const { return x.value; }
 };
 
-TEST(FlatSet, NonCopyable) {
-  FlatSet<NC, HashNC> set;
+TEST(FlatSet, NonAssignable) {
+  FlatSet<NA, HashNA> set;
   for (int i = 0; i < 100; i++) {
-    set.insert(NC(i));
+    set.insert(NA(i));
   }
   for (int i = 0; i < 100; i++) {
-    EXPECT_EQ(set.count(NC(i)), 1);
-    auto iter = set.find(NC(i));
+    EXPECT_EQ(set.count(NA(i)), 1);
+    auto iter = set.find(NA(i));
     EXPECT_NE(iter, set.end());
-    EXPECT_EQ(*iter, NC(i));
+    EXPECT_EQ(*iter, NA(i));
   }
-  set.erase(NC(10));
-  EXPECT_EQ(set.count(NC(10)), 0);
+  set.erase(NA(10));
+  EXPECT_EQ(set.count(NA(10)), 0);
+}
+
+TEST(FlatSet, ForwardIterator) {
+  // Test the requirements of forward iterators
+  typedef FlatSet<NA, HashNA> NASet;
+  NASet set({NA(1), NA(2)});
+  NASet::iterator it1 = set.find(NA(1));
+  NASet::iterator it2 = set.find(NA(2));
+
+  // Test operator != and ==
+  EXPECT_TRUE(it1 != set.end());
+  EXPECT_TRUE(it2 != set.end());
+  EXPECT_FALSE(it1 == set.end());
+  EXPECT_FALSE(it2 == set.end());
+  EXPECT_TRUE(it1 != it2);
+  EXPECT_FALSE(it1 == it2);
+
+  // Test operator * and ->
+  EXPECT_EQ(*it1, NA(1));
+  EXPECT_EQ(*it2, NA(2));
+  EXPECT_EQ(it1->value, 1);
+  EXPECT_EQ(it2->value, 2);
+
+  // Test prefix ++
+  NASet::iterator copy_it1 = it1;
+  NASet::iterator copy_it2 = it2;
+  EXPECT_EQ(*copy_it1, NA(1));
+  EXPECT_EQ(*copy_it2, NA(2));
+  NASet::iterator& pp_copy_it1 = ++copy_it1;
+  NASet::iterator& pp_copy_it2 = ++copy_it2;
+  EXPECT_TRUE(pp_copy_it1 == copy_it1);
+  EXPECT_TRUE(pp_copy_it2 == copy_it2);
+  // Check either possible ordering of the two items
+  EXPECT_TRUE(copy_it1 != it1);
+  EXPECT_TRUE(copy_it2 != it2);
+  if (copy_it1 == set.end()) {
+    EXPECT_TRUE(copy_it2 != set.end());
+    EXPECT_EQ(*copy_it2, NA(1));
+    EXPECT_EQ(*pp_copy_it2, NA(1));
+  } else {
+    EXPECT_TRUE(copy_it2 == set.end());
+    EXPECT_EQ(*copy_it1, NA(2));
+    EXPECT_EQ(*pp_copy_it1, NA(2));
+  }
+  // Ensure it{1,2} haven't moved
+  EXPECT_EQ(*it1, NA(1));
+  EXPECT_EQ(*it2, NA(2));
+
+  // Test postfix ++
+  copy_it1 = it1;
+  copy_it2 = it2;
+  EXPECT_EQ(*copy_it1, NA(1));
+  EXPECT_EQ(*copy_it2, NA(2));
+  NASet::iterator copy_it1_pp = copy_it1++;
+  NASet::iterator copy_it2_pp = copy_it2++;
+  EXPECT_TRUE(copy_it1_pp != copy_it1);
+  EXPECT_TRUE(copy_it2_pp != copy_it2);
+  EXPECT_TRUE(copy_it1_pp == it1);
+  EXPECT_TRUE(copy_it2_pp == it2);
+  EXPECT_EQ(*copy_it1_pp, NA(1));
+  EXPECT_EQ(*copy_it2_pp, NA(2));
+  // Check either possible ordering of the two items
+  EXPECT_TRUE(copy_it1 != it1);
+  EXPECT_TRUE(copy_it2 != it2);
+  if (copy_it1 == set.end()) {
+    EXPECT_TRUE(copy_it2 != set.end());
+    EXPECT_EQ(*copy_it2, NA(1));
+  } else {
+    EXPECT_TRUE(copy_it2 == set.end());
+    EXPECT_EQ(*copy_it1, NA(2));
+  }
+  // Ensure it{1,2} haven't moved
+  EXPECT_EQ(*it1, NA(1));
+  EXPECT_EQ(*it2, NA(2));
 }
 
 // Test with heap-allocated objects so that mismanaged constructions
 // or destructions will show up as errors under a sanitizer or
 // heap checker.
 TEST(FlatSet, ConstructDestruct) {
-  FlatSet<string, HashStr> set;
+  FlatSet<string> set;
   string k1 = "the quick brown fox jumped over the lazy dog";
   string k2 = k1 + k1;
   string k3 = k1 + k2;
@@ -469,18 +552,32 @@ TEST(FlatSet, UniqueSet) {
   }
   EXPECT_EQ(set.size(), N);
 
+  // Move constructor
+  UniqSet set2(std::move(set));
+
   // Lookups
   for (int i = 0; i < N; i++) {
-    EXPECT_EQ(set.count(MakeUniq(i)), 1);
+    EXPECT_EQ(set2.count(MakeUniq(i)), 1);
   }
 
+  // Move-assignment operator
+  UniqSet set3;
+  set3 = std::move(set2);
+
   // erase
-  set.erase(MakeUniq(2));
-  EXPECT_EQ(set.count(MakeUniq(2)), 0);
+  set3.erase(MakeUniq(2));
+  EXPECT_EQ(set3.count(MakeUniq(2)), 0);
 
   // clear
   set.clear();
   EXPECT_EQ(set.size(), 0);
+
+  // Check that moved-from sets are in a valid (though unspecified) state.
+  EXPECT_GE(set.size(), 0);
+  EXPECT_GE(set2.size(), 0);
+  // This insert should succeed no matter what state `set` is in, because
+  // MakeUniq(-1) is never called above: This key can't possibly exist.
+  EXPECT_TRUE(set.emplace(MakeUniq(-1)).second);
 }
 
 TEST(FlatSet, UniqueSetIter) {
@@ -495,6 +592,33 @@ TEST(FlatSet, UniqueSetIter) {
   }
   EXPECT_EQ(sum, (kCount * (kCount + 1)) / 2);
 }
+
+TEST(FlatSet, InsertUncopyable) {
+  UniqSet set;
+  EXPECT_TRUE(set.insert(MakeUniq(0)).second);
+  EXPECT_EQ(set.size(), 1);
+}
+
+/* This would be a good negative compilation test, if we could do that.
+
+TEST(FlatSet, MutableIterator_ShouldNotCompile) {
+  NumSet set;
+  set.insert(5);
+  EXPECT_TRUE(Has(set, 5));
+  EXPECT_EQ(Contents(set), NumSetContents({5}));
+
+  // Here's where things go bad.  We shouldn't be allowed to mutate the set key
+  // directly, since there's no way the update the underlying hashtable after
+  // the mutation, regardless of how we implemented it.
+  //
+  // This doesn't compile, since iterator is an alias of const_iterator.
+  *set.begin() = 6;
+
+  // If it does compile, this should expose a failure.
+  EXPECT_TRUE(Has(set, 6));
+  EXPECT_EQ(Contents(set), NumSetContents({6}));
+}
+*/
 
 }  // namespace
 }  // namespace gtl

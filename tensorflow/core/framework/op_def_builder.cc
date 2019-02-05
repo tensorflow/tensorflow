@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <limits>
 #include <vector>
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/types.h"
@@ -109,6 +110,39 @@ bool ConsumeAttrNumber(StringPiece* sp, int64* out) {
     }                                                                     \
   } while (false)
 
+bool ConsumeCompoundAttrType(StringPiece* sp, StringPiece* out) {
+  auto capture_begin = sp->begin();
+  if (str_util::ConsumePrefix(sp, "numbertype") ||
+      str_util::ConsumePrefix(sp, "numerictype") ||
+      str_util::ConsumePrefix(sp, "quantizedtype") ||
+      str_util::ConsumePrefix(sp, "realnumbertype") ||
+      str_util::ConsumePrefix(sp, "realnumberictype")) {
+    *out = StringPiece(capture_begin, sp->begin() - capture_begin);
+    return true;
+  }
+  return false;
+}
+
+bool ProcessCompoundType(const StringPiece type_string, AttrValue* allowed) {
+  if (type_string == "numbertype" || type_string == "numerictype") {
+    for (DataType dt : NumberTypes()) {
+      allowed->mutable_list()->add_type(dt);
+    }
+  } else if (type_string == "quantizedtype") {
+    for (DataType dt : QuantizedTypes()) {
+      allowed->mutable_list()->add_type(dt);
+    }
+  } else if (type_string == "realnumbertype" ||
+             type_string == "realnumerictype") {
+    for (DataType dt : RealNumberTypes()) {
+      allowed->mutable_list()->add_type(dt);
+    }
+  } else {
+    return false;
+  }
+  return true;
+}
+
 void FinalizeAttr(StringPiece spec, OpDef* op_def,
                   std::vector<string>* errors) {
   OpDef::AttrDef* attr = op_def->add_attr();
@@ -122,46 +156,33 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
   // Read "<type>" or "list(<type>)".
   bool is_list = ConsumeListPrefix(&spec);
   string type;
-  if (spec.Consume("string")) {
+  StringPiece type_string;  // Used if type == "type"
+  if (str_util::ConsumePrefix(&spec, "string")) {
     type = "string";
-  } else if (spec.Consume("int")) {
+  } else if (str_util::ConsumePrefix(&spec, "int")) {
     type = "int";
-  } else if (spec.Consume("float")) {
+  } else if (str_util::ConsumePrefix(&spec, "float")) {
     type = "float";
-  } else if (spec.Consume("bool")) {
+  } else if (str_util::ConsumePrefix(&spec, "bool")) {
     type = "bool";
-  } else if (spec.Consume("type")) {
+  } else if (str_util::ConsumePrefix(&spec, "type")) {
     type = "type";
-  } else if (spec.Consume("shape")) {
+  } else if (str_util::ConsumePrefix(&spec, "shape")) {
     type = "shape";
-  } else if (spec.Consume("tensor")) {
+  } else if (str_util::ConsumePrefix(&spec, "tensor")) {
     type = "tensor";
-  } else if (spec.Consume("func")) {
+  } else if (str_util::ConsumePrefix(&spec, "func")) {
     type = "func";
-  } else if (spec.Consume("numbertype") || spec.Consume("numerictype")) {
+  } else if (ConsumeCompoundAttrType(&spec, &type_string)) {
     type = "type";
     AttrValue* allowed = attr->mutable_allowed_values();
-    for (DataType dt : NumberTypes()) {
-      allowed->mutable_list()->add_type(dt);
-    }
-  } else if (spec.Consume("quantizedtype")) {
-    type = "type";
-    AttrValue* allowed = attr->mutable_allowed_values();
-    for (DataType dt : QuantizedTypes()) {
-      allowed->mutable_list()->add_type(dt);
-    }
-  } else if (spec.Consume("realnumbertype") ||
-             spec.Consume("realnumerictype")) {
-    type = "type";
-    AttrValue* allowed = attr->mutable_allowed_values();
-    for (DataType dt : RealNumberTypes()) {
-      allowed->mutable_list()->add_type(dt);
-    }
-  } else if (spec.Consume("{")) {
+    VERIFY(ProcessCompoundType(type_string, allowed),
+           "Expected to see a compound type, saw: ", type_string);
+  } else if (str_util::ConsumePrefix(&spec, "{")) {
     // e.g. "{ int32, float, bool }" or "{ \"foo\", \"bar\" }"
-    str_util::RemoveLeadingWhitespace(&spec);
     AttrValue* allowed = attr->mutable_allowed_values();
-    if (spec.starts_with("\"") || spec.starts_with("'")) {
+    str_util::RemoveLeadingWhitespace(&spec);
+    if (str_util::StartsWith(spec, "\"") || str_util::StartsWith(spec, "'")) {
       type = "string";  // "{ \"foo\", \"bar\" }" or "{ 'foo', 'bar' }"
       while (true) {
         StringPiece escaped_string;
@@ -171,46 +192,52 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
         string unescaped;
         string error;
         VERIFY(str_util::CUnescape(escaped_string, &unescaped, &error),
-               "Trouble unescaping \"", escaped_string, "\", got error: ",
-               error);
+               "Trouble unescaping \"", escaped_string,
+               "\", got error: ", error);
         allowed->mutable_list()->add_s(unescaped);
-        if (spec.Consume(",")) {
+        if (str_util::ConsumePrefix(&spec, ",")) {
           str_util::RemoveLeadingWhitespace(&spec);
-          if (spec.Consume("}")) break;  // Allow ending with ", }".
+          if (str_util::ConsumePrefix(&spec, "}"))
+            break;  // Allow ending with ", }".
         } else {
-          VERIFY(spec.Consume("}"),
+          VERIFY(str_util::ConsumePrefix(&spec, "}"),
                  "Expected , or } after strings in list, not: '", spec, "'");
           break;
         }
       }
-    } else {  // "{ int32, float, bool }"
+    } else {  // "{ bool, numbertype, string }"
       type = "type";
       while (true) {
-        StringPiece type_string;
         VERIFY(ConsumeAttrType(&spec, &type_string),
                "Trouble parsing type string at '", spec, "'");
-        DataType dt;
-        VERIFY(DataTypeFromString(type_string, &dt),
-               "Unrecognized type string '", type_string, "'");
-        allowed->mutable_list()->add_type(dt);
-        if (spec.Consume(",")) {
-          str_util::RemoveLeadingWhitespace(&spec);
-          if (spec.Consume("}")) break;  // Allow ending with ", }".
+        if (ProcessCompoundType(type_string, allowed)) {
+          // Processed a compound type.
         } else {
-          VERIFY(spec.Consume("}"),
+          DataType dt;
+          VERIFY(DataTypeFromString(type_string, &dt),
+                 "Unrecognized type string '", type_string, "'");
+          allowed->mutable_list()->add_type(dt);
+        }
+        if (str_util::ConsumePrefix(&spec, ",")) {
+          str_util::RemoveLeadingWhitespace(&spec);
+          if (str_util::ConsumePrefix(&spec, "}"))
+            break;  // Allow ending with ", }".
+        } else {
+          VERIFY(str_util::ConsumePrefix(&spec, "}"),
                  "Expected , or } after types in list, not: '", spec, "'");
           break;
         }
       }
     }
-  } else {
+  } else {  // if spec.Consume("{")
     VERIFY(false, "Trouble parsing type string at '", spec, "'");
   }
   str_util::RemoveLeadingWhitespace(&spec);
 
   // Write the type into *attr.
   if (is_list) {
-    VERIFY(spec.Consume(")"), "Expected ) to close 'list(', not: '", spec, "'");
+    VERIFY(str_util::ConsumePrefix(&spec, ")"),
+           "Expected ) to close 'list(', not: '", spec, "'");
     str_util::RemoveLeadingWhitespace(&spec);
     attr->set_type(strings::StrCat("list(", type, ")"));
   } else {
@@ -218,7 +245,7 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
   }
 
   // Read optional minimum constraint at the end.
-  if ((is_list || type == "int") && spec.Consume(">=")) {
+  if ((is_list || type == "int") && str_util::ConsumePrefix(&spec, ">=")) {
     int64 min_limit = -999;
     VERIFY(ConsumeAttrNumber(&spec, &min_limit),
            "Could not parse integer lower limit after '>=', found '", spec,
@@ -228,7 +255,7 @@ void FinalizeAttr(StringPiece spec, OpDef* op_def,
   }
 
   // Parse default value, if present.
-  if (spec.Consume("=")) {
+  if (str_util::ConsumePrefix(&spec, "=")) {
     str_util::RemoveLeadingWhitespace(&spec);
     VERIFY(ParseAttrValue(attr->type(), spec, attr->mutable_default_value()),
            "Could not parse default value '", spec, "'");
@@ -369,6 +396,15 @@ void FinalizeInputOrOutput(StringPiece spec, bool is_output, OpDef* op_def,
       attr->set_minimum(1);
     }
   }
+
+  // If the arg's dtype is resource we should mark the op as stateful as it
+  // likely touches a resource manager. This deliberately doesn't cover inputs /
+  // outputs which resolve to resource via Attrs as those mostly operate on
+  // resource handles as an opaque type (as opposed to ops which explicitly take
+  // / produce resources).
+  if (arg->type() == DT_RESOURCE) {
+    op_def->set_is_stateful(true);
+  }
 }
 
 #undef VERIFY
@@ -490,32 +526,32 @@ void FinalizeDoc(const string& text, OpDef* op_def,
 
 }  // namespace
 
-OpDefBuilder::OpDefBuilder(StringPiece op_name) {
-  op_def()->set_name(op_name.ToString());  // NOLINT
+OpDefBuilder::OpDefBuilder(string op_name) {
+  op_def()->set_name(std::move(op_name));
 }
 
-OpDefBuilder& OpDefBuilder::Attr(StringPiece spec) {
-  attrs_.emplace_back(spec.data(), spec.size());
+OpDefBuilder& OpDefBuilder::Attr(string spec) {
+  attrs_.push_back(std::move(spec));
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::Input(StringPiece spec) {
-  inputs_.emplace_back(spec.data(), spec.size());
+OpDefBuilder& OpDefBuilder::Input(string spec) {
+  inputs_.push_back(std::move(spec));
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::Output(StringPiece spec) {
-  outputs_.emplace_back(spec.data(), spec.size());
+OpDefBuilder& OpDefBuilder::Output(string spec) {
+  outputs_.push_back(std::move(spec));
   return *this;
 }
 
 #ifndef TF_LEAN_BINARY
-OpDefBuilder& OpDefBuilder::Doc(StringPiece text) {
+OpDefBuilder& OpDefBuilder::Doc(string text) {
   if (!doc_.empty()) {
     errors_.push_back(
         strings::StrCat("Extra call to Doc() for Op ", op_def()->name()));
   } else {
-    doc_.assign(text.data(), text.size());
+    doc_ = std::move(text);
   }
   return *this;
 }
@@ -541,14 +577,14 @@ OpDefBuilder& OpDefBuilder::SetAllowsUninitializedInput() {
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::Deprecated(int version, StringPiece explanation) {
+OpDefBuilder& OpDefBuilder::Deprecated(int version, string explanation) {
   if (op_def()->has_deprecation()) {
     errors_.push_back(
         strings::StrCat("Deprecated called twice for Op ", op_def()->name()));
   } else {
     OpDeprecation* deprecation = op_def()->mutable_deprecation();
     deprecation->set_version(version);
-    deprecation->set_explanation(explanation.ToString());
+    deprecation->set_explanation(std::move(explanation));
   }
   return *this;
 }

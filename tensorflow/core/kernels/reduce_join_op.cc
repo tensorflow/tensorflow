@@ -72,22 +72,16 @@ int64 GetReductionIterSize(const gtl::InlinedVector<int32, 8>& reduced_indices,
 }
 
 // Computes a list of all true reduced indices, accounting for negative
-// indices and empty inputs.
+// indices.
 gtl::InlinedVector<int32, 8> GetReducedIndices(const Tensor& reduction_indices,
                                                int32 input_dims) {
   const auto reduction_indices_flat = reduction_indices.flat<int32>();
   const int32 reduction_dims = reduction_indices_flat.size();
 
   gtl::InlinedVector<int32, 8> reduced_indices(reduction_dims);
-  if (reduction_dims > 0) {
-    for (int32 i = 0; i < reduction_dims; ++i) {
-      reduced_indices[i] = reduction_indices_flat(reduction_dims - i - 1);
-      reduced_indices[i] += reduced_indices[i] < 0 ? input_dims : 0;
-    }
-  } else {
-    for (int32 i = 0; i < input_dims; ++i) {
-      reduced_indices.push_back(i);
-    }
+  for (int32 i = 0; i < reduction_dims; ++i) {
+    reduced_indices[i] = reduction_indices_flat(reduction_dims - i - 1);
+    reduced_indices[i] += reduced_indices[i] < 0 ? input_dims : 0;
   }
 
   return reduced_indices;
@@ -131,16 +125,12 @@ class ReduceJoinOp : public OpKernel {
     const auto input_flat = input.flat<string>();
     const TensorShape& input_shape = input.shape();
     const int32 input_dims = input_shape.dims();
-    OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(input_shape),
-                errors::InvalidArgument("Input cannot be a scalar."));
 
     const Tensor& reduction_indices = context->input(1);
     const auto reduction_indices_flat = reduction_indices.flat<int32>();
     const int32 reduction_dims = reduction_indices_flat.size();
 
-    // Empty reduction_indices indicates that all indices are reduced.
-    gtl::InlinedVector<bool, 8> index_is_reduced(input_dims,
-                                                 reduction_dims == 0);
+    gtl::InlinedVector<bool, 8> index_is_reduced(input_dims, false);
     for (int32 i = 0; i < reduction_dims; i++) {
       int32 reduce_index = reduction_indices_flat(i);
       const int32 true_reduce_index =
@@ -149,9 +139,6 @@ class ReduceJoinOp : public OpKernel {
           context, reduce_index >= -input_dims && reduce_index < input_dims,
           errors::OutOfRange("Invalid reduction dimension ", reduce_index,
                              " for input with ", input_dims, " dimension(s)"));
-      OP_REQUIRES(context, input_shape.dim_size(true_reduce_index) > 0,
-                  errors::InvalidArgument("Reduction dimension ", reduce_index,
-                                          " has size 0"));
       OP_REQUIRES(context, !index_is_reduced[true_reduce_index],
                   errors::InvalidArgument("Duplicate reduction dimension ",
                                           reduce_index));
@@ -161,9 +148,7 @@ class ReduceJoinOp : public OpKernel {
     gtl::InlinedVector<int32, 8> reduced_indices =
         GetReducedIndices(reduction_indices, input_dims);
     gtl::InlinedVector<int32, 8> unreduced_indices;
-    if (reduction_indices.shape().num_elements() > 0) {
-      MakeUnreducedIndices(index_is_reduced, input_dims, &unreduced_indices);
-    }
+    MakeUnreducedIndices(index_is_reduced, input_dims, &unreduced_indices);
     const auto strides = GetStrides(input_shape);
 
     Tensor* output_tensor = nullptr;

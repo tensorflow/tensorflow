@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SESSION_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SESSION_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SESSION_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SESSION_H_
 
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "tensorflow/core/distributed_runtime/call_options.h"
+#include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -81,26 +82,36 @@ class GrpcSession : public Session {
   Status Close() override;
 
   // NOTE: This API is still experimental and may change.
-  ::tensorflow::Status PRunSetup(const std::vector<string>& input_names,
-                                 const std::vector<string>& output_names,
-                                 const std::vector<string>& target_nodes,
-                                 string* handle) override;
+  Status PRunSetup(const std::vector<string>& input_names,
+                   const std::vector<string>& output_names,
+                   const std::vector<string>& target_nodes,
+                   string* handle) override;
 
   // NOTE: This API is still experimental and may change.
-  ::tensorflow::Status PRun(
-      const string& handle,
-      const std::vector<std::pair<string, Tensor> >& inputs,
-      const std::vector<string>& output_names,
-      std::vector<Tensor>* outputs) override;
+  Status PRun(const string& handle,
+              const std::vector<std::pair<string, Tensor> >& inputs,
+              const std::vector<string>& output_names,
+              std::vector<Tensor>* outputs) override;
 
-  std::vector<DeviceAttributes> ListDevices();
+  Status ListDevices(std::vector<DeviceAttributes>* response) override;
+
+  Status MakeCallable(const CallableOptions& callable_options,
+                      CallableHandle* out_handle) override;
+  Status RunCallable(CallableHandle handle,
+                     const std::vector<Tensor>& feed_tensors,
+                     std::vector<Tensor>* fetch_tensors,
+                     RunMetadata* run_metadata) override;
+  Status ReleaseCallable(CallableHandle handle) override;
 
  protected:
   // Takes ownership of `*master`.
-  void SetRemoteMaster(MasterInterface* master);
+  void SetRemoteMaster(std::unique_ptr<MasterInterface> master);
+  // Allows subclasses to customize Session creation.
+  void SetHandleAndGraphVersion(string handle, int64 graph_version)
+      LOCKS_EXCLUDED(mu_);
 
  private:
-  SessionOptions options_;
+  const SessionOptions options_;
   std::unique_ptr<MasterInterface> master_;
   mutex mu_;
 
@@ -110,8 +121,17 @@ class GrpcSession : public Session {
   // The current version of the graph.
   int64 current_graph_version_ GUARDED_BY(mu_);
 
-  Status RunProto(CallOptions* call_options, RunStepRequest* req,
-                  RunStepResponse* resp);
+  Status Handle(string* out_handle) LOCKS_EXCLUDED(mu_);
+
+  Status RunHelper(const RunOptions& run_options,
+                   const std::vector<std::pair<string, Tensor> >& inputs,
+                   const std::vector<string>& output_tensor_names,
+                   const std::vector<string>& target_node_names,
+                   std::vector<Tensor>* outputs, RunMetadata* run_metadata,
+                   const string& prun_handle);
+
+  Status RunProto(CallOptions* call_options, MutableRunStepRequestWrapper* req,
+                  MutableRunStepResponseWrapper* resp);
 
   // Implementations for all the public interfaces.
   Status CreateImpl(CallOptions* call_options, const GraphDef& graph);
@@ -122,4 +142,4 @@ class GrpcSession : public Session {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SESSION_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SESSION_H_

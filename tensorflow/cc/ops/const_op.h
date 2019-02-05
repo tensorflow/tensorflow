@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_OPS_CONST_OP_H_
-#define THIRD_PARTY_TENSORFLOW_CC_OPS_CONST_OP_H_
+#ifndef TENSORFLOW_CC_OPS_CONST_OP_H_
+#define TENSORFLOW_CC_OPS_CONST_OP_H_
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -23,7 +23,12 @@ limitations under the License.
 namespace tensorflow {
 namespace ops {
 
+/// @defgroup const_op Const Op
+/// @{
+
 Output Const(const Scope& scope, const Input::Initializer& val);
+
+Output ConstFromProto(const Scope& scope, const TensorProto& proto);
 
 NodeBuilder::NodeOut AsNodeOut(const Scope& scope, const Input& inp);
 
@@ -53,6 +58,8 @@ Output Const(const Scope& scope, const Input::Initializer& val) {
   scope.UpdateBuilder(&cast_builder);
   Node* ret;
   scope.UpdateStatus(cast_builder.Finalize(scope.graph(), &ret));
+  if (!scope.ok()) return Output();
+  scope.UpdateStatus(scope.DoShapeInference(ret));
   return Output(ret, 0);
 }
 
@@ -70,7 +77,9 @@ Output Const(const Scope& scope, const std::initializer_list<T>& v,
 std::vector<NodeBuilder::NodeOut> AsNodeOutList(const Scope& scope,
                                                 const InputList& inp);
 
+/// }@
+
 }  // namespace ops
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_OPS_CONST_OP_H_
+#endif  // TENSORFLOW_CC_OPS_CONST_OP_H_

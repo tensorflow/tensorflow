@@ -19,11 +19,11 @@ limitations under the License.
 #include <string.h>
 #include <algorithm>
 
-#include "tensorflow/core/lib/core/casts.h"
+#include "absl/base/casts.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/wav/wav_io.h"
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -65,21 +65,76 @@ static_assert(sizeof(WavHeader) ==
                   sizeof(RiffChunk) + sizeof(FormatChunk) + sizeof(DataChunk),
               "TF_PACKED does not work.");
 
+constexpr char kRiffChunkId[] = "RIFF";
+constexpr char kRiffType[] = "WAVE";
+constexpr char kFormatChunkId[] = "fmt ";
+constexpr char kDataChunkId[] = "data";
+
 inline int16 FloatToInt16Sample(float data) {
   constexpr float kMultiplier = 1.0f * (1 << 15);
   return std::min<float>(std::max<float>(roundf(data * kMultiplier), kint16min),
                          kint16max);
 }
 
+inline float Int16SampleToFloat(int16 data) {
+  constexpr float kMultiplier = 1.0f / (1 << 15);
+  return data * kMultiplier;
+}
+
 }  // namespace
+
+// Handles moving the data index forward, validating the arguments, and avoiding
+// overflow or underflow.
+Status IncrementOffset(int old_offset, size_t increment, size_t max_size,
+                       int* new_offset) {
+  if (old_offset < 0) {
+    return errors::InvalidArgument("Negative offsets are not allowed: ",
+                                   old_offset);
+  }
+  if (old_offset > max_size) {
+    return errors::InvalidArgument("Initial offset is outside data range: ",
+                                   old_offset);
+  }
+  *new_offset = old_offset + increment;
+  if (*new_offset > max_size) {
+    return errors::InvalidArgument("Data too short when trying to read string");
+  }
+  // See above for the check that the input offset is positive. If it's negative
+  // here then it means that there's been an overflow in the arithmetic.
+  if (*new_offset < 0) {
+    return errors::InvalidArgument("Offset too large, overflowed: ",
+                                   *new_offset);
+  }
+  return Status::OK();
+}
+
+Status ExpectText(const string& data, const string& expected_text,
+                  int* offset) {
+  int new_offset;
+  TF_RETURN_IF_ERROR(
+      IncrementOffset(*offset, expected_text.size(), data.size(), &new_offset));
+  const string found_text(data.begin() + *offset, data.begin() + new_offset);
+  if (found_text != expected_text) {
+    return errors::InvalidArgument("Header mismatch: Expected ", expected_text,
+                                   " but found ", found_text);
+  }
+  *offset = new_offset;
+  return Status::OK();
+}
+
+Status ReadString(const string& data, int expected_length, string* value,
+                  int* offset) {
+  int new_offset;
+  TF_RETURN_IF_ERROR(
+      IncrementOffset(*offset, expected_length, data.size(), &new_offset));
+  *value = string(data.begin() + *offset, data.begin() + new_offset);
+  *offset = new_offset;
+  return Status::OK();
+}
 
 Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
                              size_t num_channels, size_t num_frames,
                              string* wav_string) {
-  constexpr char kRiffChunkId[] = "RIFF";
-  constexpr char kRiffType[] = "WAVE";
-  constexpr char kFormatChunkId[] = "fmt ";
-  constexpr char kDataChunkId[] = "data";
   constexpr size_t kFormatChunkSize = 16;
   constexpr size_t kCompressionCodePcm = 1;
   constexpr size_t kBitsPerSample = 16;
@@ -104,7 +159,7 @@ Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
     return errors::InvalidArgument("num_frames must be positive.");
   }
 
-  const size_t bytes_per_second = sample_rate * kBytesPerSample;
+  const size_t bytes_per_second = sample_rate * kBytesPerSample * num_channels;
   const size_t num_samples = num_frames * num_channels;
   const size_t data_size = num_samples * kBytesPerSample;
   const size_t file_size = kHeaderSize + num_samples * kBytesPerSample;
@@ -119,7 +174,7 @@ Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
 
   wav_string->resize(file_size);
   char* data = &wav_string->at(0);
-  WavHeader* header = bit_cast<WavHeader*>(data);
+  WavHeader* header = absl::bit_cast<WavHeader*>(data);
 
   // Fill RIFF chunk.
   auto* riff_chunk = &header->riff_chunk;
@@ -149,6 +204,111 @@ Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
     int16 sample = FloatToInt16Sample(audio[i]);
     core::EncodeFixed16(&data[i * kBytesPerSample],
                         static_cast<uint16>(sample));
+  }
+  return Status::OK();
+}
+
+Status DecodeLin16WaveAsFloatVector(const string& wav_string,
+                                    std::vector<float>* float_values,
+                                    uint32* sample_count, uint16* channel_count,
+                                    uint32* sample_rate) {
+  int offset = 0;
+  TF_RETURN_IF_ERROR(ExpectText(wav_string, kRiffChunkId, &offset));
+  uint32 total_file_size;
+  TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, &total_file_size, &offset));
+  TF_RETURN_IF_ERROR(ExpectText(wav_string, kRiffType, &offset));
+  TF_RETURN_IF_ERROR(ExpectText(wav_string, kFormatChunkId, &offset));
+  uint32 format_chunk_size;
+  TF_RETURN_IF_ERROR(
+      ReadValue<uint32>(wav_string, &format_chunk_size, &offset));
+  if ((format_chunk_size != 16) && (format_chunk_size != 18)) {
+    return errors::InvalidArgument(
+        "Bad file size for WAV: Expected 16 or 18, but got", format_chunk_size);
+  }
+  uint16 audio_format;
+  TF_RETURN_IF_ERROR(ReadValue<uint16>(wav_string, &audio_format, &offset));
+  if (audio_format != 1) {
+    return errors::InvalidArgument(
+        "Bad audio format for WAV: Expected 1 (PCM), but got", audio_format);
+  }
+  TF_RETURN_IF_ERROR(ReadValue<uint16>(wav_string, channel_count, &offset));
+  if (*channel_count < 1) {
+    return errors::InvalidArgument(
+        "Bad number of channels for WAV: Expected at least 1, but got ",
+        *channel_count);
+  }
+  TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, sample_rate, &offset));
+  uint32 bytes_per_second;
+  TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, &bytes_per_second, &offset));
+  uint16 bytes_per_sample;
+  TF_RETURN_IF_ERROR(ReadValue<uint16>(wav_string, &bytes_per_sample, &offset));
+  // Confusingly, bits per sample is defined as holding the number of bits for
+  // one channel, unlike the definition of sample used elsewhere in the WAV
+  // spec. For example, bytes per sample is the memory needed for all channels
+  // for one point in time.
+  uint16 bits_per_sample;
+  TF_RETURN_IF_ERROR(ReadValue<uint16>(wav_string, &bits_per_sample, &offset));
+  if (bits_per_sample != 16) {
+    return errors::InvalidArgument(
+        "Can only read 16-bit WAV files, but received ", bits_per_sample);
+  }
+  const uint32 expected_bytes_per_sample =
+      ((bits_per_sample * *channel_count) + 7) / 8;
+  if (bytes_per_sample != expected_bytes_per_sample) {
+    return errors::InvalidArgument(
+        "Bad bytes per sample in WAV header: Expected ",
+        expected_bytes_per_sample, " but got ", bytes_per_sample);
+  }
+  const uint32 expected_bytes_per_second = bytes_per_sample * *sample_rate;
+  if (bytes_per_second != expected_bytes_per_second) {
+    return errors::InvalidArgument(
+        "Bad bytes per second in WAV header: Expected ",
+        expected_bytes_per_second, " but got ", bytes_per_second,
+        " (sample_rate=", *sample_rate, ", bytes_per_sample=", bytes_per_sample,
+        ")");
+  }
+  if (format_chunk_size == 18) {
+    // Skip over this unused section.
+    offset += 2;
+  }
+
+  bool was_data_found = false;
+  while (offset < wav_string.size()) {
+    string chunk_id;
+    TF_RETURN_IF_ERROR(ReadString(wav_string, 4, &chunk_id, &offset));
+    uint32 chunk_size;
+    TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, &chunk_size, &offset));
+    if (chunk_size > std::numeric_limits<int32>::max()) {
+      return errors::InvalidArgument(
+          "WAV data chunk '", chunk_id, "' is too large: ", chunk_size,
+          " bytes, but the limit is ", std::numeric_limits<int32>::max());
+    }
+    if (chunk_id == kDataChunkId) {
+      if (was_data_found) {
+        return errors::InvalidArgument("More than one data chunk found in WAV");
+      }
+      was_data_found = true;
+      *sample_count = chunk_size / bytes_per_sample;
+      const uint32 data_count = *sample_count * *channel_count;
+      int unused_new_offset = 0;
+      // Validate that the data exists before allocating space for it
+      // (prevent easy OOM errors).
+      TF_RETURN_IF_ERROR(IncrementOffset(offset, sizeof(int16) * data_count,
+                                         wav_string.size(),
+                                         &unused_new_offset));
+      float_values->resize(data_count);
+      for (int i = 0; i < data_count; ++i) {
+        int16 single_channel_value = 0;
+        TF_RETURN_IF_ERROR(
+            ReadValue<int16>(wav_string, &single_channel_value, &offset));
+        (*float_values)[i] = Int16SampleToFloat(single_channel_value);
+      }
+    } else {
+      offset += chunk_size;
+    }
+  }
+  if (!was_data_found) {
+    return errors::InvalidArgument("No data chunk found in WAV");
   }
   return Status::OK();
 }

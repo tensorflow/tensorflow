@@ -15,20 +15,55 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
-
-namespace gpu = ::perftools::gputools;
+#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 
-GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory)
-    : GPUBFCAllocator(device_id, total_memory, GPUOptions()) {}
+bool GPUBFCAllocator::GetAllowGrowthValue(const GPUOptions& gpu_options) {
+  const char* force_allow_growth_string =
+      std::getenv("TF_FORCE_GPU_ALLOW_GROWTH");
+  if (force_allow_growth_string == nullptr) {
+    return gpu_options.allow_growth();
+  }
 
-GPUBFCAllocator::GPUBFCAllocator(int device_id, size_t total_memory,
-                                 const GPUOptions& gpu_options)
-    : BFCAllocator(
-          new GPUMemAllocator(
-              GPUMachineManager()->ExecutorForDevice(device_id).ValueOrDie()),
-          total_memory, gpu_options.allow_growth(), "gpu_bfc") {}
+  if (strcmp("false", force_allow_growth_string) == 0) {
+    if (gpu_options.allow_growth()) {
+      LOG(WARNING)
+          << "Overriding allow_growth setting because the"
+          << " TF_FORCE_GPU_ALLOW_GROWTH environment variable is set. Original"
+          << " config value was " << gpu_options.allow_growth() << ".";
+    }
+    return false;
+  } else if (strcmp("true", force_allow_growth_string) == 0) {
+    if (!gpu_options.allow_growth()) {
+      LOG(WARNING)
+          << "Overriding allow_growth setting because the"
+          << " TF_FORCE_GPU_ALLOW_GROWTH environment variable is set. Original"
+          << " config value was " << gpu_options.allow_growth() << ".";
+    }
+    return true;
+  }
+
+  LOG(ERROR)
+      << "The TF_FORCE_GPU_ALLOW_GROWTH environment variable is set but could"
+      << " not be parsed: \"" << force_allow_growth_string << "\". Valid"
+      << " values are \"true\" or \"false\". Using original config value"
+      << " of " << gpu_options.allow_growth() << ".";
+  return gpu_options.allow_growth();
+}
+
+GPUBFCAllocator::GPUBFCAllocator(GPUMemAllocator* sub_allocator,
+                                 size_t total_memory, const string& name)
+    : GPUBFCAllocator(sub_allocator, total_memory, GPUOptions(), name) {}
+
+GPUBFCAllocator::GPUBFCAllocator(GPUMemAllocator* sub_allocator,
+                                 size_t total_memory,
+                                 const GPUOptions& gpu_options,
+                                 const string& name)
+    : BFCAllocator(sub_allocator, total_memory,
+                   GPUBFCAllocator::GetAllowGrowthValue(gpu_options), name) {}
 
 }  // namespace tensorflow

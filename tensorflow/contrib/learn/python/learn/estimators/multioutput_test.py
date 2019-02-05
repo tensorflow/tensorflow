@@ -22,12 +22,12 @@ import random
 
 import numpy as np
 
-import tensorflow as tf
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import mean_squared_error
+from tensorflow.python.platform import test
 
 
-class MultiOutputTest(tf.test.TestCase):
+class MultiOutputTest(test.TestCase):
   """Multi-output tests."""
 
   def testMultiRegression(self):
@@ -39,9 +39,9 @@ class MultiOutputTest(tf.test.TestCase):
         feature_columns=learn.infer_real_valued_columns_from_input(x),
         label_dimension=2)
     regressor.fit(x, y, steps=100)
-    score = mean_squared_error(np.array(list(regressor.predict(x))), y)
+    score = mean_squared_error(np.array(list(regressor.predict_scores(x))), y)
     self.assertLess(score, 10, "Failed with score = {0}".format(score))
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

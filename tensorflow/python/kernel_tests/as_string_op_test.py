@@ -12,197 +12,214 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for as_string_op."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import string_ops
+from tensorflow.python.platform import test
 
 
-class AsStringOpTest(tf.test.TestCase):
+class AsStringOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testFloat(self):
-    float_inputs_ = [0, 1, -1, 0.5, 0.25, 0.125, float("INF"), float("NAN"),
-                     float("-INF")]
+    float_inputs_ = [
+        0, 1, -1, 0.5, 0.25, 0.125, float("INF"), float("NAN"), float("-INF")
+    ]
 
-    with self.test_session():
-      for dtype in (tf.float32, tf.float64):
-        input_ = tf.placeholder(dtype)
+    with self.cached_session():
+      for dtype in (dtypes.float32, dtypes.float64):
+        input_ = array_ops.placeholder(dtype)
 
-        output = tf.as_string(input_, shortest=True)
+        output = string_ops.as_string(input_, shortest=True)
         result = output.eval(feed_dict={input_: float_inputs_})
         s = lambda strs: [x.decode("ascii") for x in strs]
         self.assertAllEqual(s(result), ["%g" % x for x in float_inputs_])
 
-        output = tf.as_string(input_, scientific=True)
+        output = string_ops.as_string(input_, scientific=True)
         result = output.eval(feed_dict={input_: float_inputs_})
         self.assertAllEqual(s(result), ["%e" % x for x in float_inputs_])
 
-        output = tf.as_string(input_)
+        output = string_ops.as_string(input_)
         result = output.eval(feed_dict={input_: float_inputs_})
         self.assertAllEqual(s(result), ["%f" % x for x in float_inputs_])
 
-        output = tf.as_string(input_, width=3)
+        output = string_ops.as_string(input_, width=3)
         result = output.eval(feed_dict={input_: float_inputs_})
         self.assertAllEqual(s(result), ["%3f" % x for x in float_inputs_])
 
-        output = tf.as_string(input_, width=3, fill="0")
+        output = string_ops.as_string(input_, width=3, fill="0")
         result = output.eval(feed_dict={input_: float_inputs_})
         self.assertAllEqual(s(result), ["%03f" % x for x in float_inputs_])
 
-        output = tf.as_string(input_, width=3, fill="0", shortest=True)
+        output = string_ops.as_string(input_, width=3, fill="0", shortest=True)
         result = output.eval(feed_dict={input_: float_inputs_})
         self.assertAllEqual(s(result), ["%03g" % x for x in float_inputs_])
 
-        output = tf.as_string(input_, precision=10, width=3)
+        output = string_ops.as_string(input_, precision=10, width=3)
         result = output.eval(feed_dict={input_: float_inputs_})
         self.assertAllEqual(s(result), ["%03.10f" % x for x in float_inputs_])
 
-        output = tf.as_string(input_,
-                              precision=10,
-                              width=3,
-                              fill="0",
-                              shortest=True)
+        output = string_ops.as_string(
+            input_, precision=10, width=3, fill="0", shortest=True)
         result = output.eval(feed_dict={input_: float_inputs_})
         self.assertAllEqual(s(result), ["%03.10g" % x for x in float_inputs_])
 
       with self.assertRaisesOpError("Cannot select both"):
-        output = tf.as_string(input_, scientific=True, shortest=True)
+        output = string_ops.as_string(input_, scientific=True, shortest=True)
         output.eval(feed_dict={input_: float_inputs_})
 
       with self.assertRaisesOpError("Fill string must be one or fewer"):
-        output = tf.as_string(input_, fill="ab")
+        output = string_ops.as_string(input_, fill="ab")
         output.eval(feed_dict={input_: float_inputs_})
 
+  @test_util.run_deprecated_v1
   def testInt(self):
     # Cannot use values outside -128..127 for test, because we're also
     # testing int8
     int_inputs_ = [0, -1, 1, -128, 127, -101, 101, -0]
     s = lambda strs: [x.decode("ascii") for x in strs]
 
-    with self.test_session():
-      for dtype in (tf.int32, tf.int64, tf.int8):
-        input_ = tf.placeholder(dtype)
+    with self.cached_session():
+      for dtype in (dtypes.int32, dtypes.int64, dtypes.int8):
+        input_ = array_ops.placeholder(dtype)
 
-        output = tf.as_string(input_)
+        output = string_ops.as_string(input_)
         result = output.eval(feed_dict={input_: int_inputs_})
         self.assertAllEqual(s(result), ["%d" % x for x in int_inputs_])
 
-        output = tf.as_string(input_, width=3)
+        output = string_ops.as_string(input_, width=3)
         result = output.eval(feed_dict={input_: int_inputs_})
         self.assertAllEqual(s(result), ["%3d" % x for x in int_inputs_])
 
-        output = tf.as_string(input_, width=3, fill="0")
+        output = string_ops.as_string(input_, width=3, fill="0")
         result = output.eval(feed_dict={input_: int_inputs_})
         self.assertAllEqual(s(result), ["%03d" % x for x in int_inputs_])
 
       with self.assertRaisesOpError("scientific and shortest"):
-        output = tf.as_string(input_, scientific=True)
+        output = string_ops.as_string(input_, scientific=True)
         output.eval(feed_dict={input_: int_inputs_})
 
       with self.assertRaisesOpError("scientific and shortest"):
-        output = tf.as_string(input_, shortest=True)
+        output = string_ops.as_string(input_, shortest=True)
         output.eval(feed_dict={input_: int_inputs_})
 
       with self.assertRaisesOpError("precision not supported"):
-        output = tf.as_string(input_, precision=0)
+        output = string_ops.as_string(input_, precision=0)
         output.eval(feed_dict={input_: int_inputs_})
 
+  @test_util.run_deprecated_v1
   def testLargeInt(self):
     # Cannot use values outside -128..127 for test, because we're also
     # testing int8
     s = lambda strs: [x.decode("ascii") for x in strs]
 
-    with self.test_session():
-      input_ = tf.placeholder(tf.int32)
+    with self.cached_session():
+      input_ = array_ops.placeholder(dtypes.int32)
       int_inputs_ = [np.iinfo(np.int32).min, np.iinfo(np.int32).max]
-      output = tf.as_string(input_)
+      output = string_ops.as_string(input_)
       result = output.eval(feed_dict={input_: int_inputs_})
       self.assertAllEqual(s(result), ["%d" % x for x in int_inputs_])
 
-      input_ = tf.placeholder(tf.int64)
+      input_ = array_ops.placeholder(dtypes.int64)
       int_inputs_ = [np.iinfo(np.int64).min, np.iinfo(np.int64).max]
-      output = tf.as_string(input_)
+      output = string_ops.as_string(input_)
       result = output.eval(feed_dict={input_: int_inputs_})
       self.assertAllEqual(s(result), ["%d" % x for x in int_inputs_])
 
+  @test_util.run_deprecated_v1
+  def testHalfInt(self):
+    s = lambda strs: [x.decode("ascii") for x in strs]
+
+    with self.cached_session():
+      input_ = array_ops.placeholder(dtypes.int16)
+      int_inputs_ = [np.iinfo(np.int16).min, np.iinfo(np.int16).max]
+      output = string_ops.as_string(input_)
+      result = output.eval(feed_dict={input_: int_inputs_})
+      self.assertAllEqual(s(result), ["%d" % x for x in int_inputs_])
+
+  @test_util.run_deprecated_v1
   def testBool(self):
     bool_inputs_ = [False, True]
     s = lambda strs: [x.decode("ascii") for x in strs]
 
-    with self.test_session():
-      for dtype in (tf.bool,):
-        input_ = tf.placeholder(dtype)
+    with self.cached_session():
+      for dtype in (dtypes.bool,):
+        input_ = array_ops.placeholder(dtype)
 
-        output = tf.as_string(input_)
+        output = string_ops.as_string(input_)
         result = output.eval(feed_dict={input_: bool_inputs_})
         self.assertAllEqual(s(result), ["false", "true"])
 
+  @test_util.run_deprecated_v1
   def testComplex(self):
-    float_inputs_ = [0, 1, -1, 0.5, 0.25, 0.125, complex("INF"), complex("NAN"),
-                     complex("-INF")]
+    float_inputs_ = [
+        0, 1, -1, 0.5, 0.25, 0.125, complex("INF"), complex("NAN"),
+        complex("-INF")
+    ]
     complex_inputs_ = [(x + (x + 1) * 1j) for x in float_inputs_]
 
-    with self.test_session():
-      for dtype in (tf.complex64,):
-        input_ = tf.placeholder(dtype)
+    with self.cached_session():
+      for dtype in (dtypes.complex64, dtypes.complex128):
+        input_ = array_ops.placeholder(dtype)
 
         def clean_nans(s_l):
           return [s.decode("ascii").replace("-nan", "nan") for s in s_l]
 
-        output = tf.as_string(input_, shortest=True)
+        output = string_ops.as_string(input_, shortest=True)
         result = output.eval(feed_dict={input_: complex_inputs_})
-        self.assertAllEqual(clean_nans(result),
-                            ["(%g,%g)" % (x.real, x.imag)
-                             for x in complex_inputs_])
+        self.assertAllEqual(
+            clean_nans(result),
+            ["(%g,%g)" % (x.real, x.imag) for x in complex_inputs_])
 
-        output = tf.as_string(input_, scientific=True)
+        output = string_ops.as_string(input_, scientific=True)
         result = output.eval(feed_dict={input_: complex_inputs_})
-        self.assertAllEqual(clean_nans(result),
-                            ["(%e,%e)" % (x.real, x.imag)
-                             for x in complex_inputs_])
+        self.assertAllEqual(
+            clean_nans(result),
+            ["(%e,%e)" % (x.real, x.imag) for x in complex_inputs_])
 
-        output = tf.as_string(input_)
+        output = string_ops.as_string(input_)
         result = output.eval(feed_dict={input_: complex_inputs_})
-        self.assertAllEqual(clean_nans(result),
-                            ["(%f,%f)" % (x.real, x.imag)
-                             for x in complex_inputs_])
+        self.assertAllEqual(
+            clean_nans(result),
+            ["(%f,%f)" % (x.real, x.imag) for x in complex_inputs_])
 
-        output = tf.as_string(input_, width=3)
+        output = string_ops.as_string(input_, width=3)
         result = output.eval(feed_dict={input_: complex_inputs_})
-        self.assertAllEqual(clean_nans(result),
-                            ["(%03f,%03f)" % (x.real, x.imag)
-                             for x in complex_inputs_])
+        self.assertAllEqual(
+            clean_nans(result),
+            ["(%03f,%03f)" % (x.real, x.imag) for x in complex_inputs_])
 
-        output = tf.as_string(input_, width=3, fill="0", shortest=True)
+        output = string_ops.as_string(input_, width=3, fill="0", shortest=True)
         result = output.eval(feed_dict={input_: complex_inputs_})
-        self.assertAllEqual(clean_nans(result),
-                            ["(%03g,%03g)" % (x.real, x.imag)
-                             for x in complex_inputs_])
+        self.assertAllEqual(
+            clean_nans(result),
+            ["(%03g,%03g)" % (x.real, x.imag) for x in complex_inputs_])
 
-        output = tf.as_string(input_, precision=10, width=3)
+        output = string_ops.as_string(input_, precision=10, width=3)
         result = output.eval(feed_dict={input_: complex_inputs_})
-        self.assertAllEqual(clean_nans(result),
-                            ["(%03.10f,%03.10f)" % (x.real, x.imag)
-                             for x in complex_inputs_])
+        self.assertAllEqual(
+            clean_nans(result),
+            ["(%03.10f,%03.10f)" % (x.real, x.imag) for x in complex_inputs_])
 
-        output = tf.as_string(input_,
-                              precision=10,
-                              width=3,
-                              fill="0",
-                              shortest=True)
+        output = string_ops.as_string(
+            input_, precision=10, width=3, fill="0", shortest=True)
         result = output.eval(feed_dict={input_: complex_inputs_})
-        self.assertAllEqual(clean_nans(result),
-                            ["(%03.10g,%03.10g)" % (x.real, x.imag)
-                             for x in complex_inputs_])
+        self.assertAllEqual(
+            clean_nans(result),
+            ["(%03.10g,%03.10g)" % (x.real, x.imag) for x in complex_inputs_])
 
       with self.assertRaisesOpError("Cannot select both"):
-        output = tf.as_string(input_, scientific=True, shortest=True)
+        output = string_ops.as_string(input_, scientific=True, shortest=True)
         output.eval(feed_dict={input_: complex_inputs_})
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

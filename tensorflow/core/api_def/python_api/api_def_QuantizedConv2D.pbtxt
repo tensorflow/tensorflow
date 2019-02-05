@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "QuantizedConv2D"
+  endpoint {
+    name: "nn.quantized_conv2d"
+    deprecation_version: 2
+  }
+  visibility: HIDDEN
+}

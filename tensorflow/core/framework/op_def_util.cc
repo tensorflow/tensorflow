@@ -18,13 +18,17 @@ limitations under the License.
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -159,20 +163,38 @@ OpDef::AttrDef* FindAttrMutable(StringPiece name, OpDef* op_def) {
   return nullptr;
 }
 
-#define VALIDATE(EXPR, ...)                                          \
-  do {                                                               \
-    if (!(EXPR)) {                                                   \
-      return errors::InvalidArgument(__VA_ARGS__, "; in OpDef: ",    \
-                                     ProtoShortDebugString(op_def)); \
-    }                                                                \
+const OpDef::ArgDef* FindInputArg(StringPiece name, const OpDef& op_def) {
+  for (int i = 0; i < op_def.input_arg_size(); ++i) {
+    if (op_def.input_arg(i).name() == name) {
+      return &op_def.input_arg(i);
+    }
+  }
+  return nullptr;
+}
+
+const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def) {
+  for (int i = 0; i < api_def.in_arg_size(); ++i) {
+    if (api_def.in_arg(i).name() == name) {
+      return &api_def.in_arg(i);
+    }
+  }
+  return nullptr;
+}
+
+#define VALIDATE(EXPR, ...)                                            \
+  do {                                                                 \
+    if (!(EXPR)) {                                                     \
+      return errors::InvalidArgument(                                  \
+          __VA_ARGS__, "; in OpDef: ", ProtoShortDebugString(op_def)); \
+    }                                                                  \
   } while (false)
 
 static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
                           bool output, std::set<string>* names) {
   const string suffix = strings::StrCat(
       output ? " for output '" : " for input '", arg.name(), "'");
-  VALIDATE(gtl::InsertIfNotPresent(names, arg.name()), "Duplicate name: ",
-           arg.name());
+  VALIDATE(gtl::InsertIfNotPresent(names, arg.name()),
+           "Duplicate name: ", arg.name());
   VALIDATE(HasAttrStyleType(arg), "Missing type", suffix);
 
   if (!arg.number_attr().empty()) {
@@ -227,7 +249,7 @@ static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
 Status ValidateOpDef(const OpDef& op_def) {
   using ::tensorflow::strings::Scanner;
 
-  if (!StringPiece(op_def.name()).starts_with("_")) {
+  if (!str_util::StartsWith(op_def.name(), "_")) {
     VALIDATE(Scanner(op_def.name())
                  .One(Scanner::UPPERLETTER)
                  .Any(Scanner::LETTER_DIGIT)
@@ -239,19 +261,19 @@ Status ValidateOpDef(const OpDef& op_def) {
   std::set<string> names;  // for detecting duplicate names
   for (const auto& attr : op_def.attr()) {
     // Validate name
-    VALIDATE(gtl::InsertIfNotPresent(&names, attr.name()), "Duplicate name: ",
-             attr.name());
+    VALIDATE(gtl::InsertIfNotPresent(&names, attr.name()),
+             "Duplicate name: ", attr.name());
     DataType dt;
     VALIDATE(!DataTypeFromString(attr.name(), &dt), "Attr can't have name ",
              attr.name(), " that matches a data type");
 
     // Validate type
     StringPiece type(attr.type());
-    bool is_list = type.Consume("list(");
+    bool is_list = str_util::ConsumePrefix(&type, "list(");
     bool found = false;
     for (StringPiece valid : {"string", "int", "float", "bool", "type", "shape",
                               "tensor", "func"}) {
-      if (type.Consume(valid)) {
+      if (str_util::ConsumePrefix(&type, valid)) {
         found = true;
         break;
       }
@@ -259,8 +281,9 @@ Status ValidateOpDef(const OpDef& op_def) {
     VALIDATE(found, "Unrecognized type '", type, "' in attr '", attr.name(),
              "'");
     if (is_list) {
-      VALIDATE(type.Consume(")"), "'list(' is missing ')' in attr ",
-               attr.name(), "'s type ", attr.type());
+      VALIDATE(str_util::ConsumePrefix(&type, ")"),
+               "'list(' is missing ')' in attr ", attr.name(), "'s type ",
+               attr.type());
     }
     VALIDATE(type.empty(), "Extra '", type, "' at the end of attr ",
              attr.name(), "'s type ", attr.type());
@@ -321,7 +344,7 @@ Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version) {
           ". ", dep.explanation(), ".");
     } else {
       // Warn only once for each op name, and do it in a threadsafe manner.
-      static mutex mu;
+      static mutex mu(LINKER_INITIALIZED);
       static std::unordered_set<string> warned;
       bool warn;
       {
@@ -436,6 +459,11 @@ bool MoreRestrictive(const OpDef::AttrDef& old_attr,
 string AllowedStr(const OpDef::AttrDef& attr) {
   if (!attr.has_allowed_values()) return "no restriction";
   return SummarizeAttrValue(attr.allowed_values());
+}
+
+string DefaultAttrStr(const OpDef::AttrDef& attr) {
+  if (!attr.has_default_value()) return "no default";
+  return SummarizeAttrValue(attr.default_value());
 }
 
 bool HigherMinimum(const OpDef::AttrDef& old_attr,
@@ -664,8 +692,8 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
     if (!penultimate_attr.has_default_value() ||
         !new_attr->has_default_value()) {
       return errors::InvalidArgument("Missing default for attr '",
-                                     penultimate_attr.name(), "' in op: ",
-                                     SummarizeOpDef(new_op));
+                                     penultimate_attr.name(),
+                                     "' in op: ", SummarizeOpDef(new_op));
     }
 
     // Actually test that the attr's default value hasn't changed.
@@ -675,6 +703,32 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
           "Can't change default value for attr '", penultimate_attr.name(),
           "' from ", SummarizeAttrValue(penultimate_attr.default_value()),
           " in op: ", SummarizeOpDef(new_op));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status OpDefAttrDefaultsUnchanged(const OpDef& old_op, const OpDef& new_op) {
+  AttrMap new_attrs, old_attrs;
+  FillAttrMap(old_op, &old_attrs);
+  FillAttrMap(new_op, &new_attrs);
+
+  for (const auto& old_attr : old_op.attr()) {
+    const OpDef::AttrDef* new_attr =
+        gtl::FindPtrOrNull(new_attrs, old_attr.name());
+    if (new_attr == nullptr) continue;
+    if (old_attr.has_default_value() != new_attr->has_default_value()) {
+      return errors::InvalidArgument(
+          "Attr '", old_attr.name(), "' has added/removed it's default; ",
+          "from ", DefaultAttrStr(old_attr), " to ", DefaultAttrStr(*new_attr));
+    }
+    if (old_attr.has_default_value() &&
+        !AreAttrValuesEqual(old_attr.default_value(),
+                            new_attr->default_value())) {
+      return errors::InvalidArgument(
+          "Attr '", old_attr.name(), "' has changed it's default value; ",
+          "from ", DefaultAttrStr(old_attr), " to ", DefaultAttrStr(*new_attr));
     }
   }
 
@@ -707,6 +761,97 @@ void RemoveDescriptionsFromOpList(OpList* op_list) {
     OpDef* op_def = op_list->mutable_op(i);
     RemoveDescriptionsFromOpDef(op_def);
   }
+}
+
+bool AttrDefEqual(const OpDef::AttrDef& a1, const OpDef::AttrDef& a2) {
+#ifndef TENSORFLOW_LITE_PROTOS
+  DCHECK_EQ(7, a1.GetDescriptor()->field_count())
+      << "Please modify these equality and hash functions to reflect the "
+         "changes to the AttrDef protobuf";
+#endif  // TENSORFLOW_LITE_PROTOS
+
+  if (a1.name() != a2.name()) return false;
+  if (a1.type() != a2.type()) return false;
+  if (a1.description() != a2.description()) return false;
+  if (a1.has_minimum() != a2.has_minimum()) return false;
+  if (a1.has_minimum() && a1.minimum() != a2.minimum()) return false;
+  if (!AreAttrValuesEqual(a1.default_value(), a2.default_value())) return false;
+  if (!AreAttrValuesEqual(a1.allowed_values(), a2.allowed_values()))
+    return false;
+  return true;
+}
+
+uint64 AttrDefHash(const OpDef::AttrDef& a) {
+  uint64 h = Hash64(a.name());
+  h = Hash64(a.type().data(), a.type().size(), h);
+  h = Hash64Combine(AttrValueHash(a.default_value()), h);
+  h = Hash64(a.description().data(), a.description().size(), h);
+  h = Hash64Combine(static_cast<uint64>(a.has_minimum()), h);
+  h = Hash64Combine(static_cast<uint64>(a.minimum()), h);
+  h = Hash64Combine(AttrValueHash(a.allowed_values()), h);
+  return h;
+}
+
+bool RepeatedAttrDefEqual(
+    const protobuf::RepeatedPtrField<OpDef::AttrDef>& a1,
+    const protobuf::RepeatedPtrField<OpDef::AttrDef>& a2) {
+  std::unordered_map<string, const OpDef::AttrDef*> a1_set;
+  for (const OpDef::AttrDef& def : a1) {
+    DCHECK(a1_set.find(def.name()) == a1_set.end())
+        << "AttrDef names must be unique, but '" << def.name()
+        << "' appears more than once";
+    a1_set[def.name()] = &def;
+  }
+  for (const OpDef::AttrDef& def : a2) {
+    auto iter = a1_set.find(def.name());
+    if (iter == a1_set.end()) return false;
+    if (!AttrDefEqual(*iter->second, def)) return false;
+    a1_set.erase(iter);
+  }
+  if (!a1_set.empty()) return false;
+  return true;
+}
+
+uint64 RepeatedAttrDefHash(
+    const protobuf::RepeatedPtrField<OpDef::AttrDef>& a) {
+  // Insert AttrDefs into map to deterministically sort by name
+  std::map<string, const OpDef::AttrDef*> a_set;
+  for (const OpDef::AttrDef& def : a) {
+    a_set[def.name()] = &def;
+  }
+  // Iterate and combines hashes of keys and values
+  uint64 h = 0xDECAFCAFFE;
+  for (const auto& pair : a_set) {
+    h = Hash64(pair.first.data(), pair.first.size(), h);
+    h = Hash64Combine(AttrDefHash(*pair.second), h);
+  }
+  return h;
+}
+
+bool OpDefEqual(const OpDef& o1, const OpDef& o2) {
+  // attr order doesn't matter.
+  // Compare it separately here instead of serializing below.
+  if (!RepeatedAttrDefEqual(o1.attr(), o2.attr())) return false;
+
+  // Clear attr field, serialize, and compare serialized strings
+  OpDef o1_copy = o1;
+  OpDef o2_copy = o2;
+  o1_copy.clear_attr();
+  o2_copy.clear_attr();
+  string s1, s2;
+  SerializeToStringDeterministic(o1_copy, &s1);
+  SerializeToStringDeterministic(o2_copy, &s2);
+  if (s1 != s2) return false;
+  return true;
+}
+
+uint64 OpDefHash(const OpDef& o) {
+  uint64 h = RepeatedAttrDefHash(o.attr());
+  OpDef o_copy = o;
+  o_copy.clear_attr();
+  string s;
+  SerializeToStringDeterministic(o_copy, &s);
+  return Hash64(s.data(), s.size(), h);
 }
 
 }  // namespace tensorflow

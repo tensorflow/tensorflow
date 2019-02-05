@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_AGGREGATE_OPS_CPU_H_
-#define TENSORFLOW_KERNELS_AGGREGATE_OPS_CPU_H_
+#ifndef TENSORFLOW_CORE_KERNELS_AGGREGATE_OPS_CPU_H_
+#define TENSORFLOW_CORE_KERNELS_AGGREGATE_OPS_CPU_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -22,6 +22,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/aggregate_ops.h"
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
+
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace tensorflow {
 
@@ -133,8 +137,117 @@ struct Add9Functor<CPUDevice, T> {
   }
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+// Partial specializations for a SYCLDevice, that uses the Eigen implementation
+// from AddNEigenImpl.
+template <typename T>
+struct Add2Functor<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat out,
+                  typename TTypes<T>::ConstFlat in1,
+                  typename TTypes<T>::ConstFlat in2) {
+    Add2EigenImpl<SYCLDevice, T>::Compute(d, out, in1, in2);
+  }
+};
+template <typename T>
+struct Add3Functor<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat out,
+                  typename TTypes<T>::ConstFlat in1,
+                  typename TTypes<T>::ConstFlat in2,
+                  typename TTypes<T>::ConstFlat in3) {
+    Add3EigenImpl<SYCLDevice, T>::Compute(d, out, in1, in2, in3);
+  }
+};
+template <typename T>
+struct Add4Functor<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat out,
+                  typename TTypes<T>::ConstFlat in1,
+                  typename TTypes<T>::ConstFlat in2,
+                  typename TTypes<T>::ConstFlat in3,
+                  typename TTypes<T>::ConstFlat in4) {
+    Add4EigenImpl<SYCLDevice, T>::Compute(d, out, in1, in2, in3, in4);
+  }
+};
+template <typename T>
+struct Add5Functor<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat out,
+                  typename TTypes<T>::ConstFlat in1,
+                  typename TTypes<T>::ConstFlat in2,
+                  typename TTypes<T>::ConstFlat in3,
+                  typename TTypes<T>::ConstFlat in4,
+                  typename TTypes<T>::ConstFlat in5) {
+    Add5EigenImpl<SYCLDevice, T>::Compute(d, out, in1, in2, in3, in4, in5);
+  }
+};
+template <typename T>
+struct Add6Functor<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat out,
+                  typename TTypes<T>::ConstFlat in1,
+                  typename TTypes<T>::ConstFlat in2,
+                  typename TTypes<T>::ConstFlat in3,
+                  typename TTypes<T>::ConstFlat in4,
+                  typename TTypes<T>::ConstFlat in5,
+                  typename TTypes<T>::ConstFlat in6) {
+    Add6EigenImpl<SYCLDevice, T>::Compute(d, out, in1, in2, in3, in4, in5, in6);
+  }
+};
+template <typename T>
+struct Add7Functor<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat out,
+                  typename TTypes<T>::ConstFlat in1,
+                  typename TTypes<T>::ConstFlat in2,
+                  typename TTypes<T>::ConstFlat in3,
+                  typename TTypes<T>::ConstFlat in4,
+                  typename TTypes<T>::ConstFlat in5,
+                  typename TTypes<T>::ConstFlat in6,
+                  typename TTypes<T>::ConstFlat in7) {
+    Add7EigenImpl<SYCLDevice, T>::Compute(d, out, in1, in2, in3, in4, in5, in6,
+                                          in7);
+  }
+};
+
+template <typename T>
+struct Add8Functor<SYCLDevice, T> {
+  void operator()(
+      const SYCLDevice& d, typename TTypes<T>::Flat out,
+      typename TTypes<T>::ConstFlat in1, typename TTypes<T>::ConstFlat in2,
+      typename TTypes<T>::ConstFlat in3, typename TTypes<T>::ConstFlat in4,
+      typename TTypes<T>::ConstFlat in5, typename TTypes<T>::ConstFlat in6,
+      typename TTypes<T>::ConstFlat in7, typename TTypes<T>::ConstFlat in8) {
+    Add8EigenImpl<SYCLDevice, T>::Compute(d, out, in1, in2, in3, in4, in5, in6,
+                                          in7, in8);
+  }
+};
+
+template <typename T>
+struct Add8pFunctor<SYCLDevice, T> {
+  void operator()(
+      const SYCLDevice& d, typename TTypes<T>::Flat out,
+      typename TTypes<T>::ConstFlat in1, typename TTypes<T>::ConstFlat in2,
+      typename TTypes<T>::ConstFlat in3, typename TTypes<T>::ConstFlat in4,
+      typename TTypes<T>::ConstFlat in5, typename TTypes<T>::ConstFlat in6,
+      typename TTypes<T>::ConstFlat in7, typename TTypes<T>::ConstFlat in8) {
+    Add8pEigenImpl<SYCLDevice, T>::Compute(d, out, in1, in2, in3, in4, in5, in6,
+                                           in7, in8);
+  }
+};
+
+template <typename T>
+struct Add9Functor<SYCLDevice, T> {
+  void operator()(
+      const SYCLDevice& d, typename TTypes<T>::Flat out,
+      typename TTypes<T>::ConstFlat in1, typename TTypes<T>::ConstFlat in2,
+      typename TTypes<T>::ConstFlat in3, typename TTypes<T>::ConstFlat in4,
+      typename TTypes<T>::ConstFlat in5, typename TTypes<T>::ConstFlat in6,
+      typename TTypes<T>::ConstFlat in7, typename TTypes<T>::ConstFlat in8,
+      typename TTypes<T>::ConstFlat in9) {
+    Add9EigenImpl<SYCLDevice, T>::Compute(d, out, in1, in2, in3, in4, in5, in6,
+                                          in7, in8, in9);
+  }
+};
+#endif  // TENSORFLOW_USE_SYCL
+
 }  // namespace functor
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_AGGREGATE_OPS_CPU_H_
+#endif  // TENSORFLOW_CORE_KERNELS_AGGREGATE_OPS_CPU_H_

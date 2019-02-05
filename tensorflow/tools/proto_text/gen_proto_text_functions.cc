@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/protobuf_compiler.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/tools/proto_text/gen_proto_text_functions_lib.h"
 
@@ -130,7 +131,13 @@ int MainImpl(int argc, char** argv) {
 
       const string path = output_root + "/" + proto_path_no_suffix + suffix;
       FILE* f = fopen(path.c_str(), "w");
+      if (f == nullptr) {
+        // We don't expect this output to be generated. It was specified in the
+        // list of sources solely to satisfy a proto import dependency.
+        continue;
+      }
       if (fwrite(data.c_str(), 1, data.size(), f) != data.size()) {
+        fclose(f);
         return -1;
       }
       if (fclose(f) != 0) {

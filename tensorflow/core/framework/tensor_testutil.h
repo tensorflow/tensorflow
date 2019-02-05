@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_TENSOR_TESTUTIL_H_
-#define TENSORFLOW_FRAMEWORK_TENSOR_TESTUTIL_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_TENSOR_TESTUTIL_H_
+#define TENSORFLOW_CORE_FRAMEWORK_TENSOR_TESTUTIL_H_
+
+#include <numeric>
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -103,9 +105,10 @@ void ExpectTensorNear(const Tensor& x, const Tensor& y, const T& abs_err);
 
 // Expects "x" and "y" are tensors of the same type (float or double),
 // same shape and element-wise difference between x and y is no more
-// than atol + rtol * abs(x).
-void ExpectClose(const Tensor& x, const Tensor& y, double atol = 1e-6,
-                 double rtol = 1e-6);
+// than atol + rtol * abs(x). If atol or rtol is negative, it is replaced
+// with a default tolerance value = data type's epsilon * kSlackFactor.
+void ExpectClose(const Tensor& x, const Tensor& y, double atol = -1.0,
+                 double rtol = -1.0);
 
 // Implementation details.
 
@@ -164,10 +167,11 @@ struct Expector<T, false> {
   static void Equal(const Tensor& x, const Tensor& y) {
     ASSERT_EQ(x.dtype(), DataTypeToEnum<T>::v());
     AssertSameTypeDims(x, y);
-    auto a = x.flat<T>();
-    auto b = y.flat<T>();
-    for (int i = 0; i < a.size(); ++i) {
-      ExpectEqual(a(i), b(i));
+    const auto size = x.NumElements();
+    const T* a = x.flat<T>().data();
+    const T* b = y.flat<T>().data();
+    for (int i = 0; i < size; ++i) {
+      ExpectEqual(a[i], b[i]);
     }
   }
 };
@@ -180,28 +184,49 @@ struct Expector<T, true> {
   static void Equal(const Tensor& x, const Tensor& y) {
     ASSERT_EQ(x.dtype(), DataTypeToEnum<T>::v());
     AssertSameTypeDims(x, y);
-    auto a = x.flat<T>();
-    auto b = y.flat<T>();
-    for (int i = 0; i < a.size(); ++i) {
-      ExpectEqual(a(i), b(i));
+    const auto size = x.NumElements();
+    const T* a = x.flat<T>().data();
+    const T* b = y.flat<T>().data();
+    for (int i = 0; i < size; ++i) {
+      ExpectEqual(a[i], b[i]);
     }
   }
 
-  static void Near(const T& a, const T& b, const double abs_err) {
-    if (a != b) {  // Takes care of inf.
-      EXPECT_LE(double(Eigen::numext::abs(a - b)), abs_err) << "a = " << a
-                                                            << " b = " << b;
-    }
+  static bool Near(const T& a, const T& b, const double abs_err) {
+    // Need a == b so that infinities are close to themselves.
+    return (a == b) ||
+           (static_cast<double>(Eigen::numext::abs(a - b)) <= abs_err);
   }
 
   static void Near(const Tensor& x, const Tensor& y, const double abs_err) {
     ASSERT_EQ(x.dtype(), DataTypeToEnum<T>::v());
     AssertSameTypeDims(x, y);
-    auto a = x.flat<T>();
-    auto b = y.flat<T>();
-    for (int i = 0; i < a.size(); ++i) {
-      Near(a(i), b(i), abs_err);
+    const auto size = x.NumElements();
+    const T* a = x.flat<T>().data();
+    const T* b = y.flat<T>().data();
+    for (int i = 0; i < size; ++i) {
+      EXPECT_TRUE(Near(a[i], b[i], abs_err))
+          << "a = " << a[i] << " b = " << b[i] << " index = " << i;
     }
+  }
+};
+
+template <typename T>
+struct Helper {
+  // Assumes atol and rtol are nonnegative.
+  static bool IsClose(const T& x, const T& y, const T& atol, const T& rtol) {
+    // Need x == y so that infinities are close to themselves.
+    return (x == y) ||
+           (Eigen::numext::abs(x - y) <= atol + rtol * Eigen::numext::abs(x));
+  }
+};
+
+template <typename T>
+struct Helper<std::complex<T>> {
+  static bool IsClose(const std::complex<T>& x, const std::complex<T>& y,
+                      const T& atol, const T& rtol) {
+    return Helper<T>::IsClose(x.real(), y.real(), atol, rtol) &&
+           Helper<T>::IsClose(x.imag(), y.imag(), atol, rtol);
   }
 };
 
@@ -216,10 +241,11 @@ template <typename T>
 void ExpectTensorNear(const Tensor& x, const Tensor& y, const double abs_err) {
   static_assert(internal::is_floating_point_type<T>::value,
                 "T is not a floating point types.");
+  ASSERT_GE(abs_err, 0.0) << "abs_error is negative" << abs_err;
   internal::Expector<T>::Near(x, y, abs_err);
 }
 
 }  // namespace test
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_TENSOR_TESTUTIL_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_TENSOR_TESTUTIL_H_

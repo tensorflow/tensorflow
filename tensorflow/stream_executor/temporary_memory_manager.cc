@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/temporary_memory_manager.h"
 
-#include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"
+#include "tensorflow/stream_executor/lib/stringprintf.h"
+#include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace internal {
 
 void TemporaryMemoryManager::ForceDeallocateAll() {
@@ -98,7 +98,7 @@ TemporaryMemoryManager::AllocateArrayBase(uint64 element_count,
       stream_->parent()->AllocateArray<uint8>(byte_size);
   if (device_memory == nullptr) {
     return port::Status(port::error::RESOURCE_EXHAUSTED,
-                        port::StrCat("could not allocate temporary memory of ",
+                        absl::StrCat("could not allocate temporary memory of ",
                                      byte_size, " bytes"));
   }
 
@@ -124,5 +124,4 @@ TemporaryMemoryManager::AllocateArrayBase(uint64 element_count,
 }
 
 }  // namespace internal
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

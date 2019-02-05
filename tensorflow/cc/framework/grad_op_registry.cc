@@ -32,7 +32,13 @@ bool GradOpRegistry::Register(const string& op, GradFunc func) {
 Status GradOpRegistry::Lookup(const string& op, GradFunc* func) const {
   auto iter = registry_.find(op);
   if (iter == registry_.end()) {
-    return errors::NotFound("No gradient defined for op: ", op);
+    const string error_msg =
+        "No gradient defined for op: " + op +
+        ". Please see "
+        "https://www.tensorflow.org/code/"
+        "tensorflow/cc/gradients/README.md"
+        " for instructions on how to add C++ gradients.";
+    return errors::NotFound(error_msg);
   }
   *func = iter->second;
   return Status::OK();

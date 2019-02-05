@@ -15,29 +15,30 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 
-namespace tensorflow {
+#include "tensorflow/core/framework/graph.pb.h"
 
+namespace tensorflow {
 namespace {
+
 // NoOpStatsPublisher provides an dummy/no-op implementation of
 // StatsPublisherInterface.
 class NoOpStatsPublisher : public StatsPublisherInterface {
  public:
-  NoOpStatsPublisher(){};
+  NoOpStatsPublisher() = default;
 
-  void PublishStatsProto(const StepStats& step_stats) override { return; }
+  void PublishStatsProto(const StepStats& step_stats) override {}
 
   void PublishGraphProto(
-      const std::vector<const GraphDef*>& graph_defs) override {
-    return;
-  }
+      const std::vector<const GraphDef*>& graph_defs) override {}
 
   std::unique_ptr<ProfileHandler> GetProfileHandler(
       uint64 step, int64 execution_count, const RunOptions& ropts) override {
     return nullptr;
   }
 
-  ~NoOpStatsPublisher() override {}
+  ~NoOpStatsPublisher() override = default;
 };
+
 }  // namespace
 
 std::unique_ptr<StatsPublisherInterface> CreateNoOpStatsPublisher(

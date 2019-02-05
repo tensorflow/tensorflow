@@ -58,7 +58,13 @@ Session* NewSession(const SessionOptions& options) {
     LOG(ERROR) << s;
     return nullptr;
   }
-  return factory->NewSession(options);
+  Session* out_session;
+  s = NewSession(options, &out_session);
+  if (!s.ok()) {
+    LOG(ERROR) << "Failed to create session: " << s;
+    return nullptr;
+  }
+  return out_session;
 }
 
 Status NewSession(const SessionOptions& options, Session** out_session) {
@@ -69,11 +75,11 @@ Status NewSession(const SessionOptions& options, Session** out_session) {
     LOG(ERROR) << s;
     return s;
   }
-  *out_session = factory->NewSession(options);
-  if (!*out_session) {
-    return errors::Internal("Failed to create session.");
+  s = factory->NewSession(options, out_session);
+  if (!s.ok()) {
+    *out_session = nullptr;
   }
-  return Status::OK();
+  return s;
 }
 
 Status Reset(const SessionOptions& options,

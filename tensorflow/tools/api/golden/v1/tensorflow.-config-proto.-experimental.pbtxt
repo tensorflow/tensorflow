@@ -1,0 +1,46 @@
+path: "tensorflow.ConfigProto.Experimental"
+tf_proto {
+  descriptor {
+    name: "Experimental"
+    field {
+      name: "collective_group_leader"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "executor_type"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "recv_buf_max_chunk"
+      number: 4
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "use_numa_affinity"
+      number: 5
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "collective_deterministic_sequential_execution"
+      number: 6
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "collective_nccl"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    reserved_range {
+      start: 2
+      end: 3
+    }
+  }
+}

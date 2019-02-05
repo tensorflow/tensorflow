@@ -1,0 +1,567 @@
+path: "tensorflow.keras.backend"
+tf_module {
+  member {
+    name: "name_scope"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "abs"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "all"
+    argspec: "args=[\'x\', \'axis\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+  }
+  member_method {
+    name: "any"
+    argspec: "args=[\'x\', \'axis\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+  }
+  member_method {
+    name: "arange"
+    argspec: "args=[\'start\', \'stop\', \'step\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'int32\'], "
+  }
+  member_method {
+    name: "argmax"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
+  }
+  member_method {
+    name: "argmin"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
+  }
+  member_method {
+    name: "backend"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "batch_dot"
+    argspec: "args=[\'x\', \'y\', \'axes\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "batch_flatten"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "batch_get_value"
+    argspec: "args=[\'tensors\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "batch_normalization"
+    argspec: "args=[\'x\', \'mean\', \'var\', \'beta\', \'gamma\', \'axis\', \'epsilon\'], varargs=None, keywords=None, defaults=[\'-1\', \'0.001\'], "
+  }
+  member_method {
+    name: "batch_set_value"
+    argspec: "args=[\'tuples\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "bias_add"
+    argspec: "args=[\'x\', \'bias\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "binary_crossentropy"
+    argspec: "args=[\'target\', \'output\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "cast"
+    argspec: "args=[\'x\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "cast_to_floatx"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "categorical_crossentropy"
+    argspec: "args=[\'target\', \'output\', \'from_logits\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\'], "
+  }
+  member_method {
+    name: "clear_session"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "clip"
+    argspec: "args=[\'x\', \'min_value\', \'max_value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "concatenate"
+    argspec: "args=[\'tensors\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
+  }
+  member_method {
+    name: "constant"
+    argspec: "args=[\'value\', \'dtype\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "conv1d"
+    argspec: "args=[\'x\', \'kernel\', \'strides\', \'padding\', \'data_format\', \'dilation_rate\'], varargs=None, keywords=None, defaults=[\'1\', \'valid\', \'None\', \'1\'], "
+  }
+  member_method {
+    name: "conv2d"
+    argspec: "args=[\'x\', \'kernel\', \'strides\', \'padding\', \'data_format\', \'dilation_rate\'], varargs=None, keywords=None, defaults=[\'(1, 1)\', \'valid\', \'None\', \'(1, 1)\'], "
+  }
+  member_method {
+    name: "conv2d_transpose"
+    argspec: "args=[\'x\', \'kernel\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'dilation_rate\'], varargs=None, keywords=None, defaults=[\'(1, 1)\', \'valid\', \'None\', \'(1, 1)\'], "
+  }
+  member_method {
+    name: "conv3d"
+    argspec: "args=[\'x\', \'kernel\', \'strides\', \'padding\', \'data_format\', \'dilation_rate\'], varargs=None, keywords=None, defaults=[\'(1, 1, 1)\', \'valid\', \'None\', \'(1, 1, 1)\'], "
+  }
+  member_method {
+    name: "cos"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "count_params"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ctc_batch_cost"
+    argspec: "args=[\'y_true\', \'y_pred\', \'input_length\', \'label_length\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ctc_decode"
+    argspec: "args=[\'y_pred\', \'input_length\', \'greedy\', \'beam_width\', \'top_paths\'], varargs=None, keywords=None, defaults=[\'True\', \'100\', \'1\'], "
+  }
+  member_method {
+    name: "ctc_label_dense_to_sparse"
+    argspec: "args=[\'labels\', \'label_lengths\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "cumprod"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "cumsum"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "dot"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "dropout"
+    argspec: "args=[\'x\', \'level\', \'noise_shape\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "dtype"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "elu"
+    argspec: "args=[\'x\', \'alpha\'], varargs=None, keywords=None, defaults=[\'1.0\'], "
+  }
+  member_method {
+    name: "epsilon"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "equal"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "eval"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "exp"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "expand_dims"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
+  }
+  member_method {
+    name: "eye"
+    argspec: "args=[\'size\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "flatten"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "floatx"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "foldl"
+    argspec: "args=[\'fn\', \'elems\', \'initializer\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "foldr"
+    argspec: "args=[\'fn\', \'elems\', \'initializer\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "function"
+    argspec: "args=[\'inputs\', \'outputs\', \'updates\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "gather"
+    argspec: "args=[\'reference\', \'indices\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_uid"
+    argspec: "args=[\'prefix\'], varargs=None, keywords=None, defaults=[\'\'], "
+  }
+  member_method {
+    name: "get_value"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "gradients"
+    argspec: "args=[\'loss\', \'variables\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "greater"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "greater_equal"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "hard_sigmoid"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "image_data_format"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "in_test_phase"
+    argspec: "args=[\'x\', \'alt\', \'training\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "in_top_k"
+    argspec: "args=[\'predictions\', \'targets\', \'k\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "in_train_phase"
+    argspec: "args=[\'x\', \'alt\', \'training\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "int_shape"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_sparse"
+    argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "l2_normalize"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "learning_phase"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "learning_phase_scope"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "less"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "less_equal"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "log"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "manual_variable_initialization"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "map_fn"
+    argspec: "args=[\'fn\', \'elems\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "max"
+    argspec: "args=[\'x\', \'axis\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+  }
+  member_method {
+    name: "maximum"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "mean"
+    argspec: "args=[\'x\', \'axis\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+  }
+  member_method {
+    name: "min"
+    argspec: "args=[\'x\', \'axis\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+  }
+  member_method {
+    name: "minimum"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "moving_average_update"
+    argspec: "args=[\'x\', \'value\', \'momentum\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ndim"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "normalize_batch_in_training"
+    argspec: "args=[\'x\', \'gamma\', \'beta\', \'reduction_axes\', \'epsilon\'], varargs=None, keywords=None, defaults=[\'0.001\'], "
+  }
+  member_method {
+    name: "not_equal"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "one_hot"
+    argspec: "args=[\'indices\', \'num_classes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ones"
+    argspec: "args=[\'shape\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "ones_like"
+    argspec: "args=[\'x\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "permute_dimensions"
+    argspec: "args=[\'x\', \'pattern\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "placeholder"
+    argspec: "args=[\'shape\', \'ndim\', \'dtype\', \'sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "pool2d"
+    argspec: "args=[\'x\', \'pool_size\', \'strides\', \'padding\', \'data_format\', \'pool_mode\'], varargs=None, keywords=None, defaults=[\'(1, 1)\', \'valid\', \'None\', \'max\'], "
+  }
+  member_method {
+    name: "pool3d"
+    argspec: "args=[\'x\', \'pool_size\', \'strides\', \'padding\', \'data_format\', \'pool_mode\'], varargs=None, keywords=None, defaults=[\'(1, 1, 1)\', \'valid\', \'None\', \'max\'], "
+  }
+  member_method {
+    name: "pow"
+    argspec: "args=[\'x\', \'a\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "print_tensor"
+    argspec: "args=[\'x\', \'message\'], varargs=None, keywords=None, defaults=[\'\'], "
+  }
+  member_method {
+    name: "prod"
+    argspec: "args=[\'x\', \'axis\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+  }
+  member_method {
+    name: "random_binomial"
+    argspec: "args=[\'shape\', \'p\', \'dtype\', \'seed\'], varargs=None, keywords=None, defaults=[\'0.0\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "random_normal"
+    argspec: "args=[\'shape\', \'mean\', \'stddev\', \'dtype\', \'seed\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "random_normal_variable"
+    argspec: "args=[\'shape\', \'mean\', \'scale\', \'dtype\', \'name\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "random_uniform"
+    argspec: "args=[\'shape\', \'minval\', \'maxval\', \'dtype\', \'seed\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "random_uniform_variable"
+    argspec: "args=[\'shape\', \'low\', \'high\', \'dtype\', \'name\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "relu"
+    argspec: "args=[\'x\', \'alpha\', \'max_value\', \'threshold\'], varargs=None, keywords=None, defaults=[\'0.0\', \'None\', \'0\'], "
+  }
+  member_method {
+    name: "repeat"
+    argspec: "args=[\'x\', \'n\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "repeat_elements"
+    argspec: "args=[\'x\', \'rep\', \'axis\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset_uids"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reshape"
+    argspec: "args=[\'x\', \'shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "resize_images"
+    argspec: "args=[\'x\', \'height_factor\', \'width_factor\', \'data_format\', \'interpolation\'], varargs=None, keywords=None, defaults=[\'nearest\'], "
+  }
+  member_method {
+    name: "resize_volumes"
+    argspec: "args=[\'x\', \'depth_factor\', \'height_factor\', \'width_factor\', \'data_format\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reverse"
+    argspec: "args=[\'x\', \'axes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "rnn"
+    argspec: "args=[\'step_function\', \'inputs\', \'initial_states\', \'go_backwards\', \'mask\', \'constants\', \'unroll\', \'input_length\', \'time_major\', \'zero_output_for_mask\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'False\', \'None\', \'False\', \'False\'], "
+  }
+  member_method {
+    name: "round"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "separable_conv2d"
+    argspec: "args=[\'x\', \'depthwise_kernel\', \'pointwise_kernel\', \'strides\', \'padding\', \'data_format\', \'dilation_rate\'], varargs=None, keywords=None, defaults=[\'(1, 1)\', \'valid\', \'None\', \'(1, 1)\'], "
+  }
+  member_method {
+    name: "set_epsilon"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_floatx"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_image_data_format"
+    argspec: "args=[\'data_format\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_learning_phase"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_session"
+    argspec: "args=[\'session\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_value"
+    argspec: "args=[\'x\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "shape"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "sigmoid"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "sign"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "sin"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "softmax"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
+  }
+  member_method {
+    name: "softplus"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "softsign"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "sparse_categorical_crossentropy"
+    argspec: "args=[\'target\', \'output\', \'from_logits\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\'], "
+  }
+  member_method {
+    name: "spatial_2d_padding"
+    argspec: "args=[\'x\', \'padding\', \'data_format\'], varargs=None, keywords=None, defaults=[\'((1, 1), (1, 1))\', \'None\'], "
+  }
+  member_method {
+    name: "spatial_3d_padding"
+    argspec: "args=[\'x\', \'padding\', \'data_format\'], varargs=None, keywords=None, defaults=[\'((1, 1), (1, 1), (1, 1))\', \'None\'], "
+  }
+  member_method {
+    name: "sqrt"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "square"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "squeeze"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "stack"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "std"
+    argspec: "args=[\'x\', \'axis\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+  }
+  member_method {
+    name: "stop_gradient"
+    argspec: "args=[\'variables\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "sum"
+    argspec: "args=[\'x\', \'axis\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+  }
+  member_method {
+    name: "switch"
+    argspec: "args=[\'condition\', \'then_expression\', \'else_expression\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "tanh"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "temporal_padding"
+    argspec: "args=[\'x\', \'padding\'], varargs=None, keywords=None, defaults=[\'(1, 1)\'], "
+  }
+  member_method {
+    name: "tile"
+    argspec: "args=[\'x\', \'n\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_dense"
+    argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "transpose"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "truncated_normal"
+    argspec: "args=[\'shape\', \'mean\', \'stddev\', \'dtype\', \'seed\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "update"
+    argspec: "args=[\'x\', \'new_x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "update_add"
+    argspec: "args=[\'x\', \'increment\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "update_sub"
+    argspec: "args=[\'x\', \'decrement\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "var"
+    argspec: "args=[\'x\', \'axis\', \'keepdims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+  }
+  member_method {
+    name: "variable"
+    argspec: "args=[\'value\', \'dtype\', \'name\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "zeros"
+    argspec: "args=[\'shape\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "zeros_like"
+    argspec: "args=[\'x\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

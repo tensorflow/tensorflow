@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "MatchingFiles"
+  endpoint {
+    name: "io.matching_files"
+  }
+  endpoint {
+    name: "matching_files"
+    deprecation_version: 2
+  }
+}
