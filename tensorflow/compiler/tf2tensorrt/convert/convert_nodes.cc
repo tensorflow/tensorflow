@@ -2166,9 +2166,6 @@ tensorflow::Status ConvertStridedSliceHelper(OpConverterParams* params,
                                              const std::vector<int>& size,
                                              const std::vector<int>& stride) {
   const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(
-      *params,
-      {{"input", false}, {"begin", true}, {"end", true}, {"strides", true}}));
   // Get input dims.
   nvinfer1::Dims dims = input.GetTrtDims();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
@@ -2185,13 +2182,13 @@ tensorflow::Status ConvertStridedSliceHelper(OpConverterParams* params,
     if (begin[i] < 0 || begin[i] > input_dims[i]) {
       return tensorflow::errors::InvalidArgument(
           "\"begin\" for dimension ", std::to_string(i), " in ", node_def.op(),
-          " must be in the range [0, dims(i)), at ", node_def.name());
+          " is out of range, at ", node_def.name());
     }
     const int end = begin[i] + size[i];
     if (end < 0 || end > input_dims[i]) {
       return tensorflow::errors::InvalidArgument(
           "\"begin\" + \"size\" for dimension ", std::to_string(i), " in ",
-          node_def.op(), " nmust be in the range [0, dims(i)], at ",
+          node_def.op(), " is out of range, at ",
           node_def.name());
     }
     if (size[i] <= 0) {
