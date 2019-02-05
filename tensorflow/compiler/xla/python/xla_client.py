@@ -1613,11 +1613,17 @@ class ComputationBuilder(object):
     """Enqueues a QR decomposition onto the computation."""
     return self._client.QR(a, full_matrices)
 
-  def TriangularSolve(self, a, b, left_side=False, lower=False,
-                      transpose_a=False, conjugate_a=False):
+  def TriangularSolve(self,
+                      a,
+                      b,
+                      left_side=False,
+                      lower=False,
+                      transpose_a=False,
+                      conjugate_a=False,
+                      unit_diagonal=False):
     """Enqueues a triangular-solve operation onto the computation."""
-    return self._client.TriangularSolve(
-        a, b, left_side, lower, transpose_a, conjugate_a)
+    return self._client.TriangularSolve(a, b, left_side, lower, transpose_a,
+                                        conjugate_a, unit_diagonal)
 
   def Gather(self, a, start_indices, dimension_numbers, slice_sizes):
     """Enqueues a Gather operation onto the computation."""
