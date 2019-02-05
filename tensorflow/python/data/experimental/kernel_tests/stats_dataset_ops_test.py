@@ -35,7 +35,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
 def function_set_stats_aggregator(dataset,
                                   aggregator,
                                   prefix="",
@@ -53,6 +52,7 @@ def function_apply_options(dataset, aggregator, prefix="", counter_prefix=""):
   return dataset.with_options(options)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 @parameterized.named_parameters(
     ("SetStatsAggregator", function_set_stats_aggregator),
     ("StatsOptions", function_apply_options),
@@ -66,7 +66,6 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
             stats_ops.bytes_produced_stats("bytes_produced"))
     dataset = dataset_transformation(dataset, aggregator)
     next_element = self.getNext(dataset, requires_initialization=True)
-    summary_t = aggregator.get_summary()
 
     expected_sum = 0.0
     for i in range(100):
@@ -78,8 +77,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self._assertSummaryHasSum(summary_str, "bytes_produced", expected_sum)
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
-    # TODO(shivaniagrawal): ntentional breaking case
-    summary_str = self.evaluate(summary_t)
+    summary_str = self.evaluate(aggregator.get_summary())
     self._assertSummaryHasCount(summary_str, "bytes_produced", 100.0)
     self._assertSummaryHasSum(summary_str, "bytes_produced", expected_sum)
 
@@ -357,13 +355,10 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         100.0)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 @parameterized.named_parameters(
-    dict(
-        testcase_name="SetStatsAggregator",
-        dataset_transformation=function_set_stats_aggregator),
-    dict(
-        testcase_name="StatsOptions",
-        dataset_transformation=function_apply_options))
+    ("SetStatsAggregator", function_set_stats_aggregator),
+    ("StatsOptions", function_apply_options))
 class FeatureStatsDatasetTest(
     stats_dataset_test_base.StatsDatasetTestBase,
     reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase):
