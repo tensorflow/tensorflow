@@ -5092,6 +5092,14 @@ inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
   output_map.array() = Eigen::ceil(input_map.array());
 }
 
+inline void Round(const RuntimeShape& input_shape, const float* input_data,
+                  const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Round");
+  auto input_map = MapAsVector(input_data, input_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
+  output_map.array() = Eigen::round(input_map.array());
+}
+
 #ifdef USE_NEON
 inline void ResizeBilinearKernel(const float* input_ptr, int32 depth,
                                  float scale, float* output_ptr) {

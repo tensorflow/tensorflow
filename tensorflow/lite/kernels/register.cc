@@ -95,6 +95,7 @@ TfLiteRegistration* Register_LESS();
 TfLiteRegistration* Register_LESS_EQUAL();
 TfLiteRegistration* Register_FLOOR();
 TfLiteRegistration* Register_CEIL();
+TfLiteRegistration* Register_ROUND();
 TfLiteRegistration* Register_TILE();
 TfLiteRegistration* Register_NEG();
 TfLiteRegistration* Register_SUM();
@@ -320,6 +321,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_FLOOR, Register_FLOOR());
   AddBuiltin(BuiltinOperator_CEIL, Register_CEIL());
+  AddBuiltin(BuiltinOperator_ROUND, Register_ROUND());
   AddBuiltin(BuiltinOperator_NEG, Register_NEG());
   AddBuiltin(BuiltinOperator_SELECT, Register_SELECT(),
              /* min_version */ 1,

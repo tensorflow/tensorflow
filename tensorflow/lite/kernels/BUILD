@@ -209,6 +209,7 @@ cc_library(
         "resize_nearest_neighbor.cc",
         "reverse.cc",
         "reverse_sequence.cc",
+        "round.cc",
         "select.cc",
         "shape.cc",
         "skip_gram.cc",
@@ -555,6 +556,22 @@ cc_test(
     name = "ceil_test",
     size = "small",
     srcs = ["ceil_test.cc"],
+    tags = [
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+
+cc_test(
+    name = "round_test",
+    size = "small",
+    srcs = ["round_test.cc"],
     tags = [
         "tflite_not_portable_ios",
     ],
