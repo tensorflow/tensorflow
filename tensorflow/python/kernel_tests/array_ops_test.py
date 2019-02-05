@@ -747,7 +747,8 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
 
       # Test numpy array type mask
       raw = np.array([[[[[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]]],
-                       [[[13, 14, 15, 16], [17, 18, 19, 20], [21, 22, 23, 24]]]]])
+                       [[[13, 14, 15, 16], [17, 18, 19, 20],
+                         [21, 22, 23, 24]]]]])
       checker1 = StridedSliceChecker(self, raw)
       _ = checker1[raw >= 4]
       _ = checker1[raw < 19]
@@ -860,7 +861,7 @@ class GradSliceChecker(object):
     np_val_grad = (2 * self.varnp * self.varnp)
     np_sliceval_grad = np.zeros(self.var.get_shape())
     if isinstance(spec, ops.Tensor):
-        spec = self.sess.run([spec])
+      spec = self.sess.run([spec])
     np_sliceval_grad[spec] = np_val_grad[spec]
     # verify gradient
     self.test.assertAllEqual(slice_val_grad_evaled, np_sliceval_grad)
