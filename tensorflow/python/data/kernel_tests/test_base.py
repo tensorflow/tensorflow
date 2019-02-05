@@ -178,6 +178,8 @@ class DatasetTestBase(test.TestCase):
                                    exception_class,
                                    replacements=None):
     """Checks that datasets raise the same error on the first get_next call."""
+    if replacements is None:
+      replacements = []
     next1 = self.getNext(dataset1)
     next2 = self.getNext(dataset2)
     try:
