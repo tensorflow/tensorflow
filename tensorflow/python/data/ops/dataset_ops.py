@@ -28,7 +28,6 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 
 from tensorflow.python.compat import compat
-from tensorflow.python.data.experimental.ops import filter_for_shard_ops
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
 from tensorflow.python.data.experimental.ops import threading_options
@@ -805,6 +804,59 @@ class DatasetV2(object):
     """
     return SkipDataset(self, count)
 
+  def shard(self, num_shards, index):
+    """Creates a `Dataset` that includes only 1/`num_shards` of this dataset.
+
+    This dataset operator is very useful when running distributed training, as
+    it allows each worker to read a unique subset.
+
+    When reading a single input file, you can skip elements as follows:
+
+    ```python
+    d = tf.data.TFRecordDataset(input_file)
+    d = d.shard(num_workers, worker_index)
+    d = d.repeat(num_epochs)
+    d = d.shuffle(shuffle_buffer_size)
+    d = d.map(parser_fn, num_parallel_calls=num_map_threads)
+    ```
+
+    Important caveats:
+
+    - Be sure to shard before you use any randomizing operator (such as
+      shuffle).
+    - Generally it is best if the shard operator is used early in the dataset
+      pipeline. For example, when reading from a set of TFRecord files, shard
+      before converting the dataset to input samples. This avoids reading every
+      file on every worker. The following is an example of an efficient
+      sharding strategy within a complete pipeline:
+
+    ```python
+    d = Dataset.list_files(pattern)
+    d = d.shard(num_workers, worker_index)
+    d = d.repeat(num_epochs)
+    d = d.shuffle(shuffle_buffer_size)
+    d = d.interleave(tf.data.TFRecordDataset,
+                     cycle_length=num_readers, block_length=1)
+    d = d.map(parser_fn, num_parallel_calls=num_map_threads)
+    ```
+
+    Args:
+      num_shards: A `tf.int64` scalar `tf.Tensor`, representing the number of
+        shards operating in parallel.
+      index: A `tf.int64` scalar `tf.Tensor`, representing the worker index.
+
+    Returns:
+      Dataset: A `Dataset`.
+
+    Raises:
+      InvalidArgumentError: if `num_shards` or `index` are illegal values.
+        Note: error checking is done on a best-effort basis, and errors aren't
+        guaranteed to be caught upon dataset creation. (e.g. providing in a
+        placeholder tensor bypasses the early checking, and will instead result
+        in an error during a session.run call.)
+    """
+    return ShardDataset(self, num_shards, index)
+
   def batch(self, batch_size, drop_remainder=False):
     """Combines consecutive elements of this dataset into batches.
 
@@ -1550,60 +1602,9 @@ class DatasetV1(DatasetV2):
   def skip(self, count):
     return DatasetV1Adapter(super(DatasetV1, self).skip(count))
 
-  @deprecation.deprecated(
-      None, "Use `dataset.apply(tf.data.experimental.filter_for_shard(...))`.")
+  @functools.wraps(DatasetV2.shard)
   def shard(self, num_shards, index):
-    """Creates a `Dataset` that includes only 1/`num_shards` of this dataset.
-
-    This dataset operator is very useful when running distributed training, as
-    it allows each worker to read a unique subset.
-
-    When reading a single input file, you can skip elements as follows:
-
-    ```python
-    d = tf.data.TFRecordDataset(FLAGS.input_file)
-    d = d.shard(FLAGS.num_workers, FLAGS.worker_index)
-    d = d.repeat(FLAGS.num_epochs)
-    d = d.shuffle(FLAGS.shuffle_buffer_size)
-    d = d.map(parser_fn, num_parallel_calls=FLAGS.num_map_threads)
-    ```
-
-    Important caveats:
-
-    - Be sure to shard before you use any randomizing operator (such as
-      shuffle).
-    - Generally it is best if the shard operator is used early in the dataset
-      pipeline. For example, when reading from a set of TFRecord files, shard
-      before converting the dataset to input samples. This avoids reading every
-      file on every worker. The following is an example of an efficient
-      sharding strategy within a complete pipeline:
-
-    ```python
-    d = Dataset.list_files(FLAGS.pattern)
-    d = d.shard(FLAGS.num_workers, FLAGS.worker_index)
-    d = d.repeat(FLAGS.num_epochs)
-    d = d.shuffle(FLAGS.shuffle_buffer_size)
-    d = d.interleave(tf.data.TFRecordDataset,
-                     cycle_length=FLAGS.num_readers, block_length=1)
-    d = d.map(parser_fn, num_parallel_calls=FLAGS.num_map_threads)
-    ```
-
-    Args:
-      num_shards: A `tf.int64` scalar `tf.Tensor`, representing the number of
-        shards operating in parallel.
-      index: A `tf.int64` scalar `tf.Tensor`, representing the worker index.
-
-    Returns:
-      Dataset: A `Dataset`.
-
-    Raises:
-      ValueError: if `num_shards` or `index` are illegal values. Note: error
-        checking is done on a best-effort basis, and errors aren't guaranteed
-        to be caught upon dataset creation. (e.g. providing in a placeholder
-        tensor bypasses the early checking, and will instead result in an error
-        during a session.run call.)
-    """
-    return self.apply(filter_for_shard_ops.filter_for_shard(num_shards, index))
+    return DatasetV1Adapter(super(DatasetV1, self).shard(num_shards, index))
 
   @functools.wraps(DatasetV2.batch)
   def batch(self, batch_size, drop_remainder=False):
@@ -2502,6 +2503,23 @@ class SkipDataset(UnaryUnchangedStructureDataset):
         count=self._count,
         **flat_structure(self))
     super(SkipDataset, self).__init__(input_dataset, variant_tensor)
+
+
+class ShardDataset(UnaryUnchangedStructureDataset):
+  """A `Dataset` for sharding its input."""
+
+  def __init__(self, input_dataset, num_shards, index):
+    """See `Dataset.shard()` for details."""
+    self._input_dataset = input_dataset
+    self._num_shards = ops.convert_to_tensor(
+        num_shards, dtype=dtypes.int64, name="num_shards")
+    self._index = ops.convert_to_tensor(index, dtype=dtypes.int64, name="index")
+    variant_tensor = gen_dataset_ops.shard_dataset(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        num_shards=self._num_shards,
+        index=self._index,
+        **flat_structure(self))
+    super(ShardDataset, self).__init__(input_dataset, variant_tensor)
 
 
 class BatchDataset(UnaryDataset):
