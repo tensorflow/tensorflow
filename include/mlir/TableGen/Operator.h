@@ -29,6 +29,7 @@
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/SMLoc.h"
 
 namespace llvm {
 class CodeInit;
@@ -54,6 +55,9 @@ public:
   // Returns the TableGen definition name split around '_'.
   const SmallVectorImpl<StringRef> &getSplitDefName() const;
 
+  // Returns dialect name of the op.
+  StringRef getDialectName() const;
+
   // Returns the C++ class name of the op.
   StringRef getCppClassName() const;
 
@@ -69,15 +73,16 @@ public:
   StringRef getResultName(int index) const;
 
   // Op attribute interators.
-  using attribute_iterator = NamedAttribute *;
-  attribute_iterator attribute_begin();
-  attribute_iterator attribute_end();
-  llvm::iterator_range<attribute_iterator> getAttributes();
+  using attribute_iterator = const NamedAttribute *;
+  attribute_iterator attribute_begin() const;
+  attribute_iterator attribute_end() const;
+  llvm::iterator_range<attribute_iterator> getAttributes() const;
 
   // Op attribute accessors.
   int getNumAttributes() const { return attributes.size(); }
   // Returns the total number of native attributes.
   int getNumNativeAttributes() const;
+  int getNumDerivedAttributes() const;
   NamedAttribute &getAttribute(int index) { return attributes[index]; }
   const NamedAttribute &getAttribute(int index) const;
 
@@ -96,7 +101,9 @@ public:
   Argument getArg(int index);
   StringRef getArgName(int index) const;
   // Returns the total number of arguments.
-  int getNumArgs() const { return operands.size() + attributes.size(); }
+  int getNumArgs() const { return getNumOperands() + getNumNativeAttributes(); }
+
+  ArrayRef<llvm::SMLoc> getLoc() const;
 
   // Query functions for the documentation of the operator.
   bool hasDescription() const;

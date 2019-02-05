@@ -46,6 +46,10 @@ StringRef tblgen::Operator::getOperationName() const {
   return def.getValueAsString("opName");
 }
 
+StringRef tblgen::Operator::getDialectName() const {
+  return getSplitDefName().front();
+}
+
 StringRef tblgen::Operator::getCppClassName() const {
   return getSplitDefName().back();
 }
@@ -72,6 +76,10 @@ int tblgen::Operator::getNumNativeAttributes() const {
   return derivedAttrStart - nativeAttrStart;
 }
 
+int tblgen::Operator::getNumDerivedAttributes() const {
+  return getNumAttributes() - getNumNativeAttributes();
+}
+
 const tblgen::NamedAttribute &tblgen::Operator::getAttribute(int index) const {
   return attributes[index];
 }
@@ -81,13 +89,13 @@ StringRef tblgen::Operator::getArgName(int index) const {
   return argumentValues->getArgName(index)->getValue();
 }
 
-auto tblgen::Operator::attribute_begin() -> attribute_iterator {
+auto tblgen::Operator::attribute_begin() const -> attribute_iterator {
   return attributes.begin();
 }
-auto tblgen::Operator::attribute_end() -> attribute_iterator {
+auto tblgen::Operator::attribute_end() const -> attribute_iterator {
   return attributes.end();
 }
-auto tblgen::Operator::getAttributes()
+auto tblgen::Operator::getAttributes() const
     -> llvm::iterator_range<attribute_iterator> {
   return {attribute_begin(), attribute_end()};
 }
@@ -172,6 +180,8 @@ void tblgen::Operator::populateOperandsAndAttributes() {
     }
   }
 }
+
+ArrayRef<llvm::SMLoc> tblgen::Operator::getLoc() const { return def.getLoc(); }
 
 bool tblgen::Operator::hasDescription() const {
   return def.getValue("description") != nullptr;
