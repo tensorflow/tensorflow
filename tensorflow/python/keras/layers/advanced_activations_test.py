@@ -126,7 +126,6 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
   def test_rrelu(self):
     """Testing the Random ReLU function."""
     testing_utils.layer_test(keras.layers.RReLU,
-                             kwargs={'seed': 1},
                              input_shape=(2, 3, 4))
 
 

@@ -358,10 +358,9 @@ class RReLU(Layer):
   Arguments:
       lower: lower bound of the uniform distribution.
       upper: upper bound of the uniform distribution.
-      seed: Used to create random seeds.
   """
 
-  def __init__(self, lower=0.125, upper=0.333, seed=None, **kwargs):
+  def __init__(self, lower=0.125, upper=0.333, **kwargs):
     super(RReLU, self).__init__(**kwargs)
     if lower < 0 or upper < 0:
       raise ValueError('lower/upper bound for RandomizedRectifierLayer needs '
@@ -372,7 +371,6 @@ class RReLU(Layer):
 
     self.lower = lower
     self.upper = upper
-    self.seed = seed
     self.alpha = K.random_range(low=lower, high=upper)
 
   def call(self, inputs):
@@ -396,7 +394,6 @@ class RReLU(Layer):
     config = {
         'lower': self.lower,
         'upper': self.upper,
-        'seed': self.seed,
     }
     base_config = super(RReLU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))

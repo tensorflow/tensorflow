@@ -1152,8 +1152,8 @@ def identity(x, name=None):
 
 
 def random_range(low=0, high=1, size=None):
-  """Returns a random variable withn the range including low,
-     excluding high
+  """Returns a random variable withn the range [low, high)
+     (includes low, but excludes high).
 
   Arguments:
       low: low value.
