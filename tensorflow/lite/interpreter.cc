@@ -91,7 +91,7 @@ TfLiteStatus Interpreter::AllocateTensors() {
 }
 
 void Interpreter::ReserveNodes(int count) {
-  primary_subgraph().nodes_and_registration().reserve(count);
+  primary_subgraph().ReserveNodes(count);
 }
 
 void Interpreter::AddSubgraphs(int subgraphs_to_add,
@@ -223,7 +223,12 @@ void Interpreter::SetCancellationFunction(void* data,
 }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
-  return primary_subgraph().ModifyGraphWithDelegate(delegate);
+  // TODO(ycling): It seems Flex delegate doesn't work on non-primary subgraphs.
+  // Need to investigate.
+  for (auto& subgraph : subgraphs_) {
+    TF_LITE_ENSURE_OK(context_, subgraph->ModifyGraphWithDelegate(delegate));
+  }
+  return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,

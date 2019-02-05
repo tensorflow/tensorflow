@@ -1361,46 +1361,81 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
 }
 
 namespace {
+template <typename NativeT>
+Literal ExtractLiteralFromIndexPositions(const Literal& from,
+                                         absl::Span<int64 const> indices,
+                                         bool extract_as_scalar) {
+  if (extract_as_scalar) {
+    return LiteralUtil::CreateR0<NativeT>(from.Get<NativeT>({indices[0]}));
+  }
+  // We use a InlinedVector here because we need to convert it to an
+  // absl::Span later, and this would not work with std::vector<bool>.
+  absl::InlinedVector<NativeT, 10> values;
+  for (int64 index : indices) {
+    values.push_back(from.Get<NativeT>({index}));
+  }
+  return LiteralUtil::CreateR1<NativeT>(values);
+}
+
 StatusOr<Literal> ExtractFromIndexPositions(const Literal& from,
-                                            absl::Span<int64 const> indices) {
+                                            absl::Span<int64 const> indices,
+                                            bool extract_as_scalar = false) {
+  if (extract_as_scalar) {
+    CHECK_EQ(indices.size(), 1);
+  }
   PrimitiveType type = from.shape().element_type();
   switch (type) {
     case PRED: {
-      // We use a InlinedVector here because we need to convert it to an
-      // absl::Span later, and this would not work with std::vector<bool>.
-      absl::InlinedVector<bool, 10> values;
-      for (int64 index : indices) {
-        values.push_back(from.Get<bool>({index}));
-      }
-      return LiteralUtil::CreateR1<bool>(values);
+      return ExtractLiteralFromIndexPositions<bool>(from, indices,
+                                                    extract_as_scalar);
     }
-    case F32: {
-      std::vector<float> values;
-      for (int64 index : indices) {
-        values.push_back(from.Get<float>({index}));
-      }
-      return LiteralUtil::CreateR1<float>(values);
+    case U8: {
+      return ExtractLiteralFromIndexPositions<uint8>(from, indices,
+                                                     extract_as_scalar);
     }
-    case U32: {
-      std::vector<uint32> values;
-      for (int64 index : indices) {
-        values.push_back(from.Get<uint32>({index}));
-      }
-      return LiteralUtil::CreateR1<uint32>(values);
-    }
-    case S32: {
-      std::vector<int32> values;
-      for (int64 index : indices) {
-        values.push_back(from.Get<int32>({index}));
-      }
-      return LiteralUtil::CreateR1<int32>(values);
+    case S8: {
+      return ExtractLiteralFromIndexPositions<int8>(from, indices,
+                                                    extract_as_scalar);
     }
     case BF16: {
-      std::vector<bfloat16> values;
-      for (int64 index : indices) {
-        values.push_back(from.Get<bfloat16>({index}));
-      }
-      return LiteralUtil::CreateR1<bfloat16>(values);
+      return ExtractLiteralFromIndexPositions<bfloat16>(from, indices,
+                                                        extract_as_scalar);
+    }
+    case F16: {
+      return ExtractLiteralFromIndexPositions<Eigen::half>(from, indices,
+                                                           extract_as_scalar);
+    }
+    case U16: {
+      return ExtractLiteralFromIndexPositions<uint16>(from, indices,
+                                                      extract_as_scalar);
+    }
+    case S16: {
+      return ExtractLiteralFromIndexPositions<int16>(from, indices,
+                                                     extract_as_scalar);
+    }
+    case F32: {
+      return ExtractLiteralFromIndexPositions<float>(from, indices,
+                                                     extract_as_scalar);
+    }
+    case U32: {
+      return ExtractLiteralFromIndexPositions<uint32>(from, indices,
+                                                      extract_as_scalar);
+    }
+    case S32: {
+      return ExtractLiteralFromIndexPositions<int32>(from, indices,
+                                                     extract_as_scalar);
+    }
+    case F64: {
+      return ExtractLiteralFromIndexPositions<double>(from, indices,
+                                                      extract_as_scalar);
+    }
+    case U64: {
+      return ExtractLiteralFromIndexPositions<uint64>(from, indices,
+                                                      extract_as_scalar);
+    }
+    case S64: {
+      return ExtractLiteralFromIndexPositions<int64>(from, indices,
+                                                     extract_as_scalar);
     }
     default:
       return InvalidArgument("Unsupported type for Sort: %s",

@@ -390,7 +390,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsConv, AlwaysRewrite});
     rinfo_.push_back({csinfo_.depthwise_conv2d,
                       mkl_op_registry::GetMklOpName(csinfo_.depthwise_conv2d),
-                      CopyAttrsConv2DDepthwise, AlwaysRewrite});
+                      CopyAttrsConv2DDepthwiseCheckConstFilter, AlwaysRewrite});
     rinfo_.push_back(
         {csinfo_.depthwise_conv2d_grad_input,
          mkl_op_registry::GetMklOpName(csinfo_.depthwise_conv2d_grad_input),
@@ -1501,6 +1501,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                             bool change_format = false);
   static void CopyAttrsConv2DDepthwise(const Node* orig_node, NodeBuilder* nb,
                                        bool change_format = false);
+  static void CopyAttrsConv2DDepthwiseCheckConstFilter(
+      const Node* orig_node, NodeBuilder* nb, bool change_format = false);
   static void CopyAttrsConvCheckConstFilter(const Node* orig_node,
                                             NodeBuilder* nb,
                                             bool change_format = false);
@@ -2225,6 +2227,29 @@ void MklLayoutRewritePass::CopyAttrsFromPadAndFusedConv2D(
 void MklLayoutRewritePass::CopyAttrsConv2DDepthwise(const Node* orig_node,
                                                     NodeBuilder* nb,
                                                     bool change_format) {
+  DataType T;
+  string data_format;
+  string padding;
+  std::vector<int32> strides;
+  std::vector<int32> dilations;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("strides", strides);
+  nb->Attr("dilations", dilations);
+  nb->Attr("padding", padding);
+  nb->Attr("data_format", data_format);
+}
+
+void MklLayoutRewritePass::CopyAttrsConv2DDepthwiseCheckConstFilter(
+    const Node* orig_node, NodeBuilder* nb, bool change_format) {
   DataType T;
   string data_format;
   string padding;

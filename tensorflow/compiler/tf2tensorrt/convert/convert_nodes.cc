@@ -24,7 +24,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
@@ -81,6 +83,13 @@ namespace tensorrt {
 // TODO(aaroey): put these constants into some class.
 const char* const kInputPHName = "TensorRTInputPH_";
 const char* const kOutputPHName = "TensorRTOutputPH_";
+
+bool IsEngineInput(absl::string_view name) {
+  return absl::StartsWith(name, kInputPHName);
+}
+bool IsEngineOutput(absl::string_view name) {
+  return absl::StartsWith(name, kOutputPHName);
+}
 
 namespace convert {
 using absl::StrAppend;
@@ -349,6 +358,26 @@ nvinfer1::ITensor* Converter::CreateConstantLayer(
   // type setting logic below and test should still pass.
   trt_tensor->setType(trt_dtype);
   return trt_tensor;
+}
+
+tensorflow::Status CreateBroadcastableScalarConstant(
+    OpConverterParams* params, float value, const nvinfer1::Dims& dims,
+    const nvinfer1::ITensor** tensor) {
+  // In order to be broadcastable, the number of dims has to match.
+  nvinfer1::Dims broadcastable_dims(dims);
+  for (int i = 0; i < broadcastable_dims.nbDims; i++) {
+    broadcastable_dims.d[i] = 1;
+  }
+  TRT_ShapedWeights weights = params->weight_store->GetTempWeights(
+      tensorflow::DataType::DT_FLOAT, broadcastable_dims);
+  auto weights_ptr =
+      static_cast<float*>(const_cast<void*>(weights.GetValues()));
+  weights_ptr[0] = value;
+  *tensor = params->converter->CreateConstantLayer(weights, broadcastable_dims);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, params->node_def.name());
+  params->converter->ProvideQuantizationRange(
+      const_cast<nvinfer1::ITensor*>(*tensor), value, value);
+  return Status::OK();
 }
 
 inline bool DimsEqual(const nvinfer1::Dims& dim_l,
@@ -900,7 +929,7 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
     // in ConvertIdentity.
     if (output.is_tensor()) {
       const char* tensor_name = output.tensor()->getName();
-      if (!tensorflow::str_util::StartsWith(tensor_name, kInputPHName)) {
+      if (!IsEngineInput(tensor_name)) {
         // TRT initializes tensor names as "(Unnamed ITensor* N)". We rename
         // them to match their corresponding TensorFlow name.
         // Note: ITensors that we create internally within TF-TRT which are
@@ -960,15 +989,17 @@ Status Converter::RenameAndMarkOutputTensors(
       return errors::NotFound("Output tensor not found: ",
                               output.source_tensor_name);
     }
-    // Check if this tensor has already been marked as an output.
+    // Check if this tensor has already been marked as an input or output.
+    //
     // ConvertIdentity can cause the same tensor to be repeated in
     // output_tensors, which can cause us to overwrite the name of the output
     // tensor binding. For example, if we rename OutputPH_0 to OutputPH_1 then
     // we won't be able to locate OutputPH_0 during runtime. To fix this,
     // duplicate the tensor using no-op shuffle.
+    //
     // TODO(tmorris): Remove this work-around once we use TRT's IIdentityLayer
     // in ConvertIdentity.
-    if (tensorflow::str_util::StartsWith(tensor->getName(), kOutputPHName)) {
+    if (IsEngineInput(tensor->getName()) || IsEngineOutput(tensor->getName())) {
       // Using shuffle layer for identity by not setting reshape or transpose.
       nvinfer1::IShuffleLayer* layer = network()->addShuffle(*tensor);
       TFTRT_RETURN_ERROR_IF_NULLPTR(
@@ -1286,6 +1317,39 @@ Status Converter::GetInputs(const tensorflow::NodeDef& node_def,
   return tensorflow::Status::OK();
 }
 
+// Checks that the number of inputs match, and enforces that the inputs marked
+// as true are constant weights. true means that the input must be a weight,
+// while false means the input must be a tensor. In the future, false will mean
+// the input can be a tensor or weight.
+tensorflow::Status CheckInputsWeights(
+    const OpConverterParams& params,
+    const std::vector<std::pair<string, bool>>& inputs_is_weight) {
+  const auto& inputs = params.inputs;
+  const auto& node_def = params.node_def;
+  if (inputs.size() != inputs_is_weight.size()) {
+    return tensorflow::errors::InvalidArgument(
+        node_def.op(), " got ", inputs.size(), " inputs but expected ",
+        inputs_is_weight.size(), ", at ", node_def.name());
+  }
+  for (int i = 0; i < inputs.size(); i++) {
+    if (inputs_is_weight[i].second && inputs.at(i).is_tensor()) {
+      return tensorflow::errors::Unimplemented(
+          "The input \"", inputs_is_weight[i].first, "\" for ", node_def.op(),
+          " must be a constant, at ", node_def.name());
+    }
+    // TODO(tmorris): Remove this check and provide a method to automatically
+    // retrive an input as a tensor, converting via CreateConstantLayer if it
+    // was originally a weight. We will want a caching mechanism to prevent many
+    // duplicate constants from being created.
+    if (!inputs_is_weight[i].second && inputs.at(i).is_weights()) {
+      return tensorflow::errors::Unimplemented(
+          "The input \"", inputs_is_weight[i].first, "\" for ", node_def.op(),
+          " must be a tensor, at ", node_def.name());
+    }
+  }
+  return tensorflow::Status::OK();
+}
+
 TRT_ShapedWeights ConvertFP32ToFP16(TrtWeightStore* store,
                                     const TRT_ShapedWeights& weights_src) {
   auto dtype_new = tensorflow::DataType::DT_HALF;
@@ -1571,25 +1635,24 @@ Status BinaryTensorOpWeight(OpConverterParams* params,
   return tensorflow::Status::OK();
 }
 
-enum class ConvolutionType { DEFAULT, DEPTHWISE_CONV };
-
-tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
+tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group,
+                                       bool is_conv2d_backprop_input) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 2) {
-    return tensorflow::errors::InvalidArgument("Two inputs are expected for ",
-                                               node_def.op(), ", at ",
-                                               node_def.name());
-  }
-  if (inputs.at(0).is_weights()) {
-    return tensorflow::errors::Unimplemented(
-        node_def.op(), " is only implemented for tensors, not weights, at ",
-        node_def.name());
-  }
-  if (inputs.at(1).is_tensor()) {
-    return tensorflow::errors::Unimplemented("Kernel for ", node_def.op(),
-                                             " must be constant weights, at ",
-                                             node_def.name());
+  TRT_TensorOrWeights backprop_output_size;
+  const nvinfer1::ITensor* tensor = nullptr;
+  if (is_conv2d_backprop_input) {
+    // In the case when Conv2dBackpropInput is used for conv2d_transpose, these
+    // inputs correspond to: output size, filter, and input.
+    TF_RETURN_IF_ERROR(CheckInputsWeights(
+        *params,
+        {{"input_sizes", true}, {"filter", true}, {"out_backprop", false}}));
+    backprop_output_size = inputs.at(0);
+    tensor = inputs.at(2).tensor();
+  } else {
+    TF_RETURN_IF_ERROR(
+        CheckInputsWeights(*params, {{"input", false}, {"filter", true}}));
+    tensor = inputs.at(0).tensor();
   }
   TRT_ShapedWeights weights_rsck = inputs.at(1).weights();
   if (weights_rsck.shape_.nbDims != 4) {
@@ -1613,6 +1676,11 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
         node_def.name());
   }
   const nvinfer1::DimsHW dilation(tf_dilations[h_index], tf_dilations[w_index]);
+  if (is_conv2d_backprop_input && (dilation.d[0] != 1 || dilation.d[1] != 1)) {
+    return tensorflow::errors::Unimplemented(
+        "Dilation with Conv2DBackpropInput (conv2d_transpose) is not supported",
+        ", at ", node_def.name());
+  }
 
   const auto tf_stride = attrs.get<std::vector<int>>("strides");
   if (tf_stride.size() != 4) {
@@ -1628,8 +1696,6 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
   const nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
   if (params->validation_only) return tensorflow::Status::OK();
 
-  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-
   // Transpose to NCHW (NCHW is required for IConvLayer).
   const bool need_transpose = (data_format == "NHWC");
   if (need_transpose) {
@@ -1639,19 +1705,23 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
   // Dimensions of transposed tensor.
   const auto tensor_dim = tensor->getDimensions();
 
-  // For depthwise convolution, group will be 0 so set num_groups to size of
-  // input's channel dim. For a non-depthwise conv, num_groups will be 1.
+  // group == 0 signifies that this is a depthwise convolution, so set
+  // num_groups to size of input's channel dim. For a non-depthwise conv,
+  // num_groups will be 1.
   const int num_groups = (group == 0) ? tensor_dim.d[0] : group;
 
   if (params->converter->precision_mode() == TrtPrecisionMode::FP16) {
-    weights_rsck =
-        ConvertFP32ToFP16(params->weight_store, inputs.at(1).weights());
+    weights_rsck = ConvertFP32ToFP16(params->weight_store, weights_rsck);
   }
+  // For conv, TF weights are RSCK, and TRT expects KCRS.
+  // For backprop, TF weights are RSKC, and TRT expects CKRS.
+  // Therefore, this reorder will work for both cases.
   TRT_ShapedWeights weights =
       params->weight_store->GetTempWeights(weights_rsck);
   ReorderRSCKToKCRS(weights_rsck, &weights, num_groups);
   TRT_ShapedWeights biases(weights.type_);
-  const int noutput = weights.shape_.d[0] * num_groups;
+  const int output_axis = is_conv2d_backprop_input ? 1 : 0;
+  const int noutput = weights.shape_.d[output_axis] * num_groups;
   nvinfer1::DimsHW kernel_size;
   kernel_size.h() = weights.shape_.d[2];
   kernel_size.w() = weights.shape_.d[3];
@@ -1662,9 +1732,23 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
     nvinfer1::DimsHW effective_kernel_size = kernel_size;
     effective_kernel_size.h() += (kernel_size.h() - 1) * (dilation.h() - 1);
     effective_kernel_size.w() += (kernel_size.w() - 1) * (dilation.w() - 1);
-    padding = CreateSamePadding(
-        stride, effective_kernel_size,
-        {static_cast<int>(tensor_dim.d[1]), static_cast<int>(tensor_dim.d[2])});
+    std::vector<int64_t> input_dims;
+    if (is_conv2d_backprop_input) {
+      // For backprop, calculate padding based on "input_sizes" input, which
+      // actually corresponds to output size. ("input_sizes" makes sense in the
+      // context of Conv2DBackpropInput).
+      // We use h_index and w_index instead of 1 and 2 because we havent
+      // transposed backprop_output_size along with the input.
+      auto output_size_weights = static_cast<int*>(
+          const_cast<void*>(backprop_output_size.weights().GetValues()));
+      input_dims = {output_size_weights[h_index], output_size_weights[w_index]};
+    } else {
+      // Use 1 and 2 because tensor_dim has the dimensions of the transposed
+      // input.
+      input_dims = {static_cast<int>(tensor_dim.d[1]),
+                    static_cast<int>(tensor_dim.d[2])};
+    }
+    padding = CreateSamePadding(stride, effective_kernel_size, input_dims);
   } else {
     padding = {{0, 0}, {0, 0}};
   }
@@ -1683,17 +1767,32 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
   }
 
   // Add convolution.
-  nvinfer1::IConvolutionLayer* layer =
-      params->converter->network()->addConvolution(
-          *const_cast<nvinfer1::ITensor*>(tensor), noutput, kernel_size,
-          weights.GetTrtWeights(), biases.GetTrtWeights());
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  layer->setStride(stride);
-  layer->setPadding({padding[0].first, padding[1].first});
-  layer->setName(node_def.name().c_str());
-  layer->setNbGroups(num_groups);
-  layer->setDilation(dilation);
-  const nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  nvinfer1::ILayer* conv_layer = nullptr;
+  if (is_conv2d_backprop_input) {
+    nvinfer1::IDeconvolutionLayer* layer =
+        params->converter->network()->addDeconvolution(
+            *const_cast<nvinfer1::ITensor*>(tensor), noutput, kernel_size,
+            weights.GetTrtWeights(), biases.GetTrtWeights());
+    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+    layer->setStride(stride);
+    layer->setPadding({padding[0].first, padding[1].first});
+    layer->setName(node_def.name().c_str());
+    layer->setNbGroups(num_groups);
+    conv_layer = layer;
+  } else {
+    nvinfer1::IConvolutionLayer* layer =
+        params->converter->network()->addConvolution(
+            *const_cast<nvinfer1::ITensor*>(tensor), noutput, kernel_size,
+            weights.GetTrtWeights(), biases.GetTrtWeights());
+    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+    layer->setStride(stride);
+    layer->setPadding({padding[0].first, padding[1].first});
+    layer->setName(node_def.name().c_str());
+    layer->setNbGroups(num_groups);
+    layer->setDilation(dilation);
+    conv_layer = layer;
+  }
+  const nvinfer1::ITensor* output_tensor = conv_layer->getOutput(0);
 
   // Restore transpose.
   if (need_transpose) {
@@ -1704,18 +1803,6 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
   params->outputs->push_back(
       TRT_TensorOrWeights(const_cast<nvinfer1::ITensor*>(output_tensor)));
   return tensorflow::Status::OK();
-}
-
-tensorflow::Status ConvertConv2DHelper(OpConverterParams* params,
-                                       ConvolutionType type) {
-  switch (type) {
-    case ConvolutionType::DEFAULT:
-      return ConvertConv2DHelper(params, 1);
-    case ConvolutionType::DEPTHWISE_CONV:
-      return ConvertConv2DHelper(params, 0);
-  }
-  return tensorflow::errors::Unimplemented("Unsupported convolution type, at ",
-                                           params->node_def.name());
 }
 
 Status BinaryTensorOpTensor(OpConverterParams* params,
@@ -1827,12 +1914,8 @@ tensorflow::Status ConvertPlugin(OpConverterParams* params) {
 
 tensorflow::Status ConvertTranspose(OpConverterParams* params) {
   const auto& inputs = params->inputs;
-  if (inputs.size() != 2 || !inputs.at(0).is_tensor() ||
-      !inputs.at(1).is_weights()) {
-    return tensorflow::errors::InvalidArgument(
-        "Input expects tensor and weights, at ", params->node_def.name());
-  }
-
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"x", false}, {"perm", true}}));
   // Get the permutation from weights.
   TRT_ShapedWeights weights = inputs.at(1).weights();
   const int* weights_ptr =
@@ -1865,11 +1948,8 @@ tensorflow::Status ConvertTranspose(OpConverterParams* params) {
 tensorflow::Status ConvertReshape(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 2 || !inputs.at(1).is_weights()) {
-    return tensorflow::errors::InvalidArgument(
-        "Input expects weights for shape, at ", node_def.name());
-  }
-
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"tensor", false}, {"shape", true}}));
   TRT_TensorOrWeights input_tensor = inputs.at(0);
   TRT_ShapedWeights weights = inputs.at(1).weights();
   if (weights.count() == 0) {
@@ -1965,18 +2045,8 @@ tensorflow::Status ConvertReshape(OpConverterParams* params) {
 tensorflow::Status ConvertExpandDims(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 2) {
-    return tensorflow::errors::InvalidArgument(
-        "Two inputs expected for ExpandDims, at ", node_def.name());
-  }
-  if (inputs.at(0).is_weights()) {
-    return tensorflow::errors::Unimplemented(
-        "ExpandDims expects tensor for input, at ", node_def.name());
-  }
-  if (!inputs.at(1).is_weights()) {
-    return tensorflow::errors::InvalidArgument(
-        "ExpandDims expects weights for axis, at ", node_def.name());
-  }
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"input", false}, {"axis", true}}));
   // Get input shape as vector.
   TRT_TensorOrWeights input_tensor = inputs.at(0);
   const nvinfer1::Dims dims = input_tensor.GetTrtDims();
@@ -2026,14 +2096,7 @@ tensorflow::Status ConvertExpandDims(OpConverterParams* params) {
 tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 1) {
-    return tensorflow::errors::InvalidArgument(
-        "One input expected for Squeeze, at ", node_def.name());
-  }
-  if (inputs.at(0).is_weights()) {
-    return tensorflow::errors::Unimplemented(
-        "Squeeze expects tensor for input, at ", node_def.name());
-  }
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
   // Get input shape.
   TRT_TensorOrWeights input_tensor = inputs.at(0);
   const nvinfer1::Dims dims = input_tensor.GetTrtDims();
@@ -2135,20 +2198,9 @@ tensorflow::Status GetStridedSliceBound(const std::vector<int>& input_dims,
 tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 4) {
-    return tensorflow::errors::InvalidArgument(
-        "StridedSlice expects 4 inputs, at ", node_def.name());
-  }
-  if (!inputs.at(1).is_weights() || !inputs.at(2).is_weights() ||
-      !inputs.at(3).is_weights()) {
-    return tensorflow::errors::InvalidArgument(
-        "StridedSlice expects weights for begin, end, and strides, at ",
-        node_def.name());
-  }
-  if (!inputs.at(0).is_tensor()) {
-    return tensorflow::errors::Unimplemented(
-        "StridedSlice is only implemented for tensors, at ", node_def.name());
-  }
+  TF_RETURN_IF_ERROR(CheckInputsWeights(
+      *params,
+      {{"input", false}, {"begin", true}, {"end", true}, {"strides", true}}));
   // Get input dims.
   nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
@@ -2329,21 +2381,21 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
 }
 
 tensorflow::Status ConvertConv2D(OpConverterParams* params) {
-  return ConvertConv2DHelper(params, ConvolutionType::DEFAULT);
+  return ConvertConv2DHelper(params, 1, /*is_conv2d_backprop_input=*/false);
 }
 
 tensorflow::Status ConvertConv2DDepthwise(OpConverterParams* params) {
-  return ConvertConv2DHelper(params, ConvolutionType::DEPTHWISE_CONV);
+  return ConvertConv2DHelper(params, 0, /*is_conv2d_backprop_input=*/false);
+}
+
+tensorflow::Status ConvertConv2DBackpropInput(OpConverterParams* params) {
+  return ConvertConv2DHelper(params, 1, /*is_conv2d_backprop_input=*/true);
 }
 
 tensorflow::Status ConvertPool(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.at(0).is_weights()) {
-    return tensorflow::errors::Unimplemented(
-        node_def.op(), " is only implemented for tensors, not weights, at ",
-        node_def.name());
-  }
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
   nvinfer1::PoolingType type;
   if (node_def.op() == "MaxPool") {
     type = nvinfer1::PoolingType::kMAX;
@@ -2430,7 +2482,9 @@ tensorflow::Status ConvertPool(OpConverterParams* params) {
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status ConvertActivation(OpConverterParams* params) {
+// TODO(tmorris): Use ActivationType::kLEAKY_RELU in TRT 5.1+ once perf
+// improves.
+tensorflow::Status ConvertLeakyRelu(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   if (inputs.size() != 1) {
@@ -2442,6 +2496,47 @@ tensorflow::Status ConvertActivation(OpConverterParams* params) {
         node_def.op(), " is only implemented for tensors, at ",
         node_def.name());
   }
+  TFAttrs attrs(node_def);
+  const float alpha = attrs.get<float>("alpha");
+  if (alpha < 0.0f || alpha > 1.0f) {
+    return tensorflow::errors::Unimplemented(
+        "Alpha value for LeakyRelu must be between 0 and 1, at ",
+        node_def.name());
+  }
+  if (params->validation_only) return tensorflow::Status::OK();
+
+  // Input Tensor
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
+  // Create const for alpha.
+  const nvinfer1::ITensor* const_alpha_tensor = nullptr;
+  TF_RETURN_IF_ERROR(CreateBroadcastableScalarConstant(
+      params, alpha, tensor->getDimensions(), &const_alpha_tensor));
+  // alpha * x
+  nvinfer1::IElementWiseLayer* mul_layer =
+      params->converter->network()->addElementWise(
+          *const_cast<nvinfer1::ITensor*>(tensor),
+          *const_cast<nvinfer1::ITensor*>(const_alpha_tensor),
+          nvinfer1::ElementWiseOperation::kPROD);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(mul_layer, node_def.name());
+  // max(x, alpha * x)
+  nvinfer1::IElementWiseLayer* max_layer =
+      params->converter->network()->addElementWise(
+          *const_cast<nvinfer1::ITensor*>(tensor),
+          *const_cast<nvinfer1::ITensor*>(mul_layer->getOutput(0)),
+          nvinfer1::ElementWiseOperation::kMAX);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(max_layer, node_def.name());
+  nvinfer1::ITensor* output_tensor = max_layer->getOutput(0);
+  params->converter->MarkQuantizationRangesAsInferrable(
+      output_tensor, const_cast<nvinfer1::ITensor*>(mul_layer->getOutput(0)));
+
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
+}
+
+tensorflow::Status ConvertActivation(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
   static const std::unordered_map<string, nvinfer1::ActivationType> ops{
       {"Relu", nvinfer1::ActivationType::kRELU},
       {"Sigmoid", nvinfer1::ActivationType::kSIGMOID},
@@ -2475,19 +2570,19 @@ tensorflow::Status ConvertActivation(OpConverterParams* params) {
 Status ConvertQuantize(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if ((inputs.size() == 0) ||
-      (node_def.op() == "FakeQuantWithMinMaxArgs" && inputs.size() != 1) ||
-      (node_def.op() == "FakeQuantWithMinMaxVars" && inputs.size() != 3) ||
-      (node_def.op() == "QuantizeAndDequantizeV2" && inputs.size() != 3) ||
-      (node_def.op() == "QuantizeAndDequantizeV3" && inputs.size() != 4)) {
-    return errors::InvalidArgument("Invalid number of inputs for ",
-                                   node_def.op(), ", at ", node_def.name());
-  }
-  if (inputs.at(0).is_weights()) {
-    // TensorRT will automatically quantize weights, so we will ignore ranges
-    // for weights.
-    params->outputs->push_back(inputs.at(0));
-    return Status::OK();
+  if (node_def.op() == "FakeQuantWithMinMaxArgs") {
+    TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
+  } else if (node_def.op() == "FakeQuantWithMinMaxVars") {
+    TF_RETURN_IF_ERROR(CheckInputsWeights(
+        *params, {{"input", false}, {"min", true}, {"max", true}}));
+  } else if (node_def.op() == "QuantizeAndDequantizeV2") {
+    TF_RETURN_IF_ERROR(CheckInputsWeights(
+        *params, {{"input", false}, {"input_min", true}, {"input_max", true}}));
+  } else if (node_def.op() == "QuantizeAndDequantizeV3") {
+    TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false},
+                                                    {"input_min", true},
+                                                    {"input_max", true},
+                                                    {"num_bits", true}}));
   }
   float min_range = 0.0f;
   float max_range = 0.0f;
@@ -2504,11 +2599,6 @@ Status ConvertQuantize(OpConverterParams* params) {
              node_def.op() == "QuantizeAndDequantizeV2" ||
              node_def.op() == "QuantizeAndDequantizeV3") {
     // Get ranges via inputs.
-    if (!inputs.at(1).is_weights() || !inputs.at(2).is_weights()) {
-      return errors::InvalidArgument("Min and max inputs for ", node_def.op(),
-                                     " must be weights not tensors, at ",
-                                     node_def.name());
-    }
     auto get_weights_value = [&inputs](int index) {
       auto raw_weights = static_cast<float*>(
           const_cast<void*>(inputs.at(index).weights().GetValues()));
@@ -2539,20 +2629,11 @@ Status ConvertQuantize(OpConverterParams* params) {
   return Status::OK();
 }
 
-// TODO(pdavoodi): we should update relu6 implementation once TensorRT supports
-// Relu6 natively.
+// TODO(tmorris): Use ActivationType::kCLIP in TRT 5.1+ once perf improves.
 tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 1) {
-    return tensorflow::errors::InvalidArgument(
-        "Invalid number of inputs for Relu6, at ", node_def.name());
-  }
-  if (inputs.at(0).is_weights()) {
-    return tensorflow::errors::Unimplemented(
-        "Relu6 is only implemented for tensors, not weights, at ",
-        node_def.name());
-  }
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
   if (params->validation_only) return Status::OK();
   // ***************************************************************************
   // TensorRT does not implement Relu6 natively. This function converts Relu6 op
@@ -2576,24 +2657,10 @@ tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   params->converter->ProvideQuantizationRange(relu_layer->getOutput(0), 0.0f,
                                               6.0f);
 
-  // Create a constant layer to store the floating point weight i.e. 6.0f This
-  // tensor will be broadcasted uniformly during elementwise `min` operation.
-  // The constant has to have the same rank as the input in order for TRT to
-  // broadcast
-  nvinfer1::Dims dims;
-  dims.nbDims = relu_layer->getOutput(0)->getDimensions().nbDims;
-  for (int i = 0; i < dims.nbDims; i++) {
-    dims.d[i] = 1;
-  }
-  TRT_ShapedWeights weights = params->weight_store->GetTempWeights(
-      tensorflow::DataType::DT_FLOAT, dims);
-  auto weights_ptr =
-      static_cast<float*>(const_cast<void*>(weights.GetValues()));
-  weights_ptr[0] = 6.0f;
-  nvinfer1::ITensor* const6_tensor =
-      params->converter->CreateConstantLayer(weights, dims);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(const6_tensor, node_def.name());
-  params->converter->ProvideQuantizationRange(const6_tensor, 0.0f, 6.0f);
+  // Create a constant layer to store the floating point weight i.e. 6.0f
+  const nvinfer1::ITensor* const6_tensor = nullptr;
+  TF_RETURN_IF_ERROR(CreateBroadcastableScalarConstant(
+      params, 6.0f, relu_layer->getOutput(0)->getDimensions(), &const6_tensor));
 
   // ElementWise Min Operation
   // Min op is a nop for INT8 execution path, as the input tensor
@@ -2601,7 +2668,8 @@ tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   nvinfer1::IElementWiseLayer* relu6_layer =
       params->converter->network()->addElementWise(
           *const_cast<nvinfer1::ITensor*>(relu_layer->getOutput(0)),
-          *const6_tensor, nvinfer1::ElementWiseOperation::kMIN);
+          *const_cast<nvinfer1::ITensor*>(const6_tensor),
+          nvinfer1::ElementWiseOperation::kMIN);
   TFTRT_RETURN_ERROR_IF_NULLPTR(relu6_layer, node_def.name());
   nvinfer1::ITensor* output_tensor = relu6_layer->getOutput(0);
   params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 6.0f);
@@ -2613,11 +2681,8 @@ tensorflow::Status ConvertRelu6(OpConverterParams* params) {
 tensorflow::Status ConvertBiasAdd(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 2 || !inputs.at(0).is_tensor() ||
-      !inputs.at(1).is_weights()) {
-    return errors::InvalidArgument("Input expects tensor and weights, at ",
-                                   node_def.name());
-  }
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"value", false}, {"bias", true}}));
   TFAttrs attrs(node_def);
   tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
   if (tf_dtype != DataType::DT_FLOAT && tf_dtype != DataType::DT_HALF) {
@@ -2837,9 +2902,13 @@ tensorflow::Status ConvertIdentity(OpConverterParams* params) {
 Status ConvertBinary(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
+  // TODO(tmorris): Enable once false is updated to mean either tensor or weight
+  // TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}, {"y",
+  // false}}));
   if (inputs.size() != 2) {
-    return errors::InvalidArgument("Binary ops require two inputs, at ",
-                                   node_def.name());
+    return tensorflow::errors::InvalidArgument(
+        node_def.op(), " got ", inputs.size(), " inputs but expected 2, at ",
+        node_def.name());
   }
 
   // Constant folding should have been done by TensorFlow
@@ -2889,11 +2958,7 @@ tensorflow::Status ConvertUnary(OpConverterParams* params) {
       {"Abs", nvinfer1::UnaryOperation::kABS},
       {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
   };
-
-  if (inputs.size() != 1) {
-    return tensorflow::errors::FailedPrecondition(
-        "Unary ops require single tensor input, at ", node_def.name());
-  }
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
 
   // TODO(jie): check type
   const nvinfer1::ITensor* tensor = nullptr;
@@ -2942,14 +3007,7 @@ tensorflow::Status ConvertUnary(OpConverterParams* params) {
 tensorflow::Status ConvertSquare(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 1) {
-    return tensorflow::errors::InvalidArgument("Square expects one input, at ",
-                                               node_def.name());
-  }
-  if (inputs.at(0).is_weights()) {
-    return tensorflow::errors::Unimplemented(
-        "Square is only implemented for tensors, at ", node_def.name());
-  }
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
   if (params->validation_only) return Status::OK();
 
   // Constant 2 with same rank as input
@@ -2981,11 +3039,8 @@ tensorflow::Status ConvertSquare(OpConverterParams* params) {
 tensorflow::Status ConvertReduce(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 2 || !inputs.at(0).is_tensor() ||
-      !inputs.at(1).is_weights()) {
-    return tensorflow::errors::InvalidArgument(
-        "Input expects tensor and weights, at", node_def.name());
-  }
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"input", false}, {"axis", true}}));
 
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   TRT_ShapedWeights index_list = inputs.at(1).weights();
@@ -3046,12 +3101,8 @@ tensorflow::Status ConvertReduce(OpConverterParams* params) {
 tensorflow::Status ConvertPad(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  // TODO(aaroey): make a routine for this check and reuse it.
-  if (inputs.size() != 2 || !inputs.at(0).is_tensor() ||
-      !inputs.at(1).is_weights()) {
-    return tensorflow::errors::InvalidArgument(
-        "Input expects tensor and weights, at", node_def.name());
-  }
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"tensor", false}, {"paddings", true}}));
 
   // Implement tensor binaryOp weight [channel wise] for now;
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
@@ -3232,6 +3283,11 @@ tensorflow::Status ConvertConcat(OpConverterParams* params) {
 tensorflow::Status ConvertFusedBatchNorm(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false},
+                                                  {"scale", true},
+                                                  {"offset", true},
+                                                  {"mean", true},
+                                                  {"variance", true}}));
   TFAttrs attrs(node_def);
   float epsilon = attrs.get<float>("epsilon");
   auto data_format = attrs.get<string>("data_format");
@@ -3251,21 +3307,6 @@ tensorflow::Status ConvertFusedBatchNorm(OpConverterParams* params) {
     return tensorflow::errors::Unimplemented(
         node_def.op(), " only supports is_training=false, at ",
         node_def.name());
-  }
-  if (inputs.at(0).is_weights()) {
-    return tensorflow::errors::Unimplemented(
-        node_def.op(),
-        " is only implemented for tensor inputs, not weights, at ",
-        node_def.name());
-  }
-  for (int i = 1; i < 5; i++) {
-    if (inputs.at(i).is_tensor()) {
-      return tensorflow::errors::Unimplemented(
-          node_def.op(),
-          " must have constant inputs for scale, offset, mean and variance, "
-          "at ",
-          node_def.name());
-    }
   }
   nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
 
@@ -3423,11 +3464,7 @@ tensorflow::Status ConvertMatMulHelper(OpConverterParams* params,
 tensorflow::Status ConvertMatMul(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 2 || !inputs.at(0).is_tensor() ||
-      !inputs.at(1).is_weights()) {
-    return errors::InvalidArgument("Input expects tensor and weights, at ",
-                                   node_def.name());
-  }
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"a", false}, {"b", true}}));
 
   TFAttrs attrs(node_def);
   tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
@@ -3453,6 +3490,14 @@ tensorflow::Status ConvertMatMul(OpConverterParams* params) {
 tensorflow::Status ConvertBatchMatMul(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
+  // TODO(tmorris): Enable once false is updated to mean either tensor or weight
+  // TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}, {"y",
+  // false}}));
+  if (inputs.size() != 2) {
+    return tensorflow::errors::InvalidArgument(
+        node_def.op(), " got ", inputs.size(), " inputs but expected 2, at ",
+        node_def.name());
+  }
   TFAttrs attrs(node_def);
 
   tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
@@ -3524,6 +3569,7 @@ tensorflow::Status ConvertBatchMatMul(OpConverterParams* params) {
 tensorflow::Status ConvertSoftmax(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"logits", false}}));
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
 
   int nbDims = tensor->getDimensions().nbDims;
@@ -3532,6 +3578,8 @@ tensorflow::Status ConvertSoftmax(OpConverterParams* params) {
         "TensorRT Softmax cannot apply on batch dimension, at" +
         node_def.name());
   }
+  if (params->validation_only) return Status::OK();
+
   nvinfer1::ISoftMaxLayer* layer = params->converter->network()->addSoftMax(
       *const_cast<nvinfer1::ITensor*>(tensor));
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
@@ -3554,6 +3602,8 @@ tensorflow::Status ConvertTopK(OpConverterParams* params) {
   }
 
   const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"input", false}, {"k", true}}));
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   const int num_dims = tensor->getDimensions().nbDims;
   if (num_dims == 0) {
@@ -3591,8 +3641,10 @@ static void RegisterValidatableOpConverters(
   (*registration)["ConcatV2"] = ConvertConcat;
   (*registration)["Const"] = ConvertConst;
   (*registration)["Conv2D"] = ConvertConv2D;
+  (*registration)["Conv2DBackpropInput"] = ConvertConv2DBackpropInput;
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   (*registration)["ExpandDims"] = ConvertExpandDims;
+  (*registration)["LeakyRelu"] = ConvertLeakyRelu;
   (*registration)["MatMul"] = ConvertMatMul;
   (*registration)["Pad"] = ConvertPad;
   (*registration)["Relu6"] = ConvertRelu6;
@@ -3696,8 +3748,7 @@ tensorflow::Status ConvertGraphDefToEngine(
   for (const auto& node_def : gdef.node()) {
     string node_name = node_def.name();
     VLOG(2) << "Converting op name=" << node_name << ", op=" << node_def.op();
-    if (tensorflow::str_util::StartsWith(node_name, kInputPHName) &&
-        (node_def.op() == "Placeholder")) {
+    if (IsEngineInput(node_name) && (node_def.op() == "Placeholder")) {
       int32 slot_number = -1;
       if (!tensorflow::strings::safe_strto32(  // non-absl ok
               node_name.c_str() + strlen(kInputPHName), &slot_number)) {
@@ -3725,8 +3776,7 @@ tensorflow::Status ConvertGraphDefToEngine(
       // engines offline, by calling sess.run() and cache/serialize the engines.
       TF_RETURN_IF_ERROR(
           converter.AddInputTensor(node_name, trt_dtype, trt_dims, batch_size));
-    } else if (tensorflow::str_util::StartsWith(node_name, kOutputPHName) &&
-               (node_def.op() == "Identity")) {
+    } else if (IsEngineOutput(node_name) && (node_def.op() == "Identity")) {
       int32 slot_number = -1;
       if (!tensorflow::strings::safe_strto32(  // non-absl ok
               node_name.c_str() + strlen(kOutputPHName), &slot_number)) {
@@ -3880,7 +3930,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
       TensorId input = ParseTensorName(snode->input(input_idx));
       if (!subgraph_node_names.count(
               string(input.first.data(), input.first.size())) &&
-          !str_util::StartsWith(input.first, kInputPHName)) {
+          !IsEngineInput(input.first)) {
         if (input.second == Graph::kControlSlot) {
           VLOG(1) << "... removing control inputs " << input.first
                   << " from subgraph.";

@@ -2432,11 +2432,11 @@ void ExecutorState::Finish() {
 
   // There are several potential race conditions below. To name a few:
   // 1. Even if the device's status is OK at the precise moment when
-  // num_deferred_ops_ reaches 0, it could go bad before device->CurrentStatus()
+  // num_deferred_ops_ reaches 0, it could go bad before device->RefreshStatus()
   // is called below, caused by work enqueued onto the same device by other
   // concurrent ExecutorState objects.
-  // 2. Some implementations of Device::CurrentStatus, such as
-  // XlaDevice::CurrentStatus, may be inherently racy because it releases the
+  // 2. Some implementations of Device::RefreshStatus, such as
+  // XlaDevice::RefreshStatus, may be inherently racy because it releases the
   // device mutex after a stream pointer is acquired and before the stream is
   // queried for status.
   // 3. It's the same for some implementations of Device::Sync, such as
@@ -2462,7 +2462,7 @@ void ExecutorState::Finish() {
   // these devices should have used num_deferred_ops correctly to ensure the
   // device has finished all relevant work at this point.
   if (!device->AllowsSyncOnCompletion()) {
-    status.Update(device->CurrentStatus());
+    status.Update(device->RefreshStatus());
     delete this;
     runner([=]() { done_cb(status); });
     return;

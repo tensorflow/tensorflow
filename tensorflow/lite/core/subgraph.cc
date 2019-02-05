@@ -397,6 +397,10 @@ void Subgraph::SetCancellationFunction(void* data,
   check_cancelled_func_ = check_cancelled_func;
 }
 
+void Subgraph::ReserveNodes(int count) {
+  nodes_and_registration_.reserve(count);
+}
+
 TfLiteStatus Subgraph::CheckTensorIndices(const char* label, const int* indices,
                                           int length) {
   // Making sure kOptionalTensor is not re-defined to something other than -1.
@@ -410,7 +414,9 @@ TfLiteStatus Subgraph::CheckTensorIndices(const char* label, const int* indices,
       continue;
     }
     if (index < 0 || static_cast<size_t>(index) >= context_->tensors_size) {
-      ReportError("Invalid tensor index %d in %s\n", index, label);
+      ReportError(
+          "Invalid tensor index %d in %s. The subgraph has %d tensors\n", index,
+          label, context_->tensors_size);
       consistent_ = false;
       return kTfLiteError;
     }

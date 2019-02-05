@@ -113,36 +113,10 @@ XLAJIT_MAKE_UNARY(Tanh, xla::Tanh(x));
 
 XLAJIT_MAKE_UNARY(Real, xla::Real(x));
 XLAJIT_MAKE_UNARY(Imag, xla::Imag(x));
+XLAJIT_MAKE_UNARY(Erf, xla::Erf(x));
+XLAJIT_MAKE_UNARY(Erfc, xla::Erfc(x));
 
 #undef XLAJIT_MAKE_UNARY
-
-// Erf/Erfc.  For x in (-1, 1), the erf approximation is used; erfc polynomial
-// is used outside of this range.
-class ErfOp : public XlaOpKernel {
- public:
-  explicit ErfOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
-  void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaOp x = ctx->Input(0);
-    xla::XlaOp one = xla::ScalarLike(x, 1.0);
-    auto y =
-        xla::Select(xla::Gt(xla::Abs(x), one), one - xla::Erfc(x), xla::Erf(x));
-    ctx->SetOutput(0, y);
-  }
-};
-REGISTER_XLA_OP(Name("Erf"), ErfOp);
-
-class ErfcOp : public XlaOpKernel {
- public:
-  explicit ErfcOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
-  void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaOp x = ctx->Input(0);
-    xla::XlaOp one = xla::ScalarLike(x, 1.0);
-    auto y =
-        xla::Select(xla::Lt(xla::Abs(x), one), one - xla::Erf(x), xla::Erfc(x));
-    ctx->SetOutput(0, y);
-  }
-};
-REGISTER_XLA_OP(Name("Erfc"), ErfcOp);
 
 class LgammaOp : public XlaOpKernel {
  public:

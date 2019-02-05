@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -272,11 +273,12 @@ class Model(Network):
     self.target_tensors = target_tensors
 
     # Set DistributionStrategy specific parameters.
-    for mode in [ModeKeys.TRAIN, ModeKeys.TEST, ModeKeys.PREDICT]:
-      distributed_training_utils.set_distributed_model(self, mode, None)
+    self._distributed_model_cache = {}
+
     if self._distribution_strategy is not None:
-      distributed_training_utils.configure_and_create_session(
-          self._distribution_strategy)
+      # Ensures a Session is created and configured correctly for Distribution
+      # Strategy.
+      K.configure_and_create_distributed_session(self._distribution_strategy)
     # Initialize model metric attributes.
     self._init_metric_attributes()
     if not self.built or not self.inputs or not self.outputs:
@@ -786,23 +788,52 @@ class Model(Network):
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:
-      return training_distributed.fit_distributed(
-          self,
-          x=x,
-          y=y,
-          batch_size=batch_size,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=callbacks,
-          validation_split=validation_split,
-          validation_data=validation_data,
-          shuffle=shuffle,
-          class_weight=class_weight,
-          sample_weight=sample_weight,
-          initial_epoch=initial_epoch,
-          steps_per_epoch=steps_per_epoch,
-          validation_steps=validation_steps,
-          validation_freq=validation_freq)
+      if K.in_multi_worker_mode():
+        # Multi-Worker mode runs the Keras training loop on multiple
+        # servers via the Distribute Coordinator.
+        def _worker_fn(_):
+          """Run training inside the distributed coordinator."""
+          return training_distributed.fit_distributed(
+              self,
+              x=x,
+              y=y,
+              batch_size=batch_size,
+              epochs=epochs,
+              verbose=verbose,
+              callbacks=callbacks,
+              validation_split=validation_split,
+              validation_data=validation_data,
+              shuffle=shuffle,
+              class_weight=class_weight,
+              sample_weight=sample_weight,
+              initial_epoch=initial_epoch,
+              steps_per_epoch=steps_per_epoch,
+              validation_steps=validation_steps,
+              validation_freq=validation_freq)
+
+        # Independent worker only for now.
+        return dc.run_distribute_coordinator(
+            _worker_fn,
+            self._distribution_strategy,
+            mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
+      else:
+        return training_distributed.fit_distributed(
+            self,
+            x=x,
+            y=y,
+            batch_size=batch_size,
+            epochs=epochs,
+            verbose=verbose,
+            callbacks=callbacks,
+            validation_split=validation_split,
+            validation_data=validation_data,
+            shuffle=shuffle,
+            class_weight=class_weight,
+            sample_weight=sample_weight,
+            initial_epoch=initial_epoch,
+            steps_per_epoch=steps_per_epoch,
+            validation_steps=validation_steps,
+            validation_freq=validation_freq)
 
     batch_size = self._validate_or_infer_batch_size(
         batch_size, steps_per_epoch, x)
@@ -1017,15 +1048,36 @@ class Model(Network):
     """
     # Case 1: distribution strategy.
     if self._distribution_strategy:
-      return training_distributed.evaluate_distributed(
-          self,
-          x=x,
-          y=y,
-          batch_size=batch_size,
-          verbose=verbose,
-          sample_weight=sample_weight,
-          steps=steps,
-          callbacks=callbacks)
+      if K.in_multi_worker_mode():
+        # Multi-Worker mode runs the Keras evaluation loop on multiple
+        # servers via the Distribute Coordinator.
+        def _worker_fn(_):
+          """Run training inside the distributed coordinator."""
+          return training_distributed.evaluate_distributed(
+              self,
+              x=x,
+              y=y,
+              batch_size=batch_size,
+              verbose=verbose,
+              sample_weight=sample_weight,
+              steps=steps,
+              callbacks=callbacks)
+
+        # Independent worker only for now.
+        return dc.run_distribute_coordinator(
+            _worker_fn,
+            self._distribution_strategy,
+            mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
+      else:
+        return training_distributed.evaluate_distributed(
+            self,
+            x=x,
+            y=y,
+            batch_size=batch_size,
+            verbose=verbose,
+            sample_weight=sample_weight,
+            steps=steps,
+            callbacks=callbacks)
 
     batch_size = self._validate_or_infer_batch_size(batch_size, steps, x)
 

@@ -1055,7 +1055,8 @@ class ControlFlowTest(test.TestCase):
 
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(cond()), 10)
-      self.assertEqual(printed.contents(), "A\nB\nC\n")
+      self.assertTrue(printed.contents().endswith("A\nB\nC\n"),
+                      printed.contents())
 
       @eager_function.defun
       def nested_cond():
@@ -1063,7 +1064,8 @@ class ControlFlowTest(test.TestCase):
 
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(nested_cond()), 10)
-      self.assertEqual(printed.contents(), "A\nB\nC\n")
+      self.assertTrue(printed.contents().endswith("A\nB\nC\n"),
+                      printed.contents())
 
     # wrap_function should prune.
     def pruned_cond():
@@ -1112,11 +1114,13 @@ class ControlFlowTest(test.TestCase):
       with self.cached_session():
         with self.captureWritesToStream(sys.stderr) as printed:
           self.assertEqual(self.evaluate(build_while()[0]), 2)
-        self.assertEqual(printed.contents(), "D\nD\n")
+        self.assertTrue(printed.contents().endswith("D\nD\n"),
+                        printed.contents())
 
         with self.captureWritesToStream(sys.stderr) as printed:
           self.assertEqual(self.evaluate(build_nested_while()[0]), 2)
-        self.assertEqual(printed.contents(), "D\nD\n")
+        self.assertTrue(printed.contents().endswith("D\nD\n"),
+                        printed.contents())
 
     # In defuns, all prints should execute in program order.
     @eager_function.defun
@@ -1125,7 +1129,8 @@ class ControlFlowTest(test.TestCase):
 
     with self.captureWritesToStream(sys.stderr) as printed:
       self.assertEqual(self.evaluate(while_loop()), 2)
-    self.assertEqual(printed.contents(), "A\nB\nC\nD\nA\nB\nC\nD\nA\n")
+    self.assertTrue(printed.contents().endswith("A\nB\nC\nD\nA\nB\nC\nD\nA\n"),
+                    printed.contents())
 
     @eager_function.defun
     def nested_while_loop():
@@ -1135,7 +1140,9 @@ class ControlFlowTest(test.TestCase):
     if not context.executing_eagerly():
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(nested_while_loop()), 2)
-      self.assertEqual(printed.contents(), "A\nB\nC\nD\nA\nB\nC\nD\nA\n")
+      self.assertTrue(
+          printed.contents().endswith("A\nB\nC\nD\nA\nB\nC\nD\nA\n"),
+          printed.contents())
 
     # wrap_function should prune.
     def pruned_while():
@@ -1144,7 +1151,7 @@ class ControlFlowTest(test.TestCase):
 
     with self.captureWritesToStream(sys.stderr) as printed:
       self.assertEqual(self.evaluate(pruned_while()), 2)
-    self.assertEqual(printed.contents(), "D\nD\n")
+    self.assertTrue(printed.contents().endswith("D\nD\n"), printed.contents())
 
     def pruned_nested_while():
       return build_nested_while()[0]
@@ -1154,7 +1161,7 @@ class ControlFlowTest(test.TestCase):
     if not context.executing_eagerly():
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(pruned_nested_while()), 2)
-      self.assertEqual(printed.contents(), "D\nD\n")
+      self.assertTrue(printed.contents().endswith("D\nD\n"), printed.contents())
 
   # Microbenchmark: 256,000 iterations/s.
   def testWhile_1(self):
@@ -2517,6 +2524,99 @@ class ControlFlowTest(test.TestCase):
       g = gradients_impl.gradients(r, a)
       self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(216.0, g[0])
+
+  def testWhileGrad_ResourceVarInFunctionCall(self):
+
+    @def_function.function
+    def foo(x, var):
+      return x + math_ops.reduce_sum(var.sparse_read([1, 3]))
+
+    @def_function.function
+    def bar(var):
+      r = control_flow_ops.while_loop(
+          lambda i, _: i < 2,
+          lambda i, x: (i + 1, foo(x, var)),
+          [0, 0.0])[1]
+      return gradients_impl.gradients(r, var)[0]
+
+    var = resource_variable_ops.ResourceVariable([1., 2., 3., 4.])
+    self.evaluate(variables.global_variables_initializer())
+    grad = self.evaluate(bar(var))
+    self.assertIsInstance(grad, ops.IndexedSlicesValue)
+    self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 2., 0., 2.])
+
+  def testWhileGrad_ResourceVarInNestedFunctionCall(self):
+
+    @def_function.function
+    def foo(x, var):
+      return x + math_ops.reduce_sum(var.sparse_read([1, 3]))
+
+    @def_function.function
+    def foo2(x, var):
+      return foo(x, var)
+
+    @def_function.function
+    def bar(var):
+      r = control_flow_ops.while_loop(
+          lambda i, _: i < 2,
+          lambda i, x: (i + 1, foo2(x, var)),
+          [0, 0.0])[1]
+      return gradients_impl.gradients(r, var)[0]
+
+    var = resource_variable_ops.ResourceVariable([1., 1., 1., 1.])
+    self.evaluate(variables.global_variables_initializer())
+    grad = self.evaluate(bar(var))
+    self.assertIsInstance(grad, ops.IndexedSlicesValue)
+    self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 2., 0., 2.])
+
+  def testWhileGrad_ResourceVarInLoopInFunctionCall(self):
+
+    @def_function.function
+    def foo(x, var):
+      return control_flow_ops.while_loop(
+          lambda j, _: j < 3,
+          lambda j, y: (j + 1,
+                        y + math_ops.reduce_sum(var.sparse_read([1, 2]))),
+          [0, x])[1]
+
+    @def_function.function
+    def bar(var):
+      r = control_flow_ops.while_loop(
+          lambda i, _: i < 2,
+          lambda i, x: (i + 1, foo(x, var)),
+          [0, 0.0])[1]
+      return gradients_impl.gradients(r, var)[0]
+
+    var = resource_variable_ops.ResourceVariable([1., 1., 1., 1.])
+    self.evaluate(variables.global_variables_initializer())
+    grad = self.evaluate(bar(var))
+    self.assertIsInstance(grad, ops.IndexedSlicesValue)
+    self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 6., 6., 0.])
+
+  def testWhileCondGrad_ResourceVarInFunctionCall(self):
+
+    @def_function.function
+    def foo(x, var):
+      return x + var.sparse_read([1])[0]
+
+    def body(i, x):
+      return (i + 1, control_flow_ops.cond(
+          math_ops.equal(i % 2, 0),
+          lambda: foo(x, var1),
+          lambda: foo(x, var2)))
+
+    @def_function.function
+    def bar(var1, var2):
+      r = control_flow_ops.while_loop(
+          lambda i, _: i < 4, body, [0, 0.0])
+      return gradients_impl.gradients(r, [var1, var2])
+
+    var1 = resource_variable_ops.ResourceVariable([1., 2., 3.])
+    var2 = resource_variable_ops.ResourceVariable([4., 5.])
+    self.evaluate(variables.global_variables_initializer())
+    grads = self.evaluate(bar(var1, var2))
+    self.assertAllEqual(gradient_checker_v2._to_numpy(grads[0]), [0., 2., 0.])
+    self.assertAllEqual(gradient_checker_v2._to_numpy(grads[1]), [0., 2.])
 
   @test_util.run_deprecated_v1
   def testWhileGrad_ResourceVarSparseRead(self):

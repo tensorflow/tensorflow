@@ -409,6 +409,24 @@ py_test(
 )
 
 py_test(
+    name = "rebatch_dataset_serialization_test",
+    size = "small",
+    srcs = ["rebatch_dataset_serialization_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_test(
     name = "padded_batch_dataset_serialization_test",
     size = "medium",
     srcs = ["padded_batch_dataset_serialization_test.py"],

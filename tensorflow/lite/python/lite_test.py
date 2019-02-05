@@ -511,29 +511,6 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertTrue(len(quantized_tflite) < len(float_tflite))
 
-  def testFlexMode(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
-
-    # Convert model and ensure model is not None.
-    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
-                                                  [out_tensor])
-    converter.target_ops = set([lite.OpsSet.SELECT_TF_OPS])
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
-
-    # Ensures the model contains TensorFlow ops.
-    # TODO(nupurgarg): Check values once there is a Python delegate interface.
-    interpreter = Interpreter(model_content=tflite_model)
-    with self.assertRaises(RuntimeError) as error:
-      interpreter.allocate_tensors()
-    self.assertIn(
-        'Regular TensorFlow ops are not supported by this interpreter. Make '
-        'sure you invoke the Flex delegate before inference.',
-        str(error.exception))
-
   def testFloatTocoConverter(self):
     """Tests deprecated test TocoConverter."""
     in_tensor = array_ops.placeholder(

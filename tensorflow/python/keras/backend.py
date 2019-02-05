@@ -32,6 +32,9 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_module
+from tensorflow.python.distribute import distribute_coordinator as dc
+from tensorflow.python.distribute import distribute_coordinator_context as dc_context
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import constant_op
@@ -61,7 +64,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
-
+from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
@@ -394,8 +397,14 @@ def _get_session():
     session = default_session
   else:
     if getattr(_SESSION, 'session', None) is None:
-      _SESSION.session = session_module.Session(
-          config=get_default_session_config())
+      # We are creating the Session inside a Distribution
+      # Strategy scope.
+      if distribution_strategy_context.has_strategy():
+        configure_and_create_distributed_session(
+            distribution_strategy_context.get_strategy())
+      else:
+        _SESSION.session = session_module.Session(
+            config=get_default_session_config())
     session = _SESSION.session
   return session
 
@@ -5201,3 +5210,55 @@ if not os.path.exists(_config_path):
   except IOError:
     # Except permission denied.
     pass
+
+
+def in_multi_worker_mode():
+  """Whether we are operating in a Multi-Worker setting."""
+  tf_config = json.loads(os.environ.get('TF_CONFIG', '{}'))
+  cluster_spec = server_lib.ClusterSpec(tf_config.get('cluster', {}))
+  return tf_config and 'master' not in cluster_spec.jobs
+
+
+def configure_and_create_distributed_session(distribution_strategy):
+  """Configure session config and create a session with it."""
+
+  # TODO(priyag): Throw error if a session already exists.
+  def _create_session(distribution_strategy):
+    """Create the Distributed Strategy session."""
+    session_config = get_default_session_config()
+
+    if is_tpu_strategy(distribution_strategy):
+      # TODO(priyag, yuefengz): Remove this workaround when Distribute
+      # Coordinator is integrated with keras and we can create a session from
+      # there.
+      distribution_strategy.configure(session_config)
+      master = distribution_strategy.extended._tpu_cluster_resolver.master()  # pylint: disable=protected-access
+      session = session_module.Session(config=session_config, target=master)
+    else:
+      worker_context = dc_context.get_current_worker_context()
+      if worker_context:
+        dc_session_config = worker_context.session_config
+        # Merge the default session config to the one from distribute
+        # coordinator, which is fine for now since they don't have
+        # conflicting configurations.
+        dc_session_config.MergeFrom(session_config)
+        session = session_module.Session(
+            config=dc_session_config, target=worker_context.master_target)
+      else:
+        distribution_strategy.configure(session_config)
+        session = session_module.Session(config=session_config)
+
+    set_session(session)
+
+  if in_multi_worker_mode():
+    dc.run_distribute_coordinator(
+        _create_session,
+        distribution_strategy,
+        mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
+  else:
+    _create_session(distribution_strategy)
+
+
+def is_tpu_strategy(strategy):
+  """We're executing TPU Strategy."""
+  return strategy is not None and strategy.__class__.__name__ == 'TPUStrategy'

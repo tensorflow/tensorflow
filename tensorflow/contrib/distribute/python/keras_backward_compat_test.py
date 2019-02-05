@@ -34,6 +34,7 @@ from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_de
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop
+from tensorflow.python.training.mode_keys import ModeKeys
 
 _RANDOM_SEED = 1337
 _TRAIN_SIZE = 200
@@ -745,7 +746,9 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                 callbacks=[keras.callbacks.LearningRateScheduler(schedule)])
-      grouped_models = distribution.unwrap(model._distributed_model_train)
+      grouped_models = distribution.unwrap(
+          distributed_training_utils.get_distributed_model(
+              model, ModeKeys.TRAIN))
       with distribution.scope():
         for m in grouped_models:
           self.assertAllClose(0.001, keras.backend.get_value(
