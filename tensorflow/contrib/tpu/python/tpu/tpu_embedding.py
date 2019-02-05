@@ -26,6 +26,7 @@ import six
 
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.ops import gen_tpu_ops
+from tensorflow.contrib.tpu.proto import optimization_parameters_pb2
 from tensorflow.contrib.tpu.proto import tpu_embedding_configuration_pb2 as elc
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
@@ -473,6 +474,11 @@ class TPUEmbedding(object):
 
       table_descriptor.optimization_parameters.learning_rate.constant = (
           self._optimization_parameters.learning_rate)
+      table_descriptor.optimization_parameters.gradient_accumulation_status = (
+          optimization_parameters_pb2.GradientAccumulationStatus.ENABLED
+          if self._optimization_parameters.use_gradient_accumulation else
+          optimization_parameters_pb2.GradientAccumulationStatus.DISABLED)
+      # For compatibility with old TPU workers.
       table_descriptor.optimization_parameters.use_gradient_accumulation = (
           self._optimization_parameters.use_gradient_accumulation)
       self._optimizer_handler.set_optimization_parameters(table_descriptor)
