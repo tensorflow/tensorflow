@@ -3466,47 +3466,6 @@ TEST_F(ArithmeticOptimizerTest, OptimizeMaxOrMinOfMonotonicElementWise) {
   EXPECT_EQ(2, required_node_count);
 }
 
-TEST_F(ArithmeticOptimizerTest, OptimizeArgMaxOrArgMinOfMonotonicElementWise) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  const auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
-  Output sqrt = ops::Sqrt(s.WithOpName("sqrt"), x);
-  Output arg_max = ops::ArgMax(s.WithOpName("arg_max"), sqrt, 1);
-  Output final_out = ops::Identity(s.WithOpName("final_out"), arg_max);
-
-  GrapplerItem item;
-  item.fetch = {"final_out"};
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  const auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
-  EXPECT_EQ(1, tensors_expected.size());
-
-  GraphDef output;
-  ArithmeticOptimizer optimizer;
-  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
-  OptimizeAndPrune(&optimizer, &item, &output);
-  const auto tensors = EvaluateNodes(output, item.fetch);
-  EXPECT_EQ(1, tensors.size());
-
-  test::ExpectTensorEqual<int64>(tensors_expected[0], tensors[0]);
-  EXPECT_EQ(item.graph.node_size() - 1, output.node_size());
-  // Check if the inputs are switched
-  int required_node_count = 0;
-  for (int i = 0; i < output.node_size(); ++i) {
-    const NodeDef& node = output.node(i);
-    if (node.name() == "final_out") {
-      EXPECT_EQ("Identity", node.op());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("arg_max", node.input(0));
-      ++required_node_count;
-    } else if (node.name() == "arg_max") {
-      EXPECT_EQ("ArgMax", node.op());
-      EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("x", node.input(0));
-      ++required_node_count;
-    }
-  }
-  EXPECT_EQ(2, required_node_count);
-}
-
 TEST_F(ArithmeticOptimizerTest,
        OptimizeMaxOrMinOfMonotonicElementWise_DoNotChangeFetchNode) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();

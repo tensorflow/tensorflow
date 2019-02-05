@@ -52,7 +52,6 @@ limitations under the License.
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
-using tensorflow::str_util::StringReplace;
 using tensorflow::strings::StrCat;
 
 namespace tensorflow {
@@ -2722,8 +2721,7 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
   ~OptimizeMaxOrMinOfMonotonicStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAnyMax(*node) || IsAnyMin(*node) || IsArgMax(*node) ||
-           IsArgMin(*node);
+    return IsMax(*node) || IsMin(*node);
   }
 
   Status TrySimplify(NodeDef* reduction_node,
@@ -2754,15 +2752,9 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
       if (!is_non_decreasing) {
         // Flip Min<->Max if the function is non-increasing, e.g.
         // Max(Neg(x)) = Neg(Min(x)).
-        const string opposite = FlipMinMax(*reduction_node);
+        const string opposite = IsMax(*reduction_node) ? "Min" : "Max";
         reduction_node->set_op(opposite);
       }
-
-      if (IsArgMax(*reduction_node) || IsArgMin(*reduction_node)) {
-        // ArgMax(Sqrt(x)) = ArgMax(x)
-        inner_function->set_op("Identity");
-      }
-
       AddToOptimizationQueue(reduction_node);
       AddToOptimizationQueue(inner_function);
       AddToOptimizationQueue(inner_input);
@@ -2781,16 +2773,6 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
         }
       }
       AddToOptimizationQueue(consumer);
-    }
-  }
-
- private:
-  string FlipMinMax(const NodeDef& node) {
-    const string& op = node.op();
-    if (IsAnyMax(node) || IsArgMax(node)) {
-      return str_util::StringReplace(op, "Max", "Min", false);
-    } else {
-      return str_util::StringReplace(op, "Min", "Max", false);
     }
   }
 };
