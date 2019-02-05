@@ -1894,6 +1894,18 @@ def floor(x):
   """
   return math_ops.floor(x)
 
+@keras_export('keras.backend.ceil')
+def ceil(x):
+  """Element-wise ceil of the input tensor.
+
+  Arguments:
+      x: Tensor or variable.
+
+  Returns:
+      A tensor.
+  """
+  return math_ops.ceil(x)
+
 @keras_export('keras.backend.sign')
 def sign(x):
   """Element-wise sign.
