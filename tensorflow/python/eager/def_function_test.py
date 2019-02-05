@@ -268,7 +268,8 @@ class DefFunctionTest(test.TestCase):
     self.assertAllClose(4., concrete(constant_op.constant(2.)))
     signature_args, _ = concrete.structured_input_signature
     self.assertEqual(signature_args,
-                     (tensor_spec.TensorSpec(None, dtypes.float32),))
+                     (tensor_spec.TensorSpec(
+                         None, dtypes.float32, name='x'),))
 
   def test_serialization_signature_cache(self):
 
@@ -288,10 +289,10 @@ class DefFunctionTest(test.TestCase):
 
     self.assertEqual(
         signatures_args,
-        set(((tensor_spec.TensorSpec([1, 2], dtypes.float32),
-              tensor_spec.TensorSpec([1], dtypes.float32)),
-             (tensor_spec.TensorSpec([1, 3], dtypes.int32),
-              tensor_spec.TensorSpec([1], dtypes.int32)))))
+        set(((tensor_spec.TensorSpec([1, 2], dtypes.float32, name='x'),
+              tensor_spec.TensorSpec([1], dtypes.float32, name='y')),
+             (tensor_spec.TensorSpec([1, 3], dtypes.int32, name='x'),
+              tensor_spec.TensorSpec([1], dtypes.int32, name='y')))))
 
   @test_util.assert_no_garbage_created
   def testFunctionReferenceCycles(self):
@@ -372,6 +373,18 @@ class DefFunctionTest(test.TestCase):
       return a + b
 
     self.assertAllEqual(add(v, v), 2.0)
+
+  def testShapeCache(self):
+    @def_function.function
+    def func(x):
+      return 2 * x
+
+    func_a = func.get_concrete_function(
+        tensor_spec.TensorSpec([None], dtypes.int32))
+    func_b = func.get_concrete_function(
+        tensor_spec.TensorSpec([None], dtypes.int32))
+
+    self.assertIs(func_a, func_b)
 
   def testInitializationInNestedCall(self):
     v_holder = []

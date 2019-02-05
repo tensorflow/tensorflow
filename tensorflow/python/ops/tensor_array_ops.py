@@ -825,7 +825,7 @@ class _EagerTensorArray(object):
     if self._infer_shape:
       if self._element_shape is None:
         self._element_shape = value.shape
-      elif self._element_shape != value.shape:
+      elif not self._element_shape.is_compatible_with(value.shape):
         raise ValueError("Incompatible shape for value (%s), expected (%s)" %
                          (value.shape.as_list(), self._element_shape.as_list()))
 
