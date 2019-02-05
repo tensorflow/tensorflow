@@ -316,6 +316,8 @@ bool IsNextIteration(const NodeDef& node) {
   return op == "NextIteration" || op == "RefNextIteration";
 }
 
+bool IsOnesLike(const NodeDef& node) { return node.op() == "OnesLike"; }
+
 bool IsPack(const NodeDef& node) { return node.op() == "Pack"; }
 
 bool IsPad(const NodeDef& node) {
@@ -535,6 +537,8 @@ bool IsWhile(const NodeDef& node) {
   const auto& op = node.op();
   return op == "While" || op == "StatelessWhile";
 }
+
+bool IsZerosLike(const NodeDef& node) { return node.op() == "ZerosLike"; }
 
 bool IsZeta(const NodeDef& node) { return node.op() == "Zeta"; }
 
