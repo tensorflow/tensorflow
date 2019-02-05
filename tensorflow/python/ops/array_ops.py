@@ -580,9 +580,10 @@ def _slice_helper(tensor, slice_spec, var=None):
       tf.newaxis or scalar int32/int64 tensors.
   """
   if isinstance(slice_spec, bool) or \
-    (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \
-    (isinstance(slice_spec, np.ndarray) and slice_spec.dtype == bool) or \
-    (isinstance(slice_spec, (list, tuple)) and np.asarray(slice_spec).dtype == bool):
+  (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \
+  (isinstance(slice_spec, np.ndarray) and slice_spec.dtype == bool) or \
+  (isinstance(slice_spec, (list, tuple)) and
+   np.asarray(slice_spec).dtype == bool):
     return boolean_mask(tensor=tensor, mask=slice_spec)
 
   if not isinstance(slice_spec, (list, tuple)):
@@ -1333,11 +1334,11 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
     axis = 0 if axis is None else axis
     shape_tensor[axis:axis + ndims_mask].assert_is_compatible_with(shape_mask)
 
-    leading_size = gen_math_ops.prod(shape_tensor[axis:axis + ndims_mask], [0])
+    leading_size = gen_math_ops.prod(shape(tensor)[axis:axis + ndims_mask], [0])
     tensor = reshape(tensor,
                      concat([
-                         shape_tensor[:axis], [leading_size],
-                         shape_tensor[axis + ndims_mask:]
+                         shape(tensor)[:axis], [leading_size],
+                         shape(tensor)[axis + ndims_mask:]
                      ], 0))
     first_dim = shape_tensor[axis:axis + ndims_mask].num_elements()
     tensor.set_shape(
