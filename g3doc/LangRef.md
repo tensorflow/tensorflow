@@ -504,18 +504,18 @@ have application-specific semantics. For example, MLIR supports a set of
 [dialect-specific types](#dialect-specific-types).
 
 ``` {.ebnf}
-type ::= integer-type
-       | index-type
-       | float-type
-       | vector-type
-       | tensor-type
-       | memref-type
+type ::= non-function-type
        | function-type
-       | dialect-type
-       | type-alias
 
-// MLIR doesn't have a tuple type but functions can return multiple values.
-type-list ::= type-list-parens | type
+non-function-type ::= integer-type
+                    | index-type
+                    | float-type
+                    | vector-type
+                    | tensor-type
+                    | memref-type
+                    | dialect-type
+                    | type-alias
+
 type-list-no-parens ::=  type (`,` type)*
 type-list-parens ::= `(` `)`
                    | `(` type-list-no-parens `)`
@@ -559,7 +559,11 @@ Builtin types consist of only the types needed for the validity of the IR.
 Syntax:
 
 ``` {.ebnf}
-function-type ::= type-list-parens `->` type-list
+// MLIR doesn't have a tuple type but functions can return multiple values.
+function-result-type ::= type-list-parens
+                       | non-function-type
+
+function-type ::= type-list-parens `->` function-result-type
 ```
 
 MLIR supports first-class functions: the
@@ -897,7 +901,7 @@ associated attributes according to the following grammar:
 ``` {.ebnf}
 function ::= `func` function-signature function-attributes? function-body?
 
-function-signature ::= function-id `(` argument-list `)` (`->` type-list)?
+function-signature ::= function-id `(` argument-list `)` (`->` function-result-type)?
 argument-list ::= named-argument (`,` named-argument)* | /*empty*/
 argument-list ::= type (`,` type)* | /*empty*/ named-argument ::= ssa-id `:`
 type

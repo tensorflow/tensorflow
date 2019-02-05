@@ -3,12 +3,12 @@
 // Check different error cases.
 // -----
 
-func @illegaltype(i) // expected-error {{expected type}}
+func @illegaltype(i) // expected-error {{expected non-function type}}
 
 // -----
 
 func @illegaltype() {
-  %0 = constant splat<<vector 4 x f32>, 0> : vector<4 x f32> // expected-error {{expected type}}
+  %0 = constant splat<<vector 4 x f32>, 0> : vector<4 x f32> // expected-error {{expected non-function type}}
 }
 
 // -----
@@ -227,7 +227,7 @@ func @incomplete_for() {
 // -----
 
 func @nonconstant_step(%1 : i32) {
-  for %2 = 1 to 5 step %1 { // expected-error {{expected type}}
+  for %2 = 1 to 5 step %1 { // expected-error {{expected non-function type}}
 
 // -----
 
@@ -326,7 +326,7 @@ func @d() {return} // expected-error {{custom op 'func' is unknown}}
 
 // -----
 
-func @malformed_type(%a : intt) { // expected-error {{expected type}}
+func @malformed_type(%a : intt) { // expected-error {{expected non-function type}}
 }
 
 // -----
@@ -392,7 +392,7 @@ func @condbr_badtype() {
 ^bb0:
   %c = "foo"() : () -> i1
   %a = "foo"() : () -> i32
-  cond_br %c, ^bb0(%a, %a : i32, ^bb0) // expected-error {{expected type}}
+  cond_br %c, ^bb0(%a, %a : i32, ^bb0) // expected-error {{expected non-function type}}
 }
 
 // -----
@@ -506,6 +506,18 @@ func @undefined_function() {
 
 // -----
 
+func @invalid_result_type() -> () -> ()  // expected-error {{expected a top level entity}}
+
+// -----
+
+func @func() -> (() -> ())
+func @referer() {
+  %f = constant @func : () -> () -> ()  // expected-error {{reference to function with mismatched type}}
+  return
+}
+
+// -----
+
 #map1 = (i)[j] -> (i+j)
 
 func @bound_symbol_mismatch(%N : index) {
@@ -538,7 +550,7 @@ func @large_bound() {
 // -----
 
 func @max_in_upper_bound(%N : index) {
-  for %i = 1 to max (i)->(N, 100) { //expected-error {{expected type}}
+  for %i = 1 to max (i)->(N, 100) { //expected-error {{expected non-function type}}
   }
   return
 }
@@ -595,7 +607,7 @@ func @invalid_if_operands3(%N : index) {
 // expected-error@+1 {{expected '"' in string literal}}
 "J// -----
 func @calls(%arg0: i32) {
-  // expected-error@+1 {{expected type}}
+  // expected-error@+1 {{expected non-function type}}
   %z = "casdasda"(%x) : (ppop32) -> i32
 }
 // -----
@@ -767,7 +779,7 @@ func @type_alias_unknown(!unknown_alias) -> () { // expected-error {{undefined t
 
 // -----
 
-!missing_type_alias = type // expected-error@+2 {{expected type}}
+!missing_type_alias = type // expected-error@+2 {{expected non-function type}}
 
 // -----
 

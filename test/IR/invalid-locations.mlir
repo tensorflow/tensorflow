@@ -67,7 +67,7 @@ func @location_fused_missing_greater() {
 
 func @location_fused_missing_metadata() {
 ^bb:
-  // expected-error@+1 {{expected type}}
+  // expected-error@+1 {{expected non-function type}}
   return loc(fused<) // expected-error {{expected valid attribute metadata}}
 }
 

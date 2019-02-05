@@ -746,7 +746,7 @@ void ModulePrinter::printType(Type type) {
     interleaveComma(func.getInputs(), [&](Type type) { printType(type); });
     os << ") -> ";
     auto results = func.getResults();
-    if (results.size() == 1)
+    if (results.size() == 1 && !results[0].isa<FunctionType>())
       os << results[0];
     else {
       os << '(';
@@ -1313,10 +1313,17 @@ void FunctionPrinter::printFunctionSignature() {
   switch (fnType.getResults().size()) {
   case 0:
     break;
-  case 1:
+  case 1: {
     os << " -> ";
-    printType(fnType.getResults()[0]);
+    auto resultType = fnType.getResults()[0];
+    bool resultIsFunc = resultType.isa<FunctionType>();
+    if (resultIsFunc)
+      os << '(';
+    printType(resultType);
+    if (resultIsFunc)
+      os << ')';
     break;
+  }
   default:
     os << " -> (";
     interleaveComma(fnType.getResults(),
@@ -1482,7 +1489,8 @@ void FunctionPrinter::printGenericOp(const Instruction *op) {
                   [&](const Value *value) { printType(value->getType()); });
   os << ") -> ";
 
-  if (op->getNumResults() == 1) {
+  if (op->getNumResults() == 1 &&
+      !op->getResult(0)->getType().isa<FunctionType>()) {
     printType(op->getResult(0)->getType());
   } else {
     os << '(';

@@ -187,9 +187,11 @@ public:
   Type parseTensorType();
   Type parseMemRefType();
   Type parseFunctionType();
+  Type parseNonFunctionType();
   Type parseType();
   ParseResult parseTypeListNoParens(SmallVectorImpl<Type> &elements);
-  ParseResult parseTypeList(SmallVectorImpl<Type> &elements);
+  ParseResult parseTypeListParens(SmallVectorImpl<Type> &elements);
+  ParseResult parseFunctionResultTypes(SmallVectorImpl<Type> &elements);
 
   // Attribute parsing.
   Function *resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
@@ -308,32 +310,29 @@ ParseResult Parser::parseCommaSeparatedListUntil(
 // Type Parsing
 //===----------------------------------------------------------------------===//
 
-/// Parse an arbitrary type.
+/// Parse any type except the function type.
 ///
-///   type ::= integer-type
-///          | index-type
-///          | float-type
-///          | extended-type
-///          | vector-type
-///          | tensor-type
-///          | memref-type
-///          | function-type
+///   non-function-type ::= integer-type
+///                       | index-type
+///                       | float-type
+///                       | extended-type
+///                       | vector-type
+///                       | tensor-type
+///                       | memref-type
 ///
 ///   index-type ::= `index`
 ///   float-type ::= `f16` | `bf16` | `f32` | `f64`
 ///
-Type Parser::parseType() {
+Type Parser::parseNonFunctionType() {
   switch (getToken().getKind()) {
   default:
-    return (emitError("expected type"), nullptr);
+    return (emitError("expected non-function type"), nullptr);
   case Token::kw_memref:
     return parseMemRefType();
   case Token::kw_tensor:
     return parseTensorType();
   case Token::kw_vector:
     return parseVectorType();
-  case Token::l_paren:
-    return parseFunctionType();
   // integer-type
   case Token::inttype: {
     auto width = getToken().getIntTypeBitwidth();
@@ -367,6 +366,17 @@ Type Parser::parseType() {
   case Token::exclamation_identifier:
     return parseExtendedType();
   }
+}
+
+/// Parse an arbitrary type.
+///
+///   type ::= function-type
+///          | non-function-type
+///
+Type Parser::parseType() {
+  if (getToken().is(Token::l_paren))
+    return parseFunctionType();
+  return parseNonFunctionType();
 }
 
 /// Parse a vector type.
@@ -640,9 +650,9 @@ Type Parser::parseFunctionType() {
   assert(getToken().is(Token::l_paren));
 
   SmallVector<Type, 4> arguments, results;
-  if (parseTypeList(arguments) ||
+  if (parseTypeListParens(arguments) ||
       parseToken(Token::arrow, "expected '->' in function type") ||
-      parseTypeList(results))
+      parseFunctionResultTypes(results))
     return nullptr;
 
   return builder.getFunctionType(arguments, results);
@@ -663,27 +673,38 @@ ParseResult Parser::parseTypeListNoParens(SmallVectorImpl<Type> &elements) {
   return parseCommaSeparatedList(parseElt);
 }
 
-/// Parse a "type list", which is a singular type, or a parenthesized list of
-/// types.
+/// Parse a parenthesized list of types.
 ///
-///   type-list ::= type-list-parens | type
 ///   type-list-parens ::= `(` `)`
 ///                      | `(` type-list-no-parens `)`
 ///
-ParseResult Parser::parseTypeList(SmallVectorImpl<Type> &elements) {
-  auto parseElt = [&]() -> ParseResult {
-    auto elt = parseType();
-    elements.push_back(elt);
-    return elt ? ParseSuccess : ParseFailure;
-  };
-
-  // If there is no parens, then it must be a singular type.
-  if (!consumeIf(Token::l_paren))
-    return parseElt();
-
-  if (parseCommaSeparatedListUntil(Token::r_paren, parseElt))
+ParseResult Parser::parseTypeListParens(SmallVectorImpl<Type> &elements) {
+  if (parseToken(Token::l_paren, "expected '('"))
     return ParseFailure;
 
+  // Handle empty lists.
+  if (getToken().is(Token::r_paren))
+    return consumeToken(), ParseSuccess;
+
+  if (parseTypeListNoParens(elements) ||
+      parseToken(Token::r_paren, "expected ')'"))
+    return ParseFailure;
+  return ParseSuccess;
+}
+
+/// Parse a function result type.
+///
+///   function-result-type ::= type-list-parens
+///                          | non-function-type
+///
+ParseResult Parser::parseFunctionResultTypes(SmallVectorImpl<Type> &elements) {
+  if (getToken().is(Token::l_paren))
+    return parseTypeListParens(elements);
+
+  Type t = parseNonFunctionType();
+  if (!t)
+    return ParseFailure;
+  elements.push_back(t);
   return ParseSuccess;
 }
 
@@ -3489,7 +3510,7 @@ ModuleParser::parseFunctionSignature(StringRef &name, FunctionType &type,
   // Parse the return type if present.
   SmallVector<Type, 4> results;
   if (consumeIf(Token::arrow)) {
-    if (parseTypeList(results))
+    if (parseFunctionResultTypes(results))
       return ParseFailure;
   }
   type = builder.getFunctionType(argTypes, results);

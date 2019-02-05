@@ -182,6 +182,28 @@ func @func_with_two_args(%a : f16, %b : i8) -> (i1, i32) {
   return %c#0, %c#1 : i1, i32  // CHECK: return %0#0, %0#1 : i1, i32
 } // CHECK: }
 
+// CHECK-LABEL: func @second_order_func() -> (() -> ()) {
+func @second_order_func() -> (() -> ()) {
+// CHECK-NEXT: %f = constant @emptyMLF : () -> ()
+  %c = constant @emptyMLF : () -> ()
+// CHECK-NEXT: return %f : () -> ()
+  return %c : () -> ()
+}
+
+// CHECK-LABEL: func @third_order_func() -> (() -> (() -> ())) {
+func @third_order_func() -> (() -> (() -> ())) {
+// CHECK-NEXT:  %f = constant @second_order_func : () -> (() -> ())
+  %c = constant @second_order_func : () -> (() -> ())
+// CHECK-NEXT:  return %f : () -> (() -> ())
+  return %c : () -> (() -> ())
+}
+
+// CHECK-LABEL: func @identity_functor(%arg0: () -> ()) -> (() -> ())  {
+func @identity_functor(%a : () -> ()) -> (() -> ())  {
+// CHECK-NEXT: return %arg0 : () -> ()
+  return %a : () -> ()
+}
+
 // CHECK-LABEL: func @func_ops_in_loop() {
 func @func_ops_in_loop() {
   // CHECK: %0 = "foo"() : () -> i64

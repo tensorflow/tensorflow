@@ -209,7 +209,7 @@ func @func_with_ops(i32, i64) {
 // Comparisons must have the "predicate" attribute.
 func @func_with_ops(i32, i32) {
 ^bb0(%a : i32, %b : i32):
-  %r = cmpi %a, %b : i32 // expected-error {{expected type}}
+  %r = cmpi %a, %b : i32 // expected-error {{expected non-function type}}
 }
 
 // -----
