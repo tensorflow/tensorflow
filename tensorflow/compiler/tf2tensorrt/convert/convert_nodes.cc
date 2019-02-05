@@ -2367,7 +2367,7 @@ tensorflow::Status ConvertSlice(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(
-      params, {{"input", false}, {"begin", true}, {"size", true}}));
+      *params, {{"input", false}, {"begin", true}, {"size", true}}));
   std::vector<int> begin, size;
   inputs.at(1).weights().ToVector(&begin);
   inputs.at(2).weights().ToVector(&size);
@@ -2397,7 +2397,7 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(
-      params,
+      *params,
       {{"input", false}, {"begin", true}, {"end", true}, {"strides", true}}));
   // Get input dims.
   nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
@@ -2664,17 +2664,6 @@ Status ConvertQuantize(OpConverterParams* params) {
                                                     {"input_min", true},
                                                     {"input_max", true},
                                                     {"num_bits", true}}));
-  }
-  if (node_def.op() == "FakeQuantWithMinMaxArgs") {
-    TF_RETURN_IF_ERROR(CheckInputsWeights(params, {{"input", false}}));
-  } else if (node_def.op() == "FakeQuantWithMinMaxVars" ||
-             node_def.op() == "QuantizeAndDequantizeV2") {
-    TF_RETURN_IF_ERROR(CheckInputsWeights(
-        params, {{"input", false}, {"min", true}, {"max", true}}));
-  } else if (node_def.op() == "QuantizeAndDequantizeV3") {
-    TF_RETURN_IF_ERROR(CheckInputsWeights(
-        params,
-        {{"input", false}, {"min", true}, {"max", true}, {"num_bits", true}}));
   }
   float min_range = 0.0f;
   float max_range = 0.0f;
@@ -3741,6 +3730,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["Pad"] = ConvertPad;
   (*registration)["Relu6"] = ConvertRelu6;
   (*registration)["Reshape"] = ConvertReshape;
+  (*registration)["Slice"] = ConvertSlice;
   (*registration)["Square"] = ConvertSquare;
   (*registration)["Squeeze"] = ConvertSqueeze;
   (*registration)["StridedSlice"] = ConvertStridedSlice;
