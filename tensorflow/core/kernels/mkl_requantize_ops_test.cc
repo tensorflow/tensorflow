@@ -45,32 +45,32 @@ void MklRequantizatedOpsTestHelper::Setup(Tensor &input_tensor_qint32,
                                           float &range_weights_ch2) {
   // Step 1: Input range assumptions
   // -------------------------------
-  // Assume input Tensor T (NHWC) in FP32 has range [0, 5.0]   size nt*ht*wt*ct
-  // Assume input Filter W (NHWC) with 2 output channels of    size nw*ht*wt*2
-  // logically,   Filter W has 2 channels W1 and W2 each of    size nw*ht*wt*1
-  // Assume input Filter W1(NHWC) in FP32 has range [-2.0, 2.0]size nw*ht*wt*1
-  // Assume input Filter W2(NHWC) in FP32 has range [-3.0, 3.0]size nw*ht*wt*1
+  // Assume input tensor T (NHWC) in FP32 has range [0, 5.0]   size nt*ht*wt*ct
+  // Assume input filter W (NHWC) with 2 output channels of    size nw*ht*wt*2
+  // logically,   filter W has 2 channels W1 and W2 each of    size nw*ht*wt*1
+  // Assume input filter W1(NHWC) in FP32 has range [-2.0, 2.0]size nw*ht*wt*1
+  // Assume input filter W2(NHWC) in FP32 has range [-3.0, 3.0]size nw*ht*wt*1
 
   // Step 2: Quantization details (per channel)
   // ------------------------------------------
-  // T and W are quantized using a Quantize Op.
-  // The input Tensor T (NHWC) is quantized to unsigned int8.
+  // T and W are quantized using a quantize Op.
+  // The input tensor T (NHWC) is quantized to unsigned int8.
   // Hence T's max value is mapped to ((2^8-1) = 255).
-  // The input Filter W (NHWC) is quantized to signed int8.
+  // The input filter W (NHWC) is quantized to signed int8.
   // Hence W's max value is mapped to ((2^7)-1 = 127)).
 
-  // Range of Quantized T  in uint8[0  , 255] maps to orig T  in FP32[0   , 5.0]
-  // Range of Quantized W1 in int8[-127, 127] maps to orig W1 in FP32[-2.0, 2.0]
-  // Range of Quantized W2 in int8[-127, 127] maps to orig W2 in FP32[-3.0, 3.0]
+  // Range of quantized T  in uint8[0  , 255] maps to orig T  in FP32[0   , 5.0]
+  // Range of quantized W1 in int8[-127, 127] maps to orig W1 in FP32[-2.0, 2.0]
+  // Range of quantized W2 in int8[-127, 127] maps to orig W2 in FP32[-3.0, 3.0]
 
-  // Hence the resolution of Quantized T will be 5.0/255
-  // Hence the resolution of Quantized W1 will be 2.0/127
-  // Hence the resolution of Quantized W2 will be 3.0/127
+  // Hence the resolution of quantized T will be 5.0/255
+  // Hence the resolution of quantized W1 will be 2.0/127
+  // Hence the resolution of quantized W2 will be 3.0/127
 
   // Step 3: Assumption of quantizedconv on quantized input&weights(per channel)
   // ---------------------------------------------------------------------------
   // The input T and weights W1 (or W2) will be convolved.
-  // The output Tensor T is in int32 whose range is [-2^31, 2^31).
+  // The output tensor T is in int32 whose range is [-2^31, 2^31).
   // For simplicity, we truncate the range to (-2^31, 2^31) to make it
   // symmetric.
   // The range of the convolved T*W1 is ((2^31)-1) * 5.0/255 * 2.0/127 =
@@ -82,17 +82,17 @@ void MklRequantizatedOpsTestHelper::Setup(Tensor &input_tensor_qint32,
   // So the range of convolved T*W1 in int32(-2^31, 2^31) that maps to
   // orig T range in FP32 [0, 5.0] * [-3.0, 3.0]  is [-994665.88, 994665.88]
 
-  // Step 4: Assumption output above is fed to Requantization_range_perchannel
+  // Step 4: Assumption output above is fed to requantization_range_perchannel
   // --------------------------------------------------------------------------
   // Here we recalculate the new range for convolved T*W so that we
   // make good use in int8 quantization from int32 to int8.
 
   // We assume the above operations are performed and use these values above
-  // as ranges for Requantization_range_perchannel_op.
+  // as ranges for requantization_range_perchannel_op.
   range_weights_ch1 = 663110.59;  // For W1 channel
   range_weights_ch2 = 994665.88;  // For W2 Channel
 
-  // We Fill the input Tensor T qint32 with arbitrary int32 values
+  // We Fill the input tensor T qint32 with arbitrary int32 values
   test::FillValues<qint32>(
       &input_tensor_qint32,
       {-1000, -2000,  2000,   4000,   -3000,  -6000,  4000,   8000,
@@ -150,14 +150,14 @@ TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_Basic) {
   float ch2_min = -range_weights_ch2;
   float ch2_max = range_weights_ch2;
 
-  // Add the Perchannel range Nodes to the Op.
+  // Add the perchannel range Nodes to the Op.
   AddInputFromArray<float>(TensorShape({input_channels}), {ch1_min, ch2_min});
   AddInputFromArray<float>(TensorShape({input_channels}), {ch1_max, ch2_max});
 
-  // Run the Kernel
+  // Run the kernel
   TF_ASSERT_OK(RunOpKernel());
 
-  // Step 6: Verify Output and Store values to test Requantize_perchannel
+  // Step 6: Verify output and store values to test requantize_perchannel
   // --------------------------------------------------------------------
 
   // Verify the Expected Outputs
@@ -166,7 +166,7 @@ TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_Basic) {
   EXPECT_NEAR(-14.8217, output_min, 0.002);
   EXPECT_NEAR(14.8217, output_max, 0.002);
 
-  // output range is made use in RequantizePerChannelTest_Basic
+  // output range is made use in requantizePerChannelTest_Basic
 }
 
 TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_ClipMax) {
@@ -205,23 +205,23 @@ TEST_F(MklRequantizatedOpsTest, RequantizationRangePerChannelTest_ClipMax) {
   AddInputFromArray<qint32>(input_tensor_qint32.shape(),
                             input_tensor_qint32.flat<qint32>());
 
-  // Calculate the Min and max from the ranges
+  // Calculate the min and max from the ranges
   float ch1_min = -range_weights_ch1;
   float ch1_max = range_weights_ch1;
   float ch2_min = -range_weights_ch2;
   float ch2_max = range_weights_ch2;
 
-  // Add the Perchannel range Nodes to the Op.
+  // Add the perchannel range nodes to the Op.
   AddInputFromArray<float>(TensorShape({input_channels}), {ch1_min, ch2_min});
   AddInputFromArray<float>(TensorShape({input_channels}), {ch1_max, ch2_max});
 
-  // Run the Kernel
+  // Run the kernel
   TF_ASSERT_OK(RunOpKernel());
 
-  // Step 6: Verify Output and Store values to test Requantize_perchannel
+  // Step 6: Verify output and store values to test requantize_perchannel
   // --------------------------------------------------------------------
 
-  // Verify the Expected Outputs
+  // Verify the expected outputs
   const float output_min = GetOutput(0)->flat<float>()(0);
   const float output_max = GetOutput(1)->flat<float>()(0);
   EXPECT_NEAR(-6.0, output_min, 0.002);  // Values are Max as with clip_value
@@ -248,7 +248,7 @@ TEST_F(MklRequantizatedOpsTest, RequantizePerChannelTest_Basic) {
 
   // Step 7: Define and run requantize_perchannel
   // --------------------------------------------
-  // The output of Requantization_range_op_per_channel which calculated the
+  // The output of requantization_range_op_per_channel which calculated the
   // new ranges of int8 is fed to the requantize per channel op.
   // Here the Values of Convolved T*W is converted from int32 to int8.
 
@@ -263,26 +263,26 @@ TEST_F(MklRequantizatedOpsTest, RequantizePerChannelTest_Basic) {
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
 
-  // Add the Input Nodes to the Op.
+  // Add the input Nodes to the Op.
   AddInputFromArray<qint32>(input_tensor_qint32.shape(),
                             input_tensor_qint32.flat<qint32>());
 
-  // Calculate the Min and max from the ranges
+  // Calculate the min and max from the ranges
   float ch1_min = -range_weights_ch1;
   float ch1_max = range_weights_ch1;
   float ch2_min = -range_weights_ch2;
   float ch2_max = range_weights_ch2;
 
-  // Add the Perchannel range Nodes to the Op.
+  // Add the perchannel range nodes to the Op.
   AddInputFromArray<float>(TensorShape({input_channels}), {ch1_min, ch2_min});
   AddInputFromArray<float>(TensorShape({input_channels}), {ch1_max, ch2_max});
 
-  // Calculate the Min and max from Step 6 above
+  // Calculate the min and max from Step 6 above
   // in RequantizationRangePerChannelTest_Basic
   float range_op_output_min = -14.8217;
   float range_op_output_max = 14.8217;
 
-  // Add the Requested_min and requested_max stored from Step 6.
+  // Add the requested_min and requested_max stored from Step 6.
   AddInputFromArray<float>(TensorShape({1}), {range_op_output_min});
   AddInputFromArray<float>(TensorShape({1}), {range_op_output_max});
 
