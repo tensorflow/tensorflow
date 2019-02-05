@@ -52,7 +52,7 @@ def export(
   `save_model` generates new files/folders under the `saved_model_path` folder:
   1) a checkpoint containing the model weights.
   2) a saved_model.pb file containing the model's MetaGraphs. The prediction
-     graph is always exported. The evaluaton and training graphs are exported
+     graph is always exported. The evaluation and training graphs are exported
      if the following conditions are met:
      - Evaluation: model loss is defined.
      - Training: model is compiled with an optimizer defined under `tf.train`.
