@@ -14,29 +14,61 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 
+#include <cstring>
+#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
 bool SerializeToStringDeterministic(const protobuf::MessageLite& msg,
                                     string* result) {
-  DCHECK_LE(msg.ByteSizeLong(), static_cast<size_t>(INT_MAX));
-  *result = string(msg.ByteSizeLong(), '\0');
+  const size_t size = msg.ByteSizeLong();
+  DCHECK_LE(size, static_cast<size_t>(INT_MAX));
+  *result = string(size, '\0');
   return SerializeToBufferDeterministic(msg, const_cast<char*>(result->data()),
                                         result->size());
 }
 
-// As above, but takes a pre-allocated buffer wrapped by result.
-// PRECONDITION: result.size() == msg.ByteSizeLong().
 bool SerializeToBufferDeterministic(const protobuf::MessageLite& msg,
-                                    char* buffer, int size) {
-  DCHECK_LE(msg.ByteSizeLong(), static_cast<size_t>(INT_MAX));
-  DCHECK_EQ(msg.ByteSizeLong(), size);
+                                    char* buffer, size_t size) {
+  DCHECK(msg.ByteSizeLong() == size && size <= static_cast<size_t>(INT_MAX));
   protobuf::io::ArrayOutputStream array_stream(buffer, size);
   protobuf::io::CodedOutputStream output_stream(&array_stream);
   output_stream.SetSerializationDeterministic(true);
   msg.SerializeWithCachedSizes(&output_stream);
   return !output_stream.HadError() && size == output_stream.ByteCount();
+}
+
+bool AreSerializedProtosEqual(const protobuf::MessageLite& x,
+                              const protobuf::MessageLite& y) {
+  const size_t size = x.ByteSizeLong();
+  if (size != y.ByteSizeLong()) return false;
+  if (size == 0) return true;
+  auto x_serialized = absl::make_unique<char[]>(size);
+  bool success_x = SerializeToBufferDeterministic(x, x_serialized.get(), size);
+  DCHECK(success_x);
+  auto y_serialized = absl::make_unique<char[]>(size);
+  bool success_y = SerializeToBufferDeterministic(y, y_serialized.get(), size);
+  DCHECK(success_y);
+  return memcmp(x_serialized.get(), y_serialized.get(), size) == 0;
+}
+
+uint64 DeterministicProtoHash64(const protobuf::MessageLite& proto,
+                                uint64 seed) {
+  const size_t size = proto.ByteSizeLong();
+  auto serialized = absl::make_unique<char[]>(size);
+  SerializeToBufferDeterministic(proto, serialized.get(), size);
+  return Hash64(serialized.get(), size, seed);
+}
+
+uint64 DeterministicProtoHash64(const protobuf::MessageLite& proto) {
+  const size_t size = proto.ByteSizeLong();
+  auto serialized = absl::make_unique<char[]>(size);
+  SerializeToBufferDeterministic(proto, serialized.get(), size);
+  return Hash64(serialized.get(), size);
 }
 
 }  // namespace tensorflow
