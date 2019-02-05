@@ -1503,10 +1503,11 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
     filters: A `Tensor`. Must have the same type as `input`.
       A 4-D tensor of shape
       `[filter_height, filter_width, in_channels, out_channels]`
-    strides: A list of `ints`.
-      1-D tensor of length 4.  The stride of the sliding window for each
-      dimension of `input`. The dimension order is determined by the value of
-      `data_format`, see below for details.
+    strides: An int or list of `ints` that has length `1`, `2` or `4`.  The
+      stride of the sliding window for each dimension of `input`. If a single
+      value is given it is replicated in the `H` and `W` dimension. By default
+      the `N` and `C` dimensions are set to 1. The dimension order is determined
+      by the value of `data_format`, see below for details.
     padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
@@ -1521,20 +1522,20 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
           [batch, height, width, channels].
       Alternatively, the format could be "NCHW", the data storage order of:
           [batch, channels, height, width].
-    dilations: An optional list of `ints`. Defaults to `[1, 1, 1, 1]`.
-      1-D tensor of length 4.  The dilation factor for each dimension of
-      `input`. If set to k > 1, there will be k-1 skipped cells between each
-      filter element on that dimension. The dimension order is determined by the
-      value of `data_format`, see above for details. Dilations in the batch and
-      depth dimensions must be 1.
+    dilations: An int or list of `ints` that has length `1`, `2` or `4`,
+      defaults to 1. The dilation factor for each dimension of`input`. If a
+      single value is given it is replicated in the `H` and `W` dimension. By
+      default the `N` and `C` dimensions are set to 1. If set to k > 1, there
+      will be k-1 skipped cells between each filter element on that dimension.
+      The dimension order is determined by the value of `data_format`, see above
+      for details. Dilations in the batch and depth dimensions if a 4-d tensor
+      must be 1.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor`. Has the same type as `input`.
   """
   # pylint: enable=line-too-long
-  if dilations is None:
-    dilations = [1, 1, 1, 1]
   return conv2d(input,  # pylint: disable=redefined-builtin
                 filters,
                 strides,
@@ -1588,10 +1589,11 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
     filter: A `Tensor`. Must have the same type as `input`.
       A 4-D tensor of shape
       `[filter_height, filter_width, in_channels, out_channels]`
-    strides: A list of `ints`.
-      1-D tensor of length 4.  The stride of the sliding window for each
-      dimension of `input`. The dimension order is determined by the value of
-      `data_format`, see below for details.
+    strides: An int or list of `ints` that has length `1`, `2` or `4`.  The
+      stride of the sliding window for each dimension of `input`. If a single
+      value is given it is replicated in the `H` and `W` dimension. By default
+      the `N` and `C` dimensions are set to 1. The dimension order is determined
+      by the value of `data_format`, see below for details.
     padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
@@ -1607,12 +1609,14 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
           [batch, height, width, channels].
       Alternatively, the format could be "NCHW", the data storage order of:
           [batch, channels, height, width].
-    dilations: An optional list of `ints`. Defaults to `[1, 1, 1, 1]`.
-      1-D tensor of length 4.  The dilation factor for each dimension of
-      `input`. If set to k > 1, there will be k-1 skipped cells between each
-      filter element on that dimension. The dimension order is determined by the
-      value of `data_format`, see above for details. Dilations in the batch and
-      depth dimensions must be 1.
+    dilations: An int or list of `ints` that has length `1`, `2` or `4`,
+      defaults to 1. The dilation factor for each dimension of`input`. If a
+      single value is given it is replicated in the `H` and `W` dimension. By
+      default the `N` and `C` dimensions are set to 1. If set to k > 1, there
+      will be k-1 skipped cells between each filter element on that dimension.
+      The dimension order is determined by the value of `data_format`, see above
+      for details. Dilations in the batch and depth dimensions if a 4-d tensor
+      must be 1.
     name: A name for the operation (optional).
     filters: Alias for filter.
 
@@ -1622,6 +1626,12 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
   filter = deprecation.deprecated_argument_lookup(
       "filters", filters, "filter", filter)
   padding, explicit_paddings = _convert_padding(padding)
+  if data_format is None:
+    data_format = "NHWC"
+  channel_index = 1 if data_format.startswith("NC") else 3
+
+  strides = _get_sequence(strides, 2, channel_index, "strides")
+  dilations = _get_sequence(dilations, 2, channel_index, "dilations")
   return gen_nn_ops.conv2d(input,  # pylint: disable=redefined-builtin
                            filter,
                            strides,
@@ -1912,8 +1922,11 @@ def conv2d_transpose(
       `in_channels` dimension must match that of `value`.
     output_shape: A 1-D `Tensor` representing the output shape of the
       deconvolution op.
-    strides: A list of ints. The stride of the sliding window for each
-      dimension of the input tensor.
+    strides: An int or list of `ints` that has length `1`, `2` or `4`.  The
+      stride of the sliding window for each dimension of `input`. If a single
+      value is given it is replicated in the `H` and `W` dimension. By default
+      the `N` and `C` dimensions are set to 0. The dimension order is determined
+      by the value of `data_format`, see below for details.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. 'NHWC' and 'NCHW' are supported.
@@ -1960,6 +1973,8 @@ def conv2d_transpose(
     if padding != "VALID" and padding != "SAME":
       raise ValueError("padding must be either VALID or SAME:"
                        " {}".format(padding))
+
+    strides = _get_sequence(strides, 2, axis, "strides")
 
     return gen_nn_ops.conv2d_backprop_input(
         input_sizes=output_shape_,
