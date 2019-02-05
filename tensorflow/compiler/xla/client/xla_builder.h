@@ -362,24 +362,6 @@ class XlaBuilder {
 
   XlaOp GetTupleElement(const XlaOp& tuple_data, int64 index);
 
-  XlaOp Eq(const XlaOp& lhs, const XlaOp& rhs,
-           absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Ne(const XlaOp& lhs, const XlaOp& rhs,
-           absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Ge(const XlaOp& lhs, const XlaOp& rhs,
-           absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Gt(const XlaOp& lhs, const XlaOp& rhs,
-           absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Lt(const XlaOp& lhs, const XlaOp& rhs,
-           absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
-           absl::Span<const int64> broadcast_dimensions = {});
-
   XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
             const PrecisionConfig* precision_config = nullptr);
 
@@ -444,49 +426,6 @@ class XlaBuilder {
       const Shape& shape_with_layout, const string& opaque,
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout);
 
-  XlaOp Complex(const XlaOp& real, const XlaOp& imag,
-                absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Conj(const XlaOp& operand);
-
-  XlaOp Add(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Sub(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Mul(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Div(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Rem(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Max(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Min(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp And(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Or(const XlaOp& lhs, const XlaOp& rhs,
-           absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Not(const XlaOp& operand);
-
-  XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
-                  absl::Span<const int64> broadcast_dimensions = {});
-  XlaOp ShiftRightArithmetic(const XlaOp& lhs, const XlaOp& rhs,
-                             absl::Span<const int64> broadcast_dimensions = {});
-  XlaOp ShiftRightLogical(const XlaOp& lhs, const XlaOp& rhs,
-                          absl::Span<const int64> broadcast_dimensions = {});
 
   XlaOp Reduce(const XlaOp& operand, const XlaOp& init_value,
                const XlaComputation& computation,
@@ -546,44 +485,6 @@ class XlaBuilder {
       absl::Span<const std::pair<int64, int64>> padding, const XlaOp& source,
       const XlaOp& init_value, const XlaComputation& scatter);
 
-  XlaOp Abs(const XlaOp& operand);
-
-  XlaOp Atan2(const XlaOp& y, const XlaOp& x,
-              absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Exp(const XlaOp& operand);
-
-  XlaOp Expm1(const XlaOp& operand);
-
-  XlaOp Floor(const XlaOp& operand);
-
-  XlaOp Ceil(const XlaOp& operand);
-
-  XlaOp Round(const XlaOp& operand);
-
-  XlaOp Log(const XlaOp& operand);
-
-  XlaOp Log1p(const XlaOp& operand);
-
-  XlaOp Sign(const XlaOp& operand);
-
-  XlaOp Clz(const XlaOp& operand);
-
-  XlaOp Cos(const XlaOp& operand);
-
-  XlaOp Sin(const XlaOp& operand);
-
-  XlaOp Tanh(const XlaOp& operand);
-
-  XlaOp Real(const XlaOp& operand);
-
-  XlaOp Imag(const XlaOp& operand);
-
-  XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp IsFinite(const XlaOp& operand);
-
   XlaOp Iota(const Shape& shape, int64 iota_dimension);
 
   XlaOp Iota(PrimitiveType type, int64 size);
@@ -593,8 +494,6 @@ class XlaBuilder {
 
   XlaOp BitcastConvertType(const XlaOp& operand,
                            PrimitiveType new_element_type);
-
-  XlaOp Neg(const XlaOp& operand);
 
   XlaOp Transpose(const XlaOp& operand, absl::Span<const int64> permutation);
 
