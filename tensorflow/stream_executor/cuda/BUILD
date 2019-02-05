@@ -83,11 +83,11 @@ cc_library(
     ]),
     deps = if_cuda_is_configured([
         ":cuda_diagnostics",
-        ":cudart_stub",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/core:cuda",
         "//tensorflow/stream_executor:device_options",
         "//tensorflow/stream_executor/gpu:gpu_driver_header",
         "//tensorflow/stream_executor/lib",
