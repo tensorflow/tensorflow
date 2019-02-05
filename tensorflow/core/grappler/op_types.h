@@ -100,6 +100,7 @@ bool IsMod(const NodeDef& node);
 bool IsMul(const NodeDef& node);
 bool IsMatMul(const NodeDef& node);
 bool IsNextIteration(const NodeDef& node);
+bool IsOnesLike(const NodeDef& node);
 bool IsPack(const NodeDef& node);
 bool IsPad(const NodeDef& node);
 bool IsPack(const NodeDef& node);
@@ -170,6 +171,7 @@ bool IsTruncateMod(const NodeDef& node);
 bool IsUnpack(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
 bool IsWhile(const NodeDef& node);
+bool IsZerosLike(const NodeDef& node);
 bool IsZeta(const NodeDef& node);
 
 // Return true if the op is an aggregation (e.g. Add, AddN).
