@@ -193,16 +193,17 @@ def converted_call(f, owner, options, *args, **kwargs):
         'Entity {} appears to be decorated by wrapt, which is not yet supported'
         ' by AutoGraph. The function will be called without transformation.'
         ' You may however apply AutoGraph before the decorator.'.format(f), 1)
+    logging.log(2, 'Permanently whitelisted: %s: wrapt decorated', f)
     return f(*args, **kwargs)
 
   # Other built-in modules are permanently whitelisted.
   # TODO(mdan): Figure out how to do this consistently for all stdlib modules.
   if (f in collections.__dict__.values() or f in pdb.__dict__.values() or
       f in copy.__dict__.values()):
+    logging.log(2, 'Permanently whitelisted: %s: part of builtin module', f)
     return f(*args, **kwargs)
 
   # TODO(mdan): This needs cleanup.
-  # In particular, we may want to avoid renaming functions altogether.
   if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
 
     # TODO(mdan): This may be inconsistent in certain situations.
