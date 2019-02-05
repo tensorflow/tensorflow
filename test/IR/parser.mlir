@@ -348,6 +348,12 @@ func @attributes() {
 
   // CHECK: "foo"() {fn: @attributes : () -> (), if: @ifinst : (index) -> ()} : () -> ()
   "foo"() {fn: @attributes : () -> (), if: @ifinst : (index) -> ()} : () -> ()
+
+  // CHECK: "foo"() {int: 0} : () -> ()
+  "foo"() {int: 0 : i64} : () -> ()
+
+  // CHECK: "foo"() {int: 0 : i42} : () -> ()
+  "foo"() {int: 0 : i42} : () -> ()
   return
 }
 

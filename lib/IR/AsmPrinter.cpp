@@ -295,7 +295,13 @@ public:
 
   void print(const Module *module);
   void printFunctionReference(const Function *func);
-  void printAttribute(Attribute attr);
+  void printAttributeAndType(Attribute attr) {
+    printAttributeOptionalType(attr, /*includeType=*/true);
+  }
+  void printAttribute(Attribute attr) {
+    printAttributeOptionalType(attr, /*includeType=*/false);
+  }
+
   void printType(Type type);
   void print(const Function *fn);
   void printLocation(Location loc);
@@ -311,6 +317,7 @@ protected:
 
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<const char *> elidedAttrs = {});
+  void printAttributeOptionalType(Attribute attr, bool includeType);
   void printAffineMapId(int affineMapId) const;
   void printAffineMapReference(AffineMap affineMap);
   void printAffineMapAlias(StringRef alias) const;
@@ -531,7 +538,8 @@ void ModulePrinter::printLocation(Location loc) {
   }
 }
 
-void ModulePrinter::printAttribute(Attribute attr) {
+void ModulePrinter::printAttributeOptionalType(Attribute attr,
+                                               bool includeType) {
   if (!attr) {
     os << "<<NULL ATTRIBUTE>>";
     return;
@@ -547,11 +555,23 @@ void ModulePrinter::printAttribute(Attribute attr) {
     bool isSigned = intAttr.getType().isIndex() ||
                     intAttr.getType().getIntOrFloatBitWidth() != 1;
     intAttr.getValue().print(os, isSigned);
+    // Print type unless i64 (parser defaults i64 in absence of type).
+    if (includeType && !intAttr.getType().isInteger(64)) {
+      os << " : ";
+      printType(intAttr.getType());
+    }
     break;
   }
-  case Attribute::Kind::Float:
-    printFloatValue(attr.cast<FloatAttr>().getValue(), os);
+  case Attribute::Kind::Float: {
+    auto floatAttr = attr.cast<FloatAttr>();
+    printFloatValue(floatAttr.getValue(), os);
+    // Print type unless f64 (parser defaults to f64 in absence of type).
+    if (includeType && !floatAttr.getType().isF64()) {
+      os << " : ";
+      printType(floatAttr.getType());
+    }
     break;
+  }
   case Attribute::Kind::String:
     os << '"';
     printEscapedString(attr.cast<StringAttr>().getValue(), os);
@@ -1020,7 +1040,7 @@ void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
   os << " {";
   interleaveComma(filteredAttrs, [&](NamedAttribute attr) {
     os << attr.first << ": ";
-    printAttribute(attr.second);
+    printAttributeAndType(attr.second);
   });
   os << '}';
 }
@@ -1050,6 +1070,9 @@ public:
   raw_ostream &getStream() const { return os; }
   void printType(Type type) { ModulePrinter::printType(type); }
   void printAttribute(Attribute attr) { ModulePrinter::printAttribute(attr); }
+  void printAttributeAndType(Attribute attr) {
+    ModulePrinter::printAttributeAndType(attr);
+  }
   void printAffineMap(AffineMap map) {
     return ModulePrinter::printAffineMapReference(map);
   }

@@ -70,6 +70,7 @@ public:
   virtual void printType(Type type) = 0;
   virtual void printFunctionReference(const Function *func) = 0;
   virtual void printAttribute(Attribute attr) = 0;
+  virtual void printAttributeAndType(Attribute attr) = 0;
   virtual void printAffineMap(AffineMap map) = 0;
   virtual void printAffineExpr(AffineExpr expr) = 0;
 
