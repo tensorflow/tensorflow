@@ -124,7 +124,7 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
   const float filter_min = -128.0f;
   const float filter_max = 127.0f;
 
-  // The filter matrix is for each channel:
+  // The filter matrix (for each output channel count) is:
   // | 1 | 4 | 7 |
   // | 2 | 5 | 8 |
   // | 3 | 6 | 9 |
@@ -137,7 +137,7 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
   Tensor filter_quantized =
       FloatTensorToQuantized<qint8>(filter_float, filter_min, filter_max);
 
-  // Add the tensors as input to the current Op.
+  // Add the tensors as input to the current op.
   AddInputFromArray<quint8>(image_quantized.shape(),
                             image_quantized.flat<quint8>());
   AddInputFromArray<qint8>(filter_quantized.shape(),
@@ -153,7 +153,7 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
   AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
   AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
 
-  // Run the Op Kernel.
+  // Run the op Kernel.
   TF_ASSERT_OK(RunOpKernel());
 
   // Get the output
