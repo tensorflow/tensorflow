@@ -288,6 +288,28 @@ public:
   llvm::iterator_range<succ_iterator> getSuccessors();
 
   //===--------------------------------------------------------------------===//
+  // Instruction Walkers
+  //===--------------------------------------------------------------------===//
+
+  /// Walk the instructions of this block in preorder, calling the callback for
+  /// each operation.
+  void walk(const std::function<void(Instruction *)> &callback);
+
+  /// Walk the instructions in the specified [begin, end) range of
+  /// this block, calling the callback for each operation.
+  void walk(Block::iterator begin, Block::iterator end,
+            const std::function<void(Instruction *)> &callback);
+
+  /// Walk the instructions in this block in postorder, calling the callback for
+  /// each operation.
+  void walkPostOrder(const std::function<void(Instruction *)> &callback);
+
+  /// Walk the instructions in the specified [begin, end) range of this block
+  /// in postorder, calling the callback for each operation.
+  void walkPostOrder(Block::iterator begin, Block::iterator end,
+                     const std::function<void(Instruction *)> &callback);
+
+  //===--------------------------------------------------------------------===//
   // Other
   //===--------------------------------------------------------------------===//
 
@@ -310,19 +332,6 @@ public:
   static InstListType Block::*getSublistAccess(Instruction *) {
     return &Block::instructions;
   }
-
-  /// Walk the instructions of this block in preorder, calling the callback for
-  /// each operation.
-  void walk(std::function<void(Instruction *)> callback);
-
-  /// Walk the instructions in this block in postorder, calling the callback for
-  /// each operation.
-  void walkPostOrder(std::function<void(Instruction *)> callback);
-
-  /// Walk the instructions in the specified [begin, end) range of
-  /// this block, calling the callback for each operation.
-  void walk(Block::iterator begin, Block::iterator end,
-            std::function<void(Instruction *)> callback);
 
   void print(raw_ostream &os) const;
   void dump() const;

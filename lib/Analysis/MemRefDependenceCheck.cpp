@@ -25,7 +25,6 @@
 #include "mlir/Analysis/Utils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "llvm/Support/Debug.h"
@@ -38,19 +37,13 @@ namespace {
 
 // TODO(andydavis) Add common surrounding loop depth-wise dependence checks.
 /// Checks dependences between all pairs of memref accesses in a Function.
-struct MemRefDependenceCheck : public FunctionPass,
-                               InstWalker<MemRefDependenceCheck> {
+struct MemRefDependenceCheck : public FunctionPass {
   SmallVector<Instruction *, 4> loadsAndStores;
   explicit MemRefDependenceCheck()
       : FunctionPass(&MemRefDependenceCheck::passID) {}
 
   PassResult runOnFunction(Function *f) override;
 
-  void visitInstruction(Instruction *opInst) {
-    if (opInst->isa<LoadOp>() || opInst->isa<StoreOp>()) {
-      loadsAndStores.push_back(opInst);
-    }
-  }
   static char passID;
 };
 
@@ -120,8 +113,13 @@ static void checkDependences(ArrayRef<Instruction *> loadsAndStores) {
 // Walks the Function 'f' adding load and store ops to 'loadsAndStores'.
 // Runs pair-wise dependence checks.
 PassResult MemRefDependenceCheck::runOnFunction(Function *f) {
+  // Collect the loads and stores within the function.
   loadsAndStores.clear();
-  walk(f);
+  f->walk([&](Instruction *inst) {
+    if (inst->isa<LoadOp>() || inst->isa<StoreOp>())
+      loadsAndStores.push_back(inst);
+  });
+
   checkDependences(loadsAndStores);
   return success();
 }

@@ -28,7 +28,6 @@
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/IR/Instruction.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "llvm/ADT/DenseMap.h"
@@ -135,10 +134,8 @@ bool mlir::promoteIfSingleIteration(OpPointer<AffineForOp> forOp) {
 /// their body into the containing Block.
 void mlir::promoteSingleIterationLoops(Function *f) {
   // Gathers all innermost loops through a post order pruned walk.
-  f->walkPostOrder([](Instruction *inst) {
-    if (auto forOp = inst->dyn_cast<AffineForOp>())
-      promoteIfSingleIteration(forOp);
-  });
+  f->walkPostOrder<AffineForOp>(
+      [](OpPointer<AffineForOp> forOp) { promoteIfSingleIteration(forOp); });
 }
 
 /// Generates a 'for' inst with the specified lower and upper bounds while

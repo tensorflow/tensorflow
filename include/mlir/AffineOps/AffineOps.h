@@ -229,14 +229,6 @@ public:
   /// (same operands in the same order).
   bool matchingBoundOperandList() const;
 
-  /// Walk the operation instructions in the 'for' instruction in preorder,
-  /// calling the callback for each operation.
-  void walk(std::function<void(Instruction *)> callback);
-
-  /// Walk the operation instructions in the 'for' instruction in postorder,
-  /// calling the callback for each operation.
-  void walkPostOrder(std::function<void(Instruction *)> callback);
-
 private:
   friend class Instruction;
   explicit AffineForOp(const Instruction *state) : Op(state) {}

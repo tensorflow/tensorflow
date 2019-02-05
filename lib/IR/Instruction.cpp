@@ -22,7 +22,6 @@
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Function.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
 #include "llvm/ADT/DenseMap.h"
@@ -299,6 +298,35 @@ Instruction *Instruction::getParentInst() const {
 Function *Instruction::getFunction() const {
   return block ? block->getFunction() : nullptr;
 }
+
+//===----------------------------------------------------------------------===//
+// Instruction Walkers
+//===----------------------------------------------------------------------===//
+
+void Instruction::walk(const std::function<void(Instruction *)> &callback) {
+  // Visit the current instruction.
+  callback(this);
+
+  // Visit any internal instructions.
+  for (auto &blockList : getBlockLists())
+    for (auto &block : blockList)
+      block.walk(callback);
+}
+
+void Instruction::walkPostOrder(
+    const std::function<void(Instruction *)> &callback) {
+  // Visit any internal instructions.
+  for (auto &blockList : llvm::reverse(getBlockLists()))
+    for (auto &block : llvm::reverse(blockList))
+      block.walkPostOrder(callback);
+
+  // Visit the current instruction.
+  callback(this);
+}
+
+//===----------------------------------------------------------------------===//
+// Other
+//===----------------------------------------------------------------------===//
 
 /// Emit a note about this instruction, reporting up to any diagnostic
 /// handlers that may be listening.

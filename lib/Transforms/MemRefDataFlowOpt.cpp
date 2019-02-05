@@ -25,7 +25,6 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/Analysis/Utils.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Transforms/Passes.h"
@@ -70,12 +69,12 @@ namespace {
 // currently only eliminates the stores only if no other loads/uses (other
 // than dealloc) remain.
 //
-struct MemRefDataFlowOpt : public FunctionPass, InstWalker<MemRefDataFlowOpt> {
+struct MemRefDataFlowOpt : public FunctionPass {
   explicit MemRefDataFlowOpt() : FunctionPass(&MemRefDataFlowOpt::passID) {}
 
   PassResult runOnFunction(Function *f) override;
 
-  void visitInstruction(Instruction *opInst);
+  void forwardStoreToLoad(OpPointer<LoadOp> loadOp);
 
   // A list of memref's that are potentially dead / could be eliminated.
   SmallPtrSet<Value *, 4> memrefsToErase;
@@ -100,14 +99,9 @@ FunctionPass *mlir::createMemRefDataFlowOptPass() {
 
 // This is a straightforward implementation not optimized for speed. Optimize
 // this in the future if needed.
-void MemRefDataFlowOpt::visitInstruction(Instruction *opInst) {
+void MemRefDataFlowOpt::forwardStoreToLoad(OpPointer<LoadOp> loadOp) {
   Instruction *lastWriteStoreOp = nullptr;
-
-  auto loadOp = opInst->dyn_cast<LoadOp>();
-  if (!loadOp)
-    return;
-
-  Instruction *loadOpInst = opInst;
+  Instruction *loadOpInst = loadOp->getInstruction();
 
   // First pass over the use list to get minimum number of surrounding
   // loops common between the load op and the store op, with min taken across
@@ -235,7 +229,8 @@ PassResult MemRefDataFlowOpt::runOnFunction(Function *f) {
   memrefsToErase.clear();
 
   // Walk all load's and perform load/store forwarding.
-  walk(f);
+  f->walk<LoadOp>(
+      [&](OpPointer<LoadOp> loadOp) { forwardStoreToLoad(loadOp); });
 
   // Erase all load op's whose results were replaced with store fwd'ed ones.
   for (auto *loadOp : loadOpsToErase) {

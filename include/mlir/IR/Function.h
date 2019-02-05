@@ -27,6 +27,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Identifier.h"
+#include "mlir/IR/Instruction.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
@@ -39,6 +40,7 @@ class FunctionType;
 class MLIRContext;
 class Module;
 template <typename ObjectType, typename ElementType> class ArgumentIterator;
+template <typename T> class OpPointer;
 
 /// NamedAttribute is used for function attribute lists, it holds an
 /// identifier for the name and a value for the attribute.  The attribute
@@ -115,13 +117,35 @@ public:
   Block &front() { return blocks.front(); }
   const Block &front() const { return const_cast<Function *>(this)->front(); }
 
+  //===--------------------------------------------------------------------===//
+  // Instruction Walkers
+  //===--------------------------------------------------------------------===//
+
   /// Walk the instructions in the function in preorder, calling the callback
-  /// for each instruction or operation.
-  void walk(std::function<void(Instruction *)> callback);
+  /// for each instruction.
+  void walk(const std::function<void(Instruction *)> &callback);
+
+  /// Specialization of walk to only visit operations of 'OpTy'.
+  template <typename OpTy>
+  void walk(std::function<void(OpPointer<OpTy>)> callback) {
+    walk([&](Instruction *inst) {
+      if (auto op = inst->dyn_cast<OpTy>())
+        callback(op);
+    });
+  }
 
   /// Walk the instructions in the function in postorder, calling the callback
-  /// for each instruction or operation.
-  void walkPostOrder(std::function<void(Instruction *)> callback);
+  /// for each instruction.
+  void walkPostOrder(const std::function<void(Instruction *)> &callback);
+
+  /// Specialization of walkPostOrder to only visit operations of 'OpTy'.
+  template <typename OpTy>
+  void walkPostOrder(std::function<void(OpPointer<OpTy>)> callback) {
+    walkPostOrder([&](Instruction *inst) {
+      if (auto op = inst->dyn_cast<OpTy>())
+        callback(op);
+    });
+  }
 
   //===--------------------------------------------------------------------===//
   // Arguments

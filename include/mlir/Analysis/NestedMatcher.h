@@ -18,7 +18,7 @@
 #ifndef MLIR_ANALYSIS_MLFUNCTIONMATCHER_H_
 #define MLIR_ANALYSIS_MLFUNCTIONMATCHER_H_
 
-#include "mlir/IR/InstVisitor.h"
+#include "mlir/IR/Function.h"
 #include "llvm/Support/Allocator.h"
 
 namespace mlir {
@@ -76,7 +76,7 @@ private:
   ArrayRef<NestedMatch> matchedChildren;
 };
 
-/// A NestedPattern is a nested InstWalker that:
+/// A NestedPattern is a nested instruction walker that:
 ///   1. recursively matches a substructure in the tree;
 ///   2. uses a filter function to refine matches with extra semantic
 ///      constraints (passed via a lambda of type FilterFunctionType);
@@ -92,8 +92,8 @@ private:
 ///
 /// The NestedMatches captured in the IR can grow large, especially after
 /// aggressive unrolling. As experience has shown, it is generally better to use
-/// a plain InstWalker to match flat patterns but the current implementation is
-/// competitive nonetheless.
+/// a plain walk over instructions to match flat patterns but the current
+/// implementation is competitive nonetheless.
 using FilterFunctionType = std::function<bool(const Instruction &)>;
 static bool defaultFilterFunction(const Instruction &) { return true; };
 struct NestedPattern {
@@ -102,16 +102,14 @@ struct NestedPattern {
   NestedPattern(const NestedPattern &) = default;
   NestedPattern &operator=(const NestedPattern &) = default;
 
-  /// Returns all the top-level matches in `function`.
-  void match(Function *function, SmallVectorImpl<NestedMatch> *matches) {
-    State state(*this, matches);
-    state.walkPostOrder(function);
+  /// Returns all the top-level matches in `func`.
+  void match(Function *func, SmallVectorImpl<NestedMatch> *matches) {
+    func->walkPostOrder([&](Instruction *inst) { matchOne(inst, matches); });
   }
 
   /// Returns all the top-level matches in `inst`.
   void match(Instruction *inst, SmallVectorImpl<NestedMatch> *matches) {
-    State state(*this, matches);
-    state.walkPostOrder(inst);
+    inst->walkPostOrder([&](Instruction *child) { matchOne(child, matches); });
   }
 
   /// Returns the depth of the pattern.
@@ -120,21 +118,7 @@ struct NestedPattern {
 private:
   friend class NestedPatternContext;
   friend class NestedMatch;
-  friend class InstWalker<NestedPattern>;
   friend struct State;
-
-  /// Helper state that temporarily holds matches for the next level of nesting.
-  struct State : public InstWalker<State> {
-    State(NestedPattern &pattern, SmallVectorImpl<NestedMatch> *matches)
-        : pattern(pattern), matches(matches) {}
-    void visitInstruction(Instruction *opInst) {
-      pattern.matchOne(opInst, matches);
-    }
-
-  private:
-    NestedPattern &pattern;
-    SmallVectorImpl<NestedMatch> *matches;
-  };
 
   /// Underlying global bump allocator managed by a NestedPatternContext.
   static llvm::BumpPtrAllocator *&allocator();
@@ -153,8 +137,9 @@ private:
   /// without switching on the type of the Instruction. The idea is that a
   /// NestedPattern first checks if it matches locally and then recursively
   /// applies its nested matchers to its elem->nested. Since we want to rely on
-  /// the InstWalker impl rather than duplicate its the logic, we allow an
-  /// off-by-one traversal to account for the fact that we write:
+  /// the existing instruction walking functionality rather than duplicate
+  /// it, we allow an off-by-one traversal to account for the fact that we
+  /// write:
   ///
   ///  void match(Instruction *elem) {
   ///    for (auto &c : getNestedPatterns()) {

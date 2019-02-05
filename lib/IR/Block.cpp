@@ -18,7 +18,6 @@
 #include "mlir/IR/Block.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/IR/Instruction.h"
 using namespace mlir;
 
@@ -227,6 +226,34 @@ Block *Block::getSinglePredecessor() {
 }
 
 //===----------------------------------------------------------------------===//
+// Instruction Walkers
+//===----------------------------------------------------------------------===//
+
+void Block::walk(const std::function<void(Instruction *)> &callback) {
+  walk(begin(), end(), callback);
+}
+
+void Block::walk(Block::iterator begin, Block::iterator end,
+                 const std::function<void(Instruction *)> &callback) {
+  // Walk the instructions within this block.
+  for (auto &inst : llvm::make_early_inc_range(llvm::make_range(begin, end)))
+    inst.walk(callback);
+}
+
+void Block::walkPostOrder(const std::function<void(Instruction *)> &callback) {
+  walkPostOrder(begin(), end(), callback);
+}
+
+/// Walk the instructions in the specified [begin, end) range of this block
+/// in postorder, calling the callback for each operation.
+void Block::walkPostOrder(Block::iterator begin, Block::iterator end,
+                          const std::function<void(Instruction *)> &callback) {
+  // Walk the instructions within this block.
+  for (auto &inst : llvm::make_early_inc_range(llvm::make_range(begin, end)))
+    inst.walkPostOrder(callback);
+}
+
+//===----------------------------------------------------------------------===//
 // Other
 //===----------------------------------------------------------------------===//
 
@@ -251,37 +278,6 @@ Block *Block::splitBlock(iterator splitBefore) {
   newBB->getInstructions().splice(newBB->end(), getInstructions(), splitBefore,
                                   end());
   return newBB;
-}
-
-void Block::walk(std::function<void(Instruction *)> callback) {
-  walk(begin(), end(), callback);
-}
-
-void Block::walk(Block::iterator begin, Block::iterator end,
-                 std::function<void(Instruction *)> callback) {
-  struct Walker : public InstWalker<Walker> {
-    std::function<void(Instruction *)> const &callback;
-    Walker(std::function<void(Instruction *)> const &callback)
-        : callback(callback) {}
-
-    void visitInstruction(Instruction *opInst) { callback(opInst); }
-  };
-
-  Walker w(callback);
-  w.walk(begin, end);
-}
-
-void Block::walkPostOrder(std::function<void(Instruction *)> callback) {
-  struct Walker : public InstWalker<Walker> {
-    std::function<void(Instruction *)> const &callback;
-    Walker(std::function<void(Instruction *)> const &callback)
-        : callback(callback) {}
-
-    void visitInstruction(Instruction *opInst) { callback(opInst); }
-  };
-
-  Walker v(callback);
-  v.walkPostOrder(begin(), end());
 }
 
 //===----------------------------------------------------------------------===//
@@ -331,25 +327,18 @@ void BlockList::cloneInto(BlockList *dest, BlockAndValueMapping &mapper,
 
   // Now that each of the blocks have been cloned, go through and remap the
   // operands of each of the instructions.
-  struct Walker : public InstWalker<Walker> {
-    BlockAndValueMapping &mapper;
-    Walker(BlockAndValueMapping &mapper) : mapper(mapper) {}
-
-    /// Remap the instruction and successor block operands.
-    void visitInstruction(Instruction *inst) {
-      for (auto &instOp : inst->getInstOperands())
-        if (auto *mappedOp = mapper.lookupOrNull(instOp.get()))
-          instOp.set(mappedOp);
-      if (inst->isTerminator())
-        for (auto &succOp : inst->getBlockOperands())
-          if (auto *mappedOp = mapper.lookupOrNull(succOp.get()))
-            succOp.set(mappedOp);
-    }
+  auto remapOperands = [&](Instruction *inst) {
+    for (auto &instOp : inst->getInstOperands())
+      if (auto *mappedOp = mapper.lookupOrNull(instOp.get()))
+        instOp.set(mappedOp);
+    if (inst->isTerminator())
+      for (auto &succOp : inst->getBlockOperands())
+        if (auto *mappedOp = mapper.lookupOrNull(succOp.get()))
+          succOp.set(mappedOp);
   };
 
-  Walker v(mapper);
   for (auto it = std::next(lastOldBlock), e = dest->end(); it != e; ++it)
-    v.walk(it->begin(), it->end());
+    it->walk(remapOperands);
 }
 
 BlockList *llvm::ilist_traits<::mlir::Block>::getContainingBlockList() {

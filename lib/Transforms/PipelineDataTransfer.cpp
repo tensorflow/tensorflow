@@ -142,10 +142,8 @@ PassResult PipelineDataTransfer::runOnFunction(Function *f) {
   // deleted and replaced by a prologue, a new steady-state loop and an
   // epilogue).
   forOps.clear();
-  f->walkPostOrder([&](Instruction *opInst) {
-    if (auto forOp = opInst->dyn_cast<AffineForOp>())
-      forOps.push_back(forOp);
-  });
+  f->walkPostOrder<AffineForOp>(
+      [&](OpPointer<AffineForOp> forOp) { forOps.push_back(forOp); });
   bool ret = false;
   for (auto forOp : forOps) {
     ret = ret | runOnAffineForOp(forOp);

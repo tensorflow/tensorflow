@@ -28,7 +28,6 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Transforms/LoopUtils.h"
@@ -111,22 +110,23 @@ namespace {
 
 // LoopNestStateCollector walks loop nests and collects load and store
 // operations, and whether or not an IfInst was encountered in the loop nest.
-class LoopNestStateCollector : public InstWalker<LoopNestStateCollector> {
-public:
+struct LoopNestStateCollector {
   SmallVector<OpPointer<AffineForOp>, 4> forOps;
   SmallVector<Instruction *, 4> loadOpInsts;
   SmallVector<Instruction *, 4> storeOpInsts;
   bool hasNonForRegion = false;
 
-  void visitInstruction(Instruction *opInst) {
-    if (opInst->isa<AffineForOp>())
-      forOps.push_back(opInst->cast<AffineForOp>());
-    else if (opInst->getNumBlockLists() != 0)
-      hasNonForRegion = true;
-    else if (opInst->isa<LoadOp>())
-      loadOpInsts.push_back(opInst);
-    else if (opInst->isa<StoreOp>())
-      storeOpInsts.push_back(opInst);
+  void collect(Instruction *instToWalk) {
+    instToWalk->walk([&](Instruction *opInst) {
+      if (opInst->isa<AffineForOp>())
+        forOps.push_back(opInst->cast<AffineForOp>());
+      else if (opInst->getNumBlockLists() != 0)
+        hasNonForRegion = true;
+      else if (opInst->isa<LoadOp>())
+        loadOpInsts.push_back(opInst);
+      else if (opInst->isa<StoreOp>())
+        storeOpInsts.push_back(opInst);
+    });
   }
 };
 
@@ -510,7 +510,7 @@ bool MemRefDependenceGraph::init(Function *f) {
       // Create graph node 'id' to represent top-level 'forOp' and record
       // all loads and store accesses it contains.
       LoopNestStateCollector collector;
-      collector.walk(&inst);
+      collector.collect(&inst);
       // Return false if a non 'for' region was found (not currently supported).
       if (collector.hasNonForRegion)
         return false;
@@ -606,41 +606,39 @@ struct LoopNestStats {
 
 // LoopNestStatsCollector walks a single loop nest and gathers per-loop
 // trip count and operation count statistics and records them in 'stats'.
-class LoopNestStatsCollector : public InstWalker<LoopNestStatsCollector> {
-public:
+struct LoopNestStatsCollector {
   LoopNestStats *stats;
   bool hasLoopWithNonConstTripCount = false;
 
   LoopNestStatsCollector(LoopNestStats *stats) : stats(stats) {}
 
-  void visitInstruction(Instruction *opInst) {
-    auto forOp = opInst->dyn_cast<AffineForOp>();
-    if (!forOp)
-      return;
+  void collect(Instruction *inst) {
+    inst->walk<AffineForOp>([&](OpPointer<AffineForOp> forOp) {
+      auto *forInst = forOp->getInstruction();
+      auto *parentInst = forOp->getInstruction()->getParentInst();
+      if (parentInst != nullptr) {
+        assert(parentInst->isa<AffineForOp>() && "Expected parent AffineForOp");
+        // Add mapping to 'forOp' from its parent AffineForOp.
+        stats->loopMap[parentInst].push_back(forOp);
+      }
 
-    auto *forInst = forOp->getInstruction();
-    auto *parentInst = forOp->getInstruction()->getParentInst();
-    if (parentInst != nullptr) {
-      assert(parentInst->isa<AffineForOp>() && "Expected parent AffineForOp");
-      // Add mapping to 'forOp' from its parent AffineForOp.
-      stats->loopMap[parentInst].push_back(forOp);
-    }
-
-    // Record the number of op instructions in the body of 'forOp'.
-    unsigned count = 0;
-    stats->opCountMap[forInst] = 0;
-    for (auto &inst : *forOp->getBody()) {
-      if (!(inst.isa<AffineForOp>() || inst.isa<AffineIfOp>()))
-        ++count;
-    }
-    stats->opCountMap[forInst] = count;
-    // Record trip count for 'forOp'. Set flag if trip count is not constant.
-    Optional<uint64_t> maybeConstTripCount = getConstantTripCount(forOp);
-    if (!maybeConstTripCount.hasValue()) {
-      hasLoopWithNonConstTripCount = true;
-      return;
-    }
-    stats->tripCountMap[forInst] = maybeConstTripCount.getValue();
+      // Record the number of op instructions in the body of 'forOp'.
+      unsigned count = 0;
+      stats->opCountMap[forInst] = 0;
+      for (auto &inst : *forOp->getBody()) {
+        if (!(inst.isa<AffineForOp>() || inst.isa<AffineIfOp>()))
+          ++count;
+      }
+      stats->opCountMap[forInst] = count;
+      // Record trip count for 'forOp'. Set flag if trip count is not
+      // constant.
+      Optional<uint64_t> maybeConstTripCount = getConstantTripCount(forOp);
+      if (!maybeConstTripCount.hasValue()) {
+        hasLoopWithNonConstTripCount = true;
+        return;
+      }
+      stats->tripCountMap[forInst] = maybeConstTripCount.getValue();
+    });
   }
 };
 
@@ -1078,7 +1076,7 @@ static bool isFusionProfitable(Instruction *srcOpInst,
   // Walk src loop nest and collect stats.
   LoopNestStats srcLoopNestStats;
   LoopNestStatsCollector srcStatsCollector(&srcLoopNestStats);
-  srcStatsCollector.walk(srcLoopIVs[0]->getInstruction());
+  srcStatsCollector.collect(srcLoopIVs[0]->getInstruction());
   // Currently only constant trip count loop nests are supported.
   if (srcStatsCollector.hasLoopWithNonConstTripCount)
     return false;
@@ -1089,7 +1087,7 @@ static bool isFusionProfitable(Instruction *srcOpInst,
 
   LoopNestStats dstLoopNestStats;
   LoopNestStatsCollector dstStatsCollector(&dstLoopNestStats);
-  dstStatsCollector.walk(dstLoopIVs[0]->getInstruction());
+  dstStatsCollector.collect(dstLoopIVs[0]->getInstruction());
   // Currently only constant trip count loop nests are supported.
   if (dstStatsCollector.hasLoopWithNonConstTripCount)
     return false;
@@ -1474,7 +1472,7 @@ public:
 
             // Collect slice loop stats.
             LoopNestStateCollector sliceCollector;
-            sliceCollector.walk(sliceLoopNest->getInstruction());
+            sliceCollector.collect(sliceLoopNest->getInstruction());
             // Promote single iteration slice loops to single IV value.
             for (auto forOp : sliceCollector.forOps) {
               promoteIfSingleIteration(forOp);
@@ -1498,7 +1496,7 @@ public:
 
             // Collect dst loop stats after memref privatizaton transformation.
             LoopNestStateCollector dstLoopCollector;
-            dstLoopCollector.walk(dstAffineForOp->getInstruction());
+            dstLoopCollector.collect(dstAffineForOp->getInstruction());
 
             // Add new load ops to current Node load op list 'loads' to
             // continue fusing based on new operands.

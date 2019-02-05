@@ -24,7 +24,6 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Transforms/Passes.h"

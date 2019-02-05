@@ -19,7 +19,6 @@
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
@@ -644,32 +643,6 @@ bool AffineForOp::matchingBoundOperandList() const {
       return false;
   }
   return true;
-}
-
-void AffineForOp::walk(std::function<void(Instruction *)> callback) {
-  struct Walker : public InstWalker<Walker> {
-    std::function<void(Instruction *)> const &callback;
-    Walker(std::function<void(Instruction *)> const &callback)
-        : callback(callback) {}
-
-    void visitInstruction(Instruction *opInst) { callback(opInst); }
-  };
-
-  Walker w(callback);
-  w.walk(getInstruction());
-}
-
-void AffineForOp::walkPostOrder(std::function<void(Instruction *)> callback) {
-  struct Walker : public InstWalker<Walker> {
-    std::function<void(Instruction *)> const &callback;
-    Walker(std::function<void(Instruction *)> const &callback)
-        : callback(callback) {}
-
-    void visitInstruction(Instruction *opInst) { callback(opInst); }
-  };
-
-  Walker v(callback);
-  v.walkPostOrder(getInstruction());
 }
 
 /// Returns the induction variable for this loop.

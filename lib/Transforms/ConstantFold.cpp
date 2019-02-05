@@ -18,7 +18,6 @@
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/Utils.h"
@@ -27,7 +26,7 @@ using namespace mlir;
 
 namespace {
 /// Simple constant folding pass.
-struct ConstantFold : public FunctionPass, InstWalker<ConstantFold> {
+struct ConstantFold : public FunctionPass {
   ConstantFold() : FunctionPass(&ConstantFold::passID) {}
 
   // All constants in the function post folding.
@@ -35,9 +34,7 @@ struct ConstantFold : public FunctionPass, InstWalker<ConstantFold> {
   // Operations that were folded and that need to be erased.
   std::vector<Instruction *> opInstsToErase;
 
-  bool foldOperation(Instruction *op,
-                     SmallVectorImpl<Value *> &existingConstants);
-  void visitInstruction(Instruction *op);
+  void foldInstruction(Instruction *op);
   PassResult runOnFunction(Function *f) override;
 
   static char passID;
@@ -49,7 +46,7 @@ char ConstantFold::passID = 0;
 /// Attempt to fold the specified operation, updating the IR to match.  If
 /// constants are found, we keep track of them in the existingConstants list.
 ///
-void ConstantFold::visitInstruction(Instruction *op) {
+void ConstantFold::foldInstruction(Instruction *op) {
   // If this operation is an AffineForOp, then fold the bounds.
   if (auto forOp = op->dyn_cast<AffineForOp>()) {
     constantFoldBounds(forOp);
@@ -111,7 +108,7 @@ PassResult ConstantFold::runOnFunction(Function *f) {
   existingConstants.clear();
   opInstsToErase.clear();
 
-  walk(f);
+  f->walk([&](Instruction *inst) { foldInstruction(inst); });
 
   // At this point, these operations are dead, remove them.
   // TODO: This is assuming that all constant foldable operations have no

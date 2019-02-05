@@ -27,7 +27,6 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "llvm/ADT/DenseMap.h"
@@ -95,15 +94,16 @@ char LoopUnroll::passID = 0;
 
 PassResult LoopUnroll::runOnFunction(Function *f) {
   // Gathers all innermost loops through a post order pruned walk.
-  class InnermostLoopGatherer : public InstWalker<InnermostLoopGatherer, bool> {
-  public:
+  struct InnermostLoopGatherer {
     // Store innermost loops as we walk.
     std::vector<OpPointer<AffineForOp>> loops;
 
-    // This method specialized to encode custom return logic.
-    using InstListType = llvm::iplist<Instruction>;
-    bool walkPostOrder(InstListType::iterator Start,
-                       InstListType::iterator End) {
+    void walkPostOrder(Function *f) {
+      for (auto &b : *f)
+        walkPostOrder(b.begin(), b.end());
+    }
+
+    bool walkPostOrder(Block::iterator Start, Block::iterator End) {
       bool hasInnerLoops = false;
       // We need to walk all elements since all innermost loops need to be
       // gathered as opposed to determining whether this list has any inner
@@ -112,7 +112,6 @@ PassResult LoopUnroll::runOnFunction(Function *f) {
         hasInnerLoops |= walkPostOrder(&(*Start++));
       return hasInnerLoops;
     }
-
     bool walkPostOrder(Instruction *opInst) {
       bool hasInnerLoops = false;
       for (auto &blockList : opInst->getBlockLists())
@@ -125,39 +124,21 @@ PassResult LoopUnroll::runOnFunction(Function *f) {
       }
       return hasInnerLoops;
     }
-
-    // FIXME: can't use base class method for this because that in turn would
-    // need to use the derived class method above. CRTP doesn't allow it, and
-    // the compiler error resulting from it is also misleading.
-    using InstWalker<InnermostLoopGatherer, bool>::walkPostOrder;
-  };
-
-  // Gathers all loops with trip count <= minTripCount.
-  class ShortLoopGatherer : public InstWalker<ShortLoopGatherer> {
-  public:
-    // Store short loops as we walk.
-    std::vector<OpPointer<AffineForOp>> loops;
-    const unsigned minTripCount;
-    ShortLoopGatherer(unsigned minTripCount) : minTripCount(minTripCount) {}
-
-    void visitInstruction(Instruction *opInst) {
-      auto forOp = opInst->dyn_cast<AffineForOp>();
-      if (!forOp)
-        return;
-      Optional<uint64_t> tripCount = getConstantTripCount(forOp);
-      if (tripCount.hasValue() && tripCount.getValue() <= minTripCount)
-        loops.push_back(forOp);
-    }
   };
 
   if (clUnrollFull.getNumOccurrences() > 0 &&
       clUnrollFullThreshold.getNumOccurrences() > 0) {
-    ShortLoopGatherer slg(clUnrollFullThreshold);
-    // Do a post order walk so that loops are gathered from innermost to
-    // outermost (or else unrolling an outer one may delete gathered inner
-    // ones).
-    slg.walkPostOrder(f);
-    auto &loops = slg.loops;
+    // Store short loops as we walk.
+    std::vector<OpPointer<AffineForOp>> loops;
+
+    // Gathers all loops with trip count <= minTripCount. Do a post order walk
+    // so that loops are gathered from innermost to outermost (or else unrolling
+    // an outer one may delete gathered inner ones).
+    f->walkPostOrder<AffineForOp>([&](OpPointer<AffineForOp> forOp) {
+      Optional<uint64_t> tripCount = getConstantTripCount(forOp);
+      if (tripCount.hasValue() && tripCount.getValue() <= clUnrollFullThreshold)
+        loops.push_back(forOp);
+    });
     for (auto forOp : loops)
       loopUnrollFull(forOp);
     return success();

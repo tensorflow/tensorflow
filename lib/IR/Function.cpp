@@ -19,7 +19,6 @@
 #include "AttributeListStorage.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/Types.h"
@@ -214,28 +213,15 @@ void Function::addEntryBlock() {
   entry->addArguments(type.getInputs());
 }
 
-void Function::walk(std::function<void(Instruction *)> callback) {
-  struct Walker : public InstWalker<Walker> {
-    std::function<void(Instruction *)> const &callback;
-    Walker(std::function<void(Instruction *)> const &callback)
-        : callback(callback) {}
-
-    void visitInstruction(Instruction *inst) { callback(inst); }
-  };
-
-  Walker v(callback);
-  v.walk(this);
+void Function::walk(const std::function<void(Instruction *)> &callback) {
+  // Walk each of the blocks within the function.
+  for (auto &block : getBlocks())
+    block.walk(callback);
 }
 
-void Function::walkPostOrder(std::function<void(Instruction *)> callback) {
-  struct Walker : public InstWalker<Walker> {
-    std::function<void(Instruction *)> const &callback;
-    Walker(std::function<void(Instruction *)> const &callback)
-        : callback(callback) {}
-
-    void visitInstruction(Instruction *inst) { callback(inst); }
-  };
-
-  Walker v(callback);
-  v.walkPostOrder(this);
+void Function::walkPostOrder(
+    const std::function<void(Instruction *)> &callback) {
+  // Walk each of the blocks within the function.
+  for (auto &block : llvm::reverse(getBlocks()))
+    block.walkPostOrder(callback);
 }

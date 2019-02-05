@@ -50,7 +50,6 @@
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "llvm/ADT/DenseMap.h"
@@ -136,24 +135,25 @@ bool mlir::loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
   // Gathers all maximal sub-blocks of instructions that do not themselves
   // include a for inst (a instruction could have a descendant for inst though
   // in its tree).
-  class JamBlockGatherer : public InstWalker<JamBlockGatherer> {
-  public:
-    using InstListType = llvm::iplist<Instruction>;
-    using InstWalker<JamBlockGatherer>::walk;
-
+  struct JamBlockGatherer {
     // Store iterators to the first and last inst of each sub-block found.
     std::vector<std::pair<Block::iterator, Block::iterator>> subBlocks;
 
     // This is a linear time walk.
-    void walk(InstListType::iterator Start, InstListType::iterator End) {
-      for (auto it = Start; it != End;) {
+    void walk(Instruction *inst) {
+      for (auto &blockList : inst->getBlockLists())
+        for (auto &block : blockList)
+          walk(block);
+    }
+    void walk(Block &block) {
+      for (auto it = block.begin(), e = block.end(); it != e;) {
         auto subBlockStart = it;
-        while (it != End && !it->isa<AffineForOp>())
+        while (it != e && !it->isa<AffineForOp>())
           ++it;
         if (it != subBlockStart)
           subBlocks.push_back({subBlockStart, std::prev(it)});
         // Process all for insts that appear next.
-        while (it != End && it->isa<AffineForOp>())
+        while (it != e && it->isa<AffineForOp>())
           walk(&*it++);
       }
     }

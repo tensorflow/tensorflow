@@ -25,7 +25,6 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Function.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/IR/Instruction.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"

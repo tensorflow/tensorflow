@@ -27,7 +27,6 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Transforms/Passes.h"
@@ -46,10 +45,9 @@ namespace {
 // result of any AffineApplyOp). After this composition, AffineApplyOps with no
 // remaining uses are erased.
 // TODO(andydavis) Remove this when Chris adds instruction combiner pass.
-struct ComposeAffineMaps : public FunctionPass, InstWalker<ComposeAffineMaps> {
+struct ComposeAffineMaps : public FunctionPass {
   explicit ComposeAffineMaps() : FunctionPass(&ComposeAffineMaps::passID) {}
   PassResult runOnFunction(Function *f) override;
-  void visitInstruction(Instruction *opInst);
 
   SmallVector<OpPointer<AffineApplyOp>, 8> affineApplyOps;
 
@@ -68,15 +66,11 @@ static bool affineApplyOp(const Instruction &inst) {
   return inst.isa<AffineApplyOp>();
 }
 
-void ComposeAffineMaps::visitInstruction(Instruction *opInst) {
-  if (auto afOp = opInst->dyn_cast<AffineApplyOp>())
-    affineApplyOps.push_back(afOp);
-}
-
 PassResult ComposeAffineMaps::runOnFunction(Function *f) {
   // If needed for future efficiency, reserve space based on a pre-walk.
   affineApplyOps.clear();
-  walk(f);
+  f->walk<AffineApplyOp>(
+      [&](OpPointer<AffineApplyOp> afOp) { affineApplyOps.push_back(afOp); });
   for (auto afOp : affineApplyOps) {
     SmallVector<Value *, 8> operands(afOp->getOperands());
     FuncBuilder b(afOp->getInstruction());
@@ -87,7 +81,8 @@ PassResult ComposeAffineMaps::runOnFunction(Function *f) {
 
   // Erase dead affine apply ops.
   affineApplyOps.clear();
-  walk(f);
+  f->walk<AffineApplyOp>(
+      [&](OpPointer<AffineApplyOp> afOp) { affineApplyOps.push_back(afOp); });
   for (auto it = affineApplyOps.rbegin(); it != affineApplyOps.rend(); ++it) {
     if ((*it)->use_empty()) {
       (*it)->erase();

@@ -15,7 +15,6 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/IR/Instruction.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OperationSupport.h"
@@ -27,15 +26,12 @@
 using namespace mlir;
 
 namespace {
-struct PrintOpStatsPass : public ModulePass, InstWalker<PrintOpStatsPass> {
+struct PrintOpStatsPass : public ModulePass {
   explicit PrintOpStatsPass(llvm::raw_ostream &os = llvm::errs())
       : ModulePass(&PrintOpStatsPass::passID), os(os) {}
 
   // Prints the resultant operation statistics post iterating over the module.
   PassResult runOnModule(Module *m) override;
-
-  // Updates the operation statistics for the given instruction.
-  void visitInstruction(Instruction *inst);
 
   // Print summary of op stats.
   void printSummary();
@@ -44,7 +40,6 @@ struct PrintOpStatsPass : public ModulePass, InstWalker<PrintOpStatsPass> {
 
 private:
   llvm::StringMap<int64_t> opCount;
-
   llvm::raw_ostream &os;
 };
 } // namespace
@@ -52,14 +47,14 @@ private:
 char PrintOpStatsPass::passID = 0;
 
 PassResult PrintOpStatsPass::runOnModule(Module *m) {
+  opCount.clear();
+
+  // Compute the operation statistics for each function in the module.
   for (auto &fn : *m)
-    walk(&fn);
+    fn.walk(
+        [&](Instruction *inst) { ++opCount[inst->getName().getStringRef()]; });
   printSummary();
   return success();
-}
-
-void PrintOpStatsPass::visitInstruction(Instruction *inst) {
-  ++opCount[inst->getName().getStringRef()];
 }
 
 void PrintOpStatsPass::printSummary() {

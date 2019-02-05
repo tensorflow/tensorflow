@@ -614,6 +614,36 @@ public:
   }
 
   //===--------------------------------------------------------------------===//
+  // Instruction Walkers
+  //===--------------------------------------------------------------------===//
+
+  /// Walk the instructions held by this instruction in preorder, calling the
+  /// callback for each instruction.
+  void walk(const std::function<void(Instruction *)> &callback);
+
+  /// Specialization of walk to only visit operations of 'OpTy'.
+  template <typename OpTy>
+  void walk(std::function<void(OpPointer<OpTy>)> callback) {
+    walk([&](Instruction *inst) {
+      if (auto op = inst->dyn_cast<OpTy>())
+        callback(op);
+    });
+  }
+
+  /// Walk the instructions held by this function in postorder, calling the
+  /// callback for each instruction.
+  void walkPostOrder(const std::function<void(Instruction *)> &callback);
+
+  /// Specialization of walkPostOrder to only visit operations of 'OpTy'.
+  template <typename OpTy>
+  void walkPostOrder(std::function<void(OpPointer<OpTy>)> callback) {
+    walkPostOrder([&](Instruction *inst) {
+      if (auto op = inst->dyn_cast<OpTy>())
+        callback(op);
+    });
+  }
+
+  //===--------------------------------------------------------------------===//
   // Other
   //===--------------------------------------------------------------------===//
 
