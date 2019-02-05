@@ -51,43 +51,9 @@ _googletest_temp_dir = ''
 # pylint: disable=invalid-name
 # pylint: disable=undefined-variable
 def g_main(argv):
-  """Delegate to absltest.main after redefining testLoader."""
-  if 'TEST_SHARD_STATUS_FILE' in os.environ:
-    try:
-      f = None
-      try:
-        f = open(os.environ['TEST_SHARD_STATUS_FILE'], 'w')
-        f.write('')
-      except IOError:
-        sys.stderr.write('Error opening TEST_SHARD_STATUS_FILE (%s). Exiting.'
-                         % os.environ['TEST_SHARD_STATUS_FILE'])
-        sys.exit(1)
-    finally:
-      if f is not None: f.close()
+  """Delegate to absltest.main."""
 
-  if ('TEST_TOTAL_SHARDS' not in os.environ or
-      'TEST_SHARD_INDEX' not in os.environ):
-    return absltest_main(argv=argv)
-
-  total_shards = int(os.environ['TEST_TOTAL_SHARDS'])
-  shard_index = int(os.environ['TEST_SHARD_INDEX'])
-  base_loader = TestLoader()
-
-  delegate_get_names = base_loader.getTestCaseNames
-  bucket_iterator = itertools.cycle(range(total_shards))
-
-  def getShardedTestCaseNames(testCaseClass):
-    filtered_names = []
-    for testcase in sorted(delegate_get_names(testCaseClass)):
-      bucket = next(bucket_iterator)
-      if bucket == shard_index:
-        filtered_names.append(testcase)
-    return filtered_names
-
-  # Override getTestCaseNames
-  base_loader.getTestCaseNames = getShardedTestCaseNames
-
-  absltest_main(argv=argv, testLoader=base_loader)
+  absltest_main(argv=argv)
 
 
 # Redefine main to allow running benchmarks
