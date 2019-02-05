@@ -27,11 +27,21 @@ from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+
+
+class BatchCounterCallback(callbacks.Callback):
+
+  def __init__(self):
+    self.batch_count = 0
+
+  def on_batch_end(self, *args, **kwargs):
+    self.batch_count += 1
 
 
 class TestTrainingWithDatasetIterators(keras_parameterized.TestCase):
@@ -394,8 +404,11 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
     dataset = dataset.batch(10)
 
-    history = model.fit(dataset, epochs=2, verbose=1)
+    batch_counter = BatchCounterCallback()
+    history = model.fit(dataset, epochs=2, verbose=1, callbacks=[batch_counter])
+
     self.assertEqual(len(history.history['loss']), 2)
+    self.assertEqual(batch_counter.batch_count, 20)
     model.evaluate(dataset)
     out = model.predict(dataset)
     self.assertEqual(out.shape[0], 100)
@@ -415,8 +428,11 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     self.assertEqual(keras.backend.get_value(cardinality.cardinality(dataset)),
                      cardinality.UNKNOWN)
 
-    history = model.fit(dataset, epochs=2, verbose=1)
+    batch_counter = BatchCounterCallback()
+    history = model.fit(dataset, epochs=2, verbose=1, callbacks=[batch_counter])
+
     self.assertEqual(len(history.history['loss']), 2)
+    self.assertEqual(batch_counter.batch_count, 20)
     model.evaluate(dataset)
     out = model.predict(dataset)
     self.assertEqual(out.shape[0], 100)
