@@ -212,20 +212,6 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
     return tuple(self._flatten(predicate=_IS_VARIABLE))
 
   @property
-  def owned_variables(self):
-    """Sequence of variables that are attributes of the current module.
-
-    See `variables` for a property which returns all variables from the current
-    module and all it's submodules recursively.
-
-    Returns:
-      A sequence of variables which are attributes of the current module. Will
-      yield variables inside nested structures (lists etc) but not in other
-      modules.
-    """
-    return tuple(self._flatten(recursive=False, predicate=_IS_VARIABLE))
-
-  @property
   def trainable_variables(self):
     """Sequence of variables owned by this module and it's submodules.
 
@@ -238,42 +224,6 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
       name) followed by variables from all submodules recursively (depth first).
     """
     return tuple(self._flatten(predicate=_IS_TRAINABLE_VARIABLE))
-
-  @property
-  def owned_trainable_variables(self):
-    """Sequence of variables that are attributes of the current module.
-
-    See `variables` for a property which returns all variables from the current
-    module and all it's submodules recursively.
-
-    Returns:
-      A sequence of variables which are attributes of the current module. Will
-      yield variables inside nested structures (lists etc) but not in other
-      modules.
-    """
-    return tuple(
-        self._flatten(recursive=False, predicate=_IS_TRAINABLE_VARIABLE))
-
-  @property
-  def owned_submodules(self):
-    """Sequence of immediate child modules.
-
-    Child modules are modules which are found as properties of the current
-    module.
-
-    >>> a = tf.experimental.Module()
-    >>> b = tf.experimental.Module()
-    >>> c = tf.experimental.Module()
-    >>> a.b = b
-    >>> b.c = c
-    >>> assert list(a.owned_submodules) == [b]
-    >>> assert list(b.owned_submodules) == [c]
-    >>> assert list(c.owned_submodules) == []
-
-    Returns:
-      A sequence of all child modules.
-    """
-    return tuple(self._flatten(recursive=False, predicate=_IS_MODULE))
 
   @property
   def submodules(self):
