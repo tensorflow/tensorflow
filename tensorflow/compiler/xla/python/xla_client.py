@@ -728,7 +728,8 @@ class LocalComputation(object):
     ]
 
     # Execute
-    output_buffers = self._backend.execute_replicated(stripped_args)
+    output_buffers = self._backend.execute_replicated(
+        self._c_computation, stripped_args)
 
     # Wrap output handles in LocalBuffer instances
     return tuple(
