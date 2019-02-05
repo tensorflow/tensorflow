@@ -55,16 +55,13 @@ void MklRequantizatedOpsTestHelper::Setup(Tensor &input_tensor_qint32,
   // ------------------------------------------
   // T and W are quantized using a Quantize Op.
   // The input Tensor T (NHWC) is quantized to unsigned int8.
+  // Hence T's max value is mapped to ((2^8-1) = 255).
   // The input Filter W (NHWC) is quantized to signed int8.
-  // Hence T's max value is mapped to ((2^8-1) = 255), while W's to ((2^7)-1 =
-  // 127)).
+  // Hence W's max value is mapped to ((2^7)-1 = 127)).
 
-  // Range of Quantized T  in uint8[0   , 255] maps to orig T  in FP32[0   ,
-  // 5.0]
-  // Range of Quantized W1 in int8[-127, 127]  maps to orig W1 in FP32[-2.0,
-  // 2.0]
-  // Range of Quantized W2 in int8[-127, 127]  maps to orig W2 in FP32[-3.0,
-  // 3.0]
+  // Range of Quantized T  in uint8[0  , 255] maps to orig T  in FP32[0   , 5.0]
+  // Range of Quantized W1 in int8[-127, 127] maps to orig W1 in FP32[-2.0, 2.0]
+  // Range of Quantized W2 in int8[-127, 127] maps to orig W2 in FP32[-3.0, 3.0]
 
   // Hence the resolution of Quantized T will be 5.0/255
   // Hence the resolution of Quantized W1 will be 2.0/127
