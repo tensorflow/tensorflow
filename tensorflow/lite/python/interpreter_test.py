@@ -113,6 +113,21 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
                                  'Invoke called on model that is not ready'):
       interpreter.invoke()
 
+  def testInvalidModelFileContent(self):
+    with self.assertRaisesRegexp(
+        ValueError, '`model_path` or `model_content` must be specified.'):
+      interpreter_wrapper.Interpreter(model_path=None, model_content=None)
+
+  def testInvalidIndex(self):
+    interpreter = interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'))
+    interpreter.allocate_tensors()
+    #Invalid tensor index passed.
+    with self.assertRaisesRegexp(
+        ValueError, 'Tensor with no shape found.'):
+      interpreter._get_tensor_details(4)
+
 
 class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):
 
