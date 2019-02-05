@@ -21,6 +21,7 @@ import functools
 import weakref
 
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import constant_op
@@ -31,6 +32,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -392,6 +394,27 @@ class DefFunctionTest(test.TestCase):
     self.assertAllClose([13., 14.], wrapper(constant_op.constant(2.)))
     v_holder[1].assign(11.)
     self.assertAllClose([14., 15.], wrapper(constant_op.constant(2.)))
+
+  def testDeviceAnnotationRespected(self):
+    if not context.num_gpus():
+      self.skipTest("Needs multiple devices")
+
+    a = []
+
+    @def_function.function()
+    def create_variable():
+      with ops.init_scope():
+        initial_value = random_ops.random_uniform(
+            (2, 2), maxval=1000000, dtype=dtypes.int64)
+
+      if not a:
+        with ops.device("CPU:0"):
+          a.append(resource_variable_ops.ResourceVariable(initial_value))
+
+      return a[0].read_value()
+
+    created_variable_read = create_variable()
+    self.assertRegexpMatches(created_variable_read.device, "CPU")
 
 
 if __name__ == '__main__':
