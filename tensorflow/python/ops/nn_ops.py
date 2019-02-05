@@ -3061,8 +3061,77 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
         name=name)
 
 
-@tf_export("nn.max_pool")
-def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
+# pylint: disable=redefined-builtin
+@tf_export("nn.max_pool", v1=["nn.max_pool_v2"])
+def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
+  """Performs the max pooling on the input.
+
+  Args:
+    input:  Tensor of rank N+2, of shape `[batch_size] + input_spatial_shape +
+      [num_channels]` if `data_format` does not start with "NC" (default), or
+      `[batch_size, num_channels] + input_spatial_shape` if data_format starts
+      with "NC". Pooling happens over the spatial dimensions only.
+    ksize: An int or list of `ints` that has length `1`, `N` or `N+2`. The size
+      of the window for each dimension of the input tensor.
+    strides: An int or list of `ints` that has length `1`, `N` or `N+2`. The
+      stride of the sliding window for each dimension of the input tensor.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      the "returns" section of `tf.nn.convolution` for details.
+    data_format: A string. Specifies the channel dimension. For N=1 it can be
+      either "NWC" (default) or "NCW", for N=2 it can be either "NHWC" (default)
+      or "NCHW" and for N=3 either "NDHWC" (default) or "NCDHW".
+    name: Optional name for the operation.
+
+  Returns:
+    A `Tensor` of format specified by `data_format`.
+    The max pooled output tensor.
+  """
+  if input.shape is not None:
+    n = len(input.shape) - 2
+  elif data_format is not None:
+    n = len(data_format) - 2
+  else:
+    raise ValueError(
+        "The input must have a rank or a data format must be given.")
+  if n < 1 or n > 3:
+    raise ValueError(
+        "Input tensor must be of rank 3, 4 or 5 but was {}.".format(n + 2))
+
+  if data_format is None:
+    channel_index = n + 1
+  else:
+    channel_index = 1 if data_format.startswith("NC") else n + 1
+
+  ksize = _get_sequence(ksize, n, channel_index, "ksize")
+  strides = _get_sequence(strides, n, channel_index, "strides")
+
+  max_pooling_ops = {
+      1: max_pool1d,
+      2: gen_nn_ops.max_pool,
+      3: gen_nn_ops.max_pool3d
+  }
+
+  op = max_pooling_ops.get(n)
+  return op(
+      input,
+      ksize=ksize,
+      strides=strides,
+      padding=padding,
+      data_format=data_format,
+      name=name)
+
+
+# pylint: enable=redefined-builtin
+
+
+@tf_export(v1=["nn.max_pool"])
+def max_pool(value,
+             ksize,
+             strides,
+             padding,
+             data_format="NHWC",
+             name=None,
+             input=None):  # pylint: disable=redefined-builtin
   """Performs the max pooling on the input.
 
   Args:
@@ -3075,17 +3144,18 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
       See the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. 'NHWC', 'NCHW' and 'NCHW_VECT_C' are supported.
     name: Optional name for the operation.
+    input: Alias for value.
 
   Returns:
     A `Tensor` of format specified by `data_format`.
     The max pooled output tensor.
   """
+  value = deprecation.deprecated_argument_lookup("input", input, "value", value)
   with ops.name_scope(name, "MaxPool", [value]) as name:
-    value = ops.convert_to_tensor(value, name="input")
     if data_format is None:
       data_format = "NHWC"
-
     channel_index = 1 if data_format.startswith("NC") else 3
+
     ksize = _get_sequence(ksize, 2, channel_index, "ksize")
     strides = _get_sequence(strides, 2, channel_index, "strides")
 
@@ -3139,8 +3209,44 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
         data_format=data_format,
         name=name)
     return array_ops.squeeze(result, expanding_dim)
+# pylint: enable=redefined-builtin
 
 
+# pylint: disable=redefined-builtin
+@tf_export("nn.max_pool2d")
+def max_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):
+  """Performs the max pooling on the input.
+
+  Args:
+    input: A 4-D `Tensor` of the format specified by `data_format`.
+    ksize: An int or list of `ints` that has length `1`, `2` or `4`. The size of
+      the window for each dimension of the input tensor.
+    strides: An int or list of `ints` that has length `1`, `2` or `4`. The
+      stride of the sliding window for each dimension of the input tensor.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      the "returns" section of `tf.nn.convolution` for details.
+    data_format: A string. 'NHWC', 'NCHW' and 'NCHW_VECT_C' are supported.
+    name: Optional name for the operation.
+
+  Returns:
+    A `Tensor` of format specified by `data_format`.
+    The max pooled output tensor.
+  """
+  with ops.name_scope(name, "MaxPool2d", [input]) as name:
+    if data_format is None:
+      data_format = "NHWC"
+    channel_index = 1 if data_format.startswith("NC") else 3
+
+    ksize = _get_sequence(ksize, 2, channel_index, "ksize")
+    strides = _get_sequence(strides, 2, channel_index, "strides")
+
+    return gen_nn_ops.max_pool(
+        input,
+        ksize=ksize,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        name=name)
 # pylint: enable=redefined-builtin
 
 

@@ -1173,6 +1173,12 @@ def _log_prob(self, x):
     _, _, errors, _ = self._upgrade("tf.flags.FLAGS")
     self.assertIn("tf.flags has been removed", errors[0])
 
+  def test_max_pool_2d(self):
+    text = "tf.nn.max_pool(value=4)"
+    expected_text = "tf.nn.max_pool2d(input=4)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 
