@@ -91,7 +91,7 @@ class _SaveableView(object):
     nodes_without_functions = list(self.nodes)
     seen_function_names = set()
     for obj in nodes_without_functions:
-      self.functions[obj] = self._list_functions(obj)
+      self.functions[obj] = obj._list_functions_for_serialization()  # pylint: disable=protected-access
       for function in self.functions[obj].values():
         if function not in self.node_ids:
           self.node_ids[function] = len(self.nodes)
@@ -136,24 +136,6 @@ class _SaveableView(object):
         child_proto = object_proto.children.add()
         child_proto.node_id = self.node_ids[ref_function]
         child_proto.local_name = local_name
-
-  def _list_functions(self, checkpointable_object):
-    """Return a dict of `Function`s of a checkpointable."""
-    functions = dict()
-    attribute_extractor, attribute_getter = (
-        revived_types.get_attribute_extractors(checkpointable_object))
-    for attribute_name in attribute_extractor(checkpointable_object):
-      try:
-        attribute_value = attribute_getter(
-            checkpointable_object, attribute_name, None)
-      except Exception:  # pylint: disable=broad-except
-        # We really don't want to throw an exception just because some object's
-        # attribute accessor is broken.
-        attribute_value = None
-      if isinstance(attribute_value, (def_function.Function,
-                                      defun.ConcreteFunction)):
-        functions[attribute_name] = attribute_value
-    return functions
 
   def map_resources(self):
     """Makes new resource handle ops corresponding to existing resource tensors.
