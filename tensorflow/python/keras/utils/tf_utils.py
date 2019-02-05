@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond as smart_module
@@ -102,6 +104,7 @@ def get_reachable_from_inputs(inputs, targets=None):
   Returns:
     A set of tensors reachable from the inputs (includes the inputs themselves).
   """
+  inputs = nest.flatten(inputs)
   reachable = set(inputs)
   if targets:
     targets = set(targets)
@@ -129,6 +132,140 @@ def get_reachable_from_inputs(inputs, targets=None):
   return reachable
 
 
+# This function needs access to private functions of `nest`.
+#  pylint: disable=protected-access
+def map_structure_with_atomic(is_atomic_fn, map_fn, nested):
+  """Maps the atomic elements of a nested structure.
+
+  Arguments:
+    is_atomic_fn: A function that determines if an element of `nested` is
+      atomic.
+    map_fn: The function to apply to atomic elements of `nested`.
+    nested: A nested structure.
+
+  Returns:
+    The nested structure, with atomic elements mapped according to `map_fn`.
+
+  Raises:
+    ValueError: If an element that is neither atomic nor a sequence is
+      encountered.
+  """
+  if is_atomic_fn(nested):
+    return map_fn(nested)
+
+  # Recursively convert.
+  if not nest.is_sequence(nested):
+    raise ValueError(
+        'Received non-atomic and non-sequence element: {}'.format(nested))
+  if nest._is_mapping(nested):
+    values = [nested[k] for k in nest._sorted(nested)]
+  else:
+    values = nested
+  mapped_values = [
+      map_structure_with_atomic(is_atomic_fn, map_fn, ele) for ele in values
+  ]
+  return nest._sequence_like(nested, mapped_values)
+
+
+#  pylint: enable=protected-access
+
+
+def convert_shapes(input_shape, to_tuples=True):
+  """Converts nested shape representations  to desired format.
+
+  Performs:
+
+  TensorShapes -> tuples if `to_tuples=True`.
+  tuples of int or None -> TensorShapes if `to_tuples=False`.
+
+  Valid objects to be converted are:
+  - TensorShapes
+  - tuples with elements of type int or None.
+  - ints
+  - None
+
+  Arguments:
+    input_shape: A nested structure of objects to be converted to TensorShapes.
+    to_tuples: If `True`, converts all TensorShape to tuples. Otherwise converts
+      all tuples representing shapes to TensorShapes.
+
+  Returns:
+    Nested structure of shapes in desired format.
+  """
+
+  def _is_shape_component(element):
+    value = tensor_shape.as_dimension(element).value
+    return value is None or isinstance(value, int)
+
+  def _is_atomic_shape(input_shape):
+    # Ex: TensorShape or (None, 10, 32) or 5 or `None`
+    if input_shape is None or isinstance(input_shape, int):
+      return True
+    if isinstance(input_shape, tensor_shape.TensorShape):
+      return True
+    if (isinstance(input_shape, tuple) and
+        all(_is_shape_component(ele) for ele in input_shape)):
+      return True
+    return False
+
+  def _convert_shape(input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape)
+    if to_tuples:
+      input_shape = tuple(input_shape.as_list())
+    return input_shape
+
+  return map_structure_with_atomic(_is_atomic_shape, _convert_shape,
+                                   input_shape)
+
+
+class ListWrapper(object):
+  """A wrapper for lists to be treated as elements for `nest`."""
+
+  def __init__(self, list_to_wrap):
+    self._list = list_to_wrap
+
+  def as_list(self):
+    return self._list
+
+
+def convert_inner_node_data(nested, wrap=False):
+  """Either wraps or unwraps innermost node data lists in `ListWrapper` objects.
+
+  Arguments:
+    nested: A nested data structure.
+    wrap: If `True`, wrap innermost lists in `ListWrapper` objects. If `False`,
+      unwraps `ListWrapper` objects into lists.
+
+  Returns:
+    Strucutre of same type as nested, with lists wrapped/unwrapped.
+  """
+
+  def _is_atomic_nested(nested):
+    """Returns `True` if `nested` is a list representing node data."""
+    if isinstance(nested, ListWrapper):
+      return True
+    # Node data can be of form `[layer_name, node_id, tensor_id]` or
+    # `[layer_name, node_id, tensor_id, kwargs]`.
+    if (isinstance(nested, list) and (len(nested) in [3, 4]) and
+        isinstance(nested[0], six.string_types)):
+      return True
+    return False
+
+  def _convert_object_or_list(nested):
+    """Convert b/t `ListWrapper` object and list representations."""
+    if wrap:
+      if isinstance(nested, ListWrapper):
+        return nested
+      return ListWrapper(nested)
+    else:
+      if isinstance(nested, ListWrapper):
+        return nested.as_list()
+      return nested
+
+  return map_structure_with_atomic(_is_atomic_nested, _convert_object_or_list,
+                                   nested)
+
+
 def shape_type_conversion(fn):
   """Decorator that handles tuple/TensorShape conversion.
 
@@ -142,17 +279,15 @@ def shape_type_conversion(fn):
   """
 
   def wrapper(instance, input_shape):
+    # Pass shapes as tuples to `fn`
+    # This preserves compatibility with external Keras.
     if input_shape is not None:
-      if isinstance(input_shape, list):
-        input_shape = [
-            tuple(tensor_shape.TensorShape(x).as_list()) for x in input_shape]
-      else:
-        input_shape = tuple(tensor_shape.TensorShape(input_shape).as_list())
+      input_shape = convert_shapes(input_shape, to_tuples=True)
     output_shape = fn(instance, input_shape)
+    # Return shapes from `fn` as TensorShapes.
     if output_shape is not None:
-      if isinstance(output_shape, list):
-        return [tensor_shape.TensorShape(x) for x in output_shape]
-      return tensor_shape.TensorShape(output_shape)
+      output_shape = convert_shapes(output_shape, to_tuples=False)
+    return output_shape
 
   return wrapper
 
@@ -216,3 +351,7 @@ def register_symbolic_tensor_type(cls):
   """
   global _user_convertible_tensor_types
   _user_convertible_tensor_types.add(cls)
+
+
+def is_tensor_or_variable(x):
+  return tensor_util.is_tensor(x) or isinstance(x, variables.Variable)

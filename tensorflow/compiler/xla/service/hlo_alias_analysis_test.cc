@@ -238,13 +238,16 @@ TEST_F(HloAliasAnalysisTest, ParametersWithAliasing) {
       builder.AddInstruction(HloInstruction::CreateTuple({negate0, negate1}));
   module_->AddEntryComputation(builder.Build());
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0}));
+      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1}));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
 
   // Cannot alias an output twice.
   ASSERT_IS_NOT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{0}));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{0},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 
@@ -279,13 +282,16 @@ TEST_F(HloAliasAnalysisTest, ParametersWithCrossAliasing) {
       builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
   module_->AddEntryComputation(builder.Build());
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{1}));
+      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{1},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{0}));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{0},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
 
   // Cannot alias an output twice.
   ASSERT_IS_NOT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1}));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 
@@ -365,9 +371,11 @@ TEST_F(HloAliasAnalysisTest, InputOutputAliasingWithWhile) {
       builder.AddInstruction(HloInstruction::CreateTuple({negate_1, negate_2}));
   module_->AddEntryComputation(builder.Build());
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0}));
+      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1}));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 

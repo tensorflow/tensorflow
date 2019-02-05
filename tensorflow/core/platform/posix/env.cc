@@ -86,6 +86,35 @@ class PosixEnv : public Env {
     return new StdThread(thread_options, name, fn);
   }
 
+  int32 GetCurrentThreadId() override {
+#ifdef __APPLE__
+    uint64_t tid64;
+    pthread_threadid_np(nullptr, &tid64);
+    return static_cast<int32>(tid64);
+#elif defined(__FreeBSD__)
+    // Has to be casted to long first, else this error appears:
+    // static_cast from 'pthread_t' (aka 'pthread *') to 'int32' (aka 'int')
+    // is not allowed
+    return static_cast<int32>(static_cast<int64>(pthread_self()));
+#else
+    return static_cast<int32>(pthread_self());
+#endif
+  }
+
+  bool GetCurrentThreadName(string* name) override {
+#ifdef __ANDROID__
+    return false;
+#else
+    char buf[100];
+    int res = pthread_getname_np(pthread_self(), buf, static_cast<size_t>(100));
+    if (res != 0) {
+      return false;
+    }
+    *name = buf;
+    return true;
+#endif
+  }
+
   void SchedClosure(std::function<void()> closure) override {
     // TODO(b/27290852): Spawning a new thread here is wasteful, but
     // needed to deal with the fact that many `closure` functions are
@@ -121,13 +150,25 @@ class PosixEnv : public Env {
 
   string GetRunfilesDir() override {
     string bin_path = this->GetExecutablePath();
-    string runfiles_path = bin_path + ".runfiles/org_tensorflow";
+    string runfiles_suffix = ".runfiles/org_tensorflow";
+    std::size_t pos = bin_path.find(runfiles_suffix);
+
+    // Sometimes (when executing under python) bin_path returns the full path to
+    // the python scripts under runfiles. Get the substring.
+    if (pos != std::string::npos) {
+      return bin_path.substr(0, pos + runfiles_suffix.length());
+    }
+
+    // See if we have the executable path. if executable.runfiles exists, return
+    // that folder.
+    string runfiles_path = bin_path + runfiles_suffix;
     Status s = this->IsDirectory(runfiles_path);
     if (s.ok()) {
       return runfiles_path;
-    } else {
-      return bin_path.substr(0, bin_path.find_last_of("/\\"));
     }
+
+    // If nothing can be found, return something close.
+    return bin_path.substr(0, bin_path.find_last_of("/\\"));
   }
 
  private:

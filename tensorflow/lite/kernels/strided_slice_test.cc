@@ -72,6 +72,7 @@ class StridedSliceOpModel : public SingleOpModel {
   int output_;
 };
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST(StridedSliceOpTest, UnsupportedInputSize) {
   EXPECT_DEATH(
       StridedSliceOpModel<>({2, 2, 2, 2, 2}, {5}, {5}, {5}, 0, 0, 0, 0, 0),
@@ -84,6 +85,7 @@ TEST(StridedSliceOpTest, UnssupportedArgs) {
   EXPECT_DEATH(StridedSliceOpModel<>({3, 2}, {2}, {2}, {2}, 0, 0, 0, 1, 0),
                "new_axis_mask is not implemented yet.");
 }
+#endif
 
 TEST(StridedSliceOpTest, In1D) {
   StridedSliceOpModel<> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 0);

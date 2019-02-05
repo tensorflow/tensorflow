@@ -157,7 +157,7 @@ if platform.system() != "Windows":
 
   _SUPPORTED_INFEED_DTYPES = set([
       dtypes.bool, dtypes.int32, dtypes.int64, dtypes.bfloat16, dtypes.float32,
-      dtypes.complex64
+      dtypes.complex64, dtypes.uint32
   ])
 
   def infeed_dequeue(dtype, shape, name=None):
@@ -217,13 +217,19 @@ if platform.system() != "Windows":
 
     Args:
       inputs: A TensorList of gradients with which to update embedding tables.
-        Contains one tensor per embedding table in the model.
+          This argument has the same length and shapes as the return value of
+          RecvTPUEmbeddingActivations, but contains gradients of the model's
+          loss with respect to the embedding activations. The embedding tables
+          are updated from these gradients via the optimizers specified in the
+          TPU embedding configuration given to tpu.initialize_system.
       config: Serialized TPUEmbeddingConfiguration proto.
-      learning_rates: A TensorList of float32 scalars, one for each embedding
-        table, containing the learning rates for each table when dynamic
-        learning rate is enabled through the OptimizationParameters in
-        TPUEmbeddingConfiguration. When the learning rate is constant, the list
-        should be empty (optional).
+      learning_rates: A TensorList of float32 scalars, one for each dynamic
+          learning rate tag: see the comments in
+          //third_party/tensorflow/contrib/tpu/proto/
+                                               optimization_parameters.proto.
+          Multiple tables can share the same dynamic learning rate tag as
+          specified in the configuration. If the learning rates for all tables
+          are constant, this list should be empty.
       name: A name for the operation (optional).
 
     Returns:
@@ -337,9 +343,8 @@ if platform.system() != "Windows":
     Args:
       sample_indices: A list of rank 1 Tensors specifying the training example
         to which the corresponding embedding_indices and aggregation_weights
-        values
-        belong. It corresponds to sp_ids.indices[:,0] in
-          embedding_lookup_sparse().
+        values belong. It corresponds to sp_ids.indices[:,0] in
+        embedding_lookup_sparse().
       embedding_indices: A list of rank 1 Tensors, indices into the embedding
         tables. It corresponds to sp_ids.values in embedding_lookup_sparse().
       aggregation_weights: A list of rank 1 Tensors containing per training

@@ -27,7 +27,6 @@ tf_kernel_library(
         ":resources",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:tensor_forest_ops_op_lib",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
     ],
 )
@@ -39,7 +38,6 @@ tf_kernel_library(
         ":resources",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:tensor_forest_ops_op_lib",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
     ],
 )

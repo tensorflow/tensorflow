@@ -21,24 +21,21 @@ from __future__ import print_function
 
 import copy
 
-from tensorflow.python.eager import context
-from tensorflow.python.framework import ops
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.engine.input_layer import Input
-from tensorflow.python.keras.engine.input_layer import InputLayer
-from tensorflow.python.keras.engine.network import Network
-from tensorflow.python.keras.engine.training import Model
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.models.Sequential', 'keras.Sequential')
-class Sequential(Model):
+@keras_export('keras.models.Sequential', 'keras.Sequential')
+class Sequential(training.Model):
   """Linear stack of layers.
 
   Arguments:
@@ -86,8 +83,8 @@ class Sequential(Model):
   model.add(Dense(32))
   model.weights  # returns list of length 4
 
-  When using the delayed-build pattern (no input shape specified), you can
-  choose to manually build your model by calling `build(batch_input_shape)`:
+  # When using the delayed-build pattern (no input shape specified), you can
+  # choose to manually build your model by calling `build(batch_input_shape)`:
   model = Sequential()
   model.add(Dense(32))
   model.add(Dense(32))
@@ -103,6 +100,8 @@ class Sequential(Model):
     self._build_input_shape = None
     self._compute_output_and_mask_jointly = True
 
+    self._layer_call_argspecs = {}
+
     # Add to the model any layers passed to the constructor.
     if layers:
       for layer in layers:
@@ -116,13 +115,13 @@ class Sequential(Model):
     # `CheckpointableBase` manages the `_layers` attributes and does filtering
     # over it.
     layers = super(Sequential, self).layers
-    if layers and isinstance(layers[0], InputLayer):
+    if layers and isinstance(layers[0], input_layer.InputLayer):
       return layers[1:]
     return layers[:]
 
   @property
-  def _static_graph_friendly(self):
-    return all(layer._static_graph_friendly for layer in self.layers)
+  def dynamic(self):
+    return any(layer.dynamic for layer in self.layers)
 
   @checkpointable.no_automatic_dependency_tracking
   def add(self, layer):
@@ -146,18 +145,16 @@ class Sequential(Model):
     self.built = False
     set_inputs = False
     if not self._layers:
-      if isinstance(layer, InputLayer):
+      if isinstance(layer, input_layer.InputLayer):
         # Corner case where the user passes an InputLayer layer via `add`.
-        assert len(layer._inbound_nodes[-1].output_tensors) == 1
+        assert len(nest.flatten(layer._inbound_nodes[-1].output_tensors)) == 1
         set_inputs = True
       else:
         batch_shape, dtype = training_utils.get_input_shape_and_dtype(layer)
         if batch_shape:
           # Instantiate an input layer.
-          x = Input(
-              batch_shape=batch_shape,
-              dtype=dtype,
-              name=layer.name + '_input')
+          x = input_layer.Input(
+              batch_shape=batch_shape, dtype=dtype, name=layer.name + '_input')
           # This will build the current layer
           # and create the node connecting the current layer
           # to the input layer we just created.
@@ -166,12 +163,14 @@ class Sequential(Model):
 
       if set_inputs:
         # If an input layer (placeholder) is available.
-        if len(layer._inbound_nodes[-1].output_tensors) != 1:
+        if len(nest.flatten(layer._inbound_nodes[-1].output_tensors)) != 1:
           raise ValueError('All layers in a Sequential model '
                            'should have a single output tensor. '
                            'For multi-output layers, '
                            'use the functional API.')
-        self.outputs = [layer._inbound_nodes[-1].output_tensors[0]]
+        self.outputs = [
+            nest.flatten(layer._inbound_nodes[-1].output_tensors)[0]
+        ]
         self.inputs = layer_utils.get_source_inputs(self.outputs[0])
 
     elif self.outputs:
@@ -192,6 +191,8 @@ class Sequential(Model):
     if self._layers:
       self._track_layers(self._layers)
 
+    self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
+
   @checkpointable.no_automatic_dependency_tracking
   def pop(self):
     """Removes the last layer in the model.
@@ -202,7 +203,8 @@ class Sequential(Model):
     if not self.layers:
       raise TypeError('There are no layers in the model.')
 
-    self._layers.pop()
+    layer = self._layers.pop()
+    self._layer_call_argspecs.pop(layer)
     if not self.layers:
       self.outputs = None
       self.inputs = None
@@ -225,42 +227,31 @@ class Sequential(Model):
       super(Sequential, self).build(input_shape)
     self.built = True
 
-  def call(self, inputs, training=None, mask=None):
+  def call(self, inputs, training=None, mask=None):  # pylint: disable=redefined-outer-name
     if self._is_graph_network:
+      if not self.built:
+        self._init_graph_network(self.inputs, self.outputs, name=self.name)
       return super(Sequential, self).call(inputs, training=training, mask=mask)
 
-    outputs, _ = self._call_and_compute_mask(
-        inputs, training=training, mask=mask)
-    return outputs
-
-  def _call_and_compute_mask(self, inputs, training=None, mask=None):
-    if not self.built and self._is_graph_network:
-      self._init_graph_network(self.inputs, self.outputs, name=self.name)
-
-    x = inputs
+    outputs = inputs  # handle the corner case where self.layers is empty
     for layer in self.layers:
+      # During each iteration, `inputs` are the inputs to `layer`, and `outputs`
+      # are the outputs of `layer` applied to `inputs`. At the end of each
+      # iteration `inputs` is set to `outputs` to prepare for the next layer.
       kwargs = {}
-      if 'mask' in tf_inspect.getfullargspec(layer.call).args:
+      argspec = self._layer_call_argspecs[layer].args
+      if 'mask' in argspec:
         kwargs['mask'] = mask
-      if 'training' in tf_inspect.getfullargspec(layer.call).args:
+      if 'training' in argspec:
         kwargs['training'] = training
 
-      if isinstance(layer, Network) and layer._compute_output_and_mask_jointly:
-        x, mask = layer._call_and_compute_mask(x, **kwargs)
-      else:
-        if not layer.built:
-          # Build layer if applicable.
-          with ops.name_scope(layer._name_scope()):
-            layer._maybe_build(x)
-          layer.built = True
-        x = layer.call(x, **kwargs)
-        if layer.supports_masking:
-          mask = layer.compute_mask(x, mask)
-        else:
-          mask = None
-      if not context.executing_eagerly():
-        x._keras_mask = mask
-    return x, mask
+      outputs = layer(inputs, **kwargs)
+
+      # `outputs` will be the inputs to the next layer.
+      inputs = outputs
+      mask = outputs._keras_mask
+
+    return outputs
 
   def compute_output_shape(self, input_shape):
     shape = input_shape
@@ -269,8 +260,11 @@ class Sequential(Model):
     return shape
 
   def compute_mask(self, inputs, mask):
-    _, mask = self._call_and_compute_mask(inputs, mask=mask)
-    return mask
+    # TODO(omalleyt): b/123540974 This function is not really safe to call
+    # by itself because it will duplicate any updates and losses in graph
+    # mode by `call`ing the Layers again.
+    outputs = self.call(inputs, mask=mask)
+    return outputs._keras_mask
 
   def predict_proba(self, x, batch_size=32, verbose=0):
     """Generates class probability predictions for the input samples.

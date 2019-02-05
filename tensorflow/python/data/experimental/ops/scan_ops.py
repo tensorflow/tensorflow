@@ -33,7 +33,6 @@ class _ScanDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, initial_state, scan_func):
     """See `scan()` for details."""
-    super(_ScanDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
 
     with ops.name_scope("initial_state"):
@@ -126,20 +125,18 @@ class _ScanDataset(dataset_ops.UnaryDataset):
 
     self._scan_func = wrapped_func
     self._scan_func.function.add_to_graph(ops.get_default_graph())
-
-  def _functions(self):
-    return [self._scan_func]
-
-  def _as_variant_tensor(self):
     # pylint: disable=protected-access
-    input_t = self._input_dataset._as_variant_tensor()
-    return gen_experimental_dataset_ops.experimental_scan_dataset(
-        input_t,
+    variant_tensor = gen_experimental_dataset_ops.experimental_scan_dataset(
+        self._input_dataset._variant_tensor,
         self._state_structure._to_tensor_list(self._initial_state),
         self._scan_func.function.captured_inputs,
         f=self._scan_func.function,
         preserve_cardinality=True,
         **dataset_ops.flat_structure(self))
+    super(_ScanDataset, self).__init__(input_dataset, variant_tensor)
+
+  def _functions(self):
+    return [self._scan_func]
 
   @property
   def _element_structure(self):

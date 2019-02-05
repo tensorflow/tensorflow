@@ -99,13 +99,6 @@ REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
 
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(TensorList, TensorList::kTypeName);
 
-Status TensorListShape(const TensorList& t, TensorShape* s) {
-  *s = TensorShape({});
-  return Status::OK();
-}
-
-REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(TensorList, TensorListShape);
-
 bool TensorList::Decode(const VariantTensorData& data) {
   // TODO(srbs): Change the signature to Decode(VariantTensorData data) so
   // that we do not have to copy each tensor individually below. This would
@@ -155,6 +148,7 @@ Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
   if (t.shape() == TensorShape({})) {
     if ((t.dtype() == DT_INT32 && t.scalar<int32>()() == -1) ||
         (t.dtype() == DT_INT64 && t.scalar<int64>()() == -1)) {
+      *out = PartialTensorShape();
       return Status::OK();
     }
     return errors::InvalidArgument(
@@ -171,6 +165,17 @@ Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
   return errors::InvalidArgument(
       "Expected an int32 or int64 shape tensor; found ",
       DataTypeString(t.dtype()));
+}
+
+Status GetElementShapeFromInput(OpKernelContext* c,
+                                const TensorList& tensor_list, int index,
+                                PartialTensorShape* element_shape) {
+  TF_RETURN_IF_ERROR(TensorShapeFromTensor(c->input(index), element_shape));
+  // Check that `element_shape` and `tensor_list.element_shape` are
+  // compatible and store the merged shape in `element_shape`.
+  PartialTensorShape tmp = *element_shape;
+  TF_RETURN_IF_ERROR(tmp.MergeWith(tensor_list.element_shape, element_shape));
+  return Status::OK();
 }
 
 class EmptyTensorList : public OpKernel {
@@ -259,14 +264,21 @@ class TensorListPushBack : public OpKernel {
                                   " max_num_elements: ", l->max_num_elements));
     }
 
-    TensorList output;
-    output = *l;
-    output.tensors.push_back(input);
-    Tensor* result;
     AllocatorAttributes attr;
     attr.set_on_host(true);
-    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result, attr));
-    result->scalar<Variant>()() = std::move(output);
+    std::unique_ptr<Tensor> maybe_result = c->forward_input(
+        0, 0, DT_VARIANT, TensorShape{}, c->input_memory_type(0), attr);
+    if (maybe_result != nullptr) {
+      maybe_result->scalar<Variant>()().get<TensorList>()->tensors.push_back(
+          input);
+    } else {
+      Tensor* result;
+      OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result, attr));
+      TensorList output;
+      output = *l;
+      output.tensors.push_back(input);
+      result->scalar<Variant>()() = std::move(output);
+    }
   }
 
  private:
@@ -351,63 +363,6 @@ class TensorListElementShape : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListElementShape").Device(DEVICE_CPU),
                         TensorListElementShape);
 
-#if GOOGLE_CUDA
-
-REGISTER_KERNEL_BUILDER(Name("TensorListElementShape")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("element_shape"),
-                        TensorListElementShape);
-
-#endif  // GOOGLE_CUDA
-
-class TensorListPopBack : public OpKernel {
- public:
-  explicit TensorListPopBack(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
-  }
-
-  ~TensorListPopBack() override {}
-
-  void Compute(OpKernelContext* c) override {
-    const TensorList* l = c->input(0).scalar<Variant>()().get<TensorList>();
-    OP_REQUIRES(c, l != nullptr,
-                errors::InvalidArgument(
-                    "Input handle is not a list. Saw: '",
-                    c->input(0).scalar<Variant>()().DebugString(), "'"));
-    OP_REQUIRES(c, element_dtype_ == l->element_dtype,
-                errors::InvalidArgument("Invalid data types; op elements ",
-                                        DataTypeString(element_dtype_),
-                                        " but list elements ",
-                                        DataTypeString(l->element_dtype)));
-
-    OP_REQUIRES(c, !l->tensors.empty(),
-                errors::InvalidArgument("Trying to pop from an empty list."));
-
-    c->set_output(1, l->tensors.back());
-    TensorList output;
-    output = *l;
-    output.tensors.pop_back();
-    Tensor* result;
-    AllocatorAttributes attr;
-    attr.set_on_host(true);
-    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result, attr));
-    result->scalar<Variant>()() = std::move(output);
-  }
-
- private:
-  DataType element_dtype_;
-};
-
-REGISTER_KERNEL_BUILDER(Name("TensorListPopBack").Device(DEVICE_CPU),
-                        TensorListPopBack);
-
-#if GOOGLE_CUDA
-
-REGISTER_KERNEL_BUILDER(Name("TensorListPopBack").Device(DEVICE_GPU),
-                        TensorListPopBack);
-
-#endif  // GOOGLE_CUDA
-
 class TensorListReserve : public OpKernel {
  public:
   explicit TensorListReserve(OpKernelConstruction* c) : OpKernel(c) {
@@ -445,57 +400,62 @@ REGISTER_KERNEL_BUILDER(Name("TensorListReserve")
                         TensorListReserve);
 
 #endif  // GOOGLE_CUDA
-
-class TensorListGetItem : public OpKernel {
+class TensorListResize : public OpKernel {
  public:
-  explicit TensorListGetItem(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
-  }
+  explicit TensorListResize(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* c) override {
-    OP_REQUIRES(
-        c, c->input(0).shape().num_elements() == 1,
-        errors::InvalidArgument("List tensors are supposed to be scalars."));
-    const TensorList* l = c->input(0).scalar<Variant>()().get<TensorList>();
-    OP_REQUIRES(c, l != nullptr,
+    const TensorList* input_list =
+        c->input(0).scalar<Variant>()().get<TensorList>();
+    OP_REQUIRES(c, input_list != nullptr,
                 errors::InvalidArgument(
                     "Input handle is not a list. Saw: '",
                     c->input(0).scalar<Variant>()().DebugString(), "'"));
-    OP_REQUIRES(c, element_dtype_ == l->element_dtype,
-                errors::InvalidArgument("Invalid data types; op elements ",
-                                        DataTypeString(element_dtype_),
-                                        " but list elements ",
-                                        DataTypeString(l->element_dtype)));
-    int32 index = c->input(1).scalar<int32>()();
-    OP_REQUIRES(c, index < l->tensors.size(),
-                errors::InvalidArgument("Trying to access element ", index,
-                                        " in a list with ", l->tensors.size(),
-                                        " elements."));
-    c->set_output(0, l->tensors[index]);
-  }
+    int32 size = c->input(1).scalar<int32>()();
+    OP_REQUIRES(
+        c, size >= 0,
+        errors::InvalidArgument(
+            "TensorListSlice expects size to be non-negative. Got: ", size));
 
- private:
-  DataType element_dtype_;
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    std::unique_ptr<Tensor> maybe_result = c->forward_input(
+        0, 0, DT_VARIANT, TensorShape{}, c->input_memory_type(0), attr);
+    if (maybe_result != nullptr) {
+      maybe_result->scalar<Variant>()().get<TensorList>()->tensors.resize(
+          size, Tensor(DT_INVALID));
+    } else {
+      Tensor* result;
+      OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result, attr));
+      TensorList output_list;
+      output_list.element_shape = input_list->element_shape;
+      output_list.element_dtype = input_list->element_dtype;
+      output_list.max_num_elements = input_list->max_num_elements;
+      if (size > input_list->tensors.size()) {
+        output_list.tensors.insert(output_list.tensors.begin(),
+                                   input_list->tensors.begin(),
+                                   input_list->tensors.end());
+        // Add DT_INVALID tensors to the end of the list if the requested size
+        // is larger than the list length.
+        output_list.tensors.resize(size, Tensor(DT_INVALID));
+      } else {
+        output_list.tensors.insert(output_list.tensors.begin(),
+                                   input_list->tensors.begin(),
+                                   input_list->tensors.begin() + size);
+      }
+      result->scalar<Variant>()() = std::move(output_list);
+    }
+  }
 };
 
-REGISTER_KERNEL_BUILDER(Name("TensorListGetItem").Device(DEVICE_CPU),
-                        TensorListGetItem);
+REGISTER_KERNEL_BUILDER(Name("TensorListResize").Device(DEVICE_CPU),
+                        TensorListResize);
 
 #if GOOGLE_CUDA
 
-#define REGISTER_TENSOR_LIST_GET_ITEM_GPU(T)                      \
-  REGISTER_KERNEL_BUILDER(Name("TensorListGetItem")               \
-                              .TypeConstraint<T>("element_dtype") \
-                              .Device(DEVICE_GPU)                 \
-                              .HostMemory("index"),               \
-                          TensorListGetItem);
-
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_GET_ITEM_GPU);
-TF_CALL_complex64(REGISTER_TENSOR_LIST_GET_ITEM_GPU);
-TF_CALL_complex128(REGISTER_TENSOR_LIST_GET_ITEM_GPU);
-TF_CALL_int64(REGISTER_TENSOR_LIST_GET_ITEM_GPU);
-REGISTER_TENSOR_LIST_GET_ITEM_GPU(bfloat16)
-#undef REGISTER_TENSOR_LIST_GET_ITEM_GPU
+REGISTER_KERNEL_BUILDER(
+    Name("TensorListResize").Device(DEVICE_GPU).HostMemory("size"),
+    TensorListResize);
 
 #endif  // GOOGLE_CUDA
 
@@ -528,14 +488,21 @@ class TensorListSetItem : public OpKernel {
                     "list index. Item element shape: ",
                     value.shape().DebugString(),
                     " list shape: ", l->element_shape.DebugString()));
-    TensorList output;
-    output = *l;
-    output.tensors[index] = value;
-    Tensor* result;
     AllocatorAttributes attr;
     attr.set_on_host(true);
-    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result, attr));
-    result->scalar<Variant>()() = std::move(output);
+    std::unique_ptr<Tensor> maybe_result = c->forward_input(
+        0, 0, DT_VARIANT, TensorShape{}, c->input_memory_type(0), attr);
+    if (maybe_result != nullptr) {
+      maybe_result->scalar<Variant>()().get<TensorList>()->tensors[index] =
+          value;
+    } else {
+      TensorList output;
+      output = *l;
+      output.tensors[index] = value;
+      Tensor* result;
+      OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result, attr));
+      result->scalar<Variant>()() = std::move(output);
+    }
   }
 
  private:
@@ -557,6 +524,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorListSetItem").Device(DEVICE_CPU),
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
 TF_CALL_complex64(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
 TF_CALL_complex128(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
+TF_CALL_int32(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
 TF_CALL_int64(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
 REGISTER_TENSOR_LIST_SET_ITEM_GPU(bfloat16)
 #undef REGISTER_TENSOR_LIST_SET_ITEM_GPU
@@ -656,23 +624,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_GPU),
 
 #endif  // GOOGLE_CUDA
 
-#define REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(T)               \
-  REGISTER_KERNEL_BUILDER(Name("TensorListPushBackBatch")         \
-                              .TypeConstraint<T>("element_dtype") \
-                              .Device(DEVICE_CPU),                \
-                          TensorListPushBackBatch<CPUDevice, T>)
-
-TF_CALL_ALL_TYPES(REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU);
-REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(quint8);
-REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(qint8);
-REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(quint16);
-REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(qint16);
-REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(qint32);
-REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(bfloat16);
-
-#undef REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU
-
-#define REGISTER_TENSOR_LIST_STACK_CPU(T)                         \
+#define REGISTER_TENSOR_LIST_OPS_CPU(T)                           \
   REGISTER_KERNEL_BUILDER(Name("TensorListStack")                 \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_CPU),                \
@@ -684,19 +636,19 @@ REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(bfloat16);
   REGISTER_KERNEL_BUILDER(Name("TensorListConcat")                \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_CPU),                \
-                          TensorListConcat<CPUDevice, T>)
-
-TF_CALL_POD_STRING_TYPES(REGISTER_TENSOR_LIST_STACK_CPU);
-REGISTER_TENSOR_LIST_STACK_CPU(quint8);
-REGISTER_TENSOR_LIST_STACK_CPU(qint8);
-REGISTER_TENSOR_LIST_STACK_CPU(quint16);
-REGISTER_TENSOR_LIST_STACK_CPU(qint16);
-REGISTER_TENSOR_LIST_STACK_CPU(qint32);
-REGISTER_TENSOR_LIST_STACK_CPU(bfloat16);
-
-#undef REGISTER_TENSOR_LIST_STACK_CPU
-
-#define REGISTER_TENSOR_LIST_FROM_TENSOR_CPU(T)                   \
+                          TensorListConcat<CPUDevice, T>)         \
+  REGISTER_KERNEL_BUILDER(Name("TensorListConcatV2")              \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_CPU),                \
+                          TensorListConcat<CPUDevice, T>)         \
+  REGISTER_KERNEL_BUILDER(Name("TensorListGetItem")               \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_CPU),                \
+                          TensorListGetItem<CPUDevice, T>)        \
+  REGISTER_KERNEL_BUILDER(Name("TensorListPopBack")               \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_CPU),                \
+                          TensorListPopBack<CPUDevice, T>)        \
   REGISTER_KERNEL_BUILDER(Name("TensorListFromTensor")            \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_CPU),                \
@@ -705,20 +657,31 @@ REGISTER_TENSOR_LIST_STACK_CPU(bfloat16);
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_CPU),                \
                           TensorListScatter<CPUDevice, T>)        \
+  REGISTER_KERNEL_BUILDER(Name("TensorListScatterV2")             \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_CPU),                \
+                          TensorListScatter<CPUDevice, T>)        \
   REGISTER_KERNEL_BUILDER(Name("TensorListSplit")                 \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_CPU),                \
-                          TensorListSplit<CPUDevice, T>)
+                          TensorListSplit<CPUDevice, T>)          \
+  REGISTER_KERNEL_BUILDER(Name("TensorListPushBackBatch")         \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_CPU),                \
+                          TensorListPushBackBatch<CPUDevice, T>)
 
-TF_CALL_POD_STRING_TYPES(REGISTER_TENSOR_LIST_FROM_TENSOR_CPU);
-REGISTER_TENSOR_LIST_FROM_TENSOR_CPU(quint8);
-REGISTER_TENSOR_LIST_FROM_TENSOR_CPU(qint8);
-REGISTER_TENSOR_LIST_FROM_TENSOR_CPU(quint16);
-REGISTER_TENSOR_LIST_FROM_TENSOR_CPU(qint16);
-REGISTER_TENSOR_LIST_FROM_TENSOR_CPU(qint32);
-REGISTER_TENSOR_LIST_FROM_TENSOR_CPU(bfloat16);
+TF_CALL_POD_STRING_TYPES(REGISTER_TENSOR_LIST_OPS_CPU);
+REGISTER_TENSOR_LIST_OPS_CPU(quint8);
+REGISTER_TENSOR_LIST_OPS_CPU(qint8);
+REGISTER_TENSOR_LIST_OPS_CPU(quint16);
+REGISTER_TENSOR_LIST_OPS_CPU(qint16);
+REGISTER_TENSOR_LIST_OPS_CPU(qint32);
+REGISTER_TENSOR_LIST_OPS_CPU(bfloat16);
+REGISTER_TENSOR_LIST_OPS_CPU(Variant);
 
-#undef REGISTER_TENSOR_LIST_FROM_TENSOR_CPU
+#undef REGISTER_TENSOR_LIST_OPS_CPU
+
+#define REGISTER_TENSOR_LIST_OPS_CPU(T)
 
 REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_CPU,
                                           TensorList,

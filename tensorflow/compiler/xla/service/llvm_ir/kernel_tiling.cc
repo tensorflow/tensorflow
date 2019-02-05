@@ -120,10 +120,11 @@ KernelMappingScheme::KernelMappingScheme(
     absl::Span<const int64> req_block_sizes, int64 num_threads_y,
     int64 num_threads_x, llvm::IRBuilder<>* b)
     : b_(b),
-      dims_in_elems_(dims_in_elems),
+      dims_in_elems_(dims_in_elems.begin(), dims_in_elems.end()),
       tile_sizes_{1, tile_size_y, tile_size_x},
       num_threads_x_(num_threads_x),
-      num_threads_y_(num_threads_y) {
+      num_threads_y_(num_threads_y),
+      dilated_x_(true) {
   DCHECK_EQ(dims_in_elems_.size(), 3);
   DCHECK_EQ(req_block_sizes.size(), 3);
 
@@ -170,14 +171,16 @@ IrArray::Index KernelMappingScheme::EmitBlockIndex(llvm::Type* index_ty) {
 
 IrArray::Index KernelMappingScheme::GetTileIndexForBlockOrigin(
     const IrArray::Index& block_index) {
-  IrArray::Index tile_index = block_index;
+  DCHECK_EQ(block_index.size(), block_sizes_.size());
+  std::vector<llvm::Value*> multidim;
+  multidim.reserve(block_sizes_.size());
   for (int i = 0; i < block_sizes_.size(); ++i) {
-    tile_index[i] = b_->CreateMul(
+    multidim.push_back(b_->CreateMul(
         block_index[i],
         llvm::ConstantInt::get(block_index[i]->getType(), block_sizes_[i]),
-        "block_origin." + std::to_string(i));
+        "block_origin." + std::to_string(i)));
   }
-  return tile_index;
+  return IrArray::Index(multidim, block_index[0]->getType());
 }
 
 IrArray::Index KernelMappingScheme::GetElementIndexForTileOrigin(
@@ -217,14 +220,14 @@ KernelMappingScheme::EmitThreadYXCoordinate(llvm::Type* index_ty) {
   // defined by (num_thread_y, num_thread_x) from thread_id.
   llvm::CallInst* thread_id_raw = llvm_ir::EmitCallToIntrinsic(
       llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, b_);
-  llvm_ir::AddRangeMetadata(0, GetThreadsPerTile(), thread_id_raw);
+  llvm_ir::AddRangeMetadata(0, GetThreadsPerBlock(), thread_id_raw);
   llvm::Value* thread_id_int =
       b_->CreateIntCast(thread_id_raw, index_ty,
                         /*isSigned=*/true, "thread.id.x");
   llvm::Value* num_thread_x =
       llvm::ConstantInt::get(index_ty, GetNumberOfThreadsForDimensionX());
-  llvm::Value* x = b_->CreateURem(thread_id_int, num_thread_x);
-  llvm::Value* y = b_->CreateUDiv(thread_id_int, num_thread_x);
+  llvm::Value* x = b_->CreateURem(thread_id_int, num_thread_x, "thread.x");
+  llvm::Value* y = b_->CreateUDiv(thread_id_int, num_thread_x, "thread.y");
   return std::make_tuple(y, x);
 }
 

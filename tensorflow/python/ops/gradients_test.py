@@ -45,6 +45,7 @@ from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import functional_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
@@ -1027,7 +1028,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
           conditional, lambda: alpha * 2, lambda: alpha * 3)
 
       g, = gradients_impl.gradients(output, alpha)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllEqual(g.eval(), [2.0])
       self.assertAllEqual(g.eval(feed_dict={conditional: False}), [3.0])
 
@@ -1040,12 +1041,12 @@ class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
         self.evaluate(ops.convert_to_tensor(right)))
 
   def testNoGradients(self):
-    self.assertIsNone(gradients_impl._AggregateIndexedSlicesGradients([]))
+    self.assertIsNone(gradients_util._AggregateIndexedSlicesGradients([]))
 
   def testOneGradient(self):
     t = math_ops._as_indexed_slices(constant_op.constant(
         [[1., 2.], [0, 0], [3., 4.]]))
-    result = gradients_impl._AggregateIndexedSlicesGradients([t])
+    result = gradients_util._AggregateIndexedSlicesGradients([t])
     self._assert_indexed_slices_equal(t, result)
 
   def testMultipleGradients(self):
@@ -1055,7 +1056,7 @@ class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
         [[0., 0.], [5, 6], [7., 8.]]))
     total = constant_op.constant(
         [[1., 2.], [5, 6], [10., 12.]])
-    result = gradients_impl._AggregateIndexedSlicesGradients([t0, t1])
+    result = gradients_util._AggregateIndexedSlicesGradients([t0, t1])
     self._assert_indexed_slices_equal(total, result)
 
   def testMultipleGradientsWithNones(self):
@@ -1066,7 +1067,7 @@ class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
     t3 = None
     total = constant_op.constant(
         [[1., 2.], [5, 6], [10., 12.]])
-    result = gradients_impl._AggregateIndexedSlicesGradients([t0, t1, t3])
+    result = gradients_util._AggregateIndexedSlicesGradients([t0, t1, t3])
     self._assert_indexed_slices_equal(total, result)
 
   def testMixedTensorAndIndexedSlices(self):
@@ -1076,7 +1077,7 @@ class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
         [[0., 0.], [5, 6], [7., 8.]])
     total = constant_op.constant(
         [[1., 2.], [5, 6], [10., 12.]])
-    result = gradients_impl._AggregateIndexedSlicesGradients([t0, t1])
+    result = gradients_util._AggregateIndexedSlicesGradients([t0, t1])
     self._assert_indexed_slices_equal(total, result)
 
 

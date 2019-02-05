@@ -21,16 +21,17 @@ from __future__ import print_function
 
 import collections
 
+import numpy as np
+
 from tensorflow.python.eager.backprop import GradientTape
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import losses as losses_module
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import nest
 
 
 def _eager_loss_fn(outputs, targets, loss_fn, output_name):
@@ -59,8 +60,8 @@ def _eager_metrics_fn(model,
   Returns:
       Returns the metric results for each output of the model.
   """
-  outputs = generic_utils.to_list(outputs)
-  targets = generic_utils.to_list(targets)
+  outputs = nest.flatten(outputs)
+  targets = nest.flatten(targets)
   # TODO(psv): Consider supporting skip target indices in eager mode?
   metric_results = model._handle_metrics(
       outputs,
@@ -102,17 +103,18 @@ def _model_loss(model,
   if len(inputs) == 1 and not isinstance(inputs, dict):
     inputs = inputs[0]
 
-  if model._compute_output_and_mask_jointly:
-    outs, masks = model._call_and_compute_mask(inputs, **kwargs)
-    masks = generic_utils.to_list(masks)
-  else:
-    outs = model.call(inputs, **kwargs)
-    masks = None
+  # Allow mixed `NumPy` and `EagerTensor` input here.
+  if any(
+      isinstance(input_t, (np.ndarray, float, int))
+      for input_t in nest.flatten(inputs)):
+    inputs = nest.map_structure(ops.convert_to_tensor, inputs)
 
-  outs = generic_utils.to_list(outs)
-  if masks is None:
-    masks = [None for _ in outs]
-  targets = generic_utils.to_list(targets)
+  outs = model(inputs, **kwargs)
+
+  outs = nest.flatten(outs)
+  # `None` by default for `EagerTensors`.
+  masks = [t._keras_mask for t in outs]
+  targets = nest.flatten(targets)
 
   loss_metrics = []
   aggregated_loss_metrics = []
@@ -124,22 +126,16 @@ def _model_loss(model,
         weights = None
       mask = masks[i]
       with backend.name_scope(model.output_names[i] + '_loss'):
-        if isinstance(loss_fn, losses_module.Loss):
-          if mask is not None:
-            mask = math_ops.cast(mask, outs[i].dtype)
-            # Update weights with mask.
-            if weights is None:
-              weights = mask
-            else:
-              # Update dimensions of weights to match with mask if possible.
-              mask, _, weights = squeeze_or_expand_dimensions(
-                  mask, None, weights)
-              weights *= mask
-          output_loss = loss_fn(targets[i], outs[i], sample_weight=weights)
-        else:
-          weighted_masked_fn = training_utils.weighted_masked_objective(loss_fn)
-          output_loss = weighted_masked_fn(
-              targets[i], outs[i], weights, mask=mask)
+        if mask is not None:
+          mask = math_ops.cast(mask, outs[i].dtype)
+          # Update weights with mask.
+          if weights is None:
+            weights = mask
+          else:
+            # Update dimensions of weights to match with mask if possible.
+            mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
+            weights *= mask
+        output_loss = loss_fn(targets[i], outs[i], sample_weight=weights)
 
       # If the number of outputs is 1 then we don't append the loss metric
       # associated with each model output. When there are multiple outputs
@@ -202,7 +198,7 @@ def _process_single_batch(model,
   Raises:
       ValueError: If the model has no loss to optimize.
   """
-  with backend.learning_phase_scope(1 if training else 0):
+  with backend.eager_learning_phase_scope(1 if training else 0):
     with GradientTape() as tape:
       outs, loss, loss_metrics, aggregated_loss_metrics, masks\
         = _model_loss(
@@ -267,7 +263,7 @@ def train_on_batch(model, inputs, targets, sample_weights=None):
       sample_weights=sample_weights,
       masks=masks,
       return_stateful_result=True)
-  loss = generic_utils.to_list(loss)
+  loss = nest.flatten(loss)
 
   return [
       tensor_util.constant_value(v)
@@ -314,7 +310,7 @@ def test_on_batch(model, inputs, targets, sample_weights=None):
       sample_weights=sample_weights,
       masks=masks,
       return_stateful_result=True)
-  loss = generic_utils.to_list(loss)
+  loss = nest.flatten(loss)
 
   return [
       tensor_util.constant_value(v)

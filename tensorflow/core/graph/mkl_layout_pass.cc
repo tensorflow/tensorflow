@@ -258,9 +258,16 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.conv3d = "Conv3D";
     csinfo_.conv3d_grad_input = "Conv3DBackpropInputV2";
     csinfo_.conv3d_grad_filter = "Conv3DBackpropFilterV2";
+    csinfo_.depthwise_conv2d = "DepthwiseConv2dNative";
+    csinfo_.depthwise_conv2d_grad_input = "DepthwiseConv2dNativeBackpropInput";
+    csinfo_.depthwise_conv2d_grad_filter =
+        "DepthwiseConv2dNativeBackpropFilter";
     csinfo_.fused_batch_norm = "FusedBatchNorm";
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
+    csinfo_.fused_conv2d = "_FusedConv2D";
     csinfo_.identity = "Identity";
+    csinfo_.leakyrelu = "LeakyRelu";
+    csinfo_.leakyrelu_grad = "LeakyReluGrad";
     csinfo_.lrn = "LRN";
     csinfo_.lrn_grad = "LRNGrad";
     csinfo_.matmul = "MatMul";
@@ -274,9 +281,16 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mkl_conv2d_with_bias = "_MklConv2DWithBias";
     csinfo_.mkl_conv2d_grad_filter_with_bias =
         "_MklConv2DBackpropFilterWithBias";
+    csinfo_.mkl_depthwise_conv2d_grad_input =
+        "_MklDepthwiseConv2dNativeBackpropInput";
+    csinfo_.mkl_depthwise_conv2d_grad_filter =
+        "_MklDepthwiseConv2dNativeBackpropFilter";
+    csinfo_.mkl_fused_conv2d = "_MklFusedConv2D";
     csinfo_.mkl_pad_with_conv2d = "_MklPadWithConv2D";
+    csinfo_.mkl_pad_with_fused_conv2d = "_MklPadWithFusedConv2D";
     csinfo_.pad = "Pad";
     csinfo_.pad_with_conv2d = "__MklDummyPadWithConv2D";
+    csinfo_.pad_with_fused_conv2d = "__MklDummyPadWithFusedConv2D";
 // Temporarily don't convert quantized operators into MKL versions for now.
 // TODO(Intel-tf) Once all the relevant PRs have been merged then remove
 // the ifdef.
@@ -352,9 +366,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsConcatV2, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d),
-                      CopyAttrsConv, AlwaysRewrite});
+                      CopyAttrsConvCheckConstFilter, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_with_bias, csinfo_.mkl_conv2d_with_bias,
-                      CopyAttrsConv, AlwaysRewrite});
+                      CopyAttrsConvCheckConstFilter, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_grad_filter,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d_grad_filter),
                       CopyAttrsConv, AlwaysRewrite});
@@ -366,13 +380,24 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsConv, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv3d,
                       mkl_op_registry::GetMklOpName(csinfo_.conv3d),
-                      CopyAttrsConv, AlwaysRewrite});
+                      CopyAttrsConvCheckConstFilter, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv3d_grad_filter,
                       mkl_op_registry::GetMklOpName(csinfo_.conv3d_grad_filter),
                       CopyAttrsConv, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv3d_grad_input,
                       mkl_op_registry::GetMklOpName(csinfo_.conv3d_grad_input),
                       CopyAttrsConv, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.depthwise_conv2d,
+                      mkl_op_registry::GetMklOpName(csinfo_.depthwise_conv2d),
+                      CopyAttrsConv2DDepthwiseCheckConstFilter, AlwaysRewrite});
+    rinfo_.push_back(
+        {csinfo_.depthwise_conv2d_grad_input,
+         mkl_op_registry::GetMklOpName(csinfo_.depthwise_conv2d_grad_input),
+         CopyAttrsConv2DDepthwise, AlwaysRewrite});
+    rinfo_.push_back(
+        {csinfo_.depthwise_conv2d_grad_filter,
+         mkl_op_registry::GetMklOpName(csinfo_.depthwise_conv2d_grad_filter),
+         CopyAttrsConv2DDepthwise, AlwaysRewrite});
     rinfo_.push_back({csinfo_.fused_batch_norm,
                       mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm),
                       CopyAttrsFusedBatchNorm, AlwaysRewrite});
@@ -380,6 +405,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         {csinfo_.fused_batch_norm_grad,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad),
          CopyAttrsFusedBatchNorm, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.fused_conv2d, csinfo_.mkl_fused_conv2d,
+                      CopyAttrsFusedConv2D, FusedConv2DRewrite});
     rinfo_.push_back({csinfo_.identity,
                       mkl_op_registry::GetMklOpName(csinfo_.identity),
                       CopyAttrsDataType, AlwaysRewrite});
@@ -388,6 +415,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.lrn_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.lrn_grad),
                       CopyAttrsLRN, LrnGradRewrite});
+    rinfo_.push_back({csinfo_.leakyrelu,
+                      mkl_op_registry::GetMklOpName(csinfo_.leakyrelu),
+                      CopyAttrsLeakyRelu, LeakyReluRewrite});
+    rinfo_.push_back({csinfo_.leakyrelu_grad,
+                      mkl_op_registry::GetMklOpName(csinfo_.leakyrelu_grad),
+                      CopyAttrsLeakyRelu, LeakyReluRewrite});
     rinfo_.push_back({csinfo_.max_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool),
                       CopyAttrsPooling, NonDepthBatchWisePoolRewrite});
@@ -407,6 +440,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.pad_with_conv2d, csinfo_.mkl_pad_with_conv2d,
                       CopyAttrsPadWithConv2D, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.pad_with_fused_conv2d,
+                      csinfo_.mkl_pad_with_fused_conv2d,
+                      CopyAttrsPadWithFusedConv2D, AlwaysRewrite});
 #ifdef INTEL_MKL_QUANTIZED
     rinfo_.push_back({csinfo_.quantized_avg_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_avg_pool),
@@ -517,10 +553,13 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     minfo_.push_back({csinfo_.conv2d_grad_filter, csinfo_.bias_add_grad,
                       csinfo_.conv2d_grad_filter_with_bias,
                       GetConv2DBackpropFilterOrBiasAddGrad});
-    minfo_.push_back(
-        {csinfo_.pad, csinfo_.conv2d, csinfo_.pad_with_conv2d, GetPadOrConv2D});
     // Merge Pad and Conv2d, only if the pad op is "Pad"
     // Doesn't merge if pad op is "PadV2" or "MirrorPad"
+    minfo_.push_back(
+        {csinfo_.pad, csinfo_.conv2d, csinfo_.pad_with_conv2d, GetPadOrConv2D});
+
+    minfo_.push_back({csinfo_.pad, csinfo_.fused_conv2d,
+                      csinfo_.pad_with_fused_conv2d, GetPadOrFusedConv2D});
 
     // The fusion patterns in "finfo_" that show up first will get applied
     // first, for example, graph "A->B->C-D" and finfo_ is {A->B->C to ABC,
@@ -663,9 +702,15 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string conv3d;
     string conv3d_grad_input;
     string conv3d_grad_filter;
+    string depthwise_conv2d;
+    string depthwise_conv2d_grad_input;
+    string depthwise_conv2d_grad_filter;
     string fused_batch_norm;
     string fused_batch_norm_grad;
+    string fused_conv2d;
     string identity;
+    string leakyrelu;
+    string leakyrelu_grad;
     string lrn;
     string lrn_grad;
     string matmul;
@@ -679,10 +724,15 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string mkl_conv2d_grad_filter;
     string mkl_conv2d_grad_filter_with_bias;
     string mkl_conv2d_with_bias;
+    string mkl_depthwise_conv2d_grad_input;
+    string mkl_depthwise_conv2d_grad_filter;
+    string mkl_fused_conv2d;
     string mkl_pad_with_conv2d;
+    string mkl_pad_with_fused_conv2d;
     string mul;
     string pad;
     string pad_with_conv2d;
+    string pad_with_fused_conv2d;
     string quantized_avg_pool;
     string quantized_conv2d;
     string quantized_conv2d_with_requantize;
@@ -822,6 +872,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     CHECK_NOTNULL(m);
     Node* n = nullptr;
 
+    DataType T_m;
+    TF_CHECK_OK(GetNodeAttr(m->def(), "T", &T_m));
+
+    // Don't try to merge if datatype is not DT_FLOAT
+    if (T_m != DT_FLOAT) return n;
+
     if (m->type_string() == csinfo_.bias_add) {
       // If a is BiasAdd, then Conv2D is 0th input of BiasAdd.
       TF_CHECK_OK(m->input_node(0, &n));
@@ -855,6 +911,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static Node* GetPadOrConv2D(const Node* m) {
     DCHECK(m);
     Node* n = nullptr;
+
+    DataType T_m;
+    TF_CHECK_OK(GetNodeAttr(m->def(), "T", &T_m));
+
+    // Don't try to merge if datatype is not DT_FLOAT
+    if (T_m != DT_FLOAT) return n;
 
     const Node* conv_node;
     if (m->type_string() == csinfo_.pad) {
@@ -896,6 +958,59 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     return n;
   }
+
+  // Find Pad or _FusedConv2D node that can be merged with input node 'm'.
+  // If input 'm' is Pad, then check if there exists _FusedConv2D node that can
+  // be merged with 'm'. If input 'm' is _FusedConv2D, then check if there
+  // exists Pad node that can be merged with 'm'.
+  static Node* GetPadOrFusedConv2D(const Node* m) {
+    DCHECK(m);
+    Node* n = nullptr;
+
+    const Node* conv_node;
+    if (m->type_string() == csinfo_.pad) {
+      // If m is Pad, then _FusedConv2D is the output of Pad.
+      for (const Edge* e : m->out_edges()) {
+        if (!e->IsControlEdge() &&
+            e->dst()->type_string() == csinfo_.fused_conv2d) {
+          n = e->dst();
+          conv_node = n;
+          break;
+        }
+      }
+    } else {
+      DCHECK_EQ(m->type_string(), csinfo_.fused_conv2d);
+      // If m is _FusedConv2D, Go over all input edges
+      // and search for Pad node.
+      for (const Edge* e : m->in_edges()) {
+        if (!e->IsControlEdge() && e->src()->type_string() == csinfo_.pad) {
+          n = e->src();
+          conv_node = m;
+          break;
+        }
+      }
+    }
+    // Check if only VALID type of padding is used or not.
+    if (n != nullptr) {
+      string padding;
+      TF_CHECK_OK(GetNodeAttr(conv_node->def(), "padding", &padding));
+      if (padding != "VALID") {
+        // Then do not merge.
+        n = nullptr;
+        VLOG(1) << "MklLayoutRewritePass: Could match Pad and _FusedConv2D "
+                << "nodes but cannot merge them. Only conv ops with padding "
+                << "type VALID can be merged with Pad op Input node: "
+                << m->DebugString();
+      }
+    } else {
+      VLOG(1) << "MklLayoutRewritePass: Could not find matching "
+              << "Pad and _FusedConv2D node for merging. Input node: "
+              << m->DebugString();
+    }
+
+    return n;
+  }
+
   // Find Conv2DBackpropFilter or BiasAddGrad node that can be merged with input
   // node 'm'. If input 'm' is Conv2DBackpropFilter, then check if there exists
   // BiasAddGrad node that can be merged with 'm'. If input 'm' is BiasAddGrad,
@@ -913,6 +1028,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static Node* GetConv2DBackpropFilterOrBiasAddGrad(const Node* m) {
     CHECK_NOTNULL(m);
     Node* n = nullptr;
+
+    DataType T_m;
+    TF_CHECK_OK(GetNodeAttr(m->def(), "T", &T_m));
+
+    // Don't try to merge if datatype is not DT_FLOAT
+    if (T_m != DT_FLOAT) return n;
 
     if (m->type_string() == csinfo_.bias_add_grad) {
       // Get 1st input 'g' of BiasAddGrad.
@@ -1009,7 +1130,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
             e->dst_input() == kPermTensorIndex) {
           // we find the "perm" node, now try to retrieve its value.
           const TensorProto* proto = nullptr;
-          DCHECK(GetNodeAttr(perm_node->def(), "value", &proto).ok());
+          TF_CHECK_OK(GetNodeAttr(perm_node->def(), "value", &proto));
 
           DataType type;
           GetNodeAttr(perm_node->def(), "dtype", &type);
@@ -1142,6 +1263,30 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return do_rewrite;
   }
 
+  // MKL-DNN's LeakyRelu(feature) = feature          (if feature > 0), or
+  //                                feature * alpha  (otherwise),
+  // while TensorFlow's LeakyRelu(feature) = max(feature, feature * alpha).
+  // These two algorithms are not consistent when alpha > 1,
+  // so we only rewrite LeakyRelu to MKL OP when alpha <= 1.
+  static bool LeakyReluRewrite(const Node* n) {
+    DCHECK(n);
+
+    float alpha;
+    bool has_attr = GetNodeAttr(n->def(), "alpha", &alpha).ok();
+    DCHECK(has_attr);
+
+    // If the alpha of LeakyRelu is less than 1, rewrite the node.
+    // Otherwise eigen node is used instead.
+    if (alpha <= 1) {
+      return true;
+    }
+    VLOG(1) << "LeakyReluRewrite: The model sets alpha is greater than 1 "
+            << "which case is not optimized by Intel MKL, thus using Eigen op"
+            << "for LeakyRelu ";
+
+    return false;
+  }
+
   static bool MaxpoolGradRewrite(const Node* n) {
     CHECK_NOTNULL(n);
     bool do_rewrite = false;
@@ -1172,6 +1317,23 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     }
 
     return false;
+  }
+
+  static bool FusedConv2DRewrite(const Node* n) {
+    // MKL DNN currently doesn't support all fusions that grappler fuses
+    // together with Conv2D (ex. batchnorm). We rewrite _FusedConv2D only if
+    // it includes those we support.
+    DataType T;
+    if (!GetNodeAttr(n->def(), "T", &T).ok() ||
+        !mkl_op_registry::IsMklOp(csinfo_.mkl_fused_conv2d, T)) {
+      return false;
+    }
+
+    std::vector<string> fused_ops;
+    TF_CHECK_OK(GetNodeAttr(n->def(), "fused_ops", &fused_ops));
+    return (fused_ops == std::vector<string>{"BiasAdd"} ||
+            fused_ops == std::vector<string>{"Relu"} ||
+            fused_ops == std::vector<string>{"BiasAdd", "Relu"});
   }
 
   // Rewrites input node to a new node specified by its matching rewrite info.
@@ -1331,17 +1493,35 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                 bool change_format = false);
   static void CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
                             bool change_format = false);
+  static void CopyAttrsConv2DDepthwise(const Node* orig_node, NodeBuilder* nb,
+                                       bool change_format = false);
+  static void CopyAttrsConv2DDepthwiseCheckConstFilter(
+      const Node* orig_node, NodeBuilder* nb, bool change_format = false);
+  static void CopyAttrsConvCheckConstFilter(const Node* orig_node,
+                                            NodeBuilder* nb,
+                                            bool change_format = false);
   static void CopyAttrsDataType(const Node* orig_node, NodeBuilder* nb,
                                 bool change_format = false);
   static void CopyAttrsFusedBatchNorm(const Node* orig_node, NodeBuilder* nb,
                                       bool change_format = false);
+  static void CopyAttrsLeakyRelu(const Node* orig_node, NodeBuilder* nb,
+                                 bool change_format = false);
+  static void CopyAttrsFusedConv2D(const Node* orig_node, NodeBuilder* nb,
+                                   bool change_format = false);
   static void CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb,
                            bool change_format = false);
   static void CopyAttrsPadWithConv2D(const Node* orig_node, NodeBuilder* nb,
                                      bool change_format = false);
+  static void CopyAttrsPadWithFusedConv2D(const Node* orig_node,
+                                          NodeBuilder* nb,
+                                          bool change_format = false);
   static void CopyAttrsFromPadAndConv2D(const Node* orig_node1,
                                         const Node* orig_node2, NodeBuilder* nb,
                                         bool change_format = false);
+  static void CopyAttrsFromPadAndFusedConv2D(const Node* orig_node1,
+                                             const Node* orig_node2,
+                                             NodeBuilder* nb,
+                                             bool change_format = false);
   static void CopyAttrsPooling(const Node* orig_node, NodeBuilder* nb,
                                bool change_format = false);
   static void CopyAttrsQuantizedPooling(const Node* orig_node, NodeBuilder* nb,
@@ -1358,6 +1538,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                              bool change_format = false);
   static void CopyAttrsSplit(const Node* orig_node, NodeBuilder* nb,
                              bool change_format = false);
+  static void CopyFormatAttrsConv(const Node* orig_node, NodeBuilder* nb,
+                                  const std::vector<int32>& strides,
+                                  const std::vector<int32>& dilations,
+                                  bool change_format = false);
 
   // Generate a graph node in graph 'g' representing a dummy Mkl tensor node,
   // using node for original node 'orig_node' and return it in '*out'.
@@ -1554,12 +1738,14 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
     CHECK_NOTNULL(filter_node);
 
     // Now check which nodes receive from filter_node. Filter feeds as
-    // 2nd input (slot 1) of _MklConv2D and _MklConv2DWithBias.
+    // 2nd input (slot 1) of _MklConv2D, _MklConv2DWithBias, and
+    // _MklFusedConv2D.
     for (const Edge* e : filter_node->out_edges()) {
       if ((e->dst()->type_string() == csinfo_.mkl_conv2d ||
-           // add check for mkl_pad_with_conv2d
            e->dst()->type_string() == csinfo_.mkl_pad_with_conv2d ||
-           e->dst()->type_string() == csinfo_.mkl_conv2d_with_bias) &&
+           e->dst()->type_string() == csinfo_.mkl_pad_with_fused_conv2d ||
+           e->dst()->type_string() == csinfo_.mkl_conv2d_with_bias ||
+           e->dst()->type_string() == csinfo_.mkl_fused_conv2d) &&
           e->dst_input() == kConv2DFilterInputSlotIdx
           /* filter is 2nd input of Conv2D and _MklConv2D. */) {
         if (conv2d_node != nullptr) {
@@ -1860,10 +2046,35 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
 // Op-specific functions to copy attributes from old node to new node
 //////////////////////////////////////////////////////////////////////////
 
+void MklLayoutRewritePass::CopyAttrsConvCheckConstFilter(const Node* orig_node,
+                                                         NodeBuilder* nb,
+                                                         bool change_format) {
+  DataType T;
+  string padding;
+  std::vector<int32> strides;
+  std::vector<int32> dilations;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
+
+  Node* filter_node = nullptr;
+  orig_node->input_node(1, &filter_node);
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("padding", padding);
+  nb->Attr("is_filter_const", filter_node->IsConstant());
+
+  // Add attributes related to `data_format`.
+  CopyFormatAttrsConv(orig_node, nb, strides, dilations, change_format);
+}
+
 void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
                                          bool change_format) {
   DataType T;
-  string data_format;
   string padding;
   std::vector<int32> strides;
   std::vector<int32> dilations;
@@ -1878,40 +2089,8 @@ void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
   nb->Attr("T", T);
   nb->Attr("padding", padding);
 
-  if (!change_format) {
-    nb->Attr("strides", strides);
-    nb->Attr("dilations", dilations);
-
-    TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
-    nb->Attr("data_format", data_format);
-  } else {
-    std::vector<int32> new_strides;
-    std::vector<int32> new_dilations;
-    if (strides.size() == 5) {
-      // "strides" and "dilations" also need to be changed according to
-      // "data_format",
-      // in this case, is "NDHWC" to "NCDHW".
-      new_strides = {strides[NDHWC::dim::N], strides[NDHWC::dim::C],
-                     strides[NDHWC::dim::D], strides[NDHWC::dim::H],
-                     strides[NDHWC::dim::W]};
-
-      new_dilations = {dilations[NDHWC::dim::N], dilations[NDHWC::dim::C],
-                       dilations[NDHWC::dim::D], dilations[NDHWC::dim::H],
-                       dilations[NDHWC::dim::W]};
-    } else {
-      // "strides" and "dilations" also need to be changed according to
-      // "data_format",
-      // in this case, is "NHWC" to "NCHW".
-
-      new_strides = {strides[NHWC::dim::N], strides[NHWC::dim::C],
-                     strides[NHWC::dim::H], strides[NHWC::dim::W]};
-
-      new_dilations = {dilations[NHWC::dim::N], dilations[NHWC::dim::C],
-                       dilations[NHWC::dim::H], dilations[NHWC::dim::W]};
-    }
-    nb->Attr("strides", new_strides);
-    nb->Attr("dilations", new_dilations);
-  }
+  // Add attributes related to `data_format`.
+  CopyFormatAttrsConv(orig_node, nb, strides, dilations, change_format);
 }
 
 // Used in rinfo when replacing __MklDummyPadWithConv2D by _MklPadWithConv2D
@@ -1936,14 +2115,36 @@ void MklLayoutRewritePass::CopyAttrsPadWithConv2D(const Node* orig_node,
       GetNodeAttr(orig_node->def(), "use_cudnn_on_gpu", &use_cudnn_on_gpu));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tpaddings", &Tpaddings));
 
+  Node* filter_node = nullptr;
+  orig_node->input_node(1, &filter_node);
+
   // Add attributes to new node.
   nb->Attr("T", T);
   nb->Attr("strides", strides);
   nb->Attr("dilations", dilations);
   nb->Attr("padding", padding);
+  nb->Attr("is_filter_const", filter_node->IsConstant());
   nb->Attr("data_format", data_format);
   nb->Attr("use_cudnn_on_gpu", use_cudnn_on_gpu);
   nb->Attr("Tpaddings", Tpaddings);
+}
+
+void MklLayoutRewritePass::CopyAttrsPadWithFusedConv2D(const Node* orig_node,
+                                                       NodeBuilder* nb,
+                                                       bool change_format) {
+  DataType Tpaddings;
+
+  CopyAttrsFusedConv2D(orig_node, nb, change_format);
+
+  // Get attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tpaddings", &Tpaddings));
+  // Check if filter is a constant.
+  Node* filter_node = nullptr;
+  orig_node->input_node(1, &filter_node);
+
+  // Add attributes to new node.
+  nb->Attr("Tpaddings", Tpaddings);
+  nb->Attr("is_filter_const", filter_node->IsConstant());
 }
 
 // Used with MergePadWithConv2D
@@ -1978,6 +2179,93 @@ void MklLayoutRewritePass::CopyAttrsFromPadAndConv2D(const Node* orig_node1,
   nb->Attr("data_format", data_format);
   nb->Attr("use_cudnn_on_gpu", use_cudnn_on_gpu);
   nb->Attr("Tpaddings", Tpaddings);
+}
+
+void MklLayoutRewritePass::CopyAttrsFromPadAndFusedConv2D(
+    const Node* fused_conv2d, const Node* pad, NodeBuilder* nb,
+    bool change_format) {
+  DataType T;
+  int num_args;
+  string data_format;
+  string padding;
+  std::vector<int32> strides;
+  std::vector<int32> dilations;
+  float epsilon;
+  std::vector<string> fused_ops;
+  DataType Tpaddings;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "num_args", &num_args));
+  TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "padding", &padding));
+  TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "data_format", &data_format));
+  TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "dilations", &dilations));
+  TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "fused_ops", &fused_ops));
+  TF_CHECK_OK(GetNodeAttr(fused_conv2d->def(), "epsilon", &epsilon));
+  TF_CHECK_OK(GetNodeAttr(pad->def(), "Tpaddings", &Tpaddings));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("num_args", num_args);
+  nb->Attr("strides", strides);
+  nb->Attr("padding", padding);
+  nb->Attr("data_format", data_format);
+  nb->Attr("dilations", dilations);
+  nb->Attr("epsilon", epsilon);
+  nb->Attr("Tpaddings", Tpaddings);
+  nb->Attr("fused_ops", fused_ops);
+}
+
+void MklLayoutRewritePass::CopyAttrsConv2DDepthwise(const Node* orig_node,
+                                                    NodeBuilder* nb,
+                                                    bool change_format) {
+  DataType T;
+  string data_format;
+  string padding;
+  std::vector<int32> strides;
+  std::vector<int32> dilations;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("strides", strides);
+  nb->Attr("dilations", dilations);
+  nb->Attr("padding", padding);
+  nb->Attr("data_format", data_format);
+}
+
+void MklLayoutRewritePass::CopyAttrsConv2DDepthwiseCheckConstFilter(
+    const Node* orig_node, NodeBuilder* nb, bool change_format) {
+  DataType T;
+  string data_format;
+  string padding;
+  std::vector<int32> strides;
+  std::vector<int32> dilations;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
+
+  Node* filter_node = nullptr;
+  orig_node->input_node(1, &filter_node);
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("strides", strides);
+  nb->Attr("dilations", dilations);
+  nb->Attr("padding", padding);
+  nb->Attr("is_filter_const", filter_node->IsConstant());
+  nb->Attr("data_format", data_format);
 }
 
 void MklLayoutRewritePass::CopyAttrsAddN(const Node* orig_node, NodeBuilder* nb,
@@ -2033,6 +2321,21 @@ void MklLayoutRewritePass::CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb,
   nb->Attr("bias", bias);
   nb->Attr("alpha", alpha);
   nb->Attr("beta", beta);
+}
+
+void MklLayoutRewritePass::CopyAttrsLeakyRelu(const Node* orig_node,
+                                              NodeBuilder* nb,
+                                              bool change_format) {
+  DataType T;
+  float alpha;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "alpha", &alpha));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("alpha", alpha);
 }
 
 void MklLayoutRewritePass::CopyAttrsPooling(const Node* orig_node,
@@ -2107,16 +2410,21 @@ void MklLayoutRewritePass::CopyAttrsQuantizedConv2D(const Node* orig_node,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
 
+  Node* filter_node = nullptr;
+  orig_node->input_node(1, &filter_node);
+
   // Add attributes to new node.
   nb->Attr("Tinput", Tinput);
   nb->Attr("Tfilter", Tfilter);
   nb->Attr("out_type", out_type);
   nb->Attr("padding", padding);
+  nb->Attr("is_filter_const", filter_node->IsConstant());
   nb->Attr("strides", strides);
   nb->Attr("dilations", dilations);
   nb->Attr("T", out_type);  // added "T" for facilitating MklToTf conversion.
   nb->Attr("data_format", data_format);
-  // Requantization attr Tbias
+
+  // Requantization attr Tbias.
   DataType Tbias;
   Status bias_status = GetNodeAttr(orig_node->def(), "Tbias", &Tbias);
   if (bias_status.ToString() == "OK") nb->Attr("Tbias", Tbias);
@@ -2145,6 +2453,7 @@ void MklLayoutRewritePass::CopyAttrsReshape(const Node* orig_node,
   // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tshape", &Tshape));
+
   // Add attributes to new node.
   nb->Attr("T", T);
   nb->Attr("Tshape", Tshape);
@@ -2158,6 +2467,7 @@ void MklLayoutRewritePass::CopyAttrsSlice(const Node* orig_node,
   // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Index", &Index));
+
   // Add attributes to new node.
   nb->Attr("T", T);
   nb->Attr("Index", Index);
@@ -2178,6 +2488,45 @@ void MklLayoutRewritePass::CopyAttrsSplit(const Node* orig_node,
   nb->Attr("T", T);
   nb->Attr("num_split", num_split);
   nb->Attr("data_format", data_format);
+}
+
+void MklLayoutRewritePass::CopyFormatAttrsConv(
+    const Node* orig_node, NodeBuilder* nb, const std::vector<int32>& strides,
+    const std::vector<int32>& dilations, bool change_format) {
+  string data_format;
+
+  if (!change_format) {
+    nb->Attr("strides", strides);
+    nb->Attr("dilations", dilations);
+
+    TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
+    nb->Attr("data_format", data_format);
+  } else {
+    std::vector<int32> new_strides;
+    std::vector<int32> new_dilations;
+    if (strides.size() == 5) {
+      // `strides` and `dilations` also need to be changed according to
+      // `data_format`. In this case, from `NDHWC` to `NCDHW`.
+      new_strides = {strides[NDHWC::dim::N], strides[NDHWC::dim::C],
+                     strides[NDHWC::dim::D], strides[NDHWC::dim::H],
+                     strides[NDHWC::dim::W]};
+
+      new_dilations = {dilations[NDHWC::dim::N], dilations[NDHWC::dim::C],
+                       dilations[NDHWC::dim::D], dilations[NDHWC::dim::H],
+                       dilations[NDHWC::dim::W]};
+    } else {
+      // `strides` and `dilations` also need to be changed according to
+      // `data_format`. In this case, from `NHWC` to `NCHW`.
+
+      new_strides = {strides[NHWC::dim::N], strides[NHWC::dim::C],
+                     strides[NHWC::dim::H], strides[NHWC::dim::W]};
+
+      new_dilations = {dilations[NHWC::dim::N], dilations[NHWC::dim::C],
+                       dilations[NHWC::dim::H], dilations[NHWC::dim::W]};
+    }
+    nb->Attr("strides", new_strides);
+    nb->Attr("dilations", new_dilations);
+  }
 }
 
 void MklLayoutRewritePass::CopyAttrsConcat(const Node* orig_node,
@@ -2232,6 +2581,43 @@ void MklLayoutRewritePass::CopyAttrsFusedBatchNorm(const Node* orig_node,
   nb->Attr("epsilon", epsilon);
   nb->Attr("data_format", data_format);
   nb->Attr("is_training", is_training);
+}
+
+void MklLayoutRewritePass::CopyAttrsFusedConv2D(const Node* orig_node,
+                                                NodeBuilder* nb,
+                                                bool change_format) {
+  DataType T;
+  int num_args;
+  float epsilon;
+  string data_format;
+  string padding;
+  std::vector<int32> strides;
+  std::vector<int32> dilations;
+  std::vector<string> fused_ops;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "num_args", &num_args));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "fused_ops", &fused_ops));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "epsilon", &epsilon));
+
+  Node* filter_node = nullptr;
+  orig_node->input_node(1, &filter_node);
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("num_args", num_args);
+  nb->Attr("strides", strides);
+  nb->Attr("padding", padding);
+  nb->Attr("is_filter_const", filter_node->IsConstant());
+  nb->Attr("data_format", data_format);
+  nb->Attr("dilations", dilations);
+  nb->Attr("fused_ops", fused_ops);
+  nb->Attr("epsilon", epsilon);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -2300,7 +2686,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   std::vector<int32> strides;
   std::vector<int32> dilations;
   string data_format_pred, data_format_succ;
-  bool use_cudnn_on_gnu;
+  bool use_cudnn_on_gpu;
   TF_CHECK_OK(GetNodeAttr(pred->def(), "T", &T_pred));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "T", &T_succ));
   TF_CHECK_OK(GetNodeAttr(pred->def(), "padding", &padding));
@@ -2308,7 +2694,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   TF_CHECK_OK(GetNodeAttr(pred->def(), "dilations", &dilations));
   TF_CHECK_OK(GetNodeAttr(pred->def(), "data_format", &data_format_pred));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "data_format", &data_format_succ));
-  TF_CHECK_OK(GetNodeAttr(pred->def(), "use_cudnn_on_gpu", &use_cudnn_on_gnu));
+  TF_CHECK_OK(GetNodeAttr(pred->def(), "use_cudnn_on_gpu", &use_cudnn_on_gpu));
   // We check to ensure that data formats of both succ and pred are same.
   // We expect them to be same, so we can enforce this as assert.
   // But assert can be too strict, so we enforce this as a check.
@@ -2364,7 +2750,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   nb.Input(succ_in[1].first, succ_in[1].second);  // In2 of BiasAdd
 
   // Copy attributes from Conv2D to Conv2DWithBias.
-  CopyAttrsConv(const_cast<const Node*>(pred), &nb);
+  CopyAttrsConvCheckConstFilter(const_cast<const Node*>(pred), &nb);
 
   // Copy the device assigned to old node to new node.
   nb.Device(succ->def().device());
@@ -2433,11 +2819,15 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
 
 Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
                                                 Node* m, Node* n) {
-  DCHECK(((m->type_string() == csinfo_.pad &&
-           n->type_string() == csinfo_.conv2d)) ||
-         ((n->type_string() == csinfo_.pad &&
-           m->type_string() == csinfo_.conv2d)));
+  DCHECK((m->type_string() == csinfo_.pad &&
+          (n->type_string() == csinfo_.conv2d ||
+           n->type_string() == csinfo_.fused_conv2d)) ||
+         (n->type_string() == csinfo_.pad &&
+          (m->type_string() == csinfo_.conv2d ||
+           m->type_string() == csinfo_.fused_conv2d)));
 
+  bool is_fused_conv2d = n->type_string() == csinfo_.fused_conv2d ||
+                         m->type_string() == csinfo_.fused_conv2d;
   // Conv2D is successor node, and Pad predecessor node.
   Node* pred = m->type_string() == csinfo_.pad ? m : n;
   Node* succ = m->type_string() == csinfo_.pad ? n : m;
@@ -2448,18 +2838,14 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   std::vector<int32> strides;
   std::vector<int32> dilations;
   string data_format_pred, data_format_succ;
-  bool use_cudnn_on_gnu;
+
   TF_CHECK_OK(GetNodeAttr(pred->def(), "T", &T_pred));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "T", &T_succ));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "padding", &padding));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "strides", &strides));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "dilations", &dilations));
-  // Data format for pad is not available and not necessary, thus
-  // dont need to match data format for Pad
-  TF_CHECK_OK(GetNodeAttr(succ->def(), "data_format", &data_format_succ));
-  TF_CHECK_OK(GetNodeAttr(succ->def(), "use_cudnn_on_gpu", &use_cudnn_on_gnu));
-  // Check if the data types and devices of both succ and pred are the same.
-  // Assert is not used,  because it can be too strict.
+  // Check if the devices of both succ and pred are the same.
+  // Assert is not used because it can be too strict.
   // Don't need to check for data formats because it is not available in Pad.
   if (T_pred != T_succ ||
       pred->assigned_device_name() != succ->assigned_device_name() ||
@@ -2503,29 +2889,45 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   }
   DCHECK_EQ(PadDataInputEdges, 2);
 
-  // Conv2D must have 2 data inputs: pad output and Filter
+  // Conv2D must have 2 data inputs: Pad output and Filter
+  // FusedConv2D have 3 data inputs: Pad output, Filter and Args;
   int ConvDataInputEdges = 0;
   for (const Edge* e : succ->in_edges()) {
     if (!e->IsControlEdge()) {
       ConvDataInputEdges++;
     }
   }
-  DCHECK_EQ(ConvDataInputEdges, 2);
+
+  DCHECK_EQ(ConvDataInputEdges, is_fused_conv2d ? 3 : 2);
 
   // We will use the node name of Conv2D as the name of new node
   // Build new node. We use same name as original node, but change the op
   // name.
-  NodeBuilder nb(succ->name(), csinfo_.pad_with_conv2d);
+
+  NodeBuilder nb(succ->name(), is_fused_conv2d ? csinfo_.pad_with_fused_conv2d
+                                               : csinfo_.pad_with_conv2d);
   nb.Input(pred_in[0].first, pred_in[0].second);  // In1 (input data)  of Pad
   // pred_in[1] will be 2nd Tensorflow tensor for Conv2D.
   nb.Input(succ_in[1].first, succ_in[1].second);  // In2 (filter) of conv2d
   // In1 of Conv2D is same as output of Pad.
   // Thus, only need to add In2 of Conv2D
-  nb.Input(pred_in[1].first, pred_in[1].second);  // In2 (paddings) of Pad
 
-  // Copy attributes from Pad and conv2D to PadWithConv2D.
-  CopyAttrsFromPadAndConv2D(const_cast<const Node*>(succ),
-                            const_cast<const Node*>(pred), &nb);
+  if (is_fused_conv2d) {
+    // FusedConv2D has one additional input, args
+    std::vector<NodeBuilder::NodeOut> args;
+    args.emplace_back(succ_in[2].first, succ_in[2].second);
+    nb.Input(gtl::ArraySlice<NodeBuilder::NodeOut>{
+        args});                                     // In3 (args) of FusedConv2D
+    nb.Input(pred_in[1].first, pred_in[1].second);  // In2 (paddings) of Pad
+    // Copy attributes from Pad and FusedConv2D to PadWithFusedConv2D.
+    CopyAttrsFromPadAndFusedConv2D(const_cast<const Node*>(succ),
+                                   const_cast<const Node*>(pred), &nb);
+  } else {
+    nb.Input(pred_in[1].first, pred_in[1].second);  // In2 (paddings) of Pad
+    // Copy attributes from Pad and conv2D to PadWithConv2D.
+    CopyAttrsFromPadAndConv2D(const_cast<const Node*>(succ),
+                              const_cast<const Node*>(pred), &nb);
+  }
 
   // Copy the device assigned to old node to new node.
   nb.Device(succ->def().device());
@@ -2723,10 +3125,12 @@ Status MklLayoutRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* m,
         m->type_string() == csinfo_.conv2d))) {
     return this->MergeConv2DWithBiasAdd(g, m, n);
   }
-  if (((m->type_string() == csinfo_.pad &&
-        n->type_string() == csinfo_.conv2d)) ||
-      ((n->type_string() == csinfo_.pad &&
-        m->type_string() == csinfo_.conv2d))) {
+  if ((m->type_string() == csinfo_.pad &&
+       (n->type_string() == csinfo_.conv2d ||
+        (n->type_string() == csinfo_.fused_conv2d && FusedConv2DRewrite(n)))) ||
+      (n->type_string() == csinfo_.pad &&
+       (m->type_string() == csinfo_.conv2d ||
+        (m->type_string() == csinfo_.fused_conv2d && FusedConv2DRewrite(m))))) {
     return this->MergePadWithConv2D(g, m, n);
   }
 
@@ -2880,7 +3284,9 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   // names do not match Mkl node names.
   if (n->type_string() != csinfo_.conv2d_with_bias &&
       n->type_string() != csinfo_.pad_with_conv2d &&
+      n->type_string() != csinfo_.pad_with_fused_conv2d &&
       n->type_string() != csinfo_.conv2d_grad_filter_with_bias &&
+      n->type_string() != csinfo_.fused_conv2d &&
       !mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(n->type_string()),
                                 T)) {
     return nullptr;
@@ -2999,8 +3405,9 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
   for (const Edge* e : transpose_to_nchw->out_edges()) {
     if (!e->IsControlEdge()) {
       const int kTransposeWithMklOpOutputSlot = 0;
-      DCHECK((*g)->AddEdge(new_node, kTransposeWithMklOpOutputSlot, e->dst(),
-                           e->dst_input()));
+      auto new_edge = (*g)->AddEdge(new_node, kTransposeWithMklOpOutputSlot,
+                                    e->dst(), e->dst_input());
+      DCHECK(new_edge);
     }
   }
 
@@ -3201,7 +3608,6 @@ bool MklLayoutRewritePass::RunPass(std::unique_ptr<Graph>* g) {
 
   DumpGraph("After running MklLayoutRewritePass(NodeMerge)", &**g);
 
-#ifdef ENABLE_TRANSPOSE_OPTIMIZATION
   order.clear();
   GetReversePostOrder(**g, &order);  // This will give us topological sort.
   for (Node* n : order) {
@@ -3223,7 +3629,6 @@ bool MklLayoutRewritePass::RunPass(std::unique_ptr<Graph>* g) {
     }
   }
   DumpGraph("After running MklLayoutRewritePass(NodeFusion)", &**g);
-#endif  // ENABLE_TRANSPOSE_OPTIMIZATION
 
   order.clear();
   GetReversePostOrder(**g, &order);  // This will give us topological sort.

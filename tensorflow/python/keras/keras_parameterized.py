@@ -145,12 +145,32 @@ def run_with_all_model_types(
     @functools.wraps(f)
     def decorated(self, model_type, *args, **kwargs):
       """A run of a single test case w/ the specified model type."""
-      with testing_utils.model_type_scope(model_type):
-        f(self, *args, **kwargs)
-
+      if model_type == 'functional':
+        _test_functional_model_type(f, self, *args, **kwargs)
+      elif model_type == 'subclass':
+        _test_subclass_model_type(f, self, *args, **kwargs)
+      elif model_type == 'sequential':
+        _test_sequential_model_type(f, self, *args, **kwargs)
+      else:
+        raise ValueError('Unknown model type: %s' % (model_type,))
     return decorated
 
   return _test_or_class_decorator(test_or_class, single_method_decorator)
+
+
+def _test_functional_model_type(f, test_or_class, *args, **kwargs):
+  with testing_utils.model_type_scope('functional'):
+    f(test_or_class, *args, **kwargs)
+
+
+def _test_subclass_model_type(f, test_or_class, *args, **kwargs):
+  with testing_utils.model_type_scope('subclass'):
+    f(test_or_class, *args, **kwargs)
+
+
+def _test_sequential_model_type(f, test_or_class, *args, **kwargs):
+  with testing_utils.model_type_scope('sequential'):
+    f(test_or_class, *args, **kwargs)
 
 
 def run_all_keras_modes(
@@ -233,23 +253,35 @@ def run_all_keras_modes(
     def decorated(self, run_mode, *args, **kwargs):
       """A run of a single test case w/ specified run mode."""
       if run_mode == 'v1_graph':
-        with context.graph_mode(), testing_utils.run_eagerly_scope(False):
-          with self.test_session(use_gpu=True, config=config):
-            f(self, *args, **kwargs)
+        _v1_graph_test(f, self, config, *args, **kwargs)
       elif run_mode == 'v2_function':
-        with context.eager_mode():
-          with testing_utils.run_eagerly_scope(False):
-            f(self, *args, **kwargs)
+        _v2_graph_functions_test(f, self, *args, **kwargs)
       elif run_mode == 'v2_eager':
-        with context.eager_mode():
-          with testing_utils.run_eagerly_scope(True):
-            f(self, *args, **kwargs)
+        _v2_eager_test(f, self, *args, **kwargs)
       else:
         return ValueError('Unknown run mode %s' % run_mode)
 
     return decorated
 
   return _test_or_class_decorator(test_or_class, single_method_decorator)
+
+
+def _v1_graph_test(f, test_or_class, config, *args, **kwargs):
+  with context.graph_mode(), testing_utils.run_eagerly_scope(False):
+    with test_or_class.test_session(use_gpu=True, config=config):
+      f(test_or_class, *args, **kwargs)
+
+
+def _v2_graph_functions_test(f, test_or_class, *args, **kwargs):
+  with context.eager_mode():
+    with testing_utils.run_eagerly_scope(False):
+      f(test_or_class, *args, **kwargs)
+
+
+def _v2_eager_test(f, test_or_class, *args, **kwargs):
+  with context.eager_mode():
+    with testing_utils.run_eagerly_scope(True):
+      f(test_or_class, *args, **kwargs)
 
 
 def _test_or_class_decorator(test_or_class, single_method_decorator):

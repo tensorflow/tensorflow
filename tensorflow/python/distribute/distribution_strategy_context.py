@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utility to get distribution strategy related contexts."""
+"""Utility to get tf.distribute.Strategy related contexts."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -31,29 +31,27 @@ distribute_lib = LazyLoader(
 
 # ------------------------------------------------------------------------------
 # Internal API for setting the current thread mode as being either in a
-# replica or cross-replica context for a particular distribution strategy.
+# replica or cross-replica context for a particular tf.distribute.Strategy.
 
 
 class _ThreadMode(object):
 
   def __init__(self, dist, cross, replica):
-    self.distribution_strategy = dist
+    self.strategy = dist
     self.cross_replica_context = cross
     self.replica_context = replica
 
 
 class _CrossReplicaThreadMode(_ThreadMode):
 
-  def __init__(self, distribution_strategy):
-    _ThreadMode.__init__(
-        self, distribution_strategy, distribution_strategy, None)
+  def __init__(self, strategy):
+    _ThreadMode.__init__(self, strategy, strategy, None)
 
 
 class _InReplicaThreadMode(_ThreadMode):
 
   def __init__(self, replica_ctx):
-    _ThreadMode.__init__(
-        self, replica_ctx.distribution_strategy, None, replica_ctx)
+    _ThreadMode.__init__(self, replica_ctx.strategy, None, replica_ctx)
 
 
 def _push_per_thread_mode(context):
@@ -71,7 +69,7 @@ class _DefaultReplicaThreadMode(_ThreadMode):
   """
 
   def __init__(self):
-    _ThreadMode.__init__(self, _get_default_distribution_strategy(), None,
+    _ThreadMode.__init__(self, _get_default_strategy(), None,
                          _get_default_replica_context())
 
 
@@ -129,7 +127,7 @@ def get_cross_replica_context():
   """Returns the current tf.distribute.Strategy if in a cross-replica context.
 
   DEPRECATED: Please use `in_cross_replica_context()` and
-  `get_distribution_strategy()` instead.
+  `get_strategy()` instead.
 
   Note that execution:
 
@@ -174,7 +172,7 @@ def in_cross_replica_context():
 
 
 @tf_export("distribute.get_strategy")
-def get_distribution_strategy():
+def get_strategy():
   """Returns the current `tf.distribute.Strategy` object.
 
   Typically only used in a cross-replica context:
@@ -186,47 +184,50 @@ def get_distribution_strategy():
   ```
 
   Returns:
-    A `tf.distribute.Strategy` object. Inside a
-    `with distribution_strategy.scope()` block, it returns
-    `distribution_strategy`, otherwise it returns the default
-    (single-replica) `tf.distribute.Strategy` object.
+    A `tf.distribute.Strategy` object. Inside a `with strategy.scope()` block,
+    it returns `strategy`, otherwise it returns the default (single-replica)
+    `tf.distribute.Strategy` object.
   """
-  return _get_per_thread_mode().distribution_strategy
+  return _get_per_thread_mode().strategy
 
 
 @tf_export("distribute.has_strategy")
-def has_distribution_strategy():
+def has_strategy():
   """Return if there is a current non-default `tf.distribute.Strategy`.
 
   Returns:
     True if inside a `with strategy.scope():`.
   """
-  return get_distribution_strategy() is not _get_default_distribution_strategy()
+  return get_strategy() is not _get_default_strategy()
+
+
+def get_strategy_and_replica_context():
+  per_thread_mode = _get_per_thread_mode()
+  return (per_thread_mode.strategy, per_thread_mode.replica_context)
 
 
 # ------------------------------------------------------------------------------
-# Defaults that are used when no distribution strategy is explicitly created.
+# Defaults that are used when no tf.distribute.Strategy is explicitly created.
 # We create them lazily in a function so that we can workaround the circular
 # dependency on distribute_lib. See lazy loader at the top of this file.
 
 _defaults = {
-    "distribution_strategy": None,
+    "strategy": None,
     "replica_context": None,
     "replica_mode": None
 }
 
 
-def _get_default_distribution_strategy():
-  if _defaults["distribution_strategy"] is None:
-    _defaults["distribution_strategy"] = (
-        distribute_lib._DefaultDistributionStrategy())  # pylint: disable=protected-access
-  return _defaults["distribution_strategy"]
+def _get_default_strategy():
+  if _defaults["strategy"] is None:
+    _defaults["strategy"] = distribute_lib._DefaultDistributionStrategy()  # pylint: disable=protected-access
+  return _defaults["strategy"]
 
 
 def _get_default_replica_context():
   if _defaults["replica_context"] is None:
     _defaults["replica_context"] = distribute_lib.ReplicaContext(
-        _get_default_distribution_strategy(), replica_id_in_sync_group=0)
+        _get_default_strategy(), replica_id_in_sync_group=0)
   return _defaults["replica_context"]
 
 
@@ -234,3 +235,8 @@ def _get_default_replica_mode():
   if _defaults["replica_mode"] is None:
     _defaults["replica_mode"] = _DefaultReplicaThreadMode()
   return _defaults["replica_mode"]
+
+
+# Aliases for compatibility with old names.
+get_distribution_strategy = get_strategy
+has_distribution_strategy = has_strategy

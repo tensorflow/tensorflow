@@ -44,7 +44,7 @@ class CollectiveExecutorMgrTest : public ::testing::Test {
     std::unique_ptr<DeviceResolverInterface> drl(
         new DeviceResolverLocal(device_mgr_.get()));
     std::unique_ptr<ParamResolverInterface> prl(
-        new CollectiveParamResolverLocal(device_mgr_.get(), drl.get(),
+        new CollectiveParamResolverLocal(cp, device_mgr_.get(), drl.get(),
                                          task_name));
     cme_.reset(new CollectiveExecutorMgr(cp, device_mgr_.get(), std::move(drl),
                                          std::move(prl)));

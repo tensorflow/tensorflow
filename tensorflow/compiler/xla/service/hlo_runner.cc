@@ -383,9 +383,7 @@ ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
   if (device_assignment != nullptr) {
     run_options.set_device_assignment(device_assignment);
   }
-  return ServiceExecutableRunOptions(
-      run_options, backend().StreamBorrower(),
-      /*xla_intra_op_thread_pool=*/backend().eigen_intra_op_thread_pool());
+  return ServiceExecutableRunOptions(run_options, backend().StreamBorrower());
 }
 
 Backend& HloRunner::backend() {

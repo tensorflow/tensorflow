@@ -85,6 +85,7 @@ using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
 using reference_ops::StridedSlice;
+using reference_ops::Sub16;
 using reference_ops::Transpose;
 
 // TODO(b/80247582) Remove this constant.
@@ -1906,7 +1907,20 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   MatrixRef matrix_c(c, m, n);
   ConstMatrixRef matrix_a(a, m, k);
   ConstMatrixRef matrix_b(b, n, k);
-  matrix_c.noalias() = matrix_a * matrix_b.transpose();
+
+  // The following special casing for when a or b is a vector is required
+  // as Eigen seem to fail to make this optimization on its own.
+  if (n == 1) {
+    gemmlowp::ScopedProfilingLabel label("GEMV");
+    matrix_c.col(0).noalias() = matrix_a * matrix_b.row(0).transpose();
+  } else if (m == 1) {
+    gemmlowp::ScopedProfilingLabel label("GEMV");
+    matrix_c.row(0).noalias() = matrix_a.row(0) * matrix_b.transpose();
+  } else {
+    gemmlowp::ScopedProfilingLabel label("GEMM");
+    matrix_c.noalias() = matrix_a * matrix_b.transpose();
+  }
+
 #endif  //  defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 
   optimized_ops::AddBiasAndEvalActivationFunction(
@@ -2347,36 +2361,37 @@ inline void Add(const ArithmeticParams& params,
 inline void AddElementwise(int size, const ArithmeticParams& params,
                            const uint8* input1_data, const uint8* input2_data,
                            uint8* output_data) {
+  gemmlowp::ScopedProfilingLabel label("AddElementwise/8bit");
   int i = 0;
   TFLITE_DCHECK_GT(params.input1_offset, -256);
   TFLITE_DCHECK_GT(params.input2_offset, -256);
   TFLITE_DCHECK_LT(params.input1_offset, 256);
   TFLITE_DCHECK_LT(params.input2_offset, 256);
 #ifdef USE_NEON
-  const auto output_activation_min_vector =
+  const uint8x8_t output_activation_min_vector =
       vdup_n_u8(params.quantized_activation_min);
-  const auto output_activation_max_vector =
+  const uint8x8_t output_activation_max_vector =
       vdup_n_u8(params.quantized_activation_max);
   for (; i <= size - 8; i += 8) {
-    const auto input1_val_original = vld1_u8(input1_data + i);
-    const auto input2_val_original = vld1_u8(input2_data + i);
-    const auto input1_val_s16 =
+    const uint8x8_t input1_val_original = vld1_u8(input1_data + i);
+    const uint8x8_t input2_val_original = vld1_u8(input2_data + i);
+    const int16x8_t input1_val_s16 =
         vreinterpretq_s16_u16(vmovl_u8(input1_val_original));
-    const auto input2_val_s16 =
+    const int16x8_t input2_val_s16 =
         vreinterpretq_s16_u16(vmovl_u8(input2_val_original));
-    const auto input1_val =
+    const int16x8_t input1_val =
         vaddq_s16(input1_val_s16, vdupq_n_s16(params.input1_offset));
-    const auto input2_val =
+    const int16x8_t input2_val =
         vaddq_s16(input2_val_s16, vdupq_n_s16(params.input2_offset));
-    const auto input1_val_high = vget_high_s16(input1_val);
-    const auto input1_val_low = vget_low_s16(input1_val);
-    const auto input2_val_high = vget_high_s16(input2_val);
-    const auto input2_val_low = vget_low_s16(input2_val);
-    auto x11 = vmovl_s16(input1_val_low);
-    auto x12 = vmovl_s16(input1_val_high);
-    auto x21 = vmovl_s16(input2_val_low);
-    auto x22 = vmovl_s16(input2_val_high);
-    const auto left_shift_dup = vdupq_n_s32(params.left_shift);
+    const int16x4_t input1_val_high = vget_high_s16(input1_val);
+    const int16x4_t input1_val_low = vget_low_s16(input1_val);
+    const int16x4_t input2_val_high = vget_high_s16(input2_val);
+    const int16x4_t input2_val_low = vget_low_s16(input2_val);
+    int32x4_t x11 = vmovl_s16(input1_val_low);
+    int32x4_t x12 = vmovl_s16(input1_val_high);
+    int32x4_t x21 = vmovl_s16(input2_val_low);
+    int32x4_t x22 = vmovl_s16(input2_val_high);
+    const int32x4_t left_shift_dup = vdupq_n_s32(params.left_shift);
     x11 = vshlq_s32(x11, left_shift_dup);
     x12 = vshlq_s32(x12, left_shift_dup);
     x21 = vshlq_s32(x21, left_shift_dup);
@@ -2385,24 +2400,24 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
     x12 = vqrdmulhq_n_s32(x12, params.input1_multiplier);
     x21 = vqrdmulhq_n_s32(x21, params.input2_multiplier);
     x22 = vqrdmulhq_n_s32(x22, params.input2_multiplier);
-    const auto input1_shift_dup = vdupq_n_s32(params.input1_shift);
-    const auto input2_shift_dup = vdupq_n_s32(params.input2_shift);
+    const int32x4_t input1_shift_dup = vdupq_n_s32(params.input1_shift);
+    const int32x4_t input2_shift_dup = vdupq_n_s32(params.input2_shift);
     x11 = vshlq_s32(x11, input1_shift_dup);
     x12 = vshlq_s32(x12, input1_shift_dup);
     x21 = vshlq_s32(x21, input2_shift_dup);
     x22 = vshlq_s32(x22, input2_shift_dup);
-    auto s1 = vaddq_s32(x11, x21);
-    auto s2 = vaddq_s32(x12, x22);
+    int32x4_t s1 = vaddq_s32(x11, x21);
+    int32x4_t s2 = vaddq_s32(x12, x22);
     s1 = vqrdmulhq_n_s32(s1, params.output_multiplier);
     s2 = vqrdmulhq_n_s32(s2, params.output_multiplier);
     using gemmlowp::RoundingDivideByPOT;
     s1 = RoundingDivideByPOT(s1, -params.output_shift);
     s2 = RoundingDivideByPOT(s2, -params.output_shift);
-    const auto s1_narrowed = vmovn_s32(s1);
-    const auto s2_narrowed = vmovn_s32(s2);
-    const auto s = vaddq_s16(vcombine_s16(s1_narrowed, s2_narrowed),
-                             vdupq_n_s16(params.output_offset));
-    const auto clamped =
+    const int16x4_t s1_narrowed = vmovn_s32(s1);
+    const int16x4_t s2_narrowed = vmovn_s32(s2);
+    const int16x8_t s = vaddq_s16(vcombine_s16(s1_narrowed, s2_narrowed),
+                                  vdupq_n_s16(params.output_offset));
+    const uint8x8_t clamped =
         vmax_u8(output_activation_min_vector,
                 vmin_u8(output_activation_max_vector, vqmovun_s16(s)));
     vst1_u8(output_data + i, clamped);
@@ -2429,6 +2444,109 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, raw_output));
     output_data[i] = static_cast<uint8>(clamped_output);
+  }
+}
+
+// Scalar-broadcast add that can be used for inner loop of more general
+// broadcast add, so that, for example, scalar-broadcast with batch will still
+// be fast.
+inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
+                               uint8 input1_data, const uint8* input2_data,
+                               uint8* output_data) {
+  using gemmlowp::RoundingDivideByPOT;
+
+  gemmlowp::ScopedProfilingLabel label("AddScalarBroadcast/8bit");
+  TFLITE_DCHECK_GT(params.input1_offset, -256);
+  TFLITE_DCHECK_GT(params.input2_offset, -256);
+  TFLITE_DCHECK_LT(params.input1_offset, 256);
+  TFLITE_DCHECK_LT(params.input2_offset, 256);
+
+  int i = 0;
+
+#ifdef USE_NEON
+  const int32x4_t left_shift_dup = vdupq_n_s32(params.left_shift);
+  const uint8x8_t output_activation_min_vector =
+      vdup_n_u8(params.quantized_activation_min);
+  const uint8x8_t output_activation_max_vector =
+      vdup_n_u8(params.quantized_activation_max);
+
+  // Process broadcast scalar.
+  const uint8x8_t input1_val_original = vdup_n_u8(input1_data);
+  const int16x8_t input1_val_s16 =
+      vreinterpretq_s16_u16(vmovl_u8(input1_val_original));
+  const int16x8_t input1_val =
+      vaddq_s16(input1_val_s16, vdupq_n_s16(params.input1_offset));
+  const int16x4_t input1_val_high = vget_high_s16(input1_val);
+  const int16x4_t input1_val_low = vget_low_s16(input1_val);
+  int32x4_t x11 = vmovl_s16(input1_val_low);
+  int32x4_t x12 = vmovl_s16(input1_val_high);
+  x11 = vshlq_s32(x11, left_shift_dup);
+  x12 = vshlq_s32(x12, left_shift_dup);
+  x11 = vqrdmulhq_n_s32(x11, params.input1_multiplier);
+  x12 = vqrdmulhq_n_s32(x12, params.input1_multiplier);
+  const int32x4_t input1_shift_dup = vdupq_n_s32(params.input1_shift);
+  x11 = vshlq_s32(x11, input1_shift_dup);
+  x12 = vshlq_s32(x12, input1_shift_dup);
+
+  for (; i <= size - 8; i += 8) {
+    const uint8x8_t input2_val_original = vld1_u8(input2_data + i);
+    const int16x8_t input2_val_s16 =
+        vreinterpretq_s16_u16(vmovl_u8(input2_val_original));
+    const int16x8_t input2_val =
+        vaddq_s16(input2_val_s16, vdupq_n_s16(params.input2_offset));
+    const int16x4_t input2_val_high = vget_high_s16(input2_val);
+    const int16x4_t input2_val_low = vget_low_s16(input2_val);
+    int32x4_t x21 = vmovl_s16(input2_val_low);
+    int32x4_t x22 = vmovl_s16(input2_val_high);
+    x21 = vshlq_s32(x21, left_shift_dup);
+    x22 = vshlq_s32(x22, left_shift_dup);
+    x21 = vqrdmulhq_n_s32(x21, params.input2_multiplier);
+    x22 = vqrdmulhq_n_s32(x22, params.input2_multiplier);
+    const int32x4_t input2_shift_dup = vdupq_n_s32(params.input2_shift);
+    x21 = vshlq_s32(x21, input2_shift_dup);
+    x22 = vshlq_s32(x22, input2_shift_dup);
+    int32x4_t s1 = vaddq_s32(x11, x21);
+    int32x4_t s2 = vaddq_s32(x12, x22);
+    s1 = vqrdmulhq_n_s32(s1, params.output_multiplier);
+    s2 = vqrdmulhq_n_s32(s2, params.output_multiplier);
+    s1 = RoundingDivideByPOT(s1, -params.output_shift);
+    s2 = RoundingDivideByPOT(s2, -params.output_shift);
+    const int16x4_t s1_narrowed = vmovn_s32(s1);
+    const int16x4_t s2_narrowed = vmovn_s32(s2);
+    const int16x8_t s = vaddq_s16(vcombine_s16(s1_narrowed, s2_narrowed),
+                                  vdupq_n_s16(params.output_offset));
+    const uint8x8_t clamped =
+        vmax_u8(output_activation_min_vector,
+                vmin_u8(output_activation_max_vector, vqmovun_s16(s)));
+    vst1_u8(output_data + i, clamped);
+  }
+#endif  // NEON
+
+  if (i < size) {
+    // Process broadcast scalar.
+    const int32 input1_val = params.input1_offset + input1_data;
+    const int32 shifted_input1_val = input1_val * (1 << params.left_shift);
+    const int32 scaled_input1_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input1_val, params.input1_multiplier, params.input1_shift);
+
+    for (; i < size; ++i) {
+      const int32 input2_val = params.input2_offset + input2_data[i];
+      const int32 shifted_input2_val = input2_val * (1 << params.left_shift);
+      const int32 scaled_input2_val =
+          MultiplyByQuantizedMultiplierSmallerThanOneExp(
+              shifted_input2_val, params.input2_multiplier,
+              params.input2_shift);
+      const int32 raw_sum = scaled_input1_val + scaled_input2_val;
+      const int32 raw_output =
+          MultiplyByQuantizedMultiplierSmallerThanOneExp(
+              raw_sum, params.output_multiplier, params.output_shift) +
+          params.output_offset;
+      const int32 clamped_output =
+          std::min(params.quantized_activation_max,
+                   std::max(params.quantized_activation_min, raw_output));
+      output_data[i] = static_cast<uint8>(clamped_output);
+    }
   }
 }
 
@@ -2546,26 +2664,63 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
   uint8* output_data_ptr = output_data;
   const uint8* input1_data_ptr = input1_data;
   const uint8* input2_data_reset = input2_data;
+  // In the fivefold pattern, y0, y2 and y4 are not broadcast, and so shared
+  // between input shapes. y3 for input 1 is always broadcast, and so the
+  // dimension there is 1, whereas optionally y1 might be broadcast for input 2.
+  // Put another way,
+  // input1.shape.FlatSize = y0 * y1 * y2 * y4,
+  // input2.shape.FlatSize = y0 * y2 * y3 * y4.
   int y0 = params.broadcast_shape[0];
   int y1 = params.broadcast_shape[1];
   int y2 = params.broadcast_shape[2];
   int y3 = params.broadcast_shape[3];
   int y4 = params.broadcast_shape[4];
-  for (int i0 = 0; i0 < y0; ++i0) {
-    const uint8* input2_data_ptr;
-    for (int i1 = 0; i1 < y1; ++i1) {
-      input2_data_ptr = input2_data_reset;
-      for (int i2 = 0; i2 < y2; ++i2) {
-        for (int i3 = 0; i3 < y3; ++i3) {
-          AddElementwise(y4, params, input1_data_ptr, input2_data_ptr,
-                         output_data_ptr);
-          input2_data_ptr += y4;
-          output_data_ptr += y4;
+  if (y4 > 1) {
+    // General fivefold pattern, with y4 > 1 so there is a non-broadcast inner
+    // dimension.
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const uint8* input2_data_ptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          for (int i3 = 0; i3 < y3; ++i3) {
+            AddElementwise(y4, params, input1_data_ptr, input2_data_ptr,
+                           output_data_ptr);
+            input2_data_ptr += y4;
+            output_data_ptr += y4;
+          }
+          // We have broadcast y4 of input1 data y3 times, and now move on.
+          input1_data_ptr += y4;
         }
-        input1_data_ptr += y4;
       }
+      // We have broadcast y2*y3*y4 of input2 data y1 times, and now move on.
+      input2_data_reset = input2_data_ptr;
     }
-    input2_data_reset = input2_data_ptr;
+  } else {
+    // Special case of y4 == 1, in which the innermost loop is a single element
+    // and can be combined with the next (y3) as an inner broadcast.
+    //
+    // Note that this handles the case of pure scalar broadcast when
+    // y0 == y1 == y2 == 1. With low overhead it handles cases such as scalar
+    // broadcast with batch (as y2 > 1).
+    //
+    // NOTE The process is the same as the above general case except simplified
+    // for y4 == 1 and the loop over y3 is contained within the
+    // AddScalarBroadcast function.
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const uint8* input2_data_ptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          AddScalarBroadcast(y3, params, *input1_data_ptr, input2_data_ptr,
+                             output_data_ptr);
+          input2_data_ptr += y3;
+          output_data_ptr += y3;
+          input1_data_ptr += 1;
+        }
+      }
+      input2_data_reset = input2_data_ptr;
+    }
   }
 }
 
@@ -4898,6 +5053,14 @@ inline void Floor(const RuntimeShape& input_shape, const float* input_data,
   output_map.array() = Eigen::floor(input_map.array());
 }
 
+inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Ceil");
+  auto input_map = MapAsVector(input_data, input_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
+  output_map.array() = Eigen::ceil(input_map.array());
+}
+
 #ifdef USE_NEON
 inline void ResizeBilinearKernel(const float* input_ptr, int32 depth,
                                  float scale, float* output_ptr) {
@@ -5233,9 +5396,6 @@ inline void ResizeBilinearGenericSmallChannel(
     int32 output_height, int32 output_width, float height_scale,
     float width_scale, const RuntimeShape& input_shape, const T* input_data,
     const RuntimeShape& output_shape, T* output_data) {
-  memset(output_data, 0,
-         batches * output_height * output_width * depth * sizeof(T));
-
   T* output_ptr = &output_data[0];
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
@@ -5244,7 +5404,7 @@ inline void ResizeBilinearGenericSmallChannel(
       int32 y1 = std::min(y0 + 1, input_height - 1);
       for (int x = 0; x < output_width; ++x) {
         float input_x = x * width_scale;
-        int32 x0 = static_cast<int32>(input_x);
+        int32 x0 = static_cast<int32>(std::floor((input_x)));
         int32 x1 = std::min(x0 + 1, input_width - 1);
 
         int32 input_offset[4] = {Offset(input_shape, b, y0, x0, 0),
@@ -5928,7 +6088,27 @@ inline void TransposeConv(
     const float* filter_data, const RuntimeShape& output_shape,
     float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
   gemmlowp::ScopedProfilingLabel label("TransposeConv");
-
+  // The complexity of the reference implementation is input.flat_size() *
+  // filter.flat_size() / in_channel.
+  //
+  // While the complexity of im2col->gemm
+  // implmentation is batch * output_height * output_width *
+  // (filter.flat_size() / out_channel)^2 * out_channel.
+  //
+  // so if input.flat_size() * out_channel^2 is much smaller than
+  // output.flat_size() * filter.size() * in_channel we should fall back to the
+  // reference implementation.
+  //
+  // TODO(b/122331966): optimize the intuitive implementation.
+  const int out_channel = output_shape.Dims(3);
+  const int in_channel = input_shape.Dims(3);
+  if ((input_shape.FlatSize() * out_channel * out_channel * 4) <
+      (filter_shape.FlatSize() * output_shape.FlatSize() * in_channel)) {
+    reference_ops::TransposeConv(params, input_shape, input_data, filter_shape,
+                                 filter_data, output_shape, output_data,
+                                 im2col_shape, im2col_data);
+    return;
+  }
   // Note we could use transposed weights with forward conv for unstrided
   // cases. But we are already getting good performance with this code as-is.
   TFLITE_DCHECK(im2col_data);

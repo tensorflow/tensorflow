@@ -31,7 +31,7 @@ from tensorflow.python.keras.layers.recurrent import RNN
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
 class _CuDNNRNN(RNN):
@@ -158,7 +158,7 @@ class _CuDNNRNN(RNN):
         RNN, self).get_losses_for(inputs=inputs)
 
 
-@tf_export('keras.layers.CuDNNGRU')
+@keras_export(v1=['keras.layers.CuDNNGRU'])
 class CuDNNGRU(_CuDNNRNN):
   """Fast GRU implementation backed by cuDNN.
 
@@ -335,7 +335,7 @@ class CuDNNGRU(_CuDNNRNN):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.CuDNNLSTM')
+@keras_export(v1=['keras.layers.CuDNNLSTM'])
 class CuDNNLSTM(_CuDNNRNN):
   """Fast LSTM implementation backed by cuDNN.
 

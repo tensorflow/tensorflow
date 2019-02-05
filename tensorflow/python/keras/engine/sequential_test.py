@@ -30,7 +30,6 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
-from tensorflow.python.training import rmsprop
 
 
 class TestSequential(keras_parameterized.TestCase):
@@ -57,16 +56,20 @@ class TestSequential(keras_parameterized.TestCase):
 
     model = testing_utils.get_small_sequential_mlp(
         num_hidden, num_classes, input_dim)
-    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer='rmsprop',
+        run_eagerly=testing_utils.should_run_eagerly())
     x = np.random.random((batch_size, input_dim))
     y = np.random.random((batch_size, num_classes))
     model.fit(x, y, epochs=1)
     model.pop()
     self.assertEqual(len(model.layers), 1)
     self.assertEqual(model.output_shape, (None, num_hidden))
-    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer='rmsprop',
+        run_eagerly=testing_utils.should_run_eagerly())
     y = np.random.random((batch_size, num_hidden))
     model.fit(x, y, epochs=1)
 
@@ -92,7 +95,7 @@ class TestSequential(keras_parameterized.TestCase):
     model = testing_utils.get_small_sequential_mlp(num_hidden, num_classes)
     model.compile(
         loss='mse',
-        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        optimizer='rmsprop',
         metrics=[keras.metrics.CategoricalAccuracy()],
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertEqual(len(model.layers), 2)
@@ -117,7 +120,7 @@ class TestSequential(keras_parameterized.TestCase):
     model = testing_utils.get_small_sequential_mlp(num_hidden, num_classes)
     model.compile(
         loss='mse',
-        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        optimizer='rmsprop',
         metrics=[keras.metrics.CategoricalAccuracy()],
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertEqual(len(model.layers), 2)
@@ -148,7 +151,7 @@ class TestSequential(keras_parameterized.TestCase):
         else:
           model = testing_utils.get_small_sequential_mlp(10, 4, input_dim=3)
         model.compile(
-            optimizer=rmsprop.RMSPropOptimizer(1e-3),
+            optimizer='rmsprop',
             loss='categorical_crossentropy',
             metrics=['accuracy'])
         return model
@@ -226,7 +229,6 @@ class TestSequential(keras_parameterized.TestCase):
     inner_model.trainable = True
     self.assertEqual(len(model.trainable_weights), 4)
 
-  @tf_test_util.run_v1_only('b/120545219')
   def test_sequential_update_disabling(self):
     val_a = np.random.random((10, 4))
     val_out = np.random.random((10, 4))
@@ -265,7 +267,7 @@ class TestSequential(keras_parameterized.TestCase):
     model = testing_utils.get_small_sequential_mlp(num_hidden, num_classes)
     model.compile(
         loss='mse',
-        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        optimizer='rmsprop',
         metrics=[keras.metrics.CategoricalAccuracy()],
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertFalse(model.built)
@@ -305,14 +307,30 @@ class TestSequential(keras_parameterized.TestCase):
     self.assertTrue(model.built)
     self.assertEqual(len(model.weights), 8)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_sequential_deferred_manual_build(self):
+    model = testing_utils.get_small_sequential_mlp(4, 5)
+    self.assertFalse(model.built)
+    model(array_ops.zeros([1, 2]))
+    self.assertTrue(model.built)
+    self.assertEqual(len(model.outputs), 0)
+    model.compile('rmsprop',
+                  loss='mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    self.assertEqual(len(model.outputs), 0)
+    model.train_on_batch(np.zeros((1, 2)), np.zeros((1, 5)))
+    self.assertEqual(len(model.outputs), 1)
+
   @keras_parameterized.run_all_keras_modes
   def test_sequential_nesting(self):
     model = testing_utils.get_small_sequential_mlp(4, 3)
     inner_model = testing_utils.get_small_sequential_mlp(4, 5)
     model.add(inner_model)
 
-    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer='rmsprop',
+        run_eagerly=testing_utils.should_run_eagerly())
     x = np.random.random((2, 6))
     y = np.random.random((2, 5))
     model.fit(x, y, epochs=1)
@@ -353,8 +371,10 @@ class TestSequentialEagerIntegration(keras_parameterized.TestCase):
     model.add(keras.layers.Dense(4, activation='relu'))
     model.add(keras.layers.Dense(5, activation='softmax'))
 
-    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer='rmsprop',
+        run_eagerly=testing_utils.should_run_eagerly())
 
     x = np.random.random((2, 6))
     y = np.random.random((2, 5))
@@ -364,8 +384,10 @@ class TestSequentialEagerIntegration(keras_parameterized.TestCase):
   def test_build_before_fit(self):
     # Fix for b/112433577
     model = testing_utils.get_small_sequential_mlp(4, 5)
-    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer='rmsprop',
+        run_eagerly=testing_utils.should_run_eagerly())
 
     model.build((None, 6))
 
@@ -379,7 +401,7 @@ class TestSequentialEagerIntegration(keras_parameterized.TestCase):
     model = testing_utils.get_small_sequential_mlp(
         num_hidden=10, num_classes=num_classes)
     model.compile(
-        rmsprop.RMSPropOptimizer(learning_rate=0.001),
+        'rmsprop',
         metrics=['acc'],
         weighted_metrics=['mae'],
         loss='categorical_crossentropy',

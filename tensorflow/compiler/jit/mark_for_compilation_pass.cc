@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -41,7 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
-#include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
@@ -72,6 +73,13 @@ struct OperationFilter {
   // to resort to a dummy implementation. Currently Assert and CheckNumerics ops
   // have dummy XLA implementations.
   bool allow_dummy_ops;
+
+  // Whether Switch/Merge ops are allowed.  We avoid auto-clustering these ops
+  // for now since they can result in mismatching deadness in the output
+  // produced by an XLA cluster, something the TF executor does not allow today.
+  // However, we plan to auto-cluster these in some limited cases in the near
+  // future (b/123096195).
+  bool allow_switch_merge_ops;
 
   // Whether ops that produce or consume DT_VARIANT values are allowed.  We
   // don't auto-cluster these ops because we don't yet support live-in or
@@ -252,6 +260,10 @@ bool IsCompilableCall(const NodeDef& call_def,
       return false;
     }
     if (!op_filter.allow_control_trigger && node->IsControlTrigger()) {
+      return false;
+    }
+    if (!op_filter.allow_switch_merge_ops &&
+        (node->IsSwitch() || node->IsMerge())) {
       return false;
     }
     if (!op_filter.allow_dummy_ops && IsDummyImplOp(node->type_string())) {
@@ -492,6 +504,7 @@ Status FindCompilationCandidates(
     op_filter.allow_resource_ops = registration->compile_resource_ops;
     op_filter.allow_stateful_rng_ops = always_auto_cluster;
     op_filter.allow_control_trigger = always_auto_cluster;
+    op_filter.allow_switch_merge_ops = always_auto_cluster;
     op_filter.allow_dummy_ops = always_auto_cluster;
     op_filter.allow_ops_producing_or_consuming_variant = always_auto_cluster;
 
@@ -510,6 +523,11 @@ Status FindCompilationCandidates(
     }
     if (!op_filter.allow_control_trigger && node->IsControlTrigger()) {
       VLOG(2) << "Rejecting " << node->name() << ": is a control trigger op";
+      continue;
+    }
+    if (!op_filter.allow_switch_merge_ops &&
+        (node->IsSwitch() || node->IsMerge())) {
+      VLOG(2) << "Rejecting " << node->name() << ": is a switch or a merge op";
       continue;
     }
     if (!op_filter.allow_dummy_ops && IsDummyImplOp(node->type_string())) {
@@ -658,6 +676,7 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   op_filter.allow_resource_ops = true;
   op_filter.allow_stateful_rng_ops = true;
   op_filter.allow_control_trigger = true;
+  op_filter.allow_switch_merge_ops = true;
   op_filter.allow_dummy_ops = true;
   op_filter.allow_ops_producing_or_consuming_variant = true;
 
@@ -677,10 +696,26 @@ Status MarkForCompilationPass::Run(
   VLOG(1) << "flags->tf_xla_auto_jit = " << flags->tf_xla_auto_jit;
   const FunctionLibraryDefinition* fld = options.flib_def;
 
+  // Deadness analysis expects a graph with source and sink edges properly
+  // connected but sometimes the incoming graph does not follow this invariant.
+  // So fix up the source and sink edges before calling into deadness analysis.
+  FixupSourceAndSinkEdges(options.graph->get());
+
   std::unique_ptr<DeadnessAnalysis> deadness;
   {
     XLA_SCOPED_LOGGING_TIMER_LEVEL("DeadnessAnalysis", 1);
     TF_RETURN_IF_ERROR(DeadnessAnalysis::Run(**options.graph, &deadness));
+  }
+
+  bool deadness_analysis_disabled =
+      GetMarkForCompilationPassFlags()
+          ->tf_xla_disable_deadness_safety_checks_for_debugging;
+
+  if (deadness_analysis_disabled) {
+    LOG(WARNING) << "Deadness analysis was manually disabled via "
+                    "--tf_xla_disable_deadness_safety_checks_for_debugging; "
+                    "auto-clustering "
+                    "is unsound!";
   }
 
   auto is_compilable = [&](const Node* node, const DeviceType& device_type) {
@@ -715,9 +750,12 @@ Status MarkForCompilationPass::Run(
     // and some are dead) then don't compile it.  XLA cannot represent the
     // deadness semantics of these nodes correctly and auto-clustering these
     // nodes can cause deadness to propagate to nodes that should be live.
-    if (node->IsMerge() || deadness->HasInputsWithMismatchingDeadness(*node)) {
-      VLOG(2) << "Rejecting " << node->name() << ": mismatching deadness.";
-      return false;
+    if (!deadness_analysis_disabled) {
+      if (!node->IsMerge() &&
+          deadness->HasInputsWithMismatchingDeadness(*node)) {
+        VLOG(2) << "Rejecting " << node->name() << ": mismatching deadness.";
+        return false;
+      }
     }
 
     // Check for fusable ops only if requested.
@@ -1144,6 +1182,27 @@ Status MarkForCompilationPass::RunImpl(
 
   if (flags->tf_xla_clustering_debug) {
     dump_graph::DumpGraphToFile("mark_for_compilation", **options.graph,
+                                options.flib_def);
+
+    // We also dump out an annoated version of the TF graph where the nodes
+    // names are prefixed with the cluster names.  This can help visualizing the
+    // clustering decisions on TensorBoard.
+    Graph new_graph((*options.graph)->op_registry());
+    CopyGraph(**options.graph, &new_graph);
+
+    for (Node* n : new_graph.nodes()) {
+      if (absl::optional<absl::string_view> cluster_name =
+              GetXlaClusterForNode(*n)) {
+        n->set_name(absl::StrCat(*cluster_name, "/", n->name()));
+      } else {
+        // There is room for improvement here.  In particular, it may help to
+        // split these unclustered nodes into classes where every node in a
+        // specific class has edges to and from the same set of clusters.
+        n->set_name(absl::StrCat("unclustered/", n->name()));
+      }
+    }
+
+    dump_graph::DumpGraphToFile("mark_for_compilation_annotated", new_graph,
                                 options.flib_def);
   }
 

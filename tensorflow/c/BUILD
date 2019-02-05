@@ -83,7 +83,7 @@ tf_cuda_library(
         ],
         "//conditions:default": [
             ":c_api_internal",
-            "//tensorflow/cc/saved_model:loader",
+            "//tensorflow/cc/saved_model:loader_lite",
             "//tensorflow/cc:gradients",
             "//tensorflow/cc:ops",
             "//tensorflow/cc:grad_ops",
@@ -97,6 +97,7 @@ tf_cuda_library(
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
             "//tensorflow/core/distributed_runtime:server_lib",
+            "//tensorflow/core/kernels:logging_ops",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [
@@ -123,13 +124,13 @@ tf_cuda_library(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/compiler/jit:flags",
-        "//tensorflow/contrib/tpu:all_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_platform",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:attr_builder",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -190,14 +191,12 @@ tf_cuda_library(
             ":c_api",
             ":tf_status_helper",
             "//tensorflow/core:android_tensorflow_lib_lite",
-            "//tensorflow/core:platform_env",
             "//tensorflow/core:lib",
         ],
         "//conditions:default": [
             ":c_api",
             ":tf_status_helper",
             "//tensorflow/core:framework",
-            "//tensorflow/core:platform_env",
             "//tensorflow/core:lib",
         ],
     }) + [":c_api_internal"],
@@ -251,6 +250,18 @@ tf_cuda_library(
     ],
 )
 
+tf_cc_test(
+    name = "c_test",
+    srcs = ["c_test.c"],
+    extra_copts = ["-std=c11"],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":env",
+        ":kernels",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "c_api_test",
     size = "small",
@@ -279,13 +290,23 @@ tf_cuda_cc_test(
         "//tensorflow/cc/saved_model:signature_constants",
         "//tensorflow/cc/saved_model:tag_constants",
         "//tensorflow/compiler/jit",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:bitwise_ops_op_lib",
+        "//tensorflow/core:control_flow_ops_op_lib",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:no_op_op_lib",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:sendrecv_ops_op_lib",
+        "//tensorflow/core:spectral_ops_op_lib",
+        "//tensorflow/core:state_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/kernels:array",
@@ -309,6 +330,7 @@ tf_cc_test(
     deps = [
         ":c_api",
         ":c_api_experimental",
+        ":c_api_internal",
         ":c_test_util",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_test_util",

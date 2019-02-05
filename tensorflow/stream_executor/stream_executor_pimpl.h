@@ -413,8 +413,14 @@ class StreamExecutor {
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
   port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-  createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
+  createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type);
+
+  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
+                                    int data_size,
+                                    const absl::Span<const int> &seq_lengths,
+                                    dnn::DataType data_type);
 
   // Create an RNN state descriptor that specifies the input or hidden state.
   // The caller retains the ownership of the returned descriptor.
@@ -517,6 +523,9 @@ class StreamExecutor {
   // stream to complete. Effectively a join on the asynchronous device
   // operations enqueued on the stream before this program point.
   port::Status BlockHostUntilDone(Stream *stream);
+
+  // Without blocking the device, retrieve the current stream status.
+  port::Status GetStatus(Stream *stream);
 
   // Synchronously allocates size bytes on the underlying platform and returns
   // an opaque void* representing that allocation. In the case of failure,

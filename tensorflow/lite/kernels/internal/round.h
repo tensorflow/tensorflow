@@ -21,7 +21,8 @@ namespace tflite {
 
 // TODO(aselle): See if we can do this only on jdk. Also mikecase, check
 // if you need this for java host build.
-#if defined(__ANDROID__) && !defined(__NDK_MAJOR__)
+#if defined(TF_LITE_USE_GLOBAL_ROUND) || \
+    (defined(__ANDROID__) && !defined(__NDK_MAJOR__))
 template <class T>
 inline float TfLiteRound(const float x) {
   return ::round(x);

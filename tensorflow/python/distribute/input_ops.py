@@ -18,14 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import filter_for_shard_ops
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import readers
-from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import traverse
+from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging
+
 
 # TODO(priyag): Any other reader datasets to consider here?
 _READER_DATASET_OPS = [
@@ -53,100 +51,57 @@ def auto_shard_dataset(dataset, num_shards, index):
     determine a good way to shard the input dataset.
   """
 
-  # TODO(priyag): Clone datasets instead of updating in place, similar to the
-  # clone method for TFRecordDataset.
-  def _auto_shard_impl(dataset, found_reader_op):
-    """Recursive implementation of auto sharding."""
+  # TODO(rohanj): b/120673685 to track re-enabling auto sharding.
+  tf_logging.warn("Autosharding is currently disabled. Please shard your input "
+                  "manually.")
+  del num_shards, index
+  return dataset
 
-    if not found_reader_op:
-      # TODO(priyag): Make this check more robust by enforcing some common
-      # property on reader datasets.
-      if (isinstance(dataset, readers.TextLineDataset) or
-          isinstance(dataset, readers.FixedLengthRecordDataset)):
-        filenames_tensor = dataset._filenames
-        num_files = array_ops.size(filenames_tensor)
-        sharded_filenames_tensor = array_ops.gather(
-            filenames_tensor, math_ops.range(index, num_files, num_shards))
-        dataset._filenames = sharded_filenames_tensor
-        return dataset
-      elif isinstance(dataset, readers.TFRecordDataset):
-        # `TFRecordDataset` needs to be handled separately than other readers
-        # because it converts filenames to a dataset first. Also, we clone it
-        # instead of updating in place because it has special logic in the
-        # constructor. Eventually we will change all cases to clone datasets
-        # instead of updating in-place.
-        return dataset._clone(
-            filenames=dataset._filenames.apply(
-                filter_for_shard_ops.filter_for_shard(num_shards, index)))
-      elif isinstance(dataset, dataset_ops.RangeDataset):
-        return dataset.apply(
-            filter_for_shard_ops.filter_for_shard(num_shards, index))
-      elif hasattr(dataset, "_map_func"):
-        # TODO(priyag): Make this check more robust by enforcing some common
-        # property on all map/flatmap/interleave datasets.
-        map_func_def = dataset._map_func.function.definition
-        for node in map_func_def.node_def:
-          if node.op in _READER_DATASET_OPS:
-            found_reader_op = True
-            break
-          elif node.op == "FlatMapDataset":
-            # TODO(priyag): Should this check for other map datasets? Should it
-            # be recursive? It is too specific to implementation of
-            # TFRecordDataset right now.
-            nested_func_name = node.attr["f"].func.name
-            nested_func = ops.get_default_graph()._functions[nested_func_name]
-            for nested_node in nested_func.definition.node_def:
-              if nested_node.op in _READER_DATASET_OPS:
-                found_reader_op = True
-                break
-            if found_reader_op:
-              break
-        if found_reader_op:
-          dataset._input_dataset = _auto_shard_impl(
-              dataset._input_dataset, found_reader_op)
-          return dataset
 
-    if isinstance(dataset, dataset_ops.DatasetV1Adapter):
-      dataset._dataset = _auto_shard_impl(
-          dataset._dataset, found_reader_op)
-      return dataset
+def _clone_dataset(dataset):
+  """Returns a cloned version of `dataset`."""
+  variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(dataset)
+  remap_dict = _clone_helper(dataset._variant_tensor.op, variant_tensor_ops)
+  new_variant_tensor = remap_dict[dataset._variant_tensor.op].outputs[0]
+  return dataset_ops._VariantDataset(new_variant_tensor,
+                                     dataset._element_structure)
 
-    # TODO(priyag): Make _input_dataset(s) a common property of all datasets to
-    # make this check more robust.
-    if hasattr(dataset, "_input_dataset"):
-      dataset._input_dataset = _auto_shard_impl(
-          dataset._input_dataset, found_reader_op)
-      if hasattr(dataset, "_dataset_to_concatenate"):
-        # Special case for `ConcatentateDataset`. We want to shard all input
-        # datasets.
-        dataset._dataset_to_concatenate = _auto_shard_impl(
-            dataset._dataset_to_concatenate, found_reader_op)
-      return dataset
 
-    if hasattr(dataset, "_datasets"):
-      # Special case for `ZipDataset`.
-      dataset._datasets = nest.pack_sequence_as(dataset._datasets, [
-          _auto_shard_impl(ds, found_reader_op)
-          for ds in nest.flatten(dataset._datasets)
-      ])
-      return dataset
+def _get_op_def(op):
+  return op.op_def or op_def_registry.get_registered_ops()[op.type]
 
-    if not found_reader_op:
-      tf_logging.warn(
-          "Could not find a standard reader in the input pipeline"
-          "(one of TextLineDataset, TFRecordDataset, FixedLengthRecordDataset)."
-          "So auto-sharding is not done. Please verify correctness of "
-          "auto-sharding for your input.")
-      # TODO(yuefengz): maybe still shard it?
-      return dataset
 
-    # TODO(priyag): What do we want to do if the number of filenames is
-    # uneven in the number of shards? By default, this will just return as
-    # many items it can before throwing OutOfRangeError.
-    # TODO(priyag): This will shard the filenames before any shuffling of the
-    # filename dataset. It might be desirable to shard after shuffling
-    # filenames? If so, how do we achieve that?
-    return dataset.apply(
-        filter_for_shard_ops.filter_for_shard(num_shards, index))
+def _clone_helper(op_to_clone, variant_tensor_ops):
+  """Helper method that recursively clones `op_to_clone`.
 
-  return _auto_shard_impl(dataset=dataset, found_reader_op=False)
+  Args:
+    op_to_clone: The op we want to clone.
+    variant_tensor_ops: A list of ops that we have to clone along the way.
+
+  Returns:
+    A dictionary mapping old_ops to new_ops created. Includes op_to_clone
+    as a key.
+  """
+  remap_dict = {}
+  for input_tensor in op_to_clone.inputs:
+    input_tensor_op = input_tensor.op
+    if input_tensor_op in variant_tensor_ops:
+      recursive_map = _clone_helper(input_tensor_op, variant_tensor_ops)
+      remap_dict.update(recursive_map)
+  inputs_list = []
+  for input_tensor in op_to_clone.inputs:
+    input_tensor_op = input_tensor.op
+    if input_tensor_op in remap_dict:
+      remapped_input = remap_dict[input_tensor_op].outputs[0]
+      inputs_list.append(remapped_input)
+    else:
+      inputs_list.append(input_tensor_op.outputs[input_tensor.value_index])
+  g = ops.get_default_graph()
+  new_op = g.create_op(
+      op_to_clone.type,
+      inputs_list, [o.dtype for o in op_to_clone.outputs],
+      name=op_to_clone.name,
+      attrs=op_to_clone.node_def.attr,
+      op_def=_get_op_def(op_to_clone))
+  remap_dict[op_to_clone] = new_op
+  return remap_dict

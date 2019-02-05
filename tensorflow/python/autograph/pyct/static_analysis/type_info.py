@@ -45,6 +45,7 @@ import gast
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
+from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.util import tf_inspect
 
@@ -141,10 +142,11 @@ class TypeInfoResolver(transformer.Base):
     arg_name = str(qn)
     self.scope.setval(qn, arg_node)
     if (len(self.enclosing_entities) == 1 and
-        arg_name in self.entity_info.arg_types):
+        arg_name in self.ctx.info.arg_types):
       # Forge a node to hold the type information, so that method calls on
       # it can resolve the type.
-      type_string, type_obj = self.entity_info.arg_types[arg_name]
+      type_string, type_obj = self.ctx.info.arg_types[
+          arg_name]
       anno.setanno(arg_node, 'type', type_obj)
       anno.setanno(arg_node, 'type_fqn', tuple(type_string.split('.')))
 
@@ -177,7 +179,8 @@ class TypeInfoResolver(transformer.Base):
       func = value.func
       if anno.hasanno(func, 'live_val'):
         func_obj = anno.getanno(func, 'live_val')
-        if tf_inspect.isclass(func_obj):
+        if (tf_inspect.isclass(func_obj) and
+            not inspect_utils.isbuiltin(func_obj)):
           anno.setanno(value, 'is_constructor', True)
           anno.setanno(value, 'type', func_obj)
           anno.setanno(value, 'type_fqn', anno.getanno(func, 'fqn'))

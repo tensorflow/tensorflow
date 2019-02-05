@@ -30,6 +30,21 @@ namespace flex {
 namespace delegate {
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteDelegate* delegate) {
+  // If the TensorFlow Lite thread count is explicitly configured, use it,
+  // otherwise rely on the default TensorFlow threading behavior.
+  tensorflow::SessionOptions session_options;
+  if (context->recommended_num_threads > 0) {
+    session_options.config.set_intra_op_parallelism_threads(
+        context->recommended_num_threads);
+  }
+
+  if (!reinterpret_cast<DelegateData*>(delegate->data_)
+           ->Prepare(session_options)
+           .ok()) {
+    context->ReportError(context, "Failed to initialize TensorFlow context.");
+    return kTfLiteError;
+  }
+
   // Get the nodes in the current execution plan. Interpreter owns this array.
   TfLiteIntArray* plan;
   TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan));
@@ -118,20 +133,11 @@ AcquireFlexDelegate() {
 }
 
 std::unique_ptr<FlexDelegate> FlexDelegate::Create() {
-  std::unique_ptr<flex::DelegateData> delegate_data;
-  if (!flex::DelegateData::Create(&delegate_data).ok()) {
-    fprintf(stderr, "Unable to initialize TensorFlow context.\n");
-    return nullptr;
-  }
-
-  return std::unique_ptr<FlexDelegate>(
-      new FlexDelegate(std::move(delegate_data)));
+  return std::unique_ptr<FlexDelegate>(new FlexDelegate());
 }
 
-FlexDelegate::FlexDelegate(std::unique_ptr<flex::DelegateData> delegate_data)
-    : TfLiteDelegate(TfLiteDelegateCreate()),
-      delegate_data_(std::move(delegate_data)) {
-  data_ = delegate_data_.get();
+FlexDelegate::FlexDelegate() : TfLiteDelegate(TfLiteDelegateCreate()) {
+  data_ = &delegate_data_;
   Prepare = &flex::delegate::Prepare;
   CopyFromBufferHandle = &flex::delegate::CopyFromBufferHandle;
   flags = kTfLiteDelegateFlagsAllowDynamicTensors;

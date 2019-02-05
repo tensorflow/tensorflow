@@ -64,8 +64,12 @@ class Registry(object):
     # stack trace is [this_function, Register(), user_function,...]
     # so the user function is #2.
     stack = tf_stack.extract_stack()
-    user_function = stack[2]
-    location_tag = tf_stack.convert_stack([user_function])[0]
+    stack_index = min(2, len(stack)-1)
+    if stack_index >= 0:
+      user_function = stack[stack_index]
+      location_tag = tf_stack.convert_stack([user_function])[0]
+    else:
+      location_tag = "UNKNOWN"
     self._registry[name] = {_TYPE_TAG: candidate, _LOCATION_TAG: location_tag}
 
   def list(self):

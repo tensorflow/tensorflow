@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -76,9 +75,10 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     int64 num_parallel_calls;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
-    OP_REQUIRES(ctx, num_parallel_calls > 0 || num_parallel_calls == kAutoTune,
-                errors::InvalidArgument(
-                    "num_parallel_calls must be greater than zero."));
+    OP_REQUIRES(
+        ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutoTune,
+        errors::InvalidArgument(
+            "num_parallel_calls must be greater than zero."));
 
     bool drop_remainder;
     OP_REQUIRES_OK(ctx,
@@ -120,8 +120,8 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::NumaMapAndBatch")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::NumaMapAndBatch")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -168,7 +168,13 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       other_arguments.reserve(captured_func_->captured_inputs().size());
       for (const Tensor& t : captured_func_->captured_inputs()) {
         Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        DatasetBase* input;
+        Status s = GetDatasetFromVariantTensor(t, &input);
+        if (s.ok()) {
+          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
+        } else {
+          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        }
         other_arguments.emplace_back(node);
         other_arguments_types.emplace_back(t.dtype());
       }
@@ -214,9 +220,8 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
-        if (num_parallel_calls_->value == kAutoTune) {
+        if (num_parallel_calls_->value == model::kAutoTune) {
           num_parallel_calls_->value = ctx->runner_threadpool_size();
-          num_parallel_calls_->tunable = true;
         }
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
@@ -315,7 +320,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         }
         workers_.resize(num_workers);
         for (size_t i = 0; i < num_workers; ++i) {
-          workers_[i] = MakeUnique<NumaWorkerBlock>(this);
+          workers_[i] = absl::make_unique<NumaWorkerBlock>(this);
           TF_RETURN_IF_ERROR(
               workers_[i]->manager.Restore(ctx, reader, this, i));
         }

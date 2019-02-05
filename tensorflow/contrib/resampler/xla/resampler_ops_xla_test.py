@@ -164,6 +164,15 @@ class ResamplerOpsTest(xla_test.XLATestCase):
       expected = [[[0.0], [27.62]]]
       self._assertForwardOpMatchesExpected(input_np, warp_np, expected)
 
+      expected_grad_data = [[[[0.12], [0.27999997]], [[0.18000001],
+                                                      [0.42000002]]]]
+      expected_grad_warp = [[[0., 0.], [22.60000038, 35.20000076]]]
+
+      grad_output = np.ones([1, 2, 1], dtype=dtype)
+      self._assertBackwardOpMatchesExpected(input_np, warp_np, grad_output,
+                                            expected_grad_data,
+                                            expected_grad_warp)
+
     # One of (x, y) is less than 0.
     for dtype in self.float_types:
       input_shape = [1, 2, 2, 1]
@@ -171,10 +180,20 @@ class ResamplerOpsTest(xla_test.XLATestCase):
       input_np = np.array(input_data, dtype=dtype).reshape(input_shape)
 
       warp_shape = [1, 2, 2]
+      # -1 is out of bound for grad_warp.
       warp_data = [-1, 0.1, 0.7, 0.6]
       warp_np = np.array(warp_data, dtype=dtype).reshape(warp_shape)
       expected = [[[0.0], [27.62]]]
       self._assertForwardOpMatchesExpected(input_np, warp_np, expected)
+
+      expected_grad_data = [[[[0.12], [0.27999997]], [[0.18000001],
+                                                      [0.42000002]]]]
+      expected_grad_warp = [[[0., 0.], [22.60000038, 35.20000076]]]
+
+      grad_output = np.ones([1, 2, 1], dtype=dtype)
+      self._assertBackwardOpMatchesExpected(input_np, warp_np, grad_output,
+                                            expected_grad_data,
+                                            expected_grad_warp)
 
     # Both of (x, y) are greater than image size.
     for dtype in self.float_types:
@@ -183,10 +202,19 @@ class ResamplerOpsTest(xla_test.XLATestCase):
       input_np = np.array(input_data, dtype=dtype).reshape(input_shape)
 
       warp_shape = [1, 2, 2]
+      # -0.1 is *inbound* for grad_warp and grad_data, 2.1 is out of bound.
       warp_data = [-0.1, 0.1, 1.2, 2.1]
       warp_np = np.array(warp_data, dtype=dtype).reshape(warp_shape)
       expected = [[[0.0], [0.0]]]
       self._assertForwardOpMatchesExpected(input_np, warp_np, expected)
+
+      expected_grad_data = [[[[0.81], [0.0]], [[0.09], [0.0]]]]
+      expected_grad_warp = [[[10.30, 2.7], [0.0, 0.0]]]
+
+      grad_output = np.ones([1, 2, 1], dtype=dtype)
+      self._assertBackwardOpMatchesExpected(input_np, warp_np, grad_output,
+                                            expected_grad_data,
+                                            expected_grad_warp)
 
     # One of (x, y) is greater than image size.
     for dtype in self.float_types:
@@ -199,6 +227,14 @@ class ResamplerOpsTest(xla_test.XLATestCase):
       warp_np = np.array(warp_data, dtype=dtype).reshape(warp_shape)
       expected = [[[0.0], [0.0]]]
       self._assertForwardOpMatchesExpected(input_np, warp_np, expected)
+
+      expected_grad_data = [[[[0.81], [0.81]], [[0.0], [0.08]]]]
+      expected_grad_warp = [[[-4.5, 9.5], [-9.9, 39.20]]]
+
+      grad_output = np.ones([1, 2, 1], dtype=dtype)
+      self._assertBackwardOpMatchesExpected(input_np, warp_np, grad_output,
+                                            expected_grad_data,
+                                            expected_grad_warp)
 
 
 if __name__ == '__main__':

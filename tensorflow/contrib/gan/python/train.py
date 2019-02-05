@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""The TFGAN project provides a lightweight GAN training/testing framework.
+"""The TF-GAN project provides a lightweight GAN training/testing framework.
 
 This file contains the core helper functions to create and train a GAN model.
 See the README or examples in `tensorflow_models` for details on how to use.
 
-TFGAN training occurs in four steps:
+TF-GAN training occurs in four steps:
 1) Create a model
 2) Add a loss
 3) Create train ops
@@ -645,9 +645,10 @@ def gan_loss(
         type(model))
 
   # Optionally create pooled model.
-  pooled_model = (
-      _tensor_pool_adjusted_model(model, tensor_pool_fn)
-      if tensor_pool_fn else model)
+  if tensor_pool_fn:
+    pooled_model = _tensor_pool_adjusted_model(model, tensor_pool_fn)
+  else:
+    pooled_model = model
 
   # Create standard losses.
   gen_loss = generator_loss_fn(model, add_summaries=add_summaries)
@@ -665,10 +666,11 @@ def gan_loss(
   if _use_aux_loss(mutual_information_penalty_weight):
     gen_info_loss = tfgan_losses.mutual_information_penalty(
         model, add_summaries=add_summaries)
-    dis_info_loss = (
-        gen_info_loss
-        if tensor_pool_fn is None else tfgan_losses.mutual_information_penalty(
-            pooled_model, add_summaries=add_summaries))
+    if tensor_pool_fn is None:
+      dis_info_loss = gen_info_loss
+    else:
+      dis_info_loss = tfgan_losses.mutual_information_penalty(
+          pooled_model, add_summaries=add_summaries)
     gen_loss += mutual_information_penalty_weight * gen_info_loss
     dis_loss += mutual_information_penalty_weight * dis_info_loss
   if _use_aux_loss(aux_cond_generator_weight):
@@ -929,7 +931,7 @@ def gan_train_ops(
     **kwargs):
   """Returns GAN train ops.
 
-  The highest-level call in TFGAN. It is composed of functions that can also
+  The highest-level call in TF-GAN. It is composed of functions that can also
   be called, should a user require more control over some part of the GAN
   training process.
 

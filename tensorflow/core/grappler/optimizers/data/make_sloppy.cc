@@ -25,8 +25,10 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-Status MakeSloppy::Optimize(Cluster* cluster, const GrapplerItem& item,
-                            GraphDef* output) {
+Status MakeSloppy::OptimizeAndCollectStats(Cluster* cluster,
+                                           const GrapplerItem& item,
+                                           GraphDef* output,
+                                           OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
 
@@ -35,6 +37,7 @@ Status MakeSloppy::Optimize(Cluster* cluster, const GrapplerItem& item,
         node.op() == "ParallelMapDataset" ||
         node.op() == "ParseExampleDataset") {
       (*node.mutable_attr())["sloppy"].set_b(true);
+      stats->num_changes++;
     }
   }
   return Status::OK();

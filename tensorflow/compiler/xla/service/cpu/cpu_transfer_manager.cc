@@ -97,7 +97,7 @@ Status CpuTransferManager::TransferLiteralToInfeed(
   VLOG(2) << "Transferring literal to infeed with shape: "
           << ShapeUtil::HumanString(shape);
 
-  if (!ShapeUtil::IsTuple(shape)) {
+  if (!shape.IsTuple()) {
     int64 size = GetByteSizeRequirement(shape);
     return TransferBufferToInfeed(executor, size, literal.untyped_data());
   }
@@ -178,7 +178,7 @@ CpuTransferManager::TransferBufferToInfeedInternal(se::StreamExecutor* executor,
 Status CpuTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, const Shape& literal_shape,
     MutableBorrowingLiteral literal) {
-  if (!ShapeUtil::IsTuple(literal_shape)) {
+  if (!literal_shape.IsTuple()) {
     int64 size = GetByteSizeRequirement(literal_shape);
     // Note: OSS build didn't like implicit conversion from
     // literal_shape.dimensions() to the array slice on 2017-07-10.

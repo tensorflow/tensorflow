@@ -29,11 +29,11 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
+# NOTE: deprecated method in V2, no eager coverage added.
 class FromSparseTensorSlicesTest(test_base.DatasetTestBase):
 
   @test_util.run_deprecated_v1
-  def testSkipEagerFromSparseTensorSlices(self):
+  def testFromSparseTensorSlices(self):
     """Test a dataset based on slices of a `tf.SparseTensor`."""
     st = array_ops.sparse_placeholder(dtypes.float64)
     iterator = dataset_ops.make_initializable_iterator(

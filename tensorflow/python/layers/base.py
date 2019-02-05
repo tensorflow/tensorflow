@@ -26,6 +26,7 @@ from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -550,6 +551,10 @@ class Layer(base_layer.Layer):
       else:
         setattr(result, k, copy.deepcopy(v, memo))
     return result
+
+  def __setattr__(self, value, name):
+    # By-pass the automatic dependency tracking performed by the parent Layer.
+    super(checkpointable.Checkpointable, self).__setattr__(value, name)
 
 
 def _add_elements_to_collection(elements, collection_list):

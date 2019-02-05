@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdlib>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
@@ -26,22 +28,27 @@ namespace {
 // Copies the contents from the flatbuffer int vector `flatbuffer` into the
 // int array `buffer`. `flat_vector` and `buffer` represent the same
 // configuration operation for a given operation.
-void FlatBufferIntVectorToArray(int max_size_of_buffer,
-                                const flatbuffers::Vector<int32_t>* flat_vector,
-                                int* buffer, ErrorReporter* error_reporter) {
+TfLiteStatus FlatBufferIntVectorToArray(
+    int max_size_of_buffer, const flatbuffers::Vector<int32_t>* flat_vector,
+    int* buffer, ErrorReporter* error_reporter, const char* op_name) {
   if (!flat_vector) {
-    error_reporter->Report("Input array not provided for operation.\n");
+    error_reporter->Report("Input array not provided for operation '%s'.\n",
+                           op_name);
+    return kTfLiteError;
   } else {
     int num_dimensions = flat_vector->Length();
     if (num_dimensions > max_size_of_buffer / sizeof(int)) {
       error_reporter->Report(
-          "Found too many dimensions in the operation's input array.\n");
+          "Found too many dimensions in the input array of operation '%s'.\n",
+          op_name);
+      return kTfLiteError;
     } else {
       for (int i = 0; i < num_dimensions; ++i) {
         buffer[i] = flat_vector->Get(i);
       }
     }
   }
+  return kTfLiteOk;
 }
 
 }  // namespace
@@ -417,6 +424,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->cell_clip = bidi_lstm_params->cell_clip();
         params->proj_clip = bidi_lstm_params->proj_clip();
         params->merge_outputs = bidi_lstm_params->merge_outputs();
+        params->time_major = bidi_lstm_params->time_major();
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -449,8 +457,9 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       auto* params = allocator->AllocatePOD<TfLiteReshapeParams>();
       if (auto* schema_params = op->builtin_options_as_ReshapeOptions()) {
         auto* new_shape = schema_params->new_shape();
-        FlatBufferIntVectorToArray(sizeof(params->shape), new_shape,
-                                   params->shape, error_reporter);
+        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
+            sizeof(params->shape), new_shape, params->shape, error_reporter,
+            "reshape"));
         params->num_dimensions = new_shape->Length();
       }
       *builtin_data = reinterpret_cast<void*>(params);
@@ -518,8 +527,9 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       auto* params = allocator->AllocatePOD<TfLiteSqueezeParams>();
       if (auto* schema_params = op->builtin_options_as_SqueezeOptions()) {
         const auto& squeeze_dims = schema_params->squeeze_dims();
-        FlatBufferIntVectorToArray(sizeof(params->squeeze_dims), squeeze_dims,
-                                   params->squeeze_dims, error_reporter);
+        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
+            sizeof(params->squeeze_dims), squeeze_dims, params->squeeze_dims,
+            error_reporter, "squeeze"));
         params->num_squeeze_dims = squeeze_dims->Length();
       }
       *builtin_data = reinterpret_cast<void*>(params);
@@ -650,6 +660,18 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_UNIQUE: {
+      TfLiteUniqueParams* params = allocator->AllocatePOD<TfLiteUniqueParams>();
+      auto* unique_params = op->builtin_options_as_UniqueOptions();
+      if (unique_params != nullptr) {
+        params->index_out_type =
+            unique_params->idx_out_type() == tflite::TensorType_INT64
+                ? TfLiteType::kTfLiteInt64
+                : TfLiteType::kTfLiteInt32;
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
 
     // Below are the ops with no builtin_data strcture.
     case BuiltinOperator_ABS:
@@ -664,6 +686,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_EQUAL:
     case BuiltinOperator_EXP:
     case BuiltinOperator_EXPAND_DIMS:
+    case BuiltinOperator_CEIL:
     case BuiltinOperator_FLOOR:
     case BuiltinOperator_GREATER:
     case BuiltinOperator_GREATER_EQUAL:
@@ -703,6 +726,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_FLOOR_MOD:
     case BuiltinOperator_RANGE:
     case BuiltinOperator_SQUARED_DIFFERENCE:
+    case BuiltinOperator_REVERSE_V2:
+    case BuiltinOperator_ADD_N:
       break;
   }
   return kTfLiteOk;

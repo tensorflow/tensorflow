@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import auto_control_deps as acd
 from tensorflow.python.framework import constant_op
@@ -39,7 +40,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testBasic(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       with acd.AutomaticControlDependencies() as c:
         v.assign(v + 1)
         v.assign(2 * v)
@@ -51,7 +52,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testCondMustRun(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
 
@@ -73,7 +74,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testCondMustRunSeparateRead(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
 
@@ -97,7 +98,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testCondNested(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       q = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
@@ -132,7 +133,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testCondOneBranch(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
 
@@ -153,7 +154,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testCondOneBranchUpdateBefore(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
         v.assign(v * 2)
@@ -175,7 +176,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testCondOneBranchUpdateAfter(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
 
@@ -211,7 +212,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testDecorator(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       @acd.automatic_control_dependencies
       def f():
@@ -280,6 +281,20 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
     train()
     self.assertEqual(v.numpy(), -1.0)
+
+  def testRepeatedResourceInput(self):
+    var = resource_variable_ops.ResourceVariable(1.0)
+
+    @def_function.function
+    def inner(var1, var2):
+      return (resource_variable_ops.read_variable_op(var1, dtypes.float32) +
+              resource_variable_ops.read_variable_op(var2, dtypes.float32))
+
+    @def_function.function
+    def outer():
+      return inner(var.handle, var.handle)
+
+    self.assertEqual(self.evaluate(outer()), 2.0)
 
 
 if __name__ == '__main__':

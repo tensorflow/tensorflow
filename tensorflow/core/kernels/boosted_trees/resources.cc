@@ -31,7 +31,7 @@ BoostedTreesEnsembleResource::BoostedTreesEnsembleResource()
           protobuf::Arena::CreateMessage<boosted_trees::TreeEnsemble>(
               &arena_)) {}
 
-string BoostedTreesEnsembleResource::DebugString() {
+string BoostedTreesEnsembleResource::DebugString() const {
   return strings::StrCat("TreeEnsemble[size=", tree_ensemble_->trees_size(),
                          "]");
 }

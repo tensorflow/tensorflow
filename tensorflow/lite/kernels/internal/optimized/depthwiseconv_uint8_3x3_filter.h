@@ -18,6 +18,7 @@ limitations under the License.
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {

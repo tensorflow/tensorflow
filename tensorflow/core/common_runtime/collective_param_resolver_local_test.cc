@@ -41,8 +41,8 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
     TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices));
     device_mgr_.reset(new DeviceMgr(std::move(devices)));
     drl_.reset(new DeviceResolverLocal(device_mgr_.get()));
-    prl_.reset(new CollectiveParamResolverLocal(device_mgr_.get(), drl_.get(),
-                                                task_name));
+    prl_.reset(new CollectiveParamResolverLocal(cp, device_mgr_.get(),
+                                                drl_.get(), task_name));
   }
 
   void RunCompleteDefaultRanking(

@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse_tensor_dense_matmul_op.h"
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {

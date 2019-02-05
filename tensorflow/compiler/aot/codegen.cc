@@ -129,7 +129,7 @@ Status AddRewritesForShape(int i, const xla::Shape& shape,
   TF_RETURN_IF_ERROR(XLATypeToCpp(shape.element_type(), &type));
   std::vector<string> dim_vars;
   string dim_sizes, indices;
-  if (xla::ShapeUtil::Rank(shape) == 0 ||
+  if (shape.rank() == 0 ||
       (shape.dimensions_size() == 1 && shape.dimensions(0) == 1)) {
     dim_sizes = "[1]";
     indices = "[0]";
@@ -384,8 +384,9 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
   // calling HloProfilePrinter::profile_counters_size.
   const string assign_profile_counters_size =
       opts.gen_hlo_profile_printer_data
-          ? "data->set_profile_counters_size("
-            "data->hlo_profile_printer_data()->profile_counters_size());"
+          ? "set_static_data_profile_counters_size(data, "
+            "get_static_data_hlo_profile_printer_data(data)->"
+            "profile_counters_size());"
           : "";
 
   // Use a poor-man's text templating mechanism; first populate the full header
@@ -449,7 +450,7 @@ extern "C" void {{ENTRY}}(
 //   arg bytes aligned:  {{ARG_BYTES_ALIGNED}}
 //   temp bytes total:   {{TEMP_BYTES_TOTAL}}
 //   temp bytes aligned: {{TEMP_BYTES_ALIGNED}}
-class {{CLASS}} : public tensorflow::XlaCompiledCpuFunction {
+class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
  public:
   // Number of input arguments for the compiled computation.
   static constexpr size_t kNumArgs = {{ARG_NUM}};
@@ -464,16 +465,17 @@ class {{CLASS}} : public tensorflow::XlaCompiledCpuFunction {
     static XlaCompiledCpuFunction::StaticData* kStaticData = [](){
       XlaCompiledCpuFunction::StaticData* data =
         new XlaCompiledCpuFunction::StaticData;
-      data->set_raw_function({{ENTRY}});
-      data->set_buffer_infos(BufferInfos());
-      data->set_num_buffers(kNumBuffers);
-      data->set_arg_index_table(ArgIndexToBufferIndex());
-      data->set_num_args(kNumArgs);
-      data->set_result_index(kResultIndex);
-      data->set_arg_names(StaticArgNames());
-      data->set_result_names(StaticResultNames());
-      data->set_program_shape(StaticProgramShape());
-      data->set_hlo_profile_printer_data(StaticHloProfilePrinterData());
+      set_static_data_raw_function(data, {{ENTRY}});
+      set_static_data_buffer_infos(data, BufferInfos());
+      set_static_data_num_buffers(data, kNumBuffers);
+      set_static_data_arg_index_table(data, ArgIndexToBufferIndex());
+      set_static_data_num_args(data, kNumArgs);
+      set_static_data_result_index(data, kResultIndex);
+      set_static_data_arg_names(data, StaticArgNames());
+      set_static_data_result_names(data, StaticResultNames());
+      set_static_data_program_shape(data, StaticProgramShape());
+      set_static_data_hlo_profile_printer_data(
+          data, StaticHloProfilePrinterData());
 {{ASSIGN_PROFILE_COUNTERS_SIZE}}
       return data;
     }();

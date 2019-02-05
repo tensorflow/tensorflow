@@ -43,9 +43,7 @@ class HloDceTest : public HloTestBase {
   // Returns whether the given instruction exists in the given computation.
   bool HasInstruction(const HloComputation& computation,
                       const HloInstruction* instruction) {
-    return std::find(computation.instructions().begin(),
-                     computation.instructions().end(),
-                     instruction) != computation.instructions().end();
+    return absl::c_linear_search(computation.instructions(), instruction);
   }
 };
 

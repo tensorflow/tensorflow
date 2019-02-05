@@ -352,7 +352,6 @@ class _UnbatchDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset):
     """See `unbatch()` for more details."""
-    super(_UnbatchDataset, self).__init__(input_dataset)
     flat_shapes = nest.flatten(input_dataset.output_shapes)
     if any(s.ndims == 0 for s in flat_shapes):
       raise ValueError("Cannot unbatch an input with scalar components.")
@@ -370,10 +369,10 @@ class _UnbatchDataset(dataset_ops.UnaryDataset):
         nest.map_structure(lambda s: s[1:], input_dataset.output_shapes),
         input_dataset.output_classes)
 
-  def _as_variant_tensor(self):
-    return ged_ops.experimental_unbatch_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+    variant_tensor = ged_ops.experimental_unbatch_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         **dataset_ops.flat_structure(self))
+    super(_UnbatchDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
   def _element_structure(self):
@@ -440,7 +439,6 @@ class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, batch_size, row_shape):
     """See `Dataset.dense_to_sparse_batch()` for more details."""
-    super(_DenseToSparseBatchDataset, self).__init__(input_dataset)
     if not isinstance(input_dataset.output_types, dtypes.DType):
       raise TypeError("DenseToSparseDataset requires an input whose elements "
                       "have a single component, whereas the input has %r." %
@@ -452,12 +450,13 @@ class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
         input_dataset.output_types,
         tensor_shape.vector(None).concatenate(self._row_shape))
 
-  def _as_variant_tensor(self):
-    return ged_ops.experimental_dense_to_sparse_batch_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+    variant_tensor = ged_ops.experimental_dense_to_sparse_batch_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._batch_size,
         row_shape=convert.partial_shape_to_tensor(self._row_shape),
         **dataset_ops.flat_structure(self))
+    super(_DenseToSparseBatchDataset, self).__init__(input_dataset,
+                                                     variant_tensor)
 
   @property
   def _element_structure(self):
@@ -499,7 +498,6 @@ class _RestructuredDataset(dataset_ops.UnaryDataset):
       ValueError: If either `output_types` or `output_shapes` is not compatible
         with the structure of `dataset`.
     """
-    super(_RestructuredDataset, self).__init__(dataset)
     self._input_dataset = dataset
 
     if not allow_unsafe_cast:
@@ -539,9 +537,8 @@ class _RestructuredDataset(dataset_ops.UnaryDataset):
 
     self._structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
-
-  def _as_variant_tensor(self):
-    return self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
+    variant_tensor = self._input_dataset._variant_tensor  # pylint: disable=protected-access
+    super(_RestructuredDataset, self).__init__(dataset, variant_tensor)
 
   @property
   def _element_structure(self):
@@ -554,8 +551,8 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
   def __init__(self, input_dataset, map_func, batch_size, num_parallel_calls,
                drop_remainder):
     """See `Dataset.map()` for details."""
-    super(_MapAndBatchDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
+
     self._map_func = dataset_ops.StructuredFunctionWrapper(
         map_func, "tf.data.experimental.map_and_batch()", dataset=input_dataset)
     self._batch_size_t = ops.convert_to_tensor(
@@ -573,14 +570,8 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
           tensor_util.constant_value(self._batch_size_t))
     else:
       self._structure = self._map_func.output_structure._batch(None)  # pylint: disable=protected-access
-
-  def _functions(self):
-    return [self._map_func]
-
-  def _as_variant_tensor(self):
-    # pylint: disable=protected-access
-    return ged_ops.experimental_map_and_batch_dataset(
-        self._input_dataset._as_variant_tensor(),
+    variant_tensor = ged_ops.experimental_map_and_batch_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,
         f=self._map_func.function,
         batch_size=self._batch_size_t,
@@ -588,6 +579,10 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
         drop_remainder=self._drop_remainder_t,
         preserve_cardinality=True,
         **dataset_ops.flat_structure(self))
+    super(_MapAndBatchDataset, self).__init__(input_dataset, variant_tensor)
+
+  def _functions(self):
+    return [self._map_func]
 
   @property
   def _element_structure(self):
@@ -650,3 +645,34 @@ def map_and_batch(map_func,
                                num_parallel_calls, drop_remainder)
 
   return _apply_fn
+
+
+class _RebatchDataset(dataset_ops.UnaryDataset):
+  """A `Dataset` that divides the batch size by `num_workers`."""
+
+  def __init__(self, input_dataset, num_workers):
+    self._input_dataset = input_dataset
+    output_shapes = input_dataset.output_shapes
+    if len(output_shapes) < 1:
+      raise ValueError("Input shape should have at least one dimension.")
+    if not output_shapes.dims[0].value:
+      raise ValueError("Cannot rebatch unknown batch size datasets.")
+    if output_shapes.dims[0].value % num_workers != 0:
+      raise ValueError(
+          "First dim of input shape: %d is not divisible by num_workers: %d" %
+          (output_shapes[0], num_workers))
+    output_dims = [d for d in output_shapes.dims]
+    output_dims[0] = output_dims[0] // num_workers
+    output_shapes = tensor_shape.TensorShapeV1(output_dims)
+    self._structure = structure.convert_legacy_structure(
+        self._input_dataset.output_types, output_shapes,
+        self._input_dataset.output_classes)
+    variant_tensor = ged_ops.experimental_rebatch_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        num_workers=num_workers,
+        **dataset_ops.flat_structure(self))
+    super(_RebatchDataset, self).__init__(input_dataset, variant_tensor)
+
+  @property
+  def _element_structure(self):
+    return self._structure

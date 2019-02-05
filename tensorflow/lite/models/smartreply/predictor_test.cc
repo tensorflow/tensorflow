@@ -22,21 +22,24 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
-//#include "tensorflow/lite/models/test_utils.h"
-#include "tensorflow/lite/string_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace custom {
 namespace smartreply {
 namespace {
 
-const char kModelName[] = "smartreply_ondevice_model.bin";
 const char kSamples[] = "smartreply_samples.tsv";
 
-string TestDataPath() {
+string GetModelFilePath() {
+  return "external/tflite_smartreply/smartreply.tflite";  // NOLINT
+}
+
+string GetSamplesFilePath() {
   return string(absl::StrCat(tensorflow::testing::TensorFlowSrcRoot(), "/",
-                             "lite/models/testdata/"));
+                             "lite/models/testdata/", kSamples));
 }
 
 MATCHER_P(IncludeAnyResponesIn, expected_response, "contains the response") {
@@ -53,12 +56,13 @@ MATCHER_P(IncludeAnyResponesIn, expected_response, "contains the response") {
 
 class PredictorTest : public ::testing::Test {
  protected:
-  PredictorTest() {
-    model_ = tflite::FlatBufferModel::BuildFromFile(
-        absl::StrCat(TestDataPath(), "/", kModelName).c_str());
-    CHECK(model_);
-  }
+  PredictorTest() {}
   ~PredictorTest() override {}
+
+  void SetUp() override {
+    model_ = tflite::FlatBufferModel::BuildFromFile(GetModelFilePath().c_str());
+    ASSERT_NE(model_.get(), nullptr);
+  }
 
   std::unique_ptr<::tflite::FlatBufferModel> model_;
 };
@@ -121,7 +125,7 @@ TEST_F(PredictorTest, BatchTest) {
   int total_triggers = 0;
 
   string line;
-  std::ifstream fin(absl::StrCat(TestDataPath(), "/", kSamples));
+  std::ifstream fin(GetSamplesFilePath());
   while (std::getline(fin, line)) {
     const std::vector<string> fields = absl::StrSplit(line, '\t');
     if (fields.empty()) {
@@ -151,3 +155,9 @@ TEST_F(PredictorTest, BatchTest) {
 }  // namespace smartreply
 }  // namespace custom
 }  // namespace tflite
+
+int main(int argc, char **argv) {
+  ::tflite::LogToStderr();
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

@@ -21,12 +21,20 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Server"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Strategy"
     mtype: "<type \'type\'>"
   }
   member {
     name: "StrategyExtended"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "cluster_resolver"
+    mtype: "<type \'module\'>"
   }
   member_method {
     name: "get_loss_reduction"

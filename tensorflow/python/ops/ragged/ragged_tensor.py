@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.client import session
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -32,6 +33,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged import segment_id_ops
+from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
 _eval_using_default_session = ops._eval_using_default_session
@@ -43,8 +45,9 @@ _eval_using_default_session = ops._eval_using_default_session
 #===============================================================================
 
 
-class RaggedTensor(object):
-  """Represents a ragged tensor (go/ragged).
+@tf_export("RaggedTensor")
+class RaggedTensor(composite_tensor.CompositeTensor):
+  """Represents a ragged tensor.
 
   A `RaggedTensor` is a tensor with one or more *ragged dimensions*, which are
   dimensions whose slices may have different lengths.  For example, the inner
@@ -1434,6 +1437,53 @@ class RaggedTensor(object):
     while isinstance(values, RaggedTensor):
       values = values.values
     return values
+
+  #=============================================================================
+  # Composite Tensor
+  #=============================================================================
+
+  def _to_components(self):
+    return (self.flat_values,) + self.nested_row_splits
+
+  @classmethod
+  def _from_components(cls, components):
+    return cls.from_nested_row_splits(components[0], components[1:])
+
+  def _shape_invariant_to_components(self, shape=None):
+    ragged_rank = self.ragged_rank
+    flat_values = self.flat_values
+
+    if shape is None:
+      # Default shape invariant
+      value_shape = flat_values.shape[1:]
+      values_shape = tensor_shape.TensorShape([None]).concatenate(value_shape)
+      return ((values_shape, self._row_splits.shape) +
+              tuple(tensor_shape.TensorShape([None])
+                    for i in range(1, ragged_rank)))
+    else:
+      # Explicitly specified shape invariant
+      if shape.ndims is not None and shape.ndims <= ragged_rank:
+        raise ValueError("Shape invariant %s does not have sufficient rank "
+                         "for a RaggedTensor with %d ragged dimensions." %
+                         (shape, self.ragged_rank))
+      if any(tensor_shape.dimension_value(shape[dim]) is not None
+             for dim in range(1, self.ragged_rank + 1)):
+        raise ValueError("Shape invariant dimension size must be None for "
+                         "ragged dimenions.")
+      nrows = tensor_shape.dimension_value(shape[0])
+      value_shape = shape[self.ragged_rank + 1:]
+      values_shape = tensor_shape.TensorShape([None]).concatenate(value_shape)
+      if nrows is None:
+        outer_splits_shape = tensor_shape.TensorShape([None])
+      else:
+        outer_splits_shape = tensor_shape.TensorShape([nrows + 1])
+      return ((values_shape, outer_splits_shape) +
+              tuple(tensor_shape.TensorShape([None])
+                    for i in range(1, ragged_rank)))
+
+  @property
+  def _is_graph_tensor(self):
+    return hasattr(self._values, 'graph')
 
 
 def is_ragged(value):

@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -36,8 +38,8 @@ constexpr int kError = -2;
 
 // [a-zA-Z0-9_.-]
 bool IsIdentifierChar(char c) {
-  return isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '.' ||
-         c == '_';
+  return absl::ascii_isalnum(static_cast<unsigned char>(c)) || c == '-' ||
+         c == '.' || c == '_';
 }
 
 }  // namespace
@@ -82,15 +84,29 @@ tensorflow::RegexpStringPiece HloLexer::RegexpStringPieceFromPointers(
   return tensorflow::RegexpStringPiece(begin, end - begin);
 }
 
+TokKind HloLexer::LookAhead() {
+  if (GetKind() == TokKind::kEof || GetKind() == TokKind::kError) {
+    return GetKind();
+  }
+
+  const char* old_current_ptr = current_ptr_;
+  TokenState old_token_state = token_state_;
+  Lex();
+  TokKind kind = GetKind();
+  token_state_ = old_token_state;
+  current_ptr_ = old_current_ptr;
+  return kind;
+}
+
 TokKind HloLexer::LexToken() {
   while (true) {
-    token_start_ = current_ptr_;
+    token_state_.token_start = current_ptr_;
 
     int current_char = GetNextChar();
     switch (current_char) {
       default:
         // [a-zA-Z_]
-        if (isalpha(static_cast<unsigned char>(current_char)) ||
+        if (absl::ascii_isalpha(static_cast<unsigned char>(current_char)) ||
             current_char == '_') {
           return LexIdentifier();
         }
@@ -125,6 +141,12 @@ TokKind HloLexer::LexToken() {
         return LexNumberOrPattern();
       case '=':
         return TokKind::kEqual;
+      case '<':
+        if (current_char == '<' && PeekCurrentChar() == '=') {
+          current_ptr_++;
+          return TokKind::kLeq;
+        }
+        return TokKind::kError;
       case ',':
         return TokKind::kComma;
       case '%':
@@ -190,6 +212,15 @@ TokKind HloLexer::LexToken() {
         // A lone '/' is an error.
         return TokKind::kError;
       }
+      case '.':
+        if (PeekCurrentChar() == '.') {
+          current_ptr_++;
+          if (PeekCurrentChar() == '.') {
+            current_ptr_++;
+            return TokKind::kDots;
+          }
+        }
+        return TokKind::kError;
       case '"':
         return LexString();
     }
@@ -206,43 +237,37 @@ TokKind HloLexer::LexToken() {
 // dim_labels_pattern ::= [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
 // identifiers ::= other cases that match [a-zA-Z_][a-zA-Z0-9_.-]*
 TokKind HloLexer::LexIdentifier() {
-  {
-    auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
-    // 'consumable' will be advanced iff its prefix matches the pattern.
-    static LazyRE2 shape_pattern = {
-        R"(^(\w*\d*)\[([\d,\s]*)\](?:(dense|sparse)?{([\d,\s]+)})?)"};
-    if (RE2::Consume(&consumable, *shape_pattern)) {
-      auto status_or_shape = ShapeUtil::ParseShapeString(
-          StringPieceFromPointers(token_start_, consumable.begin()));
-      if (status_or_shape.ok()) {
-        // This is a shape string.
-        shape_val_ = status_or_shape.ValueOrDie();
-        current_ptr_ = consumable.begin();
-        return TokKind::kShape;
-      }
-    }
-  }
-
   while (IsIdentifierChar(PeekCurrentChar())) {
     current_ptr_++;
   }
 
   // If followed by ':', it's a name.
   if (PeekCurrentChar() == ':') {
-    str_val_.assign(token_start_, current_ptr_);
+    token_state_.str_val.assign(token_state_.token_start, current_ptr_);
     current_ptr_++;  // skip ':'
     return TokKind::kName;
   }
 
   // If followed by '=', it's a attribute name.
   if (PeekCurrentChar() == '=') {
-    str_val_.assign(token_start_, current_ptr_);
+    token_state_.str_val.assign(token_state_.token_start, current_ptr_);
     current_ptr_++;  // skip '='
     return TokKind::kAttributeName;
   }
 
   absl::string_view identifier =
-      StringPieceFromPointers(token_start_, current_ptr_);
+      StringPieceFromPointers(token_state_.token_start, current_ptr_);
+
+  // Primitive type strings are reserved words. The exception is 'tuple' whose
+  // type is represented using nested parentheses without the string 'tuple'.
+  if (primitive_util::IsPrimitiveTypeName(identifier)) {
+    PrimitiveType primitive_type =
+        primitive_util::StringToPrimitiveType(identifier).ValueOrDie();
+    if (primitive_type != TUPLE) {
+      token_state_.primitive_type_val = primitive_type;
+      return TokKind::kPrimitiveType;
+    }
+  }
 
   // See if this is a keyword.
 #define KEYWORD(STR)            \
@@ -261,21 +286,23 @@ TokKind HloLexer::LexIdentifier() {
   KEYWORD(ROOT);
   KEYWORD(maximal);
   KEYWORD(replicated);
+  KEYWORD(sparse);
 
 #undef KEYWORD
 
   {
-    auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
+    auto consumable =
+        RegexpStringPieceFromPointers(token_state_.token_start, buf_.end());
     static LazyRE2 dim_labels_pattern = {
         R"([0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,})"};
     if (RE2::Consume(&consumable, *dim_labels_pattern)) {
       current_ptr_ = consumable.begin();
-      str_val_.assign(token_start_, current_ptr_);
+      token_state_.str_val.assign(token_state_.token_start, current_ptr_);
       return TokKind::kDimLabels;
     }
   }
 
-  str_val_ = string(identifier);
+  token_state_.str_val = string(identifier);
   return TokKind::kIdent;
 }
 
@@ -283,13 +310,13 @@ TokKind HloLexer::LexIdentifier() {
 // name ::= [a-zA-Z_][a-zA-Z0-9_.-]*
 TokKind HloLexer::LexPercent() {
   const char* name_start = current_ptr_;
-  if (isalpha(static_cast<unsigned char>(PeekCurrentChar())) ||
+  if (absl::ascii_isalpha(static_cast<unsigned char>(PeekCurrentChar())) ||
       PeekCurrentChar() == '_') {
     current_ptr_++;
     while (IsIdentifierChar(PeekCurrentChar())) {
       current_ptr_++;
     }
-    str_val_.assign(name_start, current_ptr_);
+    token_state_.str_val.assign(name_start, current_ptr_);
     return TokKind::kName;
   }
   return TokKind::kError;
@@ -307,12 +334,14 @@ TokKind HloLexer::LexPercent() {
 // int ::=  [-]?[0-9]+
 // negative inf ::= '-inf'
 TokKind HloLexer::LexNumberOrPattern() {
-  auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
+  auto consumable =
+      RegexpStringPieceFromPointers(token_state_.token_start, buf_.end());
   static LazyRE2 float_pattern = {
       R"([-]?((\d+|\d+[.]\d*|\d*[.]\d+)([eE][+-]?\d+))|[-]?(\d+[.]\d*|\d*[.]\d+))"};
   if (RE2::Consume(&consumable, *float_pattern)) {
     current_ptr_ = consumable.begin();
-    CHECK(absl::SimpleAtod(string(token_start_, current_ptr_), &decimal_val_));
+    CHECK(absl::SimpleAtod(string(token_state_.token_start, current_ptr_),
+                           &token_state_.decimal_val));
     return TokKind::kDecimal;
   }
 
@@ -324,27 +353,28 @@ TokKind HloLexer::LexNumberOrPattern() {
 
   if (RE2::Consume(&consumable, *dim_labels_pattern)) {
     current_ptr_ = consumable.begin();
-    str_val_.assign(token_start_, current_ptr_);
+    token_state_.str_val.assign(token_state_.token_start, current_ptr_);
     return TokKind::kDimLabels;
   }
 
   if (RE2::Consume(&consumable, *dxd_pattern)) {
     current_ptr_ = consumable.begin();
-    str_val_.assign(token_start_, current_ptr_);
+    token_state_.str_val.assign(token_state_.token_start, current_ptr_);
     return TokKind::kDxD;
   }
 
   if (RE2::Consume(&consumable, *pad_pattern)) {
     current_ptr_ = consumable.begin();
-    str_val_.assign(token_start_, current_ptr_);
+    token_state_.str_val.assign(token_state_.token_start, current_ptr_);
     return TokKind::kPad;
   }
 
   static LazyRE2 int_pattern = {R"([-]?\d+)"};
   if (RE2::Consume(&consumable, *int_pattern)) {
     current_ptr_ = consumable.begin();
-    auto slice = StringPieceFromPointers(token_start_, current_ptr_);
-    if (absl::SimpleAtoi(slice, &int64_val_)) {
+    auto slice =
+        StringPieceFromPointers(token_state_.token_start, current_ptr_);
+    if (absl::SimpleAtoi(slice, &token_state_.int64_val)) {
       return TokKind::kInt;
     }
     LOG(ERROR) << "Failed to parse int literal: " << slice;
@@ -403,16 +433,17 @@ absl::string_view HloLexer::GetLine(LocTy loc) const {
 }
 
 // Lexes quoted string with escaping characters. If matched, the quoted string
-// will be unescaped and stored to str_val_.
+// will be unescaped and stored to token_state_.str_val.
 TokKind HloLexer::LexString() {
-  auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
+  auto consumable =
+      RegexpStringPieceFromPointers(token_state_.token_start, buf_.end());
   static LazyRE2 escaping_pattern = {R"("([^"\\]|\\.)*")"};
   if (RE2::Consume(&consumable, *escaping_pattern)) {
     current_ptr_ = consumable.begin();
     absl::string_view raw =
-        StringPieceFromPointers(token_start_ + 1, current_ptr_ - 1);
+        StringPieceFromPointers(token_state_.token_start + 1, current_ptr_ - 1);
     string error;
-    if (!absl::CUnescape(raw, &str_val_, &error)) {
+    if (!absl::CUnescape(raw, &token_state_.str_val, &error)) {
       LOG(ERROR) << "Failed unescaping string: " << raw << ". error: " << error;
       return TokKind::kError;
     }
@@ -447,6 +478,8 @@ string TokKindToString(TokKind kind) {
       return "kRparen";
     case TokKind::kArrow:
       return "kArrow";
+    case TokKind::kLeq:
+      return "kLeq";
     case TokKind::kw_HloModule:
       return "kw_HloModule";
     case TokKind::kw_ENTRY:
@@ -467,6 +500,10 @@ string TokKindToString(TokKind kind) {
       return "kw_inf";
     case TokKind::kNegInf:
       return "kNegInf";
+    case TokKind::kw_sparse:
+      return "kw_sparse";
+    case TokKind::kPrimitiveType:
+      return "kPrimitiveType";
     case TokKind::kName:
       return "kName";
     case TokKind::kAttributeName:
@@ -481,12 +518,12 @@ string TokKindToString(TokKind kind) {
       return "kIdent";
     case TokKind::kString:
       return "kString";
-    case TokKind::kShape:
-      return "kShape";
     case TokKind::kInt:
       return "kInt";
     case TokKind::kDecimal:
       return "kDecimal";
+    case TokKind::kDots:
+      return "kDots";
   }
 }
 

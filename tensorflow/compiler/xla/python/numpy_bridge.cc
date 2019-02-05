@@ -54,6 +54,8 @@ int PrimitiveTypeToNumpyType(PrimitiveType primitive_type) {
       return NPY_FLOAT64;
     case C64:
       return NPY_COMPLEX64;
+    case C128:
+      return NPY_COMPLEX128;
     case TUPLE:
       return NPY_OBJECT;
     default:
@@ -89,6 +91,8 @@ PrimitiveType NumpyTypeToPrimitiveType(int np_type) {
       return F64;
     case NPY_COMPLEX64:
       return C64;
+    case NPY_COMPLEX128:
+      return C128;
     case NPY_OBJECT:
       return TUPLE;
     default:
@@ -111,6 +115,7 @@ bool NumpyTypeIsValid(int np_type) {
     case NPY_FLOAT32:
     case NPY_FLOAT64:
     case NPY_COMPLEX64:
+    case NPY_COMPLEX128:
     case NPY_OBJECT:
       return true;
     default:
@@ -123,7 +128,7 @@ PyObject* PyShapeInfoFromXlaShape(const Shape& shape) {
   PyArray_Descr* np_dtype = PyArray_DescrFromType(np_typenum);
 
   PyObject* dimensions;
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     int num_elements = ShapeUtil::TupleElementCount(shape);
     dimensions = PyTuple_New(ShapeUtil::TupleElementCount(shape));
     for (int i = 0; i < num_elements; ++i) {
@@ -132,7 +137,7 @@ PyObject* PyShapeInfoFromXlaShape(const Shape& shape) {
           PyShapeInfoFromXlaShape(ShapeUtil::GetTupleElementShape(shape, i)));
     }
   } else {
-    int rank = ShapeUtil::Rank(shape);
+    int rank = shape.rank();
     dimensions = PyTuple_New(rank);
     for (int i = 0; i < rank; ++i) {
       PyTuple_SET_ITEM(dimensions, i,
@@ -345,7 +350,7 @@ StatusOr<OpMetadata> OpMetadataFromPyObject(PyObject* o) {
 }
 
 PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal) {
-  if (ShapeUtil::IsTuple(literal.shape())) {
+  if (literal.shape().IsTuple()) {
     int num_elements = ShapeUtil::TupleElementCount(literal.shape());
     PyObject* tuple = PyTuple_New(num_elements);
     for (int i = 0; i < num_elements; i++) {
@@ -354,7 +359,7 @@ PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal) {
     }
     return tuple;
   } else {
-    int rank = ShapeUtil::Rank(literal.shape());
+    int rank = literal.shape().rank();
     std::vector<long> dimensions(rank);  // NOLINT - PyArray requires a long*
     for (int i = 0; i < rank; i++) {
       dimensions[i] = ShapeUtil::GetDimension(literal.shape(), i);
@@ -430,6 +435,9 @@ Status CopyNumpyArrayToLiteral(int np_type, PyArrayObject* py_array,
     case NPY_COMPLEX64:
       CopyNumpyArrayToLiteral<complex64>(py_array, literal);
       break;
+    case NPY_COMPLEX128:
+      CopyNumpyArrayToLiteral<complex128>(py_array, literal);
+      break;
     default:
       return InvalidArgument(
           "No XLA literal container for Numpy type number: %d", np_type);
@@ -469,6 +477,9 @@ void CopyLiteralToNumpyArray(int np_type, const LiteralSlice& literal,
       break;
     case NPY_COMPLEX64:
       CopyLiteralToNumpyArray<complex64>(literal, py_array);
+      break;
+    case NPY_COMPLEX128:
+      CopyLiteralToNumpyArray<complex128>(literal, py_array);
       break;
     default:
       LOG(FATAL) << "No XLA literal container for Numpy type" << np_type;

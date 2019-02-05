@@ -30,7 +30,6 @@ class _SlideDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, window_size, window_shift, window_stride):
     """See `sliding_window_batch` for details."""
-    super(_SlideDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._window_size = ops.convert_to_tensor(
         window_size, dtype=dtypes.int64, name="window_stride")
@@ -43,14 +42,13 @@ class _SlideDataset(dataset_ops.UnaryDataset):
         input_dataset.output_types, input_dataset.output_shapes,
         input_dataset.output_classes)
     self._structure = input_structure._batch(None)  # pylint: disable=protected-access
-
-  def _as_variant_tensor(self):
-    return ged_ops.experimental_sliding_window_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+    variant_tensor = ged_ops.experimental_sliding_window_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         window_size=self._window_size,
         window_shift=self._window_shift,
         window_stride=self._window_stride,
         **dataset_ops.flat_structure(self))
+    super(_SlideDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
   def _element_structure(self):

@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
-#include "tensorflow/core/framework/iterator.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
@@ -60,8 +59,8 @@ class IteratorResource : public ResourceBase {
                    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
                    FunctionLibraryRuntime* lib)
       : device_mgr_(std::move(device_mgr)),
-        iterator_state_(
-            new State(std::move(flib_def), std::move(pflr), lib, nullptr)),
+        iterator_state_(std::make_shared<State>(
+            std::move(flib_def), std::move(pflr), lib, nullptr /* iterator */)),
         output_dtypes_(output_dtypes),
         output_shapes_(output_shapes) {}
 
@@ -136,8 +135,8 @@ class IteratorResource : public ResourceBase {
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
     TF_RETURN_IF_ERROR(ctx->function_library()->Clone(&flib_def, &pflr, &lib));
     TF_RETURN_IF_ERROR(flib_def->AddLibrary(graph_def.library()));
-    std::unique_ptr<State> new_state(new State(
-        std::move(flib_def), std::move(pflr), lib, nullptr /* iterator */));
+    std::unique_ptr<State> new_state = absl::make_unique<State>(
+        std::move(flib_def), std::move(pflr), lib, nullptr /* iterator */);
 
     TF_RETURN_IF_ERROR(
         graph_runner.Run(&graph, new_state->lib, {}, {output_node}, &outputs));
@@ -181,10 +180,10 @@ class IteratorResource : public ResourceBase {
     std::shared_ptr<State> new_state;
     {
       tf_shared_lock l(mu_);
-      new_state.reset(new State(iterator_state_->flib_def,
-                                iterator_state_->pflr, iterator_state_->lib,
-                                nullptr /* function_handle_cache */,
-                                nullptr /* iterator */));
+      new_state = std::make_shared<State>(
+          iterator_state_->flib_def, iterator_state_->pflr,
+          iterator_state_->lib, nullptr /* function_handle_cache */,
+          nullptr /* iterator */);
     }
 
     // Ensure that the iterator has access to all functions in the current
@@ -209,8 +208,8 @@ class IteratorResource : public ResourceBase {
       new_state->lib = lib;
     }
 
-    new_state->function_handle_cache.reset(
-        new FunctionHandleCache(new_state->lib));
+    new_state->function_handle_cache =
+        absl::make_unique<FunctionHandleCache>(new_state->lib);
     // Create new iterator.
     std::unique_ptr<IteratorBase> iterator;
     IteratorContext::Params params(ctx);
@@ -230,7 +229,7 @@ class IteratorResource : public ResourceBase {
     return Status::OK();
   }
 
-  string DebugString() override { return "Iterator resource"; }
+  string DebugString() const override { return "Iterator resource"; }
 
   const DataTypeVector& output_dtypes() const { return output_dtypes_; }
 
@@ -277,124 +276,6 @@ class IteratorResource : public ResourceBase {
 
 namespace {
 
-// Helper class for reading data from a VariantTensorData object.
-class VariantTensorDataReader : public IteratorStateReader {
- public:
-  explicit VariantTensorDataReader(const VariantTensorData* data)
-      : data_(data) {
-    PreProcess();
-  }
-
-  // Returns OK iff the initialization was successful, i.e.,
-  // pre-processing did not have errors.
-  Status status() const { return status_; }
-
-  Status ReadScalar(StringPiece key, int64* val) override {
-    return ReadScalarInternal(key, val);
-  }
-
-  Status ReadScalar(StringPiece key, string* val) override {
-    return ReadScalarInternal(key, val);
-  }
-
-  Status ReadTensor(StringPiece key, Tensor* val) override {
-    return ReadTensorInternal(key, val);
-  }
-
-  bool Contains(StringPiece key) override {
-    return map_.find(string(key)) != map_.end();
-  }
-
- private:
-  void PreProcess() {
-    string metadata;
-    data_->get_metadata(&metadata);
-    IteratorStateMetadata proto;
-    if (!proto.ParseFromString(metadata)) {
-      status_ = errors::Internal("Error parsing IteratorStateMetadata.");
-      return;
-    }
-    size_t num_entries = proto.keys_size();
-    CHECK_EQ(num_entries, data_->tensors_size());
-    for (size_t i = 0; i < num_entries; i++) {
-      map_[proto.keys(i)] = i;
-    }
-  }
-
-  template <typename T>
-  Status ReadScalarInternal(StringPiece key, T* val) {
-    if (map_.find(string(key)) == map_.end()) {
-      return errors::NotFound(key);
-    }
-    *val = data_->tensors(map_[string(key)]).scalar<T>()();
-    return Status::OK();
-  }
-
-  Status ReadTensorInternal(StringPiece key, Tensor* val) {
-    if (map_.find(string(key)) == map_.end()) {
-      return errors::NotFound(key);
-    }
-    *val = data_->tensors(map_[string(key)]);
-    return Status::OK();
-  }
-
-  std::map<string, size_t> map_;
-  const VariantTensorData* data_;  // Not owned.
-  Status status_;
-};
-
-// Helper class for writing data to a VariantTensorData object.
-class VariantTensorDataWriter : public IteratorStateWriter {
- public:
-  // Does not take ownership of data.
-  explicit VariantTensorDataWriter(VariantTensorData* data) : data_(data) {}
-
-  Status WriteScalar(StringPiece key, const int64 val) override {
-    return WriteScalarInternal(key, val);
-  }
-
-  Status WriteScalar(StringPiece key, const string& val) override {
-    return WriteScalarInternal(key, val);
-  }
-
-  Status WriteTensor(StringPiece key, const Tensor& val) override {
-    return WriteTensorInternal(key, val);
-  }
-
-  // Writes the metadata to `data_`.
-  Status Flush() {
-    string metadata;
-    if (!metadata_proto_.SerializeToString(&metadata)) {
-      return errors::Internal("Unable to serialize IteratorStateMetadata.");
-    }
-    data_->set_metadata(metadata);
-    return Status::OK();
-  }
-
- private:
-  template <typename T>
-  Status WriteScalarInternal(StringPiece key, const T& val) {
-    Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
-    val_t.scalar<T>()() = val;
-    return WriteTensorInternal(key, val_t);
-  }
-
-  Status WriteTensorInternal(StringPiece key, const Tensor& val) {
-    // Write key to the metadata proto. This gets written to `data_`
-    // when `Flush()` is called. We do this lazily to avoid multiple
-    // serialization calls.
-    metadata_proto_.add_keys(string(key));
-
-    // Update tensors.
-    *(data_->add_tensors()) = val;
-    return Status::OK();
-  }
-
-  VariantTensorData* data_;
-  // TODO(srbs): Set the version string.
-  IteratorStateMetadata metadata_proto_;
-};
-
 // Wrapper for encoding/decoding the iterator state stored in a Variant tensor.
 // The get() method returns an IteratorStateReader which can be used
 // to restore iterator state.
@@ -433,7 +314,7 @@ class IteratorStateVariant {
     SerializationContext::Params params;
     params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
     SerializationContext serialization_ctx(params);
-    data_.reset(new VariantTensorData());
+    data_ = absl::make_unique<VariantTensorData>();
     data_->set_type_name(TypeName());
     VariantTensorDataWriter writer(data_.get());
     TF_RETURN_IF_ERROR(iterator_resource->Save(&serialization_ctx, &writer));
@@ -446,25 +327,20 @@ class IteratorStateVariant {
     if (data.type_name() != TypeName()) {
       return false;
     }
-    std::unique_ptr<VariantTensorData> tensor_data(new VariantTensorData);
+    std::unique_ptr<VariantTensorData> tensor_data =
+        absl::make_unique<VariantTensorData>();
     std::swap(*tensor_data, data);
-    std::unique_ptr<VariantTensorDataReader> reader(
-        new VariantTensorDataReader(tensor_data.get()));
-    status_ = reader->status();
-    if (!status_.ok()) {
-      return false;
-    }
+    std::unique_ptr<VariantTensorDataReader> reader =
+        absl::make_unique<VariantTensorDataReader>(tensor_data.get());
     data_ = std::move(tensor_data);
     reader_ = std::move(reader);
     return true;
   }
   IteratorStateReader* get() { return reader_.get(); }
-  Status status() const { return status_; }
   string DebugString() const {
     if (data_) {
-      return strings::StrCat("IteratorStateVariant<",
-                             "data: ", data_->DebugString(),
-                             " status: ", status_.ToString(), ">");
+      return strings::StrCat("IteratorStateVariant<", data_->DebugString(),
+                             ">");
     } else {
       return strings::StrCat("IteratorStateVariant<empty>");
     }
@@ -472,7 +348,6 @@ class IteratorStateVariant {
 
  private:
   std::unique_ptr<IteratorStateReader> reader_;
-  Status status_;
   std::unique_ptr<VariantTensorData> data_;
 };
 
@@ -583,12 +458,12 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
   *device_mgr = absl::make_unique<DeviceMgr>(RenamedDevice::NewRenamedDevice(
       ctx->device()->name(), down_cast<Device*>(ctx->device()),
       false /* owns_underlying */, false /* isolate_session_state */));
-  flib_def->reset(new FunctionLibraryDefinition(
-      *ctx->function_library()->GetFunctionLibraryDefinition()));
-  pflr->reset(new ProcessFunctionLibraryRuntime(
+  *flib_def = absl::make_unique<FunctionLibraryDefinition>(
+      *ctx->function_library()->GetFunctionLibraryDefinition());
+  *pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr->get(), ctx->env(), graph_def_version_, flib_def->get(),
-      {} /* TODO(mrry): OptimizerOptions? */,
-      nullptr /* TODO(mrry): ClusterFLR */));
+      OptimizerOptions{} /* TODO(mrry): OptimizerOptions? */,
+      nullptr /* TODO(mrry): ClusterFLR */);
 
   return (*pflr)->GetFLR(ctx->device()->name());
 }
@@ -676,9 +551,12 @@ class ToSingleElementOp : public AsyncOpKernel {
           ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
       std::unique_ptr<IteratorBase> iterator;
       IteratorContext::Params params(ctx);
-      std::unique_ptr<FunctionHandleCache> function_handle_cache(
-          new FunctionHandleCache(params.lib));
+      std::unique_ptr<FunctionHandleCache> function_handle_cache =
+          absl::make_unique<FunctionHandleCache>(params.lib);
       params.function_handle_cache = function_handle_cache.get();
+      std::unique_ptr<ResourceMgr> resource_mgr =
+          absl::make_unique<ResourceMgr>();
+      params.resource_mgr = resource_mgr.get();
       IteratorContext iter_ctx(std::move(params));
 
       OP_REQUIRES_OK_ASYNC(
@@ -764,9 +642,12 @@ class ReduceDatasetOp : public AsyncOpKernel {
           done);
 
       IteratorContext::Params params(ctx);
-      std::unique_ptr<FunctionHandleCache> function_handle_cache(
-          new FunctionHandleCache(params.lib));
+      std::unique_ptr<FunctionHandleCache> function_handle_cache =
+          absl::make_unique<FunctionHandleCache>(params.lib);
       params.function_handle_cache = function_handle_cache.get();
+      std::unique_ptr<ResourceMgr> resource_mgr =
+          absl::make_unique<ResourceMgr>();
+      params.resource_mgr = resource_mgr.get();
       IteratorContext iter_ctx(std::move(params));
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func;
       OP_REQUIRES_OK_ASYNC(
@@ -1271,11 +1152,9 @@ class DeserializeIteratorOp : public OpKernel {
     OP_REQUIRES(ctx, wrapper != nullptr,
                 errors::InvalidArgument(
                     "DeserializeIteratorOp: Unable to parse variant tensor."));
-    OP_REQUIRES_OK(ctx, wrapper->status());
     OP_REQUIRES_OK(ctx, iterator_resource->Restore(ctx, wrapper->get()));
   }
 };
-
 
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE_CPU).Priority(2),

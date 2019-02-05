@@ -91,10 +91,10 @@ following lines to your Gradle build file:
         repositories {
             jcenter()
         }
-	}
+    }
 
     dependencies {
-        compile 'org.tensorflow:tensorflow-android:+'
+        implementation 'org.tensorflow:tensorflow-android:+'
     }
 
 This automatically downloads the latest stable version of TensorFlow as an AAR

@@ -21,7 +21,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import textwrap
+import threading
 
 import gast
 import six
@@ -29,11 +31,24 @@ import six
 from tensorflow.python.util import tf_inspect
 
 
+_parse_lock = threading.Lock()  # Prevents linecache concurrency errors.
+
+
 def parse_entity(entity):
   """Returns the AST of given entity."""
-  source = tf_inspect.getsource(entity)
+  try:
+    with _parse_lock:
+      source = tf_inspect.getsource_no_unwrap(entity)
+  except (IOError, OSError) as e:
+    raise ValueError(
+        'Unable to locate the source code of {}. Note that functions defined'
+        ' in certain environments, like the interactive Python shell do not'
+        ' expose their source code. If that is the case, you should to define'
+        ' them in a .py source file. If you are certain the code is'
+        ' graph-compatible, wrap the call using'
+        ' @tf.autograph.do_not_convert. Original error: {}'.format(entity, e))
 
-  def fail(comment):
+  def raise_parse_failure(comment):
     raise ValueError(
         'Failed to parse source code of {}, which Python reported as:\n{}\n'
         '{}'.format(entity, source, comment))
@@ -49,8 +64,9 @@ def parse_entity(entity):
   except IndentationError:
     # The text below lists the causes of this error known to us. There may
     # be more.
-    fail('This may be caused by multiline strings or comments not indented at'
-         'the same level as the code.')
+    raise_parse_failure(
+        'This may be caused by multiline strings or comments not indented at'
+        ' the same level as the code.')
 
   except SyntaxError as e:
     if not tf_inspect.isfunction(entity) or entity.__name__ != '<lambda>':
@@ -71,8 +87,9 @@ def parse_entity(entity):
 
     # Give up if there's nothing we can chip away.
     if len(lines) == lineno and len(lines[-1]) == offset:
-      fail('If this is a lambda function, the error may be avoided by creating'
-           ' the lambda in a standalone statement.')
+      raise_parse_failure(
+          'If this is a lambda function, the error may be avoided by creating'
+          ' the lambda in a standalone statement.')
 
     # Drop all lines following the error location
     # TODO(mdan): What's with the pylint errors?
@@ -84,16 +101,17 @@ def parse_entity(entity):
     try:
       return parse_str(new_source), new_source
     except SyntaxError as e:
-      fail('If this is a lambda function, the error may be avoided by creating'
-           ' the lambda in a standalone statement. Tried to strip down the'
-           ' source to:\n{}\nBut that did not work.'.format(new_source))
+      raise_parse_failure(
+          'If this is a lambda function, the error may be avoided by creating'
+          ' the lambda in a standalone statement. Tried to strip down the'
+          ' source to:\n{}\nBut that did not work.'.format(new_source))
 
 
 def parse_str(src):
   """Returns the AST of given piece of code."""
   # TODO(mdan): This should exclude the module things are autowrapped in.
 
-  if six.PY2 and '.print(' in src:
+  if six.PY2 and re.search('\\Wprint\\(', src):
     # This special treatment is required because gast.parse is not aware of
     # whether print_function was present in the original context.
     src = 'from __future__ import print_function\n' + src
@@ -117,7 +135,7 @@ def parse_expression(src):
   """
   node = parse_str(src)
   assert isinstance(node, gast.Module)
-  if len(node.body) != 1 and not isinstance(node.body[0], gast.Expr):
+  if len(node.body) != 1 or not isinstance(node.body[0], gast.Expr):
     raise ValueError(
         'Expected a single expression, found instead %s' % node.body)
   return node.body[0].value

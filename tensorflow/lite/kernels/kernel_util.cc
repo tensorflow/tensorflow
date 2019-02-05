@@ -18,9 +18,77 @@ limitations under the License.
 #include <cmath>
 #include <memory>
 
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/round.h"
 
 namespace tflite {
+
+TfLiteStatus PopulateConvolutionQuantizationParams(
+    TfLiteContext* context, const TfLiteTensor* input,
+    const TfLiteTensor* filter, const TfLiteTensor* bias, TfLiteTensor* output,
+    const TfLiteFusedActivation& activation, int32_t* multiplier, int* shift,
+    int32_t* output_activation_min, int32_t* output_activation_max,
+    int32_t* per_channel_multiplier, int* per_channel_shift) {
+  TF_LITE_ENSURE_EQ(context, input->quantization.type,
+                    kTfLiteAffineQuantization);
+  TF_LITE_ENSURE_EQ(context, filter->quantization.type,
+                    kTfLiteAffineQuantization);
+  // TODO(jianlijianli): Enable bias type check and bias scale == input scale
+  // * filter scale for each channel in affine quantization once bias
+  // quantization is properly populated.
+  // TF_LITE_ENSURE_EQ(context, bias->quantization.type,
+  // kTfLiteAffineQuantization);
+
+  // Check data type.
+  const auto* affine_quantization =
+      reinterpret_cast<TfLiteAffineQuantization*>(filter->quantization.params);
+  TF_LITE_ENSURE(context, affine_quantization);
+  TF_LITE_ENSURE(context, affine_quantization->scale);
+  const bool is_per_channel = affine_quantization->scale->size > 1;
+  if (is_per_channel) {
+    //  Currently only Int8 is supported for per channel quantization.
+    TF_LITE_ENSURE_EQ(context, input->type, kTfLiteInt8);
+    TF_LITE_ENSURE_EQ(context, filter->type, kTfLiteInt8);
+    TF_LITE_ENSURE_EQ(
+        context, affine_quantization->scale->size,
+        filter->dims->data[affine_quantization->quantized_dimension]);
+  }
+
+  // Populate multiplier and shift using affine quantization.
+  const int num_channels = affine_quantization->scale->size;
+  const float input_scale = input->params.scale;
+  const float output_scale = output->params.scale;
+  const float* filter_scales = affine_quantization->scale->data;
+  for (int i = 0; i < num_channels; ++i) {
+    const double filter_scale = static_cast<double>(filter_scales[i]);
+    const double effective_output_scale = static_cast<double>(input_scale) *
+                                          filter_scale /
+                                          static_cast<double>(output_scale);
+    int32_t significand;
+    int shift;
+    QuantizeMultiplier(effective_output_scale, &significand, &shift);
+    per_channel_multiplier[i] = significand;
+    per_channel_shift[i] = shift;
+  }
+
+  // Populate scalar quantization parameters.
+  // This check on legacy quantization parameters is kept only for backward
+  // compatibility.
+  if (input->type == kTfLiteUInt8) {
+    // Check bias scale == input scale * filter scale.
+    double real_multiplier = 0.0;
+    TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
+        context, input, filter, bias, output, &real_multiplier));
+    int exponent;
+
+    // Populate quantization parameteters with multiplier and shift.
+    QuantizeMultiplier(real_multiplier, multiplier, &exponent);
+    *shift = -exponent;
+    CalculateActivationRangeUint8(activation, output, output_activation_min,
+                                  output_activation_max);
+  }
+  return kTfLiteOk;
+}
 
 TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
                                               const TfLiteTensor* input,
@@ -98,6 +166,16 @@ void CalculateActivationRangeUint8(TfLiteFusedActivation activation,
                                    int32_t* act_max) {
   const int32_t qmin = std::numeric_limits<uint8_t>::min();
   const int32_t qmax = std::numeric_limits<uint8_t>::max();
+
+  CalculateActivationRangeQuantizedImpl(activation, qmin, qmax, output, act_min,
+                                        act_max);
+}
+
+void CalculateActivationRangeInt8(TfLiteFusedActivation activation,
+                                  TfLiteTensor* output, int32_t* act_min,
+                                  int32_t* act_max) {
+  const int32_t qmin = std::numeric_limits<int8_t>::min();
+  const int32_t qmax = std::numeric_limits<int8_t>::max();
 
   CalculateActivationRangeQuantizedImpl(activation, qmin, qmax, output, act_min,
                                         act_max);

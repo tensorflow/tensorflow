@@ -41,7 +41,7 @@ tf_module {
     argspec: "args=[\'key\', \'shape\', \'default_value\', \'dtype\', \'normalizer_fn\'], varargs=None, keywords=None, defaults=[\'(1,)\', \'None\', \"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
-    name: "shared_embedding_columns"
+    name: "shared_embeddings"
     argspec: "args=[\'categorical_columns\', \'dimension\', \'combiner\', \'initializer\', \'shared_embedding_collection_name\', \'ckpt_to_load_from\', \'tensor_name_in_ckpt\', \'max_norm\', \'trainable\'], varargs=None, keywords=None, defaults=[\'mean\', \'None\', \'None\', \'None\', \'None\', \'None\', \'True\'], "
   }
   member_method {

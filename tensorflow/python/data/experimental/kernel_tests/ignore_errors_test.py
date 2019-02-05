@@ -34,9 +34,9 @@ from tensorflow.python.util import compat
 _NUMPY_RANDOM_SEED = 42
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class IgnoreErrorsTest(test_base.DatasetTestBase):
 
-  @test_util.run_deprecated_v1
   def testMapIgnoreError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
@@ -44,18 +44,13 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
         dataset_ops.Dataset.from_tensor_slices(components)
         .map(lambda x: array_ops.check_numerics(x, "message")).apply(
             error_ops.ignore_errors()))
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      self.evaluate(init_op)
-      for x in [1., 2., 3., 5.]:
-        self.assertEqual(x, self.evaluate(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(get_next)
+    for x in [1., 2., 3., 5.]:
+      self.assertEqual(x, self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
-  @test_util.run_deprecated_v1
   def testParallelMapIgnoreError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
@@ -63,18 +58,13 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
         dataset_ops.Dataset.from_tensor_slices(components).map(
             lambda x: array_ops.check_numerics(x, "message"),
             num_parallel_calls=2).prefetch(2).apply(error_ops.ignore_errors()))
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      self.evaluate(init_op)
-      for x in [1., 2., 3., 5.]:
-        self.assertEqual(x, self.evaluate(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(get_next)
+    for x in [1., 2., 3., 5.]:
+      self.assertEqual(x, self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
-  @test_util.run_deprecated_v1
   def testReadFileIgnoreError(self):
 
     def write_string_to_file(value, filename):
@@ -91,28 +81,24 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
         dataset_ops.Dataset.from_tensor_slices(filenames).map(
             io_ops.read_file,
             num_parallel_calls=2).prefetch(2).apply(error_ops.ignore_errors()))
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      # All of the files are present.
-      self.evaluate(init_op)
-      for filename in filenames:
-        self.assertEqual(compat.as_bytes(filename), self.evaluate(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(get_next)
+    # All of the files are present.
+    for filename in filenames:
+      self.assertEqual(compat.as_bytes(filename), self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
-      # Delete one of the files.
-      os.remove(filenames[0])
+    # Delete one of the files.
+    os.remove(filenames[0])
 
-      # Attempting to read filenames[0] will fail, but ignore_errors()
-      # will catch the error.
-      self.evaluate(init_op)
-      for filename in filenames[1:]:
-        self.assertEqual(compat.as_bytes(filename), self.evaluate(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(get_next)
+    # Attempting to read filenames[0] will fail, but ignore_errors()
+    # will catch the error.
+    get_next = self.getNext(dataset)
+    for filename in filenames[1:]:
+      self.assertEqual(compat.as_bytes(filename), self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
 
 if __name__ == "__main__":

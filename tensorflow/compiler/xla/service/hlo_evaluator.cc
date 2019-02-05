@@ -18,9 +18,9 @@ limitations under the License.
 #include <cmath>
 #include <cstdlib>
 #include <functional>
+#include <iterator>
 #include <string>
 #include <type_traits>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -29,10 +29,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator_typed_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -135,8 +135,44 @@ StatusOr<Literal> Compare<complex64>(const Shape& shape, HloOpcode opcode,
   return std::move(result);
 }
 
+template <>
+StatusOr<Literal> Compare<complex128>(const Shape& shape, HloOpcode opcode,
+                                      LiteralSlice lhs_literal,
+                                      LiteralSlice rhs_literal) {
+  std::function<bool(complex128, complex128)> compare_op;
+  switch (opcode) {
+    case HloOpcode::kEq:
+      compare_op = [](complex128 lhs_el, complex128 rhs_el) {
+        return lhs_el == rhs_el;
+      };
+      break;
+    case HloOpcode::kNe:
+      compare_op = [](complex128 lhs_el, complex128 rhs_el) {
+        return lhs_el != rhs_el;
+      };
+      break;
+    default:
+      LOG(FATAL) << "unhandled HLO opcode for conversion to Comparison: "
+                 << HloOpcodeString(opcode);
+  }
+
+  Literal result(shape);
+  TF_RETURN_IF_ERROR(
+      result.Populate<bool>([&](absl::Span<const int64> multi_index) {
+        return compare_op(lhs_literal.Get<complex128>(multi_index),
+                          rhs_literal.Get<complex128>(multi_index));
+      }));
+
+  return std::move(result);
+}
+
 }  // namespace
 
+// Note that unsupported types by the typed visitor does not necessarily imply
+// the non-typed HloEvaluator (parent evaluator) would not support them either
+// in the type-agnostic handler. For e.g., HandleGetTupleElement in the parent
+// type-agnostic evaluator will be able to accept Tuple primitive type, whereas
+// HloEvaluatorTypedVisitor cannot.
 HloEvaluator::HloEvaluator(int64 max_loop_iterations)
     : max_loop_iterations_(max_loop_iterations) {
   typed_visitors_[PRED] =
@@ -144,22 +180,14 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
   typed_visitors_[U8] =
       absl::make_unique<HloEvaluatorTypedVisitor<uint8>>(this);
   typed_visitors_[U16] =
-      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
-        return Unimplemented(
-            "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
-            "U16.");
-      });
+      absl::make_unique<HloEvaluatorTypedVisitor<uint16>>(this);
   typed_visitors_[U32] =
       absl::make_unique<HloEvaluatorTypedVisitor<uint32>>(this);
   typed_visitors_[U64] =
       absl::make_unique<HloEvaluatorTypedVisitor<uint64>>(this);
   typed_visitors_[S8] = absl::make_unique<HloEvaluatorTypedVisitor<int8>>(this);
   typed_visitors_[S16] =
-      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
-        return Unimplemented(
-            "HloEvaluator::HloEvaluatorTypedVisitor: unhandled primitive type: "
-            "S16.");
-      });
+      absl::make_unique<HloEvaluatorTypedVisitor<int16>>(this);
   typed_visitors_[S32] =
       absl::make_unique<HloEvaluatorTypedVisitor<int32>>(this);
   typed_visitors_[S64] =
@@ -172,6 +200,8 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
       absl::make_unique<HloEvaluatorTypedVisitor<double>>(this);
   typed_visitors_[C64] =
       absl::make_unique<HloEvaluatorTypedVisitor<complex64>>(this);
+  typed_visitors_[C128] =
+      absl::make_unique<HloEvaluatorTypedVisitor<complex128>>(this);
 
   // Most of the evaluator computations we use don't support BF16 (e.g.,
   // std::ceil, std::tanh). To make evaluator work with BF16, we set all
@@ -197,99 +227,51 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
       });
 }
 
-template <typename LiteralPtr>
-StatusOr<Literal> HloEvaluator::Evaluate(
-    const HloModule& module, absl::Span<const LiteralPtr> arg_literals) {
-  XLA_VLOG_LINES(2, "HloEvaluator::Evaluate module:\n" + module.ToString());
-
-  evaluated_.clear();
-  arg_literals_.clear();
-  for (const auto& literal_ptr : arg_literals) {
-    arg_literals_.push_back(&*literal_ptr);
-  }
-
-  TF_RETURN_IF_ERROR(module.entry_computation()->Accept(this));
-
-  return GetEvaluatedLiteralFor(module.entry_computation()->root_instruction())
-      .Clone();
-}
-
-template <>
-StatusOr<Literal> HloEvaluator::Evaluate<Literal>(
-    const HloModule& module, absl::Span<const Literal> arg_literals) {
-  std::vector<const Literal*> arg_literal_ptrs;
-  for (const auto& literal_ptr : arg_literals) {
-    arg_literal_ptrs.push_back(&literal_ptr);
-  }
-  return Evaluate<const Literal*>(module, arg_literal_ptrs);
-}
-
-template <typename LiteralPtr>
 StatusOr<Literal> HloEvaluator::Evaluate(
     const HloComputation& computation,
-    absl::Span<const LiteralPtr> arg_literals) {
+    absl::Span<const Literal* const> arg_literals) {
   CHECK(computation.parent() != nullptr);
   XLA_VLOG_LINES(
       2, "HloEvaluator::Evaluate computation:\n" + computation.ToString());
 
-  evaluated_.clear();
-  arg_literals_.clear();
-  for (const auto& literal_ptr : arg_literals) {
-    arg_literals_.push_back(&*literal_ptr);
+  if (arg_literals.size() != computation.num_parameters()) {
+    return InvalidArgument(
+        "Expected %d argument%s, but got %d.", computation.num_parameters(),
+        computation.num_parameters() == 1 ? "" : "s", arg_literals.size());
   }
-
-  TF_RETURN_IF_ERROR(computation.Accept(this));
-  return GetEvaluatedLiteralFor(computation.root_instruction()).Clone();
-}
-
-template <>
-StatusOr<Literal> HloEvaluator::Evaluate<Literal>(
-    const HloComputation& computation, absl::Span<const Literal> arg_literals) {
-  std::vector<const Literal*> arg_literal_ptrs;
-  for (const auto& literal_ptr : arg_literals) {
-    arg_literal_ptrs.push_back(&literal_ptr);
-  }
-  return Evaluate<const Literal*>(computation, arg_literal_ptrs);
-}
-
-template <typename LiteralPtr>
-StatusOr<Literal> HloEvaluator::Evaluate(
-    HloInstruction* instruction, absl::Span<const LiteralPtr> arg_literals) {
-  TF_RET_CHECK(hlo_query::AllOperandsAreParametersOrConstants(*instruction));
-
-  evaluated_.clear();
-  arg_literals_.clear();
-  for (const auto& literal_ptr : arg_literals) {
-    arg_literals_.push_back(&*literal_ptr);
-  }
-
-  // Evaluate operands of Parameter type against the input literals which
-  // caches the evaluated literal results.
-  for (const auto operand : instruction->operands()) {
-    if (operand->opcode() == HloOpcode::kParameter) {
-      const Literal* input_literal = arg_literals_[operand->parameter_number()];
-      VLOG(2) << "Parameter operand evaluated to: "
-              << input_literal->ToString();
-      TF_RET_CHECK(ShapeUtil::Equal(operand->shape(), input_literal->shape()));
-
-      evaluated_[operand] = input_literal->Clone();
+  for (int64 i = 0; i < arg_literals.size(); ++i) {
+    const auto& computation_shape =
+        computation.parameter_instruction(i)->shape();
+    const auto& arg_shape = arg_literals[i]->shape();
+    if (!ShapeUtil::Equal(computation_shape, arg_shape)) {
+      return InvalidArgument(
+          "Shape mismatch at parameter %d. Computation expected %s, but arg "
+          "was %s.",
+          i, ShapeUtil::HumanStringWithLayout(computation_shape),
+          ShapeUtil::HumanString(arg_shape));
     }
   }
 
-  TF_RETURN_IF_ERROR(Preprocess(instruction));
-  TF_RETURN_IF_ERROR(instruction->Visit(this));
-  TF_RETURN_IF_ERROR(Postprocess(instruction));
-  return GetEvaluatedLiteralFor(instruction).Clone();
-}
-
-template <>
-StatusOr<Literal> HloEvaluator::Evaluate<Literal>(
-    HloInstruction* instruction, absl::Span<const Literal> arg_literals) {
-  std::vector<const Literal*> arg_literal_ptrs;
-  for (const auto& literal : arg_literals) {
-    arg_literal_ptrs.push_back(&literal);
+  evaluated_.clear();
+  arg_literals_.clear();
+  for (const auto& literal_ptr : arg_literals) {
+    arg_literals_.push_back(&*literal_ptr);
   }
-  return Evaluate<const Literal*>(instruction, arg_literal_ptrs);
+
+  // Re-seed RNG, either from the configuration's seed or a monotonic
+  // per-evaluator seed (which prevents two evaluators from returning the same
+  // random sequence).
+  if (computation.parent()->config().seed()) {
+    seed_ = computation.parent()->config().seed();
+  } else {
+    // Start global_seed at a (true) random value.
+    static std::atomic<uint64> global_seed{std::random_device()()};
+    seed_ = global_seed.fetch_add(1);
+  }
+  engine_.seed(seed_);
+
+  TF_RETURN_IF_ERROR(computation.Accept(this));
+  return GetEvaluatedLiteralFor(computation.root_instruction()).Clone();
 }
 
 StatusOr<Literal> HloEvaluator::Evaluate(HloInstruction* instruction) {
@@ -407,16 +389,45 @@ Status HloEvaluator::HandleBitcast(HloInstruction* bitcast) {
   return Status::OK();
 }
 
+Status HloEvaluator::HandleGetDimensionSize(
+    HloInstruction* get_dimension_size) {
+  HloInstruction* operand = get_dimension_size->mutable_operand(0);
+  int64 dim = get_dimension_size->dimension();
+  if (dynamic_dimension_inference_ == nullptr) {
+    return InvalidArgument(
+        "Evaluator cannot evaluate get_dimension_size without "
+        "set_dynamic_dimension_inference.");
+  }
+  HloInstruction* dynamic_size =
+      dynamic_dimension_inference_->GetDynamicSize(operand, {}, dim);
+  if (dynamic_size != nullptr) {
+    evaluated_[get_dimension_size] =
+        GetEvaluatedLiteralFor(dynamic_size).Clone();
+    return Status::OK();
+  }
+
+  const Shape& shape = get_dimension_size->operand(0)->shape();
+  Literal output(ShapeUtil::MakeShape(U32, {}));
+  output.PopulateWithValue(
+      static_cast<uint32>(shape.dimensions(get_dimension_size->dimension())));
+  evaluated_[get_dimension_size] = std::move(output);
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
+  // Nothing to do other than sanity checks. Parameters' values are stored in
+  // arg_literals_.
   CHECK_LT(parameter->parameter_number(), arg_literals_.size());
+
+#ifndef NDEBUG
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];
   VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
   DCHECK(ShapeUtil::Equal(parameter->shape(), input_literal->shape()))
       << "parameter shape is: " << ShapeUtil::HumanString(parameter->shape())
       << ", but input literal shape is: "
       << ShapeUtil::HumanString(input_literal->shape());
+#endif
 
-  evaluated_[parameter] = input_literal->Clone();
   return Status::OK();
 }
 
@@ -441,8 +452,8 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
   // The result concatenate dimension is going to be the sum of all
   // concatenate dimensions of the operands taking part of the operation.
   const Shape& reference_shape = operands[0]->shape();
-  CHECK(ShapeUtil::IsArray(reference_shape));
-  const int64 rank = ShapeUtil::Rank(reference_shape);
+  CHECK(reference_shape.IsArray());
+  const int64 rank = reference_shape.rank();
   const int64 concat_dim = concatenate->dimensions()[0];
   CHECK_GE(concat_dim, 0);
   CHECK_LT(concat_dim, rank);
@@ -452,7 +463,7 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
 
   for (int64 i = 1; i < operands.size(); ++i) {
     const Shape& operand_shape = operands[i]->shape();
-    CHECK(ShapeUtil::IsArray(operand_shape));
+    CHECK(operand_shape.IsArray());
     // Accumulate the concat dimension from all tensors taking part to the
     // operation.
     concat_dimensions[concat_dim] +=
@@ -479,15 +490,52 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
 
 Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
   auto operand = is_finite->operand(0);
-  if (!ShapeUtil::ElementIsFloating(operand->shape())) {
-    return InvalidArgument(
-        "expected element type in shape to be float for IsFinite op, got: %s",
-        PrimitiveType_Name(operand->shape().element_type()));
-  }
+  auto elem_ty = operand->shape().element_type();
+  switch (elem_ty) {
+    case PRED:
+    case TUPLE:
+    case OPAQUE:
+    case TOKEN:
+    case S8:
+    case S16:
+    case S32:
+    case S64:
+    case U8:
+    case U16:
+    case U32:
+    case U64:
+    case C64:
+    case C128:
+    // Explicitly enumerate all types in this switch so that when we add a new
+    // type, we'll get a compile error here.
+    case PRIMITIVE_TYPE_INVALID:
+    case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:
+    case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
+      return InvalidArgument(
+          "expected element type in shape to be floating point, but "
+          "got: %s",
+          PrimitiveType_Name(elem_ty));
 
-  switch (operand->shape().element_type()) {
-    case F16:
-      return Unimplemented("unhandled primitive type: F16.");
+    case F16: {
+      auto result_or = ElementWiseUnaryOpImpl<bool, Eigen::half>(
+          is_finite,
+          [](Eigen::half elem_operand) {
+            return std::isfinite(static_cast<float>(elem_operand));
+          },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
+      break;
+    }
+    case BF16: {
+      auto result_or = ElementWiseUnaryOpImpl<bool, bfloat16>(
+          is_finite,
+          [](bfloat16 elem_operand) {
+            return std::isfinite(static_cast<float>(elem_operand));
+          },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
+      break;
+    }
     case F32: {
       auto result_or = ElementWiseUnaryOpImpl<bool, float>(
           is_finite,
@@ -504,9 +552,6 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
       TF_ASSIGN_OR_RETURN(evaluated_[is_finite], std::move(result_or));
       break;
     }
-    default:
-      LOG(FATAL) << "HandleIsFinite: unknown/unhandled primitive type: "
-                 << PrimitiveType_Name(operand->shape().element_type());
   }
 
   return Status::OK();
@@ -525,6 +570,13 @@ Status HloEvaluator::HandleReal(HloInstruction* real) {
     case C64: {
       auto result_or = ElementWiseUnaryOpImpl<float, complex64>(
           real, [](complex64 elem_operand) { return std::real(elem_operand); },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
+      break;
+    }
+    case C128: {
+      auto result_or = ElementWiseUnaryOpImpl<double, complex128>(
+          real, [](complex128 elem_operand) { return std::real(elem_operand); },
           GetEvaluatedLiteralFor(operand));
       TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
       break;
@@ -559,11 +611,61 @@ Status HloEvaluator::HandleReal(HloInstruction* real) {
 }
 
 Status HloEvaluator::HandleImag(HloInstruction* imag) {
-  auto result_or = ElementWiseUnaryOpImpl<float, complex64>(
-      imag, [](complex64 elem_operand) { return std::imag(elem_operand); },
-      GetEvaluatedLiteralFor(imag->operand(0)));
+  auto operand = imag->operand(0);
+  switch (operand->shape().element_type()) {
+    case C64: {
+      auto result_or = ElementWiseUnaryOpImpl<float, complex64>(
+          imag, [](complex64 elem_operand) { return std::imag(elem_operand); },
+          GetEvaluatedLiteralFor(imag->operand(0)));
 
-  TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      break;
+    }
+    case C128: {
+      auto result_or = ElementWiseUnaryOpImpl<double, complex128>(
+          imag, [](complex128 elem_operand) { return std::imag(elem_operand); },
+          GetEvaluatedLiteralFor(imag->operand(0)));
+
+      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      break;
+    }
+    default:
+      LOG(FATAL) << "HandleImag: unknown/unhandled primitive type: "
+                 << PrimitiveType_Name(operand->shape().element_type());
+  }
+
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleComplex(HloInstruction* complex) {
+  const Literal& real = GetEvaluatedLiteralFor(complex->operand(0));
+  const Literal& imag = GetEvaluatedLiteralFor(complex->operand(1));
+  TF_RET_CHECK(ShapeUtil::Compatible(real.shape(), imag.shape()));
+
+  Literal result(complex->shape());
+  switch (complex->shape().element_type()) {
+    case C64: {
+      TF_RETURN_IF_ERROR(
+          result.Populate<complex64>([&](absl::Span<const int64> multi_index) {
+            return std::complex<float>(real.Get<float>(multi_index),
+                                       imag.Get<float>(multi_index));
+          }));
+      break;
+    }
+    case C128: {
+      TF_RETURN_IF_ERROR(
+          result.Populate<complex128>([&](absl::Span<const int64> multi_index) {
+            return std::complex<float>(real.Get<double>(multi_index),
+                                       imag.Get<double>(multi_index));
+          }));
+      break;
+    }
+    default:
+      LOG(FATAL) << "HandleComplex: unknown/unhandled primitive type: "
+                 << PrimitiveType_Name(complex->shape().element_type());
+  }
+
+  evaluated_[complex] = std::move(result);
   return Status::OK();
 }
 
@@ -600,8 +702,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
           evaluated_[compare],
           Compare<uint8>(compare->shape(), opcode, lhs_literal, rhs_literal));
     } break;
-    case U16:
-      return Unimplemented("unhandled primitive type: U16.");
+    case U16: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<uint16>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
     case U32: {
       TF_ASSIGN_OR_RETURN(
           evaluated_[compare],
@@ -617,8 +722,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
           evaluated_[compare],
           Compare<int8>(compare->shape(), opcode, lhs_literal, rhs_literal));
     } break;
-    case S16:
-      return Unimplemented("unhandled primitive type: S16.");
+    case S16: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<int16>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
     case S32: {
       TF_ASSIGN_OR_RETURN(
           evaluated_[compare],
@@ -629,8 +737,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
           evaluated_[compare],
           Compare<int64>(compare->shape(), opcode, lhs_literal, rhs_literal));
     } break;
-    case F16:
-      return Unimplemented("unhandled primitive type: F16.");
+    case F16: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<half>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
     case BF16: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
                           Compare<bfloat16>(compare->shape(), opcode,
@@ -650,6 +761,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
                           Compare<complex64>(compare->shape(), opcode,
                                              lhs_literal, rhs_literal));
+    } break;
+    case C128: {
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<complex128>(compare->shape(), opcode,
+                                              lhs_literal, rhs_literal));
     } break;
     default:
       LOG(FATAL) << "HandleCompare: unknown primitive type: "
@@ -1032,11 +1148,9 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
 Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
   const Literal& operand = GetEvaluatedLiteralFor(broadcast->operand(0));
 
-  TF_RET_CHECK(broadcast->dimensions().size() ==
-               ShapeUtil::Rank(operand.shape()))
+  TF_RET_CHECK(broadcast->dimensions().size() == operand.shape().rank())
       << "broadcast dimensions is of size: " << broadcast->dimensions().size()
-      << " and rank of operand_to_broadcast is: "
-      << ShapeUtil::Rank(operand.shape());
+      << " and rank of operand_to_broadcast is: " << operand.shape().rank();
   // Checks that operand's dimensions are the same as the broadcast's
   // dimensions along the dimensions to be broadcasted.
   for (int64 i = 0; i < broadcast->dimensions().size(); ++i) {
@@ -1109,9 +1223,10 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
   }
 
   HloEvaluator embedded_evaluator;
-  Literal result =
-      embedded_evaluator.Evaluate<const Literal*>(*computation, arg_literals)
-          .ConsumeValueOrDie();
+  embedded_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
+  Literal result = embedded_evaluator.Evaluate(*computation, arg_literals)
+                       .ConsumeValueOrDie();
 
   evaluated_[call] = std::move(result);
   return Status::OK();
@@ -1127,7 +1242,9 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
       fusion->fused_instructions_computation()->Clone(
           /*suffix=*/"clone_with_layout", &context);
   for (auto* instruction : cloned_fused_computation->instructions()) {
-    LayoutUtil::SetToDefaultLayout(instruction->mutable_shape());
+    if (!LayoutUtil::HasLayout(instruction->shape())) {
+      LayoutUtil::SetToDefaultLayout(instruction->mutable_shape());
+    }
   }
   auto readded_computation =
       empty_hlo_module.AddEntryComputation(std::move(cloned_fused_computation));
@@ -1141,9 +1258,10 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
   }
 
   HloEvaluator embedded_evaluator;
+  embedded_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
   Literal result =
-      embedded_evaluator
-          .Evaluate<const Literal*>(*readded_computation, arg_literals)
+      embedded_evaluator.Evaluate(*readded_computation, arg_literals)
           .ConsumeValueOrDie();
 
   evaluated_[fusion] = std::move(result);
@@ -1161,16 +1279,16 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   auto* false_computation = conditional->false_computation();
 
   HloEvaluator embedded_evaluator;
+  embedded_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
   Literal result;
   if (pred.Get<bool>({})) {
-    result = embedded_evaluator
-                 .Evaluate<const Literal*>(*true_computation,
-                                           {&true_computation_arg})
-                 .ConsumeValueOrDie();
+    result =
+        embedded_evaluator.Evaluate(*true_computation, {&true_computation_arg})
+            .ConsumeValueOrDie();
   } else {
     result = embedded_evaluator
-                 .Evaluate<const Literal*>(*false_computation,
-                                           {&false_computation_arg})
+                 .Evaluate(*false_computation, {&false_computation_arg})
                  .ConsumeValueOrDie();
   }
 
@@ -1217,18 +1335,21 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
   bool keep_going = true;
   int64 iteration_count = 0;
   HloEvaluator cond_evaluator(max_loop_iterations_);
+  cond_evaluator.set_dynamic_dimension_inference(dynamic_dimension_inference_);
   HloEvaluator loop_body_evaluator(max_loop_iterations_);
+  loop_body_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
   while (keep_going) {
     if (max_loop_iterations_ >= 0 && iteration_count++ > max_loop_iterations_) {
       return InvalidArgument("Loop %s exceeded loop iteration limit (%d).",
                              while_hlo->name(), max_loop_iterations_);
     }
     TF_ASSIGN_OR_RETURN(auto cond_val,
-                        cond_evaluator.Evaluate<Literal*>(*cond_comp, {&lcv}));
+                        cond_evaluator.Evaluate(*cond_comp, {&lcv}));
     keep_going = cond_val.GetFirstElement<bool>();
     if (keep_going) {
-      TF_ASSIGN_OR_RETURN(auto body_val, loop_body_evaluator.Evaluate<Literal*>(
-                                             *body_comp, {&lcv}));
+      TF_ASSIGN_OR_RETURN(auto body_val,
+                          loop_body_evaluator.Evaluate(*body_comp, {&lcv}));
       VLOG(3) << "Loop iteration result: " << body_val.ToString();
       lcv = std::move(body_val);
       cond_evaluator.ResetVisitStates();
@@ -1239,173 +1360,250 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
   return Status::OK();
 }
 
-// Key-value sort is a special snowflake: it's templated on two different
-// element types, one for the keys, and one for the values. Jump through some
-// hoops to make this work.
 namespace {
-template <typename KeyType, typename ValueType>
-StatusOr<Literal> EvaluateSortInternal(HloInstruction* sort,
-                                       const Literal& keys_literal,
-                                       const Literal& values_literal) {
-  auto rank = ShapeUtil::Rank(keys_literal.shape());
-  TF_RET_CHECK(
-      ShapeUtil::SameDimensions(keys_literal.shape(), values_literal.shape()))
-      << "Sort keys and values must have the same dimensions";
-  TF_RET_CHECK(sort->operand_count() >= 2) << "Expected key-value sort";
-  // We need to sort an array of keys and an array of values, where the
-  // sorted order of the values is determined by the keys. The simplest(?)
-  // way to do this is to go to an array-of-pairs representation, sort the
-  // array using the keys, and then go back to pair-of-arrays.
-  VLOG(3) << "HandleSort keys_literal: " << keys_literal.ToString();
-  VLOG(3) << "HandleSort values_literal: " << values_literal.ToString();
-
-  if (rank == 0) {
-    // Nothing to sort.
-    return LiteralUtil::MakeTuple({&keys_literal, &values_literal});
+template <typename NativeT>
+Literal ExtractLiteralFromIndexPositions(const Literal& from,
+                                         absl::Span<int64 const> indices,
+                                         bool extract_as_scalar) {
+  if (extract_as_scalar) {
+    return LiteralUtil::CreateR0<NativeT>(from.Get<NativeT>({indices[0]}));
   }
-
-  Literal keys_result_literal(keys_literal.shape());
-  Literal values_result_literal(values_literal.shape());
-  std::vector<int64> zero_base(rank, 0);
-  std::vector<int64> increment(rank, 1);
-  int64 sort_dim = sort->dimensions(0);
-  int64 sort_dim_elements = keys_literal.shape().dimensions(sort_dim);
-  increment[sort_dim] = sort_dim_elements;
-  // Iterate through each dimension except 'sort_dim'.
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
-      keys_literal.shape(), zero_base,
-      AsInt64Slice(keys_literal.shape().dimensions()), increment,
-      [&](absl::Span<const int64> indices) -> StatusOr<bool> {
-        // Extract a slice from the keys and values literals that correspond to
-        // exactly the row in dimension 'sort_dim'.
-        std::vector<int64> limit_indices(indices.begin(), indices.end());
-        std::for_each(limit_indices.begin(), limit_indices.end(),
-                      [](int64& index) { ++index; });
-        limit_indices[sort_dim] = sort_dim_elements;
-        TF_ASSIGN_OR_RETURN(auto keys_to_sort,
-                            keys_literal.Slice(indices, limit_indices)
-                                .Reshape({sort_dim_elements}));
-        const auto& keys_data = keys_to_sort.data<KeyType>();
-        TF_ASSIGN_OR_RETURN(auto values_to_sort,
-                            values_literal.Slice(indices, limit_indices)
-                                .Reshape({sort_dim_elements}));
-        const auto& values_data = values_to_sort.data<ValueType>();
-        using kv_pair = std::pair<KeyType, ValueType>;
-        std::vector<kv_pair> key_value_vector;
-        key_value_vector.reserve(keys_data.size());
-        for (int i = 0; i < keys_data.size(); ++i) {
-          key_value_vector.push_back(
-              std::make_pair(keys_data[i], values_data[i]));
-        }
-        std::stable_sort(key_value_vector.begin(), key_value_vector.end(),
-                         [](const kv_pair& a, const kv_pair& b) {
-                           return SafeLess<KeyType>(a.first, b.first);
-                         });
-        std::vector<KeyType> result_keys;
-        // We use a InlinedVector here because we need to convert it to an
-        // absl::Span later, and this would not work with std::vector<bool>.
-        absl::InlinedVector<ValueType, 10> result_values;
-        for (const auto& key_value : key_value_vector) {
-          result_keys.push_back(key_value.first);
-          result_values.push_back(key_value.second);
-        }
-        Literal sorted_keys(ShapeUtil::MakeShape(
-            keys_literal.shape().element_type(), {sort_dim_elements}));
-        sorted_keys.PopulateR1(absl::Span<const KeyType>(result_keys));
-        Literal sorted_values(ShapeUtil::MakeShape(
-            values_literal.shape().element_type(), {sort_dim_elements}));
-        sorted_values.PopulateR1(absl::Span<const ValueType>(result_values));
-        std::vector<int64> slice_dimensions(rank, 1);
-        slice_dimensions[sort_dim] = sort_dim_elements;
-        std::vector<int64> start_indices(rank, 0);
-        TF_ASSIGN_OR_RETURN(auto sorted_keys_reshaped,
-                            sorted_keys.Reshape(slice_dimensions));
-        TF_RETURN_IF_ERROR(keys_result_literal.CopySliceFrom(
-            sorted_keys_reshaped, start_indices, indices, slice_dimensions));
-        TF_ASSIGN_OR_RETURN(auto sorted_values_reshaped,
-                            sorted_values.Reshape(slice_dimensions));
-        TF_RETURN_IF_ERROR(values_result_literal.CopySliceFrom(
-            sorted_values_reshaped, start_indices, indices, slice_dimensions));
-        return true;
-      }));
-
-  Literal result_tuple;
-  result_tuple =
-      LiteralUtil::MakeTuple({&keys_result_literal, &values_result_literal});
-  VLOG(3) << "HandleSort result_tuple: " << result_tuple.ToString();
-  return std::move(result_tuple);
+  // We use a InlinedVector here because we need to convert it to an
+  // absl::Span later, and this would not work with std::vector<bool>.
+  absl::InlinedVector<NativeT, 10> values;
+  for (int64 index : indices) {
+    values.push_back(from.Get<NativeT>({index}));
+  }
+  return LiteralUtil::CreateR1<NativeT>(values);
 }
 
-template <typename KeyType>
-StatusOr<Literal> EvaluateSortCurried(HloInstruction* sort,
-                                      const Literal& keys_literal,
-                                      const Literal& values_literal) {
-  switch (values_literal.shape().element_type()) {
-    case PRED:
-      return EvaluateSortInternal<KeyType, bool>(sort, keys_literal,
-                                                 values_literal);
-    case F32:
-      return EvaluateSortInternal<KeyType, float>(sort, keys_literal,
-                                                  values_literal);
-    case U32:
-      return EvaluateSortInternal<KeyType, uint32>(sort, keys_literal,
-                                                   values_literal);
-    case S32:
-      return EvaluateSortInternal<KeyType, int32>(sort, keys_literal,
-                                                  values_literal);
-    case BF16:
-      return EvaluateSortInternal<KeyType, bfloat16>(sort, keys_literal,
-                                                     values_literal);
-    default:
-      return InvalidArgument("Unsupported type for Sort");
+StatusOr<Literal> ExtractFromIndexPositions(const Literal& from,
+                                            absl::Span<int64 const> indices,
+                                            bool extract_as_scalar = false) {
+  if (extract_as_scalar) {
+    CHECK_EQ(indices.size(), 1);
   }
-}
-
-StatusOr<Literal> EvaluateSort(HloInstruction* sort,
-                               const Literal& keys_literal,
-                               const Literal& values_literal) {
-  switch (sort->operand(0)->shape().element_type()) {
-    case F32:
-      return EvaluateSortCurried<float>(sort, keys_literal, values_literal);
-    case U32:
-      return EvaluateSortCurried<uint32>(sort, keys_literal, values_literal);
-    case S32:
-      return EvaluateSortCurried<int32>(sort, keys_literal, values_literal);
-    case BF16:
-      return EvaluateSortCurried<bfloat16>(sort, keys_literal, values_literal);
+  PrimitiveType type = from.shape().element_type();
+  switch (type) {
+    case PRED: {
+      return ExtractLiteralFromIndexPositions<bool>(from, indices,
+                                                    extract_as_scalar);
+    }
+    case U8: {
+      return ExtractLiteralFromIndexPositions<uint8>(from, indices,
+                                                     extract_as_scalar);
+    }
+    case S8: {
+      return ExtractLiteralFromIndexPositions<int8>(from, indices,
+                                                    extract_as_scalar);
+    }
+    case BF16: {
+      return ExtractLiteralFromIndexPositions<bfloat16>(from, indices,
+                                                        extract_as_scalar);
+    }
+    case F16: {
+      return ExtractLiteralFromIndexPositions<Eigen::half>(from, indices,
+                                                           extract_as_scalar);
+    }
+    case U16: {
+      return ExtractLiteralFromIndexPositions<uint16>(from, indices,
+                                                      extract_as_scalar);
+    }
+    case S16: {
+      return ExtractLiteralFromIndexPositions<int16>(from, indices,
+                                                     extract_as_scalar);
+    }
+    case F32: {
+      return ExtractLiteralFromIndexPositions<float>(from, indices,
+                                                     extract_as_scalar);
+    }
+    case U32: {
+      return ExtractLiteralFromIndexPositions<uint32>(from, indices,
+                                                      extract_as_scalar);
+    }
+    case S32: {
+      return ExtractLiteralFromIndexPositions<int32>(from, indices,
+                                                     extract_as_scalar);
+    }
+    case F64: {
+      return ExtractLiteralFromIndexPositions<double>(from, indices,
+                                                      extract_as_scalar);
+    }
+    case U64: {
+      return ExtractLiteralFromIndexPositions<uint64>(from, indices,
+                                                      extract_as_scalar);
+    }
+    case S64: {
+      return ExtractLiteralFromIndexPositions<int64>(from, indices,
+                                                     extract_as_scalar);
+    }
     default:
-      return InvalidArgument("Unsupported type for Sort");
+      return InvalidArgument("Unsupported type for Sort: %s",
+                             PrimitiveType_Name(type));
   }
 }
 }  // namespace
 
 Status HloEvaluator::HandleSort(HloInstruction* sort) {
-  if (!ShapeUtil::IsTuple(sort->shape())) {
-    return DefaultAction(sort);
-  } else {
-    // This is a really stupid work-around for the fact it's hard to support a
-    // multi-value sort directly, due to the fact we need to template the
-    // evaluation function on all of the value types.
-    std::vector<Literal> sort_results_backing;
-    for (int64 i = 0; i < sort->operand_count(); ++i) {
-      auto result = EvaluateSort(sort, GetEvaluatedLiteralFor(sort->operand(0)),
-                                 GetEvaluatedLiteralFor(sort->operand(i)));
-      if (!result.ok()) {
-        return result.status();
-      }
-      sort_results_backing.push_back(
-          std::move(result.ValueOrDie().DecomposeTuple()[1]));
-    }
-    std::vector<const Literal*> sort_results;
-    absl::c_transform(sort_results_backing, std::back_inserter(sort_results),
-                      [](const Literal& literal) { return &literal; });
-    evaluated_[sort] = LiteralUtil::MakeTuple(sort_results);
-    return Status::OK();
+  TF_RET_CHECK(sort->operand_count() >= 1)
+      << "Expected at least 1 operand for sort";
+  for (int64 i = 1; i < sort->operand_count(); ++i) {
+    TF_RET_CHECK(ShapeUtil::SameDimensions(sort->operand(0)->shape(),
+                                           sort->operand(i)->shape()))
+        << "All Sort operands must have the same dimensions";
   }
+
+  if (VLOG_IS_ON(3)) {
+    for (int64 i = 0; i < sort->operand_count(); ++i) {
+      VLOG(3) << "HandleSort operand " << i << " literal: "
+              << GetEvaluatedLiteralFor(sort->operand(i)).ToString();
+    }
+  }
+  Shape key_shape = sort->operand(0)->shape();
+  auto rank = key_shape.rank();
+  PrimitiveType keys_type = key_shape.element_type();
+  if (keys_type != F64 && keys_type != U64 && keys_type != S64 &&
+      keys_type != F32 && keys_type != U32 && keys_type != S32 &&
+      keys_type != BF16 && keys_type != F16 && keys_type != U16 &&
+      keys_type != S16 && keys_type != U8 && keys_type != S8) {
+    return InvalidArgument("Unsupported type for Sort: %s",
+                           PrimitiveType_Name(keys_type));
+  }
+  std::vector<Literal> result_literals;
+  result_literals.reserve(sort->operand_count());
+  for (int64 i = 0; i < sort->operand_count(); ++i) {
+    result_literals.emplace_back(sort->operand(i)->shape());
+  }
+  std::vector<int64> zero_base(rank, 0);
+  std::vector<int64> increment(rank, 1);
+  int64 sort_dim = sort->dimensions(0);
+  int64 sort_dim_elements = key_shape.dimensions(sort_dim);
+  increment[sort_dim] = sort_dim_elements;
+  // Iterate through each dimension except 'sort_dim'.
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
+      key_shape, zero_base, AsInt64Slice(key_shape.dimensions()), increment,
+      [&](absl::Span<const int64> indices) -> StatusOr<bool> {
+        // Extract a slice from each operand literal that corresponds to
+        // exactly the row in dimension 'sort_dim'.
+        std::vector<int64> limit_indices(indices.begin(), indices.end());
+        absl::c_for_each(limit_indices, [](int64& index) { ++index; });
+        limit_indices[sort_dim] = sort_dim_elements;
+        std::vector<Literal> literals_to_sort;
+        literals_to_sort.reserve(sort->operand_count());
+        for (int64 i = 0; i < sort->operand_count(); ++i) {
+          TF_ASSIGN_OR_RETURN(auto literal_to_sort,
+                              GetEvaluatedLiteralFor(sort->operand(i))
+                                  .Slice(indices, limit_indices)
+                                  .Reshape({sort_dim_elements}));
+          literals_to_sort.push_back(std::move(literal_to_sort));
+        }
+        std::vector<int64> indices_to_sort(sort_dim_elements);
+        std::iota(indices_to_sort.begin(), indices_to_sort.end(), 0);
+        std::stable_sort(
+            indices_to_sort.begin(), indices_to_sort.end(),
+            [keys_type, &literals_to_sort](int64 a, int64 b) {
+              switch (keys_type) {
+                case F64: {
+                  auto key_lhs = literals_to_sort[0].Get<double>({a});
+                  auto key_rhs = literals_to_sort[0].Get<double>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case U64: {
+                  auto key_lhs = literals_to_sort[0].Get<uint64>({a});
+                  auto key_rhs = literals_to_sort[0].Get<uint64>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case S64: {
+                  auto key_lhs = literals_to_sort[0].Get<int64>({a});
+                  auto key_rhs = literals_to_sort[0].Get<int64>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case F32: {
+                  auto key_lhs = literals_to_sort[0].Get<float>({a});
+                  auto key_rhs = literals_to_sort[0].Get<float>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case U32: {
+                  auto key_lhs = literals_to_sort[0].Get<uint32>({a});
+                  auto key_rhs = literals_to_sort[0].Get<uint32>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case S32: {
+                  auto key_lhs = literals_to_sort[0].Get<int32>({a});
+                  auto key_rhs = literals_to_sort[0].Get<int32>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case BF16: {
+                  auto key_lhs = literals_to_sort[0].Get<bfloat16>({a});
+                  auto key_rhs = literals_to_sort[0].Get<bfloat16>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case F16: {
+                  auto key_lhs = literals_to_sort[0].Get<Eigen::half>({a});
+                  auto key_rhs = literals_to_sort[0].Get<Eigen::half>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case U16: {
+                  auto key_lhs = literals_to_sort[0].Get<uint16>({a});
+                  auto key_rhs = literals_to_sort[0].Get<uint16>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case S16: {
+                  auto key_lhs = literals_to_sort[0].Get<int16>({a});
+                  auto key_rhs = literals_to_sort[0].Get<int16>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case U8: {
+                  auto key_lhs = literals_to_sort[0].Get<uint8>({a});
+                  auto key_rhs = literals_to_sort[0].Get<uint8>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                case S8: {
+                  auto key_lhs = literals_to_sort[0].Get<int8>({a});
+                  auto key_rhs = literals_to_sort[0].Get<int8>({b});
+                  return SafeLess(key_lhs, key_rhs);
+                }
+                default:
+                  // We should never reach here, because we checked earlier
+                  // that 'key_type' is one of the cases above.
+                  LOG(FATAL) << "Invalid key type in Sort: %s",
+                      PrimitiveType_Name(keys_type);
+                  return false;
+              }
+            });
+        std::vector<int64> slice_dimensions(rank, 1);
+        slice_dimensions[sort_dim] = sort_dim_elements;
+        std::vector<int64> start_indices(rank, 0);
+        for (int64 i = 0; i < sort->operand_count(); ++i) {
+          TF_ASSIGN_OR_RETURN(
+              Literal sorted_literal,
+              ExtractFromIndexPositions(literals_to_sort[i], indices_to_sort));
+          TF_ASSIGN_OR_RETURN(auto sorted_literal_reshaped,
+                              sorted_literal.Reshape(slice_dimensions));
+          TF_RETURN_IF_ERROR(result_literals[i].CopySliceFrom(
+              sorted_literal_reshaped, start_indices, indices,
+              slice_dimensions));
+        }
+        return true;
+      }));
+
+  if (sort->operand_count() == 1) {
+    evaluated_[sort] = std::move(result_literals[0]);
+  } else {
+    std::vector<const Literal*> literal_ptrs;
+    absl::c_transform(result_literals, std::back_inserter(literal_ptrs),
+                      [](const Literal& literal) { return &literal; });
+
+    Literal result_tuple = LiteralUtil::MakeTuple(literal_ptrs);
+    VLOG(3) << "HandleSort result_tuple: " << result_tuple.ToString();
+
+    evaluated_[sort] = std::move(result_tuple);
+  }
+  return Status::OK();
 }
 
 Status HloEvaluator::HandleReduce(HloInstruction* reduce) {
-  if (!ShapeUtil::IsTuple(reduce->shape())) {
+  if (!reduce->shape().IsTuple()) {
     return DefaultAction(reduce);
   } else {
     auto first_element_type = reduce->shape().tuple_shapes(0).element_type();
@@ -1418,6 +1616,27 @@ Status HloEvaluator::HandleReduce(HloInstruction* reduce) {
     }
     return reduce->Visit(typed_visitors_[first_element_type].get());
   }
+}
+
+Status HloEvaluator::HandleCustomCall(HloInstruction* custom_call) {
+  if (!custom_call_handler_) {
+    // No handler is registered; this means custom-calls are not allowed.
+    return DefaultAction(custom_call);
+  }
+
+  // Evaluate input operands so the handler has access to the operand data.
+  std::vector<const Literal*> operands;
+  operands.reserve(custom_call->operand_count());
+  for (const HloInstruction* operand : custom_call->operands()) {
+    operands.push_back(&GetEvaluatedLiteralFor(operand));
+  }
+
+  // Synchronously issue the handler to populate the instruction output literal.
+  TF_ASSIGN_OR_RETURN(
+      auto output, custom_call_handler_(custom_call, absl::MakeSpan(operands)));
+
+  evaluated_[custom_call] = std::move(output);
+  return Status::OK();
 }
 
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {
@@ -1437,16 +1656,46 @@ Status HloEvaluator::Postprocess(HloInstruction* hlo) {
   return Status::OK();
 }
 
-// Explicit instantiation of templatized Evaluate* methods.
-//
-template StatusOr<Literal> HloEvaluator::Evaluate<const Literal*>(
-    const HloModule& module, absl::Span<const Literal* const> arg_literals);
+namespace {
+template <typename T>
+std::unique_ptr<Array2D<T>> MatmulArray2DImpl(
+    const Array2D<T>& lhs, const Array2D<T>& rhs,
+    const std::function<void(
+        const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m, int64 n,
+        int64 k, int32 transpose_lhs, int32 transpose_rhs)>& impl_fn) {
+  CHECK_EQ(lhs.width(), rhs.height());
+  int m = lhs.height();
+  int n = rhs.width();
+  int k = lhs.width();
+  auto result = absl::make_unique<Array2D<T>>(m, n);
+  // Because Eigen is a header-oriented library, make sure that the Eigen code
+  // is the same as the code used by the CPU backend (otherwise the linker will
+  // randomly pick *some* definition).
+  impl_fn(
+      /*run_options_ptr=*/nullptr, result->data(), rhs.data(), lhs.data(), n, m,
+      k,
+      /*transpose_lhs=*/0,
+      /*transpose_rhs=*/0);
+  return result;
+}
+}  // namespace
 
-template StatusOr<Literal> HloEvaluator::Evaluate<const Literal*>(
-    const HloComputation& computation,
-    absl::Span<const Literal* const> arg_literals);
+std::unique_ptr<Array2D<Eigen::half>> HloEvaluator::MatmulArray2D(
+    const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs) {
+  return MatmulArray2DImpl<Eigen::half>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF16);
+}
 
-template StatusOr<Literal> HloEvaluator::Evaluate<const Literal*>(
-    HloInstruction* instruction, absl::Span<const Literal* const> arg_literals);
+std::unique_ptr<Array2D<float>> HloEvaluator::MatmulArray2D(
+    const Array2D<float>& lhs, const Array2D<float>& rhs) {
+  return MatmulArray2DImpl<float>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF32);
+}
+
+std::unique_ptr<Array2D<double>> HloEvaluator::MatmulArray2D(
+    const Array2D<double>& lhs, const Array2D<double>& rhs) {
+  return MatmulArray2DImpl<double>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF64);
+}
 
 }  // namespace xla

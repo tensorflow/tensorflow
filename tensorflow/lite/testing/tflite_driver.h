@@ -16,10 +16,12 @@ limitations under the License.
 #define TENSORFLOW_LITE_TESTING_TFLITE_DRIVER_H_
 
 #include <map>
+#include <memory>
 
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/testing/test_runner.h"
 
@@ -29,7 +31,8 @@ namespace testing {
 // A test runner that feeds inputs into TF Lite and verifies its outputs.
 class TfLiteDriver : public TestRunner {
  public:
-  explicit TfLiteDriver(bool use_nnapi, const string& delegate = "");
+  explicit TfLiteDriver(bool use_nnapi, const string& delegate = "",
+                        bool reference_kernel = false);
   ~TfLiteDriver() override;
 
   void LoadModel(const string& bin_file_path) override;
@@ -65,6 +68,7 @@ class TfLiteDriver : public TestRunner {
 
   class Expectation;
 
+  std::unique_ptr<OpResolver> resolver_;
   std::unique_ptr<FlexDelegate> delegate_;
   bool use_nnapi_ = false;
   std::unique_ptr<FlatBufferModel> model_;
