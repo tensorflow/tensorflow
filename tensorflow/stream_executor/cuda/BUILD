@@ -87,13 +87,17 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/core:cuda",
         "//tensorflow/stream_executor:device_options",
         "//tensorflow/stream_executor/gpu:gpu_driver_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
-    ] + tf_additional_cuda_driver_deps()),
+    ] + tf_additional_cuda_driver_deps()) + select({
+        # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
+        "//tensorflow:using_cuda_nvcc_with_dynamic_build": ["cudart_stub"],
+        "//tensorflow:using_cuda_clang_with_dynamic_build": ["cudart_stub"],
+        "//conditions:default": ["//tensorflow/core:cuda"],
+    }),
 )
 
 cc_library(

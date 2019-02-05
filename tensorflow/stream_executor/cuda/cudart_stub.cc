@@ -111,4 +111,11 @@ cudaError_t CUDART_CB cudaPointerGetAttributes(
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(attributes, ptr);
 }
+
+cudaError_t CUDART_CB cudaGetLastError() {
+  using FuncPtr = cudaError_t (*)();
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGetLastError");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr();
+}
 }  // extern "C"
