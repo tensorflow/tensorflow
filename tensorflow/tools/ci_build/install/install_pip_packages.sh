@@ -97,9 +97,9 @@ pip3 install py-cpuinfo
 pip2 install pylint==1.6.4
 pip3 install pylint==1.6.4
 
-# pep8 tests require the following:
-pip2 install pep8
-pip3 install pep8
+# pycodestyle tests require the following:
+pip2 install pycodestyle
+pip3 install pycodestyle
 
 # tf.mock require the following for python2:
 pip2 install mock
