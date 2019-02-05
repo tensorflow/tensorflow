@@ -1186,7 +1186,7 @@ if and only if the corresponding input element is finite.
 
 <b>`Sign(operand)`</b> Element-wise sign operation `x -> sgn(x)` where
 
-$$\text{sgn}(x) = \begin{cases} -1 & x < 0\\ 0 & x = 0\\ 1 & x > 0 \end{cases}$$
+$$\text{sgn}(x) = \begin{cases} -1 & x < 0\\ -0 & x = -0\\ NaN & x = NaN\\ +0 & x = +0\\ 1 & x > 0 \end{cases}$$
 
 using the comparison operator of the element type of `operand`.
 
