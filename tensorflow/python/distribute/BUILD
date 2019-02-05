@@ -138,7 +138,6 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
-        "//tensorflow/python/ops/losses",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )

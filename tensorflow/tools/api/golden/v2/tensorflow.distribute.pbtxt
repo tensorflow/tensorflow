@@ -37,10 +37,6 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member_method {
-    name: "get_loss_reduction"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "get_replica_context"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
