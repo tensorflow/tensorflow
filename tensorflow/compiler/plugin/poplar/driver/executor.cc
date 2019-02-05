@@ -199,6 +199,11 @@ void PoplarExecutor::Deallocate(se::DeviceMemoryBase* mem) {
 
 void PoplarExecutor::ConnectInfeedsToStreamCallback(
     const InfeedInfos& infeed_infos) {
+  // Don't connect any streams if using synthetic data
+  if (UseSyntheticData()) {
+    return;
+  }
+
   for (const auto& infeed_info : infeed_infos) {
     const HloInfeedInstruction* inst = infeed_info;
 
