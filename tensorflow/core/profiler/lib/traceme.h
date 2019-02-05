@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"

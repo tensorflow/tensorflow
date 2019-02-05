@@ -292,6 +292,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
+        "//tensorflow/python/distribute:distribute_lib",
     ],
 )
 
@@ -474,6 +475,19 @@ tf_py_test(
     name = "metrics_confusion_matrix_test",
     size = "medium",
     srcs = ["metrics_confusion_matrix_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
+)
+
+tf_py_test(
+    name = "metrics_correctness_test",
+    size = "medium",
+    srcs = ["metrics_correctness_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",

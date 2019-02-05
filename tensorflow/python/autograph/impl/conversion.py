@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import functools
 import imp
-# import types
 import unittest
 
 import gast
@@ -87,17 +86,17 @@ def is_whitelisted_for_graph(o):
     # Builtins typically have unnamed modules.
     for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
       if m.__name__.startswith(prefix):
-        logging.log(2, '%s is whitelisted: name starts with "%s"', o, prefix)
+        logging.log(2, 'Whitelisted: %s: name starts with "%s"', o, prefix)
         return True
 
     # Temporary -- whitelist tensorboard modules.
     # TODO(b/122731813): Remove.
     if m.__name__ == 'tensorboard' or '.tensorboard' in m.__name__:
-      logging.log(2, '%s is whitelisted: name contains "tensorboard"', o)
+      logging.log(2, 'Whitelisted: %s: name contains "tensorboard"', o)
       return True
 
   if hasattr(o, 'autograph_info__') or hasattr(o, '__ag_compiled'):
-    logging.log(2, '%s is whitelisted: already converted', o)
+    logging.log(2, 'Whitelisted: %s: already converted', o)
     return True
 
   if hasattr(o, '__call__'):
@@ -105,9 +104,10 @@ def is_whitelisted_for_graph(o):
     # The type check avoids infinite recursion around the __call__ method
     # of function objects.
     if (type(o) != type(o.__call__)) and is_whitelisted_for_graph(o.__call__):  # pylint: disable=unidiomatic-typecheck
-      logging.log(2, '%s is whitelisted: object __call__ whitelisted', o)
+      logging.log(2, 'Whitelisted: %s: object __call__ whitelisted', o)
       return True
 
+  owner_class = None
   if tf_inspect.ismethod(o):
     # Methods of whitelisted classes are also whitelisted, even if they are
     # bound via user subclasses.
@@ -127,12 +127,12 @@ def is_whitelisted_for_graph(o):
     owner_class = inspect_utils.getmethodclass(o)
     if owner_class is not None:
       if issubclass(owner_class, unittest.TestCase):
-        logging.log(2, '%s is whitelisted: method of TestCase subclass', o)
+        logging.log(2, 'Whitelisted: %s: method of TestCase subclass', o)
         return True
 
       owner_class = inspect_utils.getdefiningclass(o, owner_class)
       if is_whitelisted_for_graph(owner_class):
-        logging.log(2, '%s is whitelisted: owner is whitelisted %s', o,
+        logging.log(2, 'Whitelisted: %s: owner is whitelisted %s', o,
                     owner_class)
         return True
 
@@ -145,10 +145,10 @@ def is_whitelisted_for_graph(o):
           'Entity {} looks like a namedtuple subclass. Its constructor will'
           ' not be converted by AutoGraph, but if it has any custom methods,'
           ' those will be.'.format(o), 1)
-    logging.log(2, '%s is whitelisted: named tuple', o)
+    logging.log(2, 'Whitelisted: %s: named tuple', o)
     return True
 
-  logging.log(2, '%s is NOT whitelisted', o)
+  logging.log(2, 'Not whitelisted: %s: default rule', o)
   return False
 
 

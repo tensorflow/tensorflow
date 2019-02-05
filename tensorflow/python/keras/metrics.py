@@ -2628,6 +2628,63 @@ class SparseCategoricalCrossentropy(MeanMetricWrapper):
         axis=axis)
 
 
+class SumOverBatchSize(Reduce):
+  """Computes the weighted sum over batch size of the given values.
+
+  For example, if values is [1, 3, 5, 7] then the metric value is 4.
+  If the weights were specified as [1, 1, 0, 0] then the value would be 1.
+
+  This metric creates two variables, `total` and `count` that are used to
+  compute the average of `values`. This average is ultimately returned as sum
+  over batch size which is an idempotent operation that simply divides `total`
+  by `count`.
+
+  If `sample_weight` is `None`, weights default to 1.  Use `sample_weight` of 0
+  to mask values.
+  """
+
+  def __init__(self, name='sum_over_batch_size', dtype=None):
+    super(SumOverBatchSize, self).__init__(
+        reduction=metrics_utils.Reduction.SUM_OVER_BATCH_SIZE,
+        name=name,
+        dtype=dtype)
+
+
+class SumOverBatchSizeMetricWrapper(SumOverBatchSize):
+  """Wraps a function with the `SumOverBatchSizeMetricWrapper` metric."""
+
+  def __init__(self, fn, name=None, dtype=None, **kwargs):
+    """Creates a `SumOverBatchSizeMetricWrapper` instance.
+
+    Args:
+      fn: The metric function to wrap, with signature `fn(y_true, y_pred,
+        **kwargs)`.
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+      **kwargs: The keyword arguments that are passed on to `fn`.
+    """
+    super(SumOverBatchSizeMetricWrapper, self).__init__(name=name, dtype=dtype)
+    self._fn = fn
+    self._fn_kwargs = kwargs
+
+  def update_state(self, y_true, y_pred, sample_weight=None):
+    y_true = math_ops.cast(y_true, self._dtype)
+    y_pred = math_ops.cast(y_pred, self._dtype)
+    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
+        y_pred, y_true, sample_weight)
+
+    matches = self._fn(y_true, y_pred, **self._fn_kwargs)
+    return super(SumOverBatchSizeMetricWrapper, self).update_state(
+        matches, sample_weight=sample_weight)
+
+  def get_config(self):
+    config = {}
+    for k, v in six.iteritems(self._fn_kwargs):
+      config[k] = K.eval(v) if is_tensor_or_variable(v) else v
+    base_config = super(SumOverBatchSizeMetricWrapper, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
 def accuracy(y_true, y_pred):
   y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
   if y_true.dtype != y_pred.dtype:

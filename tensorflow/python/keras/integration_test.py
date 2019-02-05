@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import numpy as np
 
 from tensorflow.python import keras
@@ -236,7 +238,7 @@ class ActivationV2IntegrationTest(keras_parameterized.TestCase):
               verbose=2)
 
     output_path = keras.saving.saved_model.export(
-        model, '/tmp/tf_keras_saved_model')
+        model, os.path.join(self.get_temp_dir(), 'tf_keras_saved_model'))
     loaded_model = keras.saving.saved_model.load_from_saved_model(output_path)
     self.assertEqual(model.summary(), loaded_model.summary())
 

@@ -150,6 +150,7 @@ renames = {
     'tf.disable_v2_batch_normalization': 'tf.compat.v1.disable_v2_batch_normalization',
     'tf.disable_v2_behavior': 'tf.compat.v1.disable_v2_behavior',
     'tf.disable_v2_tensorshape': 'tf.compat.v1.disable_v2_tensorshape',
+    'tf.distribute.get_loss_reduction': 'tf.compat.v1.distribute.get_loss_reduction',
     'tf.distributions.Bernoulli': 'tf.compat.v1.distributions.Bernoulli',
     'tf.distributions.Beta': 'tf.compat.v1.distributions.Beta',
     'tf.distributions.Categorical': 'tf.compat.v1.distributions.Categorical',

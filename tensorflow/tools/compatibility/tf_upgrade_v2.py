@@ -537,6 +537,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.unbatch",
         "tf.contrib.data.unique":
             "tf.data.experimental.unique",
+        "tf.contrib.framework.is_tensor":
+            "tf.is_tensor",
         "tf.contrib.framework.nest.assert_same_structure":
             "tf.nest.assert_same_structure",
         "tf.contrib.framework.nest.flatten":

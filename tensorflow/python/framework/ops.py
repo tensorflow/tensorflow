@@ -3048,9 +3048,6 @@ class Graph(object):
     # being called inside function definitions behave as if they were seeing the
     # actual outside graph).
     self._graph_key = "grap-key-%d/" % (uid(),)
-    # A string with the last reduction method passed to
-    # losses.compute_weighted_loss(), or None.
-    self._last_loss_reduction = None
     self._container = ""
     self._registered_ops = op_def_registry.get_registered_ops()
     # Set to True if this graph is being built in an

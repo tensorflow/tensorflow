@@ -25,7 +25,6 @@ import functools
 
 import six
 
-from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.distribute import values as distributed_values
@@ -126,7 +125,26 @@ class OptimizerV2(checkpointable.Checkpointable):
   opt.apply_gradients(capped_grads_and_vars)
   ```
 
+  ### Use with `tf.distribute.Strategy`.
+
+  This optimizer class is `tf.distribute.Strategy` aware, which means it
+  automatically sums gradients across all replicas. To average gradients,
+  you divide your loss by the global batch size, which is done automatically
+  if you use a member of `tf.keras.losses` or `tf.losses`. See the
+  `reduction` argument of your loss which should be set to
+  `tf.losses.Reduction.SUM_OVER_BATCH_SIZE` for averaging or
+  `tf.losses.Reduction.SUM` for not.
+
+  If you are not using these and you want to average gradients, you should use
+  `tf.math.reduce_sum` to add up your per-example losses and then divide by the
+  global batch size. Note that when using `tf.distribute.Strategy`, the first
+  component of a tensor's shape is the *replica-local* batch size, which is off
+  by a factor equal to the number of replicas being used to compute a single
+  step. As a result, using `tf.math.reduce_mean` will give the wrong answer,
+  resulting in gradients that can be many times too big.
+
   ### Variable Constraint
+
   All Keras optimizers respect variable constraints. If constraint function is
   passed to any variable, the constraint will be applied to the variable after
   the gradient has been applied to the variable.
@@ -174,15 +192,13 @@ class OptimizerV2(checkpointable.Checkpointable):
   ```
 
   ### Write a customized optimizer.
+  If you intend to create your own optimization algorithm, simply inherit from
+  this class and override the following methods:
 
-  This optimizer class updates variables from gradients and is
-  tf.distribute.Strategy aware. If you intend to create your own optimization
-  algorithm, simply inherit from this class and override the following methods:
     - resource_apply_dense (update variable given gradient tensor is dense)
     - resource_apply_sparse (update variable given gradient tensor is sparse)
     - create_slots (if your optimizer algorithm requires additional variables)
     - get_config (serialization of the optimizer, include all hyper parameters)
-
   """
 
   def __init__(self, name, **kwargs):
@@ -310,7 +326,6 @@ class OptimizerV2(checkpointable.Checkpointable):
     with backprop.GradientTape() as tape:
       tape.watch(var_list)
       loss_value = loss()
-      loss_value = self._scale_loss(loss_value)
     grads = tape.gradient(loss_value, var_list, grad_loss)
 
     if hasattr(self, "clipnorm"):
@@ -329,14 +344,6 @@ class OptimizerV2(checkpointable.Checkpointable):
 
     return grads_and_vars
 
-  @staticmethod
-  def _scale_loss(loss_value):
-    if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
-      num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
-      if num_replicas > 1:
-        loss_value *= (1. / num_replicas)
-    return loss_value
-
   def get_gradients(self, loss, params):
     """Returns gradients of `loss` with respect to `params`.
 
@@ -351,7 +358,6 @@ class OptimizerV2(checkpointable.Checkpointable):
       ValueError: In case any gradient cannot be computed (e.g. if gradient
         function not implemented).
     """
-    loss = self._scale_loss(loss)
     grads = gradients.gradients(loss, params)
     if None in grads:
       raise ValueError("An operation has `None` for gradient. "

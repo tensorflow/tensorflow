@@ -203,6 +203,25 @@ class Add : public BuiltinOperator<AddOperator, ::tflite::AddOptions,
   }
 };
 
+class AddN : public BuiltinOperator<AddNOperator, ::tflite::AddNOptions,
+                                    ::tflite::BuiltinOptions_AddNOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateAddNOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
+  }
+};
+
 class SpaceToBatchND
     : public BuiltinOperator<SpaceToBatchNDOperator,
                              ::tflite::SpaceToBatchNDOptions,
@@ -1903,6 +1922,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   // Builtin Operators.
   ops.push_back(
       MakeUnique<Add>(::tflite::BuiltinOperator_ADD, OperatorType::kAdd));
+  ops.push_back(
+      MakeUnique<AddN>(::tflite::BuiltinOperator_ADD_N, OperatorType::kAddN));
   ops.push_back(
       MakeUnique<Div>(::tflite::BuiltinOperator_DIV, OperatorType::kDiv));
   ops.push_back(

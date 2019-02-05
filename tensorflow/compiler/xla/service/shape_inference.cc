@@ -1858,6 +1858,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
               fft_length[i]);
         }
       }
+      if (ShapeUtil::IsZeroElementArray(in)) {
+        return in;
+      }
       Shape result = ShapeUtil::ChangeElementType(in, C64);
       result.set_dimensions(result.dimensions_size() - 1,
                             fft_length[fft_rank - 1] / 2 + 1);
@@ -2433,7 +2436,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::HumanString(arg));
   }
 
-  if (index >= arg.tuple_shapes_size()) {
+  if (index < 0 || index >= arg.tuple_shapes_size()) {
     return InvalidArgument(
         "Cannot infer shape: attempt to index out of tuple bounds: %d "
         ">= %d in shape %s.",

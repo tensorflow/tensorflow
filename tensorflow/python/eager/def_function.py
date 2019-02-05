@@ -623,7 +623,6 @@ class Function(object):
     Raises:
       ValueError: if this object has not yet been called on concrete values.
     """
-    assert context.executing_eagerly()
     if self._stateful_fn is None:
       initializer_map = {}
       self._initialize(args, kwargs, add_initializers_to=initializer_map)

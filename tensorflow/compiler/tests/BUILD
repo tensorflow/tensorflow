@@ -1223,3 +1223,19 @@ tf_xla_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+tf_xla_py_test(
+    name = "control_flow_ops_test",
+    size = "small",
+    srcs = ["control_flow_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+    ],
+)

@@ -4,8 +4,8 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "if_not_windows")
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 exports_files(glob([
@@ -173,24 +173,17 @@ cc_library(
         "stderr_reporter.h",
     ],
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
-    linkopts = [
-    ] + select({
-        "//tensorflow:android": [
-            "-llog",
-        ],
-        "//conditions:default": [
-        ],
-    }),
     deps = [
         ":arena_planner",
         ":graph_info",
         ":memory_planner",
+        ":minimal_logging",
         ":schema_fbs_version",
         ":simple_memory_arena",
         ":string",
         ":util",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/core/api:api",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
@@ -365,6 +358,69 @@ cc_test(
         ":util",
         "//tensorflow/lite/c:c_api_internal",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "minimal_logging",
+    srcs = [
+        "minimal_logging.cc",
+    ] + select({
+        "//tensorflow:android": [
+            "minimal_logging_android.cc",
+        ],
+        "//tensorflow:ios": [
+            "minimal_logging_ios.cc",
+        ],
+        "//conditions:default": [
+            "minimal_logging_default.cc",
+        ],
+    }),
+    hdrs = ["minimal_logging.h"],
+    copts = TFLITE_DEFAULT_COPTS + tflite_copts(),
+    linkopts = select({
+        "//tensorflow:android": ["-llog"],
+        "//conditions:default": [],
+    }),
+    visibility = ["//visibility:private"],
+)
+
+cc_test(
+    name = "minimal_logging_test",
+    size = "small",
+    srcs = ["minimal_logging_test.cc"],
+    tags = [
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
+    deps = [
+        ":minimal_logging",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+# Shared lib target for convenience, pulls in the core runtime and builtin ops.
+# Note: This target is not yet finalized, and the exact set of exported (C/C++)
+# APIs is subject to change.
+tflite_cc_shared_object(
+    name = "libtensorflowlite.so",
+    linkopts = select({
+        "//tensorflow:darwin": [
+            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
+            "$(location //tensorflow/lite:tflite_exported_symbols.lds)",
+            "-Wl,-install_name,@rpath/libtensorflowlite.so",
+        ],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-z defs",
+            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
+            "$(location //tensorflow/lite:tflite_version_script.lds)",
+        ],
+    }),
+    deps = [
+        ":framework",
+        ":tflite_exported_symbols.lds",
+        ":tflite_version_script.lds",
+        "//tensorflow/lite/kernels:builtin_ops",
     ],
 )
 
