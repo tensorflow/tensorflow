@@ -340,10 +340,9 @@ func @should_not_fuse_would_create_cycle() {
 }
 
 // -----
-// CHECK: [[MAP0:#map[0-9]+]] = (d0, d1) -> (-d0 + d1)
 
-// CHECK-LABEL: func @should_fuse_across_waw_dep_with_private_memref() {
-func @should_fuse_across_waw_dep_with_private_memref() {
+// CHECK-LABEL: func @should_not_fuse_across_waw_dep() {
+func @should_not_fuse_across_waw_dep() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
 
@@ -358,16 +357,13 @@ func @should_fuse_across_waw_dep_with_private_memref() {
   }
   // Fusing loop %i0 to %i2 would violate the WAW dependence between %i0 and %i1
   // CHECK:      for %i0 = 0 to 10 {
-  // CHECK-NEXT:   store %cst, %1[%i0] : memref<10xf32>
+  // CHECK-NEXT:   store %cst, %0[%i0] : memref<10xf32>
   // CHECK-NEXT: }
   // CHECK:      for %i1 = 0 to 10 {
-  // CHECK-NEXT:   store %cst, %1[%i1] : memref<10xf32>
+  // CHECK-NEXT:   store %cst, %0[%i1] : memref<10xf32>
   // CHECK-NEXT: }
   // CHECK:      for %i2 = 0 to 10 {
-  // CHECK-NEXT:   %2 = affine_apply [[MAP0]](%i2, %i2)
-  // CHECK-NEXT:   store %cst, %0[%2] : memref<1xf32>
-  // CHECK-NEXT:   %3 = affine_apply [[MAP0]](%i2, %i2)
-  // CHECK-NEXT:   %4 = load %0[%3] : memref<1xf32>
+  // CHECK-NEXT:   %1 = load %0[%i2] : memref<10xf32>
   // CHECK-NEXT: }
   // CHECK-NEXT: return
   return
@@ -1234,17 +1230,17 @@ func @should_fuse_with_private_memrefs_with_diff_shapes() {
   // by loops %i1 and %i2.
   // CHECK-DAG:  %0 = alloc() : memref<1xf32>
   // CHECK-DAG:  %1 = alloc() : memref<1xf32>
-  // CHECK:      for %i0 = 0 to 17 {
+  // CHECK:      for %i0 = 0 to 82 {
   // CHECK-NEXT:   %2 = affine_apply [[MAP0]](%i0, %i0)
-  // CHECK-NEXT:   store %cst, %0[%2] : memref<1xf32>
+  // CHECK-NEXT:   store %cst, %1[%2] : memref<1xf32>
   // CHECK-NEXT:   %3 = affine_apply [[MAP0]](%i0, %i0)
-  // CHECK-NEXT:   %4 = load %0[%3] : memref<1xf32>
+  // CHECK-NEXT:   %4 = load %1[%3] : memref<1xf32>
   // CHECK-NEXT: }
-  // CHECK-NEXT: for %i1 = 0 to 82 {
+  // CHECK-NEXT: for %i1 = 0 to 17 {
   // CHECK-NEXT:   %5 = affine_apply [[MAP0]](%i1, %i1)
-  // CHECK-NEXT:   store %cst, %1[%5] : memref<1xf32>
+  // CHECK-NEXT:   store %cst, %0[%5] : memref<1xf32>
   // CHECK-NEXT:   %6 = affine_apply [[MAP0]](%i1, %i1)
-  // CHECK-NEXT:   %7 = load %1[%6] : memref<1xf32>
+  // CHECK-NEXT:   %7 = load %0[%6] : memref<1xf32>
   // CHECK-NEXT: }
   // CHECK-NEXT: return
   return
@@ -1650,5 +1646,52 @@ func @should_fuse_at_depth_above_loop_carried_dependence(%arg0: memref<64x4xf32>
   // CHECK-NEXT:    }
   // CHECK-NEXT:  }
   // CHECK-NEXT:  return
+  return
+}
+
+// -----
+
+// CHECK: [[MAP0:#map[0-9]+]] = (d0, d1) -> (-d0 + d1)
+
+// CHECK-LABEL: func @should_fuse_after_private_memref_creation() {
+func @should_fuse_after_private_memref_creation() {
+  %a = alloc() : memref<10xf32>
+  %b = alloc() : memref<10xf32>
+
+  %cf7 = constant 7.0 : f32
+
+  for %i0 = 0 to 10 {
+    store %cf7, %a[%i0] : memref<10xf32>
+  }
+  for %i1 = 0 to 10 {
+    %v0 = load %a[%i1] : memref<10xf32>
+    store %v0, %b[%i1] : memref<10xf32>
+  }
+  for %i2 = 0 to 10 {
+    %v1 = load %a[%i2] : memref<10xf32>
+    store %v1, %b[%i2] : memref<10xf32>
+  }
+
+  // On the first visit to '%i2', the fusion algorithm can not fuse loop nest
+  // '%i0' into '%i2' because of the dependences '%i0' and '%i2' each have on
+  // '%i1'. However, once the loop nest '%i0' is fused into '%i1' with a
+  // private memref, the dependence between '%i0' and '%i1' on memref '%a' no
+  // longer exists, so '%i0' can now be fused into '%i2'.
+
+  // CHECK:       for %i0 = 0 to 10 {
+  // CHECK-NEXT:    %3 = affine_apply [[MAP0]](%i0, %i0)
+  // CHECK-NEXT:    store %cst, %1[%3] : memref<1xf32>
+  // CHECK-NEXT:    %4 = affine_apply [[MAP0]](%i0, %i0)
+  // CHECK-NEXT:    %5 = load %1[%4] : memref<1xf32>
+  // CHECK-NEXT:    store %5, %2[%i0] : memref<10xf32>
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:  for %i1 = 0 to 10 {
+  // CHECK-NEXT:    %6 = affine_apply [[MAP0]](%i1, %i1)
+  // CHECK-NEXT:    store %cst, %0[%6] : memref<1xf32>
+  // CHECK-NEXT:    %7 = affine_apply [[MAP0]](%i1, %i1)
+  // CHECK-NEXT:    %8 = load %0[%7] : memref<1xf32>
+  // CHECK-NEXT:    store %8, %2[%i1] : memref<10xf32>
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:   return
   return
 }
