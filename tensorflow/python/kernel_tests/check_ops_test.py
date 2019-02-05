@@ -1505,6 +1505,46 @@ class AssertShapesTest(test.TestCase):
     self.raises_static_error(shapes=shapes, regex=regex)
 
   @test_util.run_in_graph_and_eager_modes
+  def test_rank_zero_rank_one_size_one_equivalence(self):
+    rank_one_size_one = array_ops.ones([1], name="rank_one_size_one")
+    rank_zero = array_ops.constant(5, name="rank_zero")
+    check_ops.assert_shapes({
+        rank_one_size_one: (),
+        rank_zero: (),
+    })
+    check_ops.assert_shapes({
+        rank_one_size_one: (1,),
+        rank_zero: (1,),
+    })
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_scalar_implies_size_one(self):
+    scalar = array_ops.constant(5, name="rank_zero")
+    x = array_ops.ones([2, 2], name="x")
+    shapes = {
+        scalar: ('a',),
+        x: ('a', 2)
+    }
+    regex = (
+        r"Specified by tensor .* dimension 0.  "
+        r"Tensor .* dimension 0 must have size 1.  "
+        r"Received size 2")
+    self.raises_static_error(shapes=shapes, regex=regex)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_raise_not_sequence(self):
+    x = array_ops.constant([1, 2], name="x")
+    shapes = {
+        x: 2
+    }
+    regex = (
+        r"Tensor .*.  "
+        r"Specified shape must be a sequence.  "
+        r"A sequence has attributes `__len__` and `__iter__`.  "
+        r"Received specified shape: 2")
+    self.raises_static_error(shapes=shapes, regex=regex)
+
+  @test_util.run_in_graph_and_eager_modes
   def test_raise_static_shape_explicit_mismatch_innermost_dims(self):
     x = array_ops.ones([3, 2], name="x")
     y = array_ops.ones([2, 3], name="y")
@@ -1627,7 +1667,7 @@ class AssertShapesTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_correctly_matching(self):
-    u = array_ops.constant(1, name="v")
+    u = array_ops.constant(1, name="u")
     v = array_ops.ones([1, 2], name="v")
     w = array_ops.ones([3], name="w")
     x = array_ops.ones([1, 2, 3], name="x")
@@ -1650,7 +1690,7 @@ class AssertShapesTest(test.TestCase):
         z: ('b', 3, 'a'),
         v: ('a', 2),
         w: (3,),
-        u: 1
+        u: ()
     })
     with ops.control_dependencies([assertion]):
       out = array_ops.identity(x)
@@ -1667,6 +1707,62 @@ class AssertShapesTest(test.TestCase):
     with ops.control_dependencies([assertion]):
       out = array_ops.identity(x)
     self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_raise_implicit_mismatch_misc_sequence_types(self):
+    x = array_ops.ones([2, 2], name="x")
+    y = array_ops.ones([1, 3], name="y")
+    styles = [
+        {
+            x: ('A', 'B'),
+            y: ('A', 'C'),
+        },
+        {
+            x: "AB",
+            y: "AC"
+        },
+        {
+            x: ['A', 'B'],
+            y: ['A', 'C'],
+        },
+        {
+            x: ('A', 'B'),
+            y: 'AC'
+        }
+    ]
+    for shapes in styles:
+      self.raises_static_error(shapes=shapes, regex=(
+          r"Specified by tensor .* dimension 0.  "
+          "Tensor .* dimension 0 must have size 2.  "
+          "Received size 1"))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_raise_explicit_mismatch_misc_sequence_types(self):
+    x = array_ops.ones([2, 2], name="x")
+    y = array_ops.ones([1, 3], name="y")
+    styles = [
+        {
+            x: (2, 2),
+            y: (2, 3),
+        },
+        {
+            x: "22",
+            y: "23"
+        },
+        {
+            x: [2, 2],
+            y: [2, 3],
+        },
+        {
+            x: (2, 2),
+            y: '23'
+        }
+    ]
+    for shapes in styles:
+      self.raises_static_error(shapes=shapes, regex=(
+          r"Specified explicitly.  "
+          "Tensor .* dimension 0 must have size 2.  "
+          "Received size 1"))
 
   @test_util.run_in_graph_and_eager_modes
   def test_empty_shapes_dict_no_op(self):
