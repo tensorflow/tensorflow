@@ -395,8 +395,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
   # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
   @test_util.run_v1_only("b/121264236")
   def testSkipEagerCaptureConstantsWithConflictingDevices(self):
-    config = config_pb2.ConfigProto(
-        device_count={"CPU": 3}, log_device_placement=True)
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.cached_session(config=config):
       with ops.device("/device:CPU:0"):
         a = constant_op.constant(3.0)
@@ -414,8 +413,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
   @test_util.run_v1_only(
       "defun will convert RefVariables to ResourceVariables.")
   def testSkipEagerRefVariablesWithConflictingDevices(self):
-    config = config_pb2.ConfigProto(
-        device_count={"CPU": 3}, log_device_placement=True)
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.cached_session(config=config):
 
       def func(_):
@@ -436,8 +434,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
   # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
   @test_util.run_v1_only("b/121264236")
   def testSkipEagerResourceVariablesWithConflictingDevices(self):
-    config = config_pb2.ConfigProto(
-        device_count={"CPU": 3}, log_device_placement=True)
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.cached_session(config=config):
 
       def func(_):
