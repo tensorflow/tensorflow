@@ -857,6 +857,9 @@ llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
   return llvm_ir::EmitFloatMin(lhs_value, rhs_value, b_);
 }
 
+// TODO(b/123355973): We have an implementation of erfinv in math.cc.  We
+// shouldn't have two implementations, especially since this one isn't testable
+// (it's only observable via a normally-distributed RNG).
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
                                                       llvm::Value* x) {
   if (prim_type != F16 && prim_type != F32 && prim_type != F64) {
