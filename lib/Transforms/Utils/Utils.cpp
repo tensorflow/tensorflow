@@ -124,7 +124,7 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
     for (auto *extraIndex : extraIndices) {
       assert(extraIndex->getDefiningInst()->getNumResults() == 1 &&
              "single result op's expected to generate these indices");
-      assert((extraIndex->isValidDim() || extraIndex->isValidSymbol()) &&
+      assert((isValidDim(extraIndex) || isValidSymbol(extraIndex)) &&
              "invalid memory op index");
       state.operands.push_back(extraIndex);
     }

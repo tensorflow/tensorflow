@@ -168,7 +168,7 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth) {
     } else {
       // Has to be a valid symbol.
       auto *symbol = accessValueMap.getOperand(i);
-      assert(symbol->isValidSymbol());
+      assert(isValidSymbol(symbol));
       // Check if the symbol is a constant.
       if (auto *inst = symbol->getDefiningInst()) {
         if (auto constOp = inst->dyn_cast<ConstantIndexOp>()) {

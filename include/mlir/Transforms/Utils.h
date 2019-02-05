@@ -32,6 +32,7 @@
 
 namespace mlir {
 
+class AffineApplyOp;
 class AffineForOp;
 class FuncBuilder;
 class Location;

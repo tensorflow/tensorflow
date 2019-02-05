@@ -36,55 +36,6 @@ public:
   BuiltinDialect(MLIRContext *context);
 };
 
-/// The "affine_apply" operation applies an affine map to a list of operands,
-/// yielding a single result. The operand list must be the same size as the
-/// number of arguments to the affine mapping.  All operands and the result are
-/// of type 'Index'. This operation requires a single affine map attribute named
-/// "map".  For example:
-///
-///   %y = "affine_apply" (%x) { map: (d0) -> (d0 + 1) } :
-///          (index) -> (index)
-///
-/// equivalently:
-///
-///   #map42 = (d0)->(d0+1)
-///   %y = affine_apply #map42(%x)
-///
-class AffineApplyOp : public Op<AffineApplyOp, OpTrait::VariadicOperands,
-                                OpTrait::OneResult, OpTrait::HasNoSideEffect> {
-public:
-  /// Builds an affine apply op with the specified map and operands.
-  static void build(Builder *builder, OperationState *result, AffineMap map,
-                    ArrayRef<Value *> operands);
-
-  /// Returns the affine map to be applied by this operation.
-  AffineMap getAffineMap() const {
-    return getAttrOfType<AffineMapAttr>("map").getValue();
-  }
-
-  /// Returns true if the result of this operation can be used as dimension id.
-  bool isValidDim() const;
-
-  /// Returns true if the result of this operation is a symbol.
-  bool isValidSymbol() const;
-
-  static StringRef getOperationName() { return "affine_apply"; }
-
-  // Hooks to customize behavior of this op.
-  static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
-  bool verify() const;
-  Attribute constantFold(ArrayRef<Attribute> operands,
-                         MLIRContext *context) const;
-
-  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                          MLIRContext *context);
-
-private:
-  friend class Instruction;
-  explicit AffineApplyOp(const Instruction *state) : Op(state) {}
-};
-
 /// The "br" operation represents a branch instruction in a CFG function.
 /// The operation takes variable number of operands and produces no results.
 /// The operand number and types for each successor must match the
@@ -396,12 +347,6 @@ void printDimAndSymbolList(Instruction::const_operand_iterator begin,
 bool parseDimAndSymbolList(OpAsmParser *parser,
                            SmallVector<Value *, 4> &operands,
                            unsigned &numDims);
-
-/// Modifies both `map` and `operands` in-place so as to:
-/// 1. drop duplicate operands
-/// 2. drop unused dims and symbols from map
-void canonicalizeMapAndOperands(AffineMap *map,
-                                llvm::SmallVectorImpl<Value *> *operands);
 
 } // end namespace mlir
 

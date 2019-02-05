@@ -59,15 +59,6 @@ public:
     IRObjectWithUseList::replaceAllUsesWith(newValue);
   }
 
-  /// TODO: move isValidDim/isValidSymbol to a utility library specific to the
-  /// polyhedral operations.
-
-  /// Returns true if the given Value can be used as a dimension id.
-  bool isValidDim() const;
-
-  /// Returns true if the given Value can be used as a symbol.
-  bool isValidSymbol() const;
-
   /// Return the function that this Value is defined in.
   Function *getFunction();
 

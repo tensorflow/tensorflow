@@ -681,7 +681,7 @@ static void buildDimAndSymbolPositionMaps(
     for (unsigned i = 0, e = values.size(); i < e; ++i) {
       auto *value = values[i];
       if (!isForInductionVar(values[i])) {
-        assert(values[i]->isValidSymbol() &&
+        assert(isValidSymbol(values[i]) &&
                "access operand has to be either a loop IV or a symbol");
         valuePosMap->addSymbolValue(value);
       } else if (isSrc) {
@@ -743,7 +743,7 @@ void initDependenceConstraints(const FlatAffineConstraints &srcDomain,
   auto setSymbolIds = [&](ArrayRef<Value *> values) {
     for (auto *value : values) {
       if (!isForInductionVar(value)) {
-        assert(value->isValidSymbol() && "expected symbol");
+        assert(isValidSymbol(value) && "expected symbol");
         dependenceConstraints->setIdValue(valuePosMap.getSymPos(value), value);
       }
     }
@@ -913,7 +913,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
       if (isForInductionVar(operands[i]))
         continue;
       auto *symbol = operands[i];
-      assert(symbol->isValidSymbol());
+      assert(isValidSymbol(symbol));
       // Check if the symbol is a constant.
       if (auto *opInst = symbol->getDefiningInst()) {
         if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {

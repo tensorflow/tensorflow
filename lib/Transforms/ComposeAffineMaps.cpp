@@ -21,6 +21,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"

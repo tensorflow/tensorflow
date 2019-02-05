@@ -300,42 +300,6 @@ Function *Instruction::getFunction() const {
   return block ? block->getFunction() : nullptr;
 }
 
-// Value can be used as a dimension id if it is valid as a symbol, or
-// it is an induction variable, or it is a result of affine apply operation
-// with dimension id arguments.
-bool Value::isValidDim() const {
-  if (auto *inst = getDefiningInst()) {
-    // Top level instruction or constant operation is ok.
-    if (inst->getParentInst() == nullptr || inst->isa<ConstantOp>())
-      return true;
-    // Affine apply operation is ok if all of its operands are ok.
-    if (auto op = inst->dyn_cast<AffineApplyOp>())
-      return op->isValidDim();
-    return false;
-  }
-  // This value is either a function argument or an induction variable. Both
-  // are ok.
-  return true;
-}
-
-// Value can be used as a symbol if it is a constant, or it is defined at
-// the top level, or it is a result of affine apply operation with symbol
-// arguments.
-bool Value::isValidSymbol() const {
-  if (auto *inst = getDefiningInst()) {
-    // Top level instruction or constant operation is ok.
-    if (inst->getParentInst() == nullptr || inst->isa<ConstantOp>())
-      return true;
-    // Affine apply operation is ok if all of its operands are ok.
-    if (auto op = inst->dyn_cast<AffineApplyOp>())
-      return op->isValidSymbol();
-    return false;
-  }
-  // Otherwise, the only valid symbol is a function argument.
-  auto *arg = dyn_cast<BlockArgument>(this);
-  return arg && arg->isFunctionArgument();
-}
-
 /// Emit a note about this instruction, reporting up to any diagnostic
 /// handlers that may be listening.
 void Instruction::emitNote(const Twine &message) const {

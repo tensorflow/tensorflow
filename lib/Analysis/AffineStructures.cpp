@@ -1268,7 +1268,7 @@ bool FlatAffineConstraints::addAffineForOpDomain(
     for (const auto &operand : operands) {
       unsigned loc;
       if (!findId(*operand, &loc)) {
-        if (operand->isValidSymbol()) {
+        if (isValidSymbol(operand)) {
           addSymbolId(getNumSymbolIds(), const_cast<Value *>(operand));
           loc = getNumDimIds() + getNumSymbolIds() - 1;
           // Check if the symbol is a constant.
