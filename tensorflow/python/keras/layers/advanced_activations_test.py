@@ -61,6 +61,11 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
                              kwargs={'axis': 1},
                              input_shape=(2, 3, 4))
 
+  def test_log_softmax(self):
+    testing_utils.layer_test(keras.layers.Log_Softmax,
+                             kwargs={'axis': 1},
+                             input_shape=(2, 3, 4))
+
   def test_relu(self):
     testing_utils.layer_test(keras.layers.ReLU,
                              kwargs={'max_value': 10},

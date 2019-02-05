@@ -3766,6 +3766,21 @@ def softmax(x, axis=-1):
   return nn.softmax(x, axis=axis)
 
 
+@keras_export('keras.backend.log_softmax')
+def log_softmax(x, axis=-1):
+  """Log softmax of a tensor.
+
+  Arguments:
+      x: A tensor or variable.
+      axis: The dimension softmax would be performed on.
+          The default is -1 which indicates the last dimension.
+
+  Returns:
+      A tensor.
+  """
+  return nn.log_softmax_v2(x, axis=axis)
+
+
 @keras_export('keras.backend.softplus')
 def softplus(x):
   """Softplus of a tensor.
