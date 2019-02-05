@@ -2379,7 +2379,8 @@ tensorflow::Status ConvertSlice(OpConverterParams* params) {
   if (!AllLengthsEqual({input_dims, begin, size})) {
     return tensorflow::errors::InvalidArgument(
         "Length of begin and size arguments must equal rank of input for "
-        "Slice, at ", node_def.name());
+        "Slice, at ",
+        node_def.name());
   }
   // Size of -1 signifies to take all remaining elements.
   for (int i = 0; i < input_dims.size(); i++) {
@@ -2412,7 +2413,8 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   if (!AllLengthsEqual({input_dims, begin, end, stride})) {
     return tensorflow::errors::InvalidArgument(
         "Length of begin, end, and stride arguments must equal rank of input "
-        "for StridedSlice, at ", node_def.name());
+        "for StridedSlice, at ",
+        node_def.name());
   }
   // Unsupported mask options.
   for (const string& attr :
@@ -2446,7 +2448,8 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   for (int i = 0; i < input_dims.size(); i++) {
     if (stride[i] < 0) {
       return tensorflow::errors::Unimplemented(
-          "Negative strides are not supported for StridedSlice, at ", node_def.op());
+          "Negative strides are not supported for StridedSlice, at ",
+          node_def.op());
     }
   }
   // TRT Slice layer uses (begin, size) instead of (begin, end)

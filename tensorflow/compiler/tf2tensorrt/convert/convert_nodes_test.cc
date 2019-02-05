@@ -2537,9 +2537,9 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   }
 
   // Get nodedef for StridedSlice layer.
-  auto get_strided_slice_nodedef =
-      [](int begin_mask = 0, int end_mask = 0, int ellipsis_mask = 0,
-         int new_axis_mask = 0, int shrink_axis_mask = 0) -> NodeDef {
+  auto get_strided_slice_nodedef = [](
+      int begin_mask = 0, int end_mask = 0, int ellipsis_mask = 0,
+      int new_axis_mask = 0, int shrink_axis_mask = 0) -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     auto begin = ops::Placeholder(s.WithOpName("begin"), DT_INT32);
@@ -2645,9 +2645,9 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     AddTestWeights<int32>("begin", {4}, {0, 0, 2, 0});
     AddTestWeights<int32>("end", {4}, {1, 1, 0, 3});
     AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "\"size\" cannot be negative or zero for StridedSlice, at my_strided_slice");
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "\"size\" cannot be negative or zero for "
+                               "StridedSlice, at my_strided_slice");
   }
 
   struct TestParams {
@@ -2675,6 +2675,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
 #else
   const int kStridedSliceOKCases = 18;
 #endif
+  // Ok.
   TestParams ok_params[kStridedSliceOKCases] = {
     // 2D Crop.
     TestParams{/*input_dims=*/{1, 2, 3}, /*begin=*/{0, 0, 0, 0},
@@ -2824,7 +2825,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
                           ok_params[i].begin);
     AddTestWeights<int32>("end", {static_cast<int>(ok_params[i].end.size())},
                           ok_params[i].end);
-    AddTestWeights<int32>("strides", {static_cast<int>(ok_params[i].strides.size())},
+    AddTestWeights<int32>("strides",
+                          {static_cast<int>(ok_params[i].strides.size())},
                           ok_params[i].strides);
     RunValidationAndConversion(node_def);
 
@@ -2844,8 +2846,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
 
 TEST_F(OpConverterTest, ConvertSlice) {
   // Get nodedef for Slice layer.
-  auto get_slice_nodedef =
-      []() -> NodeDef {
+  auto get_slice_nodedef = []() -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     auto begin = ops::Placeholder(s.WithOpName("begin"), DT_INT32);
