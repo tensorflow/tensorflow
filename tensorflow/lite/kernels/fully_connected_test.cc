@@ -137,6 +137,7 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
   BaseFullyConnectedOpModel(
       TfLiteRegistration* registration, int units, int batches,
       const TensorData& input, const TensorData& output = {TensorType_FLOAT32},
+      bool bias_tensor_optional = false,
       ActivationFunctionType activation_func = ActivationFunctionType_RELU,
       FullyConnectedOptionsWeightsFormat weights_format =
           FullyConnectedOptionsWeightsFormat_DEFAULT)
@@ -151,7 +152,9 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
     weights_ =
         AddInput({input.type, {units_, input_size_}, input.min, input.max});
 
-    if (input.type == TensorType_FLOAT32) {
+    if (bias_tensor_optional) {
+      bias_ = AddNullInput();
+    } else if (input.type == TensorType_FLOAT32) {
       bias_ = AddInput({TensorType_FLOAT32, {units_}});
     } else {
       // This is a quantized version. The scale of 'bias' depends on the scales
@@ -173,7 +176,9 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
             .Union());
     resolver_ = absl::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED, registration);
-    BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)});
+    BuildInterpreter(
+        {GetShape(input_), GetShape(weights_),
+         (bias_ == kOptionalTensor) ? std::vector<int>() : GetShape(bias_)});
   }
 
   int input_size() { return input_size_; }
@@ -397,6 +402,27 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest2) {
   EXPECT_THAT(m.GetOutput(), ElementsAre(11, 9));
 }
 
+TEST(FloatFullyConnectedOpTest, SimpleTestNoBias) {
+  // The optimized kernel assumes that the bias is specified.
+  FloatFullyConnectedOpModel m(ops::builtin::Register_FULLY_CONNECTED_PIE(),
+                               /*units=*/1, /*batches=*/2,
+                               /*input=*/{TensorType_FLOAT32, {2, 2}},
+                               /*output=*/{TensorType_FLOAT32},
+                               /*bias_tensor_optional=*/true);
+  m.SetWeights({
+      2, 4,  // u = 0
+  });
+
+  m.SetInput({
+      1, 2,  // b = 0
+      2, 1,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAre(10, 8));
+}
+
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantized) {
   QuantizedFullyConnectedOpModel m(
       GetRegistration(), /*units=*/3, /*batches*/ 2,
@@ -477,6 +503,7 @@ void SimpleTestQuantizedInt16OutputCase(
       /*input=*/
       {TensorType_UINT8, {batches, input_depth}, kInputMin, kInputMax},
       /*output=*/{TensorType_INT16, {}, kOutputMin, kOutputMax},
+      /*bias_tensor_optional=*/false,
       /*activation_func=*/ActivationFunctionType_NONE, weights_format);
 
   std::mt19937 random_engine;
