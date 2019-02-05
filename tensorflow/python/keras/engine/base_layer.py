@@ -244,8 +244,8 @@ class Layer(checkpointable.Checkpointable):
 
   @doc_controls.for_subclass_implementers
   def add_weight(self,
-                 name,
-                 shape,
+                 name=None,
+                 shape=None,
                  dtype=None,
                  initializer=None,
                  regularizer=None,
@@ -259,8 +259,8 @@ class Layer(checkpointable.Checkpointable):
     """Adds a new variable to the layer.
 
     Arguments:
-      name: variable name.
-      shape: variable shape.
+      name: Variable name.
+      shape: Variable shape. Defaults to scalar if unspecified.
       dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
       initializer: initializer instance (callable).
       regularizer: regularizer instance (callable).
@@ -297,6 +297,7 @@ class Layer(checkpointable.Checkpointable):
       ValueError: When giving unsupported dtype and no initializer or when
         trainable has been set to True with synchronization set as `ON_READ`.
     """
+    shape = shape or ()
     # Validate optional keyword arguments.
     for kwarg in kwargs:
       if kwarg not in ['getter', 'collections']:
@@ -363,8 +364,10 @@ class Layer(checkpointable.Checkpointable):
       # TODO(fchollet): in the future, this should be handled at the
       # level of variable creation, and weight regularization losses
       # should be variable attributes.
-      self._handle_weight_regularization(name, variable, regularizer)
-
+      name_in_scope = variable.name[:variable.name.find(':')]
+      self._handle_weight_regularization(name_in_scope,
+                                         variable,
+                                         regularizer)
     if trainable:
       self._trainable_weights.append(variable)
     else:

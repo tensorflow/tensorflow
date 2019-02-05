@@ -225,6 +225,28 @@ class BaseLayerTest(keras_parameterized.TestCase):
     model(np.zeros((2, 4), dtype='float32'))
     self.assertTrue(model.built)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_default_add_weight(self):
+
+    class TestLayer(keras.layers.Layer):
+
+      def __init__(self):
+        super(TestLayer, self).__init__()
+        self.default_weight = self.add_weight()
+        self.weight_without_name = self.add_weight(shape=(3, 4))
+        self.regularized_weight_without_name = self.add_weight(
+            shape=(3, 4), regularizer='l2')
+
+    layer = TestLayer()
+    self.assertEqual(layer.default_weight.shape.as_list(), [])
+    self.assertEqual(layer.weight_without_name.shape.as_list(), [3, 4])
+    self.assertEqual(layer.default_weight.dtype.name, 'float32')
+    self.assertEqual(layer.weight_without_name.dtype.name, 'float32')
+    self.assertEqual(len(layer.losses), 1)
+    if not context.executing_eagerly():
+      # Cannot access tensor.name in eager execution.
+      self.assertTrue('Variable_2/Regularizer' in layer.losses[0].name)
+
   def test_learning_phase_freezing_for_layers(self):
     # This test is only meant to run in graph functions mode (ambient eager).
     # In forced eager, `model.predict` ignores the global learning phase
