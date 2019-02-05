@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -88,6 +89,9 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
       case XlaExpression::Kind::kResource:
         return errors::Unimplemented(
             "Resource as function argument is not yet implemented.");
+      case XlaExpression::Kind::kTensorList:
+        return errors::Unimplemented(
+            "TensorList as function argument is not yet implemented.");
       case XlaExpression::Kind::kInvalid:
         return errors::InvalidArgument("Invalid function argument");
     }
@@ -115,6 +119,9 @@ Status GraphCompiler::Compile() {
   GetReversePostOrder(*graph_, &topo_sorted_nodes,
                       /*stable_comparator=*/NodeComparatorName());
 
+  std::vector<bool> control_output_dead;
+  control_output_dead.resize(graph_->num_node_ids());
+
   OpKernelContext::Params params;
   PartiallySetupParams(&params);
 
@@ -130,8 +137,8 @@ Status GraphCompiler::Compile() {
       return s;
     }
 
-    TF_RET_CHECK(!n->IsRecv() && !n->IsSend() && !n->IsSwitch())
-        << "Not supported node: " << n->DebugString();
+    TF_RET_CHECK(!n->IsRecv() && !n->IsSend())
+        << "Unsupported node: " << n->DebugString();
     params.op_kernel = op_kernel.get();
     absl::InlinedVector<AllocatorAttributes, 4> output_attr(n->num_outputs());
     params.output_attr_array = output_attr.data();
@@ -141,38 +148,59 @@ Status GraphCompiler::Compile() {
     tensor_inputs_.clear();
     tensor_inputs_.resize(n->num_inputs());
 
+    bool any_data_input_dead = false;
+    bool any_data_input_alive = false;
+    bool any_control_input_dead = false;
+
     // Set up inputs from outputs of previous nodes.
     for (auto* e : n->in_edges()) {
-      if (e->IsControlEdge()) continue;
+      if (e->IsControlEdge()) {
+        any_control_input_dead |= control_output_dead[e->src()->id()];
+        continue;
+      }
+
       const Node* src = e->src();
       TF_RET_CHECK(src->id() < output_registry.size());
       const NodeOutputs& src_outputs = output_registry[src->id()];
 
-      tensor_inputs_.at(e->dst_input()) = src_outputs.at(e->src_output());
+      const TensorValue& src_output = src_outputs.at(e->src_output());
+      tensor_inputs_.at(e->dst_input()) = src_output;
+
+      any_data_input_alive |= src_output.tensor != nullptr;
+      any_data_input_dead |= src_output.tensor == nullptr;
     }
 
-    OpKernelContext op_context(&params, n->num_outputs());
-    VLOG(3) << "Translating " << params.op_kernel->name();
-    if (IsFunctional(n)) {
-      TF_RETURN_IF_ERROR(CompileFunctionalNode(n, &op_context));
-    } else {
-      device_->Compute(CHECK_NOTNULL(params.op_kernel), &op_context);
-      Status s = op_context.status();
-      if (!s.ok()) {
-        return AttachDef(s, n->def());
-      }
-    }
+    bool node_is_dead = n->IsMerge()
+                            ? !any_data_input_alive
+                            : (any_data_input_dead || any_control_input_dead);
 
-    // Set up outputs. Also check if outputs from the previous computation is
-    // valid.
     NodeOutputs& outputs = output_registry[n->id()];
     outputs.resize(n->num_outputs());
-    for (int o = 0; o < n->num_outputs(); ++o) {
-      outputs[o] = op_context.release_output(o);
-      if (outputs[o].tensor == nullptr) {
-        return errors::Internal("Missing xla_context ", o, "-th output from ",
-                                FormatNodeForError(*n));
+
+    if (!node_is_dead) {
+      OpKernelContext op_context(&params, n->num_outputs());
+      VLOG(3) << "Translating " << params.op_kernel->name();
+      if (IsFunctional(n)) {
+        TF_RETURN_IF_ERROR(CompileFunctionalNode(n, &op_context));
+      } else {
+        device_->Compute(CHECK_NOTNULL(params.op_kernel), &op_context);
+        Status s = op_context.status();
+        if (!s.ok()) {
+          return AttachDef(s, n->def());
+        }
       }
+
+      // Set up outputs. Also check if outputs from the previous computation is
+      // valid.
+      for (int o = 0; o < n->num_outputs(); ++o) {
+        outputs[o] = op_context.release_output(o);
+        if (outputs[o].tensor == nullptr && !n->IsSwitch()) {
+          return errors::Internal("Missing xla_context ", o, "-th output from ",
+                                  FormatNodeForError(*n));
+        }
+      }
+    } else {
+      control_output_dead[n->id()] = true;
     }
   }
   return Status::OK();
@@ -190,6 +218,9 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   // For functional nodes, compile them using compiler from the context and call
   // into the functions.
   XlaOpKernelContext xla_op_context(op_context);
+
+  XlaContext& context = XlaContext::Get(op_context);
+  auto* b = context.builder();
 
   XlaCompiler* compiler = xla_op_context.compiler();
 
@@ -219,8 +250,12 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   TF_RETURN_IF_ERROR(
       PrepareArguments(&xla_op_context, graph.get(), expressions, &arguments));
 
+  bool add_token_input_output =
+      HasNodeAttr(n->def(), kXlaTokenInputNodesAttrName);
+
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = false;
+  compile_options.add_token_input_output = add_token_input_output;
   XlaCompiler::CompilationResult result;
   TF_RETURN_IF_ERROR(
       compiler->CompileFunction(compile_options, func, arguments, &result));
@@ -234,9 +269,19 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
     }
     handles.push_back(expressions[i]->handle());
   }
-
-  XlaContext& context = XlaContext::Get(op_context);
-  auto* b = context.builder();
+  if (add_token_input_output) {
+    std::vector<string> token_input_nodes;
+    TF_RETURN_IF_ERROR(
+        GetNodeAttr(n->def(), kXlaTokenInputNodesAttrName, &token_input_nodes));
+    std::vector<xla::XlaOp> token_inputs;
+    for (const string& node_name : token_input_nodes) {
+      auto token_or = compiler->GetNodeToken(node_name);
+      TF_RETURN_IF_ERROR(token_or.status());
+      token_inputs.push_back(token_or.ConsumeValueOrDie());
+    }
+    xla::XlaOp token_input = xla::AfterAll(b, token_inputs);
+    handles.push_back(token_input);
+  }
 
   auto output_handle = xla::Call(b, *result.computation, handles);
   // The output handle of `Call` computation is a tuple type. Unzip it so
@@ -250,6 +295,10 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
           i, xla::GetTupleElement(output_handle, computation_output));
       ++computation_output;
     }
+  }
+  if (add_token_input_output) {
+    TF_RETURN_IF_ERROR(compiler->SetNodeToken(
+        n->name(), xla::GetTupleElement(output_handle, computation_output)));
   }
   return b->first_error();
 }

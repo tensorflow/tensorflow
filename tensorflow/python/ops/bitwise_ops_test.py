@@ -35,6 +35,7 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
     super(BitwiseOpTest, self).__init__(method_name)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("This test never passed for XLA")
   def testBinaryOps(self):
     dtype_list = [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
                   dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64]
@@ -72,6 +73,7 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(truth, popcnt_result)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("This test never passed for XLA")
   def testInvertOp(self):
     dtype_list = [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
                   dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64]
@@ -97,6 +99,7 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
           self.assertAllEqual(inverted, expected)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("This test never passed for XLA")
   def testShiftsWithPositiveLHS(self):
     dtype_list = [np.int8, np.int16, np.int32, np.int64,
                   np.uint8, np.uint16, np.uint32, np.uint64]

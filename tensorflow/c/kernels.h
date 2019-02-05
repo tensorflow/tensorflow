@@ -35,9 +35,9 @@ extern "C" {
 // `TF_RegisterKernelBuilder`, which will allow TF to construct user-provided
 // kernels when necessary.
 
-struct TF_KernelBuilder;
-struct TF_OpKernelConstruction;
-struct TF_OpKernelContext;
+typedef struct TF_KernelBuilder TF_KernelBuilder;
+typedef struct TF_OpKernelConstruction TF_OpKernelConstruction;
+typedef struct TF_OpKernelContext TF_OpKernelContext;
 
 // Allocates a new kernel builder and returns a pointer to it.
 //
@@ -110,6 +110,41 @@ TF_CAPI_EXPORT extern void TF_GetInput(TF_OpKernelContext* ctx, int i,
 TF_CAPI_EXPORT extern void TF_SetOutput(TF_OpKernelContext* ctx, int i,
                                         const TF_Tensor* tensor,
                                         TF_Status* status);
+
+// Notifies the given OpKernelConstruction that kernel construction has failed.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_Failure(
+    TF_OpKernelConstruction* ctx, TF_Status* status);
+
+// Notifies the given OpKernelContext that the kernel's compute function has
+// failed.
+TF_CAPI_EXPORT extern void TF_OpKernelContext_Failure(TF_OpKernelContext* ctx,
+                                                      TF_Status* status);
+
+// Returns the expected output data type of the ith output. If i < 0 or
+// i >= TF_NumOutputs(ctx), the program aborts.
+TF_CAPI_EXPORT extern TF_DataType TF_ExpectedOutputDataType(
+    TF_OpKernelContext* ctx, int i);
+
+// Returns the step ID of the given context.
+TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);
+
+// Interprets the named kernel construction attribute as a TF_DataType and
+// places it into *val. *status is set to TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// TF_DataType, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrType(
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_DataType* val,
+    TF_Status* status);
+
+// Interprets the named kernel context attribute as a TF_DataType and places it
+// into *val. *status is set to TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// TF_DataType, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelContext_GetAttrType(
+    TF_OpKernelContext* ctx, const char* attr_name, TF_DataType* val,
+    TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

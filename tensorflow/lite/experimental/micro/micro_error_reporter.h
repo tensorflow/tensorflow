@@ -17,26 +17,8 @@ limitations under the License.
 
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/micro/compatibility.h"
-
-#ifdef TF_LITE_MCU_DEBUG_LOG
-// These functions should be supplied by the micro target library
-extern "C" {
-#include <stdint.h>
-void DebugLog(const char* s);
-void DebugLogInt32(int32_t i);
-void DebugLogUInt32(uint32_t i);
-void DebugLogHex(uint32_t i);
-void DebugLogFloat(float i);
-}
-#else  // TF_LITE_MCU_DEBUG_LOG
-#include <cstdint>
-#include <cstdio>
-static void inline DebugLog(const char* s) { fprintf(stderr, "%s", s); }
-static void inline DebugLogInt32(int32_t i) { fprintf(stderr, "%d", i); }
-static void inline DebugLogUInt32(uint32_t i) { fprintf(stderr, "%d", i); }
-static void inline DebugLogHex(uint32_t i) { fprintf(stderr, "0x%8x", i); }
-static void inline DebugLogFloat(float i) { fprintf(stderr, "%f", i); }
-#endif  // TF_LITE_MCU_DEBUG_LOG
+#include "tensorflow/lite/experimental/micro/debug_log.h"
+#include "tensorflow/lite/experimental/micro/debug_log_numbers.h"
 
 namespace tflite {
 

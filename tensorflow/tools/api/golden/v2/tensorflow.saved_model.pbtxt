@@ -77,7 +77,7 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member {
-    name: "TRANING"
+    name: "TRAINING"
     mtype: "<type \'str\'>"
   }
   member {

@@ -38,17 +38,18 @@ class ProtoOpTestBase(test.TestCase):
       ct.cdll.LoadLibrary(lib)
 
   @staticmethod
-  def named_parameters():
-    return (
-        ("defaults", ProtoOpTestBase.defaults_test_case()),
-        ("minmax", ProtoOpTestBase.minmax_test_case()),
-        ("nested", ProtoOpTestBase.nested_test_case()),
-        ("optional", ProtoOpTestBase.optional_test_case()),
-        ("promote", ProtoOpTestBase.promote_test_case()),
-        ("ragged", ProtoOpTestBase.ragged_test_case()),
-        ("shaped_batch", ProtoOpTestBase.shaped_batch_test_case()),
-        ("simple", ProtoOpTestBase.simple_test_case()),
-    )
+  def named_parameters(extension=True):
+    parameters = [("defaults", ProtoOpTestBase.defaults_test_case()),
+                  ("minmax", ProtoOpTestBase.minmax_test_case()),
+                  ("nested", ProtoOpTestBase.nested_test_case()),
+                  ("optional", ProtoOpTestBase.optional_test_case()),
+                  ("promote", ProtoOpTestBase.promote_test_case()),
+                  ("ragged", ProtoOpTestBase.ragged_test_case()),
+                  ("shaped_batch", ProtoOpTestBase.shaped_batch_test_case()),
+                  ("simple", ProtoOpTestBase.simple_test_case())]
+    if extension:
+      parameters.append(("extension", ProtoOpTestBase.extension_test_case()))
+    return parameters
 
   @staticmethod
   def defaults_test_case():
@@ -397,6 +398,21 @@ class ProtoOpTestBase(test.TestCase):
     field.value.bool_value.append(True)
     field.value.bool_value.append(False)
     field.value.bool_value.append(True)
+    return test_case
+
+  @staticmethod
+  def extension_test_case():
+    test_case = test_example_pb2.TestCase()
+    value = test_case.values.add()
+    message_value = value.Extensions[test_example_pb2.ext_value].add()
+    message_value.double_value = 23.5
+    test_case.shapes.append(1)
+    test_case.sizes.append(1)
+    field = test_case.fields.add()
+    field.name = test_example_pb2.ext_value.full_name
+    field.dtype = types_pb2.DT_STRING
+    message_value = field.value.Extensions[test_example_pb2.ext_value].add()
+    message_value.double_value = 23.5
     return test_case
 
   @staticmethod

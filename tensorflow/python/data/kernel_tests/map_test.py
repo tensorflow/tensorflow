@@ -26,8 +26,10 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -38,14 +40,15 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -78,19 +81,22 @@ def _make_coordinated_sloppy_dataset(num_elements, num_parallel_calls):
   options.experimental_deterministic = False
   dataset = dataset_ops.Dataset.range(num_elements).map(
       map_fn, num_parallel_calls).with_options(options)
-  iterator = dataset_ops.make_one_shot_iterator(dataset)
-  next_element = iterator.get_next()
-  return next_element, coordination_events
+  return dataset, coordination_events
 
 
-@test_util.run_v1_only("b/120545219")
-class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _buildMapDataset(self, components, count):
+
     def _map_fn(x, y, z):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
-    return (dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
-            .repeat(count))
+
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).map(
+        _map_fn).repeat(count)
+    self.assertEqual([c.shape[1:] for c in components],
+                     [shape for shape in dataset.output_shapes])
+    return dataset
 
   def testMapDataset(self):
     """Test an dataset that maps a TF function across its input elements."""
@@ -99,34 +105,32 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     components = (np.arange(7),
                   np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
                   np.array(37.0) * np.arange(7))
-    count = array_ops.placeholder(dtypes.int64, shape=[])
 
-    dataset = self._buildMapDataset(components, count)
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    # Test single-threaded access to the iterator.
+    get_next = self.getNext(self._buildMapDataset(components, 14))
+    for _ in range(14):
+      for i in range(7):
+        result = self.evaluate(get_next())
+        for component, result_component in zip(components, result):
+          self.assertAllEqual(component[i]**2, result_component)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
-    self.assertEqual([c.shape[1:] for c in components],
-                     [t.shape for t in get_next])
-
+  # TODO(b/117581999): add eager coverage, different threads run in graph
+  # context.
+  @test_util.run_v1_only("b/120545219")
+  def testSkipEagerMapDatasetMultithreaded(self):
+    # Test multi-threaded access to the same iterator.
+    components = (np.arange(7),
+                  np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
+                  np.array(37.0) * np.arange(7))
+    get_next = self.getNext(self._buildMapDataset(components, 18))
+    results = []
     with self.cached_session() as sess:
-      # Test single-threaded access to the iterator.
-      sess.run(init_op, feed_dict={count: 14})
-      for _ in range(14):
-        for i in range(7):
-          result = sess.run(get_next)
-          for component, result_component in zip(components, result):
-            self.assertAllEqual(component[i]**2, result_component)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-      # Test multi-threaded access to the same iterator.
-      sess.run(init_op, feed_dict={count: 18})
-      results = []
       def iterator_thread():
         while True:
           try:
-            results.append(sess.run(get_next))
+            results.append(sess.run(get_next()))
           except errors.OutOfRangeError:
             return
       threads = [self.checkedThread(target=iterator_thread) for _ in range(8)]
@@ -148,59 +152,66 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _buildParallelMapDataset(self, components, count, num_parallel_calls,
                                output_buffer_size):
+
     def _map_fn(x, y, z):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
-    return (dataset_ops.Dataset.from_tensor_slices(components)
-            .map(_map_fn, num_parallel_calls=num_parallel_calls)
-            .prefetch(output_buffer_size)
-            .repeat(count))
+
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).map(
+        _map_fn, num_parallel_calls=num_parallel_calls).prefetch(
+            output_buffer_size).repeat(count)
+
+    self.assertEqual([c.shape[1:] for c in components],
+                     [shape for shape in dataset.output_shapes])
+    return dataset
 
   def testParallelMapDataset(self):
     """Test an dataset that maps a TF function across its input elements."""
+
     # The pipeline is TensorSliceDataset -> ParallelMapDataset(square_3) ->
     # RepeatDataset(count).
-    components = (np.arange(7),
-                  np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
-                  np.array(37.0) * np.arange(7))
-    count = array_ops.placeholder(dtypes.int64, shape=[])
-    num_parallel_calls = array_ops.placeholder(dtypes.int32, shape=[])
-    output_buffer_size = array_ops.placeholder(dtypes.int64, shape=[])
+    def do_test(num_parallel_calls, output_buffer_size):
 
-    dataset = self._buildParallelMapDataset(
-        components, count, num_parallel_calls, output_buffer_size)
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+      components = (np.arange(7),
+                    np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
+                    np.array(37.0) * np.arange(7))
+      # Test single-threaded access to the iterator.
+      get_next = self.getNext(
+          self._buildParallelMapDataset(components, 14, num_parallel_calls,
+                                        output_buffer_size))
+      for _ in range(14):
+        for i in range(7):
+          result = self.evaluate(get_next())
+          for component, result_component in zip(components, result):
+            self.assertAllEqual(component[i]**2, result_component)
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
 
-    self.assertEqual([c.shape[1:] for c in components],
-                     [t.shape for t in get_next])
+    for num_parallel_calls_val, output_buffer_size_val in [(1, 1), (1, 2), (2,
+                                                                            2),
+                                                           (2, 4), (8, 8),
+                                                           (8, 16)]:
+      do_test(num_parallel_calls_val, output_buffer_size_val)
 
-    with self.cached_session() as sess:
+  # TODO(b/117581999): add eager coverage, different threads run in graph
+  # context.
+  @test_util.run_v1_only("b/120545219")
+  def testSkipEagerParallelMapDatasetMultithreaded(self):
 
-      def do_test(num_parallel_calls_val, output_buffer_size_val):
-        # Test single-threaded access to the iterator.
-        sess.run(init_op, feed_dict={
-            count: 14,
-            num_parallel_calls: num_parallel_calls_val,
-            output_buffer_size: output_buffer_size_val})
-        for _ in range(14):
-          for i in range(7):
-            result = sess.run(get_next)
-            for component, result_component in zip(components, result):
-              self.assertAllEqual(component[i]**2, result_component)
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next)
+    def do_test(num_parallel_calls, output_buffer_size):
+      # Test multi-threaded access to the same iterator.
+      components = (np.arange(7),
+                    np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
+                    np.array(37.0) * np.arange(7))
+      get_next = self.getNext(
+          self._buildParallelMapDataset(components, 18, num_parallel_calls,
+                                        output_buffer_size))
+      results = []
+      with self.cached_session() as sess:
 
-        # Test multi-threaded access to the same iterator.
-        sess.run(init_op, feed_dict={
-            count: 18,
-            num_parallel_calls: num_parallel_calls_val,
-            output_buffer_size: output_buffer_size_val})
-        results = []
         def iterator_thread():
           while True:
             try:
-              results.append(sess.run(get_next))
+              results.append(sess.run(get_next()))
             except errors.OutOfRangeError:
               return
         threads = [self.checkedThread(target=iterator_thread)
@@ -237,14 +248,10 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = self._buildParallelMapDataset(components, 1000, 100, 100)
     # NOTE(mrry): Also test that the prefetching thread is cancelled correctly.
     dataset = dataset.prefetch(100)
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for _ in range(3):
-        sess.run(get_next)
+    for _ in range(3):
+      self.evaluate(get_next())
 
   def testParallelMapUnspecifiedOutputSize(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
@@ -252,14 +259,10 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = (dataset_ops.Dataset.from_tensor_slices(components)
                .map(lambda x: array_ops.check_numerics(x, "message"),
                     num_parallel_calls=2))
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for _ in range(3):
-        sess.run(get_next)
+    for _ in range(3):
+      self.evaluate(get_next())
 
   def testParallelMapError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
@@ -267,20 +270,16 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = (dataset_ops.Dataset.from_tensor_slices(components)
                .map(lambda x: array_ops.check_numerics(x, "message"),
                     num_parallel_calls=2))
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for _ in range(3):
-        sess.run(get_next)
-      # The 4th element is NaN, so `array_ops.check_numerics()` should fail.
-      with self.assertRaises(errors.InvalidArgumentError):
-        sess.run(get_next)
-      sess.run(get_next)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    for _ in range(3):
+      self.evaluate(get_next())
+    # The 4th element is NaN, so `array_ops.check_numerics()` should fail.
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(get_next())
+    self.evaluate(get_next())
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   def testPrefetchError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
@@ -288,20 +287,17 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = (dataset_ops.Dataset.from_tensor_slices(components)
                .map(lambda x: array_ops.check_numerics(x, "message"))
                .prefetch(2))
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for _ in range(3):
-        sess.run(get_next)
-      # The 4th element is NaN, so `array_ops.check_numerics()` should fail.
-      with self.assertRaises(errors.InvalidArgumentError):
-        sess.run(get_next)
-      sess.run(get_next)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    get_next = self.getNext(dataset)
+
+    for _ in range(3):
+      self.evaluate(get_next())
+    # The 4th element is NaN, so `array_ops.check_numerics()` should fail.
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(get_next())
+    self.evaluate(get_next())
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   def testCaptureIterator(self):
 
@@ -314,23 +310,22 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset_ops.Dataset.range(10).map(_map_fn)
 
     def _build_graph():
-      captured_iterator = dataset_ops.make_initializable_iterator(
-          dataset_ops.Dataset.range(10))
+      if context.executing_eagerly():
+        captured_iterator = iter(dataset_ops.Dataset.range(10))
+      else:
+        captured_iterator = dataset_ops.Dataset.range(
+            10).make_initializable_iterator()
       ds = _build_ds(captured_iterator)
-      iterator = ds.make_initializable_iterator()
-      init_op = iterator.initializer
-      get_next = iterator.get_next()
-      return captured_iterator.initializer, init_op, get_next
+      return captured_iterator, ds
 
-    with ops.Graph().as_default() as g:
-      captured_init_op, init_op, get_next = _build_graph()
-      with self.session(graph=g) as sess:
-        sess.run(captured_init_op)
-        sess.run(init_op)
-        for i in range(10):
-          self.assertEqual(i * i, sess.run(get_next))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next)
+    captured_iter, ds = _build_graph()
+    if not context.executing_eagerly():
+      self.evaluate(captured_iter.initializer)
+    get_next = self.getNext(ds, requires_initialization=True)
+    for i in range(10):
+      self.assertEqual(i * i, self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   def testCaptureHashTable(self):
     # NOTE(mrry): We must use the V2 variants of `HashTable`
@@ -345,41 +340,37 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     input_sentences = dataset_ops.Dataset.from_tensor_slices(
         ["brain brain tank salad surgery", "surgery brain"])
 
-    iterator = dataset_ops.make_initializable_iterator(
-        input_sentences
-        .map(lambda x: string_ops.string_split([x]).values).map(table.lookup))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = input_sentences.map(lambda x: string_ops.string_split([x]).values
+                                 ).map(table.lookup)
 
-    with self.cached_session() as sess:
-      sess.run(table.initializer)
-      sess.run(init_op)
-      sess.run(get_next)
-      sess.run(get_next)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    get_next = self.getNext(dataset, requires_initialization=True)
+
+    self.evaluate(table.initializer)
+    self.evaluate(get_next())
+    self.evaluate(get_next())
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   def testCaptureQueue(self):
     elements = np.random.randint(100, size=[200])
     queue = data_flow_ops.FIFOQueue(200, dtypes.int64, shapes=[])
     enqueue_op = queue.enqueue_many(elements)
     close_op = queue.close()
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.from_tensors(0).repeat(-1)
-        .map(lambda _: queue.dequeue()))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.from_tensors(0).repeat(
+        -1).map(lambda _: queue.dequeue())
 
-    with self.cached_session() as sess:
-      sess.run(enqueue_op)
-      sess.run(close_op)
-      sess.run(init_op)
-      for element in elements:
-        self.assertEqual(element, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    get_next = self.getNext(dataset, requires_initialization=True)
+    self.evaluate(enqueue_op)
+    self.evaluate(close_op)
 
-  def testCaptureSameResourceMultipleTimes(self):
+    for element in elements:
+      self.assertEqual(element, self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+
+  # TODO(b/117581999): Possible deadlock in eager mode, debug.
+  @test_util.run_v1_only("b/120545219")
+  def testSkipEagerCaptureSameResourceMultipleTimes(self):
     elements = np.random.randint(100, size=[200])
     queue = data_flow_ops.FIFOQueue(
         200, dtypes.int64, shapes=[], shared_name="shared_queue")
@@ -389,101 +380,149 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     enqueue_op = queue.enqueue_many(elements)
     close_op = queue.close()
 
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.from_tensors(0).repeat(-1)
-        .map(lambda _: (queue.dequeue(), queue_2.dequeue())))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.from_tensors(0).repeat(
+        -1).map(lambda _: (queue.dequeue(), queue_2.dequeue()))
 
-    with self.cached_session() as sess:
-      sess.run(enqueue_op)
-      sess.run(close_op)
-      sess.run(init_op)
-      for i in range(100):
-        self.assertEqual(sorted([elements[i * 2], elements[i * 2 + 1]]),
-                         sorted(sess.run(get_next)))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    self.evaluate(enqueue_op)
+    self.evaluate(close_op)
+    get_next = self.getNext(dataset, requires_initialization=True)
+    for i in range(100):
+      self.assertCountEqual([elements[i * 2], elements[i * 2 + 1]],
+                            self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+
+  # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
+  @test_util.run_v1_only("b/121264236")
+  def testSkipEagerCaptureConstantsWithConflictingDevices(self):
+    config = config_pb2.ConfigProto(
+        device_count={"CPU": 3}, log_device_placement=True)
+    with self.cached_session(config=config):
+      with ops.device("/device:CPU:0"):
+        a = constant_op.constant(3.0)
+      with ops.device("/device:CPU:1"):
+        b = constant_op.constant(5.0)
+
+      def func(_):
+        return math_ops.add(a, b)
+
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).map(func)
+      expected_output = [8.0] * 10
+      self.assertDatasetProduces(dataset, expected_output=expected_output)
+
+  # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
+  @test_util.run_v1_only(
+      "defun will convert RefVariables to ResourceVariables.")
+  def testSkipEagerRefVariablesWithConflictingDevices(self):
+    config = config_pb2.ConfigProto(
+        device_count={"CPU": 3}, log_device_placement=True)
+    with self.cached_session(config=config):
+
+      def func(_):
+        with ops.device("/device:CPU:0"):
+          a = variables.VariableV1(3.0)
+        with ops.device("/device:CPU:1"):
+          b = variables.VariableV1(5.0)
+        return math_ops.add(a, b)
+
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).map(func)
+      self.evaluate(variables.global_variables_initializer())
+      expected_output = [8.0] * 10
+      self.assertDatasetProduces(
+          dataset,
+          expected_output=expected_output,
+          requires_initialization=True)
+
+  # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
+  @test_util.run_v1_only("b/121264236")
+  def testSkipEagerResourceVariablesWithConflictingDevices(self):
+    config = config_pb2.ConfigProto(
+        device_count={"CPU": 3}, log_device_placement=True)
+    with self.cached_session(config=config):
+
+      def func(_):
+        with ops.device("/device:CPU:0"):
+          a = variables.Variable(3.0)
+        with ops.device("/device:CPU:1"):
+          b = variables.Variable(5.0)
+        return math_ops.add(a, b)
+
+      # The MapDataset node ends up with two ResourceVariable inputs, one on
+      # device CPU:0 and the other on device CPU:1. The placer cannot resolve
+      # this as it cannot place the MapDatasetOp on both devices.
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).map(func)
+      expected_error = (
+          errors.InvalidArgumentError,
+          "Could not colocate node with its resource and reference inputs")
+      self.assertDatasetProduces(
+          dataset, expected_error=expected_error, requires_initialization=True)
 
   def testCaptureVariable(self):
     counter_var = variable_scope.get_variable(
         "counter", (), dtypes.int32, use_resource=True)
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.from_tensors(0).repeat(10)
-        .map(lambda _: counter_var.assign_add(1)))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.from_tensors(0).repeat(
+        10).map(lambda _: counter_var.assign_add(1))
+    get_next = self.getNext(dataset, requires_initialization=True)
 
-    with self.cached_session() as sess:
-      sess.run(counter_var.initializer)
-      sess.run(init_op)
-      for i in range(10):
-        self.assertEqual(i, sess.run(counter_var))
-        self.assertEqual(i + 1, sess.run(get_next))
-      self.assertEqual(10, sess.run(counter_var))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-      self.assertEqual(10, sess.run(counter_var))
+    self.evaluate(counter_var.initializer)
 
-  def testCaptureUninitializedVariableError(self):
+    for i in range(10):
+      self.assertEqual(i, self.evaluate(counter_var))
+      self.assertEqual(i + 1, self.evaluate(get_next()))
+    self.assertEqual(10, self.evaluate(counter_var))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+    self.assertEqual(10, self.evaluate(counter_var))
+
+  # TODO(b/117581999): error not captured for eager mode, debug.
+  @test_util.run_v1_only("b/120545219")
+  def testSkipEagerCaptureUninitializedVariableError(self):
     counter_var = variable_scope.get_variable(
         "counter", (), dtypes.int32, use_resource=True)
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.from_tensors(0).repeat(10)
-        .map(lambda _: counter_var.assign_add(1)))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.from_tensors(0).repeat(
+        10).map(lambda _: counter_var.assign_add(1))
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      with self.assertRaises(errors.NotFoundError):
-        sess.run(get_next)
+    get_next = self.getNext(dataset, requires_initialization=True)
+
+    with self.assertRaises(errors.NotFoundError):
+      self.evaluate(get_next())
 
   def testSeededStatefulOperatorIsProperlyStateful(self):
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.from_tensors(0).repeat(10)
-        .map(lambda _: random_ops.random_uniform((), seed=11)).batch(2))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.from_tensors(0).repeat(
+        10).map(lambda _: random_ops.random_uniform((), seed=11)).batch(2)
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      random_values = []
-      with self.assertRaises(errors.OutOfRangeError):
-        while True:
-          random_values.extend(sess.run(get_next))
-      self.assertEqual(10, len(random_values))
-      self.assertGreater(np.abs(np.diff(random_values)).max(), 1e-6)
-      sess.run(init_op)
-      random_values_2 = []
-      with self.assertRaises(errors.OutOfRangeError):
-        while True:
-          random_values_2.extend(sess.run(get_next))
+    get_next = self.getNext(dataset, requires_initialization=True)
+    random_values = []
+    with self.assertRaises(errors.OutOfRangeError):
+      while True:
+        random_values.extend(self.evaluate(get_next()))
+    self.assertLen(random_values, 10)
+    self.assertGreater(np.abs(np.diff(random_values)).max(), 1e-6)
 
-      # Randomness is repeatable given same seed
-      self.assertAllClose(random_values, random_values_2)
+    get_next = self.getNext(dataset, requires_initialization=True)
+    random_values_2 = []
+    with self.assertRaises(errors.OutOfRangeError):
+      while True:
+        random_values_2.extend(self.evaluate(get_next()))
+
+    # Randomness is repeatable given same seed
+    self.assertAllClose(random_values, random_values_2)
 
   def testStatefulMapKeepsStateAcrossIterators(self):
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.from_tensors(0).repeat(10)
-        .map(lambda _: random_ops.random_uniform((), seed=11))
-        .repeat(1000)
-        .batch(10))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).map(
+        lambda _: random_ops.random_uniform((), seed=11)).repeat(1000).batch(10)
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      random_values = sess.run(get_next)
+    get_next = self.getNext(dataset)
+    random_values = self.evaluate(get_next())
 
-      # Assert that one of the next 99 batches yielded by the iterator is
-      # different from the first.
-      i = 0
-      while i < 99:
-        if np.any(random_values != sess.run(get_next)):
-          break
-        i += 1
-      self.assertLess(i, 99)
+    # Assert that one of the next 99 batches yielded by the iterator is
+    # different from the first.
+    i = 0
+    while i < 99:
+      if np.any(random_values != self.evaluate(get_next())):
+        break
+      i += 1
+    self.assertLess(i, 99)
 
   def testStatefulOperationInShortCircuit(self):
     counter_var = variable_scope.get_variable(
@@ -493,36 +532,25 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       counter_var.assign_add(1)
       return x
 
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.range(10).map(increment_fn))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.range(10).map(increment_fn)
 
-    with self.cached_session() as sess:
-      sess.run(counter_var.initializer)
-      sess.run(init_op)
-      for i in range(10):
-        self.assertEqual(i, sess.run(counter_var))
-        self.assertEqual(i, sess.run(get_next))
-      self.assertEqual(10, sess.run(counter_var))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-      self.assertEqual(10, sess.run(counter_var))
+    get_next = self.getNext(dataset, requires_initialization=True)
+
+    self.evaluate(counter_var.initializer)
+    for i in range(10):
+      self.assertEqual(i, self.evaluate(counter_var))
+      self.assertEqual(i, self.evaluate(get_next()))
+    self.assertEqual(10, self.evaluate(counter_var))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+    self.assertEqual(10, self.evaluate(counter_var))
 
   def testMapDict(self):
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.range(10)
-        .map(lambda x: {"foo": x * 2, "bar": x ** 2})
-        .map(lambda d: d["foo"] + d["bar"]))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for i in range(10):
-        self.assertEqual(i * 2 + i**2, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    dataset = dataset_ops.Dataset.range(10).map(
+        lambda x: {"foo": x * 2, "bar": x**2}).map(
+            lambda d: d["foo"] + d["bar"])
+    self.assertDatasetProduces(
+        dataset, expected_output=[i * 2 + i**2 for i in range(10)])
 
   def testMapNamedtuple(self, count=10):
     # construct dataset of tuples
@@ -545,33 +573,23 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset_tuple = dataset_tuple.map(preprocess_tuple)
     dataset_namedtuple = dataset_namedtuple.map(preprocess_namedtuple)
 
-    next_tuple = dataset_ops.make_one_shot_iterator(dataset_tuple).get_next()
-    next_namedtuple = dataset_ops.make_one_shot_iterator(
-        dataset_namedtuple).get_next()
+    next_tuple = self.getNext(dataset_tuple)
+    next_namedtuple = self.getNext(dataset_namedtuple)
 
     # make sure both datasets contain the same data
-    with self.cached_session() as sess:
-      for i in range(count):
-        tuple_, namedtuple_ = sess.run([next_tuple, next_namedtuple])
-        self.assertEqual(tuple_, namedtuple_)
-        self.assertEqual(tuple_, (i, -2 * i))
+    for i in range(count):
+      tuple_, namedtuple_ = self.evaluate([next_tuple(), next_namedtuple()])
+      self.assertEqual(tuple_, namedtuple_)
+      self.assertEqual(tuple_, (i, -2 * i))
 
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_namedtuple)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(next_namedtuple())
 
   def testUseStepContainerInMap(self):
     row = np.arange(6)
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.from_tensors(row)
-        .map(lambda elems: functional_ops.map_fn(lambda x: x * x, elems)))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      self.assertAllEqual(row**2, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    dataset = dataset_ops.Dataset.from_tensors(
+        row).map(lambda elems: map_fn.map_fn(lambda x: x * x, elems))
+    self.assertDatasetProduces(dataset, expected_output=[row**2])
 
   def testCaseAndCondInMap(self):
 
@@ -599,24 +617,19 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           pred_fn_pairs, default=multiply, exclusive=True)
 
     def build_dataset(row, num):
-      iterator = dataset_ops.make_initializable_iterator(
-          dataset_ops.Dataset.from_tensor_slices(row).map(
-              lambda x: control_map_fn(x, num)))
-      init_op = iterator.initializer
-      get_next = iterator.get_next()
-      return init_op, get_next
+      dataset = dataset_ops.Dataset.from_tensor_slices(
+          row).map(lambda x: control_map_fn(x, num))
+      return self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      row = np.arange(6)
-      for num in [2, 3, 4]:
-        init_op, get_next = build_dataset(row, num)
-        sess.run(init_op)
-        for i in range(6):
-          self.assertEqual(
-              (i // 2 if i % 2 else i * 2) if (num == 2 or num == 3) else i * 2,
-              sess.run(get_next))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next)
+    row = np.arange(6)
+    for num in [2, 3, 4]:
+      get_next = build_dataset(row, num)
+      for i in range(6):
+        self.assertEqual(
+            (i // 2 if i % 2 else i * 2) if (num == 2 or num == 3) else i * 2,
+            self.evaluate(get_next()))
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
 
   def testCaseInWhileInMap(self):
 
@@ -638,24 +651,19 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     def build_dataset(row, num):
       # pylint: disable=g-long-lambda
-      iterator = dataset_ops.make_initializable_iterator(
-          dataset_ops.Dataset.from_tensors(row).map(
-              lambda elems: functional_ops.map_fn(
-                  lambda x: control_map_fn(x, num), elems)))
-      init_op = iterator.initializer
-      get_next = iterator.get_next()
-      return init_op, get_next
+      dataset = dataset_ops.Dataset.from_tensors(
+          row).map(lambda elems: map_fn.map_fn(
+              lambda x: control_map_fn(x, num), elems))
+      return self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      row = np.arange(6)
-      for num in [2, 3, 4]:
-        init_op, get_next = build_dataset(row, num)
-        sess.run(init_op)
-        self.assertAllEqual(
-            [x // 2 if (num == 2 or num == 3) else x * 2 for x in row],
-            sess.run(get_next))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next)
+    row = np.arange(6)
+    for num in [2, 3, 4]:
+      get_next = build_dataset(row, num)
+      self.assertAllEqual(
+          [x // 2 if (num == 2 or num == 3) else x * 2 for x in row],
+          self.evaluate(get_next()))
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
 
   def testCaseAndCondInWhileInMap(self):
 
@@ -685,21 +693,24 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     row = np.arange(6)
     num = 2
     # pylint: disable=g-long-lambda
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.from_tensors(row).map(
-            lambda elems: functional_ops.map_fn(
-                lambda x: control_map_fn(x, num), elems)))
+    dataset = dataset_ops.Dataset.from_tensors(
+        row).map(lambda elems: map_fn.map_fn(
+            lambda x: control_map_fn(x, num), elems))
     # pylint: enable=g-long-lambda
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      self.assertAllEqual([(x // 2 if x % 2 else x * 2) if
-                           (num == 2 or num == 3) else x * 2 for x in row],
-                          sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    self.assertAllEqual([(x // 2 if x % 2 else x * 2) if
+                         (num == 2 or num == 3) else x * 2 for x in row],
+                        self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+
+  def testNestedListMapDataset(self):
+    dataset = dataset_ops.Dataset.from_tensors(
+        [0, 1, 2]).repeat(10).map(lambda a: ([a[1], a[0] + a[2]], a[1]))
+
+    expected_output = [(np.array([1, 2]), 1)] * 10
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
 
   def testPrefetch(self):
     # We will use this event to test that `_map_py_func()` has been
@@ -717,58 +728,54 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     def _map_fn(x):
       return script_ops.py_func(_map_py_func, [x], x.dtype)
 
-    buffer_size_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.range(100)
-        .map(_map_fn)
-        .prefetch(buffer_size_placeholder))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    def do_test(buffer_size):
+      dataset = dataset_ops.Dataset.range(100).map(_map_fn).prefetch(
+          buffer_size)
 
-    with self.cached_session() as sess:
+      get_next = self.getNext(dataset)
       # Simple test that prefetch yields the expected values in the
       # expected order.
-      for buffer_size in [1, 10, 100, 1000]:
-        sess.run(init_op, feed_dict={buffer_size_placeholder: buffer_size})
-        for i in range(100):
-          self.assertEqual(i * i, sess.run(get_next))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next)
+      for i in range(100):
+        self.assertEqual(i * i, self.evaluate(get_next()))
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
 
-      # We can indirectly observe that varying the buffer size has the
-      # intended effect by observing when `ev` is set (on the 6th
-      # invocation of `_map_py_func()`).
-      # NOTE(mrry): We do not test with `buffer_size ==
-      # set_event_during_invocation`, because we must consume at least
-      # one element to start the prefetching.
-      for buffer_size in range(1, set_event_during_invocation):
-        event_will_be_set_after_consuming = (
-            set_event_during_invocation - buffer_size + 1)
+    for buffer_size in [1, 10, 100, 1000]:
+      do_test(buffer_size)
 
-        ev.clear()
-        sess.run(init_op, feed_dict={buffer_size_placeholder: buffer_size})
-        for i in range(event_will_be_set_after_consuming):
-          self.assertFalse(ev.is_set())
-          self.assertEqual(i * i, sess.run(get_next))
-        ev.wait()
-        for i in range(event_will_be_set_after_consuming, 100):
-          self.assertEqual(i * i, sess.run(get_next))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next)
+    # We can indirectly observe that varying the buffer size has the
+    # intended effect by observing when `ev` is set (on the 6th
+    # invocation of `_map_py_func()`).
+    # NOTE(mrry): We do not test with `buffer_size ==
+    # set_event_during_invocation`, because we must consume at least
+    # one element to start the prefetching.
+    def do_test_ev(buffer_size):
+      dataset = dataset_ops.Dataset.range(100).map(_map_fn).prefetch(
+          buffer_size)
+
+      get_next = self.getNext(dataset)
+
+      event_will_be_set_after_consuming = (
+          set_event_during_invocation - buffer_size + 1)
+
+      ev.clear()
+      for i in range(event_will_be_set_after_consuming):
+        self.assertFalse(ev.is_set())
+        self.assertEqual(i * i, self.evaluate(get_next()))
+      ev.wait()
+      for i in range(event_will_be_set_after_consuming, 100):
+        self.assertEqual(i * i, self.evaluate(get_next()))
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
+
+    for buffer_size in range(1, set_event_during_invocation):
+      do_test_ev(buffer_size)
 
   def testReturnList(self):
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.range(10)
-        .map(lambda x: [x, constant_op.constant(37.0)]))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for i in range(10):
-        self.assertEqual((i, 37.0), sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    dataset = dataset_ops.Dataset.range(
+        10).map(lambda x: [x, constant_op.constant(37.0)])
+    self.assertDatasetProduces(
+        dataset, expected_output=[(i, 37.0) for i in range(10)])
 
   def testMultiOutputPyFunc(self):
     # The `tf.py_func()` op returns a list of tensors for its outputs.
@@ -778,17 +785,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       return script_ops.py_func(
           _map_py_func, [x_tensor], [dtypes.int64, dtypes.float64])
 
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.range(10).map(_map_fn))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for i in range(10):
-        self.assertEqual((i, 37.0), sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    dataset = dataset_ops.Dataset.range(10).map(_map_fn)
+    self.assertDatasetProduces(
+        dataset, expected_output=[(i, 37.0) for i in range(10)])
 
   def testSparse(self):
 
@@ -798,19 +797,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           values=(i * np.array([1])),
           dense_shape=np.array([1, 1]))
 
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.range(10).map(_sparse))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for i in range(10):
-        actual = sess.run(get_next)
-        self.assertIsInstance(actual, sparse_tensor.SparseTensorValue)
-        self.assertSparseValuesEqual(actual, _sparse(i))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    dataset = dataset_ops.Dataset.range(10).map(_sparse)
+    self.assertDatasetProduces(
+        dataset, expected_output=[_sparse(i) for i in range(10)])
 
   def testSparseChain(self):
 
@@ -824,19 +813,11 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertTrue(sparse_tensor.is_sparse(i))
       return sparse_ops.sparse_concat(0, [i, i])
 
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.range(10).map(_sparse).map(_check))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.range(10).map(_sparse).map(_check)
 
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for i in range(10):
-        actual = sess.run(get_next)
-        self.assertIsInstance(actual, sparse_tensor.SparseTensorValue)
-        self.assertSparseValuesEqual(actual, _check(_sparse(i)).eval())
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[self.evaluate(_check(_sparse(i))) for i in range(10)])
 
   def testParallelMapOutOfRangeError(self):
     def raising_py_func(i):
@@ -845,32 +826,18 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       else:
         return i
 
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.range(105)
-        .map(lambda x: script_ops.py_func(raising_py_func, [x], dtypes.int64),
-             num_parallel_calls=2))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for i in range(100):
-        self.assertEqual(i, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    dataset = dataset_ops.Dataset.range(105).map(
+        lambda x: script_ops.py_func(raising_py_func, [x], dtypes.int64),
+        num_parallel_calls=2)
+    get_next = self.getNext(dataset)
+    for i in range(100):
+      self.assertEqual(i, self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   def testConstantOutput(self):
-    iterator = dataset_ops.make_initializable_iterator(
-        dataset_ops.Dataset.range(10).map(lambda x: [x, "hello", 10]))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      for i in range(10):
-        self.assertEqual((i, b"hello", 10), sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    dataset = dataset_ops.Dataset.range(10).map(lambda x: [x, "hello", 10])
+    self.assertDatasetProduces(dataset, [(i, b"hello", 10) for i in range(10)])
 
   def testWarnOnLookupTable(self):
     def collecting_function(x):
@@ -899,7 +866,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset_ops.Dataset.from_tensor_slices).map(
             lambda ds: ds.batch(3)).flat_map(lambda x: x)
 
-    self.assertDatasetProduces(dataset, [[1.0, 2.0, 3.0]])
+    self.assertDatasetProduces(dataset, expected_output=[[1.0, 2.0, 3.0]])
 
   def testReturnValueError(self):
     dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0])
@@ -932,11 +899,8 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       return const_tensor
 
     dataset = dataset.map(broken_function)
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-
-    with self.cached_session() as sess:
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, "BrokenConst"):
-        sess.run(iterator.initializer)
+    self.assertDatasetProduces(
+        dataset, expected_error=(errors.InvalidArgumentError, "BrokenConst"))
 
 # pylint: disable=g-long-lambda
   @parameterized.named_parameters(
@@ -959,12 +923,10 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       return tids
 
     dataset = make_dataset_fn(dataset, _map_fn)
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
-    get_next = iterator.get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      tids = sess.run(get_next)
-      self.assertTrue(all(tids[0] == tid for tid in tids))
+    tids = self.evaluate(get_next())
+    self.assertTrue(all(tids[0] == tid for tid in tids))
 # pylint: enable=g-long-lambda
 
   @parameterized.named_parameters(
@@ -980,29 +942,26 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testShortCircuit(self, structure, map_fn, num_parallel_calls):
     dataset = self.structuredDataset(structure).repeat().map(
         map_fn, num_parallel_calls=num_parallel_calls)
-    get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      if isinstance(structure, tuple):
-        expected = map_fn(*sess.run(self.structuredElement(structure)))
-      else:
-        expected = map_fn(sess.run(self.structuredElement(structure)))
-      self.assertEqual(expected, sess.run(get_next))
+    if isinstance(structure, tuple):
+      expected = map_fn(*self.evaluate(self.structuredElement(structure)))
+    else:
+      expected = map_fn(self.evaluate(self.structuredElement(structure)))
+    self.assertEqual(expected, self.evaluate(get_next()))
 
   @parameterized.named_parameters(
       ("Sequential", None),
       ("Parallel", 10),
   )
   def testShortCircuitCapturedInput(self, num_parallel_calls):
-    captured_t = array_ops.placeholder(dtypes.int64, shape=[])
+    captured_t = variables.Variable(42)
     dataset = self.structuredDataset(None).repeat().map(
         lambda x: captured_t, num_parallel_calls=num_parallel_calls)
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    get_next = iterator.get_next()
+    self.evaluate(variables.global_variables_initializer())
+    get_next = self.getNext(dataset, requires_initialization=True)
 
-    with self.cached_session() as sess:
-      sess.run(iterator.initializer, feed_dict={captured_t: 42})
-      self.assertEqual(42, sess.run(get_next))
+    self.assertEqual(42, self.evaluate(get_next()))
 
   @parameterized.named_parameters(
       ("1", 1, 1),
@@ -1013,17 +972,19 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("6", 100, 100),
   )
   def testSloppyInterleaveInOrder(self, num_elements, num_parallel_calls):
-    get_next, coordination_events = _make_coordinated_sloppy_dataset(
+    dataset, coordination_events = _make_coordinated_sloppy_dataset(
         num_elements, num_parallel_calls)
-    config = config_pb2.ConfigProto(
-        inter_op_parallelism_threads=num_parallel_calls + 1,
-        use_per_session_threads=True)
-    with self.cached_session(config=config) as sess:
-      for i in range(num_elements):
-        coordination_events[i].set()
-        self.assertEqual(i * i, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    options = dataset_ops.Options()
+    options.experimental_threading = threading_options.ThreadingOptions()
+    options.experimental_threading.private_threadpool_size = (
+        num_parallel_calls + 1)
+    dataset = dataset.with_options(options)
+    get_next = self.getNext(dataset, requires_initialization=True)
+    for i in range(num_elements):
+      coordination_events[i].set()
+      self.assertEqual(i * i, self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   @parameterized.named_parameters(
       ("1", 10, 10),
@@ -1031,21 +992,25 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("3", 100, 100),
   )
   def testSloppyInterleaveOutOfOrder(self, num_elements, num_parallel_calls):
-    get_next, coordination_events = _make_coordinated_sloppy_dataset(
+    dataset, coordination_events = _make_coordinated_sloppy_dataset(
         num_elements, num_parallel_calls)
-    config = config_pb2.ConfigProto(
-        inter_op_parallelism_threads=num_parallel_calls + 1,
-        use_per_session_threads=True)
-    with self.cached_session(config=config) as sess:
-      elements = [x for x in range(num_elements)]
-      for i in [1, 4, 7]:
-        elements[i], elements[i + 1] = elements[i + 1], elements[i]
+    options = dataset_ops.Options()
+    options.experimental_threading = threading_options.ThreadingOptions()
+    options.experimental_threading.private_threadpool_size = (
+        num_parallel_calls + 1)
+    dataset = dataset.with_options(options)
 
-      for element in elements:
-        coordination_events[element].set()
-        self.assertEqual(element * element, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    get_next = self.getNext(dataset, requires_initialization=True)
+
+    elements = [x for x in range(num_elements)]
+    for i in [1, 4, 7]:
+      elements[i], elements[i + 1] = elements[i + 1], elements[i]
+
+    for element in elements:
+      coordination_events[element].set()
+      self.assertEqual(element * element, self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   @parameterized.named_parameters(
       ("Map", None),
@@ -1062,7 +1027,6 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = self.getNext(dataset)
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(get_next())
-
 
 
 if __name__ == "__main__":

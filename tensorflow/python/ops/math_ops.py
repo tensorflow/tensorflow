@@ -12,9 +12,59 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Basic arithmetic operators.
+"""Math Operations.
 
-See the [python/math_ops](python/math_ops) guide.
+Note: Functions taking `Tensor` arguments can also take anything accepted by
+`tf.convert_to_tensor`.
+
+Note: Elementwise binary operations in TensorFlow follow [numpy-style
+broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+
+TensorFlow provides a variety of math functions including:
+
+* Basic arithmetic operators and trigonometric functions.
+* Special math functions (like: `tf.math.igamma` and `tf.math.zeta`)
+* Complex number functions (like: `tf.math.imag` and `tf.math.angle`)
+* Reductions and scans (like: `tf.math.reduce_mean` and `tf.math.cumsum`)
+* Segment functions (like: `tf.math.segment_sum`)
+
+See: `tf.linalg` for matrix and tensor functions.
+
+<a id=Segmentation></a>
+
+## About Segmentation
+
+TensorFlow provides several operations that you can use to perform common
+math computations on tensor segments.
+Here a segmentation is a partitioning of a tensor along
+the first dimension, i.e. it  defines a mapping from the first dimension onto
+`segment_ids`. The `segment_ids` tensor should be the size of
+the first dimension, `d0`, with consecutive IDs in the range `0` to `k`,
+where `k<d0`.
+In particular, a segmentation of a matrix tensor is a mapping of rows to
+segments.
+
+For example:
+
+```python
+c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
+tf.segment_sum(c, tf.constant([0, 0, 1]))
+#  ==>  [[0 0 0 0]
+#        [5 6 7 8]]
+```
+
+The standard `segment_*` functions assert that the segment indices are sorted.
+If you have unsorted indices use the equivalent `unsorted_segment_` function.
+Thses functions take an additional argument `num_segments` so that the output
+tensor can be efficiently allocated.
+
+``` python
+c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
+tf.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
+# ==> [[ 6,  8, 10, 12],
+#       [-1, -2, -3, -4]]
+```
+
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -49,6 +99,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 # Aliases for some automatically-generated names.
 linspace = gen_math_ops.lin_space
+nextafter = gen_math_ops.next_after
 
 arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
 arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
@@ -812,7 +863,8 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
         return func(x, y, name=name)
       elif not isinstance(y, sparse_tensor.SparseTensor):
         try:
-          y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
+          y = ops.convert_to_tensor_v2(y, dtype_hint=x.dtype.base_dtype,
+                                       name="y")
         except TypeError:
           # If the RHS is not a tensor, it might be a tensor aware object
           # that can implement the operator with knowledge of itself
@@ -1337,13 +1389,16 @@ def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
 @tf_export(v1=["math.count_nonzero", "count_nonzero"])
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
-def count_nonzero(input_tensor,
+@deprecation.deprecated_args(
+    None, "reduction_indices is deprecated, use axis instead", "axis")
+def count_nonzero(input_tensor=None,
                   axis=None,
                   keepdims=None,
                   dtype=dtypes.int64,
                   name=None,
                   reduction_indices=None,
-                  keep_dims=None):
+                  keep_dims=None,
+                  input=None):  # pylint: disable=redefined-builtin
   """Computes number of nonzero elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1389,12 +1444,15 @@ def count_nonzero(input_tensor,
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
     keep_dims: Deprecated alias for `keepdims`.
+    input: Overrides input_tensor. For compatibility.
 
   Returns:
     The reduced tensor (number of nonzero values).
   """
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
+  input_tensor = deprecation.deprecated_argument_lookup(
+      "input", input, "input_tensor", input_tensor)
   axis = deprecation.deprecated_argument_lookup(
       "axis", axis,
       "reduction_indices", reduction_indices
@@ -1465,7 +1523,7 @@ def count_nonzero_v2(input,  # pylint: disable=redefined-builtin
     return cast(
         reduce_sum(
             # int64 reduction happens on GPU
-            to_int64(gen_math_ops.not_equal(input, zero)),
+            cast(gen_math_ops.not_equal(input, zero), dtypes.int64),
             axis=axis,
             keepdims=keepdims),
         dtype=dtype)
@@ -2640,6 +2698,8 @@ def _as_indexed_slices_list(inputs, optimize=True):
 def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
+  Converts `IndexedSlices` objects into dense tensors prior to adding.
+
   Args:
     inputs: A list of `Tensor` or `IndexedSlices` objects, each with same shape
       and type.
@@ -2653,16 +2713,16 @@ def add_n(inputs, name=None):
     cannot be inferred.
   """
   if not inputs or not isinstance(inputs, (list, tuple)):
-    raise ValueError("inputs must be a list of at least one"
+    raise ValueError("inputs must be a list of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape")
   inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(isinstance(x, (ops.Tensor, ops.IndexedSlices)) for x in inputs):
-    raise ValueError("inputs must be a list of at least one"
+    raise ValueError("inputs must be a list of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape")
 
   if len(inputs) == 1:
     if isinstance(inputs[0], ops.IndexedSlices):
-      values = inputs[0].values
+      values = ops.convert_to_tensor(inputs[0])
     else:
       values = inputs[0]
     if name:
@@ -3061,8 +3121,8 @@ def reduced_shape(input_shape, axes):
     input_shape[axes] = 1
     return input_shape
 
-  input_shape = to_int32(input_shape)  # [2, 3, 5, 7]
-  axes = to_int32(axes)  # [1, 2]
+  input_shape = cast(input_shape, dtypes.int32)  # [2, 3, 5, 7]
+  axes = cast(axes, dtypes.int32)  # [1, 2]
 
   input_rank = array_ops.size(input_shape)  # 4
   axes = (axes + input_rank) % input_rank
@@ -3102,7 +3162,7 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   r"""Computes the mean along segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
   for an explanation of segments.
 
   This operator is similar to the unsorted segment sum operator found
@@ -3148,7 +3208,7 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   r"""Computes the sum along segments of a tensor divided by the sqrt(N).
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
   for an explanation of segments.
 
   This operator is similar to the unsorted segment sum operator found
@@ -3195,7 +3255,7 @@ def sparse_segment_sum(data, indices, segment_ids, name=None,
   r"""Computes the sum along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
   for an explanation of segments.
 
   Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
@@ -3282,7 +3342,7 @@ def sparse_segment_mean(data,
   r"""Computes the mean along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
   for an explanation of segments.
 
   Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
@@ -3327,7 +3387,7 @@ def sparse_segment_mean_v2(data,
   r"""Computes the mean along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
   for an explanation of segments.
 
   Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first

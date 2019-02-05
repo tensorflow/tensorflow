@@ -24,10 +24,26 @@ import warnings
 from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.framework import c_api_util
+from tensorflow.python.framework import error_interpolation
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import tf_stack
 from tensorflow.python.util.tf_export import tf_export
+
+
+def _compact_stack_trace(op):
+  """Returns a traceback for `op` with common file prefixes stripped."""
+  compact_traces = []
+  common_prefix = error_interpolation.traceback_files_common_prefix([[op]])
+  for frame in op.traceback:
+    frame = list(frame)
+    filename = frame[tf_stack.TB_FILENAME]
+    if filename.startswith(common_prefix):
+      filename = filename[len(common_prefix):]
+      frame[tf_stack.TB_FILENAME] = filename
+    compact_traces.append(tuple(frame))
+  return compact_traces
 
 
 @tf_export("errors.OpError", v1=["errors.OpError", "OpError"])
@@ -94,9 +110,10 @@ class OpError(Exception):
 
   def __str__(self):
     if self._op is not None:
-      output = ["%s\n\nCaused by op %r, defined at:\n" % (self.message,
+      output = ["%s\n\nOriginal stack trace for %r:\n" % (self.message,
                                                           self._op.name,)]
-      curr_traceback_list = traceback.format_list(self._op.traceback)
+      curr_traceback_list = traceback.format_list(
+          _compact_stack_trace(self._op))
       output.extend(curr_traceback_list)
       # pylint: disable=protected-access
       original_op = self._op._original_op
@@ -106,7 +123,8 @@ class OpError(Exception):
             "\n...which was originally created as op %r, defined at:\n"
             % (original_op.name,))
         prev_traceback_list = curr_traceback_list
-        curr_traceback_list = traceback.format_list(original_op.traceback)
+        curr_traceback_list = traceback.format_list(
+            _compact_stack_trace(original_op))
 
         # Attempt to elide large common subsequences of the subsequent
         # stack traces.
@@ -136,8 +154,6 @@ class OpError(Exception):
         # pylint: disable=protected-access
         original_op = original_op._original_op
         # pylint: enable=protected-access
-      output.append("\n%s (see above for traceback): %s\n" %
-                    (type(self).__name__, self.message))
       return "".join(output)
     else:
       return self.message

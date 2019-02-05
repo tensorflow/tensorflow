@@ -38,7 +38,7 @@ XlaOp DiagonalBlocks(XlaOp a, int64 block_size) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(a));
-    int ndims = ShapeUtil::Rank(shape);
+    int ndims = shape.rank();
     int64 n = ShapeUtil::GetDimension(shape, -1);
     int64 num_blocks = n / block_size;
 
@@ -62,15 +62,26 @@ XlaOp DiagonalBlocks(XlaOp a, int64 block_size) {
                               /*broadcast_sizes=*/{2}),
                     /*permutation=*/{1, 0});
 
+      PaddingConfig padding_config =
+          MakeEdgePaddingConfig({{0, 0}, {ndims - 2, 0}});
+      start_indices =
+          Pad(start_indices, ConstantR0<int32>(builder, 0), padding_config);
+
       // Gather the diagonal blocks
+      std::vector<int64> slice_sizes(ndims);
       GatherDimensionNumbers dim_numbers;
+      for (int i = 0; i < ndims - 2; ++i) {
+        dim_numbers.add_offset_dims(i);
+        dim_numbers.add_start_index_map(i);
+        slice_sizes[i] = ShapeUtil::GetDimension(shape, i);
+      }
+      slice_sizes[ndims - 2] = slice_sizes[ndims - 1] = block_size;
       dim_numbers.add_offset_dims(ndims - 1);
       dim_numbers.add_offset_dims(ndims);
       dim_numbers.add_start_index_map(ndims - 2);
       dim_numbers.add_start_index_map(ndims - 1);
       dim_numbers.set_index_vector_dim(1);
-      diag_blocks = Gather(a, start_indices, dim_numbers,
-                           /*slice_sizes=*/{block_size, block_size});
+      diag_blocks = Gather(a, start_indices, dim_numbers, slice_sizes);
     }
 
     // The last block might be smaller than the block size,
@@ -129,9 +140,7 @@ XlaOp InvertDiagonalBlocks(XlaOp diag_blocks, bool lower, bool transpose_a,
     // zero (which can happen if the last block was padded) otherwise it will
     // introduce nans which will propagate
     auto diags = GetMatrixDiagonal(diag_blocks);
-    TF_ASSIGN_OR_RETURN(Shape diags_shape, builder->GetShape(diags));
-    auto one = ScalarLike(diags, 1);
-    auto ones = Broadcast(one, AsInt64Slice(diags_shape.dimensions()));
+    auto ones = FullLike(diags, 1);
     diags = Select(Eq(diags, Zero(builder, shape.element_type())), ones, diags);
     auto scaled_diag_blocks = Div(diag_blocks, diags, {0, 2});
 
@@ -154,10 +163,10 @@ XlaOp InvertDiagonalBlocks(XlaOp diag_blocks, bool lower, bool transpose_a,
     // The first or last  diagonal element should be set to 1 instead of -1
     // though, since we never update it
     auto pos_one = Reshape(One(builder, shape.element_type()), {1, 1});
-    auto start_index = (lower) ? 0 : block_size - 1;
-    auto output_block = DynamicUpdateSlice(
-        neg_identity, pos_one,
-        /*start_indices=*/ConstantR1<int>(builder, 2, start_index));
+    auto start_index = ConstantR0<int>(builder, (lower) ? 0 : block_size - 1);
+    auto output_block =
+        DynamicUpdateSlice(neg_identity, pos_one,
+                           /*start_indices=*/{start_index, start_index});
 
     // Broadcast diag([1, -1, -1, ...]) to every block
     XlaOp output = Broadcast(output_block,
@@ -200,12 +209,10 @@ XlaOp InvertDiagonalBlocks(XlaOp diag_blocks, bool lower, bool transpose_a,
       auto body_out = GetTupleElement(input_tuple, 1);
       auto body_input = GetTupleElement(input_tuple, 2);
 
-      auto zero = ConstantR1<int32>(bodyb.get(), 1, 0);
+      auto zero = ConstantR0<int32>(bodyb.get(), 0);
       auto j = (lower) ? i : ScalarLike(i, block_size - 1) - i;
-      auto start_indices =
-          ConcatInDim(bodyb.get(), {zero, Reshape(j, {1}), zero}, 0);
       auto input_row =
-          DynamicSlice(body_input, start_indices,
+          DynamicSlice(body_input, {zero, j, zero},
                        /*slice_sizes=*/{num_blocks, 1, block_size});
 
       // We want -L21 L11^{-1}
@@ -219,7 +226,7 @@ XlaOp InvertDiagonalBlocks(XlaOp diag_blocks, bool lower, bool transpose_a,
       precision_proto.add_operand_precision(precision);
       auto update = -DotGeneral(input_row, body_out, dnums, &precision_proto);
 
-      body_out = DynamicUpdateSlice(body_out, update, start_indices);
+      body_out = DynamicUpdateSlice(body_out, update, {zero, j, zero});
 
       auto next_i = i + ScalarLike(i, 1);
       Tuple(bodyb.get(), {next_i, body_out, body_input});
@@ -251,7 +258,7 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
     int64 block_size = ShapeUtil::GetDimension(blocks_shape, -1);
 
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    int64 ndims = ShapeUtil::Rank(a_shape);
+    int64 ndims = a_shape.rank();
     int64 n = ShapeUtil::GetDimension(a_shape, -1);
     int64 num_blocks = n / block_size + (n % block_size != 0);
     int64 m_dim = (left_side) ? -1 : -2;
@@ -345,13 +352,13 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     TF_ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
-    if (ShapeUtil::Rank(a_shape) != ShapeUtil::Rank(b_shape)) {
+    if (a_shape.rank() != b_shape.rank()) {
       return InvalidArgument(
           "Arguments to TriangularSolve have shapes with different ranks: "
           "%s vs. %s",
           ShapeUtil::HumanString(a_shape), ShapeUtil::HumanString(b_shape));
     }
-    const int64 ndims = ShapeUtil::Rank(a_shape);
+    const int64 ndims = a_shape.rank();
     if (ndims < 2) {
       return InvalidArgument(
           "Arguments to TriangularSolve was rank %d but must have rank >= 2.",
@@ -393,12 +400,23 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
           block_size);
     }
 
+    if (ShapeUtil::IsZeroElementArray(b_shape)) {
+      // The output has the same shape as 'b', and since the output has zero
+      // elements, any such array will do.
+      return b;
+    }
+
     // We find the diagonal blocks of the coefficient matrix
     auto diag_blocks = DiagonalBlocks(a, block_size);
 
     // We invert these blocks in parallel using batched matrix-vector products
     auto inv_diag_blocks = InvertDiagonalBlocks(diag_blocks, lower, transpose_a,
                                                 conjugate_a, precision);
+
+    // Mask off the ignored elements of the triangular matrix a.
+    // TODO(phawkins): it would probably be preferable to perform this masking
+    // block by block inside SolveWithInvertedDiagonalBlocks.
+    a = Triangle(a, lower);
 
     // We now find the solution using GEMMs
     auto x =

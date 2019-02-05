@@ -23,6 +23,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.platform import test
 
@@ -30,14 +31,11 @@ from tensorflow.python.platform import test
 class ControlFlowUtilV2Test(test.TestCase):
 
   def setUp(self):
-    self._enable_cond_v2_old = control_flow_ops.ENABLE_COND_V2
-    self._enable_while_v2_old = control_flow_ops.ENABLE_WHILE_V2
-    control_flow_ops.ENABLE_COND_V2 = True
-    control_flow_ops.ENABLE_WHILE_V2 = True
+    self._enable_control_flow_v2_old = control_flow_util.ENABLE_CONTROL_FLOW_V2
+    control_flow_util.ENABLE_CONTROL_FLOW_V2 = True
 
   def tearDown(self):
-    control_flow_ops.ENABLE_COND_V2 = self._enable_cond_v2_old
-    control_flow_ops.ENABLE_WHILE_V2 = self._enable_while_v2_old
+    control_flow_util.ENABLE_CONTROL_FLOW_V2 = self._enable_control_flow_v2_old
 
   def _create_control_flow(self, expect_in_defun):
     """Helper method for testInDefun."""

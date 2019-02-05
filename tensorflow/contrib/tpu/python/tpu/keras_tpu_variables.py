@@ -69,6 +69,7 @@ class ReplicatedVariable(object):
   def __init__(self, name, variables):
     self._name = name
     self._primary_var = variables[0]
+    self._common_name = self._primary_var.name.split(":")[0]
     self._vars = variables
     self._cached_value = None
     self._dtype = variables[0].dtype

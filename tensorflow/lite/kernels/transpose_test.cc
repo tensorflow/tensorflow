@@ -184,6 +184,7 @@ class TransposeOpDynamicModel : public TransposeOpModel {
   }
 };
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST(TransposeTest, TestUnequalPermSize) {
   EXPECT_DEATH(TransposeOpConstModel({1, 3, 3, 1}, {2}, {2, 2}), "2 != 4");
 }
@@ -194,6 +195,7 @@ TEST(TransposeTest, TestPermOutOfBounds) {
   EXPECT_DEATH(TransposeOpConstModel({1, 3, 3, 1}, {4}, {0, 1, 2, 4}),
                "Transpose op permutations array is out of bounds.");
 }
+#endif
 
 TEST(TransposeTest, Test1DInputConstTensor) {
   TransposeOpConstModel m({3}, {1}, {0});
@@ -252,10 +254,12 @@ TEST(TransposeTest, Test3DInputDynamicTensor) {
                                 2, 6, 10, 14, 18, 22, 3, 7, 11, 15, 19, 23}));
 }
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST(TransposeTest, Test5DInputTensor) {
   EXPECT_DEATH(TransposeOpConstModel({1, 2, 3, 4, 5}, {5}, {0, 1, 2, 3, 4}),
                "Transpose op only supports 1D-4D input arrays.");
 }
+#endif
 
 TEST(TransposeTest, SimpleTestNoReorderConstTensor) {
   TransposeOpConstModel m({1, 2, 3, 1}, {4}, {0, 1, 2, 3});

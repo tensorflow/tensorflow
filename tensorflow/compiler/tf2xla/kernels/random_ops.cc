@@ -20,12 +20,12 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/lib/random.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
-#include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -160,23 +160,30 @@ class RandomShuffleOp : public XlaOpKernel {
         -> xla::StatusOr<std::vector<xla::XlaOp>> {
       auto swaps = loop_vars[0];
       auto indices = loop_vars[1];
-      i = xla::Reshape(i, {1});
+      // TODO(b/118437727): The absl::Span nonsense is only necessary because
+      // the deprecated overload creates ambiguity for the single-element span
+      // case. Remove it once the deprecated overload is gone.
       // temp = indices[i]
-      auto temp = xla::DynamicSlice(indices, i, {1});
+      auto temp =
+          xla::DynamicSlice(indices, absl::Span<const xla::XlaOp>({i}), {1});
       // swap_index = swaps[i]
-      auto swap_index = xla::DynamicSlice(swaps, i, {1});
+      auto swap_index = xla::Reshape(
+          xla::DynamicSlice(swaps, absl::Span<const xla::XlaOp>({i}), {1}), {});
       // swap_value = indices[swaps[i]]
-      auto swap_value = xla::DynamicSlice(indices, swap_index, {1});
+      auto swap_value = xla::DynamicSlice(
+          indices, absl::Span<const xla::XlaOp>({swap_index}), {1});
       // indices[i] = indices[swaps[i]]
-      indices = xla::DynamicUpdateSlice(indices, swap_value, i);
+      indices = xla::DynamicUpdateSlice(indices, swap_value,
+                                        absl::Span<const xla::XlaOp>({i}));
       // indices[swaps[i]] = temp
-      indices = xla::DynamicUpdateSlice(indices, temp, swap_index);
+      indices = xla::DynamicUpdateSlice(
+          indices, temp, absl::Span<const xla::XlaOp>({swap_index}));
       return std::vector<xla::XlaOp>{swaps, indices};
     };
     // for i in range(n):
     auto swap_loop_result =
-        XlaForEachIndex(n, xla::S32, swap_body_fn, {swaps, indices},
-                        "indices_swap_loop", builder)
+        xla::ForEachIndex(n, xla::S32, swap_body_fn, {swaps, indices},
+                          "indices_swap_loop", builder)
             .ValueOrDie();
     auto swapped_indices = swap_loop_result[1];
 

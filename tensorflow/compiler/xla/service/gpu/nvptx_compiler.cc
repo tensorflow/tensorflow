@@ -36,6 +36,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
+#include "tensorflow/compiler/xla/service/convolution_group_converter.h"
+#include "tensorflow/compiler/xla/service/dot_decomposer.h"
+#include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.h"
@@ -50,6 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
@@ -77,6 +81,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
@@ -108,27 +113,33 @@ namespace {
 
 namespace tracing = tensorflow::tracing;
 
-// Returns the directory containing nvvm libdevice files.  config_cuda_data_dir
-// should be equal to config().debug_options().xla_gpu_cuda_data_dir() of the
-// HloModule being compiled.
-string GetLibdeviceDir(const string& config_cuda_data_dir) {
-  std::vector<string> potential_libdevice_dirs;
-  if (!config_cuda_data_dir.empty()) {
-    potential_libdevice_dirs.push_back(config_cuda_data_dir);
-  }
-  potential_libdevice_dirs.push_back(tensorflow::LibdeviceRoot());
+// Returns a vector of potential locations of the CUDA root directory.
+std::vector<string> GetCudaRootCandidates(
+    const HloModuleConfig& hlo_module_config) {
+  std::vector<string> potential_cuda_roots = tensorflow::CandidateCudaRoots();
 
-  // Tries all potential libdevice directories in the order they are inserted.
-  // Returns the first directory that exists in the file system.
-  for (const string& potential_libdevice_dir : potential_libdevice_dirs) {
-    if (tensorflow::Env::Default()->IsDirectory(potential_libdevice_dir).ok()) {
-      VLOG(2) << "Found libdevice dir " << potential_libdevice_dir;
-      return potential_libdevice_dir;
+  // CUDA location explicitly specified by user via --xla_gpu_cuda_data_dir has
+  // highest priority.
+  string xla_gpu_cuda_data_dir =
+      hlo_module_config.debug_options().xla_gpu_cuda_data_dir();
+  if (!xla_gpu_cuda_data_dir.empty()) {
+    potential_cuda_roots.insert(potential_cuda_roots.begin(),
+                                xla_gpu_cuda_data_dir);
+  }
+  return potential_cuda_roots;
+}
+
+// Returns the directory containing nvvm libdevice files.
+string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
+  for (const string& cuda_root : GetCudaRootCandidates(hlo_module_config)) {
+    string libdevice_dir =
+        tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
+    VLOG(2) << "Looking for libdevice at " << libdevice_dir;
+    if (tensorflow::Env::Default()->IsDirectory(libdevice_dir).ok()) {
+      VLOG(2) << "Found libdevice dir " << libdevice_dir;
+      return libdevice_dir;
     }
-    VLOG(2) << "Unable to find potential libdevice dir "
-            << potential_libdevice_dir;
   }
-
   LOG(WARNING) << "Unable to find libdevice dir. Using '.'";
   // Last resort: maybe in the current folder.
   return ".";
@@ -145,6 +156,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
+    pipeline.AddPass<DynamicIndexSplitter>();
     pipeline.AddPass<GpuHloSupportChecker>();
     ReducePrecisionInsertion::AddPasses(
         &pipeline, hlo_module->config().debug_options(),
@@ -152,6 +164,14 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
 
     // TODO(b/64094172): make Call work on GPU instead of inlining.
     pipeline.AddPass<CallInliner>();
+    auto cost_model = [](HloInstruction* conv) {
+      // We need a cost model for GPUs. Currently, do nothing.
+      return false;
+    };
+    pipeline.AddPass<DotDecomposer>(false);
+    pipeline.AddPass<ConvolutionGroupConverter>(
+        cost_model,
+        /*convert_batch_groups_only=*/true);
     // Convert BF16 operations to F32 operations so that the GPU backend can
     // support BF16 operations without directly implementing a BF16 lowering for
     // most ops.
@@ -180,10 +200,9 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       // elimination has to come after that pass.
       pipeline.AddPass<ZeroSizedHloElimination>();
 
-      AlgebraicSimplifierOptions options(
-          [](const Shape&, const Shape&) { return false; });
-      options.set_enable_permutation_sort_replacement(true);
+      AlgebraicSimplifierOptions options;
       pass.AddPass<AlgebraicSimplifier>(options);
+      pass.AddPass<SortSimplifier>();
       pass.AddPass<TupleSimplifier>();
       pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<WhileLoopSimplifier>();
@@ -252,12 +271,8 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
 
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-    AlgebraicSimplifierOptions options(
-        /*valid_bitcast_callback=*/[](const Shape&, const Shape&) {
-          return true;
-        });
+    AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
-    options.set_enable_permutation_sort_replacement(true);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
     // Choose the fastest algorithm for each conv.
@@ -361,6 +376,7 @@ Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<FlattenCallGraph>();
   pipeline.AddPass<GpuCopyInsertion>();
+  pipeline.AddPass<GpuSanitizeConstantNames>();
   return pipeline.Run(hlo_module).status();
 }
 
@@ -478,14 +494,19 @@ void WarnIfBadDriverJITVersion() {
 
 // Compiles the given PTX string using ptxas and returns the resulting machine
 // code (i.e. a cubin) as a byte array.
-StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
-                                        int cc_minor,
-                                        bool disable_ptx_optimizations) {
+StatusOr<std::vector<uint8>> CompilePtx(
+    const string& ptx, int cc_major, int cc_minor,
+    const HloModuleConfig& hlo_module_config) {
   tracing::ScopedActivity activity("Compile PTX", /*is_expensive=*/true);
-  const string ptxas_path =
-      tensorflow::io::JoinPath(tensorflow::CudaRoot(), "bin", "ptxas");
-  VLOG(2) << "Checking ptxas at " << ptxas_path;
   auto env = tensorflow::Env::Default();
+  string ptxas_path;
+  for (const string& cuda_root : GetCudaRootCandidates(hlo_module_config)) {
+    ptxas_path = tensorflow::io::JoinPath(cuda_root, "bin", "ptxas");
+    VLOG(2) << "Looking for ptxas at " << ptxas_path;
+    if (env->FileExists(ptxas_path).ok()) {
+      break;
+    }
+  }
   TF_RETURN_IF_ERROR(env->FileExists(ptxas_path));
   VLOG(2) << "Using ptxas at " << ptxas_path;
 
@@ -520,7 +541,7 @@ StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
   if (VLOG_IS_ON(2)) {
     ptxas_args.push_back("-v");
   }
-  if (disable_ptx_optimizations) {
+  if (hlo_module_config.debug_options().xla_gpu_disable_ptxas_optimizations()) {
     ptxas_args.push_back("-O0");
   }
   ptxas_info_dumper.SetProgram(ptxas_path, ptxas_args);
@@ -685,12 +706,8 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     // Find the directory containing libdevice.  To avoid searching for it every
     // time, we have a one-element cache, keyed on the module's config's
     // cuda_data_dir.
-    const auto& config_cuda_data_dir =
-        module->config().debug_options().xla_gpu_cuda_data_dir();
-    if (cached_libdevice_dir_.empty() ||
-        cached_cuda_data_dir_ != config_cuda_data_dir) {
-      cached_cuda_data_dir_ = config_cuda_data_dir;
-      cached_libdevice_dir_ = GetLibdeviceDir(config_cuda_data_dir);
+    if (cached_libdevice_dir_.empty()) {
+      cached_libdevice_dir_ = GetLibdeviceDir(module->config());
     }
     libdevice_dir = cached_libdevice_dir_;
   }
@@ -743,9 +760,8 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     }
   }
 
-  const std::vector<uint8> cubin = CompilePtxOrGetCachedResult(
-      ptx, cc_major, cc_minor,
-      module->config().debug_options().xla_gpu_disable_ptxas_optimizations());
+  const std::vector<uint8> cubin =
+      CompilePtxOrGetCachedResult(ptx, cc_major, cc_minor, module->config());
 
   auto thunk_schedule = absl::make_unique<ThunkSchedule>(
       ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
@@ -779,7 +795,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
 
 std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
     const string& ptx, int cc_major, int cc_minor,
-    bool disable_ptx_optimizations) {
+    const HloModuleConfig& hlo_module_config) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompilePtxOrGetCachedResult");
   tracing::ScopedActivity activity("PTX->CUBIN", /*is_expensive=*/true);
   bool inserted;
@@ -807,8 +823,8 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
     if (inserted) {
       CHECK(!cache_value->compilation_done);
       if (!ptx.empty()) {
-        StatusOr<std::vector<uint8>> maybe_cubin = CompilePtx(
-            *cache_ptx, cc_major, cc_minor, disable_ptx_optimizations);
+        StatusOr<std::vector<uint8>> maybe_cubin =
+            CompilePtx(*cache_ptx, cc_major, cc_minor, hlo_module_config);
         if (maybe_cubin.ok()) {
           cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
           VLOG(2) << "Compiled PTX size:" << ptx.size()

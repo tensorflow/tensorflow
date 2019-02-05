@@ -124,6 +124,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":device_util",
+        ":numpy_dataset",
         ":reduce_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -137,7 +138,6 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
-        "//tensorflow/python/ops/losses",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )
@@ -184,9 +184,6 @@ py_test(
     name = "distribute_coordinator_test",
     srcs = ["distribute_coordinator_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -219,7 +216,9 @@ py_library(
         ":cross_device_ops",
         ":device_util",
         ":distribute_lib",
+        ":input_lib",
         ":multi_worker_util",
+        ":numpy_dataset",
         ":reduce_util",
         ":shared_variable_creator",
         ":values",
@@ -242,6 +241,70 @@ py_library(
 )
 
 py_library(
+    name = "parameter_server_strategy",
+    srcs = ["parameter_server_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":input_lib",
+        ":mirrored_strategy",
+        ":numpy_dataset",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python/distribute:cross_device_ops",
+        "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
+    name = "one_device_strategy",
+    srcs = ["one_device_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":distribute_lib",
+        ":input_lib",
+        ":numpy_dataset",
+        ":reduce_util",
+        ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:context",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "collective_all_reduce_strategy",
+    srcs = ["collective_all_reduce_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":mirrored_strategy",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:collective_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/distribute:cross_device_ops",
+        "//tensorflow/python/distribute:cross_device_utils",
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute:numpy_dataset",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
     name = "multi_worker_util",
     srcs = [
         "multi_worker_util.py",
@@ -250,6 +313,49 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:training",
+    ],
+)
+
+py_library(
+    name = "numpy_dataset",
+    srcs = ["numpy_dataset.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "numpy_dataset_test",
+    size = "small",
+    srcs = ["numpy_dataset_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":numpy_dataset",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/eager:test",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "input_lib",
+    srcs = ["input_lib.py"],
+    deps = [
+        ":device_util",
+        ":distribute_lib",
+        ":input_ops",
+        ":values",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -270,6 +376,7 @@ cuda_py_test(
         ":input_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/data/util:traverse",
         "//tensorflow/python:errors",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
@@ -277,16 +384,12 @@ cuda_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
     ],
-    tags = [
-        "no_pip",
-    ],
 )
 
 py_test(
     name = "multi_worker_util_test",
     srcs = ["multi_worker_util_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
     deps = [
         ":multi_worker_util",
         "//tensorflow/core:protos_all_py",
@@ -347,14 +450,12 @@ py_library(
     deps = [
         ":device_util",
         ":distribute_lib",
-        ":input_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/checkpointable:base",
         "@six_archive//:six",

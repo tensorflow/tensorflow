@@ -25,6 +25,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":learning_rate_schedule",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:distribute",
         "//tensorflow/python:framework",
@@ -34,6 +35,23 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/keras:backend_config",
+    ],
+)
+
+py_library(
+    name = "learning_rate_schedule",
+    srcs = [
+        "learning_rate_schedule.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/keras:generic_utils",
     ],
 )
 
@@ -172,9 +190,9 @@ cuda_py_test(
 
 py_test(
     name = "optimizer_v2_test",
-    size = "large",
+    size = "medium",
     srcs = ["optimizer_v2_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "no_windows",
     ],
@@ -191,6 +209,19 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "learning_rate_schedule_test",
+    size = "small",
+    srcs = ["learning_rate_schedule_test.py"],
+    deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -212,4 +243,5 @@ cuda_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
+    shard_count = 2,
 )

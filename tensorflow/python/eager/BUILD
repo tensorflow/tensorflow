@@ -1,11 +1,12 @@
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_py_test", "tf_cc_binary")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_logged_benchmark",
 )
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 cc_library(
     name = "pywrap_tfe_lib",
@@ -25,6 +26,7 @@ cc_library(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/c/eager:tape",
         "//tensorflow/core:framework",
@@ -55,6 +57,7 @@ py_library(
         ":execute",
         ":function",
         ":graph_only_ops",
+        ":profiler",
         ":tape",
         ":test",
         ":wrap_function",
@@ -86,6 +89,28 @@ py_library(
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "profiler",
+    srcs = ["profiler.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        "//tensorflow/python:pywrap_tensorflow",
+    ],
+)
+
+cuda_py_test(
+    name = "profiler_test",
+    srcs = ["profiler_test.py"],
+    additional_deps = [
+        ":profiler",
+        ":test",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/contrib/tpu/profiler:trace_events_proto_py",
     ],
 )
 
@@ -255,11 +280,10 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "execution_callbacks_test",
     srcs = ["execution_callbacks_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":execution_callbacks",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
@@ -373,11 +397,10 @@ tf_py_logged_benchmark(
     target = "//tensorflow/python/eager:benchmarks_test",
 )
 
-py_test(
+tf_py_test(
     name = "tape_test",
     srcs = ["tape_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":backprop",
         ":context",
         ":test",
@@ -414,20 +437,19 @@ cuda_py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "pywrap_tfe_test",
     srcs = ["pywrap_tfe_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":backprop",
         ":context",
         ":core",
         ":test",
+        "//third_party/py/numpy",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:random_ops",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -491,12 +513,24 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "def_function_test",
     srcs = ["def_function_test.py"],
-    srcs_version = "PY2AND3",
+    additional_deps = [
+        ":def_function",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+    ],
+)
+
+tf_xla_py_test(
+    name = "def_function_xla_test",
+    srcs = ["def_function_xla_test.py"],
+    tags = ["no_pip"],
     deps = [
         ":def_function",
+        "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
@@ -519,13 +553,24 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "wrap_function_test",
     srcs = ["wrap_function_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":wrap_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
+    ],
+)
+
+py_library(
+    name = "remote",
+    srcs = ["remote.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/eager:context",
     ],
 )

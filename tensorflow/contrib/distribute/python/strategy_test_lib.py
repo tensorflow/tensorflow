@@ -18,7 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
@@ -31,6 +34,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -41,25 +45,26 @@ class _TestException(Exception):
   pass
 
 
-# May be the argument to either distribution.call_for_each_replica() or
+# May be the argument to either distribution.extended.call_for_each_replica() or
 # get_replica_context().merge_call()
 def _raise_exception_fn(_=None):
   raise _TestException()
 
 
-# Must be the argument to a distribution.call_for_each_replica() call, calls a
-# get_replica_context().merge_call() that raises an exception.
+# Must be the argument to a distribution.extended.call_for_each_replica() call,
+# calls a get_replica_context().merge_call() that raises an exception.
 def _merge_raises_fn():
   ds_context.get_replica_context().merge_call(_raise_exception_fn)
 
 
 # Must be the argument to a get_replica_context().merge_call() call, calls
-# dist.call_for_each_replica() with a function that raises an exception.
+# dist.extended.call_for_each_replica() with a function that raises an
+# exception.
 def _call_raises_fn(dist):
-  dist.call_for_each_replica(_raise_exception_fn)
+  dist.extended.call_for_each_replica(_raise_exception_fn)
 
 
-# Must be the argument to a distribution.call_for_each_replica() call,
+# Must be the argument to a distribution.extended.call_for_each_replica() call,
 # calls a get_replica_context().merge_call() that calls a
 # call_for_each_replica() that raises an exception.
 def _merge_call_raises_fn():
@@ -67,15 +72,16 @@ def _merge_call_raises_fn():
 
 
 # Must be the argument to a get_replica_context().merge_call() call, calls
-# dist.call_for_each_replica() with a function that calls a
+# dist.extended.call_for_each_replica() with a function that calls a
 # get_replica_context().merge_call() that raises an exception.
 def _call_merge_raises_fn(dist):
-  dist.call_for_each_replica(_merge_raises_fn)
+  dist.extended.call_for_each_replica(_merge_raises_fn)
 
 
-# Must be the argument to a distribution.call_for_each_replica() call, calls a
-# get_replica_context().merge_call() that calls a call_for_each_replica() that
-# calls a get_replica_context().merge_call() that raises an exception.
+# Must be the argument to a distribution.extended.call_for_each_replica() call,
+# calls a get_replica_context().merge_call() that calls a
+# call_for_each_replica() that calls a get_replica_context().merge_call() that
+# raises an exception.
 def _merge_call_merge_raises_fn():
   ds_context.get_replica_context().merge_call(_call_merge_raises_fn)
 
@@ -106,21 +112,21 @@ class DistributionTestBase(test.TestCase):
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_replica(grad_fn, args=(one,))
+        g_v = d.extended.call_for_each_replica(grad_fn, args=(one,))
 
         # Update the variables using the gradients and the update() function.
         before_list = []
         after_list = []
         for g, v in g_v:
-          fetched = d.read_var(v)
+          fetched = d.extended.read_var(v)
           before_list.append(fetched)
           # control_dependencies irrelevant but harmless in eager execution
           with ops.control_dependencies([fetched]):
             g = d.extended.reduce_to(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
-            with ops.control_dependencies(d.update(
-                v, update, g, grouped=False)):
-              after_list.append(d.read_var(v))
+            with ops.control_dependencies(d.extended.update(
+                v, update, args=(g,), group=False)):
+              after_list.append(d.extended.read_var(v))
         return before_list, after_list
 
       for i in range(10):
@@ -162,20 +168,20 @@ class DistributionTestBase(test.TestCase):
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_replica(grad_fn, args=(one,))
+        g_v = d.extended.call_for_each_replica(grad_fn, args=(one,))
 
         # Update the variables using the gradients and the update() function.
         before_list = []
         after_list = []
         for g, v in g_v:
-          fetched = d.read_var(v)
+          fetched = d.extended.read_var(v)
           before_list.append(fetched)
           with ops.control_dependencies([fetched]):
             g = d.extended.reduce_to(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
-            with ops.control_dependencies(d.update(
-                v, update, g, grouped=False)):
-              after_list.append(d.read_var(v))
+            with ops.control_dependencies(d.extended.update(
+                v, update, args=(g,), group=False)):
+              after_list.append(d.extended.read_var(v))
         return before_list, after_list
 
       before_out, after_out = step()
@@ -202,23 +208,23 @@ class DistributionTestBase(test.TestCase):
         self.assertFalse(expected_devices[replica_id])
         expected_devices[replica_id] = True
 
-      d.call_for_each_replica(mark_devices_fn)
+      d.extended.call_for_each_replica(mark_devices_fn)
       self.assertAllEqual(expected_devices,
                           [True] * len(d.extended.worker_devices))
 
   def _test_call_and_merge_exceptions(self, dist):
     with dist.scope():
       with self.assertRaises(_TestException):
-        dist.call_for_each_replica(_raise_exception_fn)
+        dist.extended.call_for_each_replica(_raise_exception_fn)
       with self.assertRaises(_TestException):
-        dist.call_for_each_replica(_merge_raises_fn)
+        dist.extended.call_for_each_replica(_merge_raises_fn)
       with self.assertRaises(_TestException):
-        dist.call_for_each_replica(_merge_call_raises_fn)
+        dist.extended.call_for_each_replica(_merge_call_raises_fn)
       with self.assertRaises(_TestException):
-        dist.call_for_each_replica(_merge_call_merge_raises_fn)
+        dist.extended.call_for_each_replica(_merge_call_merge_raises_fn)
 
   def _input_fn_to_test_input_context(self,
-                                      dataset_fn,
+                                      dataset_or_callable_fn,
                                       expected_num_replicas_in_sync,
                                       expected_num_input_pipelines,
                                       expected_input_pipeline_id):
@@ -242,33 +248,35 @@ class DistributionTestBase(test.TestCase):
         self.assertEqual(worker_id_counter[0], input_context.input_pipeline_id)
         worker_id_counter[0] += 1
 
-      return dataset_fn()
+      return dataset_or_callable_fn()
 
     return _input_fn
 
   def _test_input_fn_iterator(self, iterator, devices, expected_values,
-                              sess=None):
+                              sess=None, test_reinitialize=True):
     evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
     evaluate(iterator.initialize())
 
     for expected_value in expected_values:
       next_element = iterator.get_next()
       computed_value = evaluate(
-          [values.select_device(d, next_element) for d in devices])
+          [values.select_replica(r, next_element) for r in range(len(devices))])
       self.assertEqual(expected_value, computed_value)
 
     with self.assertRaises(errors.OutOfRangeError):
       next_element = iterator.get_next()
-      evaluate([values.select_device(d, next_element) for d in devices])
+      evaluate(
+          [values.select_replica(r, next_element) for r in range(len(devices))])
 
     # After re-initializing the iterator, should be able to iterate again.
-    evaluate(iterator.initialize())
+    if test_reinitialize:
+      evaluate(iterator.initialize())
 
-    for expected_value in expected_values:
-      next_element = iterator.get_next()
-      computed_value = evaluate(
-          [values.select_device(d, next_element) for d in devices])
-      self.assertEqual(expected_value, computed_value)
+      for expected_value in expected_values:
+        next_element = iterator.get_next()
+        computed_value = evaluate([values.select_replica(r, next_element)
+                                   for r in range(len(devices))])
+        self.assertEqual(expected_value, computed_value)
 
   def _test_global_step_update(self, strategy):
     with strategy.scope():
@@ -286,8 +294,195 @@ class DistributionTestBase(test.TestCase):
         value = global_step.read_value()
         return train_op, value
 
-      train_ops, value = strategy.call_for_each_replica(model_fn)
+      train_ops, value = strategy.extended.call_for_each_replica(model_fn)
       self.evaluate(strategy.group(train_ops))
       global_step_tensors = strategy.unwrap(value)
       global_step_values = self.evaluate(global_step_tensors)
       self.assertEqual((1,) * len(global_step_tensors), global_step_values)
+
+  def _test_numpy_iterator(self, strategy):
+    with strategy.scope(), self.cached_session() as sess:
+      x = np.asarray([[1, 2], [6, 12], [2, 4],
+                      [5, 10], [3, 6], [4, 8]])
+      y = np.asarray([5, 4, 3, 2, 1, 0])
+      batch_size = 6
+      if not strategy.extended._global_batch_size:  # pylint: disable=protected-access
+        batch_size = batch_size // strategy.num_replicas_in_sync
+      i = strategy.experimental_make_numpy_iterator(
+          (x, y), batch_size=batch_size, num_epochs=2, shuffle=None,
+          session=sess)
+      self.evaluate(i.initialize())
+
+      def run_and_concatenate(strategy, i):
+        x, y = strategy.experimental_run(lambda z: z, i)
+        x, y = self.evaluate((strategy.unwrap(x), strategy.unwrap(y)))
+        return np.concatenate(x), np.concatenate(y)
+
+      x_1, y_1 = run_and_concatenate(strategy, i)
+      self.assertAllEqual(x, x_1)
+      self.assertAllEqual(y, y_1)
+      x_2, y_2 = run_and_concatenate(strategy, i)
+      self.assertAllEqual(x, x_2)
+      self.assertAllEqual(y, y_2)
+      with self.assertRaises(errors.OutOfRangeError):
+        run_and_concatenate(strategy, i)
+
+
+class OneDeviceDistributionTestBase(test.TestCase):
+  """Some tests that should work with any one-device DistributionStrategy."""
+
+  def _test_all_reduce_sum(self, strategy):
+    self._test_collective_comms(
+        strategy, _all_sum, inputs=(4., [42., 43.]), expected=(4., [42., 43.]))
+
+  def _test_all_reduce_sum_gradients(self, strategy):
+    self._test_collective_comms_gradients(
+        strategy, _all_sum, inputs=[4.], expected_grads=[4.])
+
+  def _test_all_reduce_sum_gradient_tape(self, strategy):
+    self._test_collective_comms_gradient_tape(
+        strategy, _all_sum, inputs=[4.], expected_grads=[4.])
+
+  def _test_all_reduce_mean(self, strategy):
+    self._test_collective_comms(
+        strategy, _all_mean, inputs=(2., [21., 22.]), expected=(2., [21., 22.]))
+
+  def _test_all_reduce_mean_gradients(self, strategy):
+    self._test_collective_comms_gradients(
+        strategy, _all_mean, inputs=[5.], expected_grads=[5.])
+
+  def _test_all_reduce_mean_gradient_tape(self, strategy):
+    self._test_collective_comms_gradient_tape(
+        strategy, _all_mean, inputs=[5.], expected_grads=[5.])
+
+  def _test_collective_comms(self, strategy, comm_fn, inputs, expected):
+    inputs = strategy.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.from_tensors(inputs))
+
+    self.evaluate(inputs.initialize())
+    outputs = self.evaluate(
+        list(map(strategy.unwrap, strategy.experimental_run(comm_fn, inputs))))
+    self.assertAllEqual([expected[0]], outputs[0])
+    self.assertAllEqual([expected[1]], outputs[1])
+
+  def _test_collective_comms_gradients(
+      self, strategy, comm_fn, inputs, expected_grads):
+    if context.executing_eagerly():
+      self.skipTest("`tf.gradients` is not supported with eager execution.")
+
+    def step(c):
+      x = constant_op.constant(42.)
+      y = comm_fn(x) * c
+      return gradients_impl.gradients(y, [x])[0]
+
+    inputs = strategy.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.from_tensors(inputs))
+
+    self.evaluate(inputs.initialize())
+    self.assertAllEqual(
+        expected_grads,
+        self.evaluate(strategy.unwrap(strategy.experimental_run(step, inputs))))
+
+  def _test_collective_comms_gradient_tape(
+      self, strategy, comm_fn, inputs, expected_grads):
+    def step(c):
+      x = constant_op.constant(42.)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = comm_fn(x) * c
+      return tape.gradient(y, x)
+
+    inputs = strategy.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.from_tensors(inputs))
+
+    self.evaluate(inputs.initialize())
+    self.assertAllEqual(
+        expected_grads,
+        self.evaluate(strategy.unwrap(strategy.experimental_run(step, inputs))))
+
+
+class TwoDeviceDistributionTestBase(test.TestCase):
+  """Some tests that should work with any two-device DistributionStrategy."""
+
+  def _test_all_reduce_sum(self, strategy):
+    self._test_collective_comms(
+        strategy, _all_sum,
+        inputs=([1., 3.], [[39., 2.], [3., 41.]]),
+        expected=(4., [42., 43.]))
+
+  def _test_all_reduce_sum_gradients(self, strategy):
+    self._test_collective_comms_gradients(
+        strategy, _all_sum, inputs=[1., 3.], expected_grads=[4., 4.])
+
+  def _test_all_reduce_sum_gradient_tape(self, strategy):
+    self._test_collective_comms_gradient_tape(
+        strategy, _all_sum, inputs=[1., 3.], expected_grads=[4., 4.])
+
+  def _test_all_reduce_mean(self, strategy):
+    self._test_collective_comms(
+        strategy, _all_mean,
+        inputs=([1., 3.], [[39., 2.], [3., 41.]]),
+        expected=(2., [21., 21.5]))
+
+  def _test_all_reduce_mean_gradients(self, strategy):
+    self._test_collective_comms_gradients(
+        strategy, _all_mean, inputs=[1., 3.], expected_grads=[2., 2.])
+
+  def _test_all_reduce_mean_gradient_tape(self, strategy):
+    self._test_collective_comms_gradient_tape(
+        strategy, _all_mean, inputs=[1., 3.], expected_grads=[2., 2.])
+
+  def _test_collective_comms(self, strategy, comm_fn, inputs, expected):
+    inputs = strategy.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.from_tensor_slices(inputs))
+
+    self.evaluate(inputs.initialize())
+    outputs = self.evaluate(
+        list(map(strategy.unwrap, strategy.experimental_run(comm_fn, inputs))))
+    self.assertAllEqual([expected[0], expected[0]], outputs[0])
+    self.assertAllEqual([expected[1], expected[1]], outputs[1])
+
+  def _test_collective_comms_gradients(
+      self, strategy, comm_fn, inputs, expected_grads):
+    if context.executing_eagerly():
+      self.skipTest("`tf.gradients` is not supported with eager execution.")
+
+    def step(c):
+      x = constant_op.constant(42.)
+      y = comm_fn(x) * c
+      return gradients_impl.gradients(y, [x])[0]
+
+    inputs = strategy.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.from_tensor_slices(inputs))
+
+    self.evaluate(inputs.initialize())
+    self.assertAllEqual(
+        expected_grads,
+        self.evaluate(strategy.unwrap(strategy.experimental_run(step, inputs))))
+
+  def _test_collective_comms_gradient_tape(
+      self, strategy, comm_fn, inputs, expected_grads):
+    def step(c):
+      x = constant_op.constant(42.)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = comm_fn(x) * c
+      return tape.gradient(y, x)
+
+    inputs = strategy.make_input_fn_iterator(
+        lambda _: dataset_ops.Dataset.from_tensor_slices(inputs))
+
+    self.evaluate(inputs.initialize())
+    self.assertAllEqual(
+        expected_grads,
+        self.evaluate(strategy.unwrap(strategy.experimental_run(step, inputs))))
+
+
+def _all_sum(value):
+  ctx = ds_context.get_replica_context()
+  return ctx.all_reduce(reduce_util.ReduceOp.SUM, value)
+
+
+def _all_mean(value):
+  ctx = ds_context.get_replica_context()
+  return ctx.all_reduce(reduce_util.ReduceOp.MEAN, value)

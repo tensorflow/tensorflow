@@ -200,7 +200,8 @@ def matches(node, pattern):
     bool
   """
   if isinstance(pattern, str):
-    pattern = parser.parse_expression(pattern)
+    pattern, = parser.parse_str(pattern).body
+
   matcher = PatternMatcher(pattern)
   matcher.visit(node)
   return matcher.matches
@@ -314,8 +315,8 @@ def parallel_walk(node, other):
                 f, n_child, o_child))
 
 
-class FunctionDefMatcher(gast.NodeVisitor):
-  """Finds nodes that match a given function's signature."""
+class LambdaDefinitionMatcher(gast.NodeVisitor):
+  """Finds lambda nodes that match a given lambda's signature."""
 
   def __init__(self, fn):
     self.fn = fn
@@ -358,18 +359,8 @@ class FunctionDefMatcher(gast.NodeVisitor):
 
     self.matching_nodes.append(node)
 
-  def visit_FunctionDef(self, node):
-    self.generic_visit(node)
-
-    if self.fn.__name__ != node.name:
-      return
-    if not self._argspec_matches(node):
-      return
-
-    self.matching_nodes.append(node)
-
 
 def find_matching_definitions(node, f):
-  matcher = FunctionDefMatcher(f)
+  matcher = LambdaDefinitionMatcher(f)
   matcher.visit(node)
   return tuple(matcher.matching_nodes)

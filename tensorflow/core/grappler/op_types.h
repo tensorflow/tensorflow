@@ -75,6 +75,7 @@ bool IsHistogramSummary(const NodeDef& node);
 bool IsIdentity(const NodeDef& node);
 bool IsIdentityN(const NodeDef& node);
 bool IsIdentityNSingleInput(const NodeDef& node);
+bool IsIf(const NodeDef& node);
 bool IsIgamma(const NodeDef& node);
 bool IsIgammac(const NodeDef& node);
 bool IsImag(const NodeDef& node);
@@ -114,6 +115,7 @@ bool IsPow(const NodeDef& node);
 bool IsQueue(const NodeDef& node);
 bool IsRandomShuffle(const NodeDef& node);
 bool IsRank(const NodeDef& node);
+bool IsReadVariableOp(const NodeDef& node);
 bool IsReal(const NodeDef& node);
 bool IsRealDiv(const NodeDef& node);
 bool IsRelu(const NodeDef& node);
@@ -167,6 +169,7 @@ bool IsTruncateDiv(const NodeDef& node);
 bool IsTruncateMod(const NodeDef& node);
 bool IsUnpack(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
+bool IsWhile(const NodeDef& node);
 bool IsZeta(const NodeDef& node);
 
 // Return true if the op is an aggregation (e.g. Add, AddN).
@@ -180,6 +183,14 @@ bool IsCommutative(const NodeDef& node);
 // Returns true if the node is known to use persistent memory to store its
 // value.
 bool IsPersistent(const NodeDef& node);
+
+// Returns true if the node belongs to the NC_DATASET class (see graph/graph.h).
+bool IsDataset(const NodeDef& node);
+
+// Returns true if the node op is marked as stateful, or if it was not found in
+// op_registry.
+bool IsStateful(const NodeDef node, const OpRegistryInterface* op_registry);
+bool IsStateful(const NodeDef node);  // use OpRegistry::Global()
 
 bool IsFreeOfSideEffect(const NodeDef& node,
                         const OpRegistryInterface* op_registry);

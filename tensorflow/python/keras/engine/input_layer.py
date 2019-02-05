@@ -23,10 +23,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.layers.InputLayer')
+@keras_export('keras.layers.InputLayer')
 class InputLayer(base_layer.Layer):
   """Layer to be used as an entry point into a Network (a graph of layers).
 
@@ -77,6 +77,9 @@ class InputLayer(base_layer.Layer):
         dtype = backend.floatx()
       else:
         dtype = backend.dtype(input_tensor)
+    elif input_tensor is not None and input_tensor.dtype != dtype:
+      raise ValueError('`input_tensor.dtype` differs from `dtype`: %s vs. %s' %
+                       (input_tensor.dtype, dtype))
     super(InputLayer, self).__init__(dtype=dtype, name=name)
     self.built = True
     self.sparse = sparse
@@ -120,6 +123,7 @@ class InputLayer(base_layer.Layer):
     # Create an input node to add to self.outbound_node
     # and set output_tensors' _keras_history.
     input_tensor._keras_history = (self, 0, 0)  # pylint: disable=protected-access
+    input_tensor._keras_mask = None
     base_layer.Node(
         self,
         inbound_layers=[],
@@ -138,7 +142,7 @@ class InputLayer(base_layer.Layer):
     return config
 
 
-@tf_export('keras.layers.Input', 'keras.Input')
+@keras_export('keras.layers.Input', 'keras.Input')
 def Input(  # pylint: disable=invalid-name
     shape=None,
     batch_size=None,
@@ -215,8 +219,6 @@ def Input(  # pylint: disable=invalid-name
   if kwargs:
     raise ValueError('Unrecognized keyword arguments:', kwargs.keys())
 
-  if dtype is None:
-    dtype = backend.floatx()
   if shape is None and tensor is None:
     raise ValueError('Please provide to Input either a `shape`'
                      ' or a `tensor` argument. Note that '

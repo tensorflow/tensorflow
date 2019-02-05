@@ -209,12 +209,12 @@ class NestTest(parameterized.TestCase, test.TestCase):
   def testFlatten_numpyIsNotFlattened(self):
     structure = np.array([1, 2, 3])
     flattened = nest.flatten(structure)
-    self.assertEqual(len(flattened), 1)
+    self.assertLen(flattened, 1)
 
   def testFlatten_stringIsNotFlattened(self):
     structure = "lots of letters"
     flattened = nest.flatten(structure)
-    self.assertEqual(len(flattened), 1)
+    self.assertLen(flattened, 1)
     unflattened = nest.pack_sequence_as("goodbye", flattened)
     self.assertEqual(structure, unflattened)
 
@@ -510,30 +510,28 @@ class NestTest(parameterized.TestCase, test.TestCase):
   def testAssertShallowStructure(self):
     inp_ab = ["a", "b"]
     inp_abc = ["a", "b", "c"]
-    expected_message = (
-        "The two structures don't have the same sequence length. Input "
-        "structure has length 2, while shallow structure has length 3.")
-    with self.assertRaisesRegexp(ValueError, expected_message):
-      nest.assert_shallow_structure(inp_abc, inp_ab)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        nest._INPUT_TREE_SMALLER_THAN_SHALLOW_TREE.format(
+            shallow_size=len(inp_abc),
+            input_size=len(inp_ab))):
+      nest.assert_shallow_structure(shallow_tree=inp_abc, input_tree=inp_ab)
 
     inp_ab1 = [(1, 1), (2, 2)]
     inp_ab2 = [[1, 1], [2, 2]]
-    expected_message = (
-        "The two structures don't have the same sequence type. Input structure "
-        "has type <(type|class) 'tuple'>, while shallow structure has type "
-        "<(type|class) 'list'>.")
-    with self.assertRaisesRegexp(TypeError, expected_message):
+    with self.assertRaisesWithLiteralMatch(
+        TypeError,
+        nest._STRUCTURES_HAVE_MISMATCHING_TYPES.format(
+            shallow_type=type(inp_ab2[0]),
+            input_type=type(inp_ab1[0]))):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
     nest.assert_shallow_structure(inp_ab2, inp_ab1, check_types=False)
 
     inp_ab1 = {"a": (1, 1), "b": {"c": (2, 2)}}
     inp_ab2 = {"a": (1, 1), "b": {"d": (2, 2)}}
-    expected_message = (
-        r"The two structures don't have the same keys. Input "
-        r"structure has keys \['c'\], while shallow structure has "
-        r"keys \['d'\].")
-
-    with self.assertRaisesRegexp(ValueError, expected_message):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        nest._SHALLOW_TREE_HAS_INVALID_KEYS.format(["d"])):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
 
     inp_ab = collections.OrderedDict([("a", 1), ("b", (2, 3))])
@@ -719,7 +717,9 @@ class NestTest(parameterized.TestCase, test.TestCase):
     # Non-equal dicts.
     inp_val = dict(a=2, b=3)
     inp_ops = dict(a=dict(add=1, mul=2), c=dict(add=2, mul=3))
-    with self.assertRaisesRegexp(ValueError, "same keys"):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        nest._SHALLOW_TREE_HAS_INVALID_KEYS.format(["b"])):
       nest.map_structure_up_to(
           inp_val,
           lambda val, ops: (val + ops["add"]) * ops["mul"], inp_val, inp_ops)
@@ -736,7 +736,9 @@ class NestTest(parameterized.TestCase, test.TestCase):
     # Non-equal dict/mapping.
     inp_val = dict(a=2, b=3)
     inp_ops = _CustomMapping(a=dict(add=1, mul=2), c=dict(add=2, mul=3))
-    with self.assertRaisesRegexp(ValueError, "same keys"):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        nest._SHALLOW_TREE_HAS_INVALID_KEYS.format(["b"])):
       nest.map_structure_up_to(
           inp_val,
           lambda val, ops: (val + ops["add"]) * ops["mul"], inp_val, inp_ops)
@@ -791,37 +793,46 @@ class NestTest(parameterized.TestCase, test.TestCase):
       expected = inputs_expected["expected"]
       self.assertEqual(list(nest.yield_flat_paths(inputs)), expected)
 
-  def testFlattenWithStringPaths(self):
-    for inputs_expected in (
-        {"inputs": [], "expected": []},
-        {"inputs": [23, "42"], "expected": [("0", 23), ("1", "42")]},
-        {"inputs": [[[[108]]]], "expected": [("0/0/0/0", 108)]}):
-      inputs = inputs_expected["inputs"]
-      expected = inputs_expected["expected"]
-      self.assertEqual(
-          nest.flatten_with_joined_string_paths(inputs, separator="/"),
-          expected)
+  # We cannot define namedtuples within @parameterized argument lists.
+  # pylint: disable=invalid-name
+  Foo = collections.namedtuple("Foo", ["a", "b"])
+  Bar = collections.namedtuple("Bar", ["c", "d"])
+  # pylint: enable=invalid-name
 
-  # Need a separate test for namedtuple as we can't declare tuple definitions
-  # in the @parameterized arguments.
-  def testFlattenNamedTuple(self):
-    # pylint: disable=invalid-name
-    Foo = collections.namedtuple("Foo", ["a", "b"])
-    Bar = collections.namedtuple("Bar", ["c", "d"])
-    # pylint: enable=invalid-name
-    test_cases = [
-        (Foo(a=3, b=Bar(c=23, d=42)),
-         [("a", 3), ("b/c", 23), ("b/d", 42)]),
-        (Foo(a=Bar(c=23, d=42), b=Bar(c=0, d="something")),
-         [("a/c", 23), ("a/d", 42), ("b/c", 0), ("b/d", "something")]),
-        (Bar(c=42, d=43),
-         [("c", 42), ("d", 43)]),
-        (Bar(c=[42], d=43),
-         [("c/0", 42), ("d", 43)]),
-    ]
-    for inputs, expected in test_cases:
-      self.assertEqual(
-          list(nest.flatten_with_joined_string_paths(inputs)), expected)
+  @parameterized.parameters([
+      dict(inputs=[], expected=[]),
+      dict(inputs=[23, "42"], expected=[("0", 23), ("1", "42")]),
+      dict(inputs=[[[[108]]]], expected=[("0/0/0/0", 108)]),
+      dict(inputs=Foo(a=3, b=Bar(c=23, d=42)),
+           expected=[("a", 3), ("b/c", 23), ("b/d", 42)]),
+      dict(inputs=Foo(a=Bar(c=23, d=42), b=Bar(c=0, d="thing")),
+           expected=[("a/c", 23), ("a/d", 42), ("b/c", 0), ("b/d", "thing")]),
+      dict(inputs=Bar(c=42, d=43),
+           expected=[("c", 42), ("d", 43)]),
+      dict(inputs=Bar(c=[42], d=43),
+           expected=[("c/0", 42), ("d", 43)]),
+  ])
+  def testFlattenWithStringPaths(self, inputs, expected):
+    self.assertEqual(
+        nest.flatten_with_joined_string_paths(inputs, separator="/"),
+        expected)
+
+  @parameterized.parameters([
+      dict(inputs=[], expected=[]),
+      dict(inputs=[23, "42"], expected=[((0,), 23), ((1,), "42")]),
+      dict(inputs=[[[[108]]]], expected=[((0, 0, 0, 0), 108)]),
+      dict(inputs=Foo(a=3, b=Bar(c=23, d=42)),
+           expected=[(("a",), 3), (("b", "c"), 23), (("b", "d"), 42)]),
+      dict(inputs=Foo(a=Bar(c=23, d=42), b=Bar(c=0, d="thing")),
+           expected=[(("a", "c"), 23), (("a", "d"), 42), (("b", "c"), 0),
+                     (("b", "d"), "thing")]),
+      dict(inputs=Bar(c=42, d=43),
+           expected=[(("c",), 42), (("d",), 43)]),
+      dict(inputs=Bar(c=[42], d=43),
+           expected=[(("c", 0), 42), (("d",), 43)]),
+  ])
+  def testFlattenWithTuplePaths(self, inputs, expected):
+    self.assertEqual(nest.flatten_with_tuple_paths(inputs), expected)
 
   @parameterized.named_parameters(
       ("tuples", (1, 2), (3, 4), True, (("0", 4), ("1", 6))),
@@ -840,17 +851,54 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(expected, result)
 
   @parameterized.named_parameters(
-      ("tuples", (1, 2), (3, 4, 5), ValueError),
+      ("tuples", (1, 2, 3), (4, 5), ValueError),
       ("dicts", {"a": 1}, {"b": 2}, ValueError),
       ("mixed", (1, 2), [3, 4], TypeError),
       ("nested",
-       {"a": [2, 3], "b": [1, 3]},
-       {"b": [5, 6, 7], "a": [8, 9]},
+       {"a": [2, 3, 4], "b": [1, 3]},
+       {"b": [5, 6], "a": [8, 9]},
        ValueError
       ))
   def testMapWithPathsIncompatibleStructures(self, s1, s2, error_type):
     with self.assertRaises(error_type):
       nest.map_structure_with_paths(lambda path, *s: 0, s1, s2)
+
+  @parameterized.named_parameters([
+      dict(testcase_name="Tuples", s1=(1, 2), s2=(3, 4),
+           check_types=True, expected=(((0,), 4), ((1,), 6))),
+      dict(testcase_name="Dicts", s1={"a": 1, "b": 2}, s2={"b": 4, "a": 3},
+           check_types=True, expected={"a": (("a",), 4), "b": (("b",), 6)}),
+      dict(testcase_name="Mixed", s1=(1, 2), s2=[3, 4],
+           check_types=False, expected=(((0,), 4), ((1,), 6))),
+      dict(testcase_name="Nested",
+           s1={"a": [2, 3], "b": [1, 2, 3]},
+           s2={"b": [5, 6, 7], "a": [8, 9]},
+           check_types=True,
+           expected={"a": [(("a", 0), 10), (("a", 1), 12)],
+                     "b": [(("b", 0), 6), (("b", 1), 8), (("b", 2), 10)]}),
+  ])
+  def testMapWithTuplePathsCompatibleStructures(
+      self, s1, s2, check_types, expected):
+    def path_and_sum(path, *values):
+      return path, sum(values)
+    result = nest.map_structure_with_tuple_paths(
+        path_and_sum, s1, s2, check_types=check_types)
+    self.assertEqual(expected, result)
+
+  @parameterized.named_parameters([
+      dict(testcase_name="Tuples", s1=(1, 2, 3), s2=(4, 5),
+           error_type=ValueError),
+      dict(testcase_name="Dicts", s1={"a": 1}, s2={"b": 2},
+           error_type=ValueError),
+      dict(testcase_name="Mixed", s1=(1, 2), s2=[3, 4], error_type=TypeError),
+      dict(testcase_name="Nested",
+           s1={"a": [2, 3, 4], "b": [1, 3]},
+           s2={"b": [5, 6], "a": [8, 9]},
+           error_type=ValueError)
+  ])
+  def testMapWithTuplePathsIncompatibleStructures(self, s1, s2, error_type):
+    with self.assertRaises(error_type):
+      nest.map_structure_with_tuple_paths(lambda path, *s: 0, s1, s2)
 
 
 class NestBenchmark(test.Benchmark):

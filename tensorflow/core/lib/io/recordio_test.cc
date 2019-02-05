@@ -62,6 +62,10 @@ class StringDest : public WritableFile {
     contents_->append(slice.data(), slice.size());
     return Status::OK();
   }
+  Status Tell(int64* pos) override {
+    *pos = contents_->size();
+    return Status::OK();
+  }
 
  private:
   string* contents_;

@@ -1,4 +1,8 @@
+
 MAKEFILE_DIR := tensorflow/lite/experimental/micro/tools/make
+
+# Pull in some convenience functions.
+include $(MAKEFILE_DIR)/helper_functions.inc
 
 # Try to figure out the host system
 HOST_OS :=
@@ -21,17 +25,22 @@ HOST_ARCH := $(shell if [[ $(shell uname -m) =~ i[345678]86 ]]; then echo x86_32
 TARGET := $(HOST_OS)
 TARGET_ARCH := $(HOST_ARCH)
 
+# Specify TAGS on the command line to add a particular set of specialized
+# implementations, for example TAGS="CMSIS disco_f746ng" to target a Discovery
+# STM32F746NG board, using the CMSIS library's implementations where possible.
+ALL_TAGS := $(TAGS) $(TARGET)
+
 INCLUDES := \
 -I. \
--I$(MAKEFILE_DIR)/../../../../../ \
--I$(MAKEFILE_DIR)/../../../../../../ \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
--I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
--I$(OBJDIR)
-# This is at the end so any globally-installed frameworks like protobuf don't
-# override local versions in the source tree.
-INCLUDES += -I/usr/local/include
+-I$(MAKEFILE_DIR)/downloads/flatbuffers/include
+
+# These are the include paths added to any generated project file.
+PROJECT_INCLUDES := \
+. \
+third_party/gemmlowp \
+third_party/flatbuffers/include
 
 TEST_SCRIPT := tensorflow/lite/experimental/micro/testing/test_linux_binary.sh
 
@@ -52,32 +61,12 @@ CC_PREFIX :=
 # runtime that can be linked in to other programs.
 MICROLITE_LIB_NAME := libtensorflow-microlite.a
 
-# Test binary for the microcontroller speech model.
-MICRO_SPEECH_TEST_SRCS := \
-tensorflow/lite/experimental/micro/examples/micro_speech/micro_speech_test.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/tiny_conv_model_data.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/no_features_data.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/yes_features_data.cc
-
-# Test binary for the microcontroller speech model.
-PREPROCESSOR_TEST_SRCS := \
-tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor_test.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/no_30ms_sample_data.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/yes_30ms_sample_data.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/no_power_spectrum_data.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/yes_power_spectrum_data.cc
-
-PREPROCESSOR_REFERENCE_TEST_SRCS = \
-$(PREPROCESSOR_TEST_SRCS) \
-tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor.cc
-
-PREPROCESSOR_FIXED_TEST_SRCS += \
-$(PREPROCESSOR_TEST_SRCS) \
-tensorflow/lite/experimental/micro/examples/micro_speech/fixed_point/preprocessor.cc
-
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/experimental/micro/*test.cc) \
 $(wildcard tensorflow/lite/experimental/micro/kernels/*test.cc)
+
+MICROLITE_TEST_HDRS := \
+$(wildcard tensorflow/lite/experimental/micro/testing/*.h)
 
 MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/experimental/micro/*.cc) \
@@ -89,6 +78,55 @@ tensorflow/lite/core/api/op_resolver.cc \
 tensorflow/lite/kernels/kernel_util.cc \
 tensorflow/lite/kernels/internal/quantization_util.cc
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
+MICROLITE_CC_SRCS := $(call specialize,$(MICROLITE_CC_SRCS))
+
+MICROLITE_CC_HDRS := \
+$(wildcard tensorflow/lite/experimental/micro/*.h) \
+$(wildcard tensorflow/lite/experimental/micro/kernels/*.h) \
+LICENSE \
+tensorflow/lite/c/c_api_internal.h \
+tensorflow/lite/c/builtin_op_data.h \
+tensorflow/lite/core/api/error_reporter.h \
+tensorflow/lite/core/api/flatbuffer_conversions.h \
+tensorflow/lite/core/api/op_resolver.h \
+tensorflow/lite/kernels/kernel_util.h \
+tensorflow/lite/kernels/op_macros.h \
+tensorflow/lite/kernels/padding.h \
+tensorflow/lite/kernels/internal/common.h \
+tensorflow/lite/kernels/internal/compatibility.h \
+tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h \
+tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
+tensorflow/lite/kernels/internal/reference/fully_connected.h \
+tensorflow/lite/kernels/internal/reference/softmax.h \
+tensorflow/lite/kernels/internal/round.h \
+tensorflow/lite/kernels/internal/tensor_ctypes.h \
+tensorflow/lite/kernels/internal/types.h \
+tensorflow/lite/kernels/internal/quantization_util.h \
+tensorflow/lite/schema/schema_generated.h \
+tensorflow/lite/version.h
+
+THIRD_PARTY_CC_HDRS := \
+third_party/gemmlowp/fixedpoint/fixedpoint.h \
+third_party/gemmlowp/fixedpoint/fixedpoint_sse.h \
+third_party/gemmlowp/internal/detect_platform.h \
+third_party/gemmlowp/LICENSE \
+third_party/flatbuffers/include/flatbuffers/base.h \
+third_party/flatbuffers/include/flatbuffers/stl_emulation.h \
+third_party/flatbuffers/include/flatbuffers/flatbuffers.h \
+third_party/flatbuffers/LICENSE.txt
+
+MAKE_PROJECT_FILES := \
+  README_MAKE.md \
+  Makefile
+
+MBED_PROJECT_FILES := \
+  README_MBED.md \
+  mbed-os.lib \
+  mbed_app.json
+
+KEIL_PROJECT_FILES := \
+  README_KEIL.md \
+  keil_project.uvprojx
 
 # These target-specific makefiles should modify or replace options like
 # CXXFLAGS or LIBS to work for a specific targetted architecture. All logic
@@ -96,10 +134,9 @@ MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SR
 # keep this main makefile focused on the sources and dependencies.
 include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
 
+ALL_TAGS += $(TARGET_ARCH)
+
 ALL_SRCS := \
-	$(MICRO_SPEECH_TEST_SRCS) \
-	$(PREPROCESSOR_REFERENCE_TEST_SRCS) \
-	$(PREPROCESSOR_FIXED_TEST_SRCS) \
 	$(MICROLITE_CC_SRCS) \
 	$(MICROLITE_TEST_SRCS)
 
@@ -108,31 +145,22 @@ GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)/
 OBJDIR := $(GENDIR)obj/
 BINDIR := $(GENDIR)bin/
 LIBDIR := $(GENDIR)lib/
+PRJDIR := $(GENDIR)prj/
 
 MICROLITE_LIB_PATH := $(LIBDIR)$(MICROLITE_LIB_NAME)
-
-MICRO_SPEECH_TEST_BINARY := $(BINDIR)micro_speech_test
-PREPROCESSOR_REFERENCE_TEST_BINARY := $(BINDIR)preprocessor_reference_test
-PREPROCESSOR_FIXED_TEST_BINARY := $(BINDIR)preprocessor_fixed_test
 
 CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}g++
 CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}gcc
 AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}ar
 
-MICRO_SPEECH_TEST_OBJS := $(addprefix $(OBJDIR), \
-$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MICRO_SPEECH_TEST_SRCS))))
-
-PREPROCESSOR_REFERENCE_TEST_OBJS := $(addprefix $(OBJDIR), \
-$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(PREPROCESSOR_REFERENCE_TEST_SRCS))))
-
-PREPROCESSOR_FIXED_TEST_OBJS := $(addprefix $(OBJDIR), \
-$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(PREPROCESSOR_FIXED_TEST_SRCS))))
+# Load the examples.
+include $(wildcard tensorflow/lite/experimental/micro/examples/*/Makefile.inc)
 
 MICROLITE_LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MICROLITE_CC_SRCS))))
 
-MICROLITE_TEST_TARGETS := $(addprefix $(BINDIR), \
-$(patsubst %_test.cc,%.test_target,$(MICROLITE_TEST_SRCS)))
+MICROLITE_LIB_OBJS += $(addprefix $(OBJDIR), \
+$(patsubst %.S,%.o,$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(THIRD_PARTY_CC_SRCS)))))
 
 # For normal manually-created TensorFlow C++ source files.
 $(OBJDIR)%.o: %.cc
@@ -144,8 +172,13 @@ $(OBJDIR)%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 
+# For normal manually-created TensorFlow ASM source files.
+$(OBJDIR)%.o: %.S
+	@mkdir -p $(dir $@)
+	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
+
 # The target that's compiled if there's no command-line arguments.
-all: $(MICROLITE_LIB_PATH) $(MICRO_SPEECH_TEST_BINARY) $(PREPROCESSOR_TEST_BINARY)
+all: $(MICROLITE_LIB_PATH)
 
 microlite: $(MICROLITE_LIB_PATH)
 
@@ -158,42 +191,6 @@ $(MICROLITE_LIB_PATH): tensorflow/lite/schema/schema_generated.h $(MICROLITE_LIB
 	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $(MICROLITE_LIB_PATH) $(MICROLITE_LIB_OBJS)
 
-$(MICRO_SPEECH_TEST_BINARY): $(MICRO_SPEECH_TEST_OBJS) $(MICROLITE_LIB_PATH)
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) \
-	-o $(MICRO_SPEECH_TEST_BINARY) $(MICRO_SPEECH_TEST_OBJS) \
-	$(LIBFLAGS) $(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
-
-micro_speech_test: $(MICRO_SPEECH_TEST_BINARY)
-micro_speech_test_bin: $(MICRO_SPEECH_TEST_BINARY).bin
-
-test_micro_speech: $(MICRO_SPEECH_TEST_BINARY)
-	$(TEST_SCRIPT) $(MICRO_SPEECH_TEST_BINARY) '~~~ALL TESTS PASSED~~~'
-
-$(PREPROCESSOR_REFERENCE_TEST_BINARY): $(PREPROCESSOR_REFERENCE_TEST_OBJS) $(MICROLITE_LIB_PATH)
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) \
-	-o $(PREPROCESSOR_REFERENCE_TEST_BINARY) $(PREPROCESSOR_REFERENCE_TEST_OBJS) \
-	$(LIBFLAGS) $(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
-
-preprocessor_reference_test: $(PREPROCESSOR_REFERENCE_TEST_BINARY)
-preprocessor_reference_test_bin: $(PREPROCESSOR_REFERENCE_TEST_BINARY).bin
-
-test_preprocessor_reference: $(PREPROCESSOR_REFERENCE_TEST_BINARY)
-	$(TEST_SCRIPT) $(PREPROCESSOR_REFERENCE_TEST_BINARY) '~~~ALL TESTS PASSED~~~'
-
-$(PREPROCESSOR_FIXED_TEST_BINARY): $(PREPROCESSOR_FIXED_TEST_OBJS) $(MICROLITE_LIB_PATH)
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) \
-	-o $(PREPROCESSOR_FIXED_TEST_BINARY) $(PREPROCESSOR_FIXED_TEST_OBJS) \
-	$(LIBFLAGS) $(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
-
-preprocessor_fixed_test: $(PREPROCESSOR_FIXED_TEST_BINARY)
-preprocessor_fixed_test_bin: $(PREPROCESSOR_FIXED_TEST_BINARY).bin
-
-test_preprocessor_fixed: $(PREPROCESSOR_FIXED_TEST_BINARY)
-	$(TEST_SCRIPT) $(PREPROCESSOR_FIXED_TEST_BINARY) '~~~ALL TESTS PASSED~~~'
-
 $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
@@ -203,9 +200,11 @@ $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 $(BINDIR)%.test_target: $(BINDIR)%_test
 	$(TEST_SCRIPT) $< '~~~ALL TESTS PASSED~~~'
 
-$(info $(MICROLITE_TEST_TARGETS))
+# Generate standalone makefile projects for all of the test targets.
+$(foreach TEST_TARGET,$(MICROLITE_TEST_SRCS),\
+$(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 
-test: test_micro_speech $(MICROLITE_TEST_TARGETS)
+test: $(MICROLITE_TEST_TARGETS)
 
 # Gets rid of all generated files.
 clean:

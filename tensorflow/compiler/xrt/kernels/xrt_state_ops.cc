@@ -37,6 +37,17 @@ REGISTER_KERNEL_BUILDER(Name("XRTAllocate")
                             .HostMemory("handle"),
                         XRTAllocateOp<XRTGenericDeviceAccessor>);
 
+REGISTER_KERNEL_BUILDER(Name("XRTAllocateFromTensor")
+                            .Device(DEVICE_XLA_GPU)
+                            .HostMemory("inputs")
+                            .HostMemory("handle"),
+                        XRTAllocateFromTensorOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTAllocateFromTensor")
+                            .Device(DEVICE_XLA_CPU)
+                            .HostMemory("inputs")
+                            .HostMemory("handle"),
+                        XRTAllocateFromTensorOp<XRTGenericDeviceAccessor>);
+
 REGISTER_KERNEL_BUILDER(Name("XRTSubTuple")
                             .Device(DEVICE_XLA_GPU)
                             .HostMemory("base_handle")
@@ -119,5 +130,10 @@ REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllocationHandle")
                             .Device(DEVICE_XLA_CPU)
                             .HostMemory("handle"),
                         XRTReleaseAllocationOp<XRTGenericDeviceAccessor>);
+
+REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllAllocations").Device(DEVICE_XLA_GPU),
+                        XRTReleaseAllAllocationsOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllAllocations").Device(DEVICE_XLA_CPU),
+                        XRTReleaseAllAllocationsOp<XRTGenericDeviceAccessor>);
 
 }  // namespace tensorflow

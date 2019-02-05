@@ -30,6 +30,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -238,6 +239,7 @@ def map_fn(fn,
       n = (tensor_shape.dimension_value(static_shape[0]) or
            array_ops.shape(elems_flat[0])[0])
 
+    n = math_ops.cast(n, dtype=dtypes.int32)
     # Create a flat list of TAs.
 
     # Flatten the dtype structure to a list.
@@ -254,7 +256,7 @@ def map_fn(fn,
         for t in dtype_components_flat
     ]
 
-    i = constant_op.constant(0)
+    i = constant_op.constant(0, dtype=dtypes.int32)
 
     def compute(i, tas):
       """The loop body of map_fn.

@@ -200,13 +200,6 @@ class IteratorTest(test.TestCase):
         y = math_ops.add(x, x)
     self.assertAllEqual([0., 2.], y.numpy())
 
-  def testGpuDefinedDataset(self):
-    with ops.device(test.gpu_device_name()):
-      ds = Dataset.from_tensors([0., 1.])
-      for x in ds:
-        y = math_ops.add(x, x)
-    self.assertAllEqual([0., 2.], y.numpy())
-
   def testOverrideThreadPool(self):
 
     def get_thread_id(_):

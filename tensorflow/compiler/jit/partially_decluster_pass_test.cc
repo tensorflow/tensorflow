@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/graph_def_builder_util.h"
-#include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -71,6 +70,12 @@ class FakeResourceUpdateOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("FakeBinary")
                             .Device(DEVICE_CPU)
+                            .HostMemory("host_in")
+                            .HostMemory("host_out"),
+                        FakeBinaryOp);
+
+REGISTER_KERNEL_BUILDER(Name("FakeBinary")
+                            .Device(DEVICE_XLA_CPU)
                             .HostMemory("host_in")
                             .HostMemory("host_out"),
                         FakeBinaryOp);
@@ -368,7 +373,7 @@ TEST(PartiallyDeclusterPassTest, EdgeAcrossDifferentClusters) {
   EXPECT_EQ(GetXlaClusterForNode(*n), "cluster_1");
 }
 
-TEST(PartiallyDeclusterPassTest, DontDeclusterXlaDeviceOps) {
+TEST(PartiallyDeclusterPassTest, DontDeclusterXlaDeviceOps_A) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output shape_a = ops::Placeholder(s.WithOpName("shape_a"), DT_INT32,
                                     ops::Placeholder::Attrs{});
@@ -400,6 +405,41 @@ TEST(PartiallyDeclusterPassTest, DontDeclusterXlaDeviceOps) {
   TF_ASSERT_OK(PartiallyDecluster(&graph));
 
   EXPECT_EQ(GetXlaClusterForNode(*n), "cluster_0");
+}
+
+TEST(PartiallyDeclusterPassTest, DontDeclusterXlaDeviceOps_B) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  {
+    GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+    Node* input =
+        ops::SourceOp("FakeNullary", builder.opts().WithName("Input"));
+    Node* clustered_producer =
+        ops::BinaryOp("FakeBinary", input, input,
+                      builder.opts().WithName("ClusteredProducer"));
+    ops::BinaryOp("FakeBinary", clustered_producer, input,
+                  builder.opts().WithName("UnclusteredConsumer"));
+    Node* clustered_consumer =
+        ops::BinaryOp("FakeBinary", {clustered_producer, 1}, input,
+                      builder.opts().WithName("ClusteredConsumer"));
+    clustered_producer->AddAttr(kXlaClusterAttr, "cluster_0");
+    clustered_consumer->AddAttr(kXlaClusterAttr, "cluster_0");
+    TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
+  }
+
+  // Scope::ToGraph loses the assigned device name since it goes through
+  // GraphDef/NodeDef which does not have a field for the assigned device name.
+  Node* n = FindNodeByName(*graph, "ClusteredProducer");
+  ASSERT_NE(n, nullptr);
+  n->set_assigned_device_name(
+      "/job:localhost/replica:0/task:0/device:XLA_CPU:0");
+
+  TF_ASSERT_OK(PartiallyDecluster(&graph));
+  std::vector<Node*> unclustered_consumer_inputs;
+  ASSERT_TRUE(GetInputsForNode(*graph, "UnclusteredConsumer",
+                               &unclustered_consumer_inputs));
+  ASSERT_EQ(unclustered_consumer_inputs.size(), 2);
+  EXPECT_EQ(unclustered_consumer_inputs[0]->name(), "ClusteredProducer");
+  EXPECT_EQ(GetXlaClusterForNode(*unclustered_consumer_inputs[0]), "cluster_0");
 }
 
 TEST(PartiallyDeclusterPassTest, DontDeclusterNonTensorFlowOps) {

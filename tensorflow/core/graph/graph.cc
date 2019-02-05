@@ -85,6 +85,10 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"CollectiveBcastSend", NC_COLLECTIVE},
         {"CollectiveBcastRecv", NC_COLLECTIVE},
         {"FakeParam", NC_FAKE_PARAM},
+        {"IteratorGetNext", NC_DATASET},
+        {"IteratorGetNextSync", NC_DATASET},
+        {"DatasetToSingleElement", NC_DATASET},
+        {"ReduceDataset", NC_DATASET},
     });
 
 #undef REF_CLASS
@@ -216,6 +220,16 @@ void Node::set_requested_device(const string& device) {
   props_->node_def.set_device(device);
 }
 
+void Node::set_original_node_names(const std::vector<string>& names) {
+  MaybeCopyOnWrite();
+  props_->node_def.mutable_experimental_debug_info()
+      ->clear_original_node_names();
+  if (!names.empty()) {
+    *props_->node_def.mutable_experimental_debug_info()
+         ->mutable_original_node_names() = {names.begin(), names.end()};
+  }
+}
+
 Status Node::input_edge(int idx, const Edge** e) const {
   if (idx < 0 || idx >= num_inputs()) {
     return errors::InvalidArgument("Invalid input_edge index: ", idx, ", Node ",
@@ -291,6 +305,16 @@ Status Node::input_tensor(int idx, OutputTensor* t) const {
   DCHECK(e != nullptr);
   *t = OutputTensor(e->src(), e->src_output());
   return Status::OK();
+}
+
+// NodeDebugInfo
+
+NodeDebugInfo::NodeDebugInfo(const Node& n) : NodeDebugInfo(n.def()) {}
+NodeDebugInfo::NodeDebugInfo(const NodeDef& ndef) : name(ndef.name()) {
+  if (ndef.has_experimental_debug_info()) {
+    const auto& names = ndef.experimental_debug_info().original_node_names();
+    original_node_names.assign(names.begin(), names.end());
+  }
 }
 
 // InputTensor
@@ -555,7 +579,13 @@ Status Graph::AddWhileInputHack(Node* new_src, int new_src_index, Node* dst) {
         dst->DebugString());
   }
   TF_RETURN_IF_ERROR(IsValidOutputTensor(new_src, new_src_index));
-  int dst_index = dst->in_edges().size();
+  // Find the current number of data inputs. We'll add the new edge to the next
+  // missing data input.
+  int dst_index = 0;
+  for (const Edge* edge : dst->in_edges()) {
+    if (edge->IsControlEdge()) continue;
+    ++dst_index;
+  }
   TF_RETURN_IF_ERROR(IsValidInputTensor(dst, dst_index));
   AddEdge(new_src, new_src_index, dst, dst_index);
   dst->MaybeCopyOnWrite();

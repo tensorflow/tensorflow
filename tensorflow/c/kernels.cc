@@ -48,9 +48,10 @@ TF_KernelBuilder* TF_NewKernelBuilder(
 }
 
 void TF_DeleteKernelBuilder(TF_KernelBuilder* builder) {
-  DCHECK_NE(builder, nullptr);
-  delete builder->cc_builder;
-  delete builder;
+  if (builder != nullptr) {
+    delete builder->cc_builder;
+    delete builder;
+  }
 }
 
 namespace tensorflow {
@@ -157,4 +158,45 @@ void TF_SetOutput(TF_OpKernelContext* ctx, int i, const TF_Tensor* tensor,
   if (s.ok()) {
     cc_ctx->set_output(i, cc_tensor);
   }
+}
+
+void TF_OpKernelConstruction_Failure(TF_OpKernelConstruction* ctx,
+                                     TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
+  ::tensorflow::Status s(::tensorflow::StatusFromTF_Status(status));
+  cc_ctx->CtxFailure(s);
+}
+
+void TF_OpKernelContext_Failure(TF_OpKernelContext* ctx, TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  ::tensorflow::Status s(::tensorflow::StatusFromTF_Status(status));
+  cc_ctx->CtxFailure(s);
+}
+
+#define DEFINE_TF_GETATTR_(struct_name, func, c_type, cc_type)                 \
+  void struct_name##_GetAttr##func(struct_name* ctx, const char* attr_name,    \
+                                   c_type* val, TF_Status* status) {           \
+    TF_SetStatus(status, TF_OK, "");                                           \
+    cc_type v;                                                                 \
+    auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx); \
+    ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &v);                   \
+    ::tensorflow::Set_TF_Status_from_Status(status, s);                        \
+    if (s.ok()) {                                                              \
+      *val = static_cast<c_type>(v);                                           \
+    }                                                                          \
+  }
+
+#define DEFINE_TF_GETATTR(func, c_type, cc_type)                     \
+  DEFINE_TF_GETATTR_(TF_OpKernelConstruction, func, c_type, cc_type) \
+  DEFINE_TF_GETATTR_(TF_OpKernelContext, func, c_type, cc_type)
+
+DEFINE_TF_GETATTR(Type, TF_DataType, tensorflow::DataType)
+
+TF_DataType TF_ExpectedOutputDataType(TF_OpKernelContext* ctx, int i) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  return static_cast<TF_DataType>(cc_ctx->expected_output_dtype(i));
+}
+
+int64_t TF_StepId(TF_OpKernelContext* ctx) {
+  return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->step_id();
 }

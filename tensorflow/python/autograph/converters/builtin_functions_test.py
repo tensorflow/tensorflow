@@ -55,7 +55,9 @@ class BuiltinFunctionsTest(converter_testing.TestCase):
     with self.converted(test_fn, builtin_functions, {'print': print}) as result:
       with self.session() as sess:
         with self.assertPrints('a\n'):
-          sess.run(result.test_fn('a'))
+          sess.run(result.test_fn(constant_op.constant('a')))
+      with self.assertPrints('a\n'):
+        result.test_fn('a')
 
   @test_util.run_deprecated_v1
   def test_print_multiple_values(self):

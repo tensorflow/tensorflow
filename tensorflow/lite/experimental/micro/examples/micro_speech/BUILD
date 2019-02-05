@@ -176,7 +176,6 @@ cc_library(
         ":audio_provider",
         ":model_settings",
         ":preprocessor_reference",
-        ":timer",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
     ],
@@ -191,7 +190,6 @@ tflite_micro_cc_test(
         ":audio_provider",
         ":feature_provider",
         ":model_settings",
-        ":timer",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
@@ -199,22 +197,30 @@ tflite_micro_cc_test(
 )
 
 cc_library(
-    name = "timer",
+    name = "recognize_commands",
     srcs = [
-        "timer.cc",
+        "recognize_commands.cc",
     ],
     hdrs = [
-        "timer.h",
+        "recognize_commands.h",
+    ],
+    deps = [
+        ":model_settings",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
     ],
 )
 
 tflite_micro_cc_test(
-    name = "timer_test",
+    name = "recognize_commands_test",
     srcs = [
-        "timer_test.cc",
+        "recognize_commands_test.cc",
+    ],
+    tags = [
+        "no_oss",  # TODO(122853023): Resolve issues and re-enable.
     ],
     deps = [
-        ":timer",
+        ":recognize_commands",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
@@ -229,15 +235,12 @@ cc_binary(
     deps = [
         ":audio_provider",
         ":feature_provider",
-        ":features_test_data",
         ":model_settings",
-        ":preprocessor_reference",
-        ":timer",
+        ":recognize_commands",
         ":tiny_conv_model_data",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/kernels:all_ops_resolver",
-        "//tensorflow/lite/experimental/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

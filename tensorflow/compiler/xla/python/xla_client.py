@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""An in-process, local XLA client in Python, supporting AOT compilation."""
+"""An XLA client in Python, supporting AOT compilation."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import collections
 import enum  # pylint: disable=g-bad-import-order
 import inspect
@@ -49,13 +50,123 @@ _OP_METADATA_FIELDS = [
 OpMetadata = collections.namedtuple('OpMetadata', _OP_METADATA_FIELDS)
 
 
+@six.add_metaclass(abc.ABCMeta)
+class Backend(object):
+  """Abstract base class for XLA backends."""
+
+  @abc.abstractmethod
+  def buffer_from_pyval(self, pyval, device=0):
+    """Allocates a fresh buffer and populates it with `pyval`."""
+
+  @abc.abstractmethod
+  def delete_buffer(self, c_buffer):
+    """Deletes buffer `c_buffer`."""
+
+  @abc.abstractmethod
+  def destructure_tuple(self, c_buffer):
+    """Destructures a tuple buffer into a sequence of buffers."""
+
+  @abc.abstractmethod
+  def compile(self, computation, argument_shapes, compile_options):
+    """Compiles a computation. Returns an executable."""
+
+  @abc.abstractmethod
+  def delete_executable(self, executable):
+    """Deletes an executable."""
+
+  @abc.abstractmethod
+  def execute(self, executable, args):
+    """Runs an executable without replication."""
+
+  @abc.abstractmethod
+  def execute_replicated(self, executable, per_replica_args):
+    """Runs an executable in a replicated manner."""
+
+
+class XlaLocalBackend(Backend):
+  """XLA backend implemented using the in-process xla::LocalClient API."""
+
+  def buffer_from_pyval(self, pyval, device=0):
+    return c_api.LocalShapedBuffer.FromLiteral(pyval, None, device)
+
+  def delete_buffer(self, c_buffer):
+    c_api.DeleteLocalShapedBuffer(c_buffer)
+
+  def destructure_tuple(self, c_buffer):
+    result = c_api.DestructureLocalShapedBufferTuple(c_buffer)
+    return [result.Release(i) for i in xrange(result.size())]
+
+  def compile(self, c_computation, argument_shapes, compile_options):
+    return c_computation.Compile(argument_shapes, compile_options)
+
+  def delete_executable(self, executable):
+    assert isinstance(executable, c_api.CompiledLocalComputation)
+    c_api.DeleteCompiledLocalComputation(executable)
+
+  def execute(self, executable, args):
+    return executable.Execute(args)
+
+  def execute_replicated(self, executable, per_replica_args):
+    output_buffer_tup = executable.ExecutePerReplica(per_replica_args)
+    size = output_buffer_tup.size()
+    return [output_buffer_tup.Release(i) for i in xrange(size)]
+
+
+class XrtBackend(Backend):
+  """XLA backend implemented using XRT."""
+
+  def __init__(self, target):
+    self.target = target
+
+  def buffer_from_pyval(self, pyval, device=0):
+    if device != 0:
+      raise NotImplementedError(
+          'Multi-replica execution is not yet supported via the XRT backend.')
+    return c_api.XrtAllocation.FromLiteral(pyval,
+                                           _maybe_encode_string(self.target))
+
+  def delete_buffer(self, c_buffer):
+    c_api.DeleteXrtAllocation(c_buffer)
+
+  def destructure_tuple(self, c_buffer):
+    result = c_api.DestructureXrtAllocationTuple(
+        c_buffer, _maybe_encode_string(self.target))
+    return [result.Release(i) for i in xrange(result.size())]
+
+  def compile(self, c_computation, argument_shapes, compile_options):
+    return c_computation.CompileForXrt(argument_shapes,
+                                       _maybe_encode_string(self.target))
+
+  def delete_executable(self, executable):
+    assert isinstance(executable, c_api.CompiledXrtComputation)
+    c_api.DeleteCompiledXrtComputation(executable)
+
+  def execute(self, executable, args):
+    return executable.Execute(args)
+
+  def execute_replicated(self, executable, per_replica_args):
+    if len(per_replica_args) != 1:
+      raise NotImplementedError(
+          'Multi-replica execution is not yet supported via the XRT backend.')
+    return [executable.Execute(per_replica_args[0])]
+
+
+XLA_LOCAL_BACKEND = XlaLocalBackend()
+
+
 class BackendType(enum.Enum):
   XLA_LOCAL = 1
   XRT = 2
 
 
-BackendSpec = collections.namedtuple('Backend', ('backend_type', 'target'))
-XLA_LOCAL_BACKEND = BackendSpec(BackendType.XLA_LOCAL, 'local')
+def BackendSpec(backend, target):
+  """Compatibility wrapper to support older clients. Do not use in new code."""
+  if backend == BackendType.XLA_LOCAL:
+    return XLA_LOCAL_BACKEND
+  elif backend == BackendType.XRT:
+    return XrtBackend(target)
+  else:
+    raise ValueError('Unknown backend {}'.format(backend))
 
 
 def OpMetadataToProto(pyobj):
@@ -199,6 +310,7 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     xla_data_pb2.F32: np.dtype('float32'),
     xla_data_pb2.F64: np.dtype('float64'),
     xla_data_pb2.C64: np.dtype('complex64'),
+    xla_data_pb2.C128: np.dtype('complex128'),
     xla_data_pb2.TUPLE: np.dtype(np.object),
 }
 
@@ -226,10 +338,6 @@ class LocalBuffer(object):
     self.c_buffer = c_buffer
     self._backend = backend
     self._replica = replica
-    if backend.backend_type == BackendType.XRT:
-      self._delete = c_api.DeleteXrtAllocation
-    else:
-      self._delete = c_api.DeleteLocalShapedBuffer
 
   @staticmethod
   def from_pyval(pyval, replica=0, backend=XLA_LOCAL_BACKEND):
@@ -240,14 +348,7 @@ class LocalBuffer(object):
       raise ValueError(
           'Attempt to place buffer on replica {} when the replica count is {}'
           .format(replica, num_replicas))
-    if backend.backend_type == BackendType.XRT:
-      if replica != 0:
-        raise NotImplementedError(
-            'Multi-replica execution is not yet supported via the XRT backend.')
-      cbuf = c_api.XrtAllocation.FromLiteral(
-          pyval, _maybe_encode_string(backend.target))
-    else:
-      cbuf = c_api.LocalShapedBuffer.FromLiteral(pyval, None, replica)
+    cbuf = backend.buffer_from_pyval(pyval, replica)
     return LocalBuffer(cbuf, backend, replica)
 
   def to_py(self):
@@ -261,24 +362,17 @@ class LocalBuffer(object):
 
   def delete(self):
     if self.c_buffer is not None:
-      self._delete(self.c_buffer)
+      self._backend.delete_buffer(self.c_buffer)
       self.c_buffer = None
 
   def destructure(self):
     """Assuming a tuple buffer, unpack it into constituent tuple elements."""
     assert self.c_buffer is not None
-    if self._backend.backend_type == BackendType.XRT:
-      result = c_api.DestructureXrtAllocationTuple(
-          self.c_buffer, _maybe_encode_string(self._backend.target))
-    else:
-      result = c_api.DestructureLocalShapedBufferTuple(self.c_buffer)
+    result = self._backend.destructure_tuple(self.c_buffer)
     self.delete()
-    size = result.size()
-    destructured = tuple(
-        LocalBuffer(
-            result.Release(i), replica=self._replica, backend=self._backend)
-        for i in xrange(size))
-    return destructured
+    return tuple(
+        LocalBuffer(sub_buffer, replica=self._replica, backend=self._backend)
+        for sub_buffer in result)
 
   def is_deleted(self):
     return self.c_buffer is None
@@ -415,7 +509,7 @@ class Shape(object):
       assert mtm is None, self
     if mtm is not None:
       assert self.rank() == len(mtm), self
-      assert sorted(mtm) == range(len(mtm)), self
+      assert sorted(mtm) == list(range(len(mtm))), self
 
   def update_minor_to_major(self, minor_to_major):
     if not self.is_array():
@@ -426,6 +520,20 @@ class Shape(object):
         self.element_type(), self.dimensions(), minor_to_major)
     updated._check_minor_to_major()  # pylint: disable=protected-access
     return updated
+
+  def serialize(self, proto):
+    """Serializes 'shape' into proto."""
+    if self.is_tuple():
+      proto.element_type = xla_data_pb2.TUPLE
+      for shape in self.tuple_shapes():
+        shape.serialize(proto.tuple_shapes.add())
+    else:
+      proto.element_type = dtype_to_etype(self.element_type())
+      proto.dimensions.extend(self.dimensions())
+      proto.is_dynamic_dimension.extend([False for _ in self.dimensions()])
+      if self.minor_to_major():
+        proto.layout.format = xla_data_pb2.DENSE
+        proto.layout.minor_to_major.extend(self.minor_to_major())
 
 
 def _wrap_shape(shape_info):
@@ -458,6 +566,7 @@ class CompileOptions(object):
     self.dump_unoptimized_hlo_proto_to = None
     self.dump_per_pass_hlo_proto_to = None
     self.hlo_profile = False
+    self.num_replicas = get_replica_count()
 
 
 def transfer_to_infeed(value, replica_number=None):
@@ -506,18 +615,6 @@ class LocalComputation(object):
     self._c_computation = c_computation
     self._backend = backend
     self._is_compiled = is_compiled
-
-    # Ensure a reference to C-based destructor for use in __del__.
-    if is_compiled:
-      if backend.backend_type == BackendType.XRT:
-        assert isinstance(c_computation, c_api.CompiledXrtComputation)
-        self._delete = c_api.DeleteCompiledXrtComputation
-      else:
-        assert isinstance(c_computation, c_api.CompiledLocalComputation)
-        self._delete = c_api.DeleteCompiledLocalComputation
-    else:
-      assert isinstance(c_computation, c_api.LocalComputation)
-      self._delete = c_api.DeleteLocalComputation
 
   @property
   def computation(self):
@@ -572,11 +669,8 @@ class LocalComputation(object):
 
     compile_options = compile_options or CompileOptions()
     compile_options.result_shape = result_shape
-    if self._backend.backend_type == BackendType.XRT:
-      c = self.computation.CompileForXrt(
-          argument_shapes, _maybe_encode_string(self._backend.target))
-    else:
-      c = self.computation.Compile(argument_shapes, compile_options)
+    c = self._backend.compile(self.computation, argument_shapes,
+                              compile_options)
     return LocalComputation(c, is_compiled=True, backend=self._backend)
 
   def CompileWithExampleArguments(self,
@@ -596,7 +690,7 @@ class LocalComputation(object):
     if check_for_deleted_args and any(arg.is_deleted() for arg in arguments):
       raise ValueError('Executing with deleted local buffer argument')
     raw_args = [arg.c_buffer for arg in arguments]
-    output_buffer = self._c_computation.Execute(raw_args)
+    output_buffer = self._backend.execute(self._c_computation, raw_args)
     return LocalBuffer(output_buffer, backend=self._backend, replica=0)
 
   def ExecutePerReplica(self, arguments=None):
@@ -634,15 +728,7 @@ class LocalComputation(object):
     ]
 
     # Execute
-    if self._backend.backend_type == BackendType.XRT:
-      if len(stripped_args) > 1:
-        raise NotImplementedError(
-            'Multi-replica execution is not yet supported via the XRT backend.')
-      output_buffers = [self._c_computation.Execute(stripped_args[0])]
-    else:
-      output_buffer_tup = self._c_computation.ExecutePerReplica(stripped_args)
-      size = output_buffer_tup.size()
-      output_buffers = [output_buffer_tup.Release(i) for i in xrange(size)]
+    output_buffers = self._backend.execute_replicated(stripped_args)
 
     # Wrap output handles in LocalBuffer instances
     return tuple(
@@ -670,7 +756,18 @@ class LocalComputation(object):
     return [out.to_py() for out in self.ExecutePerReplica(arguments)]
 
   def __del__(self):
-    self._delete(self._c_computation)
+    # Ensure a reference to C-based destructor for use in __del__.
+    if self._is_compiled:
+      self._backend.delete_executable(self._c_computation)
+    else:
+      assert isinstance(self._c_computation, c_api.LocalComputation)
+      c_api.DeleteLocalComputation(self._c_computation)
+
+
+def _make_replica_group_proto(replica_group):
+  replica_group_proto = xla_data_pb2.ReplicaGroup()
+  replica_group_proto.replica_ids.extend(replica_group)
+  return replica_group_proto
 
 
 class ComputationBuilder(object):
@@ -831,6 +928,33 @@ class ComputationBuilder(object):
     return self.ParameterWithShape(
         Shape.from_pyval(value), name=name, parameter_num=parameter_num)
 
+  def Iota(self, dtype, size):
+    """Enqueues an iota constant onto the computation.
+
+    Args:
+      dtype: expected numpy dtype of the output.
+      size: integer, the number of elements in the array.
+
+    Returns:
+      A LocalOp representing the added iota constant.
+    """
+    element_type = DTYPE_TO_XLA_ELEMENT_TYPE[str(np.dtype(dtype))]
+    return self._client.Iota(element_type, size)
+
+  def BroadcastedIota(self, dtype, shape, dimension):
+    """Enqueues a broadcasted iota constant onto the computation.
+
+    Args:
+      dtype: expected numpy dtype of the output.
+      shape: tuple of integers, the expected output shape (dimensions).
+      dimension: positive integer, dimension along which to increment values.
+
+    Returns:
+      A LocalOp representing the added broadcasted iota constant.
+    """
+    xla_shape = Shape.array_shape(dtype, shape)
+    return self._client.BroadcastedIota(xla_shape, dimension)
+
   def Broadcast(self, operand, sizes):
     """Enqueues a broadcast operation onto the computation.
 
@@ -936,16 +1060,60 @@ class ComputationBuilder(object):
       dimensions = tuple(range(ndim))
     return self._client.Reshape(operand, dimensions, new_sizes)
 
-  def CrossReplicaSum(self, operand):
+  def AllToAll(self,
+               operand,
+               split_dimension,
+               concat_dimension,
+               replica_groups=None):
+    """AllToAll op.
+
+    Args:
+      operand: LocalOp representing the input array
+      split_dimension: the dimension along which the operand is split
+      concat_dimension: the dimension along which the split blocks are
+        concatenated
+      replica_groups: optional, list of lists of ints encoding a partition of
+        the set {0, 1, ..., num_replicas} into equally-sized replica groups
+        within which the all-to-all is performed. If not supplied or None (the
+        default), all replicas belong to the same group.
+
+    Returns:
+      A LocalOp that represents the all-to-all concatenation.
+    """
+    if replica_groups is None:
+      replica_groups_protos = []  # special value for XLA API
+    else:
+      replica_groups = list(replica_groups)
+      replica_groups_protos = [
+          _make_replica_group_proto(group) for group in replica_groups]
+    if not replica_groups:
+      split_count = get_replica_count()
+    else:
+      split_count = len(replica_groups[0])
+      if not all(split_count == len(g) for g in replica_groups):
+        raise ValueError('Replica groups must be equally sized')
+    return self._client.AllToAll(operand, split_dimension, concat_dimension,
+                                 split_count, replica_groups_protos)
+
+  def CrossReplicaSum(self, operand, replica_groups=None):
     """CrossReplicaSum op.
 
     Args:
       operand: the operand to sum across replica instances.
+      replica_groups: optional, list of lists of ints encoding a partition of
+        the set {0, 1, ..., num_replicas} into equally-sized replica groups
+        within which the cross-replica sum is performed. If not supplied or None
+        (the default), all replicas belong to the same group.
 
     Returns:
-      A LocalOp that has the sum of the value among all replicas.
+      A LocalOp that represents on each replica the sum of its group's values.
     """
-    return self._client.CrossReplicaSum(operand)
+    if replica_groups is None:
+      replica_groups = []  # special value for XLA API
+    else:
+      replica_groups = [
+          _make_replica_group_proto(group) for group in replica_groups]
+    return self._client.CrossReplicaSum(operand, replica_groups)
 
   def Collapse(self, operand, dimensions):
     """Collapse op."""
@@ -1101,6 +1269,31 @@ class ComputationBuilder(object):
       A LocalOp representing the added call op.
     """
     return self._client.Call(computation_to_apply.computation, operands)
+
+  def CustomCall(self,
+                 call_target_name,
+                 operands,
+                 shape_with_layout,
+                 operand_shapes_with_layout,
+                 opaque=None):
+    """Enqueues a custom call operation onto the computation.
+
+    Args:
+      call_target_name: the name of the function to call.
+      operands: an iterable of LocalOp. The number and types of operands must
+        match the arity of `operand_shapes_with_layout`.
+      shape_with_layout: the shape of the operator's output, with layout.
+      operand_shapes_with_layout: the shapes of `operands`, including the
+        expected layouts.
+      opaque: an opaque string passed to the backend.
+
+    Returns:
+      A LocalOp representing the added custom call op.
+    """
+    opaque = opaque or b''
+    return self._client.CustomCall(call_target_name, operands,
+                                   shape_with_layout,
+                                   operand_shapes_with_layout, opaque)
 
   def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
@@ -1411,6 +1604,32 @@ class ComputationBuilder(object):
     """Enqueues a key-value sort operation onto the computation."""
     return self._client.SortKeyVal(keys, values, dimension)
 
+  def Cholesky(self, a):
+    """Enqueues a Cholesky decomposition onto the computation."""
+    return self._client.Cholesky(a)
+
+  def QR(self, a, full_matrices=True):
+    """Enqueues a QR decomposition onto the computation."""
+    return self._client.QR(a, full_matrices)
+
+  def TriangularSolve(self, a, b, left_side=False, lower=False,
+                      transpose_a=False, conjugate_a=False):
+    """Enqueues a triangular-solve operation onto the computation."""
+    return self._client.TriangularSolve(
+        a, b, left_side, lower, transpose_a, conjugate_a)
+
+  def Gather(self, a, start_indices, dimension_numbers, slice_sizes):
+    """Enqueues a Gather operation onto the computation."""
+    return self._client.Gather(a, start_indices, dimension_numbers,
+                               slice_sizes)
+
+  def Scatter(self, a, scatter_indices, updates, update_computation,
+              dimension_numbers):
+    """Enqueues a Scatter operation onto the computation."""
+    return self._client.Scatter(
+        a, scatter_indices, updates, update_computation.computation,
+        dimension_numbers,)
+
 
 def _forward_methods_to_local_builder():
   """Forward remaining ComputationBuilder methods to the C API.
@@ -1472,6 +1691,8 @@ def initialize_platform_name(platform_name):
 
   Raises:
     A runtime exception if the XLA service has already been initialized.
+    A runtime exception if the platform does not exist, or there are no devices
+    with that platform.
   """
   platform_name = _maybe_encode_string(platform_name)
   c_api.InitializePlatformName(platform_name)
@@ -1484,6 +1705,16 @@ def get_replica_count():
   yet or not.
   """
   return c_api.GetReplicaCount()
+
+
+def register_cpu_custom_call_target(name, fn):
+  """Registers a CPU custom call target.
+
+  Args:
+    name: bytes containing the name of the function.
+    fn: a PyCapsule object containing the function pointer.
+  """
+  c_api.RegisterCpuCustomCallTarget(name, fn)
 
 
 def GetPaddingConfigFromTriples(triples):

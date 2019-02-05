@@ -37,6 +37,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearOperatorInversion"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearOperatorKronecker"
     mtype: "<type \'type\'>"
   }

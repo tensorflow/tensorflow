@@ -100,6 +100,14 @@ message DebugOptions {
   // names as specified by the HloPassInterface::name() method.
   repeated string xla_disable_hlo_passes = 30;
 
+  // Disables all HLO passes.  Notes that some passes are necessary for
+  // correctness and the invariants that must be satisfied by "fully optimized"
+  // HLO are different for different devices and may change over time.  The only
+  // "guarantee", such as it is, is that if you compile XLA and dump the
+  // optimized HLO for some graph, you should be able to run it again on the
+  // same device with the same build of XLA.
+  bool xla_disable_all_hlo_passes = 104;
+
   // Numerical optimization level for the XLA compiler backend; the specific
   // interpretation of this value is left to the backends.
   int32 xla_backend_optimization_level = 31;
@@ -216,6 +224,18 @@ message DebugOptions {
   // If set to true XLA:GPU invokes `ptxas` with -O0 (default is -O3).
   bool xla_gpu_disable_ptxas_optimizations = 103;
 
+  // Dump HLO graphs as an HTML (DOT -> SVG inlined in HTML)
+  bool xla_hlo_dump_as_html = 105;
+
+  // Enable fast math with eigen in the HLO evaluator.
+  bool xla_hlo_evaluator_use_fast_path = 106;
+
+  // Temporary option to allow support for both the R1 and the scalar index
+  // versions of DynamicSlice and DynamicUpdateSlice. Only used for testing.
+  bool xla_allow_scalar_index_dynamic_ops = 107;
+
+  // Next id: 108
+
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
@@ -245,6 +265,10 @@ message ExecutionOptions {
   // computation on. The computation will be partitioned across these devices.
   // If not provided, the default device will be chosen.
   repeated DeviceHandle device_handles = 5;
+
+  // Number of replicas of the computation to run. If zero, uses the default
+  // number of replicas for the XLA service.
+  int32 num_replicas = 6;
 }
 
 message GetDeviceHandlesRequest {
@@ -389,7 +413,7 @@ message WaitForExecutionResponse {
 
 message ComputeConstantGraphRequest {
   HloModuleProto computation = 1;
-  Layout output_layout = 2;
+  LayoutProto output_layout = 2;
 }
 
 message ComputeConstantResponse {

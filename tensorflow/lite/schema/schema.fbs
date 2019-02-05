@@ -64,9 +64,20 @@ table QuantizationParameters {
   scale:[float];  // For dequantizing the tensor's values.
   zero_point:[long];
 
-  // If this is not none, the quantization parameters above are ignored and the
-  // value of the QuantizationDetails union below should be used.
+  // If this is not none, the other quantization parameters (i.e. min, max,
+  // scale, zero_point fields above) are ignored and the value of the
+  // QuantizationDetails union should be used.
   details:QuantizationDetails;
+
+  // Specifies the dimension of the Tensor's shape that the scales and
+  // zero_points correspond to. For example, a tensor t, with dims=[4, 3, 2, 1]
+  // with quantization params:
+  //   scale=[1.0, 2.0, 3.0], zero_point=[1, 2, 3], quantization_dimension=1
+  // will be quantized across the second dimension of t.
+  //   t[:, 0, :, :] will have scale[0]=1.0, zero_point[0]=1
+  //   t[:, 1, :, :] will have scale[1]=2.0, zero_point[0]=2
+  //   t[:, 2, :, :] will have scale[2]=3.0, zero_point[0]=3
+  quantized_dimension:int;
 }
 
 table Tensor {
@@ -205,6 +216,10 @@ enum BuiltinOperator : byte {
   MIRROR_PAD = 100,
   ABS = 101,
   SPLIT_V = 102,
+  UNIQUE = 103,
+  CEIL = 104,
+  REVERSE_V2 = 105,
+  ADD_N = 106,
 }
 
 // Options for the builtin operators.
@@ -288,6 +303,9 @@ union BuiltinOptions {
   MirrorPadOptions,
   AbsOptions,
   SplitVOptions,
+  UniqueOptions,
+  ReverseV2Options,
+  AddNOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -443,12 +461,19 @@ table UnidirectionalSequenceLSTMOptions {
 }
 
 table BidirectionalSequenceLSTMOptions {
+  // Parameters supported by version 1:
   fused_activation_function:ActivationFunctionType;
   cell_clip: float; // Optional, 0.0 means no clipping
   proj_clip: float; // Optional, 0.0 means no clipping
 
   // If true, store the outputs of both directions into the first output.
   merge_outputs: bool;
+
+  // Parameters supported by version 2:
+  // If true then first dimension is sequence, otherwise batch.
+  // Version 1 implementations assumed time_major to be true, so this default
+  // value should never change.
+  time_major: bool = true;
 }
 
 table ResizeBilinearOptions {
@@ -692,6 +717,16 @@ enum MirrorPadMode : byte {
 
 table MirrorPadOptions {
   mode:MirrorPadMode;
+}
+
+table UniqueOptions {
+  idx_out_type:TensorType = INT32;
+}
+
+table ReverseV2Options {
+}
+
+table AddNOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

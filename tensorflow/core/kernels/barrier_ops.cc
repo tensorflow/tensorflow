@@ -300,7 +300,7 @@ class Barrier : public ResourceBase {
     ready_queue_->Unref();
   }
 
-  string DebugString() override { return "A barrier"; }
+  string DebugString() const override { return "A barrier"; }
 
  protected:
   template <typename T>

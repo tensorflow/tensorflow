@@ -238,6 +238,16 @@ class TemplatesTest(test.TestCase):
     source = parser.parse_expression('[a(b(1))]')
     templates.replace_as_expression(template, bar=source)
 
+  def test_star_comprehension_in_function_call(self):
+    template = """
+      a = foo(func, args)
+    """
+    source = parser.parse_expression('bar(*[i for i in range(j)])')
+    node = templates.replace(template, func=source.func, args=source.args)
+    arg_node = node[0].value.args[1].value
+    self.assertIsInstance(arg_node.generators[0].target.ctx, gast.Store)
+    self.assertIsInstance(arg_node.elt.ctx, gast.Load)
+
 
 if __name__ == '__main__':
   test.main()

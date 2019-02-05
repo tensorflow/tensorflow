@@ -464,6 +464,13 @@ TEST_F(UtilsTest, SetTensorValueBFloat16IntMin) {
       Tensor(bfloat16(std::numeric_limits<int>::min())), t);
 }
 
+TEST_F(UtilsTest, TensorIdToString) {
+  EXPECT_EQ("^foo", TensorIdToString({"foo", -1}));
+  EXPECT_EQ("foo", TensorIdToString({"foo", 0}));
+  EXPECT_EQ("foo:1", TensorIdToString({"foo", 1}));
+  EXPECT_EQ("foo:2", TensorIdToString({"foo", 2}));
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

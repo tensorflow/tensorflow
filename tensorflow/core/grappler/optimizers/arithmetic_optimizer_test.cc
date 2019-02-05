@@ -3491,6 +3491,35 @@ TEST_F(ArithmeticOptimizerTest,
 }
 
 TEST_F(ArithmeticOptimizerTest,
+       OptimizeMaxOrMinOfMonotonicElementWiseDoNotChangeFetchNodeReduction) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {2, 3}, {1, 2});
+  Output reshape = ops::Reshape(s.WithOpName("reshape"), x, {-1});
+  Output y = ops::Neg(s.WithOpName("y"), reshape);
+  Output z = ops::Max(s.WithOpName("z"), y, {0});
+
+  GrapplerItem item;
+  item.fetch = {"z"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  OptimizeTwice(&optimizer, &item, &output);
+
+  // Should be a NoOp since we are not allowed to change the output of fetch
+  // nodes.
+  VerifyGraphsMatch(item.graph, output, __LINE__);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<int>(tensors[0], tensors_expected[0]);
+  test::ExpectTensorEqual<int>(tensors[0], Tensor(-2));
+}
+
+TEST_F(ArithmeticOptimizerTest,
        OptimizeMaxOrMinOfMonotonicElementWiseNonIncreasing) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});

@@ -24,9 +24,12 @@ from tensorflow.python.platform import test
 
 class _TestOptions(options.OptionsBase):
   x = options.create_option(
-      name="x", ty=int, docstring="the answer to everything", default=42)
+      name="x",
+      ty=int,
+      docstring="the answer to everything",
+      default_factory=lambda: 42)
   y = options.create_option(
-      name="y", ty=float, docstring="a tasty pie", default=3.14)
+      name="y", ty=float, docstring="a tasty pie", default_factory=lambda: 3.14)
 
 
 class _NestedTestOptions(options.OptionsBase):
@@ -90,6 +93,13 @@ class OptionsTest(test.TestCase):
     options1, options2 = _TestOptions(), _NestedTestOptions()
     with self.assertRaises(TypeError):
       options.merge_options(options1, options2)
+
+  def testNoSpuriousAttrs(self):
+    test_options = _TestOptions()
+    with self.assertRaises(AttributeError):
+      test_options.wrong_attr = True
+    with self.assertRaises(AttributeError):
+      _ = test_options.wrong_attr
 
 
 if __name__ == "__main__":

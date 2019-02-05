@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -97,4 +98,30 @@ TEST(TestEnv, TestTimeFunctions) {
   ASSERT_GE(TF_NowSeconds(), 946684800);  // Midnight Jan 1, 2000
   ASSERT_GE(TF_NowMicros(), 946684800 * 1e6);
   ASSERT_GE(TF_NowNanos(), 946684800 * 1e9);
+}
+
+namespace {
+
+struct SomeThreadData {
+  ::tensorflow::mutex mu;
+  bool did_work = false;
+};
+
+void SomeThreadFunc(void* data) {
+  auto* real_data = static_cast<SomeThreadData*>(data);
+  ::tensorflow::mutex_lock l(real_data->mu);
+  real_data->did_work = true;
+}
+
+}  // namespace
+
+TEST(TestEnv, TestThreads) {
+  TF_ThreadOptions options;
+  TF_DefaultThreadOptions(&options);
+  SomeThreadData data;
+  TF_Thread* thread =
+      TF_StartThread(&options, "SomeThreadName", &SomeThreadFunc, &data);
+  TF_JoinThread(thread);
+  ::tensorflow::mutex_lock l(data.mu);
+  ASSERT_TRUE(data.did_work);
 }

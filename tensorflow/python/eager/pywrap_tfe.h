@@ -234,4 +234,6 @@ PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor);
 // for the defun function cache.
 PyObject* TFE_Py_EncodeArg(PyObject*);
 
+void TFE_Py_EnableInteractivePythonLogging();
+
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_

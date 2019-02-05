@@ -386,3 +386,4 @@ def slice(x, start_dims, limit_dims, strides):
 sort = gen_xla_ops.xla_sort
 key_value_sort = gen_xla_ops.xla_key_value_sort
 while_loop = gen_xla_ops.xla_while
+dequantize = gen_xla_ops.xla_dequantize

@@ -1,14 +1,15 @@
 <!-- TODO(joelshor): Add images to the examples. -->
-# TensorFlow-GAN (TFGAN)
+<!-- TODO(joelshor): Add link to new location when b/122114187 is done. -->
+# TensorFlow-GAN (TF-GAN)
 
-TFGAN is a lightweight library for training and evaluating Generative
+TF-GAN is a lightweight library for training and evaluating Generative
 Adversarial Networks (GANs). This technique allows you to train a network
 (called the 'generator') to sample from a distribution, without having to
 explicitly model the distribution and without writing an explicit loss. For
 example, the generator could learn to draw samples from the distribution of
 natural images. For more details on this technique, see
 ['Generative Adversarial Networks'](https://arxiv.org/abs/1406.2661) by
-Goodfellow et al. See [tensorflow/models](https://github.com/tensorflow/models/tree/master/research/gan/) for examples, and [this tutorial](https://github.com/tensorflow/models/tree/master/research/gan/tutorial.ipynb) for an
+Goodfellow et al. See [tensorflow/models](https://github.com/tensorflow/models/tree/master/research/gan/) for examples, and [this tutorial](http://https://github.com/tensorflow/models/tree/master/research/gan/tutorial.ipynb) for an
 introduction.
 
 #### Usage
@@ -17,27 +18,27 @@ import tensorflow as tf
 tfgan = tf.contrib.gan
 ```
 
-## Why TFGAN?
+## Why TF-GAN?
 
 * Easily train generator and discriminator networks with well-tested, flexible [library calls](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/train.py). You can
-mix TFGAN, native TF, and other custom frameworks
+mix TF-GAN, native TF, and other custom frameworks
 * Use already implemented [GAN losses and penalties](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/losses/python/losses_impl.py) (ex Wasserstein loss, gradient penalty, mutual information penalty, etc)
 * [Monitor and visualize](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/eval/python/summaries_impl.py) GAN progress during training, and [evaluate](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/eval/python/classifier_metrics_impl.py) them
 * Use already-implemented [tricks](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/features/python/) to stabilize and improve training
 * Develop based on examples of [common GAN setups](https://github.com/tensorflow/models/tree/master/research/gan/)
-* Use the TFGAN-backed [GANEstimator](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/estimator/python/gan_estimator_impl.py) to easily train a GAN model
-* Improvements in TFGAN infrastructure will automatically benefit your TFGAN project
+* Use the TF-GAN-backed [GANEstimator](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/estimator/python/gan_estimator_impl.py) to easily train a GAN model
+* Improvements in TF-GAN infrastructure will automatically benefit your TF-GAN project
 * Stay up-to-date with research as we add more algorithms
 
-## What are the TFGAN components?
+## What are the TF-GAN components?
 
-TFGAN is composed of several parts which were design to exist independently.
+TF-GAN is composed of several parts which were design to exist independently.
 These include the following main pieces (explained in detail below).
 
 *   [core](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/train.py):
     provides the main infrastructure needed to train a GAN. Training occurs in
     four phases, and each phase can be completed by custom-code or by using a
-    TFGAN library call.
+    TF-GAN library call.
 
 *   [features](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/features/python/):
     Many common GAN operations and normalization techniques are implemented for
@@ -56,14 +57,14 @@ These include the following main pieces (explained in detail below).
     generative models.
 
 *   [examples](https://github.com/tensorflow/models/tree/master/research/gan/)
-    and [tutorial](https://github.com/tensorflow/models/tree/master/research/gan/tutorial.ipynb): See examples of how to use TFGAN to make
-    GAN training easier, or use the more complicated examples to jumpstart your
+    and [tutorial](https://github.com/tensorflow/models/tree/master/research/gan/tutorial.ipynb): See examples of how to use TF-GAN to make
+    GAN training easier, or use the more complicated examples to jump-start your
     own project. These include unconditional and conditional GANs, InfoGANs,
     adversarial losses on existing networks, and image-to-image translation.
 
 ## Training a GAN model
 
-Training in TFGAN typically consists of the following steps:
+Training in TF-GAN typically consists of the following steps:
 
 1. Specify the input to your networks.
 1. Set up your generator and discriminator using a `GANModel`.
@@ -71,12 +72,12 @@ Training in TFGAN typically consists of the following steps:
 1. Create your train ops using a `GANTrainOps`.
 1. Run your train ops.
 
-At each stage, you can either use TFGAN's convenience functions, or you can
+At each stage, you can either use TF-GAN's convenience functions, or you can
 perform the step manually for fine-grained control. We provide examples below.
 
 There are various types of GAN setups. For instance, you can train a generator
 to sample unconditionally from a learned distribution, or you can condition on
-extra information such as a class label. TFGAN is compatible with many setups,
+extra information such as a class label. TF-GAN is compatible with many setups,
 and we demonstrate a few below:
 
 ### Examples
@@ -254,9 +255,9 @@ with variable_scope.variable_scope(dis_scope, reuse=True):
   discriminator_real_outputs = discriminator_fn(images)
 generator_variables = variables_lib.get_trainable_variables(gen_scope)
 discriminator_variables = variables_lib.get_trainable_variables(dis_scope)
-# Depending on what TFGAN features you use, you don't always need to supply
+# Depending on what TF-GAN features you use, you don't always need to supply
 # every `GANModel` field. At a minimum, you need to include the discriminator
-# outputs and variables if you want to use TFGAN to construct losses.
+# outputs and variables if you want to use TF-GAN to construct losses.
 gan_model = tfgan.GANModel(
     generator_inputs,
     generated_data,

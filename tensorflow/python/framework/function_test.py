@@ -284,6 +284,7 @@ class FunctionTest(test.TestCase):
         out, = sess.run(dlogits, {logits: x, labels: y})
       self.assertAllClose(out, np.exp(prob - y))
 
+  @test_util.disable_xla("This test never passed for XLA")
   def testCustomGradientError(self):
     dtype = dtypes.float32
 
@@ -496,8 +497,6 @@ class FunctionTest(test.TestCase):
                                          lambda y: AssertFail(y), [x])
       # pylint: enable=unnecessary-lambda
 
-    rewriter_config = rewriter_config_pb2.RewriterConfig(
-        dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF)
     # Enables inlining.
     config = config_pb2.ConfigProto(
         graph_options=config_pb2.GraphOptions(
@@ -505,8 +504,7 @@ class FunctionTest(test.TestCase):
                 opt_level=config_pb2.OptimizerOptions.L0,
                 do_common_subexpression_elimination=True,
                 do_function_inlining=True,
-                do_constant_folding=True),
-            rewrite_options=rewriter_config))
+                do_constant_folding=True)))
 
     with session.Session(config=config) as sess:
       # Since the 'False' branch is not taken, the assertion should not fire.
@@ -1287,7 +1285,7 @@ class FunctionsFromProtos(test.TestCase):
       gradients_impl.gradients([f1, f2, f3, f4], c)
 
     library = g.as_graph_def().library
-    new_funcs = function._from_library(library)
+    new_funcs = function.from_library(library)
 
     def CheckNewFunc(func):
       new_func = [f for f in new_funcs if f.name == func.name]
@@ -1303,7 +1301,7 @@ class FunctionsFromProtos(test.TestCase):
 
   def testFromLibraryEmptyLib(self):
     library = function_pb2.FunctionDefLibrary()
-    self.assertEqual(len(function._from_library(library)), 0)
+    self.assertEqual(len(function.from_library(library)), 0)
 
   def testFromLibraryMissingFuncDef(self):
 
@@ -1327,7 +1325,7 @@ class FunctionsFromProtos(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError,
         "FunctionDefLibrary missing 'G1_[0-9a-zA-Z]{8,11}' FunctionDef"):
-      function._from_library(library)
+      function.from_library(library)
 
     # Create invalid function def that is missing F1 function def
     library = function_pb2.FunctionDefLibrary()
@@ -1337,7 +1335,7 @@ class FunctionsFromProtos(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError,
         "FunctionDefLibrary missing 'F1_[0-9a-zA-Z]{8,11}' FunctionDef"):
-      function._from_library(library)
+      function.from_library(library)
 
   def testFromLibraryCyclicGradFuncs(self):
 
@@ -1366,7 +1364,7 @@ class FunctionsFromProtos(test.TestCase):
 
     with self.assertRaisesRegexp(
         ValueError, "FunctionDefLibrary contains cyclic gradient functions!"):
-      function._from_library(library)
+      function.from_library(library)
 
   def testExperimentalAttrs(self):
 

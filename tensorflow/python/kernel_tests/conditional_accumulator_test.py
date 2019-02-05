@@ -408,7 +408,7 @@ class ConditionalAccumulatorTest(test.TestCase):
 
       set_global_step_op = q.set_global_step(new_global_step)
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       for _ in range(3):
         set_global_step_op.run()
         self.evaluate(inc_global_step)

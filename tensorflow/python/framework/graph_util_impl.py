@@ -143,13 +143,14 @@ def _bfs_for_reachable_nodes(target_nodes, name_to_input_name):
   # Breadth first search to find all the nodes that we should keep.
   next_to_visit = target_nodes[:]
   while next_to_visit:
-    n = next_to_visit[0]
+    node = next_to_visit[0]
     del next_to_visit[0]
-    if n in nodes_to_keep:
+    if node in nodes_to_keep:
       # Already visited this node.
       continue
-    nodes_to_keep.add(n)
-    next_to_visit += name_to_input_name[n]
+    nodes_to_keep.add(node)
+    if node in name_to_input_name:
+      next_to_visit += name_to_input_name[node]
   return nodes_to_keep
 
 

@@ -29,7 +29,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import initializers
+from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras import utils
 from tensorflow.python.ops import array_ops
@@ -762,6 +764,17 @@ class RNNCellTest(test.TestCase):
         self.assertEqual(new_h.shape[0], batch_size)
         self.assertEqual(new_h.shape[1], num_proj)
         self.assertAllClose(np.concatenate(res[1], axis=1), expected_state)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNASCellKerasRNN(self):
+    """Tests that NASCell works with keras RNN layer."""
+    cell = contrib_rnn_cell.NASCell(10)
+    seq_input = ops.convert_to_tensor(
+        np.random.rand(2, 3, 5), name="seq_input", dtype=dtypes.float32)
+    rnn_layer = keras_layers.RNN(cell=cell)
+    rnn_outputs = rnn_layer(seq_input)
+    self.evaluate([variables.global_variables_initializer()])
+    self.assertEqual(self.evaluate(rnn_outputs).shape, (2, 10))
 
   def testUGRNNCell(self):
     num_units = 2

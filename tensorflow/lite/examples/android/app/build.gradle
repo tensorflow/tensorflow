@@ -1,8 +1,16 @@
 apply plugin: 'com.android.application'
 
+// import DownloadModels task
+project.ext.ASSET_DIR = projectDir.toString() + '/src/main/assets'
+project.ext.TMP_DIR   = project.buildDir.toString() + '/downloads'
+
+// Download default models; if you wish to use your own models then
+// place them in the "assets" directory and comment out this line.
+apply from: "download-models.gradle"
+
 android {
     compileSdkVersion 26
-    buildToolsVersion '26.0.2'
+    buildToolsVersion '27.0.3'
     defaultConfig {
         applicationId "org.tensorflow.lite.demo"
         minSdkVersion 15
@@ -10,10 +18,6 @@ android {
         versionCode 1
         versionName "1.0"
 
-        // Remove this block.
-        jackOptions {
-            enabled true
-        }
     }
     lintOptions {
         abortOnError false
@@ -40,15 +44,7 @@ repositories {
     }
 }
 
-// import DownloadModels task
-project.ext.ASSET_DIR = projectDir.toString() + '/src/main/assets'
-project.ext.TMP_DIR   = project.buildDir.toString() + '/downloads'
-
-// Download default models; if you wish to use your own models then
-// place them in the "assets" directory and comment out this line.
-apply from: "download-models.gradle"
-
 dependencies {
-    compile fileTree(dir: 'libs', include: ['*.jar'])
-    compile 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
 }

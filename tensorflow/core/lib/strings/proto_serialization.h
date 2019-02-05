@@ -28,6 +28,10 @@ namespace tensorflow {
 bool SerializeToStringDeterministic(const protobuf::MessageLite& msg,
                                     string* result);
 
+// As above, but serialize to a pre-allocated `buffer` of length `size`.
+// PRECONDITION: size == msg.ByteSizeLong().
+bool SerializeToBufferDeterministic(const protobuf::MessageLite& msg,
+                                    char* buffer, int size);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_LIB_STRINGS_PROTO_SERIALIZATION_H_

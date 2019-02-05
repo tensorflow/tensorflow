@@ -59,6 +59,10 @@ upper_tabs:
       - title: Post-training quantization example
         path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_quant.ipynb
         status: external
+      - title: GPU delegate
+        path: /lite/performance/gpu
+      - title: Advanced GPU
+        path: /lite/performance/gpu_advanced
 
       - title: TF Mobile
         style: accordion
@@ -76,6 +80,32 @@ upper_tabs:
           path: /lite/tfmobile/prepare_models
         - title: Optimizing for mobile
           path: /lite/tfmobile/optimizing
+
+    # - name: Models
+    #   contents:
+    #   - title: Overview
+    #     path: /lite/models/
+    #   - heading: Beginner
+    #     style: divider
+    #   - title: Image labeling
+    #     section:
+    #     - title: Overview
+    #       path: /lite/models/image/label/overview
+    #     - title: Android
+    #       path: /lite/models/image/label/android
+    #     - title: iOS
+    #       path: /lite/models/image/label/ios
+    #   - heading: Advanced
+    #     style: divider
+    #   - heading: Image
+    #   - title: Image classification
+    #     path: /lite/models/image/classification/
+    #   - heading: Audio
+    #   - title: Hot word detection
+    #     path: /lite/models/audio/hot_word/
+    #   - heading: Text
+    #   - title: Text classification
+    #     path: /lite/models/text/classification/
 
     - name: API
       skip_translation: true

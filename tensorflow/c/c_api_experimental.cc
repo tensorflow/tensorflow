@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_experimental.h"
 
+#include "absl/strings/substitute.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -66,7 +67,8 @@ void TF_EnableXLACompilation(TF_SessionOptions* options, unsigned char enable) {
 }
 
 TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
-                           unsigned char gpu_memory_allow_growth) {
+                           unsigned char gpu_memory_allow_growth,
+                           unsigned int num_cpu_devices) {
   tensorflow::ConfigProto config;
   auto* optimizer_options =
       config.mutable_graph_options()->mutable_optimizer_options();
@@ -86,6 +88,8 @@ TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
 
   auto* gpu_options = config.mutable_gpu_options();
   gpu_options->set_allow_growth(gpu_memory_allow_growth);
+
+  (*config.mutable_device_count())["CPU"] = num_cpu_devices;
 
   // TODO(b/113217601): This is needed for EagerContext::runner_ to use a
   // threadpool, so that we avoid the possibility of running the runner_ in the
@@ -119,6 +123,14 @@ TF_Buffer* TF_CreateRunOptions(unsigned char enable_full_trace) {
 const char* TF_GraphDebugString(TF_Graph* graph, size_t* len) {
   tensorflow::mutex_lock c(graph->mu);
   const auto& debug_str = graph->graph.ToGraphDefDebug().DebugString();
+  *len = debug_str.size();
+  char* ret = static_cast<char*>(malloc(*len + 1));
+  memcpy(ret, debug_str.c_str(), *len + 1);
+  return ret;
+}
+
+char* TF_FunctionDebugString(TF_Function* func, size_t* len) {
+  const auto& debug_str = func->fdef.DebugString();
   *len = debug_str.size();
   char* ret = static_cast<char*>(malloc(*len + 1));
   memcpy(ret, debug_str.c_str(), *len + 1);
@@ -8535,8 +8547,9 @@ TFE_Context* TFE_CreateContextFromSession(TF_Session* session,
 
   // Reduce GPU memory allocation, and set appropriate config options for TFE
   // context.
-  auto* config =
-      TF_CreateConfig(/*xla*/ false, /* gpu_memory_allow_growth */ true);
+  auto* config = TF_CreateConfig(
+      /*xla*/ false, /* gpu_memory_allow_growth */ true, /* num_cpu_devices */
+      10);
   TFE_ContextOptionsSetConfig(opts, config->data, config->length, status);
   if (!status->status.ok()) {
     CHECK(!config);
@@ -8733,6 +8746,12 @@ static void CheckOk(TF_Status* status) {
 
 void TFE_TensorHandlePrintDebugString(TFE_TensorHandle* handle) {
   auto* status = TF_NewStatus();
+  if (!TFE_TensorHandleIsConcrete(handle)) {
+    VLOG(1) << "Symbolic tensor: " << handle;
+    TF_DeleteStatus(status);
+    return;
+  }
+
   TF_Tensor* t = TFE_TensorHandleResolve(handle, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
@@ -8742,6 +8761,11 @@ void TFE_TensorHandlePrintDebugString(TFE_TensorHandle* handle) {
 
   TF_DeleteTensor(t);
   TF_DeleteStatus(status);
+}
+
+void TFE_OpPrintDebugString(TFE_Op* op) {
+  VLOG(1) << "TFE_OpPrintDebugString() over " << op;
+  LOG(INFO) << op->operation.DebugString();
 }
 
 struct TFE_ExecuteOpNotification {
@@ -8885,4 +8909,218 @@ TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType dtype_arg,
   tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
   return new TFE_TensorHandle(tensor, nullptr, nullptr);
+}
+
+namespace {
+tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
+                                       TFE_Context* ctx) {
+  // We don't use the TF_RETURN_IF_ERROR macro directly since that destroys the
+  // server object (which currently CHECK-fails) and we miss the error, instead,
+  // we log the error, and then return to allow the user to see the error
+  // message.
+#define LOG_AND_RETURN_IF_ERROR(...)                    \
+  do {                                                  \
+    const ::tensorflow::Status _status = (__VA_ARGS__); \
+    if (TF_PREDICT_FALSE(!_status.ok())) {              \
+      LOG(ERROR) << _status.error_message();            \
+      return _status;                                   \
+    }                                                   \
+  } while (0);
+
+  std::unique_ptr<tensorflow::ServerInterface> server;
+  LOG_AND_RETURN_IF_ERROR(tensorflow::NewServer(server_def, &server));
+
+  tensorflow::GrpcServer* grpc_server =
+      dynamic_cast<tensorflow::GrpcServer*>(server.get());
+  if (grpc_server == nullptr) {
+    LOG_AND_RETURN_IF_ERROR(tensorflow::errors::Internal(
+        "Currently, TFE_NewContext only supports tensorflow::GrpcServer."));
+  }
+
+  LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
+
+  LOG_AND_RETURN_IF_ERROR(ctx->context.StoreCollectiveOpsServer(
+      std::move(server), grpc_server->worker_env()->device_mgr,
+      grpc_server->worker_env()->collective_executor_mgr));
+
+  return tensorflow::Status::OK();
+#undef LOG_AND_RETURN_IF_ERROR
+}
+}  // namespace
+
+// Set server_def on the context, possibly updating it.
+TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
+                                                   const void* proto,
+                                                   size_t proto_len,
+                                                   TF_Status* status) {
+  tensorflow::ServerDef server_def;
+  if (!server_def.ParseFromArray(proto, proto_len)) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Invalid tensorflow.ServerDef protocol buffer");
+    return;
+  }
+  status->status = EnableCollectiveOps(server_def, ctx);
+}
+
+std::string tensorflow::getTF_OutputDebugString(TF_Output node) {
+  return absl::Substitute("TF_Output($0, $1)", node.oper, node.index);
+}
+
+using tensorflow::getTF_OutputDebugString;
+
+TFE_TensorHandle* TFE_NewTensorHandleFromTFOutput(TF_Output t,
+                                                  TF_DataType dtype) {
+  auto ret = new TFE_TensorHandle(t, dtype);
+  VLOG(1) << "Storing TFOutput " << getTF_OutputDebugString(t)
+          << " into tensor handle " << ret << " with internal handle "
+          << ret->handle;
+  return ret;
+}
+
+unsigned char TFE_TensorHandleIsConcrete(TFE_TensorHandle* handle) {
+  assert(handle->handle != nullptr);
+  return handle->handle->getSymbolicTensor() == nullptr;
+}
+
+TF_Output TFE_GetTFOutputFromTensorHandle(TFE_TensorHandle* handle,
+                                          TF_Status* status) {
+  if (TFE_TensorHandleIsConcrete(handle)) {
+    status->status =
+        tensorflow::errors::Internal("Not a symbolic tensor: ", handle);
+    return TF_Output{nullptr, -1};
+  }
+
+  auto* sym_tensor = handle->handle->getSymbolicTensor();
+  CHECK(sym_tensor != nullptr);
+  auto ret = TF_Output{sym_tensor->oper, sym_tensor->index};
+  VLOG(1) << "Retrieving " << getTF_OutputDebugString(ret)
+          << " from tensor handle " << handle;
+  CHECK_GE(sym_tensor->index, 0);
+  return ret;
+}
+
+TFE_TraceContext* TFE_NewTraceContext(TF_Graph* graph) {
+  return new TFE_TraceContext(graph);
+}
+
+void TFE_DeleteTraceContext(TFE_TraceContext* trace_ctx) { delete trace_ctx; }
+
+// If `handle` is already symbolic, return it. Otherwise map it to a new
+// symbolic tensor (a PlaceHolder op) and return that.
+static TF_Output getOrCreateSymbolicTensor(TFE_TraceContext* trace_ctx,
+                                           tensorflow::TensorHandle* handle,
+                                           TF_Status* status) {
+  VLOG(1) << "Getting symbolic tensor for input tensor handle " << handle
+          << ": " << handle->DebugString();
+
+  auto* sym_tensor = handle->getSymbolicTensor();
+  if (sym_tensor != nullptr) {
+    auto ret = TF_Output{sym_tensor->oper, sym_tensor->index};
+    VLOG(1) << "This handle is a symbolic tensor " << sym_tensor << ": "
+            << getTF_OutputDebugString(ret);
+    return ret;
+  }
+
+  auto find_it = trace_ctx->input_tensor_map.find(handle);
+  if (find_it != trace_ctx->input_tensor_map.end()) {
+    VLOG(1) << "There exists a map entry from this concrete tensor to: "
+            << getTF_OutputDebugString(find_it->second);
+    return find_it->second;
+  }
+
+  auto node_name = tensorflow::strings::StrCat("additional_input_",
+                                               trace_ctx->node_counter++);
+  VLOG(1) << "Adding a place holder node named " << node_name;
+  auto* desc =
+      TF_NewOperation(trace_ctx->graph, "Placeholder", node_name.c_str());
+  TF_SetAttrType(desc, "dtype",
+                 static_cast<TF_DataType>(handle->dtype) /*TF_FLOAT*/);
+  auto* result = TF_FinishOperation(desc, status);
+  if (!status->status.ok()) {
+    return TF_Output{nullptr, -1};
+  }
+
+  auto ret = TF_Output{result, 0};
+  VLOG(1) << "Creating a new map entry to map to: "
+          << getTF_OutputDebugString(ret);
+  trace_ctx->input_tensor_map[handle] = ret;
+  // `handle` could be destroyed before it's read from `input_tensor_map` (say
+  // during a subsequent TFE_FinalizeInputTensorsFromTraceContext() call), so we
+  // increment its ref count to extend its life span to that of `trace_ctx`.
+  handle->Ref();
+  VLOG(1) << "Ref count for handle " << handle
+          << " is 1?: " << handle->RefCountIsOne();
+  return ret;
+}
+
+TF_Operation* TFE_AddEagerOpToGraph(TFE_Op* op, TFE_TraceContext* trace_ctx,
+                                    TFE_TensorHandle** retvals,
+                                    int* num_retvals, TF_Status* status) {
+  VLOG(1) << "Calling TFE_AddEagerOpToGraph() with op " << op << ": "
+          << op->operation.DebugString();
+
+  const auto& op_type = op->operation.Name();
+  auto op_name =
+      tensorflow::strings::StrCat(op_type, "_", trace_ctx->node_counter++);
+  auto* desc =
+      TF_NewOperation(trace_ctx->graph, op_type.c_str(), op_name.c_str());
+  for (auto* input : op->operation.Inputs()) {
+    auto symbolic_input = getOrCreateSymbolicTensor(trace_ctx, input, status);
+    if (!status->status.ok()) return nullptr;
+    TF_AddInput(desc, symbolic_input);
+  }
+
+  VLOG(1) << "Adding attrs.";
+  tensorflow::AttrValueMap attrs;
+  op->operation.Attrs().FillAttrValueMap(&attrs);
+  for (const auto& attr : attrs) {
+    desc->node_builder.Attr(attr.first, attr.second);
+  }
+
+  auto* graph_op = TF_FinishOperation(desc, status);
+  if (!status->status.ok()) return nullptr;
+
+  VLOG(1) << "Op finalized; setting return tensors.";
+  *num_retvals = TF_OperationNumOutputs(graph_op);
+  VLOG(1) << "This op has " << *num_retvals << " outputs.";
+  for (int i = 0; i < *num_retvals; ++i) {
+    auto output = TF_Output{graph_op, i};
+    auto dtype = TF_OperationOutputType(output);
+    retvals[i] = TFE_NewTensorHandleFromTFOutput(output, dtype);
+  }
+  return graph_op;
+}
+
+int TFE_FinalizeInputTensorsFromTraceContext(TFE_TraceContext* trace_ctx) {
+  if (trace_ctx->input_tensors == nullptr) {
+    trace_ctx->input_tensors =
+        new std::vector<std::pair<tensorflow::TensorHandle*, TF_Output>>();
+    trace_ctx->input_tensors->reserve(trace_ctx->input_tensor_map.size());
+
+    for (auto input : trace_ctx->input_tensor_map) {
+      trace_ctx->input_tensors->emplace_back(input.first, input.second);
+    }
+  }
+  return trace_ctx->input_tensor_map.size();
+}
+
+TF_Output TFE_GetInputGraphNodeFromTraceContext(TFE_TraceContext* trace_ctx,
+                                                unsigned int idx) {
+  CHECK(trace_ctx->input_tensors != nullptr);
+  CHECK(trace_ctx->input_tensors->size() > idx);
+  return trace_ctx->input_tensors->at(idx).second;
+}
+
+TFE_TensorHandle* TFE_ConsumeInputConcreteTensorFromTraceContext(
+    TFE_TraceContext* trace_ctx, unsigned int idx) {
+  CHECK(trace_ctx->input_tensors != nullptr);
+  CHECK(trace_ctx->input_tensors->size() > idx);
+  auto* handle = trace_ctx->input_tensors->at(idx).first;
+  VLOG(1) << "Ref count for internal handle " << handle
+          << " is 1?: " << handle->RefCountIsOne();
+  handle->Ref();
+  auto* ret = new TFE_TensorHandle(handle);
+  VLOG(1) << "Returning a new tensor handle " << ret << ": "
+          << handle->DebugString();
+  return ret;
 }

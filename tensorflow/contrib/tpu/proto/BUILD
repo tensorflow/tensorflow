@@ -49,6 +49,15 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
+tf_proto_library(
+    name = "dynamic_padding_proto",
+    srcs = [
+        "dynamic_padding.proto",
+    ],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
+)
+
 tf_proto_library_py(
     name = "compilation_result_proto",
     srcs = [

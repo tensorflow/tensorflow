@@ -55,12 +55,17 @@ TfLiteStatus ArenaPlanner::ResetAllocations() {
   TF_LITE_ENSURE_STATUS(persistent_arena_.Clear());
   allocs_.clear();
   allocs_.resize(graph_info_->num_tensors());
+  // Note that we only clear the alloc_queue_ when re-planning allocations, as
+  // it should only change when the graph topology itself changes.
   return kTfLiteOk;
 }
 
 TfLiteStatus ArenaPlanner::PlanAllocations() {
   // Invalidate any existing data.
   TF_LITE_ENSURE_STATUS(ResetAllocations());
+  // The alloc_queue_ is specific to the graph topology, and will be
+  // completely reconstructed from graph data here.
+  alloc_queue_.clear();
 
   // Keeps track of references to each tensor.
   std::vector<int> refcounts(graph_info_->num_tensors(), 0);
