@@ -58,8 +58,7 @@ END
   attr {
     name: "out_type"
     description: <<END
-The quantized type of output tensor that needs to be converted. 
-input tensor.
+The quantized type of output tensor that needs to be converted.
 END
   }
   summary: "Requantizes input with min and max values known per channel."
