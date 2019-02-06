@@ -115,6 +115,21 @@ class ConditionalReturnRewriter(converter.Base):
       anno.setanno(node, STMT_DEFINITELY_RETURNS, True)
     return node
 
+  def visit_Try(self, node):
+    # We could decide whether a 'try' DEFINITELY_RETURNS based on its components
+    # It is not clear whether we want to do anything with this given
+    # a 'try' is likely to throw an exception in some circumstances.
+    node.body, _ = self._visit_statement_block(node, node.body)
+    node.orelse, _ = self._visit_statement_block(node, node.orelse)
+    node.finalbody, _ = self._visit_statement_block(node, node.finalbody)
+    node.handlers = self.visit_block(node.handlers)
+    return node
+
+  def visit_ExceptHandler(self, node):
+    # To determine whether `try` DEFINITELY_RETURNS we need to revisit this.
+    node.body, _ = self._visit_statement_block(node, node.body)
+    return node
+
   def visit_If(self, node):
     node.test = self.visit(node.test)
 
@@ -317,6 +332,17 @@ class ReturnStatementsTransformer(converter.Base):
     node.body = self._visit_statement_block(node, node.body)
     return node
 
+  def visit_Try(self, node):
+    node.body = self._visit_statement_block(node, node.body)
+    node.orelse = self._visit_statement_block(node, node.orelse)
+    node.finalbody = self._visit_statement_block(node, node.finalbody)
+    node.handlers = self.visit_block(node.handlers)
+    return node
+
+  def visit_ExceptHandler(self, node):
+    node.body = self._visit_statement_block(node, node.body)
+    return node
+
   def visit_If(self, node):
     node.test = self.visit(node.test)
     node.body = self._visit_statement_block(node, node.body)
@@ -382,5 +408,6 @@ def transform(node, ctx, default_to_null_return=True):
   transformer = ReturnStatementsTransformer(
       ctx, default_to_null_return=default_to_null_return)
   node = transformer.visit(node)
+  transformer.debug_print_src(node)
 
   return node
