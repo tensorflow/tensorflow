@@ -114,12 +114,12 @@ The 'load' and 'store' instructions are specifically crafted to fully resolve to
 an element of a memref. These instructions take as arguments n+1 indices for an
 n-ranked tensor. This disallows the equivalent of pointer arithmetic or the
 ability to index into the same memref in other ways (something which C arrays
-allow for example). Furthermore, in an affine constructs, the compiler can
-follow use-def chains (e.g. through
-[affine_apply instructions](LangRef.md#'affine_apply'-operation)) to precisely
-analyze references at compile-time using polyhedral techniques. This is possible
-because of the
-[restrictions on dimensions and symbols](LangRef.md#dimensions-and-symbols).
+allow for example). Furthermore, in an affine construct, the compiler can follow
+use-def chains (e.g. through
+[affine_apply instructions](Dialects/Affine.md#'affine_apply'-operation)) to
+precisely analyze references at compile-time using polyhedral techniques. This
+is possible because of the
+[restrictions on dimensions and symbols](Dialects/Affine.md#restrictions-on-dimensions-and-symbols).
 
 A scalar of element-type (a primitive type or a vector type) that is stored in
 memory is modeled as a 0-d memref. This is also necessary for scalars that are

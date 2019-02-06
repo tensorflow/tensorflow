@@ -30,7 +30,7 @@ document describes the human-readable textual form.
 
 The top-level unit of code in MLIR is a [Module](#module). A module contains a
 list of [Functions](#functions). Functions are represented as a composition of
-[operations](#operations) and contain a Control Flow Graph (CFG) of
+[instructions](#operations) and contain a Control Flow Graph (CFG) of
 [Blocks](#blocks), which contain instructions and end with
 [terminator operations](#terminator-operations) (like branches).
 
@@ -41,11 +41,12 @@ dominance relations. Operations may produce zero or more results, and each is a
 distinct SSA value with its own type defined by the [type system](#type-system).
 
 MLIR incorporates polyhedral compiler concepts, including `for` and `if`
-instructions, which model affine loops and affine conditionals. It also includes
-affine maps integrated into the type system - they are key to the representation
-of data and [MemRefs](#memref-type), which are the representation for tensors in
-addressable memory. MLIR also supports a first-class Tensor type allowing it to
-concisely represent operations on N-dimensional arrays.
+operations defined by the [affine dialect](Dialects/Affine.md), which model
+affine loops and affine conditionals. It also includes affine maps integrated
+into the type system - they are key to the representation of data and
+[MemRefs](#memref-type), which are the representation for tensors in addressable
+memory. MLIR also supports a first-class Tensor type allowing it to concisely
+represent operations on N-dimensional arrays.
 
 Finally, MLIR supports operations for allocating buffers, producing views to
 transform them, represent target-independent arithmetic, target-specific
@@ -69,7 +70,7 @@ func @mul(%A: tensor<100x?xf32>, %B: tensor<?x50xf32>) -> (tensor<100x50xf32>) {
   %B_m = alloc memref<?x50xf32>(%n)
   tensor_store %B to %B_m : memref<?x50xf32>
 
-  // Call ML function @multiply passing memrefs as arguments,
+  // Call function @multiply passing memrefs as arguments,
   // and getting returned the result of the multiplication.
   %C_m = call @multiply(%A_m, %B_m)
           : (memref<100x?xf32>, memref<?x50xf32>) -> (memref<100x50xf32>)
@@ -245,17 +246,6 @@ dim-and-symbol-use-list ::= dim-use-list symbol-use-list?
 
 SSA values bound to dimensions and symbols must always have 'index' type.
 
-A symbolic identifier can be bound to an SSA value that is either an argument to
-the function, a value defined at the top level of that function (outside of all
-loops and if instructions), the result of a
-[`constant` operation](#'constant'-operation), or the result of an
-[`affine_apply`](#'affine_apply'-operation) operation that recursively takes as
-arguments any symbolic identifiers. Dimensions may be bound not only to anything
-that a symbol is bound to, but also to induction variables of enclosing
-[for instructions](#'for'-instruction), and the result of an
-[`affine_apply` operation](#'affine_apply'-operation) (which recursively may use
-other dimensions and symbols).
-
 Example:
 
 ```mlir {.mlir}
@@ -341,10 +331,10 @@ affine maps", and those without a size are "unbounded affine maps".
 dimension indices and symbols into a list of results, with affine expressions
 combining the indices and symbols. Affine maps distinguish between
 [indices and symbols](#dimensions-and-symbols) because indices are inputs to the
-affine map when the latter is called through an
-[affine_apply](#'affine_apply'-operation) operation, whereas symbols are bound
-when an affine mapping is established (e.g. when a memref is formed,
-establishing a memory [layout map](#layout-map)).
+affine map when the latter may be called through an operation, such as
+[affine_apply](Dialects/Affine.md#'affine_apply'-operation) operation, whereas
+symbols are bound when an affine mapping is established (e.g. when a memref is
+formed, establishing a memory [layout map](#layout-map)).
 
 Affine maps are used for various core structures in MLIR. The restrictions we
 impose on their form allows powerful analysis and transformation, while keeping
@@ -482,7 +472,7 @@ Example:
 #set42 = (d0, d1)[s0, s1]
    : d0 >= 0, -d0 + s0 - 1 >= 0, d1 >= 0, -d1 + s1 - 1 >= 0
 
-// Inside an ML Function
+// Inside a Function
 if #set42(%i, %j)[%M, %N] {
   ...
 }
@@ -490,6 +480,11 @@ if #set42(%i, %j)[%M, %N] {
 
 `d0` and `d1` correspond to dimensional identifiers of the set, while `s0` and
 `s1` are symbol identifiers.
+
+### Affine Dialect
+
+MLIR provides a first class set of polyhedral operations and analyses within the
+[affine dialect](Dialects/Affine.md).
 
 ## Type System {#type-system}
 
@@ -989,133 +984,21 @@ of SSA is immediately apparent, and function arguments are no longer a special
 case: they become arguments to the entry block
 [[more rationale](Rationale.md#block-arguments-vs-phi-nodes)].
 
-### Instruction Kinds
-
-MLIR has three kinds of instructions: [dialect-defined operations](#operations),
-an affine [`for` instruction](#'for'-instruction), and an affine
-[`if` instruction](#'if'-instruction).
-
-``` {.ebnf}
-inst ::= operation | for-inst | if-inst
-```
-
-#### 'for' instruction {#'for'-instruction}
+### Operations {#operations}
 
 Syntax:
 
 ``` {.ebnf}
-for-inst ::= `for` ssa-id `=` lower-bound `to` upper-bound
-              (`step` integer-literal)? `{` inst* `}`
-
-lower-bound ::= `max`? affine-map dim-and-symbol-use-list | shorthand-bound
-upper-bound ::= `min`? affine-map dim-and-symbol-use-list | shorthand-bound
-shorthand-bound ::= ssa-id | `-`? integer-literal
-```
-
-The `for` instruction represents an affine loop nest, defining an SSA value for
-its induction variable. This SSA value always has type [`index`](#index-type),
-which is the size of the machine word.
-
-The `for` instruction executes its body a number of times iterating from a lower
-bound to an upper bound by a stride. The stride, represented by `step`, is a
-positive constant integer which defaults to "1" if not present. The lower and
-upper bounds specify a half-open range: the range includes the lower bound but
-does not include the upper bound.
-
-The lower and upper bounds of a `for` instruction are represented as an
-application of an affine mapping to a list of SSA values passed to the map. The
-[same restrictions](#dimensions-and-symbols) hold for these SSA values as for
-all bindings of SSA values to dimensions and symbols.
-
-The affine mappings for the bounds may return multiple results, in which case
-the `max`/`min` keywords are required (for the lower/upper bound respectively),
-and the bound is the maximum/minimum of the returned values. There is no
-semantic ambiguity, but MLIR syntax requires the use of these keywords to make
-things more obvious to human readers.
-
-Many upper and lower bounds are simple, so MLIR accepts two custom form
-syntaxes: the form that accepts a single 'ssa-id' (e.g. `%N`) is shorthand for
-applying that SSA value to a function that maps a single symbol to itself, e.g.,
-`()[s]->(s)()[%N]`. The integer literal form (e.g. `-42`) is shorthand for a
-nullary mapping function that returns the constant value (e.g. `()->(-42)()`).
-
-Example showing reverse iteration of the inner loop:
-
-```mlir {.mlir}
-#map57 = (d0)[s0] -> (s0 - d0 - 1)
-
-func @simple_example(%A: memref<?x?xf32>, %B: memref<?x?xf32>) {
-  %N = dim %A, 0 : memref<?x?xf32>
-  for %i = 0 to %N step 1 {
-    for %j = 0 to %N {   // implicitly steps by 1
-      %0 = affine_apply #map57(%j)[%N]
-      %tmp = call @F1(%A, %i, %0) : (memref<?x?xf32>, index, index)->(f32)
-      call @F2(%tmp, %B, %i, %0) : (f32, memref<?x?xf32>, index, index)->()
-    }
-  }
-  return
-}
-```
-
-#### 'if' instruction {#'if'-instruction}
-
-Syntax:
-
-``` {.ebnf}
-if-inst-head ::= `if` if-inst-cond `{` inst* `}`
-               | if-inst-head `else` `if` if-inst-cond `{` inst* `}`
-if-inst-cond ::= integer-set dim-and-symbol-use-list
-
-if-inst ::= if-inst-head
-          | if-inst-head `else` `{` inst* `}`
-```
-
-The `if` instruction restricts execution to a subset of the loop iteration space
-defined by an integer set (a conjunction of affine constraints). A single `if`
-may have a number of optional `else if` clauses, and may end with an optional
-`else` clause.
-
-The condition of the `if` is represented by an [integer set](#integer-sets) (a
-conjunction of affine constraints), and the SSA values bound to the dimensions
-and symbols in the integer set. The [same restrictions](#dimensions-and-symbols)
-hold for these SSA values as for all bindings of SSA values to dimensions and
-symbols.
-
-Example:
-
-```mlir {.mlir}
-#set = (d0, d1)[s0]: (d0 - 10 >= 0, s0 - d0 - 9 >= 0,
-                      d1 - 10 >= 0, s0 - d1 - 9 >= 0)
-func @reduced_domain_example(%A, %X, %N) : (memref<10xi32>, i32, i32) {
-  for %i = 0 to %N {
-     for %j = 0 to %N {
-       %0 = affine_apply #map42(%j)
-       %tmp = call @S1(%X, %i, %0)
-       if #set(%i, %j)[%N] {
-          %1 = affine_apply #map43(%i, %j)
-          call @S2(%tmp, %A, %i, %1)
-       }
-    }
-  }
-  return
-}
-```
-
-## Operations {#operations}
-
-Syntax:
-
-``` {.ebnf}
-operation ::= (ssa-id `=`)? string-literal `(` ssa-use-list? `)`
+instruction ::= (ssa-id `=`)? string-literal `(` ssa-use-list? `)`
               (`[` successor-list `]`)? attribute-dict? `:` function-type
 successor-list ::= successor (`,` successor)*
 ```
 
-MLIR represents computation within functions with a uniform concept called
+MLIR represents computations within functions with a uniform concept called
 _operations_. Operations in MLIR are fully extensible (there is no fixed list of
 operations), and have application-specific semantics. For example, MLIR supports
 [target-independent operations](#memory-operations),
-[high-level TensorFlow ops](#tensorflow-operations), and
+[affine operations](Dialects/Affine.md), and
 [target-specific machine instructions](#target-specific-operations).
 
 The internal representation of an operation is simple: an operation is
@@ -1209,7 +1092,7 @@ The MLIR conditional branch instruction is not allowed to target the entry block
 for a function. The two destinations of the conditional branch instruction are
 allowed to be the same.
 
-The following example illustrates a CFG function with a conditional branch
+The following example illustrates a function with a conditional branch
 instruction that targets the same block:
 
 ```mlir {.mlir}
@@ -1237,32 +1120,6 @@ single function to return.
 
 ### Core Operations {#core-operations}
 
-#### 'affine_apply' operation {#'affine_apply'-operation}
-
-Syntax:
-
-``` {.ebnf}
-operation ::= ssa-id `=` `affine_apply` affine-map dim-and-symbol-use-list
-```
-
-The `affine_apply` instruction applies an [affine mapping](#affine-expressions)
-to a list of SSA values, yielding a single SSA value. The number of dimension
-and symbol arguments to affine_apply must be equal to the respective number of
-dimensional and symbolic inputs to the affine mapping; the `affine_apply`
-instruction always returns one value. The input operands and result must all
-have 'index' type.
-
-Example:
-
-```mlir {.mlir}
-#map10 = (d0, d1) -> (floordiv(d0,8) + floordiv(d1,128))
-...
-%1 = affine_apply #map10 (%s, %t)
-
-// Inline example.
-%2 = affine_apply (i)[s0] -> (i+s0) (%42)[%n]
-```
-
 #### 'call' operation {#'call'-operation}
 
 Syntax:
@@ -1279,7 +1136,7 @@ encoded as a function attribute named "callee".
 Example:
 
 ```mlir {.mlir}
-// Calling the CFG function my_add.
+// Calling the function my_add.
 %31 = call @my_add(%0, %1) : (tensor<16xf32>, tensor<16xf32>) -> tensor<16xf32>
 ```
 
@@ -1495,12 +1352,14 @@ each followed by its indices, size of the data transfer in terms of the number
 of elements (of the elemental type of the memref), and a tag memref with its
 indices. The tag location is used by a dma_wait operation to check for
 completion. The indices of the source memref, destination memref, and the tag
-memref have the same restrictions as any load/store instruction in an ML
-Function (whenever DMA operations appear in ML Functions). This allows powerful
-static analysis and transformations in the presence of such DMAs including
-rescheduling, pipelining / overlap with computation, and checking for matching
-start/end operations. The source and destination memref need not be of the same
-dimensionality, but need to have the same elemental type.
+memref have the same restrictions as any load/store instruction in a affine
+context (whenever DMA operations appear in an affine context). See
+[restrictions on dimensions and symbols](Dialects/Affine.md#restrictions-on-dimensions-and-symbols)
+in affine contexts. This allows powerful static analysis and transformations in
+the presence of such DMAs including rescheduling, pipelining / overlap with
+computation, and checking for matching start/end operations. The source and
+destination memref need not be of the same dimensionality, but need to have the
+same elemental type.
 
 For example, a `dma_start` operation that transfers 32 vector elements from a
 memref `%src` at location `[%i, %j]` to memref `%dst` at `[%k, %l]` would be
@@ -1596,12 +1455,13 @@ Example:
 ```
 
 **Context:** The `load` and `store` instructions are specifically crafted to
-fully resolve a reference to an element of a memref, and (in polyhedral `if` and
+fully resolve a reference to an element of a memref, and (in affine `if` and
 `for` instructions) the compiler can follow use-def chains (e.g. through
-[`affine_apply`](#'affine_apply'-operation) operations) to precisely analyze
-references at compile-time using polyhedral techniques. This is possible because
-of the [restrictions on dimensions and symbols](#dimensions-and-symbols) in
-these contexts.
+[`affine_apply`](Dialects/Affine.md#'affine_apply'-operation) operations) to
+precisely analyze references at compile-time using polyhedral techniques. This
+is possible because of the
+[restrictions on dimensions and symbols](Dialects/Affine.md#restrictions-on-dimensions-and-symbols)
+in these contexts.
 
 #### 'store' operation {#'store'-operation}
 
@@ -1616,12 +1476,13 @@ Store value to memref location given by indices. The value stored should have
 the same type as the elemental type of the memref. The number of arguments
 provided within brackets need to match the rank of the memref.
 
-In an ML Function, the indices of a store are restricted to SSA values bound to
-surrounding loop induction variables, [symbols](#dimensions-and-symbols),
-results of a [`constant` operation](#'constant'-operation), or the result of an
-[`affine_apply`](#'affine_apply'-operation) operation that can in turn take as
-arguments all of the aforementioned SSA values or the recursively result of such
-an `affine_apply` operation.
+In an affine context, the indices of a store are restricted to SSA values bound
+to surrounding loop induction variables,
+[symbols](Dialect/Affine.md#restrictions-on-dimensions-and-symbols), results of
+a [`constant` operation](#'constant'-operation), or the result of an
+[`affine_apply`](Dialect/Affine.md#'affine_apply'-operation) operation that can
+in turn take as arguments all of the aforementioned SSA values or the
+recursively result of such an `affine_apply` operation.
 
 Example:
 
@@ -1632,10 +1493,11 @@ store %100, %A[%1, 1023] : memref<4x?xf32, #layout, hbm>
 **Context:** The `load` and `store` instructions are specifically crafted to
 fully resolve a reference to an element of a memref, and (in polyhedral `if` and
 `for` instructions) the compiler can follow use-def chains (e.g. through
-[`affine_apply`](#'affine_apply'-operation) operations) to precisely analyze
-references at compile-time using polyhedral techniques. This is possible because
-of the [restrictions on dimensions and symbols](#dimensions-and-symbols) in
-these contexts.
+[`affine_apply`](Dialects/Affine.md#'affine_apply'-operation) operations) to
+precisely analyze references at compile-time using polyhedral techniques. This
+is possible because of the
+[restrictions on dimensions and symbols](Dialect/Affine.md#restrictions-on-dimensions-and-symbols)
+in these contexts.
 
 #### 'tensor_load' operation {#'tensor_load'-operation}
 
