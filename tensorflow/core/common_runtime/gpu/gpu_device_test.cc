@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -274,6 +275,71 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
                                      (memory_limit >> 20) << 20);
   EXPECT_NE(ptr, nullptr);
   allocator->DeallocateRaw(ptr);
+}
+
+class GPUKernelTrackerTest : public ::testing::Test {
+ protected:
+  void SetUp() {
+    std::unique_ptr<SharedCounter> counter(new SharedCounter);
+    timing_counter_ = counter.get();
+    kernel_tracker_.reset(
+        new GPUKernelTracker(Env::Default(), std::move(counter)));
+  }
+
+  std::unique_ptr<GPUKernelTracker> kernel_tracker_;
+  SharedCounter* timing_counter_ = nullptr;
+};
+
+TEST_F(GPUKernelTrackerTest, basic) {
+  EXPECT_EQ(0, kernel_tracker_->NumPending());
+  // 1 is the expected value when no kernels have yet terminated.
+  EXPECT_EQ(1, kernel_tracker_->LastTerminatedCount());
+
+  std::deque<int64> queued_counts;
+  for (int i = 0; i < 32; ++i) {
+    queued_counts.push_back(kernel_tracker_->RecordQueued());
+  }
+  EXPECT_EQ(32, kernel_tracker_->NumPending());
+  EXPECT_EQ(1, kernel_tracker_->LastTerminatedCount());
+
+  // Mature the kernels in order until empty.
+  while (!queued_counts.empty()) {
+    int64 x = queued_counts.front();
+    queued_counts.pop_front();
+    kernel_tracker_->RecordTerminated(x);
+    EXPECT_EQ(queued_counts.size(), kernel_tracker_->NumPending());
+    EXPECT_EQ(x, kernel_tracker_->LastTerminatedCount());
+  }
+  EXPECT_EQ(timing_counter_->get(), kernel_tracker_->LastTerminatedCount());
+
+  // Next inject so many kernel events that the ring buffer needs
+  // to grow a couple of times, while maturing a few in random order
+  // to introduce gaps between last_completed_ and first_available_.
+  int64 lower_bound = timing_counter_->get();
+  for (int i = 0; i < 1111; ++i) {
+    queued_counts.push_back(kernel_tracker_->RecordQueued());
+    int64 upper_bound = timing_counter_->get();
+    if (0 == (i % 16)) {
+      size_t index = (random::New64() % queued_counts.size());
+      kernel_tracker_->RecordTerminated(queued_counts[index]);
+      queued_counts.erase(queued_counts.begin() + index);
+      EXPECT_LE(lower_bound, kernel_tracker_->LastTerminatedCount());
+      EXPECT_GE(upper_bound, kernel_tracker_->LastTerminatedCount());
+    }
+  }
+
+  // Next mature the remaining kernels in order until empty.
+  while (!queued_counts.empty()) {
+    int64 x = queued_counts.front();
+    queued_counts.pop_front();
+    kernel_tracker_->RecordTerminated(x);
+    EXPECT_EQ(queued_counts.size(), kernel_tracker_->NumPending());
+    // There may be a gap here where we find a kernel that got terminated
+    // out of order, earlier, so the LastTerminatedCount can actually
+    // jump past x.
+    EXPECT_LE(x, kernel_tracker_->LastTerminatedCount());
+  }
+  EXPECT_EQ(timing_counter_->get(), kernel_tracker_->LastTerminatedCount());
 }
 
 }  // namespace tensorflow

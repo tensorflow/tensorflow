@@ -2926,6 +2926,7 @@ tf_cuda_library(
 
 CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/allocator_retry.h",
+    "common_runtime/shared_counter.h",
     "common_runtime/base_collective_executor.h",
     "common_runtime/bfc_allocator.h",
     "common_runtime/hierarchical_tree_broadcaster.h",
