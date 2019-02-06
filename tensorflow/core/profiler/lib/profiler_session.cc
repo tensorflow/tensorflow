@@ -47,6 +47,12 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
     resource.set_name("0");
     resource.set_resource_id(0);
     (*device.mutable_resources())[0] = resource;
+    for (const auto& thread_name : device_stats->thread_names()) {
+      tensorflow::tpu::Resource resource;
+      resource.set_resource_id(thread_name.first);
+      resource.set_name(thread_name.second);
+      (*device.mutable_resources())[thread_name.first] = resource;
+    }
     (*trace_devices)[device_id] = device;
 
     // Emit events.
