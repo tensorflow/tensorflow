@@ -519,7 +519,7 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
   } else {
     DisplayGraphHandle(opts, hlo_graph_dumper::DumpNeighborhoodAround(
                                  *instr, graph_width,
-                                 /*boundary=*/&boundary,
+                                 /*boundary=*/boundary,
                                  /*show_backend_config=*/show_backend_config));
   }
 }

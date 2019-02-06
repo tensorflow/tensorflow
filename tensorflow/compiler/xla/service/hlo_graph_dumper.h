@@ -63,12 +63,9 @@ string DumpGraph(const HloComputation& computation, const string& label,
 // The number of nodes dumped is controlled by the radius parameter, which
 // (roughly) corresponds to the max distance a node may be from the primary node
 // before it's omitted from the graph.
-// 
-// The optional boundary parameter specifies the set of boundary nodes which
-// will be omitted when they are within the radius.
 string DumpNeighborhoodAround(
     const HloInstruction& node, int radius,
-    const std::set<const HloInstruction*>* boundary = nullptr,
+    const std::set<const HloInstruction*>& boundary = {},
     bool show_backend_config = false);
 
 // Dumps nodes on any of the paths from `from` to `to`.  If there are more than
