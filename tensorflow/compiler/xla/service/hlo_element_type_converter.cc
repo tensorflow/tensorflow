@@ -149,7 +149,11 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
           opcode == HloOpcode::kConditional) {
         continue;
       }
-      TF_RET_CHECK(hlo->called_computations().empty()) << hlo->ToString();
+      // TODO(b/122298745): Once we don't ignore called computations anymore,
+      // add kSort to the if statement above.
+      if (opcode != HloOpcode::kSort) {
+        TF_RET_CHECK(hlo->called_computations().empty()) << hlo->ToString();
+      }
 
       bool nullary = hlo->operands().empty();
       bool wrong_element_type = hlo->shape().element_type() == eliminate_type_;
