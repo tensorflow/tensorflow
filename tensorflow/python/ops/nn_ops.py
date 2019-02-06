@@ -4175,21 +4175,22 @@ def conv1d_transpose(
     filter: A 3-D `Tensor` with the same type as `value` and shape
       `[filter_width, output_channels, in_channels]`.  `filter`'s
       `in_channels` dimension must match that of `value`.
-    output_shape: A 1-D `Tensor` representing the output shape of the
-      deconvolution op.
+    output_shape: A 1-D `Tensor`, containing three elements, representing the
+      output shape of the deconvolution op.
     stride: An `integer`.  The number of entries by which
       the filter is moved right at each step.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the "returns" section of `tf.nn.convolution` for details.
-    data_format: A string. 'NHWC' and 'NCHW' are supported.
+    data_format: A string. `'NWC'` and `'NCW'` are supported.
     name: Optional name for the returned tensor.
 
   Returns:
     A `Tensor` with the same type as `value`.
 
   Raises:
-    ValueError: If input/output depth does not match `filter`'s shape, or if
-      padding is other than `'VALID'` or `'SAME'`.
+    ValueError: If input/output depth does not match `filter`'s shape, if
+      `output_shape` is not at 3-element vector, if `padding` is other than
+      `'VALID'` or `'SAME'`, or if `data_format` is invalid.
   """
   with ops.name_scope(name, "conv1d_transpose",
                       [value, filter, output_shape]) as name:
