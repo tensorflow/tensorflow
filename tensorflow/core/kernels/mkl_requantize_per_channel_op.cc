@@ -15,8 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
-#define EIGEN_USE_THREADS
 #ifdef INTEL_MKL
+#define EIGEN_USE_THREADS
 #include <math.h>
 
 #include "mkldnn.hpp"
