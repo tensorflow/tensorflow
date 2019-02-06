@@ -321,8 +321,8 @@ bool mlir::isInstwiseShiftValid(ConstOpPointer<AffineForOp> forOp,
   auto *forBody = forOp->getBody();
   assert(shifts.size() == forBody->getInstructions().size());
 
-  // Work backwards over the body of the block so that we only need to iterator
-  // over the body once.
+  // Work backwards over the body of the block so that the shift of a use's
+  // ancestor instruction in the block gets recorded before it's looked up.
   DenseMap<const Instruction *, uint64_t> forBodyShift;
   for (auto it : llvm::enumerate(llvm::reverse(forBody->getInstructions()))) {
     const auto &inst = it.value();
@@ -341,9 +341,11 @@ bool mlir::isInstwiseShiftValid(ConstOpPointer<AffineForOp> forOp,
       for (const InstOperand &use : result->getUses()) {
         // If an ancestor instruction doesn't lie in the block of forOp,
         // there is no shift to check.
-        if (auto *ancInst = forBody->findAncestorInstInBlock(*use.getOwner()))
+        if (auto *ancInst = forBody->findAncestorInstInBlock(*use.getOwner())) {
+          assert(forBodyShift.count(ancInst) > 0 && "ancestor expected in map");
           if (shift != forBodyShift[ancInst])
             return false;
+        }
       }
     }
   }
