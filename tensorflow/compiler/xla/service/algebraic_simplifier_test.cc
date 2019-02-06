@@ -4795,5 +4795,27 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedReshapeWithoutLayout) {
   EXPECT_THAT(root, op::Constant());
 }
 
+TEST_F(AlgebraicSimplifierTest, DividedByConstantInstructionWithoutLayout) {
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  shape.clear_layout();
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+
+  HloInstruction* const_value = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(20.0f)));
+  builder.AddInstruction(HloInstruction::CreateBinary(shape, HloOpcode::kDivide,
+                                                      param, const_value));
+
+  std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Multiply());
+}
+
 }  // namespace
 }  // namespace xla
