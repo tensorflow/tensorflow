@@ -31,6 +31,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/internal/cpu/host_tracer.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace {
 
@@ -299,6 +301,14 @@ TF_STATIC_THREAD_LOCAL_POD(const char *, tls_current_annotation);
 
 class TraceCollectorImpl : public tracing::TraceCollector {
  public:
+  class ActivityHandle : public Handle {
+   public:
+    ActivityHandle(string &&name, int level)
+        : trace_me_(std::move(name), level) {}
+
+   private:
+    profiler::TraceMe trace_me_;
+  };
   TraceCollectorImpl() { tracing::SetTraceCollector(this); }
 
   ~TraceCollectorImpl() override {
@@ -318,14 +328,16 @@ class TraceCollectorImpl : public tracing::TraceCollector {
       }
       ~Impl() override { tls_current_annotation.get() = nullptr; }
     };
-    return std::unique_ptr<Handle>(
-        new Impl{ConcatenateNames(name_part1, name_part2)});
+    return absl::make_unique<Impl>(ConcatenateNames(name_part1, name_part2));
   }
 
-  virtual std::unique_ptr<Handle> CreateActivityHandle(StringPiece, StringPiece,
-                                                       bool) const {
-    // We don't do anything with 'Activities' yet.
-    return nullptr;
+  virtual std::unique_ptr<Handle> CreateActivityHandle(
+      StringPiece name_part1, StringPiece name_part2, bool is_expensive) const {
+    if (!IsEnabledForActivities(is_expensive)) {
+      return nullptr;
+    }
+    return absl::make_unique<ActivityHandle>(
+        ConcatenateNames(name_part1, name_part2), GetLevel(is_expensive));
   }
 
   bool IsEnabledForAnnotations() const override {
@@ -333,8 +345,7 @@ class TraceCollectorImpl : public tracing::TraceCollector {
   }
 
   bool IsEnabledForActivities(bool is_expensive) const override {
-    // We don't do anything with 'Activities' so we are never 'enabled'.
-    return false;
+    return profiler::TraceMeRecorder::Active(GetLevel(is_expensive));
   }
 
   void Start() {
@@ -349,6 +360,10 @@ class TraceCollectorImpl : public tracing::TraceCollector {
   }
 
  private:
+  static int GetLevel(bool is_expensive) {
+    return profiler::GetTFTraceMeLevel(is_expensive);
+  }
+
   std::atomic<bool> active_trace_session_;
 };
 
@@ -421,6 +436,7 @@ class DeviceTracerImpl : public DeviceTracer, public CUPTIClient {
   int64 end_walltime_us_ GUARDED_BY(mu_);
   uint64_t start_timestamp_ GUARDED_BY(mu_);
   uint64_t end_timestamp_ GUARDED_BY(mu_);
+  std::unique_ptr<profiler::cpu::HostTracer> host_tracer_ GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(DeviceTracerImpl);
 };
@@ -493,6 +509,8 @@ Status DeviceTracerImpl::Start() {
 
   CUPTI_CALL(GetTimestamp(&start_timestamp_));
   start_walltime_us_ = NowInUsec();
+  host_tracer_ = profiler::cpu::HostTracer::Create(2);
+  host_tracer_->Start().IgnoreError();
   enabled_ = true;
   return Status::OK();
 }
@@ -510,6 +528,7 @@ Status DeviceTracerImpl::Stop() {
   end_walltime_us_ = NowInUsec();
   CUPTI_CALL(GetTimestamp(&end_timestamp_));
   enabled_ = false;
+  host_tracer_->Stop().IgnoreError();
   return Status::OK();
 }
 
@@ -676,6 +695,8 @@ Status DeviceTracerImpl::Collect(StepStatsCollector *collector) {
     collector->Save(memcpy_device, ns);
     collector->Save(strings::StrCat(stream_device, rec.stream_id), nscopy);
   }
+
+  host_tracer_->CollectDataToCollector(collector).IgnoreError();
   return Status::OK();
 }
 
