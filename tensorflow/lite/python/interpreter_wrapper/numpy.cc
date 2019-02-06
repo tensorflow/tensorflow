@@ -13,23 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_PYTHON_INTERPRETER_WRAPPER_PYTHON_UTILS_H_
-#define TENSORFLOW_LITE_PYTHON_INTERPRETER_WRAPPER_PYTHON_UTILS_H_
-
-#include "tensorflow/lite/context.h"
+#define TFLITE_IMPORT_NUMPY  // See numpy.h for explanation.
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
-#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
-namespace python_utils {
+namespace python {
 
-int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type);
+void ImportNumpy() { import_array1(); }
 
-TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array);
-
-bool FillStringBufferWithPyArray(PyObject* value,
-                                 DynamicBuffer* dynamic_buffer);
-
-}  // namespace python_utils
+}  // namespace python
 }  // namespace tflite
-#endif  // TENSORFLOW_LITE_PYTHON_INTERPRETER_WRAPPER_PYTHON_UTILS_H_
