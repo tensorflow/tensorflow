@@ -100,7 +100,6 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     git \
-    wget \
     openjdk-8-jdk \
     ${PYTHON}-dev \
     swig
@@ -119,21 +118,22 @@ RUN ${PIP} --no-cache-dir install \
     && test "${USE_PYTHON_3_NOT_2}" -eq 1 && true || ${PIP} --no-cache-dir install \
     enum34
 
-# Install bazel
-ARG BAZEL_VERSION=0.19.2
+ # Build and install bazel
+ENV BAZEL_VERSION 0.15.0
+WORKDIR /
 RUN mkdir /bazel && \
-    wget -O /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
-    wget -O /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
-    chmod +x /bazel/installer.sh && \
-    /bazel/installer.sh && \
-    rm -f /bazel/installer.sh
+    cd /bazel && \
+    curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-dist.zip && \
+    unzip bazel-$BAZEL_VERSION-dist.zip && \
+    bash ./compile.sh && \
+    cp output/bazel /usr/local/bin/ && \
+    rm -rf /bazel && \
+    cd -
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
 RUN ${PIP} install jupyter matplotlib
-RUN ${PIP} install jupyter_http_over_ws
-RUN jupyter serverextension enable --py jupyter_http_over_ws
 
 RUN mkdir -p /tf/tensorflow-tutorials && chmod -R a+rwx /tf/
 RUN mkdir /.local && chmod a+rwx /.local
