@@ -2115,69 +2115,6 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     self.assertEqual(reference_metric_names, model.metrics_names)
 
   @keras_parameterized.run_all_keras_modes
-  def test_metrics_correctness(self):
-    model = keras.Sequential()
-    model.add(
-        keras.layers.Dense(
-            3, activation='relu', input_dim=4, kernel_initializer='ones'))
-    model.add(
-        keras.layers.Dense(
-            1, activation='sigmoid', kernel_initializer='ones'))
-    model.compile(
-        loss='mae',
-        metrics=['accuracy', metrics_module.BinaryAccuracy()],
-        optimizer=RMSPropOptimizer(learning_rate=0.001),
-        run_eagerly=testing_utils.should_run_eagerly())
-
-    # verify correctness of stateful and stateless metrics.
-    x = np.ones((100, 4))
-    y = np.ones((100, 1))
-    outs = model.evaluate(x, y)
-    self.assertEqual(outs[1], 1.)
-    self.assertEqual(outs[2], 1.)
-
-    y = np.zeros((100, 1))
-    outs = model.evaluate(x, y)
-    self.assertEqual(outs[1], 0.)
-    self.assertEqual(outs[2], 0.)
-
-  @keras_parameterized.run_all_keras_modes
-  def test_metrics_correctness_with_weighted_metrics(self):
-    np.random.seed(1337)
-    x = np.array([[[1.], [1.]], [[0.], [0.]]])
-    model = keras.models.Sequential()
-    model.add(
-        keras.layers.TimeDistributed(
-            keras.layers.Dense(1, kernel_initializer='ones'),
-            input_shape=(2, 1)))
-    model.compile(
-        RMSPropOptimizer(learning_rate=0.001),
-        loss='mse',
-        sample_weight_mode='temporal',
-        weighted_metrics=['accuracy', 'mse'],
-        run_eagerly=testing_utils.should_run_eagerly())
-    y = np.array([[[1.], [1.]], [[1.], [1.]]])
-
-    outs = model.evaluate(x, y)
-    self.assertEqual(outs, [0.5, 0.5, 0.5])
-
-    w = np.array([[0., 0.], [0., 0.]])
-    outs = model.evaluate(x, y, sample_weight=w)
-    self.assertEqual(outs, [0., 0., 0.])
-
-    w = np.array([[3., 4.], [1., 2.]])
-    outs = model.evaluate(x, y, sample_weight=w)
-    self.assertArrayNear(outs, [0.75, 0.7, 0.3], .001)
-
-    # Verify that metric value is same with arbitrary weights and batch size.
-    x = np.random.random((50, 2, 1))
-    y = np.random.random((50, 2, 1))
-    w = np.random.random((50, 2))
-    mse1 = model.evaluate(x, y, sample_weight=w, batch_size=5)[2]
-    mse2 = model.evaluate(x, y, sample_weight=w, batch_size=10)[2]
-    self.assertNear(mse1, mse2, err=1e-7)
-
-  @keras_parameterized.run_all_keras_modes
   def test_metric_state_reset_between_fit_and_evaluate(self):
     model = keras.Sequential()
     model.add(keras.layers.Dense(3, activation='relu', input_dim=4))

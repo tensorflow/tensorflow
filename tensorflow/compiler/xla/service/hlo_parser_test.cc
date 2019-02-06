@@ -1282,6 +1282,17 @@ ENTRY CollectivePermute {
 
 )"
 },
+// replica-id
+{
+"ReplicaId",
+R"(HloModule replica-id
+
+ENTRY Replica-id {
+  ROOT replica-id = u32[] replica-id()
+}
+
+)"
+},
 // Iota
 {
 "Iota",

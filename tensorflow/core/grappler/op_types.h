@@ -28,11 +28,7 @@ bool IsAll(const NodeDef& node);
 bool IsAngle(const NodeDef& node);
 bool IsAny(const NodeDef& node);
 bool IsAnyDiv(const NodeDef& node);
-bool IsAnyMax(const NodeDef& node);
-bool IsAnyMin(const NodeDef& node);
 bool IsApproximateEqual(const NodeDef& node);
-bool IsArgMax(const NodeDef& node);
-bool IsArgMin(const NodeDef& node);
 bool IsAvgPoolGrad(const NodeDef& node);
 bool IsAssert(const NodeDef& node);
 bool IsAssign(const NodeDef& node);
@@ -104,6 +100,7 @@ bool IsMod(const NodeDef& node);
 bool IsMul(const NodeDef& node);
 bool IsMatMul(const NodeDef& node);
 bool IsNextIteration(const NodeDef& node);
+bool IsOnesLike(const NodeDef& node);
 bool IsPack(const NodeDef& node);
 bool IsPad(const NodeDef& node);
 bool IsPack(const NodeDef& node);
@@ -174,6 +171,7 @@ bool IsTruncateMod(const NodeDef& node);
 bool IsUnpack(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
 bool IsWhile(const NodeDef& node);
+bool IsZerosLike(const NodeDef& node);
 bool IsZeta(const NodeDef& node);
 
 // Return true if the op is an aggregation (e.g. Add, AddN).

@@ -47,8 +47,11 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils_impl
 from tensorflow.python.training.checkpointable import base
+from tensorflow.python.training.checkpointable import graph_view
+from tensorflow.python.training.checkpointable import object_identity
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
+from tensorflow.python.training.saving import functional_saver
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -73,20 +76,22 @@ class _SaveableView(object):
   different objects if invoked more than once.
   """
 
-  def __init__(self, root):
-    checkpointable_objects, node_ids, slot_variables = util.find_objects(root)
+  def __init__(self, checkpoint_view):
+    self.checkpoint_view = checkpoint_view
+    checkpointable_objects, node_ids, slot_variables = (
+        self.checkpoint_view.objects_ids_and_slot_variables())
     self.nodes = checkpointable_objects
     self.node_ids = node_ids
-    self.captured_tensor_node_ids = util.ObjectIdentityDictionary()
+    self.captured_tensor_node_ids = object_identity.ObjectIdentityDictionary()
     self.slot_variables = slot_variables
-    self.functions = util.ObjectIdentityDictionary()
+    self.functions = object_identity.ObjectIdentityDictionary()
     self.concrete_functions = []
 
     # Also add `Function`s as nodes.
     nodes_without_functions = list(self.nodes)
     seen_function_names = set()
     for obj in nodes_without_functions:
-      self.functions[obj] = self._list_functions(obj)
+      self.functions[obj] = obj._list_functions_for_serialization()  # pylint: disable=protected-access
       for function in self.functions[obj].values():
         if function not in self.node_ids:
           self.node_ids[function] = len(self.nodes)
@@ -132,24 +137,6 @@ class _SaveableView(object):
         child_proto.node_id = self.node_ids[ref_function]
         child_proto.local_name = local_name
 
-  def _list_functions(self, checkpointable_object):
-    """Return a dict of `Function`s of a checkpointable."""
-    functions = dict()
-    attribute_extractor, attribute_getter = (
-        revived_types.get_attribute_extractors(checkpointable_object))
-    for attribute_name in attribute_extractor(checkpointable_object):
-      try:
-        attribute_value = attribute_getter(
-            checkpointable_object, attribute_name, None)
-      except Exception:  # pylint: disable=broad-except
-        # We really don't want to throw an exception just because some object's
-        # attribute accessor is broken.
-        attribute_value = None
-      if isinstance(attribute_value, (def_function.Function,
-                                      defun.ConcreteFunction)):
-        functions[attribute_name] = attribute_value
-    return functions
-
   def map_resources(self):
     """Makes new resource handle ops corresponding to existing resource tensors.
 
@@ -171,7 +158,7 @@ class _SaveableView(object):
     assert not context.executing_eagerly()
     # TODO(allenl): Handle MirroredVariables and other types of variables which
     # may need special casing.
-    object_map = util.ObjectIdentityDictionary()
+    object_map = object_identity.ObjectIdentityDictionary()
     resource_map = {}
     asset_info = _AssetInfo(
         asset_defs=[],
@@ -541,8 +528,7 @@ def _process_asset(trackable_asset, asset_info, resource_map):
   resource_map[original_variable.handle] = asset_variable.handle
 
 
-def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
-                         object_saver):
+def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions):
   """Generates a MetaGraph which calls `signature_functions`.
 
   Args:
@@ -550,7 +536,6 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
     saveable_view: The _SaveableView being exported.
     signature_functions: A dictionary mapping signature keys to concrete
       functions containing signatures to add to the MetaGraph.
-    object_saver: A CheckpointableSaver to add to the MetaGraph.
 
   Returns:
     An _AssetInfo, which contains information to help creating the SavedModel.
@@ -590,7 +575,9 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   # gathering from the eager context so Optimizers save the right set of
   # variables, but want any operations associated with the save/restore to be in
   # the exported graph (thus the `to_graph` argument).
-  saver = object_saver.freeze(object_map=object_map, to_graph=exported_graph)
+  saver = functional_saver.Saver(
+      saveable_view.checkpoint_view.frozen_saveable_objects(
+          object_map=object_map, to_graph=exported_graph))
 
   with exported_graph.as_default():
     signatures = _generate_signatures(signature_functions, resource_map)
@@ -839,8 +826,9 @@ def save(obj, export_dir, signatures=None):
   # Use _SaveableView to provide a stable listing of properties and functions.
   # Note we run this twice since, while constructing the view the first time
   # there can be side effects of creating variables.
-  _ = _SaveableView(obj)
-  saveable_view = _SaveableView(obj)
+  checkpoint_graph_view = graph_view.ObjectGraphView(obj)
+  _ = _SaveableView(checkpoint_graph_view)
+  saveable_view = _SaveableView(checkpoint_graph_view)
 
   if signatures is None:
     signatures = _find_function_to_export(saveable_view)
@@ -852,10 +840,9 @@ def save(obj, export_dir, signatures=None):
   # making a SavedModel proto and writing it directly.
   saved_model = saved_model_pb2.SavedModel()
   meta_graph_def = saved_model.meta_graphs.add()
-  # TODO(andresp): Should this be using saveable_view?
-  object_saver = util.CheckpointableSaver(obj)
+  object_saver = util.CheckpointableSaver(checkpoint_graph_view)
   asset_info, exported_graph = _fill_meta_graph_def(
-      meta_graph_def, saveable_view, signatures, object_saver)
+      meta_graph_def, saveable_view, signatures)
   saved_model.saved_model_schema_version = (
       constants.SAVED_MODEL_SCHEMA_VERSION)
   # So far we've just been generating protocol buffers with no I/O. Now we write

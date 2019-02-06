@@ -89,8 +89,9 @@ xla::XlaOp Sigmoid(xla::XlaOp x) {
 }
 XLAJIT_MAKE_UNARY(Sigmoid, Sigmoid(x));
 
-// Returns 0 if x is 0, -1 if x < 0 and 1 if x > 0.
-XLAJIT_MAKE_UNARY(Sign, xla::Sign(x));
+// Returns 0 if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
+XLAJIT_MAKE_UNARY(Sign,
+                  xla::Select(xla::Ne(x, x), xla::ZerosLike(x), xla::Sign(x)));
 XLAJIT_MAKE_UNARY(Sinh, xla::Sinh(x));
 
 // softplus(x) = log(1 + exp(x))

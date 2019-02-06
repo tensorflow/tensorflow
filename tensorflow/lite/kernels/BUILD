@@ -152,6 +152,7 @@ cc_library(
     srcs = [
         "activations.cc",
         "add.cc",
+        "add_n.cc",
         "arg_min_max.cc",
         "audio_spectrogram.cc",
         "basic_rnn.cc",
@@ -351,6 +352,18 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "add_n_test",
+    size = "small",
+    srcs = ["add_n_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_util",
+        "//tensorflow/lite:framework",
         "@com_google_googletest//:gtest",
     ],
 )

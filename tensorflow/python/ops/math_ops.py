@@ -12,9 +12,59 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Basic arithmetic operators.
+"""Math Operations.
 
-See the [python/math_ops](python/math_ops) guide.
+Note: Functions taking `Tensor` arguments can also take anything accepted by
+`tf.convert_to_tensor`.
+
+Note: Elementwise binary operations in TensorFlow follow [numpy-style
+broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+
+TensorFlow provides a variety of math functions including:
+
+* Basic arithmetic operators and trigonometric functions.
+* Special math functions (like: `tf.math.igamma` and `tf.math.zeta`)
+* Complex number functions (like: `tf.math.imag` and `tf.math.angle`)
+* Reductions and scans (like: `tf.math.reduce_mean` and `tf.math.cumsum`)
+* Segment functions (like: `tf.math.segment_sum`)
+
+See: `tf.linalg` for matrix and tensor functions.
+
+<a id=Segmentation></a>
+
+## About Segmentation
+
+TensorFlow provides several operations that you can use to perform common
+math computations on tensor segments.
+Here a segmentation is a partitioning of a tensor along
+the first dimension, i.e. it  defines a mapping from the first dimension onto
+`segment_ids`. The `segment_ids` tensor should be the size of
+the first dimension, `d0`, with consecutive IDs in the range `0` to `k`,
+where `k<d0`.
+In particular, a segmentation of a matrix tensor is a mapping of rows to
+segments.
+
+For example:
+
+```python
+c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
+tf.segment_sum(c, tf.constant([0, 0, 1]))
+#  ==>  [[0 0 0 0]
+#        [5 6 7 8]]
+```
+
+The standard `segment_*` functions assert that the segment indices are sorted.
+If you have unsorted indices use the equivalent `unsorted_segment_` function.
+Thses functions take an additional argument `num_segments` so that the output
+tensor can be efficiently allocated.
+
+``` python
+c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
+tf.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
+# ==> [[ 6,  8, 10, 12],
+#       [-1, -2, -3, -4]]
+```
+
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -3112,7 +3162,7 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   r"""Computes the mean along segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
   for an explanation of segments.
 
   This operator is similar to the unsorted segment sum operator found
@@ -3158,7 +3208,7 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   r"""Computes the sum along segments of a tensor divided by the sqrt(N).
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
   for an explanation of segments.
 
   This operator is similar to the unsorted segment sum operator found
@@ -3205,7 +3255,7 @@ def sparse_segment_sum(data, indices, segment_ids, name=None,
   r"""Computes the sum along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
   for an explanation of segments.
 
   Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
@@ -3292,7 +3342,7 @@ def sparse_segment_mean(data,
   r"""Computes the mean along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
   for an explanation of segments.
 
   Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
@@ -3337,7 +3387,7 @@ def sparse_segment_mean_v2(data,
   r"""Computes the mean along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
   for an explanation of segments.
 
   Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first

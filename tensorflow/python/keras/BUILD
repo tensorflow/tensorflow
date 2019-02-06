@@ -292,6 +292,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
+        "//tensorflow/python/distribute:distribute_lib",
     ],
 )
 
@@ -367,7 +368,10 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 12,
-    tags = ["notsan"],
+    tags = [
+        "no_oss",  # b/123899138
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -393,6 +397,9 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    tags = [
+        "no_oss",  # b/123899138
+    ],
 )
 
 tf_py_test(
@@ -410,7 +417,7 @@ tf_py_test(
 
 tf_py_test(
     name = "regularizers_test",
-    size = "small",
+    size = "medium",
     srcs = ["regularizers_test.py"],
     additional_deps = [
         ":keras",
@@ -474,6 +481,19 @@ tf_py_test(
     name = "metrics_confusion_matrix_test",
     size = "medium",
     srcs = ["metrics_confusion_matrix_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
+)
+
+tf_py_test(
+    name = "metrics_correctness_test",
+    size = "medium",
+    srcs = ["metrics_correctness_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
@@ -802,6 +822,7 @@ tf_py_test(
     ],
     shard_count = 4,
     tags = [
+        "no_oss",  # b/123899138
         "noasan",  # http://b/78599823
         "notsan",
     ],

@@ -176,5 +176,19 @@ ENTRY main {
   EXPECT_THAT(rng1->control_predecessors(), ElementsAre(rng0));
 }
 
+TEST_F(HloElementTypeConverterTest, BitcastConvertIsUnmodified) {
+  const string& hlo_string = R"(
+  HloModule test
+
+  ENTRY test {
+    p = bf16[] parameter(0)
+    ROOT c = u16[] bitcast-convert(p)
+  })";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  HloElementTypeConverter converter(BF16, F32);
+  TF_ASSERT_OK_AND_ASSIGN(bool converted, RunHloPass(&converter, module.get()));
+  EXPECT_FALSE(converted);
+}
+
 }  // namespace
 }  // namespace xla

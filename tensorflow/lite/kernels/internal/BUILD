@@ -591,6 +591,7 @@ cc_test(
         ":reference_base",
         ":test_util",
         ":types",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )

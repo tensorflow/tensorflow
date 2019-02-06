@@ -26,7 +26,7 @@ namespace builtin {
 // ADD and MUL are used to test simple branch.
 TfLiteRegistration* Register_ADD();
 TfLiteRegistration* Register_MUL();
-// ADD and MUL are used to test dynamic sized subgraphs.
+// Pad is used to test dynamic sized subgraphs.
 TfLiteRegistration* Register_PAD();
 }  // namespace builtin
 namespace custom {

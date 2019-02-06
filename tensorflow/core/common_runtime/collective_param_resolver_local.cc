@@ -38,9 +38,9 @@ void CollectiveParamResolverLocal::InstanceRec::WaitForOutMu(mutex_lock& lock) {
 }
 
 CollectiveParamResolverLocal::CollectiveParamResolverLocal(
-    const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
-    const string& task_name)
-    : nccl_(false),  // (b/111897089): turn on NCCL collectives.
+    const ConfigProto& config, const DeviceMgr* dev_mgr,
+    DeviceResolverInterface* dev_resolver, const string& task_name)
+    : nccl_(config.experimental().collective_nccl()),
       dev_mgr_(dev_mgr),
       dev_resolver_(dev_resolver),
       task_name_(task_name) {}
@@ -144,7 +144,6 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
 }
 
 namespace {
-
 struct DevRec {
   string task;
   string device;

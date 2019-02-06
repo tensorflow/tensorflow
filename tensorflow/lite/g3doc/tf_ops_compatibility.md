@@ -165,6 +165,17 @@ Options {
 }
 ```
 
+**ADD_N**
+
+```
+Inputs {
+  0-N: any number of tensors (must have same size and shape)
+}
+Outputs {
+  0: elementwise sum of the input tensors
+}
+```
+
 **ARG_MAX**
 
 ```

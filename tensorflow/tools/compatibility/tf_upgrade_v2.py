@@ -223,6 +223,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.max_pool_with_argmax": {
             "Targmax": "output_dtype",
         },
+        "tf.nn.max_pool": {
+            "value": "input"
+        },
         "tf.multinomial": {
             "output_dtype": "dtype",
         },
@@ -537,6 +540,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.unbatch",
         "tf.contrib.data.unique":
             "tf.data.experimental.unique",
+        "tf.contrib.framework.is_tensor":
+            "tf.is_tensor",
         "tf.contrib.framework.nest.assert_same_structure":
             "tf.nest.assert_same_structure",
         "tf.contrib.framework.nest.flatten":
@@ -697,6 +702,14 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.assert_rank",
         "tf.contrib.framework.argsort":
             "tf.argsort",
+        "tf.nn.max_pool":
+            "tf.nn.max_pool2d",
+        'tf.keras.initializers.zeros':
+            'tf.compat.v1.keras.initializers.zeros',
+        'tf.keras.initializers.ones':
+            'tf.compat.v1.keras.initializers.ones',
+        'tf.keras.initializers.constant':
+            'tf.compat.v1.keras.initializers.constant',
     }
     # pylint: enable=line-too-long
 
@@ -809,6 +822,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.image.sample_distorted_bounding_box",
         "tf.gradients",
         "tf.hessians",
+        "tf.nn.max_pool",
     }
 
     # Functions that were reordered should be changed to the new keyword args

@@ -313,8 +313,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
       if context.executing_eagerly():
         captured_iterator = iter(dataset_ops.Dataset.range(10))
       else:
-        captured_iterator = dataset_ops.Dataset.range(
-            10).make_initializable_iterator()
+        captured_iterator = dataset_ops.make_initializable_iterator(
+            dataset_ops.Dataset.range(10))
       ds = _build_ds(captured_iterator)
       return captured_iterator, ds
 
@@ -351,6 +351,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @test_util.run_v1_only("b/123904513")
   def testCaptureQueue(self):
     elements = np.random.randint(100, size=[200])
     queue = data_flow_ops.FIFOQueue(200, dtypes.int64, shapes=[])
@@ -395,8 +396,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
   # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
   @test_util.run_v1_only("b/121264236")
   def testSkipEagerCaptureConstantsWithConflictingDevices(self):
-    config = config_pb2.ConfigProto(
-        device_count={"CPU": 3}, log_device_placement=True)
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.cached_session(config=config):
       with ops.device("/device:CPU:0"):
         a = constant_op.constant(3.0)
@@ -414,8 +414,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
   @test_util.run_v1_only(
       "defun will convert RefVariables to ResourceVariables.")
   def testSkipEagerRefVariablesWithConflictingDevices(self):
-    config = config_pb2.ConfigProto(
-        device_count={"CPU": 3}, log_device_placement=True)
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.cached_session(config=config):
 
       def func(_):
@@ -436,8 +435,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
   # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
   @test_util.run_v1_only("b/121264236")
   def testSkipEagerResourceVariablesWithConflictingDevices(self):
-    config = config_pb2.ConfigProto(
-        device_count={"CPU": 3}, log_device_placement=True)
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.cached_session(config=config):
 
       def func(_):
@@ -705,6 +703,13 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  def testNestedListMapDataset(self):
+    dataset = dataset_ops.Dataset.from_tensors(
+        [0, 1, 2]).repeat(10).map(lambda a: ([a[1], a[0] + a[2]], a[1]))
+
+    expected_output = [(np.array([1, 2]), 1)] * 10
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
+
   def testPrefetch(self):
     # We will use this event to test that `_map_py_func()` has been
     # invoked a certain number of times (6 times, to be exact) after
@@ -812,6 +817,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset,
         expected_output=[self.evaluate(_check(_sparse(i))) for i in range(10)])
 
+  @test_util.run_v1_only("b/123904513")
   def testParallelMapOutOfRangeError(self):
     def raising_py_func(i):
       if i == 100:

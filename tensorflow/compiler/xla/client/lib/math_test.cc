@@ -88,6 +88,22 @@ class MathTypedTest : public MathTest {
             {false, false, false, false, false, false, false, true, true}));
     ComputeAndCompareLiteral(&b, expected, {});
   }
+
+  void TestIsNegZero() {
+    SetFastMathDisabled(true);
+    XlaBuilder b(TestName());
+    T inf(std::numeric_limits<float>::infinity());
+    T nan(std::numeric_limits<float>::quiet_NaN());
+    IsNegZero(AddParam(
+        LiteralUtil::CreateR1<T>({T{-0.0}, T{0}, T{1}, T{-1}, inf, -inf, nan}),
+        &b));
+
+    ComputeAndCompareLiteral(
+        &b,
+        LiteralUtil::CreateR1<bool>(
+            {true, false, false, false, false, false, false}),
+        {}, error_spec_);
+  }
 };
 
 // TODO(b/123355973): Add bfloat16 to TestTypes once it's working.
@@ -102,6 +118,7 @@ TYPED_TEST_CASE(MathTypedTest, TestTypes);
 XLA_TYPED_TEST(MathTypedTest, LogEdgeCases) { this->TestLogEdgeCases(); }
 XLA_TYPED_TEST(MathTypedTest, Log1pEdgeCases) { this->TestLog1pEdgeCases(); }
 XLA_TYPED_TEST(MathTypedTest, IsInfOrNan) { this->TestIsInfOrNan(); }
+XLA_TYPED_TEST(MathTypedTest, IsNegZero) { this->TestIsNegZero(); }
 
 // Check that certain ops only support real, floating-point inputs.
 //

@@ -226,6 +226,7 @@ def generated_test_models():
     return [
         "abs",
         "add",
+        "add_n",
         "arg_min_max",
         "avg_pool",
         "batch_to_space_nd",

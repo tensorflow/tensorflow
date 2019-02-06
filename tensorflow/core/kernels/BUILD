@@ -5615,6 +5615,7 @@ filegroup(
         "gemm_functors.h",
         "image_resizer_state.h",
         "initializable_lookup_table.h",
+        "logging_ops.h",
         "lookup_table_init_op.h",
         "lookup_table_op.h",
         "lookup_util.h",

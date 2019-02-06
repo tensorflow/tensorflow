@@ -1181,7 +1181,7 @@ class SymbolicShapeRefiner {
     // elements is larger than the given max size.
     for (int i = 0; i < ic->num_outputs(); i++) {
       const ShapeHandle& shape_handle = ic->output(i);
-      if (!ic->FullyDefined(shape_handle) &&
+      if (!ic->FullyDefined(shape_handle) ||
           ic->Value(ic->NumElements(shape_handle)) > max_size) {
         return false;
       }
