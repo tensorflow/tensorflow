@@ -59,7 +59,8 @@ def function_apply_options(dataset, aggregator, prefix="", counter_prefix=""):
 )
 class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
 
-  def testBytesProduced(self, dataset_transformation):
+  @test_util.run_v1_only("b/123901126")
+  def testSkipEagerBytesProduced(self, dataset_transformation):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).map(
         lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).apply(
@@ -358,7 +359,8 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
 @test_util.run_all_in_graph_and_eager_modes
 @parameterized.named_parameters(
     ("SetStatsAggregator", function_set_stats_aggregator),
-    ("StatsOptions", function_apply_options))
+    ("StatsOptions", function_apply_options)
+)
 class FeatureStatsDatasetTest(
     stats_dataset_test_base.StatsDatasetTestBase,
     reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase):

@@ -24,7 +24,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@test_util.run_v1_only("deprecated API, no eager or V2 test coverage")
 class ShardTest(test_base.DatasetTestBase):
 
   def testSimpleCase(self):

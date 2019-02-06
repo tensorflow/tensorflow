@@ -313,8 +313,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
       if context.executing_eagerly():
         captured_iterator = iter(dataset_ops.Dataset.range(10))
       else:
-        captured_iterator = dataset_ops.Dataset.range(
-            10).make_initializable_iterator()
+        captured_iterator = dataset_ops.make_initializable_iterator(
+            dataset_ops.Dataset.range(10))
       ds = _build_ds(captured_iterator)
       return captured_iterator, ds
 
@@ -351,6 +351,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @test_util.run_v1_only("b/123904513")
   def testCaptureQueue(self):
     elements = np.random.randint(100, size=[200])
     queue = data_flow_ops.FIFOQueue(200, dtypes.int64, shapes=[])
@@ -816,6 +817,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset,
         expected_output=[self.evaluate(_check(_sparse(i))) for i in range(10)])
 
+  @test_util.run_v1_only("b/123904513")
   def testParallelMapOutOfRangeError(self):
     def raising_py_func(i):
       if i == 100:

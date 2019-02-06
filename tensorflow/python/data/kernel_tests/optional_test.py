@@ -329,7 +329,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
     if not works_on_gpu and test.is_gpu_available():
       self.skipTest("Test case not yet supported on GPU.")
     ds = dataset_ops.Dataset.from_tensors(np_value).repeat(3)
-    iterator = ds.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(ds)
     next_elem = iterator_ops.get_next_as_optional(iterator)
     self.assertIsInstance(next_elem, optional_ops.Optional)
     self.assertTrue(
