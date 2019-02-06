@@ -361,6 +361,32 @@ body {
   EXPECT_EQ(tpl->operand(0)->opcode(), HloOpcode::kCustomCall);
 }
 
+TEST_F(ShardingPassTest, CheckProgressNotMade) {
+  std::string hlo_string = R"(
+HloModule top
+
+%cluster_1  {
+  a0 = s32[] parameter(0)
+  a1 = f16[4] parameter(1)
+  ROOT %tuple = () tuple(), sharding={maximal device=0}
+}
+  )";
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+
+  auto* module = module_or_status.ValueOrDie().get();
+
+  auto* comp = module->entry_computation();
+  auto* tpl = comp->GetInstructionWithName("t0");
+
+  ShardingPass shardingPass;
+  TF_PREDICT_FALSE(shardingPass.Run(module).ok());
+}
+
 }  // namespace
 }  // namespace poplarplugin
 }  // namespace xla
