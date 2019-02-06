@@ -137,13 +137,13 @@ TEST_P(DatasetGetNextTest, GetNext) {
   EXPECT_EQ(out_tensors.size(), inputs.size());
   for (int i = 0; i < out_tensors.size(); i++) {
     if (out_tensors[i].dtype() == DT_VARIANT) {
-      // Currently `ExpectTensorEqual()` does not support the variant tensor
+      // Currently `ExpectEqual()` does not support the variant tensor
       // yet, so we manually cast the variant to numeric/string tensor.
       const Tensor *output = out_tensors[i].scalar<Variant>()().get<Tensor>();
       const Tensor *input = inputs[i].tensor->scalar<Variant>()().get<Tensor>();
-      TF_EXPECT_OK(ExpectTensorEqual(*output, *input));
+      TF_EXPECT_OK(ExpectEqual(*output, *input));
     } else {
-      TF_EXPECT_OK(ExpectTensorEqual(out_tensors[i], *(inputs[i].tensor)));
+      TF_EXPECT_OK(ExpectEqual(out_tensors[i], *(inputs[i].tensor)));
     }
   }
 }
@@ -496,13 +496,13 @@ TEST_P(IteratorRoundtripTest, Roundtrip) {
   EXPECT_EQ(out_tensors.size(), inputs.size());
   for (int i = 0; i < out_tensors.size(); i++) {
     if (out_tensors[i].dtype() == DT_VARIANT) {
-      // Currently `ExpectTensorEqual()` does not support the variant tensor
+      // Currently `ExpectEqual()` does not support the variant tensor
       // yet, so we manually cast the variant to numeric/string tensor.
       const Tensor *output = out_tensors[i].scalar<Variant>()().get<Tensor>();
       const Tensor *input = inputs[i].tensor->scalar<Variant>()().get<Tensor>();
-      TF_EXPECT_OK(ExpectTensorEqual(*output, *input));
+      TF_EXPECT_OK(ExpectEqual(*output, *input));
     } else {
-      TF_EXPECT_OK(ExpectTensorEqual(out_tensors[i], *(inputs[i].tensor)));
+      TF_EXPECT_OK(ExpectEqual(out_tensors[i], *(inputs[i].tensor)));
     }
   }
 

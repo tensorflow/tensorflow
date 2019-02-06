@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -35,27 +36,11 @@ class TensorDatasetOp : public DatasetOpKernel {
     OpInputList inputs;
     OP_REQUIRES_OK(ctx, ctx->input_list("components", &inputs));
     std::vector<Tensor> components(inputs.begin(), inputs.end());
-    OP_REQUIRES(ctx, components.size() == output_shapes_.size(),
-                errors::InvalidArgument(
-                    "The size of components should be same with that of "
-                    "output_shapes, but got ",
-                    components.size(), " vs. ", output_shapes_.size()));
-    OP_REQUIRES(ctx, components.size() == output_types_.size(),
-                errors::InvalidArgument(
-                    "The size of components should be same with that of "
-                    "Toutput_types, but got ",
-                    components.size(), " vs. ", output_types_.size()));
-
-    for (int i = 0; i < components.size(); ++i) {
-      OP_REQUIRES(ctx, components[i].dtype() == output_types_[i],
-                  errors::InvalidArgument("The dtypes of components should be "
-                                          "same with Toutput_types"));
-      OP_REQUIRES(ctx, output_shapes_[i].IsIdenticalTo(components[i].shape()),
-                  errors::InvalidArgument("The shapes of components should be "
-                                          "same with output_shapes"));
-    }
-
     *output = new Dataset(ctx, std::move(components));
+    OP_REQUIRES_OK(ctx,
+                   VerifyTypesMatch((*output)->output_dtypes(), output_types_));
+    OP_REQUIRES_OK(ctx, VerifyShapesCompatible((*output)->output_shapes(),
+                                               output_shapes_));
   }
 
  private:
