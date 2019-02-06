@@ -42,8 +42,6 @@ ExcessivePaddingTest.testAsFunctionOutput
 EagerFunctionTest # No registered OpKernel
 ExcessivePaddingTest.testAsFunctionInput # No registered OpKernel
 ExcessivePaddingTest.testAsFunctionOutput # No registered OpKernel
-StatelessRandomOpsTest.testRandomUniformIsInRange # Something wrong with Int32
-StatelessRandomOpsTest.testDistributionOfStatelessRandomUniform # As above
 AdjustContrastTest # Currently taking too long when run alongside other processes
 AdjustHueTest
 AdjustSaturationTest

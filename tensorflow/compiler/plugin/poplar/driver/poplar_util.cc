@@ -64,6 +64,8 @@ Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
       SetVertexField<bool>(graph, field, literal);
       break;
     case S32:
+      SetVertexField<unsigned>(graph, field, literal);
+      break;
     case U32:
       SetVertexField<int>(graph, field, literal);
       break;
