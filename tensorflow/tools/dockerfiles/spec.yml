@@ -56,6 +56,13 @@ releases:
             - "{ubuntu}{jupyter}"
             - "{ubuntu-devel}{jupyter}"
 
+    ppc64le-dockerfiles:
+        is_dockerfiles: true
+        upload_images: false
+        tag_specs:
+            - "{ubuntu-ppc64le}{jupyter}"
+            - "{ubuntu-devel-ppc64le}{jupyter}"
+
 slice_sets:
 
     py:
@@ -121,6 +128,70 @@ slice_sets:
           test_runtime: nvidia
           args:
               - CHECKOUT_TF_SRC=1
+
+    ubuntu-ppc64le:
+        - add_to_name: "-ppc64le"
+          dockerfile_exclusive_name: "cpu-ppc64le"
+          dockerfile_subdirectory: "ppc64le"
+          args:
+              - UBUNTU_VERSION=18.04
+          partials:
+              - ubuntu/version
+              - ubuntu/cpu
+              - ubuntu/python
+              - tensorflow-ppc64le
+              - shell
+        - add_to_name: "-gpu-ppc64le"
+          dockerfile_exclusive_name: "gpu-ppc64le"
+          dockerfile_subdirectory: "ppc64le"
+          args:
+              - UBUNTU_VERSION=18.04
+              - ARCH=ppc64le
+              - CUDA=10.0
+              - TF_PACKAGE=tensorflow-gpu
+          partials:
+              - ubuntu/version
+              - ubuntu/nvidia
+              - ubuntu/python
+              - tensorflow-ppc64le
+              - shell
+          tests:
+              - import-gpu.sh
+          test_runtime: nvidia
+
+    ubuntu-devel-ppc64le:
+        - add_to_name: "devel-ppc64le"
+          dockerfile_exclusive_name: "devel-cpu-ppc64le"
+          dockerfile_subdirectory: "ppc64le"
+          partials:
+              - ubuntu/version
+              - ubuntu/devel-cpu
+              - ubuntu/python
+              - ubuntu/bazelbuild
+              - shell
+          tests:
+              - build-cpu.sh
+          args:
+              - UBUNTU_VERSION=18.04
+              - CHECKOUT_TF_SRC=1
+        - add_to_name: "devel-gpu-ppc64le"
+          dockerfile_exclusive_name: "devel-gpu-ppc64le"
+          dockerfile_subdirectory: "ppc64le"
+          args:
+              - UBUNTU_VERSION=18.04
+              - ARCH=ppc64le
+              - CUDA=10.0
+              - LIB_DIR_PREFIX=powerpc64le
+              - CHECKOUT_TF_SRC=1
+          partials:
+              - ubuntu/version
+              - ubuntu/devel-nvidia
+              - ubuntu/python
+              - ubuntu/bazelbuild
+              - shell
+          tests:
+              - build-gpu.sh
+          test_runtime: nvidia
 
     nightly:
         - add_to_name: "nightly"
