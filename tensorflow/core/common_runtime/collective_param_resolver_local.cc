@@ -360,7 +360,7 @@ void SortDevicesAndTasks(CollectiveParams* cp) {
   for (int i = 0; i < perm.size(); ++i) {
     perm[i] = i;
   }
-  std::sort(perm.begin(), perm.end(), [cp](const int& a, const int& b) {
+  std::sort(perm.begin(), perm.end(), [cp](int a, int b) {
     return cp->instance.device_names[a] < cp->instance.device_names[b];
   });
   std::vector<string> new_devs;

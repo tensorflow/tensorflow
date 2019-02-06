@@ -90,7 +90,7 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
   }
 
   AllocatorParts& allocator_parts = gpu_allocators_[tf_gpu_id.value()];
-  if (allocator_parts.allocator.get() == nullptr) {
+  if (allocator_parts.allocator == nullptr) {
     // Validate allocator types.
     if (!allocator_type.empty() && allocator_type != "BFC") {
       LOG(ERROR) << "Invalid allocator type: " << allocator_type;
