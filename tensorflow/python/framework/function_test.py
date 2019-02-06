@@ -284,7 +284,6 @@ class FunctionTest(test.TestCase):
         out, = sess.run(dlogits, {logits: x, labels: y})
       self.assertAllClose(out, np.exp(prob - y))
 
-  @test_util.disable_xla("This test never passed for XLA")
   def testCustomGradientError(self):
     dtype = dtypes.float32
 
