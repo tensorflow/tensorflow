@@ -17,7 +17,6 @@ limitations under the License.
 #include <vector>
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -25,12 +24,15 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/concat_lib.h"
+#include "tensorflow/core/kernels/concat_lib_cpu.h"
+#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::concat;
 using mkldnn::stream;
-#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -78,9 +80,8 @@ class EigenConcatBaseOp : public OpKernel {
     const TensorShape& input_shape = input_shapes[0];
 
     int32 axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
-    OP_REQUIRES(c,
-                (0 <= axis && axis < input_dims) ||
-                    (allow_legacy_scalars() && concat_dim == 0),
+    OP_REQUIRES(c, (0 <= axis && axis < input_dims) ||
+                       (allow_legacy_scalars() && concat_dim == 0),
                 errors::InvalidArgument(
                     "ConcatOp : Expected concatenating dimensions in the range "
                     "[",
@@ -102,13 +103,12 @@ class EigenConcatBaseOp : public OpKernel {
       const auto in = values[i];
       const bool in_is_scalar = IsLegacyScalar(input_shapes[i]);
       OP_REQUIRES(
-          c,
-          (input_shapes[i].dims() == input_dims) ||
-              (input_is_scalar && in_is_scalar),
+          c, (input_shapes[i].dims() == input_dims) ||
+                 (input_is_scalar && in_is_scalar),
           errors::InvalidArgument(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
-              input_shape.DebugString(), " vs. shape[", i,
-              "] = ", input_shapes[i].DebugString()));
+              input_shape.DebugString(), " vs. shape[", i, "] = ",
+              input_shapes[i].DebugString()));
       if (in.NumElements() > 0) {
         int64 inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
@@ -226,8 +226,49 @@ class MklConcatOp : public OpKernel {
       // format and avoid calling eigen version.
       if (!are_all_tf_inputs && !are_all_mkl_inputs) invoke_eigen = true;
 
+      OpInputList input_mins, input_maxes;
+      if (std::is_same<T, qint8>::value || std::is_same<T, quint8>::value) {
+        // MKL-DNN concat does not support input tensors that have different
+        // ranges. Check if the ranges of the all input tensors are the same.
+        // If not, forward it to Eigen implementation.
+
+        OP_REQUIRES_OK(context, context->input_list("input_mins", &input_mins));
+        OP_REQUIRES(context, (input_mins.size() == N),
+                    errors::InvalidArgument(
+                        "QuantizedConcatOp : Expected mins input list length ",
+                        input_mins.size(), " to equal values length ", N));
+
+        OP_REQUIRES_OK(context,
+                       context->input_list("input_maxes", &input_maxes));
+        OP_REQUIRES(context, (input_maxes.size() == N),
+                    errors::InvalidArgument(
+                        "QuantizedConcatOp : Expected maxes input list length ",
+                        input_maxes.size(), " to equal values length ", N));
+        float input_min = input_mins[0].flat<float>()(0);
+        float input_max = input_maxes[0].flat<float>()(0);
+        const float eps = 1.0e-6;
+        for (int i = 1; i < N; ++i) {
+          float min = input_mins[i].flat<float>()(0);
+          float max = input_maxes[i].flat<float>()(0);
+
+          if (fabs(input_min - min) > eps || fabs(input_max - max) > eps) {
+            invoke_eigen = true;
+            break;
+          }
+        }
+      }
+
       // Call Eigen library
       if (invoke_eigen) {
+        // MKL-DNN quantized concat does not support input tensors with
+        // different ranges.
+        // TODO (mabuzain): Add quantized version of CallEigen() to support
+        // this case.
+        OP_REQUIRES(context, (!std::is_same<T, qint8>::value &&
+                              !std::is_same<T, quint8>::value),
+                    errors::Unimplemented("MKL DNN quantized concat does not "
+                                          "support input tensors that have "
+                                          "different ranges"));
         CallEigenVersion(context, input_tensors, mkl_input_shapes);
         return;
       }
@@ -374,10 +415,27 @@ class MklConcatOp : public OpKernel {
       std::vector<primitive> net;
       net.push_back(concat_op);
       stream(stream::kind::eager).submit(net).wait();
+
+      // For quantized concat, min and max outputs are also computed.
+      if (std::is_same<T, qint8>::value || std::is_same<T, quint8>::value) {
+        Tensor* output_min = nullptr;
+        Tensor* output_max = nullptr;
+        MklDnnShape output_min_mkl_shape, output_max_mkl_shape;
+        output_min_mkl_shape.SetMklTensor(false);
+        output_max_mkl_shape.SetMklTensor(false);
+        AllocateOutputSetMklShape(context, 1, &output_min, {},
+                                  output_min_mkl_shape);
+        AllocateOutputSetMklShape(context, 2, &output_max, {},
+                                  output_max_mkl_shape);
+        // All input tensors should have the same range, just use the
+        // first one
+        output_min->flat<float>()(0) = input_mins[0].flat<float>()(0);
+        output_max->flat<float>()(0) = input_maxes[0].flat<float>()(0);
+      }
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
@@ -489,6 +547,20 @@ class MklConcatOp : public OpKernel {
                           MklConcatOp<CPUDevice, type, NAME_IS_AXIS>)
 
 TF_CALL_float(REGISTER_MKL_CPU);
+
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConcatV2")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("T")
+                            .HostMemory("axis")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklConcatOp<CPUDevice, quint8, NAME_IS_AXIS>)
+
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConcatV2")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint8>("T")
+                            .HostMemory("axis")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklConcatOp<CPUDevice, qint8, NAME_IS_AXIS>)
 
 #undef REGISTER_CONCAT_MKL
 }  // namespace tensorflow
