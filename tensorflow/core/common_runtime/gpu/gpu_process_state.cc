@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/pool_allocator.h"
+#include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
@@ -110,9 +111,15 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
         (options.per_process_gpu_memory_fraction() > 1.0 ||
          options.experimental().use_unified_memory()),
         gpu_visitors_[bus_id], {});
-    Allocator* gpu_allocator =
+    GPUBFCAllocator* gpu_bfc_allocator =
         new GPUBFCAllocator(sub_allocator, total_bytes, options,
                             strings::StrCat("GPU_", tf_gpu_id.value(), "_bfc"));
+    Allocator* gpu_allocator = gpu_bfc_allocator;
+    SharedCounter* timing_counter = nullptr;
+    if (options.experimental().timestamped_allocator()) {
+      timing_counter = new SharedCounter;
+      gpu_bfc_allocator->SetTimingCounter(timing_counter);
+    }
 
     // If true, checks for memory overwrites by writing
     // distinctive patterns on both ends of allocated memory.
@@ -137,7 +144,9 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
       recording_allocator = new internal::RecordingAllocator(
           &process_state_->mem_desc_map_, gpu_allocator, md, &mu_);
     }
-    allocator_parts = {std::unique_ptr<Allocator>(gpu_allocator), sub_allocator,
+    allocator_parts = {std::unique_ptr<Allocator>(gpu_allocator),
+                       std::unique_ptr<SharedCounter>(timing_counter),
+                       sub_allocator,
                        std::unique_ptr<Allocator>(recording_allocator)};
   }
   if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
@@ -149,6 +158,23 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
   LOG(FATAL) << "GPUAllocator unavailable. Not compiled with --config=cuda.";
   return nullptr;
 #endif  // GOOGLE_CUDA
+}
+
+std::unique_ptr<SharedCounter> GPUProcessState::ReleaseGPUAllocatorCounter(
+    TfGpuId tf_gpu_id) {
+  DCHECK(process_state_);
+#if GOOGLE_CUDA
+  GpuIdUtil::CheckValidTfGpuId(tf_gpu_id);
+  mutex_lock l(mu_);
+  if (tf_gpu_id.value() >= static_cast<int64>(gpu_allocators_.size())) {
+    return nullptr;
+  }
+
+  AllocatorParts& allocator_parts = gpu_allocators_[tf_gpu_id.value()];
+  return std::move(allocator_parts.counter);
+#else
+  return nullptr;
+#endif
 }
 
 Allocator* GPUProcessState::GetCUDAHostAllocator(int numa_node) {
@@ -224,6 +250,7 @@ Allocator* GPUProcessState::GetCUDAHostAllocator(int numa_node) {
       allocator = new TrackingAllocator(allocator, true);
     }
     cuda_host_allocators_.push_back({std::unique_ptr<Allocator>(allocator),
+                                     std::unique_ptr<SharedCounter>(nullptr),
                                      sub_allocator,
                                      std::unique_ptr<Allocator>(nullptr)});
     AllocatorParts& allocator_parts = cuda_host_allocators_.back();
