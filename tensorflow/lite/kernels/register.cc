@@ -236,7 +236,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN());
   AddBuiltin(BuiltinOperator_DIV, Register_DIV());
   AddBuiltin(BuiltinOperator_SUB, Register_SUB());
-  AddBuiltin(BuiltinOperator_SPLIT, Register_SPLIT());
+  AddBuiltin(BuiltinOperator_SPLIT, Register_SPLIT(), /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SPLIT_V, Register_SPLIT_V());
   AddBuiltin(BuiltinOperator_SQUEEZE, Register_SQUEEZE());
   AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE());
