@@ -100,10 +100,18 @@ REGISTER_KERNEL_BUILDER(Name("Requantize")
                             .TypeConstraint<quint8>("out_type"),
                         RequantizeOp<qint32, quint8>);
 
-REGISTER_KERNEL_BUILDER(Name("Requantize")
+#ifndef INTEL_MKL
+
+REGISTER_KERNEL_BUILDER(Name("RequantizePerChannel")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<qint32>("Tinput")
+                            .TypeConstraint<qint32>("T")
                             .TypeConstraint<qint8>("out_type"),
-                        RequantizeOp<qint32, qint8>);
+                        NoOp);
+
+REGISTER_KERNEL_BUILDER(Name("RequantizationRangePerChannel")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint32>("T"),
+                        NoOp);
+#endif
 
 }  // namespace tensorflow
