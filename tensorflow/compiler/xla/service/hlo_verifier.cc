@@ -50,6 +50,7 @@ bool IsCallerInstruction(HloInstruction* hlo) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kSort:
     case HloOpcode::kFusion:
       return true;
     default:
