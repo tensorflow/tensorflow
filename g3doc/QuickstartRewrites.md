@@ -2,7 +2,7 @@
 
 This document will present a quickstart to adding graph rewrites. We shall start
 by defining an operation, showing multiple ways to define the rewrite using
-patterns, as well as define the rewrite using a graph walker (note: using
+patterns, as well as defining the rewrite using a graph walker (note: using
 patterns and the rewrite engine is preferred, showing the walker is for
 demonstration purposes).
 
@@ -11,21 +11,21 @@ structure of the IR, operations, etc.
 
 ## Adding operation
 
-An operation in MLIR is specified using a description in
+An operation in MLIR is specified using a definition in
 [TableGen](https://llvm.org/docs/TableGen/LangIntro.html) file. TableGen is a
 modeling tool to specify the ops and the C++ code to interact with these
 operations are generated from. To define an operation one needs to specify:
 
 *   The operation name. This name is a unique identifier of the operation within
-    MLIR. Most operators are within a dialect, so for example one could have
+    MLIR. Most operations are within a dialect, so for example one could have
     `tfl.add` to represent the add operation in the TensorFlow Lite dialect.
     Instead of repeating the dialect in the op definition, a base class for the
-    op dialect is commonly created that prepends the dialect given an op name.
-*   The properties and traits of the operation. (note: these will be merged
-    soon). These allow you to specify traits of the operation, such as whether
-    it has side effects or whether it should be verified that the operands and
-    result types are the same. These are backed by C++ traits that perform the
-    actual verification and needs to be kept in sync.
+    op dialect is commonly created that prepends the dialect namespace given an
+    op name.
+*   The traits of the operation. These allow you to specify traits of the
+    operation, such as whether it has side effects or whether it should be
+    verified that the operands and result types are the same. These are backed
+    by C++ traits that perform the verification.
 *   The arguments of the operation. These are the input operands (values at
     runtime produced by other ops) and attributes (compile time known constant
     values that affect the behavior of the op) that are the inputs of/define the
@@ -43,8 +43,8 @@ operations are generated from. To define an operation one needs to specify:
     the translation from a dialect to another representation.
 
 ```td {.td}
-def TFL_LeakyReluOp: TFL_Op<"leaky_relu", [NoSideEffect]>,
-    Traits<["SameOperandsAndResultType"]>, Results<(outs Tensor)> {
+def TFL_LeakyReluOp: TFL_Op<"leaky_relu", [NoSideEffect, SameValueType]>,
+                     Results<(outs Tensor)> {
   let arguments = (
     ins F32Tensor:$x,
     // Slope of the activation function at x < 0.
@@ -102,14 +102,15 @@ TensorFlow Lite's `LeakyRelu`:
 def : Pat<(TF_LeakyReluOp $arg, F32Attr:$a), (TFL_LeakyReluOp $arg, $a)>
 ```
 
-The pattern is specified by instantiating a `Pat` with a from and to DAG. The
-arguments in the from pattern is captured and can be used in the to pattern.
+The pattern is specified by instantiating a `Pat` with a source and result DAG.
+The arguments in the from pattern is captured and can be used in the to pattern.
 This is a simple pattern as we have a 1:1 mapping and the attribute does not
 need to be transformed (e.g., both have a floating point attribute for alpha).
 The names of the attributes specified in the pattern is for matching/referencing
-and need not match the original attribute name in the op definition.
+and need not match the original attribute name in the op definition but the
+order of arguments of the dags do need to match.
 
-To specify a pattern, both the input and output ops need to be defined using
+To specify a pattern, both the source and results ops need to be defined using
 TableGen. For the above case the TensorFlow LeakyRelu was not defined yet in
 TableGen and instead a shortened definition was added in the legalize patterns
 file:
@@ -165,7 +166,7 @@ struct ConvertTFLeakyRelu : public RewritePattern {
 
 In the C++ rewrite the static benefit of the rewrite pattern is specified at
 construction. While in the pattern generator a simple heuristic is currently
-employed based around the number of ops matched and produced.
+employed based around the number of ops matched and replaced.
 
 The above rule did not capture the matching operands/attributes, but in general
 `match` function may populate and return a `PatternState` (or class derived from
@@ -201,10 +202,10 @@ optimization pass this transform was added as part of on the current file and to
 verify its output using `FileCheck`. `FileCheck` is textual output verifier. In
 particular it uses the CHECK expressions to verify the given output is produced.
 
-There can be multiple RUN commands with different corresponding check prefixes.
-And in addition multiple independent tests separated by `// -----` and mlir-opt
-invoked with `-split-input-file` flag. This is especially useful for error
-testing.
+There can be multiple RUN commands with different corresponding CHECK prefixes.
+And in addition multiple independent tests separated by `// -----` and
+`mlir-opt` invoked with `-split-input-file` flag. This is especially useful for
+error testing.
 
 This results in very simple, directed testing without need to work around
 constant propagation or other, unrelated, optimization passes.
