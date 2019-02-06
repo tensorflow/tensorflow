@@ -543,19 +543,24 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, self._device_map, value, destinations)
 
-    # Validate that the destination is same as the host device
-    # Note we don't do this when in replicate context as the reduction is
-    # performed on the TPU device itself.
     devices = cross_device_ops_lib.get_devices_from(destinations)
-    if len(devices) == 1:
-      assert device_util.canonicalize(devices[0]) == device_util.canonicalize(
-          self._host_device)
-    else:
+    if len(devices) != 1:
       raise ValueError("Multiple devices are not supported for TPUStrategy")
 
-    output = math_ops.add_n(value)
-    if reduce_op == reduce_util.ReduceOp.MEAN:
-      return output * (1. / len(value))
+    # Always performs the reduction on the TPU host.
+    with ops.device(self._host_device):
+      output = math_ops.add_n(value.values)
+      if reduce_op == reduce_util.ReduceOp.MEAN:
+        output *= (1. / len(value.values))
+
+    # If necessary, copy to requested destination.
+    dest_canonical = device_util.canonicalize(devices[0])
+    host_canonical = device_util.canonicalize(self._host_device)
+
+    if dest_canonical != host_canonical:
+      with ops.device(devices[0]):
+        output = array_ops.identity(output)
+
     return output
 
   def _update(self, var, fn, args, kwargs, group):
