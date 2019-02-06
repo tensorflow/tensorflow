@@ -85,6 +85,7 @@ using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
 using reference_ops::StridedSlice;
+using reference_ops::Sub16;
 using reference_ops::Transpose;
 
 // TODO(b/80247582) Remove this constant.

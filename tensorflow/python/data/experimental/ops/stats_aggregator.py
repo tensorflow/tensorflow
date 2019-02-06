@@ -44,7 +44,7 @@ class StatsAggregator(object):
   dataset = ...
 
   # Apply `StatsOptions` to associate `dataset` with `aggregator`.
-  options = dataset_ops.Options()
+  options = tf.data.Options()
   options.experimental_stats.aggregator = aggregator
   dataset = dataset.with_options(options)
   ```

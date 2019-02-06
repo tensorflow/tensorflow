@@ -296,7 +296,7 @@ class StatefulScatterNdTest(test.TestCase):
                                     updates).get_shape().as_list(), shape)
 
   @test_util.run_v1_only("b/120545219")
-  @test_util.disable_xla("This test never passed for XLA")
+  @test_util.disable_xla("b/123337890")  # Error messages differ
   def testResVarInvalidOutputShape(self):
     res = variables.Variable(
         initial_value=lambda: array_ops.zeros(shape=[], dtype=dtypes.float32),

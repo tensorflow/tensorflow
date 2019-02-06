@@ -43,6 +43,8 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
@@ -58,7 +60,11 @@ Status CheckSignature(const DataTypeVector& types,
                             " elements while function has ", types.size());
   }
   for (int i = 0; i < types.size(); ++i) {
-    if (types[i] != args[i].type && types[i] != DT_RESOURCE) {
+    // Don't perform type checks on resource variables and tensor
+    // lists (DT_VARIANT) as we have to trick the type system in order to
+    // plumb them through. DT_VARIANTS are wrapped in a DT_UINT8 tensor.
+    if (types[i] != args[i].type && types[i] != DT_RESOURCE &&
+        types[i] != DT_VARIANT) {
       return errors::Internal(
           "Argument ", i, " has declared type ", DataTypeString(args[i].type),
           " but function parameter has type ", DataTypeString(types[i]));
@@ -1104,8 +1110,17 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   result->outputs.resize(context->retvals().size());
   std::vector<XlaExpression> retvals = context->retvals();
   if (options.resolve_compile_time_constants) {
-    TF_RETURN_IF_ERROR(ResolveConstantExpressionsToConstants(
-        client(), absl::Span<XlaExpression>(retvals)));
+    Status status = ResolveConstantExpressionsToConstants(
+        client(), absl::Span<XlaExpression>(retvals));
+
+    // If the HloEvaluator has not implemented an expression, just evaluate it
+    // at runtime.
+    if (status.code() == error::UNIMPLEMENTED) {
+      ConvertConstantsToExpressions(&builder,
+                                    absl::Span<XlaExpression>(retvals));
+    } else {
+      TF_RETURN_IF_ERROR(status);
+    }
   } else {
     ConvertConstantsToExpressions(&builder, absl::Span<XlaExpression>(retvals));
   }

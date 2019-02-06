@@ -702,6 +702,22 @@ inline void Add(const ArithmeticParams& params,
   }
 }
 
+// T is expected to be either float or int.
+template <typename T>
+inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
+                 T* const* input_data, T* output_data) {
+  // All inputs and output should have the same shape, this is checked during
+  // Prepare stage.
+  const size_t size = input_shape.FlatSize();
+  for (int i = 0; i < size; ++i) {
+    T x = 0;
+    for (int j = 0; j < num_inputs; ++j) {
+      x += input_data[j][i];
+    }
+    output_data[i] = x;
+  }
+}
+
 // Element-wise add that can often be used for inner loop of broadcast add as
 // well as the non-broadcast add.
 inline void AddElementwise(int size, const ArithmeticParams& params,
@@ -1685,6 +1701,54 @@ inline void SubWithActivation(const ArithmeticParams& params,
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] - input2_data[i], params.float_activation_min,
         params.float_activation_max);
+  }
+}
+
+inline void Sub16(const ArithmeticParams& params,
+                  const RuntimeShape& input1_shape, const int16_t* input1_data,
+                  const RuntimeShape& input2_shape, const int16_t* input2_data,
+                  const RuntimeShape& output_shape, int16_t* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Sub/Int16");
+  const int input1_shift = params.input1_shift;
+  const int flat_size =
+      MatchingFlatSize(output_shape, input1_shape, input2_shape);
+  const int16 output_activation_min = params.quantized_activation_min;
+  const int16 output_activation_max = params.quantized_activation_max;
+
+  TFLITE_DCHECK(input1_shift == 0 || params.input2_shift == 0);
+  TFLITE_DCHECK_LE(input1_shift, 0);
+  TFLITE_DCHECK_LE(params.input2_shift, 0);
+  const int16* not_shift_input = input1_shift == 0 ? input1_data : input2_data;
+  const int16* shift_input = input1_shift == 0 ? input2_data : input1_data;
+  const int input_right_shift =
+      input1_shift == 0 ? -params.input2_shift : -input1_shift;
+
+  if (input1_shift == 0) {
+    // F0 uses 0 integer bits, range [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+    for (int i = 0; i < flat_size; ++i) {
+      F0 input_ready_scaled = F0::FromRaw(not_shift_input[i]);
+      F0 scaled_input = F0::FromRaw(
+          gemmlowp::RoundingDivideByPOT(shift_input[i], input_right_shift));
+      F0 result = SaturatingSub(input_ready_scaled, scaled_input);
+      const int16 raw_output = result.raw();
+      const int16 clamped_output = std::min(
+          output_activation_max, std::max(output_activation_min, raw_output));
+      output_data[i] = clamped_output;
+    }
+  } else {
+    // F0 uses 0 integer bits, range [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+    for (int i = 0; i < flat_size; ++i) {
+      F0 input_ready_scaled = F0::FromRaw(not_shift_input[i]);
+      F0 scaled_input = F0::FromRaw(
+          gemmlowp::RoundingDivideByPOT(shift_input[i], input_right_shift));
+      F0 result = SaturatingSub(scaled_input, input_ready_scaled);
+      const int16 raw_output = result.raw();
+      const int16 clamped_output = std::min(
+          output_activation_max, std::max(output_activation_min, raw_output));
+      output_data[i] = clamped_output;
+    }
   }
 }
 
@@ -3793,6 +3857,65 @@ inline void Mean(const tflite::MeanParams& op_params,
       }
       output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
           value / (input_width * input_height);
+    }
+  }
+}
+
+inline void Mean(const tflite::MeanParams& op_params,
+                 const RuntimeShape& unextended_input_shape,
+                 const uint8_t* input_data, int32 input_zero_point,
+                 float input_scale, const RuntimeShape& unextended_output_shape,
+                 uint8_t* output_data, int32 output_zero_point,
+                 float output_scale) {
+  gemmlowp::ScopedProfilingLabel label("Mean4D/Uint8");
+
+  // Current implementation only supports dimension equals 4 and simultaneous
+  // reduction over width and height.
+  TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_CHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+  const int output_batch = output_shape.Dims(0);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
+  const int output_depth = output_shape.Dims(3);
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const float num_elements_in_axis = input_width * input_height;
+
+  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
+  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+  TFLITE_DCHECK_EQ(output_height, 1);
+  TFLITE_DCHECK_EQ(output_width, 1);
+
+  const bool ordinary_mean =
+      (input_zero_point == output_zero_point && input_scale == output_scale);
+  float scale, bias;
+  if (!ordinary_mean) {
+    scale = input_scale / output_scale;
+    bias = -input_zero_point * scale + 0.5;
+  }
+  for (int out_b = 0; out_b < output_batch; ++out_b) {
+    for (int out_d = 0; out_d < output_depth; ++out_d) {
+      float temp_value = 0;
+      for (int in_h = 0; in_h < input_height; ++in_h) {
+        for (int in_w = 0; in_w < input_width; ++in_w) {
+          temp_value +=
+              input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
+        }
+      }
+      temp_value = temp_value / num_elements_in_axis;
+      if (ordinary_mean) {
+        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
+            static_cast<uint8_t>(round(temp_value));
+      } else {
+        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
+            static_cast<uint8_t>(round(temp_value * scale + bias)) +
+            output_zero_point;
+      }
     }
   }
 }

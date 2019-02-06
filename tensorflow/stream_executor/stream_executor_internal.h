@@ -253,6 +253,10 @@ class StreamExecutorInterface {
   virtual bool StartTimer(Stream *stream, Timer *timer) = 0;
   virtual bool StopTimer(Stream *stream, Timer *timer) = 0;
   virtual port::Status BlockHostUntilDone(Stream *stream) = 0;
+  virtual port::Status GetStatus(Stream *stream) {
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "GetStatus is not supported on this executor.");
+  }
   virtual int PlatformDeviceCount() = 0;
   virtual port::Status EnablePeerAccessTo(StreamExecutorInterface *other) = 0;
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface *other) = 0;

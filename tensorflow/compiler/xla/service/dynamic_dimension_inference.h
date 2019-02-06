@@ -88,6 +88,11 @@ class DynamicDimensionInference {
     iter.first->second.emplace(DynamicDimension{inst, index, dim});
   }
 
+  // Copies the internal mapping from instruction `from` to instruction `to`.
+  // This is useful when an instruction is replaced by the other during the
+  // inferencing process.
+  void CopyMapping(HloInstruction* from, HloInstruction* to);
+
   // AnalyzeDynamicDimensions starts the analysis of the dynamic dimensions in
   // module_.
   Status AnalyzeDynamicDimensions();
@@ -101,6 +106,8 @@ class DynamicDimensionInference {
   using DynamicMapping = absl::flat_hash_map<DynamicDimension, HloInstruction*>;
   DynamicMapping dynamic_mapping_;
 
+  // A convenient mapping from an hlo to the set of dynamic dimensions that it
+  // holds.
   using PerHloDynamicDimensions =
       absl::flat_hash_map<HloInstruction*,
                           absl::flat_hash_set<DynamicDimension>>;

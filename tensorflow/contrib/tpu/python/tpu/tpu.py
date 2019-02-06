@@ -328,6 +328,30 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   def HostComputeCore(self):
     return self._host_compute_core
 
+  def _RemoveExternalControlEdges(self, op):
+    """Remove any external control dependency on this op."""
+    internal_control_inputs = []
+    external_control_inputs = []
+    for x in op.control_inputs:
+      # pylint: disable=protected-access
+      is_internal_op = False
+      ctxt = x._get_control_flow_context()
+      while ctxt is not None:
+        if ctxt == self:
+          is_internal_op = True
+          break
+        ctxt = ctxt._outer_context
+      if is_internal_op:
+        internal_control_inputs.append(x)
+      else:
+        external_control_inputs.append(x)
+      # pylint: enable=protected-access
+    # pylint: disable=protected-access
+    op._remove_all_control_inputs()
+    op._add_control_inputs(internal_control_inputs)
+    # pylint: enable=protected-access
+    return internal_control_inputs, external_control_inputs
+
   def AddOp(self, op):
     # pylint: disable=protected-access
     if op.type in _BLACKLISTED_OPS:
@@ -378,11 +402,14 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     if external_control_inputs:
       # Use an identity to pull control inputs as data inputs. Note that we
       # ignore ops which don't have outputs. TODO(phawkins): fix that.
-      external_control_inputs = [
-          array_ops.identity(x.outputs[0]).op
-          for x in external_control_inputs
-          if x.outputs
-      ]
+      with ops.control_dependencies(None):
+        self.Enter()
+        external_control_inputs = [
+            array_ops.identity(x.outputs[0]).op
+            for x in external_control_inputs
+            if x.outputs
+        ]
+        self.Exit()
       # pylint: disable=protected-access
       op._add_control_inputs(external_control_inputs)
       # pylint: enable=protected-access

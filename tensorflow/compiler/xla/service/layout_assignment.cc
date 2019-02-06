@@ -2095,6 +2095,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kReduce:
+    case HloOpcode::kReplicaId:
     case HloOpcode::kReshape:
     case HloOpcode::kRng:
     case HloOpcode::kSend:

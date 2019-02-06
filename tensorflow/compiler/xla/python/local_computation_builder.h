@@ -425,7 +425,8 @@ class LocalComputationBuilder {
   LocalOp Cholesky(const LocalOp& a);
 
   LocalOp TriangularSolve(const LocalOp& a, const LocalOp& b, bool left_side,
-                          bool lower, bool transpose_a, bool conjugate_a);
+                          bool lower, bool transpose_a, bool conjugate_a,
+                          bool unit_diagonal);
 
   LocalOp Gather(const LocalOp& input, const LocalOp& start_indices,
                  const GatherDimensionNumbers& dimension_numbers,

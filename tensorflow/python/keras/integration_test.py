@@ -18,12 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.ops import nn_ops as nn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.platform import test
 
@@ -196,6 +199,48 @@ class ImageClassificationIntegrationTest(keras_parameterized.TestCase):
     predictions = model.predict(x_train)
     self.assertEqual(predictions.shape, (x_train.shape[0], 2))
 
+
+@keras_parameterized.run_all_keras_modes
+class ActivationV2IntegrationTest(keras_parameterized.TestCase):
+  """Tests activation function V2 in model exporting and loading.
+
+  This test is to verify in TF 2.x, when 'tf.nn.softmax' is used as an
+  activition function, its model exporting and loading work as expected.
+  Check b/123041942 for details.
+  """
+
+  def test_serialization_v2_model(self):
+    np.random.seed(1337)
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=100,
+        test_samples=0,
+        input_shape=(10,),
+        num_classes=2)
+    y_train = keras.utils.to_categorical(y_train)
+
+    model = keras.Sequential([
+        keras.layers.Flatten(input_shape=x_train.shape[1:]),
+        keras.layers.Dense(10, activation=nn.relu),
+        # To mimic 'tf.nn.softmax' used in TF 2.x.
+        keras.layers.Dense(y_train.shape[-1], activation=nn.softmax_v2),
+    ])
+
+    # Check if 'softmax' is in model.get_config().
+    last_layer_activation = model.get_layer(index=2).get_config()['activation']
+    self.assertEqual(last_layer_activation, 'softmax')
+
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
+                  metrics=['accuracy'],
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x_train, y_train, epochs=2, batch_size=10,
+              validation_data=(x_train, y_train),
+              verbose=2)
+
+    output_path = keras.saving.saved_model.export(
+        model, os.path.join(self.get_temp_dir(), 'tf_keras_saved_model'))
+    loaded_model = keras.saving.saved_model.load_from_saved_model(output_path)
+    self.assertEqual(model.summary(), loaded_model.summary())
 
 if __name__ == '__main__':
   test.main()

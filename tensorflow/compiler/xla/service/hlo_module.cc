@@ -250,7 +250,7 @@ HloModuleProto HloModule::ToProto() const {
 StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     const HloModuleProto& proto, const HloModuleConfig& module_config) {
   VLOG(2) << "CreateFromProto()";
-  XLA_VLOG_LINES(2, proto.DebugString());
+  XLA_VLOG_LINES(3, proto.DebugString());
 
   // The ProgramShape in the passed in module config must match the shapes of
   // the entry parameters and root.

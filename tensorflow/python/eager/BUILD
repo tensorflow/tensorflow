@@ -6,6 +6,7 @@ load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_logged_benchmark",
 )
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 cc_library(
     name = "pywrap_tfe_lib",
@@ -517,6 +518,22 @@ tf_py_test(
     srcs = ["def_function_test.py"],
     additional_deps = [
         ":def_function",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+    ],
+)
+
+tf_xla_py_test(
+    name = "def_function_xla_test",
+    srcs = ["def_function_xla_test.py"],
+    tags = [
+        "no_pip",
+        "nomac",
+    ],
+    deps = [
+        ":def_function",
+        "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",

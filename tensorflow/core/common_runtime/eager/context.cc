@@ -20,9 +20,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#ifndef __ANDROID__
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
+#endif
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/util/env_var.h"
@@ -66,7 +68,7 @@ EagerContext::EagerContext(const SessionOptions& opts,
       env_(opts.env),
       use_send_tensor_rpc_(false),
       pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
-          "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", true)) {
+          "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)) {
   if (device_mgr_owned) {
     local_device_manager_.reset(device_mgr);
     local_unowned_device_manager_ = nullptr;
@@ -81,7 +83,8 @@ EagerContext::EagerContext(const SessionOptions& opts,
   std::unique_ptr<DeviceResolverInterface> drl(
       new DeviceResolverLocal(local_device_mgr()));
   std::unique_ptr<ParamResolverInterface> cprl(new CollectiveParamResolverLocal(
-      local_device_mgr(), drl.get(), "/job:localhost/replica:0/task:0"));
+      opts.config, local_device_mgr(), drl.get(),
+      "/job:localhost/replica:0/task:0"));
   collective_executor_mgr_.reset(new CollectiveExecutorMgr(
       opts.config, local_device_mgr(), std::move(drl), std::move(cprl)));
 }

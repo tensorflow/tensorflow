@@ -31,6 +31,7 @@ cc_library(
     ],
     linkopts = ["-ldl"] + select({
         "//tensorflow:android": [],
+        "//tensorflow:darwin": [],
         "//tensorflow:ios": [],
         "//tensorflow:windows": [],
         "//conditions:default": ["-lrt"],

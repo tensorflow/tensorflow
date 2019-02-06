@@ -50,7 +50,7 @@ def _extract_node(run_meta, node_name):
       dev = dev[dev.find('cpu:'):]
     elif dev.find('gpu:') > 0:
       dev = dev[dev.find('gpu:'):]
-    else:
+    elif '/host:cpu' not in dev:
       assert False, 'Unrecognized device name: %s' % dev
 
     for node_stat in dev_stat.node_stats:

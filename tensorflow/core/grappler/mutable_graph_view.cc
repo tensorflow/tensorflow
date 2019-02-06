@@ -89,7 +89,21 @@ bool CanDedupControlWithRegularInput(const MutableGraphView& graph,
 bool CanDedupControlWithRegularInput(const MutableGraphView& graph,
                                      absl::string_view control_node_name) {
   NodeDef* control_node = graph.GetNode(control_node_name);
+  DCHECK(control_node != nullptr)
+      << "Didn't find a node for control dependency: " << control_node_name;
   return CanDedupControlWithRegularInput(graph, *control_node);
+}
+
+bool HasRegularFaninNode(const MutableGraphView& graph, const NodeDef& node,
+                         absl::string_view fanin_node_name) {
+  const int num_regular_fanins =
+      graph.NumFanins(node, /*include_controlling_nodes=*/false);
+  for (int i = 0; i < num_regular_fanins; ++i) {
+    if (ParseTensorName(node.input(i)).node() == fanin_node_name) {
+      return true;
+    }
+  }
+  return false;
 }
 
 Status MutationError(absl::string_view function_name, absl::string_view params,
@@ -164,6 +178,13 @@ Status CheckPortRange(int port, int min, int max, ErrorHandler handler) {
         absl::Substitute("port must be in range [$0, $1]", min, max));
   }
   return Status::OK();
+}
+
+string GeneratedNameForIdentityConsumingSwitch(
+    const MutableGraphView::OutputPort& fanin) {
+  return AddPrefixToNodeName(
+      absl::StrCat(fanin.node->name(), "_", fanin.port_id),
+      kMutableGraphViewCtrl);
 }
 
 }  // namespace
@@ -318,6 +339,60 @@ Status MutableGraphView::AddSubgraph(GraphDef&& subgraph) {
   for (int i = node_size_before; i < graph()->node_size(); ++i) {
     NodeDef* node = graph()->mutable_node(i);
     AddAndDedupFanouts(node);
+  }
+
+  return Status::OK();
+}
+
+Status MutableGraphView::UpdateNode(
+    absl::string_view node_name, absl::string_view op, absl::string_view device,
+    absl::Span<const std::pair<string, AttrValue>> attrs) {
+  auto error_status = [node_name, op, device, attrs](absl::string_view msg) {
+    std::vector<string> attr_strs;
+    attr_strs.reserve(attrs.size());
+    for (const auto& attr : attrs) {
+      string attr_str = absl::Substitute("('$0', $1)", attr.first,
+                                         attr.second.ShortDebugString());
+      attr_strs.push_back(attr_str);
+    }
+    string params =
+        absl::Substitute("node_name='$0', op='$1', device='$2', attrs={$3}",
+                         node_name, op, device, absl::StrJoin(attr_strs, ", "));
+    return MutationError("UpdateNodeOp", params, msg);
+  };
+
+  NodeDef* node = GetNode(node_name);
+  TF_RETURN_IF_ERROR(CheckNodeExists(node_name, node, error_status));
+
+  MutableGraphView::OutputPort control_port(node, Graph::kControlSlot);
+  auto control_fanouts = GetFanout(control_port);
+  if (op == "Switch" && !control_fanouts.empty()) {
+    return error_status(
+        "can't change node op to Switch when node drives a control dependency "
+        "(alternatively, we could add the identity node needed, but it seems "
+        "like an unlikely event and probably a mistake)");
+  }
+
+  if (node->device() != device) {
+    node->set_device(string(device));
+  }
+  node->mutable_attr()->clear();
+  for (const auto& attr : attrs) {
+    (*node->mutable_attr())[attr.first] = attr.second;
+  }
+
+  if (node->op() == op) {
+    return Status::OK();
+  }
+
+  node->set_op(string(op));
+
+  if (CanDedupControlWithRegularInput(*this, *node)) {
+    for (const auto& control_fanout : control_fanouts) {
+      if (HasRegularFaninNode(*this, *control_fanout.node, node->name())) {
+        RemoveControllingFaninInternal(control_fanout.node, node);
+      }
+    }
   }
 
   return Status::OK();
@@ -544,6 +619,68 @@ Status MutableGraphView::AddRegularFaninByPort(absl::string_view node_name,
   return Status::OK();
 }
 
+NodeDef* MutableGraphView::GetControllingFaninToAdd(absl::string_view node_name,
+                                                    const OutputPort& fanin,
+                                                    string* error_msg) {
+  if (!IsSwitch(*fanin.node)) {
+    return fanin.node;
+  } else {
+    TensorId tensor_id(fanin.node->name(), fanin.port_id);
+    if (IsOutputPortControlling(fanin)) {
+      // Can't add a Switch node control dependency.
+      *error_msg = absl::Substitute(
+          "can't add fanin '$0' as it will become a Switch control dependency",
+          tensor_id.ToString());
+      return nullptr;
+    }
+    // We can't anchor control dependencies directly on the switch node: unlike
+    // other nodes only one of the outputs of the switch node will be generated
+    // when the switch node is executed, and we need to make sure the control
+    // dependency is only triggered when the corresponding output is triggered.
+    // We start by looking for an identity node connected to the output of the
+    // switch node, and use it to anchor the control dependency.
+    auto fanouts = GetFanouts(*fanin.node, /*include_controlled_nodes=*/false);
+    for (auto fanout : fanouts) {
+      if (IsIdentity(*fanout.node) || IsIdentityNSingleInput(*fanout.node)) {
+        if (ParseTensorName(fanout.node->input(0)) == tensor_id) {
+          if (fanout.node->name() == node_name) {
+            *error_msg =
+                absl::Substitute("can't add found fanin '$0' to self",
+                                 AsControlDependency(fanout.node->name()));
+            return nullptr;
+          }
+          return fanout.node;
+        }
+      }
+    }
+
+    // No node found, check if node to be created is itself.
+    if (GeneratedNameForIdentityConsumingSwitch(fanin) == node_name) {
+      *error_msg = absl::Substitute("can't add generated fanin '$0' to self",
+                                    AsControlDependency(string(node_name)));
+    }
+  }
+  return nullptr;
+}
+
+NodeDef* MutableGraphView::GetOrCreateIdentityConsumingSwitch(
+    const OutputPort& fanin) {
+  // We haven't found an existing node where we can anchor the control
+  // dependency: add a new identity node.
+  string identity_name = GeneratedNameForIdentityConsumingSwitch(fanin);
+  NodeDef* identity_node = GetNode(identity_name);
+  if (identity_node == nullptr) {
+    NodeDef new_node;
+    new_node.set_name(identity_name);
+    new_node.set_op("Identity");
+    new_node.set_device(fanin.node->device());
+    (*new_node.mutable_attr())["T"].set_type(fanin.node->attr().at("T").type());
+    new_node.add_input(TensorIdToString({fanin.node->name(), fanin.port_id}));
+    identity_node = AddNode(std::move(new_node));
+  }
+  return identity_node;
+}
+
 Status MutableGraphView::AddControllingFanin(absl::string_view node_name,
                                              const TensorId& fanin) {
   auto error_status = [node_name, fanin](absl::string_view msg) {
@@ -559,59 +696,19 @@ Status MutableGraphView::AddControllingFanin(absl::string_view node_name,
   NodeDef* fanin_node = GetNode(fanin.node());
   TF_RETURN_IF_ERROR(CheckNodeExists(fanin.node(), fanin_node, error_status));
 
-  if (!IsSwitch(*fanin_node)) {
-    AddFaninInternal(node, {fanin_node, Graph::kControlSlot});
-  } else {
-    if (IsTensorIdControlling(fanin)) {
-      // Can't add a Switch node control dependency.
-      return error_status(absl::Substitute(
-          "can't add fanin '$0' as it will become a Switch control dependency",
-          fanin.ToString()));
-    }
-    // We can't anchor control dependencies directly on the switch node: unlike
-    // other nodes only one of the outputs of the switch node will be generated
-    // when the switch node is executed, and we need to make sure the control
-    // dependency is only triggered when the corresponding output is triggered.
-    // We start by looking for an identity node connected to the output of the
-    // switch node, and use it to anchor the control dependency.
-    auto fanouts = GetFanouts(*fanin_node, /*include_controlled_nodes=*/false);
-    for (auto fanout : fanouts) {
-      if (IsIdentity(*fanout.node) || IsIdentityNSingleInput(*fanout.node)) {
-        if (ParseTensorName(fanout.node->input(0)) == fanin) {
-          if (fanout.node->name() == node_name) {
-            return error_status(
-                absl::Substitute("can't add found fanin '$0' to self",
-                                 AsControlDependency(fanout.node->name())));
-          }
-          AddFaninInternal(node, {fanout.node, Graph::kControlSlot});
-          return Status::OK();
-        }
-      }
-    }
-    // We haven't found an existing node where we can anchor the control
-    // dependency: add a new identity node.
-    string ctrl_dep_name = AddPrefixToNodeName(
-        absl::StrCat(fanin.node(), "_", fanin.index()), kMutableGraphViewCtrl);
-    if (node_name == ctrl_dep_name) {
-      return error_status(
-          absl::Substitute("can't add generated fanin '$0' to self",
-                           AsControlDependency(ctrl_dep_name)));
-    }
+  OutputPort fanin_port(fanin_node, fanin.index());
 
-    // Reuse a previously created node, if possible.
-    NodeDef* ctrl_dep_node = GetNode(ctrl_dep_name);
-    if (ctrl_dep_node == nullptr) {
-      NodeDef new_node;
-      new_node.set_name(ctrl_dep_name);
-      new_node.set_op("Identity");
-      new_node.set_device(fanin_node->device());
-      (*new_node.mutable_attr())["T"].set_type(
-          fanin_node->attr().at("T").type());
-      new_node.add_input(TensorIdToString(fanin));
-      ctrl_dep_node = AddNode(std::move(new_node));
-    }
-    AddFaninInternal(node, {ctrl_dep_node, Graph::kControlSlot});
+  string error_msg = "";
+  NodeDef* control_node = GetControllingFaninToAdd(
+      node_name, {fanin_node, fanin.index()}, &error_msg);
+  if (!error_msg.empty()) {
+    return error_status(error_msg);
   }
+  if (control_node == nullptr) {
+    control_node = GetOrCreateIdentityConsumingSwitch(fanin_port);
+  }
+  AddFaninInternal(node, {control_node, Graph::kControlSlot});
+
   return Status::OK();
 }
 
@@ -984,6 +1081,77 @@ Status MutableGraphView::SwapRegularFaninsByPorts(absl::string_view node_name,
   to_fanouts->insert(from_input);
 
   node->mutable_input()->SwapElements(from_port, to_port);
+
+  return Status::OK();
+}
+
+Status MutableGraphView::UpdateAllRegularFaninsToControlling(
+    absl::string_view node_name) {
+  auto error_status = [node_name](absl::string_view msg) {
+    string params = absl::Substitute("node_name='$0'", node_name);
+    return MutationError("UpdateAllRegularFaninsToControlling", params, msg);
+  };
+
+  NodeDef* node = GetNode(node_name);
+  TF_RETURN_IF_ERROR(CheckNodeExists(node_name, node, error_status));
+
+  const int num_regular_fanins =
+      NumFanins(*node, /*include_controlling_nodes=*/false);
+  std::vector<OutputPort> regular_fanins;
+  regular_fanins.reserve(num_regular_fanins);
+  std::vector<NodeDef*> controlling_fanins;
+  controlling_fanins.reserve(num_regular_fanins);
+
+  // Get all regular fanins and derive controlling fanins.
+  for (int i = 0; i < num_regular_fanins; ++i) {
+    TensorId tensor_id = ParseTensorName(node->input(i));
+    OutputPort fanin_port(nodes()[tensor_id.node()], tensor_id.index());
+
+    string error_msg = "";
+    NodeDef* control_node =
+        GetControllingFaninToAdd(node_name, fanin_port, &error_msg);
+    if (!error_msg.empty()) {
+      return error_status(error_msg);
+    }
+
+    regular_fanins.push_back(fanin_port);
+    controlling_fanins.push_back(control_node);
+  }
+
+  // Replace regular fanins with controlling fanins and dedup.
+  int pos = 0;
+  InputPort input_port(node, Graph::kControlSlot);
+  absl::flat_hash_set<absl::string_view> controls;
+  for (int i = 0; i < num_regular_fanins; ++i) {
+    OutputPort fanin_port = regular_fanins[i];
+    NodeDef* control = controlling_fanins[i];
+    if (control == nullptr) {
+      control = GetOrCreateIdentityConsumingSwitch(fanin_port);
+    }
+    fanouts()[fanin_port].erase({node, i});
+    if (controls.contains(control->name())) {
+      continue;
+    }
+    controls.insert(control->name());
+    node->set_input(pos, AsControlDependency(control->name()));
+    fanouts()[{control, Graph::kControlSlot}].insert(input_port);
+    ++pos;
+  }
+
+  // Shift existing controlling fanins and dedup.
+  for (int i = num_regular_fanins; i < node->input_size(); ++i) {
+    TensorId tensor_id = ParseTensorName(node->input(i));
+    if (controls.contains(tensor_id.node())) {
+      continue;
+    }
+    controls.insert(tensor_id.node());
+    node->mutable_input()->SwapElements(pos, i);
+    ++pos;
+  }
+
+  // Remove duplicate controls and leftover regular fanins.
+  node->mutable_input()->DeleteSubrange(pos, node->input_size() - pos);
+  max_regular_input_port().erase(node);
 
   return Status::OK();
 }

@@ -96,7 +96,7 @@ static inline bool IsMklOp(const string& op_name, DataType T) {
 
   // Restrict quantized ops to QUINT8 and QINT8 for now
   if (kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
-    return (T == DT_QUINT8 || T == DT_QINT8);
+    return (T == DT_QUINT8 || T == DT_QINT8 || T == DT_QINT32);
   }
   // Restrict regular ops to FLOAT
   if (kernel.find(kMklOpLabelPattern) != string::npos) {

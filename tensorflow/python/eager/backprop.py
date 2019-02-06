@@ -80,6 +80,8 @@ def make_attr(attr_type, value):
     return tensor_shape.as_shape(value).as_proto()
   elif attr_type == [pywrap_tensorflow.TF_ATTR_SHAPE]:
     return [tensor_shape.as_shape(v).as_proto() for v in value]
+  elif isinstance(value, str):
+    return value.encode()
   return value
 
 

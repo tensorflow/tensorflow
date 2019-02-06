@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
@@ -117,6 +118,9 @@ std::vector<string> GetCudaRootCandidates(
     const HloModuleConfig& hlo_module_config) {
   std::vector<string> potential_cuda_roots = tensorflow::CandidateCudaRoots();
 
+  // "." is our last resort, even though it probably won't work.
+  potential_cuda_roots.push_back(".");
+
   // CUDA location explicitly specified by user via --xla_gpu_cuda_data_dir has
   // highest priority.
   string xla_gpu_cuda_data_dir =
@@ -128,9 +132,23 @@ std::vector<string> GetCudaRootCandidates(
   return potential_cuda_roots;
 }
 
+void PrintCantFindCudaMessage(absl::string_view msg,
+                              const HloModuleConfig& hlo_module_config) {
+  LOG(WARNING) << msg;
+  LOG(WARNING) << "Searched in the following directories:";
+  for (const auto& dir : GetCudaRootCandidates(hlo_module_config)) {
+    LOG(WARNING) << "  " << dir;
+  }
+  LOG(WARNING)
+      << "You can choose the search directory by setting xla_gpu_cuda_data_dir "
+         "in HloModule's DebugOptions.  For most apps, setting the environment "
+         "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.";
+}
+
 // Returns the directory containing nvvm libdevice files.
 string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
-  for (const string& cuda_root : GetCudaRootCandidates(hlo_module_config)) {
+  const auto& candidate_dirs = GetCudaRootCandidates(hlo_module_config);
+  for (const string& cuda_root : candidate_dirs) {
     string libdevice_dir =
         tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
     VLOG(2) << "Looking for libdevice at " << libdevice_dir;
@@ -139,8 +157,14 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
       return libdevice_dir;
     }
   }
-  LOG(WARNING) << "Unable to find libdevice dir. Using '.'";
-  // Last resort: maybe in the current folder.
+  PrintCantFindCudaMessage(
+      "Can't find directory containing CUDA libevice.  This may result in "
+      "compilation or runtime failures, if the program we try to run uses "
+      "routines from libdevice.",
+      hlo_module_config);
+
+  // GetCudaRotCandidates always inclues ".", but but if everything fails, we
+  // return it anyway.  Better than returning the empty string.
   return ".";
 }
 
@@ -200,7 +224,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       pipeline.AddPass<ZeroSizedHloElimination>();
 
       AlgebraicSimplifierOptions options;
-      options.set_enable_permutation_sort_replacement(true);
       pass.AddPass<AlgebraicSimplifier>(options);
       pass.AddPass<SortSimplifier>();
       pass.AddPass<TupleSimplifier>();
@@ -273,7 +296,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
-    options.set_enable_permutation_sort_replacement(true);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
     // Choose the fastest algorithm for each conv.
@@ -377,6 +399,7 @@ Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<FlattenCallGraph>();
   pipeline.AddPass<GpuCopyInsertion>();
+  pipeline.AddPass<GpuSanitizeConstantNames>();
   return pipeline.Run(hlo_module).status();
 }
 
@@ -843,10 +866,11 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
             log_warning = !warning_done.exchange(true);
           }
           if (log_warning) {
-            LOG(WARNING)
-                << "Failed to compile ptx to cubin.  Will attempt to let "
-                   "GPU driver compile the ptx. "
-                << maybe_cubin.status();
+            PrintCantFindCudaMessage(
+                "Can't find ptxas binary.  Will back to the GPU driver "
+                "for PTX -> sass compilation.  This is OK so long as you don't "
+                "see a warning below about an out-of-date driver version.",
+                hlo_module_config);
           }
 
           // We're going to use the driver to JIT our PTX->SASS, so warn if

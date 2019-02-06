@@ -212,6 +212,10 @@ class XlaOpRegistry {
     // allow DT_RESOURCE.
     bool allow_resource_types = false;
 
+    // Should we allow variant types for type attributes? Used by While to
+    // allow TensorList which is of type DT_VARIANT.
+    bool allow_variant_types = false;
+
     // Mapping from attribute name to a list of supported types.
     std::unordered_map<string, std::set<DataType>> type_constraints;
 
@@ -233,9 +237,9 @@ class XlaOpRegistry {
 
   // Returns true if registrations x and y can both be added to the registry.
   // This is always the case if they refer to different ops. If they refer to
-  // the same op name, they must: have the same values for compilation_only and
-  // allow_resource_types; use a device_whitelist; and their
-  // whitelists must not intersect.
+  // the same op name, they must: have the same values for compilation_only,
+  // allow_resource_types and allow_variant_types; use a device_whitelist; and
+  // their whitelists must not intersect.
   static bool IsCompatible(const OpRegistration& x, const OpRegistration& y);
 
   static Status CompileTimeConstantInputs(const NodeDef& node_def,
@@ -292,6 +296,9 @@ class XlaOpRegistrationBuilder {
 
   // Allow DT_RESOURCE types for type parameters.
   XlaOpRegistrationBuilder& AllowResourceTypes();
+
+  // Allow DT_VARIANT types for type parameters.
+  XlaOpRegistrationBuilder& AllowVariantTypes();
 
   // Mark 'input_name' as an argument whose value must be known at compile-time.
   XlaOpRegistrationBuilder& CompileTimeConstantInput(

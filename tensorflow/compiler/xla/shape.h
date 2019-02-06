@@ -181,6 +181,10 @@ class Shape {
     bool ignore_dynamic_dimension_ = false;
   };
 
+  // Test that all fields of the shape are the same, equivalent to Equal().
+  bool operator==(const Shape& other) const { return Equal()(*this, other); }
+  bool operator!=(const Shape& other) const { return !(*this == other); }
+
  private:
   // The element type of this shape (tuple, array, etc).
   PrimitiveType element_type_ = PRIMITIVE_TYPE_INVALID;

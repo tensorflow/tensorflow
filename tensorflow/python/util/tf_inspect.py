@@ -36,6 +36,19 @@ else:
       'annotations'
   ])
 
+
+def _convert_maybe_argspec_to_fullargspec(argspec):
+  if isinstance(argspec, FullArgSpec):
+    return argspec
+  return FullArgSpec(
+      args=argspec.args,
+      varargs=argspec.varargs,
+      varkw=argspec.keywords,
+      defaults=argspec.defaults,
+      kwonlyargs=[],
+      kwonlydefaults=None,
+      annotations={})
+
 if hasattr(_inspect, 'getfullargspec'):
   _getfullargspec = _inspect.getfullargspec  # pylint: disable=invalid-name
 
@@ -74,16 +87,7 @@ else:
     Returns:
       A FullArgSpec with empty kwonlyargs, kwonlydefaults and annotations.
     """
-    argspecs = getargspec(target)
-    fullargspecs = FullArgSpec(
-        args=argspecs.args,
-        varargs=argspecs.varargs,
-        varkw=argspecs.keywords,
-        defaults=argspecs.defaults,
-        kwonlyargs=[],
-        kwonlydefaults=None,
-        annotations={})
-    return fullargspecs
+    return _convert_maybe_argspec_to_fullargspec(getargspec(target))
 
 
 def currentframe():
@@ -238,7 +242,7 @@ def getfullargspec(obj):
     directly on the callable.
   """
   decorators, target = tf_decorator.unwrap(obj)
-  return next((d.decorator_argspec
+  return next((_convert_maybe_argspec_to_fullargspec(d.decorator_argspec)
                for d in decorators
                if d.decorator_argspec is not None), _getfullargspec(target))
 
@@ -380,3 +384,22 @@ def isroutine(object):  # pylint: disable=redefined-builtin
 def stack(context=1):
   """TFDecorator-aware replacement for inspect.stack."""
   return _inspect.stack(context)[1:]
+
+
+def getsource_no_unwrap(obj):
+  """Return source code for an object. Does not unwrap TFDecorators.
+
+  The source code is returned literally, including indentation for functions not
+  at the top level. This function is analogous to inspect.getsource, with one
+  key difference - it doesn't unwrap decorators. For simplicity, support for
+  some Python object types is dropped (tracebacks, frames, code objects).
+
+  Args:
+      obj: a class, method, or function object.
+
+  Returns:
+      source code as a string
+
+  """
+  lines, lnum = _inspect.findsource(obj)
+  return ''.join(_inspect.getblock(lines[lnum:]))

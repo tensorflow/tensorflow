@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import re
 
+from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.eager import context
@@ -31,6 +32,13 @@ from tensorflow.python.platform import test
 
 class DatasetTestBase(test.TestCase):
   """Base class for dataset tests."""
+
+  @classmethod
+  def setUpClass(cls):
+    if tf2.enabled():
+      dataset_ops.Dataset = dataset_ops.DatasetV2
+    else:
+      dataset_ops.Dataset = dataset_ops.DatasetV1
 
   def assertSparseValuesEqual(self, a, b):
     """Asserts that two SparseTensors/SparseTensorValues are equal."""
@@ -178,6 +186,8 @@ class DatasetTestBase(test.TestCase):
                                    exception_class,
                                    replacements=None):
     """Checks that datasets raise the same error on the first get_next call."""
+    if replacements is None:
+      replacements = []
     next1 = self.getNext(dataset1)
     next2 = self.getNext(dataset2)
     try:

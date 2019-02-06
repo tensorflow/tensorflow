@@ -1628,26 +1628,20 @@ bool LiteralBase::IsAllFloat(float value) const {
           return true;
         }
 
-        auto piece_is_all = [&]() {
-          switch (shape().element_type()) {
-            case F32:
-              return AllElementsEqualValue<float>(piece.data<float>(), value);
-            case F64:
-              return AllElementsEqualValue<double>(piece.data<double>(), value);
-            case F16:
-              return AllElementsEqualValue<half>(piece.data<half>(),
-                                                 static_cast<half>(value));
-            case BF16:
-              return AllElementsEqualValue<bfloat16>(
-                  piece.data<bfloat16>(), static_cast<bfloat16>(value));
-            default:
-              return false;
-          }
-        };
-        if (!piece_is_all()) {
-          return false;
+        switch (shape().element_type()) {
+          case F32:
+            return AllElementsEqualValue<float>(piece.data<float>(), value);
+          case F64:
+            return AllElementsEqualValue<double>(piece.data<double>(), value);
+          case F16:
+            return AllElementsEqualValue<half>(piece.data<half>(),
+                                               static_cast<half>(value));
+          case BF16:
+            return AllElementsEqualValue<bfloat16>(
+                piece.data<bfloat16>(), static_cast<bfloat16>(value));
+          default:
+            return false;
         }
-        return true;
       });
 }
 

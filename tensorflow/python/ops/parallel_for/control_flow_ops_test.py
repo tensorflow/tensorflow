@@ -36,9 +36,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
@@ -928,15 +928,15 @@ class Benchmarks(test.Benchmark):
       b = 256
       params = 1000
       inp = random_ops.random_normal((b, params))
-      map_fn = lambda x: x * x
+      fn = lambda x: x * x
 
       def pfor_map_fn(f, x):
         return pfor_control_flow_ops.pfor(
             lambda i: f(array_ops.gather(x, i)),
             array_ops.shape(x)[0])
 
-      map_output = functional_ops.map_fn(map_fn, inp)
-      pfor_output = pfor_map_fn(map_fn, inp)
+      map_output = map_fn.map_fn(fn, inp)
+      pfor_output = pfor_map_fn(fn, inp)
 
       self._run(map_output, 100, name="tf_map_fn")
       self._run(pfor_output, 100, name="pfor_map_fn")

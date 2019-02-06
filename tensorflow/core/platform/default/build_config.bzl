@@ -579,7 +579,10 @@ def tf_additional_device_tracer_cuda_deps():
     return []
 
 def tf_additional_device_tracer_deps():
-    return []
+    return [
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/internal/cpu:host_tracer",
+    ]
 
 def tf_additional_device_tracer_test_flags():
     return []
@@ -743,7 +746,6 @@ def tf_additional_binary_deps():
     return ["@nsync//:nsync_cpp"] + if_cuda(
         [
             "//tensorflow/stream_executor:cuda_platform",
-            "//tensorflow/core/platform/default/build_config:cuda",
         ],
     ) + [
         # TODO(allenl): Split these out into their own shared objects (they are
