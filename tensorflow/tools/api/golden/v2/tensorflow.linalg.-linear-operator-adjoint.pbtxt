@@ -1,6 +1,6 @@
-path: "tensorflow.linalg.LinearOperatorFullMatrix"
+path: "tensorflow.linalg.LinearOperatorAdjoint"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.linalg.linear_operator_full_matrix.LinearOperatorFullMatrix\'>"
+  is_instance: "<class \'tensorflow.python.ops.linalg.linear_operator_adjoint.LinearOperatorAdjoint\'>"
   is_instance: "<class \'tensorflow.python.ops.linalg.linear_operator.LinearOperator\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -44,6 +44,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "operator"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "range_dimension"
     mtype: "<type \'property\'>"
   }
@@ -57,7 +61,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'matrix\', \'is_non_singular\', \'is_self_adjoint\', \'is_positive_definite\', \'is_square\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'LinearOperatorFullMatrix\'], "
+    argspec: "args=[\'self\', \'operator\', \'is_non_singular\', \'is_self_adjoint\', \'is_positive_definite\', \'is_square\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_to_tensor"
