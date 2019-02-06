@@ -7171,3 +7171,12 @@ cc_header_only_library(
         ":cwise_lib",
     ],
 )
+
+# Library to link with when compiling the quantize and dequantize kernels directly,
+# e.g. for selective registration.
+cc_header_only_library(
+    name = "quantize_and_dequantize_op_hdrs",
+    deps = [
+        ":quantize_and_dequantize_op",
+    ],
+)
