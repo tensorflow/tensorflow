@@ -758,7 +758,7 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 //
 //   for %i0 = 0 to 100 {
 //     for %i1 = 0 to 50 {
-//       %a0 = affine_apply
+//       %a0 = affine.apply
 //         (d0, d1) -> (d0 * 2 - d1 * 4 + s1, d1 * 3 - s0) (%i0, %i1)[%M, %N]
 //       // Source memref access.
 //       store %v0, %m[%a0#0, %a0#1] : memref<4x4xf32>
@@ -767,7 +767,7 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 //
 //   for %i2 = 0 to 100 {
 //     for %i3 = 0 to 50 {
-//       %a1 = affine_apply
+//       %a1 = affine.apply
 //         (d0, d1) -> (d0 * 7 + d1 * 9 - s1, d1 * 11 + s0) (%i2, %i3)[%K, %M]
 //       // Destination memref access.
 //       %v1 = load %m[%a1#0, %a1#1] : memref<4x4xf32>

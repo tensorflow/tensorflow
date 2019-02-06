@@ -124,7 +124,7 @@ struct MemRefRegion {
   /// identifiers as the rank of the memref, and *potentially* additional
   /// symbolic identifiers which could include any of the loop IVs surrounding
   /// opInst up until 'loopDepth' and another additional Function symbols
-  /// involved with the access (for eg., those appear in affine_apply's, loop
+  /// involved with the access (for eg., those appear in affine.apply's, loop
   /// bounds, etc.). If 'sliceState' is non-null, operands from 'sliceState'
   /// are added as symbols, and the following constraints are added to the
   /// system:

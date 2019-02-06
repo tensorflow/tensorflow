@@ -1250,7 +1250,7 @@ bool LoadOp::verify() const {
   // TODO: Verify we have the right number of indices.
 
   // TODO: in Function verify that the indices are parameters, IV's, or the
-  // result of an affine_apply.
+  // result of an affine.apply.
   return false;
 }
 
@@ -1561,7 +1561,7 @@ bool StoreOp::verify() const {
   // TODO: Verify we have the right number of indices.
 
   // TODO: in Function verify that the indices are parameters, IV's, or the
-  // result of an affine_apply.
+  // result of an affine.apply.
   return false;
 }
 

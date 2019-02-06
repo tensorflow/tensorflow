@@ -207,12 +207,12 @@ func @affine_apply() {
   %i = "constant"() {value: 0: index} : () -> index
   %j = "constant"() {value: 1: index} : () -> index
 
-  // CHECK: affine_apply #map0(%c0)
-  %a = "affine_apply" (%i) { map: (d0) -> (d0 + 1) } :
+  // CHECK: affine.apply #map0(%c0)
+  %a = "affine.apply" (%i) { map: (d0) -> (d0 + 1) } :
     (index) -> (index)
 
-  // CHECK: affine_apply #map1()[%c0]
-  %b = affine_apply ()[x] -> (x+1)()[%i]
+  // CHECK: affine.apply #map1()[%c0]
+  %b = affine.apply ()[x] -> (x+1)()[%i]
 
   return
 }
@@ -307,7 +307,7 @@ func @test_dimop(%arg0: tensor<4x4x?xf32>) {
   // CHECK: %0 = dim %arg0, 2 : tensor<4x4x?xf32>
   %0 = dim %arg0, 2 : tensor<4x4x?xf32>
   // use dim as an affine_int to ensure type correctness
-  %1 = affine_apply (d0) -> (d0)(%0)
+  %1 = affine.apply (d0) -> (d0)(%0)
   return
 }
 

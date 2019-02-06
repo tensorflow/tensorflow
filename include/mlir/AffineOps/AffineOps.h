@@ -38,19 +38,19 @@ public:
   AffineOpsDialect(MLIRContext *context);
 };
 
-/// The "affine_apply" operation applies an affine map to a list of operands,
+/// The "affine.apply" operation applies an affine map to a list of operands,
 /// yielding a single result. The operand list must be the same size as the
 /// number of arguments to the affine mapping.  All operands and the result are
 /// of type 'Index'. This operation requires a single affine map attribute named
 /// "map".  For example:
 ///
-///   %y = "affine_apply" (%x) { map: (d0) -> (d0 + 1) } :
+///   %y = "affine.apply" (%x) { map: (d0) -> (d0 + 1) } :
 ///          (index) -> (index)
 ///
 /// equivalently:
 ///
 ///   #map42 = (d0)->(d0+1)
-///   %y = affine_apply #map42(%x)
+///   %y = affine.apply #map42(%x)
 ///
 class AffineApplyOp : public Op<AffineApplyOp, OpTrait::VariadicOperands,
                                 OpTrait::OneResult, OpTrait::HasNoSideEffect> {
@@ -73,7 +73,7 @@ public:
   /// Returns true if the result of this operation is a symbol.
   bool isValidSymbol() const;
 
-  static StringRef getOperationName() { return "affine_apply"; }
+  static StringRef getOperationName() { return "affine.apply"; }
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);

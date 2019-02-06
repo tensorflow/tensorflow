@@ -61,10 +61,10 @@ func @store_load_affine_apply() -> memref<10x10xf32> {
   %m = alloc() : memref<10x10xf32>
   for %i0 = 0 to 10 {
     for %i1 = 0 to 10 {
-      %t0 = affine_apply (d0, d1) -> (d1 + 1)(%i0, %i1)
-      %t1 = affine_apply (d0, d1) -> (d0)(%i0, %i1)
-      %idx0 = affine_apply (d0, d1) -> (d1) (%t0, %t1)
-      %idx1 = affine_apply (d0, d1) -> (d0 - 1) (%t0, %t1)
+      %t0 = affine.apply (d0, d1) -> (d1 + 1)(%i0, %i1)
+      %t1 = affine.apply (d0, d1) -> (d0)(%i0, %i1)
+      %idx0 = affine.apply (d0, d1) -> (d1) (%t0, %t1)
+      %idx1 = affine.apply (d0, d1) -> (d0 - 1) (%t0, %t1)
       store %cf7, %m[%idx0, %idx1] : memref<10x10xf32>
       // CHECK-NOT: load %{{[0-9]+}}
       %v0 = load %m[%i0, %i1] : memref<10x10xf32>
@@ -77,10 +77,10 @@ func @store_load_affine_apply() -> memref<10x10xf32> {
 // CHECK-NEXT:  %0 = alloc() : memref<10x10xf32>
 // CHECK-NEXT:  for %i0 = 0 to 10 {
 // CHECK-NEXT:    for %i1 = 0 to 10 {
-// CHECK-NEXT:      %1 = affine_apply [[MAP0]](%i0, %i1)
-// CHECK-NEXT:      %2 = affine_apply [[MAP1]](%i0, %i1)
-// CHECK-NEXT:      %3 = affine_apply [[MAP2]](%1, %2)
-// CHECK-NEXT:      %4 = affine_apply [[MAP3]](%1, %2)
+// CHECK-NEXT:      %1 = affine.apply [[MAP0]](%i0, %i1)
+// CHECK-NEXT:      %2 = affine.apply [[MAP1]](%i0, %i1)
+// CHECK-NEXT:      %3 = affine.apply [[MAP2]](%1, %2)
+// CHECK-NEXT:      %4 = affine.apply [[MAP3]](%1, %2)
 // CHECK-NEXT:      store %cst, %0[%3, %4] : memref<10x10xf32>
 // CHECK-NEXT:      %5 = addf %cst, %cst : f32
 // CHECK-NEXT:    }
@@ -228,7 +228,7 @@ func @store_load_store_nested_fwd(%N : index) -> f32 {
     for %i1 = 0 to %N {
       %v0 = load %m[%i0] : memref<10xf32>
       %v1 = addf %v0, %v0 : f32
-      %idx = affine_apply (d0) -> (d0 + 1) (%i0)
+      %idx = affine.apply (d0) -> (d0 + 1) (%i0)
       store %cf9, %m[%idx] : memref<10xf32>
     }
   }
@@ -240,7 +240,7 @@ func @store_load_store_nested_fwd(%N : index) -> f32 {
 // CHECK-NEXT:    store %cst, %0[%i0] : memref<10xf32>
 // CHECK-NEXT:    for %i1 = 0 to %arg0 {
 // CHECK-NEXT:      %1 = addf %cst, %cst : f32
-// CHECK-NEXT:      %2 = affine_apply [[MAP4]](%i0)
+// CHECK-NEXT:      %2 = affine.apply [[MAP4]](%i0)
 // CHECK-NEXT:      store %cst_0, %0[%2] : memref<10xf32>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }

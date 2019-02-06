@@ -17,11 +17,11 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // CHECK-NEXT:   for %i1 = 0 to %arg1 step 32 {
   // CHECK-NEXT:     {{.*}} = constant splat<vector<3x16xf32>, 1.000000e+00> : vector<3x16xf32>
   // CHECK-NEXT:     {{.*}} = constant splat<vector<3x16xf32>, 1.000000e+00> : vector<3x16xf32>
-  // CHECK-NEXT:     [[VAL00:%.*]] = affine_apply [[ID1]](%i0)
-  // CHECK-NEXT:     [[VAL01:%.*]] = affine_apply [[ID1]](%i1)
+  // CHECK-NEXT:     [[VAL00:%.*]] = affine.apply [[ID1]](%i0)
+  // CHECK-NEXT:     [[VAL01:%.*]] = affine.apply [[ID1]](%i1)
   // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL00]], [[VAL01]] {permutation_map: [[ID2]]} : vector<3x16xf32>
-  // CHECK-NEXT:     [[VAL10:%.*]] = affine_apply [[ID1]](%i0)
-  // CHECK-NEXT:     [[VAL11:%.*]] = affine_apply [[D0P16]](%i1)
+  // CHECK-NEXT:     [[VAL10:%.*]] = affine.apply [[ID1]](%i0)
+  // CHECK-NEXT:     [[VAL11:%.*]] = affine.apply [[D0P16]](%i1)
   // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL10]], [[VAL11]] {permutation_map: [[ID2]]} : vector<3x16xf32>
   //
   for %i0 = 0 to %M {
@@ -35,11 +35,11 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // CHECK-NEXT:   for %i3 = 0 to %arg1 step 32 {
   // CHECK-NEXT:     {{.*}} = constant splat<vector<3x16xf32>, 2.000000e+00> : vector<3x16xf32>
   // CHECK-NEXT:     {{.*}} = constant splat<vector<3x16xf32>, 2.000000e+00> : vector<3x16xf32>
-  // CHECK-NEXT:     [[VAL00:%.*]] = affine_apply [[ID1]](%i2)
-  // CHECK-NEXT:     [[VAL01:%.*]] = affine_apply [[ID1]](%i3)
+  // CHECK-NEXT:     [[VAL00:%.*]] = affine.apply [[ID1]](%i2)
+  // CHECK-NEXT:     [[VAL01:%.*]] = affine.apply [[ID1]](%i3)
   // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL00]], [[VAL01]] {permutation_map: [[ID2]]} : vector<3x16xf32>
-  // CHECK-NEXT:     [[VAL10:%.*]] = affine_apply [[ID1]](%i2)
-  // CHECK-NEXT:     [[VAL11:%.*]] = affine_apply [[D0P16]](%i3)
+  // CHECK-NEXT:     [[VAL10:%.*]] = affine.apply [[ID1]](%i2)
+  // CHECK-NEXT:     [[VAL11:%.*]] = affine.apply [[D0P16]](%i3)
   // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL10]], [[VAL11]] {permutation_map: [[ID2]]} : vector<3x16xf32>
   //
   for %i2 = 0 to %M {
@@ -51,25 +51,25 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // 2x unroll (jammed by construction).
   // CHECK: for %i4 = 0 to %arg0 step 3 {
   // CHECK-NEXT:   for %i5 = 0 to %arg1 step 32 {
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     {{.*}} = vector_transfer_read
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     {{.*}} = vector_transfer_read
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     {{.*}} = vector_transfer_read
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     {{.*}} = vector_transfer_read
   // CHECK-NEXT:     {{.*}} = addf {{.*}} : vector<3x16xf32>
   // CHECK-NEXT:     {{.*}} = addf {{.*}} : vector<3x16xf32>
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     vector_transfer_write
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     vector_transfer_write
   //
   for %i4 = 0 to %M {

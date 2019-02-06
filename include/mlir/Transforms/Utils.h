@@ -95,26 +95,26 @@ Instruction *createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
 /// Before
 ///
 /// for %i = 0 to #map(%N)
-///   %idx = affine_apply (d0) -> (d0 mod 2) (%i)
+///   %idx = affine.apply (d0) -> (d0 mod 2) (%i)
 ///   send %A[%idx], ...
 ///   %v = "compute"(%idx, ...)
 ///
 /// After
 ///
 /// for %i = 0 to #map(%N)
-///   %idx = affine_apply (d0) -> (d0 mod 2) (%i)
+///   %idx = affine.apply (d0) -> (d0 mod 2) (%i)
 ///   send %A[%idx], ...
-///   %idx_ = affine_apply (d0) -> (d0 mod 2) (%i)
+///   %idx_ = affine.apply (d0) -> (d0 mod 2) (%i)
 ///   %v = "compute"(%idx_, ...)
 
 /// This allows the application of  different transformations on send and
 /// compute (for eg.  / different shifts/delays)
 ///
 /// Returns nullptr either if none of opInst's operands were the result of an
-/// affine_apply (i.e., there was no affine computation slice to create), or if
-/// all the affine_apply op's supplying operands to this opInst did not have any
+/// affine.apply (i.e., there was no affine computation slice to create), or if
+/// all the affine.apply op's supplying operands to this opInst did not have any
 /// uses other than those in this opInst. The method otherwise returns the list
-/// of affine_apply operations created in output argument `sliceOps`.
+/// of affine.apply operations created in output argument `sliceOps`.
 void createAffineComputationSlice(
     Instruction *opInst, SmallVectorImpl<OpPointer<AffineApplyOp>> *sliceOps);
 

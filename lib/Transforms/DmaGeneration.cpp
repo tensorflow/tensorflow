@@ -407,7 +407,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
   // access indices (subtracting out lower bound offsets for each dimension).
   // Ex: to replace load %A[%i, %j] with load %Abuf[%i - %iT, %j - %jT],
   // index remap will be (%i, %j) -> (%i - %iT, %j - %jT),
-  // i.e., affine_apply (d0, d1, d2, d3) -> (d2-d0, d3-d1) (%iT, %jT, %i, %j),
+  // i.e., affine.apply (d0, d1, d2, d3) -> (d2-d0, d3-d1) (%iT, %jT, %i, %j),
   // and (%iT, %jT) will be the 'extraOperands' for 'rep all memref uses with'.
   // d2, d3 correspond to the original indices (%i, %j).
   SmallVector<AffineExpr, 4> remapExprs;

@@ -59,12 +59,12 @@ func @loop_tiling() {
 func @loop_max_min_bound(%A : memref<? x i32>, %L : index, %U : index) {
   %M = dim %A, 0 : memref<? x i32>
   for %iTT = max #lb()[%L] to min #ub()[%M, %U] {
-      %out = affine_apply (d0) -> (d0) (%iTT)
+      %out = affine.apply (d0) -> (d0) (%iTT)
   }
   return
 // CHECK:       for %i0 = max [[LB]]()[%arg1] to min [[UB]]()[%0, %arg2] step 32 {
 // CHECK-NEXT:    for %i1 = [[IDENTITY]](%i0) to min [[UB_INTRA_TILE]](%0, %arg2, %i0) {
-// CHECK-NEXT:      %1 = affine_apply [[IDENTITY]](%i1)
+// CHECK-NEXT:      %1 = affine.apply [[IDENTITY]](%i1)
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 }

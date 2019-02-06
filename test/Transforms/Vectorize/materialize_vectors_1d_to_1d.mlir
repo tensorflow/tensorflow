@@ -21,17 +21,17 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // CHECK-NEXT:     [[CST1:%.*]] = constant splat<vector<8xf32>, 1.000000e+00> : vector<8xf32>
   // CHECK-NEXT:     [[CST2:%.*]] = constant splat<vector<8xf32>, 1.000000e+00> : vector<8xf32>
   // CHECK-NEXT:     [[CST3:%.*]] = constant splat<vector<8xf32>, 1.000000e+00> : vector<8xf32>
-  // CHECK-NEXT:     [[VAL00:%.*]] = affine_apply [[ID1]]{{.*}}
-  // CHECK-NEXT:     [[VAL01:%.*]] = affine_apply [[ID1]]{{.*}}
+  // CHECK-NEXT:     [[VAL00:%.*]] = affine.apply [[ID1]]{{.*}}
+  // CHECK-NEXT:     [[VAL01:%.*]] = affine.apply [[ID1]]{{.*}}
   // CHECK-NEXT:     vector_transfer_write [[CST0]], {{.*}}, [[VAL00]], [[VAL01]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>
-  // CHECK-NEXT:     [[VAL10:%.*]] = affine_apply [[ID1]]{{.*}}
-  // CHECK-NEXT:     [[VAL11:%.*]] = affine_apply [[D0P8]]{{.*}}
+  // CHECK-NEXT:     [[VAL10:%.*]] = affine.apply [[ID1]]{{.*}}
+  // CHECK-NEXT:     [[VAL11:%.*]] = affine.apply [[D0P8]]{{.*}}
   // CHECK-NEXT:     vector_transfer_write [[CST1]], {{.*}}, [[VAL10]], [[VAL11]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>
-  // CHECK-NEXT:     [[VAL20:%.*]] = affine_apply [[ID1]]{{.*}}
-  // CHECK-NEXT:     [[VAL21:%.*]] = affine_apply [[D0P16]]{{.*}}
+  // CHECK-NEXT:     [[VAL20:%.*]] = affine.apply [[ID1]]{{.*}}
+  // CHECK-NEXT:     [[VAL21:%.*]] = affine.apply [[D0P16]]{{.*}}
   // CHECK-NEXT:     vector_transfer_write [[CST2]], {{.*}}, [[VAL20]], [[VAL21]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>
-  // CHECK-NEXT:     [[VAL30:%.*]] = affine_apply [[ID1]]{{.*}}
-  // CHECK-NEXT:     [[VAL31:%.*]] = affine_apply [[D0P24]]{{.*}}
+  // CHECK-NEXT:     [[VAL30:%.*]] = affine.apply [[ID1]]{{.*}}
+  // CHECK-NEXT:     [[VAL31:%.*]] = affine.apply [[D0P24]]{{.*}}
   // CHECK-NEXT:     vector_transfer_write [[CST3]], {{.*}}, [[VAL30]], [[VAL31]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>
   //
   for %i0 = 0 to %M {
@@ -47,17 +47,17 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // CHECK-NEXT:     [[CST1:%.*]] = constant splat<vector<8xf32>, 2.000000e+00> : vector<8xf32>
   // CHECK-NEXT:     [[CST2:%.*]] = constant splat<vector<8xf32>, 2.000000e+00> : vector<8xf32>
   // CHECK-NEXT:     [[CST3:%.*]] = constant splat<vector<8xf32>, 2.000000e+00> : vector<8xf32>
-  // CHECK-NEXT:     [[VAL00:%.*]] = affine_apply [[ID1]]{{.*}}
-  // CHECK-NEXT:     [[VAL01:%.*]] = affine_apply [[ID1]]{{.*}}
+  // CHECK-NEXT:     [[VAL00:%.*]] = affine.apply [[ID1]]{{.*}}
+  // CHECK-NEXT:     [[VAL01:%.*]] = affine.apply [[ID1]]{{.*}}
   // CHECK-NEXT:     vector_transfer_write [[CST0]], {{.*}}, [[VAL00]], [[VAL01]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>
-  // CHECK-NEXT:     [[VAL10:%.*]] = affine_apply [[ID1]]{{.*}}
-  // CHECK-NEXT:     [[VAL11:%.*]] = affine_apply [[D0P8]]{{.*}}
+  // CHECK-NEXT:     [[VAL10:%.*]] = affine.apply [[ID1]]{{.*}}
+  // CHECK-NEXT:     [[VAL11:%.*]] = affine.apply [[D0P8]]{{.*}}
   // CHECK-NEXT:     vector_transfer_write [[CST1]], {{.*}}, [[VAL10]], [[VAL11]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>
-  // CHECK-NEXT:     [[VAL20:%.*]] = affine_apply [[ID1]]{{.*}}
-  // CHECK-NEXT:     [[VAL21:%.*]] = affine_apply [[D0P16]]{{.*}}
+  // CHECK-NEXT:     [[VAL20:%.*]] = affine.apply [[ID1]]{{.*}}
+  // CHECK-NEXT:     [[VAL21:%.*]] = affine.apply [[D0P16]]{{.*}}
   // CHECK-NEXT:     vector_transfer_write [[CST2]], {{.*}}, [[VAL20]], [[VAL21]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>
-  // CHECK-NEXT:     [[VAL30:%.*]] = affine_apply [[ID1]]{{.*}}
-  // CHECK-NEXT:     [[VAL31:%.*]] = affine_apply [[D0P24]]{{.*}}
+  // CHECK-NEXT:     [[VAL30:%.*]] = affine.apply [[ID1]]{{.*}}
+  // CHECK-NEXT:     [[VAL31:%.*]] = affine.apply [[D0P24]]{{.*}}
   // CHECK-NEXT:     vector_transfer_write [[CST3]], {{.*}}, [[VAL30]], [[VAL31]] {permutation_map: [[D0D1TOD1]]} : vector<8xf32>
   //
   for %i2 = 0 to %M {
@@ -69,45 +69,45 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // 4x unroll (jammed by construction).
   // CHECK: for %i4 = 0 to %arg0 {
   // CHECK-NEXT:   for %i5 = 0 to %arg1 step 32 {
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     {{.*}} = vector_transfer_read
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     {{.*}} = vector_transfer_read
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     {{.*}} = vector_transfer_read
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     {{.*}} = vector_transfer_read
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     {{.*}} = vector_transfer_read
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     {{.*}} = vector_transfer_read
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     {{.*}} = vector_transfer_read
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     {{.*}} = vector_transfer_read
   // CHECK-NEXT:     {{.*}} = addf {{.*}} : vector<8xf32>
   // CHECK-NEXT:     {{.*}} = addf {{.*}} : vector<8xf32>
   // CHECK-NEXT:     {{.*}} = addf {{.*}} : vector<8xf32>
   // CHECK-NEXT:     {{.*}} = addf {{.*}} : vector<8xf32>
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     vector_transfer_write
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     vector_transfer_write
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     vector_transfer_write
-  // CHECK-NEXT:     {{.*}} = affine_apply
-  // CHECK-NEXT:     {{.*}} = affine_apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
+  // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     vector_transfer_write
   //
   for %i4 = 0 to %M {

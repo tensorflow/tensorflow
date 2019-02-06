@@ -13,12 +13,12 @@ Loop statements are converted to a subgraph of blocks (initialization, condition
 checking, subgraph of body blocks) with loop induction variable being passed as
 the block argument of the condition checking block. Conditional statements are
 converted to a subgraph of blocks (chain of condition checking with
-short-circuit logic, subgraphs of 'then' and 'else' body blocks). `affine_apply`
+short-circuit logic, subgraphs of 'then' and 'else' body blocks). `affine.apply`
 operations are converted into sequences of primitive arithmetic operations that
 have the same effect, using operands of the `index` type. Consequently, named
 maps and sets may be removed from the module.
 
-For example, `%r = affine_apply (d0, d1)[s0] -> (d0 + 2*d1 + s0)(%d0, %d1)[%s0]`
+For example, `%r = affine.apply (d0, d1)[s0] -> (d0 + 2*d1 + s0)(%d0, %d1)[%s0]`
 can be converted into:
 
 ```mlir
@@ -49,7 +49,7 @@ present before the pass.
 -   The semantics of the other functions is preserved.
 -   Individual operations other than those mentioned above are not modified if
     they do not depend on the loop iterator value or on the result of
-    `affine_apply`.
+    `affine.apply`.
 
 ## Standard+Builtin to LLVM IR dialect conversion (`-convert-to-llvmir`) {#convert-to-llvmir}
 

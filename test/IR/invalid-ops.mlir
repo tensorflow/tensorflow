@@ -43,7 +43,7 @@ func @constant_out_of_range() {
 func @affine_apply_no_map() {
 ^bb0:
   %i = "constant"() {value: 0} : () -> index
-  %x = "affine_apply" (%i) { } : (index) -> (index) //  expected-error {{'affine_apply' op requires an affine map}}
+  %x = "affine.apply" (%i) { } : (index) -> (index) //  expected-error {{'affine.apply' op requires an affine map}}
   return
 }
 
@@ -52,7 +52,7 @@ func @affine_apply_no_map() {
 func @affine_apply_wrong_operand_count() {
 ^bb0:
   %i = "constant"() {value: 0} : () -> index
-  %x = "affine_apply" (%i) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index) -> (index) //  expected-error {{'affine_apply' op operand count and affine map dimension and symbol count must match}}
+  %x = "affine.apply" (%i) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index) -> (index) //  expected-error {{'affine.apply' op operand count and affine map dimension and symbol count must match}}
   return
 }
 
@@ -62,7 +62,7 @@ func @affine_apply_wrong_result_count() {
 ^bb0:
   %i = "constant"() {value: 0} : () -> index
   %j = "constant"() {value: 1} : () -> index
-  %x = "affine_apply" (%i, %j) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index,index) -> (index) //  expected-error {{'affine_apply' op mapping must produce one value}}
+  %x = "affine.apply" (%i, %j) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index,index) -> (index) //  expected-error {{'affine.apply' op mapping must produce one value}}
   return
 }
 

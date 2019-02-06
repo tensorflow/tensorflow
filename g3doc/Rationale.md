@@ -116,7 +116,7 @@ n-ranked tensor. This disallows the equivalent of pointer arithmetic or the
 ability to index into the same memref in other ways (something which C arrays
 allow for example). Furthermore, in an affine construct, the compiler can follow
 use-def chains (e.g. through
-[affine_apply instructions](Dialects/Affine.md#'affine_apply'-operation)) to
+[affine.apply instructions](Dialects/Affine.md#'affine.apply'-operation)) to
 precisely analyze references at compile-time using polyhedral techniques. This
 is possible because of the
 [restrictions on dimensions and symbols](Dialects/Affine.md#restrictions-on-dimensions-and-symbols).
@@ -238,7 +238,7 @@ LLVM 2.0.
 Index types are not allowed as elements of `vector`, `tensor` or `memref` type.
 Index types are intended to be used for platform-specific "size" values and may
 appear in subscripts, sizes of aggregate types and affine expressions. They are
-also tightly coupled with `affine_apply` and load/store operations; having
+also tightly coupled with `affine.apply` and load/store operations; having
 `index` type is a necessary precondition of a value to be acceptable by these
 operations. While it may be useful to have `memref<?xindex>` to express indirect
 accesses in MLFunctions, e.g. sparse matrix manipulations or lookup tables, it
@@ -567,7 +567,7 @@ func @search_body(%A: memref<?x?xi32>, %S: memref<?xi32>, %key: i32) {
 ```
 
 As per the [MLIR spec](LangRef.md), the restrictions on dimensions and symbol
-identifiers to be used with the affine_apply instruction only apply to accesses
+identifiers to be used with the affine.apply instruction only apply to accesses
 inside `for` and `if` instructions. However, an analysis of accesses inside the
 called function (`@search_body`) is necessary to determine if the `%i` loop
 could be parallelized: such function access analysis is calling context
@@ -657,18 +657,18 @@ func @conv2d(memref<16x1024x1024x3xf32, #lm0, vmem> %input,
             for %kw = 0 to %kernel_width {
               for %if = 0 to %input_feature {
                 // Calculate input indices.
-                %1_0 = affine_apply #map1_0 (%0#1, %0#2, %0#4, %0#5)
+                %1_0 = affine.apply #map1_0 (%0#1, %0#2, %0#4, %0#5)
                   [%h_stride, %w_stride, %h_kernel_dilation, %w_kernel_dilation,
                    %h_pad_low, %w_pad_low]
-                %1_1 = affine_apply #map1_1 (%0#1, %0#2, %0#4, %0#5)
+                %1_1 = affine.apply #map1_1 (%0#1, %0#2, %0#4, %0#5)
                   [%h_stride, %w_stride, %h_kernel_dilation, %w_kernel_dilation,
                    %h_pad_low, %w_pad_low]
 
                 // Check if access is not in padding.
                 if #domain(%1_0, %1_1)
                                        [%h_base_dilation, %w_kernel_dilation, %h_bound, %w_bound] {
-                  %2_0 = affine_apply #map2 (%1_0, %1_1)
-                  %2_1 = affine_apply #map2 (%1_0, %1_1)
+                  %2_0 = affine.apply #map2 (%1_0, %1_1)
+                  %2_1 = affine.apply #map2 (%1_0, %1_1)
                   // Compute: output[output_indices] += input[input_indices] * kernel[kernel_indices]
                   call @multiply_accumulate(%input, %kernel, %output, %b, %oh, %ow, %of, %kh, %kw, %if, %2_0, %2_1)
                 }
@@ -750,27 +750,27 @@ func @matmul(%A, %B, %C, %M, %N, %K) : (...)  { // %M, N, K are symbols
   // t1, t2, t3, t4, t5, t6  are abstract polyhedral loops
   mldim %t1 : {S1,S2,S3,S4,S5}  floordiv (i, 128) {
     mldim %t2 : {S1,S2,S3,S4,S5}  floordiv (j, 128) {
-      // (%i, %j) = affine_apply (d0, d1) -> (128*d0, 128*d1) (%t1, %t2)
+      // (%i, %j) = affine.apply (d0, d1) -> (128*d0, 128*d1) (%t1, %t2)
       call dma_hbm_to_vmem(%C, %i, %j, %M, %N, %K)
           with @intset_ij(%i, %j) [%M, %N, %K]
       mldim %t3 :   {S2,S3,S4,S5} floordiv (k, 128) {
-        // (%i, %j, %k) = affine_apply (d0, d1, d2)
+        // (%i, %j, %k) = affine.apply (d0, d1, d2)
         //                          -> (128*d0, 128*d1, 128*d2)  (%t1, %t2, %t3)
         call dma_hbm_to_vmem(%A, ...) with #inset_ijk (%i, %j, %k) [%M, %N, %K]
-        // (%i, %j, %k) = affine_apply (d0, d1, d2)
+        // (%i, %j, %k) = affine.apply (d0, d1, d2)
         //                          -> (128*d0, 128*d1, 128*d2)  (%t1, %t2, %t3)
         call dma_hbm_to_vmem(%B, ...) with #inset_ijk (%i, %j, %k) [%M, %N, %K]
         mldim %t4 : {S4} i mod 128 {
           mldim %t5 : {S4} j mod 128 {
             mldim %t6 : {S4} k mod 128 {
-              // (%i, %j, %k) = affine_apply #map0 (%t1, %t2, %t3, %t4, %t5, %t6)
+              // (%i, %j, %k) = affine.apply #map0 (%t1, %t2, %t3, %t4, %t5, %t6)
               call matmul_body(A, B, C, %i, %j, %k, %M, %N, %K)
                   with #inset_ijk(%i, %j, %k) [%M, %N, %K]
             } // end mld4im t6
           } // end mldim t5
         } // end mldim t4
       } // end mldim t3
-      // (%i, %j) = affine_apply (d0, d1) -> (128*d0, 128*d1) (%t1, %t2)
+      // (%i, %j) = affine.apply (d0, d1) -> (128*d0, 128*d1) (%t1, %t2)
       call $dma_vmem_to_hbm_C ... with #intset(%i, %j) [%M, %N, %K]
     }  // end mldim t2
   } // end mldim t1

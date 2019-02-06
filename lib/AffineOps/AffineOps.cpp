@@ -109,7 +109,7 @@ bool AffineApplyOp::parse(OpAsmParser *parser, OperationState *result) {
 
 void AffineApplyOp::print(OpAsmPrinter *p) const {
   auto map = getAffineMap();
-  *p << "affine_apply " << map;
+  *p << "affine.apply " << map;
   printDimAndSymbolList(operand_begin(), operand_end(), map.getNumDims(), p);
   p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"map");
 }
@@ -185,13 +185,13 @@ namespace {
 /// simplifications such as:
 ///
 /// ```mlir
-///    %1 = affine_apply (d0, d1) -> (d0 - d1) (%0, %0)
+///    %1 = affine.apply (d0, d1) -> (d0 - d1) (%0, %0)
 /// ```
 ///
 /// into:
 ///
 /// ```mlir
-///    %1 = affine_apply () -> (0)
+///    %1 = affine.apply () -> (0)
 /// ```
 struct AffineApplyNormalizer {
   AffineApplyNormalizer(AffineMap map, ArrayRef<Value *> operands);

@@ -506,20 +506,20 @@ func @min_reduction_tree(%v : index) {
 func @affine_applies() {
 ^bb0:
 // CHECK: %c0 = constant 0 : index
-  %zero = affine_apply #map0()
+  %zero = affine.apply #map0()
 
 // Identity maps are just discarded.
 // CHECK-NEXT: %c101 = constant 101 : index
   %101 = constant 101 : index
-  %symbZero = affine_apply #map1()[%zero]
+  %symbZero = affine.apply #map1()[%zero]
 // CHECK-NEXT: %c102 = constant 102 : index
   %102 = constant 102 : index
-  %copy = affine_apply #map2(%zero)
+  %copy = affine.apply #map2(%zero)
 
 // CHECK-NEXT: %0 = addi %c0, %c0 : index
 // CHECK-NEXT: %c1 = constant 1 : index
 // CHECK-NEXT: %1 = addi %0, %c1 : index
-  %one = affine_apply #map3(%symbZero)[%zero]
+  %one = affine.apply #map3(%symbZero)[%zero]
 
 // CHECK-NEXT: %c103 = constant 103 : index
 // CHECK-NEXT: %c104 = constant 104 : index
@@ -553,7 +553,7 @@ func @affine_applies() {
 // CHECK-NEXT: %c7 = constant 7 : index
 // CHECK-NEXT: %12 = muli %c109, %c7 : index
 // CHECK-NEXT: %13 = addi %11, %12 : index
-  %four = affine_apply #map4(%103,%104,%105,%106)[%107,%108,%109]
+  %four = affine.apply #map4(%103,%104,%105,%106)[%107,%108,%109]
   return
 }
 
@@ -561,8 +561,8 @@ func @affine_applies() {
 func @args_ret_affine_apply(index, index) -> (index, index) {
 ^bb0(%0 : index, %1 : index):
 // CHECK-NEXT: return %arg0, %arg1 : index, index
-  %00 = affine_apply #map2 (%0)
-  %11 = affine_apply #map1 ()[%1]
+  %00 = affine.apply #map2 (%0)
+  %11 = affine.apply #map1 ()[%1]
   return %00, %11 : index, index
 }
 
@@ -578,7 +578,7 @@ func @args_ret_affine_apply(index, index) -> (index, index) {
 // --------------------------------------------------------------------------//
 // IMPORTANT NOTE: if you change this test, also change the @lowered_affine_mod
 // test in the "constant-fold.mlir" test to reflect the expected output of
-// affine_apply lowering.
+// affine.apply lowering.
 // --------------------------------------------------------------------------//
 // CHECK-LABEL: func @affine_apply_mod
 func @affine_apply_mod(%arg0 : index) -> (index) {
@@ -588,7 +588,7 @@ func @affine_apply_mod(%arg0 : index) -> (index) {
 // CHECK-NEXT: %1 = cmpi "slt", %0, %c0 : index
 // CHECK-NEXT: %2 = addi %0, %c42 : index
 // CHECK-NEXT: %3 = select %1, %2, %0 : index
-  %0 = affine_apply #mapmod (%arg0)
+  %0 = affine.apply #mapmod (%arg0)
   return %0 : index
 }
 
@@ -597,7 +597,7 @@ func @affine_apply_mod(%arg0 : index) -> (index) {
 // --------------------------------------------------------------------------//
 // IMPORTANT NOTE: if you change this test, also change the @lowered_affine_mod
 // test in the "constant-fold.mlir" test to reflect the expected output of
-// affine_apply lowering.
+// affine.apply lowering.
 // --------------------------------------------------------------------------//
 // CHECK-LABEL: func @affine_apply_floordiv
 func @affine_apply_floordiv(%arg0 : index) -> (index) {
@@ -610,7 +610,7 @@ func @affine_apply_floordiv(%arg0 : index) -> (index) {
 // CHECK-NEXT: %3 = divis %2, %c42 : index
 // CHECK-NEXT: %4 = subi %c-1, %3 : index
 // CHECK-NEXT: %5 = select %0, %4, %3 : index
-  %0 = affine_apply #mapfloordiv (%arg0)
+  %0 = affine.apply #mapfloordiv (%arg0)
   return %0 : index
 }
 
@@ -619,7 +619,7 @@ func @affine_apply_floordiv(%arg0 : index) -> (index) {
 // --------------------------------------------------------------------------//
 // IMPORTANT NOTE: if you change this test, also change the @lowered_affine_mod
 // test in the "constant-fold.mlir" test to reflect the expected output of
-// affine_apply lowering.
+// affine.apply lowering.
 // --------------------------------------------------------------------------//
 // CHECK-LABEL: func @affine_apply_ceildiv
 func @affine_apply_ceildiv(%arg0 : index) -> (index) {
@@ -634,6 +634,6 @@ func @affine_apply_ceildiv(%arg0 : index) -> (index) {
 // CHECK-NEXT:  %5 = subi %c0, %4 : index
 // CHECK-NEXT:  %6 = addi %4, %c1 : index
 // CHECK-NEXT:  %7 = select %0, %5, %6 : index
-  %0 = affine_apply #mapceildiv (%arg0)
+  %0 = affine.apply #mapceildiv (%arg0)
   return %0 : index
 }

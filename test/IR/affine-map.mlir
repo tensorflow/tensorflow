@@ -9,7 +9,7 @@
 
 // CHECK: #map{{[0-9]+}} = () -> (0)
 // A map may have 0 inputs.
-// However, an affine_apply always takes at least one input.
+// However, an affine.apply always takes at least one input.
 #map2 = () -> (0)
 
 // All the maps in the following block are equivalent and are unique'd as one

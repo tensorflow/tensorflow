@@ -10,20 +10,20 @@ func @unroll_jam_imperfect_nest() {
   // CHECK-NEXT: for %i0 = 0 to 99 step 2 {
   for %i = 0 to 101 {
     // CHECK: %0 = "addi32"(%i0, %i0) : (index, index) -> i32
-    // CHECK-NEXT: %1 = affine_apply [[MAP_PLUS_1]](%i0)
+    // CHECK-NEXT: %1 = affine.apply [[MAP_PLUS_1]](%i0)
     // CHECK-NEXT: %2 = "addi32"(%1, %1) : (index, index) -> i32
     %x = "addi32"(%i, %i) : (index, index) -> i32
     for %j = 0 to 17 {
       // CHECK: %3 = "addi32"(%i0, %i0) : (index, index) -> i32
       // CHECK-NEXT: %4 = "addi32"(%3, %3) : (i32, i32) -> i32
-      // CHECK-NEXT: %5 = affine_apply [[MAP_PLUS_1]](%i0)
+      // CHECK-NEXT: %5 = affine.apply [[MAP_PLUS_1]](%i0)
       // CHECK-NEXT: %6 = "addi32"(%5, %5) : (index, index) -> i32
       // CHECK-NEXT: %7 = "addi32"(%6, %6) : (i32, i32) -> i32
       %y = "addi32"(%i, %i) : (index, index) -> i32
       %z = "addi32"(%y, %y) : (i32, i32) -> i32
     }
     // CHECK: %8 = "addi32"(%i0, %i0) : (index, index) -> i32
-    // CHECK-NEXT: %9 = affine_apply [[MAP_PLUS_1]](%i0)
+    // CHECK-NEXT: %9 = affine.apply [[MAP_PLUS_1]](%i0)
     // CHECK-NEXT: %10 = "addi32"(%9, %9) : (index, index) -> i32
     %w = "addi32"(%i, %i) : (index, index) -> i32
   } // CHECK }
@@ -67,16 +67,16 @@ func @loop_nest_unknown_count_2(%arg : index) {
   // UNROLL-BY-4-NEXT: for %i0 = %arg0 to  #map{{[0-9]+}}()[%arg0] step 4 {
     // UNROLL-BY-4-NEXT: for %i1 = 1 to 100 {
       // UNROLL-BY-4-NEXT: %0 = "foo"(%i0) : (index) -> i32
-      // UNROLL-BY-4-NEXT: %1 = affine_apply #map{{[0-9]+}}(%i0)
+      // UNROLL-BY-4-NEXT: %1 = affine.apply #map{{[0-9]+}}(%i0)
       // UNROLL-BY-4-NEXT: %2 = "foo"(%1) : (index) -> i32
-      // UNROLL-BY-4-NEXT: %3 = affine_apply #map{{[0-9]+}}(%i0)
+      // UNROLL-BY-4-NEXT: %3 = affine.apply #map{{[0-9]+}}(%i0)
       // UNROLL-BY-4-NEXT: %4 = "foo"(%3) : (index) -> i32
-      // UNROLL-BY-4-NEXT: %5 = affine_apply #map{{[0-9]+}}(%i0)
+      // UNROLL-BY-4-NEXT: %5 = affine.apply #map{{[0-9]+}}(%i0)
       // UNROLL-BY-4-NEXT: %6 = "foo"(%5) : (index) -> i32
     // UNROLL-BY-4-NEXT: }
   // UNROLL-BY-4-NEXT: }
   // The cleanup loop is a single iteration one and is promoted.
-  // UNROLL-BY-4-NEXT: %7 = affine_apply [[M1:#map{{[0-9]+}}]]()[%arg0]
+  // UNROLL-BY-4-NEXT: %7 = affine.apply [[M1:#map{{[0-9]+}}]]()[%arg0]
   // UNROLL-BY-4-NEXT: for %i3 = 1 to 100 {
     // UNROLL-BY-4-NEXT: %8 = "foo"() : () -> i32
   // UNROLL-BY-4_NEXT: }

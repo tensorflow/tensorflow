@@ -332,7 +332,7 @@ dimension indices and symbols into a list of results, with affine expressions
 combining the indices and symbols. Affine maps distinguish between
 [indices and symbols](#dimensions-and-symbols) because indices are inputs to the
 affine map when the latter may be called through an operation, such as
-[affine_apply](Dialects/Affine.md#'affine_apply'-operation) operation, whereas
+[affine.apply](Dialects/Affine.md#'affine.apply'-operation) operation, whereas
 symbols are bound when an affine mapping is established (e.g. when a memref is
 formed, establishing a memory [layout map](#layout-map)).
 
@@ -1216,7 +1216,7 @@ Example:
 
 // Create memref which reshapes from 16x?xf32 to 16x4x?xf32.
 #imapDR = (i, j, k)[S0] -> (i, j * S0 + k) size (16, 4 * S0)
-%N4 = affine_apply (S -> floordiv(S,4)) (%N)
+%N4 = affine.apply (S -> floordiv(S,4)) (%N)
 %DR = reshape %D : memref<16x?xf32, #lmapD, hbm> (%N4)[%N4] to
       (memref<16x?xf32, #lmapD, hbm> -> memref<16x4x?xf32, #imapDR, hbm>)
 
@@ -1438,26 +1438,26 @@ In an `if` or `for` body, the indices of a load are restricted to SSA values
 bound to surrounding loop induction variables,
 [symbols](#dimensions-and-symbols), results of a
 [`constant` operation](#'constant'-operation), or the result of an
-`affine_apply` operation that can in turn take as arguments all of the
-aforementioned SSA values or the recursively result of such an `affine_apply`
+`affine.apply` operation that can in turn take as arguments all of the
+aforementioned SSA values or the recursively result of such an `affine.apply`
 operation.
 
 Example:
 
 ```mlir {.mlir}
-%1 = affine_apply (d0, d1) -> (3*d0) (%i, %j)
-%2 = affine_apply (d0, d1) -> (d1+1) (%i, %j)
+%1 = affine.apply (d0, d1) -> (3*d0) (%i, %j)
+%2 = affine.apply (d0, d1) -> (d1+1) (%i, %j)
 %12 = load %A[%1, %2] : memref<8x?xi32, #layout, hbm>
 
 // Example of an indirect load (treated as non-affine)
-%3 = affine_apply (d0) -> (2*d0 + 1)(%12)
+%3 = affine.apply (d0) -> (2*d0 + 1)(%12)
 %13 = load %A[%3, %2] : memref<4x?xi32, #layout, hbm>
 ```
 
 **Context:** The `load` and `store` instructions are specifically crafted to
 fully resolve a reference to an element of a memref, and (in affine `if` and
 `for` instructions) the compiler can follow use-def chains (e.g. through
-[`affine_apply`](Dialects/Affine.md#'affine_apply'-operation) operations) to
+[`affine.apply`](Dialects/Affine.md#'affine.apply'-operation) operations) to
 precisely analyze references at compile-time using polyhedral techniques. This
 is possible because of the
 [restrictions on dimensions and symbols](Dialects/Affine.md#restrictions-on-dimensions-and-symbols)
@@ -1480,9 +1480,9 @@ In an affine context, the indices of a store are restricted to SSA values bound
 to surrounding loop induction variables,
 [symbols](Dialect/Affine.md#restrictions-on-dimensions-and-symbols), results of
 a [`constant` operation](#'constant'-operation), or the result of an
-[`affine_apply`](Dialect/Affine.md#'affine_apply'-operation) operation that can
+[`affine.apply`](Dialect/Affine.md#'affine.apply'-operation) operation that can
 in turn take as arguments all of the aforementioned SSA values or the
-recursively result of such an `affine_apply` operation.
+recursively result of such an `affine.apply` operation.
 
 Example:
 
@@ -1493,7 +1493,7 @@ store %100, %A[%1, 1023] : memref<4x?xf32, #layout, hbm>
 **Context:** The `load` and `store` instructions are specifically crafted to
 fully resolve a reference to an element of a memref, and (in polyhedral `if` and
 `for` instructions) the compiler can follow use-def chains (e.g. through
-[`affine_apply`](Dialects/Affine.md#'affine_apply'-operation) operations) to
+[`affine.apply`](Dialects/Affine.md#'affine.apply'-operation) operations) to
 precisely analyze references at compile-time using polyhedral techniques. This
 is possible because of the
 [restrictions on dimensions and symbols](Dialect/Affine.md#restrictions-on-dimensions-and-symbols)

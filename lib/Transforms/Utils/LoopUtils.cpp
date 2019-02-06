@@ -113,7 +113,7 @@ bool mlir::promoteIfSingleIteration(OpPointer<AffineForOp> forOp) {
       SmallVector<Value *, 4> lbOperands(lb.operand_begin(), lb.operand_end());
       FuncBuilder builder(forInst->getBlock(), Block::iterator(forInst));
       if (lb.getMap() == builder.getDimIdentityMap()) {
-        // No need of generating an affine_apply.
+        // No need of generating an affine.apply.
         iv->replaceAllUsesWith(lbOperands[0]);
       } else {
         auto affineApplyOp = builder.create<AffineApplyOp>(

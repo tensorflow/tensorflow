@@ -816,7 +816,7 @@ func @invalid_tensor_literal() {
 
 func @invalid_affine_structure() {
   %c0 = constant 0 : index
-  %idx = affine_apply (d0, d1) (%c0, %c0) // expected-error {{expected '->' or ':'}}
+  %idx = affine.apply (d0, d1) (%c0, %c0) // expected-error {{expected '->' or ':'}}
   return
 }
 

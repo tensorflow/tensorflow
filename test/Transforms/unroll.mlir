@@ -65,11 +65,11 @@ func @loop_nest_simple_iv_use() {
   // CHECK-NEXT: for %i0 = 0 to 100 step 2 {
   for %i = 0 to 100 step 2 {
     // CHECK: %0 = "addi32"(%c0, %c0) : (index, index) -> i32
-    // CHECK: %1 = affine_apply [[MAP0]](%c0)
+    // CHECK: %1 = affine.apply [[MAP0]](%c0)
     // CHECK-NEXT:  %2 = "addi32"(%1, %1) : (index, index) -> i32
-    // CHECK: %3 = affine_apply [[MAP1]](%c0)
+    // CHECK: %3 = affine.apply [[MAP1]](%c0)
     // CHECK-NEXT:  %4 = "addi32"(%3, %3) : (index, index) -> i32
-    // CHECK: %5 = affine_apply [[MAP2]](%c0)
+    // CHECK: %5 = affine.apply [[MAP2]](%c0)
     // CHECK-NEXT:  %6 = "addi32"(%5, %5) : (index, index) -> i32
     for %j = 0 to 4 {
       %x = "addi32"(%j, %j) : (index, index) -> i32
@@ -86,19 +86,19 @@ func @loop_nest_body_def_use() {
   for %i = 0 to 100 step 2 {
     // CHECK: %c0_0 = constant 0 : index
     %c0 = constant 0 : index
-    // CHECK:      %0 = affine_apply [[MAP0]](%c0)
+    // CHECK:      %0 = affine.apply [[MAP0]](%c0)
     // CHECK-NEXT: %1 = "addi32"(%0, %c0_0) : (index, index) -> index
-    // CHECK-NEXT: %2 = affine_apply [[MAP0]](%c0)
-    // CHECK-NEXT: %3 = affine_apply [[MAP0]](%2)
+    // CHECK-NEXT: %2 = affine.apply [[MAP0]](%c0)
+    // CHECK-NEXT: %3 = affine.apply [[MAP0]](%2)
     // CHECK-NEXT: %4 = "addi32"(%3, %c0_0) : (index, index) -> index
-    // CHECK-NEXT: %5 = affine_apply [[MAP1]](%c0)
-    // CHECK-NEXT: %6 = affine_apply [[MAP0]](%5)
+    // CHECK-NEXT: %5 = affine.apply [[MAP1]](%c0)
+    // CHECK-NEXT: %6 = affine.apply [[MAP0]](%5)
     // CHECK-NEXT: %7 = "addi32"(%6, %c0_0) : (index, index) -> index
-    // CHECK-NEXT: %8 = affine_apply [[MAP2]](%c0)
-    // CHECK-NEXT: %9 = affine_apply [[MAP0]](%8)
+    // CHECK-NEXT: %8 = affine.apply [[MAP2]](%c0)
+    // CHECK-NEXT: %9 = affine.apply [[MAP0]](%8)
     // CHECK-NEXT: %10 = "addi32"(%9, %c0_0) : (index, index) -> index
     for %j = 0 to 4 {
-      %x = "affine_apply" (%j) { map: (d0) -> (d0 + 1) } :
+      %x = "affine.apply" (%j) { map: (d0) -> (d0 + 1) } :
         (index) -> (index)
       %y = "addi32"(%x, %c0) : (index, index) -> index
     }
@@ -112,26 +112,26 @@ func @loop_nest_strided() {
   // CHECK-NEXT: %c2_0 = constant 2 : index
   // CHECK-NEXT: for %i0 = 0 to 100 {
   for %i = 0 to 100 {
-    // CHECK:      %0 = affine_apply [[MAP0]](%c2_0)
+    // CHECK:      %0 = affine.apply [[MAP0]](%c2_0)
     // CHECK-NEXT: %1 = "addi32"(%0, %0) : (index, index) -> index
-    // CHECK-NEXT: %2 = affine_apply [[MAP1]](%c2_0)
-    // CHECK-NEXT: %3 = affine_apply [[MAP0]](%2)
+    // CHECK-NEXT: %2 = affine.apply [[MAP1]](%c2_0)
+    // CHECK-NEXT: %3 = affine.apply [[MAP0]](%2)
     // CHECK-NEXT: %4 = "addi32"(%3, %3) : (index, index) -> index
     for %j = 2 to 6 step 2 {
-      %x = "affine_apply" (%j) { map: (d0) -> (d0 + 1) } :
+      %x = "affine.apply" (%j) { map: (d0) -> (d0 + 1) } :
         (index) -> (index)
       %y = "addi32"(%x, %x) : (index, index) -> index
     }
-    // CHECK:      %5 = affine_apply [[MAP0]](%c2)
+    // CHECK:      %5 = affine.apply [[MAP0]](%c2)
     // CHECK-NEXT: %6 = "addi32"(%5, %5) : (index, index) -> index
-    // CHECK-NEXT: %7 = affine_apply [[MAP1]](%c2)
-    // CHECK-NEXT: %8 = affine_apply [[MAP0]](%7)
+    // CHECK-NEXT: %7 = affine.apply [[MAP1]](%c2)
+    // CHECK-NEXT: %8 = affine.apply [[MAP0]](%7)
     // CHECK-NEXT: %9 = "addi32"(%8, %8) : (index, index) -> index
-    // CHECK-NEXT: %10 = affine_apply [[MAP3]](%c2)
-    // CHECK-NEXT: %11 = affine_apply [[MAP0]](%10)
+    // CHECK-NEXT: %10 = affine.apply [[MAP3]](%c2)
+    // CHECK-NEXT: %11 = affine.apply [[MAP0]](%10)
     // CHECK-NEXT: %12 = "addi32"(%11, %11) : (index, index) -> index
     for %k = 2 to 7 step 2 {
-      %z = "affine_apply" (%k) { map: (d0) -> (d0 + 1) } :
+      %z = "affine.apply" (%k) { map: (d0) -> (d0 + 1) } :
         (index) -> (index)
       %w = "addi32"(%z, %z) : (index, index) -> index
     }
@@ -144,19 +144,19 @@ func @loop_nest_multiple_results() {
   // CHECK: %c0 = constant 0 : index
   // CHECK-NEXT: for %i0 = 0 to 100 {
   for %i = 0 to 100 {
-    // CHECK: %0 = affine_apply [[MAP4]](%i0, %c0)
+    // CHECK: %0 = affine.apply [[MAP4]](%i0, %c0)
     // CHECK-NEXT: %1 = "addi32"(%0, %0) : (index, index) -> index
-    // CHECK-NEXT: %2 = affine_apply #map{{.*}}(%i0, %c0)
+    // CHECK-NEXT: %2 = affine.apply #map{{.*}}(%i0, %c0)
     // CHECK-NEXT: %3 = "fma"(%2, %0, %0) : (index, index, index) -> (index, index)
-    // CHECK-NEXT: %4 = affine_apply #map{{.*}}(%c0)
-    // CHECK-NEXT: %5 = affine_apply #map{{.*}}(%i0, %4)
+    // CHECK-NEXT: %4 = affine.apply #map{{.*}}(%c0)
+    // CHECK-NEXT: %5 = affine.apply #map{{.*}}(%i0, %4)
     // CHECK-NEXT: %6 = "addi32"(%5, %5) : (index, index) -> index
-    // CHECK-NEXT: %7 = affine_apply #map{{.*}}(%i0, %4)
+    // CHECK-NEXT: %7 = affine.apply #map{{.*}}(%i0, %4)
     // CHECK-NEXT: %8 = "fma"(%7, %5, %5) : (index, index, index) -> (index, index)
     for %j = 0 to 2 step 1 {
-      %x = affine_apply (d0, d1) -> (d0 + 1) (%i, %j)
+      %x = affine.apply (d0, d1) -> (d0 + 1) (%i, %j)
       %y = "addi32"(%x, %x) : (index, index) -> index
-      %z = affine_apply (d0, d1) -> (d0 + 3) (%i, %j)
+      %z = affine.apply (d0, d1) -> (d0 + 3) (%i, %j)
       %w = "fma"(%z, %x, %x) : (index, index, index) -> (index, index)
     }
   }       // CHECK:  }
@@ -174,23 +174,23 @@ func @loop_nest_seq_imperfect(%a : memref<128x128xf32>) {
   for %i = 0 to 100 {
     // CHECK: %0 = "vld"(%i0) : (index) -> i32
     %ld = "vld"(%i) : (index) -> i32
-    // CHECK: %1 = affine_apply [[MAP0]](%c0)
+    // CHECK: %1 = affine.apply [[MAP0]](%c0)
     // CHECK-NEXT: %2 = "vmulf"(%c0, %1) : (index, index) -> index
     // CHECK-NEXT: %3 = "vaddf"(%2, %2) : (index, index) -> index
-    // CHECK-NEXT: %4 = affine_apply [[MAP0]](%c0)
-    // CHECK-NEXT: %5 = affine_apply [[MAP0]](%4)
+    // CHECK-NEXT: %4 = affine.apply [[MAP0]](%c0)
+    // CHECK-NEXT: %5 = affine.apply [[MAP0]](%4)
     // CHECK-NEXT: %6 = "vmulf"(%4, %5) : (index, index) -> index
     // CHECK-NEXT: %7 = "vaddf"(%6, %6) : (index, index) -> index
-    // CHECK-NEXT: %8 = affine_apply [[MAP1]](%c0)
-    // CHECK-NEXT: %9 = affine_apply [[MAP0]](%8)
+    // CHECK-NEXT: %8 = affine.apply [[MAP1]](%c0)
+    // CHECK-NEXT: %9 = affine.apply [[MAP0]](%8)
     // CHECK-NEXT: %10 = "vmulf"(%8, %9) : (index, index) -> index
     // CHECK-NEXT: %11 = "vaddf"(%10, %10) : (index, index) -> index
-    // CHECK-NEXT: %12 = affine_apply [[MAP2]](%c0)
-    // CHECK-NEXT: %13 = affine_apply [[MAP0]](%12)
+    // CHECK-NEXT: %12 = affine.apply [[MAP2]](%c0)
+    // CHECK-NEXT: %13 = affine.apply [[MAP0]](%12)
     // CHECK-NEXT: %14 = "vmulf"(%12, %13) : (index, index) -> index
     // CHECK-NEXT: %15 = "vaddf"(%14, %14) : (index, index) -> index
     for %j = 0 to 4 {
-      %x = "affine_apply" (%j) { map: (d0) -> (d0 + 1) } :
+      %x = "affine.apply" (%j) { map: (d0) -> (d0 + 1) } :
         (index) -> (index)
        %y = "vmulf"(%j, %x) : (index, index) -> index
        %z = "vaddf"(%y, %y) : (index, index) -> index
@@ -207,19 +207,19 @@ func @loop_nest_seq_imperfect(%a : memref<128x128xf32>) {
 func @loop_nest_seq_multiple() {
   // CHECK: c0 = constant 0 : index
   // CHECK-NEXT: %c0_0 = constant 0 : index
-  // CHECK-NEXT: %0 = affine_apply [[MAP0]](%c0_0)
+  // CHECK-NEXT: %0 = affine.apply [[MAP0]](%c0_0)
   // CHECK-NEXT: "mul"(%0, %0) : (index, index) -> ()
-  // CHECK-NEXT: %1 = affine_apply [[MAP0]](%c0_0)
-  // CHECK-NEXT: %2 = affine_apply [[MAP0]](%1)
+  // CHECK-NEXT: %1 = affine.apply [[MAP0]](%c0_0)
+  // CHECK-NEXT: %2 = affine.apply [[MAP0]](%1)
   // CHECK-NEXT: "mul"(%2, %2) : (index, index) -> ()
-  // CHECK-NEXT: %3 = affine_apply [[MAP1]](%c0_0)
-  // CHECK-NEXT: %4 = affine_apply [[MAP0]](%3)
+  // CHECK-NEXT: %3 = affine.apply [[MAP1]](%c0_0)
+  // CHECK-NEXT: %4 = affine.apply [[MAP0]](%3)
   // CHECK-NEXT: "mul"(%4, %4) : (index, index) -> ()
-  // CHECK-NEXT: %5 = affine_apply [[MAP2]](%c0_0)
-  // CHECK-NEXT: %6 = affine_apply [[MAP0]](%5)
+  // CHECK-NEXT: %5 = affine.apply [[MAP2]](%c0_0)
+  // CHECK-NEXT: %6 = affine.apply [[MAP0]](%5)
   // CHECK-NEXT: "mul"(%6, %6) : (index, index) -> ()
   for %j = 0 to 4 {
-    %x = "affine_apply" (%j) { map: (d0) -> (d0 + 1) } :
+    %x = "affine.apply" (%j) { map: (d0) -> (d0 + 1) } :
       (index) -> (index)
     "mul"(%x, %x) : (index, index) -> ()
   }
@@ -228,21 +228,21 @@ func @loop_nest_seq_multiple() {
   %k = "constant"(){value: 99} : () -> index
   // CHECK: for %i0 = 0 to 100 step 2 {
   for %m = 0 to 100 step 2 {
-    // CHECK: %7 = affine_apply [[MAP0]](%c0)
-    // CHECK-NEXT: %8 = affine_apply [[MAP6]](%c0)[%c99]
-    // CHECK-NEXT: %9 = affine_apply [[MAP0]](%c0)
-    // CHECK-NEXT: %10 = affine_apply [[MAP0]](%9)
-    // CHECK-NEXT: %11 = affine_apply [[MAP6]](%9)[%c99]
-    // CHECK-NEXT: %12 = affine_apply [[MAP1]](%c0)
-    // CHECK-NEXT: %13 = affine_apply [[MAP0]](%12)
-    // CHECK-NEXT: %14 = affine_apply [[MAP6]](%12)[%c99]
-    // CHECK-NEXT: %15 = affine_apply [[MAP2]](%c0)
-    // CHECK-NEXT: %16 = affine_apply [[MAP0]](%15)
-    // CHECK-NEXT: %17 = affine_apply [[MAP6]](%15)[%c99]
+    // CHECK: %7 = affine.apply [[MAP0]](%c0)
+    // CHECK-NEXT: %8 = affine.apply [[MAP6]](%c0)[%c99]
+    // CHECK-NEXT: %9 = affine.apply [[MAP0]](%c0)
+    // CHECK-NEXT: %10 = affine.apply [[MAP0]](%9)
+    // CHECK-NEXT: %11 = affine.apply [[MAP6]](%9)[%c99]
+    // CHECK-NEXT: %12 = affine.apply [[MAP1]](%c0)
+    // CHECK-NEXT: %13 = affine.apply [[MAP0]](%12)
+    // CHECK-NEXT: %14 = affine.apply [[MAP6]](%12)[%c99]
+    // CHECK-NEXT: %15 = affine.apply [[MAP2]](%c0)
+    // CHECK-NEXT: %16 = affine.apply [[MAP0]](%15)
+    // CHECK-NEXT: %17 = affine.apply [[MAP6]](%15)[%c99]
     for %n = 0 to 4 {
-      %y = "affine_apply" (%n) { map: (d0) -> (d0 + 1) } :
+      %y = "affine.apply" (%n) { map: (d0) -> (d0 + 1) } :
         (index) -> (index)
-      %z = "affine_apply" (%n, %k) { map: (d0) [s0] -> (d0 + s0 + 1) } :
+      %z = "affine.apply" (%n, %k) { map: (d0) [s0] -> (d0 + s0 + 1) } :
         (index, index) -> (index)
     }     // CHECK }
   }       // CHECK }
@@ -252,16 +252,16 @@ func @loop_nest_seq_multiple() {
 // SHORT-LABEL: func @loop_nest_outer_unroll() {
 func @loop_nest_outer_unroll() {
   // SHORT:      for %i0 = 0 to 4 {
-  // SHORT-NEXT:   %0 = affine_apply [[MAP0]](%i0)
+  // SHORT-NEXT:   %0 = affine.apply [[MAP0]](%i0)
   // SHORT-NEXT:   %1 = "addi32"(%0, %0) : (index, index) -> index
   // SHORT-NEXT: }
   // SHORT-NEXT: for %i1 = 0 to 4 {
-  // SHORT-NEXT:   %2 = affine_apply [[MAP0]](%i1)
+  // SHORT-NEXT:   %2 = affine.apply [[MAP0]](%i1)
   // SHORT-NEXT:   %3 = "addi32"(%2, %2) : (index, index) -> index
   // SHORT-NEXT: }
   for %i = 0 to 2 {
     for %j = 0 to 4 {
-      %x = "affine_apply" (%j) { map: (d0) -> (d0 + 1) } :
+      %x = "affine.apply" (%j) { map: (d0) -> (d0 + 1) } :
         (index) -> (index)
       %y = "addi32"(%x, %x) : (index, index) -> index
     }
@@ -295,19 +295,19 @@ func @loop_nest_seq_long() -> i32 {
   for %i0 = 0 to 2 {
     for %i1 = 0 to 2 {
       for %i2 = 0 to 8 {
-        %b2 = "affine_apply" (%i1, %i2) {map: (d0, d1) -> (16*d0 + d1)} : (index, index) -> index
+        %b2 = "affine.apply" (%i1, %i2) {map: (d0, d1) -> (16*d0 + d1)} : (index, index) -> index
         %x = load %B[%i0, %b2] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
         "op1"(%x) : (i32) -> ()
       }
       for %j1 = 0 to 8 {
         for %j2 = 0 to 8 {
-          %a2 = "affine_apply" (%i1, %j2) {map: (d0, d1) -> (16*d0 + d1)} : (index, index) -> index
+          %a2 = "affine.apply" (%i1, %j2) {map: (d0, d1) -> (16*d0 + d1)} : (index, index) -> index
           %v203 = load %A[%j1, %a2] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
           "op2"(%v203) : (i32) -> ()
         }
         for %k2 = 0 to 8 {
           %s0 = "op3"() : () -> i32
-          %c2 = "affine_apply" (%i0, %k2) {map: (d0, d1) -> (16*d0 + d1)} : (index, index) -> index
+          %c2 = "affine.apply" (%i0, %k2) {map: (d0, d1) -> (16*d0 + d1)} : (index, index) -> index
           %s1 =  load %C[%j1, %c2] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
           %s2 = "addi32"(%s0, %s1) : (i32, i32) -> i32
           store %s2, %C[%j1, %c2] : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
@@ -327,13 +327,13 @@ func @unroll_unit_stride_no_cleanup() {
     // UNROLL-BY-4: for [[L1:%i[0-9]+]] = 0 to 8 step 4 {
     // UNROLL-BY-4-NEXT: %0 = "addi32"([[L1]], [[L1]]) : (index, index) -> i32
     // UNROLL-BY-4-NEXT: %1 = "addi32"(%0, %0) : (i32, i32) -> i32
-    // UNROLL-BY-4-NEXT: %2 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-4-NEXT: %2 = affine.apply #map{{[0-9]+}}([[L1]])
     // UNROLL-BY-4-NEXT: %3 = "addi32"(%2, %2) : (index, index) -> i32
     // UNROLL-BY-4-NEXT: %4 = "addi32"(%3, %3) : (i32, i32) -> i32
-    // UNROLL-BY-4-NEXT: %5 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-4-NEXT: %5 = affine.apply #map{{[0-9]+}}([[L1]])
     // UNROLL-BY-4-NEXT: %6 = "addi32"(%5, %5) : (index, index) -> i32
     // UNROLL-BY-4-NEXT: %7 = "addi32"(%6, %6) : (i32, i32) -> i32
-    // UNROLL-BY-4-NEXT: %8 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-4-NEXT: %8 = affine.apply #map{{[0-9]+}}([[L1]])
     // UNROLL-BY-4-NEXT: %9 = "addi32"(%8, %8) : (index, index) -> i32
     // UNROLL-BY-4-NEXT: %10 = "addi32"(%9, %9) : (i32, i32) -> i32
     // UNROLL-BY-4-NEXT: }
@@ -356,13 +356,13 @@ func @unroll_unit_stride_cleanup() {
     // UNROLL-BY-4: for [[L1:%i[0-9]+]] = 0 to 7 step 4 {
     // UNROLL-BY-4-NEXT: %0 = "addi32"([[L1]], [[L1]]) : (index, index) -> i32
     // UNROLL-BY-4-NEXT: %1 = "addi32"(%0, %0) : (i32, i32) -> i32
-    // UNROLL-BY-4-NEXT: %2 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-4-NEXT: %2 = affine.apply #map{{[0-9]+}}([[L1]])
     // UNROLL-BY-4-NEXT: %3 = "addi32"(%2, %2) : (index, index) -> i32
     // UNROLL-BY-4-NEXT: %4 = "addi32"(%3, %3) : (i32, i32) -> i32
-    // UNROLL-BY-4-NEXT: %5 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-4-NEXT: %5 = affine.apply #map{{[0-9]+}}([[L1]])
     // UNROLL-BY-4-NEXT: %6 = "addi32"(%5, %5) : (index, index) -> i32
     // UNROLL-BY-4-NEXT: %7 = "addi32"(%6, %6) : (i32, i32) -> i32
-    // UNROLL-BY-4-NEXT: %8 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-4-NEXT: %8 = affine.apply #map{{[0-9]+}}([[L1]])
     // UNROLL-BY-4-NEXT: %9 = "addi32"(%8, %8) : (index, index) -> i32
     // UNROLL-BY-4-NEXT: %10 = "addi32"(%9, %9) : (i32, i32) -> i32
     // UNROLL-BY-4-NEXT: }
@@ -385,13 +385,13 @@ func @unroll_non_unit_stride_cleanup() {
     // UNROLL-BY-4: for [[L1:%i[0-9]+]] = 2 to 37 step 20 {
     // UNROLL-BY-4-NEXT: %0 = "addi32"([[L1]], [[L1]]) : (index, index) -> i32
     // UNROLL-BY-4-NEXT: %1 = "addi32"(%0, %0) : (i32, i32) -> i32
-    // UNROLL-BY-4-NEXT: %2 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-4-NEXT: %2 = affine.apply #map{{[0-9]+}}([[L1]])
     // UNROLL-BY-4-NEXT: %3 = "addi32"(%2, %2) : (index, index) -> i32
     // UNROLL-BY-4-NEXT: %4 = "addi32"(%3, %3) : (i32, i32) -> i32
-    // UNROLL-BY-4-NEXT: %5 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-4-NEXT: %5 = affine.apply #map{{[0-9]+}}([[L1]])
     // UNROLL-BY-4-NEXT: %6 = "addi32"(%5, %5) : (index, index) -> i32
     // UNROLL-BY-4-NEXT: %7 = "addi32"(%6, %6) : (i32, i32) -> i32
-    // UNROLL-BY-4-NEXT: %8 = affine_apply #map{{[0-9]+}}([[L1]])
+    // UNROLL-BY-4-NEXT: %8 = affine.apply #map{{[0-9]+}}([[L1]])
     // UNROLL-BY-4-NEXT: %9 = "addi32"(%8, %8) : (index, index) -> i32
     // UNROLL-BY-4-NEXT: %10 = "addi32"(%9, %9) : (i32, i32) -> i32
     // UNROLL-BY-4-NEXT: }
@@ -414,11 +414,11 @@ func @loop_nest_single_iteration_after_unroll(%N: index) {
   // UNROLL-BY-4: for %i0 = 0 to %arg0 {
   for %i = 0 to %N {
     // UNROLL-BY-4: %0 = "addi32"(%c0, %c0) : (index, index) -> i32
-    // UNROLL-BY-4-NEXT: %1 = affine_apply [[MAP0]](%c0)
+    // UNROLL-BY-4-NEXT: %1 = affine.apply [[MAP0]](%c0)
     // UNROLL-BY-4-NEXT: %2 = "addi32"(%1, %1) : (index, index) -> i32
-    // UNROLL-BY-4-NEXT: %3 = affine_apply [[MAP1]](%c0)
+    // UNROLL-BY-4-NEXT: %3 = affine.apply [[MAP1]](%c0)
     // UNROLL-BY-4-NEXT: %4 = "addi32"(%3, %3) : (index, index) -> i32
-    // UNROLL-BY-4-NEXT: %5 = affine_apply [[MAP2]](%c0)
+    // UNROLL-BY-4-NEXT: %5 = affine.apply [[MAP2]](%c0)
     // UNROLL-BY-4-NEXT: %6 = "addi32"(%5, %5) : (index, index) -> i32
     // UNROLL-BY-4-NEXT: %7 = "addi32"(%c4, %c4) : (index, index) -> i32
     // UNROLL-BY-4-NOT: for

@@ -147,7 +147,7 @@ void MemRefDataFlowOpt::forwardStoreToLoad(OpPointer<LoadOp> loadOp) {
       // common surrounding loop. As an example this filters out cases like:
       // for %i0
       //   for %i1
-      //     %idx = affine_apply (d0) -> (d0 + 1) (%i0)
+      //     %idx = affine.apply (d0) -> (d0 + 1) (%i0)
       //     store %A[%idx]
       //     load %A[%i0]
       //

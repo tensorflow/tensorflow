@@ -29,9 +29,9 @@ func @basic_ml() -> (index, index) {
   %c0 = constant 0 : index
   %c1 = constant 0 : index
 
-  // CHECK-NEXT: %0 = affine_apply #map0(%c0)
-  %0 = affine_apply #map0(%c0)
-  %1 = affine_apply #map0(%c1)
+  // CHECK-NEXT: %0 = affine.apply #map0(%c0)
+  %0 = affine.apply #map0(%c0)
+  %1 = affine.apply #map0(%c1)
 
   // CHECK-NEXT: return %0, %0 : index, index
   return %0, %1 : index, index

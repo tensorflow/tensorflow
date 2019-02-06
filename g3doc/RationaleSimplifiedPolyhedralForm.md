@@ -187,7 +187,7 @@ Our simple example above would be represented as:
     for %i = 0 ... %N step 1 {
       for %j = 0 ... %N step 1 {
         // identity noop in this case, but can exist in general.
-        %0,%1 = affine_apply #57(%i, %j)
+        %0,%1 = affine.apply #57(%i, %j)
 
         %tmp = call @S1(%X, %0, %1)
 
@@ -212,7 +212,7 @@ The example with the reduced domain would be represented with an if instruction:
 
         if (10 <= %i < %N-10), (10 <= %j < %N-10) {
 
-          %2,%3 = affine_apply(%i, %j)    // identity noop in this case
+          %2,%3 = affine.apply(%i, %j)    // identity noop in this case
 
           call @S2(%tmp, %A, %2, %3)
         }

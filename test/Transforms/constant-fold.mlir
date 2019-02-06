@@ -121,13 +121,13 @@ func @affine_apply(%variable : index) -> (index, index, index) {
 
   // CHECK: %c1159 = constant 1159 : index
   // CHECK: %c1152 = constant 1152 : index
-  %x0 = affine_apply (d0, d1)[S0] -> ( (d0 + 128 * S0) floordiv 128 + d1 mod 128)
+  %x0 = affine.apply (d0, d1)[S0] -> ( (d0 + 128 * S0) floordiv 128 + d1 mod 128)
            (%c177, %c211)[%N]
-  %x1 = affine_apply (d0, d1)[S0] -> (128 * (S0 ceildiv 128))
+  %x1 = affine.apply (d0, d1)[S0] -> (128 * (S0 ceildiv 128))
            (%c177, %c211)[%N]
 
   // CHECK: %c42 = constant 42 : index
-  %y = affine_apply (d0) -> (42) (%variable)
+  %y = affine.apply (d0) -> (42) (%variable)
 
   // CHECK: return %c1159, %c1152, %c42
   return %x0, %x1, %y : index, index, index
@@ -321,7 +321,7 @@ func @fold_extract_element(%arg0 : index) -> (f32, f16, f16, i32) {
 
 // --------------------------------------------------------------------------//
 // IMPORTANT NOTE: the operations in this test are exactly those produced by
-// lowering affine_apply (i) -> (i mod 42) to standard operations.  Please only
+// lowering affine.apply (i) -> (i mod 42) to standard operations.  Please only
 // change these operations together with the affine lowering pass tests.
 // --------------------------------------------------------------------------//
 // CHECK-LABEL: @lowered_affine_mod
@@ -347,7 +347,7 @@ func @lowered_affine_mod() -> (index, index) {
 
 // --------------------------------------------------------------------------//
 // IMPORTANT NOTE: the operations in this test are exactly those produced by
-// lowering affine_apply (i) -> (i mod 42) to standard operations.  Please only
+// lowering affine.apply (i) -> (i mod 42) to standard operations.  Please only
 // change these operations together with the affine lowering pass tests.
 // --------------------------------------------------------------------------//
 // CHECK-LABEL: func @lowered_affine_floordiv
@@ -379,7 +379,7 @@ func @lowered_affine_floordiv() -> (index, index) {
 
 // --------------------------------------------------------------------------//
 // IMPORTANT NOTE: the operations in this test are exactly those produced by
-// lowering affine_apply (i) -> (i mod 42) to standard operations.  Please only
+// lowering affine.apply (i) -> (i mod 42) to standard operations.  Please only
 // change these operations together with the affine lowering pass tests.
 // --------------------------------------------------------------------------//
 // CHECK-LABEL: func @lowered_affine_ceildiv

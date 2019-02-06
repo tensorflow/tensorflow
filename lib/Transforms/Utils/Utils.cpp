@@ -195,25 +195,25 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
 /// Before
 ///
 /// for %i = 0 to #map(%N)
-///   %idx = affine_apply (d0) -> (d0 mod 2) (%i)
+///   %idx = affine.apply (d0) -> (d0 mod 2) (%i)
 ///   "send"(%idx, %A, ...)
 ///   "compute"(%idx)
 ///
 /// After
 ///
 /// for %i = 0 to #map(%N)
-///   %idx = affine_apply (d0) -> (d0 mod 2) (%i)
+///   %idx = affine.apply (d0) -> (d0 mod 2) (%i)
 ///   "send"(%idx, %A, ...)
-///   %idx_ = affine_apply (d0) -> (d0 mod 2) (%i)
+///   %idx_ = affine.apply (d0) -> (d0 mod 2) (%i)
 ///   "compute"(%idx_)
 ///
 /// This allows applying different transformations on send and compute (for eg.
 /// different shifts/delays).
 ///
 /// Returns nullptr either if none of opInst's operands were the result of an
-/// affine_apply and thus there was no affine computation slice to create, or if
-/// all the affine_apply op's supplying operands to this opInst did not have any
-/// uses besides this opInst; otherwise returns the list of affine_apply
+/// affine.apply and thus there was no affine computation slice to create, or if
+/// all the affine.apply op's supplying operands to this opInst did not have any
+/// uses besides this opInst; otherwise returns the list of affine.apply
 /// operations created in output argument `sliceOps`.
 void mlir::createAffineComputationSlice(
     Instruction *opInst, SmallVectorImpl<OpPointer<AffineApplyOp>> *sliceOps) {
@@ -255,7 +255,7 @@ void mlir::createAffineComputationSlice(
   auto composedMap = builder.getMultiDimIdentityMap(composedOpOperands.size());
   fullyComposeAffineMapAndOperands(&composedMap, &composedOpOperands);
 
-  // Create an affine_apply for each of the map results.
+  // Create an affine.apply for each of the map results.
   sliceOps->reserve(composedMap.getNumResults());
   for (auto resultExpr : composedMap.getResults()) {
     auto singleResMap = builder.getAffineMap(

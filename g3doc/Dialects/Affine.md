@@ -12,28 +12,28 @@ identifier can be bound to an SSA value that is either an argument to the
 function, a value defined at the top level of that function (outside of all
 loops and if instructions), the result of a
 [`constant` operation](LangRef.md#'constant'-operation), or the result of an
-[`affine_apply` operation](#'affine_apply'-operation) that recursively takes as
+[`affine.apply` operation](#'affine.apply'-operation) that recursively takes as
 arguments any symbolic identifiers. Dimensions may be bound not only to anything
 that a symbol is bound to, but also to induction variables of enclosing
 [for instructions](#'for'-operation), and the result of an
-[`affine_apply` operation](#'affine_apply'-operation) (which recursively may use
+[`affine.apply` operation](#'affine.apply'-operation) (which recursively may use
 other dimensions and symbols).
 
 ## Operations {#operations}
 
-#### 'affine_apply' operation {#'affine_apply'-operation}
+#### 'affine.apply' operation {#'affine.apply'-operation}
 
 Syntax:
 
 ``` {.ebnf}
-operation ::= ssa-id `=` `affine_apply` affine-map dim-and-symbol-use-list
+operation ::= ssa-id `=` `affine.apply` affine-map dim-and-symbol-use-list
 ```
 
-The `affine_apply` instruction applies an
+The `affine.apply` instruction applies an
 [affine mapping](LangRef.md#affine-expressions) to a list of SSA values,
 yielding a single SSA value. The number of dimension and symbol arguments to
-affine_apply must be equal to the respective number of dimensional and symbolic
-inputs to the affine mapping; the `affine_apply` instruction always returns one
+affine.apply must be equal to the respective number of dimensional and symbolic
+inputs to the affine mapping; the `affine.apply` instruction always returns one
 value. The input operands and result must all have 'index' type.
 
 Example:
@@ -41,10 +41,10 @@ Example:
 ```mlir {.mlir}
 #map10 = (d0, d1) -> (floordiv(d0,8) + floordiv(d1,128))
 ...
-%1 = affine_apply #map10 (%s, %t)
+%1 = affine.apply #map10 (%s, %t)
 
 // Inline example.
-%2 = affine_apply (i)[s0] -> (i+s0) (%42)[%n]
+%2 = affine.apply (i)[s0] -> (i+s0) (%42)[%n]
 ```
 
 #### 'for' operation {#'for'-operation}
@@ -96,7 +96,7 @@ func @simple_example(%A: memref<?x?xf32>, %B: memref<?x?xf32>) {
   %N = dim %A, 0 : memref<?x?xf32>
   for %i = 0 to %N step 1 {
     for %j = 0 to %N {   // implicitly steps by 1
-      %0 = affine_apply #map57(%j)[%N]
+      %0 = affine.apply #map57(%j)[%N]
       %tmp = call @F1(%A, %i, %0) : (memref<?x?xf32>, index, index)->(f32)
       call @F2(%tmp, %B, %i, %0) : (f32, memref<?x?xf32>, index, index)->()
     }
@@ -132,10 +132,10 @@ Example:
 func @reduced_domain_example(%A, %X, %N) : (memref<10xi32>, i32, i32) {
   for %i = 0 to %N {
      for %j = 0 to %N {
-       %0 = affine_apply #map42(%j)
+       %0 = affine.apply #map42(%j)
        %tmp = call @S1(%X, %i, %0)
        if #set(%i, %j)[%N] {
-          %1 = affine_apply #map43(%i, %j)
+          %1 = affine.apply #map43(%i, %j)
           call @S2(%tmp, %A, %i, %1)
        }
     }

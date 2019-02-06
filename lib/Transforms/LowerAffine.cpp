@@ -414,7 +414,7 @@ bool LowerAffinePass::lowerAffineFor(OpPointer<AffineForOp> forOp) {
 //      +--------------------------------+
 //      | <code before the AffineIfOp>       |
 //      | %zero = constant 0 : index     |
-//      | %v = affine_apply #expr1(%ops) |
+//      | %v = affine.apply #expr1(%ops) |
 //      | %c = cmpi "sge" %v, %zero      |
 //      | cond_br %c, %next, %else       |
 //      +--------------------------------+
@@ -516,7 +516,7 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp *ifOp) {
   auto integerSet = ifOp->getIntegerSet();
 
   // Implement short-circuit logic.  For each affine expression in the 'if'
-  // condition, convert it into an affine map and call `affine_apply` to obtain
+  // condition, convert it into an affine map and call `affine.apply` to obtain
   // the resulting value.  Perform the equality or the greater-than-or-equality
   // test between this value and zero depending on the equality flag of the
   // condition.  If the test fails, jump immediately to the false branch, which
@@ -573,7 +573,7 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp *ifOp) {
   return false;
 }
 
-// Convert an "affine_apply" operation into a sequence of arithmetic
+// Convert an "affine.apply" operation into a sequence of arithmetic
 // instructions using the StandardOps dialect.  Return true on error.
 bool LowerAffinePass::lowerAffineApply(AffineApplyOp *op) {
   FuncBuilder builder(op->getInstruction());

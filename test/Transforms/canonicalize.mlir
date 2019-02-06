@@ -255,8 +255,8 @@ func @hoist_constant(%arg0: memref<8xi32>) {
 func @const_fold_propagate() -> memref<?x?xf32> {
   %VT_i = constant 512 : index
 
-  %VT_i_s = affine_apply (d0) -> (d0 floordiv  8) (%VT_i)
-  %VT_k_l = affine_apply (d0) -> (d0 floordiv  16) (%VT_i)
+  %VT_i_s = affine.apply (d0) -> (d0 floordiv  8) (%VT_i)
+  %VT_k_l = affine.apply (d0) -> (d0 floordiv  16) (%VT_i)
 
   // CHECK: = alloc() : memref<64x32xf32>
   %Av = alloc(%VT_i_s, %VT_k_l) : memref<?x?xf32>

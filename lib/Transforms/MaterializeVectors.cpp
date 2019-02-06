@@ -124,25 +124,25 @@
 ///         for %i1 = 0 to %arg1 step 4 {
 ///           for %i2 = 0 to %arg2 {
 ///             for %i3 = 0 to %arg3 step 4 {
-///               %1 = affine_apply (d0, d1, d2, d3) -> (d0, d1, d2, d3)
+///               %1 = affine.apply (d0, d1, d2, d3) -> (d0, d1, d2, d3)
 ///                    (%i0, %i1, %i2, %i3)
 ///               vector_transfer_write f1, %0, %1#0, %1#1, %1#2, %1#3
 ///                 {permutation_map: (d0, d1, d2, d3) -> (d1, d0)} :
 ///                 vector<4x4xf32>, memref<?x?x?x?xf32>,
 ///                 index, index, index, index
-///               %2 = affine_apply (d0, d1, d2, d3) -> (d0, d1, d2, d3 + 1)
+///               %2 = affine.apply (d0, d1, d2, d3) -> (d0, d1, d2, d3 + 1)
 ///                    (%i0, %i1, %i2, %i3)
 ///               vector_transfer_write {{.*}}, %0, %2#0, %2#1, %2#2, %2#3
 ///                 {permutation_map: (d0, d1, d2, d3) -> (d1, d0)} :
 ///                 vector<4x4xf32>, memref<?x?x?x?xf32>,
 ///                 index, index, index, index
-///               %3 = affine_apply (d0, d1, d2, d3) -> (d0, d1, d2, d3 + 2)
+///               %3 = affine.apply (d0, d1, d2, d3) -> (d0, d1, d2, d3 + 2)
 ///                    (%i0, %i1, %i2, %i3)
 ///               vector_transfer_write {{.*}}, %0, %3#0, %3#1, %3#2, %3#3
 ///                 {permutation_map: (d0, d1, d2, d3) -> (d1, d0)} :
 ///                 vector<4x4xf32>, memref<?x?x?x?xf32>,
 ///                 index, index, index, index
-///               %4 = affine_apply (d0, d1, d2, d3) -> (d0, d1, d2, d3 + 3)
+///               %4 = affine.apply (d0, d1, d2, d3) -> (d0, d1, d2, d3 + 3)
 ///                    (%i0, %i1, %i2, %i3)
 ///               vector_transfer_write {{.*}}, %0, %4#0, %4#1, %4#2, %4#3
 ///                 {permutation_map: (d0, d1, d2, d3) -> (d1, d0)} :

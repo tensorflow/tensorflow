@@ -324,7 +324,7 @@ PipelineDataTransfer::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
         instShiftMap[sliceOp->getInstruction()] = 0;
       }
     } else {
-      // If a slice wasn't created, the reachable affine_apply op's from its
+      // If a slice wasn't created, the reachable affine.apply op's from its
       // operands are the ones that go with it.
       SmallVector<Instruction *, 4> affineApplyInsts;
       SmallVector<Value *, 4> operands(dmaStartInst->getOperands());

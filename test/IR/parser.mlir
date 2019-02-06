@@ -279,18 +279,18 @@ func @loop_bounds(%N : index) {
   for %i = %s to %N {
     // CHECK: for %i1 = #map{{[0-9]+}}(%i0) to 0
     for %j = (d0)[]->(d0)(%i)[] to 0 step 1 {
-       // CHECK: %1 = affine_apply #map{{.*}}(%i0, %i1)[%0]
-       %w1 = affine_apply(d0, d1)[s0] -> (d0+d1) (%i, %j) [%s]
-       // CHECK: %2 = affine_apply #map{{.*}}(%i0, %i1)[%0]
-       %w2 = affine_apply(d0, d1)[s0] -> (s0+1) (%i, %j) [%s]
+       // CHECK: %1 = affine.apply #map{{.*}}(%i0, %i1)[%0]
+       %w1 = affine.apply(d0, d1)[s0] -> (d0+d1) (%i, %j) [%s]
+       // CHECK: %2 = affine.apply #map{{.*}}(%i0, %i1)[%0]
+       %w2 = affine.apply(d0, d1)[s0] -> (s0+1) (%i, %j) [%s]
        // CHECK: for %i2 = #map{{.*}}(%1, %i0)[%arg0] to #map{{.*}}(%2, %i1)[%0] {
        for %k = #bound_map1 (%w1, %i)[%N] to (i, j)[s] -> (i + j + s) (%w2, %j)[%s] {
           // CHECK: "foo"(%i0, %i1, %i2) : (index, index, index) -> ()
           "foo"(%i, %j, %k) : (index, index, index)->()
           // CHECK: %c30 = constant 30 : index
           %c = constant 30 : index
-          // CHECK: %3 = affine_apply #map{{.*}}(%arg0, %c30)
-          %u = affine_apply (d0, d1)->(d0+d1) (%N, %c)
+          // CHECK: %3 = affine.apply #map{{.*}}(%arg0, %c30)
+          %u = affine.apply (d0, d1)->(d0+d1) (%N, %c)
           // CHECK: for %i3 = max #map{{.*}}(%i0)[%3] to min #map{{.*}}(%i2)[%c30] {
           for %l = max #bound_map2(%i)[%u] to min #bound_map2(%k)[%c] {
             // CHECK: "bar"(%i3) : (index) -> ()
@@ -315,8 +315,8 @@ func @ifinst(%N: index) {
       if (i)[N] : (i - 2 >= 0, 4 - i >= 0)(%i)[%N]  {      // CHECK  if (#set1(%i0)[%arg0]) {
         // CHECK: %c1 = constant 1 : index
         %u = constant 1 : index
-        // CHECK: %2 = affine_apply #map{{.*}}(%i0, %i0)[%c1]
-        %w = affine_apply (d0,d1)[s0] -> (d0+d1+s0) (%i, %i) [%u]
+        // CHECK: %2 = affine.apply #map{{.*}}(%i0, %i0)[%c1]
+        %w = affine.apply (d0,d1)[s0] -> (d0+d1+s0) (%i, %i) [%u]
       } else {            // CHECK     } else {
         %v = constant 3 : i32 // %c3_i32 = constant 3 : i32
       }
