@@ -303,6 +303,14 @@ class SaveTest(test.TestCase):
       self.assertNotIn("T", complex_node.attr)
       self.assertNotIn("Tout", complex_node.attr)
 
+  def test_signature_attribute_reserved(self):
+    root = util.Checkpoint(signatures=variables.Variable(1.))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    with self.assertRaisesRegexp(ValueError, "del obj.signatures"):
+      save.save(root, save_dir)
+    del root.signatures
+    save.save(root, save_dir)
+
 
 class AssetTests(test.TestCase):
 

@@ -262,6 +262,16 @@ tf_py_test(
 )
 
 py_library(
+    name = "signature_serialization",
+    srcs = [
+        "signature_serialization.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+    ],
+)
+
+py_library(
     name = "save",
     srcs = [
         "save.py",
@@ -276,6 +286,7 @@ py_library(
         ":saved_object_graph_py",
         ":signature_constants",
         ":signature_def_utils",
+        ":signature_serialization",
         ":tag_constants",
         ":utils",
         "//tensorflow/core:protos_all_py",
