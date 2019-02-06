@@ -61,3 +61,10 @@ tblgen::Type::Type(const llvm::Record &record) : TypeConstraint(record) {
 tblgen::Type::Type(const llvm::DefInit *init) : Type(*init->getDef()) {}
 
 StringRef tblgen::Type::getTableGenDefName() const { return def->getName(); }
+
+bool tblgen::Type::isVariadic() const { return def->isSubClassOf("Variadic"); }
+
+tblgen::Type tblgen::Type::getVariadicBaseType() const {
+  assert(isVariadic() && "must be variadic type");
+  return Type(def->getValueAsDef("baseType"));
+}

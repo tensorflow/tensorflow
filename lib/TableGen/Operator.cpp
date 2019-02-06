@@ -84,6 +84,10 @@ const tblgen::NamedAttribute &tblgen::Operator::getAttribute(int index) const {
   return attributes[index];
 }
 
+bool tblgen::Operator::hasVariadicOperand() const {
+  return !operands.empty() && operands.back().type.isVariadic();
+}
+
 StringRef tblgen::Operator::getArgName(int index) const {
   DagInit *argumentValues = def.getValueAsDag("arguments");
   return argumentValues->getArgName(index)->getValue();
@@ -178,6 +182,12 @@ void tblgen::Operator::populateOperandsAndAttributes() {
           {cast<llvm::StringInit>(val.getNameInit())->getValue(),
            Attribute(cast<DefInit>(val.getValue()))});
     }
+  }
+
+  for (int i = 0, e = operands.size() - 1; i < e; ++i) {
+    if (operands[i].type.isVariadic())
+      PrintFatalError(def.getLoc(),
+                      "only the last operand allowed to be variadic");
   }
 }
 

@@ -89,8 +89,8 @@ class LLVM_ZeroResultOp<string mnemonic, list<OpTrait> traits = []> :
 // Base class for LLVM terminator operations.  All terminator operations have
 // zero results and an optional list of successors.
 class LLVM_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
-    LLVM_Op<mnemonic, !listconcat(traits, [Terminator, VariadicOperands])>,
-    Results<(outs)> {
+    LLVM_Op<mnemonic, !listconcat(traits, [Terminator])>,
+    Arguments<(ins Variadic<LLVM_Type>)>, Results<(outs)> {
   let builder = [{
       static void build(Builder *builder, OperationState *result,
                         ArrayRef<Value *> properOperands,
@@ -117,7 +117,7 @@ class LLVM_ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
 
 // Class for variadic instructions.
 class LLVM_VariadicOneResultOp<string mnemonic, list<OpTrait> traits = []> :
-    LLVM_OneResultOp<mnemonic, !listconcat(traits, [VariadicOperands])>;
+    LLVM_OneResultOp<mnemonic, traits>, Arguments<(ins Variadic<LLVM_Type>)>;
 
 // Integer binary instructions.
 def LLVM_AddOp : LLVM_ArithmeticOp<"add", [Commutative]>;
@@ -151,7 +151,8 @@ def LLVM_BitcastOp : LLVM_OneResultOp<"bitcast", [NoSideEffect]>,
 
 // Call-related instructions.
 def LLVM_CallOp : LLVM_VariadicOneResultOp<"call">;
-def LLVM_Call0Op : LLVM_ZeroResultOp<"call0", [VariadicOperands]>;
+def LLVM_Call0Op : LLVM_ZeroResultOp<"call0", []>,
+                   Arguments<(ins Variadic<LLVM_Type>)>;
 def LLVM_ExtractValueOp : LLVM_OneResultOp<"extractvalue", [NoSideEffect]>,
                           Arguments<(ins LLVM_Type)>;
 def LLVM_InsertValueOp : LLVM_OneResultOp<"insertvalue", [NoSideEffect]>,

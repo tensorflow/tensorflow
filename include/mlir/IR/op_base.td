@@ -100,9 +100,19 @@ class TypeConstraint<Pred condition, string descr> {
   string description = descr;
 }
 
-// A type, carries type constraints, but accepts any type by default.
+// A type, carries type constraints.
 class Type<Pred condition, string descr = "">
     : TypeConstraint<condition, descr>;
+
+// A variadic type. It expands to zero or more of the base type.
+// This class is used for supporting variadic operands/results. An op can
+// declare no more than one variadic operand/result, and that operand/result
+// must be the last one in the operand/result list.
+class Variadic<Type type, string descr = "">
+    // TODO: support variadic type conditions
+    : Type<CPred<"true">, descr> {
+  Type baseType = type;
+}
 
 // A type that can be constructed using MLIR::Builder.
 // Note that this does not "inherit" from Type because it would require
@@ -352,11 +362,6 @@ class OpTrait<string prop> {
   string trait = prop;
 }
 
-// Note: Ideally, we should be able to automatically deduce most of these traits
-// from other bits of op definitions, especially those regarding the number of
-// operands and results.
-class AtLeastNOperands<int c> : OpTrait<"AtLeastNOperands<" # c # ">::Impl">;
-
 // op supports operand broadcast behavior
 def Broadcastable    : OpTrait<"BroadcastableTwoOperandsOneResult">;
 // X op Y == Y op X
@@ -367,8 +372,6 @@ def NoSideEffect     : OpTrait<"HasNoSideEffect">;
 def SameValueType    : OpTrait<"SameOperandsAndResultType">;
 // op is a terminator
 def Terminator       : OpTrait<"IsTerminator">;
-// op has an unknown number of operands
-def VariadicOperands : OpTrait<"VariadicOperands">;
 
 //===----------------------------------------------------------------------===//
 // Ops

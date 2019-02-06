@@ -228,7 +228,7 @@ void OpEmitter::emitNamedOperands() {
 )";
   for (int i = 0, e = op.getNumOperands(); i != e; ++i) {
     const auto &operand = op.getOperand(i);
-    if (!operand.name.empty())
+    if (!operand.type.isVariadic() && !operand.name.empty())
       os << formatv(operandMethods, operand.name, i);
   }
 }
@@ -260,8 +260,11 @@ void OpEmitter::emitBuilder() {
     os << ", Type returnType" << i;
 
   // Emit parameters for all operands
-  for (int i = 0, e = op.getNumOperands(); i != e; ++i)
-    os << ", Value* " << getArgumentName(op, i);
+  for (int i = 0, e = op.getNumOperands(); i != e; ++i) {
+    auto &operand = op.getOperand(i);
+    os << (operand.type.isVariadic() ? ", ArrayRef<Value*> " : ", Value* ")
+       << getArgumentName(op, i);
+  }
 
   // Emit parameters for all attributes
   // TODO(antiagainst): Support default initializer for attributes
@@ -283,11 +286,19 @@ void OpEmitter::emitBuilder() {
   }
 
   // Push all operands to the result
-  if (op.getNumOperands() > 0) {
+  auto numOperands = op.getNumOperands();
+  bool hasVariadicOperand = op.hasVariadicOperand();
+  int numNonVariadicOperands = numOperands - int(hasVariadicOperand);
+  if (numNonVariadicOperands > 0) {
     OUT(4) << "result->addOperands({" << getArgumentName(op, 0);
-    for (int i = 1, e = op.getNumOperands(); i != e; ++i)
+    for (int i = 1, e = numNonVariadicOperands; i < e; ++i) {
       os << ", " << getArgumentName(op, i);
+    }
     os << "});\n";
+  }
+  if (hasVariadicOperand) {
+    OUT(4) << "result->addOperands(" << getArgumentName(op, numOperands - 1)
+           << ");\n";
   }
 
   // Push all attributes to the result
@@ -310,7 +321,7 @@ void OpEmitter::emitBuilder() {
          << "    result->addTypes(resultTypes);\n";
 
   // Operands
-  OUT(4) << "assert(args.size() == " << op.getNumOperands()
+  OUT(4) << "assert(args.size() == " << numNonVariadicOperands
          << "u && \"mismatched number of parameters\");\n"
          << "    result->addOperands(args);\n\n";
 
@@ -422,9 +433,12 @@ void OpEmitter::emitVerifier() {
       OUT(4) << "}\n";
   }
 
-  // TODO: Handle variadic.
   int opIndex = 0;
   for (const auto &operand : op.getOperands()) {
+    // TODO: Handle variadic operand verification.
+    if (operand.type.isVariadic())
+      continue;
+
     // TODO: Commonality between matchers could be extracted to have a more
     // concise code.
     if (operand.hasMatcher()) {
@@ -466,38 +480,33 @@ void OpEmitter::emitTraits() {
     break;
   }
 
-  // Track explicitly added operand size traits. Note that some ops might
-  // implicitly defines the number of operands via the Argument dag.
-  bool hasVariadicOperands = false;
-  bool hasAtLeastNOperands = false;
-
   // Add variadic size trait and normal op traits.
   for (StringRef trait : def.getValueAsListOfStrings("traits")) {
-    if (trait == "VariadicOperands") {
-      hasVariadicOperands = true;
-    } else if (trait.startswith("AtLeastNOperands")) {
-      hasAtLeastNOperands = true;
-    }
     os << ", OpTrait::" << trait;
   }
 
-  if ((hasVariadicOperands || hasAtLeastNOperands) && op.getNumOperands() > 0) {
-    PrintFatalError(def.getLoc(),
-                    "Operands number definition is not consistent.");
-  }
+  auto numOperands = op.getNumOperands();
+  bool hasVariadicOperand = op.hasVariadicOperand();
 
   // Add operand size trait.
-  switch (op.getNumOperands()) {
-  case 0:
-    if (!hasVariadicOperands && !hasAtLeastNOperands)
-      os << ", OpTrait::ZeroOperands";
-    break;
-  case 1:
-    os << ", OpTrait::OneOperand";
-    break;
-  default:
-    os << ", OpTrait::NOperands<" << op.getNumOperands() << ">::Impl";
-    break;
+  os << ", OpTrait::";
+  if (hasVariadicOperand) {
+    if (numOperands == 1)
+      os << "VariadicOperands";
+    else
+      os << "AtLeastNOperands<" << (numOperands - 1) << ">::Impl";
+  } else {
+    switch (op.getNumOperands()) {
+    case 0:
+      os << "ZeroOperands";
+      break;
+    case 1:
+      os << "OneOperand";
+      break;
+    default:
+      os << "NOperands<" << numOperands << ">::Impl";
+      break;
+    }
   }
 }
 

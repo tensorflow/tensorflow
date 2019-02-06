@@ -97,6 +97,9 @@ public:
   Operand &getOperand(int index) { return operands[index]; }
   const Operand &getOperand(int index) const { return operands[index]; }
 
+  // Returns true if this operation has a variadic operand.
+  bool hasVariadicOperand() const;
+
   // Op argument (attribute or operand) accessors.
   Argument getArg(int index);
   StringRef getArgName(int index) const;
