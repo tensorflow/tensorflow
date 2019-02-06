@@ -78,17 +78,6 @@ class ControlFlowTest(converter_testing.TestCase):
 
     self.assertTransformedResult(test_fn, constant_op.constant(5), 0)
 
-  def test_while_variable_defined_in_body(self):
-    def bad_while_loop(n):
-      while n > 0:
-        n -= 1
-        s = n
-      return s
-
-    node, ctx = self.prepare(bad_while_loop, {})
-    with self.assertRaises(NameError):
-      control_flow.transform(node, ctx)
-
   @test_util.run_deprecated_v1
   def test_if_basic(self):
 
@@ -224,16 +213,6 @@ class ControlFlowTest(converter_testing.TestCase):
     with self.compiled(node, ns) as result:
       self.assertEqual(result.test_fn(5), 10)
       self.assertEqual(eval_count[0], 1)
-
-  def test_for_variable_defined_in_body(self):
-    def bad_for_loop(n):
-      for i in range(n):
-        s = i
-      return s
-
-    node, ctx = self.prepare(bad_for_loop, {})
-    with self.assertRaises(NameError):
-      control_flow.transform(node, ctx)
 
   @test_util.run_deprecated_v1
   def test_for_tuple_unpacking(self):
