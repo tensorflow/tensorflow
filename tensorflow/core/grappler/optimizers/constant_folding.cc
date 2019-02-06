@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -716,6 +717,61 @@ Status ConstantFolding::MaterializeReductionIndices(
   return Status::OK();
 }
 
+Status ConstantFolding::MaterializeConstantValuedNode(
+    NodeDef* node, const GraphProperties& properties) {
+  // Nodes that generate constant-valued outputs can be represented compactly in
+  // compressed format, regardless of their shape.
+  const std::vector<OpInfo::TensorProperties>& output_props =
+      properties.GetOutputProperties(node->name());
+  if (output_props.size() != 1) return Status::OK();
+  const auto& output_shape = output_props[0].shape();
+  if (!PartialTensorShape(output_shape).IsFullyDefined()) {
+    return Status::OK();
+  }
+  if (IsFill(*node)) {
+    const auto output_dtype = output_props[0].dtype();
+    NodeDef* input_node = nullptr;
+    for (int i = 0; i < 2; ++i) {
+      input_node = node_map_->GetNode(NodeName(node->input(i)));
+      if (input_node == nullptr || !IsReallyConstant(*input_node)) {
+        return Status::OK();
+      }
+    }
+    TF_RETURN_IF_ERROR(CheckAttrExists(*input_node, "value"));
+    const TensorProto& input_tensor = input_node->attr().at("value").tensor();
+    // TODO(rmlarsen): Handle the case where the value is stored in
+    // tensor_content.
+    if (!input_tensor.tensor_content().empty()) {
+      return Status::OK();
+    }
+    TensorProto* tensor = (*node->mutable_attr())["value"].mutable_tensor();
+    // Copy the input tensor to the fill node, set the output shape, and
+    // change the nodd type to Const.
+    *tensor = input_tensor;
+    *(tensor->mutable_tensor_shape()) = output_shape;
+    (*node->mutable_attr())["dtype"].set_type(output_dtype);
+    node->mutable_attr()->erase("T");
+    node->mutable_attr()->erase("index_type");
+    node->set_op("Const");
+    for (int i = 0; i < 2; i++) {
+      // Change inputs to a control inputs.
+      const string ctrl_dep = AsControlDependency(node->input(i));
+      node_map_->UpdateInput(node->name(), node->input(i), ctrl_dep);
+      node->set_input(i, ctrl_dep);
+    }
+    graph_modified_ = true;
+  } else {
+    double value =
+        (IsZerosLike(*node) ? 0.0 : (IsOnesLike(*node) ? 1.0 : -1.0));
+    bool success = false;
+    if (value >= 0) {
+      TF_RETURN_IF_ERROR(ReplaceOperationWithConstant(
+          value, properties, output_shape, node, graph_, &success));
+    }
+  }
+  return Status::OK();
+}
+
 Status ConstantFolding::MaterializeConstants(
     const GraphProperties& properties) {
   const int node_count = graph_->node_size();
@@ -726,6 +782,8 @@ Status ConstantFolding::MaterializeConstants(
       TF_RETURN_IF_ERROR(MaterializeBroadcastGradientArgs(node, properties));
     } else if (IsReduction(node)) {
       TF_RETURN_IF_ERROR(MaterializeReductionIndices(&node, properties));
+    } else if (IsFill(node) || IsZerosLike(node) || IsOnesLike(node)) {
+      TF_RETURN_IF_ERROR(MaterializeConstantValuedNode(&node, properties));
     }
   }
   return Status::OK();
@@ -1569,6 +1627,7 @@ Status ConstantFolding::ReplaceOperationWithConstant(
     node->set_input(i, ctrl_dep);
   }
   *success = true;
+  graph_modified_ = true;
   return Status::OK();
 }
 
