@@ -5082,6 +5082,7 @@ load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 
 genrule(
     name = "emscripten_proto_config_lite_runtime",
+    srcs = if_android(["android_proto_config.asciipb"]),  # Reuse the same file only if on android
     outs = ["emscripten_proto_config_lite_runtime.asciipb"],
     cmd = tf_genrule_cmd_append_to_srcs("optimize_mode:LITE_RUNTIME"),
     visibility = ["//visibility:private"],
