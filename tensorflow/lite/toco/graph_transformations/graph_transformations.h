@@ -102,8 +102,16 @@ class GraphTransformationsSet {
 // construct GraphTransformation objects by using 'new', pass us
 // the resulting raw pointers, and this RunGraphTransformations
 // takes care of delete'ing these pointers.
-void RunGraphTransformations(Model* model, const string& message,
-                             const GraphTransformationsSet& transformations);
+tensorflow::Status RunGraphTransformationsWithStatus(
+    Model* model, const string& msg,
+    const GraphTransformationsSet& transformations);
+
+inline void RunGraphTransformations(
+    Model* model, const string& msg,
+    const GraphTransformationsSet& transformations) {
+  auto s = RunGraphTransformationsWithStatus(model, msg, transformations);
+  CHECK(s.ok()) << s.error_message();
+}
 
 #define DECLARE_GRAPH_TRANSFORMATION(GTName)                     \
   class GTName : public GraphTransformation {                    \
