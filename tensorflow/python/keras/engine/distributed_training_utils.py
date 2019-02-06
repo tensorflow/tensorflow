@@ -723,21 +723,46 @@ def clone_model_on_replicas(model, strategy, mode, inputs=None, targets=None):
 
 
 def _make_execution_function(model, mode):
-  """Makes function to run one step of distributed model execution."""
-  if context.executing_eagerly():
-    return _make_eager_execution_function(model, mode)
-
+  """Makes or reuses function to run one step of distributed model execution."""
   strategy = model._distribution_strategy
-  if not get_distributed_model(model, mode):
-    if model._compile_distribution:
-      clone_model_on_replicas(model, strategy, mode)
-    else:
-      _build_distributed_network(model, strategy, mode)
+
+  distributed_model = get_distributed_model(model, mode)
+  # If distributed model for a particular `mode` is already built, use the
+  # `_distribution_function` on that distributed model.
+  if distributed_model:
+    return distributed_model._distributed_function
+
+  # If distributed_model is not built, create one for `mode`.
+  if model._compile_distribution:
+    clone_model_on_replicas(model, strategy, mode)
+  else:
+    _build_distributed_network(model, strategy, mode)
+
+  # We've just created the distributed model. So `distributed_model` should be
+  # not None.
+  distributed_model = get_distributed_model(model, mode)
+  assert distributed_model
+
+  # Also create an execution fuction on that distributed model.
+  if context.executing_eagerly():
+    distributed_function = _make_eager_execution_function(model, mode)
+  else:
+    distributed_function = _make_graph_execution_function(model, mode)
+
+  # We cache the distributed execution function on the model since creating
+  # distributed models and exection functions are expensive.
+  distributed_model._distributed_function = distributed_function
+  return distributed_function
+
+
+def _make_graph_execution_function(model, mode):
+  """Makes function to run one step of distributed model in graph mode."""
 
   def _per_device_function(model):
     f = model._make_execution_function(mode)
     return (f.inputs, f.outputs, f.updates_op, f.session_kwargs)
 
+  strategy = model._distribution_strategy
   with strategy.scope():
     # Create train ops on each of the devices when we call
     # `_per_device_fit_function`.
@@ -773,19 +798,13 @@ def _make_execution_function(model, mode):
 
 def _make_eager_execution_function(model, mode):
   """Makes function to run one step of distributed model eager execution."""
-  strategy = model._distribution_strategy
-  if not get_distributed_model(model, mode):
-    if model._compile_distribution:
-      clone_model_on_replicas(model, strategy, mode)
-    else:
-      _build_distributed_network(model, strategy, mode)
-
   def _per_device_function(model):
     f = model._make_execution_function(mode)
     return (f.inputs, f.outputs)
 
   # NOTE(priyag): Try creating a new FuncGraph within DS scope instead of using
   # the global one.
+  strategy = model._distribution_strategy
   with K.get_graph().as_default(), strategy.scope():
     # Create train ops on each of the devices when we call
     # `_per_device_fit_function`.

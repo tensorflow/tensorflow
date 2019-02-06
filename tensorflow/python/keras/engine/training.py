@@ -538,6 +538,7 @@ class Model(Network):
 
       self._fit_function = None
       self._eval_function = None
+      self._predict_function = None
       self.train_function = None
       self.test_function = None
       self.predict_function = None
