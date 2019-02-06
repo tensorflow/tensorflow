@@ -929,6 +929,10 @@ tf_module {
     argspec: "args=[\'images\', \'boxes\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "DrawBoundingBoxesV2"
+    argspec: "args=[\'images\', \'boxes\', \'colors\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "DynamicPartition"
     argspec: "args=[\'data\', \'partitions\', \'num_partitions\'], varargs=None, keywords=None, defaults=None"
   }
