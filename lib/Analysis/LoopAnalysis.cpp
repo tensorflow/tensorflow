@@ -320,21 +320,32 @@ bool mlir::isInstwiseShiftValid(ConstOpPointer<AffineForOp> forOp,
                                 ArrayRef<uint64_t> shifts) {
   auto *forBody = forOp->getBody();
   assert(shifts.size() == forBody->getInstructions().size());
-  unsigned s = 0;
-  for (const auto &inst : *forBody) {
+
+  // Work backwards over the body of the block so that we only need to iterator
+  // over the body once.
+  DenseMap<const Instruction *, uint64_t> forBodyShift;
+  for (auto it : llvm::enumerate(llvm::reverse(forBody->getInstructions()))) {
+    const auto &inst = it.value();
+
+    // Get the index of the current instruction, note that we are iterating in
+    // reverse so we need to fix it up.
+    size_t index = shifts.size() - it.index() - 1;
+
+    // Remember the shift of this instruction.
+    uint64_t shift = shifts[index];
+    forBodyShift.try_emplace(&inst, shift);
+
+    // Validate the results of this instruction if it were to be shifted.
     for (unsigned i = 0, e = inst.getNumResults(); i < e; ++i) {
       const Value *result = inst.getResult(i);
       for (const InstOperand &use : result->getUses()) {
         // If an ancestor instruction doesn't lie in the block of forOp,
-        // there is no shift to check. This is a naive way. If performance
-        // becomes an issue, a map can be used to store 'shifts' - to look up
-        // the shift for a instruction in constant time.
+        // there is no shift to check.
         if (auto *ancInst = forBody->findAncestorInstInBlock(*use.getOwner()))
-          if (shifts[s] != shifts[forBody->findInstPositionInBlock(*ancInst)])
+          if (shift != forBodyShift[ancInst])
             return false;
       }
     }
-    s++;
   }
   return true;
 }

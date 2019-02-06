@@ -90,19 +90,6 @@ Instruction *Block::findAncestorInstInBlock(Instruction *inst) {
   return currInst;
 }
 
-/// Returns the instructions's position in this block or -1 if the instruction
-/// is not present.
-/// TODO: This is needlessly inefficient, and should not be API on Block.
-int64_t Block::findInstPositionInBlock(const Instruction &inst) const {
-  int64_t j = 0;
-  for (const auto &s : instructions) {
-    if (&s == &inst)
-      return j;
-    j++;
-  }
-  return -1;
-}
-
 /// This drops all operand uses from instructions within this block, which is
 /// an essential step in breaking cyclic dependences between references when
 /// they are to be deleted.

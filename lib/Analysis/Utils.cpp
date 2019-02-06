@@ -318,8 +318,9 @@ static void findInstPosition(const Instruction *inst, Block *limitBlock,
                              SmallVectorImpl<unsigned> *positions) {
   const Block *block = inst->getBlock();
   while (block != limitBlock) {
-    int instPosInBlock = block->findInstPositionInBlock(*inst);
-    assert(instPosInBlock >= 0);
+    // FIXME: This algorithm is unnecessarily O(n) and should be improved to not
+    // rely on lineary scans.
+    int instPosInBlock = std::distance(block->begin(), inst->getIterator());
     positions->push_back(instPosInBlock);
     inst = block->getContainingInst();
     block = inst->getBlock();

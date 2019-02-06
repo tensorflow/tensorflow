@@ -188,11 +188,6 @@ public:
     return const_cast<Block *>(this)->front();
   }
 
-  /// Returns the instructions's position in this block or -1 if the instruction
-  /// is not present.
-  /// TODO: This is needlessly inefficient, and should not be API on Block.
-  int64_t findInstPositionInBlock(const Instruction &inst) const;
-
   /// Returns 'inst' if 'inst' lies in this block, or otherwise finds the
   /// ancestor instruction of 'inst' that lies in this block. Returns nullptr if
   /// the latter fails.
