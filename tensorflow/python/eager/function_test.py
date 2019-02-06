@@ -466,6 +466,22 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     value = tensor_init()
     self.assertAllEqual(value, 2.0)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGetConcreteFunctionCreatesVariables(self):
+
+    v_holder = []
+
+    @def_function.function
+    def tensor_init():
+      if not v_holder:
+        v_holder.append(variables.Variable(5.))
+      return v_holder[0].read_value()
+
+    concrete = tensor_init.get_concrete_function()
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(5., self.evaluate(concrete()))
+    self.assertAllEqual(5., self.evaluate(tensor_init()))
+
   def testDefunShapeInferenceWithCapturedResourceVariable(self):
     v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
 
@@ -1057,7 +1073,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def func():
       return constant_op.constant(0)
 
-    defined = function.defun(func)
+    defined = def_function.function(func)
     with ops.device('cpu:0'):
       cpu_graph_function = defined.get_concrete_function()
 
@@ -1324,6 +1340,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                                  'tuple or a list.*'):
       function.defun(foo, input_signature=signature)
 
+  @test_util.run_in_graph_and_eager_modes
   def testInputsIncompatibleWithSignatureRaisesError(self):
 
     def foo(a):

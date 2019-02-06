@@ -420,7 +420,7 @@ def _record_variable_scope_and_name(embedding_var_name,
   else:
     # scope contains var_scope_name.
     captured_scope = variable_scope.get_variable_scope()
-    var_def_dict[embedding_var_name] = (captured_scope,
+    var_def_dict[embedding_var_name] = (captured_scope.name,
                                         embedding_var_name_in_fc)
 
 

@@ -164,6 +164,13 @@ TEST_F(OperatorTest, BuiltinAdd) {
             output_toco_op->fused_activation_function);
 }
 
+TEST_F(OperatorTest, BuiltinAddN) {
+  AddNOperator op;
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("ADD_N", OperatorType::kAddN), op);
+  ASSERT_NE(output_toco_op.get(), nullptr);
+}
+
 TEST_F(OperatorTest, BuiltinReducerOps) {
   CheckReducerOperator<MeanOperator>("MEAN", OperatorType::kMean);
   CheckReducerOperator<TensorFlowSumOperator>("SUM", OperatorType::kSum);

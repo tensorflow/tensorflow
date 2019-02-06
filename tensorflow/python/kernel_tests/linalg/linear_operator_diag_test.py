@@ -187,6 +187,11 @@ class LinearOperatorDiagTest(
         linalg_lib.LinearOperatorDiag))
     self.assertAllClose([6., 9.], self.evaluate(operator_matmul.diag))
 
+  def test_diag_adjoint_type(self):
+    diag = [1., 3., 5., 8.]
+    operator = linalg.LinearOperatorDiag(diag, is_non_singular=True)
+    self.assertIsInstance(operator.adjoint(), linalg.LinearOperatorDiag)
+
   def test_diag_cholesky_type(self):
     diag = [1., 3., 5., 8.]
     operator = linalg.LinearOperatorDiag(

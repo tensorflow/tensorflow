@@ -259,7 +259,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     """Get config proto based on specific settings."""
     conversion_params = self.GetConversionParams(run_params)
     if graph_state != GraphState.ORIGINAL and run_params.use_optimizer:
-      rewriter_cfg = trt_convert.get_tensorrt_rewriter_config(
+      rewriter_cfg = trt_convert.TrtGraphConverter.get_tensorrt_rewriter_config(
           conversion_params.rewriter_config, conversion_params.max_batch_size,
           conversion_params.max_workspace_size_bytes,
           conversion_params.precision_mode,

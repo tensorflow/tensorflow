@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
 namespace hlo_graph_dumper {
@@ -176,6 +177,23 @@ TEST_F(HloTfGraphBuilderTest, EmbeddedComputationsDiamond) {
   auto computation = builder.Build();
   TF_CHECK_OK(generator_.AddComputation(*computation));
   EXPECT_GT(generator_.GetGraphDef().node_size(), 0);
+}
+
+TEST_F(HloTfGraphBuilderTest, TokenHasNoLayout) {
+  auto builder = HloComputation::Builder("Token");
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
+  OpMetadata metadata;
+  metadata.set_op_name("x");
+  metadata.set_op_type("y");
+  token->set_metadata(metadata);
+  TF_ASSERT_OK(generator_.AddComputation(*builder.Build()));
+  GraphDef graph_def = generator_.GetGraphDef();
+  ASSERT_EQ(graph_def.node_size(), 1);
+  const auto &node = graph_def.node(0);
+  ASSERT_EQ(GetNodeAttr(node, "type").s(), "TOKEN");
+  ASSERT_EQ(GetNodeAttr(node, "layout").s(), "");
+  ASSERT_EQ(GetNodeAttr(node, "tf_op_name").s(), "x");
+  ASSERT_EQ(GetNodeAttr(node, "tf_op_type").s(), "y");
 }
 
 }  // namespace

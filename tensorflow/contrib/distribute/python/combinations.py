@@ -352,6 +352,9 @@ default_strategy = NamedDistribution(
 one_device_strategy = NamedDistribution(
     "OneDeviceCPU", lambda: one_device_lib.OneDeviceStrategy("/cpu:0"),
     required_gpus=None)
+one_device_strategy_gpu = NamedDistribution(
+    "OneDeviceGPU", lambda: one_device_lib.OneDeviceStrategy("/gpu:0"),
+    required_gpus=1)
 tpu_strategy = NamedDistribution(
     "TPU", _get_tpu_strategy_creator(steps_per_run=2),
     required_tpu=True)

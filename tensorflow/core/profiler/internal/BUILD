@@ -375,6 +375,7 @@ tf_cuda_library(
     visibility = [
         "//learning/brain/runtime:__pkg__",  # xprof_bridge
         "//perftools/accelerators/xprof/xprofilez:__pkg__",  # alias xprof::TraceMeRecorder
+        "//tensorflow/core/profiler/internal/cpu:__pkg__",  # host_tracer
         "//tensorflow/core/profiler/lib:__pkg__",  # traceme
     ],
     deps = [

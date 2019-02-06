@@ -95,9 +95,12 @@ class _UserDeviceSpec(object):
         lineno = -1
       self.display_name = "%s<%s, %d>" % (func_name, fname, lineno)
 
+    self.raw_string = None
+
     self.function = self._device_name_or_function
     if not (self._device_name_or_function is None or
             callable(self._device_name_or_function)):
+      self.raw_string = self._device_name_or_function
       self.function = pydev.merge_device(self._device_name_or_function)
 
 
@@ -3048,9 +3051,6 @@ class Graph(object):
     # being called inside function definitions behave as if they were seeing the
     # actual outside graph).
     self._graph_key = "grap-key-%d/" % (uid(),)
-    # A string with the last reduction method passed to
-    # losses.compute_weighted_loss(), or None.
-    self._last_loss_reduction = None
     self._container = ""
     self._registered_ops = op_def_registry.get_registered_ops()
     # Set to True if this graph is being built in an
@@ -5547,6 +5547,8 @@ def init_scope():
     try:
       with outer_context(), name_scope(scope), control_dependencies(
           None), tape.stop_recording():
+        context_manager = NullContextmanager
+        context_manager_input = None
         if not context.executing_eagerly():
           # The device stack is preserved when lifting into a graph. Eager
           # execution doesn't implement device stacks and in particular it
@@ -5555,7 +5557,21 @@ def init_scope():
           outer_graph = get_default_graph()
           outer_device_stack = outer_graph._device_function_stack  # pylint: disable=protected-access
           outer_graph._device_function_stack = innermost_nonempty_device_stack  # pylint: disable=protected-access
-        yield
+        elif innermost_nonempty_device_stack is not None:
+          for device_spec in innermost_nonempty_device_stack.peek_objs():
+            if device_spec.function is None:
+              break
+            if device_spec.raw_string:
+              context_manager = context.device
+              context_manager_input = device_spec.raw_string
+              break
+            # It is currently not possible to have a device function in V2,
+            # but in V1 we are unable to apply device functions in eager mode.
+            # This means that we will silently skip some of the entries on the
+            # device stack in V1 + eager mode.
+
+        with context_manager(context_manager_input):
+          yield
     finally:
       # If an exception is raised here it may be hiding a related exception in
       # try-block (just above).

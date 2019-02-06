@@ -230,6 +230,8 @@ def multi_input_output_model():
   return model
 
 
+# TODO(josh11b): Add combinations.one_device_strategy_gpu once it works with
+# TestDistributionStrategyWithCallbacks.test_callbacks_in_predict.
 strategies_minus_tpu = [
     combinations.default_strategy,
     combinations.one_device_strategy,
@@ -244,15 +246,13 @@ tpu_strategies = [
 
 
 def strategy_minus_tpu_combinations():
-  return combinations.combine(
-      distribution=strategies_minus_tpu,
-      mode=['graph', 'eager'])
+  return combinations.combine(distribution=strategies_minus_tpu,
+                              mode=['graph', 'eager'])
 
 
 def tpu_strategy_combinations():
-  return combinations.combine(
-      distribution=tpu_strategies,
-      mode=['graph'])
+  return combinations.combine(distribution=tpu_strategies,
+                              mode=['graph'])
 
 
 def all_strategy_combinations():
@@ -287,9 +287,9 @@ def strategy_and_optimizer_combinations():
 
 
 def strategy_for_numpy_input_combinations():
-  return combinations.combine(
-      distribution=strategies_minus_tpu + tpu_strategies,
-      mode=['graph'])
+  one_gpu = combinations.one_device_strategy_gpu
+  return (all_strategy_combinations() +
+          combinations.combine(distribution=[one_gpu], mode=['graph', 'eager']))
 
 
 class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,

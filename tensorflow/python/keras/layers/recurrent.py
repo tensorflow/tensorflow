@@ -2152,16 +2152,11 @@ class UnifiedGRU(GRU):
             count=3)
 
       inputs *= self._dropout_mask[0]
-    experimental_api_name = 'gru_' + str(uuid.uuid4())
-    defun_standard_gru = _generate_defun_backend(
-        experimental_api_name, _CPU_DEVICE_NAME, standard_gru)
-    defun_cudnn_gru = _generate_defun_backend(
-        experimental_api_name, _GPU_DEVICE_NAME, cudnn_gru)
     if ops.executing_eagerly_outside_functions():
       # Under eager context, the device placement is already known. Prefer the
       # GPU implementation when GPU is available.
       if context.num_gpus() > 0:
-        last_output, outputs, new_h, runtime = defun_cudnn_gru(
+        last_output, outputs, new_h, runtime = cudnn_gru(
             inputs=inputs,
             init_h=initial_state[0],
             kernel=self.cell.kernel,
@@ -2169,7 +2164,7 @@ class UnifiedGRU(GRU):
             bias=self.cell.bias,
             time_major=self.time_major)
       else:
-        last_output, outputs, new_h, runtime = defun_standard_gru(
+        last_output, outputs, new_h, runtime = standard_gru(
             inputs=inputs,
             init_h=initial_state[0],
             kernel=self.cell.kernel,
@@ -2179,6 +2174,11 @@ class UnifiedGRU(GRU):
             recurrent_activation=self.recurrent_activation,
             time_major=self.time_major)
     else:
+      experimental_api_name = 'gru_' + str(uuid.uuid4())
+      defun_standard_gru = _generate_defun_backend(
+          experimental_api_name, _CPU_DEVICE_NAME, standard_gru)
+      defun_cudnn_gru = _generate_defun_backend(
+          experimental_api_name, _GPU_DEVICE_NAME, cudnn_gru)
       # Call the normal GRU impl and register the CuDNN impl function. The
       # grappler will kick in during session execution to optimize the graph.
       last_output, outputs, new_h, runtime = defun_standard_gru(
@@ -3112,29 +3112,29 @@ class UnifiedLSTM(LSTM):
 
         inputs *= self._dropout_mask[0]
 
-      # Each time a defun function is called, we will give a unique identifiable
-      # API name, so that the grappler won't get confused when it sees multiple
-      # LSTM layer added into same graph, and it will be able to pair up the
-      # different implementations across them.
-      experimental_api_name = 'lstm_' + str(uuid.uuid4())
-      defun_standard_lstm = _generate_defun_backend(
-          experimental_api_name, _CPU_DEVICE_NAME, standard_lstm)
-      defun_cudnn_lstm = _generate_defun_backend(
-          experimental_api_name, _GPU_DEVICE_NAME, cudnn_lstm)
-
       if ops.executing_eagerly_outside_functions():
         # Under eager context, the device placement is already known. Prefer the
         # GPU implementation here.
         if context.num_gpus() > 0:
-          last_output, outputs, new_h, new_c, runtime = defun_cudnn_lstm(
+          last_output, outputs, new_h, new_c, runtime = cudnn_lstm(
               inputs, initial_state[0], initial_state[1], self.cell.kernel,
               self.cell.recurrent_kernel, self.cell.bias, self.time_major)
         else:
-          last_output, outputs, new_h, new_c, runtime = defun_standard_lstm(
+          last_output, outputs, new_h, new_c, runtime = standard_lstm(
               inputs, initial_state[0], initial_state[1], self.cell.kernel,
               self.cell.recurrent_kernel, self.cell.bias, self.activation,
               self.recurrent_activation, self.time_major)
       else:
+        # Each time a `tf.function` is called, we will give it a unique
+        # identifiable API name, so that Grappler won't get confused when it
+        # sees multiple LSTM layers added into same graph, and it will be able
+        # to pair up the different implementations across them.
+        experimental_api_name = 'lstm_' + str(uuid.uuid4())
+        defun_standard_lstm = _generate_defun_backend(
+            experimental_api_name, _CPU_DEVICE_NAME, standard_lstm)
+        defun_cudnn_lstm = _generate_defun_backend(
+            experimental_api_name, _GPU_DEVICE_NAME, cudnn_lstm)
+
         # Call the normal LSTM impl and register the CuDNN impl function. The
         # grappler will kick in during session execution to optimize the graph.
         last_output, outputs, new_h, new_c, runtime = defun_standard_lstm(

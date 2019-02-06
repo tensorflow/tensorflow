@@ -702,6 +702,22 @@ inline void Add(const ArithmeticParams& params,
   }
 }
 
+// T is expected to be either float or int.
+template <typename T>
+inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
+                 T* const* input_data, T* output_data) {
+  // All inputs and output should have the same shape, this is checked during
+  // Prepare stage.
+  const size_t size = input_shape.FlatSize();
+  for (int i = 0; i < size; ++i) {
+    T x = 0;
+    for (int j = 0; j < num_inputs; ++j) {
+      x += input_data[j][i];
+    }
+    output_data[i] = x;
+  }
+}
+
 // Element-wise add that can often be used for inner loop of broadcast add as
 // well as the non-broadcast add.
 inline void AddElementwise(int size, const ArithmeticParams& params,

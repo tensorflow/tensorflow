@@ -88,6 +88,12 @@ def NumpyArrayBool(*args, **kwargs):
 class ComputationsWithConstantsTest(LocalComputationTest):
   """Tests focusing on Constant ops."""
 
+  def testConstantScalarSumS8(self):
+    c = self._NewComputation()
+    root = c.Add(c.Constant(np.int8(1)), c.Constant(np.int8(2)))
+    self.assertEqual(c.GetShape(root), c.GetReturnValueShape())
+    self._ExecuteAndCompareExact(c, expected=np.int8(3))
+
   def testConstantScalarSumF32(self):
     c = self._NewComputation()
     root = c.Add(c.ConstantF32Scalar(1.11), c.ConstantF32Scalar(3.14))

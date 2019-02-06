@@ -17,7 +17,6 @@ limitations under the License.
 #include <string>
 #include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -56,7 +55,11 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
       auto* event = trace->add_trace_events();
       auto* args = event->mutable_args();
       event->set_device_id(device_id);
-      event->set_resource_id(0);
+      if (device_stats->device().find("host:CPU") != string::npos) {
+        event->set_resource_id(node.thread_id());
+      } else {
+        event->set_resource_id(0);
+      }
       event->set_name(node.node_name());
       event->set_timestamp_ps(
           (node.all_start_micros() - profile_start_time_micros) *

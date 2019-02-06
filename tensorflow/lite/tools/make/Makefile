@@ -131,6 +131,14 @@ else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/nnapi_delegate.cc
 endif
 
+ifeq ($(TARGET),ios)
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_android.cc
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_default.cc
+else
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_android.cc
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_ios.cc
+endif
+
 
 # Filter out all the excluded files.
 TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))

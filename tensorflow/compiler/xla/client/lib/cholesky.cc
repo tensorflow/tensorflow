@@ -199,6 +199,7 @@ XlaOp Cholesky(XlaOp a, int64 block_size,
                                       /*lower=*/true,
                                       /*transpose_a=*/true,
                                       /*conjugate_a=*/false,
+                                      /*unit_diagonal=*/false,
                                       /*block_size=*/block_size);
         l = UpdateSliceInMinorDims(l, update, {i + k, i});
       }

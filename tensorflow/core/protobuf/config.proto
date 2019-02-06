@@ -429,6 +429,10 @@ message ConfigProto {
     // If true, make collective op execution order sequential and deterministic
     // for potentially concurrent collective instances.
     bool collective_deterministic_sequential_execution = 6;
+
+    // If true, use NCCL for CollectiveOps.  This feature is highly
+    // experimental.
+    bool collective_nccl = 7;
   };
 
   Experimental experimental = 16;
