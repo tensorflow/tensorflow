@@ -225,6 +225,11 @@ public:
   static void build(Builder *builder, OperationState *result, Type type,
                     Attribute value);
 
+  /// Builds a constant op with the specified attribute value and the
+  /// attribute's type.
+  static void build(Builder *builder, OperationState *result,
+                    NumericAttr value);
+
   Attribute getValue() const { return getAttr("value"); }
 
   static StringRef getOperationName() { return "constant"; }

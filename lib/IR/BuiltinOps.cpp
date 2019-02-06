@@ -250,6 +250,12 @@ void ConstantOp::build(Builder *builder, OperationState *result, Type type,
   result->types.push_back(type);
 }
 
+void ConstantOp::build(Builder *builder, OperationState *result,
+                       NumericAttr value) {
+  result->addAttribute("value", value);
+  result->types.push_back(value.getType());
+}
+
 void ConstantOp::print(OpAsmPrinter *p) const {
   *p << "constant ";
   p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"value");
