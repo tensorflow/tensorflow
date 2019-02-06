@@ -540,6 +540,7 @@ tf_kernel_library(
     name = "tensor_dataset_op",
     srcs = ["tensor_dataset_op.cc"],
     deps = [
+        ":dataset_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
