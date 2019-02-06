@@ -578,6 +578,10 @@ static bool parseBound(bool isLower, OperationState *result, OpAsmParser *p) {
     return false;
   }
 
+  // Get the attribute location.
+  llvm::SMLoc attrLoc;
+  p->getCurrentLocation(&attrLoc);
+
   Attribute boundAttr;
   if (p->parseAttribute(boundAttr, builder.getIndexType(), boundAttrName.data(),
                         result->attributes))
@@ -607,13 +611,11 @@ static bool parseBound(bool isLower, OperationState *result, OpAsmParser *p) {
     // prefix.
     if (map.getNumResults() > 1 && failedToParsedMinMax) {
       if (isLower) {
-        return p->emitError(p->getNameLoc(),
-                            "lower loop bound affine map with multiple results "
-                            "requires 'max' prefix");
+        return p->emitError(attrLoc, "lower loop bound affine map with "
+                                     "multiple results requires 'max' prefix");
       }
-      return p->emitError(p->getNameLoc(),
-                          "upper loop bound affine map with multiple results "
-                          "requires 'min' prefix");
+      return p->emitError(attrLoc, "upper loop bound affine map with multiple "
+                                   "results requires 'min' prefix");
     }
     return false;
   }

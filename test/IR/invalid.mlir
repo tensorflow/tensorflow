@@ -819,3 +819,21 @@ func @invalid_affine_structure() {
   %idx = affine_apply (d0, d1) (%c0, %c0) // expected-error {{expected '->' or ':'}}
   return
 }
+
+// -----
+
+func @missing_for_max(%arg0: index, %arg1: index, %arg2: memref<100xf32>) {
+  // expected-error @+1 {{lower loop bound affine map with multiple results requires 'max' prefix}}
+  for %i0 = ()[s]->(0,s-1)()[%arg0] to %arg1 {
+  }
+  return
+}
+
+// -----
+
+func @missing_for_min(%arg0: index, %arg1: index, %arg2: memref<100xf32>) {
+  // expected-error @+1 {{upper loop bound affine map with multiple results requires 'min' prefix}}
+  for %i0 = %arg0 to ()[s]->(100,s+1)()[%arg1] {
+  }
+  return
+}
