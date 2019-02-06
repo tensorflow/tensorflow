@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
 from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import one_device_strategy
@@ -29,8 +31,12 @@ class OneDeviceStrategyTest(
     strategy_test_lib.DistributionTestBase,
     strategy_test_lib.OneDeviceDistributionTestBase):
 
+  # TODO(josh11b): Switch to using the combinations library.
   def _get_distribution_strategy(self):
-    return one_device_strategy.OneDeviceStrategy("/device:CPU:0")
+    if "test_gpu" in sys.argv[0]:
+      return one_device_strategy.OneDeviceStrategy("/device:GPU:0")
+    else:
+      return one_device_strategy.OneDeviceStrategy("/device:CPU:0")
 
   def testMinimizeLossEager(self):
     self._test_minimize_loss_eager(self._get_distribution_strategy())
