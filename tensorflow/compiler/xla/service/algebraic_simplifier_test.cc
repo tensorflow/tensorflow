@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -2749,12 +2750,13 @@ TEST_F(AlgebraicSimplifierTest, SliceOfReshapeUnchanged) {
 
 TEST_F(AlgebraicSimplifierTest, RemoveNoopSort) {
   auto builder = HloComputation::Builder(TestName());
+  auto module = CreateNewVerifiedModule();
 
   Shape keys_shape = ShapeUtil::MakeShape(F32, {1});
   auto keys = builder.AddInstruction(
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
-  builder.AddInstruction(HloInstruction::CreateSort(keys_shape, 0, keys));
-  auto module = CreateNewVerifiedModule();
+  TF_ASSERT_OK(
+      MakeSortHlo(keys_shape, {keys}, 0, &builder, module.get()).status());
   HloComputation* computation = module->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
@@ -2763,6 +2765,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSort) {
 
 TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
   auto builder = HloComputation::Builder(TestName());
+  auto module = CreateNewVerifiedModule();
 
   Shape keys_shape = ShapeUtil::MakeShape(F32, {5, 0});
   Shape values_shape = ShapeUtil::MakeShape(S32, {5, 0});
@@ -2772,10 +2775,10 @@ TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
       HloInstruction::CreateParameter(1, values_shape, "values0"));
   auto values1 = builder.AddInstruction(
       HloInstruction::CreateParameter(2, values_shape, "values1"));
-  builder.AddInstruction(HloInstruction::CreateSort(
-      ShapeUtil::MakeTupleShape({keys_shape, values_shape, values_shape}), 0,
-      keys, {values0, values1}));
-  auto module = CreateNewVerifiedModule();
+  TF_ASSERT_OK(MakeSortHlo(ShapeUtil::MakeTupleShape(
+                               {keys_shape, values_shape, values_shape}),
+                           {keys, values0, values1}, 0, &builder, module.get())
+                   .status());
   HloComputation* computation = module->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
