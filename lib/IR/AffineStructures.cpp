@@ -1129,6 +1129,66 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
   }
 }
 
+// Adds slice lower/upper bounds from 'lbMaps'/'upMaps' to the constraint
+// system. This function assumes that position 'lbMaps.size' == 'ubMaps.size',
+// and that positions [0, lbMaps.size) represent dimensional identifiers which
+// correspond to the loop IVs whose iteration bounds are being sliced.
+// Note that both lower/upper bounds use operands from 'operands'.
+// Returns true on success. Returns false for unimplemented cases such as
+// semi-affine expressions or expressions with mod/floordiv.
+bool FlatAffineConstraints::addSliceBounds(ArrayRef<AffineMap> lbMaps,
+                                           ArrayRef<AffineMap> ubMaps,
+                                           ArrayRef<Value *> operands) {
+  assert(lbMaps.size() == ubMaps.size());
+  // Record positions of the operands in the constraint system.
+  SmallVector<unsigned, 8> positions;
+  for (const auto &operand : operands) {
+    unsigned loc;
+    if (!findId(*operand, &loc))
+      assert(0 && "expected to be found");
+    positions.push_back(loc);
+  }
+
+  auto addLowerOrUpperBound = [&](unsigned pos, AffineMap boundMap,
+                                  bool lower) -> bool {
+    FlatAffineConstraints localVarCst;
+    std::vector<SmallVector<int64_t, 8>> flatExprs;
+    if (!getFlattenedAffineExprs(boundMap, &flatExprs, &localVarCst)) {
+      LLVM_DEBUG(llvm::dbgs() << "semi-affine expressions not yet supported\n");
+      return false;
+    }
+    if (localVarCst.getNumLocalIds() > 0) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "loop bounds with mod/floordiv expr's not yet supported\n");
+      return false;
+    }
+
+    for (const auto &flatExpr : flatExprs) {
+      SmallVector<int64_t, 4> ineq(getNumCols(), 0);
+      ineq[pos] = lower ? 1 : -1;
+      for (unsigned j = 0, e = boundMap.getNumInputs(); j < e; j++) {
+        ineq[positions[j]] = lower ? -flatExpr[j] : flatExpr[j];
+      }
+      // Constant term.
+      ineq[getNumCols() - 1] =
+          lower ? -flatExpr[flatExpr.size() - 1]
+                // Upper bound in flattenedExpr is an exclusive one.
+                : flatExpr[flatExpr.size() - 1] - 1;
+      addInequality(ineq);
+    }
+    return true;
+  };
+
+  for (unsigned i = 0, e = lbMaps.size(); i < e; ++i) {
+    if (!addLowerOrUpperBound(i, lbMaps[i], /*lower=*/true))
+      return false;
+    if (!addLowerOrUpperBound(i, ubMaps[i], /*lower=*/false))
+      return false;
+  }
+
+  return true;
+}
+
 void FlatAffineConstraints::addEquality(ArrayRef<int64_t> eq) {
   assert(eq.size() == getNumCols());
   unsigned offset = equalities.size();

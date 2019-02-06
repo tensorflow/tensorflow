@@ -378,6 +378,17 @@ public:
                       SmallVectorImpl<AffineMap> *lbMaps,
                       SmallVectorImpl<AffineMap> *ubMaps);
 
+  /// Adds slice lower bounds represented by lower bounds in 'lbMaps' and upper
+  /// bounds in 'ubMaps' to the constraint system. Note that both lower/upper
+  /// bounds share the same operand list 'operands'.
+  /// This function assumes that position 'lbMaps.size' == 'ubMaps.size',
+  /// and that positions [0, lbMaps.size) represent dimensional identifiers
+  /// which correspond to the loop IVs whose iteration bounds are being sliced.
+  /// Note that both lower/upper bounds use operands from 'operands'.
+  /// Returns true on success, returns false for unimplemented cases.
+  bool addSliceBounds(ArrayRef<AffineMap> lbMaps, ArrayRef<AffineMap> ubMaps,
+                      ArrayRef<Value *> operands);
+
   // Adds an inequality (>= 0) from the coefficients specified in inEq.
   void addInequality(ArrayRef<int64_t> inEq);
   // Adds an equality from the coefficients specified in eq.

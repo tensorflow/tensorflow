@@ -61,6 +61,45 @@ void getLoopIVs(const Instruction &inst,
 /// surrounding this instruction.
 unsigned getNestingDepth(const Instruction &stmt);
 
+/// ComputationSliceState aggregates loop bound AffineMaps and their associated
+/// operands for a set of loops within a loop nest (typically the set of loops
+/// surrounding a store operation). Loop bound AffineMaps which are non-null
+/// represent slices of that loop's iteration space.
+struct ComputationSliceState {
+  // List of lower bound AffineMaps.
+  SmallVector<AffineMap, 4> lbs;
+  // List of upper bound AffineMaps.
+  SmallVector<AffineMap, 4> ubs;
+  // List of lower bound operands (lbOperands[i] are used by 'lbs[i]').
+  std::vector<SmallVector<Value *, 4>> lbOperands;
+  // List of upper bound operands (ubOperands[i] are used by 'ubs[i]').
+  std::vector<SmallVector<Value *, 4>> ubOperands;
+};
+
+/// Computes computation slice loop bounds for the loop nest surrounding
+/// 'srcAccess', where the returned loop bound AffineMaps are functions of
+/// loop IVs from the loop nest surrounding 'dstAccess'.
+/// Returns true on success, false otherwise.
+bool getBackwardComputationSliceState(const MemRefAccess &srcAccess,
+                                      const MemRefAccess &dstAccess,
+                                      unsigned dstLoopDepth,
+                                      ComputationSliceState *sliceState);
+
+/// Creates a clone of the computation contained in the loop nest surrounding
+/// 'srcOpInst', slices the iteration space of src loop based on slice bounds
+/// in 'sliceState', and inserts the computation slice at the beginning of the
+/// instruction block of the loop at 'dstLoopDepth' in the loop nest surrounding
+/// 'dstOpInst'. Returns the top-level loop of the computation slice on
+/// success, returns nullptr otherwise.
+// Loop depth is a crucial optimization choice that determines where to
+// materialize the results of the backward slice - presenting a trade-off b/w
+// storage and redundant computation in several cases.
+// TODO(andydavis) Support computation slices with common surrounding loops.
+OpPointer<AffineForOp>
+insertBackwardComputationSlice(Instruction *srcOpInst, Instruction *dstOpInst,
+                               unsigned dstLoopDepth,
+                               ComputationSliceState *sliceState);
+
 /// A region of a memref's data space; this is typically constructed by
 /// analyzing load/store op's on this memref and the index space of loops
 /// surrounding such op's.
@@ -86,7 +125,17 @@ struct MemRefRegion {
   /// symbolic identifiers which could include any of the loop IVs surrounding
   /// opInst up until 'loopDepth' and another additional Function symbols
   /// involved with the access (for eg., those appear in affine_apply's, loop
-  /// bounds, etc.).
+  /// bounds, etc.). If 'sliceState' is non-null, operands from 'sliceState'
+  /// are added as symbols, and the following constraints are added to the
+  /// system:
+  /// *) Inequality constraints which represent loop bounds for 'sliceState'
+  ///    operands which are loop IVS (these represent the destination loop IVs
+  ///    of the slice, and are added as symbols to MemRefRegion's constraint
+  ///    system).
+  /// *) Inequality constraints for the slice bounds in 'sliceState', which
+  ///    represent the bounds on the loop IVs in this constraint system w.r.t
+  ///    to slice operands (which correspond to symbols).
+  ///
   ///  For example, the memref region for this operation at loopDepth = 1 will
   ///  be:
   ///
@@ -99,7 +148,8 @@ struct MemRefRegion {
   ///   {memref = %A, write = false, {%i <= m0 <= %i + 7} }
   /// The last field is a 2-d FlatAffineConstraints symbolic in %i.
   ///
-  bool compute(Instruction *inst, unsigned loopDepth);
+  bool compute(Instruction *inst, unsigned loopDepth,
+               ComputationSliceState *sliceState = nullptr);
 
   FlatAffineConstraints *getConstraints() { return &cst; }
   const FlatAffineConstraints *getConstraints() const { return &cst; }
@@ -127,6 +177,9 @@ struct MemRefRegion {
     assert(pos < getRank() && "invalid position");
     return cst.getConstantBoundOnDimSize(pos, lb);
   }
+
+  /// Returns the size of this MemRefRegion in bytes.
+  Optional<int64_t> getRegionSize();
 
   bool unionBoundingBox(const MemRefRegion &other);
 
@@ -169,52 +222,12 @@ bool boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
 unsigned getNumCommonSurroundingLoops(const Instruction &A,
                                       const Instruction &B);
 
-/// ComputationSliceState aggregates loop bound AffineMaps and their associated
-/// operands for a set of loops within a loop nest (typically the set of loops
-/// surrounding a store operation). Loop bound AffineMaps which are non-null
-/// represent slices of that loop's iteration space.
-struct ComputationSliceState {
-  // List of lower bound AffineMaps.
-  SmallVector<AffineMap, 4> lbs;
-  // List of upper bound AffineMaps.
-  SmallVector<AffineMap, 4> ubs;
-  // List of lower bound operands (lbOperands[i] are used by 'lbs[i]').
-  std::vector<SmallVector<Value *, 4>> lbOperands;
-  // List of upper bound operands (ubOperands[i] are used by 'ubs[i]').
-  std::vector<SmallVector<Value *, 4>> ubOperands;
-};
-
-/// Computes computation slice loop bounds for the loop nest surrounding
-/// 'srcAccess', where the returned loop bound AffineMaps are functions of
-/// loop IVs from the loop nest surrounding 'dstAccess'.
-/// Returns true on success, false otherwise.
-bool getBackwardComputationSliceState(const MemRefAccess &srcAccess,
-                                      const MemRefAccess &dstAccess,
-                                      unsigned dstLoopDepth,
-                                      ComputationSliceState *sliceState);
-
-/// Creates a clone of the computation contained in the loop nest surrounding
-/// 'srcOpInst', slices the iteration space of src loop based on slice bounds
-/// in 'sliceState', and inserts the computation slice at the beginning of the
-/// instruction block of the loop at 'dstLoopDepth' in the loop nest surrounding
-/// 'dstOpInst'. Returns the top-level loop of the computation slice on
-/// success, returns nullptr otherwise.
-// Loop depth is a crucial optimization choice that determines where to
-// materialize the results of the backward slice - presenting a trade-off b/w
-// storage and redundant computation in several cases.
-// TODO(andydavis) Support computation slices with common surrounding loops.
-OpPointer<AffineForOp>
-insertBackwardComputationSlice(Instruction *srcOpInst, Instruction *dstOpInst,
-                               unsigned dstLoopDepth,
-                               ComputationSliceState *sliceState);
-
 /// Gets the memory footprint of all data touched in the specified memory space
 /// in bytes; if the memory space is unspecified, considers all memory spaces.
 Optional<int64_t> getMemoryFootprintBytes(ConstOpPointer<AffineForOp> forOp,
                                           int memorySpace = -1);
 Optional<int64_t> getMemoryFootprintBytes(const Block &block,
                                           int memorySpace = -1);
-
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_UTILS_H

@@ -1118,12 +1118,23 @@ static bool isFusionProfitable(Instruction *srcOpInst,
                      /*tripCountOverrideMap=*/nullptr,
                      /*computeCostMap=*/nullptr);
 
+  // Compute src loop nest write region size.
+  MemRefRegion srcWriteRegion(srcOpInst->getLoc());
+  srcWriteRegion.compute(srcOpInst, /*loopDepth=*/0);
+  Optional<int64_t> maybeSrcWriteRegionSizeBytes =
+      srcWriteRegion.getRegionSize();
+  if (!maybeSrcWriteRegionSizeBytes.hasValue())
+    return false;
+  int64_t srcWriteRegionSizeBytes = maybeSrcWriteRegionSizeBytes.getValue();
+
   // Compute op instance count for the src loop nest.
   uint64_t dstLoopNestCost =
       getComputeCost(dstLoopIVs[0]->getInstruction(), &dstLoopNestStats,
                      /*tripCountOverrideMap=*/nullptr,
                      /*computeCostMap=*/nullptr);
 
+  // Evaluate all depth choices for materializing the slice in the destination
+  // loop nest.
   llvm::SmallDenseMap<Instruction *, uint64_t, 8> sliceTripCountMap;
   DenseMap<Instruction *, int64_t> computeCostMap;
   for (unsigned i = maxDstLoopDepth; i >= 1; --i) {
@@ -1187,11 +1198,21 @@ static bool isFusionProfitable(Instruction *srcOpInst,
             (static_cast<double>(srcLoopNestCost) + dstLoopNestCost) -
         1;
 
-    // TODO(bondhugula): This is an ugly approximation. Fix this by finding a
-    // good way to calculate the footprint of the memref in the slice and
-    // divide it by the total memory footprint of the fused computation.
-    double storageReduction =
-        static_cast<double>(srcLoopNestCost) / sliceIterationCount;
+    // Compute what the slice write MemRefRegion would be, if the src loop
+    // nest slice 'sliceStates[i - 1]' were to be inserted into the dst loop
+    // nest at loop depth 'i'
+    MemRefRegion sliceWriteRegion(srcOpInst->getLoc());
+    sliceWriteRegion.compute(srcOpInst, /*loopDepth=*/0, &sliceStates[i - 1]);
+    Optional<int64_t> maybeSliceWriteRegionSizeBytes =
+        sliceWriteRegion.getRegionSize();
+    if (!maybeSliceWriteRegionSizeBytes.hasValue() ||
+        maybeSliceWriteRegionSizeBytes.getValue() == 0)
+      continue;
+    int64_t sliceWriteRegionSizeBytes =
+        maybeSliceWriteRegionSizeBytes.getValue();
+
+    double storageReduction = static_cast<double>(srcWriteRegionSizeBytes) /
+                              static_cast<double>(sliceWriteRegionSizeBytes);
 
     LLVM_DEBUG({
       std::stringstream msg;
@@ -1219,12 +1240,7 @@ static bool isFusionProfitable(Instruction *srcOpInst,
       maxStorageReduction = storageReduction;
       bestDstLoopDepth = i;
       minFusedLoopNestComputeCost = fusedLoopNestComputeCost;
-      // TODO(bondhugula,andydavis): find a good way to compute the memory
-      // footprint of the materialized slice.
-      // Approximating this to the compute cost of the slice. This could be an
-      // under-approximation or an overapproximation, but in many cases
-      // accurate.
-      sliceMemEstimate = sliceIterationCount;
+      sliceMemEstimate = sliceWriteRegionSizeBytes;
     }
   }
 
