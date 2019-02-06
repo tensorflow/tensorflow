@@ -838,6 +838,7 @@ cc_library(
     deps = [
         ":batch_space_ops",
         ":bcast_ops",
+        ":bitcast_op",
         ":broadcast_to_op",
         ":concat_op",
         ":constant_op",
@@ -884,6 +885,12 @@ cc_library(
 tf_kernel_library(
     name = "bcast_ops",
     prefix = "bcast_ops",
+    deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "bitcast_op",
+    prefix = "bitcast_op",
     deps = ARRAY_DEPS,
 )
 
