@@ -79,6 +79,16 @@ public final class TensorTest {
   }
 
   @Test
+  public void testCopyToNull() {
+    try {
+      tensor.copyTo(null);
+      fail();
+    } catch (IllegalArgumentException e) {
+      // Success.
+    }
+  }
+
+  @Test
   public void testCopyToByteBuffer() {
     ByteBuffer parsedOutput =
         ByteBuffer.allocateDirect(2 * 8 * 8 * 3 * 4).order(ByteOrder.nativeOrder());
@@ -148,6 +158,16 @@ public final class TensorTest {
     tensor.setTo(inputByteBuffer);
     tensor.copyTo(output);
     assertThat(output[0][0][0][0]).isEqualTo(3.0f);
+  }
+
+  @Test
+  public void testSetToNull() {
+    try {
+      tensor.setTo(null);
+      fail();
+    } catch (IllegalArgumentException e) {
+      // Success.
+    }
   }
 
   @Test

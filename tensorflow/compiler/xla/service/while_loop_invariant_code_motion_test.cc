@@ -299,7 +299,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistBitcastAlone) {
   // bitcast either.
   auto m = CreateNewVerifiedModule();
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
-  auto scalar_f32 = ShapeUtil::MakeShape(F32, {});
+  auto effective_scalar_s32 = ShapeUtil::MakeShape(S32, {1});
   auto token_shape = ShapeUtil::MakeTokenShape();
   Shape while_shape =
       ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, token_shape});
@@ -314,10 +314,12 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistBitcastAlone) {
         HloInstruction::CreateGetTupleElement(scalar_s32, param, 1));
     HloInstruction* in_token = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(token_shape, param, 2));
-    HloInstruction* bitcast_inst = builder.AddInstruction(
-        HloInstruction::CreateUnary(scalar_f32, HloOpcode::kBitcast, gte_0));
-    HloInstruction* out_token = builder.AddInstruction(
-        HloInstruction::CreateOutfeed(scalar_f32, bitcast_inst, in_token, ""));
+    HloInstruction* bitcast_inst =
+        builder.AddInstruction(HloInstruction::CreateUnary(
+            effective_scalar_s32, HloOpcode::kBitcast, gte_0));
+    HloInstruction* out_token =
+        builder.AddInstruction(HloInstruction::CreateOutfeed(
+            effective_scalar_s32, bitcast_inst, in_token, ""));
     builder.AddInstruction(
         HloInstruction::CreateTuple({gte_0, gte_1, out_token}));
 
@@ -352,9 +354,9 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistBitcastIfNeeded) {
   // The bitcast's user can be hoisted, so hoist the bitcast too.
   auto m = CreateNewVerifiedModule();
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
-  auto scalar_f32 = ShapeUtil::MakeShape(F32, {});
-  Shape while_shape =
-      ShapeUtil::MakeTupleShape({scalar_s32, scalar_f32, scalar_f32});
+  auto effective_scalar_s32 = ShapeUtil::MakeShape(S32, {1});
+  Shape while_shape = ShapeUtil::MakeTupleShape(
+      {scalar_s32, effective_scalar_s32, effective_scalar_s32});
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".while_body");
@@ -363,12 +365,13 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistBitcastIfNeeded) {
     HloInstruction* gte_0 = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(scalar_s32, param, 0));
     HloInstruction* gte_1 = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(scalar_f32, param, 1));
-    HloInstruction* bitcast_inst = builder.AddInstruction(
-        HloInstruction::CreateUnary(scalar_f32, HloOpcode::kBitcast, gte_0));
+        HloInstruction::CreateGetTupleElement(effective_scalar_s32, param, 1));
+    HloInstruction* bitcast_inst =
+        builder.AddInstruction(HloInstruction::CreateUnary(
+            effective_scalar_s32, HloOpcode::kBitcast, gte_0));
     HloInstruction* add_inst =
         builder.AddInstruction(HloInstruction::CreateBinary(
-            scalar_f32, HloOpcode::kAdd, bitcast_inst, gte_1));
+            effective_scalar_s32, HloOpcode::kAdd, bitcast_inst, gte_1));
     builder.AddInstruction(
         HloInstruction::CreateTuple({gte_0, gte_1, add_inst}));
 

@@ -25,7 +25,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.layers.convolutional import Conv2D
 from tensorflow.python.platform import test
-from tensorflow.python.training import rmsprop
 
 
 class TrainingGPUTest(test.TestCase):
@@ -65,7 +64,7 @@ class TrainingGPUTest(test.TestCase):
                            bias_initializer='ones')(input_tensor)
       simple_model = keras.models.Model(inputs=input_tensor,
                                         outputs=predictions)
-      simple_model.compile(optimizer=rmsprop.RMSPropOptimizer(1e-3), loss=loss)
+      simple_model.compile(optimizer='rmsprop', loss=loss)
       return simple_model
 
     if test.is_gpu_available(cuda_only=True):

@@ -35,8 +35,10 @@ const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
 // Constant folding optimization for a graph.
 class ConstantFolding : public GraphOptimizer {
  public:
+  // The size limit will only be considered if the newly created node is greater
+  // than original_size (optional).
   static Status CreateNodeDef(const string& name, const TensorValue& tensor,
-                              NodeDef* node);
+                              NodeDef* node, size_t original_size = 0);
   static string AddControlDependency(const string& input_name, GraphDef* graph,
                                      NodeMap* node_map);
 
@@ -65,8 +67,10 @@ class ConstantFolding : public GraphOptimizer {
                                           const GraphProperties& properties);
   Status MaterializeReductionIndices(NodeDef* node,
                                      const GraphProperties& properties);
-
+  Status MaterializeConstantValuedNode(NodeDef* node,
+                                       const GraphProperties& properties);
   Status MaterializeConstants(const GraphProperties& properties);
+
   bool IsFoldable(const NodeDef& node) const;
 
   Status EvaluateNode(const NodeDef& node,
@@ -76,6 +80,7 @@ class ConstantFolding : public GraphOptimizer {
   Status EvaluateOneFoldable(const NodeDef& node, std::vector<NodeDef>* outputs,
                              bool* result_too_large);
 
+  Status FoldMergeNode(NodeDef* node, GraphDef* output_graph);
   Status FoldNode(NodeDef* node, GraphDef* output_graph,
                   bool* result_too_large);
 
@@ -124,11 +129,12 @@ class ConstantFolding : public GraphOptimizer {
 
   // Pushes down constants on '+' and '*' operators if applicable. Returns true
   // the transformation applied successfully.
-  bool ConstantPushDown(NodeDef* node);
+  bool ConstantPushDown(GraphDef* optimized_graph, NodeDef* node);
 
   // Aggregate constants present around a conv operator. Returns true if the
   // transformation was applied successfully.
-  bool MulConvPushDown(NodeDef* node, const GraphProperties& properties);
+  bool MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
+                       const GraphProperties& properties);
 
   // Strength reduces floating point division by a constant Div(x, const) to
   // multiplication by the reciprocal Mul(x, Reciprocal(const)).

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,8 +29,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/strings/string_view_utils.h"
-#include "absl/strings/util.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -56,7 +55,8 @@ bool ReadLine(const char *prompt, string *line) {
   return util::ReadLine(prompt, line);
 #else
   std::cout << prompt;
-  return std::getline(std::cin, *line);
+  std::getline(std::cin, *line);
+  return std::cin.good();
 #endif
 }
 
@@ -391,9 +391,9 @@ void DisplayGraphHandle(const Options &opts, const string& handle) {
   std::cout << handle << std::endl;
 
   // If it is a url, try to open it up in the user's browser too.
-  if (strings::StartsWithIgnoreCase(handle, "http://") ||
-      strings::StartsWithIgnoreCase(handle, "https://") ||
-      strings::StartsWithIgnoreCase(handle, "file://")) {
+  if (absl::StartsWithIgnoreCase(handle, "http://") ||
+      absl::StartsWithIgnoreCase(handle, "https://") ||
+      absl::StartsWithIgnoreCase(handle, "file://")) {
     const char* browser_bin = opts.browser.empty() ? "/usr/bin/sensible-browser"
                                                    : opts.browser.c_str();
     tensorflow::SubProcess p;
@@ -515,7 +515,7 @@ void InteractiveDumpGraphs(const Options& opts, const HloModule& module) {
                 << std::endl;
       continue;
     }
-    std::vector<string> tokens = strings::Split(line, ' ');
+    std::vector<string> tokens = absl::StrSplit(line, ' ');
     if (tokens[0] == "quit" || tokens[0] == "exit") {
       break;
     } else if (tokens[0] == "help") {

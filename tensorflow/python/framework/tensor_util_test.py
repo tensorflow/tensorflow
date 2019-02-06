@@ -336,23 +336,16 @@ class TensorUtilTest(test.TestCase):
       self.assertAllClose(np.array([10, 20, 30], dtype=nptype), a)
 
   def testIntTypesWithImplicitRepeat(self):
-    for dtype, nptype in [(dtypes.int64, np.int64),
-                          (dtypes.int32, np.int32),
-                          (dtypes.uint8, np.uint8),
-                          (dtypes.uint16, np.uint16),
-                          (dtypes.int16, np.int16),
-                          (dtypes.int8, np.int8)]:
+    for dtype, nptype in [(dtypes.int64, np.int64), (dtypes.int32, np.int32),
+                          (dtypes.uint8, np.uint8), (dtypes.uint16, np.uint16),
+                          (dtypes.int16, np.int16), (dtypes.int8, np.int8)]:
       self.assertAllEqual(
-          np.array(
-              [[10, 10, 10, 10],
-               [10, 10, 10, 10],
-               [10, 10, 10, 10]],
-              dtype=nptype),
+          np.array([[10, 11, 12, 12], [12, 12, 12, 12], [12, 12, 12, 12]],
+                   dtype=nptype),
           tensor_util.MakeNdarray(
-              tensor_util.make_tensor_proto(
-                  [10],
-                  shape=[3, 4],
-                  dtype=dtype)))
+              tensor_util.make_tensor_proto([10, 11, 12],
+                                            shape=[3, 4],
+                                            dtype=dtype)))
 
   def testIntMixedWithDimension(self):
     # Github issue: 11974
@@ -500,9 +493,12 @@ class TensorUtilTest(test.TestCase):
     self.assertEquals([b"foo"], a)
 
   def testStringWithImplicitRepeat(self):
-    t = tensor_util.make_tensor_proto("f", shape=[3, 4])
+    t = tensor_util.make_tensor_proto(["f", "g"], shape=[3, 4])
     a = tensor_util.MakeNdarray(t)
-    self.assertAllEqual(np.array([[b"f"] * 4] * 3, dtype=np.object), a)
+    self.assertAllEqual(
+        np.array([[b"f", b"g", b"g", b"g"], [b"g", b"g", b"g", b"g"],
+                  [b"g", b"g", b"g", b"g"]],
+                 dtype=np.object), a)
 
   def testStringN(self):
     t = tensor_util.make_tensor_proto([b"foo", b"bar", b"baz"], shape=[1, 3])
@@ -775,6 +771,16 @@ class TensorUtilTest(test.TestCase):
       a = self.evaluate(t)
       self.assertEquals(np.int64, a.dtype)
       self.assertAllClose(np.array([10, 20, 30], dtype=np.int64), a)
+
+
+class IsTensorTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConstantTensor(self):
+    np_val = np.random.rand(3).astype(np.int32)
+    tf_val = constant_op.constant(np_val)
+    self.assertFalse(tensor_util.is_tensor(np_val))
+    self.assertTrue(tensor_util.is_tensor(tf_val))
 
 
 class ConstantValueTest(test.TestCase):

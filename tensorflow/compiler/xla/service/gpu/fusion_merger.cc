@@ -35,7 +35,7 @@ namespace {
 // Traverses users of tuple shape, adding leaf instructions to 'instructions'.
 void MaybeResolveTupleElements(HloInstruction* instruction,
                                std::vector<HloInstruction*>* instructions) {
-  if (ShapeUtil::IsTuple(instruction->shape())) {
+  if (instruction->shape().IsTuple()) {
     for (auto tuple_user : instruction->users()) {
       MaybeResolveTupleElements(tuple_user, instructions);
     }

@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/platform/env.h"
 #ifndef __ANDROID__
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
@@ -66,6 +68,12 @@ enum ContextDevicePlacementPolicy {
   DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
 };
 
+class RunMetadataListener {
+ public:
+  virtual ~RunMetadataListener() {}
+  virtual void BeforeClearRunMetadata() = 0;
+};
+
 class EagerContext {
  public:
   // TODO: remove this constructor once we migrate all callers to the next one.
@@ -85,6 +93,8 @@ class EagerContext {
   FunctionLibraryRuntime* func_lib(Device* d) const {
     return pflr_->GetFLR(d->name());
   }
+
+  ProcessFunctionLibraryRuntime* pflr() const { return pflr_.get(); }
 
   // True if running in asynchronous mode.
   bool Async() const;
@@ -131,7 +141,7 @@ class EagerContext {
 
   Status FindDeviceByName(const string& name, Device** result);
 
-  Device* HostCPU() { return devices_[0]; }
+  Device* HostCPU() const { return devices_[0]; }
 
   GraphCollector* GetGraphCollector() { return &graph_collector_; }
 
@@ -145,10 +155,10 @@ class EagerContext {
 
   void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);
 
-  bool LogDevicePlacement() { return log_device_placement_; }
-  bool LogMemory() { return log_memory_; }
+  bool LogDevicePlacement() const { return log_device_placement_; }
+  bool LogMemory() const { return log_memory_; }
 
-  Rendezvous* GetRendezvous() { return rendezvous_; }
+  Rendezvous* GetRendezvous() const { return rendezvous_; }
   CollectiveExecutorMgrInterface* collective_executor_mgr() {
     return (collective_executor_mgr_ != nullptr)
                ? collective_executor_mgr_.get()
@@ -164,7 +174,7 @@ class EagerContext {
     return (local_device_manager_ != nullptr) ? local_device_manager_.get()
                                               : local_unowned_device_manager_;
   }
-  const tensorflow::DeviceMgr* remote_device_mgr() {
+  const tensorflow::DeviceMgr* remote_device_mgr() const {
     return remote_device_manager_.get();
   }
 
@@ -172,10 +182,15 @@ class EagerContext {
   void ReleaseDeviceMgr() { local_device_manager_.release(); }
 
   // TODO(apassos) clean up RunMetadata storage.
-  mutex* MetadataMu() { return &metadata_mu_; }
-  bool ShouldStoreMetadata() { return should_store_metadata_.load(); }
+  mutex* MetadataMu() LOCK_RETURNED(metadata_mu_) { return &metadata_mu_; }
+  bool ShouldStoreMetadata() LOCKS_EXCLUDED(metadata_mu_);
   void SetShouldStoreMetadata(bool value);
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
+  void ClearRunMetadata() EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
+
+  Status RegisterRunMetadataListener(RunMetadataListener* listener)
+      LOCKS_EXCLUDED(metadata_mu_);
+  void ClearRunMetadataListener() LOCKS_EXCLUDED(metadata_mu_);
 
   void StartStep();
   void EndStep();
@@ -224,6 +239,9 @@ class EagerContext {
 
   tensorflow::Env* TFEnv() const { return env_; }
 
+  // All child threads will be reset() when destructing EagerContext.
+  void AddChildThread(std::unique_ptr<Thread> thread);
+
  private:
   void InitDeviceMapAndAsync();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
@@ -269,6 +287,7 @@ class EagerContext {
   std::atomic<bool> should_store_metadata_{false};
   mutex metadata_mu_;
   RunMetadata run_metadata_ GUARDED_BY(metadata_mu_);
+  RunMetadataListener* metadata_listener_ GUARDED_BY(metadata_mu_) = nullptr;
   GraphCollector graph_collector_;
   const bool log_device_placement_;
   // EagerExecutor for async execution.
@@ -319,6 +338,7 @@ class EagerContext {
 
   bool use_send_tensor_rpc_;
   const bool pin_small_ops_to_cpu_;
+  std::vector<std::unique_ptr<tensorflow::Thread>> child_threads_;
 };
 
 }  // namespace tensorflow

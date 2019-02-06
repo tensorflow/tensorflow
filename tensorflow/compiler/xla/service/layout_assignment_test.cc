@@ -528,8 +528,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
     for (int64 operand_no = 0; operand_no < instruction->operand_count();
          ++operand_no) {
       const HloInstruction* operand = instruction->operand(operand_no);
-      if (ShapeUtil::Rank(instruction->shape()) !=
-          ShapeUtil::Rank(operand->shape())) {
+      if (instruction->shape().rank() != operand->shape().rank()) {
         continue;
       }
       TF_RETURN_IF_ERROR(constraints->SetArrayOperandLayout(
@@ -961,8 +960,9 @@ TEST_F(LayoutAssignmentTest, CopyDSliceOperandToAvoidImplicitLayoutChange) {
     ENTRY CopyDSliceOperandToAvoidImplicitLayoutChange {
       par0 = f32[3,4]{1,0} parameter(0)
       par1 = f32[4,5]{0,1} parameter(1)
-      par2 = s32[2] parameter(2)
-      dslice0 = f32[3,4] dynamic-slice(par1, par2), dynamic_slice_sizes={3,4}
+      par2 = s32[] parameter(2)
+      par3 = s32[] parameter(3)
+      dslice0 = f32[3,4] dynamic-slice(par1, par2, par3), dynamic_slice_sizes={3,4}
       ROOT add0 = f32[3,4]{1,0} add(par0,dslice0)
     }
   )";
@@ -983,7 +983,7 @@ TEST_F(LayoutAssignmentTest, CopyDSliceOperandToAvoidImplicitLayoutChange) {
                   m::Parameter(),
                   m::DynamicSlice(
                       m::Copy(m::Parameter(1)).WithShapeEqualTo(&shape_copy),
-                      m::Parameter(2)))));
+                      m::Parameter(2), m::Parameter(3)))));
 }
 
 TEST_F(LayoutAssignmentTest, CopyConcatOperandToAvoidImplicitLayoutChange) {

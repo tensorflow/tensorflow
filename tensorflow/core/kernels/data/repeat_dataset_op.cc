@@ -51,14 +51,14 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       if (count_ < 0) {
-        return std::unique_ptr<IteratorBase>(new ForeverIterator(
-            {this, strings::StrCat(prefix, "::ForeverRepeat")}));
+        return absl::make_unique<ForeverIterator>(ForeverIterator::Params{
+            this, strings::StrCat(prefix, "::ForeverRepeat")});
       } else if (count_ == 0) {
-        return std::unique_ptr<IteratorBase>(new EmptyIterator(
-            {this, strings::StrCat(prefix, "::EmptyRepeat")}));
+        return absl::make_unique<EmptyIterator>(EmptyIterator::Params{
+            this, strings::StrCat(prefix, "::EmptyRepeat")});
       } else {
-        return std::unique_ptr<IteratorBase>(new FiniteIterator(
-            {this, strings::StrCat(prefix, "::FiniteRepeat")}));
+        return absl::make_unique<FiniteIterator>(FiniteIterator::Params{
+            this, strings::StrCat(prefix, "::FiniteRepeat")});
       }
     }
 

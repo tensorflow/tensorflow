@@ -22,6 +22,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
@@ -38,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/grappler/utils/traversal.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -3235,13 +3239,17 @@ class UniqueNodes {
   }
 
  private:
-  uint64 ComputeSignature(const NodeDef& node) const;
+  uint64 ComputeSignature(const NodeDef& node);
   bool SameNode(const NodeDef& node1, const NodeDef& node2) const;
 
-  std::unordered_map<uint64, std::vector<NodeDef*>> rep_;
+  absl::flat_hash_map<uint64, std::vector<NodeDef*>> rep_;
+  absl::flat_hash_map<const NodeDef*, uint64> memoized_signatures_;
 };
 
-uint64 UniqueNodes::ComputeSignature(const NodeDef& node) const {
+uint64 UniqueNodes::ComputeSignature(const NodeDef& node) {
+  auto it = memoized_signatures_.find(&node);
+  if (it != memoized_signatures_.end()) return it->second;
+
   uint64 h = Hash64(node.op());
   h = Hash64Combine(Hash64(node.device()), h);
 
@@ -3255,6 +3263,7 @@ uint64 UniqueNodes::ComputeSignature(const NodeDef& node) const {
     h = Hash64CombineUnordered(Hash64(attr.first), h);
     h = Hash64CombineUnordered(FastAttrValueHash(attr.second), h);
   }
+  memoized_signatures_.emplace(&node, h);
   return h;
 }
 
@@ -3275,31 +3284,29 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
   // Compare inputs.
   if (IsCommutative(node1)) {
     std::vector<string> inputs1(node1.input().begin(), node1.input().end());
-    std::vector<string> inputs2(node2.input().begin(), node2.input().end());
     std::sort(inputs1.begin(), inputs1.end());
+    std::vector<string> inputs2(node2.input().begin(), node2.input().end());
     std::sort(inputs2.begin(), inputs2.end());
     return inputs1 == inputs2;
   } else {
-    std::vector<string> regular_inputs1;
-    std::vector<string> regular_inputs2;
-    std::vector<string> ctrl_inputs1;
-    std::vector<string> ctrl_inputs2;
-    for (int index = 0; index < node1.input_size(); ++index) {
+    // The order or ordinary inputs matters.
+    int index = 0;
+    for (; index < node1.input_size(); ++index) {
       if (IsControlInput(node1.input(index))) {
-        ctrl_inputs1.push_back(node1.input(index));
-        ctrl_inputs2.push_back(node2.input(index));
-      } else {
-        regular_inputs1.push_back(node1.input(index));
-        regular_inputs2.push_back(node2.input(index));
+        break;
+      } else if (node1.input(index) != node2.input(index)) {
+        return false;
       }
     }
-    if (regular_inputs1 != regular_inputs2) {
-      return false;
-    }
-    std::sort(ctrl_inputs1.begin(), ctrl_inputs1.end());
-    std::sort(ctrl_inputs2.begin(), ctrl_inputs2.end());
-    if (ctrl_inputs1 != ctrl_inputs2) {
-      return false;
+    // The order of control inputs does not matter.
+    if (index < node1.input_size()) {
+      std::vector<string> ctrl_inputs1(node1.input().begin() + index,
+                                       node1.input().end());
+      std::sort(ctrl_inputs1.begin(), ctrl_inputs1.end());
+      std::vector<string> ctrl_inputs2(node2.input().begin() + index,
+                                       node2.input().end());
+      std::sort(ctrl_inputs2.begin(), ctrl_inputs2.end());
+      return ctrl_inputs1 != ctrl_inputs2;
     }
   }
 
@@ -3326,47 +3333,48 @@ bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
   if (node.device().find("SPU") != string::npos) {
     return false;
   }
-  // Workaround for Assert mistakenly being labeled as stateful.
-  if (IsAssert(node)) {
+  // Workaround for Assert and Print mistakenly being labeled as stateful.
+  if (IsAssert(node) || IsPrint(node)) {
     return true;
   }
   return IsFreeOfSideEffect(node);
 }
 
 void ArithmeticOptimizer::DedupComputations() {
-  bool stop = true;
-  SimpleGraphView graph_view;
-  if (!graph_view.Initialize(*optimized_graph_).ok()) {
-    LOG(WARNING) << "Failed to build SimpleGraphView.";
+  GraphTopologyView graph_view;
+  if (!graph_view.InitializeFromGraph(*optimized_graph_).ok()) {
+    LOG(WARNING) << "Failed to initialize GraphTopologyView.";
     return;
   }
-  std::set<int> duplicates;
+
+  const absl::flat_hash_set<string> ops_to_traverse = {
+      "Identity", "IdentityN", "Reshape", "ExpandDims",
+      "Enter",    "Switch",    "Merge"};
+
   // Populate feed_inplace_op;
-  std::unordered_set<const NodeDef*> feeds_inplace_op;
-  for (int i = 0; i < optimized_graph_->node_size(); ++i) {
-    const NodeDef& root = optimized_graph_->node(i);
-    if (feeds_inplace_op.find(&root) != feeds_inplace_op.end()) {
-      continue;
-    }
+  absl::flat_hash_set<const NodeDef*> feeds_inplace_op;
+
+  for (const NodeDef& root : optimized_graph_->node()) {
+    if (feeds_inplace_op.find(&root) != feeds_inplace_op.end()) continue;
 
     if (ModifiesInputsInPlace(root)) {
-      const std::unordered_set<string> op_types_to_traverse = {
-          root.op(),    "Identity", "IdentityN", "Reshape",
-          "ExpandDims", "Enter",    "Switch",    "Merge"};
+      const auto is_continue_traversal = [&](const NodeDef* node) -> bool {
+        return node->op() == root.op() || ops_to_traverse.count(node->op()) > 0;
+      };
 
-      graph_view.DepthFirstSearchWithCallback(
-          op_types_to_traverse, i,
-          [&](const NodeDef& node) {
-            feeds_inplace_op.insert(&node);
-            return false;
-          },
-          SimpleGraphView::kFollowInputs /* search through inputs */);
+      DfsTraversal(graph_view, {&root}, TraversalDirection::kFollowInputs,
+                   DfsPredicates::Advance(is_continue_traversal),
+                   DfsCallbacks::PreOrder([&](const NodeDef* node) {
+                     feeds_inplace_op.insert(node);
+                   }));
     }
   }
 
+  bool stop = true;
+  std::set<int> duplicates;
+  UniqueNodes nodes;
   do {
     stop = true;
-    UniqueNodes nodes;
     for (int i = 0; i < optimized_graph_->node_size(); ++i) {
       if (duplicates.find(i) != duplicates.end()) {
         continue;
@@ -3571,7 +3579,7 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
 
   // Disable restricted graph rewrites.
   options_.unary_ops_composition &=
-      item.allowed_optimizations().non_differentiable_rewrites;
+      item.optimization_options().allow_non_differentiable_rewrites;
 
   if (options_.dedup_computations) {
     DedupComputations();

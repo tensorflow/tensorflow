@@ -98,8 +98,32 @@ int TfLiteIntArrayEqualsArray(TfLiteIntArray* a, int b_size, int b_data[]);
 // You are expected to free memory with TfLiteIntArrayFree
 TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src);
 
-// Free memory of array `v`.
-void TfLiteIntArrayFree(TfLiteIntArray* v);
+// Free memory of array `a`.
+void TfLiteIntArrayFree(TfLiteIntArray* a);
+
+// Fixed size list of floats. Used for per-channel quantization.
+typedef struct {
+  int size;
+// gcc 6.1+ have a bug where flexible members aren't properly handled
+// https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
+#if !defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
+    __GNUC_MINOR__ >= 1
+  float data[0];
+#else
+  float data[];
+#endif
+} TfLiteFloatArray;
+
+// Given the size (number of elements) in a TfLiteFloatArray, calculate its size
+// in bytes.
+int TfLiteFloatArrayGetSizeInBytes(int size);
+
+// Create a array of a given `size` (uninitialized entries).
+// This returns a pointer, that you must free using TfLiteFloatArrayFree().
+TfLiteFloatArray* TfLiteFloatArrayCreate(int size);
+
+// Free memory of array `a`.
+void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 
 // Since we must not depend on any libraries, define a minimal subset of
 // error macros while avoiding names that have pre-conceived meanings like
@@ -185,13 +209,47 @@ typedef enum {
 // Return the name of a given type, for error reporting purposes.
 const char* TfLiteTypeGetName(TfLiteType type);
 
+// SupportedQuantizationTypes.
+typedef enum {
+  // No quantization.
+  kTfLiteNoQuantization = 0,
+  // Affine quantization (with support for per-channel quantization).
+  // Corresponds to TfLiteAffineQuantization.
+  kTfLiteAffineQuantization = 1,
+} TfLiteQuantizationType;
+
+// Structure specifying the quantization used by the tensor, if-any.
+typedef struct {
+  // The type of quantization held by params.
+  TfLiteQuantizationType type;
+  // Holds a reference to one of the quantization param structures specified
+  // below.
+  void* params;
+} TfLiteQuantization;
+
+// Legacy. Will be deprecated in favor of TfLiteAffineQuantization.
+// If per-layer quantization is specified this field will still be populated in
+// addition to TfLiteAffineQuantization.
 // Parameters for asymmetric quantization. Quantized values can be converted
 // back to float using:
-//    real_value = scale * (quantized_value - zero_point);
+//     real_value = scale * (quantized_value - zero_point)
 typedef struct {
   float scale;
   int32_t zero_point;
 } TfLiteQuantizationParams;
+
+// Parameters for asymmetric quantization across a dimension (i.e per output
+// channel quantization).
+// quantized_dimension specifies which dimension the scales and zero_points
+// correspond to.
+// For a particular value in quantized_dimension, quantized values can be
+// converted back to float using:
+//     real_value = scale * (quantized_value - zero_point)
+typedef struct {
+  TfLiteFloatArray* scale;
+  TfLiteIntArray* zero_point;
+  int32_t quantized_dimension;
+} TfLiteAffineQuantization;
 
 // A union of pointers that points to memory for a given tensor.
 typedef union {
@@ -274,12 +332,18 @@ typedef struct {
 
   // True if the tensor is a variable.
   bool is_variable;
+
+  // Quantization information. Replaces params field above.
+  TfLiteQuantization quantization;
 } TfLiteTensor;
 
-// Free data memory of tensor `t`;
+// Free data memory of tensor `t`.
 void TfLiteTensorDataFree(TfLiteTensor* t);
 
-// Free memory of tensor `t`;
+// Free quantization data.
+void TfLiteQuantizationFree(TfLiteQuantization* quantization);
+
+// Free memory of tensor `t`.
 void TfLiteTensorFree(TfLiteTensor* t);
 
 // Set all of a tensor's fields (and free any previously allocated data).

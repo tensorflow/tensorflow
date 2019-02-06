@@ -47,8 +47,10 @@ enum class TokKind {
   kRbrace,  // {  }
   kLparen,
   kRparen,  // (  )
+  kDots,    // ...
 
   kArrow,  // ->
+  kLeq,    // <=
 
   // Keywords
   kw_HloModule,

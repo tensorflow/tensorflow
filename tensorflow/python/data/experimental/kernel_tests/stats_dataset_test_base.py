@@ -104,9 +104,7 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
         self._assertSummaryHasCountMoreOrEqualGeneralisedTag(
             summary_str, "::execution_time", float(i + 1))
       self._assertSummaryContains(summary_str,
-                                  dataset_name + "::num_parallel_calls")
-      self._assertSummaryContains(summary_str,
-                                  dataset_name + "::active_parallel_calls")
+                                  dataset_name + "::thread_utilization")
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
     if function_processing_time:

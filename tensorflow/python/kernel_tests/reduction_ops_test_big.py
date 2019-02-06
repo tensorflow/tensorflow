@@ -21,9 +21,9 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
-
 
 class BaseReductionTest(test.TestCase):
 
@@ -31,6 +31,7 @@ class BaseReductionTest(test.TestCase):
     raise NotImplementedError()
 
 
+@test_util.disable_all_xla("b/123864762")  # Test times out
 class BigReductionTest(BaseReductionTest):
   """Test reductions for sum and boolean all over a wide range of shapes."""
 

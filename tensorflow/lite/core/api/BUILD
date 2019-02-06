@@ -51,6 +51,7 @@ cc_test(
     srcs = ["flatbuffer_conversions_test.cc"],
     deps = [
         ":api",
+        "//tensorflow/lite:string",
         "//tensorflow/lite/c:c_api_internal",
         "@com_google_googletest//:gtest",
     ],

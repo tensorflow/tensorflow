@@ -70,10 +70,14 @@ package(default_visibility = [
 
 licenses(["notice"])  # Apache 2.0
 
+# Export the BUILD file so automated tooling can check licenses
+exports_files(["BUILD"])
+
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
     "if_android",
+    "if_emscripten",
     "if_ios",
     "if_linux_x86_64",
     "if_mobile",
@@ -84,10 +88,12 @@ load(
     "tf_copts",
     "tf_cuda_library",
     "tf_features_nomodules_if_android",
+    "tf_features_nomodules_if_emscripten",
     "tf_gen_op_libs",
     "tf_generate_proto_text_sources",
     "tf_genrule_cmd_append_to_srcs",
     "tf_opts_nortti_if_android",
+    "tf_opts_nortti_if_emscripten",
     "transitive_hdrs",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
@@ -178,7 +184,6 @@ COMMON_PROTO_SRCS = [
     "framework/function.proto",
     "framework/graph.proto",
     "framework/graph_transfer_info.proto",
-    "framework/iterator.proto",
     "framework/kernel_def.proto",
     "framework/log_memory.proto",
     "framework/node_def.proto",
@@ -199,10 +204,12 @@ COMMON_PROTO_SRCS = [
     "protobuf/cluster.proto",
     "protobuf/debug.proto",
     "protobuf/device_properties.proto",
+    "protobuf/graph_debug_info.proto",
     "protobuf/queue_runner.proto",
     "protobuf/rewriter_config.proto",
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
+    "protobuf/verifier_config.proto",
     "util/event.proto",
     "util/memmapped_file_system.proto",
     "util/saved_tensor_slice.proto",
@@ -445,7 +452,8 @@ cc_library(
 )
 
 cc_library(
-    name = "logger_interface",
+    name = "logger",
+    srcs = ["platform/logger.cc"],
     hdrs = ["platform/logger.h"],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
@@ -453,23 +461,6 @@ cc_library(
         ":lib_proto_parsing",
         "@protobuf_archive//:protobuf",
     ],
-)
-
-cc_library(
-    name = "default_logger",
-    srcs = ["platform/default/logger.cc"],
-    hdrs = ["platform/logger.h"],
-    deps = [
-        "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:logger_interface",
-    ],
-)
-
-cc_library(
-    name = "logger",
-    hdrs = ["platform/logger.h"],
-    visibility = ["//visibility:public"],
-    deps = ["//tensorflow/core/platform/default/build_config:logger"],
 )
 
 filegroup(
@@ -520,6 +511,7 @@ cc_library(
         ":platform_port",
         ":platform_protobuf",
         "//tensorflow/core/platform/default/build_config:env",
+        "//tensorflow/core/platform/default/build_config:port",
     ],
 )
 
@@ -1033,6 +1025,7 @@ cc_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
+        "//tensorflow/core/util/proto:proto_utils",
     ],
 )
 
@@ -1090,6 +1083,7 @@ tf_gen_op_libs(
         "tensor_forest_ops",
         "candidate_sampling_ops",
         "checkpoint_ops",
+        "clustering_ops",
         "collective_ops",
         "control_flow_ops",
         "ctc_ops",
@@ -1115,6 +1109,7 @@ tf_gen_op_libs(
         "parsing_ops",
         "random_grad",
         "random_ops",
+        "stateful_random_ops",
         "remote_fused_graph_ops",
         "rpc_ops",
         "scoped_allocator_ops",
@@ -1244,6 +1239,7 @@ cc_library(
         ":tensor_forest_ops_op_lib",
         ":candidate_sampling_ops_op_lib",
         ":checkpoint_ops_op_lib",
+        ":clustering_ops_op_lib",
         ":collective_ops_op_lib",
         ":control_flow_ops_op_lib",
         ":ctc_ops_op_lib",
@@ -1269,6 +1265,7 @@ cc_library(
         ":parsing_ops_op_lib",
         ":ragged_ops",
         ":random_ops_op_lib",
+        ":stateful_random_ops_op_lib",
         ":remote_fused_graph_ops_op_lib",
         ":resource_variable_ops_op_lib",
         ":rpc_ops_op_lib",
@@ -1387,9 +1384,10 @@ cc_library(
 
 # This includes implementations of all kernels built into TensorFlow.
 cc_library(
-    name = "all_kernels_statically_linked",
+    name = "all_kernels_impl",
     visibility = ["//visibility:private"],
     deps = [
+        "//tensorflow/c/kernels:bitcast_op",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:audio",
         "//tensorflow/core/kernels:batch_kernels",
@@ -1398,12 +1396,12 @@ cc_library(
         "//tensorflow/core/kernels:tensor_forest_ops",
         "//tensorflow/core/kernels:candidate_sampler_ops",
         "//tensorflow/core/kernels:checkpoint_ops",
+        "//tensorflow/core/kernels:clustering_ops",
         "//tensorflow/core/kernels:collective_ops",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:ctc_ops",
         "//tensorflow/core/kernels:cudnn_rnn_kernels",
         "//tensorflow/core/kernels:data_flow",
-        "//tensorflow/core/kernels:dataset_ops",
         "//tensorflow/core/kernels:decode_proto_op",
         "//tensorflow/core/kernels:encode_proto_op",
         "//tensorflow/core/kernels:fake_quant_ops",
@@ -1414,18 +1412,20 @@ cc_library(
         "//tensorflow/core/kernels:image",
         "//tensorflow/core/kernels:io",
         "//tensorflow/core/kernels:linalg",
-        "//tensorflow/core/kernels:list_kernels",
         "//tensorflow/core/kernels:lookup",
         "//tensorflow/core/kernels:logging",
         "//tensorflow/core/kernels:manip",
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/kernels:multinomial_op",
+        "//tensorflow/core/kernels:mutex_ops",
         "//tensorflow/core/kernels:nn",
         "//tensorflow/core/kernels:parameterized_truncated_normal_op",
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/core/kernels:partitioned_function_ops",
+        "//tensorflow/core/kernels:pooling_ops",
         "//tensorflow/core/kernels:ragged_ops",
         "//tensorflow/core/kernels:random_ops",
+        "//tensorflow/core/kernels:stateful_random_ops",
         "//tensorflow/core/kernels:random_poisson_op",
         "//tensorflow/core/kernels:remote_fused_graph_ops",
         "//tensorflow/core/kernels:required",
@@ -1477,8 +1477,13 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_dynamic_kernels(
         [],
-        otherwise = [":all_kernels_statically_linked"],
-    ),
+        otherwise = [":all_kernels_impl"],
+    ) + [
+        # TODO(gunan): Work on the API between these and rest of TF and make
+        # these also dynamically loading.
+        "//tensorflow/core/kernels:dataset_ops",  # Depends on grappler
+        "//tensorflow/core/kernels:list_kernels",  # Depends on variant_op_registry.h
+    ],
 )
 
 tf_cuda_library(
@@ -1763,9 +1768,33 @@ cc_library(
 cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_library(
+    name = "emscripten_tensorflow_lib_lite_nortti_lite_protos_no_runtime",
+    srcs = if_emscripten(["//tensorflow/core:mobile_srcs_no_runtime"]),
+    copts = ["-DSUPPORT_SELECTIVE_REGISTRATION"] + tf_opts_nortti_if_emscripten(),
+    defines = ["TENSORFLOW_LITE_PROTOS"],
+    linkopts = ["-lz"],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":emscripten_proto_lib_no_rtti_lite_runtime",
+        ":mobile_additional_lib_deps",
+        ":stats_calculator_portable",
+        "//third_party/eigen3",
+        "@double_conversion//:double-conversion",
+        "@nsync//:nsync_cpp",
+        "@zlib_archive//:zlib",
+    ],
+    alwayslink = 1,
 )
 
 # Native library support for iOS applications.
@@ -1963,6 +1992,14 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "rocm",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:rocm",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Clif-related proto libraries.
 
@@ -2019,6 +2056,13 @@ tf_pyclif_proto_library(
     name = "framework/graph_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "framework/graph.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "framework/step_stats_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/step_stats.proto",
     visibility = ["//visibility:public"],
 )
 
@@ -2199,6 +2243,7 @@ cc_library(
         ],
     }),
     deps = tf_additional_lib_deps() + [
+        "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
@@ -2213,7 +2258,6 @@ cc_library(
             "lib/**/*.cc",
             "platform/*.cc",
             "platform/profile_utils/**/*.cc",
-        ] + [
             "framework/resource_handle.cc",
             "util/env_var.cc",
         ],
@@ -2257,6 +2301,8 @@ cc_library(
         ":lib_proto_parsing",
         ":abi",
         ":core_stringpiece",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@snappy",
@@ -2353,7 +2399,12 @@ cc_library(
 
 cc_library(
     name = "tflite_portable_logging",
-    srcs = [],
+    srcs = [
+    ] + if_ios([
+        "platform/default/logging.cc",
+        "platform/env_time.cc",
+        "platform/posix/env_time.cc",
+    ]),
     hdrs = [
         "lib/bfloat16/bfloat16.h",
         "platform/default/integral_types.h",
@@ -2362,7 +2413,7 @@ cc_library(
         "platform/macros.h",
         "platform/platform.h",
         "platform/types.h",
-    ] + if_windows(["platform/windows/integral_types.h"]),
+    ] + if_windows(["platform/windows/integral_types.h"]) + if_ios(["platform/env_time.h"]),
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [
@@ -2631,7 +2682,6 @@ tf_cuda_library(
             "example/**/*.cc",
             "framework/**/*.cc",
             "util/**/*.cc",
-        ] + [
             "graph/edgeset.cc",
             "graph/graph.cc",
             "graph/graph_def_builder.cc",
@@ -2772,6 +2822,7 @@ cc_library(
 # in this library.
 GRAPH_HDRS = [
     "graph/algorithm.h",
+    "graph/collective_order.h",
     "graph/colors.h",
     "graph/control_flow.h",
     "graph/costmodel.h",
@@ -2798,6 +2849,7 @@ tf_cuda_library(
     name = "graph",
     srcs = [
         "graph/algorithm.cc",
+        "graph/collective_order.cc",
         "graph/colors.cc",
         "graph/control_flow.cc",
         "graph/costmodel.cc",
@@ -2815,6 +2867,9 @@ tf_cuda_library(
         ":proto_text",
         ":protos_all_cc",
         "//third_party/eigen3",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2829,12 +2884,16 @@ CORE_CPU_BASE_HDRS = GRAPH_HDRS + [
     "framework/versions.h",
     "common_runtime/process_function_library_runtime.h",
     "common_runtime/function.h",
+    "common_runtime/scoped_allocator.h",
+    "common_runtime/scoped_allocator_mgr.h",
 ]
 
 tf_cuda_library(
     name = "core_cpu_base",
     srcs = [
         "common_runtime/eval_const_tensor.cc",
+        "common_runtime/scoped_allocator.cc",
+        "common_runtime/scoped_allocator_mgr.cc",
         "common_runtime/shape_refiner.cc",
         "common_runtime/shape_refiner.h",
         "framework/versions.h",
@@ -2867,6 +2926,7 @@ tf_cuda_library(
 
 CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/allocator_retry.h",
+    "common_runtime/shared_counter.h",
     "common_runtime/base_collective_executor.h",
     "common_runtime/bfc_allocator.h",
     "common_runtime/hierarchical_tree_broadcaster.h",
@@ -2894,6 +2954,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/mkl_cpu_allocator.h",
     "common_runtime/optimization_registry.h",
     "common_runtime/pending_counts.h",
+    "common_runtime/partitioning_utils.h",
     "common_runtime/placer.h",
     "common_runtime/process_util.h",
     "common_runtime/profile_handler.h",
@@ -2901,8 +2962,6 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/rendezvous_mgr.h",
     "common_runtime/rendezvous_util.h",
     "common_runtime/ring_reducer.h",
-    "common_runtime/scoped_allocator.h",
-    "common_runtime/scoped_allocator_mgr.h",
     "common_runtime/session_factory.h",
     "common_runtime/single_threaded_cpu_device.h",
     "common_runtime/stats_publisher_interface.h",
@@ -2950,6 +3009,7 @@ tf_cuda_library(
         "common_runtime/mkl_cpu_allocator.cc",
         "common_runtime/optimization_registry.cc",
         "common_runtime/parallel_concat_optimizer.cc",
+        "common_runtime/partitioning_utils.cc",
         "common_runtime/placer.cc",
         "common_runtime/pool_allocator.cc",
         "common_runtime/process_function_library_runtime.cc",
@@ -2959,8 +3019,6 @@ tf_cuda_library(
         "common_runtime/rendezvous_mgr.cc",
         "common_runtime/rendezvous_util.cc",
         "common_runtime/ring_reducer.cc",
-        "common_runtime/scoped_allocator.cc",
-        "common_runtime/scoped_allocator_mgr.cc",
         "common_runtime/session.cc",
         "common_runtime/session_factory.cc",
         "common_runtime/session_options.cc",
@@ -2988,8 +3046,9 @@ tf_cuda_library(
         ":proto_text",
         ":protos_all_cc",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "//third_party/eigen3",
-        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/utils:functions",
     ] + mkl_deps(),
     alwayslink = 1,
 )
@@ -3017,6 +3076,7 @@ tf_cuda_library(
         ":framework",
         ":graph",
         ":lib",
+        ":metrics",
         ":proto_text",
         ":protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
@@ -3505,6 +3565,29 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "platform_fake_python_env_test",
+    size = "small",
+    srcs = ["platform/fake_python_env_test.cc"],
+    args = [
+        "/some/path/to/pythontest.runfiles/org_tensorflow/stuff/to/run.py",
+    ],
+    tags = [
+        "local",
+        "no_windows",
+        "nogpu",
+        "nomac",
+        "notap",
+    ],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
     name = "platform_abi_test",
     size = "small",
     srcs = ["platform/abi_test.cc"],
@@ -3626,6 +3709,20 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "lib_strings_proto_serialization_test",
+    srcs = ["lib/strings/proto_serialization_test.cc"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
     name = "lib_random_weighted_picker_test",
     size = "medium",
     srcs = ["lib/random/weighted_picker_test.cc"],
@@ -3677,7 +3774,6 @@ tf_cc_tests(
     srcs = [
         "common_runtime/buf_rendezvous_test.cc",
         "common_runtime/collective_executor_mgr_test.cc",
-        "common_runtime/collective_param_resolver_local_test.cc",
         "common_runtime/collective_rma_local_test.cc",
         "common_runtime/device_resolver_local_test.cc",
         "common_runtime/device_set_test.cc",
@@ -3793,6 +3889,7 @@ tf_cc_tests(
     name = "higher_level_tests_needing_kernels",
     size = "small",
     srcs = [
+        "common_runtime/collective_param_resolver_local_test.cc",
         "graph/graph_constructor_test.cc",
     ],
     linkopts = select({
@@ -3839,6 +3936,27 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_tests(
+    name = "collective_order_test",
+    size = "small",
+    srcs = [
+        "graph/collective_order_test.cc",
+    ],
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -4191,7 +4309,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "common_runtime_process_function_library_runtime_test",
     size = "small",
     srcs = ["common_runtime/process_function_library_runtime_test.cc"],
@@ -4200,6 +4318,7 @@ tf_cc_test(
         ":core_cpu",
         ":core_cpu_internal",
         ":framework",
+        ":framework_internal",
         ":lib",
         ":test",
         ":test_main",
@@ -4208,6 +4327,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:resource_variable_ops",
     ],
 )
 
@@ -4246,6 +4366,27 @@ tf_cc_test(
         ":lib",
         ":test",
         ":test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime_partitioning_utils_test",
+    size = "small",
+    srcs = ["common_runtime/partitioning_utils_test.cc"],
+    deps = [
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":framework",
+        ":lib",
+        ":ops",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:identity_op",
     ],
 )
 
@@ -4938,6 +5079,39 @@ transitive_hdrs(
 
 # -----------------------------------------------------------------------------
 # Google-internal targets go here (must be at the end).
+
+load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
+
+genrule(
+    name = "emscripten_proto_config_lite_runtime",
+    outs = ["emscripten_proto_config_lite_runtime.asciipb"],
+    cmd = tf_genrule_cmd_append_to_srcs("optimize_mode:LITE_RUNTIME"),
+    visibility = ["//visibility:private"],
+)
+
+# We are keeping the "android" version of tf_android_core_proto_headers. All it does is
+# normalize CORE_PROTO_SRCS to generate valid output file names.
+tf_portable_proto_library(
+    name = "emscripten_proto_lib_no_rtti_lite_runtime",
+    config = ":emscripten_proto_config_lite_runtime",
+    copts = tf_opts_nortti_if_emscripten(),
+    features = tf_features_nomodules_if_emscripten(),
+    header_outs = tf_android_core_proto_headers(CORE_PROTO_SRCS) + ["//google/protobuf/any.proto.h"],
+    link_full_protobuf = False,
+    prefix_dir = "emscripten_proto_no_rtti",
+    proto_deps = [
+        ":protos_all_cc",
+        "@protobuf_archive//:protobuf",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# There is currently no need for a full proto version of emscripten tf lib lite.
+alias(
+    name = "emscripten_lib_lite_no_runtime",
+    actual = "//tensorflow/core:emscripten_tensorflow_lib_lite_nortti_lite_protos_no_runtime",
+    visibility = ["//visibility:public"],
+)
 
 alias(
     name = "android_srcs_no_runtime",

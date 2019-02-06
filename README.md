@@ -24,7 +24,8 @@ organization for the purposes of conducting machine learning and deep neural
 networks research.  The system is general enough to be applicable in a wide
 variety of other domains, as well.
 
-TensorFlow provides stable Python API and C APIs as well as without API backwards compatibility guarantee like C++, Go, Java, JavaScript and Swift.
+TensorFlow provides stable Python and C APIs as well as non-guaranteed backwards
+compatible API's for C++, Go, Java, JavaScript and Swift.
 
 Keep up to date with release announcements and security updates by
 subscribing to
@@ -57,21 +58,24 @@ Simply run `pip install tf-nightly` or `pip install tf-nightly-gpu` in a clean
 environment to install the nightly TensorFlow build. We support CPU and GPU
 packages on Linux, Mac, and Windows.
 
-
 #### *Try your first TensorFlow program*
+
 ```shell
 $ python
 ```
+
 ```python
 >>> import tensorflow as tf
 >>> tf.enable_eager_execution()
->>> tf.add(1, 2)
+>>> tf.add(1, 2).numpy()
 3
 >>> hello = tf.constant('Hello, TensorFlow!')
 >>> hello.numpy()
 'Hello, TensorFlow!'
 ```
-Learn more examples about how to do specific tasks in TensorFlow at the [tutorials page of tensorflow.org](https://www.tensorflow.org/tutorials/).
+
+Learn more examples about how to do specific tasks in TensorFlow at the
+[tutorials page of tensorflow.org](https://www.tensorflow.org/tutorials/).
 
 ## Contribution guidelines
 

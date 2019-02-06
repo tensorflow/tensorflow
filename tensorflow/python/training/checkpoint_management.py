@@ -621,7 +621,8 @@ class CheckpointManager(object):
                >= self._last_preserved_timestamp)):
         self._last_preserved_timestamp = timestamp
         continue
-      remove_checkpoint(filename)
+      _delete_file_if_exists(filename + ".index")
+      _delete_file_if_exists(filename + ".data-?????-of-?????")
 
   def _record_state(self):
     """Saves the `CheckpointManager`'s state in `directory`."""

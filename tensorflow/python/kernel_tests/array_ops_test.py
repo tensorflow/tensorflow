@@ -1050,10 +1050,12 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
     checker2[None] = [6]  # new axis
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/123559667")
   def testSliceAssign(self):
     self.doTestSliceAssign(use_resource=False)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/123559667")
   def testSliceAssignResource(self):
     self.doTestSliceAssign(use_resource=True)
 

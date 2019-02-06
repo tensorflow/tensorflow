@@ -72,7 +72,7 @@ bool DeleteArrayIfUsedOnce(const string& array_name, Model* model);
 
 // Deletes the op and any of its input and output arrays if they are unused
 // after the op has been deleted.
-void DeleteOpAndArraysIfUnused(Model* model, Operator* op);
+void DeleteOpAndArraysIfUnused(Model* model, const Operator* op);
 
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithOutput(
     const Model& model, const string& array_name);

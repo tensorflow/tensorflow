@@ -36,6 +36,16 @@ namespace swig {
 
 namespace numpy {
 
+struct PyDecrefDeleter {
+  void operator()(PyObject* p) const { Py_DECREF(p); }
+};
+
+// Safe container for an owned PyObject. On destruction, the reference count of
+// the contained object will be decremented.
+using Safe_PyObjectPtr = std::unique_ptr<PyObject, PyDecrefDeleter>;
+
+Safe_PyObjectPtr make_safe(PyObject* object);
+
 // Maps XLA primitive types (PRED, S8, F32, ..., and TUPLE) to numpy
 // dtypes (NPY_BOOL, NPY_INT8, NPY_FLOAT32, ..., and NPY_OBJECT), and
 // vice versa.
@@ -74,7 +84,7 @@ StatusOr<OpMetadata> OpMetadataFromPyObject(PyObject* o);
 // array data.
 //
 // The return value is a new reference.
-PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal);
+StatusOr<Safe_PyObjectPtr> PyObjectFromXlaLiteral(const LiteralSlice& literal);
 
 // Converts a Numpy ndarray or a nested Python tuple thereof to a
 // corresponding XLA literal.
@@ -90,8 +100,8 @@ StatusOr<Literal> XlaLiteralFromPyObject(PyObject* o);
 Status CopyNumpyArrayToLiteral(int np_type, PyArrayObject* py_array,
                                Literal* literal);
 
-void CopyLiteralToNumpyArray(int np_type, const LiteralSlice& literal,
-                             PyArrayObject* py_array);
+Status CopyLiteralToNumpyArray(int np_type, const LiteralSlice& literal,
+                               PyArrayObject* py_array);
 
 template <typename NativeT>
 void CopyNumpyArrayToLiteral(PyArrayObject* py_array, Literal* literal) {

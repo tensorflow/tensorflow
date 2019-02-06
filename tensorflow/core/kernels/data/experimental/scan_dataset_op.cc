@@ -84,8 +84,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Scan")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Scan")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -186,6 +186,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
         Status s = instantiated_captured_func_->Run(ctx, std::move(args),
                                                     &state_and_output);
+        DCHECK(state_and_output.size() <=
+               dataset()->state_types_.size() + output_dtypes().size());
         if (s.ok()) {
           state_.clear();
           size_t i = 0;

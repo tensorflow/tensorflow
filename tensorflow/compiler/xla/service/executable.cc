@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 
-
 namespace xla {
 
 StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
@@ -173,11 +172,13 @@ Status Executable::DumpHloSnapshot() {
   }
   filename = SanitizeFileName(std::move(filename));
   string file_path = tensorflow::io::JoinPath(directory_path, filename);
-  string result;
-  TF_RET_CHECK(
-      tensorflow::SerializeToStringDeterministic(hlo_session, &result));
-  return tensorflow::WriteStringToFile(tensorflow::Env::Default(), file_path,
-                                       result);
+  const size_t size = hlo_session.ByteSizeLong();
+  auto serialized = absl::make_unique<char[]>(size);
+  TF_RET_CHECK(tensorflow::SerializeToBufferDeterministic(
+      hlo_session, serialized.get(), size));
+  return tensorflow::WriteStringToFile(
+      tensorflow::Env::Default(), file_path,
+      absl::string_view(serialized.get(), size));
 }
 
 }  // namespace xla

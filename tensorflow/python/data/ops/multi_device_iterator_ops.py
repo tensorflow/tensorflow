@@ -28,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import resource_variable_ops
 
 
 class _PerDeviceGenerator(dataset_ops.DatasetV2):
@@ -126,13 +127,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
 
 
 class MultiDeviceIterator(object):
-  """An iterator over multiple devices.
-
-  @compatibility(eager)
-  MultiDeviceIterator isn't currently supported in Eager mode but support is
-  coming soon.
-  @end_compatibility
-  """
+  """An iterator over multiple devices."""
 
   def __init__(self,
                dataset,
@@ -150,6 +145,10 @@ class MultiDeviceIterator(object):
         to prefetch into.
       source_device: The host device to place the `dataset` on.
 
+      In order to prevent deadlocks, if the prefetch_buffer_size is greater
+      than the max_buffer_size, we set the max_buffer_size to
+      prefetch_buffer_size.
+
     Raises:
       RuntimeError: If run in Eager mode.
     """
@@ -158,14 +157,26 @@ class MultiDeviceIterator(object):
     self._source_device = source_device
     self._source_device_tensor = ops.convert_to_tensor(source_device)
 
+    if prefetch_buffer_size > max_buffer_size:
+      max_buffer_size = prefetch_buffer_size
+
     # Create the MultiDeviceIterator.
     with ops.device(self._source_device):
+      # TODO(b/121378567): Get rid of this shared_name hack.
+      shared_name = ""
+      if context.executing_eagerly():
+        shared_name = context.shared_name()
       self._multi_device_iterator_resource = (
           gen_dataset_ops.multi_device_iterator(
               devices=self._devices,
-              shared_name="",
+              shared_name=shared_name,
               container="",
               **dataset_ops.flat_structure(dataset)))
+      if context.executing_eagerly():
+        # Delete the resource when this object is deleted
+        self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
+            handle=self._multi_device_iterator_resource,
+            handle_device=self._source_device)
 
       # The incarnation ID is used to ensure consistency between the per-device
       # iterators and the multi-device iterator.

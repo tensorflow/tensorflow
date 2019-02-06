@@ -410,6 +410,17 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_numBytes(JNIEnv* env,
   return static_cast<jint>(tensor->bytes);
 }
 
+JNIEXPORT jboolean JNICALL
+Java_org_tensorflow_lite_Tensor_hasDelegateBufferHandle(JNIEnv* env,
+                                                        jclass clazz,
+                                                        jlong handle) {
+  const TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
+  if (tensor == nullptr) return false;
+  return tensor->delegate && (tensor->buffer_handle != kTfLiteNullBufferHandle)
+             ? JNI_TRUE
+             : JNI_FALSE;
+}
+
 JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_index(JNIEnv* env,
                                                              jclass clazz,
                                                              jlong handle) {

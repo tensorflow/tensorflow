@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -302,10 +303,8 @@ DirectSession::DirectSession(const SessionOptions& options,
   if (!status.ok()) {
     LOG(ERROR) << status.error_message();
   }
-  // NOTE(mrry): We do not need to use a unique string for the session
-  // handle, because DirectSession owns its devices. This may change
-  // in future versions.
-  session_handle_ = "direct";
+  session_handle_ =
+      strings::StrCat("direct", strings::FpToString(random::New64()));
   int devices_added = 0;
   if (options.config.log_device_placement()) {
     const string mapping_str = device_mgr_->DeviceMappingString();
@@ -370,6 +369,7 @@ Status DirectSession::MaybeInitializeExecutionState(
   GraphExecutionStateOptions options;
   options.device_set = &device_set_;
   options.session_options = &options_;
+  options.session_handle = session_handle_;
   // TODO(mrry,suharshs): We explicitly copy `graph` so that
   // `MakeForBaseGraph()` can take ownership of its
   // contents. Previously this happened implicitly in calls to the
@@ -501,7 +501,8 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       std::unique_ptr<DeviceResolverInterface> drl(
           new DeviceResolverLocal(device_mgr_.get()));
       std::unique_ptr<ParamResolverInterface> cprl(
-          new CollectiveParamResolverLocal(device_mgr_.get(), drl.get(),
+          new CollectiveParamResolverLocal(options_.config, device_mgr_.get(),
+                                           drl.get(),
                                            "/job:localhost/replica:0/task:0"));
       collective_executor_mgr_.reset(new CollectiveExecutorMgr(
           options_.config, device_mgr_.get(), std::move(drl), std::move(cprl)));
@@ -532,6 +533,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
   CancellationManager step_cancellation_manager;
   args.cancellation_manager = &step_cancellation_manager;
   args.session_state = &session_state_;
+  args.session_handle = session_handle_;
   args.tensor_store = &run_state.tensor_store;
   args.step_container = &run_state.step_container;
   args.sync_on_finish = sync_on_finish_;
@@ -718,7 +720,7 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       exec_and_lib.graph->ToGraphDef(partition_graph_def);
     }
   }
-  UpdateGraphExecTime(Env::Default()->NowMicros() - start_time_usecs);
+  metrics::UpdateGraphExecTime(Env::Default()->NowMicros() - start_time_usecs);
 
   return Status::OK();
 }
@@ -887,6 +889,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
     SchedClosure(pool, std::move(c));
   };
   args.session_state = &session_state_;
+  args.session_handle = session_handle_;
   args.tensor_store = &run_state->tensor_store;
   args.step_container = &run_state->step_container;
   if (LogMemory::IsEnabled()) {
@@ -1189,6 +1192,12 @@ Status DirectSession::CreateExecutors(
   options.use_function_convention = !run_state_args->is_partial_run;
   options.collective_graph_key =
       callable_options.run_options().experimental().collective_graph_key();
+  if (options_.config.experimental()
+          .collective_deterministic_sequential_execution()) {
+    options.collective_order = GraphCollectiveOrder::kEdges;
+  } else if (options_.config.experimental().collective_nccl()) {
+    options.collective_order = GraphCollectiveOrder::kAttrs;
+  }
 
   std::unique_ptr<FunctionInfo> func_info(new FunctionInfo);
   std::unique_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
@@ -1464,6 +1473,7 @@ Status DirectSession::CreateGraphs(
     prune_options.device_set = &device_set_;
     prune_options.session_options = &options_;
     prune_options.stateful_placements = stateful_placements_;
+    prune_options.session_handle = session_handle_;
     TF_RETURN_IF_ERROR(GraphExecutionState::MakeForPrunedGraph(
         execution_state_->original_graph_def().library(), prune_options,
         execution_state_->original_graph_def(), subgraph_options,

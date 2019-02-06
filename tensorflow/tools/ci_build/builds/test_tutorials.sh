@@ -33,7 +33,7 @@
 #
 
 # List of all tutorial tests to run, separated by spaces
-TUT_TESTS="mnist_softmax mnist_with_summaries word2vec estimator_abalone"
+TUT_TESTS="mnist_with_summaries word2vec"
 
 if [[ -z "${TUT_TESTS_BLACKLIST}" ]]; then
   TF_BUILD_TUT_TEST_BLACKLIST=""

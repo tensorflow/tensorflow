@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged_array_ops.gather_nd."""
+"""Tests for ragged_gather_ops.gather_nd."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -26,8 +26,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
@@ -201,7 +201,7 @@ class RaggedGatherNdOpTest(ragged_test_util.RaggedTensorTestCase,
           expected=[[b'c', b'd'], [b'a', b'b'], [b'e', b'f']]),
   ])  # pyformat: disable
   def testRaggedGatherNd(self, descr, params, indices, expected):
-    result = ragged_array_ops.gather_nd(params, indices)
+    result = ragged_gather_ops.gather_nd(params, indices)
     self.assertRaggedEqual(result, expected)
 
   def testRaggedGatherNdUnknownRankError(self):
@@ -213,10 +213,10 @@ class RaggedGatherNdOpTest(ragged_test_util.RaggedTensorTestCase,
 
     with self.assertRaisesRegexp(ValueError,
                                  'indices.rank be statically known.'):
-      ragged_array_ops.gather_nd(params, indices1)
+      ragged_gather_ops.gather_nd(params, indices1)
     with self.assertRaisesRegexp(
         ValueError, r'indices.shape\[-1\] must be statically known.'):
-      ragged_array_ops.gather_nd(params, indices2)
+      ragged_gather_ops.gather_nd(params, indices2)
 
   @parameterized.parameters([
       dict(
@@ -238,7 +238,7 @@ class RaggedGatherNdOpTest(ragged_test_util.RaggedTensorTestCase,
                                     message=None,
                                     error=ValueError):
     with self.assertRaisesRegexp(error, message):
-      ragged_array_ops.gather_nd(params, indices)
+      ragged_gather_ops.gather_nd(params, indices)
 
 
 if __name__ == '__main__':

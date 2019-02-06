@@ -92,7 +92,7 @@ class MapDefunOp : public AsyncOpKernel {
       // We use a different cancellation manager each time the function is run
       // to avoid the race condition between a function run error and other
       // functions being cancelled as a result.
-      CancellationManager* c_mgr = new CancellationManager;
+      CancellationManager* c_mgr = new CancellationManager();
       CancellationToken token = parent_mgr->get_cancellation_token();
       const bool success = parent_mgr->RegisterCallback(
           token, [c_mgr]() { c_mgr->StartCancel(); });

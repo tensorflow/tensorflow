@@ -168,6 +168,9 @@ class XlaOpKernelContext {
   // Returns an XlaExpression describing the value of 'index'.
   void SetOutputExpression(int index, const XlaExpression& expression);
 
+  // Sets output `index` to the Tensor List `handle`.
+  void SetTensorListOutput(int index, const xla::XlaOp& handle);
+
   // Status handling.
   void SetStatus(const Status& status) { context_->SetStatus(status); }
   Status status() { return context_->status(); }

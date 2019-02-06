@@ -56,6 +56,7 @@ enum PrimitiveType {
 
   // Complex values of fixed width.
   C64 = 15;  // Paired F32 (real, imag), as in std::complex<float>.
+  C128 = 18;  // Paired F64 (real, imag), as in std::complex<double>.
 
   // A tuple is a polymorphic sequence; e.g. a shape that holds different
   // sub-shapes. They are used for things like returning multiple values from a
@@ -75,7 +76,7 @@ enum PrimitiveType {
   // primitive type will have empty dimensions and tuple_shapes fields.
   TOKEN = 17;
 
-  // Next = 18
+  // Next = 19
 }
 
 // Describes the padding configuration for Pad operation. The padding amount on
@@ -188,11 +189,14 @@ message ShapeProto {
   // The element type for this shape.
   PrimitiveType element_type = 2;
 
-  // The size (number of elements) for each dimension.
-  // In XLA, dimensions are numbered from 0 to N-1 for an
-  // N-dimensional array. The first element of 'dimensions' is the size of
-  // dimension 0, the second element is the size of dimension 1, and so forth.
-  // Empty list indicates a scalar.
+  // The size (number of elements) for each dimension, or an upper bound on the
+  // size if the dimension is dynamic.  In XLA, dimensions are numbered from 0
+  // to N-1 for an N-dimensional array. The first element of 'dimensions' is the
+  // size of dimension 0, the second element is the size of dimension 1, and so
+  // forth.  Empty list indicates a scalar.
+  //
+  // If the respective element in 'is_dimension_dynamic' is true then the value
+  // in this field represents an upper bound on the size of the dimension.
   repeated int64 dimensions = 3;
 
   // For tuples only, the shapes of constitutent shapes in the tuple sequence.
@@ -200,6 +204,12 @@ message ShapeProto {
 
   // The layout used to back this shape.
   LayoutProto layout = 5;
+
+  // For arrays, this indicates whether or not each dimension is
+  // dynamically-sized. The number of elements in this repeated field should be
+  // zero (indicating that no dimensions are dynamic) or equal to the number of
+  // elements in the 'dimensions' field.
+  repeated bool is_dynamic_dimension = 6;
 
   // Important: if any field is added, be sure to modify ShapeUtil::Equal(),
   // ShapeUtil::Compatible() and ShapeUtil::Hash() appropriately to account for
@@ -358,6 +368,7 @@ message LiteralProto {
   repeated float f32s = 8;
   repeated double f64s = 9;
   repeated float c64s = 12;  // Stored as interleaved real, imag floats.
+  repeated double c128s = 18;  // Stored as interleaved real, imag doubles.
   repeated LiteralProto tuple_literals = 10;
   // The F16s, BF16s, U16s and S16s are encoded in little endian byte order
   bytes f16s = 11;
@@ -365,7 +376,7 @@ message LiteralProto {
   bytes u16s = 16;
   bytes s16s = 17;
   repeated int64 sparse_indices = 14;
-  // Next = 18
+  // Next = 19
 }
 
 message WindowDimension {

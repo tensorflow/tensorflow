@@ -743,7 +743,7 @@ Status DoBackward(
     /* forward inputs */
     const Tensor* input, const Tensor* input_h, const Tensor* input_c,
     const Tensor* params,
-    /* forward outptus */
+    /* forward outputs */
     const Tensor* output, const Tensor* output_h, const Tensor* output_c,
     /* backprop inputs */
     const Tensor* output_backprop, const Tensor* output_h_backprop,

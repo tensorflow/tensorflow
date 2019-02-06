@@ -41,11 +41,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -59,11 +59,11 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
+
+typedef Eigen::ThreadPoolDevice CPUDevice;
+typedef Eigen::GpuDevice GPUDevice;
+
 namespace {
-
-using CPUDevice = ::Eigen::ThreadPoolDevice;
-using GPUDevice = ::Eigen::GpuDevice;
-
 // Supported Conv2D fusions. Not all of them supported on all type of devices.
 enum class FusedComputationType {
   // NOTE(ezhulenev): CuDNN `cudnnConvolutionBiasActivationForward` supports

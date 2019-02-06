@@ -29,13 +29,23 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 
+# Op types that should not run in program order, e.g. because they need to run
+# asynchronously to avoid deadlock.
+ASYNC_STATEFUL_OPS = [
+    "CollectiveReduce",
+    "CollectiveBcastSend",
+    "CollectiveBcastRecv",
+    "NcclAllReduce",
+]
+
 
 class AutomaticControlDependencies(object):
   """Context manager to automatically add control dependencies.
 
   Code under this context manager will act as if a sensible set of control
   dependencies were present. More specifically:
-    1. All stateful ops in the scope will execute
+    1. All stateful ops in the scope will execute (with the exception of ops in
+       ASYNC_STATEFUL_OPS)
     2. Stateful ops which modify the same resource will execute in program order
 
   Note: creating variables in an automatic control dependencies context is not
@@ -223,7 +233,8 @@ class AutomaticControlDependencies(object):
       control_inputs = set()
       # Ensure stateful ops run
       if (op.type not in self._graph._registered_ops  # pylint: disable=protected-access
-          or self._graph._registered_ops[op.type].is_stateful):  # pylint: disable=protected-access
+          or (self._graph._registered_ops[op.type].is_stateful   # pylint: disable=protected-access
+              and op.type not in ASYNC_STATEFUL_OPS)):
         ops_which_must_run.add(op)
       # Ignore switches (they're handled separately)
       if op.type == "Switch" and op.inputs[0].dtype == dtypes_module.resource:
@@ -238,25 +249,30 @@ class AutomaticControlDependencies(object):
         ops_which_must_run = set([op])
         continue
       found_resource = False
-      for inp in op.inputs:
-        if inp.dtype == dtypes_module.resource:
-          found_resource = True
-          # Deal with switches, finally.
-          if inp.op.type == "Switch":
-            self._process_switch(inp.op, ops_which_must_run,
-                                 last_op_using_resource_tensor,
-                                 merge_for_resource)
-          # Ensure uses of resources are serialized
-          if inp in last_op_using_resource_tensor:
-            if (last_op_using_resource_tensor[inp]._control_flow_context  # pylint: disable=protected-access
-                is op._control_flow_context):  # pylint: disable=protected-access
-              control_inputs.add(last_op_using_resource_tensor[inp])
-          # Ensure merges happen after the closing of a cond block
-          if inp in merge_for_resource:
-            merge_for_resource[inp]._add_control_input(op)  # pylint: disable=protected-access
-          last_op_using_resource_tensor[inp] = op
-      if (op.op_def.is_stateful and not found_resource
-          and op._control_flow_context is None):  # pylint: disable=protected-access
+      # Check for any resource inputs. If we find any, we update control_inputs
+      # and last_op_using_resource_tensor. Note that we dedup op.inputs in case
+      # op receives the same resource tensor twice as input, which would result
+      # in op getting a control dependency on itself.
+      for inp in set(op.inputs):
+        if inp.dtype != dtypes_module.resource:
+          continue
+        found_resource = True
+        # Deal with switches, finally.
+        if inp.op.type == "Switch":
+          self._process_switch(inp.op, ops_which_must_run,
+                               last_op_using_resource_tensor,
+                               merge_for_resource)
+        # Ensure uses of resources are serialized
+        if inp in last_op_using_resource_tensor:
+          if (last_op_using_resource_tensor[inp]._control_flow_context  # pylint: disable=protected-access
+              is op._control_flow_context):  # pylint: disable=protected-access
+            control_inputs.add(last_op_using_resource_tensor[inp])
+        # Ensure merges happen after the closing of a cond block
+        if inp in merge_for_resource:
+          merge_for_resource[inp]._add_control_input(op)  # pylint: disable=protected-access
+        last_op_using_resource_tensor[inp] = op
+      if (op.op_def.is_stateful and op.type not in ASYNC_STATEFUL_OPS
+          and not found_resource and op._control_flow_context is None):  # pylint: disable=protected-access
         if None in last_op_using_resource_tensor:
           op._add_control_input(last_op_using_resource_tensor[None])  # pylint: disable=protected-access
         last_op_using_resource_tensor[None] = op

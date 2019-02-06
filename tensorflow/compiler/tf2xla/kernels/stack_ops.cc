@@ -24,13 +24,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -45,7 +45,7 @@ Status GetStackShape(xla::XlaBuilder* builder, XlaResource* resource,
     return shape_or_status.status();
   }
   xla::Shape shape = shape_or_status.ValueOrDie();
-  TF_RET_CHECK(xla::ShapeUtil::IsTuple(shape));
+  TF_RET_CHECK(shape.IsTuple());
   return XLAShapeToTensorShape(xla::ShapeUtil::GetTupleElementShape(shape, 0),
                                stack_shape);
 }
@@ -146,9 +146,9 @@ class StackPushOp : public XlaOpKernel {
     xla::XlaOp value = ctx->Input(1);
 
     // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
-    auto start_indices =
-        xla::Pad(xla::Reshape(index, {1}), xla::ConstantR0<int32>(b, 0),
-                 xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
+    std::vector<xla::XlaOp> start_indices(elem_shape.dims() + 1,
+                                          xla::ConstantR0<int32>(b, 0));
+    start_indices[0] = index;
 
     TensorShape slice_shape = elem_shape;
     slice_shape.InsertDim(0, 1LL);
@@ -202,9 +202,9 @@ class StackPopOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, resource->SetValue(xla::Tuple(b, {ta, index})));
 
     // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
-    auto start_indices =
-        xla::Pad(xla::Reshape(index, {1}), xla::ConstantR0<int32>(b, 0),
-                 xla::MakeEdgePaddingConfig({{0, stack_shape.dims() - 1}}));
+    std::vector<xla::XlaOp> start_indices(stack_shape.dims(),
+                                          xla::ConstantR0<int32>(b, 0));
+    start_indices[0] = index;
 
     auto slice_shape = stack_shape.dim_sizes();
     slice_shape[0] = 1LL;

@@ -25,10 +25,11 @@ import termcolor
 class PrettyPrinter(gast.NodeVisitor):
   """Print AST nodes."""
 
-  def __init__(self, color):
+  def __init__(self, color, noanno):
     self.indent_lvl = 0
     self.result = ''
     self.color = color
+    self.noanno = noanno
 
   def _color(self, string, color, attrs=None):
     if self.color:
@@ -55,6 +56,15 @@ class PrettyPrinter(gast.NodeVisitor):
     self.result += '\n'
 
   def generic_visit(self, node, name=None):
+    # In very rare instances, a list can contain something other than a Node.
+    # e.g. Global contains a list of strings.
+    if isinstance(node, str):
+      if name:
+        self._print('%s%s="%s"' % (self._indent(), name, node))
+      else:
+        self._print('%s"%s"' % (self._indent(), node))
+      return
+
     if node._fields:
       cont = ':'
     else:
@@ -68,6 +78,8 @@ class PrettyPrinter(gast.NodeVisitor):
 
     self.indent_lvl += 1
     for f in node._fields:
+      if self.noanno and f.startswith('__'):
+        continue
       if not hasattr(node, f):
         self._print('%s%s' % (self._indent(), self._warning('%s=<unset>' % f)))
         continue
@@ -103,8 +115,8 @@ class PrettyPrinter(gast.NodeVisitor):
     self.indent_lvl -= 1
 
 
-def fmt(node, color=True):
-  printer = PrettyPrinter(color)
+def fmt(node, color=True, noanno=False):
+  printer = PrettyPrinter(color, noanno)
   if isinstance(node, (list, tuple)):
     for n in node:
       printer.visit(n)

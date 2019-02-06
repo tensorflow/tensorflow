@@ -121,11 +121,9 @@ class PReLU(Layer):
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
     param_shape = list(input_shape[1:])
-    self.param_broadcast = [False] * len(param_shape)
     if self.shared_axes is not None:
       for i in self.shared_axes:
         param_shape[i - 1] = 1
-        self.param_broadcast[i - 1] = True
     self.alpha = self.add_weight(
         shape=param_shape,
         name='alpha',
@@ -143,12 +141,7 @@ class PReLU(Layer):
 
   def call(self, inputs, mask=None):
     pos = K.relu(inputs)
-    if K.backend() == 'theano':
-      neg = (
-          K.pattern_broadcast(self.alpha, self.param_broadcast) *
-          (inputs - math_ops.abs(inputs)) * 0.5)
-    else:
-      neg = -self.alpha * K.relu(-inputs)
+    neg = -self.alpha * K.relu(-inputs)
     return pos + neg
 
   def get_config(self):

@@ -28,6 +28,7 @@ REGISTER_OP("CollectiveReduce")
     .Attr("merge_op: {'Min', 'Max', 'Mul', 'Add'}")
     .Attr("final_op: {'Id', 'Div'}")
     .Attr("subdiv_offsets: list(int)")
+    .Attr("wait_for: list(int) = []")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnchangedShape);
 

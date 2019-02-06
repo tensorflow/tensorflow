@@ -480,7 +480,7 @@ class StagingMap : public ResourceBase {
     return map_.size();
   }
 
-  string DebugString() override { return "StagingMap"; }
+  string DebugString() const override { return "StagingMap"; }
 };
 
 template <bool Ordered>

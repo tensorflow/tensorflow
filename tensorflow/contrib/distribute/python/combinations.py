@@ -46,16 +46,22 @@ import unittest
 from absl.testing import parameterized
 import six
 
-from tensorflow.contrib.cluster_resolver import TPUClusterResolver
+from tensorflow.contrib import cluster_resolver
 from tensorflow.contrib.distribute.python import mirrored_strategy as mirrored_lib
 from tensorflow.contrib.distribute.python import one_device_strategy as one_device_lib
+from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.contrib.distribute.python import tpu_strategy as tpu_lib
 from tensorflow.contrib.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.contrib.optimizer_v2 import adam as adam_v2
 from tensorflow.contrib.optimizer_v2 import gradient_descent as gradient_descent_v2
+from tensorflow.contrib.tpu.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_keras_v2
+from tensorflow.python.keras.optimizer_v2 import adam as adam_keras_v2
+from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras_v2
+from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_keras_v2
 from tensorflow.python.training import adagrad
 from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
@@ -226,7 +232,7 @@ def combine(**kwargs):
   if not kwargs:
     return [OrderedDict()]
 
-  sort_by_key = lambda k: k[0][0]
+  sort_by_key = lambda k: k[0]
   kwargs = OrderedDict(sorted(kwargs.items(), key=sort_by_key))
   first = list(kwargs.items())[0]
 
@@ -321,6 +327,23 @@ class NamedDistribution(object):
     return self._required_tpu
 
 
+def _get_tpu_strategy_creator(steps_per_run, use_single_core=False, **kwargs):
+  def _create_tpu_strategy():
+    resolver = cluster_resolver.TPUClusterResolver("")
+    topology = tpu_lib.initialize_tpu_system(resolver)
+    device_assignment = None
+    if use_single_core:
+      device_assignment = device_assignment_lib.DeviceAssignment(
+          topology, core_assignment=device_assignment_lib.
+          SINGLE_CORE_ASSIGNMENT)
+
+    strategy = tpu_lib.TPUStrategy(resolver, steps_per_run=steps_per_run,
+                                   device_assignment=device_assignment,
+                                   **kwargs)
+    return strategy
+  return _create_tpu_strategy
+
+
 # pylint: disable=g-long-lambda
 default_strategy = NamedDistribution(
     "Default",
@@ -329,14 +352,24 @@ default_strategy = NamedDistribution(
 one_device_strategy = NamedDistribution(
     "OneDeviceCPU", lambda: one_device_lib.OneDeviceStrategy("/cpu:0"),
     required_gpus=None)
+one_device_strategy_gpu = NamedDistribution(
+    "OneDeviceGPU", lambda: one_device_lib.OneDeviceStrategy("/gpu:0"),
+    required_gpus=1)
 tpu_strategy = NamedDistribution(
-    "TPU", lambda: tpu_lib.TPUStrategy(
-        TPUClusterResolver(""), steps_per_run=2),
+    "TPU", _get_tpu_strategy_creator(steps_per_run=2),
     required_tpu=True)
 tpu_strategy_one_step = NamedDistribution(
-    "TPUOneStep", lambda: tpu_lib.TPUStrategy(
-        TPUClusterResolver(""), steps_per_run=1),
+    "TPUOneStep", _get_tpu_strategy_creator(steps_per_run=1),
     required_tpu=True)
+tpu_strategy_one_core = NamedDistribution(
+    "TPUOneCore", _get_tpu_strategy_creator(
+        steps_per_run=2, use_single_core=True),
+    required_tpu=True)
+tpu_strategy_one_step_one_core = NamedDistribution(
+    "TPUOneStepOneCore", _get_tpu_strategy_creator(
+        steps_per_run=1, use_single_core=True),
+    required_tpu=True)
+
 mirrored_strategy_with_one_cpu = NamedDistribution(
     "Mirrored1CPU",
     lambda: mirrored_lib.MirroredStrategy(["/cpu:0"]))
@@ -367,6 +400,11 @@ core_mirrored_strategy_with_two_gpus = NamedDistribution(
     "CoreMirrored2GPUs",
     lambda: mirrored_lib.CoreMirroredStrategy(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
+parameter_server_strategy_with_two_gpus = NamedDistribution(
+    "ParameterServer2GPUs",
+    lambda: parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2),
+    required_gpus=2)
 
 
 gradient_descent_optimizer_v1_fn = NamedObject(
@@ -386,9 +424,19 @@ gradient_descent_optimizer_v2_fn = NamedObject(
 adagrad_optimizer_v2_fn = NamedObject(
     "AdagradV2", lambda: adagrad_v2.AdagradOptimizer(0.001))
 adam_optimizer_v2_fn = NamedObject(
-    "AdamV2", lambda: adam_v2.AdamOptimizer(0.001, epsilon=1))
+    "AdamV2", lambda: adam_v2.AdamOptimizer(0.001, epsilon=1.0))
 
 optimizers_v2 = [gradient_descent_optimizer_v2_fn, adagrad_optimizer_v2_fn]
+
+gradient_descent_optimizer_keras_v2_fn = NamedObject(
+    "GradientDescentKerasV2",
+    lambda: gradient_descent_keras_v2.SGD(0.2))
+adagrad_optimizer_keras_v2_fn = NamedObject(
+    "AdagradKerasV2", lambda: adagrad_keras_v2.Adagrad(0.001))
+adam_optimizer_keras_v2_fn = NamedObject(
+    "AdamKerasV2", lambda: adam_keras_v2.Adam(0.001, epsilon=1.0))
+rmsprop_optimizer_keras_v2_fn = NamedObject(
+    "RmsPropKerasV2", lambda: rmsprop_keras_v2.RMSprop(0.001))
 
 graph_and_eager_modes = ["graph", "eager"]
 

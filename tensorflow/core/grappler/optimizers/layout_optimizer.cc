@@ -503,6 +503,7 @@ class NodeProcessor : public GraphProcessor {
       UpdateAttrKSize();
       UpdateAttrStrides();
       UpdateAttrDilations();
+      UpdateAttrExplicitPaddings();
       UpdateAttrShape();
       TF_RETURN_IF_ERROR(AddLayoutTransposeToInputs());
       TF_RETURN_IF_ERROR(AddLayoutTransposeToOutputs());
@@ -750,6 +751,28 @@ class NodeProcessor : public GraphProcessor {
     if (node_->attr().find("dilations") != node_->attr().end()) {
       auto list = node_->mutable_attr()->at("dilations").mutable_list();
       UpdateTuple(list);
+    }
+  }
+
+  void UpdateAttrExplicitPaddings() {
+    if (node_->attr().find("explicit_paddings") != node_->attr().end()) {
+      auto list = node_->mutable_attr()->at("explicit_paddings").mutable_list();
+      int size = list->i_size();
+      if (size == 8) {
+        int64 height_before = list->i(2);
+        int64 height_after = list->i(3);
+        int64 width_before = list->i(4);
+        int64 width_after = list->i(5);
+        list->set_i(2, 0);
+        list->set_i(3, 0);
+        list->set_i(4, height_before);
+        list->set_i(5, height_after);
+        list->set_i(6, width_before);
+        list->set_i(7, width_after);
+      } else if (size != 0) {
+        LOG(ERROR) << "Cannot handle explicit_paddings attribute of size "
+                   << size;
+      }
     }
   }
 

@@ -52,7 +52,7 @@ elif _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
 
 # Enable TF2 behaviors
-from tensorflow.python.compat import compat as _compat  # pylint: disable=g-import-not-at-top
+from tensorflow.python.compat import v2_compat as _compat  # pylint: disable=g-import-not-at-top
 _compat.enable_v2_behavior()
 
 

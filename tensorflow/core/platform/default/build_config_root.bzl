@@ -2,11 +2,19 @@
 # The functions in this file might be referred by tensorflow.bzl. They have to
 # be separate to avoid cyclic references.
 
+load("@local_config_remote_execution//:remote_execution.bzl", "gpu_test_tags")
+
 def tf_cuda_tests_tags():
-    return ["requires-gpu", "local", "gpu"]
+    return ["requires-gpu", "gpu"] + gpu_test_tags()
 
 def tf_sycl_tests_tags():
-    return ["requires-gpu", "local", "gpu"]
+    return ["requires-gpu", "gpu"] + gpu_test_tags()
+
+def tf_exec_compatible_with(kwargs):
+    if ("tags" in kwargs and kwargs["tags"] != None and
+        "remote-gpu" in kwargs["tags"]):
+        return ["@org_tensorflow//third_party/toolchains:gpu_test"]
+    return []
 
 def tf_additional_plugin_deps():
     return select({

@@ -22,10 +22,8 @@ namespace ops {
 namespace custom {
 
 TfLiteRegistration* Register_AUDIO_SPECTROGRAM();
-TfLiteRegistration* Register_LAYER_NORM_LSTM();
 TfLiteRegistration* Register_MFCC();
 TfLiteRegistration* Register_DETECTION_POSTPROCESS();
-TfLiteRegistration* Register_RELU_1();
 
 }  // namespace custom
 
@@ -37,8 +35,8 @@ TfLiteRegistration* Register_ABS();
 TfLiteRegistration* Register_RELU();
 TfLiteRegistration* Register_RELU_N1_TO_1();
 TfLiteRegistration* Register_RELU6();
-TfLiteRegistration* Register_TANH();
-TfLiteRegistration* Register_LOGISTIC();
+TfLiteRegistration* Register_TANH_REF();
+TfLiteRegistration* Register_LOGISTIC_REF();
 TfLiteRegistration* Register_AVERAGE_POOL_REF();
 TfLiteRegistration* Register_MAX_POOL_REF();
 TfLiteRegistration* Register_L2_POOL_REF();
@@ -83,7 +81,7 @@ TfLiteRegistration* Register_STRIDED_SLICE_REF();
 TfLiteRegistration* Register_EXP();
 TfLiteRegistration* Register_TOPK_V2();
 TfLiteRegistration* Register_LOG();
-TfLiteRegistration* Register_LOG_SOFTMAX();
+TfLiteRegistration* Register_LOG_SOFTMAX_REF();
 TfLiteRegistration* Register_CAST();
 TfLiteRegistration* Register_DEQUANTIZE();
 TfLiteRegistration* Register_PRELU();
@@ -95,7 +93,7 @@ TfLiteRegistration* Register_GREATER();
 TfLiteRegistration* Register_GREATER_EQUAL();
 TfLiteRegistration* Register_LESS();
 TfLiteRegistration* Register_LESS_EQUAL();
-TfLiteRegistration* Register_FLOOR();
+TfLiteRegistration* Register_FLOOR_REF();
 TfLiteRegistration* Register_TILE();
 TfLiteRegistration* Register_NEG();
 TfLiteRegistration* Register_SUM();
@@ -104,7 +102,7 @@ TfLiteRegistration* Register_REDUCE_MAX();
 TfLiteRegistration* Register_REDUCE_MIN();
 TfLiteRegistration* Register_REDUCE_ANY();
 TfLiteRegistration* Register_SELECT();
-TfLiteRegistration* Register_SLICE();
+TfLiteRegistration* Register_SLICE_REF();
 TfLiteRegistration* Register_SIN();
 TfLiteRegistration* Register_TRANSPOSECONV_REF();
 TfLiteRegistration* Register_EXPAND_DIMS();
@@ -168,8 +166,8 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
   AddBuiltin(BuiltinOperator_RELU_N1_TO_1, Register_RELU_N1_TO_1());
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6());
-  AddBuiltin(BuiltinOperator_TANH, Register_TANH());
-  AddBuiltin(BuiltinOperator_LOGISTIC, Register_LOGISTIC());
+  AddBuiltin(BuiltinOperator_TANH, Register_TANH_REF());
+  AddBuiltin(BuiltinOperator_LOGISTIC, Register_LOGISTIC_REF());
   AddBuiltin(BuiltinOperator_AVERAGE_POOL_2D, Register_AVERAGE_POOL_REF());
   AddBuiltin(BuiltinOperator_MAX_POOL_2D, Register_MAX_POOL_REF());
   AddBuiltin(BuiltinOperator_L2_POOL_2D, Register_L2_POOL_REF());
@@ -230,7 +228,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_EXP, Register_EXP());
   AddBuiltin(BuiltinOperator_TOPK_V2, Register_TOPK_V2());
   AddBuiltin(BuiltinOperator_LOG, Register_LOG());
-  AddBuiltin(BuiltinOperator_LOG_SOFTMAX, Register_LOG_SOFTMAX());
+  AddBuiltin(BuiltinOperator_LOG_SOFTMAX, Register_LOG_SOFTMAX_REF());
   AddBuiltin(BuiltinOperator_CAST, Register_CAST());
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE(),
              /* min_version */ 1,
@@ -244,10 +242,10 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_GREATER_EQUAL, Register_GREATER_EQUAL());
   AddBuiltin(BuiltinOperator_LESS, Register_LESS());
   AddBuiltin(BuiltinOperator_LESS_EQUAL, Register_LESS_EQUAL());
-  AddBuiltin(BuiltinOperator_FLOOR, Register_FLOOR());
+  AddBuiltin(BuiltinOperator_FLOOR, Register_FLOOR_REF());
   AddBuiltin(BuiltinOperator_NEG, Register_NEG());
   AddBuiltin(BuiltinOperator_SELECT, Register_SELECT());
-  AddBuiltin(BuiltinOperator_SLICE, Register_SLICE());
+  AddBuiltin(BuiltinOperator_SLICE, Register_SLICE_REF());
   AddBuiltin(BuiltinOperator_SIN, Register_SIN());
   AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSECONV_REF());
   AddBuiltin(BuiltinOperator_TILE, Register_TILE());
@@ -286,8 +284,6 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddCustom("Mfcc", tflite::ops::custom::Register_MFCC());
   AddCustom("AudioSpectrogram",
             tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
-  AddCustom("LayerNormLstm", tflite::ops::custom::Register_LAYER_NORM_LSTM());
-  AddCustom("Relu1", tflite::ops::custom::Register_RELU_1());
   AddCustom("TFLite_Detection_PostProcess",
             tflite::ops::custom::Register_DETECTION_POSTPROCESS());
 }

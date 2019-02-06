@@ -227,7 +227,10 @@ tf_custom_op_library(
         "kernels/lstm_ops_gpu.cu.cc",
         "kernels/lstm_ops.h",
     ],
-    deps = ["//tensorflow/core/kernels:eigen_helpers"],
+    deps = [
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
+        "//tensorflow/core/kernels:eigen_helpers",
+    ],
 )
 
 tf_gen_op_wrapper_py(
@@ -249,7 +252,10 @@ tf_custom_op_library(
         "kernels/gru_ops_gpu.cu.cc",
         "kernels/gru_ops.h",
     ],
-    deps = ["//tensorflow/core/kernels:eigen_helpers"],
+    deps = [
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
+        "//tensorflow/core/kernels:eigen_helpers",
+    ],
 )
 
 tf_gen_op_wrapper_py(
@@ -346,6 +352,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
         "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",
     ],
@@ -381,6 +388,13 @@ py_binary(
     name = "checkpoint_convert",
     srcs = ["python/tools/checkpoint_convert.py"],
     srcs_version = "PY2AND3",
+    deps = [":checkpoint_convert_lib"],
+)
+
+py_library(
+    name = "checkpoint_convert_lib",
+    srcs = ["python/tools/checkpoint_convert.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_ops",
@@ -399,7 +413,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
-        ":checkpoint_convert",
+        ":checkpoint_convert_lib",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",

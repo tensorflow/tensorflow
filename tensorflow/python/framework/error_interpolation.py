@@ -31,7 +31,7 @@ import six
 
 from tensorflow.python.util import tf_stack
 
-_NAME_REGEX = r"[A-Za-z0-9.][A-Za-z0-9_.\-/]*?"
+_NAME_REGEX = r"[A-Za-z0-9_.][A-Za-z0-9_.\-/]*?"
 _TAG_REGEX = r"{{{{({name}) ({name})}}}}".format(name=_NAME_REGEX)
 _INTERPOLATION_REGEX = r"^(.*?)({tag})".format(tag=_TAG_REGEX)
 _INTERPOLATION_PATTERN = re.compile(_INTERPOLATION_REGEX, re.DOTALL)
@@ -45,7 +45,7 @@ _BAD_FILE_SUBSTRINGS = [
 ]
 
 
-def _parse_message(message):
+def parse_message(message):
   """Parses the message.
 
   Splits the message into separators and tags. Tags are named tuples
@@ -177,9 +177,9 @@ def _compute_colocation_summary_from_op(op, prefix=""):
 
 
 def _find_index_of_defining_frame_for_op(op):
-  """Return index in op._traceback with first 'useful' frame.
+  """Return index in op.traceback with first 'useful' frame.
 
-  This method reads through the stack stored in op._traceback looking for the
+  This method reads through the stack stored in op.traceback looking for the
   innermost frame which (hopefully) belongs to the caller.  It accomplishes this
   by rejecting frames whose filename appears to come from TensorFlow (see
   error_interpolation._BAD_FILE_SUBSTRINGS for the list of rejected substrings).
@@ -189,15 +189,13 @@ def _find_index_of_defining_frame_for_op(op):
         location.
 
   Returns:
-    Integer index into op._traceback where the first non-TF file was found
+    Integer index into op.traceback where the first non-TF file was found
     (innermost to outermost), or 0 (for the outermost stack frame) if all files
     came from TensorFlow.
   """
-  # pylint: disable=protected-access
   # Index 0 of tf_traceback is the outermost frame.
-  tf_traceback = tf_stack.convert_stack(op._traceback)
+  tf_traceback = op.traceback
   size = len(tf_traceback)
-  # pylint: enable=protected-access
   filenames = [frame[tf_stack.TB_FILENAME] for frame in tf_traceback]
   # We process the filenames from the innermost frame to outermost.
   for idx, filename in enumerate(reversed(filenames)):
@@ -210,10 +208,31 @@ def _find_index_of_defining_frame_for_op(op):
 def _get_defining_frame_from_op(op):
   """Find and return stack frame where op was defined."""
   frame_index = _find_index_of_defining_frame_for_op(op)
-  # pylint: disable=protected-access
-  frame = op._traceback[frame_index]
-  # pylint: enable=protected-access
-  return frame
+  return op.traceback[frame_index]
+
+def compute_useful_stack(op):
+  """Return a list of line name and lineno pairs, which form a 'useful' stack.
+
+  Starting from the defining frame to the outermost one, this method computes
+  the contiguous portion of the 'useful' stack trace and returns each line as
+  a line name and lineno pair.
+
+  Args:
+    op: op.Operation object having a _traceback member.
+
+  Returns:
+    A list of line name and lineno pairs. Below is an example of returned list:
+    [("tool_utils.py", "124"), ("tool_utils.py", "21"), ....]
+  """
+  defining_frame_index = _find_index_of_defining_frame_for_op(op)
+  stack_trace = []
+  # the stack trace is collected from the defining (included) to the outermost.
+  for index in reversed(range(defining_frame_index + 1)):
+    frame = op.traceback[index]
+    filename = frame[tf_stack.TB_FILENAME]
+    lineno = frame[tf_stack.TB_LINENO]
+    stack_trace.append((filename, lineno))
+  return stack_trace
 
 
 def compute_field_dict(op, strip_file_prefix=""):
@@ -286,10 +305,7 @@ def traceback_files_common_prefix(all_ops):
     if ops is None:
       continue
     for op in ops:
-      # pylint: disable=protected-access
-      tf_traceback = tf_stack.convert_stack(op._traceback)
-      # pylint: enable=protected-access
-      for frame in tf_traceback:
+      for frame in op.traceback:
         filename = frame[tf_stack.TB_FILENAME]
         if "<embedded" not in filename:
           files.add(filename)
@@ -384,7 +400,7 @@ def interpolate(error_message, graph):
   Returns:
     The string with tags of the form {{type name}} interpolated.
   """
-  seps, tags = _parse_message(error_message)
+  seps, tags = parse_message(error_message)
   subs = []
   end_msg = collections.defaultdict(list)
   tagged_ops = []
@@ -412,6 +428,8 @@ def interpolate(error_message, graph):
         msg = "node %s%s placed on device %s " % (
             ops[0].name, field_dict["defined_at"], field_dict["devices"])
         end_msg["colocations"].append(field_dict["devs_and_colocs"])
+    if tag.type == "function_node":
+      msg = ""
     subs.append(msg)
 
   if "source_nodes" in end_msg:

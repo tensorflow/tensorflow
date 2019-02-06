@@ -130,17 +130,22 @@ _allowed_symbols = ['nest']
 _nest_allowed_symbols = [
     'assert_same_structure',
     'is_sequence',
+    'is_sequence_or_composite',
     'flatten',
     'flatten_dict_items',
     'pack_sequence_as',
     'map_structure',
     'map_structure_with_paths',
+    'map_structure_with_tuple_paths',
     'assert_shallow_structure',
     'flatten_up_to',
+    'flatten_with_tuple_paths_up_to',
     'map_structure_up_to',
+    'map_structure_with_tuple_paths_up_to',
     'get_traverse_shallow_structure',
     'yield_flat_paths',
     'flatten_with_joined_string_paths',
+    'flatten_with_tuple_paths',
 ]
 
 remove_undocumented(nest.__name__, allowed_exception_list=_nest_allowed_symbols)

@@ -392,6 +392,11 @@ class UnaryOpsTest(xla_test.XLATestCase):
               [[-0.66666669, -0.5, 0, 0.5, 0.66666669]], dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
+          math_ops.sign,
+          np.array([[-2.0, -1.0, -0.0, +0.0, 1.0, 2.0]], dtype=dtype),
+          expected=np.array([[-1.0, -1.0, -0.0, +0.0, 1.0, 1.0]], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
           math_ops.is_finite,
           np.array(
               [[42, float("inf"), -123], [float("nan"), 0, -0.0]], dtype=dtype),
@@ -647,7 +652,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype),
           expected=np.tan(np.array([1, 2j, 2 - 3j, 4 + 5j], dtype=dtype)))
 
-      ctypes = {np.complex64: np.float32}
+      ctypes = {np.complex64: np.float32, np.complex128: np.float64}
       self._assertOpOutputMatchesExpected(
           math_ops.abs,
           np.array([[3 - 4j, -1j, np.inf]], dtype=dtype),
@@ -743,6 +748,10 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array(
               [[np.NINF, -2, -1, 0, 0.5, 1, 2, np.inf, np.nan]], dtype=dtype),
           expected=np.array([[0, 0, 0, 0, 0, 0, 0, 0, 1]], dtype=np.bool))
+      self._assertOpOutputMatchesExpected(
+          math_ops.sign,
+          np.array([[np.nan]], dtype=dtype),
+          expected=np.array([[0.0]], dtype=dtype))
 
   def testLogicalOps(self):
     self._assertOpOutputMatchesExpected(
@@ -760,7 +769,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
         lambda x: gen_nn_ops.bias_add_grad(x, data_format="NCHW"),
         np.array(
             [[[1., 2.], [3., 4.]], [[5., 6.], [7., 8.]]], dtype=np.float32),
-        expected=np.array([10., 26.], dtype=np.float32))
+        expected=np.array([14., 22.], dtype=np.float32))
 
   def testCast(self):
     shapes = [[], [4], [2, 3], [2, 0, 4]]

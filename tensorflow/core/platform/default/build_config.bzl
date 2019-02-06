@@ -6,6 +6,7 @@ load("//tensorflow:tensorflow.bzl", "if_windows")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl_ml",
@@ -578,7 +579,10 @@ def tf_additional_device_tracer_cuda_deps():
     return []
 
 def tf_additional_device_tracer_deps():
-    return []
+    return [
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/internal/cpu:host_tracer",
+    ]
 
 def tf_additional_device_tracer_test_flags():
     return []
@@ -663,6 +667,8 @@ def tf_additional_cloud_op_deps():
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
+        "//tensorflow:api_version_2": [],
+        "//tensorflow:windows_and_api_version_2": [],
         "//tensorflow:no_gcp_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
@@ -670,13 +676,15 @@ def tf_additional_cloud_op_deps():
         ],
     })
 
-# TODO(jart, jhseu): Delete when GCP is default on.
+# TODO(jhseu): Delete when GCP is default on.
 def tf_additional_cloud_kernel_deps():
     return select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
+        "//tensorflow:api_version_2": [],
+        "//tensorflow:windows_and_api_version_2": [],
         "//tensorflow:no_gcp_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
@@ -729,7 +737,11 @@ def tf_additional_binary_deps():
     return ["@nsync//:nsync_cpp"] + if_cuda(
         [
             "//tensorflow/stream_executor:cuda_platform",
-            "//tensorflow/core/platform/default/build_config:cuda",
+        ],
+    ) + if_rocm(
+        [
+            "//tensorflow/stream_executor:rocm_platform",
+            "//tensorflow/core/platform/default/build_config:rocm",
         ],
     ) + [
         # TODO(allenl): Split these out into their own shared objects (they are

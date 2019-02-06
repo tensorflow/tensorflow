@@ -80,7 +80,9 @@ XLA_TEST_F(PrngTest, LargeU01) { UniformTest<float>(0, 1, {0x100, 0x100}); }
 XLA_TEST_F(PrngTest, TwelveValuesU524) { UniformTest<int32>(5, 24, {12}); }
 
 // TODO(b/71543667): Fix Rng ops on LLVM backends.
-XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU(ScalarBF16Tests))) {
+// TODO(b/122047800): Interpreter does not support BF16 for RNG ops.
+XLA_TEST_F(PrngTest, DISABLED_ON_INTERPRETER(
+                         DISABLED_ON_GPU(DISABLED_ON_CPU(ScalarBF16Tests)))) {
   for (int64 seed = 0; seed < 100; ++seed) {
     // The largest negative number smaller than zero in bf16 that's not
     // denormalized.
@@ -103,7 +105,9 @@ XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU(ScalarBF16Tests))) {
 }
 
 // TODO(b/71543667): Fix Rng ops on LLVM backends.
-XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU(ScalarBF16CountTests))) {
+// TODO(b/122047800): Interpreter does not support BF16 for RNG ops.
+XLA_TEST_F(PrngTest, DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
+                         DISABLED_ON_CPU(ScalarBF16CountTests)))) {
   // There are 3 BF16 values in the range of [32.25, 33): 32.25, 32.5, 32.75,
   // they should get similar counts.
   bfloat16 low = static_cast<bfloat16>(32.25);
@@ -274,6 +278,39 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
   EXPECT_FALSE(LiteralTestUtil::Equal(result1, result4));
   EXPECT_FALSE(LiteralTestUtil::Equal(result4, result5));
   EXPECT_FALSE(LiteralTestUtil::Equal(result5, result6));
+}
+
+// This test verifies that the two RNG instructions with the same parameters in
+// the same HloComputation produces different values.
+XLA_TEST_F(PrngTest, DifferentValuesForIdenticalRngNodesInSameComputation) {
+  // Build a U[0,1) computation.
+  auto build_computation = [this]() {
+    XlaBuilder builder(TestName());
+    auto a = RngUniform(ConstantR0<int32>(&builder, 0),
+                        ConstantR0<int32>(&builder, 100),
+                        ShapeUtil::MakeShape(S32, {10}));
+    auto b = RngUniform(ConstantR0<int32>(&builder, 0),
+                        ConstantR0<int32>(&builder, 100),
+                        ShapeUtil::MakeShape(S32, {10}));
+    Tuple(&builder, {a, b});
+    return builder.Build();
+  };
+
+  ExecutionOptions execution_options = execution_options_;
+  execution_options.set_seed(42);
+
+  Literal result_tuple;
+  {
+    TF_ASSERT_OK_AND_ASSIGN(auto computation, build_computation());
+    TF_ASSERT_OK_AND_ASSIGN(
+        result_tuple, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
+                                                  &execution_options));
+  }
+
+  auto results = result_tuple.DecomposeTuple();
+  ASSERT_EQ(results.size(), 2);
+
+  EXPECT_FALSE(LiteralTestUtil::Equal(results[0], results[1]));
 }
 
 XLA_TEST_F(PrngTest, TenValuesN01) {

@@ -22,6 +22,7 @@ import io
 import logging
 import sys
 
+from absl.testing import parameterized
 import numpy as np
 import six
 
@@ -36,6 +37,7 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.callbacks import Callback
+from tensorflow.python.keras.engine.training_utils import set_run_eagerly_for_dict_structure
 from tensorflow.python.keras.engine.training_utils import weighted_masked_objective
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -43,6 +45,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 try:
@@ -348,16 +351,21 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertEqual(len(out), 2)
 
   @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_with_all_model_types
   def test_activity_regularizer_fit(self):
     loss = {}
     for reg in [None, 'l2']:
-      inputs = keras.layers.Input(shape=(10,))
-      x = keras.layers.Dense(
-          10, activation='relu', activity_regularizer=reg,
-          kernel_initializer='ones', use_bias=False)(inputs)
-      outputs = keras.layers.Dense(1, activation='sigmoid',
-                                   kernel_initializer='ones', use_bias=False)(x)
-      model = keras.Model(inputs, outputs)
+      layers = [
+          keras.layers.Dense(
+              10, activation='relu', activity_regularizer=reg,
+              kernel_initializer='ones', use_bias=False),
+          keras.layers.Dense(
+              1, activation='sigmoid', kernel_initializer='ones',
+              use_bias=False),
+      ]
+
+      model = testing_utils.get_model_from_layers(
+          layers, input_shape=(10,))
 
       x = np.ones((10, 10), 'float32')
       y = np.ones((10, 1), 'float32')
@@ -370,15 +378,14 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertLess(loss[None], loss['l2'])
 
   @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_with_all_model_types
   def test_activity_regularizer_loss_value(self):
-    inputs = keras.layers.Input(shape=(10,))
-    outputs = keras.layers.Dense(
-        1,
-        kernel_initializer=keras.initializers.zeros(),
-        bias_initializer=keras.initializers.ones(),
-        activity_regularizer='l2')(
-            inputs)
-    model = keras.Model(inputs, outputs)
+    layer = keras.layers.Dense(
+        1, kernel_initializer=keras.initializers.zeros(),
+        bias_initializer=keras.initializers.ones(), activity_regularizer='l2')
+
+    model = testing_utils.get_model_from_layers([layer], input_shape=(10,))
+
     x = np.ones((10, 10), 'float32')
     y = np.ones((10, 1), 'float32')
     optimizer = RMSPropOptimizer(learning_rate=0.001)
@@ -797,6 +804,34 @@ class TrainingTest(keras_parameterized.TestCase):
       test_model_loss = test_model.train_on_batch(train_x, train_y)
       self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
 
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  @parameterized.named_parameters(
+      ('default', 1, 4), ('integer_two', 2, 2), ('integer_four', 4, 1),
+      ('simple_list', [1, 3, 4], 3), ('duplicated_list', [4, 2, 2], 2))
+  def test_validation_freq(self, validation_freq, expected_runs):
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    model = testing_utils.get_small_mlp(2, 1, 10)
+    model.compile('sgd', 'mse')
+
+    class ValCounter(keras.callbacks.Callback):
+
+      def __init__(self):
+        self.val_runs = 0
+
+      def on_test_begin(self, logs=None):
+        self.val_runs += 1
+
+    val_counter = ValCounter()
+    model.fit(
+        x,
+        y,
+        epochs=4,
+        validation_data=(x, y),
+        validation_freq=validation_freq,
+        callbacks=[val_counter])
+    self.assertEqual(val_counter.val_runs, expected_runs)
+
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 
@@ -992,37 +1027,6 @@ class LossWeightingTest(keras_parameterized.TestCase):
       score = model.evaluate(
           x_test[test_ids, :], y_test[test_ids, :], verbose=0)
       self.assertLess(score[0], ref_score[0])
-
-  @keras_parameterized.run_all_keras_modes
-  def test_warning_for_concurrent_sample_and_class_weights(self):
-
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(10, input_shape=(3,)))
-    model.compile(
-        loss='mse',
-        optimizer=RMSPropOptimizer(learning_rate=0.01),
-        run_eagerly=testing_utils.should_run_eagerly())
-    x_train = np.random.random((10, 3))
-    y_train = np.random.random((10, 10))
-    sample_weight = np.ones((y_train.shape[0]))
-    class_weight = {0: 1., 1: 1.}
-
-    with test.mock.patch.object(logging, 'warning') as mock_log:
-      model.fit(
-          x_train,
-          y_train,
-          epochs=1,
-          verbose=0,
-          sample_weight=sample_weight,
-          class_weight=class_weight)
-      msg = 'The `class_weight` argument will be ignored.'
-
-      msg_found = False
-      for call_args in mock_log.call_args_list:
-        if msg in str(call_args):
-          msg_found = True
-
-      self.assertTrue(msg_found)
 
   @keras_parameterized.run_all_keras_modes
   def test_temporal_sample_weights(self):
@@ -2111,69 +2115,6 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     self.assertEqual(reference_metric_names, model.metrics_names)
 
   @keras_parameterized.run_all_keras_modes
-  def test_metrics_correctness(self):
-    model = keras.Sequential()
-    model.add(
-        keras.layers.Dense(
-            3, activation='relu', input_dim=4, kernel_initializer='ones'))
-    model.add(
-        keras.layers.Dense(
-            1, activation='sigmoid', kernel_initializer='ones'))
-    model.compile(
-        loss='mae',
-        metrics=['accuracy', metrics_module.BinaryAccuracy()],
-        optimizer=RMSPropOptimizer(learning_rate=0.001),
-        run_eagerly=testing_utils.should_run_eagerly())
-
-    # verify correctness of stateful and stateless metrics.
-    x = np.ones((100, 4))
-    y = np.ones((100, 1))
-    outs = model.evaluate(x, y)
-    self.assertEqual(outs[1], 1.)
-    self.assertEqual(outs[2], 1.)
-
-    y = np.zeros((100, 1))
-    outs = model.evaluate(x, y)
-    self.assertEqual(outs[1], 0.)
-    self.assertEqual(outs[2], 0.)
-
-  @keras_parameterized.run_all_keras_modes
-  def test_metrics_correctness_with_weighted_metrics(self):
-    np.random.seed(1337)
-    x = np.array([[[1.], [1.]], [[0.], [0.]]])
-    model = keras.models.Sequential()
-    model.add(
-        keras.layers.TimeDistributed(
-            keras.layers.Dense(1, kernel_initializer='ones'),
-            input_shape=(2, 1)))
-    model.compile(
-        RMSPropOptimizer(learning_rate=0.001),
-        loss='mse',
-        sample_weight_mode='temporal',
-        weighted_metrics=['accuracy', 'mse'],
-        run_eagerly=testing_utils.should_run_eagerly())
-    y = np.array([[[1.], [1.]], [[1.], [1.]]])
-
-    outs = model.evaluate(x, y)
-    self.assertEqual(outs, [0.5, 0.5, 0.5])
-
-    w = np.array([[0., 0.], [0., 0.]])
-    outs = model.evaluate(x, y, sample_weight=w)
-    self.assertEqual(outs, [0., 0., 0.])
-
-    w = np.array([[3., 4.], [1., 2.]])
-    outs = model.evaluate(x, y, sample_weight=w)
-    self.assertArrayNear(outs, [0.75, 0.7, 0.3], .001)
-
-    # Verify that metric value is same with arbitrary weights and batch size.
-    x = np.random.random((50, 2, 1))
-    y = np.random.random((50, 2, 1))
-    w = np.random.random((50, 2))
-    mse1 = model.evaluate(x, y, sample_weight=w, batch_size=5)[2]
-    mse2 = model.evaluate(x, y, sample_weight=w, batch_size=10)[2]
-    self.assertNear(mse1, mse2, err=1e-7)
-
-  @keras_parameterized.run_all_keras_modes
   def test_metric_state_reset_between_fit_and_evaluate(self):
     model = keras.Sequential()
     model.add(keras.layers.Dense(3, activation='relu', input_dim=4))
@@ -2505,6 +2446,79 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     y = np.ones(shape=(10, 2))
     model.fit(x, y, epochs=2, batch_size=5, validation_data=(x, y))
     self.assertEqual([m.name for m in model.metrics], ['mean', 'mean_1'])
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_a1_total_loss_available_with_dict_dataset(self):
+
+    class TestModel(keras.models.Model):
+
+      def call(self, inputs, training=None, mask=None):
+        return math_ops.to_float(inputs['id'])
+
+    model = TestModel()
+    model.compile(
+        optimizer=AdamOptimizer(), loss='mean_squared_error', metrics=['mse'],
+        run_eagerly=testing_utils.should_run_eagerly())
+    dataset = dataset_ops.Dataset.from_tensor_slices(({
+        'id': [[6], [3], [1]]
+    }, [[0.7], [0.4], [0.2]]))
+    val_dataset = dataset_ops.Dataset.from_tensor_slices(({
+        'id': [[8], [5]]
+    }, [[0.9], [0.6]]))
+    history = model.fit(
+        dataset,
+        steps_per_epoch=2,
+        validation_data=val_dataset,
+        validation_steps=2)
+    self.assertAlmostEqual(history.history['val_loss'][0], 34.885, 2)
+    model.evaluate(dataset, steps=30)
+    model.predict([7])
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_total_loss_available_with_dict_array(self):
+
+    class TestModel(keras.models.Model):
+
+      def call(self, inputs, training=None, mask=None):
+        return math_ops.to_float(inputs['id'])
+
+    model = TestModel()
+    model.compile(
+        optimizer=AdamOptimizer(), loss='mean_squared_error', metrics=['mse'],
+        run_eagerly=testing_utils.should_run_eagerly())
+    x = {'id': np.array([[3], [1]])}
+    y = np.array([[4], [2]])
+    val_dataset = (x, y)
+    history = model.fit(
+        x,
+        y,
+        batch_size=32,
+        steps_per_epoch=2,
+        validation_data=val_dataset,
+        validation_steps=2)
+    self.assertAlmostEqual(history.history['val_loss'][0], 1.0, 2)
+    model.evaluate(x, y)
+    model.predict([7])
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_set_run_eagerly_for_dict_structure(self):
+    test_model = keras.models.Model()
+    self.assertFalse(test_model.run_eagerly)
+    set_run_eagerly_for_dict_structure(
+        test_model,
+        {'a': 2})
+    self.assertTrue(test_model.run_eagerly)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_set_run_eagerly_for_dict_dataset(self):
+    test_model = keras.models.Model()
+    self.assertFalse(test_model.run_eagerly)
+    set_run_eagerly_for_dict_structure(
+        test_model,
+        dataset_ops.Dataset.from_tensor_slices(({
+            'id': [[3], [1]]
+        }, [[0.5], [0.2]])))
+    self.assertTrue(test_model.run_eagerly)
 
 
 if __name__ == '__main__':

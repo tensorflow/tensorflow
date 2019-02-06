@@ -322,7 +322,7 @@ Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
   // comparisons).
 
   const Shape& keys_shape = keys_array.GetShape();
-  int64 rank = ShapeUtil::Rank(keys_shape);
+  int64 rank = keys_shape.rank();
   int64 dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
   std::vector<int64> dimensions_in_iteration_order(rank);
   std::vector<int64> iteration_order_to_logical_order(rank);

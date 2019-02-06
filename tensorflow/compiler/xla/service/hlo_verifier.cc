@@ -50,6 +50,7 @@ bool IsCallerInstruction(HloInstruction* hlo) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kSort:
     case HloOpcode::kFusion:
       return true;
     default:
@@ -182,6 +183,10 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
   }
   return CheckShape(hlo,
                     ShapeInference::InferAllToAllTupleShape(operand_shapes));
+}
+
+Status ShapeVerifier::HandleReplicaId(HloInstruction* hlo) {
+  return CheckShape(hlo, ShapeUtil::MakeShape(U32, {}));
 }
 
 Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
@@ -349,7 +354,10 @@ Status ShapeVerifier::HandleConstant(HloInstruction* constant) {
 Status ShapeVerifier::HandleIota(HloInstruction* instruction) {
   TF_RETURN_IF_ERROR(CheckOperandCount(instruction, 0));
   auto* iota = Cast<HloIotaInstruction>(instruction);
-  const int64 rank = ShapeUtil::Rank(iota->shape());
+  if (!iota->shape().IsArray()) {
+    return InternalError("Iota does not support non-array result.");
+  }
+  const int64 rank = iota->shape().rank();
   if (rank == 0) {
     return InternalError("Iota does not support scalars.");
   }
@@ -369,6 +377,24 @@ Status ShapeVerifier::HandleGetTupleElement(HloInstruction* get_tuple_element) {
                         get_tuple_element->tuple_index()));
 }
 
+namespace {
+Status SameElementTypesForOperandsAndToApplyParameters(
+    const HloInstruction& instruction, int64 num_operands_to_check) {
+  const ProgramShape& to_apply = instruction.to_apply()->ComputeProgramShape();
+  for (int i = 0; i < num_operands_to_check; ++i) {
+    const Shape& parameter_shape = to_apply.parameters(i);
+    const Shape& operand_shape = instruction.operands()[i]->shape();
+    if (!ShapeUtil::SameElementType(parameter_shape, operand_shape)) {
+      return InvalidArgument(
+          "Shape mismatch between to_apply computation"
+          " parameter and operand %d in %s.",
+          i, instruction.ToString().c_str());
+    }
+  }
+  return Status::OK();
+}
+}  // namespace
+
 Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
   if (reduce->operand_count() % 2 != 0) {
     return InternalError(
@@ -380,13 +406,27 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
   for (const HloInstruction* operand : reduce->operands()) {
     operand_shapes.push_back(&operand->shape());
   }
-  return CheckShape(reduce, ShapeInference::InferReduceShape(
-                                operand_shapes, reduce->dimensions(),
-                                reduce->to_apply()->ComputeProgramShape()));
+  TF_RETURN_IF_ERROR(
+      CheckShape(reduce, ShapeInference::InferReduceShape(
+                             operand_shapes, reduce->dimensions(),
+                             reduce->to_apply()->ComputeProgramShape())));
+
+  return allow_mixed_precision_
+             ? Status::OK()
+             : SameElementTypesForOperandsAndToApplyParameters(
+                   *reduce, reduce->operands().size() - 1);
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
   TF_RETURN_IF_ERROR(CheckOperandCount(bitcast, 1));
+  // Bitcasts are not allowed to change the element type.
+  if (bitcast->operand(0)->shape().element_type() !=
+      bitcast->shape().element_type()) {
+    return InternalError(
+        "Bitcast can not change the element type from %s to %s",
+        PrimitiveType_Name(bitcast->operand(0)->shape().element_type()),
+        PrimitiveType_Name(bitcast->shape().element_type()));
+  }
   return Status::OK();
 }
 
@@ -397,13 +437,11 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
   const Shape& operand_shape = broadcast->operand(0)->shape();
   // Check for mixed precision.
   TF_RET_CHECK(SameElementType(broadcast->shape(), operand_shape));
-  TF_RET_CHECK(ShapeUtil::Rank(operand_shape) ==
-               broadcast->dimensions().size());
-  for (int64 operand_dimension = 0;
-       operand_dimension < ShapeUtil::Rank(operand_shape);
+  TF_RET_CHECK(operand_shape.rank() == broadcast->dimensions().size());
+  for (int64 operand_dimension = 0; operand_dimension < operand_shape.rank();
        ++operand_dimension) {
     int64 output_dimension = broadcast->dimensions()[operand_dimension];
-    TF_RET_CHECK((output_dimension < ShapeUtil::Rank(broadcast->shape())) &&
+    TF_RET_CHECK((output_dimension < broadcast->shape().rank()) &&
                  output_dimension >= 0 &&
                  (broadcast->shape().dimensions(output_dimension) ==
                   operand_shape.dimensions(operand_dimension)))
@@ -498,21 +536,23 @@ Status ShapeVerifier::HandleSlice(HloInstruction* slice) {
 }
 
 Status ShapeVerifier::HandleDynamicSlice(HloInstruction* dynamic_slice) {
-  TF_RETURN_IF_ERROR(CheckOperandCount(dynamic_slice, 2));
-  return CheckShape(dynamic_slice, ShapeInference::InferDynamicSliceShape(
-                                       dynamic_slice->operand(0)->shape(),
-                                       dynamic_slice->operand(1)->shape(),
-                                       dynamic_slice->dynamic_slice_sizes()));
+  return CheckShape(
+      dynamic_slice,
+      ShapeInference::InferDynamicSliceShape(
+          dynamic_slice->operand(0)->shape(),
+          Cast<HloDynamicSliceInstruction>(dynamic_slice)->index_shapes(),
+          dynamic_slice->dynamic_slice_sizes()));
 }
 
 Status ShapeVerifier::HandleDynamicUpdateSlice(
     HloInstruction* dynamic_update_slice) {
-  TF_RETURN_IF_ERROR(CheckOperandCount(dynamic_update_slice, 3));
-  return CheckShape(dynamic_update_slice,
-                    ShapeInference::InferDynamicUpdateSliceShape(
-                        dynamic_update_slice->operand(0)->shape(),
-                        dynamic_update_slice->operand(1)->shape(),
-                        dynamic_update_slice->operand(2)->shape()));
+  return CheckShape(
+      dynamic_update_slice,
+      ShapeInference::InferDynamicUpdateSliceShape(
+          dynamic_update_slice->operand(0)->shape(),
+          dynamic_update_slice->operand(1)->shape(),
+          Cast<HloDynamicUpdateSliceInstruction>(dynamic_update_slice)
+              ->index_shapes()));
 }
 
 Status ShapeVerifier::HandleTuple(HloInstruction* tuple) {
@@ -524,26 +564,37 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
   int64 max_operand_rank = 0;
   for (const HloInstruction* operand : map->operands()) {
     operand_shapes.push_back(&operand->shape());
-    max_operand_rank =
-        std::max(max_operand_rank, ShapeUtil::Rank(operand->shape()));
+    max_operand_rank = std::max(max_operand_rank, operand->shape().rank());
   }
   // TODO(b/65689298) Remove code below once Map is generalized to accept
   // arbitrary map dimensions.
   std::vector<int64> map_dims(max_operand_rank);
   std::iota(map_dims.begin(), map_dims.end(), 0);
-  return CheckShape(map, ShapeInference::InferMapShape(
-                             operand_shapes,
-                             map->to_apply()->ComputeProgramShape(), map_dims));
+
+  TF_RETURN_IF_ERROR(CheckShape(
+      map,
+      ShapeInference::InferMapShape(
+          operand_shapes, map->to_apply()->ComputeProgramShape(), map_dims)));
+
+  return allow_mixed_precision_
+             ? Status::OK()
+             : SameElementTypesForOperandsAndToApplyParameters(
+                   *map, map->operands().size());
 }
 
 Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
   TF_RETURN_IF_ERROR(CheckOperandCount(reduce_window, 2));
-  return CheckShape(
+  TF_RETURN_IF_ERROR(CheckShape(
       reduce_window,
       ShapeInference::InferReduceWindowShape(
           reduce_window->operand(0)->shape(),
           reduce_window->operand(1)->shape(), reduce_window->window(),
-          reduce_window->to_apply()->ComputeProgramShape()));
+          reduce_window->to_apply()->ComputeProgramShape())));
+
+  return allow_mixed_precision_
+             ? Status::OK()
+             : SameElementTypesForOperandsAndToApplyParameters(*reduce_window,
+                                                               1);
 }
 
 Status ShapeVerifier::HandleSelectAndScatter(HloInstruction* instruction) {
@@ -695,7 +746,6 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kReducePrecision:
-    case HloOpcode::kSelect:
     case HloOpcode::kTupleSelect:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
@@ -983,7 +1033,7 @@ bool ShapeContainsToken(const Shape& shape) {
   bool contains_token = false;
   ShapeUtil::ForEachSubshape(
       shape, [&contains_token](const Shape& subshape, const ShapeIndex&) {
-        if (ShapeUtil::IsToken(subshape)) {
+        if (subshape.IsToken()) {
           contains_token = true;
         }
       });
@@ -1271,11 +1321,11 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     // op. See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
     // or ComputationLowerer::Visit()
     TF_RET_CHECK(broadcast->dimensions().size() ==
-                 ShapeUtil::Rank(broadcast->operand(0)->shape()))
+                 broadcast->operand(0)->shape().rank())
         << "Broadcast HLO (" << broadcast->ToShortString()
         << ") has invalid number of dimensions: "
         << broadcast->dimensions().size()
-        << " != " << ShapeUtil::Rank(broadcast->operand(0)->shape());
+        << " != " << broadcast->operand(0)->shape().rank();
     return Status::OK();
   }
 
@@ -1325,7 +1375,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   Status HandleGetTupleElement(HloInstruction* gte) override {
-    TF_RET_CHECK(ShapeUtil::IsTuple(gte->operand(0)->shape()));
+    TF_RET_CHECK(gte->operand(0)->shape().IsTuple());
     return Status::OK();
   }
 
@@ -1376,7 +1426,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       for (HloInstruction* operand : instruction->operands()) {
         const Shape& operand_shape = operand->shape();
         if (LayoutUtil::IsDenseArray(operand_shape) &&
-            ShapeUtil::Rank(operand_shape) == ShapeUtil::Rank(result_shape)) {
+            operand_shape.rank() == result_shape.rank()) {
           const Layout& operand_layout = operand_shape.layout();
           TF_RET_CHECK(LayoutUtil::Equal(result_layout, operand_layout))
               << "Instruction shouldn't change layouts "

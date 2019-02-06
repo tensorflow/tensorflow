@@ -20,7 +20,6 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -323,11 +322,16 @@ class HloComputation {
   // that's not already in the computation, it's cloned and added to the new
   // computation.
   //
+  // 'extra_parameters' allows to specify additional parameters that should be
+  // added to the computation.
+  //
   // All relevant instructions are cloned, *including* unique_ptr in the
   // `replacements` map.
   std::unique_ptr<HloComputation> CloneWithReplacements(
-      std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+      absl::flat_hash_map<const HloInstruction*,
+                          std::unique_ptr<HloInstruction>>
           replacements,
+      absl::Span<const HloInstruction* const> extra_parameters = {},
       HloCloneContext* context = nullptr, const string& suffix = "clone");
 
   // Convenience overloads for CloneWithReplacements.  You want to do

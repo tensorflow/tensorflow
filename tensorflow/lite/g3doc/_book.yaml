@@ -59,6 +59,10 @@ upper_tabs:
       - title: Post-training quantization example
         path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_quant.ipynb
         status: external
+      - title: GPU delegate
+        path: /lite/performance/gpu
+      - title: Advanced GPU
+        path: /lite/performance/gpu_advanced
 
       - title: TF Mobile
         style: accordion

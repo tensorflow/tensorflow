@@ -7,10 +7,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "distribution_strategy"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "num_replicas_in_sync"
     mtype: "<type \'property\'>"
   }
@@ -25,6 +21,10 @@ tf_class {
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'strategy\', \'replica_id_in_sync_group\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "all_reduce"
+    argspec: "args=[\'self\', \'reduce_op\', \'value\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "merge_call"

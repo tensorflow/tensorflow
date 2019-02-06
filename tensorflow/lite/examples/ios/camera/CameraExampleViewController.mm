@@ -346,7 +346,15 @@ void ProcessInputWithQuantizedModel(
   NSLog(@"Time: %.4lf, avg: %.4lf, count: %d", end - start, total_latency / total_count,
         total_count);
 
-  const int output_size = 1000;
+  // read output size from the output sensor
+  const int output_tensor_index = interpreter->outputs()[0];
+  TfLiteTensor* output_tensor = interpreter->tensor(output_tensor_index);
+  TfLiteIntArray* output_dims = output_tensor->dims;
+  if (output_dims->size != 2 || output_dims->data[0] != 1) {
+    LOG(FATAL) << "Output of the model is in invalid format.";
+  }
+  const int output_size = output_dims->data[1];
+
   const int kNumResults = 5;
   const float kThreshold = 0.1f;
 

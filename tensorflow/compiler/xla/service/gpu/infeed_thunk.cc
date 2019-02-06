@@ -38,11 +38,11 @@ Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
 
   // infeed_slices_'s shape should be a tuple of shape (buffers, token).
   const auto& infeed_shape = infeed_slices_.shape();
-  TF_RET_CHECK(ShapeUtil::IsTuple(infeed_shape))
+  TF_RET_CHECK(infeed_shape.IsTuple())
       << ShapeUtil::HumanStringWithLayout(infeed_shape);
   TF_RET_CHECK(infeed_shape.tuple_shapes().size() == 2)
       << ShapeUtil::HumanStringWithLayout(infeed_shape);
-  TF_RET_CHECK(ShapeUtil::IsToken(infeed_shape.tuple_shapes(1)))
+  TF_RET_CHECK(infeed_shape.tuple_shapes(1).IsToken())
       << ShapeUtil::HumanStringWithLayout(infeed_shape);
   TF_RET_CHECK(
       ShapeUtil::Equal(infeed_buffers.shape(), infeed_shape.tuple_shapes(0)))
@@ -60,7 +60,7 @@ Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
           const Shape& shape = ShapeUtil::GetSubshape(infeed_buffers.shape(),
                                                       ShapeIndexView(index, 1));
           // For the leaf buffers of the tuple copy the elements directly.
-          if (ShapeUtil::IsArray(shape)) {
+          if (shape.IsArray()) {
             const BufferAllocation::Slice& tuple_element_buffer =
                 infeed_slices_.element(index);
             se::DeviceMemoryBase tuple_element_address =

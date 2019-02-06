@@ -79,25 +79,26 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
                     R"(HloModule index_space_module
 
     ENTRY IndexSpace {
-      index_param = s32[3]{0} parameter(0)
-      array_param.1 = f32[123,4,789]{0,1,2} parameter(1)
-      array_param.2 = f32[3,3000,5]{0,1,2} parameter(2)
-      dynamic-slice.1 = f32[1,2,3] dynamic-slice(array_param.1, index_param), dynamic_slice_sizes={1,2,3}
-      ROOT dynamic-slice.2 = f32[3,2,2] dynamic-slice(array_param.2, index_param), dynamic_slice_sizes={3,2,2}
+      index_param.0 = s32[] parameter(0)
+      index_param.1 = s32[] parameter(1)
+      index_param.2 = s32[] parameter(2)
+      array_param.1 = f32[123,4,789]{0,1,2} parameter(3)
+      array_param.2 = f32[3,3000,5]{0,1,2} parameter(4)
+      dynamic-slice.1 = f32[1,2,3] dynamic-slice(array_param.1, index_param.0, index_param.1, index_param.2), dynamic_slice_sizes={1,2,3}
+      ROOT dynamic-slice.2 = f32[3,2,2] dynamic-slice(array_param.2, index_param.0, index_param.1, index_param.2), dynamic_slice_sizes={3,2,2}
     })")
                     .ValueOrDie();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
-  ASSERT_EQ(args.size(), 3);
-  const Literal& index_arg = args[0];
+  ASSERT_EQ(args.size(), 5);
 
-  EXPECT_EQ(index_arg.Get<int32>({0}), 0);
+  EXPECT_EQ(args[0].Get<int32>({}), 0);
 
-  EXPECT_GE(index_arg.Get<int32>({1}), 0);
-  EXPECT_LE(index_arg.Get<int32>({1}), 2);
+  EXPECT_GE(args[1].Get<int32>({}), 0);
+  EXPECT_LE(args[0].Get<int32>({}), 2);
 
-  EXPECT_GE(index_arg.Get<int32>({2}), 0);
-  EXPECT_LE(index_arg.Get<int32>({2}), 3);
+  EXPECT_GE(args[2].Get<int32>({}), 0);
+  EXPECT_LE(args[2].Get<int32>({}), 3);
 }
 
 XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
@@ -105,28 +106,29 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
                     R"(HloModule index_space_module
 
     ENTRY IndexSpace {
-      index_param = s32[3]{0} parameter(0)
-      array_param.1 = f32[123,4,789]{0,1,2} parameter(1)
-      array_param.2 = f32[3,3000,5]{0,1,2} parameter(2)
-      update_param.1 = f32[1,2,3]{0,1,2} parameter(3)
-      update_param.2 = f32[3,2,2]{0,1,2} parameter(4)
+      index_param.0 = s32[] parameter(0)
+      index_param.1 = s32[] parameter(1)
+      index_param.2 = s32[] parameter(2)
+      array_param.1 = f32[123,4,789]{0,1,2} parameter(3)
+      array_param.2 = f32[3,3000,5]{0,1,2} parameter(4)
+      update_param.1 = f32[1,2,3]{0,1,2} parameter(5)
+      update_param.2 = f32[3,2,2]{0,1,2} parameter(6)
 
-      dynamic-update-slice.1 = f32[123,4,789] dynamic-update-slice(array_param.1, update_param.1, index_param)
-      ROOT dynamic-update-slice.2 = f32[3,3000,5] dynamic-update-slice(array_param.2, update_param.2, index_param)
+      dynamic-update-slice.1 = f32[123,4,789] dynamic-update-slice(array_param.1, update_param.1, index_param.0, index_param.1, index_param.2)
+      ROOT dynamic-update-slice.2 = f32[3,3000,5] dynamic-update-slice(array_param.2, update_param.2, index_param.0, index_param.1, index_param.2)
     })")
                     .ValueOrDie();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
-  ASSERT_EQ(args.size(), 5);
-  const Literal& index_arg = args[0];
+  ASSERT_EQ(args.size(), 7);
 
-  EXPECT_EQ(index_arg.Get<int32>({0}), 0);
+  EXPECT_EQ(args[0].Get<int32>({}), 0);
 
-  EXPECT_GE(index_arg.Get<int32>({1}), 0);
-  EXPECT_LE(index_arg.Get<int32>({1}), 2);
+  EXPECT_GE(args[1].Get<int32>({}), 0);
+  EXPECT_LE(args[0].Get<int32>({}), 2);
 
-  EXPECT_GE(index_arg.Get<int32>({2}), 0);
-  EXPECT_LE(index_arg.Get<int32>({2}), 3);
+  EXPECT_GE(args[2].Get<int32>({}), 0);
+  EXPECT_LE(args[2].Get<int32>({}), 3);
 }
 
 XLA_TEST_F(TestUtilsTest, NoDuplicatesFloats) {
@@ -134,10 +136,18 @@ XLA_TEST_F(TestUtilsTest, NoDuplicatesFloats) {
   auto module = ParseHloString(R"(
 HloModule sort.148.1589
 
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (f32[1048576], s32[1048576]) {
   %parameter.0 = f32[1048576]{0} parameter(0)
   %parameter.1 = s32[1048576]{0} parameter(1)
-  ROOT %sort.148.1589 = (f32[1048576]{0}, s32[1048576]{0}) sort(f32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}
+  ROOT %sort.148.1589 = (f32[1048576]{0}, s32[1048576]{0}) sort(f32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}, to_apply=compare
 }
 )")
                     .ValueOrDie();
@@ -157,10 +167,18 @@ XLA_TEST_F(TestUtilsTest, NoDuplicatesInt32) {
   auto module = ParseHloString(R"(
 HloModule sort.148.1589
 
+compare {
+  p.0.lhs = s32[] parameter(0)
+  p.0.rhs = s32[] parameter(1)
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (s32[1048576], s32[1048576]) {
   %parameter.0 = s32[1048576]{0} parameter(0)
   %parameter.1 = s32[1048576]{0} parameter(1)
-  ROOT %sort.148.1589 = (s32[1048576]{0}, s32[1048576]{0}) sort(s32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}
+  ROOT %sort.148.1589 = (s32[1048576]{0}, s32[1048576]{0}) sort(s32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}, to_apply=compare
 }
 )")
                     .ValueOrDie();
@@ -180,10 +198,18 @@ XLA_TEST_F(TestUtilsTest, NoDuplicatesBfloat16) {
   auto module = ParseHloString(R"(
 HloModule sort, is_scheduled=true
 
+compare {
+  p.0.lhs = bf16[] parameter(0)
+  p.0.rhs = bf16[] parameter(1)
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY %sort. (parameter.0: bf16[2,1452], parameter.1: s32[2,1452]) -> (bf16[2,1452], s32[2,1452]) {
   %parameter.0 = bf16[2,1452]{1,0} parameter(0)
   %parameter.1 = s32[2,1452]{1,0} parameter(1)
-  ROOT %sort = (bf16[2,1452]{1,0}, s32[2,1452]{1,0}) sort(bf16[2,1452]{1,0} %parameter.0, s32[2,1452]{1,0} %parameter.1), dimensions={1}
+  ROOT %sort = (bf16[2,1452]{1,0}, s32[2,1452]{1,0}) sort(bf16[2,1452]{1,0} %parameter.0, s32[2,1452]{1,0} %parameter.1), dimensions={1}, to_apply=compare
 }
 )")
                     .ValueOrDie();
@@ -196,6 +222,34 @@ ENTRY %sort. (parameter.0: bf16[2,1452], parameter.1: s32[2,1452]) -> (bf16[2,14
   for (const bfloat16& value : key_arg.data<bfloat16>()) {
     EXPECT_TRUE(key_set.insert(absl::bit_cast<uint16>(value)).second);
   }
+}
+
+XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsR0InputToDynamicSlice) {
+  auto module = ParseHloString(R"(
+HloModule Test
+
+ENTRY %module (parameter.0: s32[], parameter.1: f32[20,20]) -> f32[] {
+  %parameter.1 = f32[20,20]{1,0} parameter(1)
+  %constant.1 = s32[1]{0} constant({0})
+  %parameter.0 = s32[] parameter(0)
+  %bitcast.3 = s32[1]{0} bitcast(s32[] %parameter.0)
+  %concatenate.1 = s32[2]{0} concatenate(s32[1]{0} %constant.1, s32[1]{0} %bitcast.3), dimensions={0}
+  %dynamic-slice.2 = f32[20,1]{1,0} dynamic-slice(f32[20,20]{1,0} %parameter.1, s32[2]{0} %concatenate.1), dynamic_slice_sizes={20,1}
+  %bitcast.4 = f32[20]{0} bitcast(f32[20,1]{1,0} %dynamic-slice.2)
+  %dynamic-slice.3 = f32[1]{0} dynamic-slice(f32[20]{0} %bitcast.4, s32[1]{0} %bitcast.3), dynamic_slice_sizes={1}
+  ROOT %bitcast.5 = f32[] bitcast(f32[1]{0} %dynamic-slice.3)
+}
+)")
+                    .ValueOrDie();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 2);
+  EXPECT_TRUE(ShapeUtil::Equal(args[0].shape(), ShapeUtil::MakeShape(S32, {})))
+      << ShapeUtil::HumanString(args[0].shape());
+  EXPECT_TRUE(
+      ShapeUtil::Equal(args[1].shape(), ShapeUtil::MakeShape(F32, {20, 20})))
+      << ShapeUtil::HumanString(args[1].shape());
 }
 
 }  // namespace

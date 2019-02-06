@@ -123,7 +123,8 @@ KernelMappingScheme::KernelMappingScheme(
       dims_in_elems_(dims_in_elems.begin(), dims_in_elems.end()),
       tile_sizes_{1, tile_size_y, tile_size_x},
       num_threads_x_(num_threads_x),
-      num_threads_y_(num_threads_y) {
+      num_threads_y_(num_threads_y),
+      dilated_x_(true) {
   DCHECK_EQ(dims_in_elems_.size(), 3);
   DCHECK_EQ(req_block_sizes.size(), 3);
 

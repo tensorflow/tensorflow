@@ -25,11 +25,12 @@ import itertools
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
@@ -56,7 +57,7 @@ from tensorflow.tools.docs import doc_controls
 
 
 @keras_export('keras.layers.Layer')
-class Layer(checkpointable.CheckpointableBase):
+class Layer(checkpointable.Checkpointable):
   """Base layer class.
 
   This is the class from which all layers inherit.
@@ -243,8 +244,8 @@ class Layer(checkpointable.CheckpointableBase):
 
   @doc_controls.for_subclass_implementers
   def add_weight(self,
-                 name,
-                 shape,
+                 name=None,
+                 shape=None,
                  dtype=None,
                  initializer=None,
                  regularizer=None,
@@ -255,11 +256,11 @@ class Layer(checkpointable.CheckpointableBase):
                  synchronization=tf_variables.VariableSynchronization.AUTO,
                  aggregation=tf_variables.VariableAggregation.NONE,
                  **kwargs):
-    """Adds a new variable to the layer, or gets an existing one; returns it.
+    """Adds a new variable to the layer.
 
     Arguments:
-      name: variable name.
-      shape: variable shape.
+      name: Variable name.
+      shape: Variable shape. Defaults to scalar if unspecified.
       dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
       initializer: initializer instance (callable).
       regularizer: regularizer instance (callable).
@@ -296,6 +297,7 @@ class Layer(checkpointable.CheckpointableBase):
       ValueError: When giving unsupported dtype and no initializer or when
         trainable has been set to True with synchronization set as `ON_READ`.
     """
+    shape = shape or ()
     # Validate optional keyword arguments.
     for kwarg in kwargs:
       if kwarg not in ['getter', 'collections']:
@@ -306,6 +308,8 @@ class Layer(checkpointable.CheckpointableBase):
     if dtype is None:
       dtype = self.dtype or backend.floatx()
     dtype = dtypes.as_dtype(dtype)
+    if self._dtype is None:
+      self._dtype = dtype.base_dtype.name
     initializer = initializers.get(initializer)
     regularizer = regularizers.get(regularizer)
     constraint = constraints.get(constraint)
@@ -360,8 +364,10 @@ class Layer(checkpointable.CheckpointableBase):
       # TODO(fchollet): in the future, this should be handled at the
       # level of variable creation, and weight regularization losses
       # should be variable attributes.
-      self._handle_weight_regularization(name, variable, regularizer)
-
+      name_in_scope = variable.name[:variable.name.find(':')]
+      self._handle_weight_regularization(name_in_scope,
+                                         variable,
+                                         regularizer)
     if trainable:
       self._trainable_weights.append(variable)
     else:
@@ -470,15 +476,10 @@ class Layer(checkpointable.CheckpointableBase):
             one per output tensor of the layer).
     """
     if not self.supports_masking:
-      if mask is not None:
-        if isinstance(mask, list):
-          if any(m is not None for m in mask):
-            raise TypeError('Layer ' + self.name + ' does not support masking, '
-                            'but was passed an input_mask: ' + str(mask))
-        else:
-          raise TypeError('Layer ' + self.name + ' does not support masking, '
-                          'but was passed an input_mask: ' + str(mask))
-      # masking not explicitly supported: return None as mask
+      if any(m is not None for m in nest.flatten(mask)):
+        raise TypeError('Layer ' + self.name + ' does not support masking, '
+                        'but was passed an input_mask: ' + str(mask))
+      # masking not explicitly supported: return None as mask.
       return None
     # if masking is explicitly supported, by default
     # carry over the input mask
@@ -510,12 +511,17 @@ class Layer(checkpointable.CheckpointableBase):
       ValueError: if the layer's `call` method returns None (an invalid value).
     """
     input_list = nest.flatten(inputs)
+    # Accept NumPy inputs by converting to Tensors.
+    if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
+      # Don't call `ops.convert_to_tensor` on all `inputs` because
+      # `SparseTensors` can't be converted to `Tensor`.
+      def _convert_non_tensor(x):
+        if isinstance(x, (np.ndarray, float, int)):
+          return ops.convert_to_tensor(x)
+        return x
 
-    if context.executing_eagerly():
-      # Accept NumPy inputs by converting to Tensors when executing eagerly.
-      if all(isinstance(x, (np.ndarray, float, int)) for x in input_list):
-        inputs = nest.map_structure(ops.convert_to_tensor, inputs)
-        input_list = nest.flatten(inputs)
+      inputs = nest.map_structure(_convert_non_tensor, inputs)
+      input_list = nest.flatten(inputs)
 
     # We will attempt to build a TF graph if & only if all inputs are symbolic.
     # This is always the case in graph mode. It can also be the case in eager
@@ -523,79 +529,84 @@ class Layer(checkpointable.CheckpointableBase):
     # models using the functional API).
     build_graph = tf_utils.are_all_symbolic_tensors(input_list)
 
+    if build_graph:
+      # Only create Keras history if at least one tensor originates from a
+      # `keras.Input`. Otherwise this Layer may be being used outside the Keras
+      # framework.
+      if base_layer_utils.needs_keras_history(inputs):
+        base_layer_utils.create_keras_history(inputs)
+      # Do not track these Tensors in any sublayers invoked during `call`.
+      base_layer_utils.mark_checked(inputs)
+
     # Handle Keras mask propagation from previous layer to current layer.
     previous_mask = None
-    if build_graph and (not hasattr(self, '_compute_previous_mask') or
-                        self._compute_previous_mask):
+    if (not hasattr(self, '_compute_previous_mask') or
+        self._compute_previous_mask):
       previous_mask = base_layer_utils.collect_previous_mask(inputs)
       if not hasattr(self, '_call_fn_args'):
         self._call_fn_args = function_utils.fn_args(self.call)
       if ('mask' in self._call_fn_args and 'mask' not in kwargs and
           not generic_utils.is_all_none(previous_mask)):
-        # The previous layer generated a mask, and mask was not explicitly pass
-        # to __call__, hence we set previous_mask as the default value.
+        # The previous layer generated a mask, and mask was not explicitly
+        # pass to __call__, hence we set previous_mask as the default value.
         kwargs['mask'] = previous_mask
 
-    with ops.name_scope(self._name_scope()):
-      if not self.built:
+    # Check input assumptions set after layer building, e.g. input shape.
+    if build_graph:
+      # Symbolic execution on symbolic tensors. We will attempt to build
+      # the corresponding TF subgraph inside `backend.get_graph()`
+      input_spec.assert_input_compatibility(self.input_spec, inputs, self.name)
+      graph = backend.get_graph()
+      with graph.as_default(), ops.name_scope(self._name_scope()):
         # Build layer if applicable (if the `build` method has been overridden).
         self._maybe_build(inputs)
-        # We must set self.built since user defined build functions are not
-        # constrained to set self.built.
-        self.built = True
+        if not self.dynamic:
+          try:
+            outputs = self.call(inputs, *args, **kwargs)
+          except TypeError as e:
+            messages = ('`tf.Tensor` as a Python `bool` is not allowed',
+                        'Tensor objects are only iterable when eager')
+            exception_str = str(e)
+            for msg in messages:
+              if msg in exception_str:
+                raise TypeError('You are attempting to use Python control '
+                                'flow in a layer that was not declared to be '
+                                'dynamic. Pass `dynamic=True` to the class '
+                                'constructor.\nEncountered error:\n"""\n' +
+                                exception_str + '\n"""')
+            raise
+        else:
+          # We will use static shape inference to return symbolic tensors
+          # matching the specifications of the layer outputs.
+          # Since `self.dynamic` is True, we will never attempt to
+          # run the underlying TF graph (which is disconnected).
+          # TODO(fchollet): consider py_func as an alternative, which
+          # would enable us to run the underlying graph if needed.
+          outputs = self._symbolic_call(inputs)
 
-      # Check input assumptions set after layer building, e.g. input shape.
-      if build_graph:
-        # Symbolic execution on symbolic tensors. We will attempt to build
-        # the corresponding TF subgraph inside `backend.get_graph()`
-        input_spec.assert_input_compatibility(
-            self.input_spec, inputs, self.name)
-        graph = backend.get_graph()
-        with graph.as_default():
-          if not self.dynamic:
-            try:
-              outputs = self.call(inputs, *args, **kwargs)
-            except TypeError as e:
-              messages = ['`tf.Tensor` as a Python `bool` is not allowed',
-                          'Tensor objects are only iterable when eager']
-              for msg in messages:
-                if msg in str(e):
-                  raise TypeError('You are attempting to use Python control '
-                                  'flow in a layer that was not declared to be '
-                                  'dynamic. Pass `dynamic=True` to the class '
-                                  'constructor.\nEncountered error:\n"""\n' +
-                                  str(e) + '\n"""')
-              raise e
-          else:
-            # We will use static shape inference to return symbolic tensors
-            # matching the specifications of the layer outputs.
-            # Since `self.dynamic` is True, we will never attempt to
-            # run the underlying TF graph (which is disconnected).
-            # TODO(fchollet): consider py_func as an alternative, which
-            # would enable us to run the underlying graph if needed.
-            outputs = self._symbolic_call(inputs)
-
-          if outputs is None:
-            raise ValueError('A layer\'s `call` method should return a '
-                             'Tensor or a list of Tensors, not None '
-                             '(layer: ' + self.name + ').')
-          self._handle_activity_regularization(inputs, outputs)
-          self._set_mask_metadata(inputs, outputs, previous_mask)
-          if base_layer_utils.have_all_keras_metadata(inputs):
-            inputs, outputs = self._set_connectivity_metadata_(
-                inputs, outputs, args, kwargs)
-          if hasattr(self, '_set_inputs') and not self.inputs:
-            # Subclassed network: explicitly set metadata normally set by
-            # a call to self._set_inputs().
-            # TODO(b/120997007): This should be done in Eager as well, but
-            # causes garbage collection issues because of the placeholders
-            # created on the default Keras graph.
-            self._set_inputs(inputs, outputs)
-      else:
-        # Eager execution on data tensors.
+        if outputs is None:
+          raise ValueError('A layer\'s `call` method should return a '
+                           'Tensor or a list of Tensors, not None '
+                           '(layer: ' + self.name + ').')
+        if base_layer_utils.have_all_keras_metadata(inputs):
+          inputs, outputs = self._set_connectivity_metadata_(
+              inputs, outputs, args, kwargs)
+        self._handle_activity_regularization(inputs, outputs)
+        self._set_mask_metadata(inputs, outputs, previous_mask)
+        if hasattr(self, '_set_inputs') and not self.inputs:
+          # Subclassed network: explicitly set metadata normally set by
+          # a call to self._set_inputs().
+          # TODO(b/120997007): This should be done in Eager as well, but
+          # causes garbage collection issues because of the placeholders
+          # created on the default Keras graph.
+          self._set_inputs(inputs, outputs)
+    else:
+      # Eager execution on data tensors.
+      with ops.name_scope(self._name_scope()):
+        self._maybe_build(inputs)
         outputs = self.call(inputs, *args, **kwargs)
         self._handle_activity_regularization(inputs, outputs)
-        return outputs
+        self._set_mask_metadata(inputs, outputs, previous_mask)
 
     if not context.executing_eagerly():
       # Optionally load weight values specified at layer instantiation.
@@ -1128,14 +1139,7 @@ class Layer(checkpointable.CheckpointableBase):
     all_input_shapes = set(
         [str(node.input_shapes) for node in self._inbound_nodes])
     if len(all_input_shapes) == 1:
-      input_shapes = self._inbound_nodes[0].input_shapes
-      if len(input_shapes) == 1:
-        return tuple(tensor_shape.TensorShape(input_shapes[0]).as_list())
-      else:
-        return [
-            tuple(tensor_shape.TensorShape(shape).as_list())
-            for shape in input_shapes
-        ]
+      return self._inbound_nodes[0].input_shapes
     else:
       raise AttributeError('The layer "' + str(self.name) +
                            ' has multiple inbound nodes, '
@@ -1186,14 +1190,7 @@ class Layer(checkpointable.CheckpointableBase):
     all_output_shapes = set(
         [str(node.output_shapes) for node in self._inbound_nodes])
     if len(all_output_shapes) == 1:
-      output_shapes = self._inbound_nodes[0].output_shapes
-      if len(output_shapes) == 1:
-        return tuple(tensor_shape.TensorShape(output_shapes[0]).as_list())
-      else:
-        return [
-            tuple(tensor_shape.TensorShape(shape).as_list())
-            for shape in output_shapes
-        ]
+      return self._inbound_nodes[0].output_shapes
     else:
       raise AttributeError('The layer "%s"'
                            ' has multiple inbound nodes, '
@@ -1356,27 +1353,32 @@ class Layer(checkpointable.CheckpointableBase):
           self.add_loss(mean_activity_loss, inputs=inputs)
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):
-    # In some cases the mask of the outputs has already been computed by
-    # inner layers and does not need to be recomputed by this layer.
-    mask_already_computed = all(
-        hasattr(x, '_keras_mask') for x in generic_utils.to_list(outputs))
-    if hasattr(self, 'compute_mask') and not mask_already_computed:
-      output_mask = self.compute_mask(inputs, previous_mask)
+    if getattr(self, '_compute_output_and_mask_jointly', False):
+      # Mask is already computed for Keras Graph Networks.
+      return
+
+    flat_outputs = nest.flatten(outputs)
+    if all(getattr(x, '_keras_mask', None) is not None for x in flat_outputs):
+      # Mask is already computed by sublayers.
+      return
+
+    if hasattr(self, 'compute_mask'):
+      output_masks = self.compute_mask(inputs, previous_mask)
+      # `compute_mask` can return a single `None` even when a Layer
+      # has multiple outputs.
+      if output_masks is None:
+        flat_masks = [None for _ in flat_outputs]
+      else:
+        flat_masks = nest.flatten(output_masks)
     else:
-      output_mask = None
-    if isinstance(outputs, (list, tuple)):
-      if output_mask is None:
-        output_mask = [None for _ in range(len(outputs))]
-      for x, m in zip(outputs, output_mask):
-        try:
-          x._keras_mask = m  # pylint: disable=protected-access
-        except AttributeError:
-          pass  # C type such as dict. Masking not supported in this case.
-    else:
+      flat_masks = [None for _ in flat_outputs]
+
+    for output, mask in zip(flat_outputs, flat_masks):
       try:
-        outputs._keras_mask = output_mask  # pylint: disable=protected-access
+        output._keras_mask = mask
       except AttributeError:
-        pass  # C type such as dict. Masking not supported in this case.
+        # C Type such as np.ndarray.
+        pass
 
   def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):
     call_convention = getattr(
@@ -1404,16 +1406,14 @@ class Layer(checkpointable.CheckpointableBase):
     # If the layer returns tensors from its inputs, unmodified,
     # we copy them to avoid loss of tensor metadata.
     output_ls = nest.flatten(outputs)
+    inputs_ls = nest.flatten(inputs)
     output_ls_copy = []
     for x in output_ls:
-      if x in nest.flatten(inputs):
+      if x in inputs_ls:
         with ops.name_scope(self.name):
           x = array_ops.identity(x)
       output_ls_copy.append(x)
-    if len(output_ls_copy) == 1:
-      outputs = output_ls_copy[0]
-    else:
-      outputs = output_ls_copy
+    outputs = nest.pack_sequence_as(outputs, output_ls_copy)
 
     inputs, kwargs = self._inputs_from_call_args(
         call_args=(inputs,) + args, call_kwargs=kwargs)
@@ -1507,19 +1507,12 @@ class Layer(checkpointable.CheckpointableBase):
         arguments: dictionary of keyword arguments that were passed to the
             `call` method of the layer at the call that created the node.
     """
-    input_tensors = nest.flatten(input_tensors)
-    output_tensors = nest.flatten(output_tensors)
-
-    # Collect input tensor(s) coordinates.
-    inbound_layers = []
-    node_indices = []
-    tensor_indices = []
-    for x in input_tensors:
-      assert hasattr(x, '_keras_history')
-      inbound_layer, node_index, tensor_index = x._keras_history  # pylint: disable=protected-access
-      inbound_layers.append(inbound_layer)
-      node_indices.append(node_index)
-      tensor_indices.append(tensor_index)
+    inbound_layers = nest.map_structure(lambda t: t._keras_history[0],
+                                        input_tensors)
+    node_indices = nest.map_structure(lambda t: t._keras_history[1],
+                                      input_tensors)
+    tensor_indices = nest.map_structure(lambda t: t._keras_history[2],
+                                        input_tensors)
 
     # Create node, add it to inbound nodes.
     Node(
@@ -1532,13 +1525,15 @@ class Layer(checkpointable.CheckpointableBase):
         arguments=arguments)
 
     # Update tensor history metadata.
-    for i in range(len(output_tensors)):
-      # The metadata attribute consists of 1) a layer instance
-      # 2) a node index for the layer, 3) a tensor index for the node.
-      # The allows layer reuse (multiple nodes per layer) and multi-output
-      # or multi-input layers (e.g. a layer can return multiple tensors,
-      # and each can be sent to a different layer).
-      output_tensors[i]._keras_history = (self, len(self._inbound_nodes) - 1, i)  # pylint: disable=protected-access
+    # The metadata attribute consists of
+    # 1) a layer instance
+    # 2) a node index for the layer
+    # 3) a tensor index for the node.
+    # The allows layer reuse (multiple nodes per layer) and multi-output
+    # or multi-input layers (e.g. a layer can return multiple tensors,
+    # and each can be sent to a different layer).
+    for i, tensor in enumerate(nest.flatten(output_tensors)):
+      tensor._keras_history = (self, len(self._inbound_nodes) - 1, i)  # pylint: disable=protected-access
 
   def _get_node_attribute_at_index(self, node_index, attr, attr_name):
     """Private utility to retrieves an attribute (e.g. inputs) from a node.
@@ -1571,13 +1566,16 @@ class Layer(checkpointable.CheckpointableBase):
                        str(node_index) + ', but the layer has only ' +
                        str(len(self._inbound_nodes)) + ' inbound nodes.')
     values = getattr(self._inbound_nodes[node_index], attr)
-    if len(values) == 1:
+    if isinstance(values, list) and len(values) == 1:
       return values[0]
     else:
       return values
 
   def _maybe_build(self, inputs):
     # Check input assumptions set before layer building, e.g. input rank.
+    if self.built:
+      return
+
     input_spec.assert_input_compatibility(
         self.input_spec, inputs, self.name)
     input_list = nest.flatten(inputs)
@@ -1592,13 +1590,20 @@ class Layer(checkpointable.CheckpointableBase):
     # Only call `build` if the user has manually overridden the build method.
     if not hasattr(self.build, '_is_default'):
       self.build(input_shapes)
+    # We must set self.built since user defined build functions are not
+    # constrained to set self.built.
+    self.built = True
 
   def _symbolic_call(self, inputs):
     input_shapes = nest.map_structure(lambda x: x.shape, inputs)
     output_shapes = self.compute_output_shape(input_shapes)
-    return nest.map_structure(
-        lambda shape: backend.placeholder(shape, dtype=self.dtype),
-        output_shapes)
+
+    def _make_placeholder_like(shape):
+      ph = backend.placeholder(shape, self.dtype)
+      ph._keras_mask = None
+      return ph
+
+    return nest.map_structure(_make_placeholder_like, output_shapes)
 
   def __setattr__(self, name, value):
     if (not getattr(self, '_setattr_tracking', True) or
@@ -1698,12 +1703,13 @@ class Node(object):
                input_tensors,
                output_tensors,
                arguments=None):
-    # Layer instance (NOT a list).
-    if isinstance(outbound_layer, list):
-      raise ValueError(
-          '`outbound_layer` should be a layer instance, not a list.')
-    # this is the layer that takes a list of input tensors
-    # and turns them into a list of output tensors.
+    # Layer instance (NOT a sequence)
+    if isinstance(outbound_layer, (list, tuple, dict)):
+      raise ValueError('`outbound_layer` should be a layer instance, '
+                       'not a list, tuple, or, dict.')
+
+    # this is the layer that takes a nested structure of input tensors
+    # and turns them into a nested structure of output tensors.
     # the current node will be added to
     # the inbound_nodes of outbound_layer.
     self.outbound_layer = outbound_layer
@@ -1713,33 +1719,33 @@ class Node(object):
     # and for each layer, which node and which
     # tensor output of each node.
 
-    # List of layer instances.
+    # Nested structure of layer instances.
     self.inbound_layers = inbound_layers
-    # List of integers, 1:1 mapping with inbound_layers.
+    # Nested structure of integers, 1:1 mapping with inbound_layers.
     self.node_indices = node_indices
-    # List of integers, 1:1 mapping with inbound_layers.
+    # Nested of integers, 1:1 mapping with inbound_layers.
     self.tensor_indices = tensor_indices
 
     # Following 2 properties:
     # tensor inputs and outputs of outbound_layer.
 
-    # List of tensors. 1:1 mapping with inbound_layers.
+    # Nested structure of tensors. 1:1 mapping with inbound_layers.
     self.input_tensors = input_tensors
-    # List of tensors, created by outbound_layer.call().
+    # Nested structure of tensors, created by outbound_layer.call().
     self.output_tensors = output_tensors
 
     # Following 2 properties: input and output shapes.
 
-    # List of shape tuples, shapes of input_tensors.
-    self.input_shapes = [backend.int_shape(x) for x in input_tensors]
-    # List of shape tuples, shapes of output_tensors.
-    self.output_shapes = [backend.int_shape(x) for x in output_tensors]
+    # Nested structure of shape tuples, shapes of input_tensors.
+    self.input_shapes = nest.map_structure(backend.int_shape, input_tensors)
+    # Nested structure of shape tuples, shapes of output_tensors.
+    self.output_shapes = nest.map_structure(backend.int_shape, output_tensors)
 
     # Optional keyword arguments to layer's `call`.
     self.arguments = arguments
 
     # Add nodes to all layers involved.
-    for layer in inbound_layers:
+    for layer in nest.flatten(inbound_layers):
       if layer is not None:
         # For compatibility with external Keras, we use the deprecated
         # accessor here.
@@ -1748,19 +1754,102 @@ class Node(object):
     # accessor here.
     outbound_layer.inbound_nodes.append(self)
 
+  def iterate_inbound(self):
+    """Returns a list of tuples representing the inbound data.
+
+    Returns:
+      List of tuples like: (inbound_layer, node_index, tensor_index, tensor).
+    """
+    return zip(
+        nest.flatten(self.inbound_layers), nest.flatten(self.node_indices),
+        nest.flatten(self.tensor_indices), nest.flatten(self.input_tensors))
+
   def get_config(self):
-    inbound_names = []
-    for layer in self.inbound_layers:
-      if layer:
-        inbound_names.append(layer.name)
-      else:
-        inbound_names.append(None)
+    inbound_names = nest.map_structure(
+        lambda layer: layer.name if layer else None, self.inbound_layers)
     return {
         'outbound_layer': self.outbound_layer.name,
         'inbound_layers': inbound_names,
         'node_indices': self.node_indices,
         'tensor_indices': self.tensor_indices
     }
+
+
+class TensorFlowOpLayer(Layer):
+  """Wraps a TensorFlow Operation in a Layer.
+
+  This class is used internally by the Functional API. When a user
+  uses a raw TensorFlow Operation on symbolic tensors originating
+  from an `Input` Layer, the resultant operation will be wrapped
+  with this Layer object in order to make the operation compatible
+  with the Keras API.
+
+  This Layer will create a new, identical operation (except for inputs
+  and outputs) every time it is called. If `run_eagerly` is `True`,
+  the op creation and calculation will happen inside an Eager function.
+
+  Instances of this Layer are created when `autolambda` is called, which
+  is whenever a Layer's `__call__` encounters symbolic inputs that do
+  not have Keras metadata, or when a Network's `__init__` encounters
+  outputs that do not have Keras metadata.
+
+  Attributes:
+    node_def: String, the serialized NodeDef of the Op this layer will wrap.
+    constants: Dict of NumPy arrays, the values of any Tensors needed for this
+      Operation that do not originate from a Keras `Input` Layer. Since all
+      placeholders must come from Keras `Input` Layers, these Tensors must be
+      treated as constant in the Functional API.
+    name: String, the name of the Layer.
+    trainable: Bool, whether this Layer is trainable. Currently Variables are
+      not supported, and so this parameter has no effect.
+    dtype: The default dtype of this Layer. Inherited from `Layer` and has no
+      effect on this class, however is used in `get_config`.
+  """
+
+  def __init__(self,
+               node_def,
+               constants=None,
+               name=None,
+               trainable=True,
+               dtype=None):
+    super(TensorFlowOpLayer, self).__init__(
+        name=name, trainable=trainable, dtype=dtype)
+    self.node_def = node_def_pb2.NodeDef.FromString(node_def)
+    self.constants = constants or {}
+
+  def call(self, inputs):
+    if context.executing_eagerly():
+      return self._defun_call(inputs)
+    return self._make_op(inputs)
+
+  def _make_op(self, inputs):
+    inputs = nest.flatten(inputs)
+    graph = inputs[0].graph
+    with graph.as_default():
+      for index, constant in self.constants.items():
+        constant = ops.convert_to_tensor(constant)
+        inputs.insert(index, constant)
+
+      self.node_def.name = graph.unique_name(self.node_def.name)
+      c_op = ops._create_c_op(graph, self.node_def, inputs, control_inputs=[])
+      op = graph._create_op_from_tf_operation(c_op)
+
+      if len(op.outputs) == 1:
+        return op.outputs[0]
+      return op.outputs
+
+  @function.defun
+  def _defun_call(self, inputs):
+    """Wraps the op creation method in an Eager function for `run_eagerly`."""
+    return self._make_op(inputs)
+
+  def get_config(self):
+    config = super(TensorFlowOpLayer, self).get_config()
+    config.update({
+        'node_def': self.node_def.SerializeToString(),
+        'constants': self.constants
+    })
+    return config
 
 
 def default(method):
