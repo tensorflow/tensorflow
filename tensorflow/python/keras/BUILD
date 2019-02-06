@@ -368,7 +368,10 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 12,
-    tags = ["notsan"],
+    tags = [
+        "no_oss",  # b/123899138
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -393,6 +396,9 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "no_oss",  # b/123899138
     ],
 )
 
@@ -816,6 +822,7 @@ tf_py_test(
     ],
     shard_count = 4,
     tags = [
+        "no_oss",  # b/123899138
         "noasan",  # http://b/78599823
         "notsan",
     ],
