@@ -267,9 +267,9 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
             addToWorklist(operand.getOwner());
           res->replaceAllUsesWith(resultValues[i]);
         }
-      }
 
-      op->erase();
+        op->erase();
+      }
       continue;
     }
 
