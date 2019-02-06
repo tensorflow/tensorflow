@@ -22,19 +22,12 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/lite/tools/optimize/calibration_reader.h"
 #include "tensorflow/lite/tools/optimize/calibrator.h"
 #include "tensorflow/lite/tools/optimize/quantize_model.h"
-
-// Disallow Numpy 1.7 deprecated symbols.
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-
-#include <Python.h>
-
-#include "numpy/arrayobject.h"
-#include "numpy/ufuncobject.h"
 
 #if PY_MAJOR_VERSION >= 3
 #define PY_TO_CPPSTRING PyBytes_AsStringAndSize
