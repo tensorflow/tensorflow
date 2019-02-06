@@ -24,9 +24,9 @@
 
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/IR/AffineStructures.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Module.h"
 #include "mlir/StandardOps/StandardOps.h"

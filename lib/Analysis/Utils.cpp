@@ -24,7 +24,7 @@
 
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/Analysis/AffineStructures.h"
+#include "mlir/IR/AffineStructures.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/StandardOps/StandardOps.h"
@@ -163,7 +163,7 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth) {
       // bounds expressions involve outer loops or other symbols.
       // TODO(bondhugula): rewrite this to use getInstIndexSet; this way
       // conditionals will be handled when the latter supports it.
-      if (!cst.addAffineForOpDomain(loop))
+      if (!addAffineForOpDomain(loop, &cst))
         return false;
     } else {
       // Has to be a valid symbol.

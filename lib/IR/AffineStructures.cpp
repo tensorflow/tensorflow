@@ -19,9 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Analysis/AffineStructures.h"
-#include "mlir/AffineOps/AffineOps.h"
-#include "mlir/Analysis/AffineAnalysis.h"
+#include "mlir/IR/AffineStructures.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -102,27 +100,16 @@ MutableIntegerSet::MutableIntegerSet(unsigned numDims, unsigned numSymbols,
 // AffineValueMap.
 //===----------------------------------------------------------------------===//
 
-AffineValueMap::AffineValueMap(const AffineApplyOp &op)
-    : map(op.getAffineMap()) {
-  for (auto *operand : op.getOperands())
-    operands.push_back(const_cast<Value *>(operand));
-  results.push_back(const_cast<Value *>(op.getResult()));
-}
+AffineValueMap::AffineValueMap(AffineMap map, ArrayRef<Value *> operands,
+                               ArrayRef<Value *> results)
+    : map(map), operands(operands.begin(), operands.end()),
+      results(results.begin(), results.end()) {}
 
-AffineValueMap::AffineValueMap(AffineMap map, ArrayRef<Value *> operands)
-    : map(map) {
-  for (Value *operand : operands) {
-    this->operands.push_back(operand);
-  }
-}
-
-void AffineValueMap::reset(AffineMap map, ArrayRef<Value *> operands) {
-  this->operands.clear();
-  this->results.clear();
+void AffineValueMap::reset(AffineMap map, ArrayRef<Value *> operands,
+                           ArrayRef<Value *> results) {
   this->map.reset(map);
-  for (Value *operand : operands) {
-    this->operands.push_back(operand);
-  }
+  this->operands.assign(operands.begin(), operands.end());
+  this->results.assign(results.begin(), results.end());
 }
 
 // Returns true and sets 'indexOfMatch' if 'valueToMatch' is found in
@@ -1246,97 +1233,6 @@ void FlatAffineConstraints::setDimSymbolSeparation(unsigned newSymbolCount) {
          "invalid separation position");
   numDims = numDims + numSymbols - newSymbolCount;
   numSymbols = newSymbolCount;
-}
-
-bool FlatAffineConstraints::addAffineForOpDomain(
-    ConstOpPointer<AffineForOp> forOp) {
-  unsigned pos;
-  // Pre-condition for this method.
-  if (!findId(*forOp->getInductionVar(), &pos)) {
-    assert(0 && "Value not found");
-    return false;
-  }
-
-  if (forOp->getStep() != 1)
-    LLVM_DEBUG(llvm::dbgs()
-               << "Domain conservative: non-unit stride not handled\n");
-
-  // Adds a lower or upper bound when the bounds aren't constant.
-  auto addLowerOrUpperBound = [&](bool lower) -> bool {
-    auto operands =
-        lower ? forOp->getLowerBoundOperands() : forOp->getUpperBoundOperands();
-    for (const auto &operand : operands) {
-      unsigned loc;
-      if (!findId(*operand, &loc)) {
-        if (isValidSymbol(operand)) {
-          addSymbolId(getNumSymbolIds(), const_cast<Value *>(operand));
-          loc = getNumDimIds() + getNumSymbolIds() - 1;
-          // Check if the symbol is a constant.
-          if (auto *opInst = operand->getDefiningInst()) {
-            if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
-              setIdToConstant(*operand, constOp->getValue());
-            }
-          }
-        } else {
-          addDimId(getNumDimIds(), const_cast<Value *>(operand));
-          loc = getNumDimIds() - 1;
-        }
-      }
-    }
-    // Record positions of the operands in the constraint system.
-    SmallVector<unsigned, 8> positions;
-    for (const auto &operand : operands) {
-      unsigned loc;
-      if (!findId(*operand, &loc))
-        assert(0 && "expected to be found");
-      positions.push_back(loc);
-    }
-
-    auto boundMap =
-        lower ? forOp->getLowerBoundMap() : forOp->getUpperBoundMap();
-
-    FlatAffineConstraints localVarCst;
-    std::vector<SmallVector<int64_t, 8>> flatExprs;
-    if (!getFlattenedAffineExprs(boundMap, &flatExprs, &localVarCst)) {
-      LLVM_DEBUG(llvm::dbgs() << "semi-affine expressions not yet supported\n");
-      return false;
-    }
-    if (localVarCst.getNumLocalIds() > 0) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "loop bounds with mod/floordiv expr's not yet supported\n");
-      return false;
-    }
-
-    for (const auto &flatExpr : flatExprs) {
-      SmallVector<int64_t, 4> ineq(getNumCols(), 0);
-      ineq[pos] = lower ? 1 : -1;
-      for (unsigned j = 0, e = boundMap.getNumInputs(); j < e; j++) {
-        ineq[positions[j]] = lower ? -flatExpr[j] : flatExpr[j];
-      }
-      // Constant term.
-      ineq[getNumCols() - 1] =
-          lower ? -flatExpr[flatExpr.size() - 1]
-                // Upper bound in flattenedExpr is an exclusive one.
-                : flatExpr[flatExpr.size() - 1] - 1;
-      addInequality(ineq);
-    }
-    return true;
-  };
-
-  if (forOp->hasConstantLowerBound()) {
-    addConstantLowerBound(pos, forOp->getConstantLowerBound());
-  } else {
-    // Non-constant lower bound case.
-    if (!addLowerOrUpperBound(/*lower=*/true))
-      return false;
-  }
-
-  if (forOp->hasConstantUpperBound()) {
-    addConstantUpperBound(pos, forOp->getConstantUpperBound() - 1);
-    return true;
-  }
-  // Non-constant upper bound case.
-  return addLowerOrUpperBound(/*lower=*/false);
 }
 
 /// Sets the specified identifer to a constant value.

@@ -19,7 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Analysis/AffineStructures.h"
+#include "mlir/IR/AffineStructures.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Instruction.h"
 #include "mlir/IR/IntegerSet.h"

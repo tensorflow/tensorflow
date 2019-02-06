@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -compose-affine-maps | FileCheck %s
+// RUN: mlir-opt %s -canonicalize | FileCheck %s
 
 // Affine maps for test case: compose_affine_maps_1dto2d_no_symbols
 // CHECK-DAG: [[MAP0:#map[0-9]+]] = (d0) -> (d0 - 1)
@@ -15,8 +15,8 @@
 // Affine maps for test case: compose_affine_maps_dependent_loads
 // CHECK-DAG: [[MAP9:#map[0-9]+]] = (d0)[s0] -> (d0 + s0)
 // CHECK-DAG: [[MAP10:#map[0-9]+]] = (d0)[s0] -> (d0 * s0)
-// CHECK-DAG: [[MAP12A:#map[0-9]+]] = (d0)[s0, s1] -> ((d0 - s1) * s0)
-// CHECK-DAG: [[MAP12B:#map[0-9]+]] = (d0)[s0, s1] -> ((d0 + s1) ceildiv s0)
+// CHECK-DAG: [[MAP11:#map[0-9]+]] = (d0)[s0, s1] -> ((d0 + s1) ceildiv s0)
+// CHECK-DAG: [[MAP12:#map[0-9]+]] = (d0)[s0] -> ((d0 - s0) * s0)
 
 // Affine maps for test case: compose_affine_maps_diamond_dependency
 // CHECK-DAG: [[MAP13A:#map[0-9]+]] = (d0) -> ((d0 + 6) ceildiv 8)
@@ -25,11 +25,8 @@
 // Affine maps for test case: arg_used_as_dim_and_symbol
 // CHECK-DAG: [[MAP14:#map[0-9]+]] = (d0, d1, d2)[s0, s1] -> (-d0 - d1 + d2 + s0 + s1)
 
-// Affine maps for test case: zero_map
-// CHECK-DAG: [[MAP15:#map[0-9]+]] = ()[s0] -> (s0)
-
-// Affine maps for test case: zero_map
-// CHECK-DAG: [[MAP16:#map[0-9]+]] = () -> (0)
+// Affine maps for test case: partial_fold_map
+// CHECK-DAG: [[MAP15:#map[0-9]+]] = (d0, d1) -> (d0 - d1)
 
 // CHECK-LABEL: func @compose_affine_maps_1dto2d_no_symbols() {
 func @compose_affine_maps_1dto2d_no_symbols() {
@@ -86,8 +83,7 @@ func @compose_affine_maps_1dto2d_with_symbols() {
     %c4 = constant 4 : index
     %x0 = affine_apply (d0)[s0] -> (d0 - s0) (%i0)[%c4]
 
-    // CHECK: constant 4
-    // CHECK-NEXT: [[I0:%[0-9]+]] = affine_apply [[MAP4]](%i0)[%c4]
+    // CHECK: [[I0:%[0-9]+]] = affine_apply [[MAP4]](%i0)[%c4]
     // CHECK-NEXT: load %{{[0-9]+}}{{\[}}[[I0]], [[I0]]{{\]}}
     %v0 = load %0[%x0, %x0] : memref<4x4xf32>
 
@@ -187,8 +183,8 @@ func @compose_affine_maps_dependent_loads() {
         %x11 = affine_apply (d0, d1)[s0, s1] -> (d1 ceildiv s0)
            (%x01, %x00)[%c7, %c3]
 
-        // CHECK-NEXT: [[I2A:%[0-9]+]] = affine_apply [[MAP12A]](%i1)[%c3, %c7]
-        // CHECK-NEXT: [[I2B:%[0-9]+]] = affine_apply [[MAP12B]](%i0)[%c7, %c3]
+        // CHECK-NEXT: [[I2A:%[0-9]+]] = affine_apply [[MAP12]](%i1)[%c7]
+        // CHECK-NEXT: [[I2B:%[0-9]+]] = affine_apply [[MAP11]](%i0)[%c3, %c7]
         // CHECK-NEXT: load %{{[0-9]+}}{{\[}}[[I2A]], [[I2B]]{{\]}}
         %v3 = load %0[%x10, %x11] : memref<16x32xf32>
       }
@@ -216,7 +212,7 @@ func @compose_affine_maps_diamond_dependency() {
   return
 }
 
-// CHECK-LABEL: func @arg_used_as_dim_and_symbol(%arg0: memref<100x100xf32>, %arg1: index) {
+// CHECK-LABEL: func @arg_used_as_dim_and_symbol
 func @arg_used_as_dim_and_symbol(%arg0: memref<100x100xf32>, %arg1: index) {
   %c9 = constant 9 : index
   %1 = alloc() : memref<100x100xf32, 1>
@@ -237,19 +233,31 @@ func @arg_used_as_dim_and_symbol(%arg0: memref<100x100xf32>, %arg1: index) {
 
 // CHECK-LABEL: func @trivial_maps
 func @trivial_maps() {
+  // CHECK-NOT: affine_apply
+
   %0 = alloc() : memref<10xf32>
   %c0 = constant 0 : index
   %cst = constant 0.000000e+00 : f32
   for %i1 = 0 to 10 {
     %1 = affine_apply ()[s0] -> (s0)()[%c0]
-    // CHECK: {{.*}} = affine_apply [[MAP15]]()[%c0]
     store %cst, %0[%1] : memref<10xf32>
     %2 = load %0[%c0] : memref<10xf32>
 
     %3 = affine_apply ()[] -> (0)()[]
-    // CHECK: {{.*}} = affine_apply [[MAP16]]()
     store %cst, %0[%3] : memref<10xf32>
     %4 = load %0[%c0] : memref<10xf32>
   }
+  return
+}
+
+// CHECK-LABEL: func @partial_fold_map
+func @partial_fold_map(%arg0: memref<index>, %arg1: index, %arg2: index) {
+  // TODO: Constant fold one index into affine_apply
+  %c42 = constant 42 : index
+  %2 = affine_apply (d0, d1) -> (d0 - d1) (%arg1, %c42)
+  store %2, %arg0[] : memref<index>
+  // CHECK: [[X:%[0-9]+]] = affine_apply [[MAP15]](%arg1, %c42)
+  // CHECK-NEXT: store [[X]], %arg0
+
   return
 }

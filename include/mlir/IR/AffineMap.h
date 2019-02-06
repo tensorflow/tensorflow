@@ -150,6 +150,10 @@ inline ::llvm::hash_code hash_value(AffineMap arg) {
   return ::llvm::hash_value(arg.map);
 }
 
+/// Simplify an affine map by simplifying its underlying AffineExpr results and
+/// sizes.
+AffineMap simplifyAffineMap(AffineMap map);
+
 } // end namespace mlir
 
 namespace llvm {

@@ -246,3 +246,16 @@ AffineMap AffineMap::compose(AffineMap map) {
     exprs.push_back(expr.compose(newMap));
   return AffineMap::get(numDims, numSymbols, exprs, {});
 }
+
+AffineMap mlir::simplifyAffineMap(AffineMap map) {
+  SmallVector<AffineExpr, 8> exprs, sizes;
+  for (auto e : map.getResults()) {
+    exprs.push_back(
+        simplifyAffineExpr(e, map.getNumDims(), map.getNumSymbols()));
+  }
+  for (auto e : map.getRangeSizes()) {
+    sizes.push_back(
+        simplifyAffineExpr(e, map.getNumDims(), map.getNumSymbols()));
+  }
+  return AffineMap::get(map.getNumDims(), map.getNumSymbols(), exprs, sizes);
+}

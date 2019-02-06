@@ -16,6 +16,7 @@
 // =============================================================================
 
 #include "mlir/AffineOps/AffineOps.h"
+#include "mlir/IR/AffineStructures.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -23,7 +24,11 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "llvm/ADT/SmallBitVector.h"
+#include "llvm/Support/Debug.h"
 using namespace mlir;
+using llvm::dbgs;
+
+#define DEBUG_TYPE "affine-analysis"
 
 //===----------------------------------------------------------------------===//
 // AffineOpsDialect
@@ -130,6 +135,12 @@ bool AffineApplyOp::verify() const {
   return false;
 }
 
+/// Returns an AffineValueMap representing this affine apply.
+AffineValueMap AffineApplyOp::getAsAffineValueMap() {
+  SmallVector<Value *, 8> operands(getOperands());
+  return AffineValueMap(getAffineMap(), operands, getResult());
+}
+
 // The result of the affine apply operation can be used as a dimension id if it
 // is a CFG value or if it is an Value, and all the operands are valid
 // dimension ids.
@@ -168,6 +179,77 @@ struct SimplifyAffineApply : public RewritePattern {
 } // end anonymous namespace.
 
 namespace {
+/// An `AffineApplyNormalizer` is a helper class that is not visible to the user
+/// and supports renumbering operands of AffineApplyOp. This acts as a
+/// reindexing map of Value* to positional dims or symbols and allows
+/// simplifications such as:
+///
+/// ```mlir
+///    %1 = affine_apply (d0, d1) -> (d0 - d1) (%0, %0)
+/// ```
+///
+/// into:
+///
+/// ```mlir
+///    %1 = affine_apply () -> (0)
+/// ```
+struct AffineApplyNormalizer {
+  AffineApplyNormalizer(AffineMap map, ArrayRef<Value *> operands);
+
+  /// Returns the AffineMap resulting from normalization.
+  AffineMap getAffineMap() { return affineMap; }
+
+  SmallVector<Value *, 8> getOperands() {
+    SmallVector<Value *, 8> res(reorderedDims);
+    res.append(concatenatedSymbols.begin(), concatenatedSymbols.end());
+    return res;
+  }
+
+private:
+  /// Helper function to insert `v` into the coordinate system of the current
+  /// AffineApplyNormalizer. Returns the AffineDimExpr with the corresponding
+  /// renumbered position.
+  AffineDimExpr applyOneDim(Value *v);
+
+  /// Given an `other` normalizer, this rewrites `other.affineMap` in the
+  /// coordinate system of the current AffineApplyNormalizer.
+  /// Returns the rewritten AffineMap and updates the dims and symbols of
+  /// `this`.
+  AffineMap renumber(const AffineApplyNormalizer &other);
+
+  /// Given an `app`, rewrites `app.getAffineMap()` in the coordinate system of
+  /// the current AffineApplyNormalizer.
+  /// Returns the rewritten AffineMap and updates the dims and symbols of
+  /// `this`.
+  AffineMap renumber(const AffineApplyOp &app);
+
+  /// Maps of Value* to position in `affineMap`.
+  DenseMap<Value *, unsigned> dimValueToPosition;
+
+  /// Ordered dims and symbols matching positional dims and symbols in
+  /// `affineMap`.
+  SmallVector<Value *, 8> reorderedDims;
+  SmallVector<Value *, 8> concatenatedSymbols;
+
+  AffineMap affineMap;
+
+  /// Used with RAII to control the depth at which AffineApply are composed
+  /// recursively. Only accepts depth 1 for now.
+  /// Note that if one wishes to compose all AffineApply in the program and
+  /// follows program order, maxdepth 1 is sufficient. This is as much as this
+  /// abstraction is willing to support for now.
+  static unsigned &affineApplyDepth() {
+    static thread_local unsigned depth = 0;
+    return depth;
+  }
+  static constexpr unsigned kMaxAffineApplyDepth = 1;
+
+  AffineApplyNormalizer() { affineApplyDepth()++; }
+
+public:
+  ~AffineApplyNormalizer() { affineApplyDepth()--; }
+};
+
 /// FIXME: this is massive overkill for simple obviously always matching
 /// canonicalizations.  Fix the pattern rewriter to make this easy.
 struct SimplifyAffineApplyState : public PatternState {
@@ -180,6 +262,136 @@ struct SimplifyAffineApplyState : public PatternState {
 };
 
 } // end anonymous namespace.
+
+AffineDimExpr AffineApplyNormalizer::applyOneDim(Value *v) {
+  DenseMap<Value *, unsigned>::iterator iterPos;
+  bool inserted = false;
+  std::tie(iterPos, inserted) =
+      dimValueToPosition.insert(std::make_pair(v, dimValueToPosition.size()));
+  if (inserted) {
+    reorderedDims.push_back(v);
+  }
+  return getAffineDimExpr(iterPos->second, v->getFunction()->getContext())
+      .cast<AffineDimExpr>();
+}
+
+AffineMap AffineApplyNormalizer::renumber(const AffineApplyNormalizer &other) {
+  SmallVector<AffineExpr, 8> dimRemapping;
+  for (auto *v : other.reorderedDims) {
+    auto kvp = other.dimValueToPosition.find(v);
+    if (dimRemapping.size() <= kvp->second)
+      dimRemapping.resize(kvp->second + 1);
+    dimRemapping[kvp->second] = applyOneDim(kvp->first);
+  }
+  unsigned numSymbols = concatenatedSymbols.size();
+  unsigned numOtherSymbols = other.concatenatedSymbols.size();
+  SmallVector<AffineExpr, 8> symRemapping(numOtherSymbols);
+  for (unsigned idx = 0; idx < numOtherSymbols; ++idx) {
+    symRemapping[idx] =
+        getAffineSymbolExpr(idx + numSymbols, other.affineMap.getContext());
+  }
+  concatenatedSymbols.insert(concatenatedSymbols.end(),
+                             other.concatenatedSymbols.begin(),
+                             other.concatenatedSymbols.end());
+  auto map = other.affineMap;
+  return map.replaceDimsAndSymbols(dimRemapping, symRemapping,
+                                   dimRemapping.size(), symRemapping.size());
+}
+
+AffineMap AffineApplyNormalizer::renumber(const AffineApplyOp &app) {
+  assert(app.getAffineMap().getRangeSizes().empty() && "Non-empty range sizes");
+
+  // Create the AffineApplyNormalizer for the operands of this
+  // AffineApplyOp and combine it with the current AffineApplyNormalizer.
+  SmallVector<Value *, 8> operands(
+      const_cast<AffineApplyOp &>(app).getOperands().begin(),
+      const_cast<AffineApplyOp &>(app).getOperands().end());
+  AffineApplyNormalizer normalizer(app.getAffineMap(), operands);
+  return renumber(normalizer);
+}
+
+AffineApplyNormalizer::AffineApplyNormalizer(AffineMap map,
+                                             ArrayRef<Value *> operands)
+    : AffineApplyNormalizer() {
+  assert(map.getRangeSizes().empty() && "Unbounded map expected");
+  assert(map.getNumInputs() == operands.size() &&
+         "number of operands does not match the number of map inputs");
+
+  SmallVector<AffineExpr, 8> exprs;
+  for (auto en : llvm::enumerate(operands)) {
+    auto *t = en.value();
+    assert(t->getType().isIndex());
+    bool operandNotFromAffineApply =
+        !t->getDefiningInst() || !t->getDefiningInst()->isa<AffineApplyOp>();
+    if (operandNotFromAffineApply ||
+        affineApplyDepth() > kMaxAffineApplyDepth) {
+      if (en.index() < map.getNumDims()) {
+        exprs.push_back(applyOneDim(t));
+      } else {
+        // Composition of mathematical symbols must occur by concatenation.
+        // A subsequent canonicalization will drop duplicates. Duplicates are
+        // not dropped here because it would just amount to code duplication.
+        concatenatedSymbols.push_back(t);
+      }
+    } else {
+      auto *inst = t->getDefiningInst();
+      auto app = inst->dyn_cast<AffineApplyOp>();
+      auto tmpMap = renumber(*app);
+      exprs.push_back(tmpMap.getResult(0));
+    }
+  }
+
+  // Map is already composed.
+  if (exprs.empty()) {
+    affineMap = map;
+    return;
+  }
+
+  auto numDims = dimValueToPosition.size();
+  auto numSymbols = concatenatedSymbols.size() - map.getNumSymbols();
+  auto exprsMap = AffineMap::get(numDims, numSymbols, exprs, {});
+  LLVM_DEBUG(map.print(dbgs() << "\nCompose map: "));
+  LLVM_DEBUG(exprsMap.print(dbgs() << "\nWith map: "));
+  LLVM_DEBUG(map.compose(exprsMap).print(dbgs() << "\nResult: "));
+
+  affineMap = simplifyAffineMap(map.compose(exprsMap));
+  LLVM_DEBUG(affineMap.print(dbgs() << "\nSimplified result: "));
+  LLVM_DEBUG(dbgs() << "\n");
+}
+
+/// Implements `map` and `operands` composition and simplification to support
+/// `makeComposedAffineApply`. This can be called to achieve the same effects
+/// on `map` and `operands` without creating an AffineApplyOp that needs to be
+/// immediately deleted.
+static void composeAffineMapAndOperands(AffineMap *map,
+                                        SmallVectorImpl<Value *> *operands) {
+  AffineApplyNormalizer normalizer(*map, *operands);
+  auto normalizedMap = normalizer.getAffineMap();
+  auto normalizedOperands = normalizer.getOperands();
+  canonicalizeMapAndOperands(&normalizedMap, &normalizedOperands);
+  *map = normalizedMap;
+  *operands = normalizedOperands;
+  assert(*map);
+}
+
+void mlir::fullyComposeAffineMapAndOperands(
+    AffineMap *map, SmallVectorImpl<Value *> *operands) {
+  while (llvm::any_of(*operands, [](Value *v) {
+    return v->getDefiningInst() && v->getDefiningInst()->isa<AffineApplyOp>();
+  })) {
+    composeAffineMapAndOperands(map, operands);
+  }
+}
+
+OpPointer<AffineApplyOp>
+mlir::makeComposedAffineApply(FuncBuilder *b, Location loc, AffineMap map,
+                              ArrayRef<Value *> operands) {
+  AffineMap normalizedMap = map;
+  SmallVector<Value *, 8> normalizedOperands(operands.begin(), operands.end());
+  composeAffineMapAndOperands(&normalizedMap, &normalizedOperands);
+  assert(normalizedMap);
+  return b->create<AffineApplyOp>(loc, normalizedMap, normalizedOperands);
+}
 
 void mlir::canonicalizeMapAndOperands(
     AffineMap *map, llvm::SmallVectorImpl<Value *> *operands) {
@@ -245,9 +457,8 @@ PatternMatchResult SimplifyAffineApply::match(Instruction *op) const {
   auto map = apply->getAffineMap();
 
   AffineMap oldMap = map;
-  SmallVector<Value *, 8> resultOperands(apply->getOperands().begin(),
-                                         apply->getOperands().end());
-  canonicalizeMapAndOperands(&map, &resultOperands);
+  SmallVector<Value *, 8> resultOperands(apply->getOperands());
+  composeAffineMapAndOperands(&map, &resultOperands);
   if (map != oldMap)
     return matchSuccess(
         std::make_unique<SimplifyAffineApplyState>(map, resultOperands));
@@ -676,6 +887,106 @@ void mlir::extractForInductionVars(ArrayRef<OpPointer<AffineForOp>> forInsts,
   ivs->reserve(forInsts.size());
   for (auto forInst : forInsts)
     ivs->push_back(forInst->getInductionVar());
+}
+
+bool mlir::addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp,
+                                FlatAffineConstraints *constraints) {
+  unsigned pos;
+  // Pre-condition for this method.
+  if (!constraints->findId(*forOp->getInductionVar(), &pos)) {
+    assert(0 && "Value not found");
+    return false;
+  }
+
+  if (forOp->getStep() != 1)
+    LLVM_DEBUG(llvm::dbgs()
+               << "Domain conservative: non-unit stride not handled\n");
+
+  // Adds a lower or upper bound when the bounds aren't constant.
+  auto addLowerOrUpperBound = [&](bool lower) -> bool {
+    auto operands =
+        lower ? forOp->getLowerBoundOperands() : forOp->getUpperBoundOperands();
+    for (const auto &operand : operands) {
+      unsigned loc;
+      if (!constraints->findId(*operand, &loc)) {
+        if (isValidSymbol(operand)) {
+          constraints->addSymbolId(constraints->getNumSymbolIds(),
+                                   const_cast<Value *>(operand));
+          loc =
+              constraints->getNumDimIds() + constraints->getNumSymbolIds() - 1;
+          // Check if the symbol is a constant.
+          if (auto *opInst = operand->getDefiningInst()) {
+            if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
+              constraints->setIdToConstant(*operand, constOp->getValue());
+            }
+          }
+        } else {
+          constraints->addDimId(constraints->getNumDimIds(),
+                                const_cast<Value *>(operand));
+          loc = constraints->getNumDimIds() - 1;
+        }
+      }
+    }
+    // Record positions of the operands in the constraint system.
+    SmallVector<unsigned, 8> positions;
+    for (const auto &operand : operands) {
+      unsigned loc;
+      if (!constraints->findId(*operand, &loc))
+        assert(0 && "expected to be found");
+      positions.push_back(loc);
+    }
+
+    auto boundMap =
+        lower ? forOp->getLowerBoundMap() : forOp->getUpperBoundMap();
+
+    FlatAffineConstraints localVarCst;
+    std::vector<SmallVector<int64_t, 8>> flatExprs;
+    if (!getFlattenedAffineExprs(boundMap, &flatExprs, &localVarCst)) {
+      LLVM_DEBUG(llvm::dbgs() << "semi-affine expressions not yet supported\n");
+      return false;
+    }
+    if (localVarCst.getNumLocalIds() > 0) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "loop bounds with mod/floordiv expr's not yet supported\n");
+      return false;
+    }
+
+    for (const auto &flatExpr : flatExprs) {
+      SmallVector<int64_t, 4> ineq(constraints->getNumCols(), 0);
+      ineq[pos] = lower ? 1 : -1;
+      for (unsigned j = 0, e = boundMap.getNumInputs(); j < e; j++) {
+        ineq[positions[j]] = lower ? -flatExpr[j] : flatExpr[j];
+      }
+      // Constant term.
+      ineq[constraints->getNumCols() - 1] =
+          lower ? -flatExpr[flatExpr.size() - 1]
+                // Upper bound in flattenedExpr is an exclusive one.
+                : flatExpr[flatExpr.size() - 1] - 1;
+      constraints->addInequality(ineq);
+    }
+    return true;
+  };
+
+  if (forOp->hasConstantLowerBound()) {
+    constraints->addConstantLowerBound(pos, forOp->getConstantLowerBound());
+  } else {
+    // Non-constant lower bound case.
+    if (!addLowerOrUpperBound(/*lower=*/true))
+      return false;
+  }
+
+  if (forOp->hasConstantUpperBound()) {
+    constraints->addConstantUpperBound(pos, forOp->getConstantUpperBound() - 1);
+    return true;
+  }
+  // Non-constant upper bound case.
+  return addLowerOrUpperBound(/*lower=*/false);
+}
+
+/// Returns an AffineValueMap representing this bound.
+AffineValueMap AffineBound::getAsAffineValueMap() {
+  SmallVector<Value *, 8> operands(getOperands());
+  return AffineValueMap(getMap(), operands);
 }
 
 //===----------------------------------------------------------------------===//

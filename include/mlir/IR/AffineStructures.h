@@ -19,19 +19,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_ANALYSIS_AFFINE_STRUCTURES_H
-#define MLIR_ANALYSIS_AFFINE_STRUCTURES_H
+#ifndef MLIR_IR_AFFINE_STRUCTURES_H
+#define MLIR_IR_AFFINE_STRUCTURES_H
 
 #include "mlir/IR/AffineExpr.h"
 
 namespace mlir {
 
-class AffineApplyOp;
-class AffineBound;
-class AffineForOp;
 class AffineCondition;
 class AffineMap;
-template <typename T> class ConstOpPointer;
 class IntegerSet;
 class MLIRContext;
 class Value;
@@ -126,15 +122,16 @@ public:
   // Creates an empty AffineValueMap (users should call 'reset' to reset map
   // and operands).
   AffineValueMap() {}
-  AffineValueMap(const AffineApplyOp &op);
-  AffineValueMap(const AffineBound &bound);
   AffineValueMap(AffineMap map);
-  AffineValueMap(AffineMap map, ArrayRef<Value *> operands);
+  AffineValueMap(AffineMap map, ArrayRef<Value *> operands,
+                 ArrayRef<Value *> results = llvm::None);
 
   ~AffineValueMap();
 
-  // Resets this AffineValueMap with 'map' and 'operands'.
-  void reset(AffineMap map, ArrayRef<Value *> operands);
+  // Resets this AffineValueMap with 'map', 'operands', and 'results'.
+  void reset(AffineMap map, ArrayRef<Value *> operands,
+             ArrayRef<Value *> results = llvm::None);
+
   /// Return true if the idx^th result can be proved to be a multiple of
   /// 'factor', false otherwise.
   inline bool isMultipleOf(unsigned idx, int64_t factor) const;
@@ -397,18 +394,6 @@ public:
   /// system to capture equivalence with the floordiv:
   /// q = dividend floordiv c    <=>   c*q <= dividend <= c*q + c - 1.
   void addLocalFloorDiv(ArrayRef<int64_t> dividend, int64_t divisor);
-
-  /// Adds constraints (lower and upper bounds) for the specified 'for'
-  /// instruction's Value using IR information stored in its bound maps. The
-  /// right identifier is first looked up using forOp's Value. Returns
-  /// false for the yet unimplemented/unsupported cases, and true if the
-  /// information is succesfully added. Asserts if the Value corresponding to
-  /// the 'for' instruction isn't found in the constraint system. Any new
-  /// identifiers that are found in the bound operands of the 'for' instruction
-  /// are added as trailing identifiers (either dimensional or symbolic
-  /// depending on whether the operand is a valid ML Function symbol).
-  //  TODO(bondhugula): add support for non-unit strides.
-  bool addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp);
 
   /// Adds a constant lower bound constraint for the specified expression.
   void addConstantLowerBound(ArrayRef<int64_t> expr, int64_t lb);
@@ -694,4 +679,4 @@ private:
 
 } // end namespace mlir.
 
-#endif // MLIR_ANALYSIS_AFFINE_STRUCTURES_H
+#endif // MLIR_IR_AFFINE_STRUCTURES_H

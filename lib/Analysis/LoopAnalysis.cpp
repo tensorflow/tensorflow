@@ -23,9 +23,9 @@
 
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Analysis/VectorAnalysis.h"
+#include "mlir/IR/AffineStructures.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Instruction.h"
@@ -147,7 +147,8 @@ bool mlir::isAccessInvariant(const Value &iv, const Value &index) {
   auto composeOp = affineApplyOps[0]->cast<AffineApplyOp>();
   // We need yet another level of indirection because the `dim` index of the
   // access may not correspond to the `dim` index of composeOp.
-  return !AffineValueMap(*composeOp).isFunctionOf(0, const_cast<Value *>(&iv));
+  return !composeOp->getAsAffineValueMap().isFunctionOf(
+      0, const_cast<Value *>(&iv));
 }
 
 llvm::DenseSet<const Value *>

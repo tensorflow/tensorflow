@@ -79,9 +79,6 @@ FunctionPass *createLoopFusionPass();
 /// memory hierarchy.
 FunctionPass *createPipelineDataTransferPass();
 
-/// Creates a pass which composes all affine maps applied to loads and stores.
-FunctionPass *createComposeAffineMapsPass();
-
 /// Lowers affine control flow instructions (ForStmt, IfStmt and AffineApplyOp)
 /// to equivalent lower-level constructs (flow of basic blocks and arithmetic
 /// primitives).

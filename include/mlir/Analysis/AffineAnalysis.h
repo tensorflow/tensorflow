@@ -31,46 +31,12 @@
 namespace mlir {
 
 class AffineApplyOp;
-class AffineExpr;
 class AffineForOp;
-class AffineMap;
 class AffineValueMap;
 class FlatAffineConstraints;
-class FuncBuilder;
 class Instruction;
-class IntegerSet;
-class Location;
-class MLIRContext;
 template <typename OpType> class OpPointer;
 class Value;
-
-/// Simplify an affine expression by flattening and some amount of
-/// simple analysis. This has complexity linear in the number of nodes in
-/// 'expr'. Returns the simplified expression, which is the same as the input
-///  expression if it can't be simplified.
-AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
-                              unsigned numSymbols);
-
-/// Simplify an affine map by simplifying its underlying AffineExpr results and
-/// sizes.
-AffineMap simplifyAffineMap(AffineMap map);
-
-/// Returns a composed AffineApplyOp by composing `map` and `operands` with
-/// other AffineApplyOps supplying those operands. The operands of the resulting
-/// AffineApplyOp do not change the length of  AffineApplyOp chains.
-OpPointer<AffineApplyOp>
-makeComposedAffineApply(FuncBuilder *b, Location loc, AffineMap map,
-                        llvm::ArrayRef<Value *> operands);
-
-/// Given an affine map `map` and its input `operands`, this method composes
-/// into `map`, maps of AffineApplyOps whose results are the values in
-/// `operands`, iteratively until no more of `operands` are the result of an
-/// AffineApplyOp. When this function returns, `map` becomes the composed affine
-/// map, and each Value in `operands` is guaranteed to be either a loop IV or a
-/// terminal symbol, i.e., a symbol defined at the top level or a block/function
-/// argument.
-void fullyComposeAffineMapAndOperands(AffineMap *map,
-                                      llvm::SmallVectorImpl<Value *> *operands);
 
 /// Returns in `affineApplyOps`, the sequence of those AffineApplyOp
 /// Instructions that are reachable via a search starting from `operands` and
@@ -78,33 +44,6 @@ void fullyComposeAffineMapAndOperands(AffineMap *map,
 void getReachableAffineApplyOps(
     llvm::ArrayRef<Value *> operands,
     llvm::SmallVectorImpl<Instruction *> &affineApplyOps);
-
-/// Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
-/// if 'expr' could not be flattened (i.e., semi-affine is not yet handled).
-/// 'cst' contains constraints that connect newly introduced local identifiers
-/// to existing dimensional and / symbolic identifiers. See documentation for
-/// AffineExprFlattener on how mod's and div's are flattened.
-bool getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
-                            unsigned numSymbols,
-                            llvm::SmallVectorImpl<int64_t> *flattenedExpr,
-                            FlatAffineConstraints *cst = nullptr);
-
-/// Flattens the result expressions of the map to their corresponding flattened
-/// forms and set in 'flattenedExprs'. Returns true on success or false
-/// if any expression in the map could not be flattened (i.e., semi-affine is
-/// not yet handled). 'cst' contains constraints that connect newly introduced
-/// local identifiers to existing dimensional and / symbolic identifiers. See
-/// documentation for AffineExprFlattener on how mod's and div's are flattened.
-/// For all affine expressions that share the same operands (like those of an
-/// affine map), this method should be used instead of repeatedly calling
-/// getFlattenedAffineExpr since local variables added to deal with div's and
-/// mod's will be reused across expressions.
-bool getFlattenedAffineExprs(
-    AffineMap map, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
-    FlatAffineConstraints *cst = nullptr);
-bool getFlattenedAffineExprs(
-    IntegerSet set, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
-    FlatAffineConstraints *cst = nullptr);
 
 /// Builds a system of constraints with dimensional identifiers corresponding to
 /// the loop IVs of the forOps appearing in that order. Bounds of the loop are

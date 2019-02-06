@@ -29,6 +29,9 @@
 
 namespace mlir {
 class AffineBound;
+class AffineValueMap;
+class FlatAffineConstraints;
+class FuncBuilder;
 
 class AffineOpsDialect : public Dialect {
 public:
@@ -60,6 +63,9 @@ public:
   AffineMap getAffineMap() const {
     return getAttrOfType<AffineMapAttr>("map").getValue();
   }
+
+  /// Returns an AffineValueMap representing this affine apply.
+  AffineValueMap getAsAffineValueMap();
 
   /// Returns true if the result of this operation can be used as dimension id.
   bool isValidDim() const;
@@ -247,6 +253,19 @@ ConstOpPointer<AffineForOp> getForInductionVarOwner(const Value *val);
 void extractForInductionVars(ArrayRef<OpPointer<AffineForOp>> forInsts,
                              SmallVectorImpl<Value *> *ivs);
 
+/// Adds constraints (lower and upper bounds) for the specified 'for'
+/// instruction's Value using IR information stored in its bound maps. The
+/// right identifier is first looked up using forOp's Value. Returns
+/// false for the yet unimplemented/unsupported cases, and true if the
+/// information is successfully added. Asserts if the Value corresponding to
+/// the 'for' instruction isn't found in the constraint system. Any new
+/// identifiers that are found in the bound operands of the 'for' instruction
+/// are added as trailing identifiers (either dimensional or symbolic
+/// depending on whether the operand is a valid ML Function symbol).
+//  TODO(bondhugula): add support for non-unit strides.
+bool addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp,
+                          FlatAffineConstraints *constraints);
+
 /// AffineBound represents a lower or upper bound in the for instruction.
 /// This class does not own the underlying operands. Instead, it refers
 /// to the operands stored in the AffineForOp. Its life span should not exceed
@@ -255,6 +274,9 @@ class AffineBound {
 public:
   ConstOpPointer<AffineForOp> getAffineForOp() const { return inst; }
   AffineMap getMap() const { return map; }
+
+  /// Returns an AffineValueMap representing this bound.
+  AffineValueMap getAsAffineValueMap();
 
   unsigned getNumOperands() const { return opEnd - opStart; }
   const Value *getOperand(unsigned idx) const {
@@ -353,6 +375,23 @@ bool isValidSymbol(const Value *value);
 /// 2. drop unused dims and symbols from map
 void canonicalizeMapAndOperands(AffineMap *map,
                                 llvm::SmallVectorImpl<Value *> *operands);
+
+/// Returns a composed AffineApplyOp by composing `map` and `operands` with
+/// other AffineApplyOps supplying those operands. The operands of the resulting
+/// AffineApplyOp do not change the length of  AffineApplyOp chains.
+OpPointer<AffineApplyOp>
+makeComposedAffineApply(FuncBuilder *b, Location loc, AffineMap map,
+                        llvm::ArrayRef<Value *> operands);
+
+/// Given an affine map `map` and its input `operands`, this method composes
+/// into `map`, maps of AffineApplyOps whose results are the values in
+/// `operands`, iteratively until no more of `operands` are the result of an
+/// AffineApplyOp. When this function returns, `map` becomes the composed affine
+/// map, and each Value in `operands` is guaranteed to be either a loop IV or a
+/// terminal symbol, i.e., a symbol defined at the top level or a block/function
+/// argument.
+void fullyComposeAffineMapAndOperands(AffineMap *map,
+                                      llvm::SmallVectorImpl<Value *> *operands);
 
 } // end namespace mlir
 

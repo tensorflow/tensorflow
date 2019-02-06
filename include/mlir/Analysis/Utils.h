@@ -25,8 +25,8 @@
 #ifndef MLIR_ANALYSIS_UTILS_H
 #define MLIR_ANALYSIS_UTILS_H
 
-#include "mlir/Analysis/AffineStructures.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/AffineStructures.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/SmallVector.h"
