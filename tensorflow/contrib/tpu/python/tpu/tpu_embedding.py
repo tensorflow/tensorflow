@@ -26,10 +26,10 @@ import six
 
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.ops import gen_tpu_ops
-from tensorflow.contrib.tpu.proto import optimization_parameters_pb2
-from tensorflow.contrib.tpu.proto import tpu_embedding_configuration_pb2 as elc
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
+from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
+from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2 as elc
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
