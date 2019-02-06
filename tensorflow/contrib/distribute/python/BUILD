@@ -131,6 +131,17 @@ py_library(
     ],
 )
 
+cuda_py_test(
+    name = "one_device_strategy_test",
+    srcs = ["one_device_strategy_test.py"],
+    additional_deps = [
+        ":strategy_test_lib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/distribute:one_device_strategy",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
 py_library(
     name = "collective_all_reduce_strategy",
     srcs = ["collective_all_reduce_strategy.py"],
@@ -188,18 +199,6 @@ py_test(
     srcs = ["combinations_test.py"],
     deps = [
         ":combinations",
-        "//tensorflow/python/eager:test",
-    ],
-)
-
-py_test(
-    name = "one_device_strategy_test",
-    srcs = ["one_device_strategy_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":strategy_test_lib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/eager:test",
     ],
 )
