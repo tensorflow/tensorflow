@@ -496,6 +496,8 @@ class FunctionTest(test.TestCase):
                                          lambda y: AssertFail(y), [x])
       # pylint: enable=unnecessary-lambda
 
+    rewriter_config = rewriter_config_pb2.RewriterConfig(
+        dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF)
     # Enables inlining.
     config = config_pb2.ConfigProto(
         graph_options=config_pb2.GraphOptions(
@@ -503,7 +505,8 @@ class FunctionTest(test.TestCase):
                 opt_level=config_pb2.OptimizerOptions.L0,
                 do_common_subexpression_elimination=True,
                 do_function_inlining=True,
-                do_constant_folding=True)))
+                do_constant_folding=True),
+            rewrite_options=rewriter_config))
 
     with session.Session(config=config) as sess:
       # Since the 'False' branch is not taken, the assertion should not fire.
