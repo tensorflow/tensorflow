@@ -66,29 +66,22 @@ class TensorDatasetOpTest : public DatasetOpsTestBase {
   NodeDef node_def_;
 };
 
-template <typename T>
-Tensor CreateTensor(TensorShape input_shape,
-                    const gtl::ArraySlice<T> &input_data) {
-  Tensor tensor(DataTypeToEnum<T>::value, input_shape);
-  test::FillValues<T>(&tensor, input_data);
-  return tensor;
-}
-
 struct TestParam {
   std::vector<Tensor> components;
 } TestCases[] = {
-    {{CreateTensor<int64>(TensorShape({}), {1}),
-      CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
-      CreateTensor<double>(TensorShape({}), {37.0}),
-      CreateTensor<string>(TensorShape({1, 2}),
-                           {"a", "b"})}},  // A single tuple of tensors
-    {{CreateTensor<Variant>(
-          TensorShape({}),
-          {CreateTensor<double>(TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}),
-      CreateTensor<Variant>(
-          TensorShape({}),
-          {CreateTensor<string>(TensorShape({1, 2}), {"a", "b"})}),
-      CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})}}  // Nested tensors
+    {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
+      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
+      DatasetOpsTestBase::CreateTensor<double>(TensorShape({}), {37.0}),
+      DatasetOpsTestBase::CreateTensor<string>(
+          TensorShape({1, 2}), {"a", "b"})}},  // A single tuple of tensors
+    {{DatasetOpsTestBase::CreateTensor<Variant>(
+          TensorShape({}), {DatasetOpsTestBase::CreateTensor<double>(
+                               TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}),
+      DatasetOpsTestBase::CreateTensor<Variant>(
+          TensorShape({}), {DatasetOpsTestBase::CreateTensor<string>(
+                               TensorShape({1, 2}), {"a", "b"})}),
+      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({1, 3}),
+                                              {1, 2, 3})}}  // Nested tensors
 };
 
 struct DatasetGetNextTest : TensorDatasetOpTest,
