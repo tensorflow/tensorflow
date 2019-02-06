@@ -1,7 +1,7 @@
 op {
-graph_op_name: "RequantizePerChannel"
-visibility : HIDDEN
-in_arg {
+  graph_op_name: "RequantizePerChannel"
+  visibility : HIDDEN
+  in_arg {
     name: "input"
     description: <<END
 The original input tensor.
