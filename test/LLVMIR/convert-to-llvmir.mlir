@@ -417,3 +417,31 @@ func @dfs_block_order() -> (i32) {
   br ^bb1
 }
 
+// CHECK-LABEL: func @alloc(%arg0: !llvm<"i64">, %arg1: !llvm<"i64">) -> !llvm<"{ float*, i64, i64 }"> {
+func @alloc(%arg0: index, %arg1: index) -> memref<?x42x?xf32> {
+// CHECK-NEXT: %0 = "llvm.constant"() {value: 42 : index} : () -> !llvm<"i64">
+// CHECK-NEXT: %1 = "llvm.mul"(%arg0, %0) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+// CHECK-NEXT: %2 = "llvm.mul"(%1, %arg1) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+// CHECK-NEXT: %3 = "llvm.undef"() : () -> !llvm<"{ float*, i64, i64 }">
+// CHECK-NEXT: %4 = "llvm.constant"() {value: 4 : index} : () -> !llvm<"i64">
+// CHECK-NEXT: %5 = "llvm.mul"(%2, %4) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+// CHECK-NEXT: %6 = "llvm.call"(%5) {callee: @malloc : (!llvm<"i64">) -> !llvm<"i8*">} : (!llvm<"i64">) -> !llvm<"i8*">
+// CHECK-NEXT: %7 = "llvm.bitcast"(%6) : (!llvm<"i8*">) -> !llvm<"float*">
+// CHECK-NEXT: %8 = "llvm.insertvalue"(%3, %7) {position: [0]} : (!llvm<"{ float*, i64, i64 }">, !llvm<"float*">) -> !llvm<"{ float*, i64, i64 }">
+// CHECK-NEXT: %9 = "llvm.insertvalue"(%8, %arg0) {position: [1]} : (!llvm<"{ float*, i64, i64 }">, !llvm<"i64">) -> !llvm<"{ float*, i64, i64 }">
+// CHECK-NEXT: %10 = "llvm.insertvalue"(%9, %arg1) {position: [2]} : (!llvm<"{ float*, i64, i64 }">, !llvm<"i64">) -> !llvm<"{ float*, i64, i64 }">
+  %0 = alloc(%arg0, %arg1) : memref<?x42x?xf32>
+// CHECK-NEXT:  "llvm.return"(%10) : (!llvm<"{ float*, i64, i64 }">) -> ()
+  return %0 : memref<?x42x?xf32>
+}
+
+
+// CHECK-LABEL: func @dealloc(%arg0: !llvm<"{ float*, i64, i64 }">) {
+func @dealloc(%arg0: memref<?x42x?xf32>) {
+// CHECK-NEXT:  %0 = "llvm.extractvalue"(%arg0) {position: [0]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"float*">
+// CHECK-NEXT:  %1 = "llvm.bitcast"(%0) : (!llvm<"float*">) -> !llvm<"i8*">
+// CHECK-NEXT:  "llvm.call0"(%1) {callee: @free : (!llvm<"i8*">) -> ()} : (!llvm<"i8*">) -> ()
+  dealloc %arg0 : memref<?x42x?xf32>
+// CHECK-NEXT:  "llvm.return"() : () -> ()
+  return
+}
