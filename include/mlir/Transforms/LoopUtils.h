@@ -83,9 +83,10 @@ AffineMap getUnrolledLoopUpperBound(ConstOpPointer<AffineForOp> forOp,
                                     unsigned unrollFactor,
                                     FuncBuilder *builder);
 
-/// Skew the instructions in the body of a 'for' instruction with the specified
-/// instruction-wise shifts. The shifts are with respect to the original
-/// execution order, and are multiplied by the loop 'step' before being applied.
+/// Skew the instructions in the body of a 'affine.for' instruction with the
+/// specified instruction-wise shifts. The shifts are with respect to the
+/// original execution order, and are multiplied by the loop 'step' before being
+/// applied.
 UtilResult instBodySkew(OpPointer<AffineForOp> forOp, ArrayRef<uint64_t> shifts,
                         bool unrollPrologueEpilogue = false);
 

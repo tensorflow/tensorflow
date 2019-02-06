@@ -90,15 +90,15 @@ private:
   explicit AffineApplyOp(const Instruction *state) : Op(state) {}
 };
 
-/// The "for" instruction represents an affine loop nest, defining an SSA value
-/// for its induction variable. The induction variable is represented as a
+/// The "affine.for" instruction represents an affine loop nest, defining an SSA
+/// value for its induction variable. The induction variable is represented as a
 /// BlockArgument to the entry block of the body. The body and induction
-/// variable can be created automatically for new "for" ops with 'createBody'.
-/// This SSA value always has type index, which is the size of the machine word.
-/// The stride, represented by step, is a positive constant integer which
-/// defaults to "1" if not present. The lower and upper bounds specify a
-/// half-open range: the range includes the lower bound but does not include the
-/// upper bound.
+/// variable can be created automatically for new "affine.for" ops with
+/// 'createBody'. This SSA value always has type index, which is the size of the
+/// machine word. The stride, represented by step, is a positive constant
+/// integer which defaults to "1" if not present. The lower and upper bounds
+/// specify a half-open range: the range includes the lower bound but does not
+/// include the upper bound.
 ///
 /// The lower and upper bounds of a for operation are represented as an
 /// application of an affine mapping to a list of SSA values passed to the map.
@@ -110,7 +110,7 @@ private:
 ///
 /// Example:
 ///
-///   for %i = 1 to 10 {
+///   affine.for %i = 1 to 10 {
 ///     ...
 ///   }
 ///
@@ -131,7 +131,7 @@ public:
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 
-  static StringRef getOperationName() { return "for"; }
+  static StringRef getOperationName() { return "affine.for"; }
   static StringRef getStepAttrName() { return "step"; }
   static StringRef getLowerBoundAttrName() { return "lower_bound"; }
   static StringRef getUpperBoundAttrName() { return "upper_bound"; }
@@ -253,15 +253,15 @@ ConstOpPointer<AffineForOp> getForInductionVarOwner(const Value *val);
 void extractForInductionVars(ArrayRef<OpPointer<AffineForOp>> forInsts,
                              SmallVectorImpl<Value *> *ivs);
 
-/// Adds constraints (lower and upper bounds) for the specified 'for'
+/// Adds constraints (lower and upper bounds) for the specified 'affine.for'
 /// instruction's Value using IR information stored in its bound maps. The
 /// right identifier is first looked up using forOp's Value. Returns
 /// false for the yet unimplemented/unsupported cases, and true if the
 /// information is successfully added. Asserts if the Value corresponding to
-/// the 'for' instruction isn't found in the constraint system. Any new
-/// identifiers that are found in the bound operands of the 'for' instruction
-/// are added as trailing identifiers (either dimensional or symbolic
-/// depending on whether the operand is a valid ML Function symbol).
+/// the 'affine.for' instruction isn't found in the constraint system. Any new
+/// identifiers that are found in the bound operands of the 'affine.for'
+/// instruction are added as trailing identifiers (either dimensional or
+/// symbolic depending on whether the operand is a valid ML Function symbol).
 //  TODO(bondhugula): add support for non-unit strides.
 bool addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp,
                           FlatAffineConstraints *constraints);
@@ -297,10 +297,10 @@ public:
   operand_range getOperands() const { return {operand_begin(), operand_end()}; }
 
 private:
-  // 'for' instruction that contains this bound.
+  // 'affine.for' instruction that contains this bound.
   ConstOpPointer<AffineForOp> inst;
   // Start and end positions of this affine bound operands in the list of
-  // the containing 'for' instruction operands.
+  // the containing 'affine.for' instruction operands.
   unsigned opStart, opEnd;
   // Affine map for this bound.
   AffineMap map;

@@ -24,7 +24,7 @@ func @body(index) -> ()
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
 func @simple_loop() {
-  for %i = 1 to 42 {
+  affine.for %i = 1 to 42 {
     call @body(%i) : (index) -> ()
   }
   return
@@ -65,9 +65,9 @@ func @post(index) -> ()
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
 func @imperfectly_nested_loops() {
-  for %i = 0 to 42 {
+  affine.for %i = 0 to 42 {
     call @pre(%i) : (index) -> ()
-    for %j = 7 to 56 step 2 {
+    affine.for %j = 7 to 56 step 2 {
       call @body2(%i, %j) : (index, index) -> ()
     }
     call @post(%i) : (index) -> ()
@@ -122,13 +122,13 @@ func @body3(index, index) -> ()
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
 func @more_imperfectly_nested_loops() {
-  for %i = 0 to 42 {
+  affine.for %i = 0 to 42 {
     call @pre(%i) : (index) -> ()
-    for %j = 7 to 56 step 2 {
+    affine.for %j = 7 to 56 step 2 {
       call @body2(%i, %j) : (index, index) -> ()
     }
     call @mid(%i) : (index) -> ()
-    for %k = 18 to 37 step 3 {
+    affine.for %k = 18 to 37 step 3 {
       call @body3(%i, %k) : (index, index) -> ()
     }
     call @post(%i) : (index) -> ()
@@ -161,8 +161,8 @@ func @more_imperfectly_nested_loops() {
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
 func @affine_apply_loops_shorthand(%N : index) {
-  for %i = 0 to %N {
-    for %j = %i to 42 {
+  affine.for %i = 0 to %N {
+    affine.for %j = %i to 42 {
       call @body2(%i, %j) : (index, index) -> ()
     }
   }
@@ -360,7 +360,7 @@ func @if_for() {
 // CHECK-NEXT: [[outerEndBB]]:
 // CHECK-NEXT:   br [[outerLoopInit:\^bb[0-9]+]]
   if #set1(%i) {
-    for %j = 0 to 42 {
+    affine.for %j = 0 to 42 {
       if #set2(%j) {
         call @body2(%i, %j) : (index, index) -> ()
       }
@@ -397,9 +397,9 @@ func @if_for() {
 // CHECK-NEXT:   %c1_9 = constant 1 : index
 // CHECK-NEXT:   %16 = addi %9, %c1_9 : index
 // CHECK-NEXT:   br [[outerLoopCond]](%16 : index)
-  for %k = 0 to 42 {
+  affine.for %k = 0 to 42 {
     if #set2(%k) {
-      for %l = 0 to 42 {
+      affine.for %l = 0 to 42 {
         call @body3(%k, %l) : (index, index) -> ()
       }
     }
@@ -446,8 +446,8 @@ func @if_for() {
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
 func @loop_min_max(%N : index) {
-  for %i = 0 to 42 {
-    for %j = max #lbMultiMap(%i)[%N] to min #ubMultiMap(%i)[%N] {
+  affine.for %i = 0 to 42 {
+    affine.for %j = max #lbMultiMap(%i)[%N] to min #ubMultiMap(%i)[%N] {
       call @body2(%i, %j) : (index, index) -> ()
     }
   }
@@ -486,7 +486,7 @@ func @loop_min_max(%N : index) {
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
 func @min_reduction_tree(%v : index) {
-  for %i = 0 to min #map_7_values(%v)[] {
+  affine.for %i = 0 to min #map_7_values(%v)[] {
     call @body(%i) : (index) -> ()
   }
   return

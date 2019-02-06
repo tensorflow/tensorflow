@@ -204,35 +204,35 @@ func @illegaltype(i0) // expected-error {{invalid integer width}}
 // -----
 
 func @malformed_for_percent() {
-  for i = 1 to 10 { // expected-error {{expected SSA operand}}
+  affine.for i = 1 to 10 { // expected-error {{expected SSA operand}}
 
 // -----
 
 func @malformed_for_equal() {
-  for %i 1 to 10 { // expected-error {{expected '='}}
+  affine.for %i 1 to 10 { // expected-error {{expected '='}}
 
 // -----
 
 func @malformed_for_to() {
-  for %i = 1 too 10 { // expected-error {{expected 'to' between bounds}}
+  affine.for %i = 1 too 10 { // expected-error {{expected 'to' between bounds}}
   }
 }
 
 // -----
 
 func @incomplete_for() {
-  for %i = 1 to 10 step 2
+  affine.for %i = 1 to 10 step 2
 }        // expected-error {{expected '{' to begin block list}}
 
 // -----
 
 func @nonconstant_step(%1 : i32) {
-  for %2 = 1 to 5 step %1 { // expected-error {{expected non-function type}}
+  affine.for %2 = 1 to 5 step %1 { // expected-error {{expected non-function type}}
 
 // -----
 
 func @for_negative_stride() {
-  for %i = 1 to 10 step -1
+  affine.for %i = 1 to 10 step -1
 }        // expected-error@-1 {{expected step to be representable as a positive signed integer}}
 
 // -----
@@ -244,7 +244,7 @@ func @non_instruction() {
 // -----
 
 func @invalid_if_conditional2() {
-  for %i = 1 to 10 {
+  affine.for %i = 1 to 10 {
     if (i)[N] : (i >= )  // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
   }
 }
@@ -252,7 +252,7 @@ func @invalid_if_conditional2() {
 // -----
 
 func @invalid_if_conditional3() {
-  for %i = 1 to 10 {
+  affine.for %i = 1 to 10 {
     if (i)[N] : (i == 1) // expected-error {{expected '0' after '=='}}
   }
 }
@@ -260,7 +260,7 @@ func @invalid_if_conditional3() {
 // -----
 
 func @invalid_if_conditional4() {
-  for %i = 1 to 10 {
+  affine.for %i = 1 to 10 {
     if (i)[N] : (i >= 2) // expected-error {{expected '0' after '>='}}
   }
 }
@@ -268,7 +268,7 @@ func @invalid_if_conditional4() {
 // -----
 
 func @invalid_if_conditional5() {
-  for %i = 1 to 10 {
+  affine.for %i = 1 to 10 {
     if (i)[N] : (i <= 0 ) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
   }
 }
@@ -276,7 +276,7 @@ func @invalid_if_conditional5() {
 // -----
 
 func @invalid_if_conditional6() {
-  for %i = 1 to 10 {
+  affine.for %i = 1 to 10 {
     if (i) : (i) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
   }
 }
@@ -284,7 +284,7 @@ func @invalid_if_conditional6() {
 // -----
 // TODO (support if (1)?
 func @invalid_if_conditional7() {
-  for %i = 1 to 10 {
+  affine.for %i = 1 to 10 {
     if (i) : (1) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
   }
 }
@@ -438,8 +438,8 @@ func @undef() {
 // -----
 
 func @duplicate_induction_var() {
-  for %i = 1 to 10 {   // expected-error {{previously defined here}}
-    for %i = 1 to 10 { // expected-error {{redefinition of SSA value '%i'}}
+  affine.for %i = 1 to 10 {   // expected-error {{previously defined here}}
+    affine.for %i = 1 to 10 { // expected-error {{redefinition of SSA value '%i'}}
     }
   }
   return
@@ -448,7 +448,7 @@ func @duplicate_induction_var() {
 // -----
 
 func @dominance_failure() {
-  for %i = 1 to 10 {
+  affine.for %i = 1 to 10 {
   }
   "xxx"(%i) : (index)->()   // expected-error {{operand #0 does not dominate this use}}
   return
@@ -475,7 +475,7 @@ func @return_type_mismatch() -> i32 {
 // -----
 
 func @return_inside_loop() -> i8 {
-  for %i = 1 to 100 {
+  affine.for %i = 1 to 100 {
     %a = "foo"() : ()->i8
     return %a : i8
     // expected-error@-1 {{'return' op may only be at the top level of a function}}
@@ -521,7 +521,7 @@ func @referer() {
 #map1 = (i)[j] -> (i+j)
 
 func @bound_symbol_mismatch(%N : index) {
-  for %i = #map1(%N) to 100 {
+  affine.for %i = #map1(%N) to 100 {
   // expected-error@-1 {{symbol operand count and integer set symbol count must match}}
   }
   return
@@ -532,7 +532,7 @@ func @bound_symbol_mismatch(%N : index) {
 #map1 = (i)[j] -> (i+j)
 
 func @bound_dim_mismatch(%N : index) {
-  for %i = #map1(%N, %N)[%N] to 100 {
+  affine.for %i = #map1(%N, %N)[%N] to 100 {
   // expected-error@-1 {{dim operand count and integer set dim count must match}}
   }
   return
@@ -541,7 +541,7 @@ func @bound_dim_mismatch(%N : index) {
 // -----
 
 func @large_bound() {
-  for %i = 1 to 9223372036854775810 {
+  affine.for %i = 1 to 9223372036854775810 {
   // expected-error@-1 {{integer constant out of range for attribute}}
   }
   return
@@ -550,7 +550,7 @@ func @large_bound() {
 // -----
 
 func @max_in_upper_bound(%N : index) {
-  for %i = 1 to max (i)->(N, 100) { //expected-error {{expected non-function type}}
+  affine.for %i = 1 to max (i)->(N, 100) { //expected-error {{expected non-function type}}
   }
   return
 }
@@ -558,7 +558,7 @@ func @max_in_upper_bound(%N : index) {
 // -----
 
 func @step_typo() {
-  for %i = 1 to 100 step -- 1 { //expected-error {{expected constant integer}}
+  affine.for %i = 1 to 100 step -- 1 { //expected-error {{expected constant integer}}
   }
   return
 }
@@ -566,7 +566,7 @@ func @step_typo() {
 // -----
 
 func @invalid_bound_map(%N : i32) {
-  for %i = 1 to (i)->(j)(%N) { //expected-error {{use of undeclared identifier}}
+  affine.for %i = 1 to (i)->(j)(%N) { //expected-error {{use of undeclared identifier}}
   }
   return
 }
@@ -579,7 +579,7 @@ func @invalid_bound_map(%N : i32) {
 #set0 = (i)[N] : (i >= 0, N - i >= 0)
 
 func @invalid_if_operands1(%N : index) {
-  for %i = 1 to 10 {
+  affine.for %i = 1 to 10 {
     if #set0(%i) {
     // expected-error@-1 {{symbol operand count and integer set symbol count must match}}
 
@@ -587,7 +587,7 @@ func @invalid_if_operands1(%N : index) {
 #set0 = (i)[N] : (i >= 0, N - i >= 0)
 
 func @invalid_if_operands2(%N : index) {
-  for %i = 1 to 10 {
+  affine.for %i = 1 to 10 {
     if #set0()[%N] {
     // expected-error@-1 {{dim operand count and integer set dim count must match}}
 
@@ -595,7 +595,7 @@ func @invalid_if_operands2(%N : index) {
 #set0 = (i)[N] : (i >= 0, N - i >= 0)
 
 func @invalid_if_operands3(%N : index) {
-  for %i = 1 to 10 {
+  affine.for %i = 1 to 10 {
     if #set0(%i)[%i] {
     // expected-error@-1 {{operand cannot be used as a symbol}}
     }
@@ -736,11 +736,11 @@ func @f(f32) {
 // -----
 
 func @f(%m : memref<?x?xf32>) {
-  for %i0 = 0 to 42 {
+  affine.for %i0 = 0 to 42 {
     // expected-error@+1 {{operand #2 does not dominate this use}}
     %x = load %m[%i0, %i1] : memref<?x?xf32>
   }
-  for %i1 = 0 to 42 {
+  affine.for %i1 = 0 to 42 {
   }
   return
 }
@@ -790,7 +790,7 @@ func @type_alias_unknown(!unknown_alias) -> () { // expected-error {{undefined t
 
 // Check ill-formed opaque tensor.
 func @complex_loops() {
-  for %i1 = 1 to 100 {
+  affine.for %i1 = 1 to 100 {
   // expected-error @+1 {{expected '"' in string literal}}
   "opaqueIntTensor"(){bar: opaque<tensor<2x1x4xi32>, "0x686]>} : () -> ()
 
@@ -824,7 +824,7 @@ func @invalid_affine_structure() {
 
 func @missing_for_max(%arg0: index, %arg1: index, %arg2: memref<100xf32>) {
   // expected-error @+1 {{lower loop bound affine map with multiple results requires 'max' prefix}}
-  for %i0 = ()[s]->(0,s-1)()[%arg0] to %arg1 {
+  affine.for %i0 = ()[s]->(0,s-1)()[%arg0] to %arg1 {
   }
   return
 }
@@ -833,7 +833,7 @@ func @missing_for_max(%arg0: index, %arg1: index, %arg2: memref<100xf32>) {
 
 func @missing_for_min(%arg0: index, %arg1: index, %arg2: memref<100xf32>) {
   // expected-error @+1 {{upper loop bound affine map with multiple results requires 'min' prefix}}
-  for %i0 = %arg0 to ()[s]->(100,s+1)()[%arg1] {
+  affine.for %i0 = %arg0 to ()[s]->(100,s+1)()[%arg1] {
   }
   return
 }

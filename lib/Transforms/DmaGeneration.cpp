@@ -338,7 +338,8 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
     auto fastMemRefType = top.getMemRefType(
         fastBufferShape, memRefType.getElementType(), {}, fastMemorySpace);
 
-    // Create the fast memory space buffer just before the 'for' instruction.
+    // Create the fast memory space buffer just before the 'affine.for'
+    // instruction.
     fastMemRef = prologue.create<AllocOp>(loc, fastMemRefType)->getResult();
     // Record it.
     fastBufferMap[memref] = fastMemRef;
@@ -456,7 +457,7 @@ bool DmaGeneration::runOnBlock(Block *block, uint64_t consumedCapacityBytes) {
   // approach is conservative in some cases at the moment, we do a check later
   // and report an error with location info.
   // TODO(bondhugula): An 'if' instruction is being treated similar to an
-  // operation instruction. 'if''s could have 'for's in them; treat them
+  // operation instruction. 'if''s could have 'affine.for's in them; treat them
   // separately.
 
   // Get to the first load, store, or for op.
@@ -470,9 +471,9 @@ bool DmaGeneration::runOnBlock(Block *block, uint64_t consumedCapacityBytes) {
     if (auto forOp = it->dyn_cast<AffineForOp>()) {
       // We'll assume for now that loops with steps are tiled loops, and so DMAs
       // are not performed for that depth, but only further inside.
-      // If the memory footprint of the 'for' loop is higher than fast memory
-      // capacity (when provided), we recurse to DMA at an inner level until
-      // we find a depth at which footprint fits in the capacity. If the
+      // If the memory footprint of the 'affine.for' loop is higher than fast
+      // memory capacity (when provided), we recurse to DMA at an inner level
+      // until we find a depth at which footprint fits in the capacity. If the
       // footprint can't be calcuated, we assume for now it fits.
 
       // Returns true if the footprint is known to exceed capacity.
@@ -489,13 +490,13 @@ bool DmaGeneration::runOnBlock(Block *block, uint64_t consumedCapacityBytes) {
         consumedCapacityBytes += runOnBlock(/*begin=*/curBegin, /*end=*/it);
         // Recurse onto the body of this loop.
         runOnBlock(forOp->getBody(), consumedCapacityBytes);
-        // The next region starts right after the 'for' instruction.
+        // The next region starts right after the 'affine.for' instruction.
         curBegin = std::next(it);
       } else {
         // We have enough capacity, i.e., DMAs will be computed for the portion
-        // of the block until 'it', and for the 'for' loop. For the latter, they
-        // are placed just before this loop (for incoming DMAs) and right after
-        // (for outgoing ones).
+        // of the block until 'it', and for the 'affine.for' loop. For the
+        // latter, they are placed just before this loop (for incoming DMAs) and
+        // right after (for outgoing ones).
         consumedCapacityBytes += runOnBlock(/*begin=*/curBegin, /*end=*/it);
 
         // Inner loop DMAs have their own scope - we don't thus update consumed

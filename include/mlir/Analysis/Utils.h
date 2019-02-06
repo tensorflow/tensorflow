@@ -52,7 +52,7 @@ bool dominates(const Instruction &a, const Instruction &b);
 bool properlyDominates(const Instruction &a, const Instruction &b);
 
 /// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from
-/// the outermost 'for' instruction to the innermost one.
+/// the outermost 'affine.for' instruction to the innermost one.
 //  TODO(bondhugula): handle 'if' inst's.
 void getLoopIVs(const Instruction &inst,
                 SmallVectorImpl<OpPointer<AffineForOp>> *loops);
@@ -105,8 +105,8 @@ insertBackwardComputationSlice(Instruction *srcOpInst, Instruction *dstOpInst,
 /// surrounding such op's.
 // For example, the memref region for a load operation at loop depth = 1:
 //
-//    for %i = 0 to 32 {
-//      for %ii = %i to (d0) -> (d0 + 8) (%i) {
+//    affine.for %i = 0 to 32 {
+//      affine.for %ii = %i to (d0) -> (d0 + 8) (%i) {
 //        load %A[%ii]
 //      }
 //    }
@@ -139,8 +139,8 @@ struct MemRefRegion {
   ///  For example, the memref region for this operation at loopDepth = 1 will
   ///  be:
   ///
-  ///    for %i = 0 to 32 {
-  ///      for %ii = %i to (d0) -> (d0 + 8) (%i) {
+  ///    affine.for %i = 0 to 32 {
+  ///      affine.for %ii = %i to (d0) -> (d0 + 8) (%i) {
   ///        load %A[%ii]
   ///      }
   ///    }

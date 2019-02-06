@@ -76,9 +76,9 @@ shapeRatio(VectorType superVectorType, VectorType subVectorType);
 /// The following MLIR snippet:
 ///
 /// ```mlir
-///    for %i3 = 0 to %0 {
-///      for %i4 = 0 to %1 {
-///        for %i5 = 0 to %2 {
+///    affine.for %i3 = 0 to %0 {
+///      affine.for %i4 = 0 to %1 {
+///        affine.for %i5 = 0 to %2 {
 ///          %a5 = load %arg0[%i4, %i5, %i3] : memref<?x?x?xf32>
 ///    }}}
 /// ```
@@ -86,9 +86,9 @@ shapeRatio(VectorType superVectorType, VectorType subVectorType);
 /// may vectorize with {permutation_map: (d0, d1, d2) -> (d2, d1)} into:
 ///
 /// ```mlir
-///    for %i3 = 0 to %0 step 32 {
-///      for %i4 = 0 to %1 {
-///        for %i5 = 0 to %2 step 256 {
+///    affine.for %i3 = 0 to %0 step 32 {
+///      affine.for %i4 = 0 to %1 {
+///        affine.for %i5 = 0 to %2 step 256 {
 ///          %4 = vector_transfer_read %arg0, %i4, %i5, %i3
 ///               {permutation_map: (d0, d1, d2) -> (d2, d1)} :
 ///               (memref<?x?x?xf32>, index, index) -> vector<32x256xf32>
@@ -103,7 +103,7 @@ shapeRatio(VectorType superVectorType, VectorType subVectorType);
 ///
 /// ```mlir
 ///    %cst0 = constant 0 : index
-///    for %i0 = 0 to %0 {
+///    affine.for %i0 = 0 to %0 {
 ///      %a0 = load %arg0[%cst0, %cst0] : memref<?x?xf32>
 ///    }
 /// ```
@@ -111,7 +111,7 @@ shapeRatio(VectorType superVectorType, VectorType subVectorType);
 /// may vectorize with {permutation_map: (d0) -> (0)} into:
 ///
 /// ```mlir
-///    for %i0 = 0 to %0 step 128 {
+///    affine.for %i0 = 0 to %0 step 128 {
 ///      %3 = vector_transfer_read %arg0, %c0_0, %c0_0
 ///           {permutation_map: (d0, d1) -> (0)} :
 ///           (memref<?x?xf32>, index, index) -> vector<128xf32>

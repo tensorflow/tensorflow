@@ -36,13 +36,13 @@
 using namespace mlir;
 
 /// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from
-/// the outermost 'for' instruction to the innermost one.
+/// the outermost 'affine.for' instruction to the innermost one.
 void mlir::getLoopIVs(const Instruction &inst,
                       SmallVectorImpl<OpPointer<AffineForOp>> *loops) {
   auto *currInst = inst.getParentInst();
   OpPointer<AffineForOp> currAffineForOp;
-  // Traverse up the hierarchy collecing all 'for' instruction while skipping
-  // over 'if' instructions.
+  // Traverse up the hierarchy collecing all 'affine.for' instruction while
+  // skipping over 'if' instructions.
   while (currInst && ((currAffineForOp = currInst->dyn_cast<AffineForOp>()) ||
                       currInst->isa<AffineIfOp>())) {
     if (currAffineForOp)
@@ -111,8 +111,8 @@ bool MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
 //  For example, the memref region for this load operation at loopDepth = 1 will
 //  be as below:
 //
-//    for %i = 0 to 32 {
-//      for %ii = %i to (d0) -> (d0 + 8) (%i) {
+//    affine.for %i = 0 to 32 {
+//      affine.for %ii = %i to (d0) -> (d0 + 8) (%i) {
 //        load %A[%ii]
 //      }
 //    }
@@ -614,7 +614,7 @@ Optional<int64_t> mlir::getMemoryFootprintBytes(const Block &block,
                                                 int memorySpace) {
   std::vector<std::unique_ptr<MemRefRegion>> regions;
 
-  // Walk this 'for' instruction to gather all memory regions.
+  // Walk this 'affine.for' instruction to gather all memory regions.
   bool error = false;
   const_cast<Block *>(&block)->walk([&](Instruction *opInst) {
     if (!opInst->isa<LoadOp>() && !opInst->isa<StoreOp>()) {

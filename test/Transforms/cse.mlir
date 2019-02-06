@@ -123,8 +123,8 @@ func @down_propagate_for_ml() {
   // CHECK: %c1_i32 = constant 1 : i32
   %0 = constant 1 : i32
 
-  // CHECK-NEXT: for %i0 = 0 to 4 {
-  for %i = 0 to 4 {
+  // CHECK-NEXT: affine.for %i0 = 0 to 4 {
+  affine.for %i = 0 to 4 {
     // CHECK-NEXT: "foo"(%c1_i32, %c1_i32) : (i32, i32) -> ()
     %1 = constant 1 : i32
     "foo"(%0, %1) : (i32, i32) -> ()
@@ -155,8 +155,8 @@ func @down_propagate_cfg() -> i32 {
 /// Check that operation definitions are NOT propagated up the dominance tree.
 // CHECK-LABEL: @up_propagate_ml
 func @up_propagate_ml() -> i32 {
-  // CHECK: for %i0 = 0 to 4 {
-  for %i = 0 to 4 {
+  // CHECK: affine.for %i0 = 0 to 4 {
+  affine.for %i = 0 to 4 {
     // CHECK-NEXT: %c1_i32 = constant 1 : i32
     // CHECK-NEXT: "foo"(%c1_i32) : (i32) -> ()
     %0 = constant 1 : i32

@@ -2,8 +2,8 @@
 
 // CHECK-LABEL: @test(%arg0: memref<f32>) {
 func @test(%p : memref<f32>) {
-  for %i0 = 0 to 128 {
-    for %i1 = 0 to 8 { // CHECK: for %i1 = 0 to 8 {
+  affine.for %i0 = 0 to 128 {
+    affine.for %i1 = 0 to 8 { // CHECK: affine.for %i1 = 0 to 8 {
       %0 = constant 4.5 : f32
       %1 = constant 1.5 : f32
 

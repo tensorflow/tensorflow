@@ -164,7 +164,7 @@ PassResult LoopUnroll::runOnFunction(Function *f) {
   return success();
 }
 
-/// Unrolls a 'for' inst. Returns true if the loop was unrolled, false
+/// Unrolls a 'affine.for' inst. Returns true if the loop was unrolled, false
 /// otherwise. The default unroll factor is 4.
 bool LoopUnroll::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
   // Use the function callback if one was provided.

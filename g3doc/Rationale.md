@@ -150,8 +150,8 @@ func bar(%A : memref<8x?xf32, #lmap>) {
   // dynamically using dim instruction.
   %N = dim %A, 1 : memref<8x?xf32, #lmap>
 
-  for %i = 0 to 8 {
-    for %j = 0 to %N {
+  affine.for %i = 0 to 8 {
+    affine.for %j = 0 to %N {
       // A[i,j] += 1
       %s1 = load %A [%i, %j] : memref<8x?xf32, #lmap>
       %s2 = add %s1, 1
@@ -534,7 +534,7 @@ nested in an outer function that using affine loops.
 func @search(memref<?x?xi32 %A, <?xi32> %S, i32 %key) {
   %ni = dim %A, 0 : memref<?x?xi32>
   // This loop can be parallelized
-  for %i = 0 to %ni {
+  affine.for %i = 0 to %ni {
     call @search_body (%A, %S, %i) : (memref<?x?xi32>, memref<?xi32>, i32)
   }
   return
@@ -568,10 +568,10 @@ func @search_body(%A: memref<?x?xi32>, %S: memref<?xi32>, %key: i32) {
 
 As per the [MLIR spec](LangRef.md), the restrictions on dimensions and symbol
 identifiers to be used with the affine.apply instruction only apply to accesses
-inside `for` and `if` instructions. However, an analysis of accesses inside the
-called function (`@search_body`) is necessary to determine if the `%i` loop
-could be parallelized: such function access analysis is calling context
-sensitive.
+inside `affine.for` and `if` instructions. However, an analysis of accesses
+inside the called function (`@search_body`) is necessary to determine if the
+`%i` loop could be parallelized: such function access analysis is calling
+context sensitive.
 
 ### Non-affine loop bounds {#non-affine-loop-bounds}
 
@@ -590,8 +590,8 @@ for (i=0; i <N; i++)
 
 ```mlir {.mlir}
 func @outer_nest(%n) : (i32) {
-  for %i = 0 to %n {
-    for %j = 0 to %n {
+  affine.for %i = 0 to %n {
+    affine.for %j = 0 to %n {
       call @inner_nest(%i, %j, %n)
     }
   }
@@ -606,8 +606,8 @@ func @inner_nest(%i: i32, %j: i32, %n: i32) {
 }
 
 func @inner_nest2(%m, %n) -> i32 {
-  for %k = 0 to %m {
-    for %l = 0 to %n {
+  affine.for %k = 0 to %m {
+    affine.for %l = 0 to %n {
       ...
     }
   }
@@ -649,13 +649,13 @@ in a dilated convolution.
 func @conv2d(memref<16x1024x1024x3xf32, #lm0, vmem> %input,
              memref<5x5x3x32xf32, #lm0, vmem> %kernel,
              memref<16x512x512x32xf32, #lm0, vmem> %output) {
-  for %b = 0 to %batch {
-    for %oh = 0 to %output_height {
-      for %ow = 0 to %output_width {
-        for %of = 0 to %output_feature {
-          for %kh = 0 to %kernel_height {
-            for %kw = 0 to %kernel_width {
-              for %if = 0 to %input_feature {
+  affine.for %b = 0 to %batch {
+    affine.for %oh = 0 to %output_height {
+      affine.for %ow = 0 to %output_width {
+        affine.for %of = 0 to %output_feature {
+          affine.for %kh = 0 to %kernel_height {
+            affine.for %kw = 0 to %kernel_width {
+              affine.for %if = 0 to %input_feature {
                 // Calculate input indices.
                 %1_0 = affine.apply #map1_0 (%0#1, %0#2, %0#4, %0#5)
                   [%h_stride, %w_stride, %h_kernel_dilation, %w_kernel_dilation,
@@ -899,14 +899,14 @@ func @dma_hbm_to_vmem(memref<1024 x f32, #layout_map0, hbm> %a,
     representation. 2(b) requires no change, but impacts how cost models look at
     index and layout maps.
 
-### `if` and `for` Extensions for "Escaping Scalars" {#extensions-for-"escaping-scalars"}
+### `if` and `affine.for` Extensions for "Escaping Scalars" {#extensions-for-"escaping-scalars"}
 
 We considered providing a representation for SSA values that are live out of
-`if/else` conditional bodies and loop carried in `for` loops. We ultimately
-abandoned this approach due to its complexity. In the current design of MLIR,
-scalar variables cannot escape for loops or if instructions. In situations,
-where escaping is necessary, we use zero-dimensional tensors and memrefs instead
-of scalars.
+`if/else` conditional bodies and loop carried in `affine.for` loops. We
+ultimately abandoned this approach due to its complexity. In the current design
+of MLIR, scalar variables cannot escape for loops or if instructions. In
+situations, where escaping is necessary, we use zero-dimensional tensors and
+memrefs instead of scalars.
 
 **TODO**: This whole section is obsolete and should be updated to use block
 arguments and a yield like terminator in for/if instructions.
@@ -919,7 +919,7 @@ Syntax:
 
 ``` {.ebnf}
 [<out-var-list> =]
-for %<index-variable-name> = <lower-bound> ... <upper-bound> step <step>
+affine.for %<index-variable-name> = <lower-bound> ... <upper-bound> step <step>
    [with <in-var-list>] { <loop-instruction-list> }
 ```
 
@@ -934,7 +934,7 @@ Example:
 // Return sum of elements in 1-dimensional mref A
 func int32 @sum(%A : memref<?xi32>, %N : i32) -> (i32) {
    %init = 0
-   %result = for %i = 0 to N with %tmp(%init) {
+   %result = affine.for %i = 0 to N with %tmp(%init) {
       %value = load %A[%i]
       %sum = %value + %tmp
       yield %sum
@@ -964,7 +964,7 @@ Example:
 // Compute sum of half of the array
 func int32 @sum_half(%A, %N) {
    %s0 = 0
-   %s1 = for %i = 1 ... N step 1 with %s2 (%s0) {
+   %s1 = affine.for %i = 1 ... N step 1 with %s2 (%s0) {
        %s3 = if (%i >= %N / 2) {
           %v0 = load %A[%i]
           %s4 = %s2 + %v0

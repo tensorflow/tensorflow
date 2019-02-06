@@ -208,8 +208,8 @@ func @identity_functor(%a : () -> ()) -> (() -> ())  {
 func @func_ops_in_loop() {
   // CHECK: %0 = "foo"() : () -> i64
   %a = "foo"() : ()->i64
-  // CHECK: for %i0 = 1 to 10 {
-  for %i = 1 to 10 {
+  // CHECK: affine.for %i0 = 1 to 10 {
+  affine.for %i = 1 to 10 {
     // CHECK: %1 = "doo"() : () -> f32
     %b = "doo"() : ()->f32
     // CHECK: "bar"(%0, %1) : (i64, f32) -> ()
@@ -224,10 +224,10 @@ func @func_ops_in_loop() {
 
 // CHECK-LABEL: func @loops() {
 func @loops() {
-  // CHECK: for %i0 = 1 to 100 step 2 {
-  for %i = 1 to 100 step 2 {
-    // CHECK: for %i1 = 1 to 200 {
-    for %j = 1 to 200 {
+  // CHECK: affine.for %i0 = 1 to 100 step 2 {
+  affine.for %i = 1 to 100 step 2 {
+    // CHECK: affine.for %i1 = 1 to 200 {
+    affine.for %j = 1 to 200 {
     }        // CHECK:     }
   }          // CHECK:   }
   return     // CHECK:   return
@@ -235,14 +235,14 @@ func @loops() {
 
 // CHECK-LABEL: func @complex_loops() {
 func @complex_loops() {
-  for %i1 = 1 to 100 {      // CHECK:   for %i0 = 1 to 100 {
-    for %j1 = 1 to 100 {    // CHECK:     for %i1 = 1 to 100 {
+  affine.for %i1 = 1 to 100 {      // CHECK:   affine.for %i0 = 1 to 100 {
+    affine.for %j1 = 1 to 100 {    // CHECK:     affine.for %i1 = 1 to 100 {
        // CHECK: "foo"(%i0, %i1) : (index, index) -> ()
        "foo"(%i1, %j1) : (index,index) -> ()
     }                       // CHECK:     }
     "boo"() : () -> ()      // CHECK:     "boo"() : () -> ()
-    for %j2 = 1 to 10 {     // CHECK:     for %i2 = 1 to 10 {
-      for %k2 = 1 to 10 {   // CHECK:       for %i3 = 1 to 10 {
+    affine.for %j2 = 1 to 10 {     // CHECK:     affine.for %i2 = 1 to 10 {
+      affine.for %k2 = 1 to 10 {   // CHECK:       affine.for %i3 = 1 to 10 {
         "goo"() : () -> ()  // CHECK:         "goo"() : () -> ()
       }                     // CHECK:       }
     }                       // CHECK:     }
@@ -253,8 +253,8 @@ func @complex_loops() {
 // CHECK: func @triang_loop(%arg0: index, %arg1: memref<?x?xi32>) {
 func @triang_loop(%arg0: index, %arg1: memref<?x?xi32>) {
   %c = constant 0 : i32       // CHECK: %c0_i32 = constant 0 : i32
-  for %i0 = 1 to %arg0 {      // CHECK: for %i0 = 1 to %arg0 {
-    for %i1 = (d0)[]->(d0)(%i0)[] to %arg0 {  // CHECK:   for %i1 = #map{{[0-9]+}}(%i0) to %arg0 {
+  affine.for %i0 = 1 to %arg0 {      // CHECK: affine.for %i0 = 1 to %arg0 {
+    affine.for %i1 = (d0)[]->(d0)(%i0)[] to %arg0 {  // CHECK:   affine.for %i1 = #map{{[0-9]+}}(%i0) to %arg0 {
       store %c, %arg1[%i0, %i1] : memref<?x?xi32>  // CHECK: store %c0_i32, %arg1[%i0, %i1]
     }          // CHECK:     }
   }            // CHECK:   }
@@ -263,8 +263,8 @@ func @triang_loop(%arg0: index, %arg1: memref<?x?xi32>) {
 
 // CHECK: func @minmax_loop(%arg0: index, %arg1: index, %arg2: memref<100xf32>) {
 func @minmax_loop(%arg0: index, %arg1: index, %arg2: memref<100xf32>) {
-  // CHECK: for %i0 = max #map{{.*}}()[%arg0] to min #map{{.*}}()[%arg1] {
-  for %i0 = max()[s]->(0,s-1)()[%arg0] to min()[s]->(100,s+1)()[%arg1] {
+  // CHECK: affine.for %i0 = max #map{{.*}}()[%arg0] to min #map{{.*}}()[%arg1] {
+  affine.for %i0 = max()[s]->(0,s-1)()[%arg0] to min()[s]->(100,s+1)()[%arg1] {
     // CHECK: "foo"(%arg2, %i0) : (memref<100xf32>, index) -> ()
     "foo"(%arg2, %i0) : (memref<100xf32>, index) -> ()
   }      // CHECK:   }
@@ -275,24 +275,24 @@ func @minmax_loop(%arg0: index, %arg1: index, %arg2: memref<100xf32>) {
 func @loop_bounds(%N : index) {
   // CHECK: %0 = "foo"(%arg0) : (index) -> index
   %s = "foo"(%N) : (index) -> index
-  // CHECK: for %i0 = %0 to %arg0
-  for %i = %s to %N {
-    // CHECK: for %i1 = #map{{[0-9]+}}(%i0) to 0
-    for %j = (d0)[]->(d0)(%i)[] to 0 step 1 {
+  // CHECK: affine.for %i0 = %0 to %arg0
+  affine.for %i = %s to %N {
+    // CHECK: affine.for %i1 = #map{{[0-9]+}}(%i0) to 0
+    affine.for %j = (d0)[]->(d0)(%i)[] to 0 step 1 {
        // CHECK: %1 = affine.apply #map{{.*}}(%i0, %i1)[%0]
        %w1 = affine.apply(d0, d1)[s0] -> (d0+d1) (%i, %j) [%s]
        // CHECK: %2 = affine.apply #map{{.*}}(%i0, %i1)[%0]
        %w2 = affine.apply(d0, d1)[s0] -> (s0+1) (%i, %j) [%s]
-       // CHECK: for %i2 = #map{{.*}}(%1, %i0)[%arg0] to #map{{.*}}(%2, %i1)[%0] {
-       for %k = #bound_map1 (%w1, %i)[%N] to (i, j)[s] -> (i + j + s) (%w2, %j)[%s] {
+       // CHECK: affine.for %i2 = #map{{.*}}(%1, %i0)[%arg0] to #map{{.*}}(%2, %i1)[%0] {
+       affine.for %k = #bound_map1 (%w1, %i)[%N] to (i, j)[s] -> (i + j + s) (%w2, %j)[%s] {
           // CHECK: "foo"(%i0, %i1, %i2) : (index, index, index) -> ()
           "foo"(%i, %j, %k) : (index, index, index)->()
           // CHECK: %c30 = constant 30 : index
           %c = constant 30 : index
           // CHECK: %3 = affine.apply #map{{.*}}(%arg0, %c30)
           %u = affine.apply (d0, d1)->(d0+d1) (%N, %c)
-          // CHECK: for %i3 = max #map{{.*}}(%i0)[%3] to min #map{{.*}}(%i2)[%c30] {
-          for %l = max #bound_map2(%i)[%u] to min #bound_map2(%k)[%c] {
+          // CHECK: affine.for %i3 = max #map{{.*}}(%i0)[%3] to min #map{{.*}}(%i2)[%c30] {
+          affine.for %l = max #bound_map2(%i)[%u] to min #bound_map2(%k)[%c] {
             // CHECK: "bar"(%i3) : (index) -> ()
             "bar"(%l) : (index) -> ()
           } // CHECK:           }
@@ -305,7 +305,7 @@ func @loop_bounds(%N : index) {
 // CHECK-LABEL: func @ifinst(%arg0: index) {
 func @ifinst(%N: index) {
   %c = constant 200 : index // CHECK   %c200 = constant 200
-  for %i = 1 to 10 {           // CHECK   for %i0 = 1 to 10 {
+  affine.for %i = 1 to 10 {           // CHECK   affine.for %i0 = 1 to 10 {
     if #set0(%i)[%N, %c] {     // CHECK     if #set0(%i0)[%arg0, %c200] {
       %x = constant 1 : i32
        // CHECK: %c1_i32 = constant 1 : i32
@@ -328,7 +328,7 @@ func @ifinst(%N: index) {
 // CHECK-LABEL: func @simple_ifinst(%arg0: index) {
 func @simple_ifinst(%N: index) {
   %c = constant 200 : index // CHECK   %c200 = constant 200
-  for %i = 1 to 10 {           // CHECK   for %i0 = 1 to 10 {
+  affine.for %i = 1 to 10 {           // CHECK   affine.for %i0 = 1 to 10 {
     if #set0(%i)[%N, %c] {     // CHECK     if #set0(%i0)[%arg0, %c200] {
       %x = constant 1 : i32
        // CHECK: %c1_i32 = constant 1 : i32
@@ -544,18 +544,18 @@ func @funcattrwithblock() -> ()
 #map_non_simple2 = ()[s0, s1] -> (s0 + s1)
 #map_non_simple3 = ()[s0] -> (s0 + 3)
 func @funcsimplemap(%arg0: index, %arg1: index) -> () {
-  for %i0 = 0 to #map_simple0()[] {
-  // CHECK: for %i0 = 0 to 10 {
-    for %i1 = 0 to #map_simple1()[%arg1] {
-    // CHECK: for %i1 = 0 to %arg1 {
-      for %i2 = 0 to #map_non_simple0(%i0)[] {
-      // CHECK: for %i2 = 0 to #map{{[a-z_0-9]*}}(%i0) {
-        for %i3 = 0 to #map_non_simple1(%i0)[%arg1] {
-        // CHECK: for %i3 = 0 to #map{{[a-z_0-9]*}}(%i0)[%arg1] {
-          for %i4 = 0 to #map_non_simple2()[%arg1, %arg0] {
-          // CHECK: for %i4 = 0 to #map{{[a-z_0-9]*}}()[%arg1, %arg0] {
-            for %i5 = 0 to #map_non_simple3()[%arg0] {
-            // CHECK: for %i5 = 0 to #map{{[a-z_0-9]*}}()[%arg0] {
+  affine.for %i0 = 0 to #map_simple0()[] {
+  // CHECK: affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to #map_simple1()[%arg1] {
+    // CHECK: affine.for %i1 = 0 to %arg1 {
+      affine.for %i2 = 0 to #map_non_simple0(%i0)[] {
+      // CHECK: affine.for %i2 = 0 to #map{{[a-z_0-9]*}}(%i0) {
+        affine.for %i3 = 0 to #map_non_simple1(%i0)[%arg1] {
+        // CHECK: affine.for %i3 = 0 to #map{{[a-z_0-9]*}}(%i0)[%arg1] {
+          affine.for %i4 = 0 to #map_non_simple2()[%arg1, %arg0] {
+          // CHECK: affine.for %i4 = 0 to #map{{[a-z_0-9]*}}()[%arg1, %arg0] {
+            affine.for %i5 = 0 to #map_non_simple3()[%arg0] {
+            // CHECK: affine.for %i5 = 0 to #map{{[a-z_0-9]*}}()[%arg0] {
               %c42_i32 = constant 42 : i32
             }
           }
@@ -749,9 +749,9 @@ func @sparsevectorattr() -> () {
 // CHECK-LABEL: func @loops_with_blockids() {
 func @loops_with_blockids() {
 ^block0:
-  for %i = 1 to 100 step 2 {
+  affine.for %i = 1 to 100 step 2 {
   ^block1:
-    for %j = 1 to 200 {
+    affine.for %j = 1 to 200 {
     ^block2:
     }
   }

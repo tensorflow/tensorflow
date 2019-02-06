@@ -184,8 +184,8 @@ Our simple example above would be represented as:
 
 ```mlir
   mlfunc @simple_example(... %N) {
-    for %i = 0 ... %N step 1 {
-      for %j = 0 ... %N step 1 {
+    affine.for %i = 0 ... %N step 1 {
+      affine.for %j = 0 ... %N step 1 {
         // identity noop in this case, but can exist in general.
         %0,%1 = affine.apply #57(%i, %j)
 
@@ -203,8 +203,8 @@ The example with the reduced domain would be represented with an if instruction:
 
 ```mlir
   mlfunc @reduced_domain_example(... %N) {
-    for %i = 0 ... %N step 1 {
-      for %j = 0 ... %N step 1 {
+    affine.for %i = 0 ... %N step 1 {
+      affine.for %j = 0 ... %N step 1 {
         // identity noop in this case, but can exist in general.
         %0,%1 = affinecall #57(%i, %j)
 
@@ -233,8 +233,8 @@ that transformations call into):
 
 ```mlir
 mlfunc @skewed_domain_example(... %N) {
-  for %t1 = 0 ... 2*N-2 step 1 {
-    for %t2 = max(0, t1-N+1) ... min(N, t1) step 1 {
+  affine.for %t1 = 0 ... 2*N-2 step 1 {
+    affine.for %t2 = max(0, t1-N+1) ... min(N, t1) step 1 {
       (%i, %j) = (%t1-%t2, %t2)
       ...
     }
@@ -373,7 +373,7 @@ mlfunc's (if we support them) will also have to have domains.
 ### Lack of redundancy in IR
 
 The traditional form has multiple encodings for the same sorts of behavior: you
-end up having bits on `for` loops to specify whether codegen should use
+end up having bits on `affine.for` loops to specify whether codegen should use
 "atomic/separate" policies, unroll loops, etc. Instructions can be split or can
 generate multiple copies of their instruction because of overlapping domains,
 etc.

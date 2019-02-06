@@ -101,10 +101,10 @@
 ///    mlfunc @materialize(%M : index, %N : index, %O : index, %P : index) {
 ///      %A = alloc (%M, %N, %O, %P) : memref<?x?x?x?xf32, 0>
 ///      %f1 = constant splat<vector<4x4x4xf32>, 1.000000e+00> :
-///      vector<4x4x4xf32> for %i0 = 0 to %M step 4 {
-///        for %i1 = 0 to %N step 4 {
-///          for %i2 = 0 to %O {
-///            for %i3 = 0 to %P step 4 {
+///      vector<4x4x4xf32> affine.for %i0 = 0 to %M step 4 {
+///        affine.for %i1 = 0 to %N step 4 {
+///          affine.for %i2 = 0 to %O {
+///            affine.for %i3 = 0 to %P step 4 {
 ///              vector_transfer_write %f1, %A, %i0, %i1, %i2, %i3
 ///                {permutation_map: (d0, d1, d2, d3) -> (d3, d1, d0)} :
 ///                 vector<4x4x4xf32>, memref<?x?x?x?xf32, 0>,
@@ -120,10 +120,10 @@
 ///    mlfunc @materialize(%M : index, %N : index, %O : index, %P : index) {
 ///      %A = alloc (%M, %N, %O, %P) : memref<?x?x?x?xf32, 0>
 ///      %f1 = constant splat<vector<4x4xf32>, 1.000000e+00> : vector<4x4x4xf32>
-///       for %i0 = 0 to %arg0 step 4 {
-///         for %i1 = 0 to %arg1 step 4 {
-///           for %i2 = 0 to %arg2 {
-///             for %i3 = 0 to %arg3 step 4 {
+///       affine.for %i0 = 0 to %arg0 step 4 {
+///         affine.for %i1 = 0 to %arg1 step 4 {
+///           affine.for %i2 = 0 to %arg2 {
+///             affine.for %i3 = 0 to %arg3 step 4 {
 ///               %1 = affine.apply (d0, d1, d2, d3) -> (d0, d1, d2, d3)
 ///                    (%i0, %i1, %i2, %i3)
 ///               vector_transfer_write f1, %0, %1#0, %1#1, %1#2, %1#3
@@ -293,10 +293,10 @@ static Value *substitute(Value *v, VectorType hwVectorType,
 /// super-vectorization has been applied:
 ///
 /// ```mlir
-/// for %i0 = 0 to %M {
-///   for %i1 = 0 to %N step 3 {
-///     for %i2 = 0 to %O {
-///       for %i3 = 0 to %P step 32 {
+/// affine.for %i0 = 0 to %M {
+///   affine.for %i1 = 0 to %N step 3 {
+///     affine.for %i2 = 0 to %O {
+///       affine.for %i3 = 0 to %P step 32 {
 ///         %r = vector_transfer_read(%A, map(%i..)#0, map(%i..)#1, map(%i..)#2)
 ///                                   -> vector<3x32xf32>
 ///         ...

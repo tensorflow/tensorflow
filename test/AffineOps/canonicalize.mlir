@@ -32,7 +32,7 @@
 func @compose_affine_maps_1dto2d_no_symbols() {
   %0 = alloc() : memref<4x4xf32>
 
-  for %i0 = 0 to 15 {
+  affine.for %i0 = 0 to 15 {
     // Test load[%x, %x]
 
     %x0 = affine.apply (d0) -> (d0 - 1) (%i0)
@@ -78,7 +78,7 @@ func @compose_affine_maps_1dto2d_no_symbols() {
 func @compose_affine_maps_1dto2d_with_symbols() {
   %0 = alloc() : memref<4x4xf32>
 
-  for %i0 = 0 to 15 {
+  affine.for %i0 = 0 to 15 {
     // Test load[%x0, %x0] with symbol %c4
     %c4 = constant 4 : index
     %x0 = affine.apply (d0)[s0] -> (d0 - s0) (%i0)[%c4]
@@ -119,13 +119,13 @@ func @compose_affine_maps_2d_tile() {
   %c4 = constant 4 : index
   %c8 = constant 8 : index
 
-  for %i0 = 0 to 3 {
+  affine.for %i0 = 0 to 3 {
     %x0 = affine.apply (d0)[s0] -> (d0 ceildiv s0) (%i0)[%c4]
-    for %i1 = 0 to 3 {
+    affine.for %i1 = 0 to 3 {
       %x1 = affine.apply (d0)[s0] -> (d0 ceildiv s0) (%i1)[%c8]
-      for %i2 = 0 to 3 {
+      affine.for %i2 = 0 to 3 {
         %x2 = affine.apply (d0)[s0] -> (d0 mod s0) (%i2)[%c4]
-        for %i3 = 0 to 3 {
+        affine.for %i3 = 0 to 3 {
           %x3 = affine.apply (d0)[s0] -> (d0 mod s0) (%i3)[%c8]
 
           %x40 = affine.apply (d0, d1, d2, d3)[s0, s1] ->
@@ -151,9 +151,9 @@ func @compose_affine_maps_dependent_loads() {
   %0 = alloc() : memref<16x32xf32>
   %1 = alloc() : memref<16x32xf32>
 
-  for %i0 = 0 to 3 {
-    for %i1 = 0 to 3 {
-      for %i2 = 0 to 3 {
+  affine.for %i0 = 0 to 3 {
+    affine.for %i1 = 0 to 3 {
+      affine.for %i2 = 0 to 3 {
         %c3 = constant 3 : index
         %c7 = constant 7 : index
 
@@ -197,7 +197,7 @@ func @compose_affine_maps_dependent_loads() {
 func @compose_affine_maps_diamond_dependency() {
   %0 = alloc() : memref<4x4xf32>
 
-  for %i0 = 0 to 15 {
+  affine.for %i0 = 0 to 15 {
     %a = affine.apply (d0) -> (d0 - 1) (%i0)
     %b = affine.apply (d0) -> (d0 + 7) (%a)
     %c = affine.apply (d0) -> (d0 * 4) (%a)
@@ -217,8 +217,8 @@ func @arg_used_as_dim_and_symbol(%arg0: memref<100x100xf32>, %arg1: index) {
   %c9 = constant 9 : index
   %1 = alloc() : memref<100x100xf32, 1>
   %2 = alloc() : memref<1xi32>
-  for %i0 = 0 to 100 {
-    for %i1 = 0 to 100 {
+  affine.for %i0 = 0 to 100 {
+    affine.for %i1 = 0 to 100 {
       %3 = affine.apply (d0, d1)[s0, s1] -> (d1 + s0 + s1)
         (%i0, %i1)[%arg1, %c9]
       %4 = affine.apply (d0, d1, d3) -> (d3 - (d0 + d1))
@@ -238,7 +238,7 @@ func @trivial_maps() {
   %0 = alloc() : memref<10xf32>
   %c0 = constant 0 : index
   %cst = constant 0.000000e+00 : f32
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     %1 = affine.apply ()[s0] -> (s0)()[%c0]
     store %cst, %0[%1] : memref<10xf32>
     %2 = load %0[%c0] : memref<10xf32>
@@ -277,20 +277,20 @@ func @constant_fold_bounds(%N : index) {
   %c3 = affine.apply (d0, d1) -> (d0 + d1) (%c1, %c2)
   %l = "foo"() : () -> index
 
-  // CHECK:  for %i0 = 5 to 7 {
-  for %i = max (d0, d1) -> (0, d0 + d1)(%c2, %c3) to min (d0, d1) -> (d0 - 2, 32*d1) (%c9, %c1) {
+  // CHECK:  affine.for %i0 = 5 to 7 {
+  affine.for %i = max (d0, d1) -> (0, d0 + d1)(%c2, %c3) to min (d0, d1) -> (d0 - 2, 32*d1) (%c9, %c1) {
     "foo"(%i, %c3) : (index, index) -> ()
   }
 
   // Bound takes a non-constant argument but can still be folded.
-  // CHECK:  for %i1 = 1 to 7 {
-  for %j = max (d0) -> (0, 1)(%N) to min (d0, d1) -> (7, 9)(%N, %l) {
+  // CHECK:  affine.for %i1 = 1 to 7 {
+  affine.for %j = max (d0) -> (0, 1)(%N) to min (d0, d1) -> (7, 9)(%N, %l) {
     "foo"(%j, %c3) : (index, index) -> ()
   }
 
   // None of the bounds can be folded.
-  // CHECK: for %i2 = max [[MAP0]]()[%0] to min [[MAP1]]()[%arg0] {
-  for %k = max ()[s0] -> (0, s0) ()[%l] to min ()[s0] -> (100, s0)()[%N] {
+  // CHECK: affine.for %i2 = max [[MAP0]]()[%0] to min [[MAP1]]()[%arg0] {
+  affine.for %k = max ()[s0] -> (0, s0) ()[%l] to min ()[s0] -> (100, s0)()[%N] {
     "foo"(%k, %c3) : (index, index) -> ()
   }
   return

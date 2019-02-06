@@ -15,7 +15,7 @@ loops and if instructions), the result of a
 [`affine.apply` operation](#'affine.apply'-operation) that recursively takes as
 arguments any symbolic identifiers. Dimensions may be bound not only to anything
 that a symbol is bound to, but also to induction variables of enclosing
-[for instructions](#'for'-operation), and the result of an
+['affine.for' operations](#'affine.for'-operation), and the result of an
 [`affine.apply` operation](#'affine.apply'-operation) (which recursively may use
 other dimensions and symbols).
 
@@ -47,12 +47,12 @@ Example:
 %2 = affine.apply (i)[s0] -> (i+s0) (%42)[%n]
 ```
 
-#### 'for' operation {#'for'-operation}
+#### 'affine.for' operation {#'affine.for'-operation}
 
 Syntax:
 
 ``` {.ebnf}
-operation   ::= `for` ssa-id `=` lower-bound `to` upper-bound
+operation   ::= `affine.for` ssa-id `=` lower-bound `to` upper-bound
                       (`step` integer-literal)? `{` inst* `}`
 
 lower-bound ::= `max`? affine-map dim-and-symbol-use-list | shorthand-bound
@@ -60,17 +60,17 @@ upper-bound ::= `min`? affine-map dim-and-symbol-use-list | shorthand-bound
 shorthand-bound ::= ssa-id | `-`? integer-literal
 ```
 
-The `for` operation represents an affine loop nest, defining an SSA value for
-its induction variable. This SSA value always has type
+The `affine.for` operation represents an affine loop nest, defining an SSA value
+for its induction variable. This SSA value always has type
 [`index`](LangRef.md#index-type), which is the size of the machine word.
 
-The `for` operation executes its body a number of times iterating from a lower
-bound to an upper bound by a stride. The stride, represented by `step`, is a
-positive constant integer which defaults to "1" if not present. The lower and
+The `affine.for` operation executes its body a number of times iterating from a
+lower bound to an upper bound by a stride. The stride, represented by `step`, is
+a positive constant integer which defaults to "1" if not present. The lower and
 upper bounds specify a half-open range: the range includes the lower bound but
 does not include the upper bound.
 
-The lower and upper bounds of a `for` operation are represented as an
+The lower and upper bounds of a `affine.for` operation are represented as an
 application of an affine mapping to a list of SSA values passed to the map. The
 [same restrictions](#restrictions-on-dimensions-and-symbols) hold for these SSA
 values as for all bindings of SSA values to dimensions and symbols.
@@ -94,8 +94,8 @@ Example showing reverse iteration of the inner loop:
 
 func @simple_example(%A: memref<?x?xf32>, %B: memref<?x?xf32>) {
   %N = dim %A, 0 : memref<?x?xf32>
-  for %i = 0 to %N step 1 {
-    for %j = 0 to %N {   // implicitly steps by 1
+  affine.for %i = 0 to %N step 1 {
+    affine.for %j = 0 to %N {   // implicitly steps by 1
       %0 = affine.apply #map57(%j)[%N]
       %tmp = call @F1(%A, %i, %0) : (memref<?x?xf32>, index, index)->(f32)
       call @F2(%tmp, %B, %i, %0) : (f32, memref<?x?xf32>, index, index)->()
@@ -130,8 +130,8 @@ Example:
 #set = (d0, d1)[s0]: (d0 - 10 >= 0, s0 - d0 - 9 >= 0,
                       d1 - 10 >= 0, s0 - d1 - 9 >= 0)
 func @reduced_domain_example(%A, %X, %N) : (memref<10xi32>, i32, i32) {
-  for %i = 0 to %N {
-     for %j = 0 to %N {
+  affine.for %i = 0 to %N {
+     affine.for %j = 0 to %N {
        %0 = affine.apply #map42(%j)
        %tmp = call @S1(%X, %i, %0)
        if #set(%i, %j)[%N] {

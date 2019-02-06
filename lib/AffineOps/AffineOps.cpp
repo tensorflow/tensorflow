@@ -716,7 +716,7 @@ static void printBound(AffineBound bound, const char *prefix, OpAsmPrinter *p) {
 }
 
 void AffineForOp::print(OpAsmPrinter *p) const {
-  *p << "for ";
+  *p << "affine.for ";
   p->printOperand(getBody()->getArgument(0));
   *p << " = ";
   printBound(getLowerBound(), "max", p);

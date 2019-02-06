@@ -105,7 +105,7 @@ PassResult LoopUnrollAndJam::runOnFunction(Function *f) {
   return success();
 }
 
-/// Unroll and jam a 'for' inst. Default unroll jam factor is
+/// Unroll and jam a 'affine.for' inst. Default unroll jam factor is
 /// kDefaultUnrollJamFactor. Return false if nothing was done.
 bool LoopUnrollAndJam::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
   // Unroll and jam by the factor that was passed if any.

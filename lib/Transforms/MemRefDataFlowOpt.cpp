@@ -19,7 +19,7 @@
 // potentially getting rid of intermediate memref's entirely.
 // TODO(mlir-team): In the future, similar techniques could be used to eliminate
 // dead memref store's and perform more complex forwarding when support for
-// SSA scalars live out of 'for'/'if' statements is available.
+// SSA scalars live out of 'affine.for'/'if' statements is available.
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/AffineAnalysis.h"
@@ -55,7 +55,7 @@ namespace {
 //
 // (* A dependence being satisfied at a block: a dependence that is satisfied by
 // virtue of the destination instruction appearing textually / lexically after
-// the source instruction within the body of a 'for' instruction; thus, a
+// the source instruction within the body of a 'affine.for' instruction; thus, a
 // dependence is always either satisfied by a loop or by a block).
 //
 // The above conditions are simple to check, sufficient, and powerful for most
@@ -145,8 +145,8 @@ void MemRefDataFlowOpt::forwardStoreToLoad(OpPointer<LoadOp> loadOp) {
       // Check if this store is a candidate for forwarding; we only forward if
       // the dependence from the store is carried by the *body* of innermost
       // common surrounding loop. As an example this filters out cases like:
-      // for %i0
-      //   for %i1
+      // affine.for %i0
+      //   affine.for %i1
       //     %idx = affine.apply (d0) -> (d0 + 1) (%i0)
       //     store %A[%idx]
       //     load %A[%i0]

@@ -39,8 +39,8 @@ These restrictions may be lifted in the future.
 
 ### Output IR
 
-Functions with `for` and `if` instructions eliminated.  These functions may
-contain operations from the Standard dialect in addition to those already
+Functions with `affine.for` and `if` instructions eliminated. These functions
+may contain operations from the Standard dialect in addition to those already
 present before the pass.
 
 ### Invariants
