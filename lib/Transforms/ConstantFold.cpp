@@ -47,12 +47,6 @@ char ConstantFold::passID = 0;
 /// constants are found, we keep track of them in the existingConstants list.
 ///
 void ConstantFold::foldInstruction(Instruction *op) {
-  // If this operation is an AffineForOp, then fold the bounds.
-  if (auto forOp = op->dyn_cast<AffineForOp>()) {
-    constantFoldBounds(forOp);
-    return;
-  }
-
   // If this operation is already a constant, just remember it for cleanup
   // later, and don't try to fold it.
   if (auto constant = op->dyn_cast<ConstantOp>()) {

@@ -502,27 +502,24 @@ void Instruction::setSuccessor(Block *block, unsigned index) {
   getBlockOperands()[index].set(block);
 }
 
-auto Instruction::getNonSuccessorOperands() const
-    -> llvm::iterator_range<const_operand_iterator> {
+auto Instruction::getNonSuccessorOperands() const -> const_operand_range {
   return {const_operand_iterator(this, 0),
           const_operand_iterator(this, getSuccessorOperandIndex(0))};
 }
-auto Instruction::getNonSuccessorOperands()
-    -> llvm::iterator_range<operand_iterator> {
+auto Instruction::getNonSuccessorOperands() -> operand_range {
   return {operand_iterator(this, 0),
           operand_iterator(this, getSuccessorOperandIndex(0))};
 }
 
 auto Instruction::getSuccessorOperands(unsigned index) const
-    -> llvm::iterator_range<const_operand_iterator> {
+    -> const_operand_range {
   assert(isTerminator() && "Only terminators have successors.");
   unsigned succOperandIndex = getSuccessorOperandIndex(index);
   return {const_operand_iterator(this, succOperandIndex),
           const_operand_iterator(this, succOperandIndex +
                                            getNumSuccessorOperands(index))};
 }
-auto Instruction::getSuccessorOperands(unsigned index)
-    -> llvm::iterator_range<operand_iterator> {
+auto Instruction::getSuccessorOperands(unsigned index) -> operand_range {
   assert(isTerminator() && "Only terminators have successors.");
   unsigned succOperandIndex = getSuccessorOperandIndex(index);
   return {operand_iterator(this, succOperandIndex),

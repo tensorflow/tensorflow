@@ -285,59 +285,6 @@ void mlir::createAffineComputationSlice(
   }
 }
 
-/// Folds the specified (lower or upper) bound to a constant if possible
-/// considering its operands. Returns false if the folding happens for any of
-/// the bounds, true otherwise.
-bool mlir::constantFoldBounds(OpPointer<AffineForOp> forInst) {
-  auto foldLowerOrUpperBound = [&forInst](bool lower) {
-    // Check if the bound is already a constant.
-    if (lower && forInst->hasConstantLowerBound())
-      return true;
-    if (!lower && forInst->hasConstantUpperBound())
-      return true;
-
-    // Check to see if each of the operands is the result of a constant.  If so,
-    // get the value.  If not, ignore it.
-    SmallVector<Attribute, 8> operandConstants;
-    auto boundOperands = lower ? forInst->getLowerBoundOperands()
-                               : forInst->getUpperBoundOperands();
-    for (const auto *operand : boundOperands) {
-      Attribute operandCst;
-      if (auto *operandOp = operand->getDefiningInst()) {
-        if (auto operandConstantOp = operandOp->dyn_cast<ConstantOp>())
-          operandCst = operandConstantOp->getValue();
-      }
-      operandConstants.push_back(operandCst);
-    }
-
-    AffineMap boundMap =
-        lower ? forInst->getLowerBoundMap() : forInst->getUpperBoundMap();
-    assert(boundMap.getNumResults() >= 1 &&
-           "bound maps should have at least one result");
-    SmallVector<Attribute, 4> foldedResults;
-    if (boundMap.constantFold(operandConstants, foldedResults))
-      return true;
-
-    // Compute the max or min as applicable over the results.
-    assert(!foldedResults.empty() && "bounds should have at least one result");
-    auto maxOrMin = foldedResults[0].cast<IntegerAttr>().getValue();
-    for (unsigned i = 1, e = foldedResults.size(); i < e; i++) {
-      auto foldedResult = foldedResults[i].cast<IntegerAttr>().getValue();
-      maxOrMin = lower ? llvm::APIntOps::smax(maxOrMin, foldedResult)
-                       : llvm::APIntOps::smin(maxOrMin, foldedResult);
-    }
-    lower ? forInst->setConstantLowerBound(maxOrMin.getSExtValue())
-          : forInst->setConstantUpperBound(maxOrMin.getSExtValue());
-
-    // Return false on success.
-    return false;
-  };
-
-  bool ret = foldLowerOrUpperBound(/*lower=*/true);
-  ret &= foldLowerOrUpperBound(/*lower=*/false);
-  return ret;
-}
-
 void mlir::remapFunctionAttrs(
     Instruction &op, const DenseMap<Attribute, FunctionAttr> &remappingTable) {
   for (auto attr : op.getAttrs()) {

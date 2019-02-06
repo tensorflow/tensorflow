@@ -118,10 +118,6 @@ Instruction *createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
 void createAffineComputationSlice(
     Instruction *opInst, SmallVectorImpl<OpPointer<AffineApplyOp>> *sliceOps);
 
-/// Folds the lower and upper bounds of a 'for' inst to constants if possible.
-/// Returns false if the folding happens for at least one bound, true otherwise.
-bool constantFoldBounds(OpPointer<AffineForOp> forInst);
-
 /// Replaces (potentially nested) function attributes in the operation "op"
 /// with those specified in "remappingTable".
 void remapFunctionAttrs(

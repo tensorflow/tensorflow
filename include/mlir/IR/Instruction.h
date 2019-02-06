@@ -305,16 +305,18 @@ public:
 
   // Support non-const operand iteration.
   using operand_iterator = OperandIterator<Instruction, Value>;
+  using operand_range = llvm::iterator_range<operand_iterator>;
 
   operand_iterator operand_begin();
   operand_iterator operand_end();
 
   /// Returns an iterator on the underlying Value's (Value *).
-  llvm::iterator_range<operand_iterator> getOperands();
+  operand_range getOperands();
 
   // Support const operand iteration.
   using const_operand_iterator =
       OperandIterator<const Instruction, const Value>;
+  using const_operand_range = llvm::iterator_range<const_operand_iterator>;
 
   const_operand_iterator operand_begin() const;
   const_operand_iterator operand_end() const;
@@ -468,12 +470,11 @@ public:
   }
 
   /// Return the operands of this operation that are *not* successor arguments.
-  llvm::iterator_range<const_operand_iterator> getNonSuccessorOperands() const;
-  llvm::iterator_range<operand_iterator> getNonSuccessorOperands();
+  const_operand_range getNonSuccessorOperands() const;
+  operand_range getNonSuccessorOperands();
 
-  llvm::iterator_range<const_operand_iterator>
-  getSuccessorOperands(unsigned index) const;
-  llvm::iterator_range<operand_iterator> getSuccessorOperands(unsigned index);
+  const_operand_range getSuccessorOperands(unsigned index) const;
+  operand_range getSuccessorOperands(unsigned index);
 
   Value *getSuccessorOperand(unsigned succIndex, unsigned opIndex) {
     assert(opIndex < getNumSuccessorOperands(succIndex));
@@ -767,8 +768,7 @@ inline auto Instruction::operand_end() -> operand_iterator {
   return operand_iterator(this, getNumOperands());
 }
 
-inline auto Instruction::getOperands()
-    -> llvm::iterator_range<operand_iterator> {
+inline auto Instruction::getOperands() -> operand_range {
   return {operand_begin(), operand_end()};
 }
 
@@ -780,8 +780,7 @@ inline auto Instruction::operand_end() const -> const_operand_iterator {
   return const_operand_iterator(this, getNumOperands());
 }
 
-inline auto Instruction::getOperands() const
-    -> llvm::iterator_range<const_operand_iterator> {
+inline auto Instruction::getOperands() const -> const_operand_range {
   return {operand_begin(), operand_end()};
 }
 

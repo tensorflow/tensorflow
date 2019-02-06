@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -canonicalize | FileCheck %s
+// RUN: mlir-opt %s -split-input-file -canonicalize | FileCheck %s
 
 // Affine maps for test case: compose_affine_maps_1dto2d_no_symbols
 // CHECK-DAG: [[MAP0:#map[0-9]+]] = (d0) -> (d0 - 1)
@@ -261,3 +261,38 @@ func @partial_fold_map(%arg0: memref<index>, %arg1: index, %arg2: index) {
 
   return
 }
+
+// -----
+
+// CHECK: [[MAP0:#map[0-9]+]] = ()[s0] -> (0, s0)
+// CHECK: [[MAP1:#map[0-9]+]] = ()[s0] -> (100, s0)
+
+// CHECK-LABEL:  func @constant_fold_bounds(%arg0: index) {
+func @constant_fold_bounds(%N : index) {
+  // CHECK:      %c3 = constant 3 : index
+  // CHECK-NEXT: %0 = "foo"() : () -> index
+  %c9 = constant 9 : index
+  %c1 = constant 1 : index
+  %c2 = constant 2 : index
+  %c3 = affine_apply (d0, d1) -> (d0 + d1) (%c1, %c2)
+  %l = "foo"() : () -> index
+
+  // CHECK:  for %i0 = 5 to 7 {
+  for %i = max (d0, d1) -> (0, d0 + d1)(%c2, %c3) to min (d0, d1) -> (d0 - 2, 32*d1) (%c9, %c1) {
+    "foo"(%i, %c3) : (index, index) -> ()
+  }
+
+  // Bound takes a non-constant argument but can still be folded.
+  // CHECK:  for %i1 = 1 to 7 {
+  for %j = max (d0) -> (0, 1)(%N) to min (d0, d1) -> (7, 9)(%N, %l) {
+    "foo"(%j, %c3) : (index, index) -> ()
+  }
+
+  // None of the bounds can be folded.
+  // CHECK: for %i2 = max [[MAP0]]()[%0] to min [[MAP1]]()[%arg0] {
+  for %k = max ()[s0] -> (0, s0) ()[%l] to min ()[s0] -> (100, s0)()[%N] {
+    "foo"(%k, %c3) : (index, index) -> ()
+  }
+  return
+}
+

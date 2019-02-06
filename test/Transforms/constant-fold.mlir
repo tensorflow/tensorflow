@@ -1,8 +1,5 @@
 // RUN: mlir-opt %s -constant-fold | FileCheck %s
 
-// CHECK: [[MAP0:#map[0-9]+]] = ()[s0] -> (0, s0)
-// CHECK: [[MAP1:#map[0-9]+]] = ()[s0] -> (100, s0)
-
 // CHECK-LABEL: @test(%arg0: memref<f32>) {
 func @test(%p : memref<f32>) {
   for %i0 = 0 to 128 {
@@ -135,36 +132,6 @@ func @affine_apply(%variable : index) -> (index, index, index) {
   // CHECK: return %c1159, %c1152, %c42
   return %x0, %x1, %y : index, index, index
 }
-
-// CHECK-LABEL:  func @constant_fold_bounds(%arg0: index) {
-func @constant_fold_bounds(%N : index) {
-  // CHECK:      %c3 = constant 3 : index
-  // CHECK-NEXT: %0 = "foo"() : () -> index
-  %c9 = constant 9 : index
-  %c1 = constant 1 : index
-  %c2 = constant 2 : index
-  %c3 = affine_apply (d0, d1) -> (d0 + d1) (%c1, %c2)
-  %l = "foo"() : () -> index
-
-  // CHECK:  for %i0 = 5 to 7 {
-  for %i = max (d0, d1) -> (0, d0 + d1)(%c2, %c3) to min (d0, d1) -> (d0 - 2, 32*d1) (%c9, %c1) {
-    "foo"(%i, %c3) : (index, index) -> ()
-  }
-
-  // Bound takes a non-constant argument but can still be folded.
-  // CHECK:  for %i1 = 1 to 7 {
-  for %j = max (d0) -> (0, 1)(%N) to min (d0, d1) -> (7, 9)(%N, %l) {
-    "foo"(%j, %c3) : (index, index) -> ()
-  }
-
-  // None of the bounds can be folded.
-  // CHECK: for %i2 = max [[MAP0]]()[%0] to min [[MAP1]]()[%arg0] {
-  for %k = max ()[s0] -> (0, s0) ()[%l] to min ()[s0] -> (100, s0)()[%N] {
-    "foo"(%k, %c3) : (index, index) -> ()
-  }
-  return
-}
-
 
 // CHECK-LABEL: func @simple_mulf
 func @simple_mulf() -> f32 {

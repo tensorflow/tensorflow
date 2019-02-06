@@ -128,6 +128,9 @@ public:
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
 
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context);
+
   static StringRef getOperationName() { return "for"; }
   static StringRef getStepAttrName() { return "step"; }
   static StringRef getLowerBoundAttrName() { return "lower_bound"; }
@@ -156,9 +159,6 @@ public:
   //===--------------------------------------------------------------------===//
   // Bounds and step
   //===--------------------------------------------------------------------===//
-
-  using operand_range = llvm::iterator_range<operand_iterator>;
-  using const_operand_range = llvm::iterator_range<const_operand_iterator>;
 
   // TODO: provide iterators for the lower and upper bound operands
   // if the current access via getLowerBound(), getUpperBound() is too slow.

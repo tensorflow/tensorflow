@@ -558,25 +558,25 @@ public:
 
   // Support non-const operand iteration.
   using operand_iterator = Instruction::operand_iterator;
+  using operand_range = Instruction::operand_range;
   operand_iterator operand_begin() {
     return this->getInstruction()->operand_begin();
   }
   operand_iterator operand_end() {
     return this->getInstruction()->operand_end();
   }
-  llvm::iterator_range<operand_iterator> getOperands() {
-    return this->getInstruction()->getOperands();
-  }
+  operand_range getOperands() { return this->getInstruction()->getOperands(); }
 
   // Support const operand iteration.
   using const_operand_iterator = Instruction::const_operand_iterator;
+  using const_operand_range = Instruction::const_operand_range;
   const_operand_iterator operand_begin() const {
     return this->getInstruction()->operand_begin();
   }
   const_operand_iterator operand_end() const {
     return this->getInstruction()->operand_end();
   }
-  llvm::iterator_range<const_operand_iterator> getOperands() const {
+  const_operand_range getOperands() const {
     return this->getInstruction()->getOperands();
   }
 };
