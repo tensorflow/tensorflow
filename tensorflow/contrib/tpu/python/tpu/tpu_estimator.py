@@ -31,7 +31,6 @@ import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.contrib.tpu.proto import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.ops import tpu_ordinal_selector_op
 from tensorflow.contrib.tpu.python.tpu import _tpu_estimator_embedding
@@ -51,6 +50,7 @@ from tensorflow.contrib.training.python.training import hparam
 from tensorflow.core.framework import variable_pb2
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf.tpu import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest as data_nest

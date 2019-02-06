@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_TPU_UTILS_TPU_EMBEDDING_OUTPUT_LAYOUT_UTILS_H_
 #define TENSORFLOW_CONTRIB_TPU_UTILS_TPU_EMBEDDING_OUTPUT_LAYOUT_UTILS_H_
 
-#include "tensorflow/contrib/tpu/proto/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 
 namespace tensorflow {
 namespace tpu {
