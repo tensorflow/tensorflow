@@ -65,9 +65,7 @@ def _get_sequence(value, n, channel_index, name):
     return value
   elif current_n == 1:
     value = list((value[0],) * n)
-  elif current_n == n:
-    value = list(value)
-  else:
+  elif current_n != n:
     raise ValueError("{} should be of length 1, {} or {} but was {}".format(
         name, n, n + 2, current_n))
 
@@ -883,14 +881,21 @@ def convolution(
   filter = deprecated_argument_lookup("filters", filters, "filter", filter)
   dilation_rate = deprecated_argument_lookup(
       "dilations", dilations, "dilation_rate", dilation_rate)
-  return convolution_internal(
-      input,
-      filter,
-      strides=strides,
-      padding=padding,
-      data_format=data_format,
-      dilations=dilation_rate,
-      name=name)
+  # pylint: enable=line-too-long
+  with ops.name_scope(name, "convolution", [input, filter]) as name:
+    input = ops.convert_to_tensor(input, name="input")  # pylint: disable=redefined-builtin
+    input_shape = input.get_shape()
+    filter = ops.convert_to_tensor(filter, name="filter")  # pylint: disable=redefined-builtin
+    filter_shape = filter.get_shape()
+    op = Convolution(
+        input_shape,
+        filter_shape,
+        padding,
+        strides=strides,
+        dilation_rate=dilation_rate,
+        name=name,
+        data_format=data_format)
+    return op(input, filter)
 
 
 @tf_export("nn.convolution", v1=[])
@@ -902,81 +907,19 @@ def convolution_v2(
     data_format=None,
     dilations=None,
     name=None):
-  return convolution_internal(
+  return convolution(
       input,  # pylint: disable=redefined-builtin
       filters,
-      strides=strides,
       padding=padding,
-      data_format=data_format,
-      dilations=dilations,
-      name=name)
-
+      strides=strides,
+      dilation_rate=dilations,
+      name=name,
+      data_format=data_format)
 
 convolution_v2.__doc__ = deprecation.rewrite_argument_docstring(
     deprecation.rewrite_argument_docstring(
         convolution.__doc__, "dilation_rate", "dilations"),
     "filter", "filters")
-
-
-def convolution_internal(
-    input,  # pylint: disable=redefined-builtin
-    filters,
-    strides=None,
-    padding="VALID",
-    data_format=None,
-    dilations=None,
-    name=None):
-  """Internal function which performs rank agnostic convolution."""
-  with ops.name_scope(name, "convolution", [input, filter]) as name:
-    if input.shape is not None:
-      n = len(input.shape) - 2
-    elif filters.shape is not None:
-      n = len(filters.shape) - 2
-    else:
-      raise ValueError("rank of input or filter must be known")
-
-    if n < 1 or n > 3:
-      raise ValueError(
-          "Input tensor must be of rank 3, 4 or 5 but was {}.".format(n + 2))
-
-    if data_format is None:
-      channel_index = n + 1
-    else:
-      channel_index = 1 if data_format.startswith("NC") else n + 1
-
-    strides = _get_sequence(strides, n, channel_index, "strides")
-    dilations = _get_sequence(dilations, n, channel_index, "dilations")
-
-    conv_ops = {1: conv1d, 2: gen_nn_ops.conv2d, 3: gen_nn_ops.conv3d}
-
-    if all(i == 1 for i in dilations):
-      # fast path if no dilation as gradient only supported on GPU for dilations
-      op = conv_ops.get(n)
-      return op(
-          input,
-          filters,
-          strides,
-          padding=padding,
-          data_format=data_format,
-          dilations=dilations,
-          name=name)
-    else:
-      if channel_index == 1:
-        strides = strides[2:]
-        dilations = dilations[2:]
-      else:
-        strides = strides[1:-1]
-        dilations = dilations[1:-1]
-
-      op = Convolution(
-          tensor_shape.as_shape(input.shape),
-          tensor_shape.as_shape(filters.shape),
-          padding,
-          strides=strides,
-          dilation_rate=dilations,
-          name=name,
-          data_format=data_format)
-      return op(input, filters)
 
 
 class Convolution(object):
@@ -4097,9 +4040,10 @@ def conv1d(
       entries by which the filter is moved right at each step.
     padding: 'SAME' or 'VALID'
     use_cudnn_on_gpu: An optional `bool`.  Defaults to `True`.
-    data_format: An optional `string` from `"NWC", "NCW"`.  Defaults to `"NWC"`,
-      the data is stored in the order of [batch, in_width, in_channels].  The
-      `"NCW"` format stores data as [batch, in_channels, in_width].
+    data_format: An optional `string` from `"NWC", "NCW"`.  Defaults
+      to `"NWC"`, the data is stored in the order of
+      [batch, in_width, in_channels].  The `"NCW"` format stores
+      data as [batch, in_channels, in_width].
     name: A name for the operation (optional).
     input: Alias for value.
     dilations: An int or list of `ints` that has length `1` or `3` which
@@ -4182,9 +4126,10 @@ def conv1d_v2(
     stride: An int or list of `ints` that has length `1` or `3`.  The number of
       entries by which the filter is moved right at each step.
     padding: 'SAME' or 'VALID'
-    data_format: An optional `string` from `"NWC", "NCW"`.  Defaults to `"NWC"`,
-      the data is stored in the order of [batch, in_width, in_channels].  The
-      `"NCW"` format stores data as [batch, in_channels, in_width].
+    data_format: An optional `string` from `"NWC", "NCW"`.  Defaults
+      to `"NWC"`, the data is stored in the order of
+      [batch, in_width, in_channels].  The `"NCW"` format stores
+      data as [batch, in_channels, in_width].
     dilations: An int or list of `ints` that has length `1` or `3` which
       defaults to 1. The dilation factor for each dimension of input. If set to
       k > 1, there will be k-1 skipped cells between each filter element on that
