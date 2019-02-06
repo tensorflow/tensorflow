@@ -23,7 +23,6 @@ import os
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import iterator_ops as contrib_iterator_ops
-from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import dtypes
@@ -78,7 +77,6 @@ class DatasetSerializationTestBase(test.TestCase):
     # NOTE: We disable all default optimizations in serialization tests in order
     # to test the actual dataset in question.
     options = dataset_ops.Options()
-    options.experimental_optimization = OptimizationOptions()
     options.experimental_optimization.apply_default_optimizations = False
 
     def ds_fn1_no_opt():
