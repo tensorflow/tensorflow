@@ -42,7 +42,7 @@
    ;; Keywords
    `(,(regexp-opt
        '(;; Toplevel entities
-         "br" "ceildiv" "func" "cond_br" "else" "extfunc" "false" "floordiv" "affine.for" "if" "mod" "return" "size" "step" "to" "true" "??" ) 'symbols) . font-lock-keyword-face))
+         "br" "ceildiv" "func" "cond_br" "else" "extfunc" "false" "floordiv" "affine.for" "affine.if" "mod" "return" "size" "step" "to" "true" "??" ) 'symbols) . font-lock-keyword-face))
   "Syntax highlighting for MLIR.")
 
 ;; Emacs 23 compatibility.

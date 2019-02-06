@@ -19,7 +19,7 @@
 // potentially getting rid of intermediate memref's entirely.
 // TODO(mlir-team): In the future, similar techniques could be used to eliminate
 // dead memref store's and perform more complex forwarding when support for
-// SSA scalars live out of 'affine.for'/'if' statements is available.
+// SSA scalars live out of 'affine.for'/'affine.if' statements is available.
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/AffineAnalysis.h"

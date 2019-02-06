@@ -193,7 +193,7 @@ func @get_idx() -> (index)
 // CHECK-NEXT: }
 func @if_only() {
   %i = call @get_idx() : () -> (index)
-  if #set1(%i) {
+  affine.if #set1(%i) {
     call @body(%i) : (index) -> ()
   }
   return
@@ -219,7 +219,7 @@ func @if_only() {
 // CHECK-NEXT: }
 func @if_else() {
   %i = call @get_idx() : () -> (index)
-  if #set1(%i) {
+  affine.if #set1(%i) {
     call @body(%i) : (index) -> ()
   } else {
     call @mid(%i) : (index) -> ()
@@ -263,12 +263,12 @@ func @if_else() {
 // CHECK-NEXT: }
 func @nested_ifs() {
   %i = call @get_idx() : () -> (index)
-  if #set1(%i) {
-    if #set2(%i) {
+  affine.if #set1(%i) {
+    affine.if #set2(%i) {
       call @body(%i) : (index) -> ()
     }
   } else {
-    if #set2(%i) {
+    affine.if #set2(%i) {
       call @mid(%i) : (index) -> ()
     }
   }
@@ -318,7 +318,7 @@ func @nested_ifs() {
 // CHECK-NEXT: }
 func @multi_cond(%N : index, %M : index, %K : index, %L : index) {
   %i = call @get_idx() : () -> (index)
-  if #setN(%i)[%N,%M,%K,%L] {
+  affine.if #setN(%i)[%N,%M,%K,%L] {
     call @body(%i) : (index) -> ()
   } else {
     call @mid(%i) : (index) -> ()
@@ -359,9 +359,9 @@ func @if_for() {
 // CHECK-NEXT:   br [[midLoopCondBB]](%8 : index)
 // CHECK-NEXT: [[outerEndBB]]:
 // CHECK-NEXT:   br [[outerLoopInit:\^bb[0-9]+]]
-  if #set1(%i) {
+  affine.if #set1(%i) {
     affine.for %j = 0 to 42 {
-      if #set2(%j) {
+      affine.if #set2(%j) {
         call @body2(%i, %j) : (index, index) -> ()
       }
     }
@@ -398,7 +398,7 @@ func @if_for() {
 // CHECK-NEXT:   %16 = addi %9, %c1_9 : index
 // CHECK-NEXT:   br [[outerLoopCond]](%16 : index)
   affine.for %k = 0 to 42 {
-    if #set2(%k) {
+    affine.if #set2(%k) {
       affine.for %l = 0 to 42 {
         call @body3(%k, %l) : (index, index) -> ()
       }

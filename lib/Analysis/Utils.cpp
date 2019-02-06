@@ -42,7 +42,7 @@ void mlir::getLoopIVs(const Instruction &inst,
   auto *currInst = inst.getParentInst();
   OpPointer<AffineForOp> currAffineForOp;
   // Traverse up the hierarchy collecing all 'affine.for' instruction while
-  // skipping over 'if' instructions.
+  // skipping over 'affine.if' instructions.
   while (currInst && ((currAffineForOp = currInst->dyn_cast<AffineForOp>()) ||
                       currInst->isa<AffineIfOp>())) {
     if (currAffineForOp)

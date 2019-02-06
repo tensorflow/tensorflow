@@ -456,9 +456,9 @@ bool DmaGeneration::runOnBlock(Block *block, uint64_t consumedCapacityBytes) {
   // instructions) are always assumed to not exhaust memory. As a result, this
   // approach is conservative in some cases at the moment, we do a check later
   // and report an error with location info.
-  // TODO(bondhugula): An 'if' instruction is being treated similar to an
-  // operation instruction. 'if''s could have 'affine.for's in them; treat them
-  // separately.
+  // TODO(bondhugula): An 'affine.if' instruction is being treated similar to an
+  // operation instruction. 'affine.if''s could have 'affine.for's in them;
+  // treat them separately.
 
   // Get to the first load, store, or for op.
   auto curBegin =

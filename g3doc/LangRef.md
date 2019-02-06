@@ -40,10 +40,10 @@ which means that values are defined before use and have scope defined by their
 dominance relations. Operations may produce zero or more results, and each is a
 distinct SSA value with its own type defined by the [type system](#type-system).
 
-MLIR incorporates polyhedral compiler concepts, including `affine.for` and `if`
-operations defined by the [affine dialect](Dialects/Affine.md), which model
-affine loops and affine conditionals. It also includes affine maps integrated
-into the type system - they are key to the representation of data and
+MLIR incorporates polyhedral compiler concepts, including `affine.for` and
+`affine.if` operations defined by the [affine dialect](Dialects/Affine.md),
+which model affine loops and affine conditionals. It also includes affine maps
+integrated into the type system - they are key to the representation of data and
 [MemRefs](#memref-type), which are the representation for tensors in addressable
 memory. MLIR also supports a first-class Tensor type allowing it to concisely
 represent operations on N-dimensional arrays.
@@ -473,7 +473,7 @@ Example:
    : d0 >= 0, -d0 + s0 - 1 >= 0, d1 >= 0, -d1 + s1 - 1 >= 0
 
 // Inside a Function
-if #set42(%i, %j)[%M, %N] {
+affine.if #set42(%i, %j)[%M, %N] {
   ...
 }
 ```
@@ -1434,8 +1434,8 @@ The arity of indices is the rank of the memref (i.e., if the memref loaded from
 is of rank 3, then 3 indices are required for the load following the memref
 identifier).
 
-In an `if` or `affine.for` body, the indices of a load are restricted to SSA
-values bound to surrounding loop induction variables,
+In an `affine.if` or `affine.for` body, the indices of a load are restricted to
+SSA values bound to surrounding loop induction variables,
 [symbols](#dimensions-and-symbols), results of a
 [`constant` operation](#'constant'-operation), or the result of an
 `affine.apply` operation that can in turn take as arguments all of the
@@ -1455,11 +1455,11 @@ Example:
 ```
 
 **Context:** The `load` and `store` instructions are specifically crafted to
-fully resolve a reference to an element of a memref, and (in affine `if` and
-`affine.for` instructions) the compiler can follow use-def chains (e.g. through
-[`affine.apply`](Dialects/Affine.md#'affine.apply'-operation) operations) to
-precisely analyze references at compile-time using polyhedral techniques. This
-is possible because of the
+fully resolve a reference to an element of a memref, and (in affine `affine.if`
+and `affine.for` instructions) the compiler can follow use-def chains (e.g.
+through [`affine.apply`](Dialects/Affine.md#'affine.apply'-operation)
+operations) to precisely analyze references at compile-time using polyhedral
+techniques. This is possible because of the
 [restrictions on dimensions and symbols](Dialects/Affine.md#restrictions-on-dimensions-and-symbols)
 in these contexts.
 
@@ -1491,8 +1491,9 @@ store %100, %A[%1, 1023] : memref<4x?xf32, #layout, hbm>
 ```
 
 **Context:** The `load` and `store` instructions are specifically crafted to
-fully resolve a reference to an element of a memref, and (in polyhedral `if` and
-`affine.for` instructions) the compiler can follow use-def chains (e.g. through
+fully resolve a reference to an element of a memref, and (in polyhedral
+`affine.if` and `affine.for` instructions) the compiler can follow use-def
+chains (e.g. through
 [`affine.apply`](Dialects/Affine.md#'affine.apply'-operation) operations) to
 precisely analyze references at compile-time using polyhedral techniques. This
 is possible because of the

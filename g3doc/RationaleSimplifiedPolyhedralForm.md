@@ -210,7 +210,7 @@ The example with the reduced domain would be represented with an if instruction:
 
         %tmp = call @S1(%X, %0, %1)
 
-        if (10 <= %i < %N-10), (10 <= %j < %N-10) {
+        affine.if (10 <= %i < %N-10), (10 <= %j < %N-10) {
 
           %2,%3 = affine.apply(%i, %j)    // identity noop in this case
 
@@ -269,8 +269,8 @@ representation helps solve this inherently hard problem.
 
 In the cases that are most relevant to us (hyper rectangular spaces) these forms
 are directly equivalent: a traditional instruction with a limited domain (e.g.
-the "reduced_domain_example" above) ends up having one level of ML 'if' inside
-its loops. The simplified form pays for this by eliminating schedules and
+the "reduced_domain_example" above) ends up having one level of ML 'affine.if'
+inside its loops. The simplified form pays for this by eliminating schedules and
 domains from the IR. Both forms allow code duplication to reduce dynamic
 branches in the IR: the traditional approach allows instruction splitting, the
 simplified form supports instruction duplication.

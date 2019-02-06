@@ -306,13 +306,13 @@ func @loop_bounds(%N : index) {
 func @ifinst(%N: index) {
   %c = constant 200 : index // CHECK   %c200 = constant 200
   affine.for %i = 1 to 10 {           // CHECK   affine.for %i0 = 1 to 10 {
-    if #set0(%i)[%N, %c] {     // CHECK     if #set0(%i0)[%arg0, %c200] {
+    affine.if #set0(%i)[%N, %c] {     // CHECK     affine.if #set0(%i0)[%arg0, %c200] {
       %x = constant 1 : i32
        // CHECK: %c1_i32 = constant 1 : i32
       %y = "add"(%x, %i) : (i32, index) -> i32 // CHECK: %0 = "add"(%c1_i32, %i0) : (i32, index) -> i32
       %z = "mul"(%y, %y) : (i32, i32) -> i32 // CHECK: %1 = "mul"(%0, %0) : (i32, i32) -> i32
     } else { // CHECK } else {
-      if (i)[N] : (i - 2 >= 0, 4 - i >= 0)(%i)[%N]  {      // CHECK  if (#set1(%i0)[%arg0]) {
+      affine.if (i)[N] : (i - 2 >= 0, 4 - i >= 0)(%i)[%N]  {      // CHECK  affine.if (#set1(%i0)[%arg0]) {
         // CHECK: %c1 = constant 1 : index
         %u = constant 1 : index
         // CHECK: %2 = affine.apply #map{{.*}}(%i0, %i0)[%c1]
@@ -329,7 +329,7 @@ func @ifinst(%N: index) {
 func @simple_ifinst(%N: index) {
   %c = constant 200 : index // CHECK   %c200 = constant 200
   affine.for %i = 1 to 10 {           // CHECK   affine.for %i0 = 1 to 10 {
-    if #set0(%i)[%N, %c] {     // CHECK     if #set0(%i0)[%arg0, %c200] {
+    affine.if #set0(%i)[%N, %c] {     // CHECK     affine.if #set0(%i0)[%arg0, %c200] {
       %x = constant 1 : i32
        // CHECK: %c1_i32 = constant 1 : i32
       %y = "add"(%x, %i) : (i32, index) -> i32 // CHECK: %0 = "add"(%c1_i32, %i0) : (i32, index) -> i32
@@ -781,8 +781,8 @@ func @type_alias() -> !i32_type_alias {
 
 // CHECK-LABEL: func @no_integer_set_constraints(
 func @no_integer_set_constraints() {
-  // CHECK: if [[SET_TRUE]]() {
-  if () : () () {
+  // CHECK: affine.if [[SET_TRUE]]() {
+  affine.if () : () () {
   }
   return
 }
@@ -791,8 +791,8 @@ func @no_integer_set_constraints() {
 func @verbose_if(%N: index) {
   %c = constant 200 : index
 
-  // CHECK: if #set0(%c200)[%arg0, %c200] {
-  "if"(%c, %N, %c) { condition: #set0 } : (index, index, index) -> () {
+  // CHECK: affine.if #set0(%c200)[%arg0, %c200] {
+  "affine.if"(%c, %N, %c) { condition: #set0 } : (index, index, index) -> () {
     // CHECK-NEXT: "add"
     %y = "add"(%c, %N) : (index, index) -> index
     // CHECK-NEXT: } else {

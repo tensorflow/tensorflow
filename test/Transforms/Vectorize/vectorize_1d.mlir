@@ -111,7 +111,7 @@ func @vec1d(%A : memref<?x?xf32>, %B : memref<?x?x?xf32>) {
 //
 // CHECK:  affine.for %i{{[0-9]*}} = 0 to %{{[0-9]*}} {
    affine.for %i15 = 0 to %M { // not vectorized due to condition below
-     if #set0(%i15) {
+     affine.if #set0(%i15) {
        %a15 = load %A[%cst0, %cst0] : memref<?x?xf32>
      }
    }

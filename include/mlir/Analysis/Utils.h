@@ -53,7 +53,7 @@ bool properlyDominates(const Instruction &a, const Instruction &b);
 
 /// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from
 /// the outermost 'affine.for' instruction to the innermost one.
-//  TODO(bondhugula): handle 'if' inst's.
+//  TODO(bondhugula): handle 'affine.if' inst's.
 void getLoopIVs(const Instruction &inst,
                 SmallVectorImpl<OpPointer<AffineForOp>> *loops);
 

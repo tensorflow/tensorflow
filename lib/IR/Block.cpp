@@ -189,7 +189,7 @@ unsigned Block::getNumSuccessors() const {
     return terminator->getNumSuccessors();
   }
   assert(getParent() && "top-level block with no terminator");
-  // Blocks inside 'affine.for'/'if' instructions don't have successors.
+  // Blocks inside 'affine.for'/'affine.if' instructions don't have successors.
   return 0;
 }
 

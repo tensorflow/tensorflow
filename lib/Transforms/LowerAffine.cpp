@@ -402,16 +402,16 @@ bool LowerAffinePass::lowerAffineFor(OpPointer<AffineForOp> forOp) {
   return false;
 }
 
-// Convert an "if" instruction into a flow of basic blocks.
+// Convert an "affine.if" instruction into a flow of basic blocks.
 //
 // Create an SESE region for the if instruction (including its "then" and
 // optional "else" instruction blocks) and append it to the end of the current
 // region.  The conditional region consists of a sequence of condition-checking
 // blocks that implement the short-circuit scheme, followed by a "then" SESE
 // region and an "else" SESE region, and the continuation block that
-// post-dominates all blocks of the "if" instruction.  The flow of blocks that
-// correspond to the "then" and "else" clauses are constructed recursively,
-// enabling easy nesting of "if" instructions and if-then-else-if chains.
+// post-dominates all blocks of the "affine.if" instruction.  The flow of blocks
+// that correspond to the "then" and "else" clauses are constructed recursively,
+// enabling easy nesting of "affine.if" instructions and if-then-else-if chains.
 //
 //      +--------------------------------+
 //      | <code before the AffineIfOp>       |
@@ -465,9 +465,9 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp *ifOp) {
   auto *ifInst = ifOp->getInstruction();
   auto loc = ifInst->getLoc();
 
-  // Start by splitting the block containing the 'if' into two parts.  The part
-  // before will contain the condition, the part after will be the continuation
-  // point.
+  // Start by splitting the block containing the 'affine.if' into two parts. The
+  // part before will contain the condition, the part after will be the
+  // continuation point.
   auto *condBlock = ifInst->getBlock();
   auto *continueBlock = condBlock->splitBlock(ifInst);
 
@@ -517,15 +517,15 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp *ifOp) {
   // Ok, now we just have to handle the condition logic.
   auto integerSet = ifOp->getIntegerSet();
 
-  // Implement short-circuit logic.  For each affine expression in the 'if'
-  // condition, convert it into an affine map and call `affine.apply` to obtain
-  // the resulting value.  Perform the equality or the greater-than-or-equality
-  // test between this value and zero depending on the equality flag of the
-  // condition.  If the test fails, jump immediately to the false branch, which
-  // may be the else block if it is present or the continuation block otherwise.
-  // If the test succeeds, jump to the next block testing the next conjunct of
-  // the condition in the similar way.  When all conjuncts have been handled,
-  // jump to the 'then' block instead.
+  // Implement short-circuit logic.  For each affine expression in the
+  // 'affine.if' condition, convert it into an affine map and call
+  // `affine.apply` to obtain the resulting value.  Perform the equality or the
+  // greater-than-or-equality test between this value and zero depending on the
+  // equality flag of the condition.  If the test fails, jump immediately to the
+  // false branch, which may be the else block if it is present or the
+  // continuation block otherwise. If the test succeeds, jump to the next block
+  // testing the next conjunct of the condition in the similar way.  When all
+  // conjuncts have been handled, jump to the 'then' block instead.
   builder.setInsertionPointToEnd(condBlock);
   Value *zeroConstant = builder.create<ConstantIndexOp>(loc, 0);
 

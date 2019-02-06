@@ -11,7 +11,7 @@ syn keyword mlirType index i1 i2 i4 i8 i13 i16 i32 i64
 syn keyword mlirType memref tensor vector
 
 syntax keyword mlirKeywords extfunc func to step return
-syntax keyword mlirConditional if else
+syntax keyword mlirConditional affine.if else
 syntax keyword mlirCoreOps dim addf addi subf subi mulf muli cmpi select constant affine.apply affine.for call call_indirect extract_element getTensor memref_cast tensor_cast load store alloc dealloc dma_start dma_wait
 
 syn match mlirInt "-\=\<\d\+\>"
