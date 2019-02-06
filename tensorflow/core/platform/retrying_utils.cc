@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/cloud/retrying_utils.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/retrying_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -23,16 +22,14 @@ namespace tensorflow {
 
 namespace {
 
-bool IsRetriable(error::Code code) {
-  switch (code) {
-    case error::UNAVAILABLE:
-    case error::DEADLINE_EXCEEDED:
-    case error::UNKNOWN:
-      return true;
-    default:
-      // OK also falls here.
-      return false;
-  }
+// In case of failure, every call will be retried kMaxRetries times.
+constexpr int kMaxRetries = 10;
+// Maximum backoff time in microseconds.
+constexpr int64 kMaximumBackoffMicroseconds = 32000000;  // 32 seconds.
+
+bool IsRetriable(const std::set<error::Code> retriable_errors,
+                 const error::Code code) {
+  return retriable_errors.find(code) != retriable_errors.end();
 }
 
 }  // namespace
@@ -51,7 +48,7 @@ Status RetryingUtils::CallWithRetries(
   int retries = 0;
   while (true) {
     auto status = f();
-    if (!IsRetriable(status.code())) {
+    if (!IsRetriable(config.retriable_errors, status.code())) {
       return status;
     }
     if (retries >= config.max_retries) {
@@ -59,9 +56,9 @@ Status RetryingUtils::CallWithRetries(
       // at a higher level.
       return Status(
           error::ABORTED,
-          strings::StrCat(
-              "All ", config.max_retries,
-              " retry attempts failed. The last failure: ", status.ToString()));
+          strings::StrCat("All ", config.max_retries,
+                          " retry attempts failed. The last failure: ",
+                          status.ToString()));
     }
     int64 delay_micros = 0;
     if (config.init_delay_time_us > 0) {

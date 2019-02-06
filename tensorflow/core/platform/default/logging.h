@@ -340,6 +340,8 @@ int64 MinLogLevelFromEnv();
 
 int64 MinVLogLevelFromEnv();
 
+int64 LogLevelStrToInt(const char* tf_env_var_val);
+
 }  // namespace internal
 }  // namespace tensorflow
 

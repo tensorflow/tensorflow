@@ -52,4 +52,8 @@ tf_module {
     name: "walk"
     argspec: "args=[\'top\', \'topdown\', \'onerror\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
+  member_method {
+    name: "needstemp"
+    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
+  }
 }

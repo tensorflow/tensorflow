@@ -103,8 +103,7 @@ class SaveV2 : public OpKernel {
     const int num_tensors = static_cast<int>(tensor_names.NumElements());
     const string& prefix_string = prefix.scalar<string>()();
     const auto& tensor_names_flat = tensor_names.flat<string>();
-    const auto& shape_and_slices_flat = shape_and_slices.flat<string>();
-
+    const auto& shape_and_slices_flat = shape_and_slices.flat<string>(); 
     BundleWriter writer(Env::Default(), prefix_string);
     OP_REQUIRES_OK(context, writer.status());
     VLOG(1) << "BundleWriter, prefix_string: " << prefix_string;

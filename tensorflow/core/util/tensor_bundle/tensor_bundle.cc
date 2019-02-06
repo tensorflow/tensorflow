@@ -23,8 +23,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/framework/tensor_shape.pb_text.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb_text.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/framework/variant.h"
@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_slice_util.h"
@@ -174,9 +175,9 @@ Status ReadVariantTensor(io::InputBuffer* buffered_file, Tensor* ret,
         &unused_bytes_read));
     if (crc32c::Unmask(checksum) != *actual_crc32c) {
       return errors::DataLoss(
-          "The checksum after Variant ", i, " does not match.",
-          " Expected: ", strings::Printf("%08u", crc32c::Unmask(checksum)),
-          " Actual: ", strings::Printf("%08u", *actual_crc32c));
+          "The checksum after Variant ", i, " does not match.", " Expected: ",
+          strings::Printf("%08u", crc32c::Unmask(checksum)), " Actual: ",
+          strings::Printf("%08u", *actual_crc32c));
     }
     *actual_crc32c = crc32c::Extend(
         *actual_crc32c, reinterpret_cast<char*>(&checksum), sizeof(uint32));
@@ -386,27 +387,28 @@ Status PadAlignment(FileOutputBuffer* out, int alignment, int64* size) {
 }  // namespace
 
 BundleWriter::BundleWriter(Env* env, StringPiece prefix, const Options& options)
-    : env_(env),
-      options_(options),
-      prefix_(prefix),
-      tmp_metadata_path_(strings::StrCat(MetaFilename(prefix_), ".tempstate",
-                                         random::New64())),
-      tmp_data_path_(strings::StrCat(DataFilename(prefix_, 0, 1), ".tempstate",
-                                     random::New64())),
-      out_(nullptr),
-      size_(0) {
+    : env_(env), options_(options), prefix_(prefix), out_(nullptr), size_(0) {
+  data_path_ = DataFilename(prefix_, 0, 1);
+  metadata_path_ = MetaFilename(prefix_);
+  use_temp_file_ = env_->NeedsTempLocation(prefix_).ok();
+  if (use_temp_file_) {
+    data_path_ = strings::StrCat(data_path_, ".tempstate", random::New64());
+    metadata_path_ =
+        strings::StrCat(metadata_path_, ".tempstate", random::New64());
+  }
+
   status_ = env_->CreateDir(string(io::Dirname(prefix_)));
   if (!status_.ok() && !errors::IsAlreadyExists(status_)) {
     return;
   }
-  const string filename = DataFilename(prefix_, 0, 1);
   std::unique_ptr<WritableFile> wrapper;
-  status_ = env_->NewWritableFile(tmp_data_path_, &wrapper);
+
+  status_ = env_->NewWritableFile(data_path_, &wrapper);
   if (!status_.ok()) return;
   out_ = std::unique_ptr<FileOutputBuffer>(
       new FileOutputBuffer(wrapper.release(), 8 << 20 /* 8MB write buffer */));
 
-  VLOG(1) << "Writing to file " << tmp_data_path_;
+  VLOG(1) << "Writing to file " << data_path_;
 }
 
 Status BundleWriter::Add(StringPiece key, const Tensor& val) {
@@ -494,16 +496,18 @@ Status BundleWriter::Finish() {
     status_.Update(out_->Close());
     out_ = nullptr;
     if (status_.ok()) {
-      status_ = Env::Default()->RenameFile(tmp_data_path_,
-                                           DataFilename(prefix_, 0, 1));
+      if (use_temp_file_) {
+        status_ =
+            Env::Default()->RenameFile(data_path_, DataFilename(prefix_, 0, 1));
+      }
     } else {
-      Env::Default()->DeleteFile(tmp_data_path_).IgnoreError();
+      Env::Default()->DeleteFile(data_path_).IgnoreError();
     }
   }
   if (!status_.ok()) return status_;
   // Build key -> BundleEntryProto table.
   std::unique_ptr<WritableFile> file;
-  status_ = env_->NewWritableFile(tmp_metadata_path_, &file);
+  status_ = env_->NewWritableFile(metadata_path_, &file);
   if (!status_.ok()) return status_;
   {
     // N.B.: the default use of Snappy compression may not be supported on all
@@ -530,12 +534,14 @@ Status BundleWriter::Finish() {
   }
   status_.Update(file->Close());
   if (!status_.ok()) {
-    Env::Default()->DeleteFile(tmp_metadata_path_).IgnoreError();
+    Env::Default()->DeleteFile(metadata_path_).IgnoreError();
     return status_;
   } else {
-    status_ =
-        Env::Default()->RenameFile(tmp_metadata_path_, MetaFilename(prefix_));
-    if (!status_.ok()) return status_;
+    if (use_temp_file_) {
+      status_ =
+          Env::Default()->RenameFile(metadata_path_, MetaFilename(prefix_));
+      if (!status_.ok()) return status_;
+    }
   }
   status_ = errors::Internal("BundleWriter is closed");
   return Status::OK();
@@ -624,9 +630,9 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
     // Illegal: the duplicated entry is a non-slice tensor.
     if (entry_iter != merge_state->entries.end() &&
         entry_iter->second.slices().empty()) {
-      return errors::InvalidArgument(
-          "Duplicate tensor keyed by ", key,
-          " encountered, when merging prefix: ", prefix);
+      return errors::InvalidArgument("Duplicate tensor keyed by ", key,
+                                     " encountered, when merging prefix: ",
+                                     prefix);
     }
 
     TF_RETURN_IF_ERROR(
@@ -963,8 +969,8 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
   if (!tss->QueryMeta(slice_spec, &details)) {
     return errors::InvalidArgument(
         "Does not have sufficient slices for partitioned tensor ",
-        full_tensor_key,
-        " to restore in slice_spec: ", slice_spec.DebugString());
+        full_tensor_key, " to restore in slice_spec: ",
+        slice_spec.DebugString());
   }
 
   // The union of the slices in "details" covers "slice_spec".  Performs the

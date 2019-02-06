@@ -220,6 +220,14 @@ class FileSystem {
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
   virtual Status IsDirectory(const string& fname);
 
+  /// \brief Returns whether the given path needs a temp location to write
+  /// safely
+  ///
+  /// Typical return codes (not guaranteed exhaustive):
+  ///  * OK - Needs a temp location
+  ///  * FAILED_PRECONDITION - Does not need a temp location
+  virtual Status NeedsTempLocation(const string& path);
+
   /// \brief Flushes any cached filesystem objects from memory.
   virtual void FlushCaches();
 
@@ -276,7 +284,7 @@ class WritableFile {
   /// \brief Append 'data' to the file.
   virtual Status Append(StringPiece data) = 0;
 
-  // TODO(ebrevdo): Remove this ifdef when absl is updated.
+// TODO(ebrevdo): Remove this ifdef when absl is updated.
 #if defined(PLATFORM_GOOGLE)
   // \brief Append 'data' to the file.
   virtual Status Append(const absl::Cord& cord) {

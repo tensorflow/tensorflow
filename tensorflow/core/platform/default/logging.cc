@@ -105,14 +105,6 @@ int ParseInteger(const char* str, size_t size) {
   return level;
 }
 
-// Parse log level (int64) from environment variable (char*)
-int64 LogLevelStrToInt(const char* tf_env_var_val) {
-  if (tf_env_var_val == nullptr) {
-    return 0;
-  }
-  return ParseInteger(tf_env_var_val, strlen(tf_env_var_val));
-}
-
 // Using StringPiece breaks Windows build.
 struct StringData {
   struct Hasher {
@@ -181,6 +173,14 @@ VmoduleMap* VmodulesMapFromEnv() {
 }
 
 }  // namespace
+
+// Parse log level (int64) from environment variable (char*)
+int64 LogLevelStrToInt(const char* tf_env_var_val) {
+  if (tf_env_var_val == nullptr) {
+    return 0;
+  }
+  return ParseInteger(tf_env_var_val, strlen(tf_env_var_val));
+}
 
 int64 MinLogLevelFromEnv() {
   // We don't want to print logs during fuzzing as that would slow fuzzing down

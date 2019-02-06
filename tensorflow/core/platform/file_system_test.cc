@@ -261,6 +261,12 @@ TEST(InterPlanetaryFileSystemTest, RecursivelyCreateAlreadyExistingDir) {
   TF_EXPECT_OK(ipfs.RecursivelyCreateDir(dirname));
 }
 
+TEST(InterPlanetaryFileSystemTest, NeedsTempLocation) {
+  InterPlanetaryFileSystem ipfs;
+  const string dirname = io::JoinPath(kPrefix, "match-00/abc/00");
+  TF_EXPECT_OK(ipfs.NeedsTempLocation(dirname));
+}
+
 // A simple file system with a root directory and a single file underneath it.
 class TestFileSystem : public NullFileSystem {
  public:

@@ -258,6 +258,12 @@ Status Env::IsDirectory(const string& fname) {
   return fs->IsDirectory(fname);
 }
 
+Status Env::NeedsTempLocation(const string& path) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(path, &fs));
+  return fs->NeedsTempLocation(path);
+}
+
 Status Env::DeleteRecursively(const string& dirname, int64* undeleted_files,
                               int64* undeleted_dirs) {
   FileSystem* fs;

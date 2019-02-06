@@ -27,6 +27,7 @@ from tensorflow.python.lib.io.file_io import file_exists as Exists
 from tensorflow.python.lib.io.file_io import FileIO as _FileIO
 from tensorflow.python.lib.io.file_io import get_matching_files as Glob
 from tensorflow.python.lib.io.file_io import is_directory as IsDirectory
+from tensorflow.python.lib.io.file_io import needs_temp_location as NeedsTempLocation
 from tensorflow.python.lib.io.file_io import list_directory as ListDirectory
 from tensorflow.python.lib.io.file_io import recursive_create_dir as MakeDirs
 from tensorflow.python.lib.io.file_io import rename as Rename

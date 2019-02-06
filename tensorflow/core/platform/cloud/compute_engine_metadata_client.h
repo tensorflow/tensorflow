@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
-#include "tensorflow/core/platform/cloud/retrying_utils.h"
+#include "tensorflow/core/platform/retrying_utils.h"
 
 namespace tensorflow {
 

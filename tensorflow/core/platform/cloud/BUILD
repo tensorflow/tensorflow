@@ -9,9 +9,9 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_windows",
     "tf_cc_test",
     "tf_copts",
-    "if_windows",
 )
 
 cc_library(
@@ -83,12 +83,12 @@ cc_library(
         ":google_auth_provider",
         ":http_request",
         ":ram_file_block_cache",
-        ":retrying_file_system",
-        ":retrying_utils",
         ":time_util",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:retrying_file_system",
+        "//tensorflow/core:retrying_utils",
         "@jsoncpp_git//:jsoncpp",
     ],
     alwayslink = 1,
@@ -148,9 +148,9 @@ cc_library(
     deps = [
         ":compute_engine_metadata_client",
         ":oauth_client",
-        ":retrying_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:retrying_utils",
         "@jsoncpp_git//:jsoncpp",
     ],
 )
@@ -168,9 +168,9 @@ cc_library(
     deps = [
         ":curl_http_request",
         ":http_request",
-        ":retrying_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:retrying_utils",
     ],
 )
 
@@ -221,34 +221,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "@boringssl//:crypto",
         "@jsoncpp_git//:jsoncpp",
-    ],
-)
-
-cc_library(
-    name = "retrying_utils",
-    srcs = [
-        "retrying_utils.cc",
-    ],
-    hdrs = [
-        "retrying_utils.h",
-    ],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-cc_library(
-    name = "retrying_file_system",
-    hdrs = [
-        "retrying_file_system.h",
-    ],
-    copts = tf_copts(),
-    deps = [
-        ":retrying_utils",
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -412,37 +384,11 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "retrying_file_system_test",
-    size = "small",
-    srcs = ["retrying_file_system_test.cc"],
-    deps = [
-        ":retrying_file_system",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
     name = "time_util_test",
     size = "small",
     srcs = ["time_util_test.cc"],
     deps = [
         ":time_util",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "retrying_utils_test",
-    size = "small",
-    srcs = ["retrying_utils_test.cc"],
-    deps = [
-        ":retrying_utils",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
