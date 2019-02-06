@@ -18,40 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.distribute.cluster_resolver import cluster_resolver
-from tensorflow.python.distribute.cluster_resolver import gce_cluster_resolver
-from tensorflow.python.distribute.cluster_resolver import kubernetes_cluster_resolver
-from tensorflow.python.distribute.cluster_resolver import slurm_cluster_resolver
-from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
-from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
-
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import UnionClusterResolver
-from tensorflow.python.distribute.cluster_resolver.gce_cluster_resolver import GceClusterResolver
+from tensorflow.python.distribute.cluster_resolver.gce_cluster_resolver import GCEClusterResolver
 from tensorflow.python.distribute.cluster_resolver.kubernetes_cluster_resolver import KubernetesClusterResolver
 from tensorflow.python.distribute.cluster_resolver.slurm_cluster_resolver import SlurmClusterResolver
 from tensorflow.python.distribute.cluster_resolver.tfconfig_cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver import TPUClusterResolver
-
-from tensorflow.python.util.all_util import remove_undocumented
-
-_allowed_symbols = [
-    'cluster_resolver',
-    'gce_cluster_resolver',
-    'kubernetes_cluster_resolver',
-    'slurm_cluster_resolver',
-    'tfconfig_cluster_resolver',
-    'tpu_cluster_resolver',
-    'ClusterResolver',
-    'SimpleClusterResolver',
-    'UnionClusterResolver',
-    'GceClusterResolver',
-    'KubernetesClusterResolver',
-    'TFConfigClusterResolver',
-    'TPUClusterResolver',
-    'SlurmClusterResolver',
-]
-
-remove_undocumented(__name__, _allowed_symbols)
-

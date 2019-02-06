@@ -27,7 +27,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training.checkpointable import util as checkpointable_util
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
 class _RNNCellWithConstants(keras.layers.Layer):
@@ -77,7 +76,7 @@ class TimeDistributedTest(test.TestCase):
     model.add(
         keras.layers.TimeDistributed(
             keras.layers.Dense(2), input_shape=(3, 4)))
-    model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
+    model.compile(optimizer='rmsprop', loss='mse')
     model.fit(
         np.random.random((10, 3, 4)),
         np.random.random((10, 3, 2)),
@@ -98,7 +97,7 @@ class TimeDistributedTest(test.TestCase):
     model.add(
         keras.layers.TimeDistributed(
             keras.layers.Dense(2), input_shape=(3, 4), batch_size=10))
-    model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
+    model.compile(optimizer='rmsprop', loss='mse')
     model.fit(
         np.random.random((10, 3, 4)),
         np.random.random((10, 3, 2)),
@@ -159,8 +158,8 @@ class TimeDistributedTest(test.TestCase):
       # test layers that need learning_phase to be set
       np.random.seed(1234)
       x = keras.layers.Input(shape=(3, 2))
-      y = keras.layers.TimeDistributed(
-          keras.layers.Dropout(.999))(x, training=True)
+      y = keras.layers.TimeDistributed(keras.layers.Dropout(.999))(
+          x, training=True)
       model = keras.models.Model(x, y)
       y = model.predict(np.random.random((10, 3, 2)))
       self.assertAllClose(np.mean(y), 0., atol=1e-1, rtol=1e-1)
@@ -257,6 +256,28 @@ class TimeDistributedTest(test.TestCase):
       self.assertEqual((mask_outputs_val[1]).all(),
                        model_input.all())
 
+  def test_TimeDistributed_with_different_time_shapes(self):
+    time_dist = keras.layers.TimeDistributed(keras.layers.Dense(5))
+    ph_1 = keras.backend.placeholder(shape=(None, 10, 13))
+    out_1 = time_dist(ph_1)
+    self.assertEqual(out_1.shape.as_list(), [None, 10, 5])
+
+    ph_2 = keras.backend.placeholder(shape=(None, 1, 13))
+    out_2 = time_dist(ph_2)
+    self.assertEqual(out_2.shape.as_list(), [None, 1, 5])
+
+    ph_3 = keras.backend.placeholder(shape=(None, 1, 18))
+    with self.assertRaisesRegexp(ValueError, 'is incompatible with layer'):
+      time_dist(ph_3)
+
+  def test_TimeDistributed_with_invalid_dimensions(self):
+    time_dist = keras.layers.TimeDistributed(keras.layers.Dense(5))
+    ph = keras.backend.placeholder(shape=(None, 10))
+    with self.assertRaisesRegexp(
+        ValueError,
+        '`TimeDistributed` Layer should be passed an `input_shape `'):
+      time_dist(ph)
+
 
 class BidirectionalTest(test.TestCase):
 
@@ -277,7 +298,7 @@ class BidirectionalTest(test.TestCase):
         model.add(
             keras.layers.Bidirectional(
                 rnn(output_dim), merge_mode=mode, input_shape=(timesteps, dim)))
-        model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
+        model.compile(optimizer='rmsprop', loss='mse')
         model.fit(x, y, epochs=1, batch_size=1)
 
         # check whether the model variables are present in the

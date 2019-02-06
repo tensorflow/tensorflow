@@ -150,7 +150,7 @@ class TFConfigClusterResolverTest(test.TestCase):
 
     cluster_resolver = TFConfigClusterResolver()
     self.assertEqual('ps', cluster_resolver.task_type)
-    self.assertEqual(0, cluster_resolver.task_index)
+    self.assertEqual(0, cluster_resolver.task_id)
     self.assertEqual('grpc', cluster_resolver.rpc_layer)
 
   def testParameterOverrides(self):
@@ -168,19 +168,19 @@ class TFConfigClusterResolverTest(test.TestCase):
     }
     """
 
-    cluster_resolver = TFConfigClusterResolver(task_type='ps', task_index=0)
+    cluster_resolver = TFConfigClusterResolver(task_type='ps', task_id=0)
 
     self.assertEqual('grpc://ps0:2222', cluster_resolver.master())
     self.assertEqual('ps', cluster_resolver.task_type)
-    self.assertEqual(0, cluster_resolver.task_index)
+    self.assertEqual(0, cluster_resolver.task_id)
 
     cluster_resolver.task_type = 'worker'
-    cluster_resolver.task_index = 1
+    cluster_resolver.task_id = 1
     cluster_resolver.rpc_layer = 'test'
 
     self.assertEqual('test://worker1:2222', cluster_resolver.master())
     self.assertEqual('worker', cluster_resolver.task_type)
-    self.assertEqual(1, cluster_resolver.task_index)
+    self.assertEqual(1, cluster_resolver.task_id)
     self.assertEqual('test', cluster_resolver.rpc_layer)
 
   def testZeroItemsInClusterSpecMasterRead(self):

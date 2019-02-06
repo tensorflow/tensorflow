@@ -3,6 +3,7 @@ syntax = "proto3";
 import "tensorflow/core/protobuf/checkpointable_object_graph.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
+import "tensorflow/core/framework/versions.proto";
 import "tensorflow/python/saved_model/struct.proto";
 
 option cc_enable_arenas = true;
@@ -26,6 +27,10 @@ message SavedObjectGraph {
   // The position of the object in this list indicates its id.
   // Nodes[0] is considered the root node.
   repeated SavedObject nodes = 1;
+
+  // Information about captures and output structures in concrete functions.
+  // Referenced from SavedBareConcreteFunction and SavedFunction.
+  map<string, SavedConcreteFunction> concrete_functions = 2;
 }
 
 message SavedObject {
@@ -51,8 +56,10 @@ message SavedObject {
   oneof kind {
     SavedUserObject user_object = 4;
     SavedAsset asset = 5;
-    SavedPolymorphicFunction function = 6;
+    SavedFunction function = 6;
     SavedVariable variable = 7;
+    SavedBareConcreteFunction bare_concrete_function = 8;
+    SavedConstant constant = 9;
   }
 }
 
@@ -62,7 +69,12 @@ message SavedObject {
 //
 // This object cannot be evaluated as a tensor, and therefore cannot be bound
 // to an input of a function.
-message SavedUserObject {}
+message SavedUserObject {
+  // Corresponds to a registration of the type to use in the loading program.
+  string identifier = 1;
+  // Version information from the producer of this SavedUserObject.
+  VersionDef version = 2;
+}
 
 // A SavedAsset represents a file in a SavedModel.
 //
@@ -78,17 +90,14 @@ message SavedAsset {
 }
 
 // A function with multiple signatures, possibly with non-Tensor arguments.
-message SavedPolymorphicFunction {
-  repeated SavedMonomorphicFunction monomorphic_function = 1;
-  // Tuple representing a `FunctionSpec`.
-  // TODO(vbardiovsky): Make this a proto.
-  StructuredValue function_spec_tuple = 2;
+message SavedFunction {
+  repeated string concrete_functions = 1;
+  FunctionSpec function_spec = 2;
 }
 
-message SavedMonomorphicFunction {
-  // A reference to a TensorFlow function in the MetaGraph's FunctionDefLibrary
-  string concrete_function = 1;
-
+// Stores low-level information about a concrete function. Referenced in either
+// a SavedFunction or a SavedBareConcreteFunction.
+message SavedConcreteFunction {
   // Bound inputs to the function. The SavedObjects identified by the node ids
   // given here are appended as extra inputs to the caller-supplied inputs.
   // The only types of SavedObjects valid here are SavedVariable, SavedResource
@@ -96,7 +105,26 @@ message SavedMonomorphicFunction {
   repeated int32 bound_inputs = 2;
   // Input in canonicalized form that was received to create this concrete
   // function.
-  StructuredValue canonicalized_input = 3;
+  StructuredValue canonicalized_input_signature = 3;
+  // Output that was the return value of this function after replacing all
+  // Tensors with TensorSpecs. This can be an arbitrary nested function and will
+  // be used to reconstruct the full structure from pure tensors.
+  StructuredValue output_signature = 4;
+}
+
+message SavedBareConcreteFunction {
+  // Identifies a SavedConcreteFunction.
+  string concrete_function_name = 1;
+
+  // A sequence of unique strings, one per Tensor argument.
+  repeated string argument_keywords = 2;
+  // The prefix of `argument_keywords` which may be identified by position.
+  int64 allowed_positional_arguments = 3;
+}
+
+message SavedConstant {
+  // An Operation name for a ConstantOp in this SavedObjectGraph's MetaGraph.
+  string operation = 1;
 }
 
 // Represents a Variable that is initialized by loading the contents from the
@@ -104,6 +132,24 @@ message SavedMonomorphicFunction {
 message SavedVariable {
   DataType dtype = 1;
   TensorShapeProto shape = 2;
+  bool trainable = 3;
 
-  // TODO(andresp): Add "trainable" and save_slice_info_def.
+  // TODO(andresp): Add save_slice_info_def?
+}
+
+// Represents `FunctionSpec` used in `Function`. This represents a
+// function that has been wrapped as a TensorFlow `Function`.
+message FunctionSpec {
+  // Full arg spec from inspect.getfullargspec().
+  StructuredValue fullargspec = 1;
+  // Whether this represents a class method.
+  bool is_method = 2;
+  // Which arguments to always prepend, in case the original function is based
+  // on a functools.partial.
+  StructuredValue args_to_prepend = 3;
+  // Which kwargs to always include, in case the original function is based on a
+  // functools.partial.
+  StructuredValue kwargs_to_include = 4;
+  // The input signature, if specified.
+  StructuredValue input_signature = 5;
 }

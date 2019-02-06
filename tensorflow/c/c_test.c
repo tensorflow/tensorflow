@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <limits.h>
-#include <malloc.h>
 #include <memory.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/time.h>
 #include <unistd.h>
 
@@ -32,7 +32,12 @@ void compute(void* kernel, TF_OpKernelContext* ctx) {
   TF_Status* s = TF_NewStatus();
   TF_GetInput(ctx, 0, &input, s);
   TF_DeleteTensor(input);
+
+  TF_DataType type;
+  TF_OpKernelContext_GetAttrType(ctx, "foobar", &type, s);
+
   TF_DeleteStatus(s);
+
 }
 
 // Exercises tensorflow's C API.
@@ -68,6 +73,10 @@ int main(int argc, char** argv) {
   }
   fprintf(stderr, "wrote %s\n", full_path);
   free(full_path);
+  TF_CloseWritableFile(h, status);
+  if (TF_GetCode(status) != TF_OK) {
+    fprintf(stderr, "TF_CloseWritableFile failed: %s\n", TF_Message(status));
+  }
   TF_StringStreamDone(s);
 
   TF_KernelBuilder* b =

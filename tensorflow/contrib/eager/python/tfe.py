@@ -62,7 +62,6 @@ To use, at program startup, call `tf.enable_eager_execution()`.
 
 @@Checkpoint
 @@Checkpointable
-@@CheckpointableSaver
 
 @@executing_eagerly
 @@in_eager_mode
@@ -138,8 +137,7 @@ from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Vari
 from tensorflow.python.ops.variable_scope import EagerVariableStore
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import template
-from tensorflow.python.training.checkpointable.tracking import Checkpointable
-from tensorflow.python.training.checkpointable.util import CheckpointableSaver
+from tensorflow.python.training.checkpointable.tracking import AutoCheckpointable as Checkpointable
 from tensorflow.python.training.checkpointable.util import Checkpoint
 from tensorflow.python.util.all_util import remove_undocumented
 

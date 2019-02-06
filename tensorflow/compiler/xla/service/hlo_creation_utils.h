@@ -82,9 +82,9 @@ StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
 
 // Creates a broadcast HLO instruction and adds it to the computation containing
 // `operand`.
-StatusOr<HloInstruction*> MakeBroadcastHlo(
-    HloInstruction* operand, absl::Span<const int64> broadcast_dimensions,
-    absl::Span<const int64> result_shape_bounds);
+HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
+                                 absl::Span<const int64> broadcast_dimensions,
+                                 absl::Span<const int64> result_shape_bounds);
 
 // Creates a GetTupleElement HLO instruction and adds it to the computation
 // containing `operand`.
@@ -122,6 +122,18 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
 StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
                                         HloInstruction* on_true,
                                         HloInstruction* on_false);
+
+// Creates a Sort HLO instruction and adds it to the computation containing the
+// operands. All operands must be in the same computation. Also creates a
+// default compare sub-computation which sorts the first operand into ascending
+// order.
+// Note that this default compare sub-computation does not have special handling
+// for floating point values and thus can result in undefined behavior in the
+// presence of NaN values.
+StatusOr<HloInstruction*> MakeSortHlo(
+    const Shape& sort_shape, absl::Span<HloInstruction* const> operands,
+    int64 dimension_to_sort, HloComputation::Builder* builder,
+    HloModule* module);
 
 // Creates an R1 Constant HLO instruction of the given PrimitiveType with the
 // given values and adds it to the given computation.
@@ -198,9 +210,9 @@ StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
 // Broadcasts a zero value of type `element_type` into a tensor with element
 // type `element_type` and dimension bounds `broadcast_dimensions`.  The
 // broadcast instruction is emitted into `computation`.
-StatusOr<HloInstruction*> BroadcastZeros(
-    HloComputation* computation, PrimitiveType element_type,
-    absl::Span<const int64> broadcast_dimensions);
+HloInstruction* BroadcastZeros(HloComputation* computation,
+                               PrimitiveType element_type,
+                               absl::Span<const int64> broadcast_dimensions);
 
 // Creates a HLO computation that takes arguments of type `domain` and produces
 // a value of type `range`.

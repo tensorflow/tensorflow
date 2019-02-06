@@ -1100,7 +1100,8 @@ def resize_images_v2(images,
 def resize_image_with_pad(image,
                           target_height,
                           target_width,
-                          method=ResizeMethod.BILINEAR):
+                          method=ResizeMethod.BILINEAR,
+                          align_corners=False):
   """Resizes and pads an image to a target width and height.
 
   Resizes an image to a target width and height by keeping
@@ -1115,6 +1116,9 @@ def resize_image_with_pad(image,
     target_height: Target height.
     target_width: Target width.
     method: Method to use for resizing image. See `resize_images()`
+    align_corners: bool.  If True, the centers of the 4 corner pixels of the
+        input and output tensors are aligned, preserving the values at the
+        corner pixels. Defaults to `False`.
 
   Raises:
     ValueError: if `target_height` or `target_width` are zero or negative.
@@ -1180,7 +1184,10 @@ def resize_image_with_pad(image,
     p_width = max_(0, math_ops.cast(f_padding_width, dtype=dtypes.int32))
 
     # Resize first, then pad to meet requested dimensions
-    resized = resize_images(image, [resized_height, resized_width], method)
+    resized = resize_images(
+        image, [resized_height, resized_width],
+        method,
+        align_corners=align_corners)
 
     padded = pad_to_bounding_box(resized, p_height, p_width, target_height,
                                  target_width)
@@ -1250,14 +1257,14 @@ def random_brightness(image, max_delta, seed=None):
   interval `[-max_delta, max_delta)`.
 
   Args:
-    image: An image.
+    image: An image or images to adjust.
     max_delta: float, must be non-negative.
     seed: A Python integer. Used to create a random seed. See
       `tf.set_random_seed`
       for behavior.
 
   Returns:
-    The brightness-adjusted image.
+    The brightness-adjusted image(s).
 
   Raises:
     ValueError: if `max_delta` is negative.
@@ -1271,7 +1278,7 @@ def random_brightness(image, max_delta, seed=None):
 
 @tf_export('image.random_contrast')
 def random_contrast(image, lower, upper, seed=None):
-  """Adjust the contrast of an image by a random factor.
+  """Adjust the contrast of an image or images by a random factor.
 
   Equivalent to `adjust_contrast()` but uses a `contrast_factor` randomly
   picked in the interval `[lower, upper]`.
@@ -1281,11 +1288,10 @@ def random_contrast(image, lower, upper, seed=None):
     lower: float.  Lower bound for the random contrast factor.
     upper: float.  Upper bound for the random contrast factor.
     seed: A Python integer. Used to create a random seed. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.set_random_seed` for behavior.
 
   Returns:
-    The contrast-adjusted tensor.
+    The contrast-adjusted image(s).
 
   Raises:
     ValueError: if `upper <= lower` or if `lower < 0`.
@@ -1305,19 +1311,19 @@ def random_contrast(image, lower, upper, seed=None):
 def adjust_brightness(image, delta):
   """Adjust the brightness of RGB or Grayscale images.
 
-  This is a convenience method that converts an RGB image to float
-  representation, adjusts its brightness, and then converts it back to the
-  original data type. If several adjustments are chained it is advisable to
+  This is a convenience method that converts RGB images to float
+  representation, adjusts their brightness, and then converts them back to the
+  original data type. If several adjustments are chained, it is advisable to
   minimize the number of redundant conversions.
 
-  The value `delta` is added to all components of the tensor `image`. Both
-  `image` and `delta` are converted to `float` before adding (and `image` is
-  scaled appropriately if it is in fixed-point representation). For regular
+  The value `delta` is added to all components of the tensor `image`. `image` is
+  converted to `float` and scaled appropriately if it is in fixed-point
+  representation, and `delta` is converted to the same data type. For regular
   images, `delta` should be in the range `[0,1)`, as it is added to the image in
   floating point representation, where pixel values are in the `[0,1)` range.
 
   Args:
-    image: A tensor.
+    image: RGB image or images to adjust.
     delta: A scalar. Amount to add to the pixel values.
 
   Returns:
@@ -1327,10 +1333,14 @@ def adjust_brightness(image, delta):
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    flt_image = convert_image_dtype(image, dtypes.float32)
+
+    if orig_dtype in [dtypes.float16, dtypes.float32]:
+      flt_image = image
+    else:
+      flt_image = convert_image_dtype(image, dtypes.float32)
 
     adjusted = math_ops.add(
-        flt_image, math_ops.cast(delta, dtypes.float32), name=name)
+        flt_image, math_ops.cast(delta, flt_image.dtype), name=name)
 
     return convert_image_dtype(adjusted, orig_dtype, saturate=True)
 
@@ -1339,9 +1349,9 @@ def adjust_brightness(image, delta):
 def adjust_contrast(images, contrast_factor):
   """Adjust contrast of RGB or grayscale images.
 
-  This is a convenience method that converts an RGB image to float
-  representation, adjusts its contrast, and then converts it back to the
-  original data type. If several adjustments are chained it is advisable to
+  This is a convenience method that converts RGB images to float
+  representation, adjusts their contrast, and then converts them back to the
+  original data type. If several adjustments are chained, it is advisable to
   minimize the number of redundant conversions.
 
   `images` is a tensor of at least 3 dimensions.  The last 3 dimensions are
@@ -1366,7 +1376,11 @@ def adjust_contrast(images, contrast_factor):
     images = ops.convert_to_tensor(images, name='images')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = images.dtype
-    flt_images = convert_image_dtype(images, dtypes.float32)
+
+    if orig_dtype in (dtypes.float16, dtypes.float32):
+      flt_images = images
+    else:
+      flt_images = convert_image_dtype(images, dtypes.float32)
 
     adjusted = gen_image_ops.adjust_contrastv2(
         flt_images, contrast_factor=contrast_factor, name=name)
@@ -1560,7 +1574,7 @@ def grayscale_to_rgb(images, name=None):
 # pylint: disable=invalid-name
 @tf_export('image.random_hue')
 def random_hue(image, max_delta, seed=None):
-  """Adjust the hue of an RGB image by a random factor.
+  """Adjust the hue of RGB images by a random factor.
 
   Equivalent to `adjust_hue()` but uses a `delta` randomly
   picked in the interval `[-max_delta, max_delta]`.
@@ -1570,10 +1584,10 @@ def random_hue(image, max_delta, seed=None):
   Args:
     image: RGB image or images. Size of the last dimension must be 3.
     max_delta: float.  Maximum value for the random delta.
-    seed: An operation-specific seed. It will be used in conjunction
-      with the graph-level seed to determine the real seeds that will be
-      used in this operation. Please see the documentation of
-      set_random_seed for its interaction with the graph-level random seed.
+    seed: An operation-specific seed. It will be used in conjunction with the
+      graph-level seed to determine the real seeds that will be used in this
+      operation. Please see the documentation of set_random_seed for its
+      interaction with the graph-level random seed.
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
@@ -1593,7 +1607,7 @@ def random_hue(image, max_delta, seed=None):
 
 @tf_export('image.adjust_hue')
 def adjust_hue(image, delta, name=None):
-  """Adjust hue of an RGB image.
+  """Adjust hue of RGB images.
 
   This is a convenience method that converts an RGB image to float
   representation, converts it to HSV, add an offset to the hue channel, converts
@@ -1601,7 +1615,7 @@ def adjust_hue(image, delta, name=None):
   are chained it is advisable to minimize the number of redundant conversions.
 
   `image` is an RGB image.  The image hue is adjusted by converting the
-  image to HSV and rotating the hue channel (H) by
+  image(s) to HSV and rotating the hue channel (H) by
   `delta`.  The image is then converted back to RGB.
 
   `delta` must be in the interval `[-1, 1]`.
@@ -1618,7 +1632,10 @@ def adjust_hue(image, delta, name=None):
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    flt_image = convert_image_dtype(image, dtypes.float32)
+    if orig_dtype in (dtypes.float16, dtypes.float32):
+      flt_image = image
+    else:
+      flt_image = convert_image_dtype(image, dtypes.float32)
 
     rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
 
@@ -1696,7 +1713,7 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
 
 @tf_export('image.random_saturation')
 def random_saturation(image, lower, upper, seed=None):
-  """Adjust the saturation of an RGB image by a random factor.
+  """Adjust the saturation of RGB images by a random factor.
 
   Equivalent to `adjust_saturation()` but uses a `saturation_factor` randomly
   picked in the interval `[lower, upper]`.
@@ -1705,10 +1722,10 @@ def random_saturation(image, lower, upper, seed=None):
     image: RGB image or images. Size of the last dimension must be 3.
     lower: float.  Lower bound for the random saturation factor.
     upper: float.  Upper bound for the random saturation factor.
-    seed: An operation-specific seed. It will be used in conjunction
-      with the graph-level seed to determine the real seeds that will be
-      used in this operation. Please see the documentation of
-      set_random_seed for its interaction with the graph-level random seed.
+    seed: An operation-specific seed. It will be used in conjunction with the
+      graph-level seed to determine the real seeds that will be used in this
+      operation. Please see the documentation of set_random_seed for its
+      interaction with the graph-level random seed.
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
@@ -1729,17 +1746,17 @@ def random_saturation(image, lower, upper, seed=None):
 
 @tf_export('image.adjust_saturation')
 def adjust_saturation(image, saturation_factor, name=None):
-  """Adjust saturation of an RGB image.
+  """Adjust saturation of RGB images.
 
-  This is a convenience method that converts an RGB image to float
-  representation, converts it to HSV, add an offset to the saturation channel,
+  This is a convenience method that converts RGB images to float
+  representation, converts them to HSV, add an offset to the saturation channel,
   converts back to RGB and then back to the original data type. If several
   adjustments are chained it is advisable to minimize the number of redundant
   conversions.
 
-  `image` is an RGB image.  The image saturation is adjusted by converting the
-  image to HSV and multiplying the saturation (S) channel by
-  `saturation_factor` and clipping. The image is then converted back to RGB.
+  `image` is an RGB image or images.  The image saturation is adjusted by
+  converting the images to HSV and multiplying the saturation (S) channel by
+  `saturation_factor` and clipping. The images are then converted back to RGB.
 
   Args:
     image: RGB image or images. Size of the last dimension must be 3.
@@ -1753,11 +1770,14 @@ def adjust_saturation(image, saturation_factor, name=None):
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    flt_image = convert_image_dtype(image, dtypes.float32)
+    if orig_dtype in (dtypes.float16, dtypes.float32):
+      flt_image = image
+    else:
+      flt_image = convert_image_dtype(image, dtypes.float32)
 
-    return convert_image_dtype(
-        gen_image_ops.adjust_saturation(flt_image, saturation_factor),
-        orig_dtype)
+    adjusted = gen_image_ops.adjust_saturation(flt_image, saturation_factor)
+
+    return convert_image_dtype(adjusted, orig_dtype)
 
 
 @tf_export('io.is_jpeg', 'image.is_jpeg', v1=['io.is_jpeg', 'image.is_jpeg'])
@@ -3053,7 +3073,222 @@ def crop_and_resize_v2(
       image, boxes, box_indices, crop_size, method, extrapolation_value, name)
 
 
-crop_and_resize_deprecation = deprecation.deprecated_args(
+@tf_export(v1=['image.crop_and_resize'])
+@deprecation.deprecated_args(
     None, 'box_ind is deprecated, use box_indices instead', 'box_ind')
-tf_export(v1=['image.crop_and_resize'])(
-    crop_and_resize_deprecation(gen_image_ops.crop_and_resize))
+def crop_and_resize_v1(   # pylint: disable=missing-docstring
+    image,
+    boxes,
+    box_ind=None,
+    crop_size=None,
+    method='bilinear',
+    extrapolation_value=0,
+    name=None,
+    box_indices=None):
+  box_ind = deprecation.deprecated_argument_lookup(
+      "box_indices", box_indices, "box_ind", box_ind)
+  return gen_image_ops.crop_and_resize(
+      image, boxes, box_ind, crop_size, method, extrapolation_value, name)
+
+crop_and_resize_v1.__doc__ = gen_image_ops.crop_and_resize.__doc__
+
+
+@tf_export(v1=['image.extract_glimpse'])
+def extract_glimpse(
+    input,  # pylint: disable=redefined-builtin
+    size,
+    offsets,
+    centered=True,
+    normalized=True,
+    uniform_noise=True,
+    name=None):
+  """Extracts a glimpse from the input tensor.
+
+  Returns a set of windows called glimpses extracted at location
+  `offsets` from the input tensor. If the windows only partially
+  overlaps the inputs, the non overlapping areas will be filled with
+  random noise.
+
+  The result is a 4-D tensor of shape `[batch_size, glimpse_height,
+  glimpse_width, channels]`. The channels and batch dimensions are the
+  same as that of the input tensor. The height and width of the output
+  windows are specified in the `size` parameter.
+
+  The argument `normalized` and `centered` controls how the windows are built:
+
+  * If the coordinates are normalized but not centered, 0.0 and 1.0
+    correspond to the minimum and maximum of each height and width
+    dimension.
+  * If the coordinates are both normalized and centered, they range from
+    -1.0 to 1.0. The coordinates (-1.0, -1.0) correspond to the upper
+    left corner, the lower right corner is located at (1.0, 1.0) and the
+    center is at (0, 0).
+  * If the coordinates are not normalized they are interpreted as
+    numbers of pixels.
+
+  Args:
+    input: A `Tensor` of type `float32`. A 4-D float tensor of shape
+      `[batch_size, height, width, channels]`.
+    size: A `Tensor` of type `int32`. A 1-D tensor of 2 elements containing the
+      size of the glimpses to extract.  The glimpse height must be specified
+      first, following by the glimpse width.
+    offsets: A `Tensor` of type `float32`. A 2-D integer tensor of shape
+      `[batch_size, 2]` containing the y, x locations of the center of each
+      window.
+    centered: An optional `bool`. Defaults to `True`. indicates if the offset
+      coordinates are centered relative to the image, in which case the (0, 0)
+      offset is relative to the center of the input images. If false, the (0,0)
+      offset corresponds to the upper left corner of the input images.
+    normalized: An optional `bool`. Defaults to `True`. indicates if the offset
+      coordinates are normalized.
+    uniform_noise: An optional `bool`. Defaults to `True`. indicates if the
+      noise should be generated using a uniform distribution or a Gaussian
+      distribution.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `float32`.
+  """
+  return gen_image_ops.extract_glimpse(
+      input=input,
+      size=size,
+      offsets=offsets,
+      centered=centered,
+      normalized=normalized,
+      uniform_noise=uniform_noise,
+      name=name)
+
+
+@tf_export('image.extract_glimpse', v1=[])
+def extract_glimpse_v2(
+    input,  # pylint: disable=redefined-builtin
+    size,
+    offsets,
+    centered=True,
+    normalized=True,
+    noise='uniform',
+    name=None):
+  """Extracts a glimpse from the input tensor.
+
+  Returns a set of windows called glimpses extracted at location
+  `offsets` from the input tensor. If the windows only partially
+  overlaps the inputs, the non overlapping areas will be filled with
+  random noise.
+
+  The result is a 4-D tensor of shape `[batch_size, glimpse_height,
+  glimpse_width, channels]`. The channels and batch dimensions are the
+  same as that of the input tensor. The height and width of the output
+  windows are specified in the `size` parameter.
+
+  The argument `normalized` and `centered` controls how the windows are built:
+
+  * If the coordinates are normalized but not centered, 0.0 and 1.0
+    correspond to the minimum and maximum of each height and width
+    dimension.
+  * If the coordinates are both normalized and centered, they range from
+    -1.0 to 1.0. The coordinates (-1.0, -1.0) correspond to the upper
+    left corner, the lower right corner is located at (1.0, 1.0) and the
+    center is at (0, 0).
+  * If the coordinates are not normalized they are interpreted as
+    numbers of pixels.
+
+  Args:
+    input: A `Tensor` of type `float32`. A 4-D float tensor of shape
+      `[batch_size, height, width, channels]`.
+    size: A `Tensor` of type `int32`. A 1-D tensor of 2 elements containing the
+      size of the glimpses to extract.  The glimpse height must be specified
+      first, following by the glimpse width.
+    offsets: A `Tensor` of type `float32`. A 2-D integer tensor of shape
+      `[batch_size, 2]` containing the y, x locations of the center of each
+      window.
+    centered: An optional `bool`. Defaults to `True`. indicates if the offset
+      coordinates are centered relative to the image, in which case the (0, 0)
+      offset is relative to the center of the input images. If false, the (0,0)
+      offset corresponds to the upper left corner of the input images.
+    normalized: An optional `bool`. Defaults to `True`. indicates if the offset
+      coordinates are normalized.
+    noise: An optional `string`. Defaults to `uniform`. indicates if the noise
+      should be `uniform` (uniform distribution), `gaussian` (gaussian
+      distribution), or `zero` (zero padding).
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `float32`.
+  """
+  return gen_image_ops.extract_glimpse(
+      input=input,
+      size=size,
+      offsets=offsets,
+      centered=centered,
+      normalized=normalized,
+      noise=noise,
+      uniform_noise=False,
+      name=name)
+
+
+@tf_export('image.combined_non_max_suppression')
+def combined_non_max_suppression(boxes,
+                                 scores,
+                                 max_output_size_per_class,
+                                 max_total_size,
+                                 iou_threshold=0.5,
+                                 score_threshold=float('-inf'),
+                                 pad_per_class=False,
+                                 name=None):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  This operation performs non_max_suppression on the inputs per batch, across
+  all classes.
+  Prunes away boxes that have high intersection-over-union (IOU) overlap
+  with previously selected boxes.  Bounding boxes are supplied as
+  [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+  diagonal pair of box corners and the coordinates can be provided as normalized
+  (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+  is agnostic to where the origin is in the coordinate system. Also note that
+  this algorithm is invariant to orthogonal transformations and translations
+  of the coordinate system; thus translating or reflections of the coordinate
+  system result in the same boxes being selected by the algorithm.
+  The output of this operation is the final boxes, scores and classes tensor
+  returned after performing non_max_suppression.
+
+  Args:
+    boxes: A 4-D float `Tensor` of shape `[batch_size, num_boxes, q, 4]`. If `q`
+      is 1 then same boxes are used for all classes otherwise, if `q` is equal
+      to number of classes, class-specific boxes are used.
+    scores: A 3-D float `Tensor` of shape `[batch_size, num_boxes, num_classes]`
+      representing a single score corresponding to each box (each row of boxes).
+    max_output_size_per_class: A scalar integer `Tensor` representing the
+      maximum number of boxes to be selected by non max suppression per class
+    max_total_size: A scalar representing maximum number of boxes retained over
+      all classes.
+    iou_threshold: A float representing the threshold for deciding whether boxes
+      overlap too much with respect to IOU.
+    score_threshold: A float representing the threshold for deciding when to
+      remove boxes based on score.
+    pad_per_class: If false, the output nmsed boxes, scores and classes are
+      padded/clipped to `max_total_size`. If true, the output nmsed boxes,
+      scores and classes are padded to be of length
+      `max_size_per_class`*`num_classes`, unless it exceeds `max_total_size` in
+      which case it is clipped to `max_total_size`. Defaults to false.
+    name: A name for the operation (optional).
+
+  Returns:
+    'nmsed_boxes': A [batch_size, max_detections, 4] float32 tensor
+      containing the non-max suppressed boxes.
+    'nmsed_scores': A [batch_size, max_detections] float32 tensor containing
+      the scores for the boxes.
+    'nmsed_classes': A [batch_size, max_detections] float32 tensor
+      containing the class for boxes.
+    'valid_detections': A [batch_size] int32 tensor indicating the number of
+      valid detections per batch item. Only the top valid_detections[i] entries
+      in nms_boxes[i], nms_scores[i] and nms_class[i] are valid. The rest of the
+      entries are zero paddings.
+  """
+  with ops.name_scope(name, 'combined_non_max_suppression'):
+    iou_threshold = ops.convert_to_tensor(
+        iou_threshold, dtype=dtypes.float32, name='iou_threshold')
+    score_threshold = ops.convert_to_tensor(
+        score_threshold, dtype=dtypes.float32, name='score_threshold')
+    return gen_image_ops.combined_non_max_suppression(
+        boxes, scores, max_output_size_per_class, max_total_size, iou_threshold,
+        score_threshold, pad_per_class)

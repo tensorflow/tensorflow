@@ -775,7 +775,7 @@ class ShapePatternIsArrayImpl {
   explicit constexpr ShapePatternIsArrayImpl() {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    if (!ShapeUtil::IsArray(*shape)) {
+    if (!shape->IsArray()) {
       EXPLAIN << "Shape is not an array";
       return false;
     }
@@ -793,7 +793,7 @@ class ShapePatternIsTupleImpl {
   explicit constexpr ShapePatternIsTupleImpl() {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    if (!ShapeUtil::IsTuple(*shape)) {
+    if (!shape->IsTuple()) {
       EXPLAIN << "Shape is not a tuple";
       return false;
     }
@@ -831,7 +831,7 @@ class ShapePatternRankImpl {
   explicit constexpr ShapePatternRankImpl(int64 rank) : rank_(rank) {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    if (ShapeUtil::Rank(*shape) != rank_) {
+    if (shape->rank() != rank_) {
       if (rank_ == 0) {
         EXPLAIN << "Shape is not a scalar";
       } else {
@@ -1878,7 +1878,7 @@ class HloInstructionPattern {
   // Make this a templated function to work around gcc 4.9.4 template infinite
   // recursion bug.
   template <typename Dummy = void>
-  constexpr auto WithShapeEqualTo(const ::xla::Shape* shape)
+  constexpr auto WithShapeEqualTo(const ::xla::Shape* shape) const
       -> decltype(this->WithShape(Shape().EqualTo(shape))) {
     return WithShape(Shape().EqualTo(shape));
   }
@@ -1886,7 +1886,7 @@ class HloInstructionPattern {
   // Make this a templated function to work around gcc 4.9.4 template infinite
   // recursion bug.
   template <typename Dummy = void>
-  constexpr auto WithShapeCompatibleTo(const ::xla::Shape* shape)
+  constexpr auto WithShapeCompatibleTo(const ::xla::Shape* shape) const
       -> decltype(this->WithShape(Shape().CompatibleTo(shape))) {
     return WithShape(Shape().CompatibleTo(shape));
   }
@@ -2057,7 +2057,6 @@ XLA_UNOP_PATTERN(SendDone)
 XLA_UNOP_PATTERN(Sign)
 XLA_UNOP_PATTERN(Sin)
 XLA_UNOP_PATTERN(Slice)
-XLA_UNOP_PATTERN(Sort)
 XLA_UNOP_PATTERN(Tanh)
 XLA_UNOP_PATTERN(Transpose)
 #undef XLA_UNOP_PATTERN
@@ -2119,7 +2118,6 @@ XLA_BINOP_PATTERN(Divide)
 XLA_BINOP_PATTERN(Complex)
 XLA_BINOP_PATTERN(Convolution)
 XLA_BINOP_PATTERN(Dot)
-XLA_BINOP_PATTERN(DynamicSlice)
 XLA_COMMUTATIVE_BINOP_PATTERN(Eq)
 XLA_BINOP_PATTERN(Gather)
 XLA_BINOP_PATTERN(Ge)
@@ -2236,8 +2234,10 @@ inline auto WithOperands(Matcher&& m, int64 operand_num, FirstArg&& first_arg,
 XLA_VARIADIC_OP_PATTERN(AfterAll);
 XLA_VARIADIC_OP_PATTERN(Concatenate);
 XLA_VARIADIC_OP_PATTERN(CustomCall);
+XLA_VARIADIC_OP_PATTERN(DynamicSlice)
 XLA_VARIADIC_OP_PATTERN(Map)
 XLA_VARIADIC_OP_PATTERN(Reduce);
+XLA_VARIADIC_OP_PATTERN(Sort);
 XLA_VARIADIC_OP_PATTERN(Tuple);
 
 // Helpers for matching non-constant instructions.

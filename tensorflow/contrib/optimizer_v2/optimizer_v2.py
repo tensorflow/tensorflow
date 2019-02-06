@@ -24,7 +24,6 @@ import abc
 
 import six
 
-from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
@@ -661,7 +660,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
                name=None,
                grad_loss=None,
                stop_gradients=None,
-               scale_loss_by_num_replicas=None):
+               scale_loss_by_num_replicas=False):
     """Add operations to minimize `loss` by updating `var_list`.
 
     This method simply combines calls `compute_gradients()` and
@@ -685,8 +684,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
       stop_gradients: Optional. A Tensor or list of tensors not to differentiate
         through.
       scale_loss_by_num_replicas: Optional boolean. If true, scale the loss down
-        by the number of replicas. By default, auto-detects whether this is
-        needed.
+        by the number of replicas. DEPRECATED and generally no longer needed.
 
     Returns:
       An Operation that updates the variables in `var_list`.  If `global_step`
@@ -732,7 +730,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
                         aggregation_method=None,
                         grad_loss=None,
                         stop_gradients=None,
-                        scale_loss_by_num_replicas=None):
+                        scale_loss_by_num_replicas=False):
     """Compute gradients of `loss` for the variables in `var_list`.
 
     This is the first part of `minimize()`.  It returns a list
@@ -756,8 +754,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
       stop_gradients: Optional. A Tensor or list of tensors not to differentiate
         through.
       scale_loss_by_num_replicas: Optional boolean. If true, scale the loss down
-        by the number of replicas. By default, auto-detects whether this is
-        needed.
+        by the number of replicas. DEPRECATED and generally no longer needed.
 
     Returns:
       A list of (gradient, variable) pairs. Variable is always present, but
@@ -781,9 +778,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
           tape.watch(var_list)
         loss_value = loss()
 
-        # Scale loss for number of replicas (callable-loss case). In this case,
-        # we have to be careful to call distribute_lib.get_loss_reduction()
-        # *after* loss() is evaluated, so we know what loss reduction it uses.
+        # Scale loss for number of replicas (callable-loss case).
         loss_value = self._scale_loss(loss_value, scale_loss_by_num_replicas)
 
       if var_list is None:
@@ -839,12 +834,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
   @staticmethod
   def _scale_loss(loss_value, scale_loss_by_num_replicas):
     """Scale loss for the number of replicas."""
-    if scale_loss_by_num_replicas is None:
-      scale_loss_by_num_replicas = (
-          distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN)
     if scale_loss_by_num_replicas:
-      num_replicas = \
-        distribute_ctx.get_distribution_strategy().num_replicas_in_sync
+      num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
       if num_replicas > 1:
         loss_value *= 1. / num_replicas
     return loss_value

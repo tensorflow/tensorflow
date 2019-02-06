@@ -59,7 +59,7 @@ _UPDATE_GOLDENS_HELP = """
 # DEFINE_boolean, only_test_core_api, default False:
 _ONLY_TEST_CORE_API_HELP = """
     Some TF APIs are being moved outside of the tensorflow/ directory. There is
-    no garuntee which versions of these APIs will be present when running this
+    no guarantee which versions of these APIs will be present when running this
     test. Therefore, do not error out on API changes in non-core TF code
     if this flag is set.
 """
@@ -265,7 +265,7 @@ class ApiCompatibilityTest(test.TestCase):
     visitor.do_not_descend_map['tf'].append('contrib')
     if FLAGS.only_test_core_api:
       visitor.do_not_descend_map['tf'].extend(_NON_CORE_PACKAGES)
-    traverse.traverse(tf_v2, visitor)
+    traverse.traverse(tf.compat.v2, visitor)
 
   def _checkBackwardsCompatibility(self,
                                    root,
@@ -351,7 +351,7 @@ class ApiCompatibilityTest(test.TestCase):
         tf_v2,
         golden_file_pattern,
         api_version,
-        additional_private_map={'tf.compat': ['v1']})
+        additional_private_map={'tf.compat': ['v1', 'v2']})
 
 
 if __name__ == '__main__':

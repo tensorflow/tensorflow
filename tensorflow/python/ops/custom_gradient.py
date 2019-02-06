@@ -56,7 +56,9 @@ def copy_handle_data(source_t, target_t):
       handle_data = source_t._handle_data  # pylint: disable=protected-access
     else:
       handle_data = resource_variable_ops.get_resource_handle_data(source_t)
-    if handle_data is not None and handle_data.is_set:
+    if (handle_data is not None
+        and handle_data.is_set
+        and handle_data.shape_and_type):
       # pylint: disable=protected-access
       pywrap_tensorflow.SetHandleShapeAndType(target_t.graph._c_graph,
                                               target_t._as_tf_output(),

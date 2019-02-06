@@ -17,7 +17,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/counter.h"
 
 namespace tensorflow {
-
+namespace metrics {
 namespace {
 
 auto* graph_runs = monitoring::Counter<0>::New(
@@ -28,7 +28,46 @@ auto* graph_runs = monitoring::Counter<0>::New(
 auto* graph_run_time_usecs = monitoring::Counter<0>::New(
     "/tensorflow/core/graph_run_time_usecs",
     "The total time spent on executing graphs in microseconds.");
+
+auto* tf_data_autotune_counter = monitoring::Counter<1>::New(
+    "/tensorflow/data/autotune", "tf.data autotuning", "name");
+
+auto* tf_data_elements_counter = monitoring::Counter<1>::New(
+    "/tensorflow/data/elements", "tf.data elements", "name");
+
+auto* tf_data_optimization_counter = monitoring::Counter<1>::New(
+    "/tensorflow/data/optimization", "tf.data optimization", "name");
+
+auto* build_graph_calls = monitoring::Counter<0>::New(
+    "/tensorflow/core/graph_build_calls",
+    "The number of times TensorFlow has created a new client graph. "
+    "A client graph is a sub-graph of the full graph, induced by a set of "
+    "options, including the requested feeds and fetches. It includes time "
+    "spent optimizing the graph with Grappler, and time spent pruning the "
+    "sub-graph.");
+
+auto* build_graph_time_usecs = monitoring::Counter<0>::New(
+    "/tensorflow/core/graph_build_time_usecs",
+    "The amount of time TensorFlow has spent creating new client graphs in "
+    "microseconds. "
+    "A client graph is a sub-graph of the full graph, induced by a set of "
+    "options, including the requested feeds and fetches. It includes time "
+    "spent optimizing the graph with Grappler, and time spent pruning the "
+    "sub-graph.");
+
 }  // namespace
+
+void RecordTFDataAutotune(const string& name) {
+  tf_data_autotune_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataElements(const string& name, int64 num_elements) {
+  tf_data_elements_counter->GetCell(name)->IncrementBy(num_elements);
+}
+
+void RecordTFDataOptimization(const string& name, int64 num_changes) {
+  tf_data_optimization_counter->GetCell(name)->IncrementBy(num_changes);
+}
 
 void UpdateGraphExecTime(const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
@@ -37,4 +76,12 @@ void UpdateGraphExecTime(const uint64 running_time_usecs) {
   }
 }
 
+void UpdateGraphBuildTime(const uint64 running_time_usecs) {
+  if (running_time_usecs > 0) {
+    build_graph_calls->GetCell()->IncrementBy(1);
+    build_graph_time_usecs->GetCell()->IncrementBy(running_time_usecs);
+  }
+}
+
+}  // namespace metrics
 }  // namespace tensorflow

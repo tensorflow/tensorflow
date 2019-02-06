@@ -65,6 +65,13 @@ TEST(IntArray, TestIntArrayEqual) {
   TfLiteIntArrayFree(d);
 }
 
+TEST(FloatArray, TestFloatArrayCreate) {
+  TfLiteFloatArray* a = TfLiteFloatArrayCreate(0);
+  TfLiteFloatArray* b = TfLiteFloatArrayCreate(3);
+  TfLiteFloatArrayFree(a);
+  TfLiteFloatArrayFree(b);
+}
+
 TEST(Types, TestTypeNames) {
   auto type_name = [](TfLiteType t) {
     return std::string(TfLiteTypeGetName(t));
@@ -79,6 +86,20 @@ TEST(Types, TestTypeNames) {
   EXPECT_EQ(type_name(kTfLiteBool), "BOOL");
   EXPECT_EQ(type_name(kTfLiteComplex64), "COMPLEX64");
   EXPECT_EQ(type_name(kTfLiteString), "STRING");
+}
+
+TEST(Quantization, TestQuantizationFree) {
+  TfLiteTensor t;
+  // Set these values, otherwise TfLiteTensorFree has uninitialized values.
+  t.allocation_type = kTfLiteArenaRw;
+  t.dims = nullptr;
+  t.quantization.type = kTfLiteAffineQuantization;
+  auto* params = reinterpret_cast<TfLiteAffineQuantization*>(
+      malloc(sizeof(TfLiteAffineQuantization)));
+  params->scale = TfLiteFloatArrayCreate(3);
+  params->zero_point = TfLiteIntArrayCreate(3);
+  t.quantization.params = reinterpret_cast<void*>(params);
+  TfLiteTensorFree(&t);
 }
 
 }  // namespace tflite

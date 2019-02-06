@@ -53,17 +53,51 @@ from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=un
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2 as _rewriter_config_pb2
+from tensorflow.core.protobuf import config_pb2 as _config_pb2
+from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
 from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
 from tensorflow.python.framework import graph_util as _tf_graph_util
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
+from tensorflow.python.grappler import tf_optimizer as _tf_optimizer
 from tensorflow.python.lib.io import file_io as _file_io
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
+from tensorflow.python.training.saver import export_meta_graph as _export_meta_graph
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
+
+
+def _run_graph_optimizations(graph_def, input_arrays, output_arrays):
+  """Apply standard TensorFlow optimizations to the graph_def.
+
+  Args:
+    graph_def: Frozen GraphDef to be optimized.
+    input_arrays: List of arrays that are considered inputs of the graph.
+    output_arrays: List of arrays that are considered outputs of the graph.
+
+  Returns:
+    A new, optimized GraphDef.
+  """
+  meta_graph = _export_meta_graph(graph_def=graph_def)
+
+  # We need to add a collection called 'train_op' so that grappler
+  # knows what the outputs are.
+  fetch_collection = _meta_graph_pb2.CollectionDef()
+  for array in input_arrays + output_arrays:
+    fetch_collection.node_list.value.append(array.name)
+  meta_graph.collection_def["train_op"].CopyFrom(fetch_collection)
+
+  config = _config_pb2.ConfigProto()
+  rewrite_options = config.graph_options.rewrite_options
+  rewrite_options.layout_optimizer = _rewriter_config_pb2.RewriterConfig.ON
+  # Avoid remapping as it creates ops like _FusedConv2D, which are not
+  # supported by TF Lite.
+  rewrite_options.remapping = _rewriter_config_pb2.RewriterConfig.OFF
+  return _tf_optimizer.OptimizeGraph(config, meta_graph)
 
 
 @_tf_export("lite.TFLiteConverter")
@@ -401,15 +435,16 @@ class TFLiteConverter(object):
     if self._has_valid_tensors():
       for tensor in self._input_tensors:
         shape = tensor.get_shape()
-        if not shape or not shape.as_list():
+        if not shape:
           raise ValueError("Provide an input shape for input array "
                            "'{0}'.".format(_tensor_name(tensor)))
+        # Note that shape_list might be empty for scalar shapes.
         shape_list = shape.as_list()
         if None in shape_list[1:]:
           raise ValueError(
               "None is only supported in the 1st dimension. Tensor '{0}' has "
               "invalid shape '{1}'.".format(_tensor_name(tensor), shape_list))
-        elif shape_list[0] is None:
+        elif shape_list and shape_list[0] is None:
           self._set_batch_size(batch_size=1)
 
     # Get quantization stats. Ensures there is one stat per name if the stats
@@ -446,16 +481,26 @@ class TFLiteConverter(object):
         "dump_graphviz_video": self.dump_graphviz_video
     }
 
+    optimized_graph = None
+    if self.inference_type == constants.QUANTIZED_UINT8:
+      optimized_graph = self._graph_def
+    else:
+      try:
+        optimized_graph = _run_graph_optimizations(
+            self._graph_def, self._input_tensors, self._output_tensors)
+      except Exception:
+        optimized_graph = self._graph_def
+
     # Converts model.
     if self._has_valid_tensors():
       result = _toco_convert_impl(
-          input_data=self._graph_def,
+          input_data=optimized_graph,
           input_tensors=self._input_tensors,
           output_tensors=self._output_tensors,
           **converter_kwargs)
     else:
       result = _toco_convert_graph_def(
-          input_data=self._graph_def,
+          input_data=optimized_graph,
           input_arrays_with_shape=self._input_arrays_with_shape,
           output_arrays=self._output_arrays,
           **converter_kwargs)

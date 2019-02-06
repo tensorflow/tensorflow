@@ -52,8 +52,8 @@ class BufferLivenessTest : public HloTestBase {
   // interfere. Precondition: 'a' and 'b' are array-shaped.
   bool InstructionsMayInterfere(const BufferLiveness& liveness,
                                 HloInstruction* a, HloInstruction* b) {
-    EXPECT_FALSE(ShapeUtil::IsTuple(a->shape()));
-    EXPECT_FALSE(ShapeUtil::IsTuple(b->shape()));
+    EXPECT_FALSE(a->shape().IsTuple());
+    EXPECT_FALSE(b->shape().IsTuple());
     return liveness.MayInterfere(
         GetBuffer(liveness, /*instruction=*/a, /*index=*/{}),
         GetBuffer(liveness, /*instruction=*/b, /*index=*/{}));
@@ -66,8 +66,8 @@ class BufferLivenessTest : public HloTestBase {
                                  HloInstruction* a, HloInstruction* b,
                                  const ShapeIndex& index) {
     // Check that top-level shapes are tuple and tuple element shapes are equal.
-    EXPECT_TRUE(ShapeUtil::IsTuple(a->shape()));
-    EXPECT_TRUE(ShapeUtil::IsTuple(b->shape()));
+    EXPECT_TRUE(a->shape().IsTuple());
+    EXPECT_TRUE(b->shape().IsTuple());
     EXPECT_TRUE(
         ShapeUtil::Compatible(ShapeUtil::GetSubshape(a->shape(), index),
                               ShapeUtil::GetSubshape(b->shape(), index)));
@@ -638,10 +638,10 @@ class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
     }
     // Create a DynamicUpdateSlice instruction of tuple element 1 with 'update'.
     auto starts = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
     auto dynamic_update_slice =
         builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-            data_shape, gte1, update, starts));
+            data_shape, gte1, update, {starts}));
     // Create output tuple.
     builder.AddInstruction(
         HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
@@ -794,10 +794,10 @@ class DynamicUpdateSliceLivenessTest : public BufferLivenessTest {
     }
     // Create a DynamicUpdateSlice instruction of tuple element 1 with 'update'.
     auto starts = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
     auto dynamic_update_slice =
         builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-            data_shape, gte1, update, starts));
+            data_shape, gte1, update, {starts}));
     // Create output tuple.
     auto tuple_root = builder.AddInstruction(
         HloInstruction::CreateTuple({gte0, dynamic_update_slice}));

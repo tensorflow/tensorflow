@@ -36,7 +36,8 @@ struct LaunchConv2DOp {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter, int row_dilation,
                   int col_dilation, int row_stride, int col_stride,
-                  const Padding& padding, Tensor* output,
+                  const Padding& padding,
+                  const std::vector<int64>& explicit_paddings, Tensor* output,
                   TensorFormat data_format);
 };
 
@@ -46,7 +47,8 @@ struct LaunchConv2DOp<Eigen::GpuDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter, int row_dilation,
                   int col_dilation, int row_stride, int col_stride,
-                  const Padding& padding, Tensor* output,
+                  const Padding& padding,
+                  const std::vector<int64>& explicit_paddings, Tensor* output,
                   TensorFormat data_format);
 };
 #endif  // GOOGLE_CUDA
@@ -63,7 +65,7 @@ struct Im2ColBufferResource : public ResourceBase {
   // the buffer memory held by this resource.
   mutex mu;
   T* data;
-  string DebugString() { return "Im2ColBufferResource"; }
+  string DebugString() const { return "Im2ColBufferResource"; }
 };
 
 // Convolution parameters specified by Op attributes.
@@ -72,6 +74,7 @@ struct Conv2DParameters {
   std::vector<int32> strides;
   Padding padding;
   TensorFormat data_format;
+  std::vector<int64> explicit_paddings;
 };
 
 // Convolution dimensions inferred from parameters, input and filter tensors.
@@ -94,8 +97,10 @@ struct Conv2DDimensions {
 
   int64 out_rows;
   int64 out_cols;
-  int64 pad_rows;
-  int64 pad_cols;
+  int64 pad_rows_before;
+  int64 pad_rows_after;
+  int64 pad_cols_before;
+  int64 pad_cols_after;
 };
 
 // Initializes and validates Conv2D parameters configured by OpKernel

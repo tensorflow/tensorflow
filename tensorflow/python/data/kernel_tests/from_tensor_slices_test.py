@@ -53,7 +53,7 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       results = self.evaluate(get_next())
 
-  def testSkipEagerFromTensorSlicesSparse(self):
+  def testFromTensorSlicesSparse(self):
     """Test a dataset that represents the slices from a tuple of tensors."""
     components = (sparse_tensor.SparseTensorValue(
         indices=np.array([[0, 0], [1, 0], [2, 0]]),

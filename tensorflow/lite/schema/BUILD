@@ -70,7 +70,6 @@ flatbuffer_cc_library(
         "--no-union-value-namespacing",
         "--gen-object-api",
     ],
-    gen_reflections = True,
     out_prefix = "reflection/",
 )
 

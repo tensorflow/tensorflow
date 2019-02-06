@@ -369,7 +369,11 @@ REGISTER_OP("XlaKeyValueSort")
     .Output("sorted_values: V")
     .Attr("K: realnumbertype")
     .Attr("V: type")
-    .SetShapeFn(shape_inference::UnchangedShape)
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      c->set_output(1, c->input(1));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Wraps the XLA Sort operator, documented at
  https://www.tensorflow.org/performance/xla/operation_semantics#sort

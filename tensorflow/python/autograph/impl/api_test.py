@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import functools
 import gc
 
@@ -26,6 +27,7 @@ import numpy as np
 from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import api
+from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.framework import constant_op
@@ -46,7 +48,7 @@ class TestResource(str):
 class ApiTest(test.TestCase):
 
   @test_util.run_deprecated_v1
-  def test_decorator_recurses(self):
+  def test_decorator_recursive(self):
 
     class TestClass(object):
 
@@ -69,7 +71,7 @@ class ApiTest(test.TestCase):
       self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
   @test_util.run_deprecated_v1
-  def test_decorator_does_not_recurse(self):
+  def test_decorator_not_recursive(self):
 
     class TestClass(object):
 
@@ -90,7 +92,7 @@ class ApiTest(test.TestCase):
       self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
   @test_util.run_deprecated_v1
-  def test_decorator_calls_unconverted_graph(self):
+  def test_convert_then_do_not_convert_graph(self):
 
     class TestClass(object):
 
@@ -105,14 +107,13 @@ class ApiTest(test.TestCase):
         return x
 
     tc = TestClass()
-    with self.cached_session() as sess:
-      x = tc.test_method(
-          constant_op.constant([2, 4]), constant_op.constant(1),
-          constant_op.constant(-2))
-      self.assertListEqual([0, 1], self.evaluate(x).tolist())
+    x = tc.test_method(
+        constant_op.constant((2, 4)), constant_op.constant(1),
+        constant_op.constant(-2))
+    self.assertAllEqual((0, 1), self.evaluate(x))
 
   @test_util.run_deprecated_v1
-  def test_decorator_calls_unconverted_py_func(self):
+  def test_convert_then_do_not_convert_py_func(self):
 
     class TestClass(object):
 
@@ -132,11 +133,10 @@ class ApiTest(test.TestCase):
         return x
 
     tc = TestClass()
-    with self.cached_session() as sess:
-      x = tc.test_method(
-          constant_op.constant([2, 4]), constant_op.constant(1),
-          constant_op.constant(-2))
-      self.assertListEqual([0, 1], self.evaluate(x).tolist())
+    x = tc.test_method(
+        constant_op.constant((2, 4)), constant_op.constant(1),
+        constant_op.constant(-2))
+    self.assertAllEqual((0, 1), self.evaluate(x))
 
   @test_util.run_deprecated_v1
   def test_decorator_calls_decorated(self):
@@ -265,6 +265,26 @@ class ApiTest(test.TestCase):
                              converter.ConversionOptions(), tc)
       self.assertEqual(1, self.evaluate(x))
 
+  def test_converted_call_method_converts_recursively(self):
+
+    class TestClass(object):
+
+      def __init__(self, x):
+        self.x = x
+
+      def other_method(self):
+        if self.x < 0:
+          return -self.x
+        return self.x
+
+      def test_method(self):
+        return self.other_method()
+
+    tc = TestClass(constant_op.constant(-1))
+    x = api.converted_call(tc.test_method, None,
+                           converter.ConversionOptions(recursive=True), tc)
+    self.assertEqual(1, self.evaluate(x))
+
   def test_converted_call_method_by_class(self):
 
     class TestClass(object):
@@ -334,6 +354,22 @@ class ApiTest(test.TestCase):
                              constant_op.constant(0))
       self.assertTrue(self.evaluate(x))
 
+  def test_converted_call_then_already_converted_dynamic(self):
+
+    @api.convert()
+    def g(x):
+      if x > 0:
+        return x
+      else:
+        return -x
+
+    def f(g, x):
+      return g(x)
+
+    x = api.converted_call(f, None, converter.ConversionOptions(),
+                           g, constant_op.constant(1))
+    self.assertEqual(self.evaluate(x), 1)
+
   @test_util.run_deprecated_v1
   def test_converted_call_no_user_code(self):
 
@@ -396,6 +432,24 @@ class ApiTest(test.TestCase):
     with self.cached_session() as sess:
       self.evaluate(variables.global_variables_initializer())
       self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
+
+  def test_converted_call_namedtuple(self):
+
+    opts = converter.ConversionOptions()
+
+    x = api.converted_call(collections.namedtuple, None, opts,
+                           'TestNamedtuple', ('a', 'b'))
+
+    self.assertTrue(inspect_utils.isnamedtuple(x))
+
+  def test_converted_call_namedtuple_via_collections(self):
+
+    opts = converter.ConversionOptions()
+
+    x = api.converted_call('namedtuple', collections, opts,
+                           'TestNamedtuple', ('a', 'b'))
+
+    self.assertTrue(inspect_utils.isnamedtuple(x))
 
   def test_converted_call_lambda(self):
 

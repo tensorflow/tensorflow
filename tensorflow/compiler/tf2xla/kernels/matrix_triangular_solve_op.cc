@@ -31,7 +31,8 @@ class MatrixTriangularSolveOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     auto result = xla::TriangularSolve(
         ctx->Input(0), ctx->Input(1), /*left_side=*/true,
-        /*lower=*/lower_, /*transpose_a=*/adjoint_, /*conjugate_a=*/adjoint_);
+        /*lower=*/lower_, /*transpose_a=*/adjoint_, /*conjugate_a=*/adjoint_,
+        /*unit_diagonal=*/false);
     ctx->SetOutput(0, result);
   }
 

@@ -702,6 +702,22 @@ inline void Add(const ArithmeticParams& params,
   }
 }
 
+// T is expected to be either float or int.
+template <typename T>
+inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
+                 T* const* input_data, T* output_data) {
+  // All inputs and output should have the same shape, this is checked during
+  // Prepare stage.
+  const size_t size = input_shape.FlatSize();
+  for (int i = 0; i < size; ++i) {
+    T x = 0;
+    for (int j = 0; j < num_inputs; ++j) {
+      x += input_data[j][i];
+    }
+    output_data[i] = x;
+  }
+}
+
 // Element-wise add that can often be used for inner loop of broadcast add as
 // well as the non-broadcast add.
 inline void AddElementwise(int size, const ArithmeticParams& params,
@@ -1685,6 +1701,54 @@ inline void SubWithActivation(const ArithmeticParams& params,
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] - input2_data[i], params.float_activation_min,
         params.float_activation_max);
+  }
+}
+
+inline void Sub16(const ArithmeticParams& params,
+                  const RuntimeShape& input1_shape, const int16_t* input1_data,
+                  const RuntimeShape& input2_shape, const int16_t* input2_data,
+                  const RuntimeShape& output_shape, int16_t* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Sub/Int16");
+  const int input1_shift = params.input1_shift;
+  const int flat_size =
+      MatchingFlatSize(output_shape, input1_shape, input2_shape);
+  const int16 output_activation_min = params.quantized_activation_min;
+  const int16 output_activation_max = params.quantized_activation_max;
+
+  TFLITE_DCHECK(input1_shift == 0 || params.input2_shift == 0);
+  TFLITE_DCHECK_LE(input1_shift, 0);
+  TFLITE_DCHECK_LE(params.input2_shift, 0);
+  const int16* not_shift_input = input1_shift == 0 ? input1_data : input2_data;
+  const int16* shift_input = input1_shift == 0 ? input2_data : input1_data;
+  const int input_right_shift =
+      input1_shift == 0 ? -params.input2_shift : -input1_shift;
+
+  if (input1_shift == 0) {
+    // F0 uses 0 integer bits, range [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+    for (int i = 0; i < flat_size; ++i) {
+      F0 input_ready_scaled = F0::FromRaw(not_shift_input[i]);
+      F0 scaled_input = F0::FromRaw(
+          gemmlowp::RoundingDivideByPOT(shift_input[i], input_right_shift));
+      F0 result = SaturatingSub(input_ready_scaled, scaled_input);
+      const int16 raw_output = result.raw();
+      const int16 clamped_output = std::min(
+          output_activation_max, std::max(output_activation_min, raw_output));
+      output_data[i] = clamped_output;
+    }
+  } else {
+    // F0 uses 0 integer bits, range [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+    for (int i = 0; i < flat_size; ++i) {
+      F0 input_ready_scaled = F0::FromRaw(not_shift_input[i]);
+      F0 scaled_input = F0::FromRaw(
+          gemmlowp::RoundingDivideByPOT(shift_input[i], input_right_shift));
+      F0 result = SaturatingSub(scaled_input, input_ready_scaled);
+      const int16 raw_output = result.raw();
+      const int16 clamped_output = std::min(
+          output_activation_max, std::max(output_activation_min, raw_output));
+      output_data[i] = clamped_output;
+    }
   }
 }
 
@@ -3122,6 +3186,16 @@ inline void Floor(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
+inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+
+  for (int i = 0; i < flat_size; i++) {
+    int offset = i;
+    output_data[offset] = std::ceil(input_data[offset]);
+  }
+}
+
 template <typename T, typename CoordsT = int32>
 inline void Gather(const tflite::GatherParams& op_params,
                    const RuntimeShape& input_shape, const T* input_data,
@@ -3787,6 +3861,65 @@ inline void Mean(const tflite::MeanParams& op_params,
   }
 }
 
+inline void Mean(const tflite::MeanParams& op_params,
+                 const RuntimeShape& unextended_input_shape,
+                 const uint8_t* input_data, int32 input_zero_point,
+                 float input_scale, const RuntimeShape& unextended_output_shape,
+                 uint8_t* output_data, int32 output_zero_point,
+                 float output_scale) {
+  gemmlowp::ScopedProfilingLabel label("Mean4D/Uint8");
+
+  // Current implementation only supports dimension equals 4 and simultaneous
+  // reduction over width and height.
+  TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_CHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+  const int output_batch = output_shape.Dims(0);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
+  const int output_depth = output_shape.Dims(3);
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const float num_elements_in_axis = input_width * input_height;
+
+  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
+  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+  TFLITE_DCHECK_EQ(output_height, 1);
+  TFLITE_DCHECK_EQ(output_width, 1);
+
+  const bool ordinary_mean =
+      (input_zero_point == output_zero_point && input_scale == output_scale);
+  float scale, bias;
+  if (!ordinary_mean) {
+    scale = input_scale / output_scale;
+    bias = -input_zero_point * scale + 0.5;
+  }
+  for (int out_b = 0; out_b < output_batch; ++out_b) {
+    for (int out_d = 0; out_d < output_depth; ++out_d) {
+      float temp_value = 0;
+      for (int in_h = 0; in_h < input_height; ++in_h) {
+        for (int in_w = 0; in_w < input_width; ++in_w) {
+          temp_value +=
+              input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
+        }
+      }
+      temp_value = temp_value / num_elements_in_axis;
+      if (ordinary_mean) {
+        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
+            static_cast<uint8_t>(round(temp_value));
+      } else {
+        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
+            static_cast<uint8_t>(round(temp_value * scale + bias)) +
+            output_zero_point;
+      }
+    }
+  }
+}
+
 // Computes the mean of elements across dimensions given in axis.
 // It does so in two stages, first calculates the sum of elements along the axis
 // then divides it by the number of element in axis for quantized values.
@@ -3950,11 +4083,8 @@ void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
                const T3* input2_data, const RuntimeShape& output_shape,
                T2* output_data, const Cmp& cmp) {
   gemmlowp::ScopedProfilingLabel label("ArgMinMax");
-  // For ArgMax, the number of output dimensions = (number of input dimensions -
-  // 1). For the sake of simplicity, the output dimensions are equal to the
-  // input dimensions here. We enforce the constraint that the axis dimension
-  // must always be 1.
-  TFLITE_DCHECK_EQ(input1_shape.DimensionsCount(),
+  TFLITE_DCHECK_GT(input1_shape.DimensionsCount(), 0);
+  TFLITE_DCHECK_EQ(input1_shape.DimensionsCount() - 1,
                    output_shape.DimensionsCount());
 
   int axis = input2_data[0];
@@ -3963,7 +4093,6 @@ void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
   }
 
   const int axis_size = input1_shape.Dims(axis);
-  TFLITE_DCHECK_EQ(output_shape.Dims(axis), 1);
 
   int outer_size = 1;
   for (int i = 0; i < axis; ++i) {
@@ -3974,7 +4103,7 @@ void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
   int inner_size = 1;
   const int dims_count = input1_shape.DimensionsCount();
   for (int i = axis + 1; i < dims_count; ++i) {
-    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i));
+    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i - 1));
     inner_size *= input1_shape.Dims(i);
   }
 
@@ -4711,6 +4840,33 @@ void Fill(const RuntimeShape& value_shape, const T* value_data,
   const int flat_size = output_shape.FlatSize();
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = *value_data;
+  }
+}
+
+template <typename Scalar>
+void Reverse(int axis, const RuntimeShape& input_shape,
+             const Scalar* input_data, const RuntimeShape& output_shape,
+             Scalar* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Reverse");
+
+  int outer_size = 1;
+  for (int i = 0; i < axis; ++i) {
+    outer_size *= input_shape.Dims(i);
+  }
+
+  int copy_size = 1;
+  for (int i = axis + 1; i < input_shape.DimensionsCount(); ++i) {
+    copy_size *= input_shape.Dims(i);
+  }
+
+  const int dims_at_axis = input_shape.Dims(axis);
+  for (int i = 0; i < outer_size; ++i) {
+    for (int j = 0; j < dims_at_axis; ++j) {
+      const int start_pos = (i * dims_at_axis + j) * copy_size;
+      Scalar* output_ptr = output_data + start_pos;
+      int loc = (i * dims_at_axis + dims_at_axis - j - 1) * copy_size;
+      memcpy(output_ptr, input_data + loc, copy_size * sizeof(Scalar));
+    }
   }
 }
 

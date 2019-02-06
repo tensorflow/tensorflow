@@ -23,6 +23,7 @@ import os
 import six
 
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -42,11 +43,12 @@ from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
+from tensorflow.python.training.checkpointable import graph_view
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
-class NonLayerCheckpointable(tracking.Checkpointable):
+class NonLayerCheckpointable(tracking.AutoCheckpointable):
 
   def __init__(self):
     super(NonLayerCheckpointable, self).__init__()
@@ -99,9 +101,8 @@ class CheckpointingTests(test.TestCase):
       self.evaluate(checkpointable_utils.gather_initializers(
           root_checkpointable))
       self.evaluate(train_op)
-    named_variables, serialized_graph, _ = (
-        checkpointable_utils._serialize_object_graph(
-            root_checkpointable, saveables_cache=None))
+    named_variables, serialized_graph, _ = graph_view.ObjectGraphView(
+        root_checkpointable).serialize_object_graph()
     expected_checkpoint_names = (
         # Created in the root node, so no prefix.
         "optimizer_step",
@@ -280,6 +281,70 @@ class CheckpointingTests(test.TestCase):
       self.assertEqual((training_continuation + 1) * num_training_steps,
                        root.optimizer_step.numpy())
 
+  def testEagerDistributionStrategy(self):
+    num_training_steps = 10
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+
+    def _train_fn(optimizer, model):
+      input_value = constant_op.constant([[3.]])
+      optimizer.minimize(
+          functools.partial(model, input_value),
+          global_step=root.optimizer_step)
+
+    for training_continuation in range(3):
+      strategy = mirrored_strategy.MirroredStrategy()
+      with strategy.scope():
+        model = MyModel()
+        optimizer = adam.AdamOptimizer(0.001)
+        root = checkpointable_utils.Checkpoint(
+            optimizer=optimizer, model=model,
+            optimizer_step=training_util.get_or_create_global_step())
+        root.restore(checkpoint_management.latest_checkpoint(
+            checkpoint_directory))
+
+        for _ in range(num_training_steps):
+          strategy.extended.call_for_each_replica(
+              functools.partial(_train_fn, optimizer, model))
+        root.save(file_prefix=checkpoint_prefix)
+        self.assertEqual((training_continuation + 1) * num_training_steps,
+                         root.optimizer_step.numpy())
+
+  def testGraphDistributionStrategy(self):
+    self.skipTest("b/121381184")
+    num_training_steps = 10
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+
+    def _train_fn(optimizer, model):
+      input_value = constant_op.constant([[3.]])
+      return optimizer.minimize(
+          functools.partial(model, input_value),
+          global_step=root.optimizer_step)
+
+    for training_continuation in range(3):
+      with ops.Graph().as_default():
+        strategy = mirrored_strategy.MirroredStrategy()
+        with strategy.scope():
+          model = MyModel()
+          optimizer = adam.AdamOptimizer(0.001)
+          root = checkpointable_utils.Checkpoint(
+              optimizer=optimizer, model=model,
+              optimizer_step=training_util.get_or_create_global_step())
+          status = root.restore(checkpoint_management.latest_checkpoint(
+              checkpoint_directory))
+          train_op = strategy.extended.call_for_each_replica(
+              functools.partial(_train_fn, optimizer, model))
+          with self.session() as session:
+            if training_continuation > 0:
+              status.assert_consumed()
+            status.initialize_or_restore()
+            for _ in range(num_training_steps):
+              session.run(train_op)
+            root.save(file_prefix=checkpoint_prefix)
+        self.assertEqual((training_continuation + 1) * num_training_steps,
+                         root.optimizer_step.numpy())
+
   def testUsageGraph(self):
     """Expected usage when graph building."""
     with context.graph_mode():
@@ -396,7 +461,7 @@ class CheckpointingTests(test.TestCase):
   # pylint: enable=cell-var-from-loop
 
   def _get_checkpoint_name(self, name):
-    root = tracking.Checkpointable()
+    root = tracking.AutoCheckpointable()
     checkpointable_utils.add_variable(
         root, name=name, shape=[1, 2], dtype=dtypes.float64)
     (named_variable,), _, _ = checkpointable_utils._serialize_object_graph(
@@ -438,7 +503,7 @@ class CheckpointingTests(test.TestCase):
   def testDeferredSlotRestoration(self):
     checkpoint_directory = self.get_temp_dir()
 
-    root = tracking.Checkpointable()
+    root = checkpointable_utils.Checkpoint()
     root.var = checkpointable_utils.add_variable(
         root, name="var", initializer=0.)
     optimizer = adam.AdamOptimizer(0.1)
@@ -453,21 +518,17 @@ class CheckpointingTests(test.TestCase):
           checkpointable_utils.Checkpoint(root=root, optimizer=optimizer)))
       self.evaluate(train_op)
     self.evaluate(state_ops.assign(root.var, 12.))
-    no_slots_path = checkpointable_utils.CheckpointableSaver(root).save(
-        os.path.join(checkpoint_directory, "no_slots"))
+    no_slots_path = root.save(os.path.join(checkpoint_directory, "no_slots"))
     root.optimizer = optimizer
     self.evaluate(state_ops.assign(root.var, 13.))
     self.evaluate(state_ops.assign(optimizer.get_slot(name="m", var=root.var),
                                    14.))
-    slots_path = checkpointable_utils.CheckpointableSaver(root).save(
-        os.path.join(checkpoint_directory, "with_slots"))
-    new_root = tracking.Checkpointable()
+    slots_path = root.save(os.path.join(checkpoint_directory, "with_slots"))
+    new_root = checkpointable_utils.Checkpoint()
     # Load the slot-containing checkpoint (deferred), then immediately overwrite
     # the non-slot variable (also deferred).
-    slot_status = checkpointable_utils.CheckpointableSaver(
-        new_root).restore(slots_path)
-    no_slot_status = checkpointable_utils.CheckpointableSaver(
-        new_root).restore(no_slots_path)
+    slot_status = new_root.restore(slots_path)
+    no_slot_status = new_root.restore(no_slots_path)
     with self.assertRaises(AssertionError):
       no_slot_status.assert_consumed()
     new_root.var = checkpointable_utils.add_variable(
@@ -507,15 +568,14 @@ class CheckpointingTests(test.TestCase):
       with graph.as_default(), self.session(graph):
         checkpoint_directory = self.get_temp_dir()
         checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-        obj = tracking.Checkpointable()
+        obj = checkpointable_utils.Checkpoint()
         obj.var = variable_scope.get_variable(name="v", initializer=0.)
         obj.opt = adam.AdamOptimizer(0.1)
         obj.opt.minimize(obj.var.read_value())
         self.evaluate(checkpointable_utils.gather_initializers(obj))
-        saver = checkpointable_utils.CheckpointableSaver(obj)
-        saver.save(checkpoint_prefix)
+        obj.save(checkpoint_prefix)
         before_ops = graph.get_operations()
-        saver.save(checkpoint_prefix)
+        obj.save(checkpoint_prefix)
         self.assertEqual(before_ops, graph.get_operations())
 
   def testManyRestoresGraph(self):
@@ -525,16 +585,15 @@ class CheckpointingTests(test.TestCase):
       with graph.as_default(), self.session(graph):
         checkpoint_directory = self.get_temp_dir()
         checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-        obj = tracking.Checkpointable()
+        obj = checkpointable_utils.Checkpoint()
         obj.var = variable_scope.get_variable(name="v", initializer=0.)
         obj.opt = adam.AdamOptimizer(0.1)
         obj.opt.minimize(obj.var.read_value())
         self.evaluate(checkpointable_utils.gather_initializers(obj))
-        saver = checkpointable_utils.CheckpointableSaver(obj)
-        save_path = saver.save(checkpoint_prefix)
-        saver.restore(save_path)
+        save_path = obj.save(checkpoint_prefix)
+        obj.restore(save_path)
         before_ops = graph.get_operations()
-        saver.restore(save_path)
+        obj.restore(save_path)
         self.assertEqual(before_ops, graph.get_operations())
 
   def testMultipleGraphsNonSlotVariables(self):
@@ -674,7 +733,7 @@ class CheckpointingTests(test.TestCase):
       self.assertEqual(42., self.evaluate(optimizer.variables()[0]))
 
 
-class _ManualScope(tracking.Checkpointable):
+class _ManualScope(tracking.AutoCheckpointable):
 
   def __call__(self):
     with variable_scope.variable_scope("ManualScope") as vs:
@@ -804,7 +863,8 @@ class CheckpointCompatibilityTests(test.TestCase):
       self._set_sentinels(root)
       with self.assertRaises(AssertionError):
         self._check_sentinels(root)
-      object_saver = checkpointable_utils.CheckpointableSaver(root)
+      object_saver = checkpointable_utils.CheckpointableSaver(
+          graph_view.ObjectGraphView(root))
       self._set_sentinels(root)
       status = object_saver.restore(save_path)
       if context.executing_eagerly():

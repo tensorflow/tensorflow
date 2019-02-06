@@ -4,4 +4,8 @@ tf_module {
     name: "DropoutWrapper"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "ResidualWrapper"
+    mtype: "<type \'type\'>"
+  }
 }

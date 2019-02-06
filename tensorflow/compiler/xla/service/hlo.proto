@@ -229,6 +229,18 @@ message HloScheduleProto {
 }
 
 message HloInputOutputAliasProto {
+  enum Kind {
+    // Define a UNDEFINED_ALIAS equal to zero to get around the default-0 proto3
+    // behavior and missing has_*() APIs.
+    UNDEFINED_ALIAS = 0;
+    // An alias setup by the user as must alias. A use setting USER_ALIAS is
+    // expecting the designed output to be dropped over the given input
+    // parameter number+index.
+    USER_ALIAS = 1;
+    // An alias setup by the compiler as part of its optimizations.
+    SYSTEM_ALIAS = 2;
+  }
+
   // The following proto describes a pair of aliased an input
   // (described by parameter number and a ShapeIndex of the parameter)
   // and an output (described by a ShapeIndex of the root
@@ -249,6 +261,8 @@ message HloInputOutputAliasProto {
     int64 parameter_number = 2;
     // ShapeIndex of the parameter instruction.
     repeated int64 parameter_shape_index = 3;
+    // The kind of alias to be setup.
+    Kind kind = 4;
   }
 
   repeated AliasEntryProto entries = 1;

@@ -837,7 +837,7 @@ class CudnnLSTMSaveable(CudnnOpaqueParamsSaveable):
       checkpointable._track_checkpointable(bias, name="bias")  # pylint: disable=protected-access
     assert len(biases) == len(weights)
     for cell_index, (bias, kernel) in enumerate(zip(biases, weights)):
-      cell = checkpointable_lib.Checkpointable()
+      cell = checkpointable_lib.AutoCheckpointable()
       checkpointable._track_checkpointable(cell, name="cell-%d" % cell_index)  # pylint: disable=protected-access
       cell.bias = bias
       cell.kernel = kernel

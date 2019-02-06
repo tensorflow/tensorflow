@@ -117,7 +117,12 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
       // TODO(alanchiao): refactor scalar multiply into separate function
       // for ease of adding a neon equivalent if ever necessary.
       for (int j = 0; j < col_size; j++) {
-        const int8_t* value_ptr = reinterpret_cast<int8_t*>(value->data.uint8);
+        const int8_t* value_ptr;
+        if (value->type == kTfLiteUInt8) {
+          value_ptr = reinterpret_cast<int8_t*>(value->data.uint8);
+        } else {
+          value_ptr = value->data.int8;
+        }
         output->data.f[j + i * col_size] =
             value_ptr[j + idx * col_size] * scaling_factor;
       }
@@ -135,6 +140,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
       return EvalFloat(context, node, lookup, value, output);
     case kTfLiteUInt8:
+    case kTfLiteInt8:
       return EvalHybrid(context, node, lookup, value, output);
     default:
       context->ReportError(context, "Type not currently supported.");

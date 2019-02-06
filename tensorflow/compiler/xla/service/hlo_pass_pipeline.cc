@@ -89,7 +89,7 @@ std::vector<HloPassInterface*> HloPassPipeline::GetEnabledPasses(
 
   std::vector<HloPassInterface*> enabled_passes;
   for (auto& pass : passes_) {
-    if (disabled_pass_names.count(string(pass->name())) == 0) {
+    if (!disabled_pass_names.contains(pass->name())) {
       enabled_passes.push_back(pass.get());
     }
   }

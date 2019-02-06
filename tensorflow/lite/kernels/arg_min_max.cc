@@ -36,9 +36,15 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* input,
     axis_value += NumDimensions(input);
   }
 
-  // Copy the input dimensions to output except make the axis dimension 1.
-  TfLiteIntArray* output_dims = TfLiteIntArrayCopy(input->dims);
-  output_dims->data[axis_value] = 1;
+  // Copy the input dimensions to output except the axis dimension.
+  TfLiteIntArray* output_dims = TfLiteIntArrayCreate(NumDimensions(input) - 1);
+  int j = 0;
+  for (int i = 0; i < NumDimensions(input); ++i) {
+    if (i != axis_value) {
+      output_dims->data[j] = SizeOfDimension(input, i);
+      ++j;
+    }
+  }
   return context->ResizeTensor(context, output, output_dims);
 }
 

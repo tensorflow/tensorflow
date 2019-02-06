@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <ctype.h>
-
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
+#include "absl/strings/ascii.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 
@@ -43,7 +42,7 @@ class IndexedArrayAnalysisTest : public HloTestBase {
     string result;
 
     for (char c : text) {
-      if (!isspace(c)) {
+      if (!absl::ascii_isspace(c)) {
         result.push_back(c);
       } else if (!result.empty() && result.back() != ' ') {
         result.push_back(' ');

@@ -849,7 +849,7 @@ answered questions, and were part of inspiring discussions.
 * Remove `tf.contrib.data.Iterator.from_dataset()` method. Use
   `Dataset.make_initializable_iterator()` instead.
 * Remove seldom used and unnecessary `tf.contrib.data.Iterator.dispose_op()`.
-* Reorder some TFGAN loss functions in a non-backwards compatible way.
+* Reorder some TF-GAN loss functions in a non-backwards compatible way.
 
 ## Known Issues
 * In Python 3, `Dataset.from_generator()` does not support Unicode strings.

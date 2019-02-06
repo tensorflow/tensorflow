@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package stream_executor;
 
+import "tensorflow/stream_executor/dnn.proto";
+
 message CudnnVersion {
   int32 major = 1;
   int32 minor = 2;
@@ -16,4 +18,12 @@ message ComputeCapability {
 message CudaInfo {
   CudnnVersion cudnn_version = 1;
   ComputeCapability compute_capability = 2;
+}
+
+message ConvLogEntry {
+  CudaInfo cuda_info = 1;
+  dnn.ConvolutionProto convolution = 2;
+
+  // Profiled time in ms. 0.0 if the convolution is not profiled.
+  float profile_time_ms = 3;
 }

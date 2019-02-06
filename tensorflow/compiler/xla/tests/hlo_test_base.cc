@@ -139,7 +139,8 @@ std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
     const string& name) {
   return absl::make_unique<VerifiedHloModule>(
       name, GetModuleConfigForTest(), verifier_layout_sensitive_,
-      allow_mixed_precision_in_hlo_verifier_);
+      allow_mixed_precision_in_hlo_verifier_,
+      backend().compiler()->ShapeSizeBytesFunction());
 }
 
 StatusOr<std::unique_ptr<VerifiedHloModule>>
@@ -147,7 +148,8 @@ HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
                                           const HloModuleConfig& config) {
   auto module = absl::make_unique<VerifiedHloModule>(
       TestName(), config, verifier_layout_sensitive_,
-      allow_mixed_precision_in_hlo_verifier_);
+      allow_mixed_precision_in_hlo_verifier_,
+      backend().compiler()->ShapeSizeBytesFunction());
   TF_RETURN_IF_ERROR(ParseHloString(hlo_text, module.get()));
   TF_RETURN_IF_ERROR(module->Verify());
   return std::move(module);

@@ -50,6 +50,8 @@ tf_custom_op_py_library(
     visibility = [
         "//learning/brain:__subpackages__",
         "//tensorflow:__subpackages__",
+        "//tensorflow_estimator:__subpackages__",
+        "//tensorflow_model_optimization:__subpackages__",
         "//video/youtube/personalization:__subpackages__",
     ],
     deps = [
@@ -177,6 +179,7 @@ cuda_py_test(
     additional_deps = [
         "//tensorflow/python:client_testlib",
         ":framework_py",
+        "//tensorflow/python/data/experimental/ops:prefetching_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",

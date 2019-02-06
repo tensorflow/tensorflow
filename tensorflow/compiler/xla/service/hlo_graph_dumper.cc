@@ -24,9 +24,9 @@ limitations under the License.
 #include <queue>
 #include <string>
 #include <tuple>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -380,7 +380,7 @@ class HloDotDumper {
   // Each HloInstruction dumped gets a monotically-increasing node ID.  This
   // must start at 1, because that's where graphviz's accounting starts.
   int64 next_node_id_ = 1;
-  std::unordered_map<const HloInstruction*, int64> node_ids_;
+  absl::flat_hash_map<const HloInstruction*, int64> node_ids_;
 
   // The "root" tag doesn't have an associated HloInstruction pointer, so we
   // need to store it outside the map.
@@ -397,7 +397,7 @@ class HloDotDumper {
 
   // Each HloComputation that's emitted gets a monotonically-increasing ID.
   int64 next_cluster_id_ = 1;
-  std::unordered_map<const HloComputation*, int64> cluster_ids_;
+  absl::flat_hash_map<const HloComputation*, int64> cluster_ids_;
 
   // Edges to print from Footer().  Edges come at the end because graphviz is
   // unhappy if an edge from a subcomputation to a node in the outer computation
@@ -407,7 +407,7 @@ class HloDotDumper {
 
   // When coloring by sharding information, we track the sharding string
   // representation to color association, by round-robin the color schemes.
-  std::unordered_map<HloSharding, ColorScheme, HloSharding::Hasher>
+  absl::flat_hash_map<HloSharding, ColorScheme, HloSharding::Hasher>
       sharding_colors_;
   int64 next_shard_color_ = 0;
 };
@@ -561,8 +561,8 @@ bool HloDotDumper::ShouldShowSubcomputation(const HloComputation* subcomp) {
   }
 
   // Show the subcomputation if we're showing any of its members.
-  return std::any_of(
-      subcomp->instructions().begin(), subcomp->instructions().end(),
+  return absl::c_any_of(
+      subcomp->instructions(),
       [&](const HloInstruction* instr) { return filter_.Show(instr); });
 }
 
@@ -733,17 +733,16 @@ bool HloDotDumper::ShouldMergeIntoUsers(const HloInstruction* instr) const {
     return true;
   }
   const int kMinUsersToOmit = 3;
-  return instr->opcode() == HloOpcode::kParameter &&
-         ShapeUtil::IsTuple(instr->shape()) && !instr->IsFused() &&
-         std::count_if(instr->users().begin(), instr->users().end(),
-                       [&](const HloInstruction* user) {
-                         return filter_.Show(user);
-                       }) > kMinUsersToOmit &&
-         std::all_of(instr->users().begin(), instr->users().end(),
-                     [&](const HloInstruction* user) {
-                       return !filter_.Show(user) ||
-                              user->opcode() == HloOpcode::kGetTupleElement;
-                     });
+  return instr->opcode() == HloOpcode::kParameter && instr->shape().IsTuple() &&
+         !instr->IsFused() &&
+         absl::c_count_if(instr->users(),
+                          [&](const HloInstruction* user) {
+                            return filter_.Show(user);
+                          }) > kMinUsersToOmit &&
+         absl::c_all_of(instr->users(), [&](const HloInstruction* user) {
+           return !filter_.Show(user) ||
+                  user->opcode() == HloOpcode::kGetTupleElement;
+         });
 }
 
 string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
@@ -816,7 +815,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
 
     // Print the literal value of constants with <= K elements.
     optional<int64> elem_count;
-    if (ShapeUtil::IsArray(shape)) {
+    if (shape.IsArray()) {
       elem_count = 1;
       for (int64 dim : shape.dimensions()) {
         *elem_count *= dim;
@@ -900,12 +899,11 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
   // the same color as a parameter.  Unless the merged-in parameter is a
   // parameter to a fusion node that is bound to a constant -- these aren't
   // "real" parameters from the user's perspective.
-  if (std::any_of(instr->operands().begin(), instr->operands().end(),
-                  [&](const HloInstruction* operand) {
-                    return operand->opcode() == HloOpcode::kParameter &&
-                           ShouldMergeIntoUsers(operand) &&
-                           TryGetFusionParameterConstant(operand) == nullptr;
-                  })) {
+  if (absl::c_any_of(instr->operands(), [&](const HloInstruction* operand) {
+        return operand->opcode() == HloOpcode::kParameter &&
+               ShouldMergeIntoUsers(operand) &&
+               TryGetFusionParameterConstant(operand) == nullptr;
+      })) {
     return parameter_color;
   }
 
@@ -1039,6 +1037,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kRecvDone:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
+    case HloOpcode::kReplicaId:
       return kBrown;
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
@@ -1286,7 +1285,7 @@ NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
                                       int64 radius) {
   // First, find the neighborhood of nodes with distance from root <= radius.
   // These nodes are our initial set of "normal" nodes.
-  std::unordered_map<const HloInstruction*, NodeFilterResult> nodes;
+  absl::flat_hash_map<const HloInstruction*, NodeFilterResult> nodes;
   std::deque<std::pair<const HloInstruction*, /*depth*/ int64>> worklist;
   worklist.push_back({root, 0});
   while (!worklist.empty()) {
@@ -1307,7 +1306,7 @@ NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
     // are not interesting to the graph at hand.
     if (instr == root || instr->opcode() != HloOpcode::kTuple) {
       for (const HloInstruction* operand : instr->operands()) {
-        if (!nodes.count(operand)) {
+        if (!nodes.contains(operand)) {
           worklist.push_back({operand, depth + 1});
         }
       }
@@ -1335,7 +1334,7 @@ NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
       continue;
     }
     for (const HloInstruction* user : instr->users()) {
-      if (!nodes.count(user)) {
+      if (!nodes.contains(user)) {
         worklist.push_back({user, depth + 1});
       }
     }
@@ -1344,7 +1343,7 @@ NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
   auto is_displayed = [&](const HloInstruction* instr) {
     // Constants are displayed inline with their users; they're never omitted.
     // Nodes in subcomputations are always shown.
-    return nodes.count(instr) > 0 || instr->opcode() == HloOpcode::kConstant ||
+    return nodes.contains(instr) || instr->opcode() == HloOpcode::kConstant ||
            instr->parent() != root->parent();
   };
 
@@ -1355,12 +1354,11 @@ NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
     NodeFilterResult& filter_result = kv.second;
     const auto& operands = instr->operands();
 
-    if (std::any_of(operands.begin(), operands.end(), is_displayed) &&
-        !std::all_of(operands.begin(), operands.end(), is_displayed)) {
+    if (absl::c_any_of(operands, is_displayed) &&
+        !absl::c_all_of(operands, is_displayed)) {
       // Mark nodes with some operands omitted appropriately.
       filter_result = kSomeOperandsOmitted;
-    } else if (!operands.empty() &&
-               std::none_of(operands.begin(), operands.end(), is_displayed)) {
+    } else if (!operands.empty() && absl::c_none_of(operands, is_displayed)) {
       // Mark nodes with *all* operands omitted appropriately.
       filter_result = kOmitNodeOperands;
     }
@@ -1368,8 +1366,7 @@ NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
     // Promote nodes with type kSomeUsersOmitted to kNormalNode if all of their
     // users made it into the graph.
     if (filter_result == kSomeUsersOmitted &&
-        std::all_of(instr->users().begin(), instr->users().end(),
-                    is_displayed)) {
+        absl::c_all_of(instr->users(), is_displayed)) {
       filter_result = kNormalNode;
     }
   }

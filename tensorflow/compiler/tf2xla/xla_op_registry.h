@@ -47,13 +47,14 @@ extern const char* const DEVICE_XLA_GPU;
 
 constexpr std::array<DataType, 4> kFloatTypes = {
     {DT_HALF, DT_FLOAT, DT_DOUBLE, DT_BFLOAT16}};
-constexpr std::array<DataType, 11> kNumericTypes = {
+constexpr std::array<DataType, 12> kNumericTypes = {
     {DT_UINT8, DT_UINT32, DT_UINT64, DT_INT8, DT_INT32, DT_INT64, DT_HALF,
-     DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BFLOAT16}};
+     DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128, DT_BFLOAT16}};
 
-constexpr std::array<DataType, 14> kCpuAllTypes = {
+constexpr std::array<DataType, 15> kCpuAllTypes = {
     {DT_UINT8, DT_QUINT8, DT_UINT32, DT_UINT64, DT_INT8, DT_QINT8, DT_INT32,
-     DT_QINT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL}};
+     DT_QINT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64,
+     DT_COMPLEX128, DT_BOOL}};
 
 constexpr std::array<DataType, 15> kGpuAllTypes = {
     {DT_UINT8, DT_QUINT8, DT_UINT32, DT_UINT64, DT_INT8, DT_QINT8, DT_INT32,
@@ -211,6 +212,10 @@ class XlaOpRegistry {
     // allow DT_RESOURCE.
     bool allow_resource_types = false;
 
+    // Should we allow variant types for type attributes? Used by While to
+    // allow TensorList which is of type DT_VARIANT.
+    bool allow_variant_types = false;
+
     // Mapping from attribute name to a list of supported types.
     std::unordered_map<string, std::set<DataType>> type_constraints;
 
@@ -232,9 +237,9 @@ class XlaOpRegistry {
 
   // Returns true if registrations x and y can both be added to the registry.
   // This is always the case if they refer to different ops. If they refer to
-  // the same op name, they must: have the same values for compilation_only and
-  // allow_resource_types; use a device_whitelist; and their
-  // whitelists must not intersect.
+  // the same op name, they must: have the same values for compilation_only,
+  // allow_resource_types and allow_variant_types; use a device_whitelist; and
+  // their whitelists must not intersect.
   static bool IsCompatible(const OpRegistration& x, const OpRegistration& y);
 
   static Status CompileTimeConstantInputs(const NodeDef& node_def,
@@ -291,6 +296,9 @@ class XlaOpRegistrationBuilder {
 
   // Allow DT_RESOURCE types for type parameters.
   XlaOpRegistrationBuilder& AllowResourceTypes();
+
+  // Allow DT_VARIANT types for type parameters.
+  XlaOpRegistrationBuilder& AllowVariantTypes();
 
   // Mark 'input_name' as an argument whose value must be known at compile-time.
   XlaOpRegistrationBuilder& CompileTimeConstantInput(

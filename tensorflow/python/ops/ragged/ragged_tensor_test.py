@@ -828,14 +828,14 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
   # pylint: disable=invalid-slice-index
   @parameterized.parameters(
       # Tests for out-of-bound errors
-      (SLICE_BUILDER[5],
-       (ValueError, errors.InvalidArgumentError), '.*out of bounds.*'),
-      (SLICE_BUILDER[-6],
-       (ValueError, errors.InvalidArgumentError), '.*out of bounds.*'),
-      (SLICE_BUILDER[0, 2],
-       (ValueError, errors.InvalidArgumentError), '.*out of bounds.*'),
-      (SLICE_BUILDER[3, 0],
-       (ValueError, errors.InvalidArgumentError), '.*out of bounds.*'),
+      (SLICE_BUILDER[5], (IndexError, ValueError, errors.InvalidArgumentError),
+       '.*out of bounds.*'),
+      (SLICE_BUILDER[-6], (IndexError, ValueError, errors.InvalidArgumentError),
+       '.*out of bounds.*'),
+      (SLICE_BUILDER[0, 2], (IndexError, ValueError,
+                             errors.InvalidArgumentError), '.*out of bounds.*'),
+      (SLICE_BUILDER[3, 0], (IndexError, ValueError,
+                             errors.InvalidArgumentError), '.*out of bounds.*'),
 
       # Indexing into an inner ragged dimension
       (SLICE_BUILDER[:, 3], ValueError,
@@ -953,14 +953,15 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
        'Cannot index into an inner ragged dimension.'),
 
       # Test for out-of-bounds errors.
-      (SLICE_BUILDER[1, 0],
-       (ValueError, errors.InvalidArgumentError), '.*out of bounds.*'),
+      (SLICE_BUILDER[1, 0], (IndexError, ValueError,
+                             errors.InvalidArgumentError), '.*out of bounds.*'),
       (SLICE_BUILDER[0, 0, 3],
-       (ValueError, errors.InvalidArgumentError), '.*out of bounds.*'),
-      (SLICE_BUILDER[5],
-       (ValueError, errors.InvalidArgumentError), '.*out of bounds.*'),
-      (SLICE_BUILDER[0, 5],
-       (ValueError, errors.InvalidArgumentError), '.*out of bounds.*'),
+       (IndexError, ValueError,
+        errors.InvalidArgumentError), '.*out of bounds.*'),
+      (SLICE_BUILDER[5], (IndexError, ValueError, errors.InvalidArgumentError),
+       '.*out of bounds.*'),
+      (SLICE_BUILDER[0, 5], (IndexError, ValueError,
+                             errors.InvalidArgumentError), '.*out of bounds.*'),
   )
   def testRaggedTensorGetItemErrorsWithRaggedRank2(self, slice_spec, expected,
                                                    message):
@@ -982,10 +983,10 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
     self._TestGetItem(rt, slice_spec, expected)
 
   @parameterized.parameters(
-      (SLICE_BUILDER[0],
-       (ValueError, errors.InvalidArgumentError), '.*out of bounds.*'),
-      (SLICE_BUILDER[-1],
-       (ValueError, errors.InvalidArgumentError), '.*out of bounds.*'),
+      (SLICE_BUILDER[0], (IndexError, ValueError, errors.InvalidArgumentError),
+       '.*out of bounds.*'),
+      (SLICE_BUILDER[-1], (IndexError, ValueError, errors.InvalidArgumentError),
+       '.*out of bounds.*'),
   )
   def testRaggedTensorGetItemErrorsWithEmptyTensor(self, slice_spec, expected,
                                                    message):
@@ -1206,6 +1207,18 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
 
       res2 = session.partial_run(handle, r2, feed_dict={c: c_val})
       self.assertAllEqual(res2, [15, 7])
+
+  # Test case for GitHub issue 24679.
+  def testEagerForLoop(self):
+    if not context.executing_eagerly():
+      return
+
+    values = [[1., 2.], [3., 4., 5.], [6.]]
+    r = ragged_factory_ops.constant(values)
+    i = 0
+    for elem in r:
+      self.assertAllEqual(elem, values[i])
+      i += 1
 
 if __name__ == '__main__':
   googletest.main()

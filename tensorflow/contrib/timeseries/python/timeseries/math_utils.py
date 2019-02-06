@@ -21,6 +21,8 @@ from __future__ import print_function
 import collections
 import math
 
+import numpy as np
+
 from tensorflow.contrib import lookup
 from tensorflow.contrib.layers.python.layers import layers
 
@@ -41,6 +43,32 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
+
+
+def normal_log_prob(loc, scale, x):
+  """Computes the Normal log pdf."""
+  z = (x - loc) / scale
+  return -0.5 * (math_ops.square(z)
+                 + np.log(2. * np.pi) + math_ops.log(scale))
+
+
+def cauchy_log_prob(loc, scale, x):
+  """Computes the Cauchy log pdf."""
+  z = (x - loc) / scale
+  return (-np.log(np.pi) - math_ops.log(scale) -
+          math_ops.log1p(math_ops.square(z)))
+
+
+def mvn_tril_log_prob(loc, scale_tril, x):
+  """Computes the MVN log pdf under tril scale. Doesn't handle batches."""
+  x0 = x - loc
+  z = linalg_ops.matrix_triangular_solve(
+      scale_tril, x0[..., array_ops.newaxis])[..., 0]
+  log_det_cov = 2. * math_ops.reduce_sum(math_ops.log(
+      array_ops.matrix_diag_part(scale_tril)), axis=-1)
+  d = math_ops.cast(array_ops.shape(scale_tril)[-1], log_det_cov.dtype)
+  return -0.5 * (math_ops.reduce_sum(math_ops.square(z), axis=-1)
+                 + d * np.log(2. * np.pi) + log_det_cov)
 
 
 def clip_covariance(

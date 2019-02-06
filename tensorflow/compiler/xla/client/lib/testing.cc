@@ -34,7 +34,7 @@ namespace {
 // specified shape. In case of a (nested) tuple shape this is the total byte
 // size of all sub-shapes within the tuple.
 int64 DataSizeOfShape(const Shape& shape) {
-  if (ShapeUtil::IsArray(shape)) {
+  if (shape.IsArray()) {
     return ShapeUtil::ByteSizeOf(shape);
   }
 
@@ -47,7 +47,7 @@ int64 DataSizeOfShape(const Shape& shape) {
 
 // Creates a XlaOp for an op what generates fake data with the given shape.
 XlaOp BuildFakeDataOpOnDevice(const Shape& shape, XlaBuilder* builder) {
-  if (ShapeUtil::IsArray(shape)) {
+  if (shape.IsArray()) {
     return Broadcast(
         ConstantLiteral(builder, LiteralUtil::One(shape.element_type())),
         AsInt64Slice(shape.dimensions()));

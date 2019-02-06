@@ -373,6 +373,7 @@ class SplitOpTest(test.TestCase):
     assert s1.shape.as_list() == [1]
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/123337890")  # Error messages differ
   def testNonexistentDimTensor(self):
     x = array_ops.placeholder(dtypes.int32)
     values = np.zeros([5, 30])

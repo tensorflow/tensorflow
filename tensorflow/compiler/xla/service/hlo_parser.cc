@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include <type_traits>
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
@@ -21,11 +22,13 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_lexer.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
@@ -44,8 +47,6 @@ using absl::StrCat;
 using absl::StrFormat;
 using absl::StrJoin;
 
-const double kF16max = 65504;
-
 // Creates and returns a schedule created using the order of the instructions in
 // the HloComputation::instructions() vectors in the module.
 HloSchedule ScheduleFromInstructionOrder(HloModule* module) {
@@ -59,6 +60,11 @@ HloSchedule ScheduleFromInstructionOrder(HloModule* module) {
   }
   return schedule;
 }
+
+// Some functions accept either a linear index or a multi-dimensional index
+// (used for indexing into sparse literals).
+using LinearOrMultiIndex =
+    absl::variant<tensorflow::int64, absl::Span<const int64>>;
 
 // Parser for the HloModule::ToString() format text.
 class HloParser {
@@ -102,7 +108,7 @@ class HloParser {
   // Parse a single instruction worth of text.
   bool ParseSingleInstruction(HloModule* module);
 
-  // ParseXXX returns false if an error occurred.
+  // Parses a module, returning false if an error occurred.
   bool ParseHloModule(HloModule* module);
 
   bool ParseComputations(HloModule* module);
@@ -118,21 +124,30 @@ class HloParser {
   bool ParseNonTupleLiteral(Literal* literal, const Shape& shape);
   bool ParseDenseLiteral(Literal* literal, const Shape& shape);
   bool ParseSparseLiteral(Literal* literal, const Shape& shape);
-  template <typename LiteralNativeT>
-  bool ParseSparseLiteralHelper(Literal* literal, const Shape& shape);
 
-  // Sets the sub-value of literal at the given index to the given value. The
-  // literal's shape must have the default layout.
-  bool SetValueInLiteral(tensorflow::int64 value,
-                         tensorflow::int64 linear_index, Literal* literal);
-  bool SetValueInLiteral(double value, tensorflow::int64 linear_index,
+  // Sets the sub-value of literal at the given linear or sparse index to the
+  // given value. If the literal is dense, it myst have the default layout.
+  //
+  // `loc` should be the source location of the value.
+  bool SetValueInLiteral(LocTy loc, tensorflow::int64 value,
+                         LinearOrMultiIndex index, Literal* literal);
+  bool SetValueInLiteral(LocTy loc, double value, LinearOrMultiIndex index,
                          Literal* literal);
-  bool SetValueInLiteral(bool value, tensorflow::int64 linear_index,
+  bool SetValueInLiteral(LocTy loc, bool value, LinearOrMultiIndex index,
                          Literal* literal);
+  bool SetValueInLiteral(LocTy loc, std::complex<double> value,
+                         LinearOrMultiIndex index, Literal* literal);
+  // `loc` should be the source location of the value.
   template <typename LiteralNativeT, typename ParsedElemT>
-  bool SetValueInLiteralHelper(ParsedElemT value,
-                               tensorflow::int64 linear_index,
-                               Literal* literal);
+  bool SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
+                               LinearOrMultiIndex index, Literal* literal);
+
+  // Checks whether the given value is within the range of LiteralNativeT.
+  // `loc` should be the source location of the value.
+  template <typename LiteralNativeT, typename ParsedElemT>
+  bool CheckParsedValueIsInRange(LocTy loc, ParsedElemT value);
+  template <typename LiteralNativeT>
+  bool CheckParsedValueIsInRange(LocTy loc, std::complex<double> value);
 
   bool ParseOperands(std::vector<HloInstruction*>* operands);
   // Fills parsed operands into 'operands' and expects a certain number of
@@ -257,7 +272,8 @@ class HloParser {
   bool ParseName(string* result);
   bool ParseAttributeName(string* result);
   bool ParseString(string* result);
-  bool ParseDimensionSizes(std::vector<int64>* dimension_sizes);
+  bool ParseDimensionSizes(std::vector<int64>* dimension_sizes,
+                           std::vector<bool>* dynamic_dimensions);
   bool ParseShape(Shape* result);
   bool ParseLayout(Layout* layout);
   bool ParseOpcode(HloOpcode* result);
@@ -267,6 +283,7 @@ class HloParser {
   bool ParsePrecision(PrecisionConfig::Precision* result);
   bool ParseInt64(tensorflow::int64* result);
   bool ParseDouble(double* result);
+  bool ParseComplex(std::complex<double>* result);
   bool ParseBool(bool* result);
   bool ParseToken(TokKind kind, const string& msg);
 
@@ -642,8 +659,14 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       tensorflow::int64 parameter_number;
       if (!ParseToken(TokKind::kLparen,
                       "expects '(' before parameter number") ||
-          !ParseInt64(&parameter_number) ||
-          !ParseToken(TokKind::kRparen, "expects ')' after parameter number") ||
+          !ParseInt64(&parameter_number)) {
+        return false;
+      }
+      if (parameter_number < 0) {
+        Error(lexer_.GetLoc(), "parameter number must be >= 0");
+        return false;
+      }
+      if (!ParseToken(TokKind::kRparen, "expects ')' after parameter number") ||
           !ParseAttributes(attrs)) {
         return false;
       }
@@ -829,6 +852,14 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
           HloInstruction::CreateCollectivePermute(shape, operands[0], pairs));
       break;
     }
+    case HloOpcode::kReplicaId: {
+      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateReplicaId());
+      break;
+    }
     case HloOpcode::kReshape: {
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
@@ -863,14 +894,23 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<tensorflow::int64>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
+      optional<HloComputation*> to_apply;
+      // TODO(b/122298745): Make this required.
+      attrs["to_apply"] = {/*required=*/false, AttrTy::kHloComputation,
+                           &to_apply};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs) ||
           dimensions->size() != 1) {
         return false;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateSort(
-          shape, dimensions->at(0),
-          /*keys=*/operands[0],
-          /*values=*/absl::Span<HloInstruction* const>(operands).subspan(1)));
+      if (to_apply.has_value()) {
+        instruction = builder->AddInstruction(HloInstruction::CreateSort(
+            shape, dimensions->at(0), operands, to_apply.value()));
+      } else {
+        instruction = builder->AddInstruction(HloInstruction::CreateSort(
+            shape, dimensions->at(0),
+            /*keys=*/operands[0],
+            /*values=*/absl::Span<HloInstruction* const>(operands).subspan(1)));
+      }
       break;
     }
     case HloOpcode::kTuple: {
@@ -1170,24 +1210,39 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<tensorflow::int64>> dynamic_slice_sizes;
       attrs["dynamic_slice_sizes"] = {
           /*required=*/true, AttrTy::kBracedInt64List, &dynamic_slice_sizes};
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      LocTy loc = lexer_.GetLoc();
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
+      if (operands.empty()) {
+        return Error(loc, "Expected at least one operand.");
+      }
+      if (!(operands.size() == 2 && operands[1]->shape().rank() == 1) &&
+          operands.size() != 1 + operands[0]->shape().rank()) {
+        return Error(loc, "Wrong number of operands.");
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateDynamicSlice(
-          shape, /*operand=*/operands[0], /*start_indices=*/operands[1],
+          shape, /*operand=*/operands[0],
+          /*start_indices=*/absl::MakeSpan(operands).subspan(1),
           *dynamic_slice_sizes));
       break;
     }
     case HloOpcode::kDynamicUpdateSlice: {
-      if (!ParseOperands(&operands, /*expected_size=*/3) ||
-          !ParseAttributes(attrs)) {
+      LocTy loc = lexer_.GetLoc();
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
+      }
+      if (operands.size() < 2) {
+        return Error(loc, "Expected at least two operands.");
+      }
+      if (!(operands.size() == 3 && operands[2]->shape().rank() == 1) &&
+          operands.size() != 2 + operands[0]->shape().rank()) {
+        return Error(loc, "Wrong number of operands.");
       }
       instruction =
           builder->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
               shape, /*operand=*/operands[0], /*update=*/operands[1],
-              /*start_indices=*/operands[2]));
+              /*start_indices=*/absl::MakeSpan(operands).subspan(2)));
       break;
     }
     case HloOpcode::kTranspose: {
@@ -1287,7 +1342,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       // the infeed instruction. ShapeUtil::GetTupleElementShape will check fail
       // if the shape is not a non-empty tuple, so add guard so an error message
       // can be emitted instead of a check fail
-      if (!ShapeUtil::IsTuple(shape) && !ShapeUtil::IsEmptyTuple(shape)) {
+      if (!shape.IsTuple() && !ShapeUtil::IsEmptyTuple(shape)) {
         return Error(lexer_.GetLoc(),
                      "infeed must have a non-empty tuple shape");
       }
@@ -1359,6 +1414,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
       optional<int64> feature_group_count;
+      optional<int64> batch_group_count;
       optional<std::vector<Shape>> operand_layout_constraints;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
@@ -1368,6 +1424,8 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
       attrs["feature_group_count"] = {/*required=*/false, AttrTy::kInt64,
                                       &feature_group_count};
+      attrs["batch_group_count"] = {/*required=*/false, AttrTy::kInt64,
+                                    &batch_group_count};
       attrs["operand_layout_constraints"] = {
           /*required=*/false, AttrTy::kShapeList, &operand_layout_constraints};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
@@ -1422,6 +1480,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       if (feature_group_count.has_value()) {
         instruction->set_feature_group_count(*feature_group_count);
+      }
+      if (batch_group_count.has_value()) {
+        instruction->set_batch_group_count(*batch_group_count);
       }
       break;
     }
@@ -1800,130 +1861,150 @@ bool HloParser::ParseInstructionNames(
                     "expects '}' at the end of instruction name list");
 }
 
-bool HloParser::SetValueInLiteral(tensorflow::int64 value,
-                                  tensorflow::int64 linear_index,
-                                  Literal* literal) {
+bool HloParser::SetValueInLiteral(LocTy loc, tensorflow::int64 value,
+                                  LinearOrMultiIndex index, Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
     case S8:
-      return SetValueInLiteralHelper<tensorflow::int8>(value, linear_index,
+      return SetValueInLiteralHelper<tensorflow::int8>(loc, value, index,
                                                        literal);
     case S16:
-      return SetValueInLiteralHelper<tensorflow::int16>(value, linear_index,
+      return SetValueInLiteralHelper<tensorflow::int16>(loc, value, index,
                                                         literal);
     case S32:
-      return SetValueInLiteralHelper<tensorflow::int32>(value, linear_index,
+      return SetValueInLiteralHelper<tensorflow::int32>(loc, value, index,
                                                         literal);
     case S64:
-      return SetValueInLiteralHelper<tensorflow::int64>(value, linear_index,
+      return SetValueInLiteralHelper<tensorflow::int64>(loc, value, index,
                                                         literal);
     case U8:
-      return SetValueInLiteralHelper<tensorflow::uint8>(value, linear_index,
+      return SetValueInLiteralHelper<tensorflow::uint8>(loc, value, index,
                                                         literal);
     case U16:
-      return SetValueInLiteralHelper<tensorflow::uint16>(value, linear_index,
+      return SetValueInLiteralHelper<tensorflow::uint16>(loc, value, index,
                                                          literal);
     case U32:
-      return SetValueInLiteralHelper<tensorflow::uint32>(value, linear_index,
+      return SetValueInLiteralHelper<tensorflow::uint32>(loc, value, index,
                                                          literal);
     case U64:
-      return SetValueInLiteralHelper<tensorflow::uint64>(value, linear_index,
+      return SetValueInLiteralHelper<tensorflow::uint64>(loc, value, index,
                                                          literal);
     case PRED:
       // Bool type literals with rank >= 1 are printed in 0s and 1s.
-      return SetValueInLiteralHelper<bool>(static_cast<bool>(value),
-                                           linear_index, literal);
+      return SetValueInLiteralHelper<bool>(loc, static_cast<bool>(value), index,
+                                           literal);
     default:
       LOG(FATAL) << "unknown integral primitive type "
                  << PrimitiveType_Name(shape.element_type());
   }
 }
 
-bool HloParser::SetValueInLiteral(double value, tensorflow::int64 linear_index,
-                                  Literal* literal) {
+bool HloParser::SetValueInLiteral(LocTy loc, double value,
+                                  LinearOrMultiIndex index, Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
     case F16:
-      return SetValueInLiteralHelper<Eigen::half>(value, linear_index, literal);
+      return SetValueInLiteralHelper<Eigen::half>(loc, value, index, literal);
     case BF16:
-      return SetValueInLiteralHelper<tensorflow::bfloat16>(value, linear_index,
+      return SetValueInLiteralHelper<tensorflow::bfloat16>(loc, value, index,
                                                            literal);
     case F32:
-      return SetValueInLiteralHelper<float>(value, linear_index, literal);
+      return SetValueInLiteralHelper<float>(loc, value, index, literal);
     case F64:
-      return SetValueInLiteralHelper<double>(value, linear_index, literal);
+      return SetValueInLiteralHelper<double>(loc, value, index, literal);
     default:
       LOG(FATAL) << "unknown floating point primitive type "
                  << PrimitiveType_Name(shape.element_type());
   }
 }
 
-bool HloParser::SetValueInLiteral(bool value, tensorflow::int64 linear_index,
-                                  Literal* literal) {
+bool HloParser::SetValueInLiteral(LocTy loc, bool value,
+                                  LinearOrMultiIndex index, Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
     case PRED:
-      return SetValueInLiteralHelper<bool>(value, linear_index, literal);
+      return SetValueInLiteralHelper<bool>(loc, value, index, literal);
     default:
       LOG(FATAL) << PrimitiveType_Name(shape.element_type())
                  << " is not PRED type";
   }
 }
 
+bool HloParser::SetValueInLiteral(LocTy loc, std::complex<double> value,
+                                  LinearOrMultiIndex index, Literal* literal) {
+  const Shape& shape = literal->shape();
+  switch (shape.element_type()) {
+    case C64:
+      return SetValueInLiteralHelper<std::complex<float>>(loc, value, index,
+                                                          literal);
+    case C128:
+      return SetValueInLiteralHelper<std::complex<double>>(loc, value, index,
+                                                           literal);
+    default:
+      LOG(FATAL) << PrimitiveType_Name(shape.element_type())
+                 << " is not a complex type type";
+  }
+}
+
+template <typename T>
+string StringifyValue(T val) {
+  return StrCat(val);
+}
+template <>
+string StringifyValue(std::complex<double> val) {
+  return StrFormat("(%f, %f)", std::real(val), std::imag(val));
+}
+
 template <typename LiteralNativeT, typename ParsedElemT>
-bool HloParser::SetValueInLiteralHelper(ParsedElemT value,
-                                        tensorflow::int64 linear_index,
+bool HloParser::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
+                                        LinearOrMultiIndex index,
                                         Literal* literal) {
-  // Check that linear_index is in range.
-  if (linear_index >= ShapeUtil::ElementsIn(literal->shape())) {
-    return TokenError(
-        StrCat("trys to set value ", value, " to a literal in shape ",
-               ShapeUtil::HumanString(literal->shape()), " at linear index ",
-               linear_index, ", but the index is out of range"));
+  if (!CheckParsedValueIsInRange<LiteralNativeT>(loc, value)) {
+    return false;
   }
 
-  if (std::isnan(value) ||
-      (std::numeric_limits<ParsedElemT>::has_infinity &&
-       (std::numeric_limits<ParsedElemT>::infinity() == value ||
-        -std::numeric_limits<ParsedElemT>::infinity() == value))) {
-    // Skip range checking for non-finite value.
-  } else if (literal->shape().element_type() == F16 ||
-             literal->shape().element_type() == BF16) {
-    if (value > kF16max || value < -kF16max) {
-      return TokenError(StrCat(
-          "value ", value, " is out of range for literal's primitive type ",
-          PrimitiveType_Name(literal->shape().element_type())));
+  // Check that the index is in range and assign into the literal
+  if (auto* linear_index = absl::get_if<tensorflow::int64>(&index)) {
+    if (*linear_index >= ShapeUtil::ElementsIn(literal->shape())) {
+      return Error(loc, StrCat("trys to set value ", StringifyValue(value),
+                               " to a literal in shape ",
+                               ShapeUtil::HumanString(literal->shape()),
+                               " at linear index ", *linear_index,
+                               ", but the index is out of range"));
     }
-  } else if (std::is_unsigned<LiteralNativeT>::value) {
-    CHECK((std::is_same<ParsedElemT, tensorflow::int64>::value ||
-           std::is_same<ParsedElemT, bool>::value))
-        << "Unimplemented checking for ParsedElemT";
+    literal->data<LiteralNativeT>().at(*linear_index) =
+        static_cast<LiteralNativeT>(value);
+  } else {
+    auto* multi_index = absl::get_if<absl::Span<const int64>>(&index);
+    CHECK(multi_index != nullptr);
 
-    ParsedElemT upper_bound;
-    if (sizeof(LiteralNativeT) >= sizeof(ParsedElemT)) {
-      upper_bound = std::numeric_limits<ParsedElemT>::max();
-    } else {
-      upper_bound =
-          static_cast<ParsedElemT>(std::numeric_limits<LiteralNativeT>::max());
+    auto invalid_idx = [&](string msg) {
+      return Error(loc, StrFormat("Invalid sparse index [%s]. %s",
+                                  absl::StrJoin(*multi_index, ", "), msg));
+    };
+
+    const auto& shape = literal->shape();
+    if (shape.rank() != multi_index->size()) {
+      return invalid_idx(
+          StrFormat("Has rank %d, but constant has shape %s, which has rank %d",
+                    multi_index->size(), shape.ToString(), shape.rank()));
     }
-    if (value > upper_bound || value < 0) {
-      // Value is out of range for LiteralNativeT.
-      return TokenError(StrCat(
-          "value ", value, " is out of range for literal's primitive type ",
-          PrimitiveType_Name(literal->shape().element_type())));
+    for (int64 i = 0; i < shape.rank(); ++i) {
+      auto idx = (*multi_index)[i];
+      if (idx < 0) {
+        return invalid_idx(StrFormat(
+            "Sub-index value at %d, namely %d, cannot be negative.", i, idx));
+      }
+      if (idx >= shape.dimensions(i)) {
+        return invalid_idx(
+            StrFormat("Sub-index at %d, namely %d, doesn't fit within shape "
+                      "dimension %d in %s",
+                      i, idx, shape.dimensions(i), shape.ToString()));
+      }
     }
-  } else if (value > static_cast<ParsedElemT>(
-                         std::numeric_limits<LiteralNativeT>::max()) ||
-             value < static_cast<ParsedElemT>(
-                         std::numeric_limits<LiteralNativeT>::lowest())) {
-    // Value is out of range for LiteralNativeT.
-    return TokenError(StrCat(
-        "value ", value, " is out of range for literal's primitive type ",
-        PrimitiveType_Name(literal->shape().element_type())));
+    literal->AppendSparseElement(*multi_index,
+                                 static_cast<LiteralNativeT>(value));
   }
-
-  literal->data<LiteralNativeT>().at(linear_index) =
-      static_cast<LiteralNativeT>(value);
   return true;
 }
 
@@ -1931,8 +2012,8 @@ bool HloParser::SetValueInLiteralHelper(ParsedElemT value,
 //  ::= tuple
 //  ::= non_tuple
 bool HloParser::ParseLiteral(Literal* literal, const Shape& shape) {
-  return ShapeUtil::IsTuple(shape) ? ParseTupleLiteral(literal, shape)
-                                   : ParseNonTupleLiteral(literal, shape);
+  return shape.IsTuple() ? ParseTupleLiteral(literal, shape)
+                         : ParseNonTupleLiteral(literal, shape);
 }
 
 // tuple
@@ -1980,7 +2061,11 @@ bool HloParser::ParseNonTupleLiteral(Literal* literal, const Shape& shape) {
 }
 
 bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
-  const tensorflow::int64 rank = ShapeUtil::Rank(shape);
+  // Cast `rank` to int because we call shape.dimensions(int rank) below, and if
+  // `rank` is an int64, that's an implicit narrowing conversion, which is
+  // implementation-defined behavior.
+  const int rank = static_cast<int>(shape.rank());
+
   // Create a literal with the given shape in default layout.
   *literal = LiteralUtil::CreateFromDimensions(
       shape.element_type(), AsInt64Slice(shape.dimensions()));
@@ -2004,6 +2089,24 @@ bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
                           }),
                   "]");
   };
+
+  auto add_one_elem_seen = [&] {
+    if (rank > 0) {
+      if (nest_level != rank) {
+        return TokenError(absl::StrFormat(
+            "expects nested array in rank %d, but sees %d", rank, nest_level));
+      }
+      elems_seen_per_dim[rank - 1]++;
+      if (elems_seen_per_dim[rank - 1] > shape.dimensions(rank - 1)) {
+        return TokenError(absl::StrFormat(
+            "expects %d elements on the minor-most dimension, but "
+            "sees more",
+            shape.dimensions(rank - 1)));
+      }
+    }
+    return true;
+  };
+
   do {
     switch (lexer_.GetKind()) {
       default:
@@ -2039,6 +2142,31 @@ bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
         lexer_.Lex();
         break;
       }
+      case TokKind::kLparen: {
+        if (!primitive_util::IsComplexType(shape.element_type())) {
+          return TokenError(
+              absl::StrFormat("unexpected '(' in literal.  Parens are only "
+                              "valid for complex literals"));
+        }
+
+        std::complex<double> value;
+        LocTy loc = lexer_.GetLoc();
+        if (!add_one_elem_seen() || !ParseComplex(&value) ||
+            !SetValueInLiteral(loc, value, linear_index++, literal)) {
+          return false;
+        }
+        break;
+      }
+      case TokKind::kDots: {
+        if (nest_level != 1) {
+          return TokenError(absl::StrFormat(
+              "expects `...` at nest level 1, but sees it at nest level %d",
+              nest_level));
+        }
+        elems_seen_per_dim[0] = shape.dimensions(0);
+        lexer_.Lex();
+        break;
+      }
       case TokKind::kComma:
         // Skip.
         lexer_.Lex();
@@ -2050,23 +2178,11 @@ bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
       case TokKind::kw_nan:
       case TokKind::kw_inf:
       case TokKind::kNegInf: {
-        if (rank > 0) {
-          if (nest_level != rank) {
-            return TokenError(
-                absl::StrFormat("expects nested array in rank %d, but sees %d",
-                                rank, nest_level));
-          }
-          elems_seen_per_dim[rank - 1]++;
-          if (elems_seen_per_dim[rank - 1] > shape.dimensions(rank - 1)) {
-            return TokenError(absl::StrFormat(
-                "expects %d elements on the minor-most dimension, but "
-                "sees more",
-                shape.dimensions(rank - 1)));
-          }
-        }
+        add_one_elem_seen();
         if (lexer_.GetKind() == TokKind::kw_true ||
             lexer_.GetKind() == TokKind::kw_false) {
-          if (!SetValueInLiteral(lexer_.GetKind() == TokKind::kw_true,
+          if (!SetValueInLiteral(lexer_.GetLoc(),
+                                 lexer_.GetKind() == TokKind::kw_true,
                                  linear_index++, literal)) {
             return false;
           }
@@ -2079,7 +2195,7 @@ bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
             return Error(loc, StrCat("expects integer for primitive type: ",
                                      PrimitiveType_Name(shape.element_type())));
           }
-          if (!SetValueInLiteral(value, linear_index++, literal)) {
+          if (!SetValueInLiteral(loc, value, linear_index++, literal)) {
             return false;
           }
         } else if (primitive_util::IsFloatingPointType(shape.element_type())) {
@@ -2090,7 +2206,7 @@ bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
                 loc, StrCat("expect floating point value for primitive type: ",
                             PrimitiveType_Name(shape.element_type())));
           }
-          if (!SetValueInLiteral(value, linear_index++, literal)) {
+          if (!SetValueInLiteral(loc, value, linear_index++, literal)) {
             return false;
           }
         } else {
@@ -2107,48 +2223,7 @@ bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
 }
 
 bool HloParser::ParseSparseLiteral(Literal* literal, const Shape& shape) {
-  switch (shape.element_type()) {
-    case PRED:
-      return ParseSparseLiteralHelper<tensorflow::uint8>(literal, shape);
-    case S8:
-      return ParseSparseLiteralHelper<tensorflow::int8>(literal, shape);
-    case S16:
-      return ParseSparseLiteralHelper<tensorflow::int16>(literal, shape);
-    case S32:
-      return ParseSparseLiteralHelper<tensorflow::int32>(literal, shape);
-    case S64:
-      return ParseSparseLiteralHelper<tensorflow::int64>(literal, shape);
-    case U8:
-      return ParseSparseLiteralHelper<tensorflow::uint8>(literal, shape);
-    case U16:
-      return ParseSparseLiteralHelper<tensorflow::uint16>(literal, shape);
-    case U32:
-      return ParseSparseLiteralHelper<tensorflow::uint32>(literal, shape);
-    case U64:
-      return ParseSparseLiteralHelper<tensorflow::uint64>(literal, shape);
-    case F16:
-      return ParseSparseLiteralHelper<Eigen::half>(literal, shape);
-    case F32:
-      return ParseSparseLiteralHelper<float>(literal, shape);
-    case BF16:
-      return ParseSparseLiteralHelper<tensorflow::bfloat16>(literal, shape);
-    case F64:
-      return ParseSparseLiteralHelper<double>(literal, shape);
-    default:
-      return Error(lexer_.GetLoc(),
-                   StrCat("invalid primitive type for sparse literal: ",
-                          PrimitiveType_Name(shape.element_type())));
-  }
-}
-
-template <typename LiteralNativeT>
-bool HloParser::ParseSparseLiteralHelper(Literal* literal, const Shape& shape) {
-  std::vector<tensorflow::int64> index;
-
-  tensorflow::int64 rank = ShapeUtil::Rank(shape);
-
   *literal = Literal(shape);
-
   if (!ParseToken(TokKind::kLbrace,
                   "expects '{' at the beginning of a sparse literal")) {
     return false;
@@ -2160,28 +2235,15 @@ bool HloParser::ParseSparseLiteralHelper(Literal* literal, const Shape& shape) {
       break;
     }
 
-    LocTy index_loc = lexer_.GetLoc();
-    index.clear();
+    std::vector<tensorflow::int64> index;
     if (lexer_.GetKind() == TokKind::kInt) {
       tensorflow::int64 single_index = lexer_.GetInt64Val();
       lexer_.Lex();
-      if (rank != 1) {
-        return Error(
-            index_loc,
-            StrCat("invalid single-dimensional index for shape with rank ",
-                   rank, ": ", single_index));
-      }
       index.push_back(single_index);
     } else {
       if (!ParseInt64List(TokKind::kLsquare, TokKind::kRsquare, TokKind::kComma,
                           &index)) {
         return false;
-      }
-      if (index.size() != rank) {
-        return Error(
-            index_loc,
-            StrCat("invalid multi-dimension index for shape with rank ", rank,
-                   ": [", StrJoin(index, ", "), "]"));
       }
     }
     if (!ParseToken(TokKind::kColon,
@@ -2189,32 +2251,50 @@ bool HloParser::ParseSparseLiteralHelper(Literal* literal, const Shape& shape) {
                     "the sparse array value")) {
       return false;
     }
+
     LocTy value_loc = lexer_.GetLoc();
-    LiteralNativeT value;
     if (lexer_.GetKind() == TokKind::kw_true ||
         lexer_.GetKind() == TokKind::kw_false) {
-      value = static_cast<LiteralNativeT>(lexer_.GetKind() == TokKind::kw_true);
+      bool value = lexer_.GetKind() == TokKind::kw_true;
+      if (!SetValueInLiteral(lexer_.GetLoc(), value, index, literal)) {
+        return false;
+      }
       lexer_.Lex();
     } else if (primitive_util::IsIntegralType(shape.element_type())) {
-      tensorflow::int64 value_s64;
-      if (!ParseInt64(&value_s64)) {
+      tensorflow::int64 value;
+      if (!ParseInt64(&value)) {
         return Error(value_loc,
                      StrCat("expects integer for primitive type: ",
                             PrimitiveType_Name(shape.element_type())));
       }
-      value = static_cast<LiteralNativeT>(value_s64);
+      if (!SetValueInLiteral(value_loc, value, index, literal)) {
+        return false;
+      }
     } else if (primitive_util::IsFloatingPointType(shape.element_type())) {
-      double value_f64;
-      if (!ParseDouble(&value_f64)) {
+      double value;
+      if (!ParseDouble(&value)) {
         return Error(value_loc,
                      StrCat("expects floating point value for primitive type: ",
                             PrimitiveType_Name(shape.element_type())));
       }
-      value = static_cast<LiteralNativeT>(value_f64);
+      if (!SetValueInLiteral(value_loc, value, index, literal)) {
+        return false;
+      }
+    } else if (primitive_util::IsComplexType(shape.element_type())) {
+      std::complex<double> value;
+      if (!ParseComplex(&value)) {
+        return Error(value_loc,
+                     StrCat("expects complex value for primitive type: ",
+                            PrimitiveType_Name(shape.element_type())));
+      }
+      if (!SetValueInLiteral(value_loc, value, index, literal)) {
+        return false;
+      }
     } else {
       LOG(FATAL) << "Unexpected element type: "
                  << PrimitiveType_Name(shape.element_type());
     }
+
     if (lexer_.GetKind() != TokKind::kRbrace &&
         !ParseToken(TokKind::kComma,
                     "expects ',' separator between sparse array elements")) {
@@ -2228,12 +2308,112 @@ bool HloParser::ParseSparseLiteralHelper(Literal* literal, const Shape& shape) {
           StrCat("number of sparse elements exceeds maximum for layout: ",
                  ShapeUtil::HumanStringWithLayout(shape)));
     }
-
-    literal->AppendSparseElement(index, value);
   }
 
   literal->SortSparseElements();
   return true;
+}
+
+// MaxFiniteValue is a type-traits helper used by
+// HloParser::CheckParsedValueIsInRange.
+template <typename T>
+struct MinMaxFiniteValue {
+  static T max() { return std::numeric_limits<T>::max(); }
+  static T min() { return std::numeric_limits<T>::lowest(); }
+};
+
+template <>
+struct MinMaxFiniteValue<Eigen::half> {
+  static double max() {
+    // Sadly this is not constexpr, so this forces `value` to be a method.
+    return static_cast<double>(Eigen::NumTraits<Eigen::half>::highest());
+  }
+  static double min() { return -max(); }
+};
+
+template <>
+struct MinMaxFiniteValue<bfloat16> {
+  static double max() { return static_cast<double>(bfloat16::highest()); }
+  static double min() { return -max(); }
+};
+
+template <typename LiteralNativeT, typename ParsedElemT>
+bool HloParser::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
+  PrimitiveType literal_ty =
+      primitive_util::NativeToPrimitiveType<LiteralNativeT>();
+  if (std::isnan(value) ||
+      (std::numeric_limits<ParsedElemT>::has_infinity &&
+       (std::numeric_limits<ParsedElemT>::infinity() == value ||
+        -std::numeric_limits<ParsedElemT>::infinity() == value))) {
+    // Skip range checking for non-finite value.
+  } else if (std::is_unsigned<LiteralNativeT>::value) {
+    CHECK((std::is_same<ParsedElemT, tensorflow::int64>::value ||
+           std::is_same<ParsedElemT, bool>::value))
+        << "Unimplemented checking for ParsedElemT";
+
+    ParsedElemT upper_bound;
+    if (sizeof(LiteralNativeT) >= sizeof(ParsedElemT)) {
+      upper_bound = std::numeric_limits<ParsedElemT>::max();
+    } else {
+      upper_bound =
+          static_cast<ParsedElemT>(std::numeric_limits<LiteralNativeT>::max());
+    }
+    if (value > upper_bound || value < 0) {
+      // Value is out of range for LiteralNativeT.
+      return Error(loc, StrCat("value ", value,
+                               " is out of range for literal's primitive type ",
+                               PrimitiveType_Name(literal_ty), " namely [0, ",
+                               upper_bound, "]."));
+    }
+  } else if (value > MinMaxFiniteValue<LiteralNativeT>::max() ||
+             value < MinMaxFiniteValue<LiteralNativeT>::min()) {
+    // Value is out of range for LiteralNativeT.
+    return Error(loc, StrCat("value ", value,
+                             " is out of range for literal's primitive type ",
+                             PrimitiveType_Name(literal_ty), " namely [",
+                             MinMaxFiniteValue<LiteralNativeT>::min(), ", ",
+                             MinMaxFiniteValue<LiteralNativeT>::max(), "]."));
+  }
+  return true;
+}
+
+template <typename LiteralNativeT>
+bool HloParser::CheckParsedValueIsInRange(LocTy loc,
+                                          std::complex<double> value) {
+  // e.g. `float` for std::complex<float>
+  using LiteralComplexComponentT =
+      decltype(std::real(std::declval<LiteralNativeT>()));
+
+  // We could do simply
+  //
+  //   return CheckParsedValueIsInRange<LiteralNativeT>(std::real(value)) &&
+  //          CheckParsedValueIsInRange<LiteralNativeT>(std::imag(value));
+  //
+  // but this would give bad error messages on failure.
+
+  auto check_component = [&](absl::string_view name, double v) {
+    if (std::isnan(v) || v == std::numeric_limits<double>::infinity() ||
+        v == -std::numeric_limits<double>::infinity()) {
+      // Skip range-checking for non-finite values.
+      return true;
+    }
+
+    double min = MinMaxFiniteValue<LiteralComplexComponentT>::min();
+    double max = MinMaxFiniteValue<LiteralComplexComponentT>::max();
+    if (v < min || v > max) {
+      // Value is out of range for LitearlComplexComponentT.
+      return Error(
+          loc,
+          StrCat(name, " part ", v,
+                 " is out of range for literal's primitive type ",
+                 PrimitiveType_Name(
+                     primitive_util::NativeToPrimitiveType<LiteralNativeT>()),
+                 ", namely [", min, ", ", max, "]."));
+    }
+    return true;
+  };
+  return check_component("real", std::real(value)) &&
+         check_component("imaginary", std::imag(value));
 }
 
 // operands ::= '(' operands1 ')'
@@ -2730,7 +2910,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
   }
 
   auto is_unique = [](string str) -> bool {
-    std::sort(str.begin(), str.end());
+    absl::c_sort(str);
     return std::unique(str.begin(), str.end()) == str.end();
   };
 
@@ -2971,14 +3151,25 @@ bool HloParser::ParseParamList() {
   return ParseToken(TokKind::kRparen, "expects ')' at the end of param list");
 }
 
-// dimension_sizes ::= '[' int64_list ']'
-bool HloParser::ParseDimensionSizes(std::vector<int64>* dimension_sizes) {
+// dimension_sizes ::= '[' dimension_list ']'
+// dimension_list
+//   ::= /*empty*/
+//   ::= <=? int64 (',' param)*
+// param ::= name shape
+bool HloParser::ParseDimensionSizes(std::vector<int64>* dimension_sizes,
+                                    std::vector<bool>* dynamic_dimensions) {
   auto parse_and_add_item = [&]() {
     tensorflow::int64 i;
+    bool is_dynamic = false;
+    if (lexer_.GetKind() == TokKind::kLeq) {
+      is_dynamic = true;
+      lexer_.Lex();
+    }
     if (!ParseInt64(&i)) {
       return false;
     }
     dimension_sizes->push_back(i);
+    dynamic_dimensions->push_back(is_dynamic);
     return true;
   };
   return ParseList(TokKind::kLsquare, TokKind::kRsquare, TokKind::kComma,
@@ -3034,12 +3225,18 @@ bool HloParser::ParseShape(Shape* result) {
   PrimitiveType primitive_type = lexer_.GetPrimitiveTypeVal();
   lexer_.Lex();
 
+  // Each element contains a dimension size and a bool indicating whether this
+  // is a dynamic dimension.
   std::vector<int64> dimension_sizes;
-  if (!ParseDimensionSizes(&dimension_sizes)) {
+  std::vector<bool> dynamic_dimensions;
+  if (!ParseDimensionSizes(&dimension_sizes, &dynamic_dimensions)) {
     return false;
   }
   result->set_element_type(primitive_type);
-  *result->mutable_dimensions() = dimension_sizes;
+  for (int i = 0; i < dimension_sizes.size(); ++i) {
+    result->add_dimensions(dimension_sizes[i]);
+    result->set_dynamic_dimension(i, dynamic_dimensions[i]);
+  }
   LayoutUtil::SetToDefaultLayout(result);
 
   if (lexer_.GetKind() == TokKind::kw_sparse) {
@@ -3313,9 +3510,18 @@ bool HloParser::ParseInt64(tensorflow::int64* result) {
 
 bool HloParser::ParseDouble(double* result) {
   switch (lexer_.GetKind()) {
-    case TokKind::kDecimal:
-      *result = lexer_.GetDecimalVal();
+    case TokKind::kDecimal: {
+      double val = lexer_.GetDecimalVal();
+      // If GetDecimalVal returns +/-inf, that means that we overflowed
+      // `double`.
+      if (std::isinf(val)) {
+        return TokenError(StrCat("Constant is out of range for double (+/-",
+                                 std::numeric_limits<double>::max(),
+                                 ") and so is unparsable."));
+      }
+      *result = val;
       break;
+    }
     case TokKind::kInt:
       *result = static_cast<double>(lexer_.GetInt64Val());
       break;
@@ -3331,6 +3537,42 @@ bool HloParser::ParseDouble(double* result) {
     default:
       return TokenError("expects decimal or integer");
   }
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParser::ParseComplex(std::complex<double>* result) {
+  if (lexer_.GetKind() != TokKind::kLparen) {
+    return TokenError("expects '(' before complex number");
+  }
+  lexer_.Lex();
+
+  double real;
+  LocTy loc = lexer_.GetLoc();
+  if (!ParseDouble(&real)) {
+    return Error(loc,
+                 "expect floating-point value for real part of complex number");
+  }
+
+  if (lexer_.GetKind() != TokKind::kComma) {
+    return TokenError(
+        absl::StrFormat("expect comma after real part of complex literal"));
+  }
+  lexer_.Lex();
+
+  double imag;
+  loc = lexer_.GetLoc();
+  if (!ParseDouble(&imag)) {
+    return Error(
+        loc,
+        "expect floating-point value for imaginary part of complex number");
+  }
+
+  if (lexer_.GetKind() != TokKind::kRparen) {
+    return TokenError(absl::StrFormat("expect ')' after complex number"));
+  }
+
+  *result = std::complex<double>(real, imag);
   lexer_.Lex();
   return true;
 }

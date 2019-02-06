@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -121,8 +120,8 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::NumaMapAndBatch")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::NumaMapAndBatch")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -321,7 +320,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         }
         workers_.resize(num_workers);
         for (size_t i = 0; i < num_workers; ++i) {
-          workers_[i] = MakeUnique<NumaWorkerBlock>(this);
+          workers_[i] = absl::make_unique<NumaWorkerBlock>(this);
           TF_RETURN_IF_ERROR(
               workers_[i]->manager.Restore(ctx, reader, this, i));
         }

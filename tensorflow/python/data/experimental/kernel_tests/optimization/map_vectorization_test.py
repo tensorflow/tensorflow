@@ -22,9 +22,11 @@ import numpy as np
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
+from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -225,6 +227,10 @@ def _generate_csv_test_case():
 
 
 def _generate_parse_single_example_test_case():
+  # When sparse tensors are used, map_vectorization is not
+  # attempted because the output_shapes of the map dataset are not defined.
+  # TODO(rachelim): Consider being more lax with checking the output_shapes of
+  # the map node.
 
   def parse_example_factory():
 
@@ -243,8 +249,6 @@ def _generate_parse_single_example_test_case():
                     feature={
                         "dense_int": _int64_feature(i),
                         "dense_str": _bytes_feature(str(i)),
-                        "sparse_int": _int64_feature(i, i * 2, i * 4, i * 8),
-                        "sparse_str": _bytes_feature(*["abc"] * i)
                     })).SerializeToString() for i in range(10)
         ]))
 
@@ -252,8 +256,6 @@ def _generate_parse_single_example_test_case():
     features = {
         "dense_int": parsing_ops.FixedLenFeature((), dtypes.int64, 0),
         "dense_str": parsing_ops.FixedLenFeature((), dtypes.string, ""),
-        "sparse_int": parsing_ops.VarLenFeature(dtypes.int64),
-        "sparse_str": parsing_ops.VarLenFeature(dtypes.string),
     }
     return parsing_ops.parse_single_example(x, features)
 
@@ -349,14 +351,18 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.map(map_fn, num_parallel_calls)
       dataset = dataset.batch(100)
       options = dataset_ops.Options()
+      options.experimental_optimization.apply_default_optimizations = False
       options.experimental_optimization.map_and_batch_fusion = False
       dataset = dataset.with_options(options)
       return dataset
 
     unoptimized = _make_dataset([map_node_name, "Batch"])
-    optimized = _make_dataset(["Batch", map_node_name]
-                              if expect_optimized else [map_node_name, "Batch"])
+    # Note that because of the `ChooseDataset` fork, we can't use `assert_next`
+    # to verify the optimization result.
+    optimized = _make_dataset(
+        [] if expect_optimized else [map_node_name, "Batch"])
     options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_vectorization = True
     optimized = optimized.with_options(options)
     return unoptimized, optimized
@@ -368,23 +374,22 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
                                                      num_parallel_calls)
     self.assertDatasetsEqual(unoptimized, optimized)
 
-  # TODO(b/117581999): Add eager coverage for the following tests.
-  def testSkipEagerOptimizationBadMapFn(self):
+  def testOptimizationBadMapFn(self):
     # Test map functions that give an error
     def map_fn(x):
       # x has leading dimension 5, this will raise an error
       return array_ops.gather(x, 10)
 
-    base_dataset = dataset_ops.Dataset.range(5).repeat(5).batch(
-        5, drop_remainder=True)
-    _, optimized = self._get_test_datasets(base_dataset, map_fn)
-    nxt = dataset_ops.make_one_shot_iterator(optimized).get_next()
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  r"indices = 10 is not in \[0, 5\)"):
+      base_dataset = dataset_ops.Dataset.range(5).repeat(5).batch(
+          5, drop_remainder=True)
+      _, optimized = self._get_test_datasets(base_dataset, map_fn)
+      nxt = dataset_ops.make_one_shot_iterator(optimized).get_next()
       self.evaluate(nxt)
 
   def testOptimizationWithCapturedInputs(self):
-    # Tests that vectorization works with captured inputs
+    # Tests that vectorization works with captured inputs.
     y = constant_op.constant(1, shape=(2,))
     z = constant_op.constant(2, shape=(2,))
 
@@ -397,8 +402,85 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
         base_dataset, map_fn, expect_optimized=True)
     self.assertDatasetsEqual(optimized, unoptimized)
 
-  # TODO(b/117581999): Add eager coverage for the following tests.
-  def testSkipEagerOptimizationIgnoreStateful(self):
+  def testOptimizationWithMapAndBatchFusion(self):
+    # Tests that vectorization works on fused map and batch.
+    y = constant_op.constant(1, shape=(2,))
+    z = constant_op.constant(2, shape=(2,))
+
+    def map_fn(x):
+      return x, y, z
+
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    base_dataset = dataset_ops.Dataset.from_tensor_slices([[1, 2],
+                                                           [3, 4]]).repeat(5)
+    base_dataset = base_dataset.with_options(options)
+
+    def _make_dataset(node_names):
+      dataset = base_dataset.apply(optimization.assert_next(node_names))
+      dataset = dataset.apply(batching.map_and_batch(map_fn, 100))
+      return dataset
+
+    unoptimized = _make_dataset(["MapAndBatch"])
+    optimized = _make_dataset([])
+    options = dataset_ops.Options()
+    options.experimental_optimization.map_vectorization = True
+    optimized = optimized.with_options(options)
+    self.assertDatasetsEqual(optimized, unoptimized)
+
+  @parameterized.named_parameters(
+      ("1", True, True),
+      ("2", True, False),
+      ("3", False, True),
+      ("4", False, False),
+  )
+  def testOptimizationWithChainedMapAndBatch(self, fuse_first, fuse_second):
+    # Tests that vectorization works on chained map and batch functions.
+    def map_fn(x):
+      return x * 2
+
+    unoptimized_seq = []
+
+    def make_apply_fn(is_fused):
+      if is_fused:
+        unoptimized_seq.append("MapAndBatch")
+
+        def apply_fn(dataset):
+          return dataset.apply(
+              batching.map_and_batch(map_fn, 2, 12, drop_remainder=True))
+
+        return apply_fn
+      else:
+        unoptimized_seq.extend(["ParallelMap", "Batch"])
+
+        def apply_fn(dataset):
+          return dataset.map(map_fn, 12).batch(2, drop_remainder=True)
+
+        return apply_fn
+
+    base_dataset = dataset_ops.Dataset.range(1000)
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    base_dataset = base_dataset.with_options(options)
+
+    apply_fn_1 = make_apply_fn(fuse_first)
+    apply_fn_2 = make_apply_fn(fuse_second)
+
+    def make_dataset(node_names):
+      dataset = base_dataset.apply(optimization.assert_next(node_names))
+      dataset = apply_fn_1(dataset)
+      dataset = apply_fn_2(dataset)
+      return dataset
+
+    unoptimized = make_dataset(unoptimized_seq)
+    optimized = make_dataset([])
+    options = dataset_ops.Options()
+    options.experimental_optimization.map_vectorization = True
+    optimized = optimized.with_options(options)
+
+    self.assertDatasetsEqual(optimized, unoptimized)
+
+  def testOptimizationIgnoreStateful(self):
 
     def map_fn(x):
       with ops.control_dependencies([check_ops.assert_equal(x, 0)]):
@@ -408,10 +490,13 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
                                                            [3, 4]]).repeat(5)
     unoptimized, optimized = self._get_test_datasets(
         base_dataset, map_fn, expect_optimized=False)
-    self.assertDatasetsRaiseSameError(
-        unoptimized, optimized, errors.InvalidArgumentError,
-        [("OneShotIterator", "OneShotIterator_1", 1),
-         ("IteratorGetNext", "IteratorGetNext_1", 1)])
+    replacements = None
+    if not context.executing_eagerly():
+      # In graph mode, the ops have unique names.
+      replacements = [("OneShotIterator", "OneShotIterator_1", 1),
+                      ("IteratorGetNext", "IteratorGetNext_1", 1)]
+    self.assertDatasetsRaiseSameError(unoptimized, optimized,
+                                      errors.InvalidArgumentError, replacements)
 
   def testOptimizationIgnoreRagged(self):
     # Make sure we ignore inputs that might not be uniformly sized
@@ -424,8 +509,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
         base_dataset, map_fn, expect_optimized=False)
     self.assertDatasetsEqual(unoptimized, optimized)
 
-  # TODO(b/117581999): Add eager coverage for the following tests.
-  def testSkipEagerOptimizationIgnoreRaggedMap(self):
+  def testOptimizationIgnoreRaggedMap(self):
     # Don't optimize when the output of the map fn shapes are unknown.
     def map_fn(x):
       return array_ops.tile(x, x)
@@ -433,10 +517,29 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     base_dataset = dataset_ops.Dataset.range(20).batch(1, drop_remainder=True)
     unoptimized, optimized = self._get_test_datasets(
         base_dataset, map_fn, expect_optimized=False)
-    self.assertDatasetsRaiseSameError(
-        unoptimized, optimized, errors.InvalidArgumentError,
-        [("OneShotIterator", "OneShotIterator_1", 1),
-         ("IteratorGetNext", "IteratorGetNext_1", 1)])
+    replacements = None
+    if not context.executing_eagerly():
+      # In graph mode, the ops have unique names.
+      replacements = [("OneShotIterator", "OneShotIterator_1", 1),
+                      ("IteratorGetNext", "IteratorGetNext_1", 1)]
+    self.assertDatasetsRaiseSameError(unoptimized, optimized,
+                                      errors.InvalidArgumentError, replacements)
+
+  def testOptimizationWithUnknownBatchShape(self):
+    tensor = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
+
+    # Datasets with sparse tensors have unknown output shapes.
+    base_dataset = dataset_ops.Dataset.from_tensors(tensor)
+    unoptimized = base_dataset.apply(batching.map_and_batch(lambda x: x, 2))
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    unoptimized = unoptimized.with_options(options)
+
+    options = dataset_ops.Options()
+    options.experimental_optimization.map_vectorization = True
+    optimized = unoptimized.with_options(options)
+    self.assertDatasetsEqual(unoptimized, optimized)
 
 
 if __name__ == "__main__":

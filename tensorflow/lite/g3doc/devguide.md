@@ -180,7 +180,6 @@ bazel run tensorflow/lite/tools:visualize -- model.tflite model_viz.html
 This generates an interactive HTML page listing subgraphs, operations, and a
 graph visualization.
 
-
 ## 3. Use the TensorFlow Lite model for inference in a mobile app
 
 After completing the prior steps, you should now have a `.tflite` model file.
@@ -221,3 +220,47 @@ devices. To use the converter, refer to the
 Compile Tensorflow Lite for a Raspberry Pi by following the
 [RPi build instructions](rpi.md) This compiles a static library file (`.a`) used
 to build your app. There are plans for Python bindings and a demo app.
+
+## 4. Optimize your model (optional)
+
+There are two options. If you plan to run on CPU, we recommend that you quantize
+your weights and activation tensors. If the hardware is available, another
+option is to run on GPU for massively parallelizable workloads.
+
+### Quantization
+Compress your model size by lowering the precision of the parameters (i.e.
+neural network weights) from their training-time 32-bit floating-point
+representations into much smaller and efficient 8-bit integer ones.
+
+This will execute the heaviest computations fast in lower precision, but the
+most sensitive ones with higher precision, thus typically resulting in little to
+no final accuracy losses for the task, yet a significant speed-up over pure
+floating-point execution.
+
+The post-training quantization technique is integrated into the TensorFlow Lite
+conversion tool. Getting started is easy: after building your TensorFlow model,
+simply enable the ‘post_training_quantize’ flag in the TensorFlow Lite
+conversion tool. Assuming that the saved model is stored in saved_model_dir, the
+quantized tflite flatbuffer can be generated in command line:
+
+```
+converter=tf.contrib.lite.TocoConverter.from_saved_model(saved_model_dir)
+converter.post_training_quantize=True
+tflite_quantized_model=converter.convert()
+open(“quantized_model.tflite”, “wb”).write(tflite_quantized_model)
+```
+
+Read the full documentation [here](performance/post_training_quantization) and see a tutorial [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_quant.ipynb).
+
+### GPU
+Run on GPU GPUs are designed to have high throughput for massively
+parallelizable workloads. Thus, they are well-suited for deep neural nets, which
+consist of a huge number of operators, each working on some input tensor(s) that
+can be easily divided into smaller workloads and carried out in parallel,
+typically resulting in lower latency.
+
+Another benefit with GPU inference is its power efficiency. GPUs carry out the
+computations in a very efficient and optimized manner, so that they consume less
+power and generate less heat than when the same task is run on CPUs.
+
+Read the tutorial [here](performance/gpu) and full documentation [here](performance/gpu_advanced).

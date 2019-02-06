@@ -70,6 +70,9 @@ PlatformUtil::GetSupportedPlatforms() {
   for (se::Platform* platform : all_platforms) {
     auto compiler_status = Compiler::GetForPlatform(platform);
     if (compiler_status.ok()) {
+      if (!platform->Initialized()) {
+        TF_RETURN_IF_ERROR(platform->Initialize({}));
+      }
       platforms.push_back(platform);
     } else {
       LOG(INFO) << "platform " << platform->Name() << " present but no "
@@ -260,8 +263,8 @@ PlatformUtil::GetStreamExecutors(
     // Block here in thread_pool destructor until all devices are initialized.
   }
   VLOG(1) << "Device initialization complete";
-  if (std::all_of(stream_executors.begin(), stream_executors.end(),
-                  [](se::StreamExecutor* s) { return s == nullptr; })) {
+  if (absl::c_all_of(stream_executors,
+                     [](se::StreamExecutor* s) { return s == nullptr; })) {
     return InternalError("no supported devices found for platform %s",
                          platform->Name());
   }

@@ -38,8 +38,20 @@ class VariableHolder(object):
     self._variables = []
 
   def variable_creator_scope(self, next_creator, **kwargs):
+    """Creates variables & adds them to collections to match legacy code."""
     v = next_creator(**kwargs)
     self._variables.append(v)
+
+    collections = kwargs.get("collections")
+    trainable = v.trainable
+
+    if collections is None:
+      collections = [ops.GraphKeys.GLOBAL_VARIABLES]
+    if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
+      collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
+
+    ops.add_to_collections(collections, v)
+
     return v
 
   def __call__(self, *args, **kwargs):
@@ -48,7 +60,7 @@ class VariableHolder(object):
 
 
 # TODO(allenl): make this checkpointable
-class WrappedFunction(function.Function):
+class WrappedFunction(function.ConcreteFunction):
   """Wraps a tf V1 piece of code in a function."""
 
   def __init__(self, fn_graph, variable_holder, attrs=None, signature=None):
@@ -61,6 +73,13 @@ class WrappedFunction(function.Function):
     for f in flat_feeds:
       if not isinstance(f, ops.Tensor):
         raise ValueError("Feeds must be tensors.")
+
+    # Ignoring all feeds that are captures allows prune to be called
+    # using wrapped_func.inputs even when it uses variables
+    internal_captures = self.graph.internal_captures
+    flat_feeds = [f for f in flat_feeds
+                  if f not in internal_captures]
+
     tensor_fetches = []
     operation_fetches = []
     for f in flat_fetches:
@@ -87,7 +106,7 @@ class WrappedFunction(function.Function):
           sink_tensor = control_flow_ops.no_op()
     lift_map = lift_to_graph.lift_to_graph(
         sink_tensor, pruned_graph,
-        sources=flat_feeds + self.graph.internal_captures)
+        sources=flat_feeds + internal_captures)
     for original_fetch, identity_fetch in zip(
         tensor_fetches, identity_fetches):
       lift_map[original_fetch] = lift_map[identity_fetch]
@@ -97,6 +116,8 @@ class WrappedFunction(function.Function):
       pruned_graph.captures[external_capture] = lift_map[internal_capture]
     pruned_graph.inputs.extend(lift_map[x] for x in flat_feeds)
     pruned_graph.inputs.extend(pruned_graph.captures.values())
+
+    pruned_graph.variables = self.graph.variables
 
     def _structured_output_mapping(fetched):
       lifted = lift_map[fetched]
@@ -171,11 +192,15 @@ def wrap_function(fn, signature, name=None):
     the wrapped graph function.
   """
   holder = VariableHolder(fn)
+  func_graph_name = "wrapped_function"
+  if name is not None:
+    func_graph_name = "wrapped_function_" + name
   return WrappedFunction(
       func_graph.func_graph_from_py_func(
-          name,
+          func_graph_name,
           holder,
           args=None, kwargs=None, signature=signature,
-          add_control_dependencies=False),
+          add_control_dependencies=False,
+          collections={}),
       variable_holder=holder,
       signature=signature)

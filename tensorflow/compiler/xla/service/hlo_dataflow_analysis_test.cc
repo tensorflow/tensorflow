@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -73,8 +74,8 @@ class HloDataflowAnalysisTest : public HloTestBase,
   bool InstructionsMayInterfere(const HloOrdering& ordering,
                                 const HloInstruction* a,
                                 const HloInstruction* b) {
-    EXPECT_FALSE(ShapeUtil::IsTuple(a->shape()));
-    EXPECT_FALSE(ShapeUtil::IsTuple(b->shape()));
+    EXPECT_FALSE(a->shape().IsTuple());
+    EXPECT_FALSE(b->shape().IsTuple());
     return ordering.MayInterfere(analysis_->GetValueDefinedAt(a),
                                  analysis_->GetValueDefinedAt(b), *analysis_);
   }
@@ -1901,9 +1902,9 @@ ENTRY %AddDependency (p: f32[3]) -> f32[3] {
   EXPECT_FALSE(analysis->ValueIsDefinedAt(root));
 }
 
-INSTANTIATE_TEST_CASE_P(HloDataflowAnalysisInstantiation,
-                        HloDataflowAnalysisTest,
-                        ::testing::Values(false, true));
+INSTANTIATE_TEST_SUITE_P(HloDataflowAnalysisInstantiation,
+                         HloDataflowAnalysisTest,
+                         ::testing::Values(false, true));
 
 class HloDataflowAnalysisTestBase : public HloTestBase {
  protected:
@@ -1970,12 +1971,13 @@ TEST_F(DoesNotUseOperandBufferTest, FusedDynamicUpdateSlice) {
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =
       builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-          data_shape, gte1, update, starts));
+          data_shape, gte1, update,
+          std::initializer_list<HloInstruction*>({starts})));
   builder.AddInstruction(
       HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
 
@@ -2012,12 +2014,13 @@ TEST_F(DoesNotUseOperandBufferTest, IndirectUses) {
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =
       builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-          data_shape, gte1, update, starts));
+          data_shape, gte1, update,
+          std::initializer_list<HloInstruction*>({starts})));
   builder.AddInstruction(
       HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
 
@@ -2150,17 +2153,17 @@ TEST_F(CanShareOperandBufferWithUserTest,
 
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, data_shape, "param0"));
-  auto index = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int64>({0, 0})));
-  auto ds = builder.AddInstruction(
-      HloInstruction::CreateDynamicSlice(slice_shape, param, index, {1, 2, 2}));
+  auto zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int64>(0)));
+  auto ds = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+      slice_shape, param, {zero, zero}, {1, 2, 2}));
 
-  auto dus = builder.AddInstruction(
-      HloInstruction::CreateDynamicUpdateSlice(data_shape, param, ds, index));
+  auto dus = builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+      data_shape, param, ds, {zero, zero}));
 
   BuildModule(builder.Build());
   auto fusion = computation_->CreateFusionInstruction(
-      {dus, ds, index}, HloInstruction::FusionKind::kLoop);
+      {dus, ds, zero}, HloInstruction::FusionKind::kLoop);
   RunAnalysis();
 
   EXPECT_TRUE(
@@ -2219,12 +2222,13 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =
       builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-          data_shape, gte1, update, starts));
+          data_shape, gte1, update,
+          std::initializer_list<HloInstruction*>({starts})));
   builder.AddInstruction(
       HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
 
@@ -2259,12 +2263,13 @@ TEST_F(CanShareOperandBufferWithUserTest,
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =
       builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-          data_shape_bf16, convert1, update, starts));
+          data_shape_bf16, convert1, update,
+          std::initializer_list<HloInstruction*>({starts})));
 
   auto convert2 = builder.AddInstruction(
       HloInstruction::CreateConvert(data_shape, dynamic_update_slice));
@@ -2290,10 +2295,13 @@ TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
       HloInstruction::CreateParameter(0, data_shape, "data"));
   auto update = builder.AddInstruction(
       HloInstruction::CreateParameter(1, update_shape, "update"));
-  auto starts = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, starts_shape, "starts"));
+  auto start0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, starts_shape, "start0"));
+  auto start1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(3, starts_shape, "start1"));
+
   auto dus = builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-      data_shape, data, update, starts));
+      data_shape, data, update, {start0, start1}));
 
   BuildModuleAndRunAnalysis(builder.Build());
 
@@ -2304,7 +2312,9 @@ TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
   EXPECT_FALSE(
       dataflow_analysis_->CanShareOperandBufferWithUser(update, {}, dus, {}));
   EXPECT_FALSE(
-      dataflow_analysis_->CanShareOperandBufferWithUser(starts, {}, dus, {}));
+      dataflow_analysis_->CanShareOperandBufferWithUser(start0, {}, dus, {}));
+  EXPECT_FALSE(
+      dataflow_analysis_->CanShareOperandBufferWithUser(start1, {}, dus, {}));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, ScatterCanShare) {
@@ -2347,14 +2357,16 @@ TEST_F(CanShareOperandBufferWithUserTest, ScatterCanShare) {
 
 TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {
   auto builder = HloComputation::Builder(TestName());
+  module_ = CreateNewVerifiedModule();
 
   Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
   auto keys = builder.AddInstruction(
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
-  auto sort =
-      builder.AddInstruction(HloInstruction::CreateSort(keys_shape, 0, keys));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* sort, MakeSortHlo(keys_shape, {keys}, -1, &builder, module_.get()));
 
-  BuildModuleAndRunAnalysis(builder.Build());
+  computation_ = module_->AddEntryComputation(builder.Build());
+  RunAnalysis();
 
   EXPECT_TRUE(
       dataflow_analysis_->CanShareOperandBufferWithUser(keys, {}, sort, {}));
@@ -2362,6 +2374,7 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {
 
 TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
   auto builder = HloComputation::Builder(TestName());
+  module_ = CreateNewVerifiedModule();
 
   Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
   Shape values_shape = ShapeUtil::MakeShape(F32, {8});
@@ -2369,11 +2382,13 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
   auto values = builder.AddInstruction(
       HloInstruction::CreateParameter(1, values_shape, "values"));
-  auto sort = builder.AddInstruction(HloInstruction::CreateSort(
-      ShapeUtil::MakeTupleShape({keys_shape, values_shape}), 0, keys,
-      {values}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* sort,
+      MakeSortHlo(ShapeUtil::MakeTupleShape({keys_shape, values_shape}),
+                  {keys, values}, 0, &builder, module_.get()));
 
-  BuildModuleAndRunAnalysis(builder.Build());
+  computation_ = module_->AddEntryComputation(builder.Build());
+  RunAnalysis();
 
   // The buffer for the keys can be shared with the first tuple entry.
   EXPECT_TRUE(

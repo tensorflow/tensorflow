@@ -24,13 +24,9 @@ import six
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras import models as models_lib
 from tensorflow.python.keras import optimizers
-from tensorflow.python.keras.engine import sequential
-from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.metrics import Metric
-from tensorflow.python.keras.models import model_from_json
-from tensorflow.python.keras.utils import metrics_utils
+from tensorflow.python.keras.saving import model_from_json
+from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -41,7 +37,7 @@ from tensorflow.python.saved_model import save as save_lib
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training import mode_keys
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.checkpointable import graph_view
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
@@ -56,7 +52,7 @@ def export(
   `save_model` generates new files/folders under the `saved_model_path` folder:
   1) a checkpoint containing the model weights.
   2) a saved_model.pb file containing the model's MetaGraphs. The prediction
-     graph is always exported. The evaluaton and training graphs are exported
+     graph is always exported. The evaluation and training graphs are exported
      if the following conditions are met:
      - Evaluation: model loss is defined.
      - Training: model is compiled with an optimizer defined under `tf.train`.
@@ -135,7 +131,7 @@ def export(
   if serving_only:
     save_lib.save(
         model, export_dir,
-        signatures=training_utils.trace_model_call(model, input_signature))
+        signatures=saving_utils.trace_model_call(model, input_signature))
   else:
     _save_v1_format(model, export_dir, custom_objects, as_text, input_signature)
 
@@ -167,6 +163,8 @@ def _export_model_variables(model, saved_model_path):
 
 def _save_v1_format(model, path, custom_objects, as_text, input_signature):
   """Exports model to v1 SavedModel format."""
+  from tensorflow.python.keras.engine import sequential  # pylint: disable=g-import-not-at-top
+
   if not model._is_graph_network:
     if isinstance(model, sequential.Sequential):
       # If input shape is not directly set in the model, the exported model
@@ -222,7 +220,8 @@ def _save_v1_format(model, path, custom_objects, as_text, input_signature):
 
 def _get_var_list(model):
   """Returns list of all checkpointed saveable objects in the model."""
-  return checkpointable_utils.named_saveables(model)
+  var_list, _, _ = graph_view.ObjectGraphView(model).serialize_object_graph()
+  return var_list
 
 
 def create_placeholder(spec):
@@ -250,15 +249,15 @@ def _export_mode(
     ValueError: If the train/eval mode is being exported, but the model does
       not have an optimizer.
   """
+  from tensorflow.python.keras import models as models_lib  # pylint: disable=g-import-not-at-top
   compile_clone = (mode != mode_keys.ModeKeys.PREDICT)
   if compile_clone and not model.optimizer:
     raise ValueError(
         'Model does not have an optimizer. Cannot export mode %s' % mode)
 
   model_graph = ops.get_default_graph()
-  with ops.Graph().as_default() as g:
-
-    K.set_learning_phase(mode == mode_keys.ModeKeys.TRAIN)
+  with ops.Graph().as_default() as g, K.learning_phase_scope(
+      mode == mode_keys.ModeKeys.TRAIN):
 
     if input_signature is None:
       input_tensors = None
@@ -289,7 +288,7 @@ def _export_mode(
       clone._make_predict_function()
     g.get_collection_ref(ops.GraphKeys.UPDATE_OPS).extend(clone.state_updates)
 
-    clone_var_list = checkpointable_utils.named_saveables(clone)
+    clone_var_list = _get_var_list(clone)
 
     with session.Session().as_default():
       if has_saved_vars:
@@ -331,7 +330,7 @@ def _create_signature_def_map(model, mode):
     inputs_dict.update(targets_dict)
   outputs_dict = {name: x
                   for name, x in zip(model.output_names, model.outputs)}
-  metrics = metrics_utils.extract_model_metrics_as_v1_metrics(model)
+  metrics = saving_utils.extract_model_metrics(model)
 
   # Add metric variables to the `LOCAL_VARIABLES` collection. Metric variables
   # are by default not added to any collections. We are doing this here, so
@@ -339,6 +338,7 @@ def _create_signature_def_map(model, mode):
   local_vars = set(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES))
   vars_to_add = set()
   if metrics is not None:
+    from tensorflow.python.keras.metrics import Metric  # pylint: disable=g-import-not-at-top
     for key, value in six.iteritems(metrics):
       if isinstance(value, Metric):
         vars_to_add.update(value.variables)

@@ -736,10 +736,11 @@ class BaseSession(SessionInterface):
     if self._session is not None:
       try:
         tf_session.TF_DeleteSession(self._session)
-      except AttributeError:
-        # At shutdown, `c_api_util` or `tf_session` may have been garbage
-        # collected, causing the above method calls to fail. In this case,
-        # silently leak since the program is about to terminate anyway.
+      except (AttributeError, TypeError):
+        # At shutdown, `c_api_util`, `tf_session`, or
+        # `tf_session.TF_DeleteSession` may have been garbage collected, causing
+        # the above method calls to fail. In this case, silently leak since the
+        # program is about to terminate anyway.
         pass
       self._session = None
 
@@ -1531,7 +1532,7 @@ class Session(BaseSession):
 
     If no `graph` argument is specified when constructing the session,
     the default graph will be launched in the session. If you are
-    using more than one graph (created with `tf.Graph()` in the same
+    using more than one graph (created with `tf.Graph()`) in the same
     process, you will have to use different sessions for each graph,
     but each graph can be used in multiple sessions. In this case, it
     is often clearer to pass the graph to be launched explicitly to
@@ -1674,7 +1675,7 @@ class InteractiveSession(BaseSession):
 
     If no `graph` argument is specified when constructing the session,
     the default graph will be launched in the session. If you are
-    using more than one graph (created with `tf.Graph()` in the same
+    using more than one graph (created with `tf.Graph()`) in the same
     process, you will have to use different sessions for each graph,
     but each graph can be used in multiple sessions. In this case, it
     is often clearer to pass the graph to be launched explicitly to

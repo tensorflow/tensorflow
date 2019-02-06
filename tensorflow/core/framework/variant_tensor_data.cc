@@ -43,6 +43,12 @@ Tensor* VariantTensorData::add_tensors() {
   return &(tensors_[tensors_.size() - 1]);
 }
 
+template <typename... TensorConstructorArgs>
+Tensor* VariantTensorData::add_tensor(TensorConstructorArgs&&... args) {
+  tensors_.emplace_back(std::forward<TensorConstructorArgs>(args)...);
+  return &tensors_.back();
+}
+
 void VariantTensorData::ToProto(VariantTensorDataProto* proto) const {
   proto->set_type_name(type_name());
   proto->set_metadata(metadata_);

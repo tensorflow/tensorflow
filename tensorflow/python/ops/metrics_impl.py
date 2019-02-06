@@ -1295,7 +1295,7 @@ def mean_squared_error(labels,
 
   predictions, labels, weights = _remove_squeezable_dimensions(
       predictions=predictions, labels=labels, weights=weights)
-  squared_error = math_ops.square(labels - predictions)
+  squared_error = math_ops.squared_difference(labels, predictions)
   return mean(squared_error, weights, metrics_collections, updates_collections,
               name or 'mean_squared_error')
 

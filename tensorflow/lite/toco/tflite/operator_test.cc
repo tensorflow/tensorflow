@@ -112,6 +112,7 @@ class OperatorTest : public ::testing::Test {
 
 TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<FloorOperator>("FLOOR", OperatorType::kFloor);
+  CheckSimpleOperator<CeilOperator>("CEIL", OperatorType::kCeil);
   CheckSimpleOperator<ReluOperator>("RELU", OperatorType::kRelu);
   CheckSimpleOperator<Relu1Operator>("RELU_N1_TO_1", OperatorType::kRelu1);
   CheckSimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6);
@@ -150,6 +151,8 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<FloorModOperator>("FLOOR_MOD", OperatorType::kFloorMod);
   CheckSimpleOperator<RangeOperator>("RANGE", OperatorType::kRange);
   CheckSimpleOperator<FillOperator>("FILL", OperatorType::kFill);
+  CheckSimpleOperator<ReverseV2Operator>("REVERSE_V2",
+                                         OperatorType::kReverseV2);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -159,6 +162,13 @@ TEST_F(OperatorTest, BuiltinAdd) {
       SerializeAndDeserialize(GetOperator("ADD", OperatorType::kAdd), op);
   EXPECT_EQ(op.fused_activation_function,
             output_toco_op->fused_activation_function);
+}
+
+TEST_F(OperatorTest, BuiltinAddN) {
+  AddNOperator op;
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("ADD_N", OperatorType::kAddN), op);
+  ASSERT_NE(output_toco_op.get(), nullptr);
 }
 
 TEST_F(OperatorTest, BuiltinReducerOps) {
@@ -570,6 +580,20 @@ TEST_F(OperatorTest, TensorFlowUnsupported) {
   (*attr)["int_attr"].set_i(17);
   (*attr)["bool_attr"].set_b(true);
   {
+    auto* list = (*attr)["list_string_attr"].mutable_list();
+    list->add_s("abcde");
+    list->add_s("1234");
+    list->add_s("");
+    list->add_s("zyxwv");
+    list->add_s("!-.");
+  }
+  {
+    auto* list = (*attr)["list_float_attr"].mutable_list();
+    list->add_f(std::numeric_limits<float>::min());
+    list->add_f(2.0);
+    list->add_f(-std::numeric_limits<float>::max());
+  }
+  {
     auto* list = (*attr)["list_int_attr"].mutable_list();
     list->add_i(1);
     list->add_i(20);
@@ -588,7 +612,22 @@ TEST_F(OperatorTest, TensorFlowUnsupported) {
   EXPECT_EQ("Hello World", output_attr.at("str_attr").s());
   EXPECT_EQ(17, output_attr.at("int_attr").i());
   EXPECT_EQ(true, output_attr.at("bool_attr").b());
-
+  {
+    const auto& list = output_attr.at("list_string_attr").list();
+    ASSERT_EQ(5, list.s_size());
+    EXPECT_EQ("abcde", list.s(0));
+    EXPECT_EQ("1234", list.s(1));
+    EXPECT_EQ("", list.s(2));
+    EXPECT_EQ("zyxwv", list.s(3));
+    EXPECT_EQ("!-.", list.s(4));
+  }
+  {
+    const auto& list = output_attr.at("list_float_attr").list();
+    ASSERT_EQ(3, list.f_size());
+    EXPECT_EQ(std::numeric_limits<float>::min(), list.f(0));
+    EXPECT_EQ(2.0, list.f(1));
+    EXPECT_EQ(-std::numeric_limits<float>::max(), list.f(2));
+  }
   {
     const auto& list = output_attr.at("list_int_attr").list();
     ASSERT_EQ(4, list.i_size());
@@ -627,6 +666,15 @@ TEST_F(OperatorTest, BuiltinMirrorPad) {
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("MIRROR_PAD", OperatorType::kMirrorPad), op);
   EXPECT_EQ(op.mode, output_toco_op->mode);
+}
+
+TEST_F(OperatorTest, BuiltinUnique) {
+  UniqueOperator op;
+  op.idx_out_type = ArrayDataType::kInt64;
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("UNIQUE", OperatorType::kUnique), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
+  EXPECT_EQ(output_toco_op->idx_out_type, op.idx_out_type);
 }
 
 }  // namespace

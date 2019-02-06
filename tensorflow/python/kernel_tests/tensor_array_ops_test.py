@@ -185,8 +185,7 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual([[0.0, 0.0], [4.0, 5.0], [0.0, 0.0]],
                           self.evaluate(ta.write(1, [[4.0, 5.0]]).concat()))
 
-  @test_util.disable_control_flow_v2("b/118890905")
-  @test_util.run_v1_only("b/118890905")
+  @test_util.run_v1_only("b/122324791")
   def testTensorArrayReadOrPackNotAllValuesAvailableFillsZeros(self):
     self._testTensorArrayReadOrPackNotAllValuesAvailableFillsZeros()
 
@@ -202,10 +201,20 @@ class TensorArrayTest(test.TestCase):
     self.assertAllEqual([[0.0, 0.0], [4.0, 5.0], [0.0, 0.0]],
                         self.evaluate(ta.write(1, [[4.0, 5.0]]).concat()))
 
-  @test_util.disable_control_flow_v2("b/118890905")
-  @test_util.run_v1_only("b/118890905")
+  @test_util.run_v1_only("b/122324791")
   def testTensorArrayReadOrPackNotAllValuesAvailableInferShapeFillsZeros(self):
     self._testTensorArrayReadOrPackNotAllValuesAvailableInferShapeFillsZeros()
+
+  @test_util.run_v1_only("Uses placeholders")
+  def testSkipEagerTensorArrayReadUninitializedInferShapeFillsZeros(self):
+    with self.cached_session(use_gpu=True) as sess:
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32,
+          tensor_array_name="foo",
+          size=3)
+      val = array_ops.placeholder(dtypes.float32)
+      self.assertAllEqual(
+          [[0.0, 0.0]], sess.run(ta.write(1, val).read(0), {val: [[4.0, 5.0]]}))
 
   def _testTensorArrayUnpackRead(self, tf_dtype):
     with self.cached_session(use_gpu=True):
@@ -531,7 +540,10 @@ class TensorArrayTest(test.TestCase):
 
       # The exact error messages differ between eager execution and graph
       # construction as the former bubbles up the error from array_op.concat.
-      with self.assertRaisesOpError("shape"):
+      error_msg = ("Incompatible ranks"
+                   if control_flow_util.ENABLE_CONTROL_FLOW_V2 and
+                   not context.executing_eagerly() else "shape")
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, error_msg):
         self.evaluate(w3.concat())
 
   def testTensorArraySplitIncompatibleShapesFails(self):
@@ -1000,13 +1012,11 @@ class TensorArrayTest(test.TestCase):
     # self._testWhileLoopWritePackGradients(
     #     dynamic_size=False, dtype=tf.int64)
 
-  @test_util.disable_control_flow_v2("b/117943489 (dynamic_size)")
   @test_util.run_v1_only("b/117943489")
   def testSkipEagerWhileLoopDynamicWritePackGradients(self):
     self._testWhileLoopWritePackGradients(
         dynamic_size=True, dtype=dtypes.float32)
 
-  @test_util.disable_control_flow_v2("b/119323158")
   def testGradSerialTwoLoops(self):
     with self.session(use_gpu=True):
       def loop(x):
@@ -1207,11 +1217,14 @@ class TensorArrayTest(test.TestCase):
       c1 = constant_op.constant([4.0, 5.0])
       w1 = w0.write(3, c1)
 
-      with self.assertRaisesOpError(
-          r"Could not read index 0 twice because it was cleared after a "
-          r"previous read \(perhaps try setting clear_after_read = false\?\)"):
-        with ops.control_dependencies([r0]):
-          self.evaluate(w1.read(0))
+      if not control_flow_util.ENABLE_CONTROL_FLOW_V2:
+        # TensorArray v2 does not support clear_after_read.
+        with self.assertRaisesOpError(
+            r"Could not read index 0 twice because it was cleared after a "
+            r"previous read \(perhaps try setting clear_after_read = false\?\)"
+        ):
+          with ops.control_dependencies([r0]):
+            self.evaluate(w1.read(0))
 
       r1 = w1.read(1)
       self.assertAllEqual(c1.get_shape(), r1.shape)
@@ -1220,7 +1233,6 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaises(ValueError):
         w1.write(4, c2)
 
-  @test_util.disable_control_flow_v2("b/117943489 (dynamic_size)")
   @test_util.run_v1_only("b/117943489")
   def testUnpackShape(self):
     self._testUnpackShape()
@@ -1281,12 +1293,22 @@ class TensorArrayTest(test.TestCase):
       grad_r0_vals = session.run(grad_r0)[0]
       self.assertAllEqual(grad_r0_vals, [1.0, 0.0])
 
-  # TODO(srbs): Figure out how to enable this. This is probably failing
-  # because we are trying to stack a TensorList with invalid tensors.
-  # That is because we do not receive gradients for all list indices.
-  # Figure out how TensorArray handles this.
-  def disabletestGradientWhenNotAllComponentsRead(self):
+  @test_util.run_deprecated_v1
+  def testSkipEagerGradientWhenNotAllComponentsRead(self):
     self._testGradientWhenNotAllComponentsRead()
+
+  @test_util.run_deprecated_v1
+  def testSkipEagerWriteButNotAllComponentsReadGrad(self):
+    with self.cached_session(use_gpu=True) as session:
+      x0 = constant_op.constant(5.0)
+      x1 = constant_op.constant(10.0)
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=2).write(0, x0).write(1, x1)
+      r0 = ta.read(0)
+      # calculate (dr0/dx0, dr0/dx1).  since r0 = x0, gradients are (1, 0).
+      grad_r0_x1 = gradients_impl.gradients(ys=[r0], xs=[x0, x1], grad_ys=[1.0])
+      grad_r0_x1_vals = session.run(grad_r0_x1)
+      self.assertAllEqual(grad_r0_x1_vals, [1.0, 0.0])
 
   def _testTensorArrayUnpackDynamic(self):
     with self.cached_session(use_gpu=True) as sess:
@@ -1300,12 +1322,10 @@ class TensorArrayTest(test.TestCase):
       grad = gradients_impl.gradients(ys=[r], xs=[x])
       self.assertAllEqual(np.array([1.0, 1.0, 1.0]), self.evaluate(grad)[0])
 
-  @test_util.disable_control_flow_v2("b/117943489")
   @test_util.run_v1_only("b/117943489")
   def testSkipEagerTensorArrayUnpackDynamic(self):
     self._testTensorArrayUnpackDynamic()
 
-  @test_util.disable_control_flow_v2("b/117943489")
   @test_util.run_v1_only("b/117943489")
   def testSkipEagerTensorArraySplitDynamic(self):
     with self.session(use_gpu=True) as sess:
@@ -1323,8 +1343,8 @@ class TensorArrayTest(test.TestCase):
     with self.cached_session(use_gpu=True):
       ta = tensor_array_ops.TensorArray(
           dtype=dtypes.float32, size=0, dynamic_size=False, infer_shape=False)
-      v2_msg = ("Tried to stack elements of a empty list with "
-                "non-fully-defined shape")
+      v2_msg = ("Tried to stack elements of an empty list with "
+                "non-fully-defined element_shape")
       v1_msg = (
           "TensorArray has size zero, but element shape <unknown> is not "
           "fully defined. Currently only static shapes are supported when "
@@ -1345,7 +1365,10 @@ class TensorArrayTest(test.TestCase):
           dtype=dtypes.float32, size=0, dynamic_size=False, infer_shape=True)
       self.assertEqual(0, ta.size().eval())
       # Don't actually perform the pack.  This stores the static shape.
-      ta.unstack(array_ops.zeros([0, 3, 5])).mark_used()
+      if control_flow_util.ENABLE_CONTROL_FLOW_V2:
+        ta = ta.unstack(array_ops.zeros([0, 3, 5]))
+      else:
+        ta.unstack(array_ops.zeros([0, 3, 5])).mark_used()
       packed = ta.stack()
       concatenated = ta.concat()
       self.assertAllEqual([0, 3, 5], self.evaluate(packed).shape)
@@ -1353,12 +1376,10 @@ class TensorArrayTest(test.TestCase):
       # first dimension of zero
       self.assertAllEqual([0, 5], self.evaluate(concatenated).shape)
 
-  @test_util.disable_control_flow_v2("b/117943489")
   @test_util.run_v1_only("b/117943489")
   def testSkipEagerTensorArrayEvalEmptyWithDefault(self):
     self._testTensorArrayEvalEmptyWithDefault()
 
-  @test_util.disable_control_flow_v2("b/117943489")
   @test_util.run_v1_only("b/117943489")
   def testSkipEagerTensorArrayScatterReadAndGradients(self):
     with self.session(use_gpu=True) as session:
@@ -1386,8 +1407,30 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual([10.0, -10.0], read_vals[1])
       self.assertAllEqual([[2.0, 3.0], [4.0, 5.0]], grad_vals[0])
 
-  @test_util.disable_control_flow_v2("b/117943286")
-  @test_util.run_v1_only("b/117943286")
+  @test_util.run_v1_only("b/117943489")
+  def testSkipEagerTensorArrayScatterPartialReadAndGradients(self):
+    with self.session(use_gpu=True) as session:
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32,
+          tensor_array_name="foo",
+          size=0,
+          dynamic_size=True)
+
+      indices = constant_op.constant([1, 8])
+      value = constant_op.constant([[1.0, -1.0], [10.0, -10.0]])
+
+      w = ta.scatter(indices, value)
+      r0 = w.read(1)
+
+      # Test combined gradients + aggregation of read(0)
+      grad = gradients_impl.gradients(
+          ys=[r0], xs=[value], grad_ys=[[2.0, 3.0]])[0]
+      read_val, grad_val = session.run([r0, grad])
+
+      self.assertAllEqual([1.0, -1.0], read_val)
+      self.assertAllEqual([[2.0, 3.0], [0.0, 0.0]], grad_val)
+
+  @test_util.run_v1_only("b/118890905")
   def testTensorArrayWriteGatherAndGradients(self):
     with self.session(use_gpu=True) as session:
       ta = tensor_array_ops.TensorArray(
@@ -1470,7 +1513,7 @@ class TensorArrayTest(test.TestCase):
       if "/task:1/" in d:
         self.assertTrue(
             [s for s in dev_stats[d] if "/TensorArray" in s.node_name])
-      else:
+      elif "/host:CPU" not in d:
         self.assertFalse(
             [s for s in dev_stats[d] if "/TensorArray" in s.node_name])
 

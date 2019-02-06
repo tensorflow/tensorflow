@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.ops import array_ops
@@ -51,10 +53,31 @@ def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
     the last dimension squeezed,
     `sample_weight` could be extended by one dimension.
   """
+  y_pred_shape = y_pred.get_shape()
+  y_pred_rank = y_pred_shape.ndims
   if y_true is not None:
-    # squeeze last dim of `y_pred` or `y_true` if their rank differs by 1
-    y_true, y_pred = confusion_matrix.remove_squeezable_dimensions(
-        y_true, y_pred)
+
+    # If sparse matrix is provided as `y_true`, the last dimension in `y_pred`
+    # may be > 1. Eg: y_true = [0, 1, 2] (shape=(3,)),
+    # y_pred = [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]] (shape=(3, 3))
+    # In this case, we should not try to remove squeezable dimension.
+    y_true_shape = y_true.get_shape()
+    y_true_rank = y_true_shape.ndims
+    if (y_true_rank is not None) and (y_pred_rank is not None):
+      # Use static rank for `y_true` and `y_pred`.
+      if (y_pred_rank - y_true_rank != 1) or y_pred_shape[-1] == 1:
+        y_true, y_pred = confusion_matrix.remove_squeezable_dimensions(
+            y_true, y_pred)
+    else:
+      # Use dynamic rank.
+      rank_diff = array_ops.rank(y_pred) - array_ops.rank(y_true)
+      squeeze_dims = lambda: confusion_matrix.remove_squeezable_dimensions(  # pylint: disable=g-long-lambda
+          y_true, y_pred)
+      is_last_dim_1 = math_ops.equal(1, array_ops.shape(y_pred)[-1])
+      maybe_squeeze_dims = lambda: control_flow_ops.cond(  # pylint: disable=g-long-lambda
+          is_last_dim_1, squeeze_dims, lambda: (y_true, y_pred))
+      y_true, y_pred = control_flow_ops.cond(
+          math_ops.equal(1, rank_diff), maybe_squeeze_dims, squeeze_dims)
 
   if sample_weight is None:
     return y_pred, y_true, None
@@ -65,8 +88,6 @@ def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
   if weights_rank == 0:  # If weights is scalar, do nothing.
     return y_pred, y_true, sample_weight
 
-  y_pred_shape = y_pred.get_shape()
-  y_pred_rank = y_pred_shape.ndims
   if (y_pred_rank is not None) and (weights_rank is not None):
     # Use static rank.
     if weights_rank - y_pred_rank == 1:
@@ -128,7 +149,9 @@ def _reduce_weighted_loss(
   else:
     loss = math_ops.reduce_sum(weighted_losses)
     if reduction == losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE:
-      loss = _safe_mean(loss, _num_elements(weighted_losses))
+      num_replicas = (  # Used to convert from local to global batch size.
+          distribution_strategy_context.get_strategy().num_replicas_in_sync)
+      loss = _safe_mean(loss, num_replicas * _num_elements(weighted_losses))
   return loss
 
 
@@ -157,18 +180,13 @@ def compute_weighted_loss(losses,
   if sample_weight is None:
     sample_weight = 1.0
   with ops.name_scope(name, 'weighted_loss', (losses, sample_weight)):
-    # Save the `reduction` argument for loss normalization when distributing
-    # to multiple replicas.
-    # TODO(josh11b): Associate it with the returned op for more precision.
-    ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
-
     # Update dimensions of `sample_weight` to match with `losses` if possible.
     losses, _, sample_weight = squeeze_or_expand_dimensions(
         losses, None, sample_weight)
     losses = ops.convert_to_tensor(losses)
     input_dtype = losses.dtype
-    losses = math_ops.to_float(losses)
-    sample_weight = math_ops.to_float(sample_weight)
+    losses = math_ops.cast(losses, dtypes.float32)
+    sample_weight = math_ops.cast(sample_weight, dtypes.float32)
 
     try:
       # Broadcast weights if possible.

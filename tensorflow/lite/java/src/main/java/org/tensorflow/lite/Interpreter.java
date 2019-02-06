@@ -234,11 +234,15 @@ public final class Interpreter implements AutoCloseable {
    *     including int, float, long, and byte. {@link ByteBuffer} is the preferred way to pass large
    *     input data for primitive types, whereas string types require using the (multi-dimensional)
    *     array input path. When {@link ByteBuffer} is used, its content should remain unchanged
-   *     until model inference is done.
+   *     until model inference is done. A {@code null} value is allowed only if the caller is using
+   *     a {@link Delegate} that allows buffer handle interop, and such a buffer has been bound to
+   *     the input {@link Tensor}.
    * @param output a multidimensional array of output data, or a {@link ByteBuffer} of primitive
-   *     types including int, float, long, and byte.
+   *     types including int, float, long, and byte. A null value is allowed only if the caller is
+   *     using a {@link Delegate} that allows buffer handle interop, and such a buffer has been
+   *     bound to the output {@link Tensor}. See also {@link Options#setAllowBufferHandleOutput()}.
    */
-  public void run(@NonNull Object input, @NonNull Object output) {
+  public void run(Object input, Object output) {
     Object[] inputs = {input};
     Map<Integer, Object> outputs = new HashMap<>();
     outputs.put(0, output);
@@ -250,6 +254,10 @@ public final class Interpreter implements AutoCloseable {
    *
    * <p>Warning: The API runs much faster if {@link ByteBuffer} is used as input data type. Please
    * consider using {@link ByteBuffer} to feed primitive input data for better performance.
+   *
+   * <p>Note: {@code null} values for invididual elements of {@code inputs} and {@code outputs} is
+   * allowed only if the caller is using a {@link Delegate} that allows buffer handle interop, and
+   * such a buffer has been bound to the corresponding input or output {@link Tensor}(s).
    *
    * @param inputs an array of input data. The inputs should be in the same order as inputs of the
    *     model. Each input can be an array or multidimensional array, or a {@link ByteBuffer} of

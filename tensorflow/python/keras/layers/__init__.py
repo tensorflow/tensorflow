@@ -110,6 +110,10 @@ from tensorflow.python.keras.layers.noise import GaussianDropout
 
 # Normalization layers.
 from tensorflow.python.keras.layers.normalization import BatchNormalization
+from tensorflow.python.keras.layers.normalization import LayerNormalization
+
+# Kernelized layers.
+from tensorflow.python.keras.layers.kernelized import RandomFourierFeatures
 
 # Pooling layers.
 from tensorflow.python.keras.layers.pooling import MaxPooling1D

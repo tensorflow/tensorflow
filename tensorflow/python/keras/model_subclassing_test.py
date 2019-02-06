@@ -36,7 +36,6 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training.checkpointable import data_structures
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -572,7 +571,7 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
                             use_bn=True)
     model.compile(
         loss='mse',
-        optimizer=RMSPropOptimizer(learning_rate=0.001),
+        optimizer='rmsprop',
         metrics=['acc', keras.metrics.CategoricalAccuracy()],
         run_eagerly=testing_utils.should_run_eagerly())
 
@@ -590,10 +589,11 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model = MultiIOTestModel(num_classes=num_classes,
                              use_dp=True,
                              use_bn=True)
-    model.compile(loss='mse',
-                  optimizer=RMSPropOptimizer(learning_rate=0.001),
-                  metrics=['acc'],
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer='rmsprop',
+        metrics=['acc'],
+        run_eagerly=testing_utils.should_run_eagerly())
 
     x1 = np.ones((num_samples, input_dim))
     x2 = np.ones((num_samples, input_dim))
@@ -611,7 +611,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     with self.cached_session():
       model = SimpleTestModel(num_classes=num_classes, use_dp=True, use_bn=True)
       model.compile(
-          loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001),
+          loss='mse',
+          optimizer='rmsprop',
           run_eagerly=testing_utils.should_run_eagerly())
 
       x = np.ones((num_samples, input_dim), dtype=np.float32)
@@ -643,7 +644,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     self.assertEqual(len(model.weights), 0)
 
     model.compile(
-        loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001),
+        loss='mse',
+        optimizer='rmsprop',
         run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch([x1, x2], [y1, y2])
 
@@ -675,7 +677,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
 
     model = BNNet()
     model.compile(
-        loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001),
+        loss='mse',
+        optimizer='rmsprop',
         run_eagerly=testing_utils.should_run_eagerly())
     y_ref = model.predict(x)
 
@@ -707,7 +710,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     y = model.predict(x)
     self.assertEqual(np.sum(y), np.sum(x))
     model.compile(
-        loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001),
+        loss='mse',
+        optimizer='rmsprop',
         run_eagerly=testing_utils.should_run_eagerly())
     loss = model.train_on_batch(x, y)
     self.assertGreater(loss, 0.1)
@@ -727,7 +731,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
 
     model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
     model.compile(
-        loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001),
+        loss='mse',
+        optimizer='rmsprop',
         run_eagerly=testing_utils.should_run_eagerly())
     model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
     model.fit({'input_1': x1, 'input_2': x2},
@@ -738,7 +743,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
 
     model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
     model.compile(
-        loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001),
+        loss='mse',
+        optimizer='rmsprop',
         run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch([x1, x2], [y1, y2])
     model.train_on_batch({'input_1': x1, 'input_2': x2},
@@ -758,7 +764,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
 
     model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
     model.compile(
-        loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001),
+        loss='mse',
+        optimizer='rmsprop',
         run_eagerly=testing_utils.should_run_eagerly())
     model.evaluate([x1, x2], [y1, y2])
     model.test_on_batch([x1, x2], [y1, y2])
@@ -782,7 +789,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
 
     model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
     model.compile(
-        loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001),
+        loss='mse',
+        optimizer='rmsprop',
         run_eagerly=testing_utils.should_run_eagerly())
     model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
     y_ref_1, y_ref_2 = model.predict([x1, x2])
@@ -818,10 +826,11 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     input_dim = 50
 
     model = NestedTestModel1(num_classes=num_classes)
-    model.compile(loss='mse',
-                  optimizer=RMSPropOptimizer(learning_rate=0.001),
-                  metrics=['acc'],
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer='rmsprop',
+        metrics=['acc'],
+        run_eagerly=testing_utils.should_run_eagerly())
 
     x = np.ones((num_samples, input_dim))
     y = np.zeros((num_samples, num_classes))
@@ -841,10 +850,11 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     input_dim = 50
 
     model = NestedTestModel2(num_classes=num_classes)
-    model.compile(loss='mse',
-                  optimizer=RMSPropOptimizer(learning_rate=0.001),
-                  metrics=['acc'],
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer='rmsprop',
+        metrics=['acc'],
+        run_eagerly=testing_utils.should_run_eagerly())
 
     x = np.ones((num_samples, input_dim))
     y = np.zeros((num_samples, num_classes))
@@ -864,10 +874,11 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     input_dim = 50
 
     model = get_nested_model_3(input_dim=input_dim, num_classes=num_classes)
-    model.compile(loss='mse',
-                  optimizer=RMSPropOptimizer(learning_rate=0.001),
-                  metrics=['acc'],
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer='rmsprop',
+        metrics=['acc'],
+        run_eagerly=testing_utils.should_run_eagerly())
 
     x = np.ones((num_samples, input_dim))
     y = np.zeros((num_samples, num_classes))
@@ -898,10 +909,11 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
         return self.bn(x)
 
     model = keras.Sequential([Inner()])
-    model.compile(loss='mse',
-                  optimizer=RMSPropOptimizer(learning_rate=0.001),
-                  metrics=['acc'],
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer='rmsprop',
+        metrics=['acc'],
+        run_eagerly=testing_utils.should_run_eagerly())
 
     x = np.ones((num_samples, input_dim))
     y = np.zeros((num_samples, num_classes))
@@ -938,7 +950,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     y = model.predict(x)
     self.assertEqual(np.sum(y), np.sum(x))
     model.compile(
-        loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001),
+        loss='mse',
+        optimizer='rmsprop',
         run_eagerly=testing_utils.should_run_eagerly())
     loss = model.train_on_batch(x, y)
     self.assertGreater(loss, 0.1)
@@ -956,7 +969,7 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
       model = SimpleTestModel(num_classes=num_classes,
                               use_dp=True,
                               use_bn=True)
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+      model.compile(loss='mse', optimizer='rmsprop')
 
       x = array_ops.ones((num_samples, input_dim))
       y = array_ops.zeros((num_samples, num_classes))
@@ -974,7 +987,7 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
       model = MultiIOTestModel(num_classes=num_classes,
                                use_dp=True,
                                use_bn=True)
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+      model.compile(loss='mse', optimizer='rmsprop')
 
       x1 = array_ops.ones((num_samples, input_dim))
       x2 = array_ops.ones((num_samples, input_dim))
@@ -1062,7 +1075,7 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
       model = MultiIOTestModel(num_classes=num_classes,
                                use_dp=True,
                                use_bn=True)
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+      model.compile(loss='mse', optimizer='rmsprop')
 
       x1 = np.ones((num_samples, input_dim))
       x2 = np.ones((num_samples, input_dim))

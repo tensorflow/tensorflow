@@ -123,7 +123,7 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
     auto elements_per_feature_u32 = add_instruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(1)));
 
-    for (int64 i = 0; i < ShapeUtil::Rank(operand->shape()); ++i) {
+    for (int64 i = 0; i < operand->shape().rank(); ++i) {
       if (i == feature_index) {
         continue;
       }
@@ -229,7 +229,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
       add(HloInstruction::CreateConstant(std::move(epsilon_literal))), {}));
   std::vector<int64> dimensions_without_feature;
 
-  for (int64 i = 0; i < ShapeUtil::Rank(operand_shape); ++i) {
+  for (int64 i = 0; i < operand_shape.rank(); ++i) {
     if (i != feature_index) {
       dimensions_without_feature.push_back(i);
     }
@@ -357,7 +357,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
 
   std::vector<int64> dimensions_without_feature;
 
-  for (int64 i = 0; i < ShapeUtil::Rank(operand_shape); ++i) {
+  for (int64 i = 0; i < operand_shape.rank(); ++i) {
     if (i != feature_index) {
       dimensions_without_feature.push_back(i);
     }
@@ -494,7 +494,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
 
   std::vector<int64> dimensions_without_feature;
 
-  for (int64 i = 0; i < ShapeUtil::Rank(activation_shape); ++i) {
+  for (int64 i = 0; i < activation_shape.rank(); ++i) {
     if (i != feature_index) {
       dimensions_without_feature.push_back(i);
     }

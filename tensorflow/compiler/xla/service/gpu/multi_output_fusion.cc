@@ -67,7 +67,7 @@ int64 GpuMultiOutputFusion::GetProfit(HloInstruction* instr1,
   }
   int64 profit = 0;
   for (auto instr : instr2->operands()) {
-    if (!IsProfitableOperand(instr) || in_list.count(instr) == 0) {
+    if (!IsProfitableOperand(instr) || !in_list.contains(instr)) {
       continue;
     }
     profit += ShapeUtil::ByteSizeOf(instr->shape());

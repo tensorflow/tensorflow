@@ -1190,7 +1190,7 @@ enum FlexSupport { kFlexOk, kFlexNotOk };
 // taken from the given NodeDef, and its number must match NumInputs, unless
 // kAnyNumInputs is passed in. If kFlexOk is passed in the resulting operator
 // will be eligible for being exported as a flex op.
-template <typename Op, int NumInputs, FlexSupport flex>
+template <typename Op, int NumInputs, int NumOutputs, FlexSupport flex>
 tensorflow::Status ConvertSimpleOperatorGeneric(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
@@ -1203,6 +1203,11 @@ tensorflow::Status ConvertSimpleOperatorGeneric(
     op->inputs.push_back(node.input(i));
   }
   op->outputs.push_back(node.name());
+  if (NumOutputs > 1) {
+    for (int i = 1; i < NumOutputs; ++i) {
+      op->outputs.push_back(node.name() + ":" + std::to_string(i));
+    }
+  }
 
   if (flex == kFlexOk) {
     RetainTensorFlowNodeDef(node, op);
@@ -1213,20 +1218,20 @@ tensorflow::Status ConvertSimpleOperatorGeneric(
 }
 
 // Convert a simple operator which is not valid as a flex op.
-template <typename Op, int NumInputs = kAnyNumInputs>
+template <typename Op, int NumInputs, int NumOutputs>
 tensorflow::Status ConvertSimpleOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
-  return ConvertSimpleOperatorGeneric<Op, NumInputs, kFlexNotOk>(
+  return ConvertSimpleOperatorGeneric<Op, NumInputs, NumOutputs, kFlexNotOk>(
       node, tf_import_flags, model);
 }
 
 // Convert a simple operator which is valid as a flex op.
-template <typename Op, int NumInputs = kAnyNumInputs>
+template <typename Op, int NumInputs, int NumOutputs>
 tensorflow::Status ConvertSimpleOperatorFlexOk(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
-  return ConvertSimpleOperatorGeneric<Op, NumInputs, kFlexOk>(
+  return ConvertSimpleOperatorGeneric<Op, NumInputs, NumOutputs, kFlexOk>(
       node, tf_import_flags, model);
 }
 
@@ -1518,6 +1523,20 @@ tensorflow::Status ConvertFloorOperator(
   const auto data_type = GetDataTypeAttr(node, "T");
   CHECK(data_type == DT_FLOAT);
   auto* op = new FloorOperator;
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertCeilOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "Ceil");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
+  const auto data_type = GetDataTypeAttr(node, "T");
+  CHECK(data_type == DT_FLOAT);
+  auto* op = new CeilOperator;
   op->inputs.push_back(node.input(0));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
@@ -2312,6 +2331,27 @@ tensorflow::Status ConvertLeakyReluOperator(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertUnidirectionalSequenceRnn(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  DCHECK_EQ(node.op(), "UnidirectionalSequenceRnn");
+
+  auto* op = new UnidirectionalSequenceRnnOperator();
+  const auto& indices = GetListAttr(node, "_tflite_input_indices");
+  if (indices.i_size() != node.input().size()) {
+    return tensorflow::errors::InvalidArgument("Input size does not match.");
+  }
+
+  for (const string& input : node.input()) {
+    op->inputs.push_back(input);
+  }
+  // Only use the last one as input.
+  op->outputs.push_back(node.name() + ":1");
+  model->operators.emplace_back(op);
+
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
 
 namespace internal {
@@ -2333,14 +2373,15 @@ ConverterMapType GetTensorFlowNodeConverterMapForFlex() {
 
 ConverterMapType GetTensorFlowNodeConverterMap() {
   return std::unordered_map<std::string, ConverterType>({
-      {"Abs", ConvertSimpleOperator<AbsOperator>},
-      {"Add", ConvertSimpleOperator<AddOperator, 2>},
-      {"AddN", ConvertSimpleOperatorFlexOk<AddNOperator>},
-      {"All", ConvertSimpleOperator<TensorFlowAllOperator>},
+      {"Abs", ConvertSimpleOperator<AbsOperator, kAnyNumInputs, 1>},
+      {"Add", ConvertSimpleOperator<AddOperator, 2, 1>},
+      {"AddN", ConvertSimpleOperator<AddNOperator, kAnyNumInputs, 1>},
+      {"All", ConvertSimpleOperator<TensorFlowAllOperator, kAnyNumInputs, 1>},
       {"Any", ConvertReduceOperator<TensorFlowAnyOperator>},
       {"ArgMax", ConvertArgMaxOperator},
       {"ArgMin", ConvertArgMinOperator},
-      {"Assert", ConvertSimpleOperator<TensorFlowAssertOperator>},
+      {"Assert",
+       ConvertSimpleOperator<TensorFlowAssertOperator, kAnyNumInputs, 1>},
       {"AvgPool", ConvertAvgPoolOperator},
       {"BatchMatMul", ConvertBatchMatMulOperator},
       {"BatchNormWithGlobalNormalization",
@@ -2348,6 +2389,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"BatchToSpaceND", ConvertBatchToSpaceNDOperator},
       {"BiasAdd", ConvertBiasAddOperator},
       {"Cast", ConvertCastOperator},
+      {"Ceil", ConvertCeilOperator},
       {"CheckNumerics", ConvertIdentityOperator},
       {"Concat", ConvertConcatOperator},
       {"ConcatV2", ConvertConcatOperator},
@@ -2357,98 +2399,101 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"CTCBeamSearchDecoder", ConvertCTCBeamSearchDecoderOperator},
       {"DepthToSpace", ConvertDepthToSpaceOperator},
       {"DepthwiseConv2dNative", ConvertDepthwiseConvOperator},
-      {"Div", ConvertSimpleOperator<DivOperator, 2>},
+      {"Div", ConvertSimpleOperator<DivOperator, 2, 1>},
       {"DynamicPartition", ConvertDynamicPartitionOperator},
       {"DynamicStitch", ConvertDynamicStitchOperator},
-      {"Equal", ConvertSimpleOperator<TensorFlowEqualOperator, 2>},
-      {"Exp", ConvertSimpleOperator<ExpOperator, 1>},
-      {"ExpandDims", ConvertSimpleOperator<ExpandDimsOperator, 2>},
+      {"Equal", ConvertSimpleOperator<TensorFlowEqualOperator, 2, 1>},
+      {"Exp", ConvertSimpleOperator<ExpOperator, 1, 1>},
+      {"ExpandDims", ConvertSimpleOperator<ExpandDimsOperator, 2, 1>},
       {"FakeQuantWithMinMaxArgs", ConvertFakeQuantWithMinMaxArgs},
       {"FakeQuantWithMinMaxVars", ConvertFakeQuantWithMinMaxVars},
-      {"Fill", ConvertSimpleOperator<FillOperator, 2>},
+      {"Fill", ConvertSimpleOperator<FillOperator, 2, 1>},
       {"Floor", ConvertFloorOperator},
-      {"FloorDiv", ConvertSimpleOperator<FloorDivOperator, 2>},
-      {"FloorMod", ConvertSimpleOperator<FloorModOperator, 2>},
+      {"FloorDiv", ConvertSimpleOperator<FloorDivOperator, 2, 1>},
+      {"FloorMod", ConvertSimpleOperator<FloorModOperator, 2, 1>},
       {"FusedBatchNorm", ConvertFusedBatchNormOperator},
       {"Gather", ConvertGatherOperator},
       {"GatherV2", ConvertGatherOperator},
-      {"Greater", ConvertSimpleOperator<TensorFlowGreaterOperator, 2>},
+      {"Greater", ConvertSimpleOperator<TensorFlowGreaterOperator, 2, 1>},
       {"GreaterEqual",
-       ConvertSimpleOperator<TensorFlowGreaterEqualOperator, 2>},
+       ConvertSimpleOperator<TensorFlowGreaterEqualOperator, 2, 1>},
       {"Identity", ConvertIdentityOperator},
       {"LRN", ConvertLRNOperator},
       {"LeakyRelu", ConvertLeakyReluOperator},
       {"LegacyFedInput", ConvertPlaceholderOperator},
-      {"Less", ConvertSimpleOperator<TensorFlowLessOperator, 2>},
-      {"LessEqual", ConvertSimpleOperator<TensorFlowLessEqualOperator, 2>},
-      {"Log", ConvertSimpleOperator<LogOperator, 1>},
-      {"LogicalAnd", ConvertSimpleOperator<LogicalAndOperator, 2>},
-      {"LogicalOr", ConvertSimpleOperator<LogicalOrOperator, 2>},
-      {"LogicalNot", ConvertSimpleOperator<LogicalNotOperator, 1>},
-      {"LogSoftmax", ConvertSimpleOperator<LogSoftmaxOperator, 1>},
+      {"Less", ConvertSimpleOperator<TensorFlowLessOperator, 2, 1>},
+      {"LessEqual", ConvertSimpleOperator<TensorFlowLessEqualOperator, 2, 1>},
+      {"Log", ConvertSimpleOperator<LogOperator, 1, 1>},
+      {"LogicalAnd", ConvertSimpleOperator<LogicalAndOperator, 2, 1>},
+      {"LogicalOr", ConvertSimpleOperator<LogicalOrOperator, 2, 1>},
+      {"LogicalNot", ConvertSimpleOperator<LogicalNotOperator, 1, 1>},
+      {"LogSoftmax", ConvertSimpleOperator<LogSoftmaxOperator, 1, 1>},
       {"MatMul", ConvertMatMulOperator},
       {"Max", ConvertReduceOperator<TensorFlowMaxOperator>},
       {"MaxPool", ConvertMaxPoolOperator},
-      {"Maximum", ConvertSimpleOperator<TensorFlowMaximumOperator, 2>},
+      {"Maximum", ConvertSimpleOperator<TensorFlowMaximumOperator, 2, 1>},
       {"Mean", ConvertReduceOperator<MeanOperator>},
-      {"Merge", ConvertSimpleOperator<TensorFlowMergeOperator, 2>},
+      {"Merge", ConvertSimpleOperator<TensorFlowMergeOperator, 2, 1>},
       {"Min", ConvertReduceOperator<TensorFlowMinOperator>},
-      {"Minimum", ConvertSimpleOperator<TensorFlowMinimumOperator, 2>},
-      {"Mul", ConvertSimpleOperator<MulOperator, 2>},
-      {"Neg", ConvertSimpleOperator<NegOperator, 1>},
+      {"Minimum", ConvertSimpleOperator<TensorFlowMinimumOperator, 2, 1>},
+      {"Mul", ConvertSimpleOperator<MulOperator, 2, 1>},
+      {"Neg", ConvertSimpleOperator<NegOperator, 1, 1>},
       {"NextIteration", ConvertOperatorSpecialCasedAsRNNBackEdge},
       {"NoOp", ConvertNoOpOperator},
-      {"NotEqual", ConvertSimpleOperator<TensorFlowNotEqualOperator, 2>},
+      {"NotEqual", ConvertSimpleOperator<TensorFlowNotEqualOperator, 2, 1>},
       {"OneHot", ConvertOneHotOperator},
       {"Pack", ConvertPackOperator},
-      {"Pad", ConvertSimpleOperator<PadOperator, 2>},
-      {"PadV2", ConvertSimpleOperator<PadV2Operator, 3>},
+      {"Pad", ConvertSimpleOperator<PadOperator, 2, 1>},
+      {"PadV2", ConvertSimpleOperator<PadV2Operator, 3, 1>},
       {"ParallelDynamicStitch", ConvertDynamicStitchOperator},
       {"Placeholder", ConvertPlaceholderOperator},
       {"PlaceholderWithDefault", ConvertIdentityOperator},
-      {"Pow", ConvertSimpleOperator<PowOperator, 2>},
+      {"Pow", ConvertSimpleOperator<PowOperator, 2, 1>},
       {"Prod", ConvertReduceOperator<TensorFlowProdOperator>},
       {"RandomUniform", ConvertRandomUniform},
       {"Range", ConvertRangeOperator},
-      {"Rank", ConvertSimpleOperator<RankOperator, 1>},
-      {"RealDiv", ConvertSimpleOperator<DivOperator, 2>},
-      {"Relu", ConvertSimpleOperator<ReluOperator, 1>},
-      {"Relu6", ConvertSimpleOperator<Relu6Operator, 1>},
-      {"Reshape", ConvertSimpleOperator<TensorFlowReshapeOperator, 2>},
+      {"Rank", ConvertSimpleOperator<RankOperator, 1, 1>},
+      {"RealDiv", ConvertSimpleOperator<DivOperator, 2, 1>},
+      {"Relu", ConvertSimpleOperator<ReluOperator, 1, 1>},
+      {"Relu6", ConvertSimpleOperator<Relu6Operator, 1, 1>},
+      {"Reshape", ConvertSimpleOperator<TensorFlowReshapeOperator, 2, 1>},
       {"ResizeBilinear", ConvertResizeBilinearOperator},
       {"ResizeNearestNeighbor", ConvertResizeNearestNeighborOperator},
-      {"Rsqrt", ConvertSimpleOperator<TensorFlowRsqrtOperator, 1>},
-      {"Select", ConvertSimpleOperator<SelectOperator, 3>},
+      {"ReverseV2", ConvertSimpleOperator<ReverseV2Operator, 2, 1>},
+      {"Rsqrt", ConvertSimpleOperator<TensorFlowRsqrtOperator, 1, 1>},
+      {"Select", ConvertSimpleOperator<SelectOperator, 3, 1>},
       {"Shape", ConvertShapeOperator},
-      {"Sigmoid", ConvertSimpleOperator<LogisticOperator, 1>},
-      {"Sin", ConvertSimpleOperator<SinOperator, 1>},
-      {"Slice", ConvertSimpleOperator<SliceOperator, 3>},
+      {"Sigmoid", ConvertSimpleOperator<LogisticOperator, 1, 1>},
+      {"Sin", ConvertSimpleOperator<SinOperator, 1, 1>},
+      {"Slice", ConvertSimpleOperator<SliceOperator, 3, 1>},
       {"Softmax", ConvertSoftmaxOperator},
       {"SpaceToBatchND", ConvertSpaceToBatchNDOperator},
       {"SpaceToDepth", ConvertSpaceToDepthOperator},
       {"SparseToDense", ConvertSparseToDenseOperator},
       {"Split", ConvertSplitOperator},
       {"SplitV", ConvertSplitVOperator},
-      {"Sqrt", ConvertSimpleOperator<TensorFlowSqrtOperator, 1>},
-      {"Square", ConvertSimpleOperator<TensorFlowSquareOperator, 1>},
+      {"Sqrt", ConvertSimpleOperator<TensorFlowSqrtOperator, 1, 1>},
+      {"Square", ConvertSimpleOperator<TensorFlowSquareOperator, 1, 1>},
       {"SquaredDifference",
-       ConvertSimpleOperator<SquaredDifferenceOperator, 2>},
+       ConvertSimpleOperator<SquaredDifferenceOperator, 2, 1>},
       {"Squeeze", ConvertSqueezeOperator},
       {"StopGradient", ConvertIdentityOperator},
       {"StridedSlice", ConvertStridedSliceOperator},
-      {"Sub", ConvertSimpleOperator<SubOperator, 2>},
+      {"Sub", ConvertSimpleOperator<SubOperator, 2, 1>},
       {"Sum", ConvertReduceOperator<TensorFlowSumOperator>},
       {"Svdf", ConvertSvdfOperator},
       {"Switch", ConvertSwitchOperator},
-      {"Tanh", ConvertSimpleOperator<TanhOperator, 1>},
-      {"Tile", ConvertSimpleOperator<TensorFlowTileOperator, 2>},
+      {"Tanh", ConvertSimpleOperator<TanhOperator, 1, 1>},
+      {"Tile", ConvertSimpleOperator<TensorFlowTileOperator, 2, 1>},
       {"TopK", ConvertTopKV2Operator},
       {"TopKV2", ConvertTopKV2Operator},
-      {"Transpose", ConvertSimpleOperator<TransposeOperator, 2>},
+      {"Transpose", ConvertSimpleOperator<TransposeOperator, 2, 1>},
       {"Unpack", ConvertUnpackOperator},
-      {"ZerosLike", ConvertSimpleOperator<TensorFlowZerosLikeOperator, 1>},
+      {"ZerosLike", ConvertSimpleOperator<TensorFlowZerosLikeOperator, 1, 1>},
       {"UnidirectionalSequenceLstm", ConvertUnidirectionalSequenceLstm},
+      {"UnidirectionalSequenceRnn", ConvertUnidirectionalSequenceRnn},
       {"MirrorPad", ConvertMirrorPadOperator},
+      {"Unique", ConvertSimpleOperator<UniqueOperator, 1, 2>},
   });
 }
 

@@ -41,6 +41,7 @@ from tensorflow.python.ops.nn_impl import _compute_sampled_logits
 from tensorflow.python.platform import test as test_lib
 
 
+@test_util.disable_all_xla("This test never passed for XLA")
 class ZeroFractionTest(test_lib.TestCase):
 
   def _ZeroFraction(self, x):
@@ -1017,6 +1018,7 @@ class LeakyReluTest(test_lib.TestCase):
 class SwishTest(test_lib.TestCase):
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("This test never passed for XLA")
   def testValues(self):
     np_values = np.array(
         [np.linspace(-10.0, 0.0, 100),
@@ -1237,6 +1239,82 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     with test_util.use_gpu():
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [[7, 4], [4, 5], [5, 1], [9, 3]])
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class MaxPoolTest(test_lib.TestCase):
+
+  def test1DTensor(self):
+    x = array_ops.ones([3, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool1d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test1DNumpy(self):
+    x = np.ones([3, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool1d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2DTensor(self):
+    x = array_ops.ones([3, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2DNumpy(self):
+    x = np.ones([3, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DTensor(self):
+    x = array_ops.ones([3, 7, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool3d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DNumpy(self):
+    x = np.ones([3, 7, 6, 6, 5], dtype=np.float32)
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.max_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.max_pool3d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def testIncorrectSizeInputSmall(self):
+    x = array_ops.ones([3, 4])
+    with self.assertRaisesRegex(
+        ValueError, "Input tensor must be of rank 3, 4 or 5 but was 2."):
+      nn_ops.max_pool_v2(x, 2, 2, "SAME")
+
+  def testIncorrectSizeInput(self):
+    x = array_ops.ones([3, 4, 1, 2, 1, 2])
+    with self.assertRaisesRegex(
+        ValueError, "Input tensor must be of rank 3, 4 or 5 but was 6."):
+      nn_ops.max_pool_v2(x, 2, 2, "SAME")
 
 
 if __name__ == "__main__":

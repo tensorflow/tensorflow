@@ -36,10 +36,7 @@ def _compact_stack_trace(op):
   """Returns a traceback for `op` with common file prefixes stripped."""
   compact_traces = []
   common_prefix = error_interpolation.traceback_files_common_prefix([[op]])
-  # pylint: disable=protected-access
-  tf_traceback = tf_stack.convert_stack(op._traceback)
-  # pylint: enable=protected-access
-  for frame in tf_traceback:
+  for frame in op.traceback:
     frame = list(frame)
     filename = frame[tf_stack.TB_FILENAME]
     if filename.startswith(common_prefix):
@@ -514,7 +511,11 @@ def exception_type_from_error_code(error_code):
 
 @tf_export("errors.error_code_from_exception_type")
 def error_code_from_exception_type(cls):
-  return _EXCEPTION_CLASS_TO_CODE[cls]
+  try:
+    return _EXCEPTION_CLASS_TO_CODE[cls]
+  except KeyError:
+    warnings.warn("Unknown class exception")
+    return UnknownError(None, None, "Unknown class exception", None)
 
 
 def _make_specific_exception(node_def, op, message, error_code):
