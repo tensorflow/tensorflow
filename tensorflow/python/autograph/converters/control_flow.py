@@ -329,7 +329,6 @@ class ControlFlowTransformer(converter.Base):
     cond_closure = set()
     for s in cond_scope.read:
       cond_closure |= s.support_set
-    cond_closure -= loop_state
 
     loop_state, state_ssf, state_ast_tuple, ssf_map = self._state_constructs(
         loop_state, reserved_symbols)
