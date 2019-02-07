@@ -262,10 +262,18 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_ARG_MIN, Register_ARG_MIN(),
              /* min_version */ 1,
              /* max_version */ 2);
-  AddBuiltin(BuiltinOperator_GREATER, Register_GREATER());
-  AddBuiltin(BuiltinOperator_GREATER_EQUAL, Register_GREATER_EQUAL());
-  AddBuiltin(BuiltinOperator_LESS, Register_LESS());
-  AddBuiltin(BuiltinOperator_LESS_EQUAL, Register_LESS_EQUAL());
+  AddBuiltin(BuiltinOperator_GREATER, Register_GREATER(),
+             /* min_version */ 1,
+             /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_GREATER_EQUAL, Register_GREATER_EQUAL(),
+             /* min_version */ 1,
+             /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_LESS, Register_LESS(),
+             /* min_version */ 1,
+             /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_LESS_EQUAL, Register_LESS_EQUAL(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_FLOOR, Register_FLOOR());
   AddBuiltin(BuiltinOperator_CEIL, Register_CEIL());
   AddBuiltin(BuiltinOperator_NEG, Register_NEG());
@@ -281,8 +289,12 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_REDUCE_ANY, Register_REDUCE_ANY());
   AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS());
   AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE());
-  AddBuiltin(BuiltinOperator_EQUAL, Register_EQUAL());
-  AddBuiltin(BuiltinOperator_NOT_EQUAL, Register_NOT_EQUAL());
+  AddBuiltin(BuiltinOperator_EQUAL, Register_EQUAL(),
+             /* min_version */ 1,
+             /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_NOT_EQUAL, Register_NOT_EQUAL(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SQRT, Register_SQRT());
   AddBuiltin(BuiltinOperator_RSQRT, Register_RSQRT());
   AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE());
