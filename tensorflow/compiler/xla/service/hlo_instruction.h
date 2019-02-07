@@ -1251,6 +1251,10 @@ class HloInstruction {
   // on the instruction's existing name.
   void UniquifyName(NameUniquer* name_uniquer);
 
+  // Clear the unique ID of the instruction so that it can be re-assigned, such
+  // as for the purpose of compacting the instruction unique IDs.
+  void ClearUniqueIdInternal() { unique_id_ = -1; }
+
   // Set the unique id for this instruction to "id"
   void SetUniqueId(int id) {
     CHECK_EQ(unique_id_, -1);  // Should not be assigned already
