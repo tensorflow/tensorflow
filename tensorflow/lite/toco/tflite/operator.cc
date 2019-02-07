@@ -2030,6 +2030,20 @@ class LessEqual : public SimpleOperator<TensorFlowLessEqualOperator> {
   }
 };
 
+class Select : public SimpleOperator<SelectOperator> {
+ public:
+  explicit Select() : SimpleOperator("SELECT", OperatorType::kSelect) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
 namespace {
 // Build a vector containing all the known operators.
 std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
@@ -2216,8 +2230,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(MakeUnique<NotEqual>());
   ops.push_back(
       MakeUnique<SimpleOperator<NegOperator>>("NEG", OperatorType::kNeg));
-  ops.push_back(MakeUnique<SimpleOperator<SelectOperator>>(
-      "SELECT", OperatorType::kSelect));
+  ops.push_back(MakeUnique<Select>());
   ops.push_back(
       MakeUnique<SimpleOperator<SliceOperator>>("SLICE", OperatorType::kSlice));
   ops.push_back(
