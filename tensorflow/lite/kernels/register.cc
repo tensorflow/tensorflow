@@ -226,7 +226,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RESHAPE, Register_RESHAPE());
   AddBuiltin(BuiltinOperator_RESIZE_BILINEAR, Register_RESIZE_BILINEAR());
   AddBuiltin(BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
-             Register_RESIZE_NEAREST_NEIGHBOR());
+             Register_RESIZE_NEAREST_NEIGHBOR(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SKIP_GRAM, Register_SKIP_GRAM());
   AddBuiltin(BuiltinOperator_SPACE_TO_DEPTH, Register_SPACE_TO_DEPTH());
   AddBuiltin(BuiltinOperator_GATHER, Register_GATHER(),
