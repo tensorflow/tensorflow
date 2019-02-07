@@ -710,6 +710,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             'tf.compat.v1.keras.initializers.ones',
         'tf.keras.initializers.constant':
             'tf.compat.v1.keras.initializers.constant',
+        "tf.data.experimental.map_and_batch_with_legacy_function":
+            "tf.compat.v1.data.experimental.map_and_batch_with_legacy_function",
     }
     # pylint: enable=line-too-long
 

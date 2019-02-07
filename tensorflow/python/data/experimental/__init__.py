@@ -58,6 +58,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@make_csv_dataset
 @@make_saveable_from_iterator
 @@map_and_batch
+@@map_and_batch_with_legacy_function
 @@parallel_interleave
 @@parse_example_dataset
 @@prefetch_to_device
@@ -82,6 +83,7 @@ from __future__ import print_function
 
 from tensorflow.python.data.experimental.ops.batching import dense_to_sparse_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch
+from tensorflow.python.data.experimental.ops.batching import map_and_batch_with_legacy_function
 from tensorflow.python.data.experimental.ops.batching import unbatch
 from tensorflow.python.data.experimental.ops.cardinality import cardinality
 from tensorflow.python.data.experimental.ops.cardinality import INFINITE as INFINITE_CARDINALITY
