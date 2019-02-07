@@ -118,7 +118,8 @@ class Converter(object):
         that lacked file_identifier require this.
 
     Raises:
-      RuntimeError: When flatc cannot be invoked.
+      RuntimeError: 1. When flatc cannot be invoked.
+      			    2. When json file does not exists.
       ValueError: When the extension is not json or bin.
 
     Returns:
