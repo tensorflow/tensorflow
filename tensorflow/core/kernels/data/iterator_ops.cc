@@ -99,7 +99,17 @@ class IteratorResource : public ResourceBase {
       captured_state = iterator_state_;
     }
     if (captured_state) {
-      return captured_state->iterator->Save(ctx, writer);
+      SerializationContext::Params params;
+      // The iterator state may contain functions that are not present
+      // in ctx's function library. Namely, an iterator may be restored from
+      // a serialized iterator with a modified function library (for example, as
+      // a result of OptimizeDataset). These modified functions are needed
+      // to serialize the iterator again.
+      params.flib_def = captured_state->flib_def.get();
+      params.input_list = ctx->input_list();
+      params.optimization_only = ctx->optimization_only();
+      SerializationContext ctx_with_functions(params);
+      return captured_state->iterator->Save(&ctx_with_functions, writer);
     } else {
       return errors::FailedPrecondition(
           "Save() failed because the iterator has not been initialized. "
@@ -134,7 +144,14 @@ class IteratorResource : public ResourceBase {
     std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
     TF_RETURN_IF_ERROR(ctx->function_library()->Clone(&flib_def, &pflr, &lib));
-    TF_RETURN_IF_ERROR(flib_def->AddLibrary(graph_def.library()));
+
+    // Some function names may be duplicated (for example, if the serialized
+    // graph has an optimized function that retains its original name). We
+    // override functions in flib_def in the event of conflict. It is
+    // safe to assume that any node in the serialized graph is referring to the
+    // serialized function when there is a conflict.
+    TF_RETURN_IF_ERROR(
+        AddToFunctionLibrary(flib_def.get(), graph_def.library()));
     std::unique_ptr<State> new_state = absl::make_unique<State>(
         std::move(flib_def), std::move(pflr), lib, nullptr /* iterator */);
 
