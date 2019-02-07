@@ -16,6 +16,9 @@ detection model, takes up a total of 22KB.
     *   [Building for "Hifive1" SiFive FE310 development board using Make](#building-for-hifive1-sifive-fe310-development-board-using-make)
     *   [Building for Ambiq Micro Apollo3Blue EVB using Make](#building-for-ambiq-micro-apollo3blue-evb-using-make)
         *   [Additional Apollo3 Instructions](#additional-apollo3-instructions)
+    *   [Building for the ECM3531 Eta Compute EVB using Make](#building-for-eta_compute-ecm3531-evb-using-make)
+        *   [Additional ECM3531 EVB Instructions](#additional-ecm3531-evb-instructions)
+ 
 -   [Goals](#goals)
 -   [Generating Project Files](#generating-project-#files)
 -   [How to Port TensorFlow Lite Micro to a New Platform](#how-to-port-tensorflow-lite-micro-to-a-new-platform)
@@ -45,6 +48,7 @@ project files that you can download for the following platforms:
 ["Blue Pill" STM32F103-compatible development board](https://github.com/google/stm32_bare_lib) | - | - | [Instructions](#building-for-the-blue-pill-stm32f103-using-make)
 [Ambiq Micro Apollo3Blue EVB using Make](https://ambiqmicro.com/apollo-ultra-low-power-mcus/) | - | - | [Instructions](#building-for-ambiq-micro-apollo3blue-evb-using-make)
 [Generic Keil uVision Projects](http://www2.keil.com/mdk5/uvision/) | - | [Download](https://drive.google.com/open?id=1Lw9rsdquNKObozClLPoE5CTJLuhfh5mV) | -
+[Eta Compute ECM3531 EVB](https://www.etacompute.com/products/) | - | - | [Instructions] (#building-for-eta-compute-ecm3531-evb-using-make)
 
 If your device is not yet supported, it may not be too hard to add support. You
 can learn about that process
