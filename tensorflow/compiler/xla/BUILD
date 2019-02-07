@@ -150,8 +150,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":status",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor/lib",
     ],
 )
@@ -194,7 +192,6 @@ cc_library(
         ":types",
         ":util",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -833,7 +830,6 @@ cc_library(
             "//tensorflow/compiler/xla:xla_proto",
             "//tensorflow/compiler/xla/service:hlo",
             "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
             "@com_google_absl//absl/strings",
         ],
 )
