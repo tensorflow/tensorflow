@@ -483,16 +483,15 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
     if (!absl::SimpleAtoi(tokens[1], &graph_width)) {
       bound_index = 1;
       graph_width = kDefaultWidth;
-    }
-    else {
+    } else {
       bound_index = 2;
     }
     // get the '/'
     if (bound_index < tokens.size()) {
       if (tokens[bound_index] != "/") {
-          std::cerr << "Expect a /, but get a '" << tokens[1] << "'."
-                    << std::endl;
-          return;
+        std::cerr << "Expect a /, but get a '" << tokens[1] << "'."
+                  << std::endl;
+        return;
       }
       bound_index++;
     }
@@ -501,8 +500,8 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
       string bnode_name = tokens[bound_index];
       const HloInstruction* binstr = FindInstruction(module, bnode_name);
       if (!binstr) {
-        std::cerr << "Couldn't find HloInstruction named "
-                  << node_name << "." << std::endl;
+        std::cerr << "Couldn't find HloInstruction named " << node_name << "."
+                  << std::endl;
         return;
       }
       boundary.insert(binstr);
@@ -518,9 +517,9 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
         /*show_backend_config=*/show_backend_config));
   } else {
     DisplayGraphHandle(opts, hlo_graph_dumper::DumpNeighborhoodAround(
-        *instr, graph_width, 
-        /*boundary=*/boundary,
-        /*show_backend_config=*/show_backend_config));
+                                 *instr, graph_width,
+                                 /*boundary=*/boundary,
+                                 /*show_backend_config=*/show_backend_config));
   }
 }
 
