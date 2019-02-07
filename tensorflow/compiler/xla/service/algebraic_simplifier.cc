@@ -892,7 +892,6 @@ std::unique_ptr<HloInstruction> TryDivideToShift(HloInstruction* divide,
 }  // namespace
 
 Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
-  Shape* shape;
   HloInstruction *a, *b, *c, *d;
   CHECK(Match(divide, m::Divide(m::Op(&a), m::Op(&b))));
   // A/1 => A
@@ -955,6 +954,7 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
       break;
   }
 
+  Shape* shape;
   // exp(A)/exp(B) => exp(A-B)
   if (Match(divide, m::Divide(m::Exp(m::Op(&a)), m::Exp(m::Op(&b)))
                         .WithShape(m::Shape(&shape)))) {
@@ -1005,8 +1005,9 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   // (Backends can do this transformation, but generally only if the constant is
   // a scalar.)
   if (Match(divide, m::Divide(m::NonConstant(&a), m::Constant(&b)))) {
-    Literal new_literal(b->shape());
-    switch (b->shape().element_type()) {
+    Shape result_shape = b->literal().shape();
+    Literal new_literal(result_shape);
+    switch (result_shape.element_type()) {
       case F16:
         TF_RETURN_IF_ERROR(InvertConstant<half>(*b, &new_literal));
         break;

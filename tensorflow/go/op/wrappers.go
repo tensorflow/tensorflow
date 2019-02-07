@@ -7411,7 +7411,7 @@ func SparseToDense(scope *Scope, sparse_indices tf.Output, output_shape tf.Outpu
 // misisng, the `output` tensor at that position will be zeroed.
 //
 // Read
-// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/sparse#Segmentation)
 // for an explanation of segments.
 //
 // For example:
@@ -7741,7 +7741,7 @@ func Sinh(scope *Scope, x tf.Output) (y tf.Output) {
 // Computes the sum along sparse segments of a tensor.
 //
 // Read
-// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 // for an explanation of segments.
 //
 // Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
@@ -9215,7 +9215,7 @@ func SdcaOptimizerV2(scope *Scope, sparse_example_indices []tf.Output, sparse_fe
 // Computes the minimum along segments of a tensor.
 //
 // Read
-// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 // for an explanation of segments.
 //
 // This operator is similar to the unsorted segment sum operator found
@@ -9228,6 +9228,15 @@ func SdcaOptimizerV2(scope *Scope, sparse_example_indices []tf.Output, sparse_fe
 // If the minimum is empty for a given segment ID `i`, it outputs the largest
 // possible value for the specific numeric type,
 // `output[i] = numeric_limits<T>::max()`.
+//
+// For example:
+//
+// ``` python
+// c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+// tf.unsorted_segment_min(c, tf.constant([0, 1, 0]), num_segments=2)
+// # ==> [[ 1,  2, 2, 1],
+// #       [5,  6, 7, 8]]
+// ```
 //
 // If the given segment ID `i` is negative, then the corresponding value is
 // dropped, and will not be included in the result.
@@ -9270,6 +9279,57 @@ func ReluGrad(scope *Scope, gradients tf.Output, features tf.Output) (backprops 
 		Type: "ReluGrad",
 		Input: []tf.Input{
 			gradients, features,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// TensorArrayGatherV2Attr is an optional argument to TensorArrayGatherV2.
+type TensorArrayGatherV2Attr func(optionalAttr)
+
+// TensorArrayGatherV2ElementShape sets the optional element_shape attribute to value.
+// If not specified, defaults to <unknown_rank:true >
+func TensorArrayGatherV2ElementShape(value tf.Shape) TensorArrayGatherV2Attr {
+	return func(m optionalAttr) {
+		m["element_shape"] = value
+	}
+}
+
+// Deprecated. Use TensorArrayGatherV3
+//
+// DEPRECATED at GraphDef version 26: Use TensorArrayGatherV3
+func TensorArrayGatherV2(scope *Scope, handle tf.Output, indices tf.Output, flow_in tf.Output, dtype tf.DataType, optional ...TensorArrayGatherV2Attr) (value tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtype": dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorArrayGatherV2",
+		Input: []tf.Input{
+			handle, indices, flow_in,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the truth value of (x == y) element-wise.
+//
+// *NOTE*: `Equal` supports broadcasting. More about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+func Equal(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Equal",
+		Input: []tf.Input{
+			x, y,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -12685,7 +12745,7 @@ func NthElement(scope *Scope, input tf.Output, n tf.Output, optional ...NthEleme
 // Computes the maximum along segments of a tensor.
 //
 // Read
-// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 // for an explanation of segments.
 //
 // This operator is similar to the unsorted segment sum operator found
@@ -12705,6 +12765,16 @@ func NthElement(scope *Scope, input tf.Output, n tf.Output, optional ...NthEleme
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentMax.png" alt>
 // </div>
+//
+// For example:
+//
+// ``` python
+// c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+// tf.unsorted_segment_max(c, tf.constant([0, 1, 0]), num_segments=2)
+// # ==> [[ 4,  3, 3, 4],
+// #       [5,  6, 7, 8]]
+// ```
+//
 //
 // Arguments:
 //
@@ -25923,7 +25993,7 @@ func TextLineDataset(scope *Scope, filenames tf.Output, compression_type tf.Outp
 // Computes the sum along segments of a tensor.
 //
 // Read
-// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 // for an explanation of segments.
 //
 // Computes a tensor such that
@@ -25935,6 +26005,16 @@ func TextLineDataset(scope *Scope, filenames tf.Output, compression_type tf.Outp
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/SegmentSum.png" alt>
 // </div>
+//
+// For example:
+//
+// ```
+// c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+// tf.segment_sum(c, tf.constant([0, 0, 1]))
+// # ==> [[5, 5, 5, 5],
+// #      [5, 6, 7, 8]]
+// ```
+//
 //
 // Arguments:
 //
@@ -25960,7 +26040,7 @@ func SegmentSum(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.
 // Computes the mean along segments of a tensor.
 //
 // Read
-// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 // for an explanation of segments.
 //
 // Computes a tensor such that
@@ -25973,6 +26053,16 @@ func SegmentSum(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMean.png" alt>
 // </div>
+//
+// For example:
+//
+// ```
+// c = tf.constant([[1.0,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+// tf.segment_mean(c, tf.constant([0, 0, 1]))
+// # ==> [[2.5, 2.5, 2.5, 2.5],
+// #      [5, 6, 7, 8]]
+// ```
+//
 //
 // Arguments:
 //
@@ -25998,7 +26088,7 @@ func SegmentMean(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf
 // Computes the minimum along segments of a tensor.
 //
 // Read
-// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 // for an explanation of segments.
 //
 // Computes a tensor such that
@@ -26010,6 +26100,15 @@ func SegmentMean(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMin.png" alt>
 // </div>
+//
+// For example:
+//
+// ```
+// c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+// tf.segment_min(c, tf.constant([0, 0, 1]))
+// # ==> [[1, 2, 2, 1],
+// #      [5, 6, 7, 8]]
+// ```
 //
 // Arguments:
 //
@@ -26035,7 +26134,7 @@ func SegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.
 // Computes the sum along segments of a tensor.
 //
 // Read
-// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 // for an explanation of segments.
 //
 // Computes a tensor such that
@@ -26053,6 +26152,14 @@ func SegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentSum.png" alt>
 // </div>
+//
+// ``` python
+// c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+// tf.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
+// # ==> [[ 5,  5, 5, 5],
+// #       [5,  6, 7, 8]]
+// ```
+//
 //
 // Arguments:
 //
@@ -26079,7 +26186,7 @@ func UnsortedSegmentSum(scope *Scope, data tf.Output, segment_ids tf.Output, num
 // Computes the product along segments of a tensor.
 //
 // Read
-// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 // for an explanation of segments.
 //
 // This operator is similar to the unsorted segment sum operator found
@@ -26089,6 +26196,15 @@ func UnsortedSegmentSum(scope *Scope, data tf.Output, segment_ids tf.Output, num
 //
 // \\(output_i = \prod_{j...} data[j...]\\) where the product is over tuples
 // `j...` such that `segment_ids[j...] == i`.
+//
+// For example:
+//
+// ``` python
+// c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+// tf.unsorted_segment_prod(c, tf.constant([0, 1, 0]), num_segments=2)
+// # ==> [[ 4,  6, 6, 4],
+// #       [5,  6, 7, 8]]
+// ```
 //
 // If there is no entry for a given segment ID `i`, it outputs 1.
 //
@@ -26119,9 +26235,7 @@ func UnsortedSegmentProd(scope *Scope, data tf.Output, segment_ids tf.Output, nu
 
 // Computes the mean along sparse segments of a tensor.
 //
-// Read
-// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
-// for an explanation of segments.
+// See `tf.sparse.segment_sum` for usage examples.
 //
 // Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
 // dimension, selecting a subset of dimension 0, specified by `indices`.
@@ -26332,7 +26446,7 @@ func Cosh(scope *Scope, x tf.Output) (y tf.Output) {
 // misisng, the `output` tensor at that position will be zeroed.
 //
 // Read
-// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 // for an explanation of segments.
 //
 // Arguments:
@@ -26478,9 +26592,8 @@ func SparseSegmentMeanGrad(scope *Scope, grad tf.Output, indices tf.Output, segm
 //
 // N is the size of the segment being reduced.
 //
-// Read
-// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
-// for an explanation of segments.
+// See `tf.sparse.segment_sum` for usage examples.
+//
 //
 // Arguments:
 //
@@ -26539,7 +26652,7 @@ func Igammac(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
 // misisng, the `output` tensor at that position will be zeroed.
 //
 // Read
-// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 // for an explanation of segments.
 //
 // Arguments:
@@ -26883,7 +26996,7 @@ func Tanh(scope *Scope, x tf.Output) (y tf.Output) {
 // Computes the maximum along segments of a tensor.
 //
 // Read
-// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 // for an explanation of segments.
 //
 // Computes a tensor such that
@@ -26895,6 +27008,16 @@ func Tanh(scope *Scope, x tf.Output) (y tf.Output) {
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
 // </div>
+//
+// For example:
+//
+// ```
+// c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+// tf.segment_max(c, tf.constant([0, 0, 1]))
+// # ==> [[4, 3, 3, 4],
+// #      [5, 6, 7, 8]]
+// ```
+//
 //
 // Arguments:
 //
@@ -27814,6 +27937,30 @@ func LookupTableInsertV2(scope *Scope, table_handle tf.Output, keys tf.Output, v
 		},
 	}
 	return scope.AddOperation(opspec)
+}
+
+// Creates a `Dataset` that includes only 1/`num_shards` of this dataset.
+//
+// Arguments:
+//
+//	num_shards: An integer representing the number of shards operating in parallel.
+//	index: An integer representing the current worker index.
+//
+//
+func ShardDataset(scope *Scope, input_dataset tf.Output, num_shards tf.Output, index tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ShardDataset",
+		Input: []tf.Input{
+			input_dataset, num_shards, index,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Creates a dataset that batches and pads `batch_size` elements from the input.
@@ -30035,7 +30182,7 @@ func Svd(scope *Scope, input tf.Output, optional ...SvdAttr) (s tf.Output, u tf.
 // Computes the product along segments of a tensor.
 //
 // Read
-// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 // for an explanation of segments.
 //
 // Computes a tensor such that
@@ -30047,6 +30194,16 @@ func Svd(scope *Scope, input tf.Output, optional ...SvdAttr) (s tf.Output, u tf.
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/SegmentProd.png" alt>
 // </div>
+//
+// For example:
+//
+// ```
+// c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+// tf.segment_prod(c, tf.constant([0, 0, 1]))
+// # ==> [[4, 6, 6, 4],
+// #      [5, 6, 7, 8]]
+// ```
+//
 //
 // Arguments:
 //
@@ -34554,57 +34711,6 @@ func DynamicStitch(scope *Scope, indices []tf.Output, data []tf.Output) (merged 
 		Input: []tf.Input{
 			tf.OutputList(indices), tf.OutputList(data),
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the truth value of (x == y) element-wise.
-//
-// *NOTE*: `Equal` supports broadcasting. More about broadcasting
-// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-func Equal(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Equal",
-		Input: []tf.Input{
-			x, y,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// TensorArrayGatherV2Attr is an optional argument to TensorArrayGatherV2.
-type TensorArrayGatherV2Attr func(optionalAttr)
-
-// TensorArrayGatherV2ElementShape sets the optional element_shape attribute to value.
-// If not specified, defaults to <unknown_rank:true >
-func TensorArrayGatherV2ElementShape(value tf.Shape) TensorArrayGatherV2Attr {
-	return func(m optionalAttr) {
-		m["element_shape"] = value
-	}
-}
-
-// Deprecated. Use TensorArrayGatherV3
-//
-// DEPRECATED at GraphDef version 26: Use TensorArrayGatherV3
-func TensorArrayGatherV2(scope *Scope, handle tf.Output, indices tf.Output, flow_in tf.Output, dtype tf.DataType, optional ...TensorArrayGatherV2Attr) (value tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtype": dtype}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorArrayGatherV2",
-		Input: []tf.Input{
-			handle, indices, flow_in,
-		},
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

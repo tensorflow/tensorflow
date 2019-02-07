@@ -1144,6 +1144,12 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
+  def test_is_tensor_upgrade(self):
+    text = "tf.contrib.framework.is_tensor(x)"
+    expected = "tf.is_tensor(x)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
   def test_sample_distorted_bounding_box(self):
     # pylint: disable=line-too-long
     text = "tf.image.sample_distorted_bounding_box(a, b, c, d, e, f, g, h, i, j)"
@@ -1166,6 +1172,12 @@ def _log_prob(self, x):
   def test_flags_flags(self):
     _, _, errors, _ = self._upgrade("tf.flags.FLAGS")
     self.assertIn("tf.flags has been removed", errors[0])
+
+  def test_max_pool_2d(self):
+    text = "tf.nn.max_pool(value=4)"
+    expected_text = "tf.nn.max_pool2d(input=4)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

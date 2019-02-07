@@ -380,7 +380,7 @@ class _BaseFeaturesLayer(Layer):
     return array_ops.concat(output_tensors, -1)
 
 
-@keras_export('keras.layers.DenseFeatures', v1=[])
+@keras_export('keras.layers.DenseFeatures')
 class DenseFeatures(_BaseFeaturesLayer):
   """A layer that produces a dense `Tensor` based on given `feature_columns`.
 
@@ -4022,13 +4022,9 @@ class WeightedCategoricalColumn(
 
   def transform_feature(self, transformation_cache, state_manager):
     """Applies weights to tensor generated from `categorical_column`'."""
-    print('WeightedCategoricalColumn.transform_feature: ', self.name)
-    print('Weight feature key: ', self.weight_feature_key)
     weight_tensor = transformation_cache.get(self.weight_feature_key,
                                              state_manager)
-    print('Weight tensor before: ', weight_tensor)
     weight_tensor = self._transform_weight_tensor(weight_tensor)
-    print('Weight tensor after: ', weight_tensor)
     return (transformation_cache.get(self.categorical_column, state_manager),
             weight_tensor)
 
@@ -4042,9 +4038,7 @@ class WeightedCategoricalColumn(
 
   def get_sparse_tensors(self, transformation_cache, state_manager):
     """See `CategoricalColumn` base class."""
-    print('WeightedCategoricalColumn.get_sparse_tensors: ', self.name)
     tensors = transformation_cache.get(self, state_manager)
-    print('tensors[1]: ', tensors[1])
     return CategoricalColumn.IdWeightPair(tensors[0], tensors[1])
 
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,

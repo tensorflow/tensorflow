@@ -89,11 +89,11 @@ message FtrlParameters {
 // the normal version of Adam that updates all parameters in the embedding
 // table, even for entries that are not used in the current minibatch
 // (https://www.tensorflow.org/api_docs/python/tf/contrib/opt/AdamOptimizer). If
-// use_non_lazy_adam is enabled, use_gradient_accumulation is also required in
-// order to get correct results; a warning will be printed otherwise (which may
-// change to an error in the future). If use_sum_inside_sqrt is set, the Adam
-// variable update formula will be changed from m / (sqrt(v) + epsilon) to
-// m / sqrt(v + epsilon**2); this option improves the performance of TPU
+// use_non_lazy_adam is enabled, gradient accumulation is also required to be
+// enabled in order to get correct results; a warning will be printed otherwise
+// (which may change to an error in the future). If use_sum_inside_sqrt is set,
+// the Adam variable update formula will be changed from m / (sqrt(v) + epsilon)
+// to m / sqrt(v + epsilon**2); this option improves the performance of TPU
 // training and is not expected to harm model quality.
 message AdamParameters {
   float beta1 = 3;
@@ -170,6 +170,20 @@ message ProximalAdagradParameters {
   float initial_accumulator = 3;
 }
 
+// Status of using gradient accumulation (doing two passes over the input
+// gradients: one to accumulate them into a temporary array and another to apply
+// them using the actual optimization algorithm). The extra message is to wrap
+// the enum for scoping.
+message GradientAccumulationStatus {
+  // Defaults to value of use_gradient_accumulation (temporary compatibility
+  // behavior).
+  enum Status {
+    UNSPECIFIED = 0;
+    ENABLED = 1;
+    DISABLED = 2;
+  }
+};
+
 message OptimizationParameters {
   // Learning rate used for updating the embedding layer parameters.
   LearningRate learning_rate = 13;
@@ -191,11 +205,13 @@ message OptimizationParameters {
   // once per minibatch.
   float weight_decay_factor = 16;
 
-  // Whether to use gradient accumulation (do two passes over the input
+  // Status of using gradient accumulation (doing two passes over the input
   // gradients: one to accumulate them into a temporary array and another to
-  // apply them using the actual optimization algorithm). This feature is
-  // experimental -- it has not been fully verified and may cause training
-  // crashes and/or failures.
+  // apply them using the actual optimization algorithm).
+  GradientAccumulationStatus.Status gradient_accumulation_status = 17;
+
+  // Old gradient accumulation flag; overridden by gradient_accumulation_status
+  // when it is set.
   bool use_gradient_accumulation = 15;
 
   // Optimization algorithm parameters; which field is selected determines which

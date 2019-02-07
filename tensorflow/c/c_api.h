@@ -549,6 +549,10 @@ TF_CAPI_EXPORT extern void TF_SetAttrTypeList(TF_OperationDescription* desc,
                                               const char* attr_name,
                                               const TF_DataType* values,
                                               int num_values);
+TF_CAPI_EXPORT extern void TF_SetAttrPlaceholder(TF_OperationDescription* desc,
+                                                 const char* attr_name,
+                                                 const char* placeholder);
+
 // Set a 'func' attribute to the specified name.
 // `value` must point to a string of length `length` bytes.
 TF_CAPI_EXPORT extern void TF_SetAttrFuncName(TF_OperationDescription* desc,
@@ -1742,6 +1746,14 @@ TF_CAPI_EXPORT extern const char* TF_ServerTarget(TF_Server* server);
 // Destroy an in-process TensorFlow server, frees memory. If server is running
 // it will be stopped and joined.
 TF_CAPI_EXPORT extern void TF_DeleteServer(TF_Server* server);
+
+// Register a listener method that processes printed messages.
+//
+// If any listeners are registered, the print operator will call all listeners
+// with the printed messages and immediately return without writing to the
+// logs.
+TF_CAPI_EXPORT extern void TF_RegisterLogListener(
+    void (*listener)(const char*));
 
 #ifdef __cplusplus
 } /* end extern "C" */

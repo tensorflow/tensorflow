@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import functools
 import imp
+import unittest
 
 import gast
 
@@ -80,29 +81,33 @@ def is_whitelisted_for_graph(o):
     m = functools
   else:
     m = tf_inspect.getmodule(o)
-  if not hasattr(m, '__name__'):
-    # Note: typically it's builtins that fall in this category. Builtins will
-    # be handled by specific code that follows this screening layer.
-    logging.log(2, '%s is NOT whitelisted: unknown module name', o)
-    return False
 
-  for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
-    if m.__name__.startswith(prefix):
-      logging.log(2, '%s is whitelisted: name starts with "%s"', o, prefix)
+  if hasattr(m, '__name__'):
+    # Builtins typically have unnamed modules.
+    for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
+      if m.__name__.startswith(prefix):
+        logging.log(2, 'Whitelisted: %s: name starts with "%s"', o, prefix)
+        return True
+
+    # Temporary -- whitelist tensorboard modules.
+    # TODO(b/122731813): Remove.
+    if m.__name__ == 'tensorboard' or '.tensorboard' in m.__name__:
+      logging.log(2, 'Whitelisted: %s: name contains "tensorboard"', o)
       return True
 
   if hasattr(o, 'autograph_info__') or hasattr(o, '__ag_compiled'):
-    logging.log(2, '%s is whitelisted: already converted', o)
+    logging.log(2, 'Whitelisted: %s: already converted', o)
     return True
 
-  if (not inspect_utils.isweakrefself(o) and not tf_inspect.isclass(o) and
-      hasattr(o, '__call__') and hasattr(o, '__class__')):
+  if hasattr(o, '__call__'):
     # Callable objects: whitelisted if their __call__ method is.
-    call_whitelisted = is_whitelisted_for_graph(o.__call__)
-    if call_whitelisted:
-      logging.log(2, '%s is whitelisted: object __call__ whitelisted', o)
-      return call_whitelisted
+    # The type check avoids infinite recursion around the __call__ method
+    # of function objects.
+    if (type(o) != type(o.__call__)) and is_whitelisted_for_graph(o.__call__):  # pylint: disable=unidiomatic-typecheck
+      logging.log(2, 'Whitelisted: %s: object __call__ whitelisted', o)
+      return True
 
+  owner_class = None
   if tf_inspect.ismethod(o):
     # Methods of whitelisted classes are also whitelisted, even if they are
     # bound via user subclasses.
@@ -121,9 +126,13 @@ def is_whitelisted_for_graph(o):
 
     owner_class = inspect_utils.getmethodclass(o)
     if owner_class is not None:
+      if issubclass(owner_class, unittest.TestCase):
+        logging.log(2, 'Whitelisted: %s: method of TestCase subclass', o)
+        return True
+
       owner_class = inspect_utils.getdefiningclass(o, owner_class)
       if is_whitelisted_for_graph(owner_class):
-        logging.log(2, '%s is whitelisted: owner is whitelisted %s', o,
+        logging.log(2, 'Whitelisted: %s: owner is whitelisted %s', o,
                     owner_class)
         return True
 
@@ -132,13 +141,14 @@ def is_whitelisted_for_graph(o):
     # because they don't expose source code. But we assume they are safe for
     # graph mode since they are just containers.
     if tf_inspect.isclass(o) and len(o.__bases__) > 1:
-      logging.warn_first_n(
-          'Entity {} looks like a namedtuple subclass. If it has any custom'
-          ' methods, they will not be converted by AutoGraph.'.format(o), 1)
-    logging.log(2, '%s is whitelisted: named tuple', o)
+      logging.warn(
+          'Entity {} looks like a namedtuple subclass. Its constructor will'
+          ' not be converted by AutoGraph, but if it has any custom methods,'
+          ' those will be.'.format(o), 1)
+    logging.log(2, 'Whitelisted: %s: named tuple', o)
     return True
 
-  logging.log(2, '%s is NOT whitelisted', o)
+  logging.log(2, 'Not whitelisted: %s: default rule', o)
   return False
 
 
@@ -207,6 +217,9 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   if logging.has_verbosity(2):
     logging.log(2, 'Compiled output of %s:\n\n%s\n', o,
                 compiler.ast_to_source(node))
+  if logging.has_verbosity(4):
+    for n in node:
+      logging.log(4, 'Compiled AST of %s:\n\n%s\n', o, gast.dump(n))
 
   if program_ctx.options.recursive:
     while True:

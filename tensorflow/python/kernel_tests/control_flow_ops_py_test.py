@@ -2769,8 +2769,6 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(i_val, 3)
       self.assertAllClose(x_val, 1.0)
 
-  @test_util.disable_xla("This test never passed for XLA"
-                        )  # Resource variable issue for ControlFlowV2
   @test_util.run_gpu_only
   def testGpuResourceAccess(self):
     with ops.device(test.gpu_device_name()):

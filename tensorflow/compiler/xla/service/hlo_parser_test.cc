@@ -1047,9 +1047,15 @@ ENTRY ReducePrecision {
 "SortKey",
 R"(HloModule sort
 
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY Sort {
   x = f32[1024]{0} parameter(0)
-  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}
+  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}, to_apply=compare
 }
 
 )"
@@ -1059,10 +1065,18 @@ ENTRY Sort {
 "SortKeyValue",
 R"(HloModule sort
 
+compare {
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY Sort {
   keys = f32[1024]{0} parameter(0)
   values = s32[1024]{0} parameter(1)
-  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}
+  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}, to_apply=compare
 }
 
 )"
@@ -1072,9 +1086,15 @@ ENTRY Sort {
 "SortKeyR2",
 R"(HloModule sort
 
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY Sort {
   x = f32[1024,16]{0,1} parameter(0)
-  ROOT sorted = f32[1024,16]{0,1} sort(x), dimensions={0}
+  ROOT sorted = f32[1024,16]{0,1} sort(x), dimensions={0}, to_apply=compare
 }
 
 )"
@@ -1084,10 +1104,18 @@ ENTRY Sort {
 "SortKeyValueR2",
 R"(HloModule sort
 
+compare {
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY Sort {
   keys = f32[1024,16]{0,1} parameter(0)
   values = s32[1024,16]{0,1} parameter(1)
-  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}) sort(keys, values), dimensions={0}
+  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}) sort(keys, values), dimensions={0}, to_apply=compare
 }
 
 )"
@@ -1097,12 +1125,24 @@ ENTRY Sort {
 "SortManyValues",
 R"(HloModule sort
 
+compare {
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  p.2.lhs = u32[] parameter(4)
+  p.2.rhs = u32[] parameter(5)
+  p.3.lhs = f32[] parameter(6)
+  p.3.rhs = f32[] parameter(7)
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY Sort {
   keys = f32[1024,16]{0,1} parameter(0)
   values.0 = s32[1024,16]{0,1} parameter(1)
   values.1 = u32[1024,16]{0,1} parameter(2)
   values.2 = f32[1024,16]{0,1} parameter(3)
-  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}, u32[1024,16]{0,1}, f32[1024,16]{0,1}) sort(keys, values.0, values.1, values.2), dimensions={0}
+  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}, u32[1024,16]{0,1}, f32[1024,16]{0,1}) sort(keys, values.0, values.1, values.2), dimensions={0}, to_apply=compare
 }
 
 )"
@@ -1282,6 +1322,17 @@ ENTRY CollectivePermute {
 
 )"
 },
+// replica-id
+{
+"ReplicaId",
+R"(HloModule replica-id
+
+ENTRY Replica-id {
+  ROOT replica-id = u32[] replica-id()
+}
+
+)"
+},
 // Iota
 {
 "Iota",
@@ -1309,10 +1360,18 @@ ENTRY Computation {
 "ScheduledModule",
 R"(HloModule scheduled_module, is_scheduled=true
 
+compare {
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lhs = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY Sort {
   keys = f32[1024]{0} parameter(0)
   values = s32[1024]{0} parameter(1)
-  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}
+  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}, to_apply=compare
 }
 
 )"
@@ -1396,7 +1455,7 @@ class HloParameterizedParserTest
  protected:
   // Expects "ToString(ParseHloString(string)) == string", that is, parses the
   // string, asserts that it succeeded, stringifies the parsed module, and
-  // checks that the it equals the original string.
+  // checks that it equals the original string.
   void ExpectEqual() {
     const string& original = GetParam().module_string;
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

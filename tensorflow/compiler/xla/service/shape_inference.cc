@@ -534,6 +534,10 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                     p.edge_padding_high() +
                     std::max<int64>(operand_shape.dimensions(i) - 1, 0LL) *
                         p.interior_padding();
+    if (dimensions[i] < 0) {
+      return InvalidArgument("Padding result in negative size for dimension %d",
+                             i);
+    }
     is_dynamic[i] = operand_shape.is_dynamic_dimension(i);
   }
 
@@ -1858,6 +1862,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
               fft_length[i]);
         }
       }
+      if (ShapeUtil::IsZeroElementArray(in)) {
+        return in;
+      }
       Shape result = ShapeUtil::ChangeElementType(in, C64);
       result.set_dimensions(result.dimensions_size() - 1,
                             fft_length[fft_rank - 1] / 2 + 1);
@@ -2433,7 +2440,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::HumanString(arg));
   }
 
-  if (index >= arg.tuple_shapes_size()) {
+  if (index < 0 || index >= arg.tuple_shapes_size()) {
     return InvalidArgument(
         "Cannot infer shape: attempt to index out of tuple bounds: %d "
         ">= %d in shape %s.",

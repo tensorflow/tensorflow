@@ -494,3 +494,50 @@ xla_test(
         "//tensorflow/core:test",
     ],
 )
+
+cc_library(
+    name = "self_adjoint_eigen",
+    srcs = ["self_adjoint_eigen.cc"],
+    hdrs = ["self_adjoint_eigen.h"],
+    deps = [
+        ":arithmetic",
+        ":constants",
+        ":loops",
+        ":math",
+        ":matrix",
+        ":slicing",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:lib",
+    ],
+)
+
+xla_test(
+    name = "self_adjoint_eigen_test",
+    size = "medium",
+    srcs = ["self_adjoint_eigen_test.cc"],
+    real_hardware_only = True,
+    shard_count = 10,
+    tags = ["optonly"],
+    deps = [
+        ":arithmetic",
+        ":constants",
+        ":matrix",
+        ":self_adjoint_eigen",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:array3d",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)

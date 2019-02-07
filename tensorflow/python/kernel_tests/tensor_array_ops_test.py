@@ -1513,7 +1513,7 @@ class TensorArrayTest(test.TestCase):
       if "/task:1/" in d:
         self.assertTrue(
             [s for s in dev_stats[d] if "/TensorArray" in s.node_name])
-      else:
+      elif "/host:CPU" not in d:
         self.assertFalse(
             [s for s in dev_stats[d] if "/TensorArray" in s.node_name])
 
