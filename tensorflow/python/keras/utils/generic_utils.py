@@ -572,11 +572,8 @@ def to_snake_case(name):
   return 'private' + insecure
 
 
-def is_all_none(iterable_or_element):
-  if not isinstance(iterable_or_element, (list, tuple)):
-    iterable = [iterable_or_element]
-  else:
-    iterable = iterable_or_element
+def is_all_none(structure):
+  iterable = nest.flatten(structure)
   # We cannot use Python's `any` because the iterable may return Tensors.
   for element in iterable:
     if element is not None:

@@ -534,6 +534,10 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                     p.edge_padding_high() +
                     std::max<int64>(operand_shape.dimensions(i) - 1, 0LL) *
                         p.interior_padding();
+    if (dimensions[i] < 0) {
+      return InvalidArgument("Padding result in negative size for dimension %d",
+                             i);
+    }
     is_dynamic[i] = operand_shape.is_dynamic_dimension(i);
   }
 
@@ -832,10 +836,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
           ShapeUtil::HumanString(larger_shape));
     }
     if (small_is_dynamic != large_is_dynamic) {
-      return InvalidArgument(
-          "Broadcast dimension %d dynamism mismatch: %s and %s.", i,
-          ShapeUtil::HumanString(smaller_shape),
-          ShapeUtil::HumanString(larger_shape));
+      if ((small_dimension_size == 1 && !small_is_dynamic) ||
+          (large_dimension_size == 1 && !large_is_dynamic)) {
+        // Do nothing. It's OK when the size-1 dimension is not static.
+      } else {
+        return InvalidArgument(
+            "Broadcast dimension %d dynamism mismatch: %s and %s.", i,
+            ShapeUtil::HumanString(smaller_shape),
+            ShapeUtil::HumanString(larger_shape));
+      }
     }
     // Make sure the broadcast dimensions are listed in a strictly increasing
     // order.
@@ -1853,6 +1862,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
               fft_length[i]);
         }
       }
+      if (ShapeUtil::IsZeroElementArray(in)) {
+        return in;
+      }
       Shape result = ShapeUtil::ChangeElementType(in, C64);
       result.set_dimensions(result.dimensions_size() - 1,
                             fft_length[fft_rank - 1] / 2 + 1);
@@ -2428,7 +2440,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::HumanString(arg));
   }
 
-  if (index >= arg.tuple_shapes_size()) {
+  if (index < 0 || index >= arg.tuple_shapes_size()) {
     return InvalidArgument(
         "Cannot infer shape: attempt to index out of tuple bounds: %d "
         ">= %d in shape %s.",
@@ -2711,13 +2723,26 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         "Select's pred operand must have PRED element type; got %s.",
         ShapeUtil::HumanString(pred));
   }
-  if (ShapeUtil::CompatibleIgnoringElementType(pred, on_true) ||
+  if (Shape::Equal()
+          .IgnoreElementType()
+          .IgnoreLayout()
+          .IgnoreDynamicDimension()(pred, on_true) ||
       ShapeUtil::IsScalar(pred)) {
     // By this stage we know that pred's element type is PRED. Therefore, this
     // check restricts pred to be a PRED scalar, or a PRED array with the same
     // dimensions as on_true and on_false.
-    return ShapeUtil::ChangeElementType(
+    Shape inferred_shape = ShapeUtil::ChangeElementType(
         on_true, ShapeUtil::HigherPrecisionElementType(on_true, on_false));
+
+    // Propagate dynamic dimensions if pred is not a scalar.
+    if (!ShapeUtil::IsScalar(pred)) {
+      for (int i = 0; i < inferred_shape.rank(); i++) {
+        if (pred.is_dynamic_dimension(i)) {
+          inferred_shape.set_dynamic_dimension(i, true);
+        }
+      }
+    }
+    return inferred_shape;
   }
   return InvalidArgument(
       "Select operation with non-scalar predicate with dimensionality "

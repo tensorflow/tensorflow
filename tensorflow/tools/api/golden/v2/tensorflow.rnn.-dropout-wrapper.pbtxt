@@ -1,8 +1,10 @@
 path: "tensorflow.rnn.DropoutWrapper"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.DropoutWrapperV2\'>"
+  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl._RNNCellWrapperV2\'>"
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.LayerRNNCell\'>"
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.DropoutWrapper\'>"
+  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl._RNNCellWrapperV1\'>"
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.RNNCell\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"

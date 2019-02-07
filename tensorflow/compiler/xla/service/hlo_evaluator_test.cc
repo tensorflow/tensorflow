@@ -3119,5 +3119,39 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_ManyInputs) {
   EXPECT_TRUE(absl::c_equal(expected_data, actual_literal.data<uint32>()));
 }
 
+TEST_F(HloEvaluatorTest, IsFiniteF16) {
+  constexpr absl::string_view hlo_text = R"(
+  HloModule test
+
+  ENTRY IsFiniteTest {
+    c = f16[6] constant({nan, 7, nan, -1, inf, -inf})
+    ROOT is-finite = pred[6] is-finite(c)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal actual_literal,
+      HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_THAT(actual_literal.data<bool>(),
+              ::testing::ElementsAre(false, true, false, true, false, false));
+}
+
+TEST_F(HloEvaluatorTest, IsFiniteBf16) {
+  constexpr absl::string_view hlo_text = R"(
+  HloModule test
+
+  ENTRY IsFiniteTest {
+    c = bf16[6] constant({nan, 7, nan, -1, inf, -inf})
+    ROOT is-finite = pred[6] is-finite(c)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal actual_literal,
+      HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_THAT(actual_literal.data<bool>(),
+              ::testing::ElementsAre(false, true, false, true, false, false));
+}
+
 }  // namespace
 }  // namespace xla

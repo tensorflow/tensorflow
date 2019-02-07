@@ -18,6 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resource_variable_ops
@@ -76,9 +78,35 @@ class AutoCheckpointable(base.Checkpointable):
           checkpointable=self, value=value, name=name)
     super(AutoCheckpointable, self).__setattr__(name, value)
 
+  def __delattr__(self, name):
+    self._maybe_initialize_checkpointable()
+    if name in self._unconditional_dependency_names:
+      del self._unconditional_dependency_names[name]
+      for index, (dep_name, _) in enumerate(
+          self._unconditional_checkpoint_dependencies):
+        if dep_name == name:
+          del self._unconditional_checkpoint_dependencies[index]
+          break
+    super(AutoCheckpointable, self).__delattr__(name)
+
   def _no_dependency(self, value):
     """Override to allow CheckpointableBase to disable dependency tracking."""
     return data_structures.NoDependency(value)
+
+  def _list_functions_for_serialization(self):
+    """Return a dict of `Function`s of a checkpointable."""
+    functions = dict()
+    for attribute_name in dir(self):
+      try:
+        attribute_value = getattr(self, attribute_name, None)
+      except Exception:  # pylint: disable=broad-except
+        # We really don't want to throw an exception just because some object's
+        # attribute accessor is broken.
+        attribute_value = None
+      if isinstance(attribute_value, (def_function.Function,
+                                      defun.ConcreteFunction)):
+        functions[attribute_name] = attribute_value
+    return functions
 
 
 class ResourceTracker(object):

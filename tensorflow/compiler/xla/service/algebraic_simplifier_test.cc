@@ -25,8 +25,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
@@ -45,6 +47,7 @@ namespace {
 
 using ::testing::ElementsAre;
 namespace m = match;
+namespace op = xla::testing::opcode_matchers;
 
 class AlgebraicSimplifierTest : public HloTestBase {
  protected:
@@ -2747,93 +2750,22 @@ TEST_F(AlgebraicSimplifierTest, SliceOfReshapeUnchanged) {
 
 TEST_F(AlgebraicSimplifierTest, RemoveNoopSort) {
   auto builder = HloComputation::Builder(TestName());
+  auto module = CreateNewVerifiedModule();
 
   Shape keys_shape = ShapeUtil::MakeShape(F32, {1});
   auto keys = builder.AddInstruction(
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
-  builder.AddInstruction(HloInstruction::CreateSort(keys_shape, 0, keys));
-  auto module = CreateNewVerifiedModule();
+  TF_ASSERT_OK(
+      MakeSortHlo(keys_shape, {keys}, 0, &builder, module.get()).status());
   HloComputation* computation = module->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(), keys);
 }
 
-TEST_F(AlgebraicSimplifierTest, ReplacePermutationSortWithScatter) {
-  const char* hlo_string = R"(
-    HloModule permutation_sort
-
-    ENTRY sort_computation {
-      keys = f32[64,8732]{1,0} parameter(0)
-      values = s32[64,8732]{1,0} iota(), iota_dimension=1
-      sort = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys, values), dimensions={1}
-      gte = s32[64,8732]{1,0} get-tuple-element(sort), index=1
-      ROOT sort2 = (s32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(gte, values), dimensions={1}
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-
-  AlgebraicSimplifierOptions options;
-  options.set_enable_permutation_sort_replacement(true);
-  AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
-  auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root,
-              GmockMatch(m::Tuple(
-                  m::Iota(),
-                  m::Scatter(m::Iota(), m::Concatenate(m::Iota(), m::Reshape()),
-                             m::Reshape()))));
-}
-
-TEST_F(AlgebraicSimplifierTest, DontReplacePermutationSortIfNonIntegral) {
-  // Same as ReplacePermutationSortWithScatter except that the iota has F32
-  // type.
-  const char* hlo_string = R"(
-    HloModule permutation_sort
-
-    ENTRY sort_computation {
-      keys = f32[64,8732]{1,0} parameter(0)
-      values = f32[64,8732]{1,0} iota(), iota_dimension=1
-      sort = (f32[64,8732]{1,0}, f32[64,8732]{1,0}) sort(keys, values), dimensions={1}
-      gte = f32[64,8732]{1,0} get-tuple-element(sort), index=1
-      ROOT sort2 = (f32[64,8732]{1,0}, f32[64,8732]{1,0}) sort(gte, values), dimensions={1}
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-
-  AlgebraicSimplifierOptions options;
-  options.set_enable_permutation_sort_replacement(true);
-  AlgebraicSimplifier simplifier(options);
-  EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
-}
-
-TEST_F(AlgebraicSimplifierTest, DontReplacePermutationSortWrongDimensions) {
-  // Same as ReplacePermutationSortWithScatter except that the sort dimensions
-  // don't match.
-  const char* hlo_string = R"(
-   HloModule permutation_sort
-
-    ENTRY sort_computation {
-      keys = f32[64,8732]{1,0} parameter(0)
-      values = s32[64,8732]{1,0} iota(), iota_dimension=1
-      sort = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys, values), dimensions={1}
-      gte = s32[64,8732]{1,0} get-tuple-element(sort), index=1
-      ROOT sort2 = (s32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(gte, values), dimensions={0}
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-
-  AlgebraicSimplifierOptions options;
-  options.set_enable_permutation_sort_replacement(true);
-  AlgebraicSimplifier simplifier(options);
-  EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
-}
-
 TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
   auto builder = HloComputation::Builder(TestName());
+  auto module = CreateNewVerifiedModule();
 
   Shape keys_shape = ShapeUtil::MakeShape(F32, {5, 0});
   Shape values_shape = ShapeUtil::MakeShape(S32, {5, 0});
@@ -2843,10 +2775,10 @@ TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
       HloInstruction::CreateParameter(1, values_shape, "values0"));
   auto values1 = builder.AddInstruction(
       HloInstruction::CreateParameter(2, values_shape, "values1"));
-  builder.AddInstruction(HloInstruction::CreateSort(
-      ShapeUtil::MakeTupleShape({keys_shape, values_shape, values_shape}), 0,
-      keys, {values0, values1}));
-  auto module = CreateNewVerifiedModule();
+  TF_ASSERT_OK(MakeSortHlo(ShapeUtil::MakeTupleShape(
+                               {keys_shape, values_shape, values_shape}),
+                           {keys, values0, values1}, 0, &builder, module.get())
+                   .status());
   HloComputation* computation = module->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
@@ -4769,6 +4701,99 @@ std::vector<DotOfGatherTestSpec> DotOfGatherPositiveNegativeTests() {
 INSTANTIATE_TEST_SUITE_P(
     DotOfGatherSimplificationTestInstantiation, DotOfGatherSimplificationTest,
     ::testing::ValuesIn(DotOfGatherPositiveNegativeTests()));
+
+TEST_F(AlgebraicSimplifierTest, TupleReduceReshape) {
+  const char* hlo_string = R"(
+HloModule module
+
+reducer {
+  parameter.1 = f32[] parameter(0)
+  parameter.3 = f32[] parameter(2)
+  add.2 = f32[] add(parameter.1, parameter.3)
+  parameter.0 = f32[] parameter(1)
+  parameter.2 = f32[] parameter(3)
+  add.3 = f32[] add(parameter.0, parameter.2)
+  ROOT tuple.4 = (f32[], f32[]) tuple(add.2, add.3)
+}
+
+ENTRY entry {
+  parameter.6 = (f32[], f32[]) parameter(0)
+  get-tuple-element.10 = f32[] get-tuple-element(parameter.6), index=0
+  get-tuple-element.11 = f32[] get-tuple-element(parameter.6), index=1
+  constant = f32[] constant(0)
+  ROOT reduce = (f32[], f32[]) reduce(get-tuple-element.10, get-tuple-element.11, constant, constant), dimensions={}, to_apply=reducer
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Tuple(
+                        m::Reshape(m::GetTupleElement(m::Parameter(), 0)),
+                        m::Reshape(m::GetTupleElement(m::Parameter(), 1)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, TupleReduceBroadcast) {
+  const char* hlo_string = R"(
+HloModule module
+
+reducer {
+  parameter.1 = f32[] parameter(0)
+  parameter.3 = f32[] parameter(2)
+  mul.2 = f32[] add(parameter.1, parameter.3)
+  parameter.0 = f32[] parameter(1)
+  parameter.2 = f32[] parameter(3)
+  add.3 = f32[] add(parameter.0, parameter.2)
+  ROOT tuple.4 = (f32[], f32[]) tuple(mul.2, add.3)
+}
+
+ENTRY entry {
+  parameter.6 = (f32[0, 10, 10], f32[0, 10, 10]) parameter(0)
+  get-tuple-element.10 = f32[0, 10, 10] get-tuple-element(parameter.6), index=0
+  get-tuple-element.11 = f32[0, 10, 10] get-tuple-element(parameter.6), index=1
+  constant.0 = f32[] constant(0)
+  constant.1 = f32[] constant(1)
+  ROOT reduce = (f32[10, 10], f32[10, 10]) reduce(get-tuple-element.10, get-tuple-element.11, constant.0, constant.1), dimensions={0}, to_apply=reducer
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Tuple(m::Broadcast(m::ConstantScalar(0)),
+                                        m::Broadcast(m::ConstantScalar(1)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ZeroSizedReshapeWithoutLayout) {
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {1}), "param"));
+  HloInstruction* broadcast =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(
+          ShapeUtil::MakeShape(F32, {0, 1}), param, {1}));
+
+  // Create a reshape with zero sized result and without layout.
+  Shape reshaped_shape = ShapeUtil::MakeShape(F32, {0});
+  reshaped_shape.clear_layout();
+  builder.AddInstruction(
+      HloInstruction::CreateReshape(reshaped_shape, broadcast));
+
+  std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Constant());
+}
 
 }  // namespace
 }  // namespace xla

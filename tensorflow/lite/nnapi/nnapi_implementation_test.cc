@@ -84,6 +84,7 @@ TEST(NnapiLibTest, NnApiImplementation) {
     EXPECT_NE(nnapi->ANeuralNetworksEvent_wait, nullptr);
     EXPECT_NE(nnapi->ANeuralNetworksEvent_free, nullptr);
     EXPECT_NE(nnapi->ASharedMemory_create, nullptr);
+    // TODO(b/123423795): Test Q-specific APIs after release.
   }
 #else
   EXPECT_FALSE(nnapi->nnapi_exists);
@@ -95,6 +96,8 @@ TEST(NnapiLibTest, NnApiImplementation) {
   EXPECT_EQ(nnapi->ANeuralNetworksModel_finish, nullptr);
   EXPECT_EQ(nnapi->ANeuralNetworksModel_addOperand, nullptr);
   EXPECT_EQ(nnapi->ANeuralNetworksModel_setOperandValue, nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworksModel_setOperandSymmPerChannelQuantParams,
+            nullptr);
   EXPECT_EQ(nnapi->ANeuralNetworksModel_setOperandValueFromMemory, nullptr);
   EXPECT_EQ(nnapi->ANeuralNetworksModel_addOperation, nullptr);
   EXPECT_EQ(nnapi->ANeuralNetworksModel_identifyInputsAndOutputs, nullptr);
@@ -114,6 +117,25 @@ TEST(NnapiLibTest, NnApiImplementation) {
   EXPECT_EQ(nnapi->ANeuralNetworksEvent_wait, nullptr);
   EXPECT_EQ(nnapi->ANeuralNetworksEvent_free, nullptr);
   EXPECT_NE(nnapi->ASharedMemory_create, nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworks_getDeviceCount, nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworks_getDevice, nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworksDevice_getName, nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworksDevice_getVersion, nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworksDevice_getFeatureLevel, nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworksModel_getSupportedOperationsForDevices,
+            nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworksCompilation_createForDevices, nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworksCompilation_setCaching, nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworksExecution_compute, nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworksExecution_getOutputOperandRank, nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworksExecution_getOutputOperandDimensions,
+            nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworksBurst_create, nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworksBurst_free, nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworksExecution_burstCompute, nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworksMemory_createFromAHardwareBuffer, nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworksExecution_setMeasureTiming, nullptr);
+  EXPECT_EQ(nnapi->ANeuralNetworksExecution_getDuration, nullptr);
 #endif
 }
 

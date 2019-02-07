@@ -291,6 +291,7 @@ TEST(SubgraphQuantizerTest, VerifySoftmaxQuantization) {
   ASSERT_EQ(op->outputs.size(), 1);
   auto float_graph = readonly_model->subgraphs()->Get(0);
 
+  // Verify input.
   ASSERT_EQ(float_graph->tensors()->Get(op->inputs[0])->type(),
             TensorType_FLOAT32);
   ASSERT_EQ(float_graph->tensors()->Get(op->outputs[0])->type(),
@@ -306,12 +307,18 @@ TEST(SubgraphQuantizerTest, VerifySoftmaxQuantization) {
   VerifyAsymmetricQuantizationScale(*float_input_quant_params,
                                     *input_quant_params);
 
+  // Verify output.
   auto float_output_quant_params =
       float_graph->tensors()->Get(op->outputs[0])->quantization();
   auto output_quant_params =
       subgraph->tensors[op->outputs[0]]->quantization.get();
-  VerifyAsymmetricQuantizationScale(*float_output_quant_params,
-                                    *output_quant_params);
+  ASSERT_EQ(float_output_quant_params->min()->size(), 1);
+  ASSERT_EQ(float_output_quant_params->max()->size(), 1);
+
+  ASSERT_EQ(output_quant_params->scale.size(), 1);
+  ASSERT_EQ(output_quant_params->zero_point.size(), 1);
+  ASSERT_EQ(1.0f / 256.0f, output_quant_params->scale[0]);
+  ASSERT_EQ(-128, output_quant_params->zero_point[0]);
 }
 
 TEST(SubgraphQuantizerTest, VerifyAvgPoolQuantization) {

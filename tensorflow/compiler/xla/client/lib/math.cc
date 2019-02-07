@@ -13,14 +13,99 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// This macro is required to make MSVC defines math constants in math.h
+#define _USE_MATH_DEFINES
+#include <math.h>
+
 #include "tensorflow/compiler/xla/client/lib/math.h"
 
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {
+
+// TODO(jlebar): Use this function in more places in this file to restrict the
+// domain of other functions.
+static Status EnsureOperandIsRealFp(absl::string_view op_name, XlaOp operand) {
+  auto& b = *operand.builder();
+  TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
+  auto elem_ty = shape.element_type();
+  if (!primitive_util::IsFloatingPointType(elem_ty)) {
+    return InvalidArgument(
+        "Operands to %s must be real-valued floating-point, but got %s",
+        op_name, PrimitiveType_Name(elem_ty));
+  }
+  return Status::OK();
+}
+
+XlaOp IsPosInf(XlaOp operand) {
+  auto& b = *operand.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IsPosInf", operand));
+    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
+    // Note that this is only correct for floating-point types.  If we wanted it
+    // to be correct for all types, we'd need to Gt(MaxFiniteValue).
+    return Eq(operand, MaxValue(&b, shape.element_type()));
+  });
+}
+
+XlaOp IsNegInf(XlaOp operand) {
+  auto& b = *operand.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IsNegInf", operand));
+    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
+    // Note that this is only correct for floating-point types.  If we wanted it
+    // to be correct for all types, we'd need to Lt(MinFiniteValue).
+    return Eq(operand, MinValue(&b, shape.element_type()));
+  });
+}
+
+XlaOp IsInf(XlaOp operand) {
+  auto& b = *operand.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IsInf", operand));
+    return IsPosInf(Abs(operand));
+  });
+}
+
+XlaOp IsNan(XlaOp operand) {
+  auto& b = *operand.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IsNan", operand));
+    return Ne(operand, operand);
+  });
+}
+
+XlaOp IsNegZero(XlaOp operand) {
+  auto& b = *operand.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IsNegZero", operand));
+    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
+
+    // The bitwise representation of -0 in bfloat16 and IEEE 754 is 0x80...0
+    // (sign bit on, all other bits off).
+    switch (shape.element_type()) {
+      case F64:
+        return Eq(BitcastConvertType(operand, U64),
+                  ConstantR0WithType(&b, U64, uint64{1} << 63));
+      case F32:
+        return Eq(BitcastConvertType(operand, U32),
+                  ConstantR0WithType(&b, U32, uint32{1} << 31));
+      case F16:
+      case BF16:
+        // Not all XLA backends handle U16 well, so we convert to F32/U32.
+        // TODO(jlebar): It would be nice if we could stay in (B)F16/U16 for
+        // backends that *do* support it.
+        return Eq(BitcastConvertType(ConvertElementType(operand, F32), U32),
+                  ConstantR0WithType(&b, U32, uint32{1} << 31));
+      default:
+        LOG(FATAL) << "Expected real fp type.";
+    }
+  });
+}
 
 XlaOp Sqrt(XlaOp operand) { return Pow(operand, ScalarLike(operand, 0.5)); }
 
@@ -29,44 +114,6 @@ XlaOp Rsqrt(XlaOp operand) { return Pow(operand, ScalarLike(operand, -0.5)); }
 XlaOp Square(XlaOp operand) { return operand * operand; }
 
 XlaOp Reciprocal(XlaOp operand) { return ScalarLike(operand, 1.0) / operand; }
-
-namespace {
-
-// Polynomials for computing erf/erfc.  Originally from cephes.
-// Note we use float for compatibility across devices, at the cost of some
-// precision for 64 bit computations.
-//
-// Coefficients are in descending order.
-std::array<float, 9> kErfcPCoefficient = {
-    2.46196981473530512524E-10, 5.64189564831068821977E-1,
-    7.46321056442269912687E0,   4.86371970985681366614E1,
-    1.96520832956077098242E2,   5.26445194995477358631E2,
-    9.34528527171957607540E2,   1.02755188689515710272E3,
-    5.57535335369399327526E2};
-std::array<float, 9> kErfcQCoefficient = {
-    1.00000000000000000000E0, 1.32281951154744992508E1,
-    8.67072140885989742329E1, 3.54937778887819891062E2,
-    9.75708501743205489753E2, 1.82390916687909736289E3,
-    2.24633760818710981792E3, 1.65666309194161350182E3,
-    5.57535340817727675546E2};
-std::array<float, 6> kErfcRCoefficient = {
-    5.64189583547755073984E-1, 1.27536670759978104416E0,
-    5.01905042251180477414E0,  6.16021097993053585195E0,
-    7.40974269950448939160E0,  2.97886665372100240670E0};
-std::array<float, 7> kErfcSCoefficient = {
-    1.00000000000000000000E0, 2.26052863220117276590E0,
-    9.39603524938001434673E0, 1.20489539808096656605E1,
-    1.70814450747565897222E1, 9.60896809063285878198E0,
-    3.36907645100081516050E0};
-std::array<float, 5> kErfTCoefficient = {
-    9.60497373987051638749E0, 9.00260197203842689217E1,
-    2.23200534594684319226E3, 7.00332514112805075473E3,
-    5.55923013010394962768E4};
-std::array<float, 6> kErfUCoefficient = {
-    1.00000000000000000000E0, 3.35617141647503099647E1,
-    5.21357949780152679795E2, 4.59432382970980127987E3,
-    2.26290000613890934246E4, 4.92673942608635921086E4};
-}  // namespace
 
 // Evaluate the polynomial given coefficients and `x`.
 // N.B. Coefficients should be supplied in decreasing order.
@@ -78,79 +125,85 @@ XlaOp EvaluatePolynomial(XlaOp x, absl::Span<const float> coefficients) {
   return poly;
 }
 
-// Compute an approximation of the error function complement (1 - erf(x)).
+// Computes an approximation of the error function complement (1 - erf(x)).
 //
-// TODO(jlebar): This is not particularly efficient.  The implementation in
-// Cephes that this follows was written for double precision, but our
-// coefficients are specified only to single-precision!  Cephes has a different,
-// simpler implementation for single-precision.
+// Precondition: abs(x) >= 1.  Otherwise, use ErfImpl.
 //
-// Furthermore, we could simplify this further for f16 -- for example, because
-// exp(-4.2 * 4.2) = 0 (f16), the computations in service of the x < 8.0 branch
-// below are unnecessary.
+// This follows Cephes's f32 implementation of erfc, and so it may have errors
+// for double precision.
 //
 // See also these alternate implementations of erf and erfc:
 //
 //   https://stackoverflow.com/questions/35148198
 //   https://stackoverflow.com/questions/35966695
 //
-XlaOp Erfc(XlaOp x) {
-  auto& b = *x.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    // Reject non-real non-fp inputs.  (We could extend erfc to accept complex
-    // types, but it doesn't seem necessary at this point.)
-    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
-    if (!ShapeUtil::ElementIsFloating(shape)) {
-      return InvalidArgument(
-          "erfc only accepts real floating-point arrays or scalars, but got %s",
-          shape.ToString());
-    }
-    XlaOp abs_x = Abs(x);
-    XlaOp z = Exp(-x * x);
+static XlaOp ErfcImpl(XlaOp x) {
+  // Coefficients for erfc(f32), from Cephes.
+  //
+  // erfc(x) = exp(-x^2) P(1/x), 1 < x < 2
+  static std::array<float, 9> kErfcPCoefficient{
+      +2.326819970068386E-2, -1.387039388740657E-1, +3.687424674597105E-1,
+      -5.824733027278666E-1, +6.210004621745983E-1, -4.944515323274145E-1,
+      +3.404879937665872E-1, -2.741127028184656E-1, +5.638259427386472E-1,
+  };
+  // erfc(x) = exp(-x^2) 1/x P(1/x^2), 2 < x < 14
+  static std::array<float, 8> kErfcRCoefficient{
+      -1.047766399936249E+1, +1.297719955372516E+1, -7.495518717768503E+0,
+      +2.921019019210786E+0, -1.015265279202700E+0, +4.218463358204948E-1,
+      -2.820767439740514E-1, +5.641895067754075E-1,
+  };
 
-    XlaOp pp = EvaluatePolynomial(abs_x, kErfcPCoefficient);
-    XlaOp pq = EvaluatePolynomial(abs_x, kErfcQCoefficient);
-    XlaOp pr = EvaluatePolynomial(abs_x, kErfcRCoefficient);
-    XlaOp ps = EvaluatePolynomial(abs_x, kErfcSCoefficient);
-
-    XlaOp abs_x_small = Lt(abs_x, ScalarLike(x, 8.0));
-    XlaOp y = Select(abs_x_small, z * pp / pq, z * pr / ps);
-    XlaOp result_no_underflow =
-        Select(Lt(x, ScalarLike(x, 0.0)), ScalarLike(x, 2.0) - y, y);
-
-    // Check for edge cases, namely, exp(-x^2) is exactly 0, or the appropriate
-    // denominator (ps or pq) is inf.  (The check for exp(-x^2) == 0 is
-    // necessary only for x == +/- inf, where this check lets us avoid
-    // multiplying 0 by inf and getting nan.)
-    auto is_pos_inf = [](XlaOp op) {
-      return And(Not(IsFinite(op)), Gt(op, ScalarLike(op, 0)));
-    };
-    XlaOp underflow =
-        Or(Eq(z, ScalarLike(z, 0)), Or(And(is_pos_inf(pq), abs_x_small),
-                                       And(is_pos_inf(ps), Not(abs_x_small))));
-    XlaOp result_underflow =
-        Select(Lt(x, ScalarLike(x, 0)), FullLike(x, 2), FullLike(x, 0));
-
-    return Select(underflow, result_underflow, result_no_underflow);
-  });
+  XlaOp abs_x = Abs(x);
+  XlaOp z = Exp(-x * x);
+  XlaOp q = ScalarLike(x, 1) / abs_x;
+  XlaOp y = q * q;
+  XlaOp p = Select(Lt(abs_x, ScalarLike(x, 2.0)),
+                   EvaluatePolynomial(y, kErfcPCoefficient),
+                   EvaluatePolynomial(y, kErfcRCoefficient));
+  y = z * q * p;
+  return Select(Lt(x, ScalarLike(x, 0)), ScalarLike(x, 2.0) - y, y);
 }
 
 // Compute a polynomial approximation of the error function.
+//
+// Precondition: abs(x) <= 1.  Otherwise, use ErfcImpl.
+//
+// This follows Cephes's f32 implementation of erf, so it may have errors for
+// double precision.
+static XlaOp ErfImpl(XlaOp x) {
+  // Coefficients for by erf(f32), from Cephes.
+  //
+  // erf(x) = x P(x^2), 0 < x < 1
+  static std::array<float, 7> kErfTCoefficient{
+      +7.853861353153693E-5, -8.010193625184903E-4, +5.188327685732524E-3,
+      -2.685381193529856E-2, +1.128358514861418E-1, -3.761262582423300E-1,
+      +1.128379165726710E+0,
+  };
+
+  return x * EvaluatePolynomial(x * x, kErfTCoefficient);
+}
+
+XlaOp Erfc(XlaOp x) {
+  auto& b = *x.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Erfc", x));
+    // erfc(x) =
+    //   erfc_impl(x)           if x > 1
+    //   1 - erf_impl(x)        otherwise
+    return Select(Gt(Abs(x), ScalarLike(x, 1)), ErfcImpl(x),
+                  ScalarLike(x, 1) - ErfImpl(x));
+  });
+}
+
 XlaOp Erf(XlaOp x) {
   auto& b = *x.builder();
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    // Reject non-real non-fp inputs.  (We could extend erf to accept complex
-    // types, but it doesn't seem necessary at this point.)
-    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
-    if (!ShapeUtil::ElementIsFloating(shape)) {
-      return InvalidArgument(
-          "erf only accepts real floating-point arrays or scalars, but got %s",
-          shape.ToString());
-    }
-    XlaOp z = x * x;
-    XlaOp pt = EvaluatePolynomial(z, kErfTCoefficient);
-    XlaOp pu = EvaluatePolynomial(z, kErfUCoefficient);
-    return x * pt / pu;
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Erf", x));
+    // erf(x) =
+    //   erf_impl(x)            if x < 1
+    //   1 - erfc_impl(x)       otherwise
+    return Select(Lt(Abs(x), ScalarLike(x, 1)), ErfImpl(x),
+                  ScalarLike(x, 1) - ErfcImpl(x));
   });
 }
 
@@ -219,15 +272,7 @@ static constexpr std::array<double, 8> kLanczosCoefficients = {
 XlaOp Lgamma(XlaOp input) {
   auto& b = *input.builder();
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    // Reject non-real non-fp inputs.  (We could extend lgamma to accept complex
-    // types, but it doesn't seem necessary at this point.)
-    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(input));
-    if (!ShapeUtil::ElementIsFloating(shape)) {
-      return InvalidArgument(
-          "lgamma only accepts real floating-point arrays or scalars, but got "
-          "%s",
-          shape.ToString());
-    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Lgamma", input));
 
     XlaOp one_half = ScalarLike(input, 0.5);
     XlaOp one = ScalarLike(input, 1);
@@ -317,15 +362,7 @@ XlaOp Lgamma(XlaOp input) {
 XlaOp Digamma(XlaOp input) {
   auto& b = *input.builder();
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    // Reject non-real non-fp inputs.  (We could extend digamma to accept
-    // complex types, but it doesn't seem necessary at this point.)
-    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(input));
-    if (!ShapeUtil::ElementIsFloating(shape)) {
-      return InvalidArgument(
-          "digamma only accepts real floating-point arrays or scalars, but got "
-          "%s",
-          shape.ToString());
-    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Digamma", input));
 
     XlaOp zero = ScalarLike(input, 0);
     XlaOp one_half = ScalarLike(input, 0.5);
@@ -377,12 +414,8 @@ XlaOp RoundToEven(XlaOp x) {
     // Reject non-real non-fp inputs (What does it even mean to round a complex
     // number?  Do you round each component equally?  In that case, you should
     // just ask for that explicitly.)
-    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
-    if (ShapeUtil::ElementIsComplex(shape)) {
-      return InvalidArgument(
-          "RoundToEven doesn't accept complex inputs, but got %s",
-          shape.ToString());
-    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("RoundToEven", x));
+
     auto half = ScalarLike(x, 0.5);
     auto one = ScalarLike(x, 1.0);
     auto two = ScalarLike(x, 2.0);

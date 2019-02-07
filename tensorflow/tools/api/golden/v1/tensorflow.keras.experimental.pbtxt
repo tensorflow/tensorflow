@@ -1,6 +1,22 @@
 path: "tensorflow.keras.experimental"
 tf_module {
   member {
+    name: "CosineDecay"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CosineDecayRestarts"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LinearCosineDecay"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "NoisyLinearCosineDecay"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "PeepholeLSTMCell"
     mtype: "<type \'type\'>"
   }

@@ -484,11 +484,6 @@ class CudnnSupport : public dnn::DnnSupport {
                       DeviceMemory<Eigen::half>* output_diff_data,
                       ScratchAllocator* workspace_allocator) override;
 
-  bool DoNormalize(Stream* stream,
-                   const dnn::NormalizeDescriptor& normalize_descriptor,
-                   const DeviceMemory<float>& input_data,
-                   DeviceMemory<float>* output_data) override;
-
   bool DoNormalizeWithDimensions(
       Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
       const dnn::BatchDescriptor& dimensions,

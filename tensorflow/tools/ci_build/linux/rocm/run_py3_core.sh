@@ -96,3 +96,4 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/kernel_tests:self_adjoint_eig_op_test_gpu \
     -//tensorflow/python/keras:normalization_test \
     -//tensorflow/python/keras:base_layer_test \
+    -//tensorflow/python/eager:def_function_xla_test_cpu \

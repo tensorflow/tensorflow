@@ -963,6 +963,10 @@ void MutableLiteralBase::AppendSparseElement(
   CHECK(LayoutUtil::IsSparseArray(subshape));
   int64 rank = subshape.rank();
   CHECK_EQ(multi_index.size(), rank);
+  for (int64 i = 0; i < rank; ++i) {
+    CHECK_GE(multi_index[i], 0);
+    CHECK_LT(multi_index[i], subshape.dimensions(i));
+  }
   int64 last_element = p.sparse_indices()->index_count();
   CHECK_LT(last_element, LayoutUtil::MaxSparseElements(subshape.layout()));
   p.sparse_indices()->Append(multi_index);

@@ -35,7 +35,7 @@ from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_resource_variable_ops
-from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
 
@@ -277,7 +277,7 @@ def _grad_fn(func_graph, grads):
   ys = []
   grad_ys = []
   for y, grad_y in zip(func_graph.outputs, grads):
-    if not gradients_impl.IsTrainable(y):
+    if not gradients_util.IsTrainable(y):
       continue
     ys.append(y)
     grad_ys.append(grad_y)
@@ -286,7 +286,7 @@ def _grad_fn(func_graph, grads):
   # func_graph in the current graph, which requires capturing tensors from
   # func_graph. The captured func_graph tensors are resolved to external tensors
   # in _resolve_grad_inputs.
-  result = gradients_impl._GradientsHelper(
+  result = gradients_util._GradientsHelper(
       ys, func_graph.inputs, grad_ys=grad_ys,
       src_graph=func_graph)
 

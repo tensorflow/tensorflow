@@ -155,6 +155,12 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
       }
+      field {
+        name: "collective_nccl"
+        number: 7
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
       reserved_range {
         start: 2
         end: 3

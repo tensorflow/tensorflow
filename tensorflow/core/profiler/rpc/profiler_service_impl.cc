@@ -17,7 +17,7 @@ limitations under the License.
 #include "grpcpp/support/status.h"
 #include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
-#include "tensorflow/core/profiler/lib/eager_profiler.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -38,8 +38,8 @@ class ProfilerServiceImpl : public TPUProfiler::Service {
   ::grpc::Status Profile(::grpc::ServerContext* ctx, const ProfileRequest* req,
                          ProfileResponse* response) override {
     LOG(INFO) << "Received a profile request.";
-    std::unique_ptr<EagerProfiler> profiler =
-        EagerProfiler::Create(eager_context_);
+    std::unique_ptr<ProfilerSession> profiler =
+        ProfilerSession::Create(eager_context_);
     if (!profiler->Status().ok()) {
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,
                             profiler->Status().error_message());

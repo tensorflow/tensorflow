@@ -71,6 +71,21 @@ class InterfaceTests(test.TestCase):
     nodeps = NoDependencyModel()
     self.assertEqual([nodeps], util.list_objects(nodeps))
 
+  def testRemoveDependency(self):
+    root = tracking.AutoCheckpointable()
+    root.a = tracking.AutoCheckpointable()
+    self.assertEqual(1, len(root._checkpoint_dependencies))
+    self.assertEqual(1, len(root._unconditional_checkpoint_dependencies))
+    self.assertIs(root.a, root._checkpoint_dependencies[0].ref)
+    del root.a
+    self.assertFalse(hasattr(root, "a"))
+    self.assertEqual(0, len(root._checkpoint_dependencies))
+    self.assertEqual(0, len(root._unconditional_checkpoint_dependencies))
+    root.a = tracking.AutoCheckpointable()
+    self.assertEqual(1, len(root._checkpoint_dependencies))
+    self.assertEqual(1, len(root._unconditional_checkpoint_dependencies))
+    self.assertIs(root.a, root._checkpoint_dependencies[0].ref)
+
   def testListBasic(self):
     a = tracking.AutoCheckpointable()
     b = tracking.AutoCheckpointable()

@@ -1,11 +1,12 @@
 path: "tensorflow.keras.losses.LogLoss"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.losses.LogLoss\'>"
+  is_instance: "<class \'tensorflow.python.keras.losses.LossFunctionWrapper\'>"
   is_instance: "<class \'tensorflow.python.keras.losses.Loss\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'reduction\', \'name\'], varargs=None, keywords=None, defaults=[\'sum_over_batch_size\', \'None\'], "
+    argspec: "args=[\'self\', \'reduction\', \'name\'], varargs=None, keywords=None, defaults=[\'sum_over_batch_size\', \'logloss\'], "
   }
   member_method {
     name: "call"

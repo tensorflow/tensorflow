@@ -20,11 +20,13 @@ from __future__ import print_function
 
 import abc
 
+import collections
 import six
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.python.util.tf_export import tf_export
 
 
 def format_master_url(master, rpc_layer=None):
@@ -42,6 +44,7 @@ def get_accelerator_devices(master, config_proto):
   return devices
 
 
+@tf_export('distribute.cluster_resolver.ClusterResolver')
 @six.add_metaclass(abc.ABCMeta)
 class ClusterResolver(object):
   """Abstract class for all implementations of ClusterResolvers.
@@ -104,17 +107,14 @@ class ClusterResolver(object):
   def num_accelerators(self,
                        task_type=None,
                        task_id=None,
-                       accelerator_type='GPU',
                        config_proto=None):
     """Returns the number of accelerator cores per worker.
 
     This returns the number of accelerator cores (such as GPUs and TPUs)
-    available per worker. If workers only has CPU cores available, then this
-    should return 0. This method will query the master for this information
-    if it is not otherwise known.
+    available per worker.
 
-    Optionally, we allow callers to specify the task_type, task_id, and
-    rpc_layer, if they want to target a specific TensorFlow process to query
+    Optionally, we allow callers to specify the task_type, and task_id, for
+    if they want to target a specific TensorFlow process to query
     the number of accelerators. This is to support heterogenous environments,
     where the number of accelerators cores per host is different.
 
@@ -123,21 +123,39 @@ class ClusterResolver(object):
         want to query.
       task_id: (Optional) The index of the TensorFlow task of the machine we
         want to query.
-      accelerator_type: (Optional) The type of accelerator we are trying to
-        query (defaults to 'GPU').
       config_proto: (Optional) Configuration for starting a new session to
         query how many accelerator cores it has.
+
+    Returns:
+      A map of accelerator types to number of cores.
     """
     master = self.master(task_type, task_id)
     devices = get_accelerator_devices(master, config_proto)
-    return sum(1 for d in devices if d.device_type == accelerator_type)
+    mapping = collections.defaultdict(int)
+    for device in devices:
+      mapping[device.device_type] += 1
+    return mapping
 
-  @abc.abstractproperty
+  @property
   def environment(self):
-    """Returns the current environment which TensorFlow is running in."""
-    raise NotImplementedError()
+    """Returns the current environment which TensorFlow is running in.
+
+    There are two possible return values, "google" (when TensorFlow is running
+    in a Google-internal environment) or an empty string (when TensorFlow is
+    running elsewhere).
+
+    If you are implementing a ClusterResolver that works in both the Google
+    environment and the open-source world (for instance, a TPU ClusterResolver
+    or similar), you will have to return the appropriate string depending on the
+    environment, which you will have to detect.
+
+    Otherwise, if you are implementing a ClusterResolver that will only work
+    in open-source TensorFlow, you do not need to implement this property.
+    """
+    return ''
 
 
+@tf_export('distribute.cluster_resolver.SimpleClusterResolver')
 class SimpleClusterResolver(ClusterResolver):
   """Simple implementation of ClusterResolver that accepts a ClusterSpec."""
 
@@ -237,6 +255,7 @@ class SimpleClusterResolver(ClusterResolver):
     self._rpc_layer = rpc_layer
 
 
+@tf_export('distribute.cluster_resolver.UnionResolver')
 class UnionClusterResolver(ClusterResolver):
   """Performs a union on underlying ClusterResolvers.
 

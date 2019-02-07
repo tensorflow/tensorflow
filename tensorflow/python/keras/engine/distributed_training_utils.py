@@ -20,11 +20,10 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.client import session as session_module
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
-from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -105,7 +104,7 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
                                         grouped_inputs)
   if with_loss_tensor:
     # reduce loss tensor before adding it to the list of fetches
-    loss = distribution_strategy.reduce(distribute_lib.get_loss_reduction(),
+    loss = distribution_strategy.reduce(reduce_util.ReduceOp.SUM,
                                         grouped_outputs[0])
     all_outputs = flatten_perdevice_values(distribution_strategy,
                                            grouped_outputs[1:])
@@ -351,35 +350,7 @@ def init_restore_or_wait_for_variables():
     _wait_for_variable_initialization(session)
 
 
-def configure_and_create_session(distribution_strategy):
-  """Configure session config and create a session with it."""
-  # TODO(priyag): Throw error if a session already exists.
-  session_config = K.get_default_session_config()
-
-  if is_tpu_strategy(distribution_strategy):
-    # TODO(priyag, yuefengz): Remove this workaround when Distribute
-    # Coordinator is integrated with keras and we can create a session from
-    # there.
-    distribution_strategy.configure(session_config)
-    master = distribution_strategy.extended._tpu_cluster_resolver.master()  # pylint: disable=protected-access
-    session = session_module.Session(config=session_config, target=master)
-  else:
-    worker_context = dc_context.get_current_worker_context()
-    if worker_context:
-      dc_session_config = worker_context.session_config
-      # Merge the default session config to the one from distribute coordinator,
-      # which is fine for now since they don't have conflicting configurations.
-      dc_session_config.MergeFrom(session_config)
-      session = session_module.Session(
-          config=dc_session_config, target=worker_context.master_target)
-    else:
-      distribution_strategy.configure(session_config)
-      session = session_module.Session(config=session_config)
-
-  K.set_session(session)
-
-
-def validate_inputs(x, y, distribution_strategy):
+def validate_inputs(x, y, distribution_strategy, allow_partial_batch=False):
   """Validate inputs when using DistributionStrategy.
 
   Args:
@@ -387,6 +358,8 @@ def validate_inputs(x, y, distribution_strategy):
     y: Model Targets.
     distribution_strategy: The DistributionStrategy with which the model is
       compiled.
+    allow_partial_batch: Boolean. If false, datasets must have fully
+      defined shapes.
 
   Raises:
     ValueError: if input is not a Dataset or a numpy array(when we use
@@ -400,18 +373,13 @@ def validate_inputs(x, y, distribution_strategy):
 
   if is_tpu_strategy(distribution_strategy):
     for i in [x, y]:
-      if isinstance(i, dataset_ops.DatasetV2):
-        shapes = nest.flatten(i.output_shapes)
-        try:
-          s = next(s for s in shapes if not s.is_fully_defined())
-        except StopIteration:
-          continue
-        else:
+      if (isinstance(i, dataset_ops.DatasetV2) and not allow_partial_batch):
+        if not is_dataset_shape_fully_defined(i):
           raise ValueError(
               'Using TPUs currently requires fully defined shapes. Either use '
               'set_shape() on the input tensors or use '
               'dataset.batch(..., drop_remainder=True).'
-              'Found unknown shape {} in input {}.'.format(s, i))
+              'Found unknown shape in input {}.'.format(i))
 
 
 # TODO(b/118776054): Currently we support global batch size for TPUStrategy and
@@ -427,8 +395,15 @@ def is_tpu_strategy(strategy):
   return strategy is not None and strategy.__class__.__name__ == 'TPUStrategy'
 
 
+def is_dataset_shape_fully_defined(dataset):
+  """Returns whether a dataset contains a final partial batch."""
+  shapes = nest.flatten(dataset.output_shapes)
+  unknown_shapes = [s for s in shapes if not s.is_fully_defined()]
+  return not unknown_shapes
+
+
 def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
-                     is_training=False):
+                     mode=None):
   """Calculate the number of batches and steps/steps_per_epoch.
 
   Args:
@@ -437,8 +412,10 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
       model input.
     steps:  The specified number of steps.
     batch_size: The specified batch_size.
-    is_training: Boolean to relax the constraints on consuming all the training
-      samples to keep compatibility till we support partial batches.
+    mode: ModeKey representing whether input will be used for training,
+      evaluation, or prediction. This is used to relax the constraints on
+      consuming all the training samples to keep compatibility till we
+      support partial batches. If none, then partial batches are not allowed.
 
   Returns:
     steps: The steps or steps_per_epoch argument depending on if a user is
@@ -456,6 +433,14 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
   use_per_replica_batch = not global_batch_size_supported(
       distribution_strategy)
 
+  # Partial batches are allowed for training as we repeat the
+  # dataset when converting numpy arrays into a dataset.
+  # For other modes uneven batch sizes are not allowed except
+  # for `predict()` on TPUStrategy.
+  allow_partial_batch = (mode == ModeKeys.TRAIN or
+                         (mode == ModeKeys.PREDICT
+                          and is_tpu_strategy(distribution_strategy)))
+
   if steps is None:
     if batch_size is None:
       # If neither the batch size or number of steps are set. We choose the
@@ -468,7 +453,7 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
       global_batch_size = batch_size
       if use_per_replica_batch:
         global_batch_size *= distribution_strategy.num_replicas_in_sync
-    if not is_training and num_samples % global_batch_size:
+    if not allow_partial_batch and num_samples % global_batch_size:
       raise ValueError('The number of samples %s is not divisible by '
                        'batch size %s.' % (num_samples, global_batch_size))
     steps = num_samples // global_batch_size
@@ -488,7 +473,11 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
       if use_per_replica_batch:
         global_batch_size *= distribution_strategy.num_replicas_in_sync
 
-      if num_samples < (global_batch_size * steps):
+      min_num_samples = global_batch_size * steps
+      if allow_partial_batch:
+        min_num_samples = global_batch_size * (steps-1) + 1 if steps > 1 else 0
+
+      if num_samples < min_num_samples:
         raise ValueError('Number of samples %s is less than samples required '
                          'for specified batch_size %s and steps %s' % (
                              num_samples, global_batch_size, steps))
@@ -862,21 +851,18 @@ def _reset_metrics(model):
 
 
 def get_distributed_model(model, mode):
-  if mode is ModeKeys.TRAIN:
-    return model._distributed_model_train
-  elif mode is ModeKeys.TEST:
-    return model._distributed_model_test
-  elif mode is ModeKeys.PREDICT:
-    return model._distributed_model_predict
+  key = _generate_cache_key(mode)
+  return model._distributed_model_cache.get(key, None)
 
 
 def set_distributed_model(model, mode, distributed_model):
-  if mode is ModeKeys.TRAIN:
-    model._distributed_model_train = distributed_model
-  elif mode is ModeKeys.TEST:
-    model._distributed_model_test = distributed_model
-  elif mode is ModeKeys.PREDICT:
-    model._distributed_model_predict = distributed_model
+  key = _generate_cache_key(mode)
+  model._distributed_model_cache[key] = distributed_model
+
+
+def _generate_cache_key(mode):
+  key = hash(mode)
+  return key
 
 
 @tf_contextlib.contextmanager

@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.util import tf_inspect
 
 
+_ADJOINTS = {}
 _CHOLESKY_DECOMPS = {}
 _MATMUL = {}
 _INVERSES = {}
@@ -46,6 +47,11 @@ def _registered_function(type_list, registry):
   return registry.get(tuple(r[1] for r in registered_combination), None)
 
 
+def _registered_adjoint(type_a):
+  """Get the Adjoint function registered for class a."""
+  return _registered_function([type_a], _ADJOINTS)
+
+
 def _registered_cholesky(type_a):
   """Get the Cholesky function registered for class a."""
   return _registered_function([type_a], _CHOLESKY_DECOMPS)
@@ -59,6 +65,29 @@ def _registered_matmul(type_a, type_b):
 def _registered_inverse(type_a):
   """Get the Cholesky function registered for class a."""
   return _registered_function([type_a], _INVERSES)
+
+
+def adjoint(lin_op_a, name=None):
+  """Get the adjoint associated to lin_op_a.
+
+  Args:
+    lin_op_a: The LinearOperator to take the adjoint of.
+    name: Name to use for this operation.
+
+  Returns:
+    A LinearOperator that represents the adjoint of `lin_op_a`.
+
+  Raises:
+    NotImplementedError: If no Adjoint method is defined for the LinearOperator
+      type of `lin_op_a`.
+  """
+  adjoint_fn = _registered_adjoint(type(lin_op_a))
+  if adjoint_fn is None:
+    raise ValueError("No adjoint registered for {}".format(
+        type(lin_op_a)))
+
+  with ops.name_scope(name, "Adjoint"):
+    return adjoint_fn(lin_op_a)
 
 
 def cholesky(lin_op_a, name=None):
@@ -130,6 +159,48 @@ def inverse(lin_op_a, name=None):
 
   with ops.name_scope(name, "Inverse"):
     return inverse_fn(lin_op_a)
+
+
+class RegisterAdjoint(object):
+  """Decorator to register an Adjoint implementation function.
+
+  Usage:
+
+  @linear_operator_algebra.RegisterAdjoint(lin_op.LinearOperatorIdentity)
+  def _adjoint_identity(lin_op_a):
+    # Return the identity matrix.
+  """
+
+  def __init__(self, lin_op_cls_a):
+    """Initialize the LinearOperator registrar.
+
+    Args:
+      lin_op_cls_a: the class of the LinearOperator to decompose.
+    """
+    self._key = (lin_op_cls_a,)
+
+  def __call__(self, adjoint_fn):
+    """Perform the Adjoint registration.
+
+    Args:
+      adjoint_fn: The function to use for the Adjoint.
+
+    Returns:
+      adjoint_fn
+
+    Raises:
+      TypeError: if adjoint_fn is not a callable.
+      ValueError: if a Adjoint function has already been registered for
+        the given argument classes.
+    """
+    if not callable(adjoint_fn):
+      raise TypeError(
+          "adjoint_fn must be callable, received: {}".format(adjoint_fn))
+    if self._key in _ADJOINTS:
+      raise ValueError("Adjoint({}) has already been registered to: {}".format(
+          self._key[0].__name__, _ADJOINTS[self._key]))
+    _ADJOINTS[self._key] = adjoint_fn
+    return adjoint_fn
 
 
 class RegisterCholesky(object):

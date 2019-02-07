@@ -65,9 +65,6 @@ cc_library(
         "kernels/get_serialized_resource_op.cc",
         "kernels/trt_engine_op.cc",
     ],
-    hdrs = [
-        "kernels/trt_engine_op.h",
-    ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -87,8 +84,7 @@ cc_library(
     ] + if_tensorrt([
         "@local_config_tensorrt//:tensorrt",
     ]) + tf_custom_op_library_additional_deps(),
-    # TODO(laigd): fix this by merging header file in cc file.
-    alwayslink = 1,  # buildozer: disable=alwayslink-with-hdrs
+    alwayslink = 1,
 )
 
 tf_cuda_cc_test(
@@ -101,8 +97,10 @@ tf_cuda_cc_test(
         "nomac",
     ],
     deps = [
-        ":get_serialized_resource_op_op_lib",
+        # TODO(laigd): consider splitting get_serialized_resource_op out from
+        # TF-TRT.
         ":trt_op_kernels",
+        ":trt_op_libs",
         ":trt_resources",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -121,6 +119,14 @@ tf_gen_op_libs(
     ],
 )
 
+cc_library(
+    name = "trt_op_libs",
+    deps = [
+        ":get_serialized_resource_op_op_lib",
+        ":trt_engine_op_op_lib",
+    ],
+)
+
 tf_cuda_library(
     name = "trt_logging",
     srcs = ["utils/trt_logger.cc"],
@@ -136,9 +142,7 @@ tf_cuda_library(
 tf_gen_op_wrapper_py(
     name = "trt_ops",
     deps = [
-        ":get_serialized_resource_op_op_lib",
-        ":trt_engine_op_op_lib",
-        ":trt_logging",
+        ":trt_op_libs",
     ],
 )
 
@@ -152,8 +156,7 @@ tf_custom_op_py_library(
     ]),
     kernels = [
         ":trt_op_kernels",
-        ":trt_engine_op_op_lib",
-        ":get_serialized_resource_op_op_lib",
+        ":trt_op_libs",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -320,6 +323,7 @@ tf_cuda_cc_test(
         ":trt_plugins",
         "@com_google_googletest//:gtest",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
@@ -329,6 +333,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

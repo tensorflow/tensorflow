@@ -643,11 +643,13 @@ Status DotOpEmitter::EmitCallToRuntime() {
   llvm::Function* function = b_->GetInsertBlock()->getParent();
   llvm::Module* module = function->getParent();
 
-  llvm::Function* matmul_func = llvm::cast<llvm::Function>(
-      module->getOrInsertFunction(fn_name, matmul_type));
-  matmul_func->setCallingConv(llvm::CallingConv::C);
-  matmul_func->setDoesNotThrow();
-  matmul_func->setOnlyAccessesArgMemory();
+  llvm::FunctionCallee matmul_func =
+      module->getOrInsertFunction(fn_name, matmul_type);
+  if (auto* fn = llvm::dyn_cast<llvm::Function>(matmul_func.getCallee())) {
+    fn->setCallingConv(llvm::CallingConv::C);
+    fn->setDoesNotThrow();
+    fn->setOnlyAccessesArgMemory();
+  }
 
   // The Eigen runtime function expects column-major layout. If the matrices are
   // row major, then use the following identity to compute the product:

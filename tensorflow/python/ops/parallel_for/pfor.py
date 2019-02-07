@@ -32,9 +32,9 @@ from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
@@ -42,6 +42,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
 flags.DEFINE_bool(
@@ -1037,7 +1038,7 @@ class PFor(object):
     if sparse_tensor_rank is not None:
       sparse_tensor_rank += 1
 
-    def map_fn(args):
+    def fn(args):
       res = gen_sparse_ops.serialize_sparse(
           args[0], args[1], args[2], out_type=dtypes.variant)
       return res
@@ -1046,8 +1047,8 @@ class PFor(object):
     # sparse tensor element and batch them all, then deserializes the batch.
     # TODO(rachelim): Try to do this without map_fn -- add the right offsets
     # to shape and indices tensors instead.
-    result = functional_ops.map_fn(
-        map_fn, [indices, values, shape], dtype=dtypes.variant)
+    result = map_fn.map_fn(
+        fn, [indices, values, shape], dtype=dtypes.variant)
     return sparse_ops.deserialize_sparse(
         result, dtype=values.dtype, rank=sparse_tensor_rank)
 
@@ -1876,6 +1877,7 @@ def _convert_batch_mat_mul(pfor_input):
 @RegisterPForWithArgs("Prod", math_ops.reduce_prod)
 @RegisterPForWithArgs("Max", math_ops.reduce_max)
 @RegisterPForWithArgs("Min", math_ops.reduce_min)
+@RegisterPForWithArgs("Mean", math_ops.reduce_mean)
 def _convert_reduction(pfor_input, _, op_func):
   t = pfor_input.stacked_input(0)
   indices = pfor_input.unstacked_input(1)
@@ -1899,17 +1901,30 @@ def _convert_cumfoo(pfor_input, _, op_func):
 
 @RegisterPFor("BiasAdd")
 def _convert_biasadd(pfor_input):
-  t = pfor_input.stacked_input(0)
-  bias = pfor_input.unstacked_input(1)
+  t, t_stacked, _ = pfor_input.input(0)
+  bias, bias_stacked, _ = pfor_input.input(1)
   data_format = pfor_input.get_attr("data_format")
-  if data_format != b"NCHW":
+  if bias_stacked:
+    # BiasAdd only supports 1-D biases, so cast bias to match value and use Add.
+    pfor_input.expanddim_inputs_for_broadcast()
+    t, _, _ = pfor_input.input(0)
+    bias = math_ops.cast(pfor_input.stacked_input(1), t.dtype)
+    if compat.as_bytes(data_format) == b"NCHW":
+      b_shape = array_ops.shape(bias)
+      new_b_shape = array_ops.concat(
+          [b_shape[:-3], b_shape[-1:], b_shape[-3:-1]], axis=0)
+      bias = array_ops.reshape(bias, new_b_shape)
+    return wrap(math_ops.add(t, bias), True)
+  else:
+    assert t_stacked, "At least one input to BiasAdd should be loop variant."
+    if compat.as_bytes(data_format) == b"NCHW":
+      shape = array_ops.shape(t)
+      flattened_shape = array_ops.concat([[-1], shape[2:]], axis=0)
+      t = array_ops.reshape(t, flattened_shape)
+      t = nn_ops.bias_add(t, bias, data_format=b"NCHW")
+      t = array_ops.reshape(t, shape)
+      return wrap(t, True)
     return wrap(nn_ops.bias_add(t, bias, data_format=data_format), True)
-  shape = array_ops.shape(t)
-  flattened_shape = array_ops.concat([[-1], shape[2:]], axis=0)
-  t = array_ops.reshape(t, flattened_shape)
-  t = nn_ops.bias_add(t, bias, data_format=b"NCHW")
-  t = array_ops.reshape(t, shape)
-  return wrap(t, True)
 
 
 @RegisterPFor("UnsortedSegmentSum")

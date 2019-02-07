@@ -346,8 +346,8 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
 }
 
 XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
-                      bool transpose_a, bool conjugate_a, int64 block_size,
-                      PrecisionConfig::Precision precision) {
+                      bool transpose_a, bool conjugate_a, bool unit_diagonal,
+                      int64 block_size, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
@@ -406,17 +406,26 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
       return b;
     }
 
+    // TODO(phawkins): consider pushing triangle masking into
+    // InvertDiagonalBlocks.
+    if (unit_diagonal) {
+      // Mask everything but the subdiagonal/superdiagonal elements.
+      a = lower ? Select(TriangleMask(a, -1), a, ZerosLike(a))
+                : Select(TriangleMask(a, 0), ZerosLike(a), a);
+      int64 k = ShapeUtil::GetDimension(a_shape, -1);
+      a = xla::Add(a, IdentityMatrix(builder, a_shape.element_type(), k, k),
+                   /*broadcast_dimensions=*/{ndims - 2, ndims - 1});
+    } else {
+      // Mask off the ignored elements of the triangular matrix a.
+      a = Triangle(a, lower);
+    }
+
     // We find the diagonal blocks of the coefficient matrix
     auto diag_blocks = DiagonalBlocks(a, block_size);
 
     // We invert these blocks in parallel using batched matrix-vector products
     auto inv_diag_blocks = InvertDiagonalBlocks(diag_blocks, lower, transpose_a,
                                                 conjugate_a, precision);
-
-    // Mask off the ignored elements of the triangular matrix a.
-    // TODO(phawkins): it would probably be preferable to perform this masking
-    // block by block inside SolveWithInvertedDiagonalBlocks.
-    a = Triangle(a, lower);
 
     // We now find the solution using GEMMs
     auto x =

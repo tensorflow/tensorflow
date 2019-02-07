@@ -209,6 +209,42 @@ REGISTER_OP("TensorListStack")
       return Status::OK();
     });
 
+Status TensorListConcatShapeInference(
+    shape_inference::InferenceContext* c,
+    shape_inference::ShapeHandle element_shape) {
+  DataType element_dtype;
+  TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));
+  auto* handle_data = c->input_handle_shapes_and_types(0);
+  if (handle_data != nullptr && handle_data->size() > 1) {
+    return errors::InvalidArgument(
+        "Trying to read from list with wrong variant data.");
+  }
+  if (handle_data != nullptr && handle_data->size() == 1) {
+    const shape_inference::ShapeAndType& list_shape_type = (*handle_data)[0];
+    if (list_shape_type.dtype != element_dtype) {
+      return errors::InvalidArgument(
+          "Trying to read from list with wrong element dtype. List has "
+          "type ",
+          DataTypeString(list_shape_type.dtype), " but expected type ",
+          DataTypeString(element_dtype));
+    }
+    shape_inference::ShapeHandle merged;
+    TF_RETURN_IF_ERROR(c->Merge(element_shape, list_shape_type.shape, &merged));
+    element_shape = merged;
+  }
+  if (c->RankKnown(element_shape)) {
+    shape_inference::ShapeHandle result;
+    TF_RETURN_IF_ERROR(c->Subshape(element_shape, 1, &result));
+    TF_RETURN_IF_ERROR(
+        c->Concatenate(c->MakeShape({c->UnknownDim()}), result, &result));
+    c->set_output(0, result);
+  } else {
+    c->set_output(0, c->UnknownShape());
+  }
+  c->set_output(1, c->MakeShape({c->UnknownDim()}));
+  return Status::OK();
+}
+
 REGISTER_OP("TensorListConcat")
     .Input("input_handle: variant")
     .Output("tensor: element_dtype")
@@ -216,45 +252,27 @@ REGISTER_OP("TensorListConcat")
     .Attr("element_dtype: type")
     .Attr("element_shape: shape = { unknown_rank: true }")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      DataType element_dtype;
-      TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));
       PartialTensorShape raw_element_shape;
       TF_RETURN_IF_ERROR(c->GetAttr("element_shape", &raw_element_shape));
       shape_inference::ShapeHandle element_shape;
       TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(raw_element_shape,
                                                             &element_shape));
+      return TensorListConcatShapeInference(c, element_shape);
+    });
 
-      auto* handle_data = c->input_handle_shapes_and_types(0);
-      if (handle_data != nullptr && handle_data->size() > 1) {
-        return errors::InvalidArgument(
-            "Trying to read from list with wrong variant data.");
-      }
-      if (handle_data != nullptr && handle_data->size() == 1) {
-        const shape_inference::ShapeAndType& list_shape_type =
-            (*handle_data)[0];
-        if (list_shape_type.dtype != element_dtype) {
-          return errors::InvalidArgument(
-              "Trying to read from list with wrong element dtype. List has "
-              "type ",
-              DataTypeString(list_shape_type.dtype), " but expected type ",
-              DataTypeString(element_dtype));
-        }
-        shape_inference::ShapeHandle merged;
-        TF_RETURN_IF_ERROR(
-            c->Merge(element_shape, list_shape_type.shape, &merged));
-        element_shape = merged;
-      }
-      if (c->RankKnown(element_shape)) {
-        shape_inference::ShapeHandle result;
-        TF_RETURN_IF_ERROR(c->Subshape(element_shape, 1, &result));
-        TF_RETURN_IF_ERROR(
-            c->Concatenate(c->MakeShape({c->UnknownDim()}), result, &result));
-        c->set_output(0, result);
-      } else {
-        c->set_output(0, c->UnknownShape());
-      }
-      c->set_output(1, c->MakeShape({c->UnknownDim()}));
-      return Status::OK();
+REGISTER_OP("TensorListConcatV2")
+    .Input("input_handle: variant")
+    .Input("element_shape: shape_type")
+    .Input("leading_dims: int64")
+    .Output("tensor: element_dtype")
+    .Output("lengths: int64")
+    .Attr("element_dtype: type")
+    .Attr("shape_type: {int32, int64}")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle element_shape;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensorTreatScalarAsUnknownShape(
+          1, &element_shape));
+      return TensorListConcatShapeInference(c, element_shape);
     });
 
 REGISTER_OP("TensorListSplit")
