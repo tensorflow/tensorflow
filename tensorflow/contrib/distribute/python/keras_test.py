@@ -235,7 +235,6 @@ def multi_input_output_model():
 strategies_minus_tpu = [
     combinations.default_strategy,
     combinations.one_device_strategy,
-    combinations.one_device_strategy_gpu,
     combinations.mirrored_strategy_with_gpu_and_cpu,
     combinations.mirrored_strategy_with_two_gpus,
     combinations.core_mirrored_strategy_with_gpu_and_cpu,
@@ -264,7 +263,6 @@ def all_strategy_combinations_minus_default():
   strategy_minus_default_combinations = combinations.combine(
       distribution=[
           combinations.one_device_strategy,
-          combinations.one_device_strategy_gpu,
           combinations.mirrored_strategy_with_gpu_and_cpu,
           combinations.mirrored_strategy_with_two_gpus,
           combinations.core_mirrored_strategy_with_gpu_and_cpu,
@@ -286,6 +284,12 @@ def strategy_and_optimizer_combinations():
           combinations.rmsprop_optimizer_v1_fn,
           combinations.rmsprop_optimizer_keras_v2_fn
       ]))
+
+
+def strategy_for_numpy_input_combinations():
+  one_gpu = combinations.one_device_strategy_gpu
+  return (all_strategy_combinations() +
+          combinations.combine(distribution=[one_gpu], mode=['graph', 'eager']))
 
 
 class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
@@ -443,7 +447,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
 class TestDistributionStrategyWithNumpyArrays(test.TestCase,
                                               parameterized.TestCase):
 
-  @combinations.generate(all_strategy_combinations())
+  @combinations.generate(strategy_for_numpy_input_combinations())
   def test_calculating_input_params_no_steps_no_batch_size(self, distribution):
     # Calculate the per_replica_batch_size scaling factor for strategies
     # that use per_core_batch_size
@@ -474,7 +478,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         distributed_training_utils.get_input_params(
             distribution, input_63_samples, steps=None, batch_size=None)
 
-  @combinations.generate(all_strategy_combinations())
+  @combinations.generate(strategy_for_numpy_input_combinations())
   def test_calculating_input_params_with_steps_no_batch_size(self,
                                                              distribution):
     # Calculate the per_replica_batch_size scaling factor for strategies
@@ -520,7 +524,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
           distributed_training_utils.get_input_params(
               distribution, input_63_samples, steps=1, batch_size=None)
 
-  @combinations.generate(all_strategy_combinations())
+  @combinations.generate(strategy_for_numpy_input_combinations())
   def test_calculating_input_params_no_steps_with_batch_size(self,
                                                              distribution):
     # Calculate the per_replica_batch_size scaling factor for strategies
@@ -554,7 +558,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         distributed_training_utils.get_input_params(
             distribution, input_64_samples, steps=None, batch_size=3)
 
-  @combinations.generate(all_strategy_combinations())
+  @combinations.generate(strategy_for_numpy_input_combinations())
   def test_calculating_input_params_with_steps_with_batch_size(self,
                                                                distribution):
     with self.cached_session():
@@ -571,7 +575,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         distributed_training_utils.get_input_params(
             distribution, input_64_samples, steps=10, batch_size=13)
 
-  @combinations.generate(all_strategy_combinations())
+  @combinations.generate(strategy_for_numpy_input_combinations())
   def test_calling_model_with_numpy_arrays(self, distribution):
     with self.cached_session():
       with distribution.scope():
@@ -602,7 +606,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         # with batch_size
         model.predict(inputs, batch_size=8)
 
-  @combinations.generate(all_strategy_combinations())
+  @combinations.generate(strategy_for_numpy_input_combinations())
   def test_calling_model_with_nested_numpy_arrays(self, distribution):
     with self.cached_session():
       with distribution.scope():
@@ -654,7 +658,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       model.fit(inputs, targets, sample_weight=sample_weights, epochs=1,
                 steps_per_epoch=2, verbose=1)
 
-  @combinations.generate(all_strategy_combinations())
+  @combinations.generate(strategy_for_numpy_input_combinations())
   def test_flatten_predict_outputs(self, distribution):
     with self.cached_session():
       with distribution.scope():
