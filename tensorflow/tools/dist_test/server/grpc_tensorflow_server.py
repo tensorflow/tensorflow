@@ -77,14 +77,14 @@ def parse_cluster_spec(cluster_spec, cluster, verbose=False):
       print("Added job named \"%s\"" % job_name)
 
     job_tasks = job_string.split("|")[1].split(";")
-    for i in range(len(job_tasks)):
-      if not job_tasks[i]:
+    for i, job_task in enumerate(job_tasks):
+      if not job_task:
         raise ValueError("Empty task string at position %d" % i)
 
-      job_def.tasks[i] = job_tasks[i]
+      job_def.tasks[i] = job_task
 
       if verbose:
-        print("  Added task \"%s\" to job \"%s\"" % (job_tasks[i], job_name))
+        print("  Added task \"%s\" to job \"%s\"" % (job_task, job_name))
 
 
 def main(unused_args):

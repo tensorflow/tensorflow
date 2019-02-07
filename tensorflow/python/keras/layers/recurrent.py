@@ -22,6 +22,7 @@ from __future__ import print_function
 import uuid
 
 import numpy as np
+from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -666,11 +667,12 @@ class RNN(Layer):
         'however `cell.state_size` is '
         '{}'.format(init_state_specs, cell_state_sizes))
     if len(cell_state_sizes) == len(init_state_specs):
-      for i in range(len(cell_state_sizes)):
+      for init_state_spec, cell_state_size in zip(
+          init_state_specs, cell_state_sizes):
         if not tensor_shape.TensorShape(
             # Ignore the first axis for init_state which is for batch
-            init_state_specs[i].shape[1:]).is_compatible_with(
-                tensor_shape.TensorShape(cell_state_sizes[i])):
+            init_state_spec.shape[1:]).is_compatible_with(
+                tensor_shape.TensorShape(cell_state_size)):
           raise validation_error
     else:
       raise validation_error
@@ -835,9 +837,9 @@ class RNN(Layer):
         time_major=self.time_major,
         zero_output_for_mask=self.zero_output_for_mask)
     if self.stateful:
-      updates = []
-      for i in range(len(states)):
-        updates.append(state_ops.assign(self.states[i], states[i]))
+      updates = [
+          state_ops.assign(self_state, state)
+          for self_state, state in zip(self.states, states)]
       self.add_update(updates, inputs)
 
     if self.return_sequences:
@@ -3145,9 +3147,9 @@ class UnifiedLSTM(LSTM):
       states = [new_h, new_c]
 
     if self.stateful:
-      updates = []
-      for i in range(len(states)):
-        updates.append(state_ops.assign(self.states[i], states[i]))
+      updates = [
+          state_ops.assign(self_state, state)
+          for self_state, state in zip(self.states, states)]
       self.add_update(updates, inputs)
 
     if self.return_sequences:

@@ -514,11 +514,11 @@ class Dot(_Merge):
         axes = [self.axes] * 2
     else:
       axes = []
-      for i in range(len(self.axes)):
-        if self.axes[i] < 0:
-          axes.append(self.axes[i] % K.ndim(inputs[i]))
+      for i, axe in enumerate(self.axes):
+        if axe < 0:
+          axes.append(axe % K.ndim(inputs[i]))
         else:
-          axes.append(self.axes[i])
+          axes.append(axe)
     if self.normalize:
       x1 = nn.l2_normalize(x1, axis=axes[0])
       x2 = nn.l2_normalize(x2, axis=axes[1])

@@ -2315,10 +2315,10 @@ class Operation(object):
     """
     assert len(types) == len(shapes)
     orig_num_outputs = len(self.outputs)
-    for i in range(len(types)):
-      t = Tensor(self, orig_num_outputs + i, types[i])
+    for i, (dtype, shape) in enumerate(zip(types, shapes)):
+      t = Tensor(self, orig_num_outputs + i, dtype)
       self._outputs.append(t)
-      t.set_shape(shapes[i])
+      t.set_shape(shape)
 
   def __str__(self):
     return str(self.node_def)

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.keras import backend as K
@@ -111,9 +112,9 @@ class _CuDNNRNN(RNN):
     output, states = self._process_batch(inputs, initial_state)
 
     if self.stateful:
-      updates = []
-      for i in range(len(states)):
-        updates.append(state_ops.assign(self.states[i], states[i]))
+      updates = [
+          state_ops.assign(self_state, state)
+          for self_state, state in zip(self.states, states)]
       self.add_update(updates, inputs)
 
     if self.return_state:

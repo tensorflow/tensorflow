@@ -166,10 +166,9 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
 
   # Convert any Tensor inputs to RaggedTensors.  This makes it
   # possible to concatenate Tensors and RaggedTensors together.
-  for i in range(len(rt_inputs)):
-    if not ragged_tensor.is_ragged(rt_inputs[i]):
-      rt_inputs[i] = ragged_conversion_ops.from_tensor(
-          rt_inputs[i], ragged_rank=1)
+  for i, rt in enumerate(rt_inputs):
+    if not ragged_tensor.is_ragged(rt):
+      rt_inputs[i] = ragged_conversion_ops.from_tensor(rt, ragged_rank=1)
 
   # Convert the input tensors to all have the same ragged_rank.
   ragged_rank = max(max(rt.ragged_rank for rt in rt_inputs), 1)

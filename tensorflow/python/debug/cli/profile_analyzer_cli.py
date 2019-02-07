@@ -568,8 +568,8 @@ class ProfileAnalyzer(object):
 
     # Add stat totals.
     row_str = ""
-    for col in range(len(device_total_row)):
-      row_str += ("{:<%d}" % column_widths[col]).format(device_total_row[col])
+    for width, row in zip(column_widths, device_total_row):
+      row_str += ("{:<%d}" % width).format(row)
     output.append(RL())
     output.append(RL(row_str))
     return debugger_cli_common.rich_text_lines_from_rich_line_list(output)

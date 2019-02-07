@@ -83,15 +83,15 @@ def build_graph(device, input_shape, axes, num_layers, mode, scale, train):
   moment_shape = []
   keep_dims = mode == "py" or mode == "slow"
   if keep_dims:
-    for axis in range(len(input_shape)):
+    for axis, dim in enumerate(input_shape):
       if axis in axes:
         moment_shape.append(1)
       else:
-        moment_shape.append(input_shape[axis])
+        moment_shape.append(dim)
   else:
-    for axis in range(len(input_shape)):
+    for axis, dim in enumerate(input_shape):
       if axis not in axes:
-        moment_shape.append(input_shape[axis])
+        moment_shape.append(dim)
   with ops.device("/%s:0" % device):
     tensor = variables.Variable(random_ops.truncated_normal(input_shape))
     for _ in range(num_layers):

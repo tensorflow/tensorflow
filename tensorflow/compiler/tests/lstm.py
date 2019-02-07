@@ -24,6 +24,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from six.moves import zip  # pylint: disable=redefined-builtin
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -108,9 +110,9 @@ def LSTMLayer(cell_name, weights, m, c, x_seq, pad_seq):
     raise ValueError('length of x_seq(%d) != pad_seq(%d)' %
                      (len(x_seq), len(pad_seq)))
   out_seq = []
-  for seq in range(len(x_seq)):
+  for seq, (x, pad) in enumerate(zip(x_seq, pad_seq)):
     with ops.name_scope('%s_%d' % (cell_name, seq)):
-      m, c = LSTMCell(weights, m, c, x_seq[seq], pad_seq[seq])
+      m, c = LSTMCell(weights, m, c, x, pad)
       out_seq.append(array_ops.identity(m, name='out'))
   return out_seq
 

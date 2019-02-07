@@ -1159,12 +1159,12 @@ class CursesUI(base_ui.BaseUI):
     # Create new output pad.
     pad = self._screen_new_output_pad(rows, cols)
 
-    for i in xrange(len(output.lines)):
+    for i, out_line in enumerate(output.lines):
       if i in output.font_attr_segs:
         self._screen_add_line_to_output_pad(
-            pad, i, output.lines[i], color_segments=output.font_attr_segs[i])
+            pad, i, out_line, color_segments=output.font_attr_segs[i])
       else:
-        self._screen_add_line_to_output_pad(pad, i, output.lines[i])
+        self._screen_add_line_to_output_pad(pad, i, out_line)
 
     return pad, rows, cols
 

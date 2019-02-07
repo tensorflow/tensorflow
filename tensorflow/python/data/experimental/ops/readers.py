@@ -101,11 +101,10 @@ def _infer_type(str_val, na_value, prev_type):
       lambda str_val: True,
   ]  # Corresponding list of validation functions
 
-  for i in range(len(type_list)):
-    validation_fn = type_functions[i]
+  for i, (dtype, validation_fn) in enumerate(zip(type_list, type_functions)):
     if validation_fn(str_val) and (prev_type is None or
                                    prev_type in type_list[:i + 1]):
-      return type_list[i]
+      return dtype
 
 
 def _next_csv_row(filenames, num_cols, field_delim, use_quote_delim, header):

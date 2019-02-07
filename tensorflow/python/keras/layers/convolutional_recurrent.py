@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
@@ -381,9 +382,9 @@ class ConvRNN2D(RNN):
                                          mask=mask,
                                          input_length=timesteps)
     if self.stateful:
-      updates = []
-      for i in range(len(states)):
-        updates.append(K.update(self.states[i], states[i]))
+      updates = [
+          K.update(self_state, state)
+          for self_state, state in zip(self.states, states)]
       self.add_update(updates, inputs=True)
 
     if self.return_sequences:

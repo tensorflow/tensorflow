@@ -795,9 +795,9 @@ def _find_children_hints_in_while_loop(function_def, nodes_mapping):
 
   # Make nodes inside function def inputs point to the real nodes.
   for node in function_def.node_def:
-    for i in range(len(node.input)):
-      if node.input[i] in nodes_mapping:
-        node.input[i] = nodes_mapping[node.input[i]]
+    for i, inp in enumerate(node.input):
+      if inp in nodes_mapping:
+        node.input[i] = nodes_mapping[inp]
     new_nodes.append(_copy.deepcopy(node))
   name_to_seq_num = _extract_topology_sequence_mapping(function_def.node_def)
   children_hints = _find_all_hints_in_nodes(new_nodes)
@@ -854,9 +854,10 @@ def _find_children_hints(call, graph_def):
             if function_def.signature.name == body_name:
               function_inputs = function_def.signature.input_arg
               assert len(inputs_outside_loop) == len(function_inputs)
-              nodes_mapping = {}
-              for i in range(len(function_inputs)):
-                nodes_mapping[function_inputs[i].name] = inputs_outside_loop[i]
+              nodes_mapping = {
+                  f.name: o for f, o in zip(
+                      function_inputs, inputs_outside_loop)
+              }
               # TODO(b/123050804): Consider use grappler.
               (children_hints_in_loop,
                new_nodes) = _find_children_hints_in_while_loop(
@@ -1154,30 +1155,23 @@ def _convert_op_hints_to_stubs_helper(
   """
   hints = _find_all_hints_in_nodes(graph_def.node)
 
-  hints_q = []
-  for hint in _six.itervalues(hints):
-    hints_q.append((hint.level, hint.uuid))
-
-  hints_q.sort(key=lambda tup: tup[0])
-  for i in range(len(hints_q) - 1, -1, -1):
-    level, hint_uuid = hints_q[i]
+  hints_q = [(hint.level, hint.uuid) for hint in _six.itervalues(hints)]
+  hints_q.sort(key=lambda tup: tup[0], reverse=True)
 
   curr_graph_def = graph_def
   del graph_def  # prevent using graph_def again (common source of error)
-  for i in range(len(hints_q) - 1, -1, -1):
-    level, hint_uuid = hints_q[i]
+  for level, hint_uuid in hints_q:
     if level >= 2:
       children_hints, curr_graph_def, function_def_nodes = _find_children_hints(
           hints[hint_uuid], curr_graph_def)
       # pylint: disable=superfluous-parens
-      assert (len(children_hints) > 0)  #  pylint: disable=g-explicit-length-test
+      assert (len(children_hints) > 0)  # pylint: disable=g-explicit-length-test
       # pylint: enable=superfluous-parens
 
       # Re-wire the children hints inputs/outputs, so latter child's inputs
       # connect to previous child node's outputs.
       children_inputs_mappings = hints[hint_uuid].children_inputs_mappings
-      for j in range(len(children_hints)):
-        child_hint = children_hints[j]
+      for j, child_hint in enumerate(children_hints):
         if j == 0:
           for mapping in children_inputs_mappings["parent_first_child_input"]:
             parent_input_index = _get_correct_mapping(
@@ -1204,8 +1198,7 @@ def _convert_op_hints_to_stubs_helper(
             child_hint.outputs[child_output_index] = hints[hint_uuid].outputs[
                 parent_output_index]
 
-      for j in range(len(children_hints)):
-        child_hint = children_hints[j]
+      for j, child_hint in enumerate(children_hints):
         curr_graph_def = _convert_single_op_hint_to_stub(
             child_hint, curr_graph_def, function_def_nodes,
             j == len(children_hints) - 1)

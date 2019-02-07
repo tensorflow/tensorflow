@@ -10,8 +10,7 @@ def _extract_version_number(bazel_version):
     Returns:
       The semantic version string, like "1.2.3".
     """
-    for i in range(len(bazel_version)):
-        c = bazel_version[i]
+    for i, c in enumerate(bazel_version):
         if not (c.isdigit() or c == "."):
             return bazel_version[:i]
     return bazel_version

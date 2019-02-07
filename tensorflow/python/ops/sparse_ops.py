@@ -595,13 +595,13 @@ def _sparse_cross_internal(inputs,
   out_type = dtypes.int64 if hashed_output else dtypes.string
 
   internal_type = dtypes.string
-  for i in range(len(values)):
-    if values[i].dtype != dtypes.string:
-      values[i] = math_ops.to_int64(values[i])
+  for i, value in enumerate(values):
+    if value.dtype != dtypes.string:
+      values[i] = math_ops.to_int64(value)
       internal_type = dtypes.int64
-  for i in range(len(dense_inputs)):
-    if dense_inputs[i].dtype != dtypes.string:
-      dense_inputs[i] = math_ops.to_int64(dense_inputs[i])
+  for i, dense_input in enumerate(dense_inputs):
+    if dense_input.dtype != dtypes.string:
+      dense_inputs[i] = math_ops.to_int64(dense_input)
       internal_type = dtypes.int64
 
   indices_out, values_out, shape_out = gen_sparse_ops.sparse_cross(

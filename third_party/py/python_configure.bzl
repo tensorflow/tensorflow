@@ -134,16 +134,16 @@ def _symlink_genrule_for_dir(
         src_files = files.splitlines()
     command = []
     outs = []
-    for i in range(len(dest_files)):
-        if dest_files[i] != "":
+    for i, dest_file in enumerate(dest_files):
+        if dest_file != "":
             # If we have only one file to link we do not want to use the dest_dir, as
             # $(@D) will include the full path to the file.
-            dest = "$(@D)/" + dest_dir + dest_files[i] if len(dest_files) != 1 else "$(@D)/" + dest_files[i]
+            dest = "$(@D)/" + dest_dir + dest_file if len(dest_files) != 1 else "$(@D)/" + dest_file
 
             # Copy the headers to create a sandboxable setup.
             cmd = "cp -f"
             command.append(cmd + ' "%s" "%s"' % (src_files[i], dest))
-            outs.append('        "' + dest_dir + dest_files[i] + '",')
+            outs.append('        "' + dest_dir + dest_file + '",')
     genrule = _genrule(
         src_dir,
         genrule_name,

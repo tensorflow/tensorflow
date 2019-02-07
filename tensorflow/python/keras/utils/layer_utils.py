@@ -150,10 +150,10 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
 
   def print_row(fields, positions):
     line = ''
-    for i in range(len(fields)):
+    for i, field in enumerate(fields):
       if i > 0:
         line = line[:-1] + ' '
-      line += str(fields[i])
+      line += str(field)
       line = line[:positions[i]]
       line += ' ' * (positions[i] - len(line))
     print_fn(line)
@@ -216,13 +216,12 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
         fields = ['', '', '', connections[i]]
         print_row(fields, positions)
 
-  layers = model.layers
-  for i in range(len(layers)):
+  for i, layer in enumerate(model.layers):
     if sequential_like:
-      print_layer_summary(layers[i])
+      print_layer_summary(layer)
     else:
-      print_layer_summary_with_connections(layers[i])
-    if i == len(layers) - 1:
+      print_layer_summary_with_connections(layer)
+    if i == len(model.layers) - 1:
       print_fn('=' * line_length)
     else:
       print_fn('_' * line_length)

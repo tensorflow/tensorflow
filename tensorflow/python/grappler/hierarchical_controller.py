@@ -749,9 +749,9 @@ class HierarchicalController(Controller):
     embedding_size = array_ops.shape(x)[2]
 
     signals = array_ops.split(x, self.num_groups, axis=1)
-    for i in range(len(signals)):
+    for i, signal in enumerate(signals):
       signals[i] = array_ops.reshape(
-          signals[i], [self.hparams.num_children, embedding_size])
+          signal, [self.hparams.num_children, embedding_size])
 
     if self.hparams.bi_lstm:
 

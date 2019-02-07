@@ -24,6 +24,7 @@ from collections import OrderedDict
 
 import numpy as np
 import six
+from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
@@ -330,7 +331,7 @@ def standardize_input_data(data,
 
   # Check shapes compatibility.
   if shapes:
-    for i in range(len(names)):
+    for i, name in enumerate(names):
       if shapes[i] is not None:
         if tensor_util.is_tensor(data[i]):
           tensorshape = data[i].get_shape()
@@ -342,7 +343,7 @@ def standardize_input_data(data,
         shape = shapes[i]
         if len(data_shape) != len(shape):
           raise ValueError('Error when checking ' + exception_prefix +
-                           ': expected ' + names[i] + ' to have ' +
+                           ': expected ' + name + ' to have ' +
                            str(len(shape)) + ' dimensions, but got array '
                            'with shape ' + str(data_shape))
         if not check_batch_axis:
@@ -352,7 +353,7 @@ def standardize_input_data(data,
           if ref_dim != dim and ref_dim is not None and dim is not None:
             raise ValueError(
                 'Error when checking ' + exception_prefix + ': expected ' +
-                names[i] + ' to have shape ' + str(shape) +
+                name + ' to have shape ' + str(shape) +
                 ' but got array with shape ' + str(data_shape))
   return data
 
@@ -1502,9 +1503,7 @@ class ModelInputs(object):
     # TODO(karmel): There is a side-effect here where what you get
     # with as_list and as_dict depends on whether you have called this
     # method first, since it modifies in place.
-    for i in range(len(self._flattened_inputs)):
-      k = self._input_names[i]
-      v = self._flattened_inputs[i]
+    for i, (k, v) in enumerate(zip(self._input_names, self._flattened_inputs)):
       if isinstance(v, (list, float, int)):
         v = np.asarray(v)
         if v.ndim == 1:
@@ -1534,8 +1533,8 @@ class ModelInputs(object):
 
   def as_dict(self):
     """An iterable over a dictionary version of inputs."""
-    for i in range(len(self._flattened_inputs)):
-      yield self._input_names[i], self._flattened_inputs[i]
+    for k, v in zip(self._input_names, self._flattened_inputs):
+      yield k, v
 
   def as_list(self):
     """Returning the inputs as a list."""

@@ -352,11 +352,11 @@ class Model(Network):
           raise TypeError('Expected `target_tensors` to be a list or tuple or '
                           'dict or a single tensor, but got:', target_tensors)
 
-      for i in range(len(self.outputs)):
+      for i, output in enumerate(self.outputs):
         if i in skip_target_indices:
           self.targets.append(None)
         else:
-          shape = K.int_shape(self.outputs[i])
+          shape = K.int_shape(output)
           name = self.output_names[i]
           if target_tensors not in (None, []):
             target = target_tensors[i]
@@ -366,15 +366,15 @@ class Model(Network):
             if target is None:
               target_dtype = losses.LABEL_DTYPES_FOR_LOSSES.get(
                   self.loss_functions[i],
-                  K.dtype(self.outputs[i]))
+                  K.dtype(output))
 
               target = K.placeholder(
                   ndim=len(shape),
                   name=name + '_target',
-                  sparse=K.is_sparse(self.outputs[i]),
+                  sparse=K.is_sparse(output),
                   dtype=target_dtype)
             self._feed_targets.append(target)
-            self._feed_outputs.append(self.outputs[i])
+            self._feed_outputs.append(output)
             self._feed_output_names.append(name)
             self._feed_output_shapes.append(shape)
             self._feed_loss_fns.append(self.loss_functions[i])
