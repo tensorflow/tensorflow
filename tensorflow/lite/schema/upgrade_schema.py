@@ -119,7 +119,7 @@ class Converter(object):
 
     Raises:
       RuntimeError: 1. When flatc cannot be invoked.
-      			    2. When json file does not exists.
+                    2. When json file does not exists.
       ValueError: When the extension is not json or bin.
 
     Returns:
@@ -236,6 +236,8 @@ class Converter(object):
         operator_type: String representing the builtin operator data type
           string.
         (see :schema.fbs).
+      Raises:
+        ValueError: When the model has consistency problems.
       Returns:
         Upgraded builtin operator data type as a string.
       """
