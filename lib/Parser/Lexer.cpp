@@ -285,11 +285,12 @@ Token Lexer::lexNumber(const char *tokStart) {
 
   // Handle the hexadecimal case.
   if (curPtr[-1] == '0' && *curPtr == 'x') {
-    ++curPtr;
+    // If we see stuff like 0xi32, this is a literal `0` follwed by an
+    // identifier `xi32`, stop after `0`.
+    if (!isxdigit(curPtr[1]))
+      return formToken(Token::integer, tokStart);
 
-    if (!isxdigit(*curPtr))
-      return emitError(curPtr, "expected hexadecimal digit");
-
+    curPtr += 2;
     while (isxdigit(*curPtr))
       ++curPtr;
 

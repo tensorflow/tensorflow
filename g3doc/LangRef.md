@@ -157,7 +157,9 @@ hex_digit ::= [0-9a-fA-F]
 letter    ::= [a-zA-Z]
 id-punct  ::= [$._-]
 
-integer-literal ::= digit+ | `0x` hex_digit+
+integer-literal ::= decimal-literal | hexadecimal-literal
+decimal-literal ::= digit+
+hexadecimal-literal ::= `0x` hex_digit+
 float-literal   ::= TODO
 string-literal  ::= `"` [^"\n\f\v\r]* `"`   TODO define escaping rules
 ```
@@ -629,16 +631,22 @@ above.
 Syntax:
 
 ``` {.ebnf}
-vector-type ::= `vector` `<` const-dimension-list vector-element-type `>`
+vector-type ::= `vector` `<` static-dimension-list vector-element-type `>`
 vector-element-type ::= float-type | integer-type
 
-const-dimension-list ::= (integer-literal `x`)+
+static-dimension-list ::= (decimal-literal `x`)+
 ```
 
 The vector type represents a SIMD style vector, used by target-specific
 instruction sets like AVX. While the most common use is for 1D vectors (e.g.
 vector<16 x f32>) we also support multidimensional registers on targets that
 support them (like TPUs).
+
+Vector shapes must be positive decimal integers.
+
+Note: hexadecimal integer literals are not allowed in vector type declarations,
+`vector<0x42xi32>` is invalid because it is interpreted as a 2D vector with
+shape `(0, 42)` and zero shapes are not allowed.
 
 #### Tensor Type {#tensor-type}
 
@@ -651,13 +659,13 @@ tensor-memref-element-type ::= vector-element-type | vector-type
 // memref requires a known rank, but tensor does not.
 dimension-list ::= dimension-list-ranked | `*` `x`
 dimension-list-ranked ::= (dimension `x`)*
-dimension ::= `?` | integer-literal
+dimension ::= `?` | decimal-literal
 ```
 
 SSA values of tensor type represents aggregate N-dimensional data values, and
 have a known element type. It may have an unknown rank (indicated by `*`) or may
 have a fixed rank with a list of dimensions. Each dimension may be a static
-constant or be dynamically determined (indicated by `?`).
+non-negative decimal constant or be dynamically determined (indicated by `?`).
 
 The runtime representation of the MLIR tensor type is intentionally abstracted -
 you cannot control layout or get a pointer to the data. For low level buffer
@@ -666,6 +674,11 @@ representation holds both the tensor data values as well as information about
 the (potentially dynamic) shape of the tensor. The
 [`dim` operation](#'dim'-operation) returns the size of a dimension from a value
 of tensor type.
+
+Note: hexadecimal integer literals are not allowed in tensor type declarations
+to avoid confusion between `0xf32` and `0 x f32`. Zero sizes are allowed in
+tensors and treated as other sizes, e.g., `tensor<0 x 1 x i32>` and `tensor<1 x
+0 x i32>` are different types.
 
 Examples:
 
@@ -684,6 +697,12 @@ tensor<17 x 4 x 13 x 4 x f32>
 
 // Tensor with rank zero. Represents a scalar.
 tensor<f32>
+
+// Zero dimensions.
+tensor<0 x 42 x f32>
+
+// Zero-element tensor of f32 type (hexadecimal literals not allowed here).
+tensor<0xf32>
 ```
 
 #### Memref Type {#memref-type}
@@ -702,7 +721,7 @@ A `memref` type is a reference to a region of memory (similar to a buffer
 pointer, but more powerful). The buffer pointed to by a memref can be allocated,
 aliased and deallocated. A memref can be used to read and write data from/to the
 memory region which it references. Memref types use the same shape specifier as
-tensor types, but do not allow unknown rank.
+tensor types, but do not allow unknown rank nor zero sizes.
 
 The memory space of a memref is specified by a target-specific integer index. If
 no memory space is specified, then the default memory space (0) is used. The

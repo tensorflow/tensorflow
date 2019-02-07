@@ -182,7 +182,8 @@ public:
   // Type parsing.
   VectorType parseVectorType();
   ParseResult parseXInDimensionList();
-  ParseResult parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions);
+  ParseResult parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions,
+                                       bool allowDynamic);
   Type parseExtendedType();
   Type parseTensorType();
   Type parseMemRefType();
@@ -381,8 +382,8 @@ Type Parser::parseType() {
 
 /// Parse a vector type.
 ///
-///   vector-type ::= `vector` `<` const-dimension-list primitive-type `>`
-///   const-dimension-list ::= (integer-literal `x`)+
+///   vector-type ::= `vector` `<` static-dimension-list primitive-type `>`
+///   static-dimension-list ::= (decimal-literal `x`)+
 ///
 VectorType Parser::parseVectorType() {
   consumeToken(Token::kw_vector);
@@ -390,31 +391,11 @@ VectorType Parser::parseVectorType() {
   if (parseToken(Token::less, "expected '<' in vector type"))
     return nullptr;
 
-  if (getToken().isNot(Token::integer))
-    return (emitError("expected dimension size in vector type"), nullptr);
-
   SmallVector<int64_t, 4> dimensions;
-  while (getToken().is(Token::integer)) {
-    // Make sure this integer value is in bound and valid.
-    auto dimension = getToken().getUnsignedIntegerValue();
-    if (!dimension.hasValue())
-      return (emitError("invalid dimension in vector type"), nullptr);
-    dimensions.push_back((int64_t)dimension.getValue());
-
-    consumeToken(Token::integer);
-
-    // Make sure we have an 'x' or something like 'xbf32'.
-    if (getToken().isNot(Token::bare_identifier) ||
-        getTokenSpelling()[0] != 'x')
-      return (emitError("expected 'x' in vector dimension list"), nullptr);
-
-    // If we had a prefix of 'x', lex the next token immediately after the 'x'.
-    if (getTokenSpelling().size() != 1)
-      state.lex.resetPointer(getTokenSpelling().data() + 1);
-
-    // Consume the 'x'.
-    consumeToken(Token::bare_identifier);
-  }
+  if (parseDimensionListRanked(dimensions, /*allowDynamic=*/false))
+    return nullptr;
+  if (dimensions.empty())
+    return (emitError("expected dimension size in vector type"), nullptr);
 
   // Parse the element type.
   auto typeLoc = getToken().getLoc();
@@ -444,23 +425,44 @@ ParseResult Parser::parseXInDimensionList() {
 }
 
 /// Parse a dimension list of a tensor or memref type.  This populates the
-/// dimension list, returning -1 for the '?' dimensions.
+/// dimension list, using -1 for the `?` dimensions if `allowDynamic` is set and
+/// errors out on `?` otherwise.
 ///
 ///   dimension-list-ranked ::= (dimension `x`)*
-///   dimension ::= `?` | integer-literal
+///   dimension ::= `?` | decimal-literal
 ///
+/// When `allowDynamic` is not set, this can be also used to parse
+///
+///   static-dimension-list ::= (decimal-literal `x`)*
 ParseResult
-Parser::parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions) {
+Parser::parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions,
+                                 bool allowDynamic = true) {
   while (getToken().isAny(Token::integer, Token::question)) {
     if (consumeIf(Token::question)) {
+      if (!allowDynamic)
+        return emitError("expected static shape");
       dimensions.push_back(-1);
     } else {
-      // Make sure this integer value is in bound and valid.
-      auto dimension = getToken().getUnsignedIntegerValue();
-      if (!dimension.hasValue() || (int64_t)dimension.getValue() < 0)
-        return emitError("invalid dimension");
-      dimensions.push_back((int64_t)dimension.getValue());
-      consumeToken(Token::integer);
+      // Hexadecimal integer literals (starting with `0x`) are not allowed in
+      // aggregate type declarations.  Therefore, `0xf32` should be processed as
+      // a sequence of separate elements `0`, `x`, `f32`.
+      if (getTokenSpelling().size() > 1 && getTokenSpelling()[1] == 'x') {
+        // We can get here only if the token is an integer literal.  Hexadecimal
+        // integer literals can only start with `0x` (`1x` wouldn't lex as a
+        // literal, just `1` would, at which point we don't get into this
+        // branch).
+        assert(getTokenSpelling()[0] == '0' && "invalid integer literal");
+        dimensions.push_back(0);
+        state.lex.resetPointer(getTokenSpelling().data() + 1);
+        consumeToken();
+      } else {
+        // Make sure this integer value is in bound and valid.
+        auto dimension = getToken().getUnsignedIntegerValue();
+        if (!dimension.hasValue())
+          return emitError("invalid dimension");
+        dimensions.push_back((int64_t)dimension.getValue());
+        consumeToken(Token::integer);
+      }
     }
 
     // Make sure we have an 'x' or something like 'xbf32'.

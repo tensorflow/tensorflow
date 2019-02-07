@@ -482,6 +482,11 @@ func @constants() -> (i32, i23, i23, i1, i1) {
   // CHECK: %false = constant 0 : i1
   %f = constant 0 : i1
 
+  // The trick to parse type declarations should not interfere with hex
+  // literals.
+  // CHECK: %c3890_i32 = constant 3890 : i32
+  %h = constant 0xf32 : i32
+
   // CHECK: return %c42_i32, %c17_i23, %c17_i23_0, %true, %false
   return %x, %y, %z, %t, %f : i32, i23, i23, i1, i1
 }
@@ -628,18 +633,18 @@ func @densetensorattr() -> () {
   "fooi67"(){bar: dense<vector<1x1x4xi67>, [[[-5, 4, 6, 2]]]>} : () -> ()
 
 // CHECK: "foo2"() {bar: dense<tensor<0xi32>, []>} : () -> ()
-  "foo2"(){bar: dense<tensor<0 x i32>, []>} : () -> ()
+  "foo2"(){bar: dense<tensor<0xi32>, []>} : () -> ()
 // CHECK: "foo2"() {bar: dense<tensor<1x0xi32>, {{\[\[}}]]>} : () -> ()
-  "foo2"(){bar: dense<tensor<1x0 x i32>, [[]]>} : () -> ()
+  "foo2"(){bar: dense<tensor<1x0xi32>, [[]]>} : () -> ()
 // CHECK: "foo3"() {bar: dense<tensor<2x1x4xi32>, {{\[\[\[}}5, -6, 1, 2]], {{\[\[}}7, 8, 3, 4]]]>} : () -> ()
   "foo3"(){bar: dense<tensor<2x1x4xi32>, [[[5, -6, 1, 2]], [[7, 8, 3, 4]]]>} : () -> ()
 
 // CHECK: "float1"() {bar: dense<tensor<1x1x1xf32>, {{\[\[\[}}5.000000e+00]]]>} : () -> ()
   "float1"(){bar: dense<tensor<1x1x1xf32>, [[[5.0]]]>} : () -> ()
 // CHECK: "float2"() {bar: dense<tensor<0xf32>, []>} : () -> ()
-  "float2"(){bar: dense<tensor<0 x f32>, []>} : () -> ()
+  "float2"(){bar: dense<tensor<0xf32>, []>} : () -> ()
 // CHECK: "float2"() {bar: dense<tensor<1x0xf32>, {{\[\[}}]]>} : () -> ()
-  "float2"(){bar: dense<tensor<1x0 x f32>, [[]]>} : () -> ()
+  "float2"(){bar: dense<tensor<1x0xf32>, [[]]>} : () -> ()
 
 // CHECK: "bfloat16"() {bar: dense<tensor<2x1x4xbf16>, {{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]>} : () -> ()
   "bfloat16"(){bar: dense<tensor<2x1x4xbf16>, [[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]>} : () -> ()
@@ -666,18 +671,18 @@ func @densevectorattr() -> () {
   "fooi64"(){bar: dense<vector<1x1x1xi64>, [[[-5]]]>} : () -> ()
 
 // CHECK: "foo2"() {bar: dense<vector<0xi32>, []>} : () -> ()
-  "foo2"(){bar: dense<vector<0 x i32>, []>} : () -> ()
+  "foo2"(){bar: dense<vector<0xi32>, []>} : () -> ()
 // CHECK: "foo2"() {bar: dense<vector<1x0xi32>, {{\[\[}}]]>} : () -> ()
-  "foo2"(){bar: dense<vector<1x0 x i32>, [[]]>} : () -> ()
+  "foo2"(){bar: dense<vector<1x0xi32>, [[]]>} : () -> ()
 // CHECK: "foo3"() {bar: dense<vector<2x1x4xi32>, {{\[\[\[}}5, -6, 1, 2]], {{\[\[}}7, 8, 3, 4]]]>} : () -> ()
   "foo3"(){bar: dense<vector<2x1x4xi32>, [[[5, -6, 1, 2]], [[7, 8, 3, 4]]]>} : () -> ()
 
 // CHECK: "float1"() {bar: dense<vector<1x1x1xf32>, {{\[\[\[}}5.000000e+00]]]>} : () -> ()
   "float1"(){bar: dense<vector<1x1x1xf32>, [[[5.0]]]>} : () -> ()
 // CHECK: "float2"() {bar: dense<vector<0xf32>, []>} : () -> ()
-  "float2"(){bar: dense<vector<0 x f32>, []>} : () -> ()
+  "float2"(){bar: dense<vector<0xf32>, []>} : () -> ()
 // CHECK: "float2"() {bar: dense<vector<1x0xf32>, {{\[\[}}]]>} : () -> ()
-  "float2"(){bar: dense<vector<1x0 x f32>, [[]]>} : () -> ()
+  "float2"(){bar: dense<vector<1x0xf32>, [[]]>} : () -> ()
 
 // CHECK: "bfloat16"() {bar: dense<vector<2x1x4xbf16>, {{\[\[\[}}-5.000000e+00, 6.000000e+00, 1.000000e+00, 2.000000e+00]], {{\[\[}}7.000000e+00, -8.000000e+00, 3.000000e+00, 4.000000e+00]]]>} : () -> ()
   "bfloat16"(){bar: dense<vector<2x1x4xbf16>, [[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]>} : () -> ()
@@ -703,18 +708,18 @@ func @sparsetensorattr() -> () {
 // CHECK: "fooi64"() {bar: sparse<tensor<1xi64>, {{\[\[}}0]], {{\[}}-1]>} : () -> ()
   "fooi64"(){bar: sparse<tensor<1xi64>, [[0]], [-1]>} : () -> ()
 // CHECK: "foo2"() {bar: sparse<tensor<0xi32>, {{\[}}], {{\[}}]>} : () -> ()
-  "foo2"(){bar: sparse<tensor<0 x i32>, [], []>} : () -> ()
+  "foo2"(){bar: sparse<tensor<0xi32>, [], []>} : () -> ()
   
 // CHECK: "foof16"() {bar: sparse<tensor<1x1x1xf16>, {{\[\[}}0, 0, 0]], {{\[}}-2.000000e+00]>} : () -> ()
   "foof16"(){bar: sparse<tensor<1x1x1xf16>, [[0, 0, 0]], [-2.0]>} : () -> ()
 // CHECK: "foobf16"() {bar: sparse<tensor<2x2x2xbf16>, {{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2.000000e+00, -1.000000e+00, 5.000000e+00]>} : () -> ()
   "foobf16"(){bar: sparse<tensor<2x2x2xbf16>, [[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2.0, -1.0, 5.0]>} : () -> ()
-// CHECK: "foof32"() {bar: sparse<tensor<1x1xf32>, {{\[}}], {{\[}}]>} : () -> ()
+// CHECK: "foof32"() {bar: sparse<tensor<1x0x1xf32>, {{\[}}], {{\[}}]>} : () -> ()
   "foof32"(){bar: sparse<tensor<1x0x1xf32>, [], []>} : () -> ()
 // CHECK:  "foof64"() {bar: sparse<tensor<1xf64>, {{\[\[}}0]], {{\[}}-1.000000e+00]>} : () -> ()
   "foof64"(){bar: sparse<tensor<1xf64>, [[0]], [-1.0]>} : () -> ()
 // CHECK: "foof320"() {bar: sparse<tensor<0xf32>, {{\[}}], {{\[}}]>} : () -> ()
-  "foof320"(){bar: sparse<tensor<0 x f32>, [], []>} : () -> ()
+  "foof320"(){bar: sparse<tensor<0xf32>, [], []>} : () -> ()
   return
 }
 
@@ -731,18 +736,18 @@ func @sparsevectorattr() -> () {
 // CHECK: "fooi64"() {bar: sparse<vector<1xi64>, {{\[\[}}0]], {{\[}}-1]>} : () -> ()
   "fooi64"(){bar: sparse<vector<1xi64>, [[0]], [-1]>} : () -> ()
 // CHECK: "foo2"() {bar: sparse<vector<0xi32>, {{\[}}], {{\[}}]>} : () -> ()
-  "foo2"(){bar: sparse<vector<0 x i32>, [], []>} : () -> ()
+  "foo2"(){bar: sparse<vector<0xi32>, [], []>} : () -> ()
 
 // CHECK: "foof16"() {bar: sparse<vector<1x1x1xf16>, {{\[\[}}0, 0, 0]], {{\[}}-2.000000e+00]>} : () -> ()
   "foof16"(){bar: sparse<vector<1x1x1xf16>, [[0, 0, 0]], [-2.0]>} : () -> ()
 // CHECK: "foobf16"() {bar: sparse<vector<2x2x2xbf16>, {{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2.000000e+00, -1.000000e+00, 5.000000e+00]>} : () -> ()
   "foobf16"(){bar: sparse<vector<2x2x2xbf16>, [[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2.0, -1.0, 5.0]>} : () -> ()
-// CHECK: "foof32"() {bar: sparse<vector<1x1xf32>, {{\[}}], {{\[}}]>} : () -> ()
+// CHECK: "foof32"() {bar: sparse<vector<1x0x1xf32>, {{\[}}], {{\[}}]>} : () -> ()
   "foof32"(){bar: sparse<vector<1x0x1xf32>, [], []>} : () -> ()
 // CHECK:  "foof64"() {bar: sparse<vector<1xf64>, {{\[\[}}0]], {{\[}}-1.000000e+00]>} : () -> ()
   "foof64"(){bar: sparse<vector<1xf64>, [[0]], [-1.0]>} : () -> ()
 // CHECK: "foof320"() {bar: sparse<vector<0xf32>, {{\[}}], {{\[}}]>} : () -> ()
-  "foof320"(){bar: sparse<vector<0 x f32>, [], []>} : () -> ()
+  "foof320"(){bar: sparse<vector<0xf32>, [], []>} : () -> ()
   return
 }
 
