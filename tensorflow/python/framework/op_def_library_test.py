@@ -24,6 +24,7 @@ from google.protobuf import text_format
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
@@ -465,6 +466,46 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         self._lib.apply_op("AttrFloat", a="bad")
       self.assertEqual(str(cm.exception),
                        "Expected float for argument 'a' not 'bad'.")
+
+  def testAttrFunc(self):
+    with ops.Graph().as_default():
+      @function.Defun(dtypes.float32, func_name="MyFn")
+      def fn(x):
+        return 2 + x
+      op = self._lib.apply_op("FuncAttr", f=fn, name="t")
+      self.assertProtoEquals("""
+        name: 't' op: 'FuncAttr' attr { key: 'f'
+                                        value { func { name: 'MyFn' } } }
+        """, op.node_def)
+
+      with self.assertRaises(TypeError) as cm:
+        self._lib.apply_op("FuncAttr", f=3)
+      self.assertEqual(str(cm.exception),
+                       "Don't know how to convert 3 to a func for argument f")
+
+  def testAttrFuncList(self):
+    with ops.Graph().as_default():
+      @function.Defun(dtypes.float32, func_name="MyFn")
+      def fn1(x):
+        return 2 + x
+      @function.Defun(dtypes.int32, dtypes.float32, func_name="MyFn2")
+      def fn2(x, y):
+        return 2 + x, y * 3
+      @function.Defun(dtypes.int32, func_name="MyFn3")
+      def fn3(y):
+        return 2 + y
+      op = self._lib.apply_op("FuncListAttr", f=[fn1, fn2, fn3], name="t")
+      self.assertProtoEquals("""
+        name: 't' op: 'FuncListAttr'
+        attr { key: 'f' value { list { func { name: 'MyFn' }
+                                       func { name: 'MyFn2' }
+                                       func { name: 'MyFn3' } } } }
+        """, op.node_def)
+
+      with self.assertRaises(TypeError) as cm:
+        self._lib.apply_op("FuncListAttr", f=[fn1, 3, fn2])
+      self.assertEqual(str(cm.exception),
+                       "Don't know how to convert 3 to a func for argument f")
 
   def testAttrBool(self):
     with ops.Graph().as_default():
