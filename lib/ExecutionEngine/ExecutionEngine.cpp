@@ -29,6 +29,7 @@
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/IRTransformLayer.h"
 #include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
@@ -75,18 +76,22 @@ namespace impl {
 // Simple layered Orc JIT compilation engine.
 class OrcJIT {
 public:
+  using IRTransformer = std::function<Error(llvm::Module *)>;
+
   // Construct a JIT engine for the target host defined by `machineBuilder`,
   // using the data layout provided as `dataLayout`.
   // Setup the object layer to use our custom memory manager in order to resolve
   // calls to library functions present in the process.
   OrcJIT(llvm::orc::JITTargetMachineBuilder machineBuilder,
-         llvm::DataLayout layout)
-      : objectLayer(
+         llvm::DataLayout layout, IRTransformer transform)
+      : irTransformer(transform),
+        objectLayer(
             session,
             [this]() { return llvm::make_unique<MemoryManager>(session); }),
         compileLayer(
             session, objectLayer,
             llvm::orc::ConcurrentIRCompiler(std::move(machineBuilder))),
+        transformLayer(session, compileLayer, makeIRTransformFunction()),
         dataLayout(layout), mangler(session, this->dataLayout),
         threadSafeCtx(llvm::make_unique<llvm::LLVMContext>()) {
     session.getMainJITDylib().setGenerator(
@@ -95,7 +100,8 @@ public:
   }
 
   // Create a JIT engine for the current host.
-  static Expected<std::unique_ptr<OrcJIT>> createDefault() {
+  static Expected<std::unique_ptr<OrcJIT>>
+  createDefault(IRTransformer transformer = identity) {
     auto machineBuilder = llvm::orc::JITTargetMachineBuilder::detectHost();
     if (!machineBuilder)
       return machineBuilder.takeError();
@@ -105,7 +111,7 @@ public:
       return dataLayout.takeError();
 
     return llvm::make_unique<OrcJIT>(std::move(*machineBuilder),
-                                     std::move(*dataLayout));
+                                     std::move(*dataLayout), transformer);
   }
 
   // Add an LLVM module to the main library managed by the JIT engine.
@@ -121,9 +127,30 @@ public:
   }
 
 private:
+  // Do not transform the module.
+  static Error identity(llvm::Module *m) { return Error::success(); }
+
+  // Wrap the `irTransformer` into a function that can be called by the
+  // IRTranformLayer.  If `irTransformer` is not set up, return the module as is
+  // without errors.
+  llvm::orc::IRTransformLayer::TransformFunction makeIRTransformFunction() {
+    return [this](llvm::orc::ThreadSafeModule module,
+                  const llvm::orc::MaterializationResponsibility &resp)
+               -> Expected<llvm::orc::ThreadSafeModule> {
+      (void)resp;
+      if (!irTransformer)
+        return module;
+      if (Error err = irTransformer(module.getModule()))
+        return std::move(err);
+      return module;
+    };
+  }
+
+  IRTransformer irTransformer;
   llvm::orc::ExecutionSession session;
   llvm::orc::RTDyldObjectLinkingLayer objectLayer;
   llvm::orc::IRCompileLayer compileLayer;
+  llvm::orc::IRTransformLayer transformLayer;
   llvm::DataLayout dataLayout;
   llvm::orc::MangleAndInterner mangler;
   llvm::orc::ThreadSafeContext threadSafeCtx;
@@ -261,9 +288,10 @@ void packFunctionArguments(llvm::Module *module) {
 // Out of line for PIMPL unique_ptr.
 ExecutionEngine::~ExecutionEngine() = default;
 
-Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(Module *m) {
+Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
+    Module *m, std::function<llvm::Error(llvm::Module *)> transformer) {
   auto engine = llvm::make_unique<ExecutionEngine>();
-  auto expectedJIT = impl::OrcJIT::createDefault();
+  auto expectedJIT = impl::OrcJIT::createDefault(transformer);
   if (!expectedJIT)
     return expectedJIT.takeError();
 

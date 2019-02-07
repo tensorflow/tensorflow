@@ -26,10 +26,12 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/Error.h"
 
+#include <functional>
 #include <memory>
 
 namespace llvm {
 template <typename T> class Expected;
+class Module;
 }
 
 namespace mlir {
@@ -54,8 +56,12 @@ class ExecutionEngine {
 public:
   ~ExecutionEngine();
 
-  /// Creates an execution engine for the given module.
-  static llvm::Expected<std::unique_ptr<ExecutionEngine>> create(Module *m);
+  /// Creates an execution engine for the given module.  If `transformer` is
+  /// provided, it will be called on the LLVM module during JIT-compilation and
+  /// can be used, e.g., for reporting or optimization.
+  static llvm::Expected<std::unique_ptr<ExecutionEngine>>
+  create(Module *m,
+         std::function<llvm::Error(llvm::Module *)> transformer = {});
 
   /// Looks up a packed-argument function with the given name and returns a
   /// pointer to it.  Propagates errors in case of failure.
