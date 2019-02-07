@@ -196,6 +196,13 @@ def converted_call(f, owner, options, *args, **kwargs):
     logging.log(2, 'Permanently whitelisted: %s: wrapt decorated', f)
     return f(*args, **kwargs)
 
+  # Constructors are permanently whitelisted.
+  # TODO(mdan): Toggle as experimental feature instead.
+  # TODO(b/124016764): Remove this limitation.
+  if tf_inspect.isclass(f):
+    logging.log(2, 'Permanently whitelisted: %s: constructor', f)
+    return f(*args, **kwargs)
+
   # Other built-in modules are permanently whitelisted.
   # TODO(mdan): Figure out how to do this consistently for all stdlib modules.
   if (f in collections.__dict__.values() or f in pdb.__dict__.values() or
@@ -276,6 +283,9 @@ def converted_call(f, owner, options, *args, **kwargs):
 
     elif tf_inspect.isclass(f):
       # Constructors
+      # Note: Until we support class constructurs, and enable whole-class
+      # conversion with an experimental flag, this branch is dead code.
+      # TODO(mdan): Consider removing unless there is a compelling use case.
       target_entity = f
       arg_map_target = f.__init__
       effective_args = args
