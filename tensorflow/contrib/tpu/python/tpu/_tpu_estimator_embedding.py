@@ -89,7 +89,7 @@ def _get_tpu_embedding_optimization_parameters(embedding_config_spec):
   elif embedding_config_spec.optimizer_type == 'sgd':
     return tpu_embedding.StochasticGradientDescentParameters(
         embedding_config_spec.learning_rate,
-        embedding_config_spec.use_gradient_accumulattion)
+        embedding_config_spec.use_gradient_accumulation)
   elif embedding_config_spec.optimizer_type == 'adam':
     return tpu_embedding.AdamParameters(
         embedding_config_spec.learning_rate,
