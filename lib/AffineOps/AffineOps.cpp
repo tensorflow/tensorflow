@@ -1170,7 +1170,7 @@ bool AffineIfOp::verify() const {
     // block lists.
     if (std::next(blockList.begin()) != blockList.end())
       return emitOpError(
-          "expects only one block per 'affine.if' or 'else' block list");
+          "expects only one block per 'if' or 'else' block list");
     if (blockList.front().getTerminator())
       return emitOpError("expects region block to not have a terminator");
 
@@ -1219,7 +1219,7 @@ bool AffineIfOp::parse(OpAsmParser *parser, OperationState *result) {
 
 void AffineIfOp::print(OpAsmPrinter *p) const {
   auto conditionAttr = getAttrOfType<IntegerSetAttr>(getConditionAttrName());
-  *p << "affine.if " << conditionAttr;
+  *p << "if " << conditionAttr;
   printDimAndSymbolList(operand_begin(), operand_end(),
                         conditionAttr.getValue().getNumDims(), p);
   p->printBlockList(getInstruction()->getBlockList(0));

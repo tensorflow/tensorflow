@@ -105,20 +105,20 @@ func @simple_example(%A: memref<?x?xf32>, %B: memref<?x?xf32>) {
 }
 ```
 
-#### 'affine.if' operation {#'affine.if'-operation}
+#### 'if' operation {#'if'-operation}
 
 Syntax:
 
 ``` {.ebnf}
-operation    ::= `affine.if` if-inst-cond `{` inst* `}` (`else` `{` inst* `}`)?
+operation    ::= `if` if-inst-cond `{` inst* `}` (`else` `{` inst* `}`)?
 if-inst-cond ::= integer-set dim-and-symbol-use-list
 ```
 
-The `affine.if` operation restricts execution to a subset of the loop iteration
-space defined by an integer set (a conjunction of affine constraints). A single
-`affine.if` may end with an optional `else` clause.
+The `if` operation restricts execution to a subset of the loop iteration space
+defined by an integer set (a conjunction of affine constraints). A single `if`
+may end with an optional `else` clause.
 
-The condition of the `affine.if` is represented by an
+The condition of the `if` is represented by an
 [integer set](LangRef.md#integer-sets) (a conjunction of affine constraints),
 and the SSA values bound to the dimensions and symbols in the integer set. The
 [same restrictions](#restrictions-on-dimensions-and-symbols) hold for these SSA
@@ -134,7 +134,7 @@ func @reduced_domain_example(%A, %X, %N) : (memref<10xi32>, i32, i32) {
      for %j = 0 to %N {
        %0 = affine.apply #map42(%j)
        %tmp = call @S1(%X, %i, %0)
-       affine.if #set(%i, %j)[%N] {
+       if #set(%i, %j)[%N] {
           %1 = affine.apply #map43(%i, %j)
           call @S2(%tmp, %A, %i, %1)
        }
