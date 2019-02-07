@@ -78,7 +78,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto input_type = op_context.input->type;
   TF_LITE_ENSURE(context,
                  input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
-                     input_type == kTfLiteInt8 || input_type == kTfLiteInt16);
+                     input_type == kTfLiteInt8 || input_type == kTfLiteInt16 ||
+                     input_type == kTfLiteInt32);
   for (int i = 0; i < NumOutputs(node); ++i) {
     GetOutput(context, node, i)->type = input_type;
   }
@@ -145,10 +146,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_SPLIT(int16_t);
       break;
     }
+    case kTfLiteInt32: {
+      TF_LITE_SPLIT(int32_t);
+      break;
+    }
     default:
       context->ReportError(context,
-                           "Only float32, uint8, int8 and int16 are currently "
-                           "supported, got %d.",
+                           "Only float32, uint8, int8, int16 and int32 are "
+                           "currently supported, got %d.",
                            op_context.input->type);
       return kTfLiteError;
   }
