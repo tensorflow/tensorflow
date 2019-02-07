@@ -265,6 +265,16 @@ class HloModule {
   const HloSchedule& schedule() const { return *schedule_; }
   HloSchedule& schedule() { return *schedule_; }
 
+  HloComputation* AddComputationAndUnifyNamesAndIds(
+      std::unique_ptr<HloComputation> computation, bool is_entry) {
+    computation->ClearUniqueIdInternal();
+    for (auto* instruction : computation->instructions()) {
+      instruction->ClearUniqueIdInternal();
+    }
+    return AddComputationInternal(std::move(computation), is_entry,
+                                  /*uniquify_identifiers=*/true);
+  }
+
   Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
 
  private:
