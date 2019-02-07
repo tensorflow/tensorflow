@@ -265,17 +265,19 @@ Status FillFunctionBody(
       // This node's attribute is a placeholder value, so it does not have type
       // information. We check node's OpDef for attribute type.
       string node_attr_name = iter.first;
-      const OpDef_AttrDef* node_attr_def = nullptr;
+      const OpDef::AttrDef* node_attr_def = nullptr;
       for (const auto& node_attr : node->op_def().attr()) {
         if (node_attr.name() == node_attr_name) {
           node_attr_def = &node_attr;
         }
       }
       if (!node_attr_def) {
-        return errors::Internal("Cannot find attr ", node_attr_name,
-                                " in OpDef ", node->op_def().DebugString());
+        return errors::Unimplemented(
+            "Placeholder value is not supported for attributes not in OpDef. "
+            "Attribute: ",
+            node_attr_name, ", OpDef: ", node->op_def().DebugString());
       }
-      OpDef_AttrDef* attr_def = fdef->mutable_signature()->add_attr();
+      OpDef::AttrDef* attr_def = fdef->mutable_signature()->add_attr();
       attr_def->set_name(func_attr_name);
       attr_def->set_type(node_attr_def->type());
 
