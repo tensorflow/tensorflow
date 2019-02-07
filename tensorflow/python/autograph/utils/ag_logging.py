@@ -46,8 +46,11 @@ def set_verbosity(level, alsologtostdout=False):
   more in-depth debugging.
 
   There are two controls that control the logging verbosity:
+
    * The `set_verbosity` function
+
    * The `AUTOGRAPH_VERBOSITY` environment variable
+
   `set_verbosity` takes precedence over the environment variable.
 
   For example:
