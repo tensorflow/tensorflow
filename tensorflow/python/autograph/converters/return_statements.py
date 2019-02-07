@@ -408,6 +408,5 @@ def transform(node, ctx, default_to_null_return=True):
   transformer = ReturnStatementsTransformer(
       ctx, default_to_null_return=default_to_null_return)
   node = transformer.visit(node)
-  transformer.debug_print_src(node)
 
   return node
