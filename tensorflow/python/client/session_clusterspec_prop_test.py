@@ -188,9 +188,7 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     job.name = 'worker'
     job.tasks[0] = server1.target[len('grpc://'):]
     job.tasks[1] = server2.target[len('grpc://'):]
-    config = config_pb2.ConfigProto(
-        cluster_def=cluster_def,
-        isolate_session_state=True)
+    config = config_pb2.ConfigProto(cluster_def=cluster_def)
 
     with ops.Graph().as_default() as g:
       with ops.device('/job:worker/task:1/cpu:1'):
@@ -325,12 +323,8 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     job2.tasks[0] = server2.target[len('grpc://'):]
     job2.tasks[1] = server3.target[len('grpc://'):]
 
-    config1 = config_pb2.ConfigProto(
-        cluster_def=cluster_def1,
-        isolate_session_state=True)
-    config2 = config_pb2.ConfigProto(
-        cluster_def=cluster_def2,
-        isolate_session_state=True)
+    config1 = config_pb2.ConfigProto(cluster_def=cluster_def1)
+    config2 = config_pb2.ConfigProto(cluster_def=cluster_def2)
 
     with ops.device('/job:worker/task:1'):
       var = variables.Variable(array_ops.zeros([2]), name='var')
@@ -432,9 +426,7 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     job = cluster_def.job.add()
     job.name = 'worker'
     job.tasks[0] = server.target[len('grpc://'):]
-    config = config_pb2.ConfigProto(
-        cluster_def=cluster_def,
-        isolate_session_state=True)
+    config = config_pb2.ConfigProto(cluster_def=cluster_def)
 
     sess1 = session.Session(server.target, config=config)
     sess2 = session.Session(server.target, config=config)
@@ -480,7 +472,8 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     job = cluster_def.job.add()
     job.name = 'worker'
     job.tasks[0] = server.target[len('grpc://'):]
-    config = config_pb2.ConfigProto(cluster_def=cluster_def)
+    config = config_pb2.ConfigProto(cluster_def=cluster_def,
+                                    share_session_state=True)
 
     sess1 = session.Session(server.target, config=config)
     sess2 = session.Session(server.target, config=config)
@@ -515,7 +508,8 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     job = cluster_def.job.add()
     job.name = 'worker'
     job.tasks[0] = server.target[len('grpc://'):]
-    config = config_pb2.ConfigProto(cluster_def=cluster_def)
+    config = config_pb2.ConfigProto(cluster_def=cluster_def,
+                                    share_session_state=True)
 
     with ops.Graph().as_default() as g1:
       var1 = variables.Variable(array_ops.zeros([2]), name='var')

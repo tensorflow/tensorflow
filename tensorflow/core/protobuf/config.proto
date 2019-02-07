@@ -388,9 +388,10 @@ message ConfigProto {
   // Optional list of all workers to use in this session.
   ClusterDef cluster_def = 14;
 
-  // If true, any resources such as Variables used in the session will not be
-  // shared with other sessions.
-  bool isolate_session_state = 15;
+  // This option is deprecated. The same effect can be achieved by setting
+  // share_session_state to an inverse value. For compatibility, this field
+  // still works if share_session_state is not turned on.
+  bool isolate_session_state = 15 [deprecated = true];
 
   // Everything inside Experimental is subject to change and is not subject
   // to API stability guarantees in
@@ -422,7 +423,12 @@ message ConfigProto {
 
   Experimental experimental = 16;
 
-  // Next: 17
+  // If true, any resources such as Variables used in the session will be
+  // shared with other sessions. Different from isolate_session_state, even
+  // if ClusterSpec Propagation is enabled, this field still works.
+  bool share_session_state = 17;
+
+  // Next: 18
 };
 
 // Options for a single Run() call.
