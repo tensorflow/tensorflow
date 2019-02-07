@@ -174,8 +174,8 @@ TEST(VerifyNoDuplicateNodeNames, DuplicateNodeNames) {
   GraphDef graph_def;
   auto parser = protobuf::TextFormat::Parser();
   CHECK(parser.MergeFromString(graph_def_str, &graph_def)) << graph_def_str;
-  EXPECT_EQ(tensorflow::error::ALREADY_EXISTS,
-            graph::VerifyNoDuplicateNodeNames(graph_def).code());
+  EXPECT_EQ(graph::VerifyNoDuplicateNodeNames(graph_def).code(),
+            tensorflow::error::ALREADY_EXISTS);
 }
 
 }  // namespace

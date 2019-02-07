@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
@@ -306,6 +306,8 @@ cc_library(
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/fully_connected.h",
+        "reference/integer_ops/conv.h",
+        "reference/integer_ops/depthwise_conv.h",
         "reference/integer_ops/dequantize.h",
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/softmax.h",
@@ -589,6 +591,7 @@ cc_test(
         ":reference_base",
         ":test_util",
         ":types",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -697,5 +700,79 @@ cc_test(
 )
 
 exports_files(["optimized/eigen_tensor_reduced_instantiations_oss.h"])
+
+filegroup(
+    name = "optimized_op_headers",
+    srcs = glob([
+        "optimized/*.h",
+    ]),
+    visibility = ["//tensorflow/lite:__subpackages__"],
+)
+
+filegroup(
+    name = "reference_op_headers",
+    srcs = glob([
+        "reference/*.h",
+    ]),
+    visibility = ["//tensorflow/lite:__subpackages__"],
+)
+
+filegroup(
+    name = "headers",
+    srcs = glob([
+        "*.h",
+    ]),
+    visibility = ["//tensorflow/lite:__subpackages__"],
+)
+
+transitive_hdrs(
+    name = "nnapi_external_headers",
+    visibility = ["//tensorflow/lite:__subpackages__"],
+    deps = [
+        "//third_party/eigen3",
+        "@gemmlowp",
+    ],
+)
+
+# ---------------------------------------------------------
+# The public target "install_nnapi_extra_headers" is only
+# used for external targets that requires exporting optmized
+# and reference op headers.
+
+genrule(
+    name = "install_nnapi_extra_headers",
+    srcs = [
+        ":nnapi_external_headers",
+        ":headers",
+        ":optimized_op_headers",
+        ":reference_op_headers",
+    ],
+    outs = ["include"],
+    cmd = """
+    mkdir $@
+    for f in $(SRCS); do
+      d="$${f%/*}"
+      d="$${d#bazel-out*genfiles/}"
+      d="$${d#*external/eigen_archive/}"
+
+      if [[ $${d} == *local_config_* ]]; then
+        continue
+      fi
+
+      if [[ $${d} == external* ]]; then
+        extname="$${d#*external/}"
+        extname="$${extname%%/*}"
+        if [[ $${TF_SYSTEM_LIBS:-} == *$${extname}* ]]; then
+          continue
+        fi
+      fi
+
+      mkdir -p "$@/$${d}"
+      cp "$${f}" "$@/$${d}/"
+    done
+    """,
+    tags = ["manual"],
+    visibility = ["//visibility:private"],
+)
 
 tflite_portable_test_suite()

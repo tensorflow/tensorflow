@@ -16,18 +16,31 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/tools/optimize/calibrator.h"
+
+namespace {
+tensorflow::string* g_test_model_file = nullptr;
+}  // namespace
 
 namespace tflite {
 namespace optimize {
 namespace calibration {
 namespace {
 
+std::unique_ptr<FlatBufferModel> ReadModel() {
+  if (g_test_model_file) {
+    return FlatBufferModel::BuildFromFile(g_test_model_file->c_str());
+  }
+  return nullptr;
+}
+
 TEST(CalibratorTest, CalibrationStatsAreCollected) {
-  auto model = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/multi_add.bin");
+  auto model = ReadModel();
   ASSERT_TRUE(model);
   std::unique_ptr<Interpreter> interpreter;
   std::unique_ptr<CalibrationReader> reader;
@@ -105,8 +118,7 @@ TEST(CalibratorTest, CalibrationStatsAreCollected) {
 }
 
 TEST(CalibratorTest, MultipleInvokes) {
-  auto model = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/multi_add.bin");
+  auto model = ReadModel();
   ASSERT_TRUE(model);
   std::unique_ptr<Interpreter> interpreter;
   std::unique_ptr<CalibrationReader> reader;
@@ -183,7 +195,18 @@ TEST(CalibratorTest, MultipleInvokes) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  // On Linux, add: FLAGS_logtostderr = true;
-  ::testing::InitGoogleTest(&argc, argv);
+  tensorflow::string model_file;
+  const std::vector<tensorflow::Flag> flag_list = {
+      tensorflow::Flag("test_model_file", &model_file,
+                       "Path to test tflite model file."),
+  };
+
+  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  if (!parse_result) {
+    std::cerr << "Required test_model_file\n";
+    std::abort();
+  }
+  g_test_model_file = new tensorflow::string(model_file);
+  ::tensorflow::port::InitMain(argv[0], &argc, &argv);
   return RUN_ALL_TESTS();
 }

@@ -354,8 +354,8 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
   TF_RET_CHECK(variable != nullptr);
   TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
   if (!variable->initialized()) {
-    return errors::InvalidArgument("Read of uninitialized variable ",
-                                   variable->name());
+    return errors::FailedPrecondition("Read of uninitialized variable ",
+                                      variable->name());
   }
   if (variable->type() != type) {
     return errors::InvalidArgument(

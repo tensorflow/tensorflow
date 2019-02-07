@@ -24,6 +24,8 @@ import sys
 
 import six
 
+from tensorflow.python.eager import def_function
+from tensorflow.python.eager import function as defun
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.checkpointable import base
@@ -525,6 +527,12 @@ class _ListWrapper(List, collections.MutableSequence,
   def __repr__(self):
     return "ListWrapper(%s)" % (repr(self._storage),)
 
+  def _list_functions_for_serialization(self):
+    return {
+        str(key): value for key, value in enumerate(self)
+        if _is_function(value)
+    }
+
 
 class Mapping(CheckpointableDataStructure, collections.Mapping):
   """An append-only checkpointable mapping data structure with string keys.
@@ -792,6 +800,16 @@ class _DictWrapper(Mapping, collections.MutableMapping):
   def update(self, *args, **kwargs):
     for key, value in dict(*args, **kwargs).items():
       self[key] = value
+
+  def _list_functions_for_serialization(self):
+    return {
+        key: value for key, value in self.items()
+        if _is_function(value)
+    }
+
+
+def _is_function(x):
+  return isinstance(x, (def_function.Function, defun.ConcreteFunction))
 
 revived_types.register_revived_type(
     "checkpointable_dict_wrapper",

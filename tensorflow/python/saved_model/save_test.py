@@ -122,6 +122,25 @@ class SaveTest(test.TestCase):
         ValueError, "Expected a TensorFlow function"):
       save.save(root, save_dir, root.f)
 
+  def test_captures_unreachable_variable(self):
+    root = tracking.AutoCheckpointable()
+    unreachable_variable = variables.Variable([5.0, 2.0])
+    root.reachable_variable = variables.Variable([1.0, 3.0])
+
+    @def_function.function
+    def increase_variable(x):
+      return 2 * unreachable_variable * x + root.reachable_variable
+
+    root.f = increase_variable
+
+    self.assertAllEqual([101.0, 83.0],
+                        root.f(constant_op.constant([10.0, 20.0])).numpy())
+
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+
+    with self.assertRaisesRegexp(KeyError, "not reachable from root"):
+      save.save(root, save_dir)
+
   def test_nested_inputs(self):
     root = tracking.AutoCheckpointable()
     root.f = def_function.function(

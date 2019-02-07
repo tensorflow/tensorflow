@@ -142,7 +142,9 @@ def model_iteration(model,
 
   # Enter DistributionStrategy scope.
   if model._distribution_strategy:
-    scope = model._distribution_strategy.scope()
+    scope = distributed_training_utils.distributed_scope(
+        strategy=model._distribution_strategy,
+        learning_phase=(1 if mode == ModeKeys.TRAIN else 0))
     scope.__enter__()
 
   # Get step function and loop type.
@@ -211,9 +213,8 @@ def model_iteration(model,
     aggregator = training_utils.MetricsAggregator(use_steps,
                                                   num_samples_or_steps)
 
-  if model._compile_distribution and not validation_in_fit:
-    distributed_training_utils._copy_weights_to_distributed_model(
-        model, model._distributed_model)
+  if model._compile_distribution:
+    distributed_training_utils._copy_weights_to_distributed_model(model, mode)
 
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
@@ -353,6 +354,13 @@ def model_iteration(model,
     if (do_validation and
         training_utils.should_run_validation(validation_freq, epoch) and
         not callbacks.model.stop_training):
+
+      if model._compile_distribution:
+        # Since we create a new clone from the original model we need to copy
+        # the weights back to the original model before we can run validation.
+        distributed_training_utils._copy_weights_to_original_model(
+            model, ModeKeys.TRAIN)
+
       val_results = model_iteration(
           model,
           val_inputs,
@@ -385,10 +393,9 @@ def model_iteration(model,
   callbacks._call_end_hook(mode)
 
   if model._distribution_strategy:
-    if model._compile_distribution and not validation_in_fit:
+    if model._compile_distribution:
       # TODO(priyag, psv): Copy back metrics to the original model as well?
-      distributed_training_utils._copy_weights_to_original_model(
-          model, model._distributed_model, mode)
+      distributed_training_utils._copy_weights_to_original_model(model, mode)
     scope.__exit__(None, None, None)
 
   if mode == ModeKeys.TRAIN:

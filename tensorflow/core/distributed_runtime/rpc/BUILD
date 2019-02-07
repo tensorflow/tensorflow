@@ -159,6 +159,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "grpc_response_cache",
+    srcs = ["grpc_response_cache.cc"],
+    hdrs = ["grpc_response_cache.h"],
+    deps = [
+        ":grpc_util",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/time",
+    ],
+)
+
 tf_cuda_library(
     name = "grpc_worker_service",
     srcs = ["grpc_worker_service.cc"],
@@ -166,6 +177,7 @@ tf_cuda_library(
     deps = [
         ":async_service_interface",
         ":grpc_call",
+        ":grpc_response_cache",
         ":grpc_tensor_coding",
         ":grpc_util",
         ":grpc_worker_service_impl",
@@ -183,6 +195,8 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime:worker_session",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -313,11 +327,15 @@ tf_cc_binary(
         ":grpc_server_lib",
         "//tensorflow:grpc++",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:data_flow_ops_op_lib",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lookup_ops_op_lib",
         "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:no_op_op_lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:sendrecv_ops_op_lib",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:data_flow",
     ],
@@ -339,6 +357,7 @@ tf_cc_binary(
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:state_ops_op_lib",
         "//tensorflow/core:testlib",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:constant_op",
@@ -478,6 +497,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:state_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

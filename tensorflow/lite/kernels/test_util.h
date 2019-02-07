@@ -21,13 +21,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/tools/optimize/quantization_utils.h"
 
 namespace tflite {
 
@@ -82,14 +83,36 @@ inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
 // A helper struct to construct test tensors. This is particularly useful for
 // quantized tensor which must have their scale and zero_point defined before
 // the actual data is known. This mimics what happens in practice: quantization
-// parameters are calculated during training.
+// parameters are calculated during training or post training..
 struct TensorData {
+  TensorData(TensorType type = TensorType_FLOAT32, std::vector<int> shape = {},
+             float min = 0.0f, float max = 0.0f, float scale = 0.0f,
+             int32_t zero_point = 0, bool per_channel_quantization = false,
+             std::vector<float> per_channel_quantization_scales = {},
+             std::vector<int64_t> per_channel_quantization_offsets = {},
+             int32_t channel_index = 0)
+      : type(type),
+        shape(shape),
+        min(min),
+        max(max),
+        scale(scale),
+        zero_point(zero_point),
+        per_channel_quantization(per_channel_quantization),
+        per_channel_quantization_scales(
+            std::move(per_channel_quantization_scales)),
+        per_channel_quantization_offsets(
+            std::move(per_channel_quantization_offsets)),
+        channel_index(channel_index) {}
   TensorType type;
   std::vector<int> shape;
   float min;
   float max;
   float scale;
   int32_t zero_point;
+  bool per_channel_quantization;
+  std::vector<float> per_channel_quantization_scales;
+  std::vector<int64_t> per_channel_quantization_offsets;
+  int32_t channel_index;
 };
 
 class SingleOpResolver : public OpResolver {
@@ -170,6 +193,46 @@ class SingleOpModel {
                                           const std::vector<float>& data) {
     std::vector<int8_t> q = QuantizeTensor(index, data);
     PopulateTensor(index, /*offset=*/0, q.data(), q.data() + q.size());
+  }
+
+  // Quantize and populate data for filter with per channel quantization.
+  void PerChannelSymmetricQuantizeAndPopulate(
+      int index, const std::vector<float>& input_data) {
+    TfLiteTensor* t = interpreter_->tensor(index);
+    auto* params =
+        reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
+    const int channel_index = params->quantized_dimension;
+
+    std::vector<int32_t> shape(t->dims->size);
+    for (int i = 0; i < shape.size(); ++i) {
+      shape[i] = t->dims->data[i];
+    }
+    const int32_t num_inputs = input_data.size();
+    const int32_t num_channel = shape[channel_index];
+    std::vector<int8_t> quantized_output(num_inputs);
+    std::vector<float> scales_inv(num_channel);
+    for (int i = 0; i < num_channel; ++i) {
+      scales_inv[i] = 1.0f / params->scale->data[i];
+    }
+    optimize::utils::SymmetricPerChannelQuantizeValues(
+        input_data.data(), scales_inv, shape, channel_index, &quantized_output);
+
+    PopulateTensor(index, /*offset=*/0, quantized_output.data(),
+                   quantized_output.data() + quantized_output.size());
+  }
+
+  // Quantize and populate data for bias with per channel quantization.
+  void PerChannelQuantizeBias(int index, const std::vector<float>& input_data) {
+    const int32_t num_inputs = input_data.size();
+    std::vector<int32_t> quantized_output(num_inputs);
+    TfLiteTensor* t = interpreter_->tensor(index);
+    auto* params =
+        reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
+    for (int i = 0; i < num_inputs; ++i) {
+      quantized_output[i] = input_data[i] * params->scale->data[i];
+    }
+    PopulateTensor(index, /*offset=*/0, quantized_output.data(),
+                   quantized_output.data() + quantized_output.size());
   }
 
   const std::vector<int>& GetShape(int id) { return tensor_data_.at(id).shape; }
@@ -292,6 +355,24 @@ class SingleOpModel {
     return {scale, zero_point};
   }
 
+  int AddTensorPerChannelQuant(TensorData t) {
+    const int id = tensors_.size();
+    flatbuffers::Offset<QuantizationParameters> q_params = 0;
+    q_params = CreateQuantizationParameters(
+        builder_, /*min=*/0, /*max=*/0,
+        /*scale=*/
+        builder_.CreateVector<float>(t.per_channel_quantization_scales),
+        /*zero point=*/
+        builder_.CreateVector<int64_t>(t.per_channel_quantization_offsets),
+        QuantizationDetails_NONE, 0, t.channel_index);
+    tensors_.push_back(
+        CreateTensor(builder_, builder_.CreateVector<int>(t.shape), t.type,
+                     /*buffer=*/0,
+                     /*name=*/0, q_params, /*is_variable=*/false));
+    tensor_data_[id] = t;
+    return id;
+  }
+
   template <typename T>
   int AddTensor(TensorData t, std::initializer_list<T> data,
                 bool is_variable = false) {
@@ -367,6 +448,17 @@ class SingleOpModel {
     // Update quantization params.
     t->params.scale = scaling_factor;
     t->params.zero_point = 0;
+    // Populate the new quantization params.
+    TfLiteQuantizationFree(&t->quantization);
+    t->quantization.type = kTfLiteAffineQuantization;
+    auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
+        malloc(sizeof(TfLiteAffineQuantization)));
+    affine_quantization->quantized_dimension = 0;
+    affine_quantization->scale = TfLiteFloatArrayCreate(1);
+    affine_quantization->zero_point = TfLiteIntArrayCreate(1);
+    affine_quantization->scale->data[0] = scaling_factor;
+    affine_quantization->zero_point->data[0] = 0;
+    t->quantization.params = affine_quantization;
     return q;
   }
 

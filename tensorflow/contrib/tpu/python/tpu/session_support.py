@@ -172,7 +172,8 @@ class WorkerHeartbeatManager(object):
     """Shutdown all workers after `shutdown_timeout_secs`."""
     logging.info('Shutting down %s.', self)
     req = event_pb2.WorkerHeartbeatRequest(
-        watchdog_config=event_pb2.WatchdogConfig(timeout_ms=timeout_ms))
+        watchdog_config=event_pb2.WatchdogConfig(timeout_ms=timeout_ms),
+        shutdown_mode=event_pb2.WAIT_FOR_COORDINATOR)
     self.configure(req)
 
     # Wait for workers to shutdown.  This isn't strictly required

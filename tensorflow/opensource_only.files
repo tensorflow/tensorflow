@@ -121,6 +121,7 @@ tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool
 tensorflow/third_party/eigen3/unsupported/Eigen/SpecialFunctions
 tensorflow/third_party/eigen3/unsupported/Eigen/MatrixFunctions
 tensorflow/third_party/eigen3/LICENSE
+tensorflow/third_party/eigen3/gebp_neon.patch
 tensorflow/third_party/eigen3/BUILD
 tensorflow/third_party/systemlibs/build_defs.bzl.tpl
 tensorflow/third_party/systemlibs/absl_py.BUILD
@@ -245,5 +246,6 @@ tensorflow/third_party/eigen.BUILD
 tensorflow/stream_executor/build_defs.bzl
 tensorflow/api_template_v1.__init__.py
 tensorflow/compat_template_v1.__init__.py
+tensorflow/compat_template.__init__.py
 tensorflow/api_template.__init__.py
 tensorflow/__init__.py

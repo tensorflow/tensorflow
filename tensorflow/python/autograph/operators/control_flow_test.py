@@ -45,7 +45,7 @@ class ForLoopTest(test.TestCase):
         extra_test=lambda s: True,
         body=lambda i, s: (s + i,),
         init_state=(0,))
-    self.assertEqual(10, s)
+    self.assertEqual((10,), s)
 
   @test_util.run_deprecated_v1
   def test_dataset(self):

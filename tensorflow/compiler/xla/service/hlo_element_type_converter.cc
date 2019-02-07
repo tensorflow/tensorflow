@@ -127,6 +127,7 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
       // These are ops where it does not make sense to convert them.
       if (opcode == HloOpcode::kParameter || opcode == HloOpcode::kConstant ||
           opcode == HloOpcode::kTuple || opcode == HloOpcode::kConvert ||
+          opcode == HloOpcode::kBitcastConvert ||
           opcode == HloOpcode::kGetTupleElement ||
           opcode == HloOpcode::kInfeed || opcode == HloOpcode::kOutfeed) {
         continue;

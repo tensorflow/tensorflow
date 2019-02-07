@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
@@ -57,42 +58,61 @@ class GradientDescentOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01],
                                            self.evaluate(var1))
 
+  def _test_basic_sgd_with_learning_rate_decay(self, sgd, dtype):
+    var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+    var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+    grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
+    grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
+    if not context.executing_eagerly():
+      sgd_op = sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
+    self.evaluate(variables.global_variables_initializer())
+    # Run 2 steps of sgd
+    if not context.executing_eagerly():
+      self.evaluate(sgd_op)
+    else:
+      sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
+    # Validate updated params
+    self.assertAllCloseAccordingToType([1.0 - 3.0 * 0.1, 2.0 - 3.0 * 0.1],
+                                       self.evaluate(var0))
+    self.assertAllCloseAccordingToType([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01],
+                                       self.evaluate(var1))
+
+    if not context.executing_eagerly():
+      self.evaluate(sgd_op)
+    else:
+      sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
+    # Validate updated params
+    self.assertAllCloseAccordingToType(
+        [1.0 - 3.0 * 0.1 - 2.0 * 0.1, 2.0 - 3.0 * 0.1 - 2.0 * 0.1],
+        self.evaluate(var0))
+    self.assertAllCloseAccordingToType(
+        [3.0 - 3.0 * 0.01 - 2.0 * 0.01, 4.0 - 3.0 * 0.01 - 2.0 * 0.01],
+        self.evaluate(var1))
+
   @test_util.run_in_graph_and_eager_modes
   def testBasicWithLearningRateDecay(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
-        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
-        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
-        grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
-        grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
-        learning_rate = 3.0
-        decay = 0.5
-        sgd = gradient_descent.SGD(learning_rate=learning_rate, decay=decay)
-        if not context.executing_eagerly():
-          sgd_op = sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        self.evaluate(variables.global_variables_initializer())
-        # Run 2 steps of sgd
-        if not context.executing_eagerly():
-          self.evaluate(sgd_op)
-        else:
-          sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        # Validate updated params
-        self.assertAllCloseAccordingToType([1.0 - 3.0 * 0.1, 2.0 - 3.0 * 0.1],
-                                           self.evaluate(var0))
-        self.assertAllCloseAccordingToType([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01],
-                                           self.evaluate(var1))
+      learning_rate = 3.0
+      decay = 0.5
+      sgd = gradient_descent.SGD(learning_rate=learning_rate, decay=decay)
+      self._test_basic_sgd_with_learning_rate_decay(sgd, dtype)
 
-        if not context.executing_eagerly():
-          self.evaluate(sgd_op)
-        else:
-          sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        # Validate updated params
-        self.assertAllCloseAccordingToType(
-            [1.0 - 3.0 * 0.1 - 2.0 * 0.1, 2.0 - 3.0 * 0.1 - 2.0 * 0.1],
-            self.evaluate(var0))
-        self.assertAllCloseAccordingToType(
-            [3.0 - 3.0 * 0.01 - 2.0 * 0.01, 4.0 - 3.0 * 0.01 - 2.0 * 0.01],
-            self.evaluate(var1))
+  @test_util.run_in_graph_and_eager_modes
+  def testBasicWithLearningRateInverseTimeDecay(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      learning_rate = learning_rate_schedule.InverseTimeDecay(
+          3.0, decay_steps=1.0, decay_rate=0.5)
+      sgd = gradient_descent.SGD(learning_rate=learning_rate)
+      self._test_basic_sgd_with_learning_rate_decay(sgd, dtype)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBasicWithLearningRateInverseTimeDecaySerializeAndDeserialize(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      learning_rate = learning_rate_schedule.InverseTimeDecay(
+          3.0, decay_steps=1.0, decay_rate=0.5)
+      sgd = gradient_descent.SGD(learning_rate=learning_rate)
+      sgd = gradient_descent.SGD.from_config(sgd.get_config())
+      self._test_basic_sgd_with_learning_rate_decay(sgd, dtype)
 
   @test_util.run_in_graph_and_eager_modes
   def testBasicCallableParams(self):

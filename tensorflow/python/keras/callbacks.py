@@ -1118,9 +1118,9 @@ class TensorBoard(Callback):
       ValueError: If histogram_freq is set and no validation data is provided.
 
   @compatibility(eager)
-  Using `Tensorboard` callback will work while eager execution is enabled,
-  however outputting histogram summaries of weights and gradients is not
-  supported, and thus `histogram_freq` will be ignored.
+  Using the `TensorBoard` callback will work when eager execution is enabled,
+  with the restriction that outputting histogram summaries of weights and
+  gradients is not supported. Consequently, `histogram_freq` will be ignored.
   @end_compatibility
   """
 

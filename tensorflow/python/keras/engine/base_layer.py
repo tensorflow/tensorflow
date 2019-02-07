@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import inspect  # Necessary supplement to tf_inspect to deal with variadic args.
 import itertools
@@ -245,8 +244,8 @@ class Layer(checkpointable.Checkpointable):
 
   @doc_controls.for_subclass_implementers
   def add_weight(self,
-                 name,
-                 shape,
+                 name=None,
+                 shape=None,
                  dtype=None,
                  initializer=None,
                  regularizer=None,
@@ -260,8 +259,8 @@ class Layer(checkpointable.Checkpointable):
     """Adds a new variable to the layer.
 
     Arguments:
-      name: variable name.
-      shape: variable shape.
+      name: Variable name.
+      shape: Variable shape. Defaults to scalar if unspecified.
       dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
       initializer: initializer instance (callable).
       regularizer: regularizer instance (callable).
@@ -298,12 +297,13 @@ class Layer(checkpointable.Checkpointable):
       ValueError: When giving unsupported dtype and no initializer or when
         trainable has been set to True with synchronization set as `ON_READ`.
     """
+    shape = shape or ()
     # Validate optional keyword arguments.
     for kwarg in kwargs:
       if kwarg not in ['getter', 'collections']:
         raise TypeError('Unknown keyword argument:', kwarg)
     getter = kwargs.pop('getter', None)
-    collections = kwargs.pop('collections', None)  # pylint: disable=redefined-outer-name
+    collections = kwargs.pop('collections', None)
 
     if dtype is None:
       dtype = self.dtype or backend.floatx()
@@ -364,8 +364,10 @@ class Layer(checkpointable.Checkpointable):
       # TODO(fchollet): in the future, this should be handled at the
       # level of variable creation, and weight regularization losses
       # should be variable attributes.
-      self._handle_weight_regularization(name, variable, regularizer)
-
+      name_in_scope = variable.name[:variable.name.find(':')]
+      self._handle_weight_regularization(name_in_scope,
+                                         variable,
+                                         regularizer)
     if trainable:
       self._trainable_weights.append(variable)
     else:
@@ -474,15 +476,10 @@ class Layer(checkpointable.Checkpointable):
             one per output tensor of the layer).
     """
     if not self.supports_masking:
-      if mask is not None:
-        if isinstance(mask, list):
-          if any(m is not None for m in mask):
-            raise TypeError('Layer ' + self.name + ' does not support masking, '
-                            'but was passed an input_mask: ' + str(mask))
-        else:
-          raise TypeError('Layer ' + self.name + ' does not support masking, '
-                          'but was passed an input_mask: ' + str(mask))
-      # masking not explicitly supported: return None as mask
+      if any(m is not None for m in nest.flatten(mask)):
+        raise TypeError('Layer ' + self.name + ' does not support masking, '
+                        'but was passed an input_mask: ' + str(mask))
+      # masking not explicitly supported: return None as mask.
       return None
     # if masking is explicitly supported, by default
     # carry over the input mask
@@ -515,8 +512,15 @@ class Layer(checkpointable.Checkpointable):
     """
     input_list = nest.flatten(inputs)
     # Accept NumPy inputs by converting to Tensors.
-    if all(isinstance(x, (np.ndarray, float, int)) for x in input_list):
-      inputs = nest.map_structure(ops.convert_to_tensor, inputs)
+    if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
+      # Don't call `ops.convert_to_tensor` on all `inputs` because
+      # `SparseTensors` can't be converted to `Tensor`.
+      def _convert_non_tensor(x):
+        if isinstance(x, (np.ndarray, float, int)):
+          return ops.convert_to_tensor(x)
+        return x
+
+      inputs = nest.map_structure(_convert_non_tensor, inputs)
       input_list = nest.flatten(inputs)
 
     # We will attempt to build a TF graph if & only if all inputs are symbolic.
@@ -525,79 +529,84 @@ class Layer(checkpointable.Checkpointable):
     # models using the functional API).
     build_graph = tf_utils.are_all_symbolic_tensors(input_list)
 
+    if build_graph:
+      # Only create Keras history if at least one tensor originates from a
+      # `keras.Input`. Otherwise this Layer may be being used outside the Keras
+      # framework.
+      if base_layer_utils.needs_keras_history(inputs):
+        base_layer_utils.create_keras_history(inputs)
+      # Do not track these Tensors in any sublayers invoked during `call`.
+      base_layer_utils.mark_checked(inputs)
+
     # Handle Keras mask propagation from previous layer to current layer.
     previous_mask = None
-    if build_graph and (not hasattr(self, '_compute_previous_mask') or
-                        self._compute_previous_mask):
+    if (not hasattr(self, '_compute_previous_mask') or
+        self._compute_previous_mask):
       previous_mask = base_layer_utils.collect_previous_mask(inputs)
       if not hasattr(self, '_call_fn_args'):
         self._call_fn_args = function_utils.fn_args(self.call)
       if ('mask' in self._call_fn_args and 'mask' not in kwargs and
           not generic_utils.is_all_none(previous_mask)):
-        # The previous layer generated a mask, and mask was not explicitly pass
-        # to __call__, hence we set previous_mask as the default value.
+        # The previous layer generated a mask, and mask was not explicitly
+        # pass to __call__, hence we set previous_mask as the default value.
         kwargs['mask'] = previous_mask
 
-    with ops.name_scope(self._name_scope()):
-      if not self.built:
+    # Check input assumptions set after layer building, e.g. input shape.
+    if build_graph:
+      # Symbolic execution on symbolic tensors. We will attempt to build
+      # the corresponding TF subgraph inside `backend.get_graph()`
+      input_spec.assert_input_compatibility(self.input_spec, inputs, self.name)
+      graph = backend.get_graph()
+      with graph.as_default(), ops.name_scope(self._name_scope()):
         # Build layer if applicable (if the `build` method has been overridden).
         self._maybe_build(inputs)
-        # We must set self.built since user defined build functions are not
-        # constrained to set self.built.
-        self.built = True
+        if not self.dynamic:
+          try:
+            outputs = self.call(inputs, *args, **kwargs)
+          except TypeError as e:
+            messages = ('`tf.Tensor` as a Python `bool` is not allowed',
+                        'Tensor objects are only iterable when eager')
+            exception_str = str(e)
+            for msg in messages:
+              if msg in exception_str:
+                raise TypeError('You are attempting to use Python control '
+                                'flow in a layer that was not declared to be '
+                                'dynamic. Pass `dynamic=True` to the class '
+                                'constructor.\nEncountered error:\n"""\n' +
+                                exception_str + '\n"""')
+            raise
+        else:
+          # We will use static shape inference to return symbolic tensors
+          # matching the specifications of the layer outputs.
+          # Since `self.dynamic` is True, we will never attempt to
+          # run the underlying TF graph (which is disconnected).
+          # TODO(fchollet): consider py_func as an alternative, which
+          # would enable us to run the underlying graph if needed.
+          outputs = self._symbolic_call(inputs)
 
-      # Check input assumptions set after layer building, e.g. input shape.
-      if build_graph:
-        # Symbolic execution on symbolic tensors. We will attempt to build
-        # the corresponding TF subgraph inside `backend.get_graph()`
-        input_spec.assert_input_compatibility(
-            self.input_spec, inputs, self.name)
-        graph = backend.get_graph()
-        with graph.as_default():
-          if not self.dynamic:
-            try:
-              outputs = self.call(inputs, *args, **kwargs)
-            except TypeError as e:
-              messages = ['`tf.Tensor` as a Python `bool` is not allowed',
-                          'Tensor objects are only iterable when eager']
-              for msg in messages:
-                if msg in str(e):
-                  raise TypeError('You are attempting to use Python control '
-                                  'flow in a layer that was not declared to be '
-                                  'dynamic. Pass `dynamic=True` to the class '
-                                  'constructor.\nEncountered error:\n"""\n' +
-                                  str(e) + '\n"""')
-              raise e
-          else:
-            # We will use static shape inference to return symbolic tensors
-            # matching the specifications of the layer outputs.
-            # Since `self.dynamic` is True, we will never attempt to
-            # run the underlying TF graph (which is disconnected).
-            # TODO(fchollet): consider py_func as an alternative, which
-            # would enable us to run the underlying graph if needed.
-            outputs = self._symbolic_call(inputs)
-
-          if outputs is None:
-            raise ValueError('A layer\'s `call` method should return a '
-                             'Tensor or a list of Tensors, not None '
-                             '(layer: ' + self.name + ').')
-          self._handle_activity_regularization(inputs, outputs)
-          self._set_mask_metadata(inputs, outputs, previous_mask)
-          if base_layer_utils.have_all_keras_metadata(inputs):
-            inputs, outputs = self._set_connectivity_metadata_(
-                inputs, outputs, args, kwargs)
-          if hasattr(self, '_set_inputs') and not self.inputs:
-            # Subclassed network: explicitly set metadata normally set by
-            # a call to self._set_inputs().
-            # TODO(b/120997007): This should be done in Eager as well, but
-            # causes garbage collection issues because of the placeholders
-            # created on the default Keras graph.
-            self._set_inputs(inputs, outputs)
-      else:
-        # Eager execution on data tensors.
+        if outputs is None:
+          raise ValueError('A layer\'s `call` method should return a '
+                           'Tensor or a list of Tensors, not None '
+                           '(layer: ' + self.name + ').')
+        if base_layer_utils.have_all_keras_metadata(inputs):
+          inputs, outputs = self._set_connectivity_metadata_(
+              inputs, outputs, args, kwargs)
+        self._handle_activity_regularization(inputs, outputs)
+        self._set_mask_metadata(inputs, outputs, previous_mask)
+        if hasattr(self, '_set_inputs') and not self.inputs:
+          # Subclassed network: explicitly set metadata normally set by
+          # a call to self._set_inputs().
+          # TODO(b/120997007): This should be done in Eager as well, but
+          # causes garbage collection issues because of the placeholders
+          # created on the default Keras graph.
+          self._set_inputs(inputs, outputs)
+    else:
+      # Eager execution on data tensors.
+      with ops.name_scope(self._name_scope()):
+        self._maybe_build(inputs)
         outputs = self.call(inputs, *args, **kwargs)
         self._handle_activity_regularization(inputs, outputs)
-        return outputs
+        self._set_mask_metadata(inputs, outputs, previous_mask)
 
     if not context.executing_eagerly():
       # Optionally load weight values specified at layer instantiation.
@@ -1344,27 +1353,32 @@ class Layer(checkpointable.Checkpointable):
           self.add_loss(mean_activity_loss, inputs=inputs)
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):
-    # In some cases the mask of the outputs has already been computed by
-    # inner layers and does not need to be recomputed by this layer.
-    mask_already_computed = all(
-        hasattr(x, '_keras_mask') for x in generic_utils.to_list(outputs))
-    if hasattr(self, 'compute_mask') and not mask_already_computed:
-      output_mask = self.compute_mask(inputs, previous_mask)
+    if getattr(self, '_compute_output_and_mask_jointly', False):
+      # Mask is already computed for Keras Graph Networks.
+      return
+
+    flat_outputs = nest.flatten(outputs)
+    if all(getattr(x, '_keras_mask', None) is not None for x in flat_outputs):
+      # Mask is already computed by sublayers.
+      return
+
+    if hasattr(self, 'compute_mask'):
+      output_masks = self.compute_mask(inputs, previous_mask)
+      # `compute_mask` can return a single `None` even when a Layer
+      # has multiple outputs.
+      if output_masks is None:
+        flat_masks = [None for _ in flat_outputs]
+      else:
+        flat_masks = nest.flatten(output_masks)
     else:
-      output_mask = None
-    if isinstance(outputs, (list, tuple)):
-      if output_mask is None:
-        output_mask = [None for _ in range(len(outputs))]
-      for x, m in zip(outputs, output_mask):
-        try:
-          x._keras_mask = m  # pylint: disable=protected-access
-        except AttributeError:
-          pass  # C type such as dict. Masking not supported in this case.
-    else:
+      flat_masks = [None for _ in flat_outputs]
+
+    for output, mask in zip(flat_outputs, flat_masks):
       try:
-        outputs._keras_mask = output_mask  # pylint: disable=protected-access
+        output._keras_mask = mask
       except AttributeError:
-        pass  # C type such as dict. Masking not supported in this case.
+        # C Type such as np.ndarray.
+        pass
 
   def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):
     call_convention = getattr(
@@ -1493,11 +1507,11 @@ class Layer(checkpointable.Checkpointable):
         arguments: dictionary of keyword arguments that were passed to the
             `call` method of the layer at the call that created the node.
     """
-    inbound_layers = nest.map_structure(lambda t: t._keras_history.layer,
+    inbound_layers = nest.map_structure(lambda t: t._keras_history[0],
                                         input_tensors)
-    node_indices = nest.map_structure(lambda t: t._keras_history.node_index,
+    node_indices = nest.map_structure(lambda t: t._keras_history[1],
                                       input_tensors)
-    tensor_indices = nest.map_structure(lambda t: t._keras_history.tensor_index,
+    tensor_indices = nest.map_structure(lambda t: t._keras_history[2],
                                         input_tensors)
 
     # Create node, add it to inbound nodes.
@@ -1519,8 +1533,7 @@ class Layer(checkpointable.Checkpointable):
     # or multi-input layers (e.g. a layer can return multiple tensors,
     # and each can be sent to a different layer).
     for i, tensor in enumerate(nest.flatten(output_tensors)):
-      tensor._keras_history = KerasHistory(self,
-                                           len(self._inbound_nodes) - 1, i)  # pylint: disable=protected-access
+      tensor._keras_history = (self, len(self._inbound_nodes) - 1, i)  # pylint: disable=protected-access
 
   def _get_node_attribute_at_index(self, node_index, attr, attr_name):
     """Private utility to retrieves an attribute (e.g. inputs) from a node.
@@ -1560,6 +1573,9 @@ class Layer(checkpointable.Checkpointable):
 
   def _maybe_build(self, inputs):
     # Check input assumptions set before layer building, e.g. input rank.
+    if self.built:
+      return
+
     input_spec.assert_input_compatibility(
         self.input_spec, inputs, self.name)
     input_list = nest.flatten(inputs)
@@ -1574,13 +1590,20 @@ class Layer(checkpointable.Checkpointable):
     # Only call `build` if the user has manually overridden the build method.
     if not hasattr(self.build, '_is_default'):
       self.build(input_shapes)
+    # We must set self.built since user defined build functions are not
+    # constrained to set self.built.
+    self.built = True
 
   def _symbolic_call(self, inputs):
     input_shapes = nest.map_structure(lambda x: x.shape, inputs)
     output_shapes = self.compute_output_shape(input_shapes)
-    return nest.map_structure(
-        lambda shape: backend.placeholder(shape, dtype=self.dtype),
-        output_shapes)
+
+    def _make_placeholder_like(shape):
+      ph = backend.placeholder(shape, self.dtype)
+      ph._keras_mask = None
+      return ph
+
+    return nest.map_structure(_make_placeholder_like, output_shapes)
 
   def __setattr__(self, name, value):
     if (not getattr(self, '_setattr_tracking', True) or
@@ -1827,30 +1850,6 @@ class TensorFlowOpLayer(Layer):
         'constants': self.constants
     })
     return config
-
-
-class KerasHistory(
-    collections.namedtuple('KerasHistory',
-                           ['layer', 'node_index', 'tensor_index'])):
-  """Tracks the Layer calls that created a Tensor, for Keras Graph Networks.
-
-  During construction of Keras Graph Networks, this metadata is added to
-  each Tensor produced as the output of a Layer, starting with an
-  `InputLayer`. This allows Keras to track how each Tensor was produced, and
-  this information is later retraced by the `keras.engine.Network` class to
-  reconstruct the Keras Graph Network.
-
-  Attributes:
-    layer: The Layer that produced the Tensor.
-    node_index: The specific call to the Layer that produced this Tensor. Layers
-      can be called multiple times in order to share weights. A new node is
-      created every time a Tensor is called.
-    tensor_index: The output index for this Tensor. Always zero if the Layer
-      that produced this Tensor only has one output.
-  """
-  # Added to maintain memory and performance characteristics of `namedtuple`
-  # while subclassing.
-  __slots__ = ()
 
 
 def default(method):

@@ -524,6 +524,9 @@ class StreamExecutor {
   // operations enqueued on the stream before this program point.
   port::Status BlockHostUntilDone(Stream *stream);
 
+  // Without blocking the device, retrieve the current stream status.
+  port::Status GetStatus(Stream *stream);
+
   // Synchronously allocates size bytes on the underlying platform and returns
   // an opaque void* representing that allocation. In the case of failure,
   // nullptr is returned.

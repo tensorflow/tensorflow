@@ -59,6 +59,7 @@ message SavedObject {
     SavedFunction function = 6;
     SavedVariable variable = 7;
     SavedBareConcreteFunction bare_concrete_function = 8;
+    SavedConstant constant = 9;
   }
 }
 
@@ -119,6 +120,11 @@ message SavedBareConcreteFunction {
   repeated string argument_keywords = 2;
   // The prefix of `argument_keywords` which may be identified by position.
   int64 allowed_positional_arguments = 3;
+}
+
+message SavedConstant {
+  // An Operation name for a ConstantOp in this SavedObjectGraph's MetaGraph.
+  string operation = 1;
 }
 
 // Represents a Variable that is initialized by loading the contents from the

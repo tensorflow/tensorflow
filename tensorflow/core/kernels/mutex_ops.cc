@@ -242,10 +242,24 @@ class ConsumeMutexLockOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("MutexLock").Device(DEVICE_CPU), MutexLockOp);
 
-REGISTER_KERNEL_BUILDER(Name("MutexV2").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("MutexLock")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("mutex_lock")
+                            .HostMemory("mutex"),
+                        MutexLockOp);
+
+REGISTER_KERNEL_BUILDER(
+    Name("MutexV2").Device(DEVICE_CPU).HostMemory("resource"),
+    ResourceHandleOp<Mutex>);
+
+REGISTER_KERNEL_BUILDER(Name("MutexV2").Device(DEVICE_GPU),
                         ResourceHandleOp<Mutex>);
 
 REGISTER_KERNEL_BUILDER(Name("ConsumeMutexLock").Device(DEVICE_CPU),
                         ConsumeMutexLockOp);
+
+REGISTER_KERNEL_BUILDER(
+    Name("ConsumeMutexLock").Device(DEVICE_GPU).HostMemory("mutex_lock"),
+    ConsumeMutexLockOp);
 
 }  // namespace tensorflow

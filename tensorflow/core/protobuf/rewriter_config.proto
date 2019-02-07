@@ -5,9 +5,10 @@ option cc_enable_arenas = true;
 option java_outer_classname = "RewriterConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
+// add go_package externally with copybara
 
 import "tensorflow/core/framework/attr_value.proto";
+import "tensorflow/core/protobuf/verifier_config.proto";
 
 message AutoParallelOptions {
   bool enable = 1;
@@ -75,7 +76,7 @@ message RewriterConfig {
   // Try to allocate some independent Op outputs contiguously in order to
   // merge or eliminate downstream Ops (off by default).
   Toggle scoped_allocator_optimization = 15;
-  // Force small ops onto the CPU (default is OFF).
+  // Force small ops onto the CPU (default is ON).
   Toggle pin_to_host_optimization = 18;
   // Disable the entire meta optimizer (off by default).
   bool disable_meta_optimizer = 19;
@@ -166,4 +167,11 @@ message RewriterConfig {
 
   // list of CustomGraphOptimizers to apply.
   repeated CustomGraphOptimizer custom_optimizers = 200;
+
+  // VerifierConfig specifying the verifiers to be run after every optimizer.
+  VerifierConfig inter_optimizer_verifier_config = 300;
+
+  // VerifierConfig specifying the verifiers to be run at the end, after all
+  // optimizers have run.
+  VerifierConfig post_optimization_verifier_config = 301;
 }

@@ -110,11 +110,18 @@ def get_verbosity():
   global verbosity_level
   if verbosity_level is not None:
     return verbosity_level
-  return os.getenv(VERBOSITY_VAR_NAME, DEFAULT_VERBOSITY)
+  return int(os.getenv(VERBOSITY_VAR_NAME, DEFAULT_VERBOSITY))
 
 
 def has_verbosity(level):
   return get_verbosity() >= level
+
+
+def error(level, msg, *args, **kwargs):
+  if has_verbosity(level):
+    logging.error(msg, *args, **kwargs)
+    if echo_log_to_stdout:
+      print(msg % args)
 
 
 def log(level, msg, *args, **kwargs):
@@ -124,5 +131,9 @@ def log(level, msg, *args, **kwargs):
       print(msg % args)
 
 
+def warn(msg, *args, **kwargs):
+  logging.warn(msg, *args, **kwargs)
+
+
 def warn_first_n(msg, *args, **kwargs):
-  logging.log_first_n(logging.WARNING, msg, *args, **kwargs)
+  logging.log_first_n(logging.WARN, msg, *args, **kwargs)

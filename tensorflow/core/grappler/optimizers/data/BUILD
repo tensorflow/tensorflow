@@ -6,6 +6,7 @@ load("//tensorflow/core:platform/default/build_config.bzl", "tf_protos_all")
 package(default_visibility = [
     "//tensorflow/core/grappler/optimizers/data:__subpackages__",
     "//tensorflow/core/kernels/data:__pkg__",
+    "//tensorflow/core/kernels/data/experimental:__pkg__",
 ])
 
 cc_library(
@@ -541,6 +542,20 @@ cc_library(
 )
 
 cc_library(
+    name = "rebatch",
+    srcs = ["rebatch.cc"],
+    hdrs = ["rebatch.h"],
+    deps = [
+        ":graph_utils",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "noop_elimination",
     srcs = ["noop_elimination.cc"],
     hdrs = [
@@ -660,19 +675,24 @@ tf_cc_test(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         # For ops we need registered
         "//tensorflow/core/kernels/data:dataset_ops",
+        "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:logging_ops",
+        "//tensorflow/core:logging_ops_op_lib",
         "//tensorflow/core/kernels:math",
         "//tensorflow/core:spectral_ops_op_lib",
         "//tensorflow/core:bitwise_ops_op_lib",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core/kernels:nn",
+        "//tensorflow/core:sendrecv_ops_op_lib",
+        "//tensorflow/core:no_op_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:mkl_nn_ops_op_lib",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core/kernels:parsing",
+        "//tensorflow/core:parsing_ops_op_lib",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ] + tf_protos_all(),
 )

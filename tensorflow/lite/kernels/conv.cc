@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/multithreaded_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/conv.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -68,6 +69,11 @@ struct OpData {
   // be represented as a fixed point multiplier plus a left shift.
   int32_t output_multiplier;
   int output_shift;
+
+  // Per channel output multiplier and shift.
+  std::vector<int32_t> per_channel_output_multiplier;
+  std::vector<int> per_channel_output_shift;
+
   // The range of the fused activation layer. For example for kNone and
   // uint8_t these would be 0 and 255.
   int32_t output_activation_min;
@@ -226,8 +232,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Check types. (We assume that UINT8 refers to quantized tensors)
   TfLiteType input_type = input->type;
-  TF_LITE_ENSURE(context,
-                 input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8);
+  TF_LITE_ENSURE(context, input_type == kTfLiteFloat32 ||
+                              input_type == kTfLiteUInt8 ||
+                              input_type == kTfLiteInt8);
   TF_LITE_ENSURE_EQ(context, output->type, input_type);
 
   TfLiteTensor* bias = nullptr;
@@ -238,7 +245,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   if (has_bias) {
     bias = &context->tensors[node->inputs->data[2]];
-    if (input_type == kTfLiteUInt8) {
+    if (input_type == kTfLiteUInt8 || input_type == kTfLiteInt8) {
       TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt32);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
     } else {
@@ -296,18 +303,25 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, has_bias);
 
   // Note that full fixed-point inference requires that all tensors have their
-  // parameters set. This is usually done during quantized training.
+  // parameters set. This is usually done during quantized training or
+  // calibration.
   if (input_type != kTfLiteFloat32) {
-    double real_multiplier = 0.0;
-    TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
-        context, input, filter, bias, output, &real_multiplier));
-
-    int exponent;
-    QuantizeMultiplier(real_multiplier, &data->output_multiplier, &exponent);
-    data->output_shift = -exponent;
-    CalculateActivationRangeUint8(params->activation, output,
-                                  &data->output_activation_min,
-                                  &data->output_activation_max);
+    TF_LITE_ENSURE_EQ(context, filter->quantization.type,
+                      kTfLiteAffineQuantization);
+    const auto* affine_quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            filter->quantization.params);
+    TF_LITE_ENSURE(context, affine_quantization);
+    TF_LITE_ENSURE(context, affine_quantization->scale);
+    const int number_channel = affine_quantization->scale->size;
+    data->per_channel_output_multiplier.resize(number_channel);
+    data->per_channel_output_shift.resize(number_channel);
+    TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
+        context, input, filter, bias, output, params->activation,
+        &data->output_multiplier, &data->output_shift,
+        &data->output_activation_min, &data->output_activation_max,
+        data->per_channel_output_multiplier.data(),
+        data->per_channel_output_shift.data()));
   }
 
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
@@ -479,6 +493,29 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       break;
     }
   }
+}
+
+void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
+                             TfLiteConvParams* params, OpData* data,
+                             TfLiteTensor* input, TfLiteTensor* filter,
+                             TfLiteTensor* bias, TfLiteTensor* output) {
+  ConvParams op_params;
+  op_params.input_offset = input->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.stride_height = params->stride_height;
+  op_params.stride_width = params->stride_width;
+  op_params.dilation_height_factor = params->dilation_height_factor;
+  op_params.dilation_width_factor = params->dilation_width_factor;
+  op_params.padding_values.height = data->padding.height;
+  op_params.padding_values.width = data->padding.width;
+
+  reference_integer_ops::ConvPerChannel(
+      op_params, data->per_channel_output_multiplier.data(),
+      data->per_channel_output_shift.data(), GetTensorShape(input),
+      GetTensorData<int8>(input), GetTensorShape(filter),
+      GetTensorData<int8>(filter), GetTensorShape(bias),
+      GetTensorData<int32>(bias), GetTensorShape(output),
+      GetTensorData<int8>(output));
 }
 
 template <KernelType kernel_type>
@@ -664,6 +701,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteUInt8:
       EvalQuantized<kernel_type>(context, node, params, data, input, filter,
                                  bias, im2col, hwcn_weights, output);
+      break;
+    case kTfLiteInt8:
+      EvalQuantizedPerChannel(context, node, params, data, input, filter, bias,
+                              output);
       break;
     default:
       context->ReportError(context, "Type %d not currently supported.",

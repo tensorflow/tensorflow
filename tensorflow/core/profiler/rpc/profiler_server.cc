@@ -26,7 +26,7 @@ namespace tensorflow {
 std::unique_ptr<Thread> StartProfilerServer(EagerContext* const eager_context,
                                             int32 port) {
   return WrapUnique(eager_context->TFEnv()->StartThread(
-      {}, "profiler server", [eager_context, port]() {
+      {}, "profiler_server", [eager_context, port]() {
         string server_address = strings::StrCat("0.0.0.0:", port);
         std::unique_ptr<TPUProfiler::Service> service =
             CreateProfilerService(eager_context);

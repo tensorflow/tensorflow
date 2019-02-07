@@ -169,10 +169,9 @@ class XlaDevice : public LocalDevice {
   // Instructs this XlaDevice to return 'sync_on_completion' for
   // AllowsSyncOnCompletion().
   void SetAllowsSyncOnCompletion(bool sync_on_completion) LOCKS_EXCLUDED(mu_);
-
   bool AllowsSyncOnCompletion() const override LOCKS_EXCLUDED(mu_);
 
-  Status CurrentStatus() override LOCKS_EXCLUDED(mu_);
+  Status RefreshStatus() override LOCKS_EXCLUDED(mu_);
 
  private:
   xla::LocalClient* client() const;

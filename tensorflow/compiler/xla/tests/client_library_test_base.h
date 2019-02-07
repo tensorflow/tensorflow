@@ -385,8 +385,8 @@ class ClientLibraryTestBase : public ::testing::Test {
   StatusOr<std::pair<Literal, Literal>> ComputeValueAndReference(
       XlaBuilder* builder, absl::Span<const Literal> arguments);
 
-  Client* client_;
-  Client* ref_client_;  // To compute reference result.
+  LocalClient* client_;
+  LocalClient* ref_client_;  // To compute reference result.
   ExecutionOptions execution_options_;
 
  private:

@@ -34,6 +34,7 @@ from tensorflow.python.layers import pooling
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -606,6 +607,21 @@ class EagerFunctionTest(xla_test.XLATestCase):
       minus_one = f(constant_op.constant(False), constant_op.constant(10.0))
     self.assertEqual(11.0, plus_one.numpy())
     self.assertEqual(9.0, minus_one.numpy())
+
+  def testScanInDefun(self):
+    with self.test_scope():
+      elems = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name='data')
+      v = constant_op.constant(2.0, name='v')
+
+      @def_function.function
+      def f(y):
+        # pylint: disable=unnecessary-lambda
+        return functional_ops.scan(
+            lambda a, x: math_ops.multiply(a, x), y, initializer=v)
+        # pylint: enable=unnecessary-lambda
+
+      r = f(elems)
+      self.assertAllEqual([2., 4., 12., 48., 240., 1440.], self.evaluate(r))
 
 
 class ExcessivePaddingTest(xla_test.XLATestCase):

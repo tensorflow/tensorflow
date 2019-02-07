@@ -20,6 +20,7 @@ from __future__ import print_function
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,unused-import
+from tensorflow.python.ops.linalg import adjoint_registrations as _adjoint_registrations
 from tensorflow.python.ops.linalg import cholesky_registrations as _cholesky_registrations
 from tensorflow.python.ops.linalg import inverse_registrations as _inverse_registrations
 from tensorflow.python.ops.linalg import linear_operator_algebra as _linear_operator_algebra

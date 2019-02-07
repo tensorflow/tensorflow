@@ -42,7 +42,7 @@ REGISTER_OP("ExperimentalCSVDataset")
     .Output("handle: variant")
     .Attr("output_types: list({float,double,int32,int64,string}) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
@@ -190,6 +190,14 @@ REGISTER_OP("ExperimentalMapAndBatchDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("ExperimentalRebatchDataset")
+    .Input("input_dataset: variant")
+    .Input("num_workers: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ExperimentalMapDataset")
     .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")
@@ -205,7 +213,7 @@ REGISTER_OP("ExperimentalMapDataset")
 REGISTER_OP("ExperimentalMatchingFilesDataset")
     .Input("patterns: string")
     .Output("handle: variant")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
@@ -259,7 +267,7 @@ REGISTER_OP("ExperimentalRandomDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
@@ -330,7 +338,7 @@ REGISTER_OP("ExperimentalSqlDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
@@ -459,7 +467,7 @@ REGISTER_OP("ExperimentalLMDBDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape);
 
@@ -468,6 +476,8 @@ REGISTER_OP("ExperimentalChooseFastestDataset")
     .Output("handle: variant")
     .Attr("N: int >= 2")
     .Attr("num_experiments: int")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalIdentityIndexedDataset")

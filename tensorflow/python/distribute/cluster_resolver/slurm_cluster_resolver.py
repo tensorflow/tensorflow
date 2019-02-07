@@ -25,8 +25,10 @@ import subprocess
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import format_master_url
 from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('distribute.cluster_resolver.SlurmClusterResolver')
 class SlurmClusterResolver(ClusterResolver):
   """Cluster Resolver for system with Slurm workload manager.
 
@@ -213,16 +215,6 @@ class SlurmClusterResolver(ClusterResolver):
           self.cluster_spec().task_address(task_type, task_id),
           rpc_layer or self.rpc_layer)
 
-    return ''
-
-  @property
-  def environment(self):
-    """Returns the current environment which TensorFlow is running in.
-
-    For users in the Slurm environment, the environment property is always an
-    empty string, and Google users will not use this ClusterResolver for running
-    on internal systems.
-    """
     return ''
 
   def num_accelerators(self,

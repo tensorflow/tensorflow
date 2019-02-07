@@ -39,12 +39,7 @@ from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.platform import test
 
-
 RESULT_OF_MOCK_CONVERTED_CALL = 7
-
-
-def imported_decorator(f):
-  return lambda a: f(a) + 1
 
 
 # TODO(mdan): We should use the real namer here.

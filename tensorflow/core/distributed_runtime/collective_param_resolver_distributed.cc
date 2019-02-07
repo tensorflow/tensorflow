@@ -82,7 +82,7 @@ CollectiveParamResolverDistributed::CollectiveParamResolverDistributed(
     const ConfigProto& config, const DeviceMgr* dev_mgr,
     DeviceResolverDistributed* dev_resolver, WorkerCacheInterface* worker_cache,
     const string& task_name)
-    : CollectiveParamResolverLocal(dev_mgr, dev_resolver, task_name),
+    : CollectiveParamResolverLocal(config, dev_mgr, dev_resolver, task_name),
       worker_cache_(worker_cache),
       group_leader_(task_name == config.experimental().collective_group_leader()
                         ? ""

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
@@ -148,7 +149,9 @@ def _reduce_weighted_loss(
   else:
     loss = math_ops.reduce_sum(weighted_losses)
     if reduction == losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE:
-      loss = _safe_mean(loss, _num_elements(weighted_losses))
+      num_replicas = (  # Used to convert from local to global batch size.
+          distribution_strategy_context.get_strategy().num_replicas_in_sync)
+      loss = _safe_mean(loss, num_replicas * _num_elements(weighted_losses))
   return loss
 
 
@@ -177,11 +180,6 @@ def compute_weighted_loss(losses,
   if sample_weight is None:
     sample_weight = 1.0
   with ops.name_scope(name, 'weighted_loss', (losses, sample_weight)):
-    # Save the `reduction` argument for loss normalization when distributing
-    # to multiple replicas.
-    # TODO(josh11b): Associate it with the returned op for more precision.
-    ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
-
     # Update dimensions of `sample_weight` to match with `losses` if possible.
     losses, _, sample_weight = squeeze_or_expand_dimensions(
         losses, None, sample_weight)

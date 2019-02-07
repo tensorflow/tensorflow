@@ -99,13 +99,6 @@ REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
 
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(TensorList, TensorList::kTypeName);
 
-Status TensorListShape(const TensorList& t, TensorShape* s) {
-  *s = TensorShape({});
-  return Status::OK();
-}
-
-REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(TensorList, TensorListShape);
-
 bool TensorList::Decode(const VariantTensorData& data) {
   // TODO(srbs): Change the signature to Decode(VariantTensorData data) so
   // that we do not have to copy each tensor individually below. This would
@@ -155,6 +148,7 @@ Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
   if (t.shape() == TensorShape({})) {
     if ((t.dtype() == DT_INT32 && t.scalar<int32>()() == -1) ||
         (t.dtype() == DT_INT64 && t.scalar<int64>()() == -1)) {
+      *out = PartialTensorShape();
       return Status::OK();
     }
     return errors::InvalidArgument(
@@ -643,6 +637,10 @@ REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_GPU),
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_CPU),                \
                           TensorListConcat<CPUDevice, T>)         \
+  REGISTER_KERNEL_BUILDER(Name("TensorListConcatV2")              \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_CPU),                \
+                          TensorListConcat<CPUDevice, T>)         \
   REGISTER_KERNEL_BUILDER(Name("TensorListGetItem")               \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_CPU),                \
@@ -656,6 +654,10 @@ REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_GPU),
                               .Device(DEVICE_CPU),                \
                           TensorListFromTensor<CPUDevice, T>)     \
   REGISTER_KERNEL_BUILDER(Name("TensorListScatter")               \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_CPU),                \
+                          TensorListScatter<CPUDevice, T>)        \
+  REGISTER_KERNEL_BUILDER(Name("TensorListScatterV2")             \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_CPU),                \
                           TensorListScatter<CPUDevice, T>)        \

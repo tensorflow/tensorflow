@@ -97,6 +97,11 @@ def tf_android_core_proto_headers(core_proto_sources_relative):
         for p in core_proto_sources_relative
     ])
 
+# Wrapper for portable protos which currently just creates an empty rule.
+def tf_portable_proto_library(name, proto_deps, **kwargs):
+    _ignore = [kwargs]
+    native.cc_library(name = name, deps = proto_deps)
+
 # Sanitize a dependency so that it works correctly from code that includes
 # TensorFlow as a submodule.
 def clean_dep(dep):
@@ -143,6 +148,12 @@ def if_not_android_mips_and_mips64(a):
 def if_android(a):
     return select({
         clean_dep("//tensorflow:android"): a,
+        "//conditions:default": [],
+    })
+
+def if_emscripten(a):
+    return select({
+        clean_dep("//tensorflow:emscripten"): a,
         "//conditions:default": [],
     })
 
@@ -306,8 +317,18 @@ def tf_opts_nortti_if_android():
 
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
+def tf_opts_nortti_if_emscripten():
+    return if_emscripten([
+        "-fno-rtti",
+        "-DGOOGLE_PROTOBUF_NO_RTTI",
+        "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
+    ])
+
 def tf_features_nomodules_if_android():
     return if_android(["-use_header_modules"])
+
+def tf_features_nomodules_if_emscripten():
+    return if_emscripten(["-use_header_modules"])
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.
@@ -1132,7 +1153,7 @@ def tf_cuda_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs)
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
     native.cc_library(
         deps = deps + if_cuda_is_configured_compat(cuda_deps + [
-            clean_dep("//tensorflow/core:cuda"),
+            clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
             "@local_config_cuda//cuda:cuda_headers",
         ]) + if_rocm_is_configured(cuda_deps + [
             # rocm_header placeholder

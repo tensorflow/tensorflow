@@ -59,13 +59,13 @@ from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
 # This is to avoid a circular dependency:
-# cond_v2 -> gradients_impl -> control_flow_ops
+# cond_v2 -> gradients_util -> control_flow_ops
 cond_v2 = LazyLoader("cond_v2", globals(),
                      "tensorflow.python.ops.cond_v2")
 
 # This is to avoid circular dependencies:
 # while_v2 -> control_flow_ops
-# while_v2 -> gradients_impl -> control_flow_ops
+# while_v2 -> gradients_util -> control_flow_ops
 while_v2 = LazyLoader("while_v2", globals(),
                       "tensorflow.python.ops.while_v2")
 

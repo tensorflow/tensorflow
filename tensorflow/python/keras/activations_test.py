@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import nn_ops as nn
 from tensorflow.python.platform import test
 
 
@@ -45,6 +46,14 @@ class KerasActivationsTest(test.TestCase):
       config = keras.activations.serialize(fn)
       fn = keras.activations.deserialize(config)
       assert fn == ref_fn
+
+  def test_serialization_v2(self):
+    activation_map = {nn.softmax_v2: 'softmax'}
+    for fn_v2_key in activation_map:
+      fn_v2 = keras.activations.get(fn_v2_key)
+      config = keras.activations.serialize(fn_v2)
+      fn = keras.activations.deserialize(config)
+      assert fn.__name__ == activation_map[fn_v2_key]
 
   def test_softmax(self):
     x = keras.backend.placeholder(ndim=2)

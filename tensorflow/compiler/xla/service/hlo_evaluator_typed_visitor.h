@@ -462,14 +462,31 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return HandleNegate<ReturnT>(negate);
   }
 
-  template <
-      typename NativeT,
-      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  template <typename NativeT,
+            typename std::enable_if<std::is_integral<NativeT>::value>::type* =
+                nullptr>
   Status HandleSign(HloInstruction* sign) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[sign],
                         ElementWiseUnaryOp(sign, [](ElementwiseT elem_operand) {
                           return (ElementwiseT(0) < elem_operand) -
                                  (elem_operand < ElementwiseT(0));
+                        }));
+    return Status::OK();
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<
+                std::is_same<NativeT, bfloat16>::value ||
+                std::is_same<NativeT, Eigen::half>::value ||
+                std::is_floating_point<NativeT>::value>::type* = nullptr>
+  Status HandleSign(HloInstruction* sign) {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[sign],
+                        ElementWiseUnaryOp(sign, [](ElementwiseT elem_operand) {
+                          return std::isnan(elem_operand)
+                                     ? elem_operand
+                                     : std::copysign(
+                                           elem_operand != ElementwiseT(0),
+                                           elem_operand);
                         }));
     return Status::OK();
   }
@@ -1662,73 +1679,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  template <typename NativeT,
-            typename std::enable_if<
-                !is_complex_t<NativeT>::value &&
-                !std::is_same<NativeT, bool>::value>::type* = nullptr>
-  Status HandleSort(HloInstruction* sort) {
-    auto keys = sort->operand(0);
-    TF_RET_CHECK(sort->operand_count() == 1)
-        << "Typed visitor does not support key-value sort";
-
-    const Literal& keys_literal = parent_->GetEvaluatedLiteralFor(keys);
-    int64 sort_dim = sort->dimensions(0);
-    int64 sort_dim_elements = keys->shape().dimensions(sort_dim);
-    int64 rank = keys->shape().rank();
-    if (rank == 0) {
-      // Nothing to sort.
-      parent_->evaluated_[sort] = keys_literal.Clone();
-      return Status::OK();
-    }
-    Literal result_literal(keys_literal.shape());
-    std::vector<int64> zero_base(rank, 0);
-    std::vector<int64> increment(rank, 1);
-    increment[sort_dim] = sort_dim_elements;
-    // Iterate through each dimension except 'sort_dim'.
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
-        keys->shape(), zero_base, AsInt64Slice(keys->shape().dimensions()),
-        increment, [&](absl::Span<const int64> indices) -> StatusOr<bool> {
-          // Extract a slice from the literal that corresponds to exactly the
-          // row in dimension 'sort_dim'.
-          std::vector<int64> limit_indices(indices.begin(), indices.end());
-          absl::c_for_each(limit_indices, [](int64& index) { ++index; });
-          limit_indices[sort_dim] = sort_dim_elements;
-          TF_ASSIGN_OR_RETURN(auto row_to_sort,
-                              keys_literal.Slice(indices, limit_indices)
-                                  .Reshape({sort_dim_elements}));
-          const auto& row_data = row_to_sort.data<NativeT>();
-
-          std::vector<NativeT> result_data(row_data.begin(), row_data.end());
-          std::stable_sort(result_data.begin(), result_data.end(),
-                           [](const NativeT& a, const NativeT& b) {
-                             return SafeLess<NativeT>(a, b);
-                           });
-          Literal sorted_row(ShapeUtil::MakeShape(keys->shape().element_type(),
-                                                  {sort_dim_elements}));
-          sorted_row.PopulateR1(absl::Span<const NativeT>(result_data));
-          std::vector<int64> slice_dimensions(rank, 1);
-          slice_dimensions[sort_dim] = sort_dim_elements;
-          TF_ASSIGN_OR_RETURN(auto sorted_row_reshaped,
-                              sorted_row.Reshape(slice_dimensions));
-          std::vector<int64> start_indices(rank, 0);
-          TF_RETURN_IF_ERROR(result_literal.CopySliceFrom(
-              sorted_row_reshaped, start_indices, indices, slice_dimensions));
-          return true;
-        }));
-    parent_->evaluated_[sort] = std::move(result_literal);
-    return Status::OK();
-  }
-
-  template <typename NativeT,
-            typename std::enable_if<is_complex_t<NativeT>::value ||
-                                    std::is_same<NativeT, bool>::value>::type* =
-                nullptr>
-  Status HandleSort(HloInstruction* sort) {
-    return UnsupportedTypeError(sort);
-  }
-
   Status HandleSort(HloInstruction* sort) override {
-    return HandleSort<ReturnT>(sort);
+    return UnsupportedTypeError(sort);
   }
 
   Status HandleReduce(HloInstruction* hlo) override {

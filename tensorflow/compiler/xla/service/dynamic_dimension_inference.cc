@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/while_util.h"
 
 namespace xla {
 
@@ -53,6 +54,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleDot(HloInstruction* hlo) override;
 
+  Status HandleTuple(HloInstruction* hlo) override;
+
   Status HandleTranspose(HloInstruction* hlo) override;
 
   Status HandleReshape(HloInstruction* hlo) override;
@@ -76,6 +79,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
   Status HandleElementwiseUnary(HloInstruction* hlo) override;
 
   Status HandleElementwiseBinary(HloInstruction* hlo) override;
+
+  Status HandleWhile(HloInstruction* hlo) override;
 
  private:
   using OperandDynamicDimensionFn = std::function<Status(
@@ -118,6 +123,16 @@ Status DynamicDimensionInferenceVisitor::HandleGetTupleElement(
               ShapeIndexView(index).ConsumeFront().ToShapeIndex();
           parent_->SetDynamicSize(hlo, new_index, dimension, dynamic_size);
         }
+        return Status::OK();
+      });
+}
+
+Status DynamicDimensionInferenceVisitor::HandleTuple(HloInstruction* hlo) {
+  return ForEachOperandDynamicDimension(
+      hlo, [&](HloInstruction*, ShapeIndex index, int64 dimension,
+               int64 operand_index, HloInstruction* dynamic_size) {
+        index.push_front(operand_index);
+        parent_->SetDynamicSize(hlo, index, dimension, dynamic_size);
         return Status::OK();
       });
 }
@@ -383,6 +398,120 @@ Status DynamicDimensionInferenceVisitor::HandleSelectAndScatter(
       });
 }
 
+Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
+  // While loop is handled by passing dynamic size hlos as parameters into the
+  // hlo while loop. This is done by replacing the original while with a new
+  // one.
+  //
+  // Before:
+  //
+  // op1 = ...
+  // op2 = ...
+  // op1_x = ... // dynamic dimension size of op1
+  // while = while(op1, op2)
+  //
+  //
+  // After:
+  //
+  // op1 = ...
+  // op2 = ...
+  // op1_x = ... // dynamic dimension size of op1
+  // while = while(op1, op2, op1_x)
+  //
+  // In the above graph, op_x is the bound of the dynamic dimension size of op1
+  // and is wired into the while loop as new parameter.
+  //
+  // TODO(b/119843103): Once we implement dynamic bounds in XLA backend, dynamic
+  // bound can be propagated through native xla values instead of relying on
+  // additional parameter.
+
+  // dynamic_size_to_operand_id_index_map keeps track of dynamic size operations
+  // to their operand ids in the new while loop.
+  absl::flat_hash_map<HloInstruction*, int64>
+      dynamic_size_to_operand_id_index_map;
+
+  // operands_to_add collects dynamic sizes that need to be added to the while
+  // loop as parameters. Note that a dynamic size is ignored if it is already
+  // part of the parameter. i.e.:
+  //
+  // We don't do:
+  //
+  // op1 = ...
+  // op2 = ...
+  // op_x = ... // dynamic dimension size of both op1 and op2
+  // while = while(op1, op2, op_x, op_x) // 4 parameters
+  //
+  // But we do:
+  //
+  // op1 = ...
+  // op2 = ...
+  // op_x = ... // dynamic dimension size of both op1 and op2
+  // while = while(op1, op2, op_x)
+  //
+  // An alternative is to do this in a while loop CSE pass.
+  //
+  std::vector<HloInstruction*> operands_to_add;
+  int64 operand_count = hlo->shape().tuple_shapes_size();
+  TF_RETURN_IF_ERROR(ForEachOperandDynamicDimension(
+      hlo, [&](HloInstruction*, ShapeIndex, int64, int64,
+               HloInstruction* dynamic_size) {
+        const HloInstruction* tuple_operand = hlo->operand(0);
+        for (int64 i = 0; i < tuple_operand->operand_count(); ++i) {
+          if (dynamic_size == tuple_operand->operand(i)) {
+            dynamic_size_to_operand_id_index_map[dynamic_size] = i;
+            return Status::OK();
+          }
+        }
+        auto iter = dynamic_size_to_operand_id_index_map.find(dynamic_size);
+        if (iter == dynamic_size_to_operand_id_index_map.end()) {
+          operands_to_add.push_back(dynamic_size);
+          dynamic_size_to_operand_id_index_map[dynamic_size] = operand_count++;
+        }
+        return Status::OK();
+      }));
+
+  if (!operands_to_add.empty()) {
+    // Only replace the while loop if there are new parameters to add.
+    HloInstruction* old_tuple_operand = hlo->mutable_operand(0);
+    TF_ASSIGN_OR_RETURN(
+        WhileUtil::MakeInstructionsLiveInResult result,
+        WhileUtil::MakeInstructionsLiveIn(hlo, operands_to_add));
+    // WhileUtil creates a new while hlo and tuple. Update the dynamic size
+    // mapping for the newly created tuple.
+    HloInstruction* new_tuple_operand =
+        result.new_while_instr->mutable_operand(0);
+    parent_->CopyMapping(/*from=*/old_tuple_operand, /*to=*/new_tuple_operand);
+    hlo = result.new_while_instr;
+  }
+
+  // We have replaced the while loop, now set the dynamic dimensions for the
+  // newly created while loop so that the hlos that consumes the while loop can
+  // see the dynamic dimensions. Also sets the dynamic parameter binding for
+  // running inference in the while loop.
+  DynamicParameterBinding binding_for_while;
+  TF_RETURN_IF_ERROR(ForEachOperandDynamicDimension(
+      hlo, [&](HloInstruction*, ShapeIndex index, int64 dimension,
+               int64 operand_index, HloInstruction* dynamic_size) {
+        DynamicParameterBinding::DynamicParameter dynamic_parameter{
+            operand_index,
+            {dynamic_size_to_operand_id_index_map[dynamic_size]}};
+        DynamicParameterBinding::DynamicDimension dynamic_dimension{
+            operand_index, index, dimension};
+        TF_RETURN_IF_ERROR(
+            binding_for_while.Bind(dynamic_parameter, dynamic_dimension));
+        parent_->SetDynamicSize(hlo, index, dimension, dynamic_size);
+        return Status::OK();
+      }));
+
+  // Run inference in while body and condition.
+  TF_RETURN_IF_ERROR(DynamicDimensionInferenceVisitor::Run(
+      hlo->while_body(), binding_for_while, parent_));
+  TF_RETURN_IF_ERROR(DynamicDimensionInferenceVisitor::Run(
+      hlo->while_condition(), binding_for_while, parent_));
+
+  return Status::OK();
+}
+
 Status DynamicDimensionInferenceVisitor::HandleParameter(HloInstruction* hlo) {
   return param_bindings_.ForEachBinding(
       [&](const DynamicParameterBinding::DynamicParameter& dynamic_parameter,
@@ -430,6 +559,20 @@ Status DynamicDimensionInferenceVisitor::ForEachOperandDynamicDimension(
   return Status::OK();
 }
 
+void DynamicDimensionInference::CopyMapping(HloInstruction* from,
+                                            HloInstruction* to) {
+  auto iter = per_hlo_dynamic_dimensions_.find(from);
+  if (iter != per_hlo_dynamic_dimensions_.end()) {
+    for (auto& dynamic_dimension : iter->second) {
+      HloInstruction* dynamic_size =
+          GetDynamicSize(dynamic_dimension.inst, dynamic_dimension.index,
+                         dynamic_dimension.dim);
+      SetDynamicSize(to, dynamic_dimension.index, dynamic_dimension.dim,
+                     dynamic_size);
+    }
+  }
+}
+
 /* static */
 StatusOr<DynamicDimensionInference> DynamicDimensionInference::Run(
     HloModule* module) {
@@ -437,6 +580,20 @@ StatusOr<DynamicDimensionInference> DynamicDimensionInference::Run(
   DynamicDimensionInference inference(module);
   TF_RETURN_IF_ERROR(inference.AnalyzeDynamicDimensions());
   return inference;
+}
+
+string DynamicDimensionInference::ToString() const {
+  std::vector<string> pieces;
+  pieces.push_back("DynamicDimensionInference: ");
+  for (const auto& mapping : dynamic_mapping_) {
+    const DynamicDimension& dynamic_dimension = mapping.first;
+    pieces.push_back(absl::StrFormat(
+        " -- instruction %s at %s has dim %lld as dynamic"
+        " dimension, which is represented by instruction %s",
+        dynamic_dimension.inst->ToString(), dynamic_dimension.index.ToString(),
+        dynamic_dimension.dim, mapping.second->ToString()));
+  }
+  return absl::StrJoin(pieces, "\n");
 }
 
 DynamicDimensionInference::DynamicDimensionInference(HloModule* module)

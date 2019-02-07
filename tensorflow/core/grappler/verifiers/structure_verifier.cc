@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -32,8 +33,11 @@ namespace grappler {
 // TODO(ashwinm): Expand this to add more structural checks.
 Status StructureVerifier::Verify(const GraphDef& graph) {
   StatusGroup status_group;
+
+  FunctionLibraryDefinition function_library(OpRegistry::Global(),
+                                             graph.library());
   status_group.Update(tensorflow::graph::ValidateGraphDefAgainstOpRegistry(
-      graph, *OpRegistry::Global()));
+      graph, function_library));
   status_group.Update(tensorflow::graph::VerifyNoDuplicateNodeNames(graph));
 
   std::vector<const NodeDef*> topo_order;

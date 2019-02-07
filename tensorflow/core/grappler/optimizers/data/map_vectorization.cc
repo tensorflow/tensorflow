@@ -50,6 +50,7 @@ constexpr char kBatchV2Op[] = "BatchDatasetV2";
 constexpr char kExperimentalMapAndBatchOp[] = "ExperimentalMapAndBatchDataset";
 constexpr char kMapOp[] = "MapDataset";
 constexpr char kParallelMapOp[] = "ParallelMapDataset";
+constexpr char kChooseFastestOp[] = "ExperimentalChooseFastestDataset";
 constexpr int kAutotune = -1;
 
 // Returns a FunctionDef containing a MapDefun op that wraps the original
@@ -223,9 +224,18 @@ Status AddNewBatchNode(const NodeDef& old_batch_node, const NodeDef& input_node,
   auto& output_shapes_attr = (*batch_node.mutable_attr())["output_shapes"];
   const auto& input_shapes =
       input_node.attr().at("output_shapes").list().shape();
-  int64 batch_size =
-      old_batch_node.attr().at("output_shapes").list().shape()[0].dim(0).size();
+
+  int64 batch_size = -1;
+  for (const auto& shape :
+       old_batch_node.attr().at("output_shapes").list().shape()) {
+    if (!shape.unknown_rank()) {
+      batch_size = shape.dim(0).size();
+      break;
+    }
+  }
+
   for (size_t i = 0; i < input_shapes.size(); ++i) {
+    // Note: We already checked earlier that input shapes are all fully defined.
     TensorShapeProto* shape = output_shapes_attr.mutable_list()->add_shape();
     TensorShapeProto_Dim* dim = shape->add_dim();
     dim->set_size(batch_size);
@@ -445,6 +455,29 @@ Status AddNewMapNode(const NodeDef& old_map_node, const NodeDef& old_batch_node,
   return Status::OK();
 }
 
+Status AddNewChooseFastestNode(gtl::ArraySlice<NodeDef> input_nodes,
+                               MutableGraphView* graph,
+                               NodeDef** new_choose_fastest_node) {
+  NodeDef choose_fastest_node;
+  choose_fastest_node.set_op(kChooseFastestOp);
+  graph_utils::SetUniqueGraphNodeName(choose_fastest_node.op(), graph->graph(),
+                                      &choose_fastest_node);
+
+  // Set the `input_datasets` input argument.
+  for (const auto& node_def : input_nodes) {
+    choose_fastest_node.add_input(node_def.name());
+  }
+  AddNodeAttr("N", static_cast<int>(input_nodes.size()), &choose_fastest_node);
+  AddNodeAttr("num_experiments", 10, &choose_fastest_node);
+
+  for (auto key : {"output_shapes", "output_types"}) {
+    graph_utils::CopyAttribute(key, input_nodes[0], &choose_fastest_node);
+  }
+
+  *new_choose_fastest_node = graph->AddNode(std::move(choose_fastest_node));
+  return Status::OK();
+}
+
 // Given an input pipeline graph and a query node, tries to the node to the
 // 'batch' node in a input_dataset->map->batch pattern, or the 'map_and_batch'
 // node in an input_dataset->map_and_batch pattern.
@@ -537,15 +570,15 @@ Status MapVectorization::OptimizeAndCollectStats(Cluster* cluster,
     TF_RETURN_IF_ERROR(AddNewMapNode(*map_node, *batch_node, *new_batch_node,
                                      *vectorized_func, &graph, &new_map_node));
 
-    // Make output of Batch point to Map instead.
-    TF_RETURN_IF_ERROR(
-        graph.UpdateFanouts(batch_node->name(), new_map_node->name()));
-    // Mark the `Map` and `Batch` nodes for removal.
-    nodes_to_delete.insert(map_node->name());
-    nodes_to_delete.insert(batch_node->name());
+    NodeDef* new_choose_fastest_node;
+    TF_RETURN_IF_ERROR(AddNewChooseFastestNode(
+        {*new_map_node, *batch_node}, &graph, &new_choose_fastest_node));
+
+    // Make output of Batch point to ChooseFastest instead.
+    TF_RETURN_IF_ERROR(graph.UpdateFanouts(batch_node->name(),
+                                           new_choose_fastest_node->name()));
     stats->num_changes++;
   }
-  TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
   return Status::OK();
 }
 
