@@ -234,7 +234,7 @@ class ProtoRunStepRequest : public RunStepRequestWrapper {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-// Abstract interface for an immutable RunStepRequest message.
+// Abstract interface for an immutable RunGraphRequest message.
 //
 // This interface is typically used by server-side components in the
 // TensorFlow worker.
