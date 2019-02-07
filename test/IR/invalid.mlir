@@ -837,3 +837,53 @@ func @missing_for_min(%arg0: index, %arg1: index, %arg2: memref<100xf32>) {
   }
   return
 }
+
+// -----
+
+// expected-error @+1 {{vector types must have positive constant sizes}}
+func @zero_vector_type() -> vector<0xi32>
+
+// -----
+
+// expected-error @+1 {{vector types must have positive constant sizes}}
+func @zero_in_vector_type() -> vector<1x0xi32>
+
+// -----
+
+// expected-error @+1 {{invalid memref size}}
+func @zero_memref_type() -> memref<0xi32>
+
+// -----
+
+// expected-error @+1 {{invalid memref size}}
+func @zero_in_memref_type() -> memref<1x0xi32>
+
+// -----
+
+// expected-error @+1 {{expected dimension size in vector type}}
+func @negative_vector_size() -> vector<-1xi32>
+
+// -----
+
+// expected-error @+1 {{expected non-function type}}
+func @negative_in_vector_size() -> vector<1x-1xi32>
+
+// -----
+
+// expected-error @+1 {{expected non-function type}}
+func @negative_memref_size() -> memref<-1xi32>
+
+// -----
+
+// expected-error @+1 {{expected non-function type}}
+func @negative_in_memref_size() -> memref<1x-1xi32>
+
+// -----
+
+// expected-error @+1 {{expected non-function type}}
+func @negative_tensor_size() -> tensor<-1xi32>
+
+// -----
+
+// expected-error @+1 {{expected non-function type}}
+func @negative_in_tensor_size() -> tensor<1x-1xi32>

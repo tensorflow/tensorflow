@@ -207,7 +207,7 @@ public:
   ParseResult parseAffineMapOrIntegerSetReference(AffineMap &map,
                                                   IntegerSet &set);
   DenseElementsAttr parseDenseElementsAttr(VectorOrTensorType type);
-  DenseElementsAttr parseDenseElementsAttr(Type eltType, bool isVector);
+  DenseElementsAttr parseDenseElementsAttrAsTensor(Type eltType);
   VectorOrTensorType parseVectorOrTensorType();
 
   // Location Parsing.
@@ -1124,8 +1124,7 @@ Attribute Parser::parseAttribute(Type type) {
     case Token::l_square: {
       /// Parse indices
       auto indicesEltType = builder.getIntegerType(64);
-      auto indices =
-          parseDenseElementsAttr(indicesEltType, type.isa<VectorType>());
+      auto indices = parseDenseElementsAttrAsTensor(indicesEltType);
       if (!indices)
         return nullptr;
 
@@ -1134,8 +1133,7 @@ Attribute Parser::parseAttribute(Type type) {
 
       /// Parse values.
       auto valuesEltType = type.getElementType();
-      auto values =
-          parseDenseElementsAttr(valuesEltType, type.isa<VectorType>());
+      auto values = parseDenseElementsAttrAsTensor(valuesEltType);
       if (!values)
         return nullptr;
 
@@ -1188,19 +1186,14 @@ Attribute Parser::parseAttribute(Type type) {
 ///                     | float-literal
 ///                     | `[` (attribute-value (`,` attribute-value)*)? `]`
 ///
-/// This method returns a constructed dense elements attribute with the shape
-/// from the parsing result.
-DenseElementsAttr Parser::parseDenseElementsAttr(Type eltType, bool isVector) {
+/// This method returns a constructed dense elements attribute of tensor type
+/// with the shape from the parsing result.
+DenseElementsAttr Parser::parseDenseElementsAttrAsTensor(Type eltType) {
   TensorLiteralParser literalParser(*this, eltType);
   if (literalParser.parse())
     return nullptr;
 
-  VectorOrTensorType type;
-  if (isVector) {
-    type = builder.getVectorType(literalParser.getShape(), eltType);
-  } else {
-    type = builder.getTensorType(literalParser.getShape(), eltType);
-  }
+  auto type = builder.getTensorType(literalParser.getShape(), eltType);
   return builder.getDenseElementsAttr(type, literalParser.getValues())
       .cast<DenseElementsAttr>();
 }

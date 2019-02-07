@@ -212,9 +212,10 @@ bool VectorType::verifyConstructionInvariants(llvm::Optional<Location> loc,
     return true;
   }
 
-  if (any_of(shape, [](int64_t i) { return i < 0; })) {
+  if (any_of(shape, [](int64_t i) { return i <= 0; })) {
     if (loc)
-      context->emitError(*loc, "vector types must have static shape");
+      context->emitError(*loc,
+                         "vector types must have positive constant sizes");
     return true;
   }
   return false;
@@ -257,6 +258,13 @@ RankedTensorType RankedTensorType::getChecked(ArrayRef<int64_t> shape,
 bool RankedTensorType::verifyConstructionInvariants(
     llvm::Optional<Location> loc, MLIRContext *context, ArrayRef<int64_t> shape,
     Type elementType) {
+  for (int64_t s : shape) {
+    if (s < -1) {
+      if (loc)
+        context->emitError(*loc, "invalid tensor dimension size");
+      return true;
+    }
+  }
   return checkTensorElementType(loc, context, elementType);
 }
 
@@ -297,6 +305,15 @@ MemRefType MemRefType::getImpl(ArrayRef<int64_t> shape, Type elementType,
                                unsigned memorySpace,
                                Optional<Location> location) {
   auto *context = elementType.getContext();
+
+  for (int64_t s : shape) {
+    // Negative sizes are not allowed except for `-1` that means dynamic size.
+    if (s <= 0 && s != -1) {
+      if (location)
+        context->emitError(*location, "invalid memref size");
+      return {};
+    }
+  }
 
   // Check that the structure of the composition is valid, i.e. that each
   // subsequent affine map has as many inputs as the previous map has results.

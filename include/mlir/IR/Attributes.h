@@ -444,12 +444,13 @@ public:
 ///
 /// This class uses COO (coordinate list) encoding to represent the sparse
 /// elements in an element attribute. Specifically, the sparse vector/tensor
-/// stores the indices and values as two separate dense elements attributes. The
-/// dense elements attribute indices is a 2-D tensor of 64-bit integer elements
-/// with shape [N, ndims], which specifies the indices of the elements in the
-/// sparse tensor that contains nonzero values. The dense elements attribute
-/// values is a 1-D tensor with shape [N], and it supplies the corresponding
-/// values for the indices.
+/// stores the indices and values as two separate dense elements attributes of
+/// tensor type (even if the sparse attribute is of vector type, in order to
+/// support empty lists). The dense elements attribute indices is a 2-D tensor
+/// of 64-bit integer elements with shape [N, ndims], which specifies the
+/// indices of the elements in the sparse tensor that contains nonzero values.
+/// The dense elements attribute values is a 1-D tensor with shape [N], and it
+/// supplies the corresponding values for the indices.
 ///
 /// For example,
 /// `sparse<tensor<3x4xi32>, [[0, 0], [1, 2]], [1, 5]>` represents tensor

@@ -678,7 +678,8 @@ of tensor type.
 Note: hexadecimal integer literals are not allowed in tensor type declarations
 to avoid confusion between `0xf32` and `0 x f32`. Zero sizes are allowed in
 tensors and treated as other sizes, e.g., `tensor<0 x 1 x i32>` and `tensor<1 x
-0 x i32>` are different types.
+0 x i32>` are different types. Since zero sizes are not allowed in other types,
+such tensors should be optimized away before lowering tensors to memrefs.
 
 Examples:
 
