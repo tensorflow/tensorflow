@@ -28,8 +28,7 @@ sudo apt-get update && sudo apt-get install -y \
     python-pip \
     python-yaml \
     python-setuptools && \
-    sudo apt-get clean && \
-    sudo rm -rf /var/lib/apt/lists/*
+    sudo apt-get clean
 ```
 
 On Python 3-based systems:
@@ -43,8 +42,7 @@ sudo apt-get update && sudo apt-get install -y \
     python3-pip \
     python3-yaml \
     python3-setuptools && \
-    sudo apt-get clean && \
-    sudo rm -rf /var/lib/apt/lists/*
+    sudo apt-get clean
 ```
 
 ## Install bazel
