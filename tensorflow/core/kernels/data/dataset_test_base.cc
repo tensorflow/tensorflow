@@ -18,7 +18,7 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-Status DatasetOpsTestBase::ExpectEqual(const Tensor &a, const Tensor &b) {
+Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
   EXPECT_EQ(a.dtype(), b.dtype());
   switch (a.dtype()) {
 #define CASE(type)                       \
