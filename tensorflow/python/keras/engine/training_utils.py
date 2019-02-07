@@ -213,9 +213,6 @@ def check_num_samples(ins,
       processed based on the size of the first dimension of the
       first input numpy array. When steps is not `None` and
       `batch_size` is `None`, returns `None`.
-
-  Raises:
-      ValueError: In case of invalid arguments.
   """
   if steps is not None and batch_size is not None:
     raise ValueError(
