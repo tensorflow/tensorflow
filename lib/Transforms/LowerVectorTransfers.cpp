@@ -126,9 +126,9 @@ private:
 ///    // Read the slice `%A[%i0, %i1:%i1+256, %i2:%i2+32]` into
 ///    // vector<32x256xf32> and pad with %f0 to handle the boundary case:
 ///    %f0 = constant 0.0f : f32
-///    affine.for %i0 = 0 to %0 {
-///      affine.for %i1 = 0 to %1 step 256 {
-///        affine.for %i2 = 0 to %2 step 32 {
+///    for %i0 = 0 to %0 {
+///      for %i1 = 0 to %1 step 256 {
+///        for %i2 = 0 to %2 step 32 {
 ///          %v = vector_transfer_read %A, %i0, %i1, %i2, %f0
 ///               {permutation_map: (d0, d1, d2) -> (d2, d1)} :
 ///               (memref<?x?x?xf32>, index, index, f32) -> vector<32x256xf32>
@@ -139,8 +139,8 @@ private:
 /// MLIR resembling:
 ///
 /// ```mlir
-///    affine.for %d1 = 0 to 256 {
-///      affine.for %d2 = 0 to 32 {
+///    for %d1 = 0 to 256 {
+///      for %d2 = 0 to 32 {
 ///        %s = %A[%i0, %i1 + %d1, %i2 + %d2] : f32
 ///        %tmp[%d2, %d1] = %s
 ///      }

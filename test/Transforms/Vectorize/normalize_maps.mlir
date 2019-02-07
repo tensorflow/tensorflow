@@ -9,19 +9,19 @@
 
 // CHECK-LABEL: func @simple()
 func @simple() {
-  affine.for %i0 = 0 to 7 {
+  for %i0 = 0 to 7 {
     %0 = affine.apply (d0) -> (d0) (%i0)
     %1 = affine.apply (d0) -> (d0) (%0)
     %2 = affine.apply (d0, d1) -> (d0 + d1) (%0, %0)
     %3 = affine.apply (d0, d1) -> (d0 - d1) (%0, %0)
   }
-  // CHECK-NEXT: affine.for %i0 = 0 to 7
+  // CHECK-NEXT: for %i0 = 0 to 7
   // CHECK-NEXT:   {{.*}} affine.apply #[[ID1]](%i0)
   // CHECK-NEXT:   {{.*}} affine.apply #[[D0TIMES2]](%i0)
   // CHECK-NEXT:   {{.*}} affine.apply #[[ZERO]]()
 
-  affine.for %i1 = 0 to 7 {
-    affine.for %i2 = 0 to 42 {
+  for %i1 = 0 to 7 {
+    for %i2 = 0 to 42 {
       %20 = affine.apply (d0, d1) -> (d1) (%i1, %i2)
       %21 = affine.apply (d0, d1) -> (d0) (%i1, %i2)
       %22 = affine.apply (d0, d1) -> (d0 + d1) (%20, %21)
@@ -29,15 +29,15 @@ func @simple() {
       %24 = affine.apply (d0, d1) -> (-d0 + d1) (%20, %21)
     }
   }
-  //      CHECK: affine.for %i1 = 0 to 7
-  // CHECK-NEXT:   affine.for %i2 = 0 to 42
+  //      CHECK: for %i1 = 0 to 7
+  // CHECK-NEXT:   for %i2 = 0 to 42
   // CHECK-NEXT:     {{.*}} affine.apply #[[D0PLUSD1]](%i1, %i2)
   // CHECK-NEXT:     {{.*}} affine.apply #[[MINSD0PLUSD1]](%i1, %i2)
   // CHECK-NEXT:     {{.*}} affine.apply #[[D0MINUSD1]](%i1, %i2)
 
-  affine.for %i3 = 0 to 16 {
-    affine.for %i4 = 0 to 47 step 2 {
-      affine.for %i5 = 0 to 78 step 16 {
+  for %i3 = 0 to 16 {
+    for %i4 = 0 to 47 step 2 {
+      for %i5 = 0 to 78 step 16 {
         %50 = affine.apply (d0) -> (d0) (%i3)
         %51 = affine.apply (d0) -> (d0) (%i4)
         %52 = affine.apply (d0) -> (d0) (%i5)
@@ -47,9 +47,9 @@ func @simple() {
       }
     }
   }
-  // CHECK:      affine.for %i3 = 0 to 16
-  // CHECK-NEXT:   affine.for %i4 = 0 to 47 step 2
-  // CHECK-NEXT:     affine.for %i5 = 0 to 78 step 16
+  // CHECK:      for %i3 = 0 to 16
+  // CHECK-NEXT:   for %i4 = 0 to 47 step 2
+  // CHECK-NEXT:     for %i5 = 0 to 78 step 16
   // CHECK-NEXT:       {{.*}} affine.apply #[[ID1]](%i3)
   // CHECK-NEXT:       {{.*}} affine.apply #[[ID1]](%i4)
   // CHECK-NEXT:       {{.*}} affine.apply #[[ID1]](%i5)

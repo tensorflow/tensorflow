@@ -13,8 +13,8 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   %f1 = constant 1.0 : f32
   %f2 = constant 2.0 : f32
   // 2x unroll (jammed by construction).
-  // CHECK: affine.for %i0 = 0 to %arg0 step 3 {
-  // CHECK-NEXT:   affine.for %i1 = 0 to %arg1 step 32 {
+  // CHECK: for %i0 = 0 to %arg0 step 3 {
+  // CHECK-NEXT:   for %i1 = 0 to %arg1 step 32 {
   // CHECK-NEXT:     {{.*}} = constant splat<vector<3x16xf32>, 1.000000e+00> : vector<3x16xf32>
   // CHECK-NEXT:     {{.*}} = constant splat<vector<3x16xf32>, 1.000000e+00> : vector<3x16xf32>
   // CHECK-NEXT:     [[VAL00:%.*]] = affine.apply [[ID1]](%i0)
@@ -24,15 +24,15 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // CHECK-NEXT:     [[VAL11:%.*]] = affine.apply [[D0P16]](%i1)
   // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL10]], [[VAL11]] {permutation_map: [[ID2]]} : vector<3x16xf32>
   //
-  affine.for %i0 = 0 to %M {
-    affine.for %i1 = 0 to %N {
+  for %i0 = 0 to %M {
+    for %i1 = 0 to %N {
       // non-scoped %f1
       store %f1, %A[%i0, %i1] : memref<?x?xf32, 0>
     }
   }
   // 2x unroll (jammed by construction).
-  // CHECK: affine.for %i2 = 0 to %arg0 step 3 {
-  // CHECK-NEXT:   affine.for %i3 = 0 to %arg1 step 32 {
+  // CHECK: for %i2 = 0 to %arg0 step 3 {
+  // CHECK-NEXT:   for %i3 = 0 to %arg1 step 32 {
   // CHECK-NEXT:     {{.*}} = constant splat<vector<3x16xf32>, 2.000000e+00> : vector<3x16xf32>
   // CHECK-NEXT:     {{.*}} = constant splat<vector<3x16xf32>, 2.000000e+00> : vector<3x16xf32>
   // CHECK-NEXT:     [[VAL00:%.*]] = affine.apply [[ID1]](%i2)
@@ -42,15 +42,15 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // CHECK-NEXT:     [[VAL11:%.*]] = affine.apply [[D0P16]](%i3)
   // CHECK-NEXT:     vector_transfer_write {{.*}}, {{.*}}, [[VAL10]], [[VAL11]] {permutation_map: [[ID2]]} : vector<3x16xf32>
   //
-  affine.for %i2 = 0 to %M {
-    affine.for %i3 = 0 to %N {
+  for %i2 = 0 to %M {
+    for %i3 = 0 to %N {
       // non-scoped %f2
       store %f2, %B[%i2, %i3] : memref<?x?xf32, 0>
     }
   }
   // 2x unroll (jammed by construction).
-  // CHECK: affine.for %i4 = 0 to %arg0 step 3 {
-  // CHECK-NEXT:   affine.for %i5 = 0 to %arg1 step 32 {
+  // CHECK: for %i4 = 0 to %arg0 step 3 {
+  // CHECK-NEXT:   for %i5 = 0 to %arg1 step 32 {
   // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     {{.*}} = vector_transfer_read
@@ -72,8 +72,8 @@ func @vector_add_2d(%M : index, %N : index) -> f32 {
   // CHECK-NEXT:     {{.*}} = affine.apply
   // CHECK-NEXT:     vector_transfer_write
   //
-  affine.for %i4 = 0 to %M {
-    affine.for %i5 = 0 to %N {
+  for %i4 = 0 to %M {
+    for %i5 = 0 to %N {
       %a5 = load %A[%i4, %i5] : memref<?x?xf32, 0>
       %b5 = load %B[%i4, %i5] : memref<?x?xf32, 0>
       %s5 = addf %a5, %b5 : f32

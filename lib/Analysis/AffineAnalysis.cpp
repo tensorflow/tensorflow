@@ -756,8 +756,8 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 // For example, given the following MLIR code with with "source" and
 // "destination" accesses to the same memref labled, and symbols %M, %N, %K:
 //
-//   affine.for %i0 = 0 to 100 {
-//     affine.for %i1 = 0 to 50 {
+//   for %i0 = 0 to 100 {
+//     for %i1 = 0 to 50 {
 //       %a0 = affine.apply
 //         (d0, d1) -> (d0 * 2 - d1 * 4 + s1, d1 * 3 - s0) (%i0, %i1)[%M, %N]
 //       // Source memref access.
@@ -765,8 +765,8 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 //     }
 //   }
 //
-//   affine.for %i2 = 0 to 100 {
-//     affine.for %i3 = 0 to 50 {
+//   for %i2 = 0 to 100 {
+//     for %i3 = 0 to 50 {
 //       %a1 = affine.apply
 //         (d0, d1) -> (d0 * 7 + d1 * 9 - s1, d1 * 11 + s0) (%i2, %i3)[%K, %M]
 //       // Destination memref access.

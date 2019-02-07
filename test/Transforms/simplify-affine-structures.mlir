@@ -73,8 +73,8 @@
 
 // CHECK-LABEL: func @test_gaussian_elimination_empty_set0() {
 func @test_gaussian_elimination_empty_set0() {
-  affine.for %i0 = 1 to 10 {
-    affine.for %i1 = 1 to 100 {
+  for %i0 = 1 to 10 {
+    for %i1 = 1 to 100 {
       // CHECK: [[SET_EMPTY_2D]](%i0, %i1)
       affine.if (d0, d1) : (2 == 0)(%i0, %i1) {
       }
@@ -85,8 +85,8 @@ func @test_gaussian_elimination_empty_set0() {
 
 // CHECK-LABEL: func @test_gaussian_elimination_empty_set1() {
 func @test_gaussian_elimination_empty_set1() {
-  affine.for %i0 = 1 to 10 {
-    affine.for %i1 = 1 to 100 {
+  for %i0 = 1 to 10 {
+    for %i1 = 1 to 100 {
       // CHECK: [[SET_EMPTY_2D]](%i0, %i1)
       affine.if (d0, d1) : (1 >= 0, -1 >= 0) (%i0, %i1) {
       }
@@ -97,8 +97,8 @@ func @test_gaussian_elimination_empty_set1() {
 
 // CHECK-LABEL: func @test_gaussian_elimination_non_empty_set2() {
 func @test_gaussian_elimination_non_empty_set2() {
-  affine.for %i0 = 1 to 10 {
-    affine.for %i1 = 1 to 100 {
+  for %i0 = 1 to 10 {
+    for %i1 = 1 to 100 {
       // CHECK: #set1(%i0, %i1)
       affine.if #set2(%i0, %i1) {
       }
@@ -111,8 +111,8 @@ func @test_gaussian_elimination_non_empty_set2() {
 func @test_gaussian_elimination_empty_set3() {
   %c7 = constant 7 : index
   %c11 = constant 11 : index
-  affine.for %i0 = 1 to 10 {
-    affine.for %i1 = 1 to 100 {
+  for %i0 = 1 to 10 {
+    for %i1 = 1 to 100 {
       // CHECK: #set2(%i0, %i1)[%c7, %c11]
       affine.if #set3(%i0, %i1)[%c7, %c11] {
       }
@@ -125,8 +125,8 @@ func @test_gaussian_elimination_empty_set3() {
 func @test_gaussian_elimination_non_empty_set4() {
   %c7 = constant 7 : index
   %c11 = constant 11 : index
-  affine.for %i0 = 1 to 10 {
-    affine.for %i1 = 1 to 100 {
+  for %i0 = 1 to 10 {
+    for %i1 = 1 to 100 {
       // CHECK: #set3(%i0, %i1)[%c7, %c11]
       affine.if #set4(%i0, %i1)[%c7, %c11] {
       }
@@ -139,8 +139,8 @@ func @test_gaussian_elimination_non_empty_set4() {
 func @test_gaussian_elimination_empty_set5() {
   %c7 = constant 7 : index
   %c11 = constant 11 : index
-  affine.for %i0 = 1 to 10 {
-    affine.for %i1 = 1 to 100 {
+  for %i0 = 1 to 10 {
+    for %i1 = 1 to 100 {
       // CHECK: #set2(%i0, %i1)[%c7, %c11]
       affine.if #set5(%i0, %i1)[%c7, %c11] {
       }
@@ -151,8 +151,8 @@ func @test_gaussian_elimination_empty_set5() {
 
 // CHECK-LABEL: func @test_fuzz_explosion
 func @test_fuzz_explosion(%arg0 : index, %arg1 : index, %arg2 : index, %arg3 : index) {
-  affine.for %i0 = 1 to 10 {
-    affine.for %i1 = 1 to 100 {
+  for %i0 = 1 to 10 {
+    for %i1 = 1 to 100 {
       affine.if #set_fuzz_virus(%i0, %i1, %arg0, %arg1, %arg2, %arg3) {
       }
     }
@@ -163,8 +163,8 @@ func @test_fuzz_explosion(%arg0 : index, %arg1 : index, %arg2 : index, %arg3 : i
 
 // CHECK-LABEL: func @test_empty_set(%arg0: index) {
 func @test_empty_set(%N : index) {
-  affine.for %i = 0 to 10 {
-    affine.for %j = 0 to 10 {
+  for %i = 0 to 10 {
+    for %j = 0 to 10 {
       // CHECK: affine.if [[SET_EMPTY_2D]](%i0, %i1)
       affine.if (d0, d1) : (d0 - d1 >= 0, d1 - d0 - 1 >= 0)(%i, %j) {
         "foo"() : () -> ()
@@ -198,8 +198,8 @@ func @test_empty_set(%N : index) {
     }
   }
   // The tests below test GCDTightenInequalities().
-  affine.for %k = 0 to 10 {
-    affine.for %l = 0 to 10 {
+  for %k = 0 to 10 {
+    for %l = 0 to 10 {
       // Empty because no multiple of 8 lies between 4 and 7.
       // CHECK: affine.if [[SET_EMPTY_1D]](%i2)
       affine.if (d0) : (8*d0 - 4 >= 0, -8*d0 + 7 >= 0)(%k) {
@@ -226,7 +226,7 @@ func @test_empty_set(%N : index) {
     }
   }
 
-  affine.for %m = 0 to 10 {
+  for %m = 0 to 10 {
     // CHECK: affine.if [[SET_EMPTY_1D]](%i{{[0-9]+}})
     affine.if (d0) : (d0 mod 2 - 3 == 0) (%m) {
       "foo"() : () -> ()

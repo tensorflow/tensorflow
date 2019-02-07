@@ -94,14 +94,14 @@ Instruction *createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
 ///
 /// Before
 ///
-/// affine.for %i = 0 to #map(%N)
+/// for %i = 0 to #map(%N)
 ///   %idx = affine.apply (d0) -> (d0 mod 2) (%i)
 ///   send %A[%idx], ...
 ///   %v = "compute"(%idx, ...)
 ///
 /// After
 ///
-/// affine.for %i = 0 to #map(%N)
+/// for %i = 0 to #map(%N)
 ///   %idx = affine.apply (d0) -> (d0 mod 2) (%i)
 ///   send %A[%idx], ...
 ///   %idx_ = affine.apply (d0) -> (d0 mod 2) (%i)

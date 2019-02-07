@@ -283,8 +283,7 @@ static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
   return value;
 }
 
-// Convert a "affine.for" loop to a flow of blocks.  Return `false` on
-// success.
+// Convert a "for" loop to a flow of blocks.  Return `false` on success.
 //
 // Create an SESE region for the loop (including its body) and append it to the
 // end of the current region.  The loop region consists of the initialization
@@ -331,9 +330,8 @@ bool LowerAffinePass::lowerAffineFor(OpPointer<AffineForOp> forOp) {
   auto loc = forOp->getLoc();
   auto *forInst = forOp->getInstruction();
 
-  // Start by splitting the block containing the 'affine.for' into two parts.
-  // The part before will get the init code, the part after will be the end
-  // point.
+  // Start by splitting the block containing the 'for' into two parts.  The part
+  // before will get the init code, the part after will be the end point.
   auto *initBlock = forInst->getBlock();
   auto *endBlock = initBlock->splitBlock(forInst);
 

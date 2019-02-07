@@ -35,7 +35,7 @@ using llvm::dbgs;
 //===----------------------------------------------------------------------===//
 
 AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
-    : Dialect(/*namePrefix=*/"affine", context) {
+    : Dialect(/*namePrefix=*/"", context) {
   addOperations<AffineApplyOp, AffineForOp, AffineIfOp>();
 }
 
@@ -716,7 +716,7 @@ static void printBound(AffineBound bound, const char *prefix, OpAsmPrinter *p) {
 }
 
 void AffineForOp::print(OpAsmPrinter *p) const {
-  *p << "affine.for ";
+  *p << "for ";
   p->printOperand(getBody()->getArgument(0));
   *p << " = ";
   printBound(getLowerBound(), "max", p);

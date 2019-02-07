@@ -10,7 +10,7 @@ func @inline_notation() -> i32 loc("mysource.cc":10:8) {
   %1 = "foo"() : () -> i32 loc("foo")
 
   // CHECK: } loc(unknown)
-  affine.for %i0 = 0 to 8 {
+  for %i0 = 0 to 8 {
   } loc(fused["foo", "mysource.cc":10:8])
 
   // CHECK: } loc(unknown)

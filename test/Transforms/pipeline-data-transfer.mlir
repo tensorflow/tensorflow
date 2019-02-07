@@ -16,13 +16,13 @@ func @loop_nest_dma() {
   %zero = constant 0 : index
   %num_elts = constant 128 : index
 
-  affine.for %i = 0 to 8 {
+  for %i = 0 to 8 {
     dma_start %A[%i], %Ah[%i], %num_elts, %tag[%zero] : memref<256 x f32>, memref<32 x f32, 1>, memref<1 x f32>
     dma_wait %tag[%zero], %num_elts : memref<1 x f32>
     %v = load %Ah[%i] : memref<32 x f32, (d0) -> (d0), 1>
     %r = "compute"(%v) : (f32) -> (f32)
     store %r, %Ah[%i] : memref<32 x f32, (d0) -> (d0), 1>
-    affine.for %j = 0 to 128 {
+    for %j = 0 to 128 {
       "do_more_compute"(%i, %j) : (index, index) -> ()
     }
   }
@@ -34,7 +34,7 @@ func @loop_nest_dma() {
 // CHECK-NEXT:  %3 = affine.apply [[MOD_2]](%c0)
 // CHECK-NEXT:  %4 = affine.apply [[MOD_2]](%c0)
 // CHECK-NEXT:  dma_start %0[%c0], %1[%3, %c0], %c128, %2[%4, %c0_0] : memref<256xf32>, memref<2x32xf32, 1>, memref<2x1xf32>
-// CHECK-NEXT:  affine.for %i0 = 1 to 8 {
+// CHECK-NEXT:  for %i0 = 1 to 8 {
 // CHECK-NEXT:    %5 = affine.apply [[MOD_2]](%i0)
 // CHECK-NEXT:    %6 = affine.apply [[MOD_2]](%i0)
 // CHECK-NEXT:    dma_start %0[%i0], %1[%5, %i0], %c128, %2[%6, %c0_0] : memref<256xf32>, memref<2x32xf32, 1>, memref<2x1xf32>
@@ -45,7 +45,7 @@ func @loop_nest_dma() {
 // CHECK-NEXT:    %10 = load %1[%9, %7] : memref<2x32xf32, 1>
 // CHECK-NEXT:    %11 = "compute"(%10) : (f32) -> f32
 // CHECK-NEXT:    store %11, %1[%9, %7] : memref<2x32xf32, 1>
-// CHECK-NEXT:    affine.for %i1 = 0 to 128 {
+// CHECK-NEXT:    for %i1 = 0 to 128 {
 // CHECK-NEXT:      "do_more_compute"(%7, %i1) : (index, index) -> ()
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
@@ -56,7 +56,7 @@ func @loop_nest_dma() {
 // CHECK-NEXT:  %15 = load %1[%14, %12] : memref<2x32xf32, 1>
 // CHECK-NEXT:  %16 = "compute"(%15) : (f32) -> f32
 // CHECK-NEXT:  store %16, %1[%14, %12] : memref<2x32xf32, 1>
-// CHECK-NEXT:  affine.for %i2 = 0 to 128 {
+// CHECK-NEXT:  for %i2 = 0 to 128 {
 // CHECK-NEXT:    "do_more_compute"(%12, %i2) : (index, index) -> ()
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return
@@ -68,7 +68,7 @@ func @loop_step(%arg0: memref<512xf32>,
                   %arg1: memref<512xf32>) {
   %c0 = constant 0 : index
   %c4 = constant 4 : index
-  affine.for %i0 = 0 to 512 step 4 {
+  for %i0 = 0 to 512 step 4 {
     %1 = alloc() : memref<4xf32, 1>
     %2 = alloc() : memref<1xi32>
     dma_start %arg0[%i0], %1[%c0], %c4, %2[%c0]
@@ -82,7 +82,7 @@ func @loop_step(%arg0: memref<512xf32>,
 // CHECK:        %2 = affine.apply [[FLOOR_MOD_2]](%c0)
 // CHECK:        %3 = affine.apply [[FLOOR_MOD_2]](%c0)
 // CHECK-NEXT:   dma_start %arg0[%c0], %0[%2, %c0_0], %c4, [[TAG]][%3, %c0_0] : memref<512xf32>, memref<2x4xf32, 1>, memref<2x1xi32>
-// CHECK-NEXT:   affine.for %i0 = 4 to 512 step 4 {
+// CHECK-NEXT:   for %i0 = 4 to 512 step 4 {
 // CHECK-NEXT:     %4 = affine.apply [[FLOOR_MOD_2]](%i0)
 // CHECK-NEXT:     %5 = affine.apply [[FLOOR_MOD_2]](%i0)
 // CHECK-NEXT:     dma_start %arg0[%i0], %0[%4, %c0_0], %c4, [[TAG]][%5, %c0_0] : memref<512xf32>, memref<2x4xf32, 1>, memref<2x1xi32>
@@ -114,8 +114,8 @@ func @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>, #map0>, %arg1: memref<
   // Prologue for DMA overlap on arg2.
   // CHECK:[[TAG_ARG2:%[0-9]+]] = alloc() : memref<2x2xi32>
   // CHECK: dma_start %arg2[
-  // CHECK: affine.for %i0 = 1 to 8 {
-  affine.for %i0 = 0 to 8 {
+  // CHECK: for %i0 = 1 to 8 {
+  for %i0 = 0 to 8 {
     %6 = affine.apply #map2(%i0)
     dma_start %arg2[%6, %c0], %2[%c0, %c0], %num_elts, %5[%c0] : memref<512x32xvector<8xf32>, #map0>, memref<64x4xvector<8xf32>, #map0, 2>, memref<2xi32>
     dma_wait %5[%c0], %num_elts : memref<2xi32>
@@ -127,8 +127,8 @@ func @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>, #map0>, %arg1: memref<
     // CHECK: [[TAG_ARG1:%[0-9]+]] = alloc() : memref<2x2xi32>
     // CHECK: dma_start %arg0[
     // CHECK: dma_start %arg1[
-    // CHECK-NEXT affine.for %i1 = 1 to 8 {
-    affine.for %i1 = 0 to 8 {
+    // CHECK-NEXT for %i1 = 1 to 8 {
+    for %i1 = 0 to 8 {
       %7 = affine.apply #map1(%i0, %i1)
       %8 = affine.apply #map2(%i1)
       dma_start %arg0[%7, %c0], %0[%c0, %c0], %num_elts, %3[%c0] : memref<512x32xvector<8xf32>, #map0>, memref<64x4xvector<8xf32>, #map0, 2>, memref<2xi32>
@@ -140,8 +140,8 @@ func @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>, #map0>, %arg1: memref<
       // CHECK: dma_start %arg1[
       // CHECK: dma_wait [[TAG_ARG0]]
       // CHECK: dma_wait [[TAG_ARG1]]
-      // CHECK-NEXT: affine.for %i2 = 0 to 4 {
-      affine.for %i2 = 0 to 4 {
+      // CHECK-NEXT: for %i2 = 0 to 4 {
+      for %i2 = 0 to 4 {
         "foo"() : () -> ()
       }
     }
@@ -155,16 +155,16 @@ func @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>, #map0>, %arg1: memref<
   // CHECK: [[TAG_ARG1_NESTED:%[0-9]+]] = alloc() : memref<2x2xi32>
   // CHECK:  dma_start %arg0[
   // CHECK:  dma_start %arg1[
-  // CHECK:  affine.for %i4 = 1 to 8 {
+  // CHECK:  for %i4 = 1 to 8 {
   // CHECK:    dma_start %arg0[
   // CHECK:    dma_start %arg1[
   // CHECK:    dma_wait [[TAG_ARG0_NESTED]]
   // CHECK:    dma_wait [[TAG_ARG1_NESTED]]
-  // CHECK:    affine.for %i5 = 0 to 4 {
+  // CHECK:    for %i5 = 0 to 4 {
   // CHECK:      "foo"() : () -> ()
   // CHECK:  dma_wait [[TAG_ARG0_NESTED]]
   // CHECK:  dma_wait [[TAG_ARG1_NESTED]]
-  // CHECK:  affine.for %i6 = 0 to 4 {
+  // CHECK:  for %i6 = 0 to 4 {
   }
   return
 // CHECK: }
@@ -185,8 +185,8 @@ func @loop_dma_dependent(%arg2: memref<512x32xvector<8xf32>>) {
   // The two DMAs below are dependent (incoming and outgoing on the same
   // memref) in the same iteration; so no pipelining here.
   // CHECK-NOT: dma_start
-  // CHECK: affine.for %i0 = 0 to 8 {
-  affine.for %i0 = 0 to 8 {
+  // CHECK: for %i0 = 0 to 8 {
+  for %i0 = 0 to 8 {
     %6 = affine.apply #map2(%i0)
     dma_start %arg2[%6, %c0], %2[%c0, %c0], %num_elts, %5[%c0] : memref<512x32xvector<8xf32>>, memref<64x4xvector<8xf32>, 2>, memref<2xi32>
     dma_wait %5[%c0], %num_elts : memref<2xi32>
@@ -206,8 +206,8 @@ func @escaping_use(%arg0: memref<512 x 32 x f32>) {
   %tag = alloc() : memref<1 x i32>
 
   // CHECK-NOT: dma_start
-  // CHECK: affine.for %i0 = 0 to 16 {
-  affine.for %kTT = 0 to 16 {
+  // CHECK: for %i0 = 0 to 16 {
+  for %kTT = 0 to 16 {
     dma_start %arg0[%zero, %zero], %Av[%zero, %zero], %num_elt, %tag[%zero] :
       memref<512 x 32 x f32>,
       memref<32 x 32 x f32, 2>, memref<1 x i32>
@@ -230,14 +230,14 @@ func @live_out_use(%arg0: memref<512 x 32 x f32>) -> f32 {
   %tag = alloc() : memref<1 x i32>
 
   // CHECK-NOT: dma_start
-  // CHECK: affine.for %i0 = 0 to 16 {
-  affine.for %kTT = 0 to 16 {
+  // CHECK: for %i0 = 0 to 16 {
+  for %kTT = 0 to 16 {
     dma_start %arg0[%zero, %zero], %Av[%zero, %zero], %num_elt, %tag[%zero] :
       memref<512 x 32 x f32>,
       memref<32 x 32 x f32, 2>, memref<1 x i32>
     dma_wait %tag[%zero], %num_elt : memref<1 x i32>
   }
-  // Use live out of 'affine.for' inst; no DMA pipelining will be done.
+  // Use live out of 'for' inst; no DMA pipelining will be done.
   %v = load %Av[%zero, %zero] : memref<32 x 32 x f32, 2>
   return %v : f32
 // CHECK:      %{{[0-9]+}} = load %{{[0-9]+}}[%c0, %c0] : memref<32x32xf32, 2>
@@ -261,14 +261,14 @@ func @dynamic_shape_dma_buffer(%arg0: memref<512 x 32 x f32>) {
 // CHECK:       %5 = affine.apply [[MOD_2]](%c0)
 // CHECK:       %6 = affine.apply [[MOD_2]](%c0)
 // CHECK:       dma_start %arg0[%c0_0, %c0_0], %3[%5, %c0_0, %c0_0], %c512, %4[%6, %c0_0]
-  affine.for %kTT = 0 to 16 {
+  for %kTT = 0 to 16 {
     dma_start %arg0[%zero, %zero], %Av[%zero, %zero], %num_elt, %tag[%zero] :
       memref<512 x 32 x f32>,
       memref<? x ? x f32, 2>, memref<1 x i32>
     dma_wait %tag[%zero], %num_elt : memref<1 x i32>
   }
   return
-// CHECK-NEXT:  affine.for %i0 = 1 to 16 {
+// CHECK-NEXT:  for %i0 = 1 to 16 {
 // CHECK:         %7 = affine.apply [[MOD_2]](%i0)
 // CHECK:         %8 = affine.apply [[MOD_2]](%i0)
 // CHECK:         dma_start %arg0[%c0_0, %c0_0], %3[%7, %c0_0, %c0_0], %c512, %4[%8, %c0_0]

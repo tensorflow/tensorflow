@@ -510,8 +510,7 @@ bool MemRefDependenceGraph::init(Function *f) {
       // all loads and store accesses it contains.
       LoopNestStateCollector collector;
       collector.collect(&inst);
-      // Return false if a non 'affine.for' region was found (not currently
-      // supported).
+      // Return false if a non 'for' region was found (not currently supported).
       if (collector.hasNonForRegion)
         return false;
       Node node(nextNodeId++, &inst);

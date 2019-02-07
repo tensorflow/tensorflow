@@ -11,8 +11,8 @@ func @test() {
   %A = alloc() : memref<9 x 9 x i32>
   %B = alloc() : memref<111 x i32>
 
-  affine.for %i = -1 to 10 {
-    affine.for %j = -1 to 10 {
+  for %i = -1 to 10 {
+    for %j = -1 to 10 {
       %idx0 = affine.apply (d0, d1) -> (d0)(%i, %j)
       %idx1 = affine.apply (d0, d1) -> (d1)(%i, %j)
       // Out of bound access.
@@ -27,7 +27,7 @@ func @test() {
     }
   }
 
-  affine.for %k = 0 to 10 {
+  for %k = 0 to 10 {
       // In bound.
       %u = load %B[%zero] : memref<111 x i32>
       // Out of bounds.
@@ -43,8 +43,8 @@ func @test_mod_floordiv_ceildiv() {
   %zero = constant 0 : index
   %A = alloc() : memref<128 x 64 x 64 x i32>
 
-  affine.for %i = 0 to 256 {
-    affine.for %j = 0 to 256 {
+  for %i = 0 to 256 {
+    for %j = 0 to 256 {
       %idx0 = affine.apply (d0, d1, d2) -> (d0 mod 128 + 1)(%i, %j, %j)
       %idx1 = affine.apply (d0, d1, d2) -> (d1 floordiv 4 + 1)(%i, %j, %j)
       %idx2 = affine.apply (d0, d1, d2) -> (d2 ceildiv 4)(%i, %j, %j)
@@ -69,8 +69,8 @@ func @test_no_out_of_bounds() {
   %C = alloc() : memref<257 x i32>
   %B = alloc() : memref<1 x i32>
 
-  affine.for %i = 0 to 256 {
-    affine.for %j = 0 to 256 {
+  for %i = 0 to 256 {
+    for %j = 0 to 256 {
       // All of these accesses are in bound; check that no errors are emitted.
       // CHECK: %3 = affine.apply {{#map.*}}(%i0, %i1)
       // CHECK-NEXT: %4 = load %0[%3, %c0] : memref<257x256xi32>
@@ -93,8 +93,8 @@ func @mod_div() {
   %zero = constant 0 : index
   %A = alloc() : memref<128 x 64 x 64 x i32>
 
-  affine.for %i = 0 to 256 {
-    affine.for %j = 0 to 256 {
+  for %i = 0 to 256 {
+    for %j = 0 to 256 {
       %idx0 = affine.apply (d0, d1, d2) -> (d0 mod 128 + 1)(%i, %j, %j)
       %idx1 = affine.apply (d0, d1, d2) -> (d1 floordiv 4 + 1)(%i, %j, %j)
       %idx2 = affine.apply (d0, d1, d2) -> (d2 ceildiv 4)(%i, %j, %j)
@@ -115,8 +115,8 @@ func @mod_div() {
 // CHECK-LABEL: func @mod_floordiv_nested() {
 func @mod_floordiv_nested() {
   %A = alloc() : memref<256 x 256 x i32>
-  affine.for %i = 0 to 256 {
-    affine.for %j = 0 to 256 {
+  for %i = 0 to 256 {
+    for %j = 0 to 256 {
       %idx0 = affine.apply (d0, d1) -> ((d0 mod 1024) floordiv 4)(%i, %j)
       %idx1 = affine.apply (d0, d1) -> ((((d1 mod 128) mod 32) ceildiv 4) * 32)(%i, %j)
       load %A[%idx0, %idx1] : memref<256 x 256 x i32> // expected-error {{'load' op memref out of upper bound access along dimension #2}}
@@ -128,7 +128,7 @@ func @mod_floordiv_nested() {
 // CHECK-LABEL: func @test_semi_affine_bailout
 func @test_semi_affine_bailout(%N : index) {
   %B = alloc() : memref<10 x i32>
-  affine.for %i = 0 to 10 {
+  for %i = 0 to 10 {
     %idx = affine.apply (d0)[s0] -> (d0 * s0)(%i)[%N]
     %y = load %B[%idx] : memref<10 x i32>
   }
@@ -138,7 +138,7 @@ func @test_semi_affine_bailout(%N : index) {
 // CHECK-LABEL: func @multi_mod_floordiv
 func @multi_mod_floordiv() {
   %A = alloc() : memref<2x2xi32>
-  affine.for %ii = 0 to 64 {
+  for %ii = 0 to 64 {
       %idx0 = affine.apply (d0) -> ((d0 mod 147456) floordiv 1152) (%ii)
       %idx1 = affine.apply (d0) -> (((d0 mod 147456) mod 1152) floordiv 384) (%ii)
       %v = load %A[%idx0, %idx1] : memref<2x2xi32>
@@ -153,8 +153,8 @@ func @delinearize_mod_floordiv() {
   %out = alloc() : memref<64x9xi32>
 
   // Reshape '%in' into '%out'.
-  affine.for %ii = 0 to 64 {
-    affine.for %jj = 0 to 9 {
+  for %ii = 0 to 64 {
+    for %jj = 0 to 9 {
       %a0 = affine.apply (d0, d1) -> (d0 * (9 * 1024) + d1 * 128) (%ii, %jj)
       %a10 = affine.apply (d0) ->
         (d0 floordiv (2 * 3 * 3 * 128 * 128)) (%a0)
@@ -189,7 +189,7 @@ func @out_of_bounds() {
   %in = alloc() : memref<1xi32>
   %c9 = constant 9 : i32
 
-  affine.for %i0 = 10 to 11 {
+  for %i0 = 10 to 11 {
     %idy = affine.apply (d0) ->  (100 * d0 floordiv 1000) (%i0)
     store %c9, %in[%idy] : memref<1xi32> // expected-error {{'store' op memref out of upper bound access along dimension #1}}
   }
