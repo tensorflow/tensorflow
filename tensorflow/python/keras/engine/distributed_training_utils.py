@@ -196,14 +196,14 @@ def validate_callbacks(input_callbacks, optimizer):
       # features of the callback that involve accessing model attributes and
       # running ops.
       if isinstance(callback, callbacks.TensorBoard):
-        if callback.__getattribute__('histogram_freq'):
+        if getattr(callback, 'histogram_freq', False):
           logging.warning(
               UserWarning(
                   '`histogram_freq` in the TensorBoard callback is not '
                   'supported when using DistributionStrategy. Setting '
                   '`histogram_freq` to `0`.'))
           callback.histogram_freq = 0
-        if callback.__getattribute__('write_grads'):
+        if getattr(callback, 'write_grads', False):
           logging.warning(
               UserWarning(
                   '`write_grads` in the TensorBoard callback is not supported '
