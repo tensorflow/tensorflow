@@ -55,11 +55,6 @@ releases:
         tag_specs:
             - "{ubuntu}{jupyter}"
             - "{ubuntu-devel}{jupyter}"
-
-    ppc64le-dockerfiles:
-        is_dockerfiles: true
-        upload_images: false
-        tag_specs:
             - "{ubuntu-ppc64le}{jupyter}"
             - "{ubuntu-devel-ppc64le}{jupyter}"
 
