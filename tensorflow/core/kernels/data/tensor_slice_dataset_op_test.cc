@@ -107,17 +107,17 @@ struct TestParam {
            TensorShape({2, 3}), {1, 2, 3, 4, 5, 6})}},  // components
      {{DatasetOpsTestBase::CreateTensor<Variant>(
            TensorShape({1}), {DatasetOpsTestBase::CreateTensor<double>(
-                                TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}),
+                                 TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}),
        DatasetOpsTestBase::CreateTensor<Variant>(
            TensorShape({1}), {DatasetOpsTestBase::CreateTensor<string>(
-                                TensorShape({1, 2}), {"a", "b"})}),
+                                 TensorShape({1, 2}), {"a", "b"})}),
        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {1, 2, 3}),
        DatasetOpsTestBase::CreateTensor<Variant>(
            TensorShape({1}), {DatasetOpsTestBase::CreateTensor<double>(
-                                TensorShape({2, 2}), {5.0, 6.0, 7.0, 8.0})}),
+                                 TensorShape({2, 2}), {5.0, 6.0, 7.0, 8.0})}),
        DatasetOpsTestBase::CreateTensor<Variant>(
            TensorShape({1}), {DatasetOpsTestBase::CreateTensor<string>(
-                                TensorShape({1, 2}), {"c", "d"})}),
+                                 TensorShape({1, 2}), {"c", "d"})}),
        DatasetOpsTestBase::CreateTensor<int64>(
            TensorShape({3}), {4, 5, 6})}},  // expected_outputs
      {{0, 1, 2}}}                           // breakpoints
