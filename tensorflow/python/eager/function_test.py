@@ -1204,17 +1204,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return tuple(key[0] for key in defined._function_cache)
 
     # `True` corresponds to the fact that we're executing eagerly
-    self.assertIn(('URRR', (0, 1, 20)), cache_keys())
+    self.assertIn(('URRRu', (0, 1, 20)), cache_keys())
 
     defined(1)  # bar=1, baz=2
-    self.assertIn(('URRR', (1, 1, 2)), cache_keys())
+    self.assertIn(('URRRu', (1, 1, 2)), cache_keys())
 
     # This matches the previous call.
     defined(foo=1)
     self.assertEqual(len(defined._function_cache), 2)
 
     defined(1, 2, 3)
-    self.assertIn(('URRR', (1, 2, 3)), cache_keys())
+    self.assertIn(('URRRu', (1, 2, 3)), cache_keys())
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)
@@ -1864,6 +1864,31 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         maybe_add(x, True)
         self.assertEqual(len(maybe_add._function_cache), 3)
         self.assertEqual(len(add._function_cache), 2)
+
+  def testCacheKeyOverlappingShapes(self):
+    @function.defun
+    def defined(t):
+      return t
+
+    defined(array_ops.zeros([12, 1]))
+    self.assertLen(defined._function_cache, 1)
+
+    defined(array_ops.zeros([1, 21]))
+    self.assertLen(defined._function_cache, 2)
+
+  def testCacheKeyNestedLists(self):
+    @function.defun
+    def defined(l):
+      return l
+
+    a = constant_op.constant(1.)
+    b = constant_op.constant(2.)
+    c = constant_op.constant(3.)
+    defined([[a], b, c])
+    self.assertLen(defined._function_cache, 1)
+
+    defined([[a, b], c])
+    self.assertLen(defined._function_cache, 2)
 
   def testDecoratedMethod(self):
     m = DefunnedMiniModel()
