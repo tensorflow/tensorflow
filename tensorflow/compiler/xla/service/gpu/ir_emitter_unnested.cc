@@ -545,7 +545,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         // a 1D array. The specialized version requires a initializer thunk that
         // initializes the output array to the initial value of the reduce.
         if (root->opcode() == HloOpcode::kReduce && root->shape().IsTuple()) {
-          // TODO(b/112040122): Support variadic reduce.
+          // TODO(b/118332391): Support variadic reduce.
           return Unimplemented("Variadic reduce is not supported on GPU");
         }
         return EmitReductionToVector(fusion);
@@ -634,7 +634,7 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
 }
 
 Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
-  // TODO(b/112040122): Support multi-output reduce.
+  // TODO(b/118332391): Support multi-output reduce.
   if (!reduce->shape().IsArray()) {
     return Unimplemented("Multi-output reduce is not supported on GPU");
   }
