@@ -6833,6 +6833,7 @@ tf_cc_test_mkl(
     name = "mkl_conv_ops_test",
     size = "small",
     srcs = ["mkl_conv_ops_test.cc"],
+    tags = ["no_mac"],
     deps = [
         ":ops_testutil",
         ":ops_util",
