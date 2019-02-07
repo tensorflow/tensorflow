@@ -470,7 +470,7 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
   }
 
   uint64 graph_width = kDefaultWidth;
-  std::set<const HloInstruction*> boundary;
+  absl::flat_hash_set<const HloInstruction*> boundary;
   if (tokens.size() >= 2) {
     if (comp) {
       std::cerr << "Can only use graph-size parameter with instructions, but "
@@ -478,31 +478,31 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
       return;
     }
 
-    int bound_index = tokens.size();
+    int bound_index;
+    // get the width if present
     if (!absl::SimpleAtoi(tokens[1], &graph_width)) {
-      if (tokens[1] != "/") {
-        std::cerr << "Can't parse '" << tokens[1] << "' as an integer."
-                  << std::endl;
-        return;
-      }
+      bound_index = 1;
       graph_width = kDefaultWidth;
+    }
+    else {
       bound_index = 2;
-    } else {
-      if (tokens.size() > 2) {
-        if (tokens[2] != "/") {
+    }
+    // get the '/'
+    if (bound_index < tokens.size()) {
+      if (tokens[bound_index] != "/") {
           std::cerr << "Expect a /, but get a '" << tokens[1] << "'."
                     << std::endl;
           return;
-        }
-        bound_index = 3;
       }
+      bound_index++;
     }
+    // get the boundary nodes
     while (bound_index < tokens.size()) {
       string bnode_name = tokens[bound_index];
       const HloInstruction* binstr = FindInstruction(module, bnode_name);
       if (!binstr) {
-        std::cerr << "Couldn't find HloInstruction named " << node_name << "."
-                  << std::endl;
+        std::cerr << "Couldn't find HloInstruction named "
+                  << node_name << "." << std::endl;
         return;
       }
       boundary.insert(binstr);
@@ -518,9 +518,9 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
         /*show_backend_config=*/show_backend_config));
   } else {
     DisplayGraphHandle(opts, hlo_graph_dumper::DumpNeighborhoodAround(
-                                 *instr, graph_width,
-                                 /*boundary=*/boundary,
-                                 /*show_backend_config=*/show_backend_config));
+        *instr, graph_width, 
+        /*boundary=*/boundary,
+        /*show_backend_config=*/show_backend_config));
   }
 }
 
