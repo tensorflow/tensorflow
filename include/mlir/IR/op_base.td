@@ -269,6 +269,18 @@ class Attr<Pred condition, string descr = ""> :
   string defaultValue = ?;
 }
 
+class DefaultValuedAttr<Attr attr, string val> :
+    Attr<attr.predicate, attr.description> {
+  // Construct this attribute with the input attribute and change only
+  // the default value.
+  // Note: this has to be kept up to date with Attr above.
+  let storageType = attr.storageType;
+  let returnType = attr.returnType;
+  let convertFromStorage = attr.convertFromStorage;
+  let constBuilderCall = attr.constBuilderCall;
+  let defaultValue = val;
+}
+
 // A generic attribute that must be constructed around a specific type.
 // Backed by a C++ class "attrName".
 class TypeBasedAttr<BuildableType t, string attrName, string descr> :
@@ -282,6 +294,7 @@ class TypeBasedAttr<BuildableType t, string attrName, string descr> :
 class StringBasedAttr<string descr> : Attr<CPred<"true">, descr> {
   let constBuilderCall = [{ {0}.getStringAttr("{1}") }];
   let storageType = [{ StringAttr }];
+  let returnType = [{ StringRef }];
 }
 
 // Base class for instantiating float attributes of fixed width.
@@ -308,19 +321,14 @@ def ElementsAttr : Attr<CPred<"true">, "constant vector/tensor"> {
   let convertFromStorage = "{0}";
 }
 def F32Attr : FloatAttrBase<F32, "32-bit float"> {
-  let returnType = [{ float }];
-  let convertFromStorage = [{ {0}.getValue().convertToFloat() }];
+  let returnType = [{ APFloat }];
 }
 def I32Attr : IntegerAttrBase<I32, "32-bit integer"> {
   let storageType = [{ IntegerAttr }];
   let returnType = [{ int }];
   let convertFromStorage = [{ {0}.getValue().getSExtValue() }];
 }
-def StrAttr : StringBasedAttr<"string"> {
-  let storageType = [{ StringAttr }];
-  let returnType = [{ StringRef }];
-  let constBuilderCall = [{ {0}.getStringAttr("{1}") }];
-}
+def StrAttr : StringBasedAttr<"string">;
 
 // DerivedAttr are attributes whose value is computed from properties
 // of the operation. They do not require additional storage and are

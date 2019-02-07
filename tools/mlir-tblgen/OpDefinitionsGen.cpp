@@ -418,7 +418,7 @@ void OpEmitter::emitVerifier() {
 
     OUT(6) << "if (!this->getAttr(\"" << name << "\").dyn_cast_or_null<"
            << attr.getStorageType() << ">()) return emitOpError(\"requires "
-           << attr.getReturnType() << " attribute '" << name << "'\");\n";
+           << attr.getDescription() << " attribute '" << name << "'\");\n";
 
     auto attrPred = attr.getPredicate();
     if (!attrPred.isNull()) {
