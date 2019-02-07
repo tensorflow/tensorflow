@@ -29,7 +29,16 @@ namespace poplarplugin {
 static bool HaveSharding(HloComputation* comp) {
   for (auto* inst : comp->instructions()) {
     if (inst->has_sharding()) {
-      return true;
+      auto sharding = inst->sharding();
+      // We currently only support sharding with unique devices.
+      const bool supported_sharding = sharding.HasUniqueDevice();
+      if (supported_sharding) {
+        return true;
+      }
+      LOG(INFO) << "Instruction " << inst->name()
+                << " has unsupported sharding " << sharding.ToString()
+                << " which will be ignored.";
+      inst->clear_sharding();
     }
   }
   return false;
@@ -51,7 +60,7 @@ static bool HaveSharding(HloModule* module) {
 
 StatusOr<bool> ShardingPass::Run(HloModule* module) {
   if (!HaveSharding(module)) {
-    return true;
+    return false;
   }
 
   for (auto* comp : module->computations()) {
