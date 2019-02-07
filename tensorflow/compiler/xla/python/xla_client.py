@@ -757,12 +757,13 @@ class LocalComputation(object):
     return [out.to_py() for out in self.ExecutePerReplica(arguments)]
 
   def __del__(self):
-    # Ensure a reference to C-based destructor for use in __del__.
-    if self._is_compiled:
-      self._backend.delete_executable(self._c_computation)
-    else:
-      assert isinstance(self._c_computation, c_api.LocalComputation)
-      c_api.DeleteLocalComputation(self._c_computation)
+    # Python may have freed c_api first.
+    if c_api and self._c_computation:
+      if self._is_compiled:
+        self._backend.delete_executable(self._c_computation)
+      else:
+        assert isinstance(self._c_computation, c_api.LocalComputation)
+        c_api.DeleteLocalComputation(self._c_computation)
 
 
 def _make_replica_group_proto(replica_group):
