@@ -86,6 +86,7 @@ protected:
   // If an operation is about to be removed, make sure it is not in our
   // worklist anymore because we'd get dangling references to it.
   void notifyOperationRemoved(Instruction *op) override {
+    addToWorklist(op->getOperands());
     removeFromWorklist(op);
   }
 
@@ -97,13 +98,28 @@ protected:
       // TODO: Add a result->getUsers() iterator.
       for (auto &user : result->getUses())
         addToWorklist(user.getOwner());
-
-    // TODO: Walk the operand list dropping them as we go.  If any of them
-    // drop to zero uses, then add them to the worklist to allow them to be
-    // deleted as dead.
   }
 
 private:
+  // Look over the provided operands for any defining instructions that should
+  // be re-added to the worklist. This function should be called when an
+  // operation is modified or removed, as it may trigger further
+  // simplifications.
+  template <typename Operands> void addToWorklist(Operands &&operands) {
+    for (Value *operand : operands) {
+      // If the use count of this operand is now < 2, we re-add the defining
+      // instruction to the worklist.
+      // TODO(riverriddle) This is based on the fact that zero use instructions
+      // may be deleted, and that single use values often have more
+      // canonicalization opportunities.
+      if (!operand->use_empty() &&
+          std::next(operand->use_begin()) != operand->use_end())
+        continue;
+      if (auto *defInst = operand->getDefiningInst())
+        addToWorklist(defInst);
+    }
+  }
+
   /// The low-level pattern matcher.
   PatternMatcher matcher;
 
@@ -208,6 +224,9 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
     if (!op->constantFold(operandConstants, resultConstants)) {
       builder.setInsertionPoint(op);
 
+      // Add the operands to the worklist for visitation.
+      addToWorklist(op->getOperands());
+
       for (unsigned i = 0, e = op->getNumResults(); i != e; ++i) {
         auto *res = op->getResult(i);
         if (res->use_empty()) // ignore dead uses.
@@ -247,27 +266,24 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
       // max(x,y)) then add the original operands to the worklist so we can make
       // sure to revisit them.
       if (resultValues.empty()) {
-        // TODO: Walk the original operand list dropping them as we go.  If any
-        // of them drop to zero uses, then add them to the worklist to allow
-        // them to be deleted as dead.
+        // Add the operands back to the worklist as there may be more
+        // canonicalization opportunities now.
+        addToWorklist(originalOperands);
       } else {
         // Otherwise, the operation is simplified away completely.
         assert(resultValues.size() == op->getNumResults());
 
-        // Add all the users of the operation to the worklist so we make sure to
-        // revisit them.
-        //
-        // TODO: Add a result->getUsers() iterator.
+        // Notify that we are replacing this operation.
+        notifyRootReplaced(op);
+
+        // Replace the result values and erase the operation.
         for (unsigned i = 0, e = resultValues.size(); i != e; ++i) {
           auto *res = op->getResult(i);
-          if (res->use_empty()) // ignore dead uses.
-            continue;
-
-          for (auto &operand : op->getResult(i)->getUses())
-            addToWorklist(operand.getOwner());
-          res->replaceAllUsesWith(resultValues[i]);
+          if (!res->use_empty())
+            res->replaceAllUsesWith(resultValues[i]);
         }
 
+        notifyOperationRemoved(op);
         op->erase();
       }
       continue;

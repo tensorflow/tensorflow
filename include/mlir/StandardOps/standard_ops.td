@@ -106,8 +106,8 @@ def MulFOp : FloatArithmeticOp<"mulf"> {
 
 def MulIOp : IntArithmeticOp<"muli", [Commutative]> {
   let summary = "integer multiplication operation";
-  let hasCanonicalizer = 0b1;
   let hasConstantFolder = 0b1;
+  let hasFolder = 1;
 }
 
 def RemISOp : IntArithmeticOp<"remis"> {

@@ -664,8 +664,7 @@ public:
   Value *getFalseValue() { return getOperand(2); }
   const Value *getFalseValue() const { return getOperand(2); }
 
-  Attribute constantFold(ArrayRef<Attribute> operands,
-                         MLIRContext *context) const;
+  Value *fold();
 
 private:
   friend class Instruction;

@@ -1319,52 +1319,14 @@ Attribute MulIOp::constantFold(ArrayRef<Attribute> operands,
                                         [](APInt a, APInt b) { return a * b; });
 }
 
-namespace {
-/// muli(x, 0) -> 0
-///
-struct SimplifyMulX0 : public RewritePattern {
-  SimplifyMulX0(MLIRContext *context)
-      : RewritePattern(MulIOp::getOperationName(), 1, context) {}
-
-  PatternMatchResult match(Instruction *op) const override {
-    auto muli = op->cast<MulIOp>();
-
-    if (matchPattern(muli->getOperand(1), m_Zero()))
-      return matchSuccess();
-
-    return matchFailure();
-  }
-  void rewrite(Instruction *op, PatternRewriter &rewriter) const override {
-    auto type = op->getOperand(0)->getType();
-    auto zeroAttr = rewriter.getZeroAttr(type);
-    rewriter.replaceOpWithNewOp<ConstantOp>(op, type, zeroAttr);
-  }
-};
-
-/// muli(x, 1) -> x
-///
-struct SimplifyMulX1 : public RewritePattern {
-  SimplifyMulX1(MLIRContext *context)
-      : RewritePattern(MulIOp::getOperationName(), 1, context) {}
-
-  PatternMatchResult match(Instruction *op) const override {
-    auto muli = op->cast<MulIOp>();
-
-    if (matchPattern(muli->getOperand(1), m_One()))
-      return matchSuccess();
-
-    return matchFailure();
-  }
-  void rewrite(Instruction *op, PatternRewriter &rewriter) const override {
-    rewriter.replaceOp(op, op->getOperand(0));
-  }
-};
-} // end anonymous namespace.
-
-void MulIOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                         MLIRContext *context) {
-  results.push_back(std::make_unique<SimplifyMulX0>(context));
-  results.push_back(std::make_unique<SimplifyMulX1>(context));
+Value *MulIOp::fold() {
+  /// muli(x, 0) -> 0
+  if (matchPattern(getOperand(1), m_Zero()))
+    return getOperand(1);
+  /// muli(x, 1) -> x
+  if (matchPattern(getOperand(1), m_One()))
+    return getOperand(0);
+  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1479,23 +1441,17 @@ bool SelectOp::verify() const {
   return false;
 }
 
-Attribute SelectOp::constantFold(ArrayRef<Attribute> operands,
-                                 MLIRContext *context) const {
-  assert(operands.size() == 3 && "select takes three operands");
+Value *SelectOp::fold() {
+  auto *condition = getCondition();
 
   // select true, %0, %1 => %0
+  if (matchPattern(condition, m_One()))
+    return getTrueValue();
+
   // select false, %0, %1 => %1
-  auto cond = operands[0].dyn_cast_or_null<IntegerAttr>();
-  if (!cond)
-    return {};
-
-  if (cond.getValue().isNullValue()) {
-    return operands[2];
-  } else if (cond.getValue().isOneValue()) {
-    return operands[1];
-  }
-
-  llvm_unreachable("first argument of select must be i1");
+  if (matchPattern(condition, m_Zero()))
+    return getFalseValue();
+  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//
