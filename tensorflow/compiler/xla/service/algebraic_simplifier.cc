@@ -1090,7 +1090,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::HandleDotStrengthReduction(
   const int64 rhs_rank = rhs->shape().rank();
   const int64 lhs_rank = lhs->shape().rank();
   const auto& dnums = dot->dot_dimension_numbers();
-  if (dnums.rhs_contracting_dimensions_size() > 1) {
+  if (dnums.rhs_contracting_dimensions_size() != 1) {
     return false;
   }
   if (dot_rank > 2 && (lhs_rank != rhs_rank || lhs_rank != dot_rank)) {
@@ -1585,7 +1585,9 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
 Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(dot, m::Dot(m::Op(&lhs), m::Op(&rhs))));
-
+  if (options_.is_layout_sensitive()) {
+    return Status::OK();
+  }
   // Replace a zero element dot with a broadcast of the constant 0.
   if (ShapeUtil::IsZeroElementArray(dot->shape()) ||
       ShapeUtil::IsZeroElementArray(lhs->shape()) ||
@@ -1602,6 +1604,32 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
       dot->shape().element_type() != BF16) {
     return Status::OK();
   }
+
+  // If a dot only contains batch dimensions, then tranpose the rhs and lhs
+  // acording to the batch dimension numbers and do a simple multiply.
+  if (lhs->shape().rank() ==
+          dot->dot_dimension_numbers().lhs_batch_dimensions_size() &&
+      rhs->shape().rank() ==
+          dot->dot_dimension_numbers().rhs_batch_dimensions_size()) {
+    HloInstruction* new_rhs = rhs;
+    HloInstruction* new_lhs = lhs;
+    if (lhs->shape().rank() > 1) {
+      TF_ASSIGN_OR_RETURN(
+          new_rhs,
+          MakeTransposeHlo(
+              rhs, AsInt64Slice(
+                       dot->dot_dimension_numbers().rhs_batch_dimensions())));
+      TF_ASSIGN_OR_RETURN(
+          new_lhs,
+          MakeTransposeHlo(
+              lhs, AsInt64Slice(
+                       dot->dot_dimension_numbers().lhs_batch_dimensions())));
+    }
+    TF_ASSIGN_OR_RETURN(auto new_dot,
+                        MakeBinaryHlo(HloOpcode::kMultiply, new_lhs, new_rhs));
+    return ReplaceInstruction(dot, new_dot);
+  }
+
   if (lhs->shape().rank() > 2 || rhs->shape().rank() > 2 ||
       dot->shape().rank() > 2) {
     if (options_.enable_dot_strength_reduction() &&
@@ -1640,7 +1668,11 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   }
 
   // Simplify dot(transpose(a), transpose(b)) to transpose(dot(b,a)).
-  if (lhs->IsRank2Transpose() && rhs->IsRank2Transpose()) {
+  if (dot->dot_dimension_numbers().lhs_batch_dimensions_size() == 0 &&
+      dot->dot_dimension_numbers().lhs_contracting_dimensions_size() == 1 &&
+      dot->dot_dimension_numbers().lhs_contracting_dimensions(0) == 1 &&
+      dot->dot_dimension_numbers().rhs_contracting_dimensions(0) == 0 &&
+      lhs->IsRank2Transpose() && rhs->IsRank2Transpose()) {
     DotDimensionNumbers dot_dimension_numbers;
     dot_dimension_numbers.add_lhs_contracting_dimensions(1);
     dot_dimension_numbers.add_rhs_contracting_dimensions(0);
