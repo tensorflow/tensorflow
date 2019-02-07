@@ -598,7 +598,6 @@ class HloInstruction {
   // f_2 = f(f_1.tuple_element(0), ..., f_1.tuple_element(N), input0.value1,
   // ..., inputN.value1)
   // ...
-  // TODO(b/112040122): Add support to this in HLO passes and in backends.
   static std::unique_ptr<HloInstruction> CreateReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<HloInstruction* const> init_values,
