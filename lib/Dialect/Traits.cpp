@@ -33,7 +33,8 @@ static bool isBroadcastableType(Type type) {
   case StandardTypes::Vector:
     return true;
   case StandardTypes::RankedTensor:
-    return type.cast<RankedTensorType>().getElementType().isIntOrFloat();
+  case StandardTypes::UnrankedTensor:
+    return type.cast<TensorType>().getElementType().isIntOrFloat();
   default:
     break;
   }
@@ -41,8 +42,9 @@ static bool isBroadcastableType(Type type) {
 }
 
 /// Returns the result broadcast composition type from the two given types by
-/// following NumPy broadcast semantics. Returns null type if the two given
-/// types are not broadcast-compatible.
+/// following NumPy broadcast semantics. Returned type may have dynamic shape if
+/// either of the input types has dynamic shape. Returns null type if the two
+/// given types are not broadcast-compatible.
 Type OpTrait::util::getBroadcastedType(Type type1, Type type2) {
   // Make sure both types are able to participate in broadcasting.
   if (!isBroadcastableType(type1) || !isBroadcastableType(type2))
@@ -59,6 +61,14 @@ Type OpTrait::util::getBroadcastedType(Type type1, Type type2) {
   auto scalarType = getScalarType(type1);
   if (scalarType != getScalarType(type2))
     return {};
+
+  // If one of the types is unranked tensor, then the other type shouldn't be
+  // vector and the result should have unranked tensor type.
+  if (type1.isa<UnrankedTensorType>() || type2.isa<UnrankedTensorType>()) {
+    if (type1.isa<VectorType>() || type2.isa<VectorType>())
+      return {};
+    return UnrankedTensorType::get(scalarType);
+  }
 
   // Returns the type kind if the given type is a vector or ranked tensor type.
   // Returns llvm::None otherwise.

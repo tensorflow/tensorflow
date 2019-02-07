@@ -167,9 +167,18 @@ func @broadcast_tensor_tensor_tensor(tensor<vector<4xi32>>, tensor<vector<4xi32>
 // -----
 
 // Check unranked types
+func @broadcast_tensor_tensor_tensor(tensor<4x3x2xi32>, tensor<*xi32>) -> tensor<*xi32> {
+^bb0(%arg0: tensor<4x3x2xi32>, %arg1: tensor<*xi32>):
+  %0 = "tf.Add"(%arg0, %arg1) : (tensor<4x3x2xi32>, tensor<*xi32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+
+// -----
+
+// Check unranked operand but ranked result
 func @broadcast_tensor_tensor_tensor(tensor<4x3x2xi32>, tensor<*xi32>) -> tensor<4x3x2xi32> {
 ^bb0(%arg0: tensor<4x3x2xi32>, %arg1: tensor<*xi32>):
-  // expected-error @+1 {{operands don't have broadcast-compatible types}}
+  // expected-error @+1 {{result type is not broadcast-compatible with operand types}}
   %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function: "RELU6"} : (tensor<4x3x2xi32>, tensor<*xi32>) -> tensor<4x3x2xi32>
   return %0 : tensor<4x3x2xi32>
 }

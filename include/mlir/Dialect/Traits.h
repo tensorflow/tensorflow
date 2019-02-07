@@ -37,8 +37,9 @@ bool verifyCompatibleOperandBroadcast(const Instruction *op);
 
 namespace util {
 /// Returns the result broadcast composition type from the two given types by
-/// following NumPy broadcast semantics. Returns null type if the two given
-/// types are not broadcast-compatible.
+/// following NumPy broadcast semantics. Returned type may have dynamic shape if
+/// either of the input types has dynamic shape. Returns null type if the two
+/// given types are not broadcast-compatible.
 Type getBroadcastedType(Type type1, Type type2);
 } // namespace util
 
@@ -46,7 +47,10 @@ Type getBroadcastedType(Type type1, Type type2);
 /// compatible operand and result types. Specifically,  starting from the
 /// most varying dimension, each dimension pair of the two operands' types
 /// should either be the same or one of them is one. Also, the result type
-/// should be the same as the operand type with larger dimensions.
+/// should be the same as the operand type with larger dimensions. Shapes are
+/// checked partially if ranks or dimensions are not known. For example,
+/// an op with tensor<? x 2 x f32> and tensor <2 x f32> as operand types and
+/// tensor<3 x 2 x f32> as the result type is broadcast-compatible.
 ///
 /// Ths trait assumes the op has two operands and one result, and it asserts
 /// if the pre-condition is not satisfied.
