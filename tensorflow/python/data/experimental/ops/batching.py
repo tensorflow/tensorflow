@@ -712,18 +712,24 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, num_workers):
     self._input_dataset = input_dataset
-    output_shapes = input_dataset.output_shapes
-    if len(output_shapes) < 1:
-      raise ValueError("Input shape should have at least one dimension.")
-    if not output_shapes.dims[0].value:
-      raise ValueError("Cannot rebatch unknown batch size datasets.")
-    if output_shapes.dims[0].value % num_workers != 0:
-      raise ValueError(
-          "First dim of input shape: %d is not divisible by num_workers: %d" %
-          (output_shapes[0], num_workers))
-    output_dims = [d for d in output_shapes.dims]
-    output_dims[0] = output_dims[0] // num_workers
-    output_shapes = tensor_shape.TensorShapeV1(output_dims)
+
+    def recalculate_output_shapes(output_shapes):
+      """Recalculates the output_shapes after dividing it by num_workers."""
+      if len(output_shapes) < 1:
+        raise ValueError("Input shape should have at least one dimension.")
+      if not output_shapes.dims[0].value:
+        raise ValueError("Cannot rebatch unknown batch size datasets.")
+      if output_shapes.dims[0].value % num_workers != 0:
+        raise ValueError(
+            "First dim of input shape: %d is not divisible by num_workers: %d" %
+            (output_shapes[0], num_workers))
+      output_dims = [d for d in output_shapes.dims]
+      output_dims[0] = output_dims[0] // num_workers
+      return tensor_shape.TensorShapeV1(output_dims)
+
+    output_shapes = nest.map_structure(recalculate_output_shapes,
+                                       input_dataset.output_shapes)
+
     self._structure = structure.convert_legacy_structure(
         self._input_dataset.output_types, output_shapes,
         self._input_dataset.output_classes)
