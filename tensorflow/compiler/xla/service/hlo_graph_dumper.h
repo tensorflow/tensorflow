@@ -66,9 +66,10 @@ string DumpGraph(const HloComputation& computation, const string& label,
 //
 // The optional boundary specifies a set of boundary nodes, beyond which nodes
 // will be omitted even if they  are within the radius.
-string DumpNeighborhoodAround(const HloInstruction& node, int radius,
-			      const absl::flat_hash_set<const HloInstruction*>& boundary={},
-                              bool show_backend_config = false);
+string DumpNeighborhoodAround(
+    const HloInstruction& node, int radius,
+    const absl::flat_hash_set<const HloInstruction*>& boundary = {},
+    bool show_backend_config = false);
 
 // Dumps nodes on any of the paths from `from` to `to`.  If there are more than
 // max_nodes on all paths, restricts to the max_nodes nodes on the shortest
