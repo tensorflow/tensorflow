@@ -299,10 +299,10 @@ NamedPair = collections.namedtuple("NamedPair", ("first", "second"))
 mk_index_dict = lambda v: dict(enumerate(v))
 
 
-class WalkTest(parameterized.TestCase, test.TestCase):
+class FlattenTest(parameterized.TestCase, test.TestCase):
 
   @parameterized.parameters(lambda v: NamedPair(*v), list, tuple, mk_index_dict)
-  def test_walk(self, container_type):
+  def test_flatten(self, container_type):
     parent = SimpleModule(container_type=container_type)
     child = parent.c
 
@@ -319,6 +319,23 @@ class WalkTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(
         mod.variables,
         mod._trainable_variables + mod._non_trainable_variables + [mod._bonus])
+
+  def test_with_path(self):
+    mod = module.Module()
+    mod.w = variables.Variable(1.)
+    mod.encoder = module.Module()
+    mod.encoder.w = [({"k": mod.w}, {"k": mod.w})]
+    mod.decoder = mod.encoder
+
+    state_dict = dict(
+        mod._flatten(with_path=True, predicate=module._IS_VARIABLE))
+
+    self.assertEqual(state_dict,
+                     {("w",): mod.w,
+                      ("encoder", "w", 0, 0, "k"): mod.encoder.w[0][0]["k"],
+                      ("encoder", "w", 0, 1, "k"): mod.encoder.w[0][1]["k"],
+                      ("decoder", "w", 0, 0, "k"): mod.decoder.w[0][0]["k"],
+                      ("decoder", "w", 0, 1, "k"): mod.decoder.w[0][1]["k"]},)
 
 
 class LayerModule(module.Module):
