@@ -1,6 +1,6 @@
 path: "tensorflow.estimator.ModeKeys"
 tf_class {
-  is_instance: "<class \'tensorflow_estimator.python.estimator.mode_keys.ModeKeysV2\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.model_fn.ModeKeys\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "EVAL"
