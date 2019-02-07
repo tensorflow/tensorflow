@@ -221,8 +221,14 @@ class HloTestBase : public ::testing::Test {
       const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
-  ::testing::AssertionResult Run(const absl::string_view hlo_string)
-      TF_MUST_USE_RESULT;
+  ::testing::AssertionResult Run(const absl::string_view hlo_string,
+                                 bool run_hlo_passes = true,
+                                 ExecutionProfile* profile = nullptr,
+                                 string backend_config = "") TF_MUST_USE_RESULT;
+  ::testing::AssertionResult RunMultipleTimes(
+      const absl::string_view hlo_string, bool run_hlo_passes,
+      std::vector<ExecutionProfile>* profiles,
+      string backend_config = "") TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareFromFile(
       const string& filename, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)

@@ -187,6 +187,7 @@ class HloModule {
   std::vector<HloComputation*> MakeNonfusionComputations() const;
 
   const HloModuleConfig& config() const { return config_; }
+  void set_config(HloModuleConfig& config) { config_ = config; }
 
   // Return a string representation of the module.
   //
