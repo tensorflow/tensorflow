@@ -265,6 +265,8 @@ class HloModule {
   const HloSchedule& schedule() const { return *schedule_; }
   HloSchedule& schedule() { return *schedule_; }
 
+  Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
