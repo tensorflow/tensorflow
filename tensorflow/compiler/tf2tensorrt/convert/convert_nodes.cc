@@ -3447,14 +3447,13 @@ tensorflow::Status ConvertGather(OpConverterParams* params) {
         "Axis for GatherV2 must be a scalar, at ", node_def.name());
   }
   int trt_axis = 0;
-  TF_RETURN_IF_ERROR(ConvertAxis(
-      axis[0], inputs.at(0).GetTrtDims().nbDims, node_def.name(), &trt_axis));
+  TF_RETURN_IF_ERROR(ConvertAxis(axis[0], inputs.at(0).GetTrtDims().nbDims,
+                     node_def.name(), &trt_axis));
   if (params->validation_only) return Status::OK();
 
   nvinfer1::IGatherLayer* layer = params->converter->network()->addGather(
       *const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor()),
-      *const_cast<nvinfer1::ITensor*>(inputs.at(1).tensor()),
-      trt_axis);
+      *const_cast<nvinfer1::ITensor*>(inputs.at(1).tensor()), trt_axis);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
   return Status::OK();
