@@ -152,6 +152,7 @@ cc_library(
     srcs = [
         "activations.cc",
         "add.cc",
+        "add_n.cc",
         "arg_min_max.cc",
         "audio_spectrogram.cc",
         "basic_rnn.cc",
@@ -351,6 +352,18 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "add_n_test",
+    size = "small",
+    srcs = ["add_n_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_util",
+        "//tensorflow/lite:framework",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1205,9 +1218,10 @@ tf_cc_test(
     deps = [
         ":builtin_ops",
         ":kernel_util",
+        ":subgraph_test_util",
+        ":test_util",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
@@ -1270,5 +1284,33 @@ tf_cc_test(
         ":test_util",
         "//tensorflow/lite:framework",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "subgraph_test_util",
+    testonly = 1,
+    srcs = ["subgraph_test_util.cc"],
+    hdrs = ["subgraph_test_util.h"],
+    deps = [
+        ":builtin_ops",
+        ":kernel_util",
+        ":test_util",
+        "//tensorflow/lite:builtin_op_data",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "subgraph_test_util_test",
+    size = "small",
+    srcs = ["subgraph_test_util_test.cc"],
+    deps = [
+        ":subgraph_test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
     ],
 )

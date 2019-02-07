@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tpu/proto/tpu_embedding_configuration.pb.h"
 #include "tensorflow/contrib/tpu/utils/tpu_embedding_optimization_parameters_utils.h"
 #include "tensorflow/contrib/tpu/utils/tpu_embedding_output_layout_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -23,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 
 namespace tensorflow {
 
@@ -466,7 +466,7 @@ inputs: A TensorList of gradients with which to update embedding tables.
     configuration given to tpu.initialize_system.
 learning_rates: A TensorList of float32 scalars, one for each dynamic learning
     rate tag: see the comments in
-    //third_party/tensorflow/contrib/tpu/proto/optimization_parameters.proto.
+    //third_party/tensorflow/core/protobuf/tpu/optimization_parameters.proto.
     Multiple tables can share the same dynamic learning rate tag as specified
     in the configuration. If the learning rates for all tables are constant,
     this list should be empty.

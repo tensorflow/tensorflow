@@ -256,6 +256,7 @@ def reset_tf_configure_bazelrc():
   """Reset file that contains customized config settings."""
   open(_TF_BAZELRC, 'w').close()
 
+
 def cleanup_makefile():
   """Delete any leftover BUILD files from the Makefile build.
 
@@ -785,8 +786,7 @@ def set_gcc_host_compiler_path(environ_cp):
       environ_cp,
       var_name='GCC_HOST_COMPILER_PATH',
       var_default=default_gcc_host_compiler_path,
-      ask_for_var=
-      'Please specify which gcc should be used by nvcc as the host compiler.',
+      ask_for_var='Please specify which gcc should be used by nvcc as the host compiler.',
       check_success=os.path.exists,
       error_msg='Invalid gcc path. %s cannot be found.',
   )
@@ -1237,6 +1237,7 @@ def set_tf_nccl_install_path(environ_cp):
   environ_cp['TF_NCCL_VERSION'] = tf_nccl_version
   write_action_env_to_bazelrc('TF_NCCL_VERSION', tf_nccl_version)
 
+
 def get_native_cuda_compute_capabilities(environ_cp):
   """Get native cuda compute capabilities.
 
@@ -1513,10 +1514,6 @@ def set_windows_build_flags(environ_cp):
   # The host and target platforms are the same in Windows build. So we don't
   # have to distinct them. This avoids building the same targets twice.
   write_to_bazelrc('build --distinct_host_configuration=false')
-  # Enable short object file path to avoid long path issue on Windows.
-  # TODO(pcloudy): Remove this flag when upgrading Bazel to 0.16.0
-  # Short object file path will be enabled by default.
-  write_to_bazelrc('build --experimental_shortened_obj_file_path=true')
 
   if get_var(
       environ_cp, 'TF_OVERRIDE_EIGEN_STRONG_INLINE', 'Eigen strong inline',
@@ -1556,7 +1553,7 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  check_bazel_version('0.19.0', '0.21.0')
+  check_bazel_version('0.19.0', '0.22.0')
 
   reset_tf_configure_bazelrc()
 
@@ -1687,8 +1684,9 @@ def main():
   config_info_line('gdr', 'Build with GDR support.')
   config_info_line('verbs', 'Build with libverbs support.')
   config_info_line('ngraph', 'Build with Intel nGraph support.')
-  config_info_line('dynamic_kernels',
-                   '(Experimental) Build kernels into separate shared objects.')
+  config_info_line(
+      'dynamic_kernels',
+      '(Experimental) Build kernels into separate shared objects.')
 
   print('Preconfigured Bazel build configs to DISABLE default on features:')
   config_info_line('noaws', 'Disable AWS S3 filesystem support.')

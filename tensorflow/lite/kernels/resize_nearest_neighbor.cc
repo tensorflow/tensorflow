@@ -106,8 +106,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           GetTensorShape(size), GetTensorData<int32>(size),
           GetTensorShape(output), GetTensorData<uint8_t>(output));
     }
+  } else if (output->type == kTfLiteInt8) {
+    reference_ops::ResizeNearestNeighbor(
+        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+        GetTensorShape(size), GetTensorData<int32>(size),
+        GetTensorShape(output), GetTensorData<int8_t>(output));
   } else {
-    context->ReportError(context, "Output type is %d, requires float or uint8.",
+    context->ReportError(context,
+                         "Output type is %d, requires float, uint8 or int8.",
                          output->type);
     return kTfLiteError;
   }

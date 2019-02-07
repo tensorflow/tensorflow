@@ -47,23 +47,15 @@ bool IsAnyDiv(const NodeDef& node) {
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
-bool IsAnyMax(const NodeDef& node) {
+bool IsAnyMaxPool(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "Max" || op == "SegmentMax" || op == "UnsortedSegmentMax";
-}
-
-bool IsAnyMin(const NodeDef& node) {
-  const auto& op = node.op();
-  return op == "Min" || op == "SegmentMin" || op == "UnsortedSegmentMin";
+  return op == "MaxPool" || op == "MaxPoolV2" || op == "MaxPool3D" ||
+         op == "MaxPoolWithArgmax" || op == "FractionalMaxPool";
 }
 
 bool IsApproximateEqual(const NodeDef& node) {
   return node.op() == "ApproximateEqual";
 }
-
-bool IsArgMax(const NodeDef& node) { return node.op() == "ArgMax"; }
-
-bool IsArgMin(const NodeDef& node) { return node.op() == "ArgMin"; }
 
 bool IsAvgPoolGrad(const NodeDef& node) { return node.op() == "AvgPoolGrad"; }
 
@@ -330,6 +322,8 @@ bool IsNextIteration(const NodeDef& node) {
   return op == "NextIteration" || op == "RefNextIteration";
 }
 
+bool IsOnesLike(const NodeDef& node) { return node.op() == "OnesLike"; }
+
 bool IsPack(const NodeDef& node) { return node.op() == "Pack"; }
 
 bool IsPad(const NodeDef& node) {
@@ -549,6 +543,8 @@ bool IsWhile(const NodeDef& node) {
   const auto& op = node.op();
   return op == "While" || op == "StatelessWhile";
 }
+
+bool IsZerosLike(const NodeDef& node) { return node.op() == "ZerosLike"; }
 
 bool IsZeta(const NodeDef& node) { return node.op() == "Zeta"; }
 

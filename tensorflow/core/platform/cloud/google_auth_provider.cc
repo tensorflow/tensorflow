@@ -44,6 +44,10 @@ constexpr char kGoogleAuthTokenForTesting[] = "GOOGLE_AUTH_TOKEN_FOR_TESTING";
 // The environment variable which can override '~/.config/gcloud' if set.
 constexpr char kCloudSdkConfig[] = "CLOUDSDK_CONFIG";
 
+// The environment variable used to skip attempting to fetch GCE credentials
+// if set.
+constexpr char kNoGceCheck[] = "NO_GCE_CHECK";
+
 // The default path to the gcloud config folder, relative to the home folder.
 constexpr char kGCloudConfigFolder[] = ".config/gcloud/";
 
@@ -146,10 +150,23 @@ Status GoogleAuthProvider::GetToken(string* t) {
   }
 
   auto token_from_files_status = GetTokenFromFiles();
-  auto token_from_gce_status =
-      token_from_files_status.ok() ? Status::OK() : GetTokenFromGce();
+  if (token_from_files_status.ok()) {
+    *t = current_token_;
+    return Status::OK();
+  }
 
-  if (token_from_files_status.ok() || token_from_gce_status.ok()) {
+  bool skip_gce_check = std::getenv(kNoGceCheck) != nullptr;
+  Status token_from_gce_status;
+  if (skip_gce_check) {
+    token_from_gce_status =
+        Status(error::CANCELLED,
+               strings::StrCat("GCE check skipped due to presence of $",
+                               kNoGceCheck, " environment variable."));
+  } else {
+    token_from_gce_status = GetTokenFromGce();
+  }
+
+  if (token_from_gce_status.ok()) {
     *t = current_token_;
     return Status::OK();
   }
@@ -165,8 +182,13 @@ Status GoogleAuthProvider::GetToken(string* t) {
   // so return an empty token instead of failing.
   *t = "";
 
-  // From now on, always return the empty token.
-  expiration_timestamp_sec_ = UINT64_MAX;
+  // We only want to keep returning our empty token if we've tried and failed
+  // the (potentially slow) task of detecting GCE.
+  if (skip_gce_check) {
+    expiration_timestamp_sec_ = 0;
+  } else {
+    expiration_timestamp_sec_ = UINT64_MAX;
+  }
   current_token_ = "";
 
   return Status::OK();

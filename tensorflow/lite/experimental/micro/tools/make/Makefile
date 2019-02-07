@@ -30,13 +30,22 @@ TARGET_ARCH := $(HOST_ARCH)
 # STM32F746NG board, using the CMSIS library's implementations where possible.
 ALL_TAGS := $(TAGS) $(TARGET)
 
+# This is obviously horrible.  We need to generate these 3 versions of the
+# include directories from one source.
 INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/flatbuffers/include
 
-# These are the include paths added to any generated project file.
+# Same list of paths, but now relative to the generated project files.
+GENERATED_PROJECT_INCLUDES := \
+-I. \
+-I./third_party/gemmlowp \
+-I./third_party/flatbuffers/include
+
+# Same list of paths, but now in the format the generate_keil_project.py
+# script expects them.
 PROJECT_INCLUDES := \
 . \
 third_party/gemmlowp \

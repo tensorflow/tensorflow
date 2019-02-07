@@ -23,6 +23,7 @@ from __future__ import print_function
 
 import re
 import textwrap
+import threading
 
 import gast
 import six
@@ -30,10 +31,14 @@ import six
 from tensorflow.python.util import tf_inspect
 
 
+_parse_lock = threading.Lock()  # Prevents linecache concurrency errors.
+
+
 def parse_entity(entity):
   """Returns the AST of given entity."""
   try:
-    source = tf_inspect.getsource(entity)
+    with _parse_lock:
+      source = tf_inspect.getsource_no_unwrap(entity)
   except (IOError, OSError) as e:
     raise ValueError(
         'Unable to locate the source code of {}. Note that functions defined'

@@ -838,20 +838,14 @@ bool OpDefEqual(const OpDef& o1, const OpDef& o2) {
   OpDef o2_copy = o2;
   o1_copy.clear_attr();
   o2_copy.clear_attr();
-  string s1, s2;
-  SerializeToStringDeterministic(o1_copy, &s1);
-  SerializeToStringDeterministic(o2_copy, &s2);
-  if (s1 != s2) return false;
-  return true;
+  return AreSerializedProtosEqual(o1_copy, o2_copy);
 }
 
 uint64 OpDefHash(const OpDef& o) {
   uint64 h = RepeatedAttrDefHash(o.attr());
   OpDef o_copy = o;
   o_copy.clear_attr();
-  string s;
-  SerializeToStringDeterministic(o_copy, &s);
-  return Hash64(s.data(), s.size(), h);
+  return DeterministicProtoHash64(o_copy, h);
 }
 
 }  // namespace tensorflow

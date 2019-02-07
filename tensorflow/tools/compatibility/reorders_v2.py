@@ -72,6 +72,7 @@ reorders = {
     'tf.nn.fractional_avg_pool': ['value', 'pooling_ratio', 'pseudo_random', 'overlapping', 'deterministic', 'seed', 'seed2', 'name'],
     'tf.nn.fractional_max_pool': ['value', 'pooling_ratio', 'pseudo_random', 'overlapping', 'deterministic', 'seed', 'seed2', 'name'],
     'tf.nn.in_top_k': ['predictions', 'targets', 'k', 'name'],
+    'tf.nn.max_pool': ['value', 'ksize', 'strides', 'padding', 'data_format', 'name', 'input'],
     'tf.nn.moments': ['x', 'axes', 'shift', 'name', 'keep_dims', 'keepdims'],
     'tf.nn.pool': ['input', 'window_shape', 'pooling_type', 'padding', 'dilation_rate', 'strides', 'name', 'data_format', 'dilations'],
     'tf.nn.separable_conv2d': ['input', 'depthwise_filter', 'pointwise_filter', 'strides', 'padding', 'rate', 'name', 'data_format', 'dilations'],

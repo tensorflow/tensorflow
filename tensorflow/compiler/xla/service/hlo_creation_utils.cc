@@ -268,6 +268,41 @@ StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
       select_shape, HloOpcode::kSelect, pred, on_true, on_false));
 }
 
+StatusOr<HloInstruction*> MakeSortHlo(
+    const Shape& sort_shape, absl::Span<HloInstruction* const> operands,
+    int64 dimension_to_sort, HloComputation::Builder* builder,
+    HloModule* module) {
+  CHECK(!operands.empty()) << "Sort Hlo requires at least one operand.";
+  HloComputation* compare_computation;
+  {
+    auto b = HloComputation::Builder("Sort.Compare");
+    Shape key_scalar_shape =
+        ShapeUtil::MakeShape(operands[0]->shape().element_type(), {});
+    auto lhs = b.AddInstruction(
+        HloInstruction::CreateParameter(0, key_scalar_shape, "p.0.lhs"));
+    auto rhs = b.AddInstruction(
+        HloInstruction::CreateParameter(1, key_scalar_shape, "p.0.rhs"));
+    int parameter_count = 2;
+    for (const auto* operand : operands.subspan(1)) {
+      Shape scalar_shape =
+          ShapeUtil::MakeShape(operand->shape().element_type(), {});
+      b.AddInstruction(HloInstruction::CreateParameter(
+          parameter_count, scalar_shape,
+          StrCat("p.", parameter_count / 2, ".lhs")));
+      ++parameter_count;
+      b.AddInstruction(HloInstruction::CreateParameter(
+          parameter_count, scalar_shape,
+          StrCat("p.", parameter_count / 2, ".rhs")));
+      ++parameter_count;
+    }
+    b.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, lhs, rhs));
+    compare_computation = module->AddEmbeddedComputation(b.Build());
+  }
+  return builder->AddInstruction(HloInstruction::CreateSort(
+      sort_shape, dimension_to_sort, operands, compare_computation));
+}
+
 StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand, int64 n) {
   CHECK_GT(n, 0);
 

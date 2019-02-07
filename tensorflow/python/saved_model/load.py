@@ -36,6 +36,7 @@ from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training.checkpointable import base
+from tensorflow.python.training.checkpointable import graph_view
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
 from tensorflow.python.util import compat
@@ -133,7 +134,7 @@ class _Loader(object):
     variables_path = saved_model_utils.get_variables_path(self._export_dir)
     # TODO(andresp): Clean use of private methods of CheckpointableSaver.
     # pylint: disable=protected-access
-    saver = util.CheckpointableSaver(self.get(0))
+    saver = util.CheckpointableSaver(graph_view.ObjectGraphView(self.get(0)))
     saver._file_prefix_placeholder = constant_op.constant(variables_path)
     load_status = saver.restore(variables_path)
     load_status.assert_existing_objects_matched()
@@ -147,8 +148,8 @@ class _Loader(object):
     # they get initialized properly when using common practices (e.g. the ones
     # used by ManagedSession) without further user action.
     for object_id, obj in dict(checkpoint.object_by_proto_id).items():
-      position = base._CheckpointPosition(checkpoint=checkpoint,
-                                          proto_id=object_id)
+      position = base.CheckpointPosition(checkpoint=checkpoint,
+                                         proto_id=object_id)
       restore_ops = position.restore_ops()
       if restore_ops:
         if resource_variable_ops.is_resource_variable(obj):

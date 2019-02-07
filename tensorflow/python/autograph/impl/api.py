@@ -18,7 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import copy
 import functools
+import pdb
 import sys
 
 from enum import Enum
@@ -35,9 +38,9 @@ from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.autograph.utils import ag_logging as logging
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -161,7 +164,9 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
 
 def converted_call(f, owner, options, *args, **kwargs):
   """Compiles a function call inline. For internal use only."""
-  logging.vlog(logging.DEBUG, 'Converted call: %s; owner: %s', f, owner)
+  logging.log(1,
+              'Converted call: %s; owner: %s\n    args: %s\n    kwargs: %s\n',
+              f, owner, args, kwargs)
 
   if owner is not None:
     if not isinstance(f, str):
@@ -180,14 +185,25 @@ def converted_call(f, owner, options, *args, **kwargs):
   if inspect_utils.isbuiltin(f):
     return py_builtins.overload_of(f)(*args, **kwargs)
 
-  # Don't convert wrapt-decorated functions/methods.
-  # TODO(b/122265385): Fully support wrapt
+  # TODO(b/122265385): Remove this bypass.
   if ('wrapt' in sys.modules and
+      hasattr(sys.modules['wrapt'], 'FunctionWrapper') and
       isinstance(f, sys.modules['wrapt'].FunctionWrapper)):
+    logging.warn(
+        'Entity {} appears to be decorated by wrapt, which is not yet supported'
+        ' by AutoGraph. The function will be called without transformation.'
+        ' You may however apply AutoGraph before the decorator.'.format(f), 1)
+    logging.log(2, 'Permanently whitelisted: %s: wrapt decorated', f)
+    return f(*args, **kwargs)
+
+  # Other built-in modules are permanently whitelisted.
+  # TODO(mdan): Figure out how to do this consistently for all stdlib modules.
+  if (f in collections.__dict__.values() or f in pdb.__dict__.values() or
+      f in copy.__dict__.values()):
+    logging.log(2, 'Permanently whitelisted: %s: part of builtin module', f)
     return f(*args, **kwargs)
 
   # TODO(mdan): This needs cleanup.
-  # In particular, we may want to avoid renaming functions altogether.
   if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
 
     # TODO(mdan): This may be inconsistent in certain situations.
@@ -213,91 +229,118 @@ def converted_call(f, owner, options, *args, **kwargs):
   if not options.internal_convert_user_code:
     return f(*args, **kwargs)
 
-  # Unwrap functools.partial objects
-  # TODO(mdan): Consider sharing unwrapping logic with tf_inspect.
-  while isinstance(f, functools.partial):
-    args = f.args + args
-    new_kwargs = {}
-    if f.keywords is not None:
-      new_kwargs.update(f.keywords)
-    new_kwargs.update(kwargs)
-    kwargs = new_kwargs
-    f = f.func
+  # TODO(mdan): Move this entire block inside to_graph.
+  try:  # Begin of transformation error guards
 
-  if tf_inspect.isfunction(f) or tf_inspect.ismethod(f):
-    # Regular functions
-    target_entity = f
-    arg_map_target = f
-    f_self = inspect_utils.getmethodself(f)
+    # Unwrap functools.partial objects
+    # TODO(mdan): Consider sharing unwrapping logic with tf_inspect.
+    while isinstance(f, functools.partial):
+      args = f.args + args
+      new_kwargs = {}
+      if f.keywords is not None:
+        new_kwargs.update(f.keywords)
+      new_kwargs.update(kwargs)
+      kwargs = new_kwargs
+      f = f.func
 
-    # TODO(b/119246461): This may be more elegantly handled using __get__?
-    if f_self is not None:
-      # If this is a method call, it may or may not include self.
-      #
-      # Example when self is included:
-      #   converted_call(to_graph(foo.bar), foo)
-      #
-      # Example when self is not included:
-      #   super(...).foo(args)
-      #
-      if owner is not None and (not args or args[0] is not owner):
-        effective_args = (owner,) + args
-      else:
-        # When the owner is not specified, use the result of
-        # inspect_utils.getmethodclass.
-        # TODO(b/119246461): Make sure an owner is always specified.
-        if not args or args[0] is not f_self:
-          effective_args = (f_self,) + args
+    if tf_inspect.isfunction(f) or tf_inspect.ismethod(f):
+      # Regular functions
+      target_entity = f
+      arg_map_target = f
+      f_self = inspect_utils.getmethodself(f)
+
+      # TODO(b/119246461): This may be more elegantly handled using __get__?
+      if f_self is not None:
+        # If this is a method call, it may or may not include self.
+        #
+        # Example when self is included:
+        #   converted_call(to_graph(foo.bar), foo)
+        #
+        # Example when self is not included:
+        #   super(...).foo(args)
+        #
+        if owner is not None and (not args or args[0] is not owner):
+          effective_args = (owner,) + args
         else:
-          effective_args = (f_self,) + args[1:]
-      partial_types = (f_self,)
-    else:
+          # When the owner is not specified, use the result of
+          # inspect_utils.getmethodclass.
+          # TODO(b/119246461): Make sure an owner is always specified.
+          if not args or args[0] is not f_self:
+            effective_args = (f_self,) + args
+          else:
+            effective_args = (f_self,) + args[1:]
+        partial_types = (f_self,)
+      else:
+        effective_args = args
+        partial_types = ()
+
+    elif tf_inspect.isclass(f):
+      # Constructors
+      target_entity = f
+      arg_map_target = f.__init__
       effective_args = args
       partial_types = ()
 
-  elif tf_inspect.isclass(f):
-    # Constructors
-    target_entity = f
-    arg_map_target = f.__init__
-    effective_args = args
-    partial_types = ()
+    elif hasattr(f, '__call__') and hasattr(f, '__class__'):
+      # Callable objects
+      target_entity = f.__call__
+      arg_map_target = f.__call__
+      effective_args = (f,) + args
+      partial_types = (f.__class__,)
 
-  elif hasattr(f, '__call__') and hasattr(f, '__class__'):
-    # Callable objects
-    target_entity = f.__call__
-    arg_map_target = f.__call__
-    effective_args = (f,) + args
-    partial_types = (f.__class__,)
+    else:
+      raise NotImplementedError('unknown callable type "%s"' % type(f))
 
-  else:
-    raise NotImplementedError('unknown callable type "%s"' % type(f))
+    arg_values = tf_inspect.getcallargs(arg_map_target, *args, **kwargs)
+    arg_types = {}
+    for name, arg in arg_values.items():
+      arg_class = arg.__class__
+      arg_types[name] = (arg_class.__name__, arg_class)
 
-  arg_values = tf_inspect.getcallargs(arg_map_target, *args, **kwargs)
-  arg_types = {}
-  for name, arg in arg_values.items():
-    arg_class = arg.__class__
-    arg_types[name] = (arg_class.__name__, arg_class)
+    # When called from within a decorator, this is the only indication that
+    # the function is a method - it appears that the decorator is applied
+    # before the method is bound.
+    if not partial_types:
+      if 'self' in arg_values:
+        if tf_inspect.isclass(arg_values['self'].__class__):
+          partial_types = (arg_values['self'].__class__,)
+      elif 'cls' in arg_values:
+        if tf_inspect.isclass(arg_values['cls']):
+          partial_types = (arg_values['cls'],)
 
-  # When called from within a decorator, this is the only indication that
-  # the function is a method - it appears that the decorator is applied
-  # before the method is bound.
-  if not partial_types:
-    if 'self' in arg_values:
-      if tf_inspect.isclass(arg_values['self'].__class__):
-        partial_types = (arg_values['self'].__class__,)
-    elif 'cls' in arg_values:
-      if tf_inspect.isclass(arg_values['cls']):
-        partial_types = (arg_values['cls'],)
+    logging.log(3, 'Partial types in conversion of %s: %s', target_entity,
+                partial_types)
 
-  converted_f = to_graph(
-      target_entity,
-      recursive=options.recursive,
-      arg_values=arg_values,
-      arg_types=arg_types,
-      experimental_optional_features=options.optional_features,
-      experimental_strip_decorators=options.strip_decorators,
-      experimental_verbose=options.verbose,
-      experimental_partial_types=partial_types)
+    converted_f = to_graph(
+        target_entity,
+        recursive=options.recursive,
+        arg_values=arg_values,
+        arg_types=arg_types,
+        experimental_optional_features=options.optional_features,
+        experimental_strip_decorators=options.strip_decorators,
+        experimental_verbose=options.verbose,
+        experimental_partial_types=partial_types)
+
+    if logging.has_verbosity(2):
+      logging.log(2, 'Defaults of %s : %s', converted_f,
+                  converted_f.__defaults__)
+      callargs = tf_inspect.getcallargs(converted_f, *effective_args, **kwargs)
+      formatted_callargs = '\n'.join(
+          '    {}: {}'.format(k, v) for k, v in callargs.items())
+      logging.log(2, 'Calling %s with\n%s\n', converted_f, formatted_callargs)
+
+  # TODO(mdan): Reduce this list.
+  except (errors.AutoGraphError, AssertionError, AttributeError, IndexError,
+          KeyError, NameError, NotImplementedError, SyntaxError, TypeError,
+          ValueError, IOError) as e:
+    logging.log(1, 'Error transforming entity %s', target_entity, exc_info=True)
+    logging.warn(
+        'Entity %s could not be transformed and will be staged without change.'
+        ' Error details can be found in the logs when running with the env'
+        ' variable AUTOGRAPH_VERBOSITY=5. Please report this to the AutoGraph'
+        ' team. Cause: %s', target_entity, e)
+
+    return f(*args, **kwargs)
 
   result = converted_f(*effective_args, **kwargs)
 
@@ -442,8 +485,15 @@ def to_graph(entity,
         compiled_module.__dict__[key] = val
     compiled = getattr(compiled_module, name)
 
-    if tf_inspect.isfunction(entity):
+    if hasattr(entity, '__defaults__'):
+      logging.log(3, 'Default args mapping: %s has: %s', entity,
+                  entity.__defaults__)
       compiled.__defaults__ = entity.__defaults__
+    else:
+      logging.log(3, 'Default args mapping: %s has no __defaults__', entity)
+
+    logging.log(3, 'Namespace of %s includes: %s', compiled,
+                compiled_module.__dict__.keys())
 
     if hasattr(compiled, '__globals__'):
       # Remove self to avoid circular references. This will probably only work

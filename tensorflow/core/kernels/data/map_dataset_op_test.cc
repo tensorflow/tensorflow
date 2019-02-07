@@ -244,10 +244,11 @@ TEST_F(MapDatasetOpTest, DatasetOutputShapes) {
       CreateDataset(map_kernel.get(), map_context.get(), &map_dataset));
   core::ScopedUnref scored_unref_map_dataset(map_dataset);
 
-  std::vector<PartialTensorShape> expected_shapes({{}});
+  std::vector<PartialTensorShape> expected_shapes({PartialTensorShape({})});
   EXPECT_EQ(map_dataset->output_shapes().size(), expected_shapes.size());
   for (int i = 0; i < map_dataset->output_shapes().size(); ++i) {
-    map_dataset->output_shapes()[i].IsIdenticalTo(expected_shapes[i]);
+    EXPECT_TRUE(
+        map_dataset->output_shapes()[i].IsIdenticalTo(expected_shapes[i]));
   }
 }
 
@@ -398,10 +399,10 @@ TEST_F(MapDatasetOpTest, IteratorOutputShapes) {
   TF_ASSERT_OK(
       map_dataset->MakeIterator(iterator_context.get(), "Iterator", &iterator));
 
-  std::vector<PartialTensorShape> expected_shapes({{}});
+  std::vector<PartialTensorShape> expected_shapes({PartialTensorShape({})});
   EXPECT_EQ(iterator->output_shapes().size(), expected_shapes.size());
   for (int i = 0; i < map_dataset->output_shapes().size(); ++i) {
-    iterator->output_shapes()[i].IsIdenticalTo(expected_shapes[i]);
+    EXPECT_TRUE(iterator->output_shapes()[i].IsIdenticalTo(expected_shapes[i]));
   }
 }
 

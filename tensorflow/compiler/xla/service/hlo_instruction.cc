@@ -203,9 +203,14 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "Sort instruction should have 1 dimension";
       auto sort_operands = all_operands();
       HloInstruction* keys = sort_operands[0];
-      instruction = CreateSort(
-          shape, proto.dimensions(0), keys,
-          absl::Span<HloInstruction* const>(sort_operands).subspan(1));
+      if (proto.called_computation_ids_size() == 1) {
+        instruction = CreateSort(shape, proto.dimensions(0), all_operands(),
+                                 computations(0));
+      } else {
+        instruction = CreateSort(
+            shape, proto.dimensions(0), keys,
+            absl::Span<HloInstruction* const>(sort_operands).subspan(1));
+      }
       break;
     }
     case HloOpcode::kTranspose:
@@ -1158,6 +1163,13 @@ HloInstruction::CreateBroadcastSequence(
   return absl::make_unique<HloSortInstruction>(shape, dimension, keys, values);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSort(
+    const Shape& shape, int64 dimension,
+    absl::Span<HloInstruction* const> operands, HloComputation* compare) {
+  return absl::make_unique<HloSortInstruction>(shape, dimension, operands,
+                                               compare);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
     const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root) {
   return absl::make_unique<HloFusionInstruction>(shape, fusion_kind,
@@ -1952,6 +1964,7 @@ HloComputation* HloInstruction::to_apply() const {
     case HloOpcode::kReduce:
     case HloOpcode::kAllReduce:
     case HloOpcode::kScatter:
+    case HloOpcode::kSort:
       CHECK_EQ(called_computations_.size(), 1);
       return called_computations_[0];
     default:
@@ -1971,6 +1984,7 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
     case HloOpcode::kReduce:
     case HloOpcode::kAllReduce:
     case HloOpcode::kScatter:
+    case HloOpcode::kSort:
       CHECK_EQ(called_computations_.size(), 1);
       called_computations_[0] = computation;
       break;
@@ -2243,9 +2257,14 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                opcode() == HloOpcode::kReduceWindow ||
                opcode() == HloOpcode::kReduce ||
                opcode() == HloOpcode::kAllReduce ||
-               opcode() == HloOpcode::kScatter) {
-      extra.push_back(
-          StrCat("to_apply=", PrintName(to_apply()->name(), options)));
+               opcode() == HloOpcode::kScatter ||
+               opcode() == HloOpcode::kSort) {
+      // TODO(b/122298745): Remove this check when Sort has a required
+      // sub-computation.
+      if (!called_computations().empty()) {
+        extra.push_back(
+            StrCat("to_apply=", PrintName(to_apply()->name(), options)));
+      }
     } else if (!called_computations().empty()) {
       extra.push_back(StrCat(
           "calls=",
@@ -2280,8 +2299,13 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
       case HloOpcode::kReduce:
       case HloOpcode::kAllReduce:
       case HloOpcode::kScatter:
-        extra.push_back(
-            StrCat("to_apply=\n", to_apply()->ToString(new_options)));
+      case HloOpcode::kSort:
+        // TODO(b/122298745): Remove this check once sort has a required
+        // sub-computation.
+        if (to_apply() != nullptr) {
+          extra.push_back(
+              StrCat("to_apply=\n", to_apply()->ToString(new_options)));
+        }
         break;
       default:
         if (!called_computations().empty()) {

@@ -151,12 +151,6 @@ class VariableTrackingTest(test.TestCase):
     self.assertEqual(m.child.variables, (m.child.w, m.child.child.w))
     self.assertEqual(m.child.child.variables, (m.child.child.w,))
 
-  def test_owned_variables(self):
-    m = RecursiveModule(3)
-    self.assertEqual(m.owned_variables, (m.w,))
-    self.assertEqual(m.child.owned_variables, (m.child.w,))
-    self.assertEqual(m.child.child.owned_variables, (m.child.child.w,))
-
   def test_trainable_variables(self):
     m = RecursiveModule(3)
     self.assertEqual(m.trainable_variables,
@@ -171,27 +165,8 @@ class VariableTrackingTest(test.TestCase):
     self.assertEqual(len(m.child.trainable_variables), 0)
     self.assertEqual(len(m.child.child.trainable_variables), 0)
 
-  def test_owned_trainable_variables(self):
-    m = RecursiveModule(3)
-    self.assertEqual(m.owned_trainable_variables, (m.w,))
-    self.assertEqual(m.child.owned_trainable_variables, (m.child.w,))
-    self.assertEqual(m.child.child.owned_trainable_variables,
-                     (m.child.child.w,))
-
-  def test_owned_trainable_variables_ignores_non_trainable(self):
-    m = RecursiveModule(3, trainable=False)
-    self.assertEqual(len(m.owned_trainable_variables), 0)
-    self.assertEqual(len(m.child.owned_trainable_variables), 0)
-    self.assertEqual(len(m.child.child.owned_trainable_variables), 0)
-
 
 class ModuleTrackingTest(test.TestCase):
-
-  def test_owned_submodules(self):
-    m = RecursiveModule(3)
-    self.assertEqual(list(m.owned_submodules), [m.child])
-    self.assertEqual(list(m.child.owned_submodules), [m.child.child])
-    self.assertEqual(list(m.child.child.owned_submodules), [])
 
   def test_submodules(self):
     m = RecursiveModule(3)
@@ -332,12 +307,42 @@ class WalkTest(parameterized.TestCase, test.TestCase):
     child = parent.c
 
     self.assertEqual(
-        list(module.walk(parent, predicate=IS_MEMBER)),
+        list(parent._flatten(recursive=False, predicate=IS_MEMBER)),
         [parent.a[0], parent.a[1], parent.z])
 
     self.assertEqual(
-        list(module.walk(parent, recurse_if=IS_MODULE, predicate=IS_MEMBER)),
+        list(parent._flatten(predicate=IS_MEMBER)),
         [parent.a[0], parent.a[1], parent.z, child.a[0], child.a[1], child.z])
+
+  def test_attribute_traversal_key(self):
+    mod = LayerModule()
+    self.assertEqual(
+        mod.variables,
+        mod._trainable_variables + mod._non_trainable_variables + [mod._bonus])
+
+
+class LayerModule(module.Module):
+
+  def __init__(self):
+    super(LayerModule, self).__init__()
+    self._trainable_variables = [
+        variables.Variable(1., name="a"),
+        variables.Variable(2., name="b"),
+    ]
+    self._non_trainable_variables = [
+        variables.Variable(3., name="c"),
+        variables.Variable(4., name="d"),
+    ]
+    self._bonus = variables.Variable(5., name="e")
+
+  @property
+  def variables(self):
+    def key_function(name):
+      indexes = {"_trainable_variables": 0, "_non_trainable_variables": 1}
+      return indexes.get(name, 2), name
+
+    return list(self._flatten(predicate=module._IS_VARIABLE,
+                              attribute_traversal_key=key_function))
 
 
 class MemberType(object):

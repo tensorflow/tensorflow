@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
+#include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
+class GPUKernelTracker;
 
 class BaseGPUDevice : public LocalDevice {
  public:
@@ -114,6 +116,17 @@ class BaseGPUDevice : public LocalDevice {
     return scoped_allocator_mgr_.get();
   }
 
+  // The following two functions always return 0 unless one of the
+  // related experimental config options has been specified.
+
+  // If returned value is > 0 then GPU Memory chunks freed before this count
+  // are guaranteed not to be in use by any kernel pending on this device.
+  uint64 SafeAllocFrontier() override;
+
+  // Returns the number of kernels that have been queued for execution on
+  // the compute stream and are not yet known to have completed.
+  int PendingKernels();
+
  protected:
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
@@ -141,6 +154,9 @@ class BaseGPUDevice : public LocalDevice {
   const int32 max_streams_;
   std::unique_ptr<EventMgr> em_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
+  std::unique_ptr<GPUKernelTracker> kernel_tracker_;
+  int pending_cap_ = 0;
+  bool timestamped_allocator_ = false;
 
   // Initialize scractch buffers used by Eigen.
   Status InitScratchBuffers();
@@ -161,6 +177,75 @@ class BaseGPUDevice : public LocalDevice {
   Status MaybeCopyTensorToGPU(const AllocatorAttributes& alloc_attrs,
                               const Tensor& from, Tensor* to,
                               StatusCallback done);
+};
+
+// A per-compute-stream utility that keeps track of kernels that have been
+// queued for execution but may not yet have terminated, and also the queued
+// time of the most recently terminated kernel.
+class GPUKernelTracker {
+ public:
+  explicit GPUKernelTracker(Env* env,
+                            std::unique_ptr<SharedCounter> timing_counter)
+      : env_(env),
+        timing_counter_(std::move(timing_counter)),
+        pending_kernels_(64) {}
+
+  // Record that a GPU kernel has just been enqueued on the compute stream.
+  // Inserts a new timing counter value in a new PendingKernel record appended
+  // to the end of the ring buffer then returns that same count.
+  uint64 RecordQueued();
+
+  // Takes a count value returned by RecordQueued and finds the corresponding
+  // PendingKernel record in the ring buffer.  Marks the kernel as completed and
+  // advances the completion frontier accordingly.
+  void RecordTerminated(uint64 at_count);
+
+  // Returns the largest timing count such that all kernels queued no
+  // later than that count are known to have terminated.
+  uint64 LastTerminatedCount();
+
+  // Returns the number of kernels enqueued that are not yet known to
+  // have terminated.
+  int NumPending() {
+    mutex_lock l(mu_);
+    return num_pending_;
+  }
+
+  // Yield current thread until number of pending kernels no longer
+  // exceeds the cap.
+  void PauseWhilePendingExceeds(int cap) {
+    mutex_lock l(mu_);
+    while (num_pending_ > cap) {
+      pending_decreased_.wait(l);
+    }
+  }
+
+ private:
+  Env* env_;
+  std::unique_ptr<SharedCounter> timing_counter_;
+
+  // Records when a kernel was queued for execution.  Kernel launches are
+  // identified by a unique count value from a per-GPU device timing counter.
+  struct PendingKernel {
+    uint64 queued_count;
+    bool terminated;
+    PendingKernel(const PendingKernel& pk)
+        : queued_count(pk.queued_count), terminated(pk.terminated) {}
+    PendingKernel() : queued_count(0), terminated(false) {}
+  };
+  mutex mu_;
+  // Ring buffer of PendingKernel records.
+  std::vector<PendingKernel> pending_kernels_ GUARDED_BY(mu_);
+  // Next unused slot in pending_kernels_.
+  int first_available_ GUARDED_BY(mu_) = 0;
+  // Last completed PendingKernel such that all prior PendingKernels are
+  // also completed.  With out-of-order completion there may be a mixture
+  // of completed and uncompleted entries between last_completed_ and
+  // first_available_, hence num_pending_ is not guaranteed equal to
+  // their differerence.
+  int last_completed_ GUARDED_BY(mu_) = -1;
+  int num_pending_ GUARDED_BY(mu_) = 0;
+  condition_variable pending_decreased_ GUARDED_BY(mu_);
 };
 
 class BaseGPUDeviceFactory : public DeviceFactory {

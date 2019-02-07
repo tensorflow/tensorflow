@@ -13,7 +13,6 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/python/interpreter_wrapper:tensorflow_wrap_interpreter_wrapper",
-        "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
 )

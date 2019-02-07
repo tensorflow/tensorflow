@@ -144,6 +144,17 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "shard_dataset_op",
+    srcs = ["shard_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "window_dataset_op",
     srcs = ["window_dataset_op.cc"],
     deps = [
@@ -553,6 +564,7 @@ cc_library(
     srcs = ["graph_rewrite_dataset.cc"],
     hdrs = ["graph_rewrite_dataset.h"],
     deps = [
+        ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -633,6 +645,7 @@ tf_kernel_library(
         ":range_dataset_op",
         ":reader_dataset_ops",
         ":repeat_dataset_op",
+        ":shard_dataset_op",
         ":shuffle_dataset_op",
         ":skip_dataset_op",
         ":sparse_tensor_slice_dataset_op",

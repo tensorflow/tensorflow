@@ -46,6 +46,10 @@ struct AllocationAttributes {
   // which Op is performing the allocation, and sets this flag to
   // true.
   bool allocation_will_be_logged = false;
+  // EXPERIMENTAL: If provided, then evaluates to a timing count such that only
+  // a memory chunk whose last-freed count is at this value or earlier may be
+  // returned.
+  std::function<uint64()> freed_by_func = nullptr;
 };
 
 // Runtime statistics collected by an allocator.

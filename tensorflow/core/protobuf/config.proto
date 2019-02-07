@@ -156,6 +156,16 @@ message GPUOptions {
     // CollectiveReduce, and serves as an override to automatic ring order
     // generation in OrderTaskDeviceMap() during CollectiveParam resolution.
     string collective_ring_order = 4;
+
+    // If true then extra work is done by GPUDevice and GPUBFCAllocator to
+    // keep track of when GPU memory is freed and when kernels actually
+    // complete so that we can know when a nominally free memory chunk
+    // is really not subject to pending use.
+    bool timestamped_allocator = 5;
+
+    // If > 0 limit the number of pending kernels on any compute
+    // stream to this number.
+    int32 pending_cap = 6;
   }
 
   // Everything inside experimental is subject to change and is not subject
@@ -429,6 +439,10 @@ message ConfigProto {
     // If true, make collective op execution order sequential and deterministic
     // for potentially concurrent collective instances.
     bool collective_deterministic_sequential_execution = 6;
+
+    // If true, use NCCL for CollectiveOps.  This feature is highly
+    // experimental.
+    bool collective_nccl = 7;
   };
 
   Experimental experimental = 16;

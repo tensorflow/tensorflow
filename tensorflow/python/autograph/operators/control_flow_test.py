@@ -65,30 +65,41 @@ class WhileLoopTest(test.TestCase):
   def test_tensor(self):
     n = constant_op.constant(5)
     results = control_flow.while_stmt(
-        test=lambda i, sum: i < n,
-        body=lambda i, sum: (i + 1, sum + i,),
+        test=lambda i, s: i < n,
+        body=lambda i, s: (i + 1, s + i,),
         init_state=(0, 0),
         extra_deps=(n,))
-    with self.cached_session():
-      self.assertEqual((5, 10), self.evaluate(results))
+    self.assertEqual((5, 10), self.evaluate(results))
 
   @test_util.run_deprecated_v1
-  def test_tensor_dict_state(self):
+  def test_python_with_tensor_state(self):
     n = 5
-    init_state = {'i': constant_op.constant(0), 'sum': constant_op.constant(0)}
     results = control_flow.while_stmt(
-        test=lambda s: s['i'] < n,
-        body=lambda s: ({'i': s['i'] + 1, 'sum': s['sum'] + s['i']},),
-        init_state=(init_state,),
+        test=lambda i, s: i < n,
+        body=lambda i, s: (i + 1, s + i),
+        init_state=(0, constant_op.constant(0)),
         extra_deps=())
-    with self.cached_session():
-      self.assertEqual(({'i': 5, 'sum': 10},), self.evaluate(results))
+    result_i, result_s = results
+    self.assertEqual(5, result_i)
+    self.assertEqual(10, self.evaluate(result_s))
+
+  @test_util.run_deprecated_v1
+  def test_python_due_to_hidden_cond_type(self):
+    n = 5
+
+    # TODO(b/124002646): Improve the error message.
+    with self.assertRaises(Exception):
+      control_flow.while_stmt(
+          test=lambda i, s: i < n,
+          body=lambda i, s: (i + 1, s + i),
+          init_state=(constant_op.constant(0), constant_op.constant(0)),
+          extra_deps=())
 
   def test_python(self):
     n = 5
     results = control_flow.while_stmt(
-        test=lambda i, sum: i < n,
-        body=lambda i, sum: (i + 1, sum + i),
+        test=lambda i, s: i < n,
+        body=lambda i, s: (i + 1, s + i),
         init_state=(0, 0),
         extra_deps=(n,))
     self.assertEqual((5, 10), results)

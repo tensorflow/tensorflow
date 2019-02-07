@@ -23,7 +23,6 @@ import numpy as np
 
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.framework import constant_op
@@ -312,7 +311,7 @@ def experimental_tpu_fit_loop(model,
 
     for label, output in zip(out_labels, combined_fn.outputs):
       if label == 'loss':
-        reduce_op = distribute_lib.get_loss_reduction()
+        reduce_op = ds_reduce_util.ReduceOp.SUM
       else:
         # We reduce all other metrics using mean for now. This is temporary
         # workaround until new metrics are in place.
@@ -496,7 +495,7 @@ def experimental_tpu_test_loop(model,
 
     for label, output in zip(model.metrics_names, combined_fn.outputs):
       if label == 'loss':
-        reduce_op = distribute_lib.get_loss_reduction()
+        reduce_op = ds_reduce_util.ReduceOp.SUM
       else:
         # We reduce all other metrics using mean for now. This is temporary
         # workaround until new metrics are in place.

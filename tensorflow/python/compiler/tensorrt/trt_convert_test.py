@@ -47,10 +47,14 @@ from tensorflow.python.tools import saved_model_utils
 class TrtConvertTest(test_util.TensorFlowTestCase):
   """Class to test Tensorflow-TensorRT integration python API."""
 
+  # Use a small max_workspace_size for tests so they don't consume too much GPU
+  # memory.
+  _TRT_MAX_WORKSPACE_SIZE_BYTES = 2 << 20
+
   def testGetTensorrtRewriterConfig(self):
-    """Test case for trt_convert.get_tensorrt_rewriter_config()."""
-    rewriter_cfg = trt_convert.get_tensorrt_rewriter_config(
-        rewriter_config=None,
+    """Test case for TrtGraphConverter.get_tensorrt_rewriter_config()."""
+    rewriter_cfg = trt_convert.TrtGraphConverter.get_tensorrt_rewriter_config(
+        rewriter_config_template=None,
         max_batch_size=128,
         max_workspace_size_bytes=1234,
         precision_mode="INT8",
@@ -147,6 +151,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     input_graph_def = None if input_saved_model_dir else self._GetGraphDef()
     output_graph_def = trt_convert.create_inference_graph(
         input_graph_def, ["output"],
+        max_workspace_size_bytes=TrtConvertTest._TRT_MAX_WORKSPACE_SIZE_BYTES,
         input_saved_model_dir=input_saved_model_dir,
         output_saved_model_dir=output_saved_model_dir,
         session_config=self._GetConfigProto())
@@ -200,6 +205,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     output_graph_def = trt_convert.create_inference_graph(
         self._GetGraphDef(), ["output"],
         minimum_segment_size=5,
+        max_workspace_size_bytes=TrtConvertTest._TRT_MAX_WORKSPACE_SIZE_BYTES,
         is_dynamic_op=False)
     node_name_to_op = {node.name: node.op for node in output_graph_def.node}
     self.assertEqual({
@@ -223,6 +229,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     output_graph_def = trt_convert.create_inference_graph(
         None,
         None,
+        max_workspace_size_bytes=TrtConvertTest._TRT_MAX_WORKSPACE_SIZE_BYTES,
         is_dynamic_op=True,
         maximum_cached_engines=2,
         input_saved_model_dir=input_saved_model_dir,
@@ -266,6 +273,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         None,
         None,
         max_batch_size=1,
+        max_workspace_size_bytes=TrtConvertTest._TRT_MAX_WORKSPACE_SIZE_BYTES,
         is_dynamic_op=False,
         maximum_cached_engines=2,  # This is noop, added just for testing.
         input_saved_model_dir=input_saved_model_dir,
