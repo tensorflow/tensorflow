@@ -408,6 +408,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:local_master",
         "//tensorflow/core/distributed_runtime:master_interface",
         "//tensorflow/core/distributed_runtime:message_wrappers",
+        "//tensorflow/core/distributed_runtime:request_id",
     ],
     alwayslink = 1,
 )
