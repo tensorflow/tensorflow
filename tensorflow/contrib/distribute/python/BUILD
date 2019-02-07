@@ -136,8 +136,7 @@ cuda_py_test(
     srcs = ["one_device_strategy_test.py"],
     additional_deps = [
         ":strategy_test_lib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python/distribute:one_device_strategy",
+        ":combinations",
         "//tensorflow/python/eager:test",
     ],
 )
