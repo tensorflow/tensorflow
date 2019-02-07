@@ -518,14 +518,14 @@ tf_py_test(
 
 tf_py_test(
     name = "applications_test",
-    size = "enormous",
+    size = "medium",
     srcs = ["applications/applications_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 2,
+    shard_count = 11,
 )
 
 tf_py_test(
