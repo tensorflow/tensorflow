@@ -162,7 +162,7 @@ func @more_imperfectly_nested_loops() {
 // CHECK-NEXT: }
 func @affine_apply_loops_shorthand(%N : index) {
   for %i = 0 to %N {
-    for %j = %i to 42 {
+    for %j = (d0)[]->(d0)(%i)[] to 42 {
       call @body2(%i, %j) : (index, index) -> ()
     }
   }

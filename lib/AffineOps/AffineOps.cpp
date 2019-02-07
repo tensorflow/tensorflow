@@ -23,6 +23,7 @@
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/StandardOps/StandardOps.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/Support/Debug.h"
 using namespace mlir;
@@ -39,10 +40,22 @@ AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
   addOperations<AffineApplyOp, AffineForOp, AffineIfOp>();
 }
 
+/// A utility function to check if a value is defined at the top level of a
+/// function.
+static bool isDefinedAtTopLevel(const Value *value) {
+  if (auto *arg = dyn_cast<BlockArgument>(value))
+    return arg->getOwner()->getParent()->getContainingFunction();
+  return value->getDefiningInst()->getParentInst() == nullptr;
+}
+
 // Value can be used as a dimension id if it is valid as a symbol, or
 // it is an induction variable, or it is a result of affine apply operation
 // with dimension id arguments.
 bool mlir::isValidDim(const Value *value) {
+  // The value must be an index type.
+  if (!value->getType().isIndex())
+    return false;
+
   if (auto *inst = value->getDefiningInst()) {
     // Top level instruction or constant operation is ok.
     if (inst->getParentInst() == nullptr || inst->isa<ConstantOp>())
@@ -50,9 +63,13 @@ bool mlir::isValidDim(const Value *value) {
     // Affine apply operation is ok if all of its operands are ok.
     if (auto op = inst->dyn_cast<AffineApplyOp>())
       return op->isValidDim();
+    // The dim op is okay if its operand memref/tensor is defined at the top
+    // level.
+    if (auto dimOp = inst->dyn_cast<DimOp>())
+      return isDefinedAtTopLevel(dimOp->getOperand());
     return false;
   }
-  // This value is a block argument.
+  // This value is a block argument (which also includes 'for' loop IVs).
   return true;
 }
 
@@ -60,6 +77,10 @@ bool mlir::isValidDim(const Value *value) {
 // the top level, or it is a result of affine apply operation with symbol
 // arguments.
 bool mlir::isValidSymbol(const Value *value) {
+  // The value must be an index type.
+  if (!value->getType().isIndex())
+    return false;
+
   if (auto *inst = value->getDefiningInst()) {
     // Top level instruction or constant operation is ok.
     if (inst->getParentInst() == nullptr || inst->isa<ConstantOp>())
@@ -67,11 +88,37 @@ bool mlir::isValidSymbol(const Value *value) {
     // Affine apply operation is ok if all of its operands are ok.
     if (auto op = inst->dyn_cast<AffineApplyOp>())
       return op->isValidSymbol();
+    // The dim op is okay if its operand memref/tensor is defined at the top
+    // level.
+    if (auto dimOp = inst->dyn_cast<DimOp>())
+      return isDefinedAtTopLevel(dimOp->getOperand());
     return false;
   }
-  // Otherwise, the only valid symbol is a non induction variable block
-  // argument.
-  return !isForInductionVar(value);
+  // Otherwise, the only valid symbol is a top level block argument.
+  auto *arg = cast<BlockArgument>(value);
+  return arg->getOwner()->getParent()->getContainingFunction();
+}
+
+/// Utility function to verify that a set of operands are valid dimension and
+/// symbol identifiers. The operands should be layed out such that the dimension
+/// operands are before the symbol operands. This function returns true if there
+/// was an invalid operand. An operation is provided to emit any necessary
+/// errors.
+template <typename OpTy>
+static bool
+verifyDimAndSymbolIdentifiers(const OpTy &op,
+                              Instruction::const_operand_range operands,
+                              unsigned numDims) {
+  unsigned opIt = 0;
+  for (auto *operand : operands) {
+    if (opIt++ < numDims) {
+      if (!isValidDim(operand))
+        return op.emitOpError("operand cannot be used as a dimension id");
+    } else if (!isValidSymbol(operand)) {
+      return op.emitOpError("operand cannot be used as a symbol");
+    }
+  }
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -128,7 +175,11 @@ bool AffineApplyOp::verify() const {
     return emitOpError(
         "operand count and affine map dimension and symbol count must match");
 
-  // Verify that result count matches affine map result count.
+  // Verify that the operands are valid dimension and symbol identifiers.
+  if (verifyDimAndSymbolIdentifiers(*this, getOperands(), map.getNumDims()))
+    return true;
+
+  // Verify that the map only produces one result.
   if (map.getNumResults() != 1)
     return emitOpError("mapping must produce one value");
 
@@ -539,7 +590,23 @@ bool AffineForOp::verify() const {
     return emitOpError("expected body to have a single index argument for the "
                        "induction variable");
 
-  // TODO: check that loop bounds are properly formed.
+  // Verify that there are enough operands for the bounds.
+  AffineMap lowerBoundMap = getLowerBoundMap(),
+            upperBoundMap = getUpperBoundMap();
+  if (getNumOperands() !=
+      (lowerBoundMap.getNumInputs() + upperBoundMap.getNumInputs()))
+    return emitOpError(
+        "operand count must match with affine map dimension and symbol count");
+
+  // Verify that the bound operands are valid dimension/symbols.
+  /// Lower bound.
+  if (verifyDimAndSymbolIdentifiers(*this, getLowerBoundOperands(),
+                                    getLowerBoundMap().getNumDims()))
+    return true;
+  /// Upper bound.
+  if (verifyDimAndSymbolIdentifiers(*this, getUpperBoundOperands(),
+                                    getUpperBoundMap().getNumDims()))
+    return true;
   return false;
 }
 
@@ -1083,15 +1150,16 @@ bool AffineIfOp::verify() const {
   if (!conditionAttr)
     return emitOpError("requires an integer set attribute named 'condition'");
 
-  // Verify that the operands are valid dimension/symbols.
+  // Verify that there are enough operands for the condition.
   IntegerSet condition = conditionAttr.getValue();
-  for (unsigned i = 0, e = getNumOperands(); i != e; ++i) {
-    const Value *operand = getOperand(i);
-    if (i < condition.getNumDims() && !isValidDim(operand))
-      return emitOpError("operand cannot be used as a dimension id");
-    if (i >= condition.getNumDims() && !isValidSymbol(operand))
-      return emitOpError("operand cannot be used as a symbol");
-  }
+  if (getNumOperands() != condition.getNumOperands())
+    return emitOpError("operand count and condition integer set dimension and "
+                       "symbol count must match");
+
+  // Verify that the operands are valid dimension/symbols.
+  if (verifyDimAndSymbolIdentifiers(*this, getOperands(),
+                                    condition.getNumDims()))
+    return true;
 
   // Verify that the entry of each child blocklist does not have arguments.
   for (const auto &blockList : getInstruction()->getBlockLists()) {
