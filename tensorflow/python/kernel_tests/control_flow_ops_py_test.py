@@ -654,6 +654,27 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.cond(pred, fn1, fn2)
       self.assertAllEqual([11, 12], self.evaluate(r))
 
+  @test_util.run_gpu_only
+  @test_util.run_deprecated_v1
+  def testCond_Device(self):
+    x = constant_op.constant(-10)
+
+    # True branch function defined outside of device scope
+    def true_fn():
+      return math_ops.exp(x)
+
+    with ops.device("CPU:0"):
+      r = control_flow_ops.cond(
+          constant_op.constant(True), true_fn, lambda: 0.)
+      self.assertIn("cpu", r.device.lower())
+
+    with session.Session() as sess:
+      options = config_pb2.RunOptions(output_partition_graphs=True)
+      run_metadata = config_pb2.RunMetadata()
+      sess.run(r, options=options, run_metadata=run_metadata)
+      # We expect that everything runs on CPU, even if GPU is available.
+      self.assertEqual(len(run_metadata.partition_graphs), 1)
+
   def testCondListOutput(self):
     with self.cached_session() as sess:
       x = constant_op.constant(10)
@@ -1502,6 +1523,26 @@ class ControlFlowTest(test.TestCase):
                                       ])
       result = r[2]
     self.assertAllEqual(np.array([0, 1, 2, 3, 4, 5, 6]), result)
+
+  @test_util.run_gpu_only
+  @test_util.run_deprecated_v1
+  def testWhile_Device(self):
+
+    # Body function defined outside of device scope
+    def body(x):
+      return math_ops.exp(x)
+
+    with ops.device("CPU:0"):
+      r = control_flow_ops.while_loop(
+          lambda x: x < 10, body, [constant_op.constant(-10.)])
+      self.assertIn("cpu", r.device.lower())
+
+    with session.Session() as sess:
+      options = config_pb2.RunOptions(output_partition_graphs=True)
+      run_metadata = config_pb2.RunMetadata()
+      sess.run(r, options=options, run_metadata=run_metadata)
+      # We expect that everything runs on CPU, even if GPU is available.
+      self.assertEqual(len(run_metadata.partition_graphs), 1)
 
   @test_util.disable_control_flow_v2("b/116338794 (buffer_reuse)")
   @test_util.run_v1_only("b/120545219")
