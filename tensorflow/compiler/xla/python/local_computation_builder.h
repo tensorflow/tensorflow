@@ -316,6 +316,10 @@ class LocalComputationBuilder {
 
   LocalOp Collapse(const LocalOp& operand, absl::Span<const int64> dimensions);
 
+  LocalOp AllToAll(const LocalOp& operand, int64 split_dimension,
+                   int64 concat_dimension, int64 split_count,
+                   absl::Span<const ReplicaGroup> replica_groups);
+
   LocalOp CrossReplicaSum(const LocalOp& operand,
                           absl::Span<const ReplicaGroup> replica_groups);
 
@@ -421,7 +425,8 @@ class LocalComputationBuilder {
   LocalOp Cholesky(const LocalOp& a);
 
   LocalOp TriangularSolve(const LocalOp& a, const LocalOp& b, bool left_side,
-                          bool lower, bool transpose_a, bool conjugate_a);
+                          bool lower, bool transpose_a, bool conjugate_a,
+                          bool unit_diagonal);
 
   LocalOp Gather(const LocalOp& input, const LocalOp& start_indices,
                  const GatherDimensionNumbers& dimension_numbers,

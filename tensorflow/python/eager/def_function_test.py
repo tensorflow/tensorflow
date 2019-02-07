@@ -21,7 +21,9 @@ import functools
 import weakref
 
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,7 +32,9 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
@@ -207,7 +211,7 @@ class DefFunctionTest(test.TestCase):
           state.append(variables.Variable(2.0 * x))
         return state[0] * x
 
-      with self.assertRaises(ValueError):
+      with self.assertRaises(lift_to_graph.UnliftableError):
         fn(constant_op.constant(3.0))
 
   def testMethod(self):
@@ -264,7 +268,8 @@ class DefFunctionTest(test.TestCase):
     self.assertAllClose(4., concrete(constant_op.constant(2.)))
     signature_args, _ = concrete.structured_input_signature
     self.assertEqual(signature_args,
-                     (tensor_spec.TensorSpec(None, dtypes.float32),))
+                     (tensor_spec.TensorSpec(
+                         None, dtypes.float32, name='x'),))
 
   def test_serialization_signature_cache(self):
 
@@ -284,10 +289,10 @@ class DefFunctionTest(test.TestCase):
 
     self.assertEqual(
         signatures_args,
-        set(((tensor_spec.TensorSpec([1, 2], dtypes.float32),
-              tensor_spec.TensorSpec([1], dtypes.float32)),
-             (tensor_spec.TensorSpec([1, 3], dtypes.int32),
-              tensor_spec.TensorSpec([1], dtypes.int32)))))
+        set(((tensor_spec.TensorSpec([1, 2], dtypes.float32, name='x'),
+              tensor_spec.TensorSpec([1], dtypes.float32, name='y')),
+             (tensor_spec.TensorSpec([1, 3], dtypes.int32, name='x'),
+              tensor_spec.TensorSpec([1], dtypes.int32, name='y')))))
 
   @test_util.assert_no_garbage_created
   def testFunctionReferenceCycles(self):
@@ -322,6 +327,107 @@ class DefFunctionTest(test.TestCase):
 
     with self.assertRaisesRegexp(TypeError, MIXING_GRAPH_EAGER_TENSORS_ERROR):
       failing_function()
+
+  def testVariableCreatorScope(self):
+    created_variables = []
+    captured_variables = []
+
+    @def_function.function
+    def f():
+      if not created_variables:
+        created_variables.append(variables.Variable(1.))
+      return created_variables[0] + 1.
+
+    def capture_creator(next_creator, **kwargs):
+      created = next_creator(**kwargs)
+      captured_variables.append(created)
+      return created
+
+    with variable_scope.variable_creator_scope(capture_creator):
+      f()
+    self.assertEqual(created_variables, captured_variables)
+
+  def testVarAlreadyInitializedNoClobbering(self):
+    v_holder = []
+
+    @def_function.function
+    def add_var(x):
+      if not v_holder:
+        v = variables.Variable([1., 2.])
+        v_holder.append(v)
+        already_initialized = variables.Variable(3.)
+        with ops.init_scope():
+          already_initialized.assign(10.)
+        v_holder.append(already_initialized)
+      return v_holder[0] + v_holder[1] + x
+
+    add_var.get_concrete_function(constant_op.constant(2.))
+    self.assertAllClose([13., 14.], add_var(constant_op.constant(2.)))
+
+  def testSameVariableTwice(self):
+
+    v = variables.Variable(1.0)
+
+    @def_function.function
+    def add(a, b):
+      return a + b
+
+    self.assertAllEqual(add(v, v), 2.0)
+
+  def testShapeCache(self):
+    @def_function.function
+    def func(x):
+      return 2 * x
+
+    func_a = func.get_concrete_function(
+        tensor_spec.TensorSpec([None], dtypes.int32))
+    func_b = func.get_concrete_function(
+        tensor_spec.TensorSpec([None], dtypes.int32))
+
+    self.assertIs(func_a, func_b)
+
+  def testInitializationInNestedCall(self):
+    v_holder = []
+
+    @def_function.function
+    def add_var(x):
+      if not v_holder:
+        v = variables.Variable([1., 2.])
+        v_holder.append(v)
+        already_initialized = variables.Variable(3.)
+        with ops.init_scope():
+          already_initialized.assign(10.)
+        v_holder.append(already_initialized)
+      return v_holder[0] + v_holder[1] + x
+
+    @def_function.function
+    def wrapper(x):
+      return add_var(x)
+
+    self.assertAllClose([13., 14.], wrapper(constant_op.constant(2.)))
+    v_holder[1].assign(11.)
+    self.assertAllClose([14., 15.], wrapper(constant_op.constant(2.)))
+
+  def testDeviceAnnotationRespected(self):
+    if not context.num_gpus():
+      self.skipTest("Needs multiple devices")
+
+    a = []
+
+    @def_function.function()
+    def create_variable():
+      with ops.init_scope():
+        initial_value = random_ops.random_uniform(
+            (2, 2), maxval=1000000, dtype=dtypes.int64)
+
+      if not a:
+        with ops.device("CPU:0"):
+          a.append(resource_variable_ops.ResourceVariable(initial_value))
+
+      return a[0].read_value()
+
+    created_variable_read = create_variable()
+    self.assertRegexpMatches(created_variable_read.device, "CPU")
 
 
 if __name__ == '__main__':

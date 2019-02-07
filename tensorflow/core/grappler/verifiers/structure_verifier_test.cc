@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/match.h"
 #include "tensorflow/cc/ops/parsing_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -84,9 +84,9 @@ TEST_F(StructureVerifierTest, OpNotRegistered) {
       "node { name: 't1' op: 'TestMul' input: [ 'input:0', 't2' ] }"
       "node { name: 't2' op: 'TestMul' input: [ 'input:1', 't1' ] }");
   Status status = verifier_->Verify(graph_);
-  EXPECT_EQ(errors::Code::NOT_FOUND, status.code());
-  EXPECT_TRUE(tensorflow::str_util::StrContains(status.error_message(),
-                                                "Op type not registered"));
+  EXPECT_EQ(status.code(), errors::Code::NOT_FOUND);
+  EXPECT_TRUE(
+      absl::StrContains(status.error_message(), "Op type not registered"));
 }
 
 TEST_F(StructureVerifierTest, DuplicateNodeNames) {
@@ -94,9 +94,9 @@ TEST_F(StructureVerifierTest, DuplicateNodeNames) {
       "node { name: 'A' op: 'TestParams' }"
       "node { name: 'A' op: 'TestInput' }");
   Status status = verifier_->Verify(graph_);
-  EXPECT_EQ(errors::Code::ALREADY_EXISTS, status.code());
-  EXPECT_TRUE(tensorflow::str_util::StrContains(status.error_message(),
-                                                "Node already exists:"));
+  EXPECT_EQ(status.code(), errors::Code::ALREADY_EXISTS);
+  EXPECT_TRUE(
+      absl::StrContains(status.error_message(), "Node already exists:"));
 }
 
 TEST_F(StructureVerifierTest, GraphWithInvalidCycle) {
@@ -105,10 +105,10 @@ TEST_F(StructureVerifierTest, GraphWithInvalidCycle) {
       "node { name: 't1' op: 'TestMul' input: [ 'input:0', 't2' ] }"
       "node { name: 't2' op: 'TestMul' input: [ 'input:1', 't1' ] }");
   Status status = verifier_->Verify(graph_);
-  EXPECT_EQ(errors::Code::INVALID_ARGUMENT, status.code());
-  EXPECT_TRUE(tensorflow::str_util::StrContains(
-      status.error_message(),
-      "The graph couldn't be sorted in topological order"));
+  EXPECT_EQ(status.code(), errors::Code::INVALID_ARGUMENT);
+  EXPECT_TRUE(
+      absl::StrContains(status.error_message(),
+                        "The graph couldn't be sorted in topological order"));
 }
 
 }  // namespace

@@ -27,6 +27,17 @@ namespace grappler {
 // rewritten as dataset.batch().map(vectorized_map_fn). This is more performant
 // when the map_fn is cheap, because it amortizes the cost of running a map
 // function over a larger batch.
+//
+// From:
+//      input --> map --> batch --> output
+//              (or map_and_batch)
+//
+// To:
+//      input --> map --> batch --------+
+//        |     (or map_and_batch)      |
+//        |                             v
+//        +-----> batch --> map --> choose_fastest --> output
+//
 class MapVectorization : public TFDataOptimizerBase {
  public:
   MapVectorization() = default;

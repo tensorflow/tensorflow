@@ -315,38 +315,6 @@ class XlaBuilder {
 
   XlaOp ConstantLiteral(const LiteralSlice& literal);
 
-  template <typename NativeT>
-  XlaOp ConstantR0(NativeT value);
-  template <typename NativeT>
-  XlaOp ConstantR1(absl::Span<const NativeT> values);
-  XlaOp ConstantR1(const tensorflow::core::Bitmap& values);
-  template <typename NativeT>
-  XlaOp ConstantR2(
-      std::initializer_list<std::initializer_list<NativeT>> values);
-  template <typename NativeT>
-  XlaOp ConstantFromArrayWithLayout(const Array<NativeT>& values,
-                                    const Layout& layout);
-  template <typename NativeT>
-  XlaOp ConstantFromArray(const Array<NativeT>& values);
-  template <typename NativeT>
-  XlaOp ConstantR2FromArray2DWithLayout(const Array2D<NativeT>& values,
-                                        const Layout& layout);
-  template <typename NativeT>
-  XlaOp ConstantR2FromArray2D(const Array2D<NativeT>& values);
-  template <typename NativeT>
-  XlaOp ConstantR3FromArray3DWithLayout(const Array3D<NativeT>& values,
-                                        const Layout& layout);
-  template <typename NativeT>
-  XlaOp ConstantR3FromArray3D(const Array3D<NativeT>& values);
-  template <typename NativeT>
-  XlaOp ConstantR4FromArray4DWithLayout(const Array4D<NativeT>& values,
-                                        const Layout& layout);
-  template <typename NativeT>
-  XlaOp ConstantR4FromArray4D(const Array4D<NativeT>& values);
-
-  template <typename NativeT>
-  XlaOp ConstantR1(int64 length, NativeT value);
-
   XlaOp Broadcast(const XlaOp& operand,
                   absl::Span<const int64> broadcast_sizes);
 
@@ -393,24 +361,6 @@ class XlaBuilder {
   XlaOp Tuple(absl::Span<const XlaOp> elements);
 
   XlaOp GetTupleElement(const XlaOp& tuple_data, int64 index);
-
-  XlaOp Eq(const XlaOp& lhs, const XlaOp& rhs,
-           absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Ne(const XlaOp& lhs, const XlaOp& rhs,
-           absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Ge(const XlaOp& lhs, const XlaOp& rhs,
-           absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Gt(const XlaOp& lhs, const XlaOp& rhs,
-           absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Lt(const XlaOp& lhs, const XlaOp& rhs,
-           absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
-           absl::Span<const int64> broadcast_dimensions = {});
 
   XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
             const PrecisionConfig* precision_config = nullptr);
@@ -476,49 +426,6 @@ class XlaBuilder {
       const Shape& shape_with_layout, const string& opaque,
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout);
 
-  XlaOp Complex(const XlaOp& real, const XlaOp& imag,
-                absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Conj(const XlaOp& operand);
-
-  XlaOp Add(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Sub(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Mul(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Div(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Rem(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Max(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Min(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp And(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Or(const XlaOp& lhs, const XlaOp& rhs,
-           absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Not(const XlaOp& operand);
-
-  XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
-                  absl::Span<const int64> broadcast_dimensions = {});
-  XlaOp ShiftRightArithmetic(const XlaOp& lhs, const XlaOp& rhs,
-                             absl::Span<const int64> broadcast_dimensions = {});
-  XlaOp ShiftRightLogical(const XlaOp& lhs, const XlaOp& rhs,
-                          absl::Span<const int64> broadcast_dimensions = {});
 
   XlaOp Reduce(const XlaOp& operand, const XlaOp& init_value,
                const XlaComputation& computation,
@@ -562,6 +469,8 @@ class XlaBuilder {
       const XlaOp& operand,
       const std::vector<std::pair<int64, int64>>& source_target_pairs);
 
+  XlaOp ReplicaId();
+
   XlaOp SelectAndScatter(const XlaOp& operand, const XlaComputation& select,
                          absl::Span<const int64> window_dimensions,
                          absl::Span<const int64> window_strides,
@@ -576,44 +485,6 @@ class XlaBuilder {
       absl::Span<const std::pair<int64, int64>> padding, const XlaOp& source,
       const XlaOp& init_value, const XlaComputation& scatter);
 
-  XlaOp Abs(const XlaOp& operand);
-
-  XlaOp Atan2(const XlaOp& y, const XlaOp& x,
-              absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp Exp(const XlaOp& operand);
-
-  XlaOp Expm1(const XlaOp& operand);
-
-  XlaOp Floor(const XlaOp& operand);
-
-  XlaOp Ceil(const XlaOp& operand);
-
-  XlaOp Round(const XlaOp& operand);
-
-  XlaOp Log(const XlaOp& operand);
-
-  XlaOp Log1p(const XlaOp& operand);
-
-  XlaOp Sign(const XlaOp& operand);
-
-  XlaOp Clz(const XlaOp& operand);
-
-  XlaOp Cos(const XlaOp& operand);
-
-  XlaOp Sin(const XlaOp& operand);
-
-  XlaOp Tanh(const XlaOp& operand);
-
-  XlaOp Real(const XlaOp& operand);
-
-  XlaOp Imag(const XlaOp& operand);
-
-  XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
-            absl::Span<const int64> broadcast_dimensions = {});
-
-  XlaOp IsFinite(const XlaOp& operand);
-
   XlaOp Iota(const Shape& shape, int64 iota_dimension);
 
   XlaOp Iota(PrimitiveType type, int64 size);
@@ -623,8 +494,6 @@ class XlaBuilder {
 
   XlaOp BitcastConvertType(const XlaOp& operand,
                            PrimitiveType new_element_type);
-
-  XlaOp Neg(const XlaOp& operand);
 
   XlaOp Transpose(const XlaOp& operand, absl::Span<const int64> permutation);
 
@@ -823,48 +692,6 @@ class XlaBuilder {
                          const Shape& shape, const string& name);
   friend XlaOp ConstantLiteral(XlaBuilder* builder,
                                const LiteralSlice& literal);
-  template <typename NativeT>
-  friend XlaOp ConstantR0(XlaBuilder* builder, NativeT value);
-  template <typename NativeT>
-  friend XlaOp ConstantR1(XlaBuilder* builder,
-                          absl::Span<const NativeT> values);
-  friend XlaOp ConstantR1(XlaBuilder* builder,
-                          const tensorflow::core::Bitmap& values);
-  template <typename NativeT>
-  friend XlaOp ConstantR2(
-      XlaBuilder* builder,
-      std::initializer_list<std::initializer_list<NativeT>> values);
-  template <typename NativeT>
-  friend XlaOp ConstantFromArrayWithLayout(XlaBuilder* builder,
-                                           const Array<NativeT>& values,
-                                           const Layout& layout);
-  template <typename NativeT>
-  friend XlaOp ConstantFromArray(XlaBuilder* builder,
-                                 const Array<NativeT>& values);
-  template <typename NativeT>
-  friend XlaOp ConstantR2FromArray2DWithLayout(XlaBuilder* builder,
-                                               const Array2D<NativeT>& values,
-                                               const Layout& layout);
-  template <typename NativeT>
-  friend XlaOp ConstantR2FromArray2D(XlaBuilder* builder,
-                                     const Array2D<NativeT>& values);
-  template <typename NativeT>
-  friend XlaOp ConstantR3FromArray3DWithLayout(XlaBuilder* builder,
-                                               const Array3D<NativeT>& values,
-                                               const Layout& layout);
-  template <typename NativeT>
-  friend XlaOp ConstantR3FromArray3D(XlaBuilder* builder,
-                                     const Array3D<NativeT>& values);
-  template <typename NativeT>
-  friend XlaOp ConstantR4FromArray4DWithLayout(XlaBuilder* builder,
-                                               const Array4D<NativeT>& values,
-                                               const Layout& layout);
-  template <typename NativeT>
-  friend XlaOp ConstantR4FromArray4D(XlaBuilder* builder,
-                                     const Array4D<NativeT>& values);
-
-  template <typename NativeT>
-  friend XlaOp ConstantR1(XlaBuilder* builder, int64 length, NativeT value);
 
   friend XlaOp Broadcast(const XlaOp& operand,
                          absl::Span<const int64> broadcast_sizes);
@@ -1040,6 +867,7 @@ class XlaBuilder {
   friend XlaOp CollectivePermute(
       const XlaOp& operand,
       const std::vector<std::pair<int64, int64>>& source_target_pairs);
+  friend XlaOp ReplicaId(XlaBuilder* builder);
   friend XlaOp SelectAndScatter(const XlaOp& operand,
                                 const XlaComputation& select,
                                 absl::Span<const int64> window_dimensions,
@@ -1580,8 +1408,32 @@ XlaOp Min(const XlaOp& lhs, const XlaOp& rhs,
 XlaOp And(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions = {});
 
+// Overload to call And with 3 or more operands.  We need the following somewhat
+// convoluted overload set to disambiguate with the overload that takes the
+// `broadcast_dimensions` optional param.
+inline XlaOp And(const XlaOp& op1, const XlaOp& op2, const XlaOp& op3) {
+  return And(op1, And(op2, op3));
+}
+template <typename... XlaOpTs>
+XlaOp And(const XlaOp& op1, const XlaOp& op2, const XlaOp& op3,
+          const XlaOpTs&... operands) {
+  return And(op1, And(op2, And(op3, operands...)));
+}
+
 XlaOp Or(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+
+// Overload to call Or with 3 or more operands.  As with `And`, we need the
+// following complicated overload set to handle the default arg in the `Or`
+// overload above.
+inline XlaOp Or(const XlaOp& op1, const XlaOp& op2, const XlaOp& op3) {
+  return Or(op1, Or(op2, op3));
+}
+template <typename... XlaOpTs>
+XlaOp Or(const XlaOp& op1, const XlaOp& op2, const XlaOp& op3,
+         const XlaOpTs&... operands) {
+  return Or(op1, Or(op2, Or(op3, operands...)));
+}
 
 XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions = {});
@@ -1675,6 +1527,9 @@ XlaOp CollectivePermute(
     const XlaOp& operand,
     const std::vector<std::pair<int64, int64>>& source_target_pairs);
 
+// Enqueues an operation that returns the replica ID.
+XlaOp ReplicaId(XlaBuilder* builder);
+
 // Enqueues an operation that scatters the `source` array to the selected
 // indices of each window.
 XlaOp SelectAndScatter(const XlaOp& operand, const XlaComputation& select,
@@ -1746,10 +1601,14 @@ XlaOp Imag(const XlaOp& operand);
 XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions = {});
 
-// Enqueues an operator that tests if the operand's values are finite, i.e.,
-// not Inf or NaN. Defined only for floating-point types. Returns an array of
-// booleans with the same shape where entries are true iff the corresponding
-// entry was NaN.
+// Enqueues an operator that tests if the operand's values are finite, i.e., not
+// +/-Inf or NaN.  Returns an array of booleans with the same shape where
+// entries are true iff the corresponding entry was not infinite or NaN.
+//
+// Defined only for real-valued (i.e. not complex) floating-point types; raises
+// an error for other types.
+//
+// See also IsInf, IsPosInf, IsNegInf, and IsNan in lib/math.h.
 XlaOp IsFinite(const XlaOp& operand);
 
 // Enqueues an iota operation onto the computation.
@@ -1935,81 +1794,6 @@ XlaOp GetDimensionSize(const XlaOp& operand, int64 dimension);
 
 // Implementation details below this point.
 //
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR0(NativeT value) {
-  return ConstantLiteral(LiteralUtil::CreateR0<NativeT>(value));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR1(absl::Span<const NativeT> values) {
-  return ConstantLiteral(LiteralUtil::CreateR1<NativeT>(values));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR1(int64 length, NativeT value) {
-  Literal literal(ShapeUtil::MakeShape(
-      primitive_util::NativeToPrimitiveType<NativeT>(), {length}));
-  literal.PopulateWithValue(value);
-  return ConstantLiteral(literal);
-}
-
-inline XlaOp XlaBuilder::ConstantR1(const tensorflow::core::Bitmap& values) {
-  return ConstantLiteral(LiteralUtil::CreateR1(values));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR2(
-    std::initializer_list<std::initializer_list<NativeT>> values) {
-  return ConstantLiteral(LiteralUtil::CreateR2<NativeT>(values));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantFromArrayWithLayout(const Array<NativeT>& values,
-                                              const Layout& layout) {
-  return ConstantLiteral(
-      LiteralUtil::CreateFromArrayWithLayout<NativeT>(values, layout));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantFromArray(const Array<NativeT>& values) {
-  return ConstantLiteral(LiteralUtil::CreateFromArray<NativeT>(values));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR2FromArray2DWithLayout(
-    const Array2D<NativeT>& values, const Layout& layout) {
-  return ConstantLiteral(
-      LiteralUtil::CreateFromArrayWithLayout<NativeT>(values, layout));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR2FromArray2D(const Array2D<NativeT>& values) {
-  return ConstantLiteral(LiteralUtil::CreateR2FromArray2D<NativeT>(values));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR3FromArray3DWithLayout(
-    const Array3D<NativeT>& values, const Layout& layout) {
-  return ConstantLiteral(
-      LiteralUtil::CreateR3FromArray3DWithLayout<NativeT>(values, layout));
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR3FromArray3D(const Array3D<NativeT>& values) {
-  return ConstantFromArray(values);
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR4FromArray4DWithLayout(
-    const Array4D<NativeT>& values, const Layout& layout) {
-  return ConstantFromArrayWithLayout(values, layout);
-}
-
-template <typename NativeT>
-XlaOp XlaBuilder::ConstantR4FromArray4D(const Array4D<NativeT>& values) {
-  return ConstantFromArray(values);
-}
 
 // Free function template implementations.
 

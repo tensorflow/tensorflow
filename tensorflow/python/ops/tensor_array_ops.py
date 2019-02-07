@@ -542,14 +542,20 @@ class _GraphTensorArrayV2(object):
 
   def read(self, index, name=None):
     """See TensorArray."""
-    value = list_ops.tensor_list_get_item(
-        input_handle=self._flow,
-        index=index,
-        element_dtype=self._dtype,
-        name=name)
-    if self._element_shape:
-      value.set_shape(self._element_shape[0].dims)
-    return value
+    with ops.name_scope(name, "TensorArrayV2Read", [self._flow, index]):
+      if self._element_shape:
+        element_shape = self._element_shape[0]
+      else:
+        element_shape = tensor_shape.TensorShape(None)
+      value = list_ops.tensor_list_get_item(
+          input_handle=self._flow,
+          index=index,
+          element_dtype=self._dtype,
+          element_shape=element_shape,
+          name=name)
+      if self._element_shape:
+        value.set_shape(self._element_shape[0].dims)
+      return value
 
   @tf_should_use.should_use_result
   def write(self, index, value, name=None):
@@ -619,8 +625,9 @@ class _GraphTensorArrayV2(object):
       value = ops.convert_to_tensor(value, name="value")
       if self._infer_shape and not context.executing_eagerly():
         self._merge_element_shape(value.shape[1:])
+      element_shape = self._element_shape[0] if self._element_shape else None
       flow_out = list_ops.tensor_list_scatter(
-          tensor=value, indices=indices, element_shape=-1)
+          tensor=value, indices=indices, element_shape=element_shape)
       return build_ta_with_new_flow(self, flow_out)
 
   @tf_should_use.should_use_result
@@ -818,7 +825,7 @@ class _EagerTensorArray(object):
     if self._infer_shape:
       if self._element_shape is None:
         self._element_shape = value.shape
-      elif self._element_shape != value.shape:
+      elif not self._element_shape.is_compatible_with(value.shape):
         raise ValueError("Incompatible shape for value (%s), expected (%s)" %
                          (value.shape.as_list(), self._element_shape.as_list()))
 

@@ -105,17 +105,14 @@ class RestoredFunction(def_function.Function):
     super(RestoredFunction, self).__init__(
         python_function, name, autograph=False)
     self._concrete_functions = concrete_functions
-    # TODO(vbardiovsky): This does not propagate to stateful and stateless
-    # functions of the RestoredFunction, which will have seen only defunned
-    # restored_function_body(*args, **kwargs). Therefore get_concrete_function()
-    # called on RestoredFunction will not work properly.
+    # This does not propagate to stateful and stateless functions of the
+    # RestoredFunction, which will have seen only defunned
+    # restored_function_body(*args, **kwargs). That's why we have to
+    # canonicalize inputs inside restored_function_body.
     self._function_spec = function_spec
 
   def _list_all_concrete_functions_for_serialization(self):
     return self._concrete_functions
-
-  def get_concrete_function(self, *args, **kwargs):
-    raise NotImplementedError()
 
 
 def recreate_function(saved_function, concrete_functions):
@@ -160,7 +157,11 @@ def recreate_function(saved_function, concrete_functions):
                             canonicalized_original_inputs):
         flattened_inputs = nest.flatten(canonicalized_inputs)
         filtered_inputs = [t for t in flattened_inputs if _is_tensor(t)]
-        return function_obj._call_flat(filtered_inputs)  # pylint: disable=protected-access
+
+        result = function_obj._call_flat(filtered_inputs)  # pylint: disable=protected-access
+        if isinstance(result, ops.Operation):
+          return None
+        return result
 
     raise AssertionError(
         "Could not find matching function to call for canonicalized inputs %r. "

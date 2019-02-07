@@ -63,6 +63,12 @@ class QuantOpsTest(googletest.TestCase):
     self.assertAlmostEqual(min_value, -0.5, delta=1e-3)
     self.assertAlmostEqual(max_value, 0.5, delta=1e-3)
 
+  def testMovingAvgQuantizeTrainingAssignNoShape(self):
+    min_value, max_value = self._GetMinMaxValues(
+        quant_ops.MovingAvgQuantize, [[-1, 1], [0, 0]], shape=None)
+    self.assertAlmostEqual(min_value, -0.5, delta=1e-3)
+    self.assertAlmostEqual(max_value, 0.5, delta=1e-3)
+
   def testMovingAvgSymmetricQuantizeTrainingAssign(self):
     min_value, max_value = self._GetMinMaxValues(
         quant_ops.MovingAvgQuantize, [[-1, 0.5], [0, 0]], symmetric=True)
@@ -109,10 +115,10 @@ class QuantOpsTest(googletest.TestCase):
             is_training=True,
             vars_collection=_MIN_MAX_VARS)
 
-  def _GetMinMaxValues(self, quantize_fn, input_values, **kwds):
+  def _GetMinMaxValues(self, quantize_fn, input_values, shape=(2), **kwds):
     g = ops.Graph()
     with session.Session(graph=g) as sess:
-      x = array_ops.placeholder(dtypes.float32, shape=[2])
+      x = array_ops.placeholder(dtypes.float32, shape=shape)
       y = quantize_fn(
           x,
           init_min=0.0,

@@ -857,15 +857,15 @@ Status HloComputation::Accept(
 std::unique_ptr<HloComputation> HloComputation::Clone(
     const string& suffix, HloCloneContext* context) {
   return CloneWithReplacements(
-      /*replacements=*/std::unordered_map<const HloInstruction*,
-                                          std::unique_ptr<HloInstruction>>(),
+      /*replacements=*/absl::flat_hash_map<const HloInstruction*,
+                                           std::unique_ptr<HloInstruction>>(),
       /*extra_parameters=*/{}, context, suffix);
 }
 
 std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
     std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r1,
     HloCloneContext* context, const string& suffix) {
-  std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       replacements;
   replacements.emplace(std::move(r1));
   return CloneWithReplacements(std::move(replacements), /*extra_parameters=*/{},
@@ -876,7 +876,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
     std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r1,
     std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r2,
     HloCloneContext* context, const string& suffix) {
-  std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       replacements;
   replacements.emplace(std::move(r1));
   replacements.emplace(std::move(r2));
@@ -889,7 +889,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
     std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r2,
     std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r3,
     HloCloneContext* context, const string& suffix) {
-  std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       replacements;
   replacements.emplace(std::move(r1));
   replacements.emplace(std::move(r2));
@@ -899,7 +899,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
 }
 
 std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
-    std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+    absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
         replacements,
     absl::Span<const HloInstruction* const> extra_parameters,
     HloCloneContext* context, const string& suffix) {

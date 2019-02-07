@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.framework.python.ops import critical_section_ops
+from tensorflow.python.data.experimental.ops import prefetching_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -334,13 +335,22 @@ class CriticalSectionTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testInsideFunction(self):
+    if test_util.is_gpu_available():
+      self.skipTest(
+          "b/123899495: Colocation errors for critical sections in map on GPU")
     cs = critical_section_ops.CriticalSection()
-    v = resource_variable_ops.ResourceVariable(1)
+    with ops.device("/gpu:0" if test_util.is_gpu_available() else "/cpu:0"):
+      v = resource_variable_ops.ResourceVariable(1)
     def fn():
       return v.read_value()
 
     # map() creates a TensorFlow function.
-    ds = dataset_ops.Dataset.range(1).map(lambda _: cs.execute(fn))
+    ds = dataset_ops.Dataset.range(1)
+    if test_util.is_gpu_available():
+      ds = (ds.apply(prefetching_ops.copy_to_device("/gpu:0"))
+            .apply(prefetching_ops.map_on_gpu(lambda _: cs.execute(fn))))
+    else:
+      ds = ds.map(lambda _: cs.execute(fn))
 
     def get_first():
       if context.executing_eagerly():

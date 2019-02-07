@@ -173,9 +173,10 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   // Nondeterminism in serialization would not lead to incorrect results, but
   // may cause spurious cache misses. DeterministicSerialization is a
   // best-effort deterministic serialization.
-  string serialized;
-  TF_RET_CHECK(SerializeToStringDeterministic(gdef, &serialized));
-  uint64 fingerprint = Fingerprint64(serialized);
+  const size_t size = gdef.ByteSizeLong();
+  auto serialized = absl::make_unique<char[]>(size);
+  TF_RET_CHECK(SerializeToBufferDeterministic(gdef, serialized.get(), size));
+  uint64 fingerprint = Fingerprint64(absl::string_view(serialized.get(), size));
   LOG(INFO) << "Subgraph fingerprint:" << fingerprint;
   call_def->set_op(absl::StrCat(call_def->op(), "_", fingerprint));
   return Status::OK();

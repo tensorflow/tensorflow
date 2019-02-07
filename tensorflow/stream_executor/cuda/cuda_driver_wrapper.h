@@ -78,6 +78,7 @@ namespace wrap {
   __macro(cuDeviceGetCount)                             \
   __macro(cuDeviceGetName)                              \
   __macro(cuDeviceGetPCIBusId)                          \
+  __macro(cuDeviceGetProperties)                        \
   __macro(cuDevicePrimaryCtxGetState)                   \
   __macro(cuDevicePrimaryCtxRelease)                    \
   __macro(cuDevicePrimaryCtxRetain)                     \

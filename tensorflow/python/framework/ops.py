@@ -95,9 +95,12 @@ class _UserDeviceSpec(object):
         lineno = -1
       self.display_name = "%s<%s, %d>" % (func_name, fname, lineno)
 
+    self.raw_string = None
+
     self.function = self._device_name_or_function
     if not (self._device_name_or_function is None or
             callable(self._device_name_or_function)):
+      self.raw_string = self._device_name_or_function
       self.function = pydev.merge_device(self._device_name_or_function)
 
 
@@ -991,7 +994,8 @@ register_dense_tensor_like_type(Tensor)
 
 
 @tf_export(v1=["convert_to_tensor"])
-def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
+def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None,
+                      dtype_hint=None):
   """Converts the given `value` to a `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -1031,6 +1035,7 @@ def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
       dtype in mind when converting to a tensor, so preferred_dtype
       can be used as a soft preference.  If the conversion to
       `preferred_dtype` is not possible, this argument has no effect.
+    dtype_hint: same meaning as preferred_dtype, and overrides it.
 
   Returns:
     A `Tensor` based on `value`.
@@ -1040,6 +1045,8 @@ def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
     RuntimeError: If a registered conversion function returns an invalid value.
     ValueError: If the `value` is a tensor not of given `dtype` in graph mode.
   """
+  preferred_dtype = deprecation.deprecated_argument_lookup(
+      "dtype_hint", dtype_hint, "preferred_dtype", preferred_dtype)
   return convert_to_tensor_v2(value, dtype, preferred_dtype, name)
 
 
@@ -3044,9 +3051,6 @@ class Graph(object):
     # being called inside function definitions behave as if they were seeing the
     # actual outside graph).
     self._graph_key = "grap-key-%d/" % (uid(),)
-    # A string with the last reduction method passed to
-    # losses.compute_weighted_loss(), or None.
-    self._last_loss_reduction = None
     self._container = ""
     self._registered_ops = op_def_registry.get_registered_ops()
     # Set to True if this graph is being built in an
@@ -3066,11 +3070,27 @@ class Graph(object):
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
   @tf_contextlib.contextmanager
-  def _variable_creator_scope(self, creator):
+  def _variable_creator_scope(self, creator, priority=100):
+    """Scope which defines a variable creation function.
+
+    Args:
+      creator: A callable taking `next_creator` and `kwargs`. See the
+        `tf.variable_creator_scope` docstring.
+      priority: Creators with a higher `priority` are called first. Within the
+        same priority, creators are called inner-to-outer.
+
+    Yields:
+      `_variable_creator_scope` is a context manager with a side effect, but
+      doesn't return a value.
+    """
     # This step makes a copy of the existing stack, and it also initializes
     # self._thread_local._variable_creator_stack if it doesn't exist yet.
     old = list(self._variable_creator_stack)
-    self._thread_local._variable_creator_stack.append(creator)  # pylint: disable=protected-access
+    stack = self._thread_local._variable_creator_stack  # pylint: disable=protected-access
+    stack.append((priority, creator))
+    # Sorting is stable, so we'll put higher-priority creators later in the list
+    # but otherwise maintain registration order.
+    stack.sort(key=lambda item: item[0])
     try:
       yield
     finally:
@@ -5410,7 +5430,8 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
   @tf_contextlib.contextmanager
   def get_controller(self, default):
     context.context().context_switches.push(
-        default.building_function, default.as_default)
+        default.building_function, default.as_default,
+        default._device_function_stack)
     try:
       with super(_DefaultGraphStack, self).get_controller(
           default) as g, context.graph_mode():
@@ -5490,7 +5511,7 @@ def init_scope():
       # Names that end with trailing slashes are treated by `name_scope` as
       # absolute.
       scope = scope + "/"
-    inner_device_stack = default_graph._device_function_stack  # pylint: disable=protected-access
+    innermost_nonempty_device_stack = default_graph._device_function_stack  # pylint: disable=protected-access
 
     outer_context = None
     if not _default_graph_stack.stack:
@@ -5503,6 +5524,8 @@ def init_scope():
     else:
       # Find a context that is not building a function.
       for stack_entry in reversed(context.context().context_switches.stack):
+        if not innermost_nonempty_device_stack:
+          innermost_nonempty_device_stack = stack_entry.device_stack
         if not stack_entry.is_building_function:
           outer_context = stack_entry.enter_context_fn
           break
@@ -5524,6 +5547,8 @@ def init_scope():
     try:
       with outer_context(), name_scope(scope), control_dependencies(
           None), tape.stop_recording():
+        context_manager = NullContextmanager
+        context_manager_input = None
         if not context.executing_eagerly():
           # The device stack is preserved when lifting into a graph. Eager
           # execution doesn't implement device stacks and in particular it
@@ -5531,8 +5556,22 @@ def init_scope():
           # to do the same when lifting into the eager context.
           outer_graph = get_default_graph()
           outer_device_stack = outer_graph._device_function_stack  # pylint: disable=protected-access
-          outer_graph._device_function_stack = inner_device_stack  # pylint: disable=protected-access
-        yield
+          outer_graph._device_function_stack = innermost_nonempty_device_stack  # pylint: disable=protected-access
+        elif innermost_nonempty_device_stack is not None:
+          for device_spec in innermost_nonempty_device_stack.peek_objs():
+            if device_spec.function is None:
+              break
+            if device_spec.raw_string:
+              context_manager = context.device
+              context_manager_input = device_spec.raw_string
+              break
+            # It is currently not possible to have a device function in V2,
+            # but in V1 we are unable to apply device functions in eager mode.
+            # This means that we will silently skip some of the entries on the
+            # device stack in V1 + eager mode.
+
+        with context_manager(context_manager_input):
+          yield
     finally:
       # If an exception is raised here it may be hiding a related exception in
       # try-block (just above).

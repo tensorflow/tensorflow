@@ -233,6 +233,21 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "rebatch_dataset_op",
+    srcs = ["rebatch_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler/optimizers/data:rebatch",
+        "//tensorflow/core/kernels/data:graph_rewrite_dataset",
+    ],
+)
+
+tf_kernel_library(
     name = "scan_dataset_op",
     srcs = ["scan_dataset_op.cc"],
     deps = [
@@ -391,6 +406,7 @@ tf_kernel_library(
         ":parse_example_dataset_op",
         ":prefetching_kernels",
         ":random_dataset_op",
+        ":rebatch_dataset_op",
         ":scan_dataset_op",
         ":set_stats_aggregator_dataset_op",
         ":sleep_dataset_op",

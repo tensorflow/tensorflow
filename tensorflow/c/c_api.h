@@ -1743,6 +1743,14 @@ TF_CAPI_EXPORT extern const char* TF_ServerTarget(TF_Server* server);
 // it will be stopped and joined.
 TF_CAPI_EXPORT extern void TF_DeleteServer(TF_Server* server);
 
+// Register a listener method that processes printed messages.
+//
+// If any listeners are registered, the print operator will call all listeners
+// with the printed messages and immediately return without writing to the
+// logs.
+TF_CAPI_EXPORT extern void TF_RegisterLogListener(
+    void (*listener)(const char*));
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

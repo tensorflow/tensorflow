@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import auto_control_deps as acd
 from tensorflow.python.framework import constant_op
@@ -280,6 +281,20 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
     train()
     self.assertEqual(v.numpy(), -1.0)
+
+  def testRepeatedResourceInput(self):
+    var = resource_variable_ops.ResourceVariable(1.0)
+
+    @def_function.function
+    def inner(var1, var2):
+      return (resource_variable_ops.read_variable_op(var1, dtypes.float32) +
+              resource_variable_ops.read_variable_op(var2, dtypes.float32))
+
+    @def_function.function
+    def outer():
+      return inner(var.handle, var.handle)
+
+    self.assertEqual(self.evaluate(outer()), 2.0)
 
 
 if __name__ == '__main__':

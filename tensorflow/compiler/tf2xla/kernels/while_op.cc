@@ -348,8 +348,11 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "Done building while loop";
 }
 
-REGISTER_XLA_OP(Name("While").AllowResourceTypes(), XlaWhileOp);
-REGISTER_XLA_OP(Name("StatelessWhile").AllowResourceTypes(), XlaWhileOp);
-REGISTER_XLA_OP(Name("XlaWhile").AllowResourceTypes(), XlaWhileOp);
+REGISTER_XLA_OP(Name("While").AllowResourceTypes().AllowVariantTypes(),
+                XlaWhileOp);
+REGISTER_XLA_OP(Name("StatelessWhile").AllowResourceTypes().AllowVariantTypes(),
+                XlaWhileOp);
+REGISTER_XLA_OP(Name("XlaWhile").AllowResourceTypes().AllowVariantTypes(),
+                XlaWhileOp);
 
 }  // namespace tensorflow

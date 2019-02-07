@@ -773,6 +773,16 @@ class TensorUtilTest(test.TestCase):
       self.assertAllClose(np.array([10, 20, 30], dtype=np.int64), a)
 
 
+class IsTensorTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConstantTensor(self):
+    np_val = np.random.rand(3).astype(np.int32)
+    tf_val = constant_op.constant(np_val)
+    self.assertFalse(tensor_util.is_tensor(np_val))
+    self.assertTrue(tensor_util.is_tensor(tf_val))
+
+
 class ConstantValueTest(test.TestCase):
 
   def testConstant(self):

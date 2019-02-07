@@ -64,6 +64,13 @@ typedef Eigen::GpuDevice GPUDevice;
                               .Device(DEVICE_GPU)                 \
                               .HostMemory("lengths"),             \
                           TensorListConcat<GPUDevice, T>)         \
+  REGISTER_KERNEL_BUILDER(Name("TensorListConcatV2")              \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_GPU)                 \
+                              .HostMemory("leading_dims")         \
+                              .HostMemory("element_shape")        \
+                              .HostMemory("lengths"),             \
+                          TensorListConcat<GPUDevice, T>)         \
   REGISTER_KERNEL_BUILDER(Name("TensorListPushBackBatch")         \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_GPU),                \
@@ -77,6 +84,13 @@ typedef Eigen::GpuDevice GPUDevice;
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_GPU)                 \
                               .HostMemory("element_shape")        \
+                              .HostMemory("indices"),             \
+                          TensorListScatter<GPUDevice, T>)        \
+  REGISTER_KERNEL_BUILDER(Name("TensorListScatterV2")             \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_GPU)                 \
+                              .HostMemory("element_shape")        \
+                              .HostMemory("num_elements")         \
                               .HostMemory("indices"),             \
                           TensorListScatter<GPUDevice, T>)        \
   REGISTER_KERNEL_BUILDER(Name("TensorListSplit")                 \

@@ -49,6 +49,7 @@ import six
 from tensorflow.contrib import cluster_resolver
 from tensorflow.contrib.distribute.python import mirrored_strategy as mirrored_lib
 from tensorflow.contrib.distribute.python import one_device_strategy as one_device_lib
+from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.contrib.distribute.python import tpu_strategy as tpu_lib
 from tensorflow.contrib.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.contrib.optimizer_v2 import adam as adam_v2
@@ -57,6 +58,10 @@ from tensorflow.contrib.tpu.python.tpu import device_assignment as device_assign
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_keras_v2
+from tensorflow.python.keras.optimizer_v2 import adam as adam_keras_v2
+from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras_v2
+from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_keras_v2
 from tensorflow.python.training import adagrad
 from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
@@ -227,7 +232,7 @@ def combine(**kwargs):
   if not kwargs:
     return [OrderedDict()]
 
-  sort_by_key = lambda k: k[0][0]
+  sort_by_key = lambda k: k[0]
   kwargs = OrderedDict(sorted(kwargs.items(), key=sort_by_key))
   first = list(kwargs.items())[0]
 
@@ -347,30 +352,22 @@ default_strategy = NamedDistribution(
 one_device_strategy = NamedDistribution(
     "OneDeviceCPU", lambda: one_device_lib.OneDeviceStrategy("/cpu:0"),
     required_gpus=None)
+one_device_strategy_gpu = NamedDistribution(
+    "OneDeviceGPU", lambda: one_device_lib.OneDeviceStrategy("/gpu:0"),
+    required_gpus=1)
 tpu_strategy = NamedDistribution(
     "TPU", _get_tpu_strategy_creator(steps_per_run=2),
     required_tpu=True)
 tpu_strategy_one_step = NamedDistribution(
     "TPUOneStep", _get_tpu_strategy_creator(steps_per_run=1),
     required_tpu=True)
-tpu_strategy_loop_on_device_one_core = NamedDistribution(
-    "TPULoopOnDeviceOneCore", _get_tpu_strategy_creator(
-        steps_per_run=2, use_single_core=True,
-        _disable_training_loop_on_host=True),
+tpu_strategy_one_core = NamedDistribution(
+    "TPUOneCore", _get_tpu_strategy_creator(
+        steps_per_run=2, use_single_core=True),
     required_tpu=True)
-tpu_strategy_one_step_loop_on_device_one_core = NamedDistribution(
-    "TPUOneStepLoopOnDeviceOneCore", _get_tpu_strategy_creator(
-        steps_per_run=1, use_single_core=True,
-        _disable_training_loop_on_host=True),
-    required_tpu=True)
-# TODO(b/122327153): Remove below two NamedDistributions.
-tpu_strategy_loop_on_device = NamedDistribution(
-    "TPULoopOnDevice", _get_tpu_strategy_creator(
-        steps_per_run=2, _disable_training_loop_on_host=True),
-    required_tpu=True)
-tpu_strategy_one_step_loop_on_device = NamedDistribution(
-    "TPUOneStepLoopOnDevice", _get_tpu_strategy_creator(
-        steps_per_run=1, _disable_training_loop_on_host=True),
+tpu_strategy_one_step_one_core = NamedDistribution(
+    "TPUOneStepOneCore", _get_tpu_strategy_creator(
+        steps_per_run=1, use_single_core=True),
     required_tpu=True)
 
 mirrored_strategy_with_one_cpu = NamedDistribution(
@@ -403,6 +400,11 @@ core_mirrored_strategy_with_two_gpus = NamedDistribution(
     "CoreMirrored2GPUs",
     lambda: mirrored_lib.CoreMirroredStrategy(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
+parameter_server_strategy_with_two_gpus = NamedDistribution(
+    "ParameterServer2GPUs",
+    lambda: parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2),
+    required_gpus=2)
 
 
 gradient_descent_optimizer_v1_fn = NamedObject(
@@ -422,9 +424,19 @@ gradient_descent_optimizer_v2_fn = NamedObject(
 adagrad_optimizer_v2_fn = NamedObject(
     "AdagradV2", lambda: adagrad_v2.AdagradOptimizer(0.001))
 adam_optimizer_v2_fn = NamedObject(
-    "AdamV2", lambda: adam_v2.AdamOptimizer(0.001, epsilon=1))
+    "AdamV2", lambda: adam_v2.AdamOptimizer(0.001, epsilon=1.0))
 
 optimizers_v2 = [gradient_descent_optimizer_v2_fn, adagrad_optimizer_v2_fn]
+
+gradient_descent_optimizer_keras_v2_fn = NamedObject(
+    "GradientDescentKerasV2",
+    lambda: gradient_descent_keras_v2.SGD(0.2))
+adagrad_optimizer_keras_v2_fn = NamedObject(
+    "AdagradKerasV2", lambda: adagrad_keras_v2.Adagrad(0.001))
+adam_optimizer_keras_v2_fn = NamedObject(
+    "AdamKerasV2", lambda: adam_keras_v2.Adam(0.001, epsilon=1.0))
+rmsprop_optimizer_keras_v2_fn = NamedObject(
+    "RmsPropKerasV2", lambda: rmsprop_keras_v2.RMSprop(0.001))
 
 graph_and_eager_modes = ["graph", "eager"]
 

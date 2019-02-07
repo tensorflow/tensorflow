@@ -30,18 +30,23 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export(v1=["debugging.assert_all_finite", "verify_tensor_all_finite"])
 @deprecation.deprecated_endpoints("verify_tensor_all_finite")
-def verify_tensor_all_finite(t, msg, name=None):
+def verify_tensor_all_finite(t=None, msg=None, name=None, x=None, message=None):
   """Assert that the tensor does not contain any NaN's or Inf's.
 
   Args:
     t: Tensor to check.
     msg: Message to log on failure.
     name: A name for this operation (optional).
+    x: Alias for t.
+    message: Alias for msg.
 
   Returns:
     Same tensor as `t`.
   """
-  return verify_tensor_all_finite_v2(t, msg, name)
+  x = deprecation.deprecated_argument_lookup("x", x, "t", t)
+  message = deprecation.deprecated_argument_lookup(
+      "message", message, "msg", msg)
+  return verify_tensor_all_finite_v2(x, message, name)
 
 
 @tf_export("debugging.assert_all_finite", v1=[])

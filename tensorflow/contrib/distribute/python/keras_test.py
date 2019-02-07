@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 import tempfile
 from absl.testing import parameterized
@@ -68,6 +69,18 @@ def simple_functional_model():
   b = keras.layers.Dropout(0.1)(b)
   b = keras.layers.Dense(_NUM_CLASS, activation='softmax')(b)
   model = keras.models.Model(inputs=[a], outputs=[b])
+  return model
+
+
+def simple_multi_inputs_multi_outputs_model():
+  input_a = keras.layers.Input(shape=(16,), name='input_a')
+  input_b = keras.layers.Input(shape=(16,), name='input_b')
+
+  merged = keras.layers.concatenate([input_a, input_b], name='merge')
+  output_c = keras.layers.Dense(3, activation='softmax', name='dense_2')(merged)
+  output_d = keras.layers.Dense(2, activation='softmax', name='dense_3')(merged)
+  model = keras.models.Model(
+      inputs=[input_a, input_b], outputs=[output_c, output_d])
   return model
 
 
@@ -217,6 +230,8 @@ def multi_input_output_model():
   return model
 
 
+# TODO(josh11b): Add combinations.one_device_strategy_gpu once it works with
+# TestDistributionStrategyWithCallbacks.test_callbacks_in_predict.
 strategies_minus_tpu = [
     combinations.default_strategy,
     combinations.one_device_strategy,
@@ -231,15 +246,13 @@ tpu_strategies = [
 
 
 def strategy_minus_tpu_combinations():
-  return combinations.combine(
-      distribution=strategies_minus_tpu,
-      mode=['graph', 'eager'])
+  return combinations.combine(distribution=strategies_minus_tpu,
+                              mode=['graph', 'eager'])
 
 
 def tpu_strategy_combinations():
-  return combinations.combine(
-      distribution=tpu_strategies,
-      mode=['graph'])
+  return combinations.combine(distribution=tpu_strategies,
+                              mode=['graph'])
 
 
 def all_strategy_combinations():
@@ -258,21 +271,25 @@ def all_strategy_combinations_minus_default():
   return strategy_minus_default_combinations + tpu_strategy_combinations()
 
 
-# TODO(priyag): Add v2 optimizers here.
 def strategy_and_optimizer_combinations():
   return combinations.times(
       all_strategy_combinations(),
-      combinations.combine(
-          optimizer=[combinations.adagrad_optimizer_v1_fn,
-                     combinations.adam_optimizer_v1_fn,
-                     combinations.gradient_descent_optimizer_v1_fn,
-                     combinations.rmsprop_optimizer_v1_fn]))
+      combinations.combine(optimizer=[
+          combinations.adagrad_optimizer_v1_fn,
+          combinations.adagrad_optimizer_keras_v2_fn,
+          combinations.adam_optimizer_v1_fn,
+          combinations.adam_optimizer_keras_v2_fn,
+          combinations.gradient_descent_optimizer_v1_fn,
+          combinations.gradient_descent_optimizer_keras_v2_fn,
+          combinations.rmsprop_optimizer_v1_fn,
+          combinations.rmsprop_optimizer_keras_v2_fn
+      ]))
 
 
 def strategy_for_numpy_input_combinations():
-  return combinations.combine(
-      distribution=strategies_minus_tpu + tpu_strategies,
-      mode=['graph'])
+  one_gpu = combinations.one_device_strategy_gpu
+  return (all_strategy_combinations() +
+          combinations.combine(distribution=[one_gpu], mode=['graph', 'eager']))
 
 
 class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
@@ -666,6 +683,61 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       self.assertAllEqual([6, 7], outs[0].shape)
       self.assertAllEqual([6, 7], outs[1].shape)
 
+  @combinations.generate(tpu_strategy_combinations())
+  def test_predict_with_partial_batch(self, distribution):
+    with self.cached_session():
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+
+      with distribution.scope():
+        model_with_ds_strategy = get_model()
+        model_with_ds_strategy.compile(optimizer, loss)
+
+      cpu_model = get_model()
+      cpu_model.compile(optimizer, loss)
+
+      inputs = np.zeros((10, 3), dtype=np.float32)
+
+      # As sample size is 10, we batch by 4 so that the last batch is
+      # a partial batch. Also `fit()` using numpy array as inputs without
+      # distribution strategy uses entire sample as a single batch. As so,
+      # we remove parameters `batch_size` and `steps`.
+      cpu_model.set_weights(model_with_ds_strategy.get_weights())
+      self.assertAllClose(
+          model_with_ds_strategy.predict(inputs, batch_size=4, steps=3),
+          cpu_model.predict(inputs),
+          atol=1e-5, rtol=1e-5)
+
+  @combinations.generate(tpu_strategy_combinations())
+  def test_predict_multi_output_model_with_partial_batch(
+      self, distribution):
+    with self.cached_session():
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+
+      with distribution.scope():
+        model_with_ds_strategy = simple_multi_inputs_multi_outputs_model()
+        model_with_ds_strategy.compile(optimizer, loss)
+
+      cpu_model = simple_multi_inputs_multi_outputs_model()
+      cpu_model.compile(optimizer, loss)
+
+      input_data, _ = get_multi_inputs_multi_outputs_data()
+      input_dict = {
+          'input_a': input_data['input_a'],
+          'input_b': input_data['input_b'],
+      }
+
+      # As sample size is 200, we batch by 18 so that the last batch is
+      # a partial batch. Also `fit()` using numpy array as inputs without
+      # distribution strategy uses entire sample as a single batch. As so,
+      # we remove parameters `batch_size` and `steps`.
+      cpu_model.set_weights(model_with_ds_strategy.get_weights())
+      self.assertAllClose(
+          model_with_ds_strategy.predict(input_dict, batch_size=18, steps=12),
+          cpu_model.predict(input_dict),
+          atol=1e-4, rtol=1e-4)
+
 
 class TestDistributionStrategyWithDatasets(test.TestCase,
                                            parameterized.TestCase):
@@ -768,6 +840,42 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       dataset_dict = dataset_dict.batch(10)
 
       model.fit(dataset_dict, epochs=1, steps_per_epoch=2, verbose=1)
+
+  # TODO(b/122743976): Include TPUStrategy for this test as well once
+  # step inference is supported.
+  @combinations.generate(strategy_minus_tpu_combinations())
+  def test_fit_eval_and_predict_methods_on_dataset_without_steps(
+      self, distribution):
+    with self.cached_session():
+      with distribution.scope():
+        model = get_model()
+        optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+        loss = 'mse'
+        metrics = ['mae', keras.metrics.CategoricalAccuracy()]
+        model.compile(optimizer, loss, metrics=metrics)
+
+      inputs = np.zeros((1000, 3), dtype=np.float32)
+      targets = np.zeros((1000, 4), dtype=np.float32)
+      # steps/steps_per_epoch are calculated when using numpy arrays as
+      # input data.
+      fit_with_numpy = model.fit(inputs, targets, epochs=1,
+                                 batch_size=10).history
+      eval_with_numpy = model.evaluate(inputs, targets, batch_size=10)
+      predict_with_numpy = model.predict(inputs, batch_size=10)
+
+      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+      dataset = dataset.batch(10)
+      fit_with_ds = model.fit(dataset, epochs=1).history
+      eval_with_ds = model.evaluate(dataset)
+      predict_dataset = dataset_ops.Dataset.from_tensor_slices(inputs)
+      predict_dataset = predict_dataset.batch(10, drop_remainder=True)
+      predict_with_ds = model.predict(predict_dataset)
+      self.assertAllClose(
+          fit_with_numpy, fit_with_ds, atol=1e-4, rtol=1e-4)
+      self.assertAllClose(
+          eval_with_numpy, eval_with_ds, atol=1e-4, rtol=1e-4)
+      self.assertAllClose(
+          predict_with_numpy, predict_with_ds, atol=1e-4, rtol=1e-4)
 
   @combinations.generate(all_strategy_combinations())
   def test_fit_eval_and_predict_methods_on_dataset(self, distribution):
@@ -956,6 +1064,184 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
                 callbacks=[keras.callbacks.LearningRateScheduler(schedule)])
       self.assertAllClose(0.001, keras.backend.get_value(model.optimizer.lr))
 
+  @combinations.generate(tpu_strategy_combinations())
+  def test_predict_with_dataset_with_partial_batch(self, distribution):
+    with self.cached_session():
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+
+      with distribution.scope():
+        model_with_ds_strategy = get_model()
+        model_with_ds_strategy.compile(optimizer, loss)
+
+      cpu_model = get_model()
+      cpu_model.compile(optimizer, loss)
+
+      inputs = np.zeros((10, 3), dtype=np.float32)
+      dataset = dataset_ops.Dataset.from_tensor_slices((inputs))
+
+      # As sample size is 10, we batch by 4 so that the last batch is
+      # a partial batch.
+      dataset_with_partial_batch = dataset.batch(4)
+      cpu_model.set_weights(model_with_ds_strategy.get_weights())
+
+      self.assertAllClose(
+          model_with_ds_strategy.predict(dataset_with_partial_batch, steps=3),
+          cpu_model.predict(dataset_with_partial_batch, steps=3),
+          atol=1e-5, rtol=1e-5)
+
+  @combinations.generate(tpu_strategy_combinations())
+  def test_predict_multi_output_model_with_dataset_with_partial_batch(
+      self, distribution):
+    with self.cached_session():
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+
+      with distribution.scope():
+        model_with_ds_strategy = simple_multi_inputs_multi_outputs_model()
+        model_with_ds_strategy.compile(optimizer, loss)
+
+      cpu_model = simple_multi_inputs_multi_outputs_model()
+      cpu_model.compile(optimizer, loss)
+
+      input_data, _ = get_multi_inputs_multi_outputs_data()
+      input_dict = {
+          'input_a': input_data['input_a'],
+          'input_b': input_data['input_b'],
+      }
+
+      dataset = dataset_ops.Dataset.from_tensor_slices(input_dict)
+
+      # As sample size is 200, we batch by 18 using 12 steps per epoch so
+      # that the last batch is a partial batch.
+      dataset_with_partial_batch = dataset.batch(18)
+      cpu_model.set_weights(model_with_ds_strategy.get_weights())
+
+      self.assertAllClose(
+          model_with_ds_strategy.predict(dataset_with_partial_batch, steps=12),
+          cpu_model.predict(dataset_with_partial_batch, steps=12),
+          atol=1e-4, rtol=1e-4)
+
+
+class Counter(keras.callbacks.Callback):
+  """Counts the number of times each callback method was run.
+
+  Attributes:
+    method_counts: dict. Contains the counts of time  each callback method was
+      run.
+  """
+
+  def __init__(self):
+    self.method_counts = collections.defaultdict(int)
+    methods_to_count = [
+        'on_batch_begin', 'on_batch_end', 'on_epoch_begin', 'on_epoch_end',
+        'on_predict_batch_begin', 'on_predict_batch_end', 'on_predict_begin',
+        'on_predict_end', 'on_test_batch_begin', 'on_test_batch_end',
+        'on_test_begin', 'on_test_end', 'on_train_batch_begin',
+        'on_train_batch_end', 'on_train_begin', 'on_train_end'
+    ]
+    for method_name in methods_to_count:
+      setattr(self, method_name,
+              self.wrap_with_counts(method_name, getattr(self, method_name)))
+
+  def wrap_with_counts(self, method_name, method):
+
+    def _call_and_count(*args, **kwargs):
+      self.method_counts[method_name] += 1
+      return method(*args, **kwargs)
+
+    return _call_and_count
+
+
+class TestDistributionStrategyWithCallbacks(test.TestCase,
+                                            parameterized.TestCase):
+
+  @combinations.generate(all_strategy_combinations())
+  def test_callbacks_in_fit(self, distribution):
+    with distribution.scope():
+      model = get_model()
+      model.compile(optimizer='sgd', loss='mse', metrics=['mae'])
+
+    dataset = get_dataset(distribution)
+    counter = Counter()
+
+    epochs = 2
+    steps_per_epoch = 5
+    validation_steps = 3
+
+    model.fit(
+        dataset,
+        epochs=epochs,
+        steps_per_epoch=steps_per_epoch,
+        verbose=0,
+        validation_data=dataset,
+        validation_steps=validation_steps,
+        callbacks=[counter])
+
+    if isinstance(distribution, tpu_strategy.TPUStrategy):
+      # TPU Strategy can have multi step training, from extended.steps_per_run
+      # if steps_per_run = 1, then num_batch_call_per_epoch = steps_per_epoch
+      steps_per_run = distribution.extended.steps_per_run
+      num_batch_call_per_epoch = steps_per_epoch // steps_per_run
+      if steps_per_epoch % steps_per_run:
+        num_batch_call_per_epoch += 1
+    else:
+      num_batch_call_per_epoch = steps_per_epoch
+
+    self.assertDictEqual(
+        counter.method_counts, {
+            'on_batch_begin': epochs * num_batch_call_per_epoch,
+            'on_batch_end': epochs * num_batch_call_per_epoch,
+            'on_epoch_begin': epochs,
+            'on_epoch_end': epochs,
+            'on_test_batch_begin': epochs * validation_steps,
+            'on_test_batch_end': epochs * validation_steps,
+            'on_test_begin': epochs,
+            'on_test_end': epochs,
+            'on_train_batch_begin': epochs * num_batch_call_per_epoch,
+            'on_train_batch_end': epochs * num_batch_call_per_epoch,
+            'on_train_begin': 1,
+            'on_train_end': 1
+        })
+
+  @combinations.generate(all_strategy_combinations())
+  def test_callbacks_in_eval(self, distribution):
+    with distribution.scope():
+      model = get_model()
+      model.compile(optimizer='sgd', loss='mse', metrics=['mae'])
+
+    dataset = get_dataset(distribution)
+    counter = Counter()
+
+    model.evaluate(dataset, steps=5, callbacks=[counter])
+
+    self.assertDictEqual(
+        counter.method_counts, {
+            'on_test_batch_begin': 5,
+            'on_test_batch_end': 5,
+            'on_test_begin': 1,
+            'on_test_end': 1
+        })
+
+  @combinations.generate(all_strategy_combinations())
+  def test_callbacks_in_predict(self, distribution):
+    with distribution.scope():
+      model = get_model()
+      model.compile(optimizer='sgd', loss='mse', metrics=['mae'])
+
+    dataset = get_dataset(distribution)
+    counter = Counter()
+
+    model.predict(get_predict_dataset(dataset), steps=5, callbacks=[counter])
+
+    self.assertDictEqual(
+        counter.method_counts, {
+            'on_predict_batch_begin': 5,
+            'on_predict_batch_end': 5,
+            'on_predict_begin': 1,
+            'on_predict_end': 1
+        })
+
 
 class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
@@ -1044,14 +1330,21 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
             verbose=0,
             sample_weight=sample_weight)
 
-      # Test with not specifying the `steps` argument.
-      with self.assertRaisesRegexp(
-          ValueError, 'the `steps_per_epoch` argument'):
+      # Test with not specifying the `steps` argument for dataset with infinite
+      # cardinality.
+      dataset = dataset.repeat()
+      with self.assertRaisesRegexp(ValueError, 'When passing an infinitely '
+                                   'repeating dataset, you must specify the '
+                                   '`steps_per_epoch` argument'):
         model.fit(dataset, epochs=1, verbose=0)
-      with self.assertRaisesRegexp(ValueError, 'the `steps` argument'):
+      with self.assertRaisesRegexp(ValueError, 'When passing an infinitely '
+                                   'repeating dataset, you must specify the '
+                                   '`steps` argument'):
         model.evaluate(dataset, verbose=0)
 
-      with self.assertRaisesRegexp(ValueError, 'the `steps` argument'):
+      with self.assertRaisesRegexp(ValueError, 'When passing an infinitely '
+                                   'repeating dataset, you must specify the '
+                                   '`steps` argument'):
         model.predict(dataset, verbose=0)
 
   @combinations.generate(combinations.combine(
@@ -1173,20 +1466,19 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
 
   @combinations.generate(all_strategy_combinations_minus_default())
   def test_save_load_checkpointable(self, distribution):
-    # TODO(sourabhbajaj): Fix this and enable the test.
-    self.skipTest('Restore for checkpoint for optimizer weights fails.')
+    # TODO(sourabhbajaj): Test fails with optimizer v2 without h5
     with self.cached_session():
       dataset = get_dataset(distribution)
       with distribution.scope():
         model = get_model()
-        model.compile(gradient_descent_keras.SGD(0.01), 'mse')
+        model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
         model.fit(dataset, epochs=1, steps_per_epoch=1)
 
         weights_file = tempfile.mktemp()
         model.save_weights(weights_file)
 
         model_2 = get_model()
-        model_2.compile(gradient_descent_keras.SGD(0.01), 'mse')
+        model_2.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
         model_2.load_weights(weights_file)
         model_2.predict(get_predict_dataset(distribution), steps=2)
         model_2.fit(dataset, epochs=1, steps_per_epoch=1)

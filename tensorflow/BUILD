@@ -40,12 +40,16 @@ load(
 
 # @unused
 TENSORFLOW_API_INIT_FILES_V2 = (
-    TENSORFLOW_API_INIT_FILES + get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
+    TENSORFLOW_API_INIT_FILES +
+    get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
+    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
 )
 
 # @unused
-TENSORFLOW_API_INIT_FILES_V1_WITH_COMPAT = (
-    TENSORFLOW_API_INIT_FILES_V1 + get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
+TENSORFLOW_API_INIT_FILES_V1 = (
+    TENSORFLOW_API_INIT_FILES_V1 +
+    get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
+    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
 )
 
 # Config setting used when building for products
@@ -87,6 +91,12 @@ config_setting(
         "crosstool_top": "//external:android/crosstool",
         "cpu": "armeabi",
     },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "emscripten",
+    values = {"crosstool_top": "//external:android/emscripten"},
     visibility = ["//visibility:public"],
 )
 
@@ -344,6 +354,13 @@ config_setting(
 )
 
 config_setting(
+    name = "using_rocm_hipcc",
+    define_values = {
+        "using_rocm_hipcc": "true",
+    },
+)
+
+config_setting(
     name = "with_mpi_support",
     values = {"define": "with_mpi_support=true"},
     visibility = ["//visibility:public"],
@@ -381,17 +398,7 @@ config_setting(
 
 package_group(
     name = "internal",
-    packages = [
-        "-//third_party/tensorflow/python/estimator",
-        "//learning/deepmind/...",
-        "//learning/meta_rank/...",
-        "//platforms/performance/autograppler/...",
-        "//tensorflow/...",
-        "//tensorflow_estimator/contrib/...",
-        "//tensorflow_fold/llgtm/...",
-        "//tensorflow_text/...",
-        "//third_party/py/tensor2tensor/...",
-    ],
+    packages = ["//tensorflow/..."],
 )
 
 load(
@@ -600,13 +607,20 @@ gen_api_init_files(
     name = "tf_python_api_gen_v1",
     srcs = [
         "api_template_v1.__init__.py",
+        "compat_template.__init__.py",
         "compat_template_v1.__init__.py",
     ],
     api_version = 1,
-    compat_api_versions = [1],
-    compat_init_templates = ["compat_template_v1.__init__.py"],
+    compat_api_versions = [
+        1,
+        2,
+    ],
+    compat_init_templates = [
+        "compat_template_v1.__init__.py",
+        "compat_template.__init__.py",
+    ],
     output_dir = "_api/v1/",
-    output_files = TENSORFLOW_API_INIT_FILES_V1_WITH_COMPAT,
+    output_files = TENSORFLOW_API_INIT_FILES_V1,
     output_package = "tensorflow._api.v1",
     root_file_name = "v1.py",
     root_init_template = "api_template_v1.__init__.py",
@@ -616,11 +630,18 @@ gen_api_init_files(
     name = "tf_python_api_gen_v2",
     srcs = [
         "api_template.__init__.py",
+        "compat_template.__init__.py",
         "compat_template_v1.__init__.py",
     ],
     api_version = 2,
-    compat_api_versions = [1],
-    compat_init_templates = ["compat_template_v1.__init__.py"],
+    compat_api_versions = [
+        1,
+        2,
+    ],
+    compat_init_templates = [
+        "compat_template_v1.__init__.py",
+        "compat_template.__init__.py",
+    ],
     output_dir = "_api/v2/",
     output_files = TENSORFLOW_API_INIT_FILES_V2,
     output_package = "tensorflow._api.v2",

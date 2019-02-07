@@ -83,7 +83,7 @@ def exact_gaussian_kernel(x, y, stddev):
   """
   x_aligned, y_aligned = _align_matrices(x, y)
   diff_squared_l2_norm = math_ops.reduce_sum(
-      math_ops.square(math_ops.subtract(x_aligned, y_aligned)), 2)
+      math_ops.squared_difference(x_aligned, y_aligned), 2)
   return math_ops.exp(-diff_squared_l2_norm / (2 * stddev * stddev))
 
 

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import math
 import os
 import numpy as np
@@ -684,26 +685,43 @@ class HingeTest(test.TestCase):
   def test_unweighted(self):
     hinge_obj = metrics.Hinge()
     self.evaluate(variables.variables_initializer(hinge_obj.variables))
-    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
-                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
-    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
-                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+
+    # metric = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true = [[-1, 1, -1, 1], [-1, -1, 1, 1]]
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # metric = [(0.7 + 0.8 + 0.9 + 0) / 4, (0.75 + 0 + 0.5 + 0.4) / 4]
+    #        = [0.6, 0.4125]
+    # reduced metric = (0.6 + 0.4125) / 2
 
     update_op = hinge_obj.update_state(y_true, y_pred)
     self.evaluate(update_op)
     result = hinge_obj.result()
-    self.assertAllClose(0.65, result, atol=1e-5)
+    self.assertAllClose(0.506, result, atol=1e-3)
 
   def test_weighted(self):
     hinge_obj = metrics.Hinge()
     self.evaluate(variables.variables_initializer(hinge_obj.variables))
-    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
-                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
-    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
-                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
-    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
+    y_true = constant_op.constant([[-1, 1, -1, 1], [-1, -1, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+    sample_weight = constant_op.constant([1.5, 2.])
+
+    # metric = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # metric = [(0.7 + 0.8 + 0.9 + 0) / 4, (0.75 + 0 + 0.5 + 0.4) / 4]
+    #        = [0.6, 0.4125]
+    # weighted metric = [0.6 * 1.5, 0.4125 * 2]
+    # reduced metric = (0.6 * 1.5 + 0.4125 * 2) / (1.5 + 2)
+
     result = hinge_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAllClose(0.65714, self.evaluate(result), atol=1e-5)
+    self.assertAllClose(0.493, self.evaluate(result), atol=1e-3)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -722,26 +740,49 @@ class SquaredHingeTest(test.TestCase):
   def test_unweighted(self):
     sq_hinge_obj = metrics.SquaredHinge()
     self.evaluate(variables.variables_initializer(sq_hinge_obj.variables))
-    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
-                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
-    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
-                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+
+    # metric = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true = [[-1, 1, -1, 1], [-1, -1, 1, 1]]
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # max(0, 1 - y_true * y_pred) = [[0.7, 0.8, 0.9, 0], [0.75, 0, 0.5, 0.4]]
+    # squared(max(0, 1 - y_true * y_pred)) = [[0.49, 0.64, 0.81, 0],
+    #                                         [0.5625, 0, 0.25, 0.16]]
+    # metric = [(0.49 + 0.64 + 0.81 + 0) / 4, (0.5625 + 0 + 0.25 + 0.16) / 4]
+    #        = [0.485, 0.2431]
+    # reduced metric = (0.485 + 0.2431) / 2
 
     update_op = sq_hinge_obj.update_state(y_true, y_pred)
     self.evaluate(update_op)
     result = sq_hinge_obj.result()
-    self.assertAllClose(0.65, result, atol=1e-5)
+    self.assertAllClose(0.364, result, atol=1e-3)
 
   def test_weighted(self):
     sq_hinge_obj = metrics.SquaredHinge()
     self.evaluate(variables.variables_initializer(sq_hinge_obj.variables))
-    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
-                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
-    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
-                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
-    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
+    y_true = constant_op.constant([[-1, 1, -1, 1], [-1, -1, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+    sample_weight = constant_op.constant([1.5, 2.])
+
+    # metric = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # max(0, 1 - y_true * y_pred) = [[0.7, 0.8, 0.9, 0], [0.75, 0, 0.5, 0.4]]
+    # squared(max(0, 1 - y_true * y_pred)) = [[0.49, 0.64, 0.81, 0],
+    #                                         [0.5625, 0, 0.25, 0.16]]
+    # metric = [(0.49 + 0.64 + 0.81 + 0) / 4, (0.5625 + 0 + 0.25 + 0.16) / 4]
+    #        = [0.485, 0.2431]
+    # weighted metric = [0.485 * 1.5, 0.2431 * 2]
+    # reduced metric = (0.485 * 1.5 + 0.2431 * 2) / (1.5 + 2)
+
     result = sq_hinge_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAllClose(0.65714, self.evaluate(result), atol=1e-5)
+    self.assertAllClose(0.347, self.evaluate(result), atol=1e-3)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -895,7 +936,7 @@ class SparseTopKCategoricalAccuracyTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class LogcoshTest(test.TestCase):
+class LogCoshErrorTest(test.TestCase):
 
   def setup(self):
     y_pred = np.asarray([1, 9, 2, -5, -2, 6]).reshape((2, 3))
@@ -909,13 +950,13 @@ class LogcoshTest(test.TestCase):
     self.y_true = constant_op.constant(y_true)
 
   def test_config(self):
-    logcosh_obj = metrics.Logcosh(name='logcosh', dtype=dtypes.int32)
+    logcosh_obj = metrics.LogCoshError(name='logcosh', dtype=dtypes.int32)
     self.assertEqual(logcosh_obj.name, 'logcosh')
     self.assertEqual(logcosh_obj._dtype, dtypes.int32)
 
   def test_unweighted(self):
     self.setup()
-    logcosh_obj = metrics.Logcosh()
+    logcosh_obj = metrics.LogCoshError()
     self.evaluate(variables.variables_initializer(logcosh_obj.variables))
 
     update_op = logcosh_obj.update_state(self.y_true, self.y_pred)
@@ -926,7 +967,7 @@ class LogcoshTest(test.TestCase):
 
   def test_weighted(self):
     self.setup()
-    logcosh_obj = metrics.Logcosh()
+    logcosh_obj = metrics.LogCoshError()
     self.evaluate(variables.variables_initializer(logcosh_obj.variables))
     sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
     result = logcosh_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
@@ -984,7 +1025,7 @@ class PoissonTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class KullbackLeiblerDivergenceTest(test.TestCase):
+class KLDivergenceTest(test.TestCase):
 
   def setup(self):
     y_pred = np.asarray([.4, .9, .12, .36, .3, .4]).reshape((2, 3))
@@ -997,17 +1038,17 @@ class KullbackLeiblerDivergenceTest(test.TestCase):
     self.y_true = constant_op.constant(y_true)
 
   def test_config(self):
-    k_obj = metrics.KullbackLeiblerDivergence(name='kld', dtype=dtypes.int32)
+    k_obj = metrics.KLDivergence(name='kld', dtype=dtypes.int32)
     self.assertEqual(k_obj.name, 'kld')
     self.assertEqual(k_obj._dtype, dtypes.int32)
 
-    k_obj2 = metrics.KullbackLeiblerDivergence.from_config(k_obj.get_config())
+    k_obj2 = metrics.KLDivergence.from_config(k_obj.get_config())
     self.assertEqual(k_obj2.name, 'kld')
     self.assertEqual(k_obj2._dtype, dtypes.int32)
 
   def test_unweighted(self):
     self.setup()
-    k_obj = metrics.KullbackLeiblerDivergence()
+    k_obj = metrics.KLDivergence()
     self.evaluate(variables.variables_initializer(k_obj.variables))
 
     update_op = k_obj.update_state(self.y_true, self.y_pred)
@@ -1018,7 +1059,7 @@ class KullbackLeiblerDivergenceTest(test.TestCase):
 
   def test_weighted(self):
     self.setup()
-    k_obj = metrics.KullbackLeiblerDivergence()
+    k_obj = metrics.KLDivergence()
     self.evaluate(variables.variables_initializer(k_obj.variables))
 
     sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
@@ -1327,14 +1368,14 @@ class BinaryCrossentropyTest(test.TestCase):
     self.assertEqual(bce_obj._dtype, dtypes.int32)
 
     old_config = bce_obj.get_config()
-    self.assertAllClose(self.evaluate(old_config['label_smoothing']), 0.2, 1e-3)
+    self.assertAllClose(old_config['label_smoothing'], 0.2, 1e-3)
 
     # Check save and restore config
     bce_obj2 = metrics.BinaryCrossentropy.from_config(old_config)
     self.assertEqual(bce_obj2.name, 'bce')
     self.assertEqual(bce_obj2._dtype, dtypes.int32)
     new_config = bce_obj2.get_config()
-    self.assertAllClose(self.evaluate(new_config['label_smoothing']), 0.2, 1e-3)
+    self.assertDictEqual(old_config, new_config)
 
   def test_unweighted(self):
     bce_obj = metrics.BinaryCrossentropy()
@@ -1435,6 +1476,283 @@ class BinaryCrossentropyTest(test.TestCase):
     result = bce_obj(y_true, logits)
     expected_value = (100.0 + 50.0 * label_smoothing) / 3.0
     self.assertAllClose(expected_value, self.evaluate(result), atol=1e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class CategoricalCrossentropyTest(test.TestCase):
+
+  def test_config(self):
+    cce_obj = metrics.CategoricalCrossentropy(
+        name='cce', dtype=dtypes.int32, label_smoothing=0.2)
+    self.assertEqual(cce_obj.name, 'cce')
+    self.assertEqual(cce_obj._dtype, dtypes.int32)
+
+    old_config = cce_obj.get_config()
+    self.assertAllClose(old_config['label_smoothing'], 0.2, 1e-3)
+
+    # Check save and restore config
+    cce_obj2 = metrics.CategoricalCrossentropy.from_config(old_config)
+    self.assertEqual(cce_obj2.name, 'cce')
+    self.assertEqual(cce_obj2._dtype, dtypes.int32)
+    new_config = cce_obj2.get_config()
+    self.assertDictEqual(old_config, new_config)
+
+  def test_unweighted(self):
+    cce_obj = metrics.CategoricalCrossentropy()
+    self.evaluate(variables.variables_initializer(cce_obj.variables))
+
+    y_true = np.asarray([[0, 1, 0], [0, 0, 1]])
+    y_pred = np.asarray([[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
+    result = cce_obj(y_true, y_pred)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+
+    # Metric = -sum(y * log(y'), axis = -1)
+    #        = -((log 0.95), (log 0.1))
+    #        = [0.051, 2.302]
+    # Reduced metric = (0.051 + 2.302) / 2
+
+    self.assertAllClose(self.evaluate(result), 1.176, atol=1e-3)
+
+  def test_unweighted_from_logits(self):
+    cce_obj = metrics.CategoricalCrossentropy(from_logits=True)
+    self.evaluate(variables.variables_initializer(cce_obj.variables))
+
+    y_true = np.asarray([[0, 1, 0], [0, 0, 1]])
+    logits = np.asarray([[1, 9, 0], [1, 8, 1]], dtype=np.float32)
+    result = cce_obj(y_true, logits)
+
+    # softmax = exp(logits) / sum(exp(logits), axis=-1)
+    # xent = -sum(labels * log(softmax), 1)
+
+    # exp(logits) = [[2.718, 8103.084, 1], [2.718, 2980.958, 2.718]]
+    # sum(exp(logits), axis=-1) = [8106.802, 2986.394]
+    # softmax = [[0.00033, 0.99954, 0.00012], [0.00091, 0.99817, 0.00091]]
+    # log(softmax) = [[-8.00045, -0.00045, -9.00045],
+    #                 [-7.00182, -0.00182, -7.00182]]
+    # labels * log(softmax) = [[0, -0.00045, 0], [0, 0, -7.00182]]
+    # xent = [0.00045, 7.00182]
+    # Reduced xent = (0.00045 + 7.00182) / 2
+
+    self.assertAllClose(self.evaluate(result), 3.5011, atol=1e-3)
+
+  def test_weighted(self):
+    cce_obj = metrics.CategoricalCrossentropy()
+    self.evaluate(variables.variables_initializer(cce_obj.variables))
+
+    y_true = np.asarray([[0, 1, 0], [0, 0, 1]])
+    y_pred = np.asarray([[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
+    sample_weight = constant_op.constant([1.5, 2.])
+    result = cce_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+
+    # Metric = -sum(y * log(y'), axis = -1)
+    #        = -((log 0.95), (log 0.1))
+    #        = [0.051, 2.302]
+    # Weighted metric = [0.051 * 1.5, 2.302 * 2.]
+    # Reduced metric = (0.051 * 1.5 + 2.302 * 2.) / 3.5
+
+    self.assertAllClose(self.evaluate(result), 1.338, atol=1e-3)
+
+  def test_weighted_from_logits(self):
+    cce_obj = metrics.CategoricalCrossentropy(from_logits=True)
+    self.evaluate(variables.variables_initializer(cce_obj.variables))
+
+    y_true = np.asarray([[0, 1, 0], [0, 0, 1]])
+    logits = np.asarray([[1, 9, 0], [1, 8, 1]], dtype=np.float32)
+    sample_weight = constant_op.constant([1.5, 2.])
+    result = cce_obj(y_true, logits, sample_weight=sample_weight)
+
+    # softmax = exp(logits) / sum(exp(logits), axis=-1)
+    # xent = -sum(labels * log(softmax), 1)
+    # xent = [0.00045, 7.00182]
+    # weighted xent = [0.000675, 14.00364]
+    # Reduced xent = (0.000675 + 14.00364) / (1.5 + 2)
+
+    self.assertAllClose(self.evaluate(result), 4.0012, atol=1e-3)
+
+  def test_label_smoothing(self):
+    y_true = np.asarray([[0, 1, 0], [0, 0, 1]])
+    logits = np.asarray([[1, 9, 0], [1, 8, 1]], dtype=np.float32)
+    label_smoothing = 0.1
+
+    # Label smoothing: z' = z * (1 - L) + L/n,
+    #     where L = label smoothing value and n = num classes
+    # Label value 1 becomes: 1 - L + L/n
+    # Label value 0 becomes: L/n
+    # y_true with label_smoothing = [[0.0333, 0.9333, 0.0333],
+    #                               [0.0333, 0.0333, 0.9333]]
+
+    # softmax = exp(logits) / sum(exp(logits), axis=-1)
+    # xent = -sum(labels * log(softmax), 1)
+    # log(softmax) = [[-8.00045, -0.00045, -9.00045],
+    #                 [-7.00182, -0.00182, -7.00182]]
+    # labels * log(softmax) = [[-0.26641, -0.00042, -0.29971],
+    #                          [-0.23316, -0.00006, -6.53479]]
+    # xent = [0.56654, 6.76801]
+    # Reduced xent = (0.56654 + 6.76801) / 2
+
+    cce_obj = metrics.CategoricalCrossentropy(
+        from_logits=True, label_smoothing=label_smoothing)
+    self.evaluate(variables.variables_initializer(cce_obj.variables))
+    loss = cce_obj(y_true, logits)
+    self.assertAllClose(self.evaluate(loss), 3.667, atol=1e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class SparseCategoricalCrossentropyTest(test.TestCase):
+
+  def test_config(self):
+    scce_obj = metrics.SparseCategoricalCrossentropy(
+        name='scce', dtype=dtypes.int32)
+    self.assertEqual(scce_obj.name, 'scce')
+    self.assertEqual(scce_obj.dtype, dtypes.int32)
+    old_config = scce_obj.get_config()
+    self.assertDictEqual(old_config, json.loads(json.dumps(old_config)))
+
+    # Check save and restore config
+    scce_obj2 = metrics.SparseCategoricalCrossentropy.from_config(old_config)
+    self.assertEqual(scce_obj2.name, 'scce')
+    self.assertEqual(scce_obj2.dtype, dtypes.int32)
+    new_config = scce_obj2.get_config()
+    self.assertDictEqual(old_config, new_config)
+
+  def test_unweighted(self):
+    scce_obj = metrics.SparseCategoricalCrossentropy()
+    self.evaluate(variables.variables_initializer(scce_obj.variables))
+
+    y_true = np.asarray([1, 2])
+    y_pred = np.asarray([[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
+    result = scce_obj(y_true, y_pred)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+    # logits = log(y`) =  [[-2.9957, -0.0513, -16.1181],
+    #                      [-2.3026, -0.2231, -2.3026]]
+
+    # softmax = exp(logits) / sum(exp(logits), axis=-1)
+    # y = one_hot(y) = [[0, 1, 0], [0, 0, 1]]
+    # xent = -sum(y * log(softmax), 1)
+
+    # exp(logits) = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+    # sum(exp(logits), axis=-1) = [1, 1]
+    # softmax = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+    # log(softmax) = [[-2.9957, -0.0513, -16.1181],
+    #                 [-2.3026, -0.2231, -2.3026]]
+    # y * log(softmax) = [[0, -0.0513, 0], [0, 0, -2.3026]]
+    # xent = [0.0513, 2.3026]
+    # Reduced xent = (0.0513 + 2.3026) / 2
+
+    self.assertAllClose(self.evaluate(result), 1.176, atol=1e-3)
+
+  def test_unweighted_from_logits(self):
+    scce_obj = metrics.SparseCategoricalCrossentropy(from_logits=True)
+    self.evaluate(variables.variables_initializer(scce_obj.variables))
+
+    y_true = np.asarray([1, 2])
+    logits = np.asarray([[1, 9, 0], [1, 8, 1]], dtype=np.float32)
+    result = scce_obj(y_true, logits)
+
+    # softmax = exp(logits) / sum(exp(logits), axis=-1)
+    # y_true = one_hot(y_true) = [[0, 1, 0], [0, 0, 1]]
+    # xent = -sum(y_true * log(softmax), 1)
+
+    # exp(logits) = [[2.718, 8103.084, 1], [2.718, 2980.958, 2.718]]
+    # sum(exp(logits), axis=-1) = [8106.802, 2986.394]
+    # softmax = [[0.00033, 0.99954, 0.00012], [0.00091, 0.99817, 0.00091]]
+    # log(softmax) = [[-8.00045, -0.00045, -9.00045],
+    #                 [-7.00182, -0.00182, -7.00182]]
+    # y_true * log(softmax) = [[0, -0.00045, 0], [0, 0, -7.00182]]
+    # xent = [0.00045, 7.00182]
+    # Reduced xent = (0.00045 + 7.00182) / 2
+
+    self.assertAllClose(self.evaluate(result), 3.5011, atol=1e-3)
+
+  def test_weighted(self):
+    scce_obj = metrics.SparseCategoricalCrossentropy()
+    self.evaluate(variables.variables_initializer(scce_obj.variables))
+
+    y_true = np.asarray([1, 2])
+    y_pred = np.asarray([[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
+    sample_weight = constant_op.constant([1.5, 2.])
+    result = scce_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+    # logits = log(y`) =  [[-2.9957, -0.0513, -16.1181],
+    #                      [-2.3026, -0.2231, -2.3026]]
+
+    # softmax = exp(logits) / sum(exp(logits), axis=-1)
+    # y = one_hot(y) = [[0, 1, 0], [0, 0, 1]]
+    # xent = -sum(y * log(softmax), 1)
+
+    # exp(logits) = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+    # sum(exp(logits), axis=-1) = [1, 1]
+    # softmax = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+    # log(softmax) = [[-2.9957, -0.0513, -16.1181],
+    #                 [-2.3026, -0.2231, -2.3026]]
+    # y * log(softmax) = [[0, -0.0513, 0], [0, 0, -2.3026]]
+    # xent = [0.0513, 2.3026]
+    # Weighted xent = [0.051 * 1.5, 2.302 * 2.]
+    # Reduced xent = (0.051 * 1.5 + 2.302 * 2.) / 3.5
+
+    self.assertAllClose(self.evaluate(result), 1.338, atol=1e-3)
+
+  def test_weighted_from_logits(self):
+    scce_obj = metrics.SparseCategoricalCrossentropy(from_logits=True)
+    self.evaluate(variables.variables_initializer(scce_obj.variables))
+
+    y_true = np.asarray([1, 2])
+    logits = np.asarray([[1, 9, 0], [1, 8, 1]], dtype=np.float32)
+    sample_weight = constant_op.constant([1.5, 2.])
+    result = scce_obj(y_true, logits, sample_weight=sample_weight)
+
+    # softmax = exp(logits) / sum(exp(logits), axis=-1)
+    # y_true = one_hot(y_true) = [[0, 1, 0], [0, 0, 1]]
+    # xent = -sum(y_true * log(softmax), 1)
+    # xent = [0.00045, 7.00182]
+    # weighted xent = [0.000675, 14.00364]
+    # Reduced xent = (0.000675 + 14.00364) / (1.5 + 2)
+
+    self.assertAllClose(self.evaluate(result), 4.0012, atol=1e-3)
+
+  def test_axis(self):
+    scce_obj = metrics.SparseCategoricalCrossentropy(axis=0)
+    self.evaluate(variables.variables_initializer(scce_obj.variables))
+
+    y_true = np.asarray([1, 2])
+    y_pred = np.asarray([[0.05, 0.1], [0.95, 0.8], [0, 0.1]])
+    result = scce_obj(y_true, y_pred)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [[0.05, 0.1], [0.95, 0.8], [EPSILON, 0.1]]
+    # logits = log(y`) =  [[-2.9957, -2.3026],
+    #                      [-0.0513, -0.2231],
+    #                      [-16.1181, -2.3026]]
+
+    # softmax = exp(logits) / sum(exp(logits), axis=-1)
+    # y = one_hot(y) = [[0, 0], [1, 0], [0, 1]]
+    # xent = -sum(y * log(softmax), 1)
+
+    # exp(logits) = [[0.05, 0.1], [0.95, 0.8], [EPSILON, 0.1]]
+    # sum(exp(logits)) = [1, 1]
+    # softmax = [[0.05, 0.1], [0.95, 0.8], [EPSILON, 0.1]]
+    # log(softmax) = [[-2.9957, -2.3026],
+    #                 [-0.0513, -0.2231],
+    #                 [-16.1181, -2.3026]]
+    # y * log(softmax) = [[0, 0], [-0.0513, 0], [0, -2.3026]]
+    # xent = [0.0513, 2.3026]
+    # Reduced xent = (0.0513 + 2.3026) / 2
+
+    self.assertAllClose(self.evaluate(result), 1.176, atol=1e-3)
 
 
 def _get_model(compile_metrics):

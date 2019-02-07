@@ -119,6 +119,12 @@ class BackendUtilsTest(test.TestCase):
           self.evaluate(variables.global_variables_initializer())
           sess.run(y, feed_dict={x: np.random.random((2, 3))})
 
+  def test_learning_phase_name(self):
+    with ops.name_scope('test_scope'):
+      # Test that outer name scopes do not affect the learning phase's name.
+      lp = keras.backend.symbolic_learning_phase()
+    self.assertEqual(lp.name, 'keras_learning_phase:0')
+
   def test_learning_phase_scope(self):
     initial_learning_phase = keras.backend.learning_phase()
     with keras.backend.learning_phase_scope(1):
@@ -131,6 +137,32 @@ class BackendUtilsTest(test.TestCase):
       with keras.backend.learning_phase_scope(None):
         pass
     self.assertEqual(keras.backend.learning_phase(), initial_learning_phase)
+
+    new_learning_phase = 0
+    keras.backend.set_learning_phase(new_learning_phase)
+    self.assertEqual(keras.backend.learning_phase(), new_learning_phase)
+    with keras.backend.learning_phase_scope(1):
+      self.assertEqual(keras.backend.learning_phase(), 1)
+    self.assertEqual(keras.backend.learning_phase(), new_learning_phase)
+
+  def test_learning_phase_scope_in_graph(self):
+    initial_learning_phase_outside_graph = keras.backend.learning_phase()
+    with keras.backend.get_graph().as_default():
+      initial_learning_phase_in_graph = keras.backend.learning_phase()
+
+    self.assertEqual(keras.backend.learning_phase(),
+                     initial_learning_phase_outside_graph)
+    with keras.backend.learning_phase_scope(1):
+      self.assertEqual(keras.backend.learning_phase(), 1)
+    self.assertEqual(keras.backend.learning_phase(),
+                     initial_learning_phase_outside_graph)
+
+    with keras.backend.get_graph().as_default():
+      self.assertEqual(keras.backend.learning_phase(),
+                       initial_learning_phase_in_graph)
+
+    self.assertEqual(keras.backend.learning_phase(),
+                     initial_learning_phase_outside_graph)
 
   def test_int_shape(self):
     x = keras.backend.ones(shape=(3, 4))

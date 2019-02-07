@@ -212,7 +212,9 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE(context,
                  filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8);
-  TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
+  if (bias) {
+    TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
+  }
   TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
 
   int total_input_size = 1;

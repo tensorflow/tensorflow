@@ -785,8 +785,8 @@ class CondV2Test(test.TestCase):
       return ((x,), y * 3.0)
 
     with self.assertRaisesRegexp(
-        ValueError, "Outputs of true_fn and false_fn must"
-        " have the same structure"):
+        TypeError, "true_fn and false_fn arguments to tf.cond must have the "
+        "same number, type, and overall structure of return values."):
       control_flow_ops.cond(constant_op.constant(False), true_fn, false_fn)
 
   @test_util.enable_control_flow_v2

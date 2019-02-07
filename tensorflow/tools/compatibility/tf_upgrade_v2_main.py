@@ -112,7 +112,7 @@ Simple usage:
     report = ("TensorFlow 2.0 Upgrade Script\n"
               "-----------------------------\n"
               "Converted %d files\n" % files_processed +
-              "Detected %d errors that require attention" % num_errors + "\n" +
+              "Detected %d issues that require attention" % num_errors + "\n" +
               "-" * 80 + "\n") + "".join(report)
     with open(report_filename, "w") as report_file:
       report_file.write(report)

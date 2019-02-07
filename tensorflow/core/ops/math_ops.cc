@@ -39,7 +39,61 @@ REGISTER_OP("AddN")
                                         " with other shapes.");
       }
       c->set_output(0, cur);
-      return Status::OK();
+
+      DataType dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("T", &dtype));
+
+      if (dtype != DT_VARIANT) {
+        // Exit early if not DT_VARIANT.
+        return Status::OK();
+      } else {
+        // DT_VARIANT shape handle shape inference.  All sizes and dtypes must
+        // be the same; all shapes must be compatible via Merge.
+        std::vector<shape_inference::ShapeAndType> cur_shapes_and_types;
+        auto* shapes_and_types =
+            c->input_handle_shapes_and_types(c->num_inputs() - 1);
+        if (shapes_and_types) {
+          cur_shapes_and_types = *shapes_and_types;
+        }
+
+        for (int i = c->num_inputs() - 2; i >= 0; --i) {
+          auto shapes_and_types_i = c->input_handle_shapes_and_types(i);
+          if (!shapes_and_types && shapes_and_types_i) {
+            // TODO(ebrevdo): Find cases where this happens and fix their shape
+            // inference.  If we are calling AddN on variant types, they should
+            // all have consistent shape_and_type info.
+            shapes_and_types = shapes_and_types_i;
+          } else if (shapes_and_types && shapes_and_types_i) {
+            if (shapes_and_types_i->size() != shapes_and_types->size()) {
+              return errors::InvalidArgument(
+                  "shapes_and_types[", i,
+                  "].size() == ", shapes_and_types_i->size(),
+                  " != shapes_and_types[0].size() == ",
+                  shapes_and_types->size());
+            }
+            for (int j = 0; j < shapes_and_types->size(); ++j) {
+              if (shapes_and_types->at(j).dtype !=
+                  shapes_and_types_i->at(j).dtype) {
+                return errors::InvalidArgument(
+                    "shapes_and_types[", i, "][", j, "].dtype() == ",
+                    DataTypeString(shapes_and_types_i->at(j).dtype),
+                    " != shapes_and_types[0][", j, "].dtype == ",
+                    DataTypeString(shapes_and_types->at(j).dtype));
+              }
+              TF_RETURN_WITH_CONTEXT_IF_ERROR(
+                  c->Merge(shapes_and_types_i->at(j).shape,
+                           cur_shapes_and_types.at(j).shape,
+                           &cur_shapes_and_types.at(j).shape),
+                  "From merging shapes_and_types[", i, "][", j, "].shape with ",
+                  "shapes_and_types[0][", j, "].shape");
+            }
+          }
+        }
+        if (shapes_and_types) {
+          c->set_output_handle_shapes_and_types(0, cur_shapes_and_types);
+        }
+        return Status::OK();
+      }
     });
 
 // --------------------------------------------------------------------------
@@ -1368,7 +1422,14 @@ REGISTER_OP("Conj")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {complex64, complex128, variant} = DT_COMPLEX64")
-    .SetShapeFn(shape_inference::UnchangedShape);
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data != nullptr) {
+        c->set_output_handle_shapes_and_types(0, *handle_data);
+      }
+      return Status::OK();
+    });
 
 // --------------------------------------------------------------------------
 

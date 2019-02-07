@@ -92,7 +92,12 @@ Status InitializePlatformName(const string& platform_name) {
         "previously created with a platform name of %s.",
         platform_name, *g_platform_name);
   }
-  TF_RETURN_IF_ERROR(PlatformUtil::GetPlatform(platform_name).status());
+  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                      PlatformUtil::GetPlatform(platform_name));
+  if (platform->VisibleDeviceCount() <= 0) {
+    return InvalidArgument("Platform %s has no visible devices.",
+                           platform_name);
+  }
   *g_platform_name = platform_name;
   return Status::OK();
 }
@@ -691,6 +696,17 @@ LocalOp LocalComputationBuilder::Collapse(const LocalOp& operand,
   return xla::Collapse(operand.op(), dimensions);
 }
 
+LocalOp LocalComputationBuilder::AllToAll(
+    const LocalOp& operand, int64 split_dimension, int64 concat_dimension,
+    int64 split_count, absl::Span<const ReplicaGroup> replica_groups) {
+  std::vector<ReplicaGroup> rg(replica_groups.size());
+  for (int i = 0; i < replica_groups.size(); ++i) {
+    rg.push_back(replica_groups[i]);
+  }
+  return xla::AllToAll(operand.op(), split_dimension, concat_dimension,
+                       split_count, rg);
+}
+
 LocalOp LocalComputationBuilder::CrossReplicaSum(
     const LocalOp& operand, absl::Span<const ReplicaGroup> replica_groups) {
   return xla::CrossReplicaSum(operand.op(), replica_groups);
@@ -912,13 +928,11 @@ LocalOp LocalComputationBuilder::QR(const LocalOp& a, bool full_matrices) {
   });
 }
 
-LocalOp LocalComputationBuilder::TriangularSolve(const LocalOp& a,
-                                                 const LocalOp& b,
-                                                 bool left_side, bool lower,
-                                                 bool transpose_a,
-                                                 bool conjugate_a) {
+LocalOp LocalComputationBuilder::TriangularSolve(
+    const LocalOp& a, const LocalOp& b, bool left_side, bool lower,
+    bool transpose_a, bool conjugate_a, bool unit_diagonal) {
   return xla::TriangularSolve(a.op(), b.op(), left_side, lower, transpose_a,
-                              conjugate_a);
+                              conjugate_a, unit_diagonal);
 }
 
 LocalOp LocalComputationBuilder::Gather(

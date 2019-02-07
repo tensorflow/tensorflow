@@ -105,7 +105,7 @@ fi
 
 if [[ "$TF_NIGHTLY" == 1 ]]; then
   if [[ ${PROJECT_NAME} == *"2.0_preview"* ]]; then
-    python tensorflow/tools/ci_build/update_version.py --version=2.0.0-preview
+    python tensorflow/tools/ci_build/update_version.py --version=2.0.0 --nightly
   else
     python tensorflow/tools/ci_build/update_version.py --nightly
   fi

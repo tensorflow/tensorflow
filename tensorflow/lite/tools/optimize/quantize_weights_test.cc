@@ -89,21 +89,21 @@ class QuantizeWeightsTest : public testing::Test {
   }
 
   // Returns the producer op code of the specified tensor_idx.
-  BuiltinOperator GetProducerOpCode(const Model* model, uint32_t subgraph_idx,
-                                    uint32_t tensor_idx) {
+  bool GetProducerOpCode(const Model* model, uint32_t subgraph_idx,
+                         uint32_t tensor_idx,
+                         tflite::BuiltinOperator* op_code) {
     const auto subgraph = model->subgraphs()->Get(subgraph_idx);
     for (size_t op_idx = 0; op_idx < subgraph->operators()->size(); ++op_idx) {
       const auto op = subgraph->operators()->Get(op_idx);
       for (size_t i = 0; i < op->outputs()->size(); ++i) {
         if (op->outputs()->Get(i) == tensor_idx) {
           const uint32_t op_code_idx = op->opcode_index();
-          return model->operator_codes()->Get(op_code_idx)->builtin_code();
+          *op_code = model->operator_codes()->Get(op_code_idx)->builtin_code();
+          return true;
         }
       }
     }
-
-    LOG(FATAL) << "tensor_idx " << tensor_idx
-               << " not produced by op in model.";
+    return false;
   }
 };
 
@@ -323,8 +323,9 @@ TEST_F(QuantizeWeightsTest, SharedWeights_Dequantize) {
         EXPECT_EQ(weights_tensor->type(), TensorType_FLOAT32);
 
         // Check that it comes from a dequantize operation.
-        const auto producer_op_code =
-            GetProducerOpCode(output_model, subgraph_idx, weights_tensor_index);
+        BuiltinOperator producer_op_code;
+        ASSERT_TRUE(GetProducerOpCode(output_model, subgraph_idx,
+                                      weights_tensor_index, &producer_op_code));
         EXPECT_EQ(producer_op_code, BuiltinOperator_DEQUANTIZE);
       }
     }
@@ -345,7 +346,10 @@ int main(int argc, char** argv) {
   };
 
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  CHECK(parse_result) << "Required test_model_file";
+  if (!parse_result) {
+    std::cerr << "Required test_model_file\n";
+    std::abort();
+  }
   g_test_model_dir =
       new tensorflow::string(tensorflow::io::Dirname(model_file));
   ::tensorflow::port::InitMain(argv[0], &argc, &argv);

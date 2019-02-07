@@ -74,9 +74,13 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
     context_device = context.context().device_name
     if not context_device:
       context_device = "/job:localhost/replica:0/task:0/device:CPU:0"
-    if context_device != in_device:
-      return input._copy()  # pylint: disable=protected-access
-    return input
+    if context_device == in_device:
+      return input
+    else:
+      copied = input._copy()  # pylint: disable=protected-access
+      if hasattr(copied, "_handle_data"):
+        copied._handle_data = input._handle_data  # pylint: disable=protected-access
+      return copied
   else:
     ret = gen_array_ops.identity(input, name=name)
     # Propagate handle data for happier shape inference for resource variables.
@@ -2662,7 +2666,10 @@ def required_space_to_batch_paddings(input_shape,
 
 @tf_export(v1=["nn.space_to_batch", "space_to_batch"])
 @deprecation.deprecated_endpoints("space_to_batch")
-def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=redefined-builtin
+def space_to_batch(  # pylint: disable=missing-docstring
+    input, paddings, block_size=None, name=None, block_shape=None):  # pylint: disable=redefined-builtin
+  block_size = deprecation.deprecated_argument_lookup(
+      "block_shape", block_shape, "block_size", block_size)
   result = space_to_batch_nd(
       input,
       paddings=paddings,
@@ -2718,7 +2725,9 @@ depth_to_space_v2.__doc__ = gen_array_ops.depth_to_space.__doc__
 
 
 @tf_export(v1=["batch_to_space"])
-def batch_to_space(input, crops, block_size, name=None):  # pylint: disable=redefined-builtin
+def batch_to_space(input, crops, block_size, name=None, block_shape=None):  # pylint: disable=redefined-builtin,missing-docstring
+  block_size = deprecation.deprecated_argument_lookup(
+      "block_shape", block_shape, "block_size", block_size)
   result = batch_to_space_nd(
       input,
       crops=crops,
@@ -3366,7 +3375,7 @@ gather.__doc__ = gather_v2.__doc__ = gen_array_ops.gather_v2.__doc__
 @dispatch.add_dispatch_support
 @deprecation.deprecated(
     "2017-10-25", "`tf.batch_gather` is deprecated, please use `tf.gather` "
-    "with `batch_dims=-1` instead.")  # pylint: disable=missing-docstring
+    "with `batch_dims` instead.")  # pylint: disable=missing-docstring
 def batch_gather(params, indices, name=None):
   """Gather slices from params according to indices with leading batch dims."""
   with ops.name_scope(name, "BatchGather", [params, indices]):
@@ -3650,7 +3659,22 @@ def extract_image_patches_v2(
   return gen_array_ops.extract_image_patches(
       images, sizes, strides, rates, padding, name)
 
-extract_image_patches_deprecation = deprecation.deprecated_args(
+
+@tf_export(v1=["image.extract_image_patches", "extract_image_patches"])
+@deprecation.deprecated_args(
     None, "ksizes is deprecated, use sizes instead", "ksizes")
-tf_export(v1=["image.extract_image_patches", "extract_image_patches"])(
-    extract_image_patches_deprecation(gen_array_ops.extract_image_patches))
+def extract_image_patches(  # pylint: disable=missing-docstring
+    images,
+    ksizes=None,
+    strides=None,
+    rates=None,
+    padding=None,
+    name=None,
+    sizes=None):
+  ksizes = deprecation.deprecated_argument_lookup(
+      "sizes", sizes, "ksizes", ksizes)
+  return gen_array_ops.extract_image_patches(
+      images, ksizes, strides, rates, padding, name)
+
+
+extract_image_patches.__doc__ = gen_array_ops.extract_image_patches.__doc__

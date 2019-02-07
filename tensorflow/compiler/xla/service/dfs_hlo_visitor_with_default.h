@@ -100,6 +100,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleCollectivePermute(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
+  Status HandleReplicaId(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
   Status HandleRng(HloInstructionPtr random) override {
     return DefaultAction(random);
   }

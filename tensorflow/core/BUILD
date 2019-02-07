@@ -77,6 +77,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
     "if_android",
+    "if_emscripten",
     "if_ios",
     "if_linux_x86_64",
     "if_mobile",
@@ -87,10 +88,12 @@ load(
     "tf_copts",
     "tf_cuda_library",
     "tf_features_nomodules_if_android",
+    "tf_features_nomodules_if_emscripten",
     "tf_gen_op_libs",
     "tf_generate_proto_text_sources",
     "tf_genrule_cmd_append_to_srcs",
     "tf_opts_nortti_if_android",
+    "tf_opts_nortti_if_emscripten",
     "transitive_hdrs",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
@@ -201,10 +204,12 @@ COMMON_PROTO_SRCS = [
     "protobuf/cluster.proto",
     "protobuf/debug.proto",
     "protobuf/device_properties.proto",
+    "protobuf/graph_debug_info.proto",
     "protobuf/queue_runner.proto",
     "protobuf/rewriter_config.proto",
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
+    "protobuf/verifier_config.proto",
     "util/event.proto",
     "util/memmapped_file_system.proto",
     "util/saved_tensor_slice.proto",
@@ -1769,6 +1774,29 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "emscripten_tensorflow_lib_lite_nortti_lite_protos_no_runtime",
+    srcs = if_emscripten(["//tensorflow/core:mobile_srcs_no_runtime"]),
+    copts = ["-DSUPPORT_SELECTIVE_REGISTRATION"] + tf_opts_nortti_if_emscripten(),
+    defines = ["TENSORFLOW_LITE_PROTOS"],
+    linkopts = ["-lz"],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":emscripten_proto_lib_no_rtti_lite_runtime",
+        ":mobile_additional_lib_deps",
+        ":stats_calculator_portable",
+        "//third_party/eigen3",
+        "@double_conversion//:double-conversion",
+        "@nsync//:nsync_cpp",
+        "@zlib_archive//:zlib",
+    ],
+    alwayslink = 1,
+)
+
 # Native library support for iOS applications.
 #
 # bazel  build --config=ios_x86_64 \
@@ -1961,6 +1989,14 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/platform/default/build_config:cuda",
+    ],
+)
+
+cc_library(
+    name = "rocm",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:rocm",
     ],
 )
 
@@ -2265,6 +2301,8 @@ cc_library(
         ":lib_proto_parsing",
         ":abi",
         ":core_stringpiece",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@snappy",
@@ -2644,7 +2682,6 @@ tf_cuda_library(
             "example/**/*.cc",
             "framework/**/*.cc",
             "util/**/*.cc",
-        ] + [
             "graph/edgeset.cc",
             "graph/graph.cc",
             "graph/graph_def_builder.cc",
@@ -3667,6 +3704,20 @@ tf_cc_test(
         ":lib_internal",
         ":test",
         ":test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "lib_strings_proto_serialization_test",
+    srcs = ["lib/strings/proto_serialization_test.cc"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -5027,6 +5078,40 @@ transitive_hdrs(
 
 # -----------------------------------------------------------------------------
 # Google-internal targets go here (must be at the end).
+
+load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
+
+genrule(
+    name = "emscripten_proto_config_lite_runtime",
+    srcs = ["android_proto_config.asciipb"],  # Reuse the same file as android.
+    outs = ["emscripten_proto_config_lite_runtime.asciipb"],
+    cmd = tf_genrule_cmd_append_to_srcs("optimize_mode:LITE_RUNTIME"),
+    visibility = ["//visibility:private"],
+)
+
+# We are keeping the "android" version of tf_android_core_proto_headers. All it does is
+# normalize CORE_PROTO_SRCS to generate valid output file names.
+tf_portable_proto_library(
+    name = "emscripten_proto_lib_no_rtti_lite_runtime",
+    config = ":emscripten_proto_config_lite_runtime",
+    copts = tf_opts_nortti_if_emscripten(),
+    features = tf_features_nomodules_if_emscripten(),
+    header_outs = tf_android_core_proto_headers(CORE_PROTO_SRCS) + ["//google/protobuf/any.proto.h"],
+    link_full_protobuf = False,
+    prefix_dir = "emscripten_proto_no_rtti",
+    proto_deps = [
+        ":protos_all_cc",
+        "@protobuf_archive//:protobuf",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# There is currently no need for a full proto version of emscripten tf lib lite.
+alias(
+    name = "emscripten_lib_lite_no_runtime",
+    actual = "//tensorflow/core:emscripten_tensorflow_lib_lite_nortti_lite_protos_no_runtime",
+    visibility = ["//visibility:public"],
+)
 
 alias(
     name = "android_srcs_no_runtime",

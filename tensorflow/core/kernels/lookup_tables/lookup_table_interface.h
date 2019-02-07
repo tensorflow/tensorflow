@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <string>
 
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -28,26 +29,10 @@ namespace tensorflow {
 namespace tables {
 
 // Interface for key-value pair lookups with support for heterogeneous keys.
-// One of the key high performance abstractions introduced here is the
-// hierarchy of a primary and secondary (or fallback) table.
-// The primary table can be considered the main data structure into which
-// key-value pairs may be inserted.
-// When a key is requested, LookupTableInterface::LookupKey semantics expect
-// that the primary table be queried first. The secondary table is queried
-// when the primary table lookup fails (eg. does not contain a requested key).
-// Lookups in the secondary table must always return well defined values in
-// this case.
-// LookupTableInterface features batch and serial table insert/lookup
-// methods. Serial methods have corresponding status methods which say
-// whether the table supports serial inserts/lookups which are guaranteed to
-// succeed.
-// For example, an implementation may only support a one-time batch population
-// after which further insertions are undefined. Another may not permit lookups
-// before its size is non zero.
-// In each of these cases, the success or failure of inserts/lookups is not
-// dependent on the parameter values. On the other hand, once the table is in
-// ready state, LookupTableInterface semantics guarantee that all lookups and
-// inserts will succeed.
+// This class contains two main kinds of methods: methods which operate on
+// a batch of inputs and methods which do not. The latter have the prefix
+// 'Unsafe'. Clients must call the corresponding status methods to determine
+// whether they are safe to call within a code block.
 // Implementations must guarantee thread-safety when GetMutex is used to
 // synchronize method access.
 template <typename HeterogeneousKeyType, typename ValueType>
@@ -64,17 +49,17 @@ class LookupTableInterface : public ResourceBase {
   // Insert the KV pair into the underlying table. If a key equivalent to key
   // already exists in the underlying table, its corresponding value is
   // overridden. Returns true only if the key was inserted for the first time.
-  // Undefined if TableInsertStatus() != OK.
-  virtual bool InsertOrAssign(const HeterogeneousKeyType& key,
-                              const ValueType& value) = 0;
+  // Undefined if TableUnbatchedInsertStatus() != OK.
+  virtual bool UnsafeInsertOrAssign(const HeterogeneousKeyType& key,
+                                    const ValueType& value) = 0;
 
   // Returns OK if it is safe to call InsertOrAssign.
   // Once OK is returned, it is safe to call InsertOrAssign for the rest of the
   // program.
-  virtual Status TableInsertStatus() const TF_MUST_USE_RESULT = 0;
+  virtual Status TableUnbatchedInsertStatus() const TF_MUST_USE_RESULT = 0;
 
   // Stores each KV pair {keys[i], values[i]} in the underlying map, overriding
-  // pre-existing pairs with equivalent keys.
+  // pre-existing pairs which have equivalent keys.
   // keys and values should have the same size.
   virtual Status BatchInsertOrAssign(
       absl::Span<const HeterogeneousKeyType> keys,
@@ -82,64 +67,49 @@ class LookupTableInterface : public ResourceBase {
 
   // Prefetch key_to_find into implementation defined data caches.
   // Implementations are free to leave this a no-op.
-  // Undefined if TableLookupStatus() != OK.
-  virtual void PrefetchKey(const HeterogeneousKeyType& key_to_find) const {}
+  // Undefined if TableUnbatchedLookupStatus() != OK.
+  virtual void UnsafePrefetchKey(
+      const HeterogeneousKeyType& key_to_find) const {}
 
-  // Returns true if and only if the primary table contains key_to_find.
-  // What constitutes the primary table is implementation defined.
-  // Undefined if TableLookupStatus() != OK.
-  virtual bool ContainsKey(const HeterogeneousKeyType& key_to_find) const = 0;
-
-  // Lookup the value for key_to_find in the primary. If this lookup fails
-  // (for eg. the key does not exist), the value in the secondary table is
-  // returned.
-  // Undefined if TableLookupStatus() != OK.
-  virtual ValueType LookupKey(
+  // Returns true if and only if the table contains key_to_find.
+  // Undefined if TableUnbatchedLookupStatus() != OK.
+  virtual bool UnsafeContainsKey(
       const HeterogeneousKeyType& key_to_find) const = 0;
 
-  // Lookup the value for key_to_find in the primary table and return it.
-  // If the lookup fails, the return value is undefined unless
-  // PrimaryTableDefaultValue() != NULL in which case
-  // *PrimaryTableDefaultValue() is returned.
-  // Undefined if TableLookupStatus() != OK.
-  virtual ValueType LookupKeyInPrimaryTable(
+  // Lookup the value for key_to_find. This value must always be well-defined,
+  // even when ContainsKey(key_to_find) == false. When
+  // dv = DefaultValue() != absl::nullopt and ContainsKey(key_to_find) == false,
+  // dv is returned.
+  // Undefined if TableUnbatchedLookupStatus() != OK.
+  virtual ValueType UnsafeLookupKey(
       const HeterogeneousKeyType& key_to_find) const = 0;
 
-  // Lookup the value for key_to_find in the secondary table and return it.
-  // This value may not be well defined if key_to_find is in the primary table.
-  // Undefined if TableLookupStatus() != OK.
-  virtual ValueType LookupKeyInSecondaryTable(
-      const HeterogeneousKeyType& key_to_find) const = 0;
+  // Returns OK if it is safe to call PrefetchKey, ContainsKey, and
+  // UnsafeLookupKey.
+  // If OK is returned, it is safe to call these methods until the next
+  // non-const method of this class is called.
+  virtual Status TableUnbatchedLookupStatus() const TF_MUST_USE_RESULT = 0;
 
-  // Lookup the values for keys in the primary or secondary table and store
-  // them in values. prefetch_lookahead is used to prefetch the key at index
+  // Lookup the values for keys and store them in values.
+  // prefetch_lookahead is used to prefetch the key at index
   // i + prefetch_lookahead at the ith iteration of the implemented loop.
-  // Undefined if TableLookupStatus() != OK.
+  // keys and values must have the same size.
   virtual Status BatchLookup(absl::Span<const HeterogeneousKeyType> keys,
                              absl::Span<ValueType> values,
                              int64 prefetch_lookahead) const = 0;
 
-  // Returns OK if it is safe to call PrefetchKey, ContainsKey, LookupKey,
-  // LookupKeyInPrimaryTable, and LookupKeyInSecondaryTable.
-  // Once OK is returned, it is safe to call these methods until the next
-  // non-const method of this class is called.
-  virtual Status TableLookupStatus() const TF_MUST_USE_RESULT = 0;
-
-  // If non-null value is returned, *value is guaranteed to not be a value in
-  // the primary table. LookupKeyInPrimaryTable returns *value for keys
-  // which are not in the primary table.
-  virtual const ValueType* PrimaryTableDefaultValue() const = 0;
-
-  // Returns the number of elements in the primary table.
+  // Returns the number of elements in the table.
   // Undefined if SizeStatus() != OK.
-  virtual size_t size() const = 0;
+  virtual size_t UnsafeSize() const = 0;
 
-  // Returns OK if the return value of size() is well defined.
+  // Returns OK if the return value of UnsafeSize() is always well-defined.
   virtual Status SizeStatus() const TF_MUST_USE_RESULT = 0;
 
-  string DebugString() const override {
-    return strings::StrCat("A lookup table of size: ", size());
-  }
+  // If non-null value is returned, LookupKey returns that value only for keys
+  // which satisfy ContainsKey(key_to_find) == false.
+  virtual const absl::optional<const ValueType> DefaultValue() const = 0;
+
+  string DebugString() const override { return "A lookup table"; }
 
   ~LookupTableInterface() override = default;
 };

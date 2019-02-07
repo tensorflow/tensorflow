@@ -56,7 +56,7 @@ class _MSEMAELoss(object):
   def __init__(self, mse_fraction):
     self.mse_fraction = mse_fraction
 
-  def __call__(self, y_true, y_pred):
+  def __call__(self, y_true, y_pred, sample_weight=None):
     return (self.mse_fraction * keras.losses.mse(y_true, y_pred) +
             (1 - self.mse_fraction) * keras.losses.mae(y_true, y_pred))
 
@@ -179,6 +179,25 @@ class KerasLossesTest(test.TestCase):
       with keras.utils.custom_object_scope({'_MSEMAELoss': _MSEMAELoss}):
         loaded_model = keras.models.load_model(model_filename)
         loaded_model.predict(np.random.rand(128, 2))
+
+  def test_loss_wrapper(self):
+    loss_fn = keras.losses.get('mse')
+    mse_obj = keras.losses.LossFunctionWrapper(loss_fn, name=loss_fn.__name__)
+
+    self.assertEqual(mse_obj.name, 'mean_squared_error')
+    self.assertEqual(mse_obj.reduction,
+                     losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE)
+
+    y_true = constant_op.constant([[1., 9.], [2., 5.]])
+    y_pred = constant_op.constant([[4., 8.], [12., 3.]])
+    sample_weight = constant_op.constant([1.2, 0.5])
+    loss = mse_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    # mse = [((4 - 1)^2 + (8 - 9)^2) / 2, ((12 - 2)^2 + (3 - 5)^2) / 2]
+    # mse = [5, 52]
+    # weighted_mse = [5 * 1.2, 52 * 0.5] = [6, 26]
+    # reduced_weighted_mse = (6 + 26) / 2 =
+    self.assertAllClose(self.evaluate(loss), 16, 1e-2)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -830,22 +849,26 @@ class CategoricalCrossentropyTest(test.TestCase):
     expected_value = 400.0 * label_smoothing / 3.0
     self.assertAlmostEqual(self.evaluate(loss), expected_value, 3)
 
-  def test_all_correct_unweighted_sparse(self):
+
+@test_util.run_all_in_graph_and_eager_modes
+class SparseCategoricalCrossentropyTest(test.TestCase):
+
+  def test_all_correct_unweighted(self):
     y_true = constant_op.constant([[0], [1], [2]], dtype=dtypes.int64)
     y_pred = constant_op.constant([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
                                   dtype=dtypes.float32)
-    cce_obj = keras.losses.CategoricalCrossentropy()
+    cce_obj = keras.losses.SparseCategoricalCrossentropy()
     loss = cce_obj(y_true, y_pred)
     self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
 
     # Test with logits.
     logits = constant_op.constant([[10., 0., 0.], [0., 10., 0.], [0., 0., 10.]])
-    cce_obj = keras.losses.CategoricalCrossentropy(from_logits=True)
+    cce_obj = keras.losses.SparseCategoricalCrossentropy(from_logits=True)
     loss = cce_obj(y_true, logits)
     self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
 
-  def test_unweighted_sparse(self):
-    cce_obj = keras.losses.CategoricalCrossentropy()
+  def test_unweighted(self):
+    cce_obj = keras.losses.SparseCategoricalCrossentropy()
     y_true = constant_op.constant([0, 1, 2])
     y_pred = constant_op.constant(
         [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]], dtype=dtypes.float32)
@@ -854,12 +877,12 @@ class CategoricalCrossentropyTest(test.TestCase):
 
     # Test with logits.
     logits = constant_op.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
-    cce_obj = keras.losses.CategoricalCrossentropy(from_logits=True)
+    cce_obj = keras.losses.SparseCategoricalCrossentropy(from_logits=True)
     loss = cce_obj(y_true, logits)
     self.assertAlmostEqual(self.evaluate(loss), .0573, 3)
 
-  def test_scalar_weighted_sparse(self):
-    cce_obj = keras.losses.CategoricalCrossentropy()
+  def test_scalar_weighted(self):
+    cce_obj = keras.losses.SparseCategoricalCrossentropy()
     y_true = constant_op.constant([[0], [1], [2]])
     y_pred = constant_op.constant(
         [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]], dtype=dtypes.float32)
@@ -868,12 +891,12 @@ class CategoricalCrossentropyTest(test.TestCase):
 
     # Test with logits.
     logits = constant_op.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
-    cce_obj = keras.losses.CategoricalCrossentropy(from_logits=True)
+    cce_obj = keras.losses.SparseCategoricalCrossentropy(from_logits=True)
     loss = cce_obj(y_true, logits, sample_weight=2.3)
     self.assertAlmostEqual(self.evaluate(loss), .1317, 3)
 
-  def test_sample_weighted_sparse(self):
-    cce_obj = keras.losses.CategoricalCrossentropy()
+  def test_sample_weighted(self):
+    cce_obj = keras.losses.SparseCategoricalCrossentropy()
     y_true = constant_op.constant([[0], [1], [2]])
     y_pred = constant_op.constant(
         [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]], dtype=dtypes.float32)
@@ -883,14 +906,14 @@ class CategoricalCrossentropyTest(test.TestCase):
 
     # Test with logits.
     logits = constant_op.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
-    cce_obj = keras.losses.CategoricalCrossentropy(from_logits=True)
+    cce_obj = keras.losses.SparseCategoricalCrossentropy(from_logits=True)
     loss = cce_obj(y_true, logits, sample_weight=sample_weight)
     self.assertAlmostEqual(self.evaluate(loss), 0.31829, 3)
 
-  def test_no_reduction_sparse(self):
+  def test_no_reduction(self):
     y_true = constant_op.constant([[0], [1], [2]])
     logits = constant_op.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
-    cce_obj = keras.losses.CategoricalCrossentropy(
+    cce_obj = keras.losses.SparseCategoricalCrossentropy(
         from_logits=True, reduction=losses_impl.ReductionV2.NONE)
     loss = cce_obj(y_true, logits)
     self.assertAllClose((0.001822, 0.000459, 0.169846), self.evaluate(loss), 3)
@@ -907,54 +930,93 @@ class HingeTest(test.TestCase):
 
   def test_unweighted(self):
     hinge_obj = keras.losses.Hinge()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+
+    # loss = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true = [[-1, 1, -1, 1], [-1, -1, 1, 1]]
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # loss = [(0.7 + 0.8 + 0.9 + 0) / 4, (0.75 + 0 + 0.5 + 0.4) / 4]
+    #      = [0.6, 0.4125]
+    # reduced loss = (0.6 + 0.4125) / 2
+
     loss = hinge_obj(y_true, y_pred)
-    self.assertAlmostEqual(self.evaluate(loss), 7.3333, 3)
+    self.assertAllClose(0.506, self.evaluate(loss), atol=1e-3)
 
   def test_scalar_weighted(self):
     hinge_obj = keras.losses.Hinge()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+
+    # loss = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true = [[-1, 1, -1, 1], [-1, -1, 1, 1]]
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # loss = [(0.7 + 0.8 + 0.9 + 0) / 4, (0.75 + 0 + 0.5 + 0.4) / 4]
+    #      = [0.6, 0.4125]
+    # weighted_loss = [0.6 * 2.3, 0.4125 * 2.3]
+    # reduced loss = (0.6 + 0.4125) * 2.3 / 2
+
     loss = hinge_obj(y_true, y_pred, sample_weight=2.3)
-    self.assertAlmostEqual(self.evaluate(loss), 16.8666, 3)
+    self.assertAlmostEqual(self.evaluate(loss), 1.164, 3)
 
     # Verify we get the same output when the same input is given
     loss_2 = hinge_obj(y_true, y_pred, sample_weight=2.3)
-    self.assertAlmostEqual(self.evaluate(loss), self.evaluate(loss_2), 3)
+    self.assertAllClose(self.evaluate(loss), self.evaluate(loss_2), 1e-3)
 
   def test_sample_weighted(self):
     hinge_obj = keras.losses.Hinge()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+
+    # loss = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true = [[-1, 1, -1, 1], [-1, -1, 1, 1]]
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # loss = [(0.7 + 0.8 + 0.9 + 0) / 4, (0.75 + 0 + 0.5 + 0.4) / 4]
+    #      = [0.6, 0.4125]
+    # weighted loss = [0.6 * 1.2, 0.4125 * 3.4]
+    # reduced loss = (0.6 * 1.2 + 0.4125 * 3.4) / 2
+
     sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
     loss = hinge_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAlmostEqual(self.evaluate(loss), 24.9333, 3)
+    self.assertAllClose(self.evaluate(loss), 1.061, 1e-3)
 
   def test_timestep_weighted(self):
     hinge_obj = keras.losses.Hinge()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3, 1),
-                                  dtype=dtypes.float32)
-    sample_weight = constant_op.constant([3, 6, 5, 0, 4, 2], shape=(2, 3))
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]], shape=(2, 4, 1))
+    y_pred = constant_op.constant(
+        [[-0.3, 0.2, -0.1, 1.6], [-0.25, -1., 0.5, 0.6]], shape=(2, 4, 1))
+    sample_weight = constant_op.constant([3, 6, 5, 0, 4, 2, 1, 3], shape=(2, 4))
+
+    # loss = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true = [[[-1], [1], [-1], [1]], [[-1], [-1], [1], [1]]]
+    # y_true * y_pred = [[[0.3], [0.2], [0.1], [1.6]],
+    #                    [[0.25], [1], [0.5], [0.6]]]
+    # 1 - y_true * y_pred = [[[0.7], [0.8], [0.9], [-0.6]],
+    #                        [[0.75], [0], [0.5], [0.4]]]
+    # loss = [[0.7, 0.8, 0.9, 0], [0.75, 0, 0.5, 0.4]]
+    # weighted loss    = [[2.1, 4.8, 4.5, 0], [3, 0, 0.5, 1.2]]
+    # reduced loss = (2.1 + 4.8 + 4.5 + 0 + 3 + 0 + 0.5 + 1.2) / 8
+
     loss = hinge_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAlmostEqual(self.evaluate(loss), 2.0, 3)
+    self.assertAllClose(self.evaluate(loss), 2.012, 1e-3)
 
   def test_zero_weighted(self):
     hinge_obj = keras.losses.Hinge()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
     loss = hinge_obj(y_true, y_pred, sample_weight=0)
-    self.assertAlmostEqual(self.evaluate(loss), 0., 3)
+    self.assertAllClose(self.evaluate(loss), 0., 1e-3)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -968,26 +1030,46 @@ class SquaredHingeTest(test.TestCase):
 
   def test_unweighted(self):
     sq_hinge_obj = keras.losses.SquaredHinge()
-    y_true = constant_op.constant([1, 9, 2, -5], shape=(2, 2))
-    y_pred = constant_op.constant([4, 8, 12, 8],
-                                  shape=(2, 2),
-                                  dtype=dtypes.float32)
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
 
-    # Sq hinge = mean(square(max(1. - y_true * y_pred, 0.)), axis=-1)
-    # (1. - y_true * y_pred) = [[1-4, 1-72], [1-24, 1+40]] = [0, 48]
-    # sq(max(above val, 0)) = sq([[0, 0], [0, 41]) = [[0, 0], [0, 1681]]
-    # Mean = [0, 840.5]. Reduced loss = (0 + 840.5)/2 = 420.25
+    # loss = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true = [[-1, 1, -1, 1], [-1, -1, 1, 1]]
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # max(0, 1 - y_true * y_pred) = [[0.7, 0.8, 0.9, 0], [0.75, 0, 0.5, 0.4]]
+    # squared(max(0, 1 - y_true * y_pred)) = [[0.49, 0.64, 0.81, 0],
+    #                                         [0.5625, 0, 0.25, 0.16]]
+    # loss = [(0.49 + 0.64 + 0.81 + 0) / 4, (0.5625 + 0 + 0.25 + 0.16) / 4]
+    #      = [0.485, 0.2431]
+    # reduced loss = (0.485 + 0.2431) / 2
+
     loss = sq_hinge_obj(y_true, y_pred)
-    self.assertAlmostEqual(self.evaluate(loss), 420.25, 3)
+    self.assertAllClose(self.evaluate(loss), 0.364, 1e-3)
 
   def test_scalar_weighted(self):
     sq_hinge_obj = keras.losses.SquaredHinge()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+
+    # loss = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true = [[-1, 1, -1, 1], [-1, -1, 1, 1]]
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # max(0, 1 - y_true * y_pred) = [[0.7, 0.8, 0.9, 0], [0.75, 0, 0.5, 0.4]]
+    # squared(max(0, 1 - y_true * y_pred)) = [[0.49, 0.64, 0.81, 0],
+    #                                         [0.5625, 0, 0.25, 0.16]]
+    # loss = [(0.49 + 0.64 + 0.81 + 0) / 4, (0.5625 + 0 + 0.25 + 0.16) / 4]
+    #      = [0.485, 0.2431]
+    # weighted loss = [0.485 * 2.3, 0.2431 * 2.3]
+    # reduced loss = (0.485 + 0.2431) * 2.3 / 2
+
     loss = sq_hinge_obj(y_true, y_pred, sample_weight=2.3)
-    self.assertAlmostEqual(self.evaluate(loss), 647.833, 3)
+    self.assertAllClose(self.evaluate(loss), 0.837, 1e-3)
 
     # Verify we get the same output when the same input is given
     loss_2 = sq_hinge_obj(y_true, y_pred, sample_weight=2.3)
@@ -995,32 +1077,55 @@ class SquaredHingeTest(test.TestCase):
 
   def test_sample_weighted(self):
     sq_hinge_obj = keras.losses.SquaredHinge()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
-    sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+
+    # loss = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true = [[-1, 1, -1, 1], [-1, -1, 1, 1]]
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # max(0, 1 - y_true * y_pred) = [[0.7, 0.8, 0.9, 0], [0.75, 0, 0.5, 0.4]]
+    # squared(max(0, 1 - y_true * y_pred)) = [[0.49, 0.64, 0.81, 0],
+    #                                         [0.5625, 0, 0.25, 0.16]]
+    # loss = [(0.49 + 0.64 + 0.81 + 0) / 4, (0.5625 + 0 + 0.25 + 0.16) / 4]
+    #      = [0.485, 0.2431]
+    # weighted loss = [0.485 * 1.2, 0.2431 * 3.4]
+    # reduced loss = (0.485 * 1.2 + 0.2431 * 3.4) / 2
+
+    sample_weight = constant_op.constant([1.2, 3.4])
     loss = sq_hinge_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAlmostEqual(self.evaluate(loss), 957.667, 3)
+    self.assertAllClose(self.evaluate(loss), 0.704, 1e-3)
 
   def test_timestep_weighted(self):
     sq_hinge_obj = keras.losses.SquaredHinge()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3, 1),
-                                  dtype=dtypes.float32)
-    sample_weight = constant_op.constant([3, 6, 5, 0, 4, 2], shape=(2, 3))
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]], shape=(2, 4, 1))
+    y_pred = constant_op.constant(
+        [[-0.3, 0.2, -0.1, 1.6], [-0.25, -1., 0.5, 0.6]], shape=(2, 4, 1))
+    sample_weight = constant_op.constant([3, 6, 5, 0, 4, 2, 1, 3], shape=(2, 4))
+
+    # loss = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true = [[[-1], [1], [-1], [1]], [[-1], [-1], [1], [1]]]
+    # y_true * y_pred = [[[0.3], [0.2], [0.1], [1.6]],
+    #                    [[0.25], [1], [0.5], [0.6]]]
+    # 1 - y_true * y_pred = [[[0.7], [0.8], [0.9], [-0.6]],
+    #                        [[0.75], [0], [0.5], [0.4]]]
+    # loss = [[0.49, 0.64, 0.81, 0], [0.5625, 0, 0.25, 0.16]]
+    # weighted loss    = [[1.47, 3.84, 4.05, 0], [2.25, 0, 0.25, 0.48]]
+    # reduced loss = (1.47 + 3.84 + 4.05 + 0 + 2.25 + 0 + 0.25 + 0.48) / 8
+
     loss = sq_hinge_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAlmostEqual(self.evaluate(loss), 6.0, 3)
+    self.assertAllClose(self.evaluate(loss), 1.542, 1e-3)
 
   def test_zero_weighted(self):
     sq_hinge_obj = keras.losses.SquaredHinge()
-    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
-    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
-                                  shape=(2, 3),
-                                  dtype=dtypes.float32)
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
     loss = sq_hinge_obj(y_true, y_pred, sample_weight=0)
-    self.assertAlmostEqual(self.evaluate(loss), 0., 3)
+    self.assertAllClose(self.evaluate(loss), 0., 1e-3)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1181,7 +1286,7 @@ class LogLossTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class LogcoshTest(test.TestCase):
+class LogCoshTest(test.TestCase):
 
   def setup(self):
     y_pred = np.asarray([1, 9, 2, -5, -2, 6]).reshape((2, 3))
@@ -1195,14 +1300,14 @@ class LogcoshTest(test.TestCase):
     self.y_true = constant_op.constant(y_true)
 
   def test_config(self):
-    logcosh_obj = keras.losses.Logcosh(
+    logcosh_obj = keras.losses.LogCosh(
         reduction=losses_impl.ReductionV2.SUM, name='logcosh_loss')
     self.assertEqual(logcosh_obj.name, 'logcosh_loss')
     self.assertEqual(logcosh_obj.reduction, losses_impl.ReductionV2.SUM)
 
   def test_unweighted(self):
     self.setup()
-    logcosh_obj = keras.losses.Logcosh()
+    logcosh_obj = keras.losses.LogCosh()
 
     loss = logcosh_obj(self.y_true, self.y_pred)
     expected_loss = np.sum(self.expected_losses) / self.batch_size
@@ -1210,7 +1315,7 @@ class LogcoshTest(test.TestCase):
 
   def test_scalar_weighted(self):
     self.setup()
-    logcosh_obj = keras.losses.Logcosh()
+    logcosh_obj = keras.losses.LogCosh()
     sample_weight = 2.3
 
     loss = logcosh_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
@@ -1224,7 +1329,7 @@ class LogcoshTest(test.TestCase):
 
   def test_sample_weighted(self):
     self.setup()
-    logcosh_obj = keras.losses.Logcosh()
+    logcosh_obj = keras.losses.LogCosh()
 
     sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
     loss = logcosh_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
@@ -1237,7 +1342,7 @@ class LogcoshTest(test.TestCase):
 
   def test_timestep_weighted(self):
     self.setup()
-    logcosh_obj = keras.losses.Logcosh()
+    logcosh_obj = keras.losses.LogCosh()
     y_true = np.asarray([1, 9, 2, -5, -2, 6]).reshape(2, 3, 1)
     y_pred = np.asarray([4, 8, 12, 8, 1, 3]).reshape(2, 3, 1)
     error = y_pred - y_true
@@ -1255,7 +1360,7 @@ class LogcoshTest(test.TestCase):
 
   def test_zero_weighted(self):
     self.setup()
-    logcosh_obj = keras.losses.Logcosh()
+    logcosh_obj = keras.losses.LogCosh()
     sample_weight = 0
     loss = logcosh_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
     self.assertAlmostEqual(self.evaluate(loss), 0., 3)
@@ -1343,7 +1448,7 @@ class PoissonTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class KullbackLeiblerDivergenceTest(test.TestCase):
+class KLDivergenceTest(test.TestCase):
 
   def setup(self):
     self.np_y_pred = np.asarray([.4, .9, .12, .36, .3, .4]).reshape((2, 3))
@@ -1357,14 +1462,14 @@ class KullbackLeiblerDivergenceTest(test.TestCase):
     self.y_true = constant_op.constant(self.np_y_true)
 
   def test_config(self):
-    k_obj = keras.losses.KullbackLeiblerDivergence(
+    k_obj = keras.losses.KLDivergence(
         reduction=losses_impl.ReductionV2.SUM, name='kld')
     self.assertEqual(k_obj.name, 'kld')
     self.assertEqual(k_obj.reduction, losses_impl.ReductionV2.SUM)
 
   def test_unweighted(self):
     self.setup()
-    k_obj = keras.losses.KullbackLeiblerDivergence()
+    k_obj = keras.losses.KLDivergence()
 
     loss = k_obj(self.y_true, self.y_pred)
     expected_loss = np.sum(self.expected_losses) / self.batch_size
@@ -1372,7 +1477,7 @@ class KullbackLeiblerDivergenceTest(test.TestCase):
 
   def test_scalar_weighted(self):
     self.setup()
-    k_obj = keras.losses.KullbackLeiblerDivergence()
+    k_obj = keras.losses.KLDivergence()
     sample_weight = 2.3
 
     loss = k_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
@@ -1386,7 +1491,7 @@ class KullbackLeiblerDivergenceTest(test.TestCase):
 
   def test_sample_weighted(self):
     self.setup()
-    k_obj = keras.losses.KullbackLeiblerDivergence()
+    k_obj = keras.losses.KLDivergence()
     sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
     loss = k_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
 
@@ -1398,7 +1503,7 @@ class KullbackLeiblerDivergenceTest(test.TestCase):
 
   def test_timestep_weighted(self):
     self.setup()
-    k_obj = keras.losses.KullbackLeiblerDivergence()
+    k_obj = keras.losses.KLDivergence()
     y_true = self.np_y_true.reshape(2, 3, 1)
     y_pred = self.np_y_pred.reshape(2, 3, 1)
     sample_weight = np.asarray([3, 6, 5, 0, 4, 2]).reshape(2, 3)
@@ -1417,7 +1522,7 @@ class KullbackLeiblerDivergenceTest(test.TestCase):
 
   def test_zero_weighted(self):
     self.setup()
-    k_obj = keras.losses.KullbackLeiblerDivergence()
+    k_obj = keras.losses.KLDivergence()
     loss = k_obj(self.y_true, self.y_pred, sample_weight=0)
     self.assertAlmostEqual(self.evaluate(loss), 0., 3)
 
@@ -1447,27 +1552,27 @@ class HuberLossTest(test.TestCase):
     self.y_true = constant_op.constant(self.np_y_true)
 
   def test_config(self):
-    h_obj = keras.losses.HuberLoss(
+    h_obj = keras.losses.Huber(
         reduction=losses_impl.ReductionV2.SUM, name='huber')
     self.assertEqual(h_obj.name, 'huber')
     self.assertEqual(h_obj.reduction, losses_impl.ReductionV2.SUM)
 
   def test_all_correct(self):
     self.setup()
-    h_obj = keras.losses.HuberLoss()
+    h_obj = keras.losses.Huber()
     loss = h_obj(self.y_true, self.y_true)
     self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
 
   def test_unweighted(self):
     self.setup()
-    h_obj = keras.losses.HuberLoss()
+    h_obj = keras.losses.Huber()
     loss = h_obj(self.y_true, self.y_pred)
     actual_loss = np.sum(self.expected_losses) / self.batch_size
     self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
 
   def test_scalar_weighted(self):
     self.setup()
-    h_obj = keras.losses.HuberLoss()
+    h_obj = keras.losses.Huber()
     sample_weight = 2.3
     loss = h_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
     actual_loss = sample_weight * np.sum(self.expected_losses) / self.batch_size
@@ -1479,7 +1584,7 @@ class HuberLossTest(test.TestCase):
 
   def test_sample_weighted(self):
     self.setup()
-    h_obj = keras.losses.HuberLoss()
+    h_obj = keras.losses.Huber()
     sample_weight = constant_op.constant((1.2, 3.4), shape=(2, 1))
 
     loss = h_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
@@ -1491,7 +1596,7 @@ class HuberLossTest(test.TestCase):
 
   def test_timestep_weighted(self):
     self.setup()
-    h_obj = keras.losses.HuberLoss()
+    h_obj = keras.losses.Huber()
     y_pred = self.np_y_pred.reshape((2, 3, 1))
     y_true = self.np_y_true.reshape((2, 3, 1))
     expected_losses = self.huber_loss(y_true, y_pred)
@@ -1509,14 +1614,14 @@ class HuberLossTest(test.TestCase):
 
   def test_zero_weighted(self):
     self.setup()
-    h_obj = keras.losses.HuberLoss()
+    h_obj = keras.losses.Huber()
     sample_weight = 0
     loss = h_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
     self.assertAlmostEqual(self.evaluate(loss), 0., 3)
 
   def test_non_default_delta(self):
     self.setup(delta=0.8)
-    h_obj = keras.losses.HuberLoss(delta=0.8)
+    h_obj = keras.losses.Huber(delta=0.8)
     sample_weight = 2.3
     loss = h_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
     actual_loss = sample_weight * np.sum(self.expected_losses) / self.batch_size

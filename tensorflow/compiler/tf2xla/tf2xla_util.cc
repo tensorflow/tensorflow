@@ -265,6 +265,13 @@ Status PropagateConstIntoWhileNode(Graph* g, Node* while_node,
     }
 
     // Check if i-th retval's input comes from i-th arg directly.
+    // For resource variable input of While nodes, TF2XLA convention is to place
+    // them at the end of all inputs (after all data inputs), and *not* return
+    // them. So number of While node inputs might be larger than number of its
+    // outputs.
+    if (i >= body_func->signature().output_arg_size()) {
+      continue;
+    }
     const OpDef_ArgDef& output_arg = body_func->signature().output_arg(i);
     auto output_arg_input = body_func->ret().find(output_arg.name());
     if (output_arg_input == body_func->ret().end()) {

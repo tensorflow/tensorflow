@@ -44,16 +44,16 @@ TfLiteStatus WrappingInvoke(TfLiteContext* context, TfLiteNode* node) {
 
 TEST(LoggingOpResolverTest, KernelInvokesAreReplaced) {
   MutableOpResolver base_resolver;
-  TfLiteRegistration conv_registration = {
-      .prepare = ConvPrepare,
-      .invoke = ConvEval,
-  };
+  TfLiteRegistration conv_registration = {};
+  conv_registration.prepare = ConvPrepare;
+  conv_registration.invoke = ConvEval;
+
   base_resolver.AddBuiltin(BuiltinOperator_CONV_2D, &conv_registration);
 
-  TfLiteRegistration add_registration = {
-      .prepare = AddPrepare,
-      .invoke = AddEval,
-  };
+  TfLiteRegistration add_registration = {};
+  add_registration.prepare = AddPrepare;
+  add_registration.invoke = AddEval;
+
   base_resolver.AddBuiltin(BuiltinOperator_ADD, &add_registration);
   BuiltinOpsSet ops_to_replace = {
       {BuiltinOperator_CONV_2D, /*version*/ 1},
@@ -77,16 +77,16 @@ TEST(LoggingOpResolverTest, KernelInvokesAreReplaced) {
 
 TEST(LoggingOpResolverTest, OriginalKernelInvokesAreRetained) {
   MutableOpResolver base_resolver;
-  TfLiteRegistration conv_registration = {
-      .prepare = ConvPrepare,
-      .invoke = ConvEval,
-  };
+  TfLiteRegistration conv_registration = {};
+  conv_registration.prepare = ConvPrepare;
+  conv_registration.invoke = ConvEval;
+
   base_resolver.AddBuiltin(BuiltinOperator_CONV_2D, &conv_registration);
 
-  TfLiteRegistration add_registration = {
-      .prepare = AddPrepare,
-      .invoke = AddEval,
-  };
+  TfLiteRegistration add_registration = {};
+  add_registration.prepare = AddPrepare;
+  add_registration.invoke = AddEval;
+
   base_resolver.AddBuiltin(BuiltinOperator_ADD, &add_registration);
   BuiltinOpsSet ops_to_replace = {
       {BuiltinOperator_CONV_2D, /*version*/ 1},
@@ -103,16 +103,16 @@ TEST(LoggingOpResolverTest, OriginalKernelInvokesAreRetained) {
 
 TEST(LoggingOpResolverTest, OnlyOpsInReplacementSetAreReplaces) {
   MutableOpResolver base_resolver;
-  TfLiteRegistration conv_registration = {
-      .prepare = ConvPrepare,
-      .invoke = ConvEval,
-  };
+  TfLiteRegistration conv_registration = {};
+  conv_registration.prepare = ConvPrepare;
+  conv_registration.invoke = ConvEval;
+
   base_resolver.AddBuiltin(BuiltinOperator_CONV_2D, &conv_registration);
 
-  TfLiteRegistration add_registration = {
-      .prepare = AddPrepare,
-      .invoke = AddEval,
-  };
+  TfLiteRegistration add_registration = {};
+  add_registration.prepare = AddPrepare;
+  add_registration.invoke = AddEval;
+
   base_resolver.AddBuiltin(BuiltinOperator_ADD, &add_registration);
   // Only replace conv2d
   BuiltinOpsSet ops_to_replace = {

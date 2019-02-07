@@ -232,6 +232,13 @@ NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph) {
   return graph.GetRegularFanin(input_port).node;
 }
 
+NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph,
+                      int64 i) {
+  if (node.input_size() <= i) return nullptr;
+  MutableGraphView::InputPort input_port = graph.GetInputPort(node.name(), i);
+  return graph.GetRegularFanin(input_port).node;
+}
+
 void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,
                             NodeDef* node) {
   string name = string(prefix);

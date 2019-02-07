@@ -21,11 +21,12 @@ from __future__ import print_function
 
 import collections
 
+import numpy as np
+
 from tensorflow.python.eager.backprop import GradientTape
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import losses as losses_module
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import math_ops
@@ -102,16 +103,17 @@ def _model_loss(model,
   if len(inputs) == 1 and not isinstance(inputs, dict):
     inputs = inputs[0]
 
-  if model._compute_output_and_mask_jointly:
-    outs, masks = model._call_and_compute_mask(inputs, **kwargs)
-    masks = nest.flatten(masks)
-  else:
-    outs = model.call(inputs, **kwargs)
-    masks = None
+  # Allow mixed `NumPy` and `EagerTensor` input here.
+  if any(
+      isinstance(input_t, (np.ndarray, float, int))
+      for input_t in nest.flatten(inputs)):
+    inputs = nest.map_structure(ops.convert_to_tensor, inputs)
+
+  outs = model(inputs, **kwargs)
 
   outs = nest.flatten(outs)
-  if masks is None:
-    masks = [None for _ in outs]
+  # `None` by default for `EagerTensors`.
+  masks = [t._keras_mask for t in outs]
   targets = nest.flatten(targets)
 
   loss_metrics = []
@@ -124,22 +126,16 @@ def _model_loss(model,
         weights = None
       mask = masks[i]
       with backend.name_scope(model.output_names[i] + '_loss'):
-        if isinstance(loss_fn, losses_module.Loss):
-          if mask is not None:
-            mask = math_ops.cast(mask, outs[i].dtype)
-            # Update weights with mask.
-            if weights is None:
-              weights = mask
-            else:
-              # Update dimensions of weights to match with mask if possible.
-              mask, _, weights = squeeze_or_expand_dimensions(
-                  mask, None, weights)
-              weights *= mask
-          output_loss = loss_fn(targets[i], outs[i], sample_weight=weights)
-        else:
-          weighted_masked_fn = training_utils.weighted_masked_objective(loss_fn)
-          output_loss = weighted_masked_fn(
-              targets[i], outs[i], weights, mask=mask)
+        if mask is not None:
+          mask = math_ops.cast(mask, outs[i].dtype)
+          # Update weights with mask.
+          if weights is None:
+            weights = mask
+          else:
+            # Update dimensions of weights to match with mask if possible.
+            mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
+            weights *= mask
+        output_loss = loss_fn(targets[i], outs[i], sample_weight=weights)
 
       # If the number of outputs is 1 then we don't append the loss metric
       # associated with each model output. When there are multiple outputs

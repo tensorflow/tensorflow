@@ -185,7 +185,6 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual([[0.0, 0.0], [4.0, 5.0], [0.0, 0.0]],
                           self.evaluate(ta.write(1, [[4.0, 5.0]]).concat()))
 
-  @test_util.disable_control_flow_v2("b/122324791")
   @test_util.run_v1_only("b/122324791")
   def testTensorArrayReadOrPackNotAllValuesAvailableFillsZeros(self):
     self._testTensorArrayReadOrPackNotAllValuesAvailableFillsZeros()
@@ -202,10 +201,20 @@ class TensorArrayTest(test.TestCase):
     self.assertAllEqual([[0.0, 0.0], [4.0, 5.0], [0.0, 0.0]],
                         self.evaluate(ta.write(1, [[4.0, 5.0]]).concat()))
 
-  @test_util.disable_control_flow_v2("b/122324791")
   @test_util.run_v1_only("b/122324791")
   def testTensorArrayReadOrPackNotAllValuesAvailableInferShapeFillsZeros(self):
     self._testTensorArrayReadOrPackNotAllValuesAvailableInferShapeFillsZeros()
+
+  @test_util.run_v1_only("Uses placeholders")
+  def testSkipEagerTensorArrayReadUninitializedInferShapeFillsZeros(self):
+    with self.cached_session(use_gpu=True) as sess:
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32,
+          tensor_array_name="foo",
+          size=3)
+      val = array_ops.placeholder(dtypes.float32)
+      self.assertAllEqual(
+          [[0.0, 0.0]], sess.run(ta.write(1, val).read(0), {val: [[4.0, 5.0]]}))
 
   def _testTensorArrayUnpackRead(self, tf_dtype):
     with self.cached_session(use_gpu=True):
@@ -531,7 +540,10 @@ class TensorArrayTest(test.TestCase):
 
       # The exact error messages differ between eager execution and graph
       # construction as the former bubbles up the error from array_op.concat.
-      with self.assertRaisesOpError("shape"):
+      error_msg = ("Incompatible ranks"
+                   if control_flow_util.ENABLE_CONTROL_FLOW_V2 and
+                   not context.executing_eagerly() else "shape")
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, error_msg):
         self.evaluate(w3.concat())
 
   def testTensorArraySplitIncompatibleShapesFails(self):
@@ -1501,7 +1513,7 @@ class TensorArrayTest(test.TestCase):
       if "/task:1/" in d:
         self.assertTrue(
             [s for s in dev_stats[d] if "/TensorArray" in s.node_name])
-      else:
+      elif "/host:CPU" not in d:
         self.assertFalse(
             [s for s in dev_stats[d] if "/TensorArray" in s.node_name])
 
