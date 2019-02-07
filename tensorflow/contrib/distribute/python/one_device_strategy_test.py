@@ -18,42 +18,35 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
+from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import one_device_strategy
+from tensorflow.python.eager import context
 from tensorflow.python.eager import test
-from tensorflow.python.framework import test_util
 
 
+@combinations.generate(combinations.combine(
+    distribution=[
+        combinations.one_device_strategy,
+        combinations.one_device_strategy_gpu],
+    mode=["eager", "graph"]))
 class OneDeviceStrategyTest(
     strategy_test_lib.DistributionTestBase,
     strategy_test_lib.OneDeviceDistributionTestBase):
 
-  # TODO(josh11b): Switch to using the combinations library.
-  def _get_distribution_strategy(self):
-    if "test_gpu" in sys.argv[0]:
-      return one_device_strategy.OneDeviceStrategy("/device:GPU:0")
+  def testMinimizeLoss(self, distribution):
+    if context.executing_eagerly():
+      self._test_minimize_loss_eager(distribution)
     else:
-      return one_device_strategy.OneDeviceStrategy("/device:CPU:0")
+      self._test_minimize_loss_graph(distribution)
 
-  def testMinimizeLossEager(self):
-    self._test_minimize_loss_eager(self._get_distribution_strategy())
+  def testReplicaId(self, distribution):
+    self._test_replica_id(distribution)
 
-  def testMinimizeLossGraph(self):
-    self._test_minimize_loss_graph(self._get_distribution_strategy())
+  def testCallAndMergeExceptions(self, distribution):
+    self._test_call_and_merge_exceptions(distribution)
 
-  def testReplicaId(self):
-    self._test_replica_id(self._get_distribution_strategy())
-
-  @test_util.run_in_graph_and_eager_modes
-  def testCallAndMergeExceptions(self):
-    self._test_call_and_merge_exceptions(self._get_distribution_strategy())
-
-  @test_util.run_in_graph_and_eager_modes
-  def testMakeInputFnIteratorWithDataset(self):
-    d = one_device_strategy.OneDeviceStrategy("/device:CPU:0")
+  def testMakeInputFnIteratorWithDataset(self, distribution):
     dataset_fn = lambda: dataset_ops.Dataset.range(10)
     expected_values = [[i] for i in range(10)]
     input_fn = self._input_fn_to_test_input_context(
@@ -61,13 +54,11 @@ class OneDeviceStrategyTest(
         expected_num_replicas_in_sync=1,
         expected_num_input_pipelines=1,
         expected_input_pipeline_id=0)
-    iterator = d.make_input_fn_iterator(input_fn)
+    iterator = distribution.make_input_fn_iterator(input_fn)
     self._test_input_fn_iterator(
-        iterator, d.extended.worker_devices, expected_values)
+        iterator, distribution.extended.worker_devices, expected_values)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testMakeInputFnIteratorWithCallable(self):
-    d = one_device_strategy.OneDeviceStrategy("/device:CPU:0")
+  def testMakeInputFnIteratorWithCallable(self, distribution):
     def fn():
       dataset = dataset_ops.Dataset.range(10)
       it = dataset.make_one_shot_iterator()
@@ -78,32 +69,31 @@ class OneDeviceStrategyTest(
         expected_num_replicas_in_sync=1,
         expected_num_input_pipelines=1,
         expected_input_pipeline_id=0)
-    iterator = d.make_input_fn_iterator(input_fn)
+    iterator = distribution.make_input_fn_iterator(input_fn)
     self._test_input_fn_iterator(
-        iterator, d.extended.worker_devices, expected_values,
+        iterator, distribution.extended.worker_devices, expected_values,
         test_reinitialize=False)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testNumpyIterator(self):
-    self._test_numpy_iterator(self._get_distribution_strategy())
+  def testNumpyIterator(self, distribution):
+    self._test_numpy_iterator(distribution)
 
-  def testAllReduceSum(self):
-    self._test_all_reduce_sum(self._get_distribution_strategy())
+  def testAllReduceSum(self, distribution):
+    self._test_all_reduce_sum(distribution)
 
-  def testAllReduceSumGradients(self):
-    self._test_all_reduce_sum_gradients(self._get_distribution_strategy())
+  def testAllReduceSumGradients(self, distribution):
+    self._test_all_reduce_sum_gradients(distribution)
 
-  def testAllReduceSumGradientTape(self):
-    self._test_all_reduce_sum_gradient_tape(self._get_distribution_strategy())
+  def testAllReduceSumGradientTape(self, distribution):
+    self._test_all_reduce_sum_gradient_tape(distribution)
 
-  def testAllReduceMean(self):
-    self._test_all_reduce_mean(self._get_distribution_strategy())
+  def testAllReduceMean(self, distribution):
+    self._test_all_reduce_mean(distribution)
 
-  def testAllReduceMeanGradients(self):
-    self._test_all_reduce_mean_gradients(self._get_distribution_strategy())
+  def testAllReduceMeanGradients(self, distribution):
+    self._test_all_reduce_mean_gradients(distribution)
 
-  def testAllReduceMeanGradientTape(self):
-    self._test_all_reduce_mean_gradient_tape(self._get_distribution_strategy())
+  def testAllReduceMeanGradientTape(self, distribution):
+    self._test_all_reduce_mean_gradient_tape(distribution)
 
 
 if __name__ == "__main__":
