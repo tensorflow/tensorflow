@@ -1741,6 +1741,12 @@ class BackendGraphTests(test.TestCase):
         x, mean, var, beta, gamma, axis=1, epsilon=1e-3)
     self.assertEqual(normed.shape.as_list(), [10, 3, 5, 5])
 
+  def test_get_session_different_graphs(self):
+    with ops.Graph().as_default():
+      session = keras.backend.get_session()
+    with ops.Graph().as_default():
+      self.assertIsNot(session, keras.backend.get_session())
+
 
 if __name__ == '__main__':
   test.main()
