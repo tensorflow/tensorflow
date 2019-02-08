@@ -288,8 +288,9 @@ poplar::Tensor AddGroupsDimensionToWeights(const poplin::ConvParams& p,
     chan_div[out_dim] = out.dim(out_dim) / p.getNumOutputChansPerConvGroup();
 
     // OI... ->(GO)(GI)...
-    out = out.reshapePartial(0, 2, {chan_div[0], out.dim(0) / chan_div[0],
-                                    chan_div[1], out.dim(1) / chan_div[1]});
+    out = out.reshapePartial(0, 2,
+                             {chan_div[0], out.dim(0) / chan_div[0],
+                              chan_div[1], out.dim(1) / chan_div[1]});
 
     // (GO)(GI)... -> (GG)OI...
     out = out.dimShufflePartial({2}, {1});
@@ -477,8 +478,7 @@ StatusOr<poplar::program::Program> CreateConvBiasAddOp(
   TF_ASSIGN_OR_RETURN(
       bias, FindInstructionInput(tensor_map, res, inst, 1, prog, false));
 
-  const auto* conv_op = inst->operand(0);
-
+  const auto* conv_op = GetOperandLookThroughInterIpuCopy(inst, 0);
   poplar::Tensor shuffled_in = ShuffleConvolutionOutputToPoplar(conv_op, in);
 
   poplin::addBias(graph, shuffled_in, bias, prog, GetDebugName(inst));

@@ -27,7 +27,7 @@ bool check_convert_ok(const To& to, const From& from) {
   From to_converted = static_cast<From>(to);
   return from_converted == to && from == to_converted;
 }
-}
+}  // namespace
 
 template <typename To, typename From>
 absl::optional<To> convert_array(const From& from) {
@@ -69,6 +69,13 @@ bool IsRepeatCall(const xla::HloInstruction*);
 // This functions assumes that IsRepeatCall(inst) is true
 xla::HloComputation* GetRepeatBody(xla::HloInstruction* inst);
 const xla::HloComputation* GetRepeatBody(const xla::HloInstruction* inst);
+
+bool IsInterIpuCopy(const HloInstruction*);
+// This function returns the operand of inst at index operand_idx and if the
+// operand is an inter ipu copy then it returns the operand which is being
+// copied.
+const HloInstruction* GetOperandLookThroughInterIpuCopy(
+    const HloInstruction* inst, const int64 operand_idx);
 
 // This function returns true if the environment variable has been set. Using
 // synthetic data means that *no data* will be copied to/from the device.
