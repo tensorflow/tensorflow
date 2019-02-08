@@ -79,7 +79,7 @@ def _get_attrs_items(obj):
 def _sorted(dict_):
   """Returns a sorted list of the dict keys, with error if keys not sortable."""
   try:
-    return sorted(_six.iterkeys(dict_))
+    return sorted(dict_)
   except TypeError:
     raise TypeError("nest only supports dicts with sortable keys.")
 

@@ -46,7 +46,7 @@ from tensorflow.python.framework import sparse_tensor as _sparse_tensor
 def _sorted(dict_):
   """Returns a sorted list of the dict keys, with error if keys not sortable."""
   try:
-    return sorted(_six.iterkeys(dict_))
+    return sorted(list(dict_))
   except TypeError:
     raise TypeError("nest only supports dicts with sortable keys.")
 
@@ -317,8 +317,7 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
         raise ValueError(
             "The two structures don't have the same keys. Input "
             "structure has keys %s, while shallow structure has keys %s." %
-            (list(_six.iterkeys(input_tree)),
-             list(_six.iterkeys(shallow_tree))))
+            (list(input_tree), list(shallow_tree)))
       input_tree = list(sorted(_six.iteritems(input_tree)))
       shallow_tree = list(sorted(_six.iteritems(shallow_tree)))
 
