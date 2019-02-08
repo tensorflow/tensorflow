@@ -42,7 +42,7 @@ class SparseTensorSliceDatasetOpTest : public DatasetOpsTestBase {
     node_def_ = test::function::NDef(kNodeName, kOpName,
                                      {"indices", "values", "dense_shape"},
                                      {{"Tvalues", tvalues}});
-    TF_CHECK_OK(CreateOpKernel(node_def_, op_kernel));
+    TF_RETURN_IF_ERROR(CreateOpKernel(node_def_, op_kernel));
     return Status::OK();
   }
 
