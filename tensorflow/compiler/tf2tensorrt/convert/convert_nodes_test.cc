@@ -2229,7 +2229,7 @@ TEST_F(OpConverterTest, ConvertSquare) {
   // TestConvertSquare<DT_HALF>(this);
 }
 
-#if NV_TENSORRT_MAJOR >= 5 && NV_TENSORRT_MINOR >= 1
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
 TEST_F(OpConverterTest, ConvertCombinedNMS) {
   {
     // Input list is empty, should fail.
