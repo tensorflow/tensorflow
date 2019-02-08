@@ -137,25 +137,6 @@ def _serialize_slot_variables(checkpointable_objects, node_ids, object_names):
   return slot_variables
 
 
-def _fill_object_graph_proto(checkpointable_objects,
-                             node_ids,
-                             slot_variables,
-                             object_graph_proto=None):
-  """Name non-slot `Checkpointable`s and add them to `object_graph_proto`."""
-  if object_graph_proto is None:
-    object_graph_proto = (
-        checkpointable_object_graph_pb2.CheckpointableObjectGraph())
-  for checkpoint_id, checkpointable in enumerate(checkpointable_objects):
-    assert node_ids[checkpointable] == checkpoint_id
-    object_proto = object_graph_proto.nodes.add()
-    object_proto.slot_variables.extend(slot_variables.get(checkpointable, ()))
-    for child in checkpointable._checkpoint_dependencies:  # pylint: disable=protected-access
-      child_proto = object_proto.children.add()
-      child_proto.node_id = node_ids[child.ref]
-      child_proto.local_name = child.name
-  return object_graph_proto
-
-
 class ObjectGraphView(object):
   """Gathers and serializes an object graph."""
 
@@ -172,7 +153,7 @@ class ObjectGraphView(object):
     self._root_ref = root
     self._saveables_cache = saveables_cache
 
-  def _list_dependencies(self, obj):
+  def list_dependencies(self, obj):
     # pylint: disable=protected-access
     obj._maybe_initialize_checkpointable()
     return obj._checkpoint_dependencies
@@ -215,7 +196,7 @@ class ObjectGraphView(object):
              "else.")
             % (current_checkpointable,))
       bfs_sorted.append(current_checkpointable)
-      for name, dependency in self._list_dependencies(current_checkpointable):
+      for name, dependency in self.list_dependencies(current_checkpointable):
         if dependency not in path_to_root:
           path_to_root[dependency] = (
               path_to_root[current_checkpointable] + (
@@ -330,6 +311,24 @@ class ObjectGraphView(object):
 
     return named_saveable_objects, feed_additions
 
+  def _fill_object_graph_proto(self, checkpointable_objects,
+                               node_ids,
+                               slot_variables,
+                               object_graph_proto=None):
+    """Name non-slot `Checkpointable`s and add them to `object_graph_proto`."""
+    if object_graph_proto is None:
+      object_graph_proto = (
+          checkpointable_object_graph_pb2.CheckpointableObjectGraph())
+    for checkpoint_id, checkpointable in enumerate(checkpointable_objects):
+      assert node_ids[checkpointable] == checkpoint_id
+      object_proto = object_graph_proto.nodes.add()
+      object_proto.slot_variables.extend(slot_variables.get(checkpointable, ()))
+      for child in self.list_dependencies(checkpointable):
+        child_proto = object_proto.children.add()
+        child_proto.node_id = node_ids[child.ref]
+        child_proto.local_name = child.name
+    return object_graph_proto
+
   def _serialize_gathered_objects(self, checkpointable_objects, path_to_root,
                                   object_map=None):
     """Create SaveableObjects and protos for gathered objects."""
@@ -343,7 +342,7 @@ class ObjectGraphView(object):
         checkpointable_objects=checkpointable_objects,
         node_ids=node_ids,
         object_names=object_names)
-    object_graph_proto = _fill_object_graph_proto(
+    object_graph_proto = self._fill_object_graph_proto(
         checkpointable_objects=checkpointable_objects,
         node_ids=node_ids,
         slot_variables=slot_variables)

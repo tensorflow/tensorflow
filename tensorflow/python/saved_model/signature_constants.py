@@ -136,6 +136,10 @@ tf_export(
 ################################################################################
 # Train/Eval API constants.
 # Not exported while export_all_saved_models is experimental.
+DEFAULT_TRAIN_SIGNATURE_DEF_KEY = "train"
+# TODO(b/123998850): Change default signature key to "test" after making sure
+# that TFMA use cases won't break.
+DEFAULT_EVAL_SIGNATURE_DEF_KEY = "eval"
 
 SUPERVISED_TRAIN_METHOD_NAME = "tensorflow/supervised/training"
 

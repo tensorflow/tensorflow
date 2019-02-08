@@ -226,7 +226,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RESHAPE, Register_RESHAPE());
   AddBuiltin(BuiltinOperator_RESIZE_BILINEAR, Register_RESIZE_BILINEAR());
   AddBuiltin(BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
-             Register_RESIZE_NEAREST_NEIGHBOR());
+             Register_RESIZE_NEAREST_NEIGHBOR(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SKIP_GRAM, Register_SKIP_GRAM());
   AddBuiltin(BuiltinOperator_SPACE_TO_DEPTH, Register_SPACE_TO_DEPTH());
   AddBuiltin(BuiltinOperator_GATHER, Register_GATHER(),
@@ -236,12 +238,15 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN());
   AddBuiltin(BuiltinOperator_DIV, Register_DIV());
   AddBuiltin(BuiltinOperator_SUB, Register_SUB());
-  AddBuiltin(BuiltinOperator_SPLIT, Register_SPLIT());
+  AddBuiltin(BuiltinOperator_SPLIT, Register_SPLIT(), /* min_version */ 1,
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_SPLIT_V, Register_SPLIT_V());
   AddBuiltin(BuiltinOperator_SQUEEZE, Register_SQUEEZE());
   AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE());
   AddBuiltin(BuiltinOperator_EXP, Register_EXP());
-  AddBuiltin(BuiltinOperator_TOPK_V2, Register_TOPK_V2());
+  AddBuiltin(BuiltinOperator_TOPK_V2, Register_TOPK_V2(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_LOG, Register_LOG());
   AddBuiltin(BuiltinOperator_LOG_SOFTMAX, Register_LOG_SOFTMAX());
   AddBuiltin(BuiltinOperator_CAST, Register_CAST());
@@ -251,16 +256,30 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_PRELU, Register_PRELU());
   AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM());
   AddBuiltin(BuiltinOperator_MINIMUM, Register_MINIMUM());
-  AddBuiltin(BuiltinOperator_ARG_MAX, Register_ARG_MAX());
-  AddBuiltin(BuiltinOperator_ARG_MIN, Register_ARG_MIN());
-  AddBuiltin(BuiltinOperator_GREATER, Register_GREATER());
-  AddBuiltin(BuiltinOperator_GREATER_EQUAL, Register_GREATER_EQUAL());
-  AddBuiltin(BuiltinOperator_LESS, Register_LESS());
-  AddBuiltin(BuiltinOperator_LESS_EQUAL, Register_LESS_EQUAL());
+  AddBuiltin(BuiltinOperator_ARG_MAX, Register_ARG_MAX(),
+             /* min_version */ 1,
+             /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_ARG_MIN, Register_ARG_MIN(),
+             /* min_version */ 1,
+             /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_GREATER, Register_GREATER(),
+             /* min_version */ 1,
+             /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_GREATER_EQUAL, Register_GREATER_EQUAL(),
+             /* min_version */ 1,
+             /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_LESS, Register_LESS(),
+             /* min_version */ 1,
+             /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_LESS_EQUAL, Register_LESS_EQUAL(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_FLOOR, Register_FLOOR());
   AddBuiltin(BuiltinOperator_CEIL, Register_CEIL());
   AddBuiltin(BuiltinOperator_NEG, Register_NEG());
-  AddBuiltin(BuiltinOperator_SELECT, Register_SELECT());
+  AddBuiltin(BuiltinOperator_SELECT, Register_SELECT(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SLICE, Register_SLICE());
   AddBuiltin(BuiltinOperator_SIN, Register_SIN());
   AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSE_CONV());
@@ -272,8 +291,12 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_REDUCE_ANY, Register_REDUCE_ANY());
   AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS());
   AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE());
-  AddBuiltin(BuiltinOperator_EQUAL, Register_EQUAL());
-  AddBuiltin(BuiltinOperator_NOT_EQUAL, Register_NOT_EQUAL());
+  AddBuiltin(BuiltinOperator_EQUAL, Register_EQUAL(),
+             /* min_version */ 1,
+             /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_NOT_EQUAL, Register_NOT_EQUAL(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SQRT, Register_SQRT());
   AddBuiltin(BuiltinOperator_RSQRT, Register_RSQRT());
   AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE());

@@ -1311,6 +1311,13 @@ void TF_SetAttrTypeList(TF_OperationDescription* desc, const char* attr_name,
                      reinterpret_cast<const DataType*>(values), num_values));
 }
 
+void TF_SetAttrPlaceholder(TF_OperationDescription* desc, const char* attr_name,
+                           const char* placeholder) {
+  tensorflow::AttrValue attr_value;
+  attr_value.set_placeholder(placeholder);
+  desc->node_builder.Attr(attr_name, attr_value);
+}
+
 void TF_SetAttrFuncName(TF_OperationDescription* desc, const char* attr_name,
                         const char* value, size_t length) {
   tensorflow::NameAttrList func_name;

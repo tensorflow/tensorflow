@@ -70,7 +70,7 @@ TEST_F(CollectiveRemoteAccessLocalTest, PostRecvCPU0) {
                      "key_0", cpu0 /*to_device*/, nullptr /*to_device_ctx*/,
                      attr /*to_alloc_attr*/, &sink_tensor, dev_locality,
                      0 /*stream_index*/,
-                     [this, &recv_note, &recv_status](const Status& s) {
+                     [&recv_note, &recv_status](const Status& s) {
                        recv_status = s;
                        recv_note.Notify();
                      });
@@ -85,7 +85,7 @@ TEST_F(CollectiveRemoteAccessLocalTest, PostRecvCPU0) {
   rma_->PostToPeer(kTaskName + "/device:CPU:0", kTaskName, "key_0",
                    cpu0 /*from_device*/, nullptr /*from_device_ctx*/,
                    attr /*to_alloc_attr*/, &source_tensor, dev_locality,
-                   [this, &send_note, &send_status](const Status& s) {
+                   [&send_note, &send_status](const Status& s) {
                      send_status = s;
                      send_note.Notify();
                    });
@@ -113,7 +113,7 @@ TEST_F(CollectiveRemoteAccessLocalTest, PostRecvCPU1_2) {
                      "key_0", cpu2 /*to_device*/, nullptr /*to_device_ctx*/,
                      attr /*to_alloc_attr*/, &sink_tensor, dev_locality,
                      0 /*stream_index*/,
-                     [this, &recv_note, &recv_status](const Status& s) {
+                     [&recv_note, &recv_status](const Status& s) {
                        recv_status = s;
                        recv_note.Notify();
                      });
@@ -130,7 +130,7 @@ TEST_F(CollectiveRemoteAccessLocalTest, PostRecvCPU1_2) {
   rma_->PostToPeer(kTaskName + "/device:CPU:2", kTaskName, "key_0",
                    cpu1 /*from_device*/, nullptr /*from_device_ctx*/,
                    attr /*to_alloc_attr*/, &source_tensor, dev_locality,
-                   [this, &send_note, &send_status](const Status& s) {
+                   [&send_note, &send_status](const Status& s) {
                      send_status = s;
                      send_note.Notify();
                    });

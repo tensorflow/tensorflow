@@ -136,10 +136,18 @@ XLA_TEST_F(TestUtilsTest, NoDuplicatesFloats) {
   auto module = ParseHloString(R"(
 HloModule sort.148.1589
 
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (f32[1048576], s32[1048576]) {
   %parameter.0 = f32[1048576]{0} parameter(0)
   %parameter.1 = s32[1048576]{0} parameter(1)
-  ROOT %sort.148.1589 = (f32[1048576]{0}, s32[1048576]{0}) sort(f32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}
+  ROOT %sort.148.1589 = (f32[1048576]{0}, s32[1048576]{0}) sort(f32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}, to_apply=compare
 }
 )")
                     .ValueOrDie();
@@ -159,10 +167,18 @@ XLA_TEST_F(TestUtilsTest, NoDuplicatesInt32) {
   auto module = ParseHloString(R"(
 HloModule sort.148.1589
 
+compare {
+  p.0.lhs = s32[] parameter(0)
+  p.0.rhs = s32[] parameter(1)
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (s32[1048576], s32[1048576]) {
   %parameter.0 = s32[1048576]{0} parameter(0)
   %parameter.1 = s32[1048576]{0} parameter(1)
-  ROOT %sort.148.1589 = (s32[1048576]{0}, s32[1048576]{0}) sort(s32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}
+  ROOT %sort.148.1589 = (s32[1048576]{0}, s32[1048576]{0}) sort(s32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}, to_apply=compare
 }
 )")
                     .ValueOrDie();
@@ -182,10 +198,18 @@ XLA_TEST_F(TestUtilsTest, NoDuplicatesBfloat16) {
   auto module = ParseHloString(R"(
 HloModule sort, is_scheduled=true
 
+compare {
+  p.0.lhs = bf16[] parameter(0)
+  p.0.rhs = bf16[] parameter(1)
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY %sort. (parameter.0: bf16[2,1452], parameter.1: s32[2,1452]) -> (bf16[2,1452], s32[2,1452]) {
   %parameter.0 = bf16[2,1452]{1,0} parameter(0)
   %parameter.1 = s32[2,1452]{1,0} parameter(1)
-  ROOT %sort = (bf16[2,1452]{1,0}, s32[2,1452]{1,0}) sort(bf16[2,1452]{1,0} %parameter.0, s32[2,1452]{1,0} %parameter.1), dimensions={1}
+  ROOT %sort = (bf16[2,1452]{1,0}, s32[2,1452]{1,0}) sort(bf16[2,1452]{1,0} %parameter.0, s32[2,1452]{1,0} %parameter.1), dimensions={1}, to_apply=compare
 }
 )")
                     .ValueOrDie();

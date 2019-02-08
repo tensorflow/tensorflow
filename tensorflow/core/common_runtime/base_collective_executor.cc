@@ -301,6 +301,8 @@ bool BaseCollectiveExecutor::CheckDependencies(
   for (int32 instance : col_params.instance.impl_details.dependencies) {
     auto find_iter = launched_.find(instance);
     if (find_iter == launched_.end() || find_iter->second != 0) {
+      VLOG(1) << "Collective " << col_params.ToString()
+              << " blocked by instance " << instance;
       return false;
     }
   }
@@ -313,6 +315,7 @@ void BaseCollectiveExecutor::WaitForDependencies(
   while (!CheckDependencies(col_params)) {
     launch_cv_.wait(l);
   }
+  VLOG(1) << "Unblocking collective " << col_params.ToString();
 }
 
 void BaseCollectiveExecutor::Launched(const CollectiveParams& col_params) {
@@ -325,6 +328,8 @@ void BaseCollectiveExecutor::Launched(const CollectiveParams& col_params) {
     launched_[col_params.instance.instance_key] = num_devices;
   }
   if (--launched_[col_params.instance.instance_key] == 0) {
+    VLOG(1) << "Unblocking dependencies for collective instance "
+            << col_params.instance.instance_key;
     launch_cv_.notify_all();
   }
 }

@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/allocator_retry.h"
+#include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -50,9 +51,14 @@ class BFCAllocator : public Allocator {
   ~BFCAllocator() override;
 
   string Name() override { return name_; }
-  void* AllocateRaw(size_t alignment, size_t num_bytes) override;
+
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    return AllocateRaw(alignment, num_bytes, AllocationAttributes());
+  }
+
   void* AllocateRaw(size_t alignment, size_t num_bytes,
                     const AllocationAttributes& allocation_attr) override;
+
   void DeallocateRaw(void* ptr) override;
 
   bool TracksAllocationSizes() override;
@@ -67,11 +73,19 @@ class BFCAllocator : public Allocator {
 
   void ClearStats() override;
 
+  void SetTimingCounter(SharedCounter* sc) { timing_counter_ = sc; }
+
  private:
   struct Bin;
 
   void* AllocateRawInternal(size_t alignment, size_t num_bytes,
-                            bool dump_log_on_failure);
+                            bool dump_log_on_failure,
+                            uint64 freed_before_count);
+
+  void* AllocateRawInternalWithRetry(
+      size_t alignment, size_t num_bytes,
+      const AllocationAttributes& allocation_attr);
+
   void DeallocateRawInternal(void* ptr);
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
@@ -125,6 +139,9 @@ class BFCAllocator : public Allocator {
 
     // What bin are we in?
     BinNum bin_num = kInvalidBinNum;
+
+    // Optional count when this chunk was most recently made free.
+    uint64 freed_count = 0;
 
     bool in_use() const { return allocation_id != -1; }
 
@@ -314,8 +331,8 @@ class BFCAllocator : public Allocator {
 
   // Returns a pointer to an underlying allocated chunk of size
   // 'rounded_bytes'.
-  void* FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes)
-      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void* FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes,
+                     uint64 freed_before) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Splits the chunk specified by 'h' into two chunks, one at least
   // of size 'num_bytes'.
@@ -420,6 +437,7 @@ class BFCAllocator : public Allocator {
 
   std::unique_ptr<SubAllocator> sub_allocator_;
   string name_;
+  SharedCounter* timing_counter_ = nullptr;
 
   // Structures mutable after construction
   mutable mutex lock_;

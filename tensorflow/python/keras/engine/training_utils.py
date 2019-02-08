@@ -31,6 +31,7 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -1416,7 +1417,10 @@ class ModelInputs(object):
         # we have. The user should call `model._set_inputs(placeholders)`
         # to specify custom placeholders if the need arises.
         shape = (None,) + tuple(v.shape[1:])
-        v = K.placeholder(shape=shape, name=k)
+        dtype = dtypes.as_dtype(v.dtype)
+        if dtype.is_floating:
+          dtype = K.floatx()
+        v = K.placeholder(shape=shape, name=k, dtype=dtype)
       elif isinstance(v, tensor_shape.TensorShape):
         shape = (None,) + tuple(v.as_list()[1:])
         v = K.placeholder(shape=shape, name=k)

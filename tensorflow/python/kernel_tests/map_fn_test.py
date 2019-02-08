@@ -49,7 +49,6 @@ def simple_scoped_fn(a, x):
 
 
 @test_util.with_control_flow_v2
-@test_util.disable_all_xla("This test never passed for XLA")
 class MapFnTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
