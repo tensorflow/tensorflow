@@ -358,15 +358,8 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
     if tensor_tracer.TensorTracer.is_enabled() \
        and self.train_op is not None:
       tt = tensor_tracer.TensorTracer()
-      (loss, tracing_calls) = tt.trace_cpu(ops.get_default_graph(),
-                                           loss, self.train_op)
-      tracing_call_ret = _OutfeedHostCall.create_cpu_hostcall(tracing_calls)
-      tracing_functions = tracing_call_ret.values()
-      if tracing_functions:
-        if hooks:
-          hooks.extend([_OutfeedHostCallHook(tracing_functions)])
-        else:
-          hooks = [_OutfeedHostCallHook(tracing_functions)]
+      loss = tt.trace_cpu(ops.get_default_graph(), loss, self.train_op)
+
     hooks = tuple(hooks or [])
     scaffold = self.scaffold_fn() if self.scaffold_fn else None
     return model_fn_lib.EstimatorSpec(
@@ -1454,14 +1447,13 @@ class _ModelFnWrapper(object):
 
       captured_training_hooks.capture(estimator_spec.training_hooks)
 
-      tracing_ops = []
       if tensor_tracer.TensorTracer.is_enabled():
         tt = tensor_tracer.TensorTracer()
-        loss, tracing_ops = tt.trace_tpu(ops.get_default_graph(),
-                                         loss, train_op,
-                                         self._ctx.num_replicas,
-                                         self._ctx.num_of_replicas_per_host,
-                                         self._ctx.num_hosts)
+        loss = tt.trace_tpu(ops.get_default_graph(),
+                            loss, train_op,
+                            self._ctx.num_replicas,
+                            self._ctx.num_of_replicas_per_host,
+                            self._ctx.num_hosts)
 
       if self._ctx.embedding_config is None:
         apply_sparse_grads = []
@@ -1471,8 +1463,7 @@ class _ModelFnWrapper(object):
 
       # We must run train_op to update the variables prior to running the
       # outfeed.
-      with ops.control_dependencies([train_op] + tracing_ops +
-                                    apply_sparse_grads):
+      with ops.control_dependencies([train_op] + apply_sparse_grads):
         host_call_outfeed_ops = []
         if (isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)  # pylint: disable=protected-access
             and estimator_spec.host_call is not None):
