@@ -975,29 +975,28 @@ Status ConstantFolding::CreateNodeDef(const string& name,
   // Use the packed representation whenever possible to avoid generating large
   // graphdefs. Moreover, avoid repeating the last values if they're equal.
   if (tensor->NumElements() > 4) {
-#define POPULATE_TENSOR_PROTO(tensor, t, TYPE, NAME)                  \
-  {                                                                   \
-    const TYPE* val_ptr = tensor->flat<TYPE>().data();                \
-    TYPE last = *val_ptr;                                             \
-    int64 last_index = 0;                                             \
-    for (int64 i = 0; i < tensor->NumElements(); ++i) {               \
-      TYPE cur = *val_ptr++;                                          \
-      if (cur != last) {                                              \
-        last = cur;                                                   \
-        last_index = i;                                               \
-      }                                                               \
-    }                                                                 \
-    if (last_index < kint32max) {                                     \
-      optimized = true;                                               \
-      encoded_size = (last_index + 1) * sizeof(NAME);                 \
-      t->mutable_##NAME##_val()->Reserve(last_index + 1);             \
-      t->mutable_##NAME##_val()->AddNAlreadyReserved(last_index + 1); \
-      val_ptr = tensor->flat<TYPE>().data();                          \
-      for (int64 i = 0; i <= last_index; ++i) {                       \
-        t->set_##NAME##_val(i, *val_ptr++);                           \
-      }                                                               \
-    }                                                                 \
-  }                                                                   \
+#define POPULATE_TENSOR_PROTO(tensor, t, TYPE, NAME)                      \
+  {                                                                       \
+    const auto* val_ptr = tensor->flat<TYPE>().data();                    \
+    auto last = *val_ptr;                                                 \
+    int64 last_index = 0;                                                 \
+    for (int64 i = 0; i < tensor->NumElements(); ++i) {                   \
+      TYPE cur = *val_ptr++;                                              \
+      if (cur != last) {                                                  \
+        last = cur;                                                       \
+        last_index = i;                                                   \
+      }                                                                   \
+    }                                                                     \
+    if (last_index < kint32max) {                                         \
+      optimized = true;                                                   \
+      encoded_size = (last_index + 1) * sizeof(NAME);                     \
+      t->mutable_##NAME##_val()->Reserve(last_index + 1);                 \
+      const auto* src_ptr = tensor->flat<TYPE>().data();                  \
+      auto* dst_ptr =                                                     \
+          t->mutable_##NAME##_val()->AddNAlreadyReserved(last_index + 1); \
+      std::copy(src_ptr, src_ptr + last_index + 1, dst_ptr);              \
+    }                                                                     \
+  }                                                                       \
   break
 
     switch (tensor->dtype()) {
