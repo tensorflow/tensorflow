@@ -1398,14 +1398,10 @@ Status IsInlinableIndirectFunctionCall(const FunctionOptimizerContext& ctx,
 // Checks that all side-effects will be executed in well defined order. We do it
 // by checking if there is a path from stateful/dataset ops to one of the output
 // nodes.
-Status CheckThatSideEffectsWillExecute(
+void CheckThatSideEffectsWillExecute(
     const FunctionOptimizerContext& ctx,
     const GraphTopologyView& graph_topo_view,
     const absl::flat_hash_set<string> output_nodes) {
-  // In aggressive mode we just print a warning for side-effectful nodes that
-  // might not be executed after inlining.
-  const bool aggressive = ctx.opt_level() == RewriterConfig::AGGRESSIVE;
-
   for (const NodeDef& func_body_node : graph_topo_view.graph()->node()) {
     const bool node_must_execute =
         IsDataset(func_body_node) ||
@@ -1438,20 +1434,11 @@ Status CheckThatSideEffectsWillExecute(
                  TraversalDirection::kFollowOutputs, predicates, callbacks);
 
     if (!will_execute) {
-      const string error_message = absl::StrCat(
-          "Can't guarantee execution of a side-effectful node, that is not "
-          "reachable from function outputs. Function body node: ",
-          SummarizeNodeDef(func_body_node));
-
-      if (aggressive) {
-        LOG(WARNING) << error_message;
-      } else {
-        return errors::Internal(error_message);
-      }
+      VLOG(1) << "Can't guarantee execution of a side-effectful node, that is "
+                 "not reachable from function outputs. Function body node: "
+              << SummarizeNodeDef(func_body_node);
     }
   }
-
-  return Status::OK();
 }
 
 Status PlaceInlinedFunctionBody(
@@ -1803,8 +1790,7 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   // input nodes connected to nodes in the optimized graph).
   GraphTopologyView placed_topo_view(/*skip_invalid_edges=*/true);
   TF_RETURN_IF_ERROR(placed_topo_view.InitializeFromGraph(placed_graph_def));
-  TF_RETURN_IF_ERROR(CheckThatSideEffectsWillExecute(*ctx, placed_topo_view,
-                                                     inlined_output_nodes));
+  CheckThatSideEffectsWillExecute(*ctx, placed_topo_view, inlined_output_nodes);
 
   // ------------------------------------------------------------------------ //
   // Move all the nodes to the optimized graph after successful preprocessing.
