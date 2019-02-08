@@ -217,173 +217,180 @@ class CallbackCountsTest(keras_parameterized.TestCase):
         })
 
 
-class KerasCallbacksTest(test.TestCase):
+class KerasCallbacksTest(keras_parameterized.TestCase):
 
+  @keras_parameterized.run_with_all_model_types
   def test_ModelCheckpoint(self):
     if h5py is None:
       return  # Skip test if models cannot be saved.
 
-    with self.cached_session():
-      np.random.seed(1337)
+    layers = [
+        keras.layers.Dense(NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'),
+        keras.layers.Dense(NUM_CLASSES, activation='softmax')
+    ]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(10,))
+    model.compile(loss='categorical_crossentropy',
+                  optimizer='rmsprop',
+                  metrics=['accuracy'])
 
-      temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
-      filepath = os.path.join(temp_dir, 'checkpoint.h5')
-      (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
-          train_samples=TRAIN_SAMPLES,
-          test_samples=TEST_SAMPLES,
-          input_shape=(INPUT_DIM,),
-          num_classes=NUM_CLASSES)
-      y_test = keras.utils.to_categorical(y_test)
-      y_train = keras.utils.to_categorical(y_train)
-      # case 1
-      monitor = 'val_loss'
-      save_best_only = False
-      mode = 'auto'
+    filepath = os.path.join(temp_dir, 'checkpoint')
+    (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+        train_samples=TRAIN_SAMPLES,
+        test_samples=TEST_SAMPLES,
+        input_shape=(INPUT_DIM,),
+        num_classes=NUM_CLASSES)
+    y_test = keras.utils.to_categorical(y_test)
+    y_train = keras.utils.to_categorical(y_train)
+    # case 1
+    monitor = 'val_loss'
+    save_best_only = False
+    mode = 'auto'
 
-      model = keras.models.Sequential()
-      model.add(
-          keras.layers.Dense(
-              NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
-      model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
-      model.compile(
-          loss='categorical_crossentropy',
-          optimizer='rmsprop',
-          metrics=['accuracy'])
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.Dense(
+            NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
+    model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer='rmsprop',
+        metrics=['accuracy'])
 
-      cbks = [
-          keras.callbacks.ModelCheckpoint(
-              filepath,
-              monitor=monitor,
-              save_best_only=save_best_only,
-              mode=mode)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=1,
-          verbose=0)
-      assert os.path.exists(filepath)
-      os.remove(filepath)
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath,
+            monitor=monitor,
+            save_best_only=save_best_only,
+            mode=mode)
+    ]
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=BATCH_SIZE,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=1,
+        verbose=0)
+    assert os.path.exists(filepath)
+    os.remove(filepath)
 
-      # case 2
-      mode = 'min'
-      cbks = [
-          keras.callbacks.ModelCheckpoint(
-              filepath,
-              monitor=monitor,
-              save_best_only=save_best_only,
-              mode=mode)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=1,
-          verbose=0)
-      assert os.path.exists(filepath)
-      os.remove(filepath)
+    # case 2
+    mode = 'min'
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath,
+            monitor=monitor,
+            save_best_only=save_best_only,
+            mode=mode)
+    ]
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=BATCH_SIZE,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=1,
+        verbose=0)
+    assert os.path.exists(filepath)
+    os.remove(filepath)
 
-      # case 3
-      mode = 'max'
-      monitor = 'val_acc'
-      cbks = [
-          keras.callbacks.ModelCheckpoint(
-              filepath,
-              monitor=monitor,
-              save_best_only=save_best_only,
-              mode=mode)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=1,
-          verbose=0)
-      assert os.path.exists(filepath)
-      os.remove(filepath)
+    # case 3
+    mode = 'max'
+    monitor = 'val_acc'
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath,
+            monitor=monitor,
+            save_best_only=save_best_only,
+            mode=mode)
+    ]
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=BATCH_SIZE,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=1,
+        verbose=0)
+    assert os.path.exists(filepath)
+    os.remove(filepath)
 
-      # case 4
-      save_best_only = True
-      cbks = [
-          keras.callbacks.ModelCheckpoint(
-              filepath,
-              monitor=monitor,
-              save_best_only=save_best_only,
-              mode=mode)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=1,
-          verbose=0)
-      assert os.path.exists(filepath)
-      os.remove(filepath)
+    # case 4
+    save_best_only = True
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath,
+            monitor=monitor,
+            save_best_only=save_best_only,
+            mode=mode)
+    ]
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=BATCH_SIZE,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=1,
+        verbose=0)
+    assert os.path.exists(filepath)
+    os.remove(filepath)
 
-      # Case: metric not available.
-      cbks = [
-          keras.callbacks.ModelCheckpoint(
-              filepath,
-              monitor='unknown',
-              save_best_only=True)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=1,
-          verbose=0)
-      # File won't be written.
-      assert not os.path.exists(filepath)
+    # Case: metric not available.
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath,
+            monitor='unknown',
+            save_best_only=True)
+    ]
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=BATCH_SIZE,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=1,
+        verbose=0)
+    # File won't be written.
+    assert not os.path.exists(filepath)
 
-      # case 5
-      save_best_only = False
-      period = 2
-      mode = 'auto'
+    # case 5
+    save_best_only = False
+    period = 2
+    mode = 'auto'
 
-      filepath = os.path.join(temp_dir, 'checkpoint.{epoch:02d}.h5')
-      cbks = [
-          keras.callbacks.ModelCheckpoint(
-              filepath,
-              monitor=monitor,
-              save_best_only=save_best_only,
-              mode=mode,
-              period=period)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=4,
-          verbose=1)
-      assert os.path.exists(filepath.format(epoch=2))
-      assert os.path.exists(filepath.format(epoch=4))
-      os.remove(filepath.format(epoch=2))
-      os.remove(filepath.format(epoch=4))
-      assert not os.path.exists(filepath.format(epoch=1))
-      assert not os.path.exists(filepath.format(epoch=3))
+    filepath = os.path.join(temp_dir, 'checkpoint.{epoch:02d}.h5')
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath,
+            monitor=monitor,
+            save_best_only=save_best_only,
+            mode=mode,
+            period=period)
+    ]
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=BATCH_SIZE,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=4,
+        verbose=1)
+    assert os.path.exists(filepath.format(epoch=2))
+    assert os.path.exists(filepath.format(epoch=4))
+    os.remove(filepath.format(epoch=2))
+    os.remove(filepath.format(epoch=4))
+    assert not os.path.exists(filepath.format(epoch=1))
+    assert not os.path.exists(filepath.format(epoch=3))
 
-      # Invalid use: this will raise a warning but not an Exception.
-      keras.callbacks.ModelCheckpoint(
-          filepath,
-          monitor=monitor,
-          save_best_only=save_best_only,
-          mode='unknown')
+    # Invalid use: this will raise a warning but not an Exception.
+    keras.callbacks.ModelCheckpoint(
+        filepath,
+        monitor=monitor,
+        save_best_only=save_best_only,
+        mode='unknown')
 
   def test_EarlyStopping(self):
     with self.cached_session():

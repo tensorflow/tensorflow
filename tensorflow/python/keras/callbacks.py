@@ -391,7 +391,7 @@ class Callback(object):
   take as argument will contain keys for quantities relevant to
   the current batch or epoch.
 
-  Currently, the `.fit()` method of the `Sequential` model class
+  Currently, the `.fit()` method of the `Model` class
   will include the following quantities in the `logs` that
   it passes to its callbacks:
 
@@ -810,6 +810,14 @@ class ModelCheckpoint(Callback):
       else:
         self.monitor_op = np.less
         self.best = np.Inf
+
+  def set_model(self, model):
+    self.model = model
+    # Use name matching rather than `isinstance` to avoid circular dependencies.
+    if (not self.save_weights_only and
+        not model._is_graph_network and  # pylint: disable=protected-access
+        model.__class__.__name__ != 'Sequential'):
+      self.save_weights_only = True
 
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}
