@@ -1262,6 +1262,29 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     load_status = checkpoint.restore(save_path)
     load_status.assert_existing_objects_matched().run_restore_ops()
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_write_checkpoint_from_function(self):
+    checkpoint_prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    save_checkpoint = checkpointable_utils.Checkpoint(
+        v=variables_lib.Variable(1.))
+
+    @def_function.function
+    def _write_checkpoint():
+      save_path = save_checkpoint.write(checkpoint_prefix)
+      return save_path
+
+    self.evaluate([save_checkpoint.v.initializer])
+    self.evaluate(_write_checkpoint())
+    load_checkpoint = checkpointable_utils.Checkpoint(
+        v=variables_lib.Variable(0.))
+    load_checkpoint.restore(checkpoint_prefix).run_restore_ops()
+    self.assertEqual(1., self.evaluate(load_checkpoint.v))
+    self.evaluate(save_checkpoint.v.assign(3.))
+    self.evaluate(_write_checkpoint())
+    self.evaluate(save_checkpoint.v.assign(0.))
+    load_checkpoint.restore(checkpoint_prefix).run_restore_ops()
+    self.assertEqual(3., self.evaluate(load_checkpoint.v))
+
 
 class _ManualScope(tracking.AutoCheckpointable):
 

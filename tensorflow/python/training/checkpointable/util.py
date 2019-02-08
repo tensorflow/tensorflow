@@ -31,6 +31,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
@@ -913,7 +914,8 @@ class CheckpointableSaver(object):
         # save() is called so they pick up new Tensors passed to their
         # constructors. That means the Saver needs to be copied with a new
         # var_list.
-        or context.executing_eagerly()):
+        or context.executing_eagerly()
+        or ops.inside_function()):
       saver = functional_saver.Saver(named_saveable_objects)
       with ops.device("/cpu:0"):
         self._cached_save_operation = saver.save(file_prefix)
@@ -943,10 +945,11 @@ class CheckpointableSaver(object):
       The full path to the checkpoint.
     """
     feed_dict = {}
-    graph_building = not context.executing_eagerly()
+    use_session = (not context.executing_eagerly()
+                   and not ops.inside_function())
     if checkpoint_number:
       file_prefix = "%s-%d" % (file_prefix, checkpoint_number)
-    if graph_building:
+    if use_session:
       if self._object_graph_feed_tensor is None:
         with ops.device("/cpu:0"):
           self._object_graph_feed_tensor = constant_op.constant(
@@ -968,16 +971,15 @@ class CheckpointableSaver(object):
         object_graph_tensor=object_graph_tensor)
     if new_feed_additions:
       feed_dict.update(new_feed_additions)
-    if not graph_building:
+    if not use_session:
       session = None
     elif session is None:
       session = ops.get_default_session()
 
     if session:
-      save_path = session.run(save_path, feed_dict=feed_dict)
+      return session.run(save_path, feed_dict=feed_dict)
     else:
-      save_path = save_path.numpy()
-    return save_path
+      return save_path
 
   def restore(self, save_path):
     """Restore a training checkpoint.
@@ -1277,9 +1279,18 @@ class Checkpoint(tracking.AutoCheckpointable):
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
     """
-    return compat.as_str(self._saver.save(
+    output = self._saver.save(
         file_prefix=file_prefix,
-        session=session))
+        session=session)
+    if tensor_util.is_tensor(output):
+      if context.executing_eagerly():
+        return compat.as_str(output.numpy())
+      else:
+        # Function building
+        return output
+    else:
+      # Graph + Session, so we already session.ran it.
+      return compat.as_str(output)
 
   @property
   def save_counter(self):
@@ -1320,6 +1331,14 @@ class Checkpoint(tracking.AutoCheckpointable):
     """
     graph_building = not context.executing_eagerly()
     if graph_building:
+      if ops.inside_function():
+        raise NotImplementedError(
+            "Calling tf.train.Checkpoint.save() from a function is not "
+            "supported, as save() modifies saving metadata in ways not "
+            "supported by TensorFlow Operations. Consider using "
+            "tf.train.Checkpoint.write(), a lower-level API which does not "
+            "update metadata. tf.train.latest_checkpoint and related APIs will "
+            "not see this checkpoint.")
       if session is None:
         session = ops.get_default_session()
       if self._save_counter is None:
