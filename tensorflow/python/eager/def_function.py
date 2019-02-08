@@ -752,6 +752,9 @@ def function(func=None,
       l.append(i)                           # Caution! Doesn't work.
   ```
 
+  Note that unlike other TensorFlow operations, we don't convert python
+  numerical inputs to tensors.
+
   _Referencing `tf.Variable`s_
 
   The Python function `func` may reference stateful objects (such as
