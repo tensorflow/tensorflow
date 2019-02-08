@@ -48,3 +48,4 @@ _current_module = _sys.modules[__name__]
 if hasattr(_current_module, 'keras'):
   losses = keras.losses
   metrics = keras.metrics
+  optimizers = keras.optimizers
