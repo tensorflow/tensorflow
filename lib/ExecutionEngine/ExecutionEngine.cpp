@@ -101,7 +101,7 @@ public:
 
   // Create a JIT engine for the current host.
   static Expected<std::unique_ptr<OrcJIT>>
-  createDefault(IRTransformer transformer = identity) {
+  createDefault(IRTransformer transformer) {
     auto machineBuilder = llvm::orc::JITTargetMachineBuilder::detectHost();
     if (!machineBuilder)
       return machineBuilder.takeError();
@@ -116,7 +116,7 @@ public:
 
   // Add an LLVM module to the main library managed by the JIT engine.
   Error addModule(std::unique_ptr<llvm::Module> M) {
-    return compileLayer.add(
+    return transformLayer.add(
         session.getMainJITDylib(),
         llvm::orc::ThreadSafeModule(std::move(M), threadSafeCtx));
   }
@@ -127,9 +127,6 @@ public:
   }
 
 private:
-  // Do not transform the module.
-  static Error identity(llvm::Module *m) { return Error::success(); }
-
   // Wrap the `irTransformer` into a function that can be called by the
   // IRTranformLayer.  If `irTransformer` is not set up, return the module as is
   // without errors.
