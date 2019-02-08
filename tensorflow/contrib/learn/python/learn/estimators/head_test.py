@@ -546,7 +546,7 @@ class MultiLabelHeadTest(test.TestCase):
         self.assertListEqual(
             [1, 0, 0], model_fn_ops.predictions["classes"].eval().tolist()[0])
         self.assertItemsEqual(
-            ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
+            ["head_name"], list(model_fn_ops.output_alternatives))
         self.assertEqual(
             constants.ProblemType.CLASSIFICATION,
             model_fn_ops.output_alternatives["head_name"][0])
@@ -851,7 +851,7 @@ class BinaryClassificationHeadTest(test.TestCase):
         self.assertListEqual(
             [1, 1], list(model_fn_ops.predictions["classes"].eval()))
         self.assertItemsEqual(
-            ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
+            ["head_name"], list(model_fn_ops.output_alternatives))
         self.assertEqual(
             constants.ProblemType.LOGISTIC_REGRESSION,
             model_fn_ops.output_alternatives["head_name"][0])
@@ -1350,7 +1350,7 @@ class MultiClassHeadTest(test.TestCase):
             [0, 2],
             model_fn_ops.predictions["classes"].eval())
         self.assertItemsEqual(
-            ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
+            ["head_name"], list(model_fn_ops.output_alternatives))
         self.assertEqual(
             constants.ProblemType.CLASSIFICATION,
             model_fn_ops.output_alternatives["head_name"][0])
@@ -1402,7 +1402,7 @@ class MultiClassHeadTest(test.TestCase):
             [b"key0", b"key2"],
             model_fn_ops.predictions["classes"].eval())
         self.assertItemsEqual(
-            ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
+            ["head_name"], list(model_fn_ops.output_alternatives))
         self.assertEqual(
             constants.ProblemType.CLASSIFICATION,
             model_fn_ops.output_alternatives["head_name"][0])
