@@ -280,23 +280,19 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
   timestamped_allocator_ =
       options.config.gpu_options().experimental().timestamped_allocator();
   if (timestamped_allocator_ || pending_cap_ > 0) {
-    std::unique_ptr<SharedCounter> timing_counter;
+    SharedCounter* timing_counter = nullptr;
     if (timestamped_allocator_) {
       // In this case the SharedCounter was already created and set in the
-      // associated Allocator, with ownership by GPUProcessState.  Here we take
-      // over ownership of that SharedAllocator to transfer it to the
-      // GPUKernelTracker.
+      // associated Allocator, with ownership by GPUProcessState.
+      // The GPUKernelTracker will use this SharedCounter, instead of
+      // owning its own.
       timing_counter =
-          GPUProcessState::singleton()->ReleaseGPUAllocatorCounter(tf_gpu_id);
-      DCHECK(timing_counter.get());
+          GPUProcessState::singleton()->GPUAllocatorCounter(tf_gpu_id);
+      DCHECK(timing_counter);
     } else {
       DCHECK_GT(pending_cap_, 0);
-      // In this case we need a SharedCounter to be owned by GPUKernelTracker
-      // but one was not created for use by the Allocator, so we create one.
-      timing_counter.reset(new SharedCounter);
     }
-    kernel_tracker_.reset(
-        new GPUKernelTracker(Env::Default(), std::move(timing_counter)));
+    kernel_tracker_.reset(new GPUKernelTracker(Env::Default(), timing_counter));
   }
 }
 
