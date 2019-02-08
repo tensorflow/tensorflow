@@ -6997,7 +6997,8 @@ tf_mkl_kernel_library(
         "no_op.h",
         "reference_gemm.h",
     ],
-    deps = if_mkl([
+    deps = if_mkl(
+        [
             ":concat_lib_hdrs",
             ":conv_ops",
             ":cwise_op",
@@ -7016,7 +7017,7 @@ tf_mkl_kernel_library(
             "//third_party/eigen3",
             "//third_party/mkl:intel_binary_blob",
             "@gemmlowp",
-            "@mkl_dnn",            
+            "@mkl_dnn",
         ],
     ),
 )
@@ -7025,6 +7026,7 @@ tf_cc_test_mkl(
     name = "mkl_requantize_ops_test",
     size = "small",
     srcs = ["mkl_requantize_ops_test.cc"],
+    tags = ["no_mac"],  #TODO(penporn): Re-enable the test on MacOS.
     deps = [
         ":mkl_requantize_ops",
         ":ops_testutil",
