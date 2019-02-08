@@ -16,7 +16,7 @@ detection model, takes up a total of 22KB.
     *   [Building for "Hifive1" SiFive FE310 development board using Make](#building-for-hifive1-sifive-fe310-development-board-using-make)
     *   [Building for Ambiq Micro Apollo3Blue EVB using Make](#building-for-ambiq-micro-apollo3blue-evb-using-make)
         *   [Additional Apollo3 Instructions](#additional-apollo3-instructions)
-    *   [Getting Started with Portable Reference Code](#getting-started-with-portable-reference-code)
+    *   [Building for the Eta Compute ECM3531 EVB using Make](#getting-started-with-portable-reference-code)
  
 -   [Goals](#goals)
 -   [Generating Project Files](#generating-project-#files)
