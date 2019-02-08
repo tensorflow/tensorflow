@@ -32,8 +32,9 @@ using tensorflow::int64;
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
     int64 a, int64 b, int64 c, char** values, int32 values_count,
-    int32* values_primitive_type_size_in_bytes,
-    bool (*less_than)(char*, char*)) {
+    int32* values_primitive_type_size_in_bytes, char* run_options,
+    int64* prof_counters,
+    void (*less_than)(char*, char*, char**, char**, tensorflow::int64*)) {
   // 'values' and 'values_primitive_type_size_in_bytes' are managed by the JIT
   // code, so msan can't tell they are initialized.
   TF_ANNOTATE_MEMORY_IS_INITIALIZED(values, values_count * sizeof(char*));
@@ -54,6 +55,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
   int64 sort_dimension_offset = c;
 
   std::unique_ptr<int64[]> indices(new int64[sort_dimension_elements]);
+  std::unique_ptr<char*[]> comparison_values(new char*[2 * values_count]);
   std::iota(indices.get(), indices.get() + sort_dimension_elements, 0);
   std::unique_ptr<std::string[]> reordered_values(
       new std::string[sort_dimension_elements]);
@@ -69,13 +71,19 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
         (index - index % sort_dimension_offset) * sort_dimension_elements;
     std::stable_sort(
         indices.get(), indices.get() + sort_dimension_elements,
-        [&](int64 a, int64 b) {
+        [&](int64 a, int64 b) -> bool {
           int64 memory_index_lhs = (base_offset + a * sort_dimension_offset) *
                                    values_primitive_type_size_in_bytes[0];
           int64 memory_index_rhs = (base_offset + b * sort_dimension_offset) *
                                    values_primitive_type_size_in_bytes[0];
-          return less_than(values[0] + memory_index_lhs,
-                           values[0] + memory_index_rhs);
+          for (int32 i = 0; i < values_count; ++i) {
+            comparison_values[i * 2] = values[i] + memory_index_lhs;
+            comparison_values[i * 2 + 1] = values[i] + memory_index_rhs;
+          }
+          char result;
+          less_than(&result, run_options, comparison_values.get(), nullptr,
+                    prof_counters);
+          return result != 0u;
         });
 
     // Reorder the values according to the order defined by 'indices'.

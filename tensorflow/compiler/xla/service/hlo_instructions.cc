@@ -657,16 +657,6 @@ std::unique_ptr<HloInstruction> HloReduceInstruction::CloneWithNewOperandsImpl(
                                                  dimensions(), to_apply());
 }
 
-HloSortInstruction::HloSortInstruction(const Shape& shape, int64 dimension,
-                                       HloInstruction* keys,
-                                       absl::Span<HloInstruction* const> values)
-    : HloInstruction(HloOpcode::kSort, shape), dimensions_({dimension}) {
-  AppendOperand(keys);
-  for (auto* value : values) {
-    AppendOperand(value);
-  }
-}
-
 HloSortInstruction::HloSortInstruction(
     const Shape& shape, int64 dimension,
     absl::Span<HloInstruction* const> operands, HloComputation* compare)
@@ -698,25 +688,14 @@ bool HloSortInstruction::IdenticalSlowPath(
   if (dimensions() != casted_other.dimensions()) {
     return false;
   }
-  if (called_computations().empty()) {
-    return other.called_computations().empty();
-  }
-  if (other.called_computations().empty()) {
-    return false;
-  }
   return eq_computations(to_apply(), other.to_apply());
 }
 
 std::unique_ptr<HloInstruction> HloSortInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  if (!called_computations().empty()) {
-    return absl::make_unique<HloSortInstruction>(shape, dimensions(0),
-                                                 new_operands, to_apply());
-  }
-  HloInstruction* keys = new_operands[0];
-  return absl::make_unique<HloSortInstruction>(shape, dimensions(0), keys,
-                                               new_operands.subspan(1));
+  return absl::make_unique<HloSortInstruction>(shape, dimensions(0),
+                                               new_operands, to_apply());
 }
 
 HloTransposeInstruction::HloTransposeInstruction(

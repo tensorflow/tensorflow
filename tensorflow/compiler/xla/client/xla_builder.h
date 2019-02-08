@@ -501,7 +501,10 @@ class XlaBuilder {
 
   XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
 
+  ABSL_DEPRECATED("Use form with comparator computation instead")
   XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values = {},
+             int64 dimension = -1);
+  XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
              int64 dimension = -1);
 
   XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
@@ -919,6 +922,8 @@ class XlaBuilder {
   friend XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
   friend XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values,
                     int64 dimension);
+  friend XlaOp Sort(absl::Span<const XlaOp> operands,
+                    const XlaComputation& comparator, int64 dimension);
   friend XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
   friend XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                    const XlaComputation& computation,
@@ -1675,7 +1680,7 @@ XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
 // of keys, in ascending order.
 // * If the keys have higher rank, the keys are sorted along the provided
 // dimension. For example, for a rank-2 tensor (a matrix) of keys, a dimension
-// value of 0 will indepenently sort every column, and a dimension value of 1
+// value of 0 will independently sort every column, and a dimension value of 1
 // will independently sort each row. If no dimension number is provided, then
 // the last dimension is chosen by default.
 //
@@ -1685,7 +1690,34 @@ XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
 // * The result is a tuple that consists of a sorted tensor of keys (along the
 // provided dimension, as above) as the first element, and tensors with their
 // corresponding values as the other elements.
+ABSL_DEPRECATED("Use form with comparator computation instead")
 XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values = {},
+           int64 dimension = -1);
+
+// Enqueues a sort instruction onto the computation, using 'comparator' for
+// comparisons. 'comparator' needs to define a strict weak order.
+// If only one operand is provided:
+// * If the operand is a rank-1 tensor (an array), the result is a sorted array.
+//   The resulting sorting order has the property that for all index positions
+//   i, j with i < j, either
+//   comparator(value[i], value[j]) = comparator(value[j], value[i]) = false or
+//   comparator(value[i], value[j]) = true.
+// * If the operand has higher rank, the operand is sorted along the provided
+//   dimension. For example, for a rank-2 tensor (a matrix), a dimension value
+//   of 0 will independently sort every column, and a dimension value of 1 will
+//   independently sort each row. If no dimension number is provided, then the
+//   last dimension is chosen by default. For the dimension which is sorted, the
+//   same sorting order applies as in the rank-1 case.
+//
+// If more than one operand is provided:
+// * All operands must be tensors with the same dimensions. The element types of
+//   the tensors may be different.
+// * The result is a tuple that consists of the operands in sorted order (along
+//   the provided dimension, as above). When comparing, 'comparator' is called
+//   with 2 * n scalar parameters, where parameter 2 * i and 2 * i + 1
+//   correspond to the value of operand i at two index positions.
+// Default comparator computations can be found in lib/comparators.h
+XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
            int64 dimension = -1);
 
 // Enqueues a clamp instruction onto the computation.
