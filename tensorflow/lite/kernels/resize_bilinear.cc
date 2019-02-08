@@ -109,6 +109,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     if (kernel_type == kGenericOptimized || kernel_type == kNeonOptimized) {
       TF_LITE_RESIZE_BILINEAR(optimized_ops, uint8_t);
     }
+  } else if (output->type == kTfLiteInt8) {
+    TF_LITE_RESIZE_BILINEAR(reference_ops, int8_t);
 #undef TF_LITE_RESIZE_BILINEAR
   } else {
     context->ReportError(context, "Output type is %d, requires float.",
