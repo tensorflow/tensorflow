@@ -318,7 +318,7 @@ To flash a part with JFlash Lite, do the following:
 4. Data file = `tensorflow/lite/experimental/micro/tools/make/gen/apollo3evb_cortex-m4/bin/pushbutton_cmsis_speech_test.bin`
 5. Prog Addr = 0x0000C000
 
-# building-for-the-eta-compute-ecm3531-evb-using-make  
+# Building for the Eta Compute ECM3531 EVB using Make  
 
 ## Goals
 
