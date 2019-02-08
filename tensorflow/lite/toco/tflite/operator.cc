@@ -1222,6 +1222,20 @@ class ReduceAny
   }
 };
 
+class Relu6 : public SimpleOperator<Relu6Operator> {
+ public:
+  explicit Relu6() : SimpleOperator("RELU6", OperatorType::kRelu6) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
 class ResizeBilinear
     : public BuiltinOperator<ResizeBilinearOperator,
                              ::tflite::ResizeBilinearOptions,
@@ -2277,8 +2291,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       MakeUnique<SimpleOperator<ReluOperator>>("RELU", OperatorType::kRelu));
   ops.push_back(MakeUnique<SimpleOperator<Relu1Operator>>(
       "RELU_N1_TO_1", OperatorType::kRelu1));
-  ops.push_back(
-      MakeUnique<SimpleOperator<Relu6Operator>>("RELU6", OperatorType::kRelu6));
+  ops.push_back(MakeUnique<Relu6>());
   ops.push_back(
       MakeUnique<SimpleOperator<PReluOperator>>("PRELU", OperatorType::kPRelu));
   ops.push_back(MakeUnique<Logistic>());
