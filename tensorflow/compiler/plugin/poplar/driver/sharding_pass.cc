@@ -170,15 +170,21 @@ StatusOr<bool> ShardingPass::Run(HloModule* module) {
       for (auto ipu : ipu_nums) {
         added = true;
         auto range = ipu_map.equal_range(ipu);
-        auto copy_inst = comp->AddInstruction(HloInstruction::CreateCustomCall(
-            inst->shape(), {inst}, "inter_ipu_copy", ""));
-        copy_inst->set_sharding(HloSharding::AssignDevice(ipu));
+        HloInstruction* inst_on_ipu;
+        if (inst->opcode() == HloOpcode::kConstant ||
+            IsPopOpsFusion(inst, "wide_const")) {
+          inst_on_ipu = comp->AddInstruction(inst->Clone());
+        } else {
+          inst_on_ipu = comp->AddInstruction(HloInstruction::CreateCustomCall(
+              inst->shape(), {inst}, "inter_ipu_copy", ""));
+        }
+        inst_on_ipu->set_device_sharding(ipu);
 
         for (auto user = range.first; user != range.second; ++user) {
           auto* u = user->second;
           for (int operand = 0; operand < u->operand_count(); operand++) {
             if (u->operand(operand) == inst) {
-              u->ReplaceOperandWith(operand, copy_inst);
+              u->ReplaceOperandWith(operand, inst_on_ipu);
             }
           }
         }

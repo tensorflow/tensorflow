@@ -442,6 +442,83 @@ HloModule top
   }
 }
 
+TEST_F(ShardingPassTest, CloneConstantToIpu) {
+  // In this test we check that the constant inst has been cloned with the new
+  // sharding information rather than copied.
+  std::string hlo_string = R"(
+HloModule top
+
+%cluster_1  {
+  arg0 = f16[] parameter(0), sharding={maximal device=0}
+  const0 = f16[] constant(0.1), sharding={maximal device=0}
+  ROOT mul = f16[4] multiply(arg0, const0), sharding={maximal device=1}
+}
+  )";
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+
+  auto* module = module_or_status.ValueOrDie().get();
+
+  ShardingPass shardingPass;
+  EXPECT_TRUE(shardingPass.Run(module).ValueOrDie());
+
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kCustomCall);
+  EXPECT_EQ(root->operand(1)->opcode(), HloOpcode::kConstant);
+
+  auto insts = module->entry_computation()->instructions();
+  for (auto* inst : insts) {
+    EXPECT_TRUE(inst->has_sharding());
+    const auto& sharding = inst->sharding();
+    EXPECT_TRUE(sharding.HasUniqueDevice());
+  }
+}
+
+TEST_F(ShardingPassTest, CloneWideConstantToIpu) {
+  // In this test we check that the wide constant inst has been cloned with the
+  // new sharding information rather than copied.
+  std::string hlo_string = R"(
+HloModule top
+
+%_pop_op_wide_const () -> f16[4] {
+  constant.clone = f16[] constant(0.1)
+  ROOT %broadcast.clone = f16[4] broadcast(f16[] constant.clone), dimensions={}
+}
+
+%cluster_1  {
+  arg0 = f16[4] parameter(0), sharding={maximal device=0}
+  wide_const = f16[4] fusion(), kind=kCustom, calls=%_pop_op_wide_const, sharding={maximal device=0}
+  ROOT mul = f16[4] multiply(arg0, wide_const), sharding={maximal device=1}
+}
+  )";
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+
+  auto* module = module_or_status.ValueOrDie().get();
+
+  ShardingPass shardingPass;
+  EXPECT_TRUE(shardingPass.Run(module).ValueOrDie());
+
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kCustomCall);
+  EXPECT_EQ(root->operand(1)->opcode(), HloOpcode::kFusion);
+
+  auto insts = module->entry_computation()->instructions();
+  for (auto* inst : insts) {
+    EXPECT_TRUE(inst->has_sharding());
+    const auto& sharding = inst->sharding();
+    EXPECT_TRUE(sharding.HasUniqueDevice());
+  }
+}
+
 }  // namespace
 }  // namespace poplarplugin
 }  // namespace xla
