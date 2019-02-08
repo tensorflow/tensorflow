@@ -63,6 +63,7 @@ cc_library(
     deps = if_rocm_is_configured([
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "//tensorflow/stream_executor/gpu:gpu_diagnostics_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
     ]),
@@ -82,6 +83,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_config_rocm//rocm:rocm_headers",
         "//tensorflow/stream_executor:device_options",
+        "//tensorflow/stream_executor/gpu:gpu_driver_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
@@ -94,18 +96,23 @@ cc_library(
     name = "rocm_activation_header",
     hdrs = if_rocm_is_configured(["rocm_activation.h"]),
     visibility = ["//visibility:public"],
-    deps = if_rocm_is_configured(["//tensorflow/stream_executor/platform"]),
+    deps = if_rocm_is_configured([
+        "//tensorflow/stream_executor/gpu:gpu_activation_header",
+        "//tensorflow/stream_executor/platform",
+    ]),
+
 )
 
 cc_library(
     name = "rocm_activation",
-    srcs = if_rocm_is_configured(["rocm_activation.cc"]),
+    srcs = [],
     hdrs = if_rocm_is_configured(["rocm_activation.h"]),
     deps = if_rocm_is_configured([
         ":rocm_driver",
         "@local_config_rocm//rocm:rocm_headers",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:stream_executor_internal",
+        "//tensorflow/stream_executor/gpu:gpu_activation",
         "//tensorflow/stream_executor/platform",
     ]),
 )
@@ -117,6 +124,7 @@ cc_library(
     deps = if_rocm_is_configured([
         ":rocm_kernel",
         "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor/gpu:gpu_executor_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
     ]),
@@ -144,6 +152,7 @@ cc_library(
         "//tensorflow/stream_executor:plugin_registry",
         "//tensorflow/stream_executor:scratch_allocator",
         "//tensorflow/stream_executor:timer",
+        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
@@ -167,6 +176,7 @@ cc_library(
         "//tensorflow/stream_executor:fft",
         "//tensorflow/stream_executor:plugin_registry",
         "//tensorflow/stream_executor:scratch_allocator",
+        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
@@ -221,6 +231,8 @@ cc_library(
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:plugin_registry",
         "//tensorflow/stream_executor:rng",
+        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
+        "//tensorflow/stream_executor/gpu:gpu_rng_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
@@ -236,6 +248,7 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:stream_executor_pimpl_header",
+        "//tensorflow/stream_executor/gpu:gpu_kernel_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
     ]),
@@ -244,6 +257,9 @@ cc_library(
 cc_library(
     name = "rocm_helpers",
     textual_hdrs = if_rocm_is_configured(["rocm_helpers.h"]),
+    deps = if_rocm_is_configured([
+        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
+    ]),
 )
 
 cc_library(
@@ -255,19 +271,22 @@ cc_library(
         ":rocm_gpu_executor_header",
         ":rocm_stream",
         "//tensorflow/stream_executor:stream_executor_headers",
+        "//tensorflow/stream_executor/gpu:gpu_event",
+        "//tensorflow/stream_executor/gpu:gpu_stream_header",
         "//tensorflow/stream_executor/lib",
     ]),
 )
 
 cc_library(
     name = "rocm_stream",
-    srcs = if_rocm_is_configured(["rocm_stream.cc"]),
+    srcs = [],
     hdrs = if_rocm_is_configured(["rocm_stream.h"]),
     deps = if_rocm_is_configured([
         ":rocm_driver",
         ":rocm_gpu_executor_header",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor:stream_header",
+        "//tensorflow/stream_executor/gpu:gpu_stream",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
     ]),
@@ -275,13 +294,14 @@ cc_library(
 
 cc_library(
     name = "rocm_timer",
-    srcs = if_rocm_is_configured(["rocm_timer.cc"]),
+    srcs = [],
     hdrs = if_rocm_is_configured(["rocm_timer.h"]),
     deps = if_rocm_is_configured([
         ":rocm_driver",
         ":rocm_gpu_executor_header",
         ":rocm_stream",
         "//tensorflow/stream_executor:stream_executor_headers",
+        "//tensorflow/stream_executor/gpu:gpu_timer",
         "//tensorflow/stream_executor/lib",
     ]),
 )
@@ -305,6 +325,7 @@ cc_library(
         "//tensorflow/stream_executor:stream_executor_internal",
         "//tensorflow/stream_executor:stream_executor_pimpl_header",
         "//tensorflow/stream_executor:timer",
+        "//tensorflow/stream_executor/gpu:gpu_executor_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",

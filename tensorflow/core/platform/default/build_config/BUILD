@@ -8,6 +8,8 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "check_deps")
+load("//tensorflow:tensorflow.bzl", "if_cuda", "if_cuda_is_configured")
+load("//tensorflow:tensorflow.bzl", "if_rocm", "if_rocm_is_configured")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_gpu_library")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
