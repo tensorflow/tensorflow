@@ -159,6 +159,7 @@ cc_library(
     srcs = ["tflite_driver.cc"],
     hdrs = ["tflite_driver.h"],
     deps = [
+        ":join",
         ":split",
         ":test_runner",
         "//tensorflow/lite:builtin_op_data",
