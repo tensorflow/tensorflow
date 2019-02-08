@@ -86,7 +86,7 @@ tf_module {
   }
   member_method {
     name: "conv3d_transpose"
-    argspec: "args=[\'value\', \'filter\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'name\', \'input\', \'filters\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'SAME\', \'NDHWC\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'value\', \'filter\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'name\', \'input\', \'filters\', \'dilations\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'SAME\', \'NDHWC\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "convolution"
