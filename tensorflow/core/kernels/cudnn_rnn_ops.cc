@@ -560,10 +560,14 @@ struct RnnScratchSpace {
 // OpKernelContext.
 Status ExtractForwardInput(OpKernelContext* context,
                            const CudnnModelTypes& model_types,
+                           bool time_major,
                            const Tensor** input, const Tensor** input_h,
                            const Tensor** input_c, const Tensor** params,
                            CudnnRnnModelShapes* model_shapes,
-                           bool time_major) {
+                           const Tensor** sequence_lengths) {
+  if (context->has_input("sequence_lengths")) {
+    TF_RETURN_IF_ERROR(context->input("sequence_lengths", sequence_lengths));
+  }
   TF_RETURN_IF_ERROR(context->input("input", input));
   TF_RETURN_IF_ERROR(context->input("input_h", input_h));
   if (model_types.HasInputC()) {
@@ -631,20 +635,6 @@ Status ExtractForwardInput(OpKernelContext* context,
                      model_shapes->dir_count * model_shapes->num_units});
   }
   return Status::OK();
-}
-
-// Extract and checks the sequence_lengths, forward input tensors,
-// parameters, and shapes from the OpKernelContext.
-Status ExtractForwardInput(OpKernelContext* context,
-                           const CudnnModelTypes& model_types,
-                           const Tensor** input, const Tensor** input_h,
-                           const Tensor** input_c, const Tensor** params,
-                           CudnnRnnModelShapes* model_shapes,
-                           const Tensor** sequence_lengths,
-                           bool time_major) {
-  TF_RETURN_IF_ERROR(context->input("sequence_lengths", sequence_lengths));
-  return ExtractForwardInput(context, model_types, input, input_h, input_c,
-                             params, model_shapes, time_major);
 }
 
 template <typename T>
@@ -1266,7 +1256,8 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
 
   void Compute(OpKernelContext* context) override {
     AlgorithmConfig algo_config;
-    ComputeAndReturnAlgorithm(context, &algo_config, false, true);
+    ComputeAndReturnAlgorithm(context, &algo_config, /*var_seq_lengths=*/false,
+                              /*time_major=*/true);
   }
 
  protected:
@@ -1282,17 +1273,10 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     const Tensor* params = nullptr;
     const Tensor* sequence_lengths = nullptr;
     CudnnRnnModelShapes model_shapes;
-    if (var_seq_lengths) {
-      OP_REQUIRES_OK(
-          context, ExtractForwardInput(context, model_types(), &input, &input_h,
-                                       &input_c, &params, &model_shapes,
-                                       &sequence_lengths, time_major));
-    } else {
-      OP_REQUIRES_OK(
-          context, ExtractForwardInput(context, model_types(), &input, &input_h,
-                                       &input_c, &params, &model_shapes,
-                                       time_major));
-    }
+    OP_REQUIRES_OK(
+        context, ExtractForwardInput(context, model_types(), time_major,
+                                     &input, &input_h, &input_c, &params,
+                                     &model_shapes, &sequence_lengths));
     RnnInputMode input_mode;
     OP_REQUIRES_OK(context,
                    ToRNNInputMode(rnn_input_mode(), model_shapes.num_units,
@@ -1330,19 +1314,12 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
           context, GetCachedRnnDescriptor<T>(context, model_shapes, input_mode,
                                              *output_algo_config,
                                              &rnn_state_cache_, &rnn_desc_ptr));
-      if (var_seq_lengths) {
-        launch_status = DoForward<T>(
-            context, *rnn_desc_ptr, model_types(), model_shapes, input, input_h,
-            input_c, params, is_training_, output, output_h, output_c,
-            sequence_lengths, time_major, &reserve_space_allocator,
-            &workspace_allocator, /*output_profile_result=*/nullptr);
-      } else {
-        launch_status = DoForward<T>(
-            context, *rnn_desc_ptr, model_types(), model_shapes, input, input_h,
-            input_c, params, is_training_, output, output_h, output_c, nullptr,
-            true, &reserve_space_allocator, &workspace_allocator,
-            /*output_profile_result=*/nullptr);
-      }
+      launch_status = DoForward<T>(
+          context, *rnn_desc_ptr, model_types(), model_shapes, input, input_h,
+          input_c, params, is_training_, output, output_h, output_c,
+          sequence_lengths, time_major, &reserve_space_allocator,
+          &workspace_allocator, /*output_profile_result=*/nullptr);
+      
     }
     OP_REQUIRES_OK(context, launch_status);
   }
@@ -1424,7 +1401,8 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
   void Compute(OpKernelContext* context) override {
     AlgorithmConfig best_algo_config;
     CudnnRNNForwardOp<GPUDevice, T>::ComputeAndReturnAlgorithm(
-        context, &best_algo_config, false, true);
+        context, &best_algo_config, /*var_seq_lengths=*/false,
+        /*time_major=*/true);
     if (!context->status().ok()) {
       return;
     }
@@ -1626,7 +1604,8 @@ class CudnnRNNForwardOpV3<GPUDevice, T>
   void Compute(OpKernelContext* context) override {
     AlgorithmConfig best_algo_config;
     CudnnRNNForwardOp<GPUDevice, T>::ComputeAndReturnAlgorithm(
-        context, &best_algo_config, true, time_major());
+        context, &best_algo_config, /*var_seq_lengths=*/true,
+        /*time_major=*/time_major());
     if (!context->status().ok()) {
       return;
     }
@@ -1673,17 +1652,10 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     const Tensor* params = nullptr;
     const Tensor* sequence_lengths = nullptr;
     CudnnRnnModelShapes model_shapes;
-    if (var_seq_lengths) {
-      OP_REQUIRES_OK(
-          context, ExtractForwardInput(context, model_types(), &input, &input_h,
-                                       &input_c, &params, &model_shapes,
-                                       &sequence_lengths, time_major));
-    } else {
-      OP_REQUIRES_OK(
-          context, ExtractForwardInput(context, model_types(), &input, &input_h,
-                                       &input_c, &params, &model_shapes,
-                                       time_major));
-    }
+    OP_REQUIRES_OK(
+        context, ExtractForwardInput(context, model_types(), time_major,
+                                     &input, &input_h, &input_c, &params,
+                                     &model_shapes, &sequence_lengths));
     RnnInputMode input_mode;
     OP_REQUIRES_OK(context,
                    ToRNNInputMode(rnn_input_mode(), model_shapes.num_units,
@@ -1724,23 +1696,13 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
           context, GetCachedRnnDescriptor<T>(context, model_shapes, input_mode,
                                              algo_config, &rnn_state_cache_,
                                              &rnn_desc_ptr));
-      if (var_seq_lengths) {
-        launch_status = DoBackward<T>(
-            context, *rnn_desc_ptr, model_types(), model_shapes, input, input_h,
-            input_c, params, output, output_h, output_c, output_backprop,
-            output_h_backprop, output_c_backprop, reserve_space, input_backprop,
-            input_h_backprop, input_c_backprop, params_backprop,
-            sequence_lengths, time_major, &workspace_allocator,
-            /*output_profile_result=*/nullptr);
-      } else {
-        launch_status = DoBackward<T>(
-            context, *rnn_desc_ptr, model_types(), model_shapes, input, input_h,
-            input_c, params, output, output_h, output_c, output_backprop,
-            output_h_backprop, output_c_backprop, reserve_space, input_backprop,
-            input_h_backprop, input_c_backprop, params_backprop, nullptr,
-            true, &workspace_allocator,
-            /*output_profile_result=*/nullptr);
-      }
+      launch_status = DoBackward<T>(
+          context, *rnn_desc_ptr, model_types(), model_shapes, input, input_h,
+          input_c, params, output, output_h, output_c, output_backprop,
+          output_h_backprop, output_c_backprop, reserve_space, input_backprop,
+          input_h_backprop, input_c_backprop, params_backprop,
+          sequence_lengths, time_major, &workspace_allocator,
+          /*output_profile_result=*/nullptr);
     }
     OP_REQUIRES_OK(context, launch_status);
   }

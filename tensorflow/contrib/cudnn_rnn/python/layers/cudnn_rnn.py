@@ -384,17 +384,17 @@ class _CudnnRNN(base_layer.Layer):
 
     Args:
       inputs: `3-D` tensor with shape `[time_len, batch_size, input_size]` if
-        'time_major == True' (default) or `[batch_size, time_len, input_size]`
-        if 'time_major == False'.
+        `time_major` is True (default) or `[batch_size, time_len, input_size]`
+        if `time_major` is False.
       initial_state: a tuple of tensor(s) of shape
         `[num_layers * num_dirs, batch_size, num_units]` if
-        'time_major == True' (default) or `[batch_size, num_layers * num_dirs,
-        num_units]` if 'time_major == False'. If not provided, use
+        `time_major` is True (default) or `[batch_size, num_layers * num_dirs,
+        num_units]` if `time_major` is False. If not provided, use
         zero initial states. The tuple size is 2 for LSTM and 1 for other RNNs.
       sequence_lengths: an int32 array representing the variable sequence
         lengths in a batch. The size of the array has to equal the
         batch_size. If not provided, the same sequence length will be assumed.
-      time_major: The shape format of the 'inputs' and 'outputs' Tensors. If
+      time_major: The shape format of the `inputs` and `outputs` Tensors. If
         true, these Tensors must be shaped ['max_time', 'batch_size', 'depth'].
         If false, these Tensors must be shaped ['batch_size', 'max_time',
         'depth']. By default this function accepts input and emits output in
@@ -403,8 +403,8 @@ class _CudnnRNN(base_layer.Layer):
       training: whether this operation will be used in training or inference.
     Returns:
       output: a tensor of shape `[time_len, batch_size, num_dirs * num_units]`
-        if 'time_major == True' (default) or `[batch_size, time_len,
-        num_dirs * num_units]` if 'time_major == False'.
+        if `time_major` is True (default) or `[batch_size, time_len,
+        num_dirs * num_units]` if `time_major` is False.
         It is a `concat([fwd_output, bak_output], axis=2)`.
       output_states: a tuple of tensor(s) of the same shape and structure as
         `initial_state`.

@@ -85,18 +85,12 @@ def RunLSTM(sess,
   random_seed.set_random_seed(0)
   np.random.seed(0)
 
-  if time_major:
-    inputs = variable_scope.get_variable(
-        "inputs",
-        initializer=np.random.rand(time, batch_size,
-                                   input_size).astype(dtype.as_numpy_dtype),
-        dtype=dtype)
-  else:
-    inputs = variable_scope.get_variable(
-        "inputs",
-        initializer=np.random.rand(batch_size, time,
-                                   input_size).astype(dtype.as_numpy_dtype),
-        dtype=dtype)
+  shape = ([time, batch_size, input_size] if time_major else
+           [batch_size, time, input_size])
+  inputs = variable_scope.get_variable(
+      "inputs",
+      initializer=np.random.rand(*shape).astype(dtype.as_numpy_dtype),
+      dtype=dtype)
   initial_h_op = variable_scope.get_variable(
       "initial_h_op",
       initializer=np.random.rand(batch_size,
@@ -143,12 +137,10 @@ def RunLSTM(sess,
       num_layers, num_units, input_size)
   opaque_params = format_converter.tf_canonical_to_opaque([w, b])
 
-  if time_major:
-    cu_initial_h_op = array_ops.expand_dims(initial_h_op, axis=0)
-    cu_initial_c_op = array_ops.expand_dims(initial_c_op, axis=0)
-  else:
-    cu_initial_h_op = array_ops.expand_dims(initial_h_op, axis=1)
-    cu_initial_c_op = array_ops.expand_dims(initial_c_op, axis=1)
+  cu_initial_h_op = array_ops.expand_dims(initial_h_op, axis=(0 if time_major
+                                                              else 1))
+  cu_initial_c_op = array_ops.expand_dims(initial_c_op, axis=(0 if time_major
+                                                              else 1))
   cu_outputs_op, cu_h_op, cu_c_op = cudnn_rnn_ops._cudnn_rnn(
       inputs,
       cu_initial_h_op,
@@ -160,14 +152,9 @@ def RunLSTM(sess,
       is_training=is_training,
       rnn_mode=cudnn_rnn_ops.CUDNN_LSTM)
   # Remove the trivial 1st dimension.
-  if time_major:
-    cu_state_tuple_op = rnn_cell_impl.LSTMStateTuple(
-        c=array_ops.squeeze(cu_c_op, axis=0),
-        h=array_ops.squeeze(cu_h_op, axis=0))
-  else:
-    cu_state_tuple_op = rnn_cell_impl.LSTMStateTuple(
-        c=array_ops.squeeze(cu_c_op, axis=1),
-        h=array_ops.squeeze(cu_h_op, axis=1))
+  cu_state_tuple_op = rnn_cell_impl.LSTMStateTuple(
+      c=array_ops.squeeze(cu_c_op, axis=0 if time_major else 1),
+      h=array_ops.squeeze(cu_h_op, axis=0 if time_major else 1))
 
   if is_training:
     (inp_grad_op, hgrad_op,
@@ -179,15 +166,9 @@ def RunLSTM(sess,
          cu_outputs_op,
          [inputs, cu_initial_h_op, cu_initial_c_op, opaque_params])
     # Remove the trivial 1st dimension
-    if time_major:
-      cu_hgrad_op = array_ops.squeeze(cu_hgrad_op, axis=0)
-    else:
-      cu_hgrad_op = array_ops.squeeze(cu_hgrad_op, axis=1)
+    cu_hgrad_op = array_ops.squeeze(cu_hgrad_op, axis=0 if time_major else 1)
     # Remove the trivial 1st dimension
-    if time_major:
-      cu_cgrad_op = array_ops.squeeze(cu_cgrad_op, axis=0)
-    else:
-      cu_cgrad_op = array_ops.squeeze(cu_cgrad_op, axis=1)
+    cu_cgrad_op = array_ops.squeeze(cu_cgrad_op, axis=0 if time_major else 1)
 
     cu_wgrad_op, cu_bgrad_op = format_converter.opaque_to_tf_canonical(
         opaque_grad_op)
@@ -572,18 +553,12 @@ def RunGRU(sess,
   random_seed.set_random_seed(0)
   np.random.seed(0)
 
-  if time_major:
-    inputs = variable_scope.get_variable(
-        "inputs",
-        initializer=np.random.rand(time, batch_size,
-                                   input_size).astype(dtype.as_numpy_dtype),
-        dtype=dtype)
-  else:
-    inputs = variable_scope.get_variable(
-        "inputs",
-        initializer=np.random.rand(batch_size, time,
-                                   input_size).astype(dtype.as_numpy_dtype),
-        dtype=dtype)
+  shape = ([time, batch_size, input_size] if time_major else
+           [batch_size, time, input_size])
+  inputs = variable_scope.get_variable(
+      "inputs",
+      initializer=np.random.rand(*shape).astype(dtype.as_numpy_dtype),
+      dtype=dtype)
   initial_h_op = variable_scope.get_variable(
       "initial_h_op",
       initializer=np.random.rand(batch_size,
@@ -643,10 +618,8 @@ def RunGRU(sess,
   opaque_params = format_converter.tf_canonical_to_opaque(ws + bs)
 
 
-  if time_major:
-    cu_initial_h_op = array_ops.expand_dims(initial_h_op, axis=0)
-  else:
-    cu_initial_h_op = array_ops.expand_dims(initial_h_op, axis=1)
+  cu_initial_h_op = array_ops.expand_dims(initial_h_op, axis=(0 if time_major
+                                                              else 1))
   cu_outputs_op, cu_h_op, _ = cudnn_rnn_ops._cudnn_rnn(
       inputs,
       cu_initial_h_op,
@@ -666,10 +639,7 @@ def RunGRU(sess,
     (cu_inp_grad_op, cu_hgrad_op, opaque_grad_op) = gradients_impl.gradients(
         cu_outputs_op, [inputs, cu_initial_h_op, opaque_params])
     # Remove the trivial 1st dimension
-    if time_major:
-      cu_hgrad_op = array_ops.squeeze(cu_hgrad_op, axis=0)
-    else:
-      cu_hgrad_op = array_ops.squeeze(cu_hgrad_op, axis=1)
+    cu_hgrad_op = array_ops.squeeze(cu_hgrad_op, axis=0 if time_major else 1)
 
     cu_wgrad_op, cu_bgrad_op = format_converter.opaque_to_tf_canonical(
         opaque_grad_op)
@@ -695,10 +665,7 @@ def RunGRU(sess,
         (cu_gb_grad_op, cu_cib_grad_op, cu_chb_grad_op)
     ])
     # Remove the trivial 1st dimension
-    if time_major:
-      cu_h = np.squeeze(cu_h, axis=0)
-    else:
-      cu_h = np.squeeze(cu_h, axis=1)
+    cu_h = np.squeeze(cu_h, axis=0 if time_major else 1)
 
     logging.vlog(1, "outputs: %s" % outputs)
     logging.vlog(1, "cu_outputs: %s" % cu_outputs)
@@ -718,10 +685,7 @@ def RunGRU(sess,
     outputs, h = sess.run([outputs_op, h_op])
     cu_outputs, cu_h = sess.run([cu_outputs_op, cu_h_op])
     # Remove the trivial 1st dimension.
-    if time_major:
-      cu_h = np.squeeze(cu_h, axis=0)
-    else:
-      cu_h = np.squeeze(cu_h, axis=1)
+    cu_h = np.squeeze(cu_h, axis=0 if time_major else 1)
 
     logging.vlog(1, "outputs: %s" % outputs)
     logging.vlog(1, "cu_outputs: %s" % cu_outputs)

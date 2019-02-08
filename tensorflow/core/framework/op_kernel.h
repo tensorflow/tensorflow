@@ -169,6 +169,7 @@ class OpKernel {
     return output_memory_types_;
   }
 
+  bool HasInput(StringPiece input_name) const;
   Status InputRange(StringPiece input_name, int* start, int* stop) const;
   Status OutputRange(StringPiece output_name, int* start, int* stop) const;
 
@@ -750,6 +751,9 @@ class OpKernelContext {
   // merge operator.
   // TODO(mrry): Convert this to return Status.
   bool has_input(int index) const;
+
+  // Return true if there is input under the given name.
+  bool has_input(StringPiece name) const;
 
   // Returns true if all inputs are the same shape, otherwise sets the
   // status to a non-OK value and returns false.
