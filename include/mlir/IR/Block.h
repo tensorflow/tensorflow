@@ -226,8 +226,8 @@ public:
   // Terminator management
   //===--------------------------------------------------------------------===//
 
-  /// Get the terminator instruction of this block, or null if the block is
-  /// malformed.
+  /// Get the terminator instruction of this block. This function asserts that
+  /// the block has a valid terminator instruction.
   Instruction *getTerminator();
 
   const Instruction *getTerminator() const {

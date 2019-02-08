@@ -184,7 +184,7 @@ bool impl::FunctionConversion::convertBlock(
       if (!conversion->match(&inst))
         continue;
 
-      if (inst.isTerminator() && inst.getNumSuccessors() > 0) {
+      if (inst.getNumSuccessors() != 0) {
         if (convertOpWithSuccessors(conversion, &inst, builder))
           return true;
       } else if (convertOp(conversion, &inst, builder)) {

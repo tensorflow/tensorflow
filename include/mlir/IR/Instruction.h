@@ -462,7 +462,6 @@ public:
   //===--------------------------------------------------------------------===//
 
   MutableArrayRef<BlockOperand> getBlockOperands() {
-    assert(isTerminator() && "Only terminators have a block operands list");
     return {getTrailingObjects<BlockOperand>(), numSuccs};
   }
   ArrayRef<BlockOperand> getBlockOperands() const {
@@ -477,6 +476,7 @@ public:
   operand_range getSuccessorOperands(unsigned index);
 
   Value *getSuccessorOperand(unsigned succIndex, unsigned opIndex) {
+    assert(!isKnownNonTerminator() && "only terminators may have successors");
     assert(opIndex < getNumSuccessorOperands(succIndex));
     return getOperand(getSuccessorOperandIndex(succIndex) + opIndex);
   }
@@ -487,7 +487,7 @@ public:
 
   unsigned getNumSuccessors() const { return numSuccs; }
   unsigned getNumSuccessorOperands(unsigned index) const {
-    assert(isTerminator() && "Only terminators have successors");
+    assert(!isKnownNonTerminator() && "only terminators may have successors");
     assert(index < getNumSuccessors());
     return getTrailingObjects<unsigned>()[index];
   }
@@ -514,7 +514,7 @@ public:
   /// Get the index of the first operand of the successor at the provided
   /// index.
   unsigned getSuccessorOperandIndex(unsigned index) const {
-    assert(isTerminator() && "Only terminators have successors.");
+    assert(!isKnownNonTerminator() && "only terminators may have successors");
     assert(index < getNumSuccessors());
 
     // Count the number of operands for each of the successors after, and
@@ -545,11 +545,29 @@ public:
     return false;
   }
 
-  /// Returns whether the operation is a terminator.
-  bool isTerminator() const {
-    if (auto *absOp = getAbstractOperation())
-      return absOp->hasProperty(OperationProperty::Terminator);
-    return false;
+  /// Represents the status of whether an operation is a terminator. We
+  /// represent an 'unknown' status because we want to support unregistered
+  /// terminators.
+  enum class TerminatorStatus { Terminator, NonTerminator, Unknown };
+
+  /// Returns the status of whether this operation is a terminator or not.
+  TerminatorStatus getTerminatorStatus() const {
+    if (auto *absOp = getAbstractOperation()) {
+      return absOp->hasProperty(OperationProperty::Terminator)
+                 ? TerminatorStatus::Terminator
+                 : TerminatorStatus::NonTerminator;
+    }
+    return TerminatorStatus::Unknown;
+  }
+
+  /// Returns if the operation is known to be a terminator.
+  bool isKnownTerminator() const {
+    return getTerminatorStatus() == TerminatorStatus::Terminator;
+  }
+
+  /// Returns if the operation is known to *not* be a terminator.
+  bool isKnownNonTerminator() const {
+    return getTerminatorStatus() == TerminatorStatus::NonTerminator;
   }
 
   /// Attempt to constant fold this operation with the specified constant

@@ -169,7 +169,7 @@ func @illegalattrs() -> ()
 // -----
 
 func @no_return() {
-  "foo"() : () -> ()  // expected-error {{block with no terminator}}
+  %x = constant 0 : i32  // expected-error {{block with no terminator}}
 }
 
 // -----
@@ -406,14 +406,6 @@ func @condbr_a_bb_is_not_a_type() {
 
 // -----
 
-func @successors_in_unknown(%a : i32, %b : i32) {
-  "foo"()[^bb1] : () -> () // expected-error {{successors in non-terminator}}
-^bb1:
-  return
-}
-
-// -----
-
 func @successors_in_non_terminator(%a : i32, %b : i32) {
   %c = "addi"(%a, %b)[^bb1] : () -> () // expected-error {{successors in non-terminator}}
 ^bb1:
@@ -474,11 +466,10 @@ func @return_type_mismatch() -> i32 {
 
 // -----
 
-func @return_inside_loop() -> i8 {
+func @return_inside_loop() {
   for %i = 1 to 100 {
-    %a = "foo"() : ()->i8
-    return %a : i8
-    // expected-error@-1 {{'return' op may only be at the top level of a function}}
+    // expected-error@-1 {{op expects body block to not have a terminator}}
+    return
   }
   return
 }

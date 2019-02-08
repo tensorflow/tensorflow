@@ -171,13 +171,11 @@ void Block::eraseArgument(unsigned index) {
 // Terminator management
 //===----------------------------------------------------------------------===//
 
+/// Get the terminator instruction of this block. This function asserts that
+/// the block has a valid terminator instruction.
 Instruction *Block::getTerminator() {
-  if (empty())
-    return nullptr;
-
-  // Check if the last instruction is a terminator.
-  auto &backInst = back();
-  return backInst.isTerminator() ? &backInst : nullptr;
+  assert(!empty() && !back().isKnownNonTerminator());
+  return &back();
 }
 
 /// Return true if this block has no predecessors.
@@ -185,15 +183,11 @@ bool Block::hasNoPredecessors() const { return pred_begin() == pred_end(); }
 
 // Indexed successor access.
 unsigned Block::getNumSuccessors() const {
-  if (auto *terminator = getTerminator()) {
-    return terminator->getNumSuccessors();
-  }
-  assert(getParent() && "top-level block with no terminator");
-  // Blocks inside 'for'/'if' instructions don't have successors.
-  return 0;
+  return empty() ? 0 : back().getNumSuccessors();
 }
 
 Block *Block::getSuccessor(unsigned i) {
+  assert(i < getNumSuccessors());
   return getTerminator()->getSuccessor(i);
 }
 
@@ -318,10 +312,9 @@ void BlockList::cloneInto(BlockList *dest, BlockAndValueMapping &mapper,
     for (auto &instOp : inst->getInstOperands())
       if (auto *mappedOp = mapper.lookupOrNull(instOp.get()))
         instOp.set(mappedOp);
-    if (inst->isTerminator())
-      for (auto &succOp : inst->getBlockOperands())
-        if (auto *mappedOp = mapper.lookupOrNull(succOp.get()))
-          succOp.set(mappedOp);
+    for (auto &succOp : inst->getBlockOperands())
+      if (auto *mappedOp = mapper.lookupOrNull(succOp.get()))
+        succOp.set(mappedOp);
   };
 
   for (auto it = std::next(lastOldBlock), e = dest->end(); it != e; ++it)

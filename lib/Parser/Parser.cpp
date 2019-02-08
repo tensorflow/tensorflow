@@ -2830,7 +2830,7 @@ Instruction *FunctionParser::parseGenericOperation() {
   if (getToken().is(Token::l_square)) {
     // Check if the operation is a known terminator.
     const AbstractOperation *abstractOp = result.name.getAbstractOperation();
-    if (!abstractOp || !abstractOp->hasProperty(OperationProperty::Terminator))
+    if (abstractOp && !abstractOp->hasProperty(OperationProperty::Terminator))
       return emitError("successors in non-terminator"), nullptr;
     if (parseSuccessors(successors, successorOperands))
       return nullptr;

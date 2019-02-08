@@ -514,7 +514,7 @@ bool DmaGeneration::runOnBlock(Block *block, uint64_t consumedCapacityBytes) {
   // Generate the DMA for the final region.
   if (curBegin != block->end()) {
     // Can't be a terminator because it would have been skipped above.
-    assert(!curBegin->isTerminator() && "can't be a terminator");
+    assert(!curBegin->isKnownTerminator() && "can't be a terminator");
     consumedCapacityBytes +=
         runOnBlock(/*begin=*/curBegin, /*end=*/block->end());
   }

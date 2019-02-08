@@ -793,3 +793,12 @@ func @verbose_if(%N: index) {
   }
   return
 }
+
+// CHECK-LABEL: func @unregistered_term
+func @unregistered_term(%arg0 : i1) -> i1 {
+  // CHECK-NEXT: "unregistered_br"()[^bb1(%arg0 : i1)] : () -> ()
+  "unregistered_br"()[^bb1(%arg0 : i1)] : () -> ()
+
+^bb1(%arg1 : i1):
+  return %arg1 : i1
+}

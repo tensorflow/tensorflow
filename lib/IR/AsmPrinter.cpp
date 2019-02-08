@@ -1470,7 +1470,7 @@ void FunctionPrinter::printGenericOp(const Instruction *op) {
   os << ')';
 
   // For terminators, print the list of successors and their operands.
-  if (op->isTerminator() && numSuccessors > 0) {
+  if (numSuccessors != 0) {
     os << '[';
     for (unsigned i = 0; i < numSuccessors; ++i) {
       if (i != 0)

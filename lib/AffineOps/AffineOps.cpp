@@ -590,6 +590,10 @@ bool AffineForOp::verify() const {
     return emitOpError("expected body to have a single index argument for the "
                        "induction variable");
 
+  // Check that the body has no terminator.
+  if (!body->empty() && body->back().isKnownTerminator())
+    return emitOpError("expects body block to not have a terminator");
+
   // Verify that there are enough operands for the bounds.
   AffineMap lowerBoundMap = getLowerBoundMap(),
             upperBoundMap = getUpperBoundMap();
@@ -1170,8 +1174,8 @@ bool AffineIfOp::verify() const {
     // block lists.
     if (std::next(blockList.begin()) != blockList.end())
       return emitOpError(
-          "expects only one block per 'if' or 'else' block list");
-    if (blockList.front().getTerminator())
+          "expects only one block per 'then' or 'else' block list");
+    if (blockList.front().back().isKnownTerminator())
       return emitOpError("expects region block to not have a terminator");
 
     for (const auto &b : blockList)

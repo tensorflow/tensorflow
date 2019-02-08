@@ -143,8 +143,8 @@ Instruction::create(Location location, OperationName name,
                     bool resizableOperandList, MLIRContext *context) {
   unsigned numSuccessors = successors.size();
 
-  // Input operands are nullptr-separated for each successors in the case of
-  // terminators, the nullptr aren't actually stored.
+  // Input operands are nullptr-separated for each successor, the null operands
+  // aren't actually stored.
   unsigned numOperands = operands.size() - numSuccessors;
 
   // Compute the byte size for the instruction and the operand storage.
@@ -162,7 +162,7 @@ Instruction::create(Location location, OperationName name,
       Instruction(location, name, resultTypes.size(), numSuccessors,
                   numBlockLists, attributes, context);
 
-  assert((numSuccessors == 0 || inst->isTerminator()) &&
+  assert((numSuccessors == 0 || !inst->isKnownNonTerminator()) &&
          "unexpected successors in a non-terminator operation");
 
   // Initialize the block lists.
@@ -199,7 +199,7 @@ Instruction::create(Location location, OperationName name,
     return inst;
   }
 
-  assert(inst->isTerminator() &&
+  assert(!inst->isKnownNonTerminator() &&
          "Sentinal operand found in non terminator operand list.");
   auto instBlockOperands = inst->getBlockOperands();
   unsigned *succOperandCountIt = inst->getTrailingObjects<unsigned>();
@@ -262,9 +262,8 @@ Instruction::~Instruction() {
     result.~InstResult();
 
   // Explicitly run the destructors for the successors.
-  if (isTerminator())
-    for (auto &successor : getBlockOperands())
-      successor.~BlockOperand();
+  for (auto &successor : getBlockOperands())
+    successor.~BlockOperand();
 
   // Explicitly destroy the block list.
   for (auto &blockList : getBlockLists())
@@ -476,9 +475,8 @@ void Instruction::dropAllReferences() {
     for (Block &block : blockList)
       block.dropAllReferences();
 
-  if (isTerminator())
-    for (auto &dest : getBlockOperands())
-      dest.drop();
+  for (auto &dest : getBlockOperands())
+    dest.drop();
 }
 
 /// Return true if there are no users of any results of this operation.
@@ -513,14 +511,12 @@ auto Instruction::getNonSuccessorOperands() -> operand_range {
 
 auto Instruction::getSuccessorOperands(unsigned index) const
     -> const_operand_range {
-  assert(isTerminator() && "Only terminators have successors.");
   unsigned succOperandIndex = getSuccessorOperandIndex(index);
   return {const_operand_iterator(this, succOperandIndex),
           const_operand_iterator(this, succOperandIndex +
                                            getNumSuccessorOperands(index))};
 }
 auto Instruction::getSuccessorOperands(unsigned index) -> operand_range {
-  assert(isTerminator() && "Only terminators have successors.");
   unsigned succOperandIndex = getSuccessorOperandIndex(index);
   return {operand_iterator(this, succOperandIndex),
           operand_iterator(this,
@@ -625,8 +621,8 @@ Instruction *Instruction::clone(BlockAndValueMapping &mapper,
 
   operands.reserve(getNumOperands() + getNumSuccessors());
 
-  if (!isTerminator()) {
-    // Non-terminators just add all the operands.
+  if (getNumSuccessors() == 0) {
+    // Non-branching operations can just add all the operands.
     for (auto *opValue : getOperands())
       operands.push_back(mapper.lookupOrDefault(const_cast<Value *>(opValue)));
   } else {

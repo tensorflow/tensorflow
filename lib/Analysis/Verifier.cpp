@@ -161,33 +161,51 @@ bool FuncVerifier::verifyAttribute(Attribute attr, const Instruction &op) {
   return false;
 }
 
+// Returns if the given block is allowed to have no terminator.
+static bool canBlockHaveNoTerminator(const Block &block) {
+  // Allow the first block of an operation region to have no terminator if it is
+  // the only block in the region.
+  auto *parentList = block.getParent();
+  return parentList->getContainingInst() &&
+         std::next(parentList->begin()) == parentList->end();
+}
+
 bool FuncVerifier::verifyBlock(const Block &block, bool isTopLevel) {
   for (auto *arg : block.getArguments()) {
     if (arg->getOwner() != &block)
       return failure("block argument not owned by block", block);
   }
 
-  for (auto &inst : block)
+  // Verify that this block has a terminator.
+  if (block.empty()) {
+    if (canBlockHaveNoTerminator(block))
+      return false;
+    return failure("block with no terminator", block);
+  }
+
+  // Verify the non-terminator instructions separately so that we can verify
+  // they has no successors.
+  for (auto &inst : llvm::make_range(block.begin(), std::prev(block.end()))) {
+    if (inst.getNumSuccessors() != 0)
+      return failure(
+          "instruction with block successors must terminate its parent block",
+          inst);
+
     if (verifyOperation(inst))
       return true;
-
-  // If this block is at the function level, then verify that it has a
-  // terminator.
-  if (isTopLevel) {
-    if (!block.getTerminator())
-      return failure("block with no terminator", block);
-
-    // Verify that this block is not branching to a block of a different
-    // region.
-    for (const Block *successor : block.getSuccessors())
-      if (successor->getParent() != block.getParent())
-        return failure("branching to a block of a different region",
-                       *block.getTerminator());
-  } else if (block.getTerminator()) {
-    // TODO(riverriddle) Blocks in an IfInst/ForInst aren't allowed to have
-    // terminators.
-    return failure("non function block with terminator", block);
   }
+
+  // Verify the terminator.
+  if (verifyOperation(block.back()))
+    return true;
+  if (block.back().isKnownNonTerminator() && !canBlockHaveNoTerminator(block))
+    return failure("block with no terminator", block);
+
+  // Verify that this block is not branching to a block of a different
+  // region.
+  for (const Block *successor : block.getSuccessors())
+    if (successor->getParent() != block.getParent())
+      return failure("branching to block of a different region", block.back());
 
   return false;
 }
