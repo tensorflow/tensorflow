@@ -16,7 +16,7 @@ detection model, takes up a total of 22KB.
     *   [Building for "Hifive1" SiFive FE310 development board using Make](#building-for-hifive1-sifive-fe310-development-board-using-make)
     *   [Building for Ambiq Micro Apollo3Blue EVB using Make](#building-for-ambiq-micro-apollo3blue-evb-using-make)
         *   [Additional Apollo3 Instructions](#additional-apollo3-instructions)
-    *   [Building for the ECM3531 Eta Compute EVB using Make](##building-for-the-eta-compute-ecm3531-evb-using-make)
+    *   [Building for the ECM3531 Eta Compute EVB using Make](# building-for-the-eta-compute-ecm3531-evb-using-make)
  
 -   [Goals](#goals)
 -   [Generating Project Files](#generating-project-#files)
@@ -47,7 +47,7 @@ project files that you can download for the following platforms:
 ["Blue Pill" STM32F103-compatible development board](https://github.com/google/stm32_bare_lib) | - | - | [Instructions](#building-for-the-blue-pill-stm32f103-using-make)
 [Ambiq Micro Apollo3Blue EVB using Make](https://ambiqmicro.com/apollo-ultra-low-power-mcus/) | - | - | [Instructions](#building-for-ambiq-micro-apollo3blue-evb-using-make)
 [Generic Keil uVision Projects](http://www2.keil.com/mdk5/uvision/) | - | [Download](https://drive.google.com/open?id=1Lw9rsdquNKObozClLPoE5CTJLuhfh5mV) | -
-[Eta Compute ECM3531 EVB](https://www.etacompute.com/products/) | - | - | [Instructions](##building-for-the-eta-compute-ecm3531-evb-using-make)
+[Eta Compute ECM3531 EVB](https://www.etacompute.com/products/) | - | - | [Instructions](## building-for-the-eta-compute-ecm3531-evb-using-make)
 
 If your device is not yet supported, it may not be too hard to add support. You
 can learn about that process
@@ -318,7 +318,7 @@ To flash a part with JFlash Lite, do the following:
 4. Data file = `tensorflow/lite/experimental/micro/tools/make/gen/apollo3evb_cortex-m4/bin/pushbutton_cmsis_speech_test.bin`
 5. Prog Addr = 0x0000C000
 
-## Building For Fhe Eta Compute ECM3531 EVB using make  
+## Building For The Eta Compute ECM3531 EVB using make  
 
 ## Goals
 
