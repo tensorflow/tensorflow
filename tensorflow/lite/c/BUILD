@@ -12,6 +12,7 @@ cc_library(
         "c_api_internal.h",
     ],
     visibility = [
+        "//learning/brain/mobile/kernel_test:__subpackages__",
         "//tensorflow/lite:__subpackages__",
     ],
 )
