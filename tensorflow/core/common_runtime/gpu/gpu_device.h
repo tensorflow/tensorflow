@@ -184,11 +184,18 @@ class BaseGPUDevice : public LocalDevice {
 // time of the most recently terminated kernel.
 class GPUKernelTracker {
  public:
-  explicit GPUKernelTracker(Env* env,
-                            std::unique_ptr<SharedCounter> timing_counter)
-      : env_(env),
-        timing_counter_(std::move(timing_counter)),
-        pending_kernels_(64) {}
+  // If we're going to share a SharedCounter with an allocator, it's owned
+  // by the allocator because allocators are initialized once per process.
+  // Devices are per-session.
+  explicit GPUKernelTracker(Env* env, SharedCounter* timing_counter)
+      : env_(env), timing_counter_(timing_counter), pending_kernels_(64) {
+    if (!timing_counter_) {
+      // There's not a preexisting counter owned by GPUProcessState, i.e.
+      // pending_cap > 0 but timestamped_allocator == false.
+      owned_counter_.reset(new SharedCounter);
+      timing_counter_ = owned_counter_.get();
+    }
+  }
 
   // Record that a GPU kernel has just been enqueued on the compute stream.
   // Inserts a new timing counter value in a new PendingKernel record appended
@@ -222,7 +229,8 @@ class GPUKernelTracker {
 
  private:
   Env* env_;
-  std::unique_ptr<SharedCounter> timing_counter_;
+  SharedCounter* timing_counter_;
+  std::unique_ptr<SharedCounter> owned_counter_;
 
   // Records when a kernel was queued for execution.  Kernel launches are
   // identified by a unique count value from a per-GPU device timing counter.
