@@ -2809,21 +2809,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       absl::Span<HloInstruction* const> start_indices,
       const Shape& result_shape) {
     std::vector<int64> start;
-    // TODO(b/118437727): Remove the R1 code-path. Note that to distinguish
-    // between the cases, this currently assumes there is at least 1 index. That
-    // is wrong in the general case, because for scalar indices, if the operand
-    // is scalar, then there are no indices. This problem with resolve itself.
-    const HloInstruction* first_index = start_indices[0];
-    if (first_index->shape().rank() == 1) {
-      auto start_indices_typed =
-          parent_->GetEvaluatedLiteralFor(first_index).data<IndexT>();
-      start = std::vector<int64>(start_indices_typed.begin(),
-                                 start_indices_typed.end());
-    } else {
-      for (HloInstruction* index : start_indices) {
-        start.push_back(
-            parent_->GetEvaluatedLiteralFor(index).GetFirstElement<IndexT>());
-      }
+
+    for (HloInstruction* index : start_indices) {
+      start.push_back(
+          parent_->GetEvaluatedLiteralFor(index).GetFirstElement<IndexT>());
     }
 
     // Clamp the start indices so the slice is in-bounds w.r.t the operand.
@@ -2856,22 +2845,11 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     auto result = operand_literal.Clone();
     const auto rank = result.shape().rank();
     std::vector<int64> start;
-    // TODO(b/118437727): Remove the R1 code-path. Note that to distinguish
-    // between the cases, this currently assumes there is at least 1 index. That
-    // is wrong in the general case, because for scalar indices, if the operand
-    // is scalar, then there are no indices. This problem with resolve itself.
-    const HloInstruction* first_index = start_indices[0];
-    if (first_index->shape().rank() == 1) {
-      auto start_indices_typed =
-          parent_->GetEvaluatedLiteralFor(first_index).data<IndexT>();
-      start = std::vector<int64>(start_indices_typed.begin(),
-                                 start_indices_typed.end());
-    } else {
-      for (HloInstruction* index : start_indices) {
-        start.push_back(
-            parent_->GetEvaluatedLiteralFor(index).GetFirstElement<IndexT>());
-      }
+    for (HloInstruction* index : start_indices) {
+      start.push_back(
+          parent_->GetEvaluatedLiteralFor(index).GetFirstElement<IndexT>());
     }
+
     // Clamp the update start indices so the slice is in-bounds w.r.t the
     // operand.
     for (int64 i = 0; i < rank; ++i) {
