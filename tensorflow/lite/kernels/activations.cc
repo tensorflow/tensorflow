@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -177,8 +178,15 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
 
-  if (input->type == kTfLiteUInt8) {
-    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
+    if (input->type == kTfLiteUInt8) {
+      TF_LITE_ENSURE_EQ(context, output->params.zero_point,
+                        std::numeric_limits<uint8_t>::min());
+    }
+    if (input->type == kTfLiteInt8) {
+      TF_LITE_ENSURE_EQ(context, output->params.zero_point,
+                        std::numeric_limits<int8_t>::min());
+    }
     TF_LITE_ENSURE(context, output->params.scale == 1. / 256);
 
     static constexpr int kInputIntegerBits = 4;
@@ -491,6 +499,15 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
             params, GetTensorShape(input), GetTensorData<uint8_t>(input),
             GetTensorShape(output), GetTensorData<uint8_t>(output));
       }
+      break;
+    }
+    case kTfLiteInt8: {
+      const int input_size =
+          MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
+      reference_integer_ops::Logistic(
+          input->params.zero_point, data->input_range_radius,
+          data->input_multiplier, data->input_left_shift, input_size,
+          GetTensorData<int8_t>(input), GetTensorData<int8_t>(output));
       break;
     }
     default:
