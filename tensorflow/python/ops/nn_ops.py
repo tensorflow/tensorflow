@@ -4202,13 +4202,15 @@ def conv1d_v2(
       dilations=dilations)
 
 
+@tf_export("nn.conv1d_transpose")
 def conv1d_transpose(
-    value,
-    filter,  # pylint: disable=redefined-builtin
+    input,  # pylint: disable=redefined-builtin
+    filters,
     output_shape,
-    stride,
+    strides,
     padding="SAME",
     data_format="NWC",
+    dilations=None,
     name=None):
   """The transpose of `conv1d`.
 
@@ -4218,19 +4220,23 @@ def conv1d_transpose(
   deconvolution.
 
   Args:
-    value: A 3-D `Tensor` of type `float` and shape
+    input: A 3-D `Tensor` of type `float` and shape
       `[batch, in_width, in_channels]` for `NWC` data format or
       `[batch, in_channels, in_width]` for `NCW` data format.
-    filter: A 3-D `Tensor` with the same type as `value` and shape
+    filters: A 3-D `Tensor` with the same type as `value` and shape
       `[filter_width, output_channels, in_channels]`.  `filter`'s
       `in_channels` dimension must match that of `value`.
     output_shape: A 1-D `Tensor`, containing three elements, representing the
       output shape of the deconvolution op.
-    stride: An `integer`.  The number of entries by which
-      the filter is moved right at each step.
+    strides: An int or list of `ints` that has length `1` or `3`.  The number of
+      entries by which the filter is moved right at each step.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. `'NWC'` and `'NCW'` are supported.
+    dilations: An int or list of `ints` that has length `1` or `3` which
+      defaults to 1. The dilation factor for each dimension of input. If set to
+      k > 1, there will be k-1 skipped cells between each filter element on that
+      dimension. Dilations in the batch and depth dimensions must be 1.
     name: Optional name for the returned tensor.
 
   Returns:
@@ -4242,64 +4248,38 @@ def conv1d_transpose(
       `'VALID'` or `'SAME'`, or if `data_format` is invalid.
   """
   with ops.name_scope(name, "conv1d_transpose",
-                      [value, filter, output_shape]) as name:
-    output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
-    if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(3)):
-      raise ValueError("output_shape must have shape (3,), got {}".format(
-          output_shape_.get_shape()))
-
+                      [input, filters, output_shape]) as name:
     # The format could be either NWC or NCW, map to NHWC or NCHW
     if data_format is None or data_format == "NWC":
-      data_format_2d = "NHWC"
-      axis = 2
+      data_format = "NHWC"
+      spatial_start_dim = 1
+      channel_index = 2
     elif data_format == "NCW":
-      data_format_2d = "NCHW"
-      axis = 1
+      data_format = "NCHW"
+      spatial_start_dim = 2
+      channel_index = 1
     else:
       raise ValueError("data_format must be \"NWC\" or \"NCW\".")
 
-    if not value.get_shape().dims[axis].is_compatible_with(
-        filter.get_shape()[2]):
-      raise ValueError("input channels does not match filter's input channels, "
-                       "{} != {}".format(value.get_shape()[axis],
-                                         filter.get_shape()[2]))
-
-    if isinstance(output_shape, (list, np.ndarray)):
-      # output_shape's shape should be == [3] if reached this point.
-      if not filter.get_shape().dims[1].is_compatible_with(
-          output_shape[axis]):
-        raise ValueError(
-            "output_shape does not match filter's output channels, "
-            "{} != {}".format(output_shape[axis],
-                              filter.get_shape()[1]))
-
-    if padding != "VALID" and padding != "SAME":
-      raise ValueError("padding must be either VALID or SAME:"
-                       " {}".format(padding))
-
     # Reshape the input tensor to [batch, 1, in_width, in_channels]
-    if data_format_2d == "NHWC":
-      output_shape_ = array_ops.concat(
-          [output_shape_[:1], [1], output_shape_[1:]], axis=0)
-      spatial_start_dim = 1
-      strides = [1, 1, stride, 1]
-    else:
-      output_shape_ = array_ops.concat(
-          [output_shape_[:2], [1], output_shape_[2:]], axis=0)
-      spatial_start_dim = 2
-      strides = [1, 1, 1, stride]
-    value = array_ops.expand_dims(value, spatial_start_dim)
-    filter = array_ops.expand_dims(filter, 0)  # pylint: disable=redefined-builtin
+    strides = [1] + _get_sequence(strides, 1, channel_index, "stride")
+    dilations = [1] + _get_sequence(dilations, 1, channel_index, "dilations")
+
+    input = array_ops.expand_dims(input, spatial_start_dim)
+    filters = array_ops.expand_dims(filters, 0)  # pylint: disable=redefined-builtin
+    output_shape = output_shape[: spatial_start_dim] + [1] + \
+                   output_shape[spatial_start_dim:]
 
     result = gen_nn_ops.conv2d_backprop_input(
-        input_sizes=output_shape_,
-        filter=filter,
-        out_backprop=value,
+        input_sizes=output_shape,
+        filter=filters,
+        out_backprop=input,
         strides=strides,
         padding=padding,
-        data_format=data_format_2d,
+        data_format=data_format,
+        dilations=dilations,
         name=name)
-    return array_ops.squeeze(result, [spatial_start_dim])
+    return array_ops.squeeze(result, spatial_start_dim)
 
 
 @ops.RegisterStatistics("Dilation2D", "flops")
