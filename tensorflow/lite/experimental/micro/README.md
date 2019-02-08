@@ -330,11 +330,11 @@ Follow these steps to build and run the Tensorflow Micro Speech tests.
 
 4. Compile the code with the command  make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=ecm3531 TAGS="CMSIS" test .  This will create a set of executables in tensorflow/lite/experimental/micro/tools/make/gen/ecm3531_cortex-m3/bin/
 
-5. Connect the board to the host computer, start PuTTY (Connection type = Serial, Speed = 11520, Data bits = 8, Stop bits = 1,  Parity = None), and load the executable with ocd.  A sample script is provided in tensorflow/lite/experimental/micro/tools/make/targets/ecm3531/load_program \(.e.g  load_program  audio_provider_test\) to load and run from SRAM. \s\s The following output will be printed: \s\s
-Testing TestAudioProvider s\s\s
-TestingTestTimer \s\s
-2/2 tests passed \s\s
-\~\~\~ALL TESTS PASSED\~\~\~ \s\s
+5. Connect the board to the host computer, start PuTTY (Connection type = Serial, Speed = 11520, Data bits = 8, Stop bits = 1,  Parity = None), and load the executable with ocd.  A sample script is provided in tensorflow/lite/experimental/micro/tools/make/targets/ecm3531/load_program \(.e.g  load_program  audio_provider_test\) to load and run from SRAM.\s\s The following output will be printed:\s\s
+Testing TestAudioProvider\s\s
+TestingTestTimer\s\s
+2/2 tests passed\s\s
+\~\~\~ALL TESTS PASSED\~\~\~\s\s
 Execution time (msec) = 8
 
 
