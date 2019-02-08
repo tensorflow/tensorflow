@@ -262,8 +262,12 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version */ 1,
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_PRELU, Register_PRELU());
-  AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM());
-  AddBuiltin(BuiltinOperator_MINIMUM, Register_MINIMUM());
+  AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM(),
+             /* min_version */ 1,
+             /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_MINIMUM, Register_MINIMUM(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_ARG_MAX, Register_ARG_MAX(),
              /* min_version */ 1,
              /* max_version */ 2);
