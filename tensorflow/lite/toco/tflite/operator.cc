@@ -652,6 +652,34 @@ class MaxPool : public BuiltinOperator<MaxPoolOperator, ::tflite::Pool2DOptions,
   }
 };
 
+class Maximum : public SimpleOperator<TensorFlowMaximumOperator> {
+ public:
+  explicit Maximum() : SimpleOperator("MAXIMUM", OperatorType::kMaximum) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
+class Minimum : public SimpleOperator<TensorFlowMinimumOperator> {
+ public:
+  explicit Minimum() : SimpleOperator("MINIMUM", OperatorType::kMinimum) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
 class Mul : public BuiltinOperator<MulOperator, ::tflite::MulOptions,
                                    ::tflite::BuiltinOptions_MulOptions> {
  public:
@@ -2260,10 +2288,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       MakeUnique<SimpleOperator<ExpOperator>>("EXP", OperatorType::kExp));
   ops.push_back(MakeUnique<SimpleOperator<LogSoftmaxOperator>>(
       "LOG_SOFTMAX", OperatorType::kLogSoftmax));
-  ops.push_back(MakeUnique<SimpleOperator<TensorFlowMaximumOperator>>(
-      "MAXIMUM", OperatorType::kMaximum));  //  Element-wise Maximum
-  ops.push_back(MakeUnique<SimpleOperator<TensorFlowMinimumOperator>>(
-      "MINIMUM", OperatorType::kMinimum));  //  Element-wise Minimum
+  ops.push_back(MakeUnique<Maximum>());  //  Element-wise Maximum
+  ops.push_back(MakeUnique<Minimum>());  //  Element-wise Minimum
   ops.push_back(MakeUnique<Greater>());
   ops.push_back(MakeUnique<GreaterEqual>());
   ops.push_back(MakeUnique<Less>());
