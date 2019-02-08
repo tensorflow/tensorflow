@@ -429,6 +429,20 @@ class DefFunctionTest(test.TestCase):
     created_variable_read = create_variable()
     self.assertRegexpMatches(created_variable_read.device, "CPU")
 
+  def testDecorate(self):
+    func = def_function.function(lambda: 1)
+    def decorator(f):
+      return lambda: 1 + f()
+
+    func._decorate(decorator)
+    self.assertEqual(func().numpy(), 2)
+
+  def testDecorate_rejectedAfterTrace(self):
+    func = def_function.function(lambda: 1)
+    self.assertEqual(func().numpy(), 1)
+    msg = 'Functions cannot be decorated after they have been traced.'
+    with self.assertRaisesRegexp(ValueError, msg):
+      func._decorate(lambda f: f)
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
