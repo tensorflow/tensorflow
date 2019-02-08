@@ -384,6 +384,7 @@ cuda_py_test(
         ":context",
         ":function",
         ":test",
+        ":profiler",
         "//third_party/py/numpy",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
