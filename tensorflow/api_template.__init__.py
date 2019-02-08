@@ -111,5 +111,9 @@ try:
 except NameError:
   pass
 
+# Add module aliases
+if hasattr(_current_module, 'keras'):
+  losses = keras.losses
+  metrics = keras.metrics
 
 # pylint: enable=undefined-variable
