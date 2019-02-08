@@ -455,8 +455,16 @@ class TPUEmbedding(object):
     return self._init_ops
 
   @property
+  def table_to_config_dict(self):
+    return copy.copy(self._table_to_config_dict)
+
+  @property
   def feature_to_table_dict(self):
     return copy.copy(self._feature_to_table_dict)
+
+  @property
+  def optimization_parameters(self):
+    return self._optimization_parameters
 
   def _create_config_proto(self):
     """Create `TPUEmbeddingConfiguration`."""
