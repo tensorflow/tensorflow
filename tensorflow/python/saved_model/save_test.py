@@ -43,6 +43,7 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
+from tensorflow.python.util import compat
 
 
 class _ModelWithOptimizer(util.Checkpoint):
@@ -329,7 +330,8 @@ class AssetTests(test.TestCase):
     second_dir = os.path.join(self.get_temp_dir(), "second_dir")
     file_io.rename(save_dir, second_dir)
     imported_path = _import_and_infer(second_dir, {})["output_0"]
-    self.assertIn(str(second_dir), str(imported_path))
+    self.assertIn(compat.as_str_any(second_dir),
+                  compat.as_str_any(imported_path))
 
   def test_table(self):
     initializer = lookup_ops.TextFileInitializer(
