@@ -159,6 +159,8 @@ load(
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -1705,6 +1707,7 @@ filegroup(
             "platform/**/logger.cc",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
+            "platform/rocm.h",
             "platform/google/**/*",
             "platform/hadoop/**/*",
             "platform/gif.h",
@@ -2246,6 +2249,7 @@ LIB_INTERNAL_PRIVATE_HEADERS = ["framework/resource_handle.h"] + glob(
         "platform/jpeg.h",
         "platform/png.h",
         "platform/**/cuda.h",
+        "platform/**/rocm.h",
         "platform/**/stream_executor.h",
     ],
 )
@@ -2358,6 +2362,7 @@ cc_library(
             "**/*test*",
             "platform/**/cuda.h",
             "platform/**/cuda_libdevice_path.cc",
+            "platform/**/rocm.h",
             "platform/**/stream_executor.h",
             "platform/**/env_time.cc",
             "platform/**/device_tracer.cc",
@@ -2858,6 +2863,7 @@ tf_cuda_library(
     srcs = ["platform/stream_executor.h"],
     hdrs = [
         "platform/cuda.h",
+        "platform/rocm.h",
         "platform/stream_executor.h",
     ],
     deps = [
