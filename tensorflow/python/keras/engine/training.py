@@ -2250,9 +2250,6 @@ class Model(Network):
                                           sample_weight=None,
                                           class_weight=None,
                                           batch_size=None,
-                                          check_steps=False,
-                                          steps_name='steps',
-                                          steps=None,
                                           validation_split=0,
                                           shuffle=False,
                                           repeat=True,
@@ -2272,11 +2269,6 @@ class Model(Network):
         to, as conveyed by `y`.
       batch_size: Integer batch size. If provided, it is used to run additional
         validation checks on stateful models.
-      check_steps: boolean, True if we want to check for validity of `steps` and
-        False, otherwise.
-      steps_name: The public API's parameter name for `steps`.
-      steps: Integer or `None`. Total number of steps (batches of samples) to
-        execute.
       validation_split: Float between 0 and 1.
         Fraction of the training data to be used as validation data.
       shuffle: Boolean whether to shuffle the training data before each epoch.
@@ -2324,11 +2316,6 @@ class Model(Network):
     if isinstance(x, dataset_ops.DatasetV2):
       if shuffle:
         training_utils.verify_dataset_shuffled(x)
-
-      if check_steps and steps is None:
-        raise ValueError('When using Datasets as input, '
-                         'you should specify the `{steps_name}` argument.'
-                         .format(steps_name=steps_name))
 
     if ops.executing_eagerly_outside_functions():
       session = None
