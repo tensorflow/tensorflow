@@ -254,7 +254,8 @@ Status CreateXlaArgs(const Graph& graph,
 
 // Converts the TensorFlow graph into an XLA computation, by executing the
 // graph symbolically, with each op building up the XLA HLO.
-Status ConvertGraphToXla(std::unique_ptr<Graph> graph, xla::Client* client,
+Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
+                         const tf2xla::Config& config, xla::Client* client,
                          xla::XlaComputation* computation) {
   XlaOpRegistry::RegisterCompilationKernels();
   for (Node* node : graph->nodes()) {
@@ -263,6 +264,19 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph, xla::Client* client,
   }
   std::vector<XlaCompiler::Argument> xla_args;
   TF_RETURN_IF_ERROR(CreateXlaArgs(*graph, &xla_args));
+
+  // Populate arguments with resource variables from the config. The variables
+  // get turned into inputs and outputs.
+  for (const tf2xla::Variable& variable : config.variable()) {
+    XlaCompiler::Argument arg;
+    arg.type = variable.type();
+    arg.kind = XlaCompiler::Argument::kResource;
+    arg.shape = variable.shape();
+    arg.name = variable.node_name();
+    arg.resource_kind = XlaResource::kVariable;
+    arg.initialized = true;
+    xla_args.push_back(std::move(arg));
+  }
 
   // Compile the graph into an XLA computation.
   XlaCompiler::Options compiler_options;
@@ -361,7 +375,8 @@ Status ConvertGraphDefToXla(const GraphDef& graph_def,
                             xla::XlaComputation* computation) {
   std::unique_ptr<Graph> graph;
   TF_RETURN_IF_ERROR(InitGraph(graph_def, config, &graph));
-  TF_RETURN_IF_ERROR(ConvertGraphToXla(std::move(graph), client, computation));
+  TF_RETURN_IF_ERROR(
+      ConvertGraphToXla(std::move(graph), config, client, computation));
   return Status::OK();
 }
 
