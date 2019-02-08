@@ -504,6 +504,8 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions):
         resource_initializer_ops.append(
             _call_function_with_mapped_captures(
                 resource_initializer_function, [], resource_map))
+    resource_initializer_ops.extend(
+        asset_info.asset_initializers_by_resource.values())
     with ops.control_dependencies(resource_initializer_ops):
       init_op = control_flow_ops.no_op()
     # Add the same op to the main_op collection and to the init_op

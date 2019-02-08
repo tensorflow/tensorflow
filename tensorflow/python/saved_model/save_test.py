@@ -320,6 +320,17 @@ class AssetTests(test.TestCase):
     with open(self._vocab_path, "w") as f:
       f.write("alpha\nbeta\ngamma\n")
 
+  def test_asset_path_returned(self):
+    root = tracking.AutoCheckpointable()
+    root.path = tracking.TrackableAsset(self._vocab_path)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    root.get_asset = def_function.function(lambda: root.path.asset_path)
+    save.save(root, save_dir, signatures=root.get_asset.get_concrete_function())
+    second_dir = os.path.join(self.get_temp_dir(), "second_dir")
+    file_io.rename(save_dir, second_dir)
+    imported_path = _import_and_infer(second_dir, {})["output_0"]
+    self.assertIn(str(second_dir), str(imported_path))
+
   def test_table(self):
     initializer = lookup_ops.TextFileInitializer(
         self._vocab_path,
