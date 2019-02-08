@@ -320,23 +320,28 @@ To flash a part with JFlash Lite, do the following:
 
 ## Building for the Eta Compute ECM3531 EVB using Make
 1. Follow the instructions at [Tensorflow Micro Speech](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_speech#getting-started) to down load the Tensorflow source code and the support libraries \(but do not run the make command shown there.\)
-2. Download the Eta Compute SDK. Contact info@etacompute.com
-3. You will need the the Arm compiler arm-none-eabi-gcc, version = 7.3.1 20180622, release ARM/embedded-7-branch revision 261907.  This compiler is downloaded when you run the tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh script.
+2. Download the Eta Compute SDK, version 0.0.17. Contact info@etacompute.com
+3. You will need the the Arm compiler arm-none-eabi-gcc, version 7.3.1 20180622, release ARM/embedded-7-branch revision 261907, 7-2018-q2-update.  This compiler is downloaded when you run the tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh script.
 4. Edit the file tensorflow/lite/experimental/micro/tools/make/targets/ecm3531_makefile.inc so that the variables ETA_SDK and GCC_ARM point to the correct directories.
 5. Compile the code with the command  
-&nbsp;&nbsp;make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=ecm3531 TAGS="CMSIS"  test  
+&nbsp;&nbsp;&nbsp;&nbsp;make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=ecm3531 TAGS="CMSIS"  test  
 This will produce a set of executables in the tensorflow/lite/experimental/micro/tools/make/gen/ecm3531_cortex-m3/bin directory. 
 6. To load an executable into SRAM  
-&nbsp;&nbsp;start ocd  
-&nbsp;&nbsp;cd tensorflow/lite/experimental/micro/tools/make/targets/ecm3531  
-&nbsp;&nbsp;./load_program name_of_executable, for e.g., ./load_program  audio_provider_test  
-&nbsp;&nbsp;start PuTTY \(Connection type = Serial, Speed = 11520, Data bits = 8, Stop bits = 1,  Parity = None\)  
-The following output should appear
+&nbsp;&nbsp;&nbsp;&nbsp;start ocd  
+&nbsp;&nbsp;&nbsp;&nbsp;cd tensorflow/lite/experimental/micro/tools/make/targets/ecm3531  
+&nbsp;&nbsp;&nbsp;&nbsp;./load_program name_of_executable, for e.g., ./load_program  audio_provider_test  
+&nbsp;&nbsp;&nbsp;&nbsp;start PuTTY \(Connection type = Serial, Speed = 11520, Data bits = 8, Stop bits = 1,  Parity = None\)  
+The following output should appear:  
+Testing TestAudioProvider  
+Testing TestTimer  
+2/2 tests passed  
+\~\~\~ALL TESTS PASSED\~\~\~  
+Execution time \(msec\) = 7
 7. To load into flash  
-&nbsp;&nbsp;edit the variable ETA_LDS_FILE in tensorflow/lite/experimental/micro/tools/&nbsp;&nbsp;make/targets/ecm3531_makefile.inc to point to the ecm3531_flash.lds file  
-&nbsp;&nbsp;Recompile  \( make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=ecm3531 TAGS="CMSIS"  test\)  
-&nbsp;&nbsp;cd tensorflow/lite/experimental/micro/tools/make/targets/ecm3531  
-&nbsp;&nbsp;./flash_program executable_name  to load into flash.
+&nbsp;&nbsp;&nbsp;&nbsp;edit the variable ETA_LDS_FILE in tensorflow/lite/experimental/micro/tools/&nbsp;&nbsp;make/targets/ecm3531_makefile.inc to point to the ecm3531_flash.lds file  
+&nbsp;&nbsp;&nbsp;&nbsp;Recompile  \( make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=ecm3531 TAGS="CMSIS"  test\)  
+&nbsp;&nbsp;&nbsp;&nbsp;cd tensorflow/lite/experimental/micro/tools/make/targets/ecm3531  
+&nbsp;&nbsp;&nbsp;&nbsp;./flash_program executable_name  to load into flash.
 
 ## Goals
 
