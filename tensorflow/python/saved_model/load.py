@@ -111,14 +111,16 @@ class _Loader(object):
       concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
 
   def _get_tensor_from_node(self, node_id):
-    obj = self._nodes[node_id]
-    if resource_variable_ops.is_resource_variable(obj):
-      return obj.handle
-    elif isinstance(obj, tracking.TrackableAsset):
-      return obj.asset_path.handle
-    elif tensor_util.is_tensor(obj):
-      return obj
-    raise ValueError("Can't convert node %s to tensor" % (type(obj)))
+    """Resolves a node id into a tensor to be captured for a function."""
+    with ops.init_scope():
+      obj = self._nodes[node_id]
+      if resource_variable_ops.is_resource_variable(obj):
+        return obj.handle
+      elif isinstance(obj, tracking.TrackableAsset):
+        return obj.asset_path
+      elif tensor_util.is_tensor(obj):
+        return obj
+      raise ValueError("Can't convert node %s to tensor" % (type(obj)))
 
   def _load_all(self):
     """Load all saved objects and wire their properties."""

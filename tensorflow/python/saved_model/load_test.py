@@ -126,11 +126,34 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         lambda: root.vocab.asset_path,
         input_signature=[])
     imported = self.cycle(root, cycles)
-    origin_output = root.f().numpy()
+    original_output = root.f().numpy()
     imported_output = imported.f().numpy()
-    self.assertNotEqual(origin_output, imported_output)
+    self.assertNotEqual(original_output, imported_output)
     with open(imported_output, "r") as f:
       self.assertEqual("contents", f.read())
+
+  def test_capture_assets_in_graph(self, cycles):
+    root = tracking.AutoCheckpointable()
+    root.vocab = tracking.TrackableAsset(self._make_asset("contents"))
+    root.f = def_function.function(
+        lambda: root.vocab.asset_path,
+        input_signature=[])
+
+    original_output = root.f().numpy()
+
+    if cycles > 1:
+      root = self.cycle(root, cycles - 1)
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+
+    with ops.Graph().as_default():
+      imported = load.load(path)
+      imported_tensor = imported.f()
+      with monitored_session.MonitoredSession() as sess:
+        imported_output = sess.run(imported_tensor)
+        self.assertNotEqual(original_output, imported_output)
+        with open(imported_output, "r") as f:
+          self.assertEqual("contents", f.read())
 
   def test_dedup_assets(self, cycles):
     vocab = self._make_asset("contents")

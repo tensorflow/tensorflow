@@ -17,12 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training.checkpointable import base
 from tensorflow.python.training.checkpointable import data_structures
 from tensorflow.python.util import tf_contextlib
@@ -184,23 +182,12 @@ class TrackableAsset(base.Checkpointable):
 
   def __init__(self, path):
     """Record the full path to the asset."""
-    # We use a variable here so that @tf.functions do not capture a literal
-    # value. The init_scope prevents functions from capturing `path` in an
+    # The init_scope prevents functions from capturing `path` in an
     # initialization graph, since it is transient and should not end up in a
-    # serialized function body. When serialized in a SavedModel, the variable
-    # will be set during the loading process to its location in the assets/
-    # directory.
+    # serialized function body.
     with ops.init_scope():
-      if context.executing_eagerly():
-        self._path = self._no_dependency(
-            resource_variable_ops.ResourceVariable(
-                path, dtype=dtypes.string,
-                name="asset_path"))
-      else:
-        # Adding a variable is too disruptive when v1-style graph building,
-        # since things may get fed and local variable initializers would then
-        # need to be run.
-        self._path = path
+      self._path = ops.internal_convert_to_tensor(path, dtype=dtypes.string,
+                                                  name="asset_path")
 
   @property
   def asset_path(self):
