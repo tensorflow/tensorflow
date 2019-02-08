@@ -619,6 +619,131 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
   }
 };
 
+// Common base for load and store operations on MemRefs.  Restricts the match
+// to supported MemRef types.  Provides functionality to emit code accessing a
+// specific element of the underlying data buffer.
+template <typename Derived>
+struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
+  using LLVMLegalizationPattern<Derived>::LLVMLegalizationPattern;
+  using Base = LoadStoreOpLowering<Derived>;
+
+  PatternMatchResult match(Instruction *op) const override {
+    if (!LLVMLegalizationPattern<Derived>::match(op))
+      return this->matchFailure();
+    auto loadOp = op->cast<Derived>();
+    MemRefType type = loadOp->getMemRefType();
+    return isSupportedMemRefType(type) ? this->matchSuccess()
+                                       : this->matchFailure();
+  }
+
+  // Given subscript indices and array sizes in row-major order,
+  //   i_n, i_{n-1}, ..., i_1
+  //   s_n, s_{n-1}, ..., s_1
+  // obtain a value that corresponds to the linearized subscript
+  //   \sum_k i_k * \prod_{j=1}^{k-1} s_j
+  // by accumulating the running linearized value.
+  // Note that `indices` and `allocSizes` are passed in the same order as they
+  // appear in load/store operations and memref type declarations.
+  Value *linearizeSubscripts(FuncBuilder &builder, Location loc,
+                             ArrayRef<Value *> indices,
+                             ArrayRef<Value *> allocSizes) const {
+    assert(indices.size() == allocSizes.size() &&
+           "mismatching number of indices and allocation sizes");
+    assert(!indices.empty() && "cannot linearize a 0-dimensional access");
+
+    Value *linearized = indices.front();
+    for (int i = 1, nSizes = allocSizes.size(); i < nSizes; ++i) {
+      linearized = builder.create<LLVM::MulOp>(
+          loc, this->getIndexType(),
+          ArrayRef<Value *>{linearized, allocSizes[i]});
+      linearized = builder.create<LLVM::AddOp>(
+          loc, this->getIndexType(), ArrayRef<Value *>{linearized, indices[i]});
+    }
+    return linearized;
+  }
+
+  // Given the MemRef type, a descriptor and a list of indices, extract the data
+  // buffer pointer from the descriptor, convert multi-dimensional subscripts
+  // into a linearized index (using dynamic size data from the descriptor if
+  // necessary) and get the pointer to the buffer element identified by the
+  // indies.
+  Value *getElementPtr(Location loc, MemRefType type, Value *memRefDescriptor,
+                       ArrayRef<Value *> indices, FuncBuilder &rewriter) const {
+    auto elementType =
+        TypeConverter::convert(type.getElementType(), this->getModule());
+    auto elementTypePtr = rewriter.getType<LLVM::LLVMType>(
+        elementType.template cast<LLVM::LLVMType>()
+            .getUnderlyingType()
+            ->getPointerTo());
+
+    // Get the list of MemRef sizes.  Static sizes are defined as constants.
+    // Dynamic sizes are extracted from the MemRef descriptor, where they start
+    // from the position 1 (the buffer is at position 0).
+    SmallVector<Value *, 4> sizes;
+    unsigned dynamicSizeIdx = 1;
+    for (int64_t s : type.getShape()) {
+      if (s == -1) {
+        Value *size = rewriter.create<LLVM::ExtractValueOp>(
+            loc, this->getIndexType(), ArrayRef<Value *>{memRefDescriptor},
+            llvm::makeArrayRef(
+                this->getPositionAttribute(rewriter, dynamicSizeIdx++)));
+        sizes.push_back(size);
+      } else {
+        sizes.push_back(this->createIndexConstant(rewriter, loc, s));
+      }
+    }
+
+    // The second and subsequent operands are access subscripts.  Obtain the
+    // linearized address in the buffer.
+    Value *subscript = linearizeSubscripts(rewriter, loc, indices, sizes);
+
+    Value *dataPtr = rewriter.create<LLVM::ExtractValueOp>(
+        loc, elementTypePtr, ArrayRef<Value *>{memRefDescriptor},
+        llvm::makeArrayRef(this->getPositionAttribute(rewriter, 0)));
+    return rewriter.create<LLVM::GEPOp>(loc, elementTypePtr,
+                                        ArrayRef<Value *>{dataPtr, subscript},
+                                        ArrayRef<NamedAttribute>{});
+  }
+};
+
+// Load operation is lowered to obtaining a pointer to the indexed element
+// and loading it.
+struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
+  using Base::Base;
+
+  SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
+                                  FuncBuilder &rewriter) const override {
+    auto loadOp = op->cast<LoadOp>();
+    auto type = loadOp->getMemRefType();
+    auto elementType =
+        TypeConverter::convert(type.getElementType(), getModule());
+    Value *dataPtr = getElementPtr(op->getLoc(), type, operands.front(),
+                                   operands.drop_front(), rewriter);
+
+    SmallVector<Value *, 4> results;
+    results.push_back(rewriter.create<LLVM::LoadOp>(
+        op->getLoc(), elementType, ArrayRef<Value *>{dataPtr}));
+    return results;
+  }
+};
+
+// Store opreation is lowered to obtaining a pointer to the indexed element,
+// and storing the given value to it.
+struct StoreOpLowering : public LoadStoreOpLowering<StoreOp> {
+  using Base::Base;
+
+  SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
+                                  FuncBuilder &rewriter) const override {
+    auto storeOp = op->cast<StoreOp>();
+    auto type = storeOp->getMemRefType();
+    Value *dataPtr = getElementPtr(op->getLoc(), type, operands[1],
+                                   operands.drop_front(2), rewriter);
+
+    rewriter.create<LLVM::StoreOp>(op->getLoc(), operands[0], dataPtr);
+    return {};
+  }
+};
+
 // Base class for LLVM IR lowering terminator operations with successors.
 template <typename SourceOp, typename TargetOp>
 struct OneToOneLLVMTerminatorLowering
@@ -723,12 +848,12 @@ protected:
 
     // FIXME: this should be tablegen'ed
     return ConversionListBuilder<
-        AllocOpLowering, DeallocOpLowering, AddIOpLowering, SubIOpLowering,
-        MulIOpLowering, DivISOpLowering, DivIUOpLowering, RemISOpLowering,
-        RemIUOpLowering, AddFOpLowering, SubFOpLowering, MulFOpLowering,
-        CmpIOpLowering, CallOpLowering, Call0OpLowering, BranchOpLowering,
-        CondBranchOpLowering, ReturnOpLowering,
-        ConstLLVMOpLowering>::build(&converterStorage, *llvmDialect);
+        AddFOpLowering, AddIOpLowering, AllocOpLowering, BranchOpLowering,
+        Call0OpLowering, CallOpLowering, CmpIOpLowering, CondBranchOpLowering,
+        ConstLLVMOpLowering, DeallocOpLowering, DivISOpLowering,
+        DivIUOpLowering, LoadOpLowering, MulFOpLowering, MulIOpLowering,
+        RemISOpLowering, RemIUOpLowering, ReturnOpLowering, StoreOpLowering,
+        SubFOpLowering, SubIOpLowering>::build(&converterStorage, *llvmDialect);
   }
 
   // Convert types using the stored LLVM IR module.
