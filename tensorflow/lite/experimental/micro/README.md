@@ -340,6 +340,8 @@ TestingTestTimer
 \~\~\~ALL TESTS PASSED\~\~\~  
 Execution time (msec) = 8
 
+6. To load and run from flash, edit the file tensorflow/lite/experimental/micro/tools/make/targets/ecm3531_makefile.inc so that the variable ETA_LDS_FILE := ecm3531_flash.lds.  Compile the code and use the script flash_program, for e.g., flash_program audio_provider_test .
+
 
 ## Goals
 
