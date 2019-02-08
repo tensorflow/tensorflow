@@ -30,6 +30,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_deserialization
+from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
@@ -40,6 +41,7 @@ from tensorflow.python.training.checkpointable import graph_view
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
 from tensorflow.python.util import compat
+from tensorflow.python.util import nest
 
 
 class _Loader(object):
@@ -241,14 +243,64 @@ def _load_saved_object_graph_proto(filename):
     return saved_object_graph_pb2.SavedObjectGraph.FromString(contents)
 
 
-def load(export_dir):
-  """Load a SavedModel from `export_dir`."""
+def load(export_dir, tags=None):
+  """Load a SavedModel from `export_dir`.
+
+  Signatures associated with the SavedModel are available as functions:
+
+  ```python
+  imported = tf.saved_model.load(path)
+  f = imported.signatures["serving_default"]
+  print(f(x=tf.constant([[1.]])))
+  ```
+
+  Objects exported with `tf.saved_model.save` additionally have checkpointable
+  objects and functions assigned to attributes:
+
+  ```python
+  exported = tf.train.Checkpoint(v=tf.Variable(3.))
+  exported.f = tf.function(
+      lambda x: exported.v * x,
+      input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
+  tf.saved_model.save(exported, path)
+  imported = tf.saved_model.load(path)
+  assert 3. == imported.v.numpy()
+  assert 6. == imported.f(x=tf.constant(2.)).numpy()
+  ```
+
+  Args:
+    export_dir: The SavedModel directory to load from.
+    tags: A tag or sequence of tags identifying the MetaGraph to load. Optional
+      if the SavedModel contains a single MetaGraph, as for those exported from
+      `tf.saved_model.load`.
+
+  Returns:
+    A checkpointable object with a `signatures` attribute mapping from signature
+    keys to functions. If the SavedModel was exported by `tf.saved_model.load`,
+    it also points to checkpointable objects and functions which were attached
+    to the exported object.
+
+  Raises:
+    ValueError: If `tags` don't match a MetaGraph in the SavedModel.
+  """
+  if tags is not None:
+    # Supports e.g. tags=SERVING and tags=[SERVING]
+    tags = nest.flatten(tags)
   saved_model_proto = loader_impl.parse_saved_model(export_dir)
   object_graph_filename = os.path.join(
       compat.as_bytes(export_dir),
       compat.as_bytes(constants.EXTRA_ASSETS_DIRECTORY),
       compat.as_bytes("object_graph.pb"))
-  if file_io.file_exists(object_graph_filename):
+  if (file_io.file_exists(object_graph_filename)
+      and len(saved_model_proto.meta_graphs) == 1):
+    meta_graph_def = saved_model_proto.meta_graphs[0]
+    if (tags is not None
+        and set(tags) != set(meta_graph_def.meta_info_def.tags)):
+      raise ValueError(
+          ("The SavedModel at {} has one MetaGraph with tags {}, but got an "
+           "incompatible argument tags={} to tf.saved_model.load. You may omit "
+           "it, pass 'None', or pass matching tags.")
+          .format(export_dir, meta_graph_def.meta_info_def.tags, tags))
     object_graph_proto = _load_saved_object_graph_proto(object_graph_filename)
     with ops.init_scope():
       loader = _Loader(object_graph_proto,
@@ -256,7 +308,6 @@ def load(export_dir):
                        export_dir)
       root = loader.get(0)
   else:
-    raise NotImplementedError(
-        "Currently only SavedModels exported with `tf.saved_model.save` may be "
-        "imported. Other SavedModels may eventually be supported via load().")
+    with ops.init_scope():
+      root = load_v1_in_v2.load(export_dir, tags)
   return root

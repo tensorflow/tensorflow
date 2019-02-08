@@ -779,8 +779,8 @@ def save(obj, export_dir, signatures=None):
         checkpoint_graph_view)
 
   signatures = signature_serialization.canonicalize_signatures(signatures)
-  signature_map = signature_serialization.create_signature_map(
-      signatures, checkpoint_graph_view)
+  signature_serialization.validate_saveable_view(checkpoint_graph_view)
+  signature_map = signature_serialization.create_signature_map(signatures)
   checkpoint_graph_view.add_object(
       parent_node=checkpoint_graph_view.root,
       name_in_parent=signature_serialization.SIGNATURE_ATTRIBUTE_NAME,

@@ -431,13 +431,24 @@ class ConcreteFunction(object):
                args))
     args = list(args)
     for keyword in self._arg_keywords[len(args):]:
-      args.append(kwargs.pop(compat.as_str(keyword)))
+      try:
+        args.append(kwargs.pop(compat.as_str(keyword)))
+      except KeyError:
+        specified_keywords = (list(self._arg_keywords[:len(args)])
+                              + list(kwargs.keys()))
+        raise TypeError(
+            "Expected argument names {} but got values for {}. Missing: {}."
+            .format(
+                list(self._arg_keywords),
+                specified_keywords,
+                list(set(self._arg_keywords) - set(specified_keywords))))
     if kwargs:
       positional_arg_keywords = set(self._arg_keywords[:len(args)])
       for unused_key in kwargs:
         if unused_key in positional_arg_keywords:
           raise TypeError("Got two values for keyword '{}'.".format(unused_key))
-      raise TypeError("Keyword arguments {} unknown.".format(kwargs.keys()))
+      raise TypeError("Keyword arguments {} unknown. Expected {}.".format(
+          list(kwargs.keys()), list(self._arg_keywords)))
     return self._call_flat(args)
 
   def _filtered_call(self, args, kwargs):

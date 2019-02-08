@@ -215,8 +215,23 @@ revived_types.register_revived_type(
     )])
 
 
-def create_signature_map(signatures, saveable_view):
-  """Performs sanity checks and creates an object containing `signatures`."""
+def create_signature_map(signatures):
+  """Creates an object containing `signatures`."""
+  signature_map = _SignatureMap()
+  for name, func in signatures.items():
+    # This true of any signature that came from canonicalize_signatures. Here as
+    # a sanity check on saving; crashing on load (e.g. in _add_signature) would
+    # be more problematic in case future export changes violated these
+    # assertions.
+    assert isinstance(func, defun.ConcreteFunction)
+    assert isinstance(func.structured_outputs, collections.Mapping)
+    assert 0 == func._num_positional_args  # pylint: disable=protected-access
+    signature_map._add_signature(name, func)  # pylint: disable=protected-access
+  return signature_map
+
+
+def validate_saveable_view(saveable_view):
+  """Performs signature-related sanity checks on `saveable_view`."""
   for name, dep in saveable_view.list_dependencies(
       saveable_view.root):
     if name == SIGNATURE_ATTRIBUTE_NAME:
@@ -231,14 +246,3 @@ def create_signature_map(signatures, saveable_view):
                  saveable_view.root,
                  signatures=SIGNATURE_ATTRIBUTE_NAME))
       break
-  signature_map = _SignatureMap()
-  for name, func in signatures.items():
-    # This true of any signature that came from canonicalize_signatures. Here as
-    # a sanity check on saving; crashing on load (e.g. in _add_signature) would
-    # be more problematic in case future export changes violated these
-    # assertions.
-    assert isinstance(func, defun.ConcreteFunction)
-    assert isinstance(func.structured_outputs, collections.Mapping)
-    assert 0 == func._num_positional_args  # pylint: disable=protected-access
-    signature_map._add_signature(name, func)  # pylint: disable=protected-access
-  return signature_map

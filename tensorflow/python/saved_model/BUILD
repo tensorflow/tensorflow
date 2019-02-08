@@ -268,6 +268,14 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":revived_types",
+        ":signature_constants",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/training/checkpointable:base",
     ],
 )
 
@@ -334,6 +342,7 @@ py_library(
     deps = [
         ":constants",
         ":function_deserialization",
+        ":load_v1_in_v2",
         ":loader",
         ":nested_structure_coder",
         ":revived_types",
@@ -354,6 +363,22 @@ py_library(
     ],
 )
 
+py_library(
+    name = "load_v1_in_v2",
+    srcs = [
+        "load_v1_in_v2.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":loader",
+        ":signature_serialization",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:saver",
+        "//tensorflow/python/eager:wrap_function",
+        "//tensorflow/python/training/checkpointable:tracking",
+    ],
+)
+
 tf_py_test(
     name = "load_test",
     srcs = ["load_test.py"],
@@ -368,6 +393,32 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/training/checkpointable:tracking",
+    ],
+)
+
+tf_py_test(
+    name = "load_v1_in_v2_test",
+    srcs = ["load_v1_in_v2_test.py"],
+    additional_deps = [
+        ":builder",
+        ":load",
+        ":save",
+        ":signature_def_utils",
+        ":simple_save",
+        ":utils",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/training/checkpointable:tracking",
+        "//tensorflow/python:variables",
     ],
 )
 
