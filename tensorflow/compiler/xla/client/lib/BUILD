@@ -375,6 +375,7 @@ cc_library(
     srcs = ["sorting.cc"],
     hdrs = ["sorting.h"],
     deps = [
+        ":comparators",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
