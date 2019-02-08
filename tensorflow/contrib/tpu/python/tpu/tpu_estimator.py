@@ -2019,9 +2019,9 @@ class TPUEstimator(estimator_lib.Estimator):
   ==========
 
   `model_fn` should return `TPUEstimatorSpec`, which expects the `eval_metrics`
-  for TPU evaluation. However, if eval_on_tpu is False, `model_fn` must return
-  `EstimatorSpec` and the evaluation will execute on CPU or GPU; in this case
-  the following discussion on TPU evaluation does not apply.
+  for TPU evaluation. If eval_on_tpu is False, the evaluation will execute on
+  CPU or GPU; in this case the following discussion on TPU evaluation does not
+  apply.
 
   `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and `tensors`, where
   `tensors` could be a list of any nested structure of `Tensor`s (See
