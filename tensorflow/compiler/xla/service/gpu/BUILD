@@ -400,18 +400,21 @@ cc_library(
     srcs = ["cudnn_conv_algorithm_picker.cc"],
     hdrs = ["cudnn_conv_algorithm_picker.h"],
     deps = [
+        ":autotuning_proto",
         ":backend_configs",
         ":buffer_comparator",
         ":cudnn_conv_runner",
         ":gpu_executable",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
+        "//tensorflow/core:logger",
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -1083,5 +1086,14 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+xla_proto_library(
+    name = "autotuning_proto",
+    srcs = ["autotuning.proto"],
+    deps = [
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto",
     ],
 )
