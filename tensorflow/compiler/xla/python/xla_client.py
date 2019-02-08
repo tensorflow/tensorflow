@@ -41,6 +41,18 @@ from tensorflow.compiler.xla.service import hlo_pb2
 # pylint: disable=invalid-name
 
 
+# Version of the XLA Python client.
+#
+# JAX packages the XLA python plugin as a binary pip module (jaxlib) that is
+# packaged separately from the Python code that consumes it (jax).
+#
+# We occasionally need to make backwards-incompatible changes to jaxlib, in
+# which case we need to be able to detect when incompatible versions are
+# installed.
+def version():
+  return (0, 1, 7)
+
+
 _OP_METADATA_FIELDS = [
     'op_type',
     'op_name',
