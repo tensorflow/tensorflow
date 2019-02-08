@@ -334,6 +334,7 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
   params.window = &conv->window();
   params.dnums = &conv->convolution_dimension_numbers();
   params.feature_group_count = conv->feature_group_count();
+<<<<<<< 458b11f32eec953ac7d383dafb517791acf2c538
 
   #if TENSORFLOW_USE_ROCM
     params.algorithm = se::dnn::AlgorithmConfig();

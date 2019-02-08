@@ -76,27 +76,6 @@ StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
   return se::DeviceMemory<uint8>(buffer_addr);
 }
 
-std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
-                                         se::StreamExecutor* stream_exec) {
-  std::vector<AlgorithmDesc> algorithms;
-  bool succ = false;
-  switch (kind) {
-    case CudnnConvKind::kBackwardFilter:
-      succ =
-          stream_exec->GetConvolveBackwardFilterAlgorithms(true, &algorithms);
-      break;
-    case CudnnConvKind::kBackwardInput:
-      succ = stream_exec->GetConvolveBackwardDataAlgorithms(true, &algorithms);
-      break;
-    case CudnnConvKind::kForward:
-    case CudnnConvKind::kForwardActivation:
-      succ = stream_exec->GetConvolveAlgorithms(true, &algorithms);
-      break;
-  }
-  DCHECK(succ);
-
-  return algorithms;
-}
 
 string AlgorithmToString(const AlgorithmDesc& algo) {
   if (algo.tensor_ops_enabled()) {
@@ -238,82 +217,6 @@ MiopenConvAlgorithmPicker::PickBestAlgorithm(
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       instr->backend_config<CudnnConvBackendConfig>());
 
-#if 0
-  optional<F16BufferComparator> comparator;
-  // Use the first algorithm that's supported as reference. There isn't a
-  // particular reason to use it, as any algorithm sufficies. It doesn't make
-  // this algorithm considered correct, though.
-  optional<AlgorithmDesc> first_algorithm;
-  TF_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(instr));
-  for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
-    ScratchAllocator scratch_allocator(device_ordinal, allocator);
-    se::dnn::ProfileResult profile_result;
-    VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
-            << instr->ToString();
-
-    // Use assignment instead of brace-list to make GCC 4.9 happy.
-    RunConvOptions options;
-    options.profile_result = &profile_result;
-    options.algo_override = alg;
-    bool launch_ok =
-        RunCudnnConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
-                     &scratch_allocator, &stream, options)
-            .ok();
-
-    if (launch_ok && profile_result.is_valid()) {
-      const bool crash_on_checking_failure =
-          instr->GetModule()
-              ->config()
-              .debug_options()
-              .xla_gpu_crash_on_verification_failures();
-      if (comparator.has_value()) {
-        StatusOr<bool> result = comparator->CompareEqual(
-            se::DeviceMemory<Eigen::half>(result_buffer));
-        if (!result.ok()) {
-          LOG(ERROR) << "Unable to compare "
-                     << AlgorithmToString(*first_algorithm) << " against "
-                     << AlgorithmToString(alg) << " for " << instr->ToString()
-                     << ": " << result.status();
-          CHECK(!crash_on_checking_failure);
-        } else if (!result.ValueOrDie()) {
-          LOG(ERROR) << "Results mismatch between different convolution "
-                        "algorithms. This is likely a bug in convolution, or "
-                        "an excessive loss of precision in convolution. "
-                     << instr->ToString() << " for "
-                     << AlgorithmToString(*first_algorithm) << " vs "
-                     << AlgorithmToString(alg);
-          CHECK(!crash_on_checking_failure);
-        }
-      } else if (cross_check_enabled) {
-        auto comp = F16BufferComparator::Create(
-            se::DeviceMemory<Eigen::half>(result_buffer), compiler_, allocator,
-            &stream);
-        if (comp.ok()) {
-          comparator.emplace(comp.ConsumeValueOrDie());
-          first_algorithm.emplace(alg);
-        } else {
-          LOG(ERROR) << "Fail to initialize buffer comparator: "
-                     << comp.status() << ", instruction: " << instr->ToString();
-          CHECK(!crash_on_checking_failure);
-        }
-      }
-      int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
-      VLOG(3) << "Run of algorithm " << AlgorithmToString(alg)
-              << " succeeded, taking " << profile_result.elapsed_time_in_ms()
-              << "ms and using " << NumBytesToString(scratch_bytes_used)
-              << " of scratch (Best result: "
-              << best_result.elapsed_time_in_ms() << "ms, "
-              << NumBytesToString(best_result_bytes_used) << " of scratch)";
-      if (profile_result.elapsed_time_in_ms() <
-          best_result.elapsed_time_in_ms()) {
-        best_result = profile_result;
-        best_result_bytes_used = scratch_bytes_used;
-      }
-    } else {
-      VLOG(3) << "Run of algorithm " << AlgorithmToString(alg) << " failed.";
-    }
-  }
-#endif
   ScratchAllocator scratch_allocator(device_ordinal, allocator);
   se::dnn::ProfileResult profile_result;
   VLOG(3) << "Auto-tuning for " << instr->ToString();

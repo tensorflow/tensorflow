@@ -152,8 +152,9 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
     default:
       codegen_opt_level = CodeGenOpt::None;
   }
+  const std::string FeaturesStr = "-code-object-v3";
   return absl::WrapUnique(target->createTargetMachine(
-      triple.str(), llvm_ir::AsStringRef(cpu_name), "", target_options,
+      triple.str(), llvm_ir::AsStringRef(cpu_name), FeaturesStr, target_options,
       getRelocModel(), getCodeModel(),
       codegen_opt_level));
 }
