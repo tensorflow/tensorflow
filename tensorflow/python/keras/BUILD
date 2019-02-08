@@ -156,6 +156,7 @@ py_library(
         ":activations",
         ":backend",
         ":callbacks",
+        ":callbacks_v1",
         ":constraints",
         ":engine_utils",
         ":initializers",
@@ -212,6 +213,18 @@ py_library(
     name = "callbacks",
     srcs = [
         "callbacks.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        ":engine_utils",
+    ],
+)
+
+py_library(
+    name = "callbacks_v1",
+    srcs = [
+        "callbacks_v1.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -505,14 +518,14 @@ tf_py_test(
 
 tf_py_test(
     name = "applications_test",
-    size = "enormous",
+    size = "medium",
     srcs = ["applications/applications_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 2,
+    shard_count = 11,
 )
 
 tf_py_test(
@@ -1001,6 +1014,20 @@ tf_py_test(
     name = "callbacks_test",
     size = "medium",
     srcs = ["callbacks_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
+    tags = ["notsan"],
+)
+
+tf_py_test(
+    name = "callbacks_v1_test",
+    size = "medium",
+    srcs = ["callbacks_v1_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",

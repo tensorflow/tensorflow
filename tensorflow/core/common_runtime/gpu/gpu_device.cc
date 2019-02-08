@@ -276,6 +276,28 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
       sync_every_op_(sync_every_op),
       max_streams_(max_streams) {
   GPUProcessState::singleton()->EnableGPUDevice();
+  pending_cap_ = options.config.gpu_options().experimental().pending_cap();
+  timestamped_allocator_ =
+      options.config.gpu_options().experimental().timestamped_allocator();
+  if (timestamped_allocator_ || pending_cap_ > 0) {
+    std::unique_ptr<SharedCounter> timing_counter;
+    if (timestamped_allocator_) {
+      // In this case the SharedCounter was already created and set in the
+      // associated Allocator, with ownership by GPUProcessState.  Here we take
+      // over ownership of that SharedAllocator to transfer it to the
+      // GPUKernelTracker.
+      timing_counter =
+          GPUProcessState::singleton()->ReleaseGPUAllocatorCounter(tf_gpu_id);
+      DCHECK(timing_counter.get());
+    } else {
+      DCHECK_GT(pending_cap_, 0);
+      // In this case we need a SharedCounter to be owned by GPUKernelTracker
+      // but one was not created for use by the Allocator, so we create one.
+      timing_counter.reset(new SharedCounter);
+    }
+    kernel_tracker_.reset(
+        new GPUKernelTracker(Env::Default(), std::move(timing_counter)));
+  }
 }
 
 BaseGPUDevice::~BaseGPUDevice() {
@@ -508,6 +530,10 @@ void BaseGPUDevice::ComputeHelper(OpKernel* op_kernel,
       if (idc->stream() != stream) stream->ThenWaitFor(idc->stream());
     }
   }
+  if (pending_cap_ > 0) {
+    DCHECK(kernel_tracker_);
+    kernel_tracker_->PauseWhilePendingExceeds(pending_cap_);
+  }
   se::cuda::ScopedActivateExecutorContext scoped_activation{stream->parent()};
   op_kernel->Compute(context);
   if (context->status().ok()) {
@@ -524,6 +550,14 @@ void BaseGPUDevice::ComputeHelper(OpKernel* op_kernel,
     } else if (vlog_1) {
       VLOG(1) << "GpuDevice::ComputeHelper scheduled "
               << ComputeOpKernelDebugString(*op_kernel, stream_id);
+    }
+    if (kernel_tracker_) {
+      GPUKernelTracker* tracker = kernel_tracker_.get();
+      DCHECK(tracker);
+      uint64 queued_count = tracker->RecordQueued();
+      em_->ThenExecute(stream, [op_kernel, tracker, queued_count]() {
+        tracker->RecordTerminated(queued_count);
+      });
     }
   } else {
     if (vlog_1) {
@@ -721,8 +755,8 @@ Status ParseVisibleDeviceList(const string& visible_device_list,
       if (!strings::safe_strto32(platform_gpu_id_str, &platform_gpu_id)) {
         return errors::InvalidArgument(
             "Could not parse entry in 'visible_device_list': '",
-            platform_gpu_id_str, "'. visible_device_list = ",
-            visible_device_list);
+            platform_gpu_id_str,
+            "'. visible_device_list = ", visible_device_list);
       }
       if (platform_gpu_id < 0 ||
           platform_gpu_id >= gpu_manager->VisibleDeviceCount()) {
@@ -957,15 +991,15 @@ Status BaseGPUDeviceFactory::CreateDevices(
     for (PlatformGpuId platform_gpu_id : valid_platform_gpu_ids) {
       err = cudaSetDevice(platform_gpu_id.value());
       if (err != cudaSuccess) {
-        return errors::Internal("cudaSetDevice() on GPU:",
-                                platform_gpu_id.value(), " failed. Status: ",
-                                cudaGetErrorString(err));
+        return errors::Internal(
+            "cudaSetDevice() on GPU:", platform_gpu_id.value(),
+            " failed. Status: ", cudaGetErrorString(err));
       }
       err = cudaFree(nullptr);
       if (err != cudaSuccess) {
         return errors::Internal("CUDA runtime implicit initialization on GPU:",
-                                platform_gpu_id.value(), " failed. Status: ",
-                                cudaGetErrorString(err));
+                                platform_gpu_id.value(),
+                                " failed. Status: ", cudaGetErrorString(err));
       }
     }
     // Reset to the original device.
@@ -1515,6 +1549,115 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
   }
 
   return Status::OK();
+}
+
+uint64 BaseGPUDevice::SafeAllocFrontier() {
+  if (timestamped_allocator_) {
+    return kernel_tracker_->LastTerminatedCount();
+  } else {
+    return 0;
+  }
+}
+
+int BaseGPUDevice::PendingKernels() {
+  if (kernel_tracker_) {
+    return kernel_tracker_->NumPending();
+  }
+  return 0;
+}
+
+uint64 GPUKernelTracker::RecordQueued() {
+  mutex_lock l(mu_);
+  uint64 queued_count = timing_counter_->next();
+  VLOG(2) << "RecordQueued queued_count=" << queued_count
+          << " first_available_=" << first_available_
+          << " last_completed_=" << last_completed_
+          << " num_pending_=" << num_pending_;
+  pending_kernels_[first_available_].queued_count = queued_count;
+  pending_kernels_[first_available_].terminated = false;
+  ++first_available_;
+  ++num_pending_;
+  if (first_available_ >= pending_kernels_.size()) {
+    first_available_ = 0;
+  }
+  if (first_available_ == last_completed_) {
+    // Ring buffer is full: double it.  All of the same valid PendingKernel
+    // entries exist after the copy, they are just shifted to begin
+    // at index 0 in the new array.
+    std::vector<PendingKernel> new_buffer(pending_kernels_.size() * 2);
+    for (int i = 0; i < pending_kernels_.size(); ++i) {
+      int j = (i + last_completed_) % pending_kernels_.size();
+      new_buffer[i] = pending_kernels_[j];
+    }
+    last_completed_ = 0;
+    first_available_ = pending_kernels_.size();
+    pending_kernels_.swap(new_buffer);
+    VLOG(1) << "last_completed_=" << last_completed_
+            << " first_available_=" << first_available_
+            << " num_pending_=" << num_pending_;
+  }
+  DCHECK_NE(first_available_, last_completed_) << "exhausted pending_kernels";
+  return queued_count;
+}
+
+void GPUKernelTracker::RecordTerminated(uint64 queued_count) {
+  mutex_lock l(mu_);
+  VLOG(2) << "RecordTerminated queued_count=" << queued_count
+          << " first_available_=" << first_available_
+          << " last_completed_=" << last_completed_
+          << " num_pending_=" << num_pending_ << " LC="
+          << ((last_completed_ >= 0)
+                  ? pending_kernels_[last_completed_].queued_count
+                  : -1);
+  DCHECK_NE(first_available_, last_completed_);
+  DCHECK_GT(num_pending_, 0);
+  // Starting just past the last completed entry, find the entry with
+  // this queued_count and mark it done.
+  int index = (last_completed_ + 1) % pending_kernels_.size();
+  while (true) {
+    if (index == first_available_) {
+      // This should never happen.
+      LOG(FATAL) << "Failed to find " << queued_count  // Crash OK
+                 << " in queue";
+    }
+    if (pending_kernels_[index].queued_count == queued_count) {
+      pending_kernels_[index].terminated = true;
+      break;
+    }
+    index = (index + 1) % pending_kernels_.size();
+  }
+  // Next move last_completed_ forward past all completed kernels.  In theory
+  // kernels should always complete in queued order so we should be able to
+  // advance the completed frontier to the last queued PendingKernel.  In
+  // practice we occassionally see the termination callbacks arrive out of order
+  // probably because of thread scheduling.  Eventually we may support out-of-
+  // order completion involving multple compute streams so here we follow a
+  // conservative approach and wait for every single callback to arrive before
+  // advancing the frontier.
+  while (true) {
+    int next_index = (last_completed_ + 1) % pending_kernels_.size();
+    if (next_index == first_available_) break;
+    if (pending_kernels_[next_index].terminated) {
+      last_completed_ = next_index;
+    } else {
+      break;
+    }
+  }
+  // Last decrease num_pending before maybe waking a waiter.
+  --num_pending_;
+  pending_decreased_.notify_one();
+}
+
+uint64 GPUKernelTracker::LastTerminatedCount() {
+  mutex_lock l(mu_);
+  if (last_completed_ < 0) {
+    // This is an edge case that can be encountered only at the beginning of
+    // execution.  There's not yet a safe threshold count. We don't want to
+    // return 0 since that bypasses the count mechanism in BFCAllocator, so
+    // return the least non-zero value.
+    return 1;
+  }
+  return pending_kernels_[last_completed_].queued_count;
 }
 
 }  // namespace tensorflow

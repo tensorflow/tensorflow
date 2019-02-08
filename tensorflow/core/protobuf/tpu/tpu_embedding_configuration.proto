@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package tensorflow.tpu;
 
-import "tensorflow/contrib/tpu/proto/optimization_parameters.proto";
-import "tensorflow/contrib/tpu/proto/tpu_embedding_output_layout.proto";
+import "tensorflow/core/protobuf/tpu/optimization_parameters.proto";
+import "tensorflow/core/protobuf/tpu/tpu_embedding_output_layout.proto";
 
 message TPUEmbeddingConfiguration {
   // Description of the various embedding tables.

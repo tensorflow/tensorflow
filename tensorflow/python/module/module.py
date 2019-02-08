@@ -207,7 +207,8 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
 
     Returns:
       A sequence of variables for the current module (sorted by attribute
-      name) followed by variables from all submodules recursively (depth first).
+      name) followed by variables from all submodules recursively (breadth
+      first).
     """
     return tuple(self._flatten(predicate=_IS_VARIABLE))
 
@@ -221,7 +222,8 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
 
     Returns:
       A sequence of variables for the current module (sorted by attribute
-      name) followed by variables from all submodules recursively (depth first).
+      name) followed by variables from all submodules recursively (breadth
+      first).
     """
     return tuple(self._flatten(predicate=_IS_TRAINABLE_VARIABLE))
 
@@ -249,7 +251,8 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
   def _flatten(self,
                recursive=True,
                predicate=None,
-               attribute_traversal_key=None):
+               attribute_traversal_key=None,
+               with_path=False):
     """Flattened attribute values in sorted order by attribute name.
 
     Modules are flattened by first walking their attributes in name order.
@@ -267,11 +270,15 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
     ...
     ...   @property
     ...   def tensors(self):
-    ...     return tuple(self._flatten(predicate=is_tensor))
+    ...     return tuple(self._flatten(predicate=is_tensor, with_path=True))
 
     >>> foo = Foo()
     >>> foo.tensors
-    (<tf.Tensor...'a'>, <tf.Tensor...'b'>, ...'c'>, ...'d'>, ...'e'>)
+    ((('x', 0),   <tf.Tensor: ...'a'>),
+     (('x', 1),   <tf.Tensor: ...'b'>),
+     (('y', 'i'), <tf.Tensor: ...'c'>),
+     (('y', 'j'), <tf.Tensor: ...'d'>),
+     (('z',),     <tf.Tensor: ...'e'>))
 
     `attribute_traversal_key` controls the order object properties are visited.
     If not set objects are visited in ascending order by name.
@@ -284,6 +291,10 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
       attribute_traversal_key: (Optional) Method to rekey object attributes
         before they are sorted. Contract is the same as `key` argument to
         builtin `sorted` and only applies to object properties.
+      with_path: (Optional) Whether to include the path to the object as well
+        as the object itself. If `with_path` is `True` then leaves will not be
+        de-duplicated (e.g. if the same leaf instance is reachable via multiple
+        modules then it will be yielded multiple times with different paths).
 
     Returns:
       Flat generator for leaves of the current module and optionally all
@@ -297,7 +308,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
         recursive=recursive,
         predicate=predicate,
         attribute_traversal_key=attribute_traversal_key,
-        seen=set())
+        with_path=with_path)
 
   @classmethod
   def no_name_scope(cls, method):
@@ -337,8 +348,20 @@ def camel_to_snake(value):
   return _CAMEL_TO_SNAKE_R.sub(r"_\1", value).lower()
 
 
-def _flatten_module(module, recursive, predicate, attribute_traversal_key,
-                    seen):
+# AutoCheckpointable adds object attributes that users will not expect us to
+# include when flattening (these reference dependencies reachable via other
+# object attributes).
+AUTO_CHECKPOINTABLE_ATTRS = ("_unconditional_checkpoint_dependencies",
+                             "_unconditional_dependency_names")
+
+
+def _flatten_module(module,
+                    recursive,
+                    predicate,
+                    attribute_traversal_key,
+                    with_path,
+                    module_path=(),
+                    seen=None):
   """Implementation of `flatten`."""
   if seen is None:
     seen = set([id(module)])
@@ -347,25 +370,37 @@ def _flatten_module(module, recursive, predicate, attribute_traversal_key,
   submodules = []
 
   for key in sorted(module_dict, key=attribute_traversal_key):
-    for leaf in nest.flatten(module_dict[key]):
-      leaf_id = id(leaf)
-      if leaf_id in seen:
-        continue
+    if key in AUTO_CHECKPOINTABLE_ATTRS:
+      continue
 
-      seen.add(leaf_id)
+    for leaf_path, leaf in nest.flatten_with_tuple_paths(module_dict[key]):
+      leaf_path = (key,) + leaf_path
+
+      # TODO(tomhennigan) Handle cycles for `with_path=True` (e.g. `a.a = a`).
+      if not with_path:
+        leaf_id = id(leaf)
+        if leaf_id in seen:
+          continue
+        seen.add(leaf_id)
+
       if predicate(leaf):
-        yield leaf
+        if with_path:
+          yield module_path + leaf_path, leaf
+        else:
+          yield leaf
 
       if recursive and isinstance(leaf, Module):
         # Walk direct properties first then recurse.
-        submodules.append(leaf)
+        submodules.append((module_path + leaf_path, leaf))
 
-  for submodule in submodules:
+  for submodule_path, submodule in submodules:
     subvalues = _flatten_module(
         submodule,
         recursive=recursive,
         predicate=predicate,
         attribute_traversal_key=attribute_traversal_key,
+        with_path=with_path,
+        module_path=submodule_path,
         seen=seen)
 
     for subvalue in subvalues:

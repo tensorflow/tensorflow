@@ -894,14 +894,23 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<tensorflow::int64>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
+      optional<HloComputation*> to_apply;
+      // TODO(b/122298745): Make this required.
+      attrs["to_apply"] = {/*required=*/false, AttrTy::kHloComputation,
+                           &to_apply};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs) ||
           dimensions->size() != 1) {
         return false;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateSort(
-          shape, dimensions->at(0),
-          /*keys=*/operands[0],
-          /*values=*/absl::Span<HloInstruction* const>(operands).subspan(1)));
+      if (to_apply.has_value()) {
+        instruction = builder->AddInstruction(HloInstruction::CreateSort(
+            shape, dimensions->at(0), operands, to_apply.value()));
+      } else {
+        instruction = builder->AddInstruction(HloInstruction::CreateSort(
+            shape, dimensions->at(0),
+            /*keys=*/operands[0],
+            /*values=*/absl::Span<HloInstruction* const>(operands).subspan(1)));
+      }
       break;
     }
     case HloOpcode::kTuple: {

@@ -37,11 +37,11 @@ class VariantTensorDataProto;
 // separate so that kernels do not need to depend on protos.
 class VariantTensorData {
  public:
-  VariantTensorData();
+  VariantTensorData() = default;
+
   // TODO(b/118823936): This silently returns if the proto is invalid.
   // Consider calling FromProto explicitly instead.
   VariantTensorData(VariantTensorDataProto proto);
-  ~VariantTensorData();
 
   // Name of the type of objects being serialized.
   const string& type_name() const { return type_name_; }

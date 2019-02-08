@@ -168,6 +168,35 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
       /*profile=*/profile);
 }
 
+StatusOr<Literal> HloRunner::Execute(
+    std::unique_ptr<Executable> executable,
+    const absl::Span<const Literal* const> arguments,
+    ExecutionProfile* profile) {
+  TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
+                      TransferLiteralsToDevice(arguments));
+  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
+                      ExecuteWithDeviceBuffers(
+                          /*module=*/std::move(executable),
+                          /*arguments=*/argument_buffers,
+                          /*profile=*/profile));
+  return TransferLiteralFromDevice(result);
+}
+
+StatusOr<Literal> HloRunner::Execute(std::unique_ptr<Executable> executable,
+                                     const absl::Span<const Literal> arguments,
+                                     ExecutionProfile* profile) {
+  // Construct a vector of plain pointers for the arguments.
+  std::vector<const Literal*> argument_pointers;
+  argument_pointers.reserve(arguments.size());
+  for (const auto& argument : arguments) {
+    argument_pointers.push_back(&argument);
+  }
+  return Execute(
+      /*module=*/std::move(executable),
+      /*arguments=*/argument_pointers,
+      /*profile=*/profile);
+}
+
 StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
     std::unique_ptr<HloModule> module,
     const absl::Span<const ShapedBuffer* const> arguments, bool run_hlo_passes,

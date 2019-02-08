@@ -878,5 +878,68 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         2, imported.table_user(constant_op.constant("gamma")).numpy())
 
+  def test_functions_accessed_once(self, cycles):
+
+    class Exported(tracking.AutoCheckpointable):
+
+      def __init__(self):
+        self._counter = 0
+
+      @property
+      def make_func(self):
+        @def_function.function
+        def f():
+          return constant_op.constant(self._counter)
+        f.get_concrete_function()  # force a trace
+        self._counter += 1
+        return f
+
+    exported = Exported()
+    imported = self.cycle(exported, cycles)
+    self.assertEqual(0, imported.make_func().numpy())
+    self.assertEqual(1, exported.make_func().numpy())
+
+  def test_overwritten_signatures_error(self, cycles):
+    exported = tracking.AutoCheckpointable()
+    exported.f = def_function.function(lambda: constant_op.constant(1.))
+    imported = self.cycle(
+        exported, cycles,
+        signatures={"key": exported.f.get_concrete_function()})
+    self.assertEqual(1., imported.signatures["key"]()["output_0"].numpy())
+    imported.signatures = {"key1": imported.signatures["key"]}
+    with self.assertRaisesRegexp(ValueError, "signatures"):
+      save.save(imported, tempfile.mkdtemp(prefix=self.get_temp_dir()))
+
+  def test_signature_loading(self, cycles):
+
+    class Exported(tracking.AutoCheckpointable):
+
+      def __init__(self):
+        self.v = variables.Variable(3.)
+
+      @def_function.function
+      def do(self, x):
+        return self.v * x
+
+    exported = Exported()
+    imported = self.cycle(
+        exported,
+        signatures=exported.do.get_concrete_function(
+            tensor_spec.TensorSpec(None, dtypes.float32)))
+    for _ in range(cycles - 1):
+      imported = self.cycle(imported, signatures=imported.signatures)
+    self.assertEqual(["serving_default"], list(imported.signatures.keys()))
+    imported_function = imported.signatures["serving_default"]
+    two = constant_op.constant(2.)
+    self.assertEqual(6., imported_function(x=two)["output_0"].numpy())
+    imported.v.assign(4.)
+    self.assertEqual(8., imported_function(x=two)["output_0"].numpy())
+    with self.assertRaisesRegexp(TypeError, "positional"):
+      imported_function(two)
+    with self.assertRaises(TypeError):
+      # The signatures mapping is immutable
+      imported.signatures["random_key"] = 3
+
+
 if __name__ == "__main__":
   test.main()

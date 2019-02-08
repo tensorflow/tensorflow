@@ -547,7 +547,7 @@ bool GenEagerPythonOp::GetEagerFunctionSetup(const string& indentation,
       strings::StrAppend(function_setup, indentation, attr_api_name,
                          " = [_execute.make_tensor(_t, \"", attr_api_name,
                          "\") for _t in ", attr_api_name, "]\n");
-    } else if (attr_type != "func") {
+    } else if (attr_type != "func" && attr_type != "list(func)") {
       *function_setup =
           strings::StrCat("# No definition for ", function_name_,
                           " since we don't support attrs with type\n"

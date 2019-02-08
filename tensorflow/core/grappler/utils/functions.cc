@@ -314,7 +314,7 @@ GrapplerFunctionItem::GrapplerFunctionItem(
     std::vector<string> keep_nodes, const int graph_def_version,
     const bool is_stateful, GraphDef&& function_body)
     : description_(std::move(description)),
-      func_attr_(std::move(func_attr)),
+      func_attr_(func_attr),
       input_arg_expansions_(std::move(input_arg_expansions)),
       output_arg_expansions_(std::move(output_arg_expansions)),
       is_stateful_(is_stateful) {

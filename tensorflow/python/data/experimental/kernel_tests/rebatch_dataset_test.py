@@ -55,6 +55,23 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     with self.assertRaisesRegexp(ValueError, "not divisible by"):
       batching._RebatchDataset(dataset, num_workers=5)
 
+  def testTupleOutput(self):
+    dataset = (dataset_ops.Dataset.range(1024).map(lambda x: (x, x))
+               .batch(32, drop_remainder=True))
+    rebatched_dataset = batching._RebatchDataset(dataset, num_workers=4)
+    expected_output = [([k for k in range(i, i + 8)],  # pylint: disable=g-complex-comprehension
+                        [k for k in range(i, i + 8)])
+                       for i in range(0, 1024, 8)]
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  def testNestedDictionaryOutput(self):
+    dataset = dataset_ops.Dataset.range(1024).map(
+        lambda x: {"a": x, "b": {"c": x}}).batch(32, drop_remainder=True)
+    rebatched_dataset = batching._RebatchDataset(dataset, num_workers=4)
+    expected_output = [{"a": [k for k in range(i, i + 8)],  # pylint: disable=g-complex-comprehension
+                        "b": {"c": [k for k in range(i, i + 8)]}}
+                       for i in range(0, 1024, 8)]
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
 
 if __name__ == "__main__":
   test.main()

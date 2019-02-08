@@ -44,6 +44,7 @@ default_execution_mode = EAGER_MODE if tf2.enabled() else GRAPH_MODE
 # Note that we do not protect this with a lock and instead rely on python's GIL
 # and the idempotent nature of writes to provide thread safety.
 _device_parsing_cache = {}
+_starting_device_spec = pydev.DeviceSpec.from_string("")
 
 _MAXINT32 = 2**31 - 1
 
@@ -135,26 +136,52 @@ class _EagerContext(threading.local):
 
   def __init__(self, config=None):
     super(_EagerContext, self).__init__()
-    self.device_spec = pydev.DeviceSpec.from_string("")
-    self.device_name = self.device_spec.to_string()
+    self.device_spec = _starting_device_spec
+    self.device_name = ""
     self.mode = default_execution_mode
     self.is_eager = default_execution_mode == EAGER_MODE
     self.scope_name = ""
     self.recording_summaries = False
     self.summary_writer_resource = None
     self.scalar_cache = {}
-    self.ones_rank_cache = _EagerTensorCache()
-    self.zeros_cache = _EagerTensorCache()
+    self._ones_rank_cache = None
+    self._zeros_cache = None
     self.execution_mode = None
 
     # Default rewriter config corresponds to turning all default grappler
     # optimizations on.
-    base_config = config_pb2.ConfigProto()
+    self._config = config
 
-    if config is not None:
-      base_config.MergeFrom(config)
+    self._function_call_options = None
 
-    self.function_call_options = FunctionCallOptions(config_proto=base_config)
+  @property
+  def function_call_options(self):
+    if self._function_call_options is None:
+      base_config = config_pb2.ConfigProto()
+      if self._config is not None:
+        base_config.MergeFrom(self._config)
+      self._config = None
+      self._function_call_options = FunctionCallOptions(
+          config_proto=base_config)
+
+    return self._function_call_options
+
+  @function_call_options.setter
+  def function_call_options(self, function_call_options):
+    self._function_call_options = function_call_options
+    self._config = None
+
+  @property
+  def ones_rank_cache(self):
+    if not self._ones_rank_cache:
+      self._ones_rank_cache = _EagerTensorCache()
+    return self._ones_rank_cache
+
+  @property
+  def zeros_cache(self):
+    if not self._zeros_cache:
+      self._zeros_cache = _EagerTensorCache()
+    return self._zeros_cache
 
 
 ContextSwitch = collections.namedtuple(

@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/process_state.h"
+#include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -33,6 +34,7 @@ namespace tensorflow {
 
 class Allocator;
 class PoolAllocator;
+class SharedCounter;
 
 // Singleton that manages per-process state when GPUs are present.
 class GPUProcessState {
@@ -108,6 +110,8 @@ class GPUProcessState {
   // Returns bus_id for the given GPU id.
   virtual int BusIdForGPU(TfGpuId tf_gpu_id);
 
+  std::unique_ptr<SharedCounter> ReleaseGPUAllocatorCounter(TfGpuId tf_gpu_id);
+
  protected:
   // GPUProcessState is a singleton that should not normally be deleted except
   // at process shutdown.
@@ -132,6 +136,7 @@ class GPUProcessState {
 
   struct AllocatorParts {
     std::unique_ptr<Allocator> allocator;
+    std::unique_ptr<SharedCounter> counter;
     SubAllocator* sub_allocator;  // owned by allocator
     std::unique_ptr<Allocator> recording_allocator;
   };

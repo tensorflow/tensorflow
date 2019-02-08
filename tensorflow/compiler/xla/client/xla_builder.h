@@ -56,6 +56,9 @@ class XlaOp {
   }
   ~XlaOp() = default;
 
+  XlaOp(const XlaOp& other) = default;
+  XlaOp& operator=(const XlaOp& other) = default;
+
   // Precondition: !IsUninitialized().
   //
   // It's very common to do foo.builder()->bar().  Without this precondition, if

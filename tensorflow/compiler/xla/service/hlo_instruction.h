@@ -598,7 +598,6 @@ class HloInstruction {
   // f_2 = f(f_1.tuple_element(0), ..., f_1.tuple_element(N), input0.value1,
   // ..., inputN.value1)
   // ...
-  // TODO(b/112040122): Add support to this in HLO passes and in backends.
   static std::unique_ptr<HloInstruction> CreateReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<HloInstruction* const> init_values,
@@ -675,6 +674,15 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateSort(
       const Shape& shape, int64 dimension, HloInstruction* keys,
       absl::Span<HloInstruction* const> values = {});
+
+  // Creates a n-ary sort op with a 'compare' computation which is used for
+  // comparisons in the sorting algorithm. 'compare' gets 2 * n parameters,
+  // where parameters 2 * i and 2 * i + 1 are the values of the i-th operand at
+  // specific index positions which should be compared, and should return a
+  // PRED.
+  static std::unique_ptr<HloInstruction> CreateSort(
+      const Shape& shape, int64 dimension,
+      absl::Span<HloInstruction* const> operands, HloComputation* compare);
 
   // Creates a while instruction, given a condition computation, a body
   // computation, and the initial value for the input of the computations. For
@@ -1241,6 +1249,10 @@ class HloInstruction {
   // Use the given NameUniquer to select a unique name for the instruction based
   // on the instruction's existing name.
   void UniquifyName(NameUniquer* name_uniquer);
+
+  // Clear the unique ID of the instruction so that it can be re-assigned, such
+  // as for the purpose of compacting the instruction unique IDs.
+  void ClearUniqueIdInternal() { unique_id_ = -1; }
 
   // Set the unique id for this instruction to "id"
   void SetUniqueId(int id) {

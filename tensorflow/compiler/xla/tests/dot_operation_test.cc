@@ -1188,6 +1188,12 @@ std::vector<EinsumParamType> GetEinsumTestCases() {
       p{v{8, 55, 11, 3}, v{55, 11, 3, 29}, "mkBC,kBCn->BCnm"},
       p{v{5, 6}, v{6, 7}, "ab,cd->dcba"},
       p{v{6}, v{6, 7}, "b,bc->c"},
+      p{v{77}, v{77}, "a,a->a"},
+      p{v{55}, v{}, "a,->a"},
+      p{v{11, 111}, v{11}, "ab,a->ab"},
+      p{v{16, 34}, v{16, 34}, "ab,ab->ab"},
+      p{v{16, 3, 34}, v{3, 16, 34}, "abc,bac->abc"},
+      p{v{5, 19}, v{}, "ab,->ab"},
   };
   return test_cases;
 }

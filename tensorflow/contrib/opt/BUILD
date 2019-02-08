@@ -413,8 +413,9 @@ py_test(
 
 py_test(
     name = "shampoo_test",
-    size = "large",
+    size = "medium",
     srcs = ["python/training/shampoo_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",

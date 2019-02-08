@@ -393,7 +393,6 @@ tf_cuda_cc_test(
         ":traceme_recorder",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
 )
