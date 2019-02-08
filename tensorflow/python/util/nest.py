@@ -124,7 +124,7 @@ def _sequence_like(instance, args):
     # ordered and plain dicts (e.g., flattening a dict but using a
     # corresponding `OrderedDict` to pack it back).
     result = dict(zip(_sorted(instance), args))
-    return type(instance)((key, result[key]) for key in _six.iterkeys(instance))
+    return type(instance)((key, result[key]) for key in instance)
   elif _is_namedtuple(instance) or _is_attrs(instance):
     return type(instance)(*args)
   elif _is_composite_tensor(instance):

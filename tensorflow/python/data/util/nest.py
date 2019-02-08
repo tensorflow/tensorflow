@@ -68,7 +68,7 @@ def _sequence_like(instance, args):
     # ordered and plain dicts (e.g., flattening a dict but using a
     # corresponding `OrderedDict` to pack it back).
     result = dict(zip(_sorted(instance), args))
-    return type(instance)((key, result[key]) for key in _six.iterkeys(instance))
+    return type(instance)((key, result[key]) for key in instance)
   elif (isinstance(instance, tuple) and
         hasattr(instance, "_fields") and
         isinstance(instance._fields, _collections.Sequence) and
