@@ -70,7 +70,7 @@ tf_module {
   }
   member_method {
     name: "conv2d_transpose"
-    argspec: "args=[\'value\', \'filter\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'name\', \'input\', \'filters\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'SAME\', \'NHWC\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'value\', \'filter\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'name\', \'input\', \'filters\', \'dilations\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'SAME\', \'NHWC\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "conv3d"
