@@ -31,6 +31,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -270,6 +271,19 @@ class DefFunctionTest(test.TestCase):
     self.assertEqual(signature_args,
                      (tensor_spec.TensorSpec(
                          None, dtypes.float32, name='x'),))
+
+  def test_error_inner_capture(self):
+
+    @def_function.function
+    def f(inputs):
+      num_steps, _ = inputs.shape[:2]
+      outputs = []
+      for t in math_ops.range(num_steps):
+        outputs.append(inputs[t])
+      return outputs
+
+    with self.assertRaisesRegexp(ValueError, 'inner'):
+      f(array_ops.zeros(shape=(8, 42, 3)))
 
   def test_serialization_signature_cache(self):
 

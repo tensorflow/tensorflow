@@ -195,6 +195,9 @@ class FuncGraph(ops.Graph):
     else:
       self._collections = collections
 
+  def __str__(self):
+    return "FuncGraph(name=%s, id=%s)" % (self.name, id(self))
+
   def as_default(self):
     outer_cm = super(FuncGraph, self).as_default()
 
@@ -366,6 +369,19 @@ class FuncGraph(ops.Graph):
     if tensor.graph is not self:
       if name is None:
         name = tensor.op.name
+      inner_graph = tensor.graph
+      while inner_graph is not None and isinstance(inner_graph, FuncGraph):
+        if inner_graph is self:
+          raise ValueError(
+              "Trying to capture a tensor from an inner function. This can be "
+              "caused by accessing a tensor defined inside a loop or "
+              "conditional body, or a subfunction, from a calling function, "
+              "without going through the proper return value mechanism. "
+              "Consider using TensorFlow mechanisms such as TensorArrays "
+              "to return tensors from inner functions or loop / conditional "
+              "bodies. Tensor: %s; tensor graph: %s; this graph: %s"
+              % (tensor, tensor.graph, self))
+        inner_graph = inner_graph.outer_graph
       return self._capture_helper(tensor, name)
     return tensor
 
