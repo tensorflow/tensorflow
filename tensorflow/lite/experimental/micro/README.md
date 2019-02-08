@@ -48,6 +48,7 @@ project files that you can download for the following platforms:
 [Ambiq Micro Apollo3Blue EVB using Make](https://ambiqmicro.com/apollo-ultra-low-power-mcus/) | - | - | [Instructions](#building-for-ambiq-micro-apollo3blue-evb-using-make)
 [Generic Keil uVision Projects](http://www2.keil.com/mdk5/uvision/) | - | [Download](https://drive.google.com/open?id=1Lw9rsdquNKObozClLPoE5CTJLuhfh5mV) | -
 [Eta Compute ECM3531 EVB](https://www.etacompute.com/products/) | - | - | [Instructions](#building-for-the-eta-compute-ecm3531-evb-using-make)
+
 If your device is not yet supported, it may not be too hard to add support. You
 can learn about that process
 [here](#how-to-port-tensorflow-lite-micro-to-a-new-platform). We're looking
