@@ -36,6 +36,7 @@ import operator
 import os
 import random
 import re
+import string
 import sys
 import tempfile
 import traceback
@@ -52,6 +53,7 @@ import tensorflow as tf
 from google.protobuf import text_format
 # TODO(aselle): switch to TensorFlow's resource_loader
 from tensorflow.lite.testing import generate_examples_report as report_lib
+from tensorflow.lite.testing import string_util_wrapper
 from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.ops import rnn
 
@@ -163,6 +165,16 @@ def toco_options(data_types,
   return s
 
 
+def format_result(t):
+  """Convert a tensor to a format that can be used in test specs."""
+  if np.issubdtype(t.dtype, np.number):
+    # Output 9 digits after the point to ensure the precision is good enough.
+    values = ["{:.9f}".format(value) for value in list(t.flatten())]
+    return ",".join(values)
+  else:
+    return string_util_wrapper.SerializeAsHexString(t.flatten())
+
+
 def write_examples(fp, examples):
   """Given a list `examples`, write a text format representation.
 
@@ -179,9 +191,7 @@ def write_examples(fp, examples):
     """Write tensor in file format supported by TFLITE example."""
     fp.write("dtype,%s\n" % x.dtype)
     fp.write("shape," + ",".join(map(str, x.shape)) + "\n")
-    # Output 9 digits after the point to ensure the precision is good enough.
-    values = ["{:.9f}".format(value) for value in list(x.flatten())]
-    fp.write("values," + ",".join(values) + "\n")
+    fp.write("values," + format_result(x) + "\n")
 
   fp.write("test_cases,%d\n" % len(examples))
   for example in examples:
@@ -214,11 +224,9 @@ def write_test_cases(fp, model_name, examples):
     fp.write("invoke {\n")
 
     for t in example["inputs"]:
-      values = ["{:.9f}".format(value) for value in list(t.flatten())]
-      fp.write("  input: \"" + ",".join(values) + "\"\n")
+      fp.write("  input: \"" + format_result(t) + "\"\n")
     for t in example["outputs"]:
-      values = ["{:.9f}".format(value) for value in list(t.flatten())]
-      fp.write("  output: \"" + ",".join(values) + "\"\n")
+      fp.write("  output: \"" + format_result(t) + "\"\n")
     fp.write("}\n")
 
 
@@ -230,6 +238,7 @@ _TF_TYPE_INFO = {
     tf.int16: (np.int16, "QUANTIZED_INT16"),
     tf.int64: (np.int64, "INT64"),
     tf.bool: (np.bool, "BOOL"),
+    tf.string: (np.string_, "STRING"),
 }
 
 
@@ -245,6 +254,10 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
     value = np.random.randint(min_value, max_value+1, shape)
   elif dtype == tf.bool:
     value = np.random.choice([True, False], size=shape)
+  elif dtype == np.string_:
+    # Not the best strings, but they will do for some basic testing.
+    letters = list(string.ascii_uppercase)
+    return np.random.choice(letters, size=shape).astype(dtype)
   return np.dtype(dtype).type(value) if np.isscalar(value) else value.astype(
       dtype)
 
@@ -1294,16 +1307,25 @@ def make_squared_difference_tests(zip_path):
 def make_gather_tests(zip_path):
   """Make a set of tests to do gather."""
 
-  test_parameters = [{
-      # TODO(mgubin): add string tests when they are supported by Toco.
-      # TODO(mgubin): add tests for Nd indices when they are supported by
-      # TfLite.
-      "params_dtype": [tf.float32, tf.int32, tf.int64],
-      "params_shape": [[10], [1, 2, 20]],
-      "indices_dtype": [tf.int32, tf.int64],
-      "indices_shape": [[3], [5]],
-      "axis": [-1, 0, 1],
-  }]
+  test_parameters = [
+      {
+          # TODO(b/110347007): add tests for Nd indices when they are supported
+          # by TfLite.
+          "params_dtype": [tf.float32, tf.int32, tf.int64],
+          "params_shape": [[10], [1, 2, 20]],
+          "indices_dtype": [tf.int32, tf.int64],
+          "indices_shape": [[3], [5]],
+          "axis": [-1, 0, 1],
+      },
+      {
+          # TODO(b/123895910): add Nd support for strings.
+          "params_dtype": [tf.string],
+          "params_shape": [[8]],
+          "indices_dtype": [tf.int32],
+          "indices_shape": [[3]],
+          "axis": [0],
+      }
+  ]
 
   def build_graph(parameters):
     """Build the gather op testing graph."""

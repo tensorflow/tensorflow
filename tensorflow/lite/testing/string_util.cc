@@ -13,30 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_PYTHON_INTERPRETER_WRAPPER_PYTHON_UTILS_H_
-#define TENSORFLOW_LITE_PYTHON_INTERPRETER_WRAPPER_PYTHON_UTILS_H_
+#include <memory>
 
-#include "tensorflow/lite/context.h"
+#include "tensorflow/lite/testing/string_util.h"
+
+#include "absl/strings/escaping.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
+#include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {
-namespace python_utils {
+namespace testing {
+namespace python {
 
-struct PyDecrefDeleter {
-  void operator()(PyObject* p) const { Py_DECREF(p); }
-};
+PyObject* SerializeAsHexString(PyObject* value) {
+  DynamicBuffer dynamic_buffer;
+  if (!python_utils::FillStringBufferWithPyArray(value, &dynamic_buffer)) {
+    return nullptr;
+  }
 
-int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type);
+  char* char_buffer = nullptr;
+  size_t size = dynamic_buffer.WriteToBuffer(&char_buffer);
+  string s = absl::BytesToHexString({char_buffer, size});
+  free(char_buffer);
 
-TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array);
+  return python_utils::ConvertToPyString(s.data(), s.size());
+}
 
-bool FillStringBufferWithPyArray(PyObject* value,
-                                 DynamicBuffer* dynamic_buffer);
-
-int ConvertFromPyString(PyObject* obj, char** data, Py_ssize_t* length);
-PyObject* ConvertToPyString(const char* data, size_t length);
-
-}  // namespace python_utils
+}  // namespace python
+}  // namespace testing
 }  // namespace tflite
-#endif  // TENSORFLOW_LITE_PYTHON_INTERPRETER_WRAPPER_PYTHON_UTILS_H_
