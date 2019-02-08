@@ -300,8 +300,13 @@ def make_control_dep_tests(zip_path):
 
   extra_toco_options = ExtraTocoOptions()
   extra_toco_options.drop_control_dependency = True
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs,
-                    extra_toco_options)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      extra_toco_options,
+      expected_tf_failures=3)
 
 
 def toco_convert(graph_def_str, input_tensors, output_tensors,
@@ -369,7 +374,7 @@ def make_zip_of_tests(zip_path,
                       make_test_inputs,
                       extra_toco_options=ExtraTocoOptions(),
                       use_frozen_graph=False,
-                      expected_tf_success=None):
+                      expected_tf_failures=0):
   """Helper to make a zip file of a bunch of TensorFlow models.
 
   This does a cartestian product of the dictionary of test_parameters and
@@ -389,8 +394,9 @@ def make_zip_of_tests(zip_path,
       `output_tensors` and returns tuple `(input_values, output_values)`.
     extra_toco_options: Additional toco options.
     use_frozen_graph: Whether or not freeze graph before toco converter.
-    expected_tf_success: Number of times tensorflow is supposed to succeed in
-      executing the input graphs. `None` means "unknown".
+    expected_tf_failures: Number of times tensorflow is expected to fail in
+      executing the input graphs. In some cases it is OK for TensorFlow to
+      fail because the one or more combination of parameters is invalid.
 
   Raises:
     RuntimeError: if there are toco errors that can't be ignored.
@@ -551,10 +557,17 @@ def make_zip_of_tests(zip_path,
                    " and %d TOCO converted graphs (%.1f%%"), zip_path,
                   total_conversions, tf_success, toco_success, percent)
 
-  if expected_tf_success is not None and tf_success != expected_tf_success:
-    raise RuntimeError(
-        "Expected TF to succeed %d times, but that happened %d times" %
-        (expected_tf_success, tf_success))
+  tf_failures = parameter_count - tf_success
+
+  if tf_failures / parameter_count > 0.8:
+    raise RuntimeError(("Test for '%s' is not very useful. "
+                        "TensorFlow fails in %d percent of the cases.") %
+                       (zip_path, int(100 * tf_failures / parameter_count)))
+
+  if tf_failures != expected_tf_failures:
+    raise RuntimeError(("Expected TF to fail %d times while generating '%s', "
+                        "but that happened %d times") % (expected_tf_failures,
+                                                         zip_path, tf_failures))
 
   if not FLAGS.ignore_toco_errors and toco_errors > 0:
     raise RuntimeError(
@@ -573,11 +586,12 @@ def make_pool_tests(pool_op_in):
 
   pool_op = pool_op_in
 
-  def f(zip_path):
+  def f(zip_path, expected_tf_failures=0):
     """Actual function that generates examples.
 
     Args:
       zip_path: path to write zip to.
+      expected_tf_failures: number of expected tensorflow failures.
     """
 
     # Chose a set of parameters
@@ -606,20 +620,26 @@ def make_pool_tests(pool_op_in):
       return [input_values], sess.run(
           outputs, feed_dict=dict(zip(inputs, [input_values])))
 
-    make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+    make_zip_of_tests(
+        zip_path,
+        test_parameters,
+        build_graph,
+        build_inputs,
+        expected_tf_failures=expected_tf_failures)
+
   return f
 
 
 def make_l2_pool_tests(zip_path):
-  make_pool_tests(make_l2_pool)(zip_path)
+  make_pool_tests(make_l2_pool)(zip_path, expected_tf_failures=80)
 
 
 def make_avg_pool_tests(zip_path):
-  make_pool_tests(tf.nn.avg_pool)(zip_path)
+  make_pool_tests(tf.nn.avg_pool)(zip_path, expected_tf_failures=80)
 
 
 def make_max_pool_tests(zip_path):
-  make_pool_tests(tf.nn.max_pool)(zip_path)
+  make_pool_tests(tf.nn.max_pool)(zip_path, expected_tf_failures=80)
 
 
 def make_abs_tests(zip_path):
@@ -834,11 +854,10 @@ def make_constant_tests(zip_path):
         parameters["input_shape"], dtype=_TF_TYPE_INFO[parameters["dtype"]][0])
     return [dummy_input], sess.run(outputs, feed_dict={inputs[0]: dummy_input})
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs,
-                    expected_tf_success=20)
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
-def make_binary_op_tests(zip_path, binary_operator):
+def make_binary_op_tests(zip_path, binary_operator, expected_tf_failures=0):
   """Make a set of tests to do binary ops with and without broadcast."""
 
   test_parameters = [
@@ -908,7 +927,12 @@ def make_binary_op_tests(zip_path, binary_operator):
             inputs[1]: input2
         })
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=expected_tf_failures)
 
 
 def make_reduce_tests(reduce_op,
@@ -1137,7 +1161,12 @@ def make_maximum_tests(zip_path):
     ]
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=8)
 
 
 def make_minimum_tests(zip_path):
@@ -1172,7 +1201,12 @@ def make_minimum_tests(zip_path):
     ]
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=8)
 
 
 def make_binary_op_tests_func(binary_operator):
@@ -1242,7 +1276,7 @@ def make_mul_tests(zip_path):
 
 
 def make_pow_tests(zip_path):
-  make_binary_op_tests(zip_path, tf.pow)
+  make_binary_op_tests(zip_path, tf.pow, expected_tf_failures=7)
 
 
 def make_floor_div_tests(zip_path):
@@ -1300,7 +1334,7 @@ def make_gather_tests(zip_path):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_success=60)
+      expected_tf_failures=12)
 
 
 def make_gather_with_constant_tests(zip_path):
@@ -1329,8 +1363,7 @@ def make_gather_with_constant_tests(zip_path):
     return [reference_values], sess.run(
         outputs, feed_dict={inputs[0]: reference_values})
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs,
-                    expected_tf_success=2)
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
 def make_global_batch_norm_tests(zip_path):
@@ -1466,7 +1499,12 @@ def make_conv_tests(zip_path):
       values.append(create_tensor_data(np.float32, filter_shape))
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=40)
 
 
 # Note: This is a regression test for a bug (b/122651451) that Toco incorrectly
@@ -1708,7 +1746,12 @@ def make_depthwiseconv_tests(zip_path):
       values.append(create_tensor_data(np.float32, filter_shape))
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=4)
 
 
 def make_split_tests(zip_path):
@@ -1731,7 +1774,12 @@ def make_split_tests(zip_path):
     values = [create_tensor_data(np.float32, parameters["input_shape"])]
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=112)
 
 
 def make_splitv_tests(zip_path):
@@ -1754,7 +1802,12 @@ def make_splitv_tests(zip_path):
     values = [create_tensor_data(np.float32, parameters["input_shape"])]
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=158)
 
 
 def make_concat_tests(zip_path):
@@ -1796,7 +1849,12 @@ def make_concat_tests(zip_path):
     return all_values, sess.run(
         outputs, feed_dict=dict(zip(inputs, all_values)))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=60)
 
 
 def make_fully_connected_tests(zip_path):
@@ -1857,7 +1915,12 @@ def make_fully_connected_tests(zip_path):
       values.append(create_tensor_data(np.float32, parameters["shape2"]))
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=10)
 
 
 def make_l2norm_tests(zip_path):
@@ -1887,7 +1950,12 @@ def make_l2norm_tests(zip_path):
     return [input_values], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_values])))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=9)
 
 
 def make_local_response_norm_tests(zip_path):
@@ -2372,7 +2440,12 @@ def make_space_to_batch_nd_tests(zip_path):
       values.append(np.array(parameters["paddings"]))
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=56)
 
 
 def make_batch_to_space_nd_tests(zip_path):
@@ -2485,7 +2558,12 @@ def make_transpose_tests(zip_path):
       values.append(np.array(parameters["perm"]))
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=9)
 
 
 def make_squeeze_tests(zip_path):
@@ -2523,10 +2601,16 @@ def make_squeeze_tests(zip_path):
     return [input_values], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_values])))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=12)
 
 
-def _make_strided_slice_tests(zip_path, test_parameters):
+def _make_strided_slice_tests(zip_path, test_parameters,
+                              expected_tf_failures=0):
   """Utility function to make strided_slice_tests based on parameters."""
 
   def build_graph(parameters):
@@ -2586,7 +2670,12 @@ def _make_strided_slice_tests(zip_path, test_parameters):
 
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=expected_tf_failures)
 
 
 def make_strided_slice_tests(zip_path):
@@ -2660,7 +2749,7 @@ def make_strided_slice_tests(zip_path):
           "constant_indices": [False],
       },
   ]
-  _make_strided_slice_tests(zip_path, test_parameters)
+  _make_strided_slice_tests(zip_path, test_parameters, expected_tf_failures=2)
 
 
 def make_strided_slice_1d_exhaustive_tests(zip_path):
@@ -2862,7 +2951,12 @@ def make_arg_min_max_tests(zip_path):
     return [input_value], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value])))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=4)
 
 
 def make_equal_tests(zip_path):
@@ -2897,7 +2991,12 @@ def make_equal_tests(zip_path):
     return [input_value1, input_value2], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=3)
 
 
 def make_not_equal_tests(zip_path):
@@ -2931,7 +3030,12 @@ def make_not_equal_tests(zip_path):
     return [input_value1, input_value2], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=3)
 
 
 def make_greater_tests(zip_path):
@@ -2965,7 +3069,12 @@ def make_greater_tests(zip_path):
     return [input_value1, input_value2], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=3)
 
 
 def make_greater_equal_tests(zip_path):
@@ -2999,7 +3108,12 @@ def make_greater_equal_tests(zip_path):
     return [input_value1, input_value2], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=3)
 
 
 def make_less_tests(zip_path):
@@ -3033,7 +3147,12 @@ def make_less_tests(zip_path):
     return [input_value1, input_value2], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=3)
 
 
 def make_less_equal_tests(zip_path):
@@ -3067,7 +3186,12 @@ def make_less_equal_tests(zip_path):
     return [input_value1, input_value2], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=3)
 
 
 def make_floor_tests(zip_path):
@@ -3319,7 +3443,12 @@ def make_slice_tests(zip_path):
 
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=18)
 
 
 def make_conv2d_transpose_tests(zip_path):
@@ -3356,12 +3485,7 @@ def make_conv2d_transpose_tests(zip_path):
     ]
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
-  make_zip_of_tests(
-      zip_path,
-      test_parameters,
-      build_graph,
-      build_inputs,
-      expected_tf_success=4)
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
 # Since compute output_shape is fairly complicated for
@@ -3611,7 +3735,12 @@ def make_pack_tests(zip_path):
     return all_values, sess.run(
         outputs, feed_dict=dict(zip(inputs, all_values)))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=72)
 
 
 def make_unpack_tests(zip_path):
@@ -3702,13 +3831,18 @@ def make_fill_tests(zip_path):
     return [input1, input2], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input1, input2])))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=12)
 
 
 def _make_logical_tests(op):
   """Make a set of tests to do logical operations."""
 
-  def logical(zip_path):
+  def logical(zip_path, expected_tf_failures=0):
     """Generate examples."""
     test_parameters = [{
         "input_shape_pair": [([], []), ([1, 1, 1, 3], [1, 1, 1, 3]),
@@ -3733,19 +3867,24 @@ def _make_logical_tests(op):
       return [input_value1, input_value2], sess.run(
           outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
 
-    make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+    make_zip_of_tests(
+        zip_path,
+        test_parameters,
+        build_graph,
+        build_inputs,
+        expected_tf_failures=expected_tf_failures)
 
   return logical
 
 
 def make_logical_or_tests(zip_path):
   """Make a set of tests to do logical_or."""
-  return _make_logical_tests(tf.logical_or)(zip_path)
+  return _make_logical_tests(tf.logical_or)(zip_path, expected_tf_failures=1)
 
 
 def make_logical_and_tests(zip_path):
   """Make a set of tests to do logical_and."""
-  return _make_logical_tests(tf.logical_and)(zip_path)
+  return _make_logical_tests(tf.logical_and)(zip_path, expected_tf_failures=1)
 
 
 def make_logical_xor_tests(zip_path):
@@ -3753,7 +3892,7 @@ def make_logical_xor_tests(zip_path):
 
     Test logical_not as well.
   """
-  return _make_logical_tests(tf.logical_xor)(zip_path)
+  return _make_logical_tests(tf.logical_xor)(zip_path, expected_tf_failures=1)
 
 
 def make_mirror_pad_tests(zip_path):
@@ -3836,12 +3975,7 @@ def make_mirror_pad_tests(zip_path):
     return input_values, sess.run(
         outputs, feed_dict=dict(zip(inputs, input_values)))
 
-  make_zip_of_tests(
-      zip_path,
-      test_parameters,
-      build_graph,
-      build_inputs,
-      expected_tf_success=8)
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
 def make_unroll_batch_matmul_tests(zip_path):
@@ -3893,8 +4027,7 @@ def make_placeholder_with_default_tests(zip_path):
     return [input_value], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value])))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs,
-                    expected_tf_success=3)
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
 def make_unique_tests(zip_path):
@@ -3939,12 +4072,7 @@ def make_unique_tests(zip_path):
     return input_values, sess.run(
         outputs, feed_dict=dict(zip(inputs, input_values)))
 
-  make_zip_of_tests(
-      zip_path,
-      test_parameters,
-      build_graph,
-      build_inputs,
-      expected_tf_success=9)
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
 def make_reverse_v2_tests(zip_path):
