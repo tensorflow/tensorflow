@@ -16,7 +16,7 @@ detection model, takes up a total of 22KB.
     *   [Building for "Hifive1" SiFive FE310 development board using Make](#building-for-hifive1-sifive-fe310-development-board-using-make)
     *   [Building for Ambiq Micro Apollo3Blue EVB using Make](#building-for-ambiq-micro-apollo3blue-evb-using-make)
         *   [Additional Apollo3 Instructions](#additional-apollo3-instructions)
-    *   [Building for the Eta Compute ECM3531 EVB using Make](#building-for-the-eta-compute-ecm31-evb-using-make)
+    *   [Building for the Eta Compute ECM3531 EVB using Make](#Building-for-the-Eta-Compute-ECM3531-EVB-using-Make)
 
 -   [Goals](#goals)
 -   [Generating Project Files](#generating-project-#files)
@@ -47,7 +47,7 @@ project files that you can download for the following platforms:
 ["Blue Pill" STM32F103-compatible development board](https://github.com/google/stm32_bare_lib) | - | - | [Instructions](#building-for-the-blue-pill-stm32f103-using-make)
 [Ambiq Micro Apollo3Blue EVB using Make](https://ambiqmicro.com/apollo-ultra-low-power-mcus/) | - | - | [Instructions](#building-for-ambiq-micro-apollo3blue-evb-using-make)
 [Generic Keil uVision Projects](http://www2.keil.com/mdk5/uvision/) | - | [Download](https://drive.google.com/open?id=1Lw9rsdquNKObozClLPoE5CTJLuhfh5mV) | -
-[Eta Compute ECM3531 EVB](https://etacompute.com/) | - | - | [Instructions](#building-for-the-eta-compute-ecm31-evb-using-make)
+[Eta Compute ECM3531 EVB](https://etacompute.com/) | - | - | [Instructions](#Building-for-the-Eta-Compute-ECM3531-EVB-using-Make)
 
 If your device is not yet supported, it may not be too hard to add support. You
 can learn about that process
@@ -319,7 +319,24 @@ To flash a part with JFlash Lite, do the following:
 5. Prog Addr = 0x0000C000
 
 ## Building for the Eta Compute ECM3531 EVB using Make
-
+1. Follow the instructions at [Tensorflow Micro Speech](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_speech#getting-started) to down load the Tensorflow source code and the support libraries \(but do not run the make command shown there.\)
+2. Download the Eta Compute SDK. Contact info@etacompute.com
+3. You will need the the Arm compiler arm-none-eabi-gcc, version = 7.3.1 20180622, release ARM/embedded-7-branch revision 261907.  This compiler is downloaded when you run the tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh script.
+4. Edit the file tensorflow/lite/experimental/micro/tools/make/targets/ecm3531_makefile.inc so that the variables ETA_SDK and GCC_ARM point to the correct directories.
+5. Compile the code with the command  
+&nbsp;&nbsp;make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=ecm3531 TAGS="CMSIS"  test  
+This will produce a set of executables in the tensorflow/lite/experimental/micro/tools/make/gen/ecm3531_cortex-m3/bin directory. 
+6. To load an executable into SRAM  
+&nbsp;&nbsp;start ocd  
+&nbsp;&nbsp;cd tensorflow/lite/experimental/micro/tools/make/targets/ecm3531  
+&nbsp;&nbsp;./load_program name_of_executable, for e.g., ./load_program  audio_provider_test  
+&nbsp;&nbsp;start PuTTY \(Connection type = Serial, Speed = 11520, Data bits = 8, Stop bits = 1,  Parity = None\)  
+The following output should appear
+7. To load into flash  
+&nbsp;&nbsp;edit the variable ETA_LDS_FILE in tensorflow/lite/experimental/micro/tools/&nbsp;&nbsp;make/targets/ecm3531_makefile.inc to point to the ecm3531_flash.lds file  
+&nbsp;&nbsp;Recompile  \( make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=ecm3531 TAGS="CMSIS"  test\)  
+&nbsp;&nbsp;cd tensorflow/lite/experimental/micro/tools/make/targets/ecm3531  
+&nbsp;&nbsp;./flash_program executable_name  to load into flash.
 
 ## Goals
 
