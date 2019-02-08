@@ -1123,22 +1123,24 @@ class InitializeTableFromFileOpTest(test.TestCase):
 
       # Invalid data type
       other_type = constant_op.constant(1)
-      with self.assertRaises(ValueError):
+      with self.assertRaises(Exception) as cm:
         lookup_ops.HashTable(
             lookup_ops.TextFileInitializer(
                 other_type, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
                 dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER),
             default_value)
+      self.assertTrue(isinstance(cm.exception, (ValueError, TypeError)))
 
       # Non-scalar filename
       filenames = constant_op.constant([vocabulary_file, vocabulary_file])
       if not context.executing_eagerly():
-        with self.assertRaises(ValueError):
+        with self.assertRaises(Exception) as cm:
           lookup_ops.HashTable(
               lookup_ops.TextFileInitializer(
                   filenames, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
                   dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER),
               default_value)
+        self.assertTrue(isinstance(cm.exception, (ValueError, TypeError)))
       else:
         with self.assertRaises(errors_impl.InvalidArgumentError):
           lookup_ops.HashTable(

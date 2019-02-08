@@ -225,7 +225,7 @@ class _SaveableView(object):
         self.captured_tensor_node_ids[obj.handle] = node_id
       elif isinstance(obj, tracking.TrackableAsset):
         _process_asset(obj, asset_info, resource_map)
-        self.captured_tensor_node_ids[obj.asset_path.handle] = node_id
+        self.captured_tensor_node_ids[obj.asset_path] = node_id
 
     for concrete_function in self.concrete_functions:
       for capture in concrete_function.captured_inputs:
@@ -466,10 +466,10 @@ def _process_asset(trackable_asset, asset_info, resource_map):
   asset_def.filename = path
   asset_def.tensor_info.name = asset_path_initializer.name
   asset_info.asset_defs.append(asset_def)
-  asset_info.asset_initializers_by_resource[original_variable.handle] = (
+  asset_info.asset_initializers_by_resource[original_variable] = (
       asset_variable.initializer)
   asset_info.asset_index[trackable_asset] = len(asset_info.asset_defs) - 1
-  resource_map[original_variable.handle] = asset_variable.handle
+  resource_map[original_variable] = asset_variable
 
 
 def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions):
