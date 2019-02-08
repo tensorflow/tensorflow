@@ -38,6 +38,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
@@ -962,6 +963,37 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(TypeError):
       # The signatures mapping is immutable
       imported.signatures["random_key"] = 3
+
+
+class SingleCycleTests(test.TestCase, parameterized.TestCase):
+
+  def test_load_with_tags(self):
+    root = tracking.AutoCheckpointable()
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+    with self.assertRaises(ValueError):
+      load.load(path, tags=[tag_constants.EVAL])
+    load.load(path, tags=[tag_constants.SERVING])
+    load.load(path, tags=tag_constants.SERVING)
+
+  def test_docstring_examples(self):
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    exported = util.Checkpoint(v=variables.Variable(3.))
+    exported.f = def_function.function(
+        lambda x: exported.v * x,
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)])
+    save.save(exported, path)
+    imported = load.load(path)
+    self.assertEqual(3., imported.v.numpy())
+    self.assertEqual(6., imported.f(x=constant_op.constant(2.)).numpy())
+
+    save.save(exported, path, exported.f.get_concrete_function())
+    imported = load.load(path)
+    f = imported.signatures["serving_default"]
+    self.assertAllEqual(
+        [[-3.]],
+        f(x=constant_op.constant([[-1.]]))["output_0"].numpy())
 
 
 if __name__ == "__main__":
