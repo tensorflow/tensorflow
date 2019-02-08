@@ -965,12 +965,12 @@ def _cudnn_rnn(inputs,
   """Cudnn RNN.
 
   Args:
-    inputs: the input sequence to the RNN model. A Tensor of shape [max_time,
-      batch_size, input_size] if 'time_major == True' (default) or a Tensor
-      of shape [batch_size, max_time, input_size] if 'time_major == False'.
-    input_h: the initial hidden state for h. A Tensor of shape [num_layers,
-      batch_size, num_units] if 'time_major == True' (default) or a Tensor of
-      shape [batch_size, num_layers, num_units]
+    inputs: the input sequence to the RNN model. If `time_major` is True
+        (default), the Tensor shape is [max_time, batch_size, input_size]. If
+        `time_major` is False, the shape is [batch_size, max_time, input_size].
+    input_h: the initial hidden state for h. If `time_major` is True
+        (default), the Tensor shape is [num_layers, batch_size, num_units]. If
+        `time_major` is False, the shape is [batch_size, num_layers, num_units].
     input_c: the initial hidden state for c. This is only relevant for LSTM.
       A Tensor of the same shape as input_h.
     params: the parameter buffer created for this model.
@@ -980,7 +980,7 @@ def _cudnn_rnn(inputs,
       in a batch. The size of the array has to equal the batch_size. Default to
       None, in which case sequences in the batch are assumed to have the same
       length, which is inferred from inputs.
-    time_major: The shape format of the 'inputs' and 'outputs' Tensors. If true,
+    time_major: The shape format of the `inputs` and `outputs` Tensors. If true,
       these Tensors must be shaped ['max_time', 'batch_size', 'depth']. If
       false, these Tensors must be shaped ['batch_size', 'max_time', 'depth'].
       By default this function accepts input and emits output in time-major
@@ -1049,12 +1049,12 @@ def cudnn_lstm(inputs,
   """Cudnn LSTM.
 
   Args:
-    inputs: the input sequence to the RNN model. A Tensor of shape [max_time,
-      batch_size, input_size] if 'time_major == True' (default) or a Tensor
-      of shape [batch_size, max_time, input_size] if 'time_major == False'.
-    input_h: the initial hidden state for h. A Tensor of shape [num_layers,
-      batch_size, num_units] if 'time_major == True' (default) or a Tensor of
-      shape [batch_size, num_layers, num_units]
+    inputs: the input sequence to the RNN model. If `time_major` is True
+        (default), the Tensor shape is [max_time, batch_size, input_size]. If
+        `time_major` is False, the shape is [batch_size, max_time, input_size].
+    input_h: the initial hidden state for h. If `time_major` is True
+        (default), the Tensor shape is [num_layers, batch_size, num_units]. If
+        `time_major` is False, the shape is [batch_size, num_layers, num_units].
     input_c: the initial hidden state for c. This is only relevant for LSTM.
       A Tensor of the same shape as input_h.
     params: the parameter buffer created for this model.
@@ -1063,7 +1063,7 @@ def cudnn_lstm(inputs,
       in a batch. The size of the array has to equal the batch_size. Default to
       None, in which case sequences in the batch are assumed to have the same
       length, which is inferred from inputs.
-    time_major: The shape format of the 'inputs' and 'outputs' Tensors. If true,
+    time_major: The shape format of the `inputs` and `outputs` Tensors. If true,
       these Tensors must be shaped ['max_time', 'batch_size', 'depth']. If
       false, these Tensors must be shaped ['batch_size', 'max_time', 'depth'].
       By default this function accepts input and emits output in time-major
@@ -1105,12 +1105,12 @@ def _cudnn_rnn_no_input_c(inputs,
   """Cudnn RNN w/o input_c.
 
   Args:
-    inputs: the input sequence to the RNN model. A Tensor of shape [max_time,
-      batch_size, input_size] if 'time_major == True' (default) or a Tensor
-      of shape [batch_size, max_time, input_size] if 'time_major == False'.
-    input_h: the initial hidden state for h. A Tensor of shape [num_layers,
-      batch_size, num_units] if 'time_major == True' (default) or a Tensor of
-      shape [batch_size, num_layers, num_units]
+    inputs: the input sequence to the RNN model. If `time_major` is True
+        (default), the Tensor shape is [max_time, batch_size, input_size]. If
+        `time_major` is False, the shape is [batch_size, max_time, input_size].
+    input_h: the initial hidden state for h. If `time_major` is True
+        (default), the Tensor shape is [num_layers, batch_size, num_units]. If
+        `time_major` is False, the shape is [batch_size, num_layers, num_units].
     params: the parameter buffer created for this model.
     is_training: whether this operation will be used in training or inference
     rnn_mode: one of ('lstm', 'gru', 'rnn_relu', 'rnn_tanh').
@@ -1118,7 +1118,7 @@ def _cudnn_rnn_no_input_c(inputs,
       in a batch. The size of the array has to equal the batch_size. Default to
       None, in which case sequences in the batch are assumed to have the same
       length, which is inferred from inputs.
-    time_major: The shape format of the 'inputs' and 'outputs' Tensors. If true,
+    time_major: The shape format of the `inputs` and `outputs` Tensors. If true,
       these Tensors must be shaped ['max_time', 'batch_size', 'depth']. If
       false, these Tensors must be shaped ['batch_size', 'max_time', 'depth'].
       By default this function accepts input and emits output in time-major
@@ -1162,12 +1162,12 @@ def cudnn_gru(inputs,
   """Cudnn GRU.
 
   Args:
-    inputs: the input sequence to the RNN model. A Tensor of shape [max_time,
-      batch_size, input_size] if 'time_major == True' (default) or a Tensor
-      of shape [batch_size, max_time, input_size] if 'time_major == False'.
-    input_h: the initial hidden state for h. A Tensor of shape [num_layers,
-      batch_size, num_units] if 'time_major == True' (default) or a Tensor of
-      shape [batch_size, num_layers, num_units]
+    inputs: the input sequence to the RNN model. If `time_major` is True
+        (default), the Tensor shape is [max_time, batch_size, input_size]. If
+        `time_major` is False, the shape is [batch_size, max_time, input_size].
+    input_h: the initial hidden state for h. If `time_major` is True
+        (default), the Tensor shape is [num_layers, batch_size, num_units]. If
+        `time_major` is False, the shape is [batch_size, num_layers, num_units].
     params: the parameter buffer created for this model.
     is_training: whether this operation will be used in training or inference
       input_mode: indicate whether there is a linear projection between the
@@ -1182,7 +1182,7 @@ def cudnn_gru(inputs,
       in a batch. The size of the array has to equal the batch_size. Default to
       None, in which case sequences in the batch are assumed to have the same
       length, which is inferred from inputs.
-    time_major: The shape format of the 'inputs' and 'outputs' Tensors. If true,
+    time_major: The shape format of the `inputs` and `outputs` Tensors. If true,
       these Tensors must be shaped ['max_time', 'batch_size', 'depth']. If
       false, these Tensors must be shaped ['batch_size', 'max_time', 'depth'].
       By default this function accepts input and emits output in time-major
@@ -1215,12 +1215,12 @@ def cudnn_rnn_relu(inputs,
   """Cudnn RNN Relu.
 
   Args:
-    inputs: the input sequence to the RNN model. A Tensor of shape [max_time,
-      batch_size, input_size] if 'time_major == True' (default) or a Tensor
-      of shape [batch_size, max_time, input_size] if 'time_major == False'.
-    input_h: the initial hidden state for h. A Tensor of shape [num_layers,
-      batch_size, num_units] if 'time_major == True' (default) or a Tensor of
-      shape [batch_size, num_layers, num_units]
+    inputs: the input sequence to the RNN model. If `time_major` is True
+        (default), the Tensor shape is [max_time, batch_size, input_size]. If
+        `time_major` is False, the shape is [batch_size, max_time, input_size].
+    input_h: the initial hidden state for h. If `time_major` is True
+        (default), the Tensor shape is [num_layers, batch_size, num_units]. If
+        `time_major` is False, the shape is [batch_size, num_layers, num_units].
     params: the parameter buffer created for this model.
     is_training: whether this operation will be used in training or inference
       input_mode: indicate whether there is a linear projection between the
@@ -1238,7 +1238,7 @@ def cudnn_rnn_relu(inputs,
     sequence_lengths: an int32 array representing the variable sequence lengths
       in a batch. The size of the array has to equal the batch_size. If not
       provided, the same sequence length will be assumed.
-    time_major: The shape format of the 'inputs' and 'outputs' Tensors. If true,
+    time_major: The shape format of the `inputs` and `outputs` Tensors. If true,
       these Tensors must be shaped ['max_time', 'batch_size', 'depth']. If
       false, these Tensors must be shaped ['batch_size', 'max_time', 'depth'].
       By default this function accepts input and emits output in time-major
@@ -1267,12 +1267,12 @@ def cudnn_rnn_tanh(inputs,
   """Cudnn RNN Tanh.
 
   Args:
-    inputs: the input sequence to the RNN model. A Tensor of shape [max_time,
-      batch_size, input_size] if 'time_major == True' (default) or a Tensor
-      of shape [batch_size, max_time, input_size] if 'time_major == False'.
-    input_h: the initial hidden state for h. A Tensor of shape [num_layers,
-      batch_size, num_units] if 'time_major == True' (default) or a Tensor of
-      shape [batch_size, num_layers, num_units]
+    inputs: the input sequence to the RNN model. If `time_major` is True
+        (default), the Tensor shape is [max_time, batch_size, input_size]. If
+        `time_major` is False, the shape is [batch_size, max_time, input_size].
+    input_h: the initial hidden state for h. If `time_major` is True
+        (default), the Tensor shape is [num_layers, batch_size, num_units]. If
+        `time_major` is False, the shape is [batch_size, num_layers, num_units].
     params: the parameter buffer created for this model.
     is_training: whether this operation will be used in training or inference
       input_mode: indicate whether there is a linear projection between the
@@ -1287,7 +1287,7 @@ def cudnn_rnn_tanh(inputs,
       in a batch. The size of the array has to equal the batch_size. Default to
       None, in which case sequences in the batch are assumed to have the same
       length, which is inferred from inputs.
-    time_major: The shape format of the 'inputs' and 'outputs' Tensors. If true,
+    time_major: The shape format of the `inputs` and `outputs` Tensors. If true,
       these Tensors must be shaped ['max_time', 'batch_size', 'depth']. If
       false, these Tensors must be shaped ['batch_size', 'max_time', 'depth'].
       By default this function accepts input and emits output in time-major
@@ -1592,13 +1592,12 @@ class _CudnnRNN(object):
     """Runs the forward step for the RNN model.
 
     Args:
-      input_data: the input sequence to the RNN model. A Tensor of shape
-        [max_time, batch_size, input_size] if 'time_major == True' (default)
-        or a Tensor of shape [batch_size, max_time, input_size] if
-        'time_major == False'.
-      input_h: the initial hidden state for h. A Tensor of shape [num_layers,
-        batch_size, num_units] if 'time_major == True' (default) or a Tensor of
-        shape [batch_size, num_layers, num_units]
+      input_data: the input sequence to the RNN model. If `time_major` is True
+        (default), the Tensor shape is [max_time, batch_size, input_size]. If
+        `time_major` is False, the shape is [batch_size, max_time, input_size].
+      input_h: the initial hidden state for h. If `time_major` is True
+        (default), the Tensor shape is [num_layers, batch_size, num_units]. If
+        `time_major` is False, the shape is [batch_size, num_layers, num_units].
       input_c: the initial hidden state for c. This is only relevant for LSTM.
         A Tensor of the same shape as input_h.
       params: the parameter buffer created for this model.
@@ -1607,7 +1606,7 @@ class _CudnnRNN(object):
         lengths in a batch. The size of the array has to equal the batch_size.
         Default to None, in which case sequences in the batch are assumed to
         have the same length, which is inferred from inputs.
-      time_major: The shape format of the 'inputs' and 'outputs' Tensors. If
+      time_major: The shape format of the `inputs` and `outputs` Tensors. If
         true, these Tensors must be shaped ['max_time', 'batch_size', 'depth'].
         If false, these Tensors must be shaped ['batch_size', 'max_time',
         'depth']. By default this function accepts input and emits output in
@@ -1732,13 +1731,12 @@ class CudnnLSTM(_CudnnRNN):
     """Runs the forward step for the Cudnn LSTM model.
 
     Args:
-      input_data: the input sequence to the RNN model. A Tensor of shape
-        [max_time, batch_size, input_size] if 'time_major == True' (default)
-        or a Tensor of shape [batch_size, max_time, input_size] if
-        'time_major == False'.
-      input_h: the initial hidden state for h. A Tensor of shape [num_layers,
-        batch_size, num_units] if 'time_major == True' (default) or a Tensor of
-        shape [batch_size, num_layers, num_units]
+      input_data: the input sequence to the RNN model. If `time_major` is True
+        (default), the Tensor shape is [max_time, batch_size, input_size]. If
+        `time_major` is False, the shape is [batch_size, max_time, input_size].
+      input_h: the initial hidden state for h. If `time_major` is True
+        (default), the Tensor shape is [num_layers, batch_size, num_units]. If
+        `time_major` is False, the shape is [batch_size, num_layers, num_units].
       input_c: the initial hidden state for c. A Tensor of the same shape as
         input_h.
       params: the parameter buffer created for this model.
@@ -1746,7 +1744,7 @@ class CudnnLSTM(_CudnnRNN):
         lengths in a batch. The size of the array has to equal the batch_size.
         Default to None, in which case sequences in the batch are assumed to
         have the same length, which is inferred from inputs.
-      time_major: The shape format of the 'inputs' and 'outputs' Tensors. If
+      time_major: The shape format of the `inputs` and `outputs` Tensors. If
         true, these Tensors must be shaped ['max_time', 'batch_size', 'depth'].
         If false, these Tensors must be shaped ['batch_size', 'max_time',
         'depth']. By default this function accepts input and emits output in
@@ -1829,19 +1827,18 @@ class _CudnnRNNNoInputC(_CudnnRNN):
     """Runs the forward step for the Cudnn LSTM model.
 
     Args:
-      input_data: the input sequence to the RNN model. A Tensor of shape
-        [max_time, batch_size, input_size] if 'time_major == True' (default)
-        or a Tensor of shape [batch_size, max_time, input_size] if
-        'time_major == False'.
-      input_h: the initial hidden state for h. A Tensor of shape [num_layers,
-        batch_size, num_units] if 'time_major == True' (default) or a Tensor of
-        shape [batch_size, num_layers, num_units]
+      input_data: the input sequence to the RNN model. If `time_major` is True
+        (default), the Tensor shape is [max_time, batch_size, input_size]. If
+        `time_major` is False, the shape is [batch_size, max_time, input_size].
+      input_h: the initial hidden state for h. If `time_major` is True
+        (default), the Tensor shape is [num_layers, batch_size, num_units]. If
+        `time_major` is False, the shape is [batch_size, num_layers, num_units].
       params: the parameter buffer created for this model.
       sequence_lengths: an int32 array representing the variable sequence
         lengths in a batch. The size of the array has to equal the batch_size.
         Default to None, in which case sequences in the batch are assumed to
         have the same length, which is inferred from inputs.
-      time_major: The shape format of the 'inputs' and 'outputs' Tensors. If
+      time_major: The shape format of the `inputs` and `outputs` Tensors. If
         true, these Tensors must be shaped ['max_time', 'batch_size', 'depth'].
         If false, these Tensors must be shaped ['batch_size', 'max_time',
         'depth']. By default this function accepts input and emits output in
