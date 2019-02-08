@@ -956,10 +956,10 @@ def dtype(x):
       # Keras variable
       >>> kvar = K.variable(np.array([[1, 2], [3, 4]]))
       >>> K.dtype(kvar)
-      'float32_ref'
+      'float32'
       >>> kvar = K.variable(np.array([[1, 2], [3, 4]]), dtype='float32')
       >>> K.dtype(kvar)
-      'float32_ref'
+      'float32'
   ```
   """
   return x.dtype.base_dtype.name
