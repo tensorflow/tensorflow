@@ -16,7 +16,7 @@ detection model, takes up a total of 22KB.
     *   [Building for "Hifive1" SiFive FE310 development board using Make](#building-for-hifive1-sifive-fe310-development-board-using-make)
     *   [Building for Ambiq Micro Apollo3Blue EVB using Make](#building-for-ambiq-micro-apollo3blue-evb-using-make)
         *   [Additional Apollo3 Instructions](#additional-apollo3-instructions)
-    *   [Building for the Eta Compute ECM3531 EVB using Make](#getting-started-with-portable-reference-code)
+    *   [Building for the Eta Compute ECM3531 EVB using Make](#building-for-the-eta-compute-ecm3531-evb-using-make)
  
 -   [Goals](#goals)
 -   [Generating Project Files](#generating-project-#files)
@@ -318,7 +318,7 @@ To flash a part with JFlash Lite, do the following:
 4. Data file = `tensorflow/lite/experimental/micro/tools/make/gen/apollo3evb_cortex-m4/bin/pushbutton_cmsis_speech_test.bin`
 5. Prog Addr = 0x0000C000
 
-## Building for the Eta Compute ECM3531 EVB using Make  
+## building for the eta compute ecm3531 evb using make  
 
 Follow these steps to build and run the tests and examples 
 
