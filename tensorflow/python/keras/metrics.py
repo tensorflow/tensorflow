@@ -203,8 +203,7 @@ class Metric(Layer):
     This function is called between epochs/steps,
     when a metric is evaluated during training.
     """
-    for v in self.variables:
-      K.set_value(v, 0)
+    K.batch_set_value([(v, 0) for v in self.variables])
 
   @abc.abstractmethod
   def update_state(self, *args, **kwargs):
@@ -864,8 +863,8 @@ class _ConfusionMatrixConditionCount(Metric):
 
   def reset_states(self):
     num_thresholds = len(to_list(self.thresholds))
-    for v in self.variables:
-      K.set_value(v, np.zeros((num_thresholds,)))
+    K.batch_set_value(
+        [(v, np.zeros((num_thresholds,))) for v in self.variables])
 
   def get_config(self):
     config = {'thresholds': self.init_thresholds}
@@ -1187,8 +1186,8 @@ class Precision(Metric):
 
   def reset_states(self):
     num_thresholds = len(to_list(self.thresholds))
-    for v in self.variables:
-      K.set_value(v, np.zeros((num_thresholds,)))
+    K.batch_set_value(
+        [(v, np.zeros((num_thresholds,))) for v in self.variables])
 
   def get_config(self):
     config = {
@@ -1313,8 +1312,8 @@ class Recall(Metric):
 
   def reset_states(self):
     num_thresholds = len(to_list(self.thresholds))
-    for v in self.variables:
-      K.set_value(v, np.zeros((num_thresholds,)))
+    K.batch_set_value(
+        [(v, np.zeros((num_thresholds,))) for v in self.variables])
 
   def get_config(self):
     config = {
@@ -1391,8 +1390,8 @@ class SensitivitySpecificityBase(Metric):
 
   def reset_states(self):
     num_thresholds = len(self.thresholds)
-    for v in self.variables:
-      K.set_value(v, np.zeros((num_thresholds,)))
+    K.batch_set_value(
+        [(v, np.zeros((num_thresholds,))) for v in self.variables])
 
 
 @keras_export('keras.metrics.SensitivityAtSpecificity')
@@ -1809,8 +1808,8 @@ class AUC(Metric):
 
   def reset_states(self):
     num_thresholds = len(self.thresholds)
-    for v in self.variables:
-      K.set_value(v, np.zeros((num_thresholds,)))
+    K.batch_set_value(
+        [(v, np.zeros((num_thresholds,))) for v in self.variables])
 
   def get_config(self):
     config = {
@@ -2425,8 +2424,8 @@ class MeanTensor(Metric):
 
   def reset_states(self):
     if self._built:
-      for v in self.variables:
-        K.set_value(v, np.zeros(self._shape.as_list()))
+      K.batch_set_value(
+          [(v, np.zeros(self._shape.as_list())) for v in self.variables])
 
 
 @keras_export('keras.metrics.BinaryCrossentropy')
