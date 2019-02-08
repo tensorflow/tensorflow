@@ -379,25 +379,30 @@ tensorflow::Status CreateBroadcastableScalarConstant(
   return Status::OK();
 }
 
-// Convert an axis from TF format to TRT format while validating.
-tensorflow::Status ConvertAxis(int tf_axis, int trt_nb_dims, string node_name,
-                               int* trt_axis, bool allow_batch_dim = false) {
+// Convert an axis from TF format to TRT format while validating. TF format
+// includes the batch dimension, while TRT does not. TF can also use negative
+// indices.
+// TODO(tmorris): Use this method in more ops.
+tensorflow::Status ConvertAxis(int tf_axis, int trt_nb_dims, bool check_bounds,
+                               absl::string_view node_name, int* trt_axis) {
+  const int tf_nb_dims = trt_nb_dims + 1;
+  // Check bounds.
+  if (check_bounds && (tf_axis < -tf_nb_dims || tf_axis >= tf_nb_dims)) {
+    return tensorflow::errors::InvalidArgument(
+        "Axis value of ", std::to_string(tf_axis),
+        " is out of bounds, must be in range [", std::to_string(-tf_nb_dims),
+        ", ", std::to_string(tf_nb_dims), "), at ", node_name);
+  }
   // Make negative axis positive.
-  if (tf_axis < 0) tf_axis += trt_nb_dims + 1;
+  if (tf_axis < 0) tf_axis += tf_nb_dims;
   // Don't allow axis to be the batch dimension.
-  if (!allow_batch_dim && tf_axis == 0) {
+  if (tf_axis == 0) {
     return tensorflow::errors::Unimplemented(
         "TensorRT does not allow manipulation of the batch dimension, at ",
         node_name);
   }
   // Remove batch dimension.
-  tf_axis -= 1;
-  // Check bounds.
-  if (tf_axis < 0 || tf_axis >= trt_nb_dims) {
-    return tensorflow::errors::InvalidArgument("Axis is out of bounds, at ",
-                                               node_name);
-  }
-  *trt_axis = tf_axis;
+  *trt_axis = tf_axis - 1;
   return Status::OK();
 }
 
@@ -3440,15 +3445,14 @@ tensorflow::Status ConvertGather(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(
       *params, {{"params", false}, {"indices", false}, {"axis", true}}));
-  std::vector<int> axis;
-  inputs.at(2).weights().ToVector(&axis);
+  absl::Span<int> axis = inputs.at(2).weights().GetSpan<int>();
   if (axis.size() != 1) {
     return tensorflow::errors::InvalidArgument(
         "Axis for GatherV2 must be a scalar, at ", node_def.name());
   }
   int trt_axis = 0;
   TF_RETURN_IF_ERROR(ConvertAxis(axis[0], inputs.at(0).GetTrtDims().nbDims,
-                     node_def.name(), &trt_axis));
+                                 true, node_def.name(), &trt_axis));
   if (params->validation_only) return Status::OK();
 
   nvinfer1::IGatherLayer* layer = params->converter->network()->addGather(

@@ -3142,17 +3142,6 @@ void TestConvertGather(OpConverterTest* test) {
   const NodeDef& node_def = gather.operation.node()->def();
 
   struct TestParams {
-    TestParams(const std::vector<int>& params_dims,
-               const std::vector<int>& indices_dims,
-               const std::vector<int>& indices, int axis,
-               const std::vector<int>& expected_output_dims,
-               const std::vector<int>& expected_output)
-        : params_dims(params_dims),
-          indices_dims(indices_dims),
-          indices(indices),
-          axis(axis),
-          expected_output_dims(expected_output_dims),
-          expected_output(expected_output) {}
     std::vector<int> params_dims;
     std::vector<int> indices_dims;
     std::vector<int> indices;
@@ -3240,7 +3229,8 @@ TEST_F(OpConverterTest, ConvertGather) {
     AddTestTensor("indices", {2});
     AddTestWeights<int32>("axis", {1}, {4});
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               "Axis is out of bounds, at my_gather");
+                               "Axis value of 4 is out of bounds, must be in "
+                               "range [-4, 4), at my_gather");
   }
   {
     // Axis is batch dimension, should fail.
