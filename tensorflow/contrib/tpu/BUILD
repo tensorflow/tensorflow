@@ -325,7 +325,9 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
+        ":functional",
         ":profiler",
+        ":tpu_ordinal_selector_py",
         ":tpu_py",
         "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/compiler/xla/python_api:xla_shape",
