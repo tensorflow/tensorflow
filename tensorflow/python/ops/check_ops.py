@@ -1557,11 +1557,11 @@ def _has_known_value(dimension_size):
 
 
 def _is_symbol_for_any_size(symbol):
-  return symbol in [None, '*']
+  return symbol in [None, '.']
 
 
 def _is_symbol_for_unspecified_dims(symbol):
-  return symbol in [..., '#']
+  return symbol in [..., '*']
 
 
 @tf_export('debugging.assert_shapes', 'assert_shapes')
@@ -1592,9 +1592,9 @@ def assert_shapes(shapes, data=None, summarize=None,
   their __hash__, except:
     - a size entry is interpreted as an explicit size if it can be parsed as an
       integer primitive.
-    - a size entry is interpreted as *any* size if it is None or '*'.
+    - a size entry is interpreted as *any* size if it is None or '.'.
 
-  If the first entry of a shape is `...` (type `Ellipsis`) or '#' that indicates
+  If the first entry of a shape is `...` (type `Ellipsis`) or '*' that indicates
   a variable number of outer dimensions of unspecified size, i.e. the constraint
   applies to the inner-most dimensions only.
 
@@ -1662,7 +1662,7 @@ def assert_shapes(shapes, data=None, summarize=None,
           raise ValueError(
               '%s.  '
               'Tensor %s specified shape index %d.  '
-              'Symbol `...` or `#` for a variable number of '
+              'Symbol `...` or `*` for a variable number of '
               'unspecified dimensions is only allowed as the first entry'
               % (message, tensor_name(x), i))
         tensors_specified_innermost.add(x)

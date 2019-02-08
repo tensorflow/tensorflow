@@ -1756,12 +1756,12 @@ class AssertShapesTest(test.TestCase):
         y: (None, 1),
     })
     a2 = check_ops.assert_shapes({
-        x: ('*', 2, '*'),
-        y: ('*', 1),
+        x: ('.', 2, '.'),
+        y: ('.', 1),
     })
     a3 = check_ops.assert_shapes({
-        x: "*2*",
-        y: "*1",
+        x: ".2.",
+        y: ".1",
     })
     with ops.control_dependencies([a1, a2, a3]):
       out = array_ops.identity(x)
@@ -1777,7 +1777,7 @@ class AssertShapesTest(test.TestCase):
     }
     s2 = {
         x: "3Q",
-        y: "#3D",
+        y: "*3D",
     }
     regex = (
         r"Specified explicitly.  "
@@ -1795,8 +1795,8 @@ class AssertShapesTest(test.TestCase):
         y: (..., 'N', 'D'),
     })
     a2 = check_ops.assert_shapes({
-        x: "#NQ",
-        y: "#ND",
+        x: "*NQ",
+        y: "*ND",
     })
     with ops.control_dependencies([a1, a2]):
       out = array_ops.identity(x)
@@ -1809,11 +1809,11 @@ class AssertShapesTest(test.TestCase):
         x: ('N', ..., 'Q'),
     }
     s2 = {
-        x: "N#Q",
+        x: "N*Q",
     }
     regex = (
         r"Tensor .* specified shape index .*.  "
-        r"Symbol `...` or `#` for a variable number of "
+        r"Symbol `...` or `\*` for a variable number of "
         r"unspecified dimensions is only allowed as the first entry")
     self.raises_static_error(shapes=s1, regex=regex)
     self.raises_static_error(shapes=s2, regex=regex)
