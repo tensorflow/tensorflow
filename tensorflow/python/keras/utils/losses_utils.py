@@ -192,8 +192,8 @@ def compute_weighted_loss(losses,
     losses: `Tensor` of shape `[batch_size, d1, ... dN]`.
     sample_weight: Optional `Tensor` whose rank is either 0, or the same rank as
       `losses`, or be broadcastable to `losses`.
-    reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
-      `SUM_OVER_BATCH_SIZE`.
+    reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
+      Default value is `SUM_OVER_BATCH_SIZE`.
     name: Optional name for the op.
 
   Raises:
