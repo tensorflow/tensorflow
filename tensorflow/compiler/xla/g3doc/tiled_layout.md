@@ -1,9 +1,7 @@
 # Tiled layout
 
-*Note: This doc describes how tiled layout is intended to work. Tiling is being
-implemented, but this is an early effort and it is currently not even guaranteed
-to get an Unimplemented error if one tries to use tiling - it may be just
-silently ignored.*
+Caution: Tiled layout is *pre-release* and this describes how it's intended to
+work. Errors may be silently ignored.
 
 <center> ![](images/xla_array_layout_figure1.png)
 
