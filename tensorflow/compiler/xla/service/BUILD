@@ -1644,7 +1644,6 @@ tf_cc_test(
         ":hlo",
         ":hlo_casting_utils",
         ":hlo_creation_utils",
-        ":hlo_matchers",
         ":hlo_parser",
         ":hlo_pass",
         ":pattern_matcher",
