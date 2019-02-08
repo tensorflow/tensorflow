@@ -201,10 +201,6 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "losses"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "math"
     mtype: "<type \'module\'>"
   }

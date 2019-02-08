@@ -27,7 +27,6 @@ TENSORFLOW_API_INIT_FILES = [
     "linalg/__init__.py",
     "lite/__init__.py",
     "lite/constants/__init__.py",
-    "losses/__init__.py",
     "math/__init__.py",
     "nest/__init__.py",
     "nn/__init__.py",
