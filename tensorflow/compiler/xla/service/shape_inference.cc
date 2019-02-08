@@ -1906,6 +1906,49 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 #undef RET_CHECK_RANK
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferTriangularSolveShape(
+    const Shape& a, const Shape& b, const TriangularSolveOptions& options) {
+  if (a.rank() < 2) {
+    return InvalidArgument(
+        "The 'a' argument to TriangularSolve must have rank >= 2, got shape %s",
+        a.ToString());
+  }
+  if (b.rank() != a.rank()) {
+    return InvalidArgument(
+        "Arguments to triangular solve must have equal rank; got %s and %s.",
+        b.ToString(), a.ToString());
+  }
+  if (a.dimensions(a.rank() - 2) != a.dimensions(a.rank() - 1)) {
+    return InvalidArgument(
+        "The two minor dimensions of 'a' must have equal size, got %s.",
+        a.ToString());
+  }
+  if (a.dimensions(a.rank() - 1) !=
+      b.dimensions(b.rank() - (options.left_side() ? 2 : 1))) {
+    return InvalidArgument(
+        "The shared dimension of 'a' and 'b' does not match, got shapes %s and "
+        "%s",
+        a.ToString(), b.ToString());
+  }
+  absl::Span<const int64> a_batch_dims(a.dimensions());
+  absl::Span<const int64> b_batch_dims(b.dimensions());
+  a_batch_dims.remove_suffix(2);
+  b_batch_dims.remove_suffix(2);
+  if (a_batch_dims != b_batch_dims) {
+    return InvalidArgument(
+        "The leading batch dimensions of the arguments to triangular solve "
+        "must be equal; got %s and %s.",
+        b.ToString(), a.ToString());
+  }
+  if (!TriangularSolveOptions_Transpose_IsValid(options.transpose_a()) ||
+      options.transpose_a() == TriangularSolveOptions::TRANSPOSE_INVALID) {
+    return InvalidArgument(
+        "Invalid transpose option value for triangular solve (%d).\n",
+        options.transpose_a());
+  }
+  return b;
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferAllReduceShape(
     absl::Span<const Shape* const> operand_shapes) {
   for (const Shape* operand_shape : operand_shapes) {
@@ -2352,8 +2395,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
     if (operand_shape.rank() != number_of_indices) {
       return InvalidArgument(
-          "Dynamic update slice start number of dimensions %d must match rank "
-          "%d of slice input (%s).",
+          "Dynamic update slice start number of dimensions %d must match "
+          "rank %d of slice input (%s).",
           number_of_indices, operand_shape.rank(),
           ShapeUtil::HumanString(operand_shape));
     }
@@ -2589,7 +2632,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         operand_shape.dimensions(i) != 1) {
       return InvalidArgument(
           "Input dimension should be either 1 or equal to the output dimension "
-          "it's broadcasting into; the %lldth operand dimension is %lld, the "
+          "it is broadcasting into; the %lldth operand dimension is %lld, the "
           "%lldth output dimension is %lld.",
           i, operand_shape.dimensions(i), broadcast_dimensions[i],
           output_shape.dimensions(broadcast_dimensions[i]));

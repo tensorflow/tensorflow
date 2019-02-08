@@ -1635,8 +1635,14 @@ class ComputationBuilder(object):
                       conjugate_a=False,
                       unit_diagonal=False):
     """Enqueues a triangular-solve operation onto the computation."""
-    return self._client.TriangularSolve(a, b, left_side, lower, transpose_a,
-                                        conjugate_a, unit_diagonal)
+    if not transpose_a:
+      transpose = 1
+      if conjugate_a:
+        a = self.Conj(a)
+    else:
+      transpose = 3 if conjugate_a else 2
+    return self._client.TriangularSolve(a, b, left_side, lower, unit_diagonal,
+                                        transpose)
 
   def Gather(self, a, start_indices, dimension_numbers, slice_sizes):
     """Enqueues a Gather operation onto the computation."""

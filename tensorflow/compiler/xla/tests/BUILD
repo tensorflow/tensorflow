@@ -2155,3 +2155,26 @@ xla_test(
         "//tensorflow/compiler/xla:test",
     ],
 )
+
+xla_test(
+    name = "triangular_solve_test",
+    srcs = ["triangular_solve_test.cc"],
+    tags = [
+        "enable_for_xla_interpreter",
+        "noasan",  # sometimes times out, http://b/78650012
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:math",
+        "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)

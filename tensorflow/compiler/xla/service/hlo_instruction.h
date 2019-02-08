@@ -435,6 +435,10 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand, FftType fft_type,
       absl::Span<const int64> fft_length);
 
+  static std::unique_ptr<HloInstruction> CreateTriangularSolve(
+      const Shape& shape, HloInstruction* a, HloInstruction* b,
+      const TriangularSolveOptions& options);
+
   // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
   // dimensions specified in 'dimension_numbers'.
   static std::unique_ptr<HloInstruction> CreateDot(
@@ -1565,6 +1569,9 @@ class HloInstruction {
 
   // Delegates to HloDomainInstruction::user_side_metadata().
   const DomainMetadata& user_side_metadata() const;
+
+  // Delegates to HloTriangularSolveInstruction::triangular_solve_options().
+  const TriangularSolveOptions& triangular_solve_options() const;
 
   // Old methods kept for smooth subclassing transition END.
 

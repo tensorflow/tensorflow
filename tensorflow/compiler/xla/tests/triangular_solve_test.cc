@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/client/lib/triangular_solve.h"
-
 #include <memory>
 #include <numeric>
 #include <vector>
@@ -110,9 +108,8 @@ XLA_TEST_F(TriangularSolveTest, EmptyArrays) {
       CreateR2Parameter<float>(Array2D<float>(0, 10), 1, "b", &builder, &b);
   TriangularSolve(a, b,
                   /*left_side=*/true, /*lower=*/true,
-                  /*transpose_a=*/true, /*conjugate_a=*/false,
                   /*unit_diagonal=*/false,
-                  /*block_size=*/2);
+                  /*transpose_a=*/TriangularSolveOptions::TRANSPOSE);
 
   ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 10),
                              {a_data.get(), b_data.get()});
@@ -126,9 +123,8 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTranspose) {
   auto b_data = CreateR2Parameter<float>(BValsRight(), 1, "b", &builder, &b);
   TriangularSolve(a, b,
                   /*left_side=*/false, /*lower=*/true,
-                  /*transpose_a=*/true, /*conjugate_a=*/false,
                   /*unit_diagonal=*/false,
-                  /*block_size=*/2);
+                  /*transpose_a=*/TriangularSolveOptions::TRANSPOSE);
 
   Array2D<float> expected({
       {0.5, 0.08333334, 0.04629629, 0.03367003},
@@ -148,9 +144,8 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightLowerNotranspose) {
   auto b_data = CreateR2Parameter<float>(BValsRight(), 1, "b", &builder, &b);
   TriangularSolve(a, b,
                   /*left_side=*/false, /*lower=*/true,
-                  /*transpose_a=*/false, /*conjugate_a=*/false,
                   /*unit_diagonal=*/false,
-                  /*block_size=*/2);
+                  /*transpose_a=*/TriangularSolveOptions::NO_TRANSPOSE);
 
   Array2D<float> expected({
       {-0.16414141, -0.06902357, -0.07070707, 0.36363636},
@@ -170,9 +165,8 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightUpperTranspose) {
   auto b_data = CreateR2Parameter<float>(BValsRight(), 1, "b", &builder, &b);
   TriangularSolve(a, b,
                   /*left_side=*/false, /*lower=*/false,
-                  /*transpose_a=*/true, /*conjugate_a=*/false,
                   /*unit_diagonal=*/false,
-                  /*block_size=*/2);
+                  /*transpose_a=*/TriangularSolveOptions::TRANSPOSE);
 
   Array2D<float> expected({
       {-0.16414141, -0.06902357, -0.07070707, 0.36363636},
@@ -192,9 +186,8 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightUpperNotranspose) {
   auto b_data = CreateR2Parameter<float>(BValsRight(), 1, "b", &builder, &b);
   TriangularSolve(a, b,
                   /*left_side=*/false, /*lower=*/false,
-                  /*transpose_a=*/false, /*conjugate_a=*/false,
                   /*unit_diagonal=*/false,
-                  /*block_size=*/2);
+                  /*transpose_a=*/TriangularSolveOptions::NO_TRANSPOSE);
 
   Array2D<float> expected({
       {0.5, 0.08333334, 0.04629629, 0.03367003},
@@ -214,9 +207,8 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerTranspose) {
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
   TriangularSolve(a, b,
                   /*left_side=*/true, /*lower=*/true,
-                  /*transpose_a=*/true, /*conjugate_a=*/false,
                   /*unit_diagonal=*/false,
-                  /*block_size=*/2);
+                  /*transpose_a=*/TriangularSolveOptions::TRANSPOSE);
 
   Array2D<float> expected({
       {-0.89646465, -0.69444444, -0.49242424},
@@ -237,9 +229,8 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNotranspose) {
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
   TriangularSolve(a, b,
                   /*left_side=*/true, /*lower=*/true,
-                  /*transpose_a=*/false, /*conjugate_a=*/false,
                   /*unit_diagonal=*/false,
-                  /*block_size=*/2);
+                  /*transpose_a=*/TriangularSolveOptions::NO_TRANSPOSE);
 
   Array2D<float> expected({
       {0.5, 1.0, 1.5},
@@ -261,9 +252,8 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNoTransposeUnitDiagonal) {
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
   TriangularSolve(a, b,
                   /*left_side=*/true, /*lower=*/true,
-                  /*transpose_a=*/false, /*conjugate_a=*/false,
                   /*unit_diagonal=*/true,
-                  /*block_size=*/2);
+                  /*transpose_a=*/TriangularSolveOptions::NO_TRANSPOSE);
 
   Array2D<float> expected(
       {{1., 2., 3.}, {1., -1., -3.}, {-4., 7., 18.}, {37., -61., -159.}});
@@ -280,9 +270,8 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNotransposeIrregularblock) {
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
   TriangularSolve(a, b,
                   /*left_side=*/true, /*lower=*/true,
-                  /*transpose_a=*/false, /*conjugate_a=*/false,
                   /*unit_diagonal=*/false,
-                  /*block_size=*/3);
+                  /*transpose_a=*/TriangularSolveOptions::NO_TRANSPOSE);
 
   Array2D<float> expected({
       {0.5, 1.0, 1.5},
@@ -303,9 +292,8 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTranspose) {
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
   TriangularSolve(a, b,
                   /*left_side=*/true, /*lower=*/false,
-                  /*transpose_a=*/true, /*conjugate_a=*/false,
                   /*unit_diagonal=*/false,
-                  /*block_size=*/2);
+                  /*transpose_a=*/TriangularSolveOptions::TRANSPOSE);
 
   Array2D<float> expected({
       {0.5, 1.0, 1.5},
@@ -326,9 +314,8 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperNotranspose) {
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
   TriangularSolve(a, b,
                   /*left_side=*/true, /*lower=*/false,
-                  /*transpose_a=*/false, /*conjugate_a=*/false,
                   /*unit_diagonal=*/false,
-                  /*block_size=*/2);
+                  /*transpose_a=*/TriangularSolveOptions::NO_TRANSPOSE);
 
   Array2D<float> expected({
       {-0.89646465, -0.69444444, -0.49242424},
@@ -350,9 +337,8 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperNotransposeUnitDiagonal) {
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
   TriangularSolve(a, b,
                   /*left_side=*/true, /*lower=*/false,
-                  /*transpose_a=*/false, /*conjugate_a=*/false,
                   /*unit_diagonal=*/true,
-                  /*block_size=*/2);
+                  /*transpose_a=*/TriangularSolveOptions::NO_TRANSPOSE);
 
   Array2D<float> expected({{-1402., -1538., -1674.},
                            {575., 631., 687.},
@@ -373,9 +359,8 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTransposeConjugate) {
       CreateR2Parameter<complex64>(BValsRightComplex(), 1, "b", &builder, &b);
   TriangularSolve(a, b,
                   /*left_side=*/false, /*lower=*/true,
-                  /*transpose_a=*/true, /*conjugate_a=*/true,
                   /*unit_diagonal=*/false,
-                  /*block_size=*/2);
+                  /*transpose_a=*/TriangularSolveOptions::ADJOINT);
 
   Array2D<complex64> expected({
       {0.5, complex64(0.08333333, 0.08333333),
@@ -400,9 +385,8 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTransposeNoconjugate) {
       CreateR2Parameter<complex64>(BValsLeftComplex(), 1, "b", &builder, &b);
   TriangularSolve(a, b,
                   /*left_side=*/true, /*lower=*/false,
-                  /*transpose_a=*/true, /*conjugate_a=*/false,
                   /*unit_diagonal=*/false,
-                  /*block_size=*/2);
+                  /*transpose_a=*/TriangularSolveOptions::TRANSPOSE);
 
   Array2D<complex64> expected({
       {0.5, 1., 1.5},
@@ -436,12 +420,12 @@ XLA_TEST_F(TriangularSolveTest, BatchedLeftUpper) {
   XlaOp a, b;
   auto a_data = CreateR3Parameter<float>(avals, 0, "a", &builder, &a);
   auto b_data = CreateR3Parameter<float>(bvals, 1, "b", &builder, &b);
-  BatchDot(ConstantR3FromArray3D(&builder, avals),
-           TriangularSolve(a, b,
-                           /*left_side=*/true, /*lower=*/false,
-                           /*transpose_a=*/false, /*conjugate_a=*/false,
-                           /*unit_diagonal=*/false,
-                           /*block_size=*/2));
+  BatchDot(
+      ConstantR3FromArray3D(&builder, avals),
+      TriangularSolve(a, b,
+                      /*left_side=*/true, /*lower=*/false,
+                      /*unit_diagonal=*/false,
+                      /*transpose_a=*/TriangularSolveOptions::NO_TRANSPOSE));
 
   ComputeAndCompareR3<float>(&builder, bvals, {a_data.get(), b_data.get()},
                              ErrorSpec(1e-2, 1e-2));
@@ -451,7 +435,7 @@ struct TriangularSolveTestSpec {
   int m, n;  // A is mxm, B is mxn
   bool left_side;
   bool lower;
-  bool transpose_a;
+  TriangularSolveOptions::Transpose transpose_a;
 };
 
 class TriangularSolveParametricTest
@@ -477,11 +461,11 @@ XLA_TEST_P(TriangularSolveParametricTest, Random) {
   XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(avals, 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(bvals, 1, "b", &builder, &b);
-  auto x = TriangularSolve(a, b, spec.left_side, spec.lower, spec.transpose_a,
-                           /*conjugate_a=*/false, /*unit_diagonal=*/false,
-                           /*block_size=*/3);
+  auto x = TriangularSolve(a, b, spec.left_side, spec.lower,
+                           /*unit_diagonal=*/false, spec.transpose_a);
   auto a_tri = Triangle(a, spec.lower);
-  a_tri = MaybeTransposeInMinorDims(a_tri, spec.transpose_a);
+  a_tri = MaybeTransposeInMinorDims(
+      a_tri, spec.transpose_a != TriangularSolveOptions::NO_TRANSPOSE);
   if (spec.left_side) {
     BatchDot(a_tri, x);
   } else {
@@ -498,7 +482,9 @@ std::vector<TriangularSolveTestSpec> TriangularSolveTests() {
     for (int n : {5, 10}) {
       for (bool left_side : {false, true}) {
         for (bool lower : {false, true}) {
-          for (bool transpose_a : {false, true}) {
+          for (TriangularSolveOptions::Transpose transpose_a :
+               {TriangularSolveOptions::NO_TRANSPOSE,
+                TriangularSolveOptions::TRANSPOSE}) {
             specs.push_back({m, n, left_side, lower, transpose_a});
           }
         }

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/client/lib/triangular_solve.h"
+#include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
 
 #include <memory>
 #include <vector>
@@ -32,6 +32,8 @@ limitations under the License.
 #include "tensorflow/core/lib/math/math_util.h"
 
 namespace xla {
+
+namespace {
 
 // Get the diagonal blocks of the coefficient matrix
 XlaOp DiagonalBlocks(XlaOp a, int64 block_size) {
@@ -345,9 +347,10 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
   });
 }
 
-XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
-                      bool transpose_a, bool conjugate_a, bool unit_diagonal,
-                      int64 block_size, PrecisionConfig::Precision precision) {
+XlaOp BuildTriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
+                           bool transpose_a, bool conjugate_a,
+                           bool unit_diagonal, int64 block_size,
+                           PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
@@ -434,6 +437,68 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
 
     return x;
   });
+}
+
+}  // namespace
+
+bool TriangularSolveExpander::InstructionMatchesPattern(
+    HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kTriangularSolve;
+}
+
+StatusOr<HloInstruction*> TriangularSolveExpander::ExpandInstruction(
+    HloInstruction* instruction) {
+  const TriangularSolveOptions& options =
+      instruction->triangular_solve_options();
+  const string name = absl::StrFormat(
+      "xla.triangular_solve_%s_%s_%s_%s_%s_%s",
+      instruction->operand(0)->shape().ToString(),
+      instruction->operand(1)->shape().ToString(),
+      options.left_side() ? "left" : "right",
+      options.lower() ? "lower" : "upper",
+      TriangularSolveOptions_Transpose_Name(options.transpose_a()),
+      options.unit_diagonal() ? "unit" : "nonunit");
+
+  HloModule* module = instruction->parent()->parent();
+
+  HloComputation*& computation =
+      computation_cache_.emplace(name, nullptr).first->second;
+  if (!computation) {
+    // Builds a new expansion.
+    //
+    // We do something unusual here: we build the computation using the
+    // XlaBuilder API, which is nominally an XLA client API. We do this because
+    // the external APIs for building complicated computations (XlaBuilder)
+    // are much more ergonomic than the internal ones. As it turns out,
+    // XlaBuilder isn't really a client API—what it does is build a
+    // HloModuleProto protocol buffer, that we can then deserialize and clone
+    // into our HloModule. Ideally we would avoid the protocol buffer step;
+    // that is left as an exercise for future work.
+    XlaBuilder builder(name);
+    XlaOp a = Parameter(&builder, 0, instruction->operand(0)->shape(), "a");
+    XlaOp b = Parameter(&builder, 1, instruction->operand(1)->shape(), "b");
+    bool transpose_a =
+        options.transpose_a() != TriangularSolveOptions::NO_TRANSPOSE;
+    bool conjugate_a = options.transpose_a() == TriangularSolveOptions::ADJOINT;
+
+    BuildTriangularSolve(a, b, options.left_side(), options.lower(),
+                         transpose_a, conjugate_a, options.unit_diagonal(),
+                         /*block_size=*/128,
+                         /*precision=*/PrecisionConfig::HIGHEST);
+    TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
+
+    TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                        xla_computation.GetProgramShape());
+    HloModuleConfig config(program_shape);
+    TF_ASSIGN_OR_RETURN(auto new_module, HloModule::CreateFromProto(
+                                             xla_computation.proto(), config));
+    HloCloneContext context(module);
+    computation =
+        module->DeepCloneComputation(new_module->entry_computation(), &context);
+  }
+
+  return instruction->parent()->AddInstruction(HloInstruction::CreateCall(
+      instruction->shape(), instruction->operands(), computation));
 }
 
 }  // namespace xla

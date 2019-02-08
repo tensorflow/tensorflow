@@ -180,6 +180,7 @@ class HloParser {
     kBracedInt64ListList,
     kHloComputation,
     kFftType,
+    kTriangularSolveTranspose,
     kWindow,
     kConvolutionDimensionNumbers,
     kSharding,
@@ -278,6 +279,7 @@ class HloParser {
   bool ParseLayout(Layout* layout);
   bool ParseOpcode(HloOpcode* result);
   bool ParseFftType(FftType* result);
+  bool ParseTriangularSolveTranspose(TriangularSolveOptions::Transpose* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
   bool ParsePrecision(PrecisionConfig::Precision* result);
@@ -1096,6 +1098,38 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(HloInstruction::CreateFft(
           shape, operands[0], *fft_type, *fft_length));
+      break;
+    }
+    case HloOpcode::kTriangularSolve: {
+      optional<bool> left_side;
+      optional<bool> lower;
+      optional<bool> unit_diagonal;
+      optional<TriangularSolveOptions::Transpose> transpose_a;
+      attrs["left_side"] = {/*required=*/false, AttrTy::kBool, &left_side};
+      attrs["lower"] = {/*required=*/false, AttrTy::kBool, &lower};
+      attrs["unit_diagonal"] = {/*required=*/false, AttrTy::kBool,
+                                &unit_diagonal};
+      attrs["transpose_a"] = {/*required=*/false,
+                              AttrTy::kTriangularSolveTranspose, &transpose_a};
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      TriangularSolveOptions options;
+      if (left_side) {
+        options.set_left_side(*left_side);
+      }
+      if (lower) {
+        options.set_lower(*lower);
+      }
+      if (unit_diagonal) {
+        options.set_unit_diagonal(*unit_diagonal);
+      }
+      options.set_transpose_a(
+          transpose_a ? *transpose_a : TriangularSolveOptions::NO_TRANSPOSE);
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateTriangularSolve(
+              shape, operands[0], operands[1], options));
       break;
     }
     case HloOpcode::kBroadcast: {
@@ -2630,6 +2664,15 @@ bool HloParser::ParseAttributeHelper(
         static_cast<optional<FftType>*>(attr_out_ptr)->emplace(result);
         return true;
       }
+      case AttrTy::kTriangularSolveTranspose: {
+        TriangularSolveOptions::Transpose result;
+        if (!ParseTriangularSolveTranspose(&result)) {
+          return false;
+        }
+        static_cast<optional<TriangularSolveOptions::Transpose>*>(attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
       case AttrTy::kWindow: {
         Window result;
         if (!ParseWindow(&result, /*expect_outer_curlies=*/true)) {
@@ -3442,6 +3485,22 @@ bool HloParser::ParseFftType(FftType* result) {
   string val = lexer_.GetStrVal();
   if (!FftType_Parse(val, result) || !FftType_IsValid(*result)) {
     return TokenError(StrFormat("expects fft type but sees: %s", val));
+  }
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParser::ParseTriangularSolveTranspose(
+    TriangularSolveOptions::Transpose* result) {
+  VLOG(1) << "ParseTriangularSolveTranspose";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects triangular solve transpose type");
+  }
+  string val = lexer_.GetStrVal();
+  if (!TriangularSolveOptions_Transpose_Parse(val, result) ||
+      !TriangularSolveOptions_Transpose_IsValid(*result)) {
+    return TokenError(
+        StrFormat("expects triangular solve transpose type but sees: %s", val));
   }
   lexer_.Lex();
   return true;
