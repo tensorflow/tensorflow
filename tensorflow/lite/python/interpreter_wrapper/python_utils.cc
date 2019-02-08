@@ -87,7 +87,7 @@ TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array) {
 bool FillStringBufferFromPyUnicode(PyObject* value,
                                    DynamicBuffer* dynamic_buffer) {
   Py_ssize_t len = -1;
-  char* buf = PyUnicode_AsUTF8AndSize(value, &len);
+  const char* buf = PyUnicode_AsUTF8AndSize(value, &len);
   if (buf == NULL) {
     PyErr_SetString(PyExc_ValueError, "PyUnicode_AsUTF8AndSize() failed.");
     return false;
