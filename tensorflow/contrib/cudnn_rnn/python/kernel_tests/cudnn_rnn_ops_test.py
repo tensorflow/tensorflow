@@ -376,8 +376,6 @@ class CudnnLSTMTest(TensorFlowTestCase, parameterized.TestCase):
                     variable_seq_lengths, time_major):
     if not context.context().num_gpus():
       self.skipTest("No GPUs found")
-    if not variable_seq_lengths and not time_major:
-      self.skipTest("Batch major not supported")
     self._test_training_helper(
         num_units,
         input_size,
@@ -399,8 +397,6 @@ class CudnnLSTMTest(TensorFlowTestCase, parameterized.TestCase):
                          num_layers, variable_seq_lengths, time_major):
     if not context.context().num_gpus():
       self.skipTest("No GPUs found")
-    if not variable_seq_lengths and not time_major:
-      self.skipTest("Batch major not supported")
     self._test_training_helper(
         num_units,
         input_size,
@@ -424,8 +420,6 @@ class CudnnLSTMTest(TensorFlowTestCase, parameterized.TestCase):
                      variable_seq_lengths, time_major):
     if not context.context().num_gpus():
       self.skipTest("No GPUs found")
-    if not variable_seq_lengths and not time_major:
-      self.skipTest("Batch major not supported")
     with self.session(use_gpu=True) as sess:
       (outputs, cu_outputs, state_tuple, cu_state_tuple) = RunLSTM(
           sess,
@@ -455,8 +449,6 @@ class CudnnLSTMTest(TensorFlowTestCase, parameterized.TestCase):
                           num_layers, variable_seq_lengths, time_major):
     if not context.context().num_gpus():
       self.skipTest("No GPUs found")
-    if not variable_seq_lengths and not time_major:
-      self.skipTest("Batch major not supported")
     with self.session(use_gpu=True) as sess:
       (outputs, cu_outputs, state_tuple, cu_state_tuple) = RunLSTM(
           sess,
@@ -491,8 +483,6 @@ class CudnnLSTMTest(TensorFlowTestCase, parameterized.TestCase):
     """Validates that dropout does not affect Cudnn Rnn inference."""
     if not context.context().num_gpus():
       self.skipTest("No GPUs found")
-    if not variable_seq_lengths and not time_major:
-      self.skipTest("Batch major not supported")
     # Hand-picked dropouts are used below (0. and 1.)
     with ops.Graph().as_default() as g:
       with self.session(use_gpu=True, graph=g) as sess:
@@ -739,8 +729,6 @@ class CudnnGRUTest(TensorFlowTestCase, parameterized.TestCase):
                     variable_seq_lengths, time_major):
     if not context.context().num_gpus():
       self.skipTest("No GPUs found")
-    if not variable_seq_lengths and not time_major:
-      self.skipTest("Batch major not supported")
     self._test_training_helper(
         num_units,
         input_size,
@@ -762,8 +750,6 @@ class CudnnGRUTest(TensorFlowTestCase, parameterized.TestCase):
                          num_layers, variable_seq_lengths, time_major):
     if not context.context().num_gpus():
       self.skipTest("No GPUs found")
-    if not variable_seq_lengths and not time_major:
-      self.skipTest("Batch major not supported")
     self._test_training_helper(
         num_units,
         input_size,
@@ -787,8 +773,6 @@ class CudnnGRUTest(TensorFlowTestCase, parameterized.TestCase):
                      variable_seq_lengths, time_major):
     if not context.context().num_gpus():
       self.skipTest("No GPUs found")
-    if not variable_seq_lengths and not time_major:
-      self.skipTest("Batch major not supported")
     with self.session(use_gpu=True) as sess:
       (outputs, cu_outputs, h, cu_h) = RunGRU(
           sess,
@@ -814,8 +798,6 @@ class CudnnGRUTest(TensorFlowTestCase, parameterized.TestCase):
                           num_layers, variable_seq_lengths, time_major):
     if not context.context().num_gpus():
       self.skipTest("No GPUs found")
-    if not variable_seq_lengths and not time_major:
-      self.skipTest("Batch major not supported")
     with self.session(use_gpu=True) as sess:
       (outputs, cu_outputs, h, cu_h) = RunGRU(
           sess,
@@ -846,8 +828,6 @@ class CudnnGRUTest(TensorFlowTestCase, parameterized.TestCase):
     # Hand-picked dropouts are used below (0. and 1.)
     if not context.context().num_gpus():
       self.skipTest("No GPUs found")
-    if not variable_seq_lengths and not time_major:
-      self.skipTest("Batch major not supported")
     with ops.Graph().as_default() as g:
       with self.session(use_gpu=True, graph=g) as sess:
         # 1st time w/o dropout.
