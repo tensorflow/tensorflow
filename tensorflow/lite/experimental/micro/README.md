@@ -328,7 +328,9 @@ Follow these steps to build and run the Tensorflow Micro Speech tests.
 
 3. Edit the file tensorflow/lite/experimental/micro/tools/make/targets/ecm3531_makefile.inc  so that the variable ETA_SDK points to the location where the Eta Compute SDK is installed, and the variable GCC_ARM points to the Arm compiler arm-none-eabi-gcc  \(version = arm-none-eabi-gcc, gcc version 7.3.1 20180622, ARM/embedded-7-branch revision 261907, 7-2018-q2-update\).  The compiler is also downloaded when you run the tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh script.
 
-4. Compile the code with the command  make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=ecm3531 TAGS="CMSIS" test .  This will create a set of executables in tensorflow/lite/experimental/micro/tools/make/gen/ecm3531_cortex-m3/bin/
+4. Compile the code with the command  make  
+-f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=ecm3531 TAGS="CMSIS" test  
+This will create a set of executables in tensorflow/lite/experimental/micro/tools/make/gen/ecm3531_cortex-m3/bin/
 
 5. Connect the board to the host computer, start PuTTY (Connection type = Serial, Speed = 11520, Data bits = 8, Stop bits = 1,  Parity = None), and load the executable with ocd.  A sample script is provided in tensorflow/lite/experimental/micro/tools/make/targets/ecm3531/load_program \(.e.g  load_program  audio_provider_test\) to load and run from SRAM.   
 The following output will be printed:  
