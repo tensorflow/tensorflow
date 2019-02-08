@@ -3445,7 +3445,7 @@ tensorflow::Status ConvertGather(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(
       *params, {{"params", false}, {"indices", false}, {"axis", true}}));
-  absl::Span<int> axis = inputs.at(2).weights().GetSpan<int>();
+  absl::Span<const int> axis = inputs.at(2).weights().GetSpan<int>();
   if (axis.size() != 1) {
     return tensorflow::errors::InvalidArgument(
         "Axis for GatherV2 must be a scalar, at ", node_def.name());
