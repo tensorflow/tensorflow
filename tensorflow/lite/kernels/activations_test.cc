@@ -32,6 +32,8 @@ class BaseActivationsOpModel : public SingleOpModel {
     input_ = AddInput(input);
     if (input.type == TensorType_UINT8) {
       output_ = AddOutput({input.type, {}, 0, 0, 1. / 256});
+    } else if (input.type == TensorType_INT8) {
+      output_ = AddOutput({input.type, {}, 0, 0, 1. / 256, -128});
     } else {
       output_ = AddOutput({input.type, {}});
     }
@@ -253,7 +255,7 @@ TEST(FloatActivationsOpTest, Sigmoid) {
                              })));
 }
 
-TEST(QuantizedActivationsOpTest, Sigmoid) {
+TEST(QuantizedActivationsOpTest, SigmoidUint8) {
   QuantizedActivationsOpModel m(
       BuiltinOperator_LOGISTIC,
       /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, -10, 10});
@@ -271,6 +273,26 @@ TEST(QuantizedActivationsOpTest, Sigmoid) {
                   kQuantizedTolerance)));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAreArray({128, 1, 227, 251, 244, 32, 255, 188}));
+}
+
+TEST(QuantizedActivationsOpTest, SigmoidInt8) {
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_LOGISTIC,
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, -10, 10});
+  m.SetInput<int8_t>({
+      0, -6, 2, 4,   //
+      3, -2, 10, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.5, 0.002473, 0.880797, 0.982014,       //
+                      0.952574, 0.119203, 0.999955, 0.731059,  //
+                  },
+                  kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({0, -127, 99, 123, 116, -99, 127, 60}));
 }
 
 TEST(QuantizedActivationsOpTest, SigmoidInt16) {

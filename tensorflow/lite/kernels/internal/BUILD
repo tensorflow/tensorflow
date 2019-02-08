@@ -309,6 +309,7 @@ cc_library(
         "reference/integer_ops/conv.h",
         "reference/integer_ops/depthwise_conv.h",
         "reference/integer_ops/dequantize.h",
+        "reference/integer_ops/logistic.h",
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/softmax.h",
         "reference/reference_ops.h",
