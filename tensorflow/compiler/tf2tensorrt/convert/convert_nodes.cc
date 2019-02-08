@@ -3634,7 +3634,7 @@ tensorflow::Status ConvertTopK(OpConverterParams* params) {
   return tensorflow::Status::OK();
 }
 
-#if NV_TENSORRT_MAJOR >= 5 && NV_TENSORRT_MINOR >= 1
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
 tensorflow::Status ConvertCombinedNMS(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -3788,7 +3788,7 @@ static void RegisterValidatableOpConverters(
     std::unordered_map<string, OpConverter>* registration) {
   // TODO(laigd): support all op types.
   (*registration)["BiasAdd"] = ConvertBiasAdd;
-#if NV_TENSORRT_MAJOR >= 5 && NV_TENSORRT_MINOR >= 1
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
   (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
 #endif
   (*registration)["ConcatV2"] = ConvertConcat;
