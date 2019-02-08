@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
@@ -47,7 +46,6 @@ namespace {
 
 using ::testing::ElementsAre;
 namespace m = match;
-namespace op = xla::testing::opcode_matchers;
 
 class AlgebraicSimplifierTest : public HloTestBase {
  protected:
@@ -4792,7 +4790,7 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedReshapeWithoutLayout) {
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Constant());
+  EXPECT_THAT(root, GmockMatch(m::Constant()));
 }
 
 TEST_F(AlgebraicSimplifierTest, DividedByConstantInstructionWithoutLayout) {
@@ -4814,7 +4812,7 @@ TEST_F(AlgebraicSimplifierTest, DividedByConstantInstructionWithoutLayout) {
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Multiply());
+  EXPECT_THAT(root, GmockMatch(m::Multiply()));
 }
 
 }  // namespace
