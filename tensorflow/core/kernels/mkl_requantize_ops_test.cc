@@ -38,7 +38,7 @@ class MklRequantizatedOpsTestHelper : public OpsTestBase {
  public:
   void Setup(Tensor &input_tensor_qint32, float &range_weights_ch1,
              float &range_weights_ch2);
-  void TestBody(){};
+  void TestBody() {}
 };
 
 void MklRequantizatedOpsTestHelper::Setup(Tensor &input_tensor_qint32,
