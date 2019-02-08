@@ -79,7 +79,8 @@ def start_profiler_server(port):
   """Start a profiler grpc server that listens to given port.
 
   The profiler server will keep the program running even the training finishes.
-  Please shutdown the server with CTRL-C. The service defined in
+  Please shutdown the server with CTRL-C. It can be used in both eager mode and
+  graph mode. The service defined in
   tensorflow/contrib/tpu/profiler/tpu_profiler.proto. Please use
   tensorflow/contrib/tpu/profiler/capture_tpu_profile to capture tracable
   file following https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace
@@ -87,9 +88,12 @@ def start_profiler_server(port):
   Args:
     port: port profiler server listens to.
   """
-  pywrap_tensorflow.TFE_StartProfilerServer(
-      context.context()._handle,  # pylint: disable=protected-access
-      port)
+  opts = pywrap_tensorflow.TFE_NewProfilerServerOptions()
+  if context.default_execution_mode == context.EAGER_MODE:
+    pywrap_tensorflow.TFE_ProfilerServerOptionsSetEagerContext(
+        opts,
+        context.context()._handle)  # pylint: disable=protected-access
+  pywrap_tensorflow.TFE_StartProfilerServer(opts, port)
 
 
 class Profiler(object):
