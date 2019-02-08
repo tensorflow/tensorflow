@@ -47,7 +47,7 @@ project files that you can download for the following platforms:
 ["Blue Pill" STM32F103-compatible development board](https://github.com/google/stm32_bare_lib) | - | - | [Instructions](#building-for-the-blue-pill-stm32f103-using-make)
 [Ambiq Micro Apollo3Blue EVB using Make](https://ambiqmicro.com/apollo-ultra-low-power-mcus/) | - | - | [Instructions](#building-for-ambiq-micro-apollo3blue-evb-using-make)
 [Generic Keil uVision Projects](http://www2.keil.com/mdk5/uvision/) | - | [Download](https://drive.google.com/open?id=1Lw9rsdquNKObozClLPoE5CTJLuhfh5mV) | -
-[Eta Compute ECM3531 EVB](http://https://etacompute.com/) | - | - | [Instructions](#building-for-the-eta-compute-ecm31-evb-using-make)
+[Eta Compute ECM3531 EVB](//https://etacompute.com/) | - | - | [Instructions](#building-for-the-eta-compute-ecm31-evb-using-make)
 
 If your device is not yet supported, it may not be too hard to add support. You
 can learn about that process
