@@ -972,8 +972,11 @@ def export_scoped_meta_graph(filename=None,
 
   Raises:
     ValueError: When the `GraphDef` is larger than 2GB.
+    ValueError: When executing in Eager mode and either `graph_def` or `graph`
+      is undefined.
   """
-  if context.executing_eagerly():
+  if context.executing_eagerly() and not (graph_def is not None and
+                                          graph is not None):
     raise ValueError("Exporting/importing meta graphs is not supported when "
                      "Eager Execution is enabled.")
   graph = graph or ops.get_default_graph()
