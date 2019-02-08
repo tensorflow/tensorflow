@@ -54,12 +54,24 @@ void SetDefaultLayoutToContainer(std::vector<int64>* minor_to_major) {
 }  // namespace
 
 /* static */ Layout LayoutUtil::MakeLayout(
-    absl::Span<const int64> minor_to_major) {
+    absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
+    int64 element_size_in_bits) {
   Layout layout;
   layout.set_format(DENSE);
   for (int64 dimension_number : minor_to_major) {
     layout.add_minor_to_major(dimension_number);
   }
+  for (Tile tile : tiles) {
+    for (int64 dim : tile.dimensions()) {
+      if (dim < 0 && dim != Tile::kCombineDimension) {
+        LOG(FATAL) << "Tile dimension size needs to be mininum int64 value if "
+                      "it's negative. Value is "
+                   << dim;
+      }
+    }
+    *layout.add_tiles() = tile;
+  }
+  layout.set_element_size_in_bits(element_size_in_bits);
   return layout;
 }
 

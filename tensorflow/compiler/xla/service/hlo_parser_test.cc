@@ -2574,6 +2574,60 @@ TEST_F(HloParserTest, ParseShapeStringWithLayout) {
       << "actual:   " << ShapeUtil::HumanString(actual);
 }
 
+TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
+  // One tile.
+  string shape_string = "f32[123,456]{0,1:T(2,128)}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected =
+      ShapeUtil::MakeShapeWithLayout(F32, {123, 456}, {0, 1}, {Tile({2, 128})});
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Tile with negative dimension size for combining dimensions.
+  shape_string = "f32[123,456,789]{0,1,2:T(2, * , 128)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected =
+      ShapeUtil::MakeShapeWithLayout(F32, {123, 456, 789}, {0, 1, 2},
+                                     {Tile({2, Tile::kCombineDimension, 128})});
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Two tiles.
+  shape_string = "bf16[123,456,789]{2,1,0:T(2,*,128)(2,1)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(
+      BF16, {123, 456, 789}, {2, 1, 0},
+      {Tile({2, Tile::kCombineDimension, 128}), Tile({2, 1})});
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Tile with element size in bits.
+  shape_string = "pred[123,456]{1,0:T(2,128)E(1)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0},
+                                            {Tile({2, 128})}, 1);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Element size in bits without tile.
+  shape_string = "pred[123,456]{1,0:E(1)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, 1);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Wrong minor_to_major.
+  shape_string = "f32[123,456,789]{1:T(2, * , 128)}";
+  auto result = ParseShape(shape_string);
+  ExpectHasSubstr(result.status().error_message(),
+                  "Dimensions size is 3, but minor to major size is 1.");
+}
+
 TEST_F(HloParserTest, ParseShapeStringWithSparseLayout) {
   string shape_string = "f32[123,456]sparse{10}";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));

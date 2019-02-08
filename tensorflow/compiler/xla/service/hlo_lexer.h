@@ -38,9 +38,10 @@ enum class TokKind {
   kError,
 
   // Tokens with no info.
-  kEqual,  // =
-  kComma,  // ,
-  kColon,  // :
+  kEqual,     // =
+  kComma,     // ,
+  kColon,     // :
+  kAsterisk,  // *
   kLsquare,
   kRsquare,  // [  ]
   kLbrace,
