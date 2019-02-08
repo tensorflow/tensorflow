@@ -140,7 +140,6 @@ class MklRequantizePerChannelOp : public OpKernel {
 
       output_min->flat<float>()(0) = input_requested_min_float;
       output_max->flat<float>()(0) = input_requested_max_float;
-
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
                          std::string(e.message) + ", in file " +
