@@ -321,7 +321,8 @@ def _in_place_subclassed_model_reset(model):
     elif isinstance(
         value,
         (list, tuple)) and name not in ('layers', '_layers', 'metrics',
-                                        '_compile_stateful_metric_functions'):
+                                        '_compile_stateful_metric_functions',
+                                        '_output_loss_metrics'):
       # Handle case: list/tuple of layers (also tracked by the Network API).
       if value and all(isinstance(val, Layer) for val in value):
         raise ValueError('We do not support the use of list-of-layers '
