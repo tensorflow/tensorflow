@@ -221,13 +221,13 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
       inputs = input_iterator.get_next()
 
     result = [None]
-    def replicated_fn(replica_id, inputs):
+    def replicated_fn(replica_id, replica_input):
       """Wraps user function to provide replica ID and `Tensor` inputs."""
       with _TPUReplicaContext(self, replica_id_in_sync_group=replica_id):
         if input_iterator is None:
           result[0] = fn()
         else:
-          result[0] = fn(inputs)
+          result[0] = fn(replica_input)
       return result[0]
 
     replicate_inputs = []  # By replica.
