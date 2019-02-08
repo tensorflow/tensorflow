@@ -390,8 +390,8 @@ tensorflow::Status ConvertAxis(int tf_axis, int trt_nb_dims, bool check_bounds,
   if (check_bounds && (tf_axis < -tf_nb_dims || tf_axis >= tf_nb_dims)) {
     return tensorflow::errors::InvalidArgument(
         "Axis value of ", std::to_string(tf_axis),
-        " is out of bounds, must be in range [", std::to_string(-tf_nb_dims),
-        ", ", std::to_string(tf_nb_dims), "), at ", node_name);
+        " is out of bounds, must be in range [", -tf_nb_dims, ", ", tf_nb_dims,
+        "), at ", node_name);
   }
   // Make negative axis positive.
   if (tf_axis < 0) tf_axis += tf_nb_dims;
