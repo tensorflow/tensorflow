@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader
@@ -33,8 +34,8 @@ class SimpleSaveTest(test.TestCase):
 
   def _init_and_validate_variable(self, sess, variable_name, variable_value):
     v = variables.Variable(variable_value, name=variable_name)
-    sess.run(variables.global_variables_initializer())
-    self.assertEqual(variable_value, v.eval())
+    self.evaluate(variables.global_variables_initializer())
+    self.assertEqual(variable_value, self.evaluate(v))
     return v
 
   def _check_variable_info(self, actual_variable, expected_variable):
@@ -53,6 +54,7 @@ class SimpleSaveTest(test.TestCase):
       self.assertEqual(actual_tensor_info.tensor_shape.dim[i].size,
                        expected_tensor.shape[i])
 
+  @test_util.run_deprecated_v1
   def testSimpleSave(self):
     """Test simple_save that uses the default parameters."""
     export_dir = os.path.join(test.get_temp_dir(),
@@ -60,7 +62,7 @@ class SimpleSaveTest(test.TestCase):
 
     # Initialize input and output variables and save a prediction graph using
     # the default parameters.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       var_x = self._init_and_validate_variable(sess, "var_x", 1)
       var_y = self._init_and_validate_variable(sess, "var_y", 2)
       inputs = {"x": var_x}
@@ -69,7 +71,7 @@ class SimpleSaveTest(test.TestCase):
 
     # Restore the graph with a valid tag and check the global variables and
     # signature def map.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       graph = loader.load(sess, [tag_constants.SERVING], export_dir)
       collection_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
 

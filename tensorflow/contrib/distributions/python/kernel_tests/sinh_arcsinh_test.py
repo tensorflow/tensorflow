@@ -34,7 +34,7 @@ class SinhArcsinhTest(test.TestCase):
     b = 10
     scale = rng.rand(b) + 0.5
     loc = rng.randn(b)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       norm = ds.Normal(
           loc=loc,
           scale=scale,
@@ -58,7 +58,7 @@ class SinhArcsinhTest(test.TestCase):
           norm_samps.std(axis=0), sasnorm_samps.std(axis=0), atol=0.1)
 
   def test_broadcast_params_dynamic(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       loc = array_ops.placeholder(dtypes.float64)
       scale = array_ops.placeholder(dtypes.float64)
       skewness = array_ops.placeholder(dtypes.float64)
@@ -78,7 +78,7 @@ class SinhArcsinhTest(test.TestCase):
     b = 10
     scale = rng.rand(b) + 0.5
     loc = rng.randn(b)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       lap = ds.Laplace(
           loc=loc,
           scale=scale,
@@ -106,7 +106,7 @@ class SinhArcsinhTest(test.TestCase):
     batch_size = 10
     scale = rng.rand(batch_size) + 0.5
     loc = 0.1 * rng.randn(batch_size)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       norm = ds.Normal(
           loc=loc,
           scale=scale,
@@ -148,7 +148,7 @@ class SinhArcsinhTest(test.TestCase):
     batch_size = 10
     scale = rng.rand(batch_size) + 0.5
     loc = np.float64(0.)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       norm = ds.Normal(
           loc=loc,
           scale=scale,
@@ -190,7 +190,7 @@ class SinhArcsinhTest(test.TestCase):
     batch_size = 10
     scale = rng.rand(batch_size) + 0.5
     loc = rng.randn(batch_size)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sasnorm = ds.SinhArcsinh(
           loc=loc,
           scale=scale,
@@ -201,7 +201,7 @@ class SinhArcsinhTest(test.TestCase):
       np.testing.assert_array_less(loc, sasnorm_samps.mean(axis=0))
 
   def test_pdf_reflected_for_negative_skewness(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sas_pos_skew = ds.SinhArcsinh(
           loc=0.,
           scale=1.,

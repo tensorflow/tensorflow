@@ -26,6 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
@@ -164,7 +165,7 @@ class InterpolateSplineTest(test_util.TensorFlowTestCase):
     with ops.name_scope('interpolator'):
       interpolator = interpolate_spline.interpolate_spline(
           train_points, train_values, query_points, interpolation_order)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         fetches = [query_points, train_points, train_values, interpolator]
         query_points_, train_points_, train_values_, interp_ = sess.run(fetches)
 
@@ -204,7 +205,7 @@ class InterpolateSplineTest(test_util.TensorFlowTestCase):
 
         target_interpolation = tp.HARDCODED_QUERY_VALUES[(order, reg_weight)]
         target_interpolation = np.array(target_interpolation)
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           interp_val = sess.run(interpolator)
           self.assertAllClose(interp_val[0, :, 0], target_interpolation)
 
@@ -222,9 +223,84 @@ class InterpolateSplineTest(test_util.TensorFlowTestCase):
 
         target_interpolation = tp.HARDCODED_QUERY_VALUES[(order, reg_weight)]
         target_interpolation = np.array(target_interpolation)
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           interp_val = sess.run(interpolator)
           self.assertAllClose(interp_val[0, :, 0], target_interpolation)
+
+  def test_nd_linear_interpolation_unspecified_shape(self):
+    """Ensure that interpolation supports dynamic batch_size and num_points."""
+
+    tp = _QuadraticPlusSinProblemND()
+    (query_points, _, train_points,
+     train_values) = tp.get_problem(dtype='float64')
+
+    # Construct placeholders such that the batch size, number of train points,
+    # and number of query points are not known at graph construction time.
+    feature_dim = query_points.shape[-1]
+    value_dim = train_values.shape[-1]
+    train_points_ph = array_ops.placeholder(
+        dtype=train_points.dtype, shape=[None, None, feature_dim])
+    train_values_ph = array_ops.placeholder(
+        dtype=train_values.dtype, shape=[None, None, value_dim])
+    query_points_ph = array_ops.placeholder(
+        dtype=query_points.dtype, shape=[None, None, feature_dim])
+
+    order = 1
+    reg_weight = 0.01
+
+    interpolator = interpolate_spline.interpolate_spline(
+        train_points_ph, train_values_ph, query_points_ph, order, reg_weight)
+
+    target_interpolation = tp.HARDCODED_QUERY_VALUES[(order, reg_weight)]
+    target_interpolation = np.array(target_interpolation)
+    with self.cached_session() as sess:
+
+      (train_points_value, train_values_value, query_points_value) = sess.run(
+          [train_points, train_values, query_points])
+
+      interp_val = sess.run(
+          interpolator,
+          feed_dict={
+              train_points_ph: train_points_value,
+              train_values_ph: train_values_value,
+              query_points_ph: query_points_value
+          })
+      self.assertAllClose(interp_val[0, :, 0], target_interpolation)
+
+  def test_fully_unspecified_shape(self):
+    """Ensure that erreor is thrown when input/output dim unspecified."""
+
+    tp = _QuadraticPlusSinProblemND()
+    (query_points, _, train_points,
+     train_values) = tp.get_problem(dtype='float64')
+
+    # Construct placeholders such that the batch size, number of train points,
+    # and number of query points are not known at graph construction time.
+    feature_dim = query_points.shape[-1]
+    value_dim = train_values.shape[-1]
+    train_points_ph = array_ops.placeholder(
+        dtype=train_points.dtype, shape=[None, None, feature_dim])
+    train_points_ph_invalid = array_ops.placeholder(
+        dtype=train_points.dtype, shape=[None, None, None])
+    train_values_ph = array_ops.placeholder(
+        dtype=train_values.dtype, shape=[None, None, value_dim])
+    train_values_ph_invalid = array_ops.placeholder(
+        dtype=train_values.dtype, shape=[None, None, None])
+    query_points_ph = array_ops.placeholder(
+        dtype=query_points.dtype, shape=[None, None, feature_dim])
+
+    order = 1
+    reg_weight = 0.01
+
+    with self.assertRaises(ValueError):
+      _ = interpolate_spline.interpolate_spline(
+          train_points_ph_invalid, train_values_ph, query_points_ph, order,
+          reg_weight)
+
+    with self.assertRaises(ValueError):
+      _ = interpolate_spline.interpolate_spline(
+          train_points_ph, train_values_ph_invalid, query_points_ph, order,
+          reg_weight)
 
   def test_interpolation_gradient(self):
     """Make sure that backprop can run. Correctness of gradients is assumed.
@@ -254,7 +330,7 @@ class InterpolateSplineTest(test_util.TensorFlowTestCase):
       opt_func = optimizer.apply_gradients(zip(grad, [train_points]))
       init_op = variables.global_variables_initializer()
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         sess.run(init_op)
         for _ in range(100):
           sess.run([loss, opt_func])

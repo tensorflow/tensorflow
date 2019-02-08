@@ -15,8 +15,8 @@ limitations under the License.
 
 // DEPRECATED: Use the C++ API defined in tensorflow/cc instead.
 
-#ifndef TENSORFLOW_GRAPH_TESTLIB_H_
-#define TENSORFLOW_GRAPH_TESTLIB_H_
+#ifndef TENSORFLOW_CORE_GRAPH_TESTLIB_H_
+#define TENSORFLOW_CORE_GRAPH_TESTLIB_H_
 
 #include <string>
 #include <vector>
@@ -32,7 +32,7 @@ namespace test {
 namespace graph {
 
 // Converts "g" into its corresponding GraphDef "def".
-// DEPRECATED: call g->ToGraphDef(def) instead.
+ABSL_DEPRECATED("Call g->ToGraphDef(def) instead.")
 void ToGraphDef(Graph* g, GraphDef* def);
 
 // A few helpers to construct a graph.
@@ -67,6 +67,10 @@ Node* Send(Graph* g, Node* input, const string& tensor, const string& sender,
 Node* Recv(Graph* g, const string& tensor, const string& type,
            const string& sender, const uint64 sender_incarnation,
            const string& receiver);
+
+// Adds a cumsum "node" in "g" doing cumsum(data, axes).
+Node* Cumsum(Graph* g, Node* data, Node* axes, bool exclusive = false,
+             bool reverse = false);
 
 // Adds a reduction "node" in "g" doing sum(data, axes).  "reduce" is
 // a reduction, e.g., Sum, Max, Min, Mean, etc.
@@ -209,8 +213,17 @@ Node* Diag(Graph* g, Node* in, DataType type);
 // Add a DiagPart node in "g".
 Node* DiagPart(Graph* g, Node* in, DataType type);
 
+// Add a CheckNumerics node in "g".
+Node* CheckNumerics(Graph* g, Node* in, const string& message);
+
+// Add an _Arg node in "g".
+Node* Arg(Graph* g, int64 index, DataType type);
+
+// Add a _Retval node in "g".
+Node* Retval(Graph* g, int64 index, Node* in);
+
 }  // end namespace graph
 }  // end namespace test
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_TESTLIB_H_
+#endif  // TENSORFLOW_CORE_GRAPH_TESTLIB_H_

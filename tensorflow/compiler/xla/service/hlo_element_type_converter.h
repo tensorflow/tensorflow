@@ -25,16 +25,14 @@ namespace xla {
 // inserting Convert ops. This allows a backend to support an element type while
 // only actually implementing the Convert op for that element type. This is
 // generally not the fastest approach, but it works.
-class HloElementTypeConverter : public HloPassInterface {
+class HloElementTypeConverter : public HloModulePass {
  public:
   // eliminate_type is the type to eliminate as the input or output of ops,
   // using Convert ops to replace it with replace_with_type.
   HloElementTypeConverter(PrimitiveType eliminate_type,
                           PrimitiveType replace_with_type);
 
-  tensorflow::StringPiece name() const override {
-    return "element_type_converter";
-  }
+  absl::string_view name() const override { return "element_type_converter"; }
 
   // Returns the pass on the module and returns whether the module was modified.
   StatusOr<bool> Run(HloModule* module) override;

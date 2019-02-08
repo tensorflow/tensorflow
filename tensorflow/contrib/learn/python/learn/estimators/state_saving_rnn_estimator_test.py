@@ -53,7 +53,7 @@ class PrepareInputsForRnnTest(test.TestCase):
                                                     sequence_feature_columns,
                                                     num_unroll)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       sess.run(lookup_ops.tables_initializer())
       features_val = sess.run(features_by_time)
@@ -314,7 +314,7 @@ class StateSavingRnnEstimatorTest(test.TestCase):
         else:
           self.assertAllEqual(v, got[k])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       sess.run(lookup_ops.tables_initializer())
       actual_sequence, actual_context = sess.run(

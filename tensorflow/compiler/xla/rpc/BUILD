@@ -16,7 +16,6 @@ xla_proto_library(
     use_grpc_plugin = True,
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
     ],
 )
@@ -34,15 +33,25 @@ cc_library(
     ],
 )
 
-tf_cc_binary(
-    name = "grpc_service_main_cpu",
+cc_library(
+    name = "grpc_service_main_library",
     srcs = ["grpc_service_main.cc"],
     deps = [
         ":grpc_service",
         "//tensorflow:grpc++",
         "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+tf_cc_binary(
+    name = "grpc_service_main_cpu",
+    deps = [
+        ":grpc_service_main_library",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
     ],
 )
 
@@ -62,6 +71,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

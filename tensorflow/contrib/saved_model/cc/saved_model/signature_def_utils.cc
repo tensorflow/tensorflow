@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/contrib/saved_model/cc/saved_model/signature_def_utils.h"
 
+#include "tensorflow/cc/saved_model/signature_constants.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -33,6 +35,79 @@ Status FindInProtobufMap(StringPiece description,
   *value = &it->second;
   return Status::OK();
 }
+
+// Looks up the TensorInfo for the given key in the given map and verifies that
+// its datatype matches the given correct datatype.
+bool VerifyTensorInfoForKeyInMap(const protobuf::Map<string, TensorInfo>& map,
+                                 const string& key, DataType correct_dtype) {
+  const TensorInfo* tensor_info;
+  const Status& status = FindInProtobufMap("", map, key, &tensor_info);
+  if (!status.ok()) {
+    return false;
+  }
+  if (tensor_info->dtype() != correct_dtype) {
+    return false;
+  }
+  return true;
+}
+
+bool IsValidPredictSignature(const SignatureDef& signature_def) {
+  if (signature_def.method_name() != kPredictMethodName) {
+    return false;
+  }
+  if (signature_def.inputs().empty()) {
+    return false;
+  }
+  if (signature_def.outputs().empty()) {
+    return false;
+  }
+  return true;
+}
+
+bool IsValidRegressionSignature(const SignatureDef& signature_def) {
+  if (signature_def.method_name() != kRegressMethodName) {
+    return false;
+  }
+  if (!VerifyTensorInfoForKeyInMap(signature_def.inputs(), kRegressInputs,
+                                   DT_STRING)) {
+    return false;
+  }
+  if (!VerifyTensorInfoForKeyInMap(signature_def.outputs(), kRegressOutputs,
+                                   DT_FLOAT)) {
+    return false;
+  }
+  return true;
+}
+
+bool IsValidClassificationSignature(const SignatureDef& signature_def) {
+  if (signature_def.method_name() != kClassifyMethodName) {
+    return false;
+  }
+  if (!VerifyTensorInfoForKeyInMap(signature_def.inputs(), kClassifyInputs,
+                                   DT_STRING)) {
+    return false;
+  }
+  if (signature_def.outputs().empty()) {
+    return false;
+  }
+  for (auto const& output : signature_def.outputs()) {
+    const string& key = output.first;
+    const TensorInfo& tensor_info = output.second;
+    if (key == kClassifyOutputClasses) {
+      if (tensor_info.dtype() != DT_STRING) {
+        return false;
+      }
+    } else if (key == kClassifyOutputScores) {
+      if (tensor_info.dtype() != DT_FLOAT) {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 Status FindSignatureDefByKey(const MetaGraphDef& meta_graph_def,
@@ -72,6 +147,12 @@ Status FindOutputTensorNameByKey(const SignatureDef& signature_def,
       FindOutputTensorInfoByKey(signature_def, tensor_info_key, &tensor_info));
   *name = tensor_info->name();
   return Status::OK();
+}
+
+bool IsValidSignature(const SignatureDef& signature_def) {
+  return IsValidClassificationSignature(signature_def) ||
+         IsValidRegressionSignature(signature_def) ||
+         IsValidPredictSignature(signature_def);
 }
 
 }  // namespace tensorflow

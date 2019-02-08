@@ -39,7 +39,7 @@ class LogisticTest(test.TestCase):
         dist.reparameterization_type == distribution.FULLY_REPARAMETERIZED)
 
   def testLogisticLogProb(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       np_loc = np.array([2.0] * batch_size, dtype=np.float32)
       loc = constant_op.constant(np_loc)
@@ -57,7 +57,7 @@ class LogisticTest(test.TestCase):
       self.assertAllClose(prob.eval(), np.exp(expected_log_prob))
 
   def testLogisticCDF(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       np_loc = np.array([2.0] * batch_size, dtype=np.float32)
       loc = constant_op.constant(np_loc)
@@ -72,7 +72,7 @@ class LogisticTest(test.TestCase):
       self.assertAllClose(cdf.eval(), expected_cdf)
 
   def testLogisticLogCDF(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       np_loc = np.array([2.0] * batch_size, dtype=np.float32)
       loc = constant_op.constant(np_loc)
@@ -87,7 +87,7 @@ class LogisticTest(test.TestCase):
       self.assertAllClose(logcdf.eval(), expected_logcdf)
 
   def testLogisticSurvivalFunction(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       np_loc = np.array([2.0] * batch_size, dtype=np.float32)
       loc = constant_op.constant(np_loc)
@@ -102,7 +102,7 @@ class LogisticTest(test.TestCase):
       self.assertAllClose(survival_function.eval(), expected_survival_function)
 
   def testLogisticLogSurvivalFunction(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       np_loc = np.array([2.0] * batch_size, dtype=np.float32)
       loc = constant_op.constant(np_loc)
@@ -118,7 +118,7 @@ class LogisticTest(test.TestCase):
                           expected_logsurvival_function)
 
   def testLogisticMean(self):
-    with self.test_session():
+    with self.cached_session():
       loc = [2.0, 1.5, 1.0]
       scale = 1.5
       expected_mean = stats.logistic.mean(loc, scale)
@@ -126,7 +126,7 @@ class LogisticTest(test.TestCase):
       self.assertAllClose(dist.mean().eval(), expected_mean)
 
   def testLogisticVariance(self):
-    with self.test_session():
+    with self.cached_session():
       loc = [2.0, 1.5, 1.0]
       scale = 1.5
       expected_variance = stats.logistic.var(loc, scale)
@@ -134,7 +134,7 @@ class LogisticTest(test.TestCase):
       self.assertAllClose(dist.variance().eval(), expected_variance)
 
   def testLogisticEntropy(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 3
       np_loc = np.array([2.0] * batch_size, dtype=np.float32)
       loc = constant_op.constant(np_loc)
@@ -144,7 +144,7 @@ class LogisticTest(test.TestCase):
       self.assertAllClose(dist.entropy().eval(), expected_entropy)
 
   def testLogisticSample(self):
-    with self.test_session():
+    with self.cached_session():
       loc = [3.0, 4.0, 2.0]
       scale = 1.0
       dist = logistic.Logistic(loc, scale)

@@ -16,6 +16,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import os
 
 import numpy
@@ -23,6 +24,7 @@ import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
@@ -31,6 +33,7 @@ from tensorflow.python.layers import core as non_keras_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.training.checkpointable import data_structures
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
@@ -70,6 +73,7 @@ class HasList(training.Model):
 class ListTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only("b/120545219")
   def testTracking(self):
     model = HasList()
     output = model(array_ops.ones([32, 2]))
@@ -96,7 +100,13 @@ class ListTests(test.TestCase):
     model.load_weights(save_path)
     self.assertAllEqual([[1., 2., 3.], [4., 5., 6.]],
                         self.evaluate(model.variables[0]))
+    v = variables.Variable(1.)
+    model.var_list = [v]
+    self.assertIn(v, model.variables)
+    self.assertIn(v, model.trainable_variables)
+    self.assertNotIn(v, model.non_trainable_variables)
 
+  @test_util.run_v1_only("b/120545219")
   def testUpdatesForwarded(self):
     with context.graph_mode():
       model = HasList()
@@ -113,6 +123,7 @@ class ListTests(test.TestCase):
       self.assertEqual(0, len(model.updates))
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only("b/120545219")
   def testLossesForwarded(self):
     model = HasList()
     model_input = array_ops.ones([32, 2])
@@ -149,6 +160,23 @@ class ListTests(test.TestCase):
     with self.assertRaises(AttributeError):
       data_structures.List().pop()
 
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorConversion(self):
+
+    class ListToTensor(training.Model):
+
+      def __init__(self):
+        super(ListToTensor, self).__init__()
+        self.l = [1., 2., 3.]
+
+    self.assertAllEqual(
+        [1., 2., 3.],
+        self.evaluate(constant_op.constant(ListToTensor().l)))
+
+    self.assertAllEqual(
+        [1., 2., 3.],
+        self.evaluate(array_ops.pack(ListToTensor().l)))
+
   def testNesting(self):
     with context.graph_mode():
       inner = data_structures.List()
@@ -179,11 +207,88 @@ class ListTests(test.TestCase):
     self.assertEqual([v], l.trainable_weights)
     self.assertEqual([v2], l.non_trainable_weights)
 
+  def testCopy(self):
+    v1 = resource_variable_ops.ResourceVariable(1.)
+    v2 = resource_variable_ops.ResourceVariable(1.)
+    v3 = resource_variable_ops.ResourceVariable(1.)
+
+    l1 = data_structures.List([v1, v2])
+    l2 = l1.copy()
+    l2.append(v3)
+    self.assertEqual(list(l1), [v1, v2])
+    self.assertEqual(list(l2), [v1, v2, v3])
+
+  def testSlicing(self):
+    v1 = resource_variable_ops.ResourceVariable(1.)
+    v2 = resource_variable_ops.ResourceVariable(1.)
+    v3 = resource_variable_ops.ResourceVariable(1.)
+    v4 = resource_variable_ops.ResourceVariable(1.)
+
+    l = data_structures.List([v1, v2, v3, v4])
+    self.assertEqual(l[1:], [v2, v3, v4])
+    self.assertEqual(l[1:-1], [v2, v3])
+    self.assertEqual(l[:-1], [v1, v2, v3])
+
+  def testHash(self):
+    has_sequences = set([data_structures.List(),
+                         data_structures.List()])
+    self.assertEqual(2, len(has_sequences))
+    self.assertNotIn(data_structures.List(), has_sequences)
+
+  def testIMul_zero(self):
+    l = data_structures.List([])
+    with self.assertRaisesRegexp(ValueError, "List only supports append"):
+      l *= 0
+
+  def testIMul(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    l = data_structures.List([v])
+    l *= 2
+    self.assertEqual(list(l), [v] * 2)
+
+  def testMul(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    l = data_structures.List([v, v, v])
+    self.assertEqual(list(l * 2), [v, v, v] * 2)
+
+  def testRMul(self):
+    v = resource_variable_ops.ResourceVariable(1.)
+    l = data_structures.List([v, v, v])
+    self.assertEqual(list(2 * l), [v, v, v] * 2)
+
+
+class ListWrapperTest(test.TestCase):
+
+  IGNORED = ("__new__", "__init__", "__subclasshook__", "__getattribute__")
+
+  def test_overrides_all_list_methods(self):
+    not_overridden = []
+
+    for name in dir(list):
+      if name in ListWrapperTest.IGNORED:
+        continue
+
+      list_method = getattr(list, name)
+
+      if not callable(list_method):
+        continue
+
+      object_method = getattr(object, name, None)
+      if object_method is not None and object_method == list_method:
+        # Skip methods that aren't overridden from object.
+        continue
+
+      if list_method == getattr(data_structures._ListWrapper, name):
+        not_overridden.append(name)
+
+    if not_overridden:
+      self.fail("_ListWrapper does not override %s" % (not_overridden))
+
   def testListWrapperBasic(self):
     # _ListWrapper, unlike List, compares like the built-in list type (since it
     # is used to automatically replace lists).
-    a = tracking.Checkpointable()
-    b = tracking.Checkpointable()
+    a = tracking.AutoCheckpointable()
+    b = tracking.AutoCheckpointable()
     self.assertEqual([a, a],
                      [a, a])
     self.assertEqual(data_structures._ListWrapper([a, a]),
@@ -216,6 +321,10 @@ class ListTests(test.TestCase):
     self.assertEqual([a, a], [a] + data_structures._ListWrapper([a]))
     self.assertIsInstance(data_structures._ListWrapper([a]), list)
 
+  def testAcceptsNonCheckpointableContent(self):
+    l = data_structures._ListWrapper([1, 2, 3])
+    self.assertEqual(l, [1, 2, 3])
+
   def testWrapperChangesList(self):
     l = []
     l_wrapper = data_structures._ListWrapper(l)
@@ -228,13 +337,68 @@ class ListTests(test.TestCase):
     l.append(1)
     self.assertEqual([1], l_wrapper)
 
-  def testHashing(self):
-    has_sequences = set([data_structures.List(),
-                         data_structures.List()])
-    self.assertEqual(2, len(has_sequences))
-    self.assertNotIn(data_structures.List(), has_sequences)
+  def testLayerCollectionWithExternalMutation(self):
+    l = []
+    l_wrapper = data_structures._ListWrapper(l)
+    layer = core.Dense(1)
+    l.append(layer)
+    self.assertEqual([layer], l_wrapper.layers)
+
+  def testNotHashable(self):
     with self.assertRaises(TypeError):
-      has_sequences.add(data_structures._ListWrapper([]))
+      hash(data_structures._ListWrapper())
+
+  def testDelItem(self):
+    l = data_structures._ListWrapper([1, 2, 3, 4])
+    del l[0]
+    self.assertEqual(l, [2, 3, 4])
+    self.assertUnableToSave(l, "Unable to save .*__delitem__")
+
+  def testDelSlice(self):
+    l = data_structures._ListWrapper([1, 2, 3, 4])
+    del l[2:3]
+    self.assertEqual(l, [1, 2, 4])
+    self.assertUnableToSave(l, "Unable to save .*__delslice__")
+
+  def testSetSlice_canSaveForNonCheckpointableItems(self):
+    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l[:] = 2, 8, 9, 0
+    self.assertEqual(l, [2, 8, 9, 0])
+    l._maybe_initialize_checkpointable()  # pylint: disable=protected-access
+    self.assertEqual(len(l._checkpoint_dependencies), 0)  # pylint: disable=protected-access
+
+  def testSetSlice_cannotSaveIfCheckpointableModified(self):
+    v1 = resource_variable_ops.ResourceVariable(1.)
+    v2 = resource_variable_ops.ResourceVariable(1.)
+    l = data_structures._ListWrapper([1, 2, v1, v2])
+    l[:] = 2, 8, 9, v2
+    self.assertEqual(l, [2, 8, 9, v2])
+    self.assertUnableToSave(l, "Unable to save .*__setslice__")
+
+  def testSetSlice_truncate(self):
+    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l[:] = []
+    self.assertEqual(l, [])
+
+  def testSetSlice_extend(self):
+    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l[2:] = 1, 2, 3, 4
+    self.assertEqual(l, [1, 2, 1, 2, 3, 4])
+
+  def testSort(self):
+    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l.sort()
+    self.assertEqual(l, [1, 2, 3, 4])
+    # Regardless of being a no-op for the input list, we still refuse to save.
+    # This is intentional since otherwise we would end up with a hard to debug
+    # case for users (e.g. sometimes sort on a ListWrapper is checkpointable and
+    # other times it is not).
+    self.assertUnableToSave(l, "Unable to save .*sort")
+
+  def assertUnableToSave(self, l, msg):
+    l._maybe_initialize_checkpointable()  # pylint: disable=protected-access
+    with self.assertRaisesRegexp(ValueError, msg):
+      return l._checkpoint_dependencies  # pylint: disable=protected-access
 
 
 class HasMapping(training.Model):
@@ -263,6 +427,7 @@ class HasMapping(training.Model):
 class MappingTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only("b/120545219")
   def testTracking(self):
     model = HasMapping()
     output = model(array_ops.ones([32, 2]))
@@ -299,13 +464,27 @@ class MappingTests(test.TestCase):
     with self.assertRaises(TypeError):
       mapping[1] = data_structures.List()
 
+  def testLayerCollectionWithExternalMutation(self):
+    d = {}
+    root = tracking.AutoCheckpointable()
+    root.wrapper = d
+    self.assertEqual([], root.wrapper.layers)
+    self.assertEqual([], root.wrapper.trainable_weights)
+    layer1 = core.Dense(1)
+    layer2 = core.Dense(1)
+    d["a"] = layer1
+    d["b"] = layer2
+    self.assertEqual([layer1, layer2], root.wrapper.layers)
+    # The layers have still not created variables
+    self.assertEqual([], root.wrapper.trainable_weights)
+
   def testHashing(self):
     has_mappings = set([data_structures.Mapping(),
                         data_structures.Mapping()])
     self.assertEqual(2, len(has_mappings))
     self.assertNotIn(data_structures.Mapping(), has_mappings)
     # In contrast to Mapping, dict wrappers are not hashable
-    a = tracking.Checkpointable()
+    a = tracking.AutoCheckpointable()
     a.d = {}
     self.assertEqual({}, a.d)
     self.assertFalse({} != a.d)  # pylint: disable=g-explicit-bool-comparison
@@ -314,7 +493,7 @@ class MappingTests(test.TestCase):
       set([a.d])
 
   def testDictWrapperBadKeys(self):
-    a = tracking.Checkpointable()
+    a = tracking.AutoCheckpointable()
     a.d = {}
     a.d[1] = data_structures.List()
     model = training.Model()
@@ -324,7 +503,7 @@ class MappingTests(test.TestCase):
       model.save_weights(save_path)
 
   def testDictWrapperNoDependency(self):
-    a = tracking.Checkpointable()
+    a = tracking.AutoCheckpointable()
     a.d = data_structures.NoDependency({})
     a.d[1] = [3]
     self.assertEqual([a], util.list_objects(a))
@@ -335,7 +514,7 @@ class MappingTests(test.TestCase):
     model.load_weights(save_path)
 
   def testNonStringKeyNotCheckpointableValue(self):
-    a = tracking.Checkpointable()
+    a = tracking.AutoCheckpointable()
     a.d = {}
     a.d["a"] = [3]
     a.d[1] = data_structures.NoDependency([3])
@@ -349,15 +528,15 @@ class MappingTests(test.TestCase):
   def testNonAppendNotCheckpointable(self):
     # Non-append mutations (deleting or overwriting values) are OK when the
     # values aren't tracked.
-    a = tracking.Checkpointable()
+    a = tracking.AutoCheckpointable()
     a.d = {}
     a.d["a"] = [3]
     a.d[1] = 3
     a.d[1] = 2
     self.assertEqual(2, a.d[1])
     del a.d[1]
-    a.d[2] = data_structures.NoDependency(tracking.Checkpointable())
-    second = tracking.Checkpointable()
+    a.d[2] = data_structures.NoDependency(tracking.AutoCheckpointable())
+    second = tracking.AutoCheckpointable()
     a.d[2] = data_structures.NoDependency(second)
     self.assertIs(second, a.d[2])
     self.assertEqual([a, a.d, a.d["a"]], util.list_objects(a))
@@ -417,6 +596,104 @@ class MappingTests(test.TestCase):
     # storage updated (no shadowing all its methods like _ListWrapper).
     new_dict.update(model.d)
     self.assertEqual({1: 3}, new_dict)
+
+  def testListShallowCopy(self):
+    root = tracking.AutoCheckpointable()
+    orig_list = [[1.]]
+    root.a = orig_list
+    copied = copy.copy(root.a)
+    self.assertAllEqual([[1.]], copied)
+    self.assertIsNot(root.a, copied)
+    self.assertIs(root.a[0], copied[0])
+
+    # Dirtiness should be inherited
+    util.list_objects(root.a)
+    orig_list.append(1.)
+    with self.assertRaises(ValueError):
+      util.list_objects(root.a)
+    with self.assertRaises(ValueError):
+      util.list_objects(copy.copy(root.a))
+
+  def testListDeepCopy(self):
+    root = tracking.AutoCheckpointable()
+    orig_list = [[1.]]
+    root.a = orig_list
+    copied = copy.deepcopy(root.a)
+    self.assertAllEqual([[1.]], copied)
+    self.assertIsNot(root.a, copied)
+    self.assertIsNot(root.a[0], copied[0])
+
+    # Dirtiness should be inherited
+    util.list_objects(root.a)
+    orig_list.append(1.)
+    with self.assertRaises(ValueError):
+      util.list_objects(root.a)
+    with self.assertRaises(ValueError):
+      util.list_objects(copy.deepcopy(root.a))
+
+  def testDictShallowCopy(self):
+    root = tracking.AutoCheckpointable()
+    orig_dict = {"a": [1.]}
+    root.a = orig_dict
+    copied = copy.copy(root.a)
+    self.assertAllEqual([1.], copied["a"])
+    self.assertIsNot(root.a, copied)
+    self.assertIs(root.a["a"], copied["a"])
+
+    # Dirtiness should be inherited
+    util.list_objects(root.a)
+    orig_dict["b"] = []
+    with self.assertRaises(ValueError):
+      util.list_objects(root.a)
+    with self.assertRaises(ValueError):
+      util.list_objects(copy.copy(root.a))
+
+  def testDictDeepCopy(self):
+    root = tracking.AutoCheckpointable()
+    orig_dict = {"a": [1.]}
+    root.a = orig_dict
+    copied = copy.deepcopy(root.a)
+    self.assertAllEqual([1.], copied["a"])
+    self.assertIsNot(root.a, copied)
+    self.assertIsNot(root.a["a"], copied["a"])
+
+    # Dirtiness should be inherited
+    util.list_objects(root.a)
+    orig_dict["b"] = []
+    with self.assertRaises(ValueError):
+      util.list_objects(root.a)
+    with self.assertRaises(ValueError):
+      util.list_objects(copy.deepcopy(root.a))
+
+  def testShallowCopyCheckpointable(self):
+    original = tracking.AutoCheckpointable()
+    original_sub = tracking.AutoCheckpointable()
+    original.a = [[1.]]
+    original.b = {"a": original_sub}
+    shallow_copied = copy.copy(original)
+    self.assertIs(original_sub, shallow_copied.b["a"])
+    self.assertIsNot(original, shallow_copied)
+    self.assertEqual([[1.]], shallow_copied.a)
+    shallow_deps = util.list_objects(shallow_copied)
+    self.assertIn(shallow_copied.a, shallow_deps)
+    self.assertIn(shallow_copied.b, shallow_deps)
+    self.assertIn(shallow_copied.b["a"], shallow_deps)
+
+  def testDeepCopyCheckpointable(self):
+    original = tracking.AutoCheckpointable()
+    original_sub = tracking.AutoCheckpointable()
+    original.a = [[1.]]
+    original.b = {"a": original_sub}
+    deep_copied = copy.deepcopy(original)
+    self.assertIsNot(original, deep_copied)
+    self.assertIsNot(original_sub, deep_copied.b["a"])
+    self.assertEqual([[1.]], deep_copied.a)
+    self.assertIsInstance(deep_copied.b["a"], tracking.AutoCheckpointable)
+    deps = util.list_objects(deep_copied)
+    self.assertIn(deep_copied.a, deps)
+    self.assertIn(deep_copied.b, deps)
+    self.assertIn(deep_copied.b["a"], deps)
+    self.assertNotIn(original_sub, deps)
 
   def testConstructableFromSequence(self):
     result = data_structures._DictWrapper([(1, 2), (3, 4)])

@@ -69,7 +69,7 @@ class ResnetUtilsTest(test.TestCase):
     x = resnet_utils.subsample(x, 2)
     expected = array_ops.reshape(
         constant_op.constant([0, 2, 6, 8]), [1, 2, 2, 1])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(x.eval(), expected.eval())
 
   def testSubsampleFourByFour(self):
@@ -77,7 +77,7 @@ class ResnetUtilsTest(test.TestCase):
     x = resnet_utils.subsample(x, 2)
     expected = array_ops.reshape(
         constant_op.constant([0, 2, 8, 10]), [1, 2, 2, 1])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(x.eval(), expected.eval())
 
   def testConv2DSameEven(self):
@@ -110,7 +110,7 @@ class ResnetUtilsTest(test.TestCase):
     y4_expected = math_ops.to_float([[48, 37], [37, 22]])
     y4_expected = array_ops.reshape(y4_expected, [1, n2, n2, 1])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       self.assertAllClose(y1.eval(), y1_expected.eval())
       self.assertAllClose(y2.eval(), y2_expected.eval())
@@ -151,7 +151,7 @@ class ResnetUtilsTest(test.TestCase):
     y4 = layers.conv2d(x, 1, [3, 3], stride=2, scope='Conv')
     y4_expected = y2_expected
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       self.assertAllClose(y1.eval(), y1_expected.eval())
       self.assertAllClose(y2.eval(), y2_expected.eval())
@@ -227,7 +227,7 @@ class ResnetUtilsTest(test.TestCase):
       with arg_scope([layers.batch_norm], is_training=False):
         for output_stride in [1, 2, 4, 8, None]:
           with ops.Graph().as_default():
-            with self.test_session() as sess:
+            with self.cached_session() as sess:
               random_seed.set_random_seed(0)
               inputs = create_test_input(1, height, width, 3)
               # Dense feature extraction followed by subsampling.
@@ -368,7 +368,7 @@ class ResnetCompleteNetworkTest(test.TestCase):
     for output_stride in [4, 8, 16, 32, None]:
       with arg_scope(resnet_utils.resnet_arg_scope()):
         with ops.Graph().as_default():
-          with self.test_session() as sess:
+          with self.cached_session() as sess:
             random_seed.set_random_seed(0)
             inputs = create_test_input(2, 81, 81, 3)
             # Dense feature extraction followed by subsampling.
@@ -405,7 +405,7 @@ class ResnetCompleteNetworkTest(test.TestCase):
     self.assertListEqual(logits.get_shape().as_list(),
                          [None, 1, 1, num_classes])
     images = create_test_input(batch, height, width, 3)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       output = sess.run(logits, {inputs: images.eval()})
       self.assertEqual(output.shape, (batch, 1, 1, num_classes))
@@ -419,7 +419,7 @@ class ResnetCompleteNetworkTest(test.TestCase):
       output, _ = self._resnet_small(inputs, None, global_pool=global_pool)
     self.assertListEqual(output.get_shape().as_list(), [batch, None, None, 32])
     images = create_test_input(batch, height, width, 3)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       output = sess.run(output, {inputs: images.eval()})
       self.assertEqual(output.shape, (batch, 3, 3, 32))
@@ -435,7 +435,7 @@ class ResnetCompleteNetworkTest(test.TestCase):
           inputs, None, global_pool=global_pool, output_stride=output_stride)
     self.assertListEqual(output.get_shape().as_list(), [batch, None, None, 32])
     images = create_test_input(batch, height, width, 3)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       output = sess.run(output, {inputs: images.eval()})
       self.assertEqual(output.shape, (batch, 9, 9, 32))

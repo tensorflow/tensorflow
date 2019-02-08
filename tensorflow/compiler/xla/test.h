@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPLIER_XLA_TEST_H_
-#define TENSORFLOW_COMPLIER_XLA_TEST_H_
+#ifndef TENSORFLOW_COMPILER_XLA_TEST_H_
+#define TENSORFLOW_COMPILER_XLA_TEST_H_
 
 // This header includes gmock.h and enables the use of gmock matchers in tests
 // in third_party/tensorflow/compiler/xla.
@@ -45,4 +45,4 @@ limitations under the License.
 
 #include "tensorflow/core/platform/test.h"
 
-#endif  // TENSORFLOW_COMPLIER_XLA_TEST_H_
+#endif  // TENSORFLOW_COMPILER_XLA_TEST_H_

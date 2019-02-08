@@ -17,8 +17,8 @@ limitations under the License.
 // Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.
 //   http://www.thesalmons.org/john/random123/papers/random123sc11.pdf
 
-#ifndef TENSORFLOW_LIB_RANDOM_PHILOX_RANDOM_H_
-#define TENSORFLOW_LIB_RANDOM_PHILOX_RANDOM_H_
+#ifndef TENSORFLOW_CORE_LIB_RANDOM_PHILOX_RANDOM_H_
+#define TENSORFLOW_CORE_LIB_RANDOM_PHILOX_RANDOM_H_
 
 #include <stdlib.h>
 
@@ -49,6 +49,7 @@ namespace random {
 template <typename T, int ElementCount>
 class Array {
  public:
+  static const int kElementCount = ElementCount;
   PHILOX_DEVICE_INLINE Array() {
     for (int i = 0; i < ElementCount; ++i) {
       data_[i] = T(0);
@@ -130,6 +131,12 @@ class PhiloxRandom {
 
   PHILOX_DEVICE_INLINE
   PhiloxRandom(ResultType counter, Key key) : counter_(counter), key_(key) {}
+
+  PHILOX_DEVICE_INLINE
+  ResultType const& counter() const { return counter_; }
+
+  PHILOX_DEVICE_INLINE
+  Key const& key() const { return key_; }
 
   // Skip the specified number of samples of 128-bits in the current stream.
   PHILOX_DEVICE_INLINE
@@ -248,4 +255,4 @@ class PhiloxRandom {
 }  // namespace random
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_RANDOM_PHILOX_RANDOM_H_
+#endif  // TENSORFLOW_CORE_LIB_RANDOM_PHILOX_RANDOM_H_

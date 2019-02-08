@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 # pylint: disable=unused-import
 from tensorflow.contrib.boosted_trees.python.ops import boosted_trees_ops_loader
 # pylint: enable=unused-import
@@ -31,6 +33,7 @@ from tensorflow.contrib.boosted_trees.python.ops.gen_model_ops import tree_ensem
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resources
 from tensorflow.python.training import saver
+from tensorflow.python.training.checkpointable import tracking
 
 ops.NotDifferentiable("TreeEnsembleVariable")
 ops.NotDifferentiable("TreeEnsembleSerialize")
@@ -59,8 +62,8 @@ class TreeEnsembleVariableSavable(saver.BaseSaverBuilder.SaveableObject):
         saver.BaseSaverBuilder.SaveSpec(ensemble_config, slice_spec,
                                         name + "_config"),
     ]
-    super(TreeEnsembleVariableSavable,
-          self).__init__(tree_ensemble_handle, specs, name)
+    super(TreeEnsembleVariableSavable, self).__init__(tree_ensemble_handle,
+                                                      specs, name)
     self._tree_ensemble_handle = tree_ensemble_handle
     self._create_op = create_op
 
@@ -82,6 +85,44 @@ class TreeEnsembleVariableSavable(saver.BaseSaverBuilder.SaveableObject):
           tree_ensemble_config=restored_tensors[1])
 
 
+class TreeEnsembleVariable(tracking.TrackableResource):
+  """A Tree ensemble model."""
+
+  def __init__(self, stamp_token, tree_ensemble_config, name, container=None):
+    self._stamp_token = stamp_token
+    self._tree_ensemble_config = tree_ensemble_config
+    self._name = name
+    self._container = container
+    self._init_op = None
+    super(TreeEnsembleVariable, self).__init__()
+
+  def create_resource(self):
+    return gen_model_ops.decision_tree_ensemble_resource_handle_op(
+        self._container, shared_name=self._name, name=self._name)
+
+  def initialize(self):
+    return gen_model_ops.create_tree_ensemble_variable(
+        self.resource_handle, self._stamp_token, self._tree_ensemble_config)
+
+  @property
+  def initializer(self):
+    if self._init_op is None:
+      self._init_op = self.initialize()
+    return self._init_op
+
+  def is_initialized(self):
+    return gen_model_ops.tree_ensemble_is_initialized_op(self.resource_handle)
+
+  def _gather_saveables_for_checkpoint(self):
+    return {
+        self.resource_handle.op.name + "/tree_ensemble_variable":
+            functools.partial(
+                TreeEnsembleVariableSavable,
+                tree_ensemble_handle=self.resource_handle,
+                create_op=self.initializer)
+    }
+
+
 def tree_ensemble_variable(stamp_token,
                            tree_ensemble_config,
                            name,
@@ -90,8 +131,8 @@ def tree_ensemble_variable(stamp_token,
 
   Args:
     stamp_token: The initial stamp token value for the ensemble resource.
-    tree_ensemble_config: A `Tensor` of type `string`.
-      Serialized proto of the tree ensemble.
+    tree_ensemble_config: A `Tensor` of type `string`. Serialized proto of the
+      tree ensemble.
     name: A name for the ensemble variable.
     container: An optional `string`. Defaults to `""`.
 
@@ -99,12 +140,11 @@ def tree_ensemble_variable(stamp_token,
     A `Tensor` of type mutable `string`. The handle to the tree ensemble.
   """
   with ops.name_scope(name, "TreeEnsembleVariable") as name:
-    resource_handle = gen_model_ops.decision_tree_ensemble_resource_handle_op(
-        container, shared_name=name, name=name)
-    create_op = gen_model_ops.create_tree_ensemble_variable(
-        resource_handle, stamp_token, tree_ensemble_config)
-    is_initialized_op = gen_model_ops.tree_ensemble_is_initialized_op(
-        resource_handle)
+    tree_ensemble_var = TreeEnsembleVariable(stamp_token, tree_ensemble_config,
+                                             name, container)
+    resource_handle = tree_ensemble_var.resource_handle
+    create_op = tree_ensemble_var.initializer
+    is_initialized_op = tree_ensemble_var.is_initialized()
     # Adds the variable to the savable list.
     saveable = TreeEnsembleVariableSavable(resource_handle, create_op,
                                            resource_handle.name)

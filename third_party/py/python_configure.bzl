@@ -130,8 +130,8 @@ def _symlink_genrule_for_dir(repository_ctx, src_dir, dest_dir, genrule_name,
       # If we have only one file to link we do not want to use the dest_dir, as
       # $(@D) will include the full path to the file.
       dest = '$(@D)/' + dest_dir + dest_files[i] if len(dest_files) != 1 else '$(@D)/' + dest_files[i]
-      # On Windows, symlink is not supported, so we just copy all the files.
-      cmd = 'cp -f' if _is_windows(repository_ctx) else 'ln -s'
+      # Copy the headers to create a sandboxable setup.
+      cmd = 'cp -f'
       command.append(cmd + ' "%s" "%s"' % (src_files[i] , dest))
       outs.append('        "' + dest_dir + dest_files[i] + '",')
   genrule = _genrule(src_dir, genrule_name, " && ".join(command),
@@ -294,9 +294,7 @@ def _create_local_python_repository(repository_ctx):
 def _create_remote_python_repository(repository_ctx, remote_config_repo):
   """Creates pointers to a remotely configured repo set up to build with Python.
   """
-  _tpl(repository_ctx, "remote.BUILD", {
-      "%{REMOTE_PYTHON_REPO}": remote_config_repo,
-  }, "BUILD")
+  repository_ctx.template("BUILD", Label(remote_config_repo + ":BUILD"), {})
 
 
 def _python_autoconf_impl(repository_ctx):

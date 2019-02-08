@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_HTTP_REQUEST_FAKE_H_
-#define TENSORFLOW_CORE_PLATFORM_HTTP_REQUEST_FAKE_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_HTTP_REQUEST_FAKE_H_
+#define TENSORFLOW_CORE_PLATFORM_CLOUD_HTTP_REQUEST_FAKE_H_
 
 #include <algorithm>
 #include <fstream>
@@ -212,4 +212,4 @@ class FakeHttpRequestFactory : public HttpRequest::Factory {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_HTTP_REQUEST_FAKE_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_HTTP_REQUEST_FAKE_H_

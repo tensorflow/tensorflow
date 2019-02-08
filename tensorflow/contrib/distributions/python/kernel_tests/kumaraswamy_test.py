@@ -77,7 +77,7 @@ def _kumaraswamy_pdf(a, b, x):
 class KumaraswamyTest(test.TestCase):
 
   def testSimpleShapes(self):
-    with self.test_session():
+    with self.cached_session():
       a = np.random.rand(3)
       b = np.random.rand(3)
       dist = kumaraswamy_lib.Kumaraswamy(a, b)
@@ -87,7 +87,7 @@ class KumaraswamyTest(test.TestCase):
       self.assertEqual(tensor_shape.TensorShape([3]), dist.batch_shape)
 
   def testComplexShapes(self):
-    with self.test_session():
+    with self.cached_session():
       a = np.random.rand(3, 2, 2)
       b = np.random.rand(3, 2, 2)
       dist = kumaraswamy_lib.Kumaraswamy(a, b)
@@ -97,7 +97,7 @@ class KumaraswamyTest(test.TestCase):
       self.assertEqual(tensor_shape.TensorShape([3, 2, 2]), dist.batch_shape)
 
   def testComplexShapesBroadcast(self):
-    with self.test_session():
+    with self.cached_session():
       a = np.random.rand(3, 2, 2)
       b = np.random.rand(2, 2)
       dist = kumaraswamy_lib.Kumaraswamy(a, b)
@@ -109,7 +109,7 @@ class KumaraswamyTest(test.TestCase):
   def testAProperty(self):
     a = [[1., 2, 3]]
     b = [[2., 4, 3]]
-    with self.test_session():
+    with self.cached_session():
       dist = kumaraswamy_lib.Kumaraswamy(a, b)
       self.assertEqual([1, 3], dist.concentration1.get_shape())
       self.assertAllClose(a, dist.concentration1.eval())
@@ -117,7 +117,7 @@ class KumaraswamyTest(test.TestCase):
   def testBProperty(self):
     a = [[1., 2, 3]]
     b = [[2., 4, 3]]
-    with self.test_session():
+    with self.cached_session():
       dist = kumaraswamy_lib.Kumaraswamy(a, b)
       self.assertEqual([1, 3], dist.concentration0.get_shape())
       self.assertAllClose(b, dist.concentration0.eval())
@@ -125,7 +125,7 @@ class KumaraswamyTest(test.TestCase):
   def testPdfXProper(self):
     a = [[1., 2, 3]]
     b = [[2., 4, 3]]
-    with self.test_session():
+    with self.cached_session():
       dist = kumaraswamy_lib.Kumaraswamy(a, b, validate_args=True)
       dist.prob([.1, .3, .6]).eval()
       dist.prob([.2, .3, .5]).eval()
@@ -136,7 +136,7 @@ class KumaraswamyTest(test.TestCase):
         dist.prob([.1, .2, 1.2]).eval()
 
   def testPdfTwoBatches(self):
-    with self.test_session():
+    with self.cached_session():
       a = [1., 2]
       b = [1., 2]
       x = [.5, .5]
@@ -147,7 +147,7 @@ class KumaraswamyTest(test.TestCase):
       self.assertEqual((2,), pdf.get_shape())
 
   def testPdfTwoBatchesNontrivialX(self):
-    with self.test_session():
+    with self.cached_session():
       a = [1., 2]
       b = [1., 2]
       x = [.3, .7]
@@ -158,7 +158,7 @@ class KumaraswamyTest(test.TestCase):
       self.assertEqual((2,), pdf.get_shape())
 
   def testPdfUniformZeroBatch(self):
-    with self.test_session():
+    with self.cached_session():
       # This is equivalent to a uniform distribution
       a = 1.
       b = 1.
@@ -170,7 +170,7 @@ class KumaraswamyTest(test.TestCase):
       self.assertEqual((5,), pdf.get_shape())
 
   def testPdfAStretchedInBroadcastWhenSameRank(self):
-    with self.test_session():
+    with self.cached_session():
       a = [[1., 2]]
       b = [[1., 2]]
       x = [[.5, .5], [.3, .7]]
@@ -181,7 +181,7 @@ class KumaraswamyTest(test.TestCase):
       self.assertEqual((2, 2), pdf.get_shape())
 
   def testPdfAStretchedInBroadcastWhenLowerRank(self):
-    with self.test_session():
+    with self.cached_session():
       a = [1., 2]
       b = [1., 2]
       x = [[.5, .5], [.2, .8]]
@@ -191,7 +191,7 @@ class KumaraswamyTest(test.TestCase):
       self.assertEqual((2, 2), pdf.get_shape())
 
   def testPdfXStretchedInBroadcastWhenSameRank(self):
-    with self.test_session():
+    with self.cached_session():
       a = [[1., 2], [2., 3]]
       b = [[1., 2], [2., 3]]
       x = [[.5, .5]]
@@ -201,7 +201,7 @@ class KumaraswamyTest(test.TestCase):
       self.assertEqual((2, 2), pdf.get_shape())
 
   def testPdfXStretchedInBroadcastWhenLowerRank(self):
-    with self.test_session():
+    with self.cached_session():
       a = [[1., 2], [2., 3]]
       b = [[1., 2], [2., 3]]
       x = [.5, .5]
@@ -289,7 +289,7 @@ class KumaraswamyTest(test.TestCase):
       self.assertAllClose(expected_entropy, dist.entropy().eval())
 
   def testKumaraswamySample(self):
-    with self.test_session():
+    with self.cached_session():
       a = 1.
       b = 2.
       kumaraswamy = kumaraswamy_lib.Kumaraswamy(a, b)
@@ -316,7 +316,7 @@ class KumaraswamyTest(test.TestCase):
 
   # Test that sampling with the same seed twice gives the same results.
   def testKumaraswamySampleMultipleTimes(self):
-    with self.test_session():
+    with self.cached_session():
       a_val = 1.
       b_val = 2.
       n_val = 100
@@ -334,7 +334,7 @@ class KumaraswamyTest(test.TestCase):
       self.assertAllClose(samples1, samples2)
 
   def testKumaraswamySampleMultidimensional(self):
-    with self.test_session():
+    with self.cached_session():
       a = np.random.rand(3, 2, 2).astype(np.float32)
       b = np.random.rand(3, 2, 2).astype(np.float32)
       kumaraswamy = kumaraswamy_lib.Kumaraswamy(a, b)
@@ -351,7 +351,7 @@ class KumaraswamyTest(test.TestCase):
           atol=1e-1)
 
   def testKumaraswamyCdf(self):
-    with self.test_session():
+    with self.cached_session():
       shape = (30, 40, 50)
       for dt in (np.float32, np.float64):
         a = 10. * np.random.random(shape).astype(dt)
@@ -366,7 +366,7 @@ class KumaraswamyTest(test.TestCase):
             _kumaraswamy_cdf(a, b, x), actual, rtol=1e-4, atol=0)
 
   def testKumaraswamyLogCdf(self):
-    with self.test_session():
+    with self.cached_session():
       shape = (30, 40, 50)
       for dt in (np.float32, np.float64):
         a = 10. * np.random.random(shape).astype(dt)

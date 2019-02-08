@@ -34,7 +34,7 @@ limitations under the License.
 #include <algorithm>
 #include <unordered_set>
 
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -44,7 +44,7 @@ namespace {
 typedef std::unordered_set<int32> NodeSet;
 template <typename T>
 struct VecStruct {
-  typedef gtl::InlinedVector<T, 4> type;
+  typedef absl::InlinedVector<T, 4> type;
 };
 template <typename T>
 using Vec = typename VecStruct<T>::type;

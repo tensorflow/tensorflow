@@ -35,19 +35,20 @@ class RandomOpsTest(xla_test.XLATestCase):
   """Test cases for random-number generating operators."""
 
   def _random_types(self):
-    return set(self.numeric_types) - set(self.complex_types)
+    return set(self.numeric_types) - set(
+        self.complex_types) - {np.uint8, np.int8}
 
   def _testRngIsNotConstant(self, rng, dtype):
     # Tests that 'rng' does not always return the same value.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         x = rng(dtype)
 
       # The random-number generator, if working correctly, should produce the
       # same output multiple times with low probability.
-      y = sess.run(x)
-      z = sess.run(x)
-      w = sess.run(x)
+      y = self.evaluate(x)
+      z = self.evaluate(x)
+      w = self.evaluate(x)
 
       # We use exact equality here. If the random-number generator is producing
       # deterministic output, all three outputs will be bitwise identical.
@@ -68,9 +69,8 @@ class RandomOpsTest(xla_test.XLATestCase):
     def rng(dtype):
       return random_ops.random_normal(shape=[2], dtype=dtype)
 
-    # TODO(b/34339814): implement inverse erf support for non-F32 types.
-    dtype = dtypes.float32
-    self._testRngIsNotConstant(rng, dtype)
+    for dtype in self._random_types() & self.float_types:
+      self._testRngIsNotConstant(rng, dtype)
 
   def testRandomUniformIsInRange(self):
     for dtype in self._random_types():
@@ -79,11 +79,11 @@ class RandomOpsTest(xla_test.XLATestCase):
       if (self.device in ["XLA_GPU", "XLA_CPU"
                          ]) and (dtype in [dtypes.bfloat16, dtypes.half]):
         continue
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         with self.test_scope():
           x = random_ops.random_uniform(
               shape=[1000], dtype=dtype, minval=-2, maxval=33)
-        y = sess.run(x)
+        y = self.evaluate(x)
         self.assertTrue((y >= -2).sum() == 1000)
         self.assertTrue((y < 33).sum() == 1000)
 
@@ -92,17 +92,17 @@ class RandomOpsTest(xla_test.XLATestCase):
     def rng(dtype):
       return random_ops.truncated_normal(shape=[2], dtype=dtype)
 
-    # TODO(b/34339814): implement inverse erf support for non-F32 types.
-    self._testRngIsNotConstant(rng, dtypes.float32)
+    for dtype in self._random_types() & self.float_types:
+      self._testRngIsNotConstant(rng, dtype)
 
   def testTruncatedNormalIsInRange(self):
     count = 10000000
-    # TODO(b/34339814): implement inverse erf support for non-F32 types.
-    for dtype in [dtypes.float32]:
-      with self.test_session() as sess:
+    # TODO(b/34339814): make this test work with 16 bit float types.
+    for dtype in self._random_types() & {dtypes.float32, dtypes.float64}:
+      with self.cached_session() as sess:
         with self.test_scope():
           x = random_ops.truncated_normal(shape=[count], dtype=dtype)
-        y = sess.run(x)
+        y = self.evaluate(x)
 
         def normal_cdf(x):
           return .5 * math.erfc(-x / math.sqrt(2))
@@ -111,7 +111,7 @@ class RandomOpsTest(xla_test.XLATestCase):
           return math.exp(-(x**2) / 2.) / math.sqrt(2 * math.pi)
 
         def probit(x, sess=sess):
-          return sess.run(special_math.ndtri(x))
+          return self.evaluate(special_math.ndtri(x))
 
         a = -2.
         b = 2.
@@ -144,25 +144,22 @@ class RandomOpsTest(xla_test.XLATestCase):
         self.assertAllClose(actual_variance, expected_variance, rtol=2*1e-3)
 
   def testShuffle1d(self):
-    # TODO(b/26783907): this test requires the CPU backend to implement sort.
-    if self.device in ["XLA_CPU"]:
-      return
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         x = math_ops.range(1 << 16)
         shuffle = random_ops.random_shuffle(x)
-      result = sess.run(shuffle)
+      result = self.evaluate(shuffle)
       expected = range(1 << 16)
       # Compare sets to avoid randomness behavior changes but make sure still
       # have all the values.
       self.assertAllEqual(set(result), set(expected))
 
   def testShuffle2d(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         x = array_ops.diag(math_ops.range(20))
         shuffle = random_ops.random_shuffle(x)
-      result = sess.run(shuffle)
+      result = self.evaluate(shuffle)
       expected = np.diag(range(20)).flatten()
       # Compare sets to avoid randomness behavior changes but make sure still
       # have all the values.

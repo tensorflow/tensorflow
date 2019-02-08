@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/tuple_thunk.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -25,7 +26,7 @@ Status TupleThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
                                    se::Stream* stream,
                                    HloExecutionProfiler* profiler) {
   auto size = tuple_element_buffers_.size();
-  auto tuple_element_buffer_addresses = MakeUnique<void*[]>(size);
+  auto tuple_element_buffer_addresses = absl::make_unique<void*[]>(size);
   for (int i = 0; i != size; ++i) {
     tuple_element_buffer_addresses[i] =
         buffer_allocations.GetDeviceAddress(tuple_element_buffers_[i]).opaque();

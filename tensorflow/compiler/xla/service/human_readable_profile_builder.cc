@@ -14,27 +14,27 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/human_readable_profile_builder.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/metric_table_report.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
 
-using tensorflow::strings::Appendf;
+using absl::StrAppend;
+using absl::StrAppendFormat;
+using absl::StrCat;
+using absl::StrFormat;
 using tensorflow::strings::HumanReadableElapsedTime;
 using tensorflow::strings::HumanReadableNumBytes;
-using tensorflow::strings::Printf;
-using tensorflow::strings::StrAppend;
-using tensorflow::strings::StrCat;
 
 string HumanReadableProfileBuilder::ToString() const {
   string s;
 
-  Appendf(&s, "Execution profile for %s: (%s @ f_nom)\n",
-          computation_name_.c_str(),
-          HumanReadableElapsedTime(CyclesToSeconds(total_cycles_)).c_str());
+  StrAppendFormat(&s, "Execution profile for %s: (%s @ f_nom)\n",
+                  computation_name_,
+                  HumanReadableElapsedTime(CyclesToSeconds(total_cycles_)));
 
   int64 cumulative_cycles = 0;
   auto print_op = [&](const OpInfo& op, bool is_total = false) {
@@ -56,7 +56,7 @@ string HumanReadableProfileBuilder::ToString() const {
       if (op.bytes_accessed > op.cycles) {
         bytes_per_cycle = StrCat(HumanReadableNumBytes(bpc), "/cycle");
       } else {
-        bytes_per_cycle = Printf("%.3fB/cycle", bpc);
+        bytes_per_cycle = StrFormat("%.3fB/cycle", bpc);
       }
     }
 
@@ -77,36 +77,42 @@ string HumanReadableProfileBuilder::ToString() const {
       // columns in the output.
       cycles_percent_str = "100.% 100Σ";
     } else {
-      cycles_percent_str =
-          Printf("%5.2f%% %2.0fΣ", cycles_percent, cumulative_cycles_percent);
+      cycles_percent_str = StrFormat("%5.2f%% %2.0fΣ", cycles_percent,
+                                     cumulative_cycles_percent);
     }
 
     double nsecs = op.cycles / clock_rate_ghz_;
-    Appendf(
+    StrAppendFormat(
         &s,
-        "%15lld cycles (%s) :: %12.1f usec %22s :: %18s :: %18s :: %14s :: "
+        "%15d cycles (%s) :: %12.1f usec %22s :: %18s :: %18s :: %14s :: "
         "%16s :: %s\n",
-        op.cycles, cycles_percent_str.c_str(), CyclesToMicroseconds(op.cycles),
+        op.cycles, cycles_percent_str, CyclesToMicroseconds(op.cycles),
         op.optimal_seconds < 0
             ? ""
-            : Printf("(%12.1f optimal)", op.optimal_seconds * 1e6).c_str(),
-        op.flop_count <= 0
-            ? ""
-            : HumanReadableNumFlops(op.flop_count, nsecs).c_str(),
-        op.transcendental_count <= 0
-            ? ""
-            : HumanReadableNumTranscendentalOps(op.transcendental_count, nsecs)
-                  .c_str(),
-        bytes_per_sec.c_str(), bytes_per_cycle.c_str(), op.name.c_str());
+            : StrFormat("(%12.1f optimal)", op.optimal_seconds * 1e6),
+        op.flop_count > 0 && nsecs > 0
+            ? HumanReadableNumFlops(op.flop_count, nsecs)
+            : "",
+        op.transcendental_count > 0 && nsecs > 0
+            ? HumanReadableNumTranscendentalOps(op.transcendental_count, nsecs)
+            : "",
+        bytes_per_sec, bytes_per_cycle, op.name);
   };
 
-  float optimal_seconds_sum = 0.0;
+  double optimal_seconds_sum = 0;
   int64 total_flops = 0.;
   int64 total_transcendentals = 0.;
   int64 total_bytes = 0;
   for (const auto& op : op_infos_) {
     if (op.optimal_seconds > 0) {
-      optimal_seconds_sum += op.optimal_seconds;
+      // An op can run faster than the estimated optimum. For example, we might
+      // estimate a fusion's speed by looking at the size of its operands and
+      // result, but perhaps the fusion doesn't read the entirety of all of its
+      // inputs.  For the purposes of summing the instructions' optimal speeds,
+      // we treat the "optimum" as the smallest of either the estimated optimum
+      // and the actual speed.
+      optimal_seconds_sum +=
+          std::min(double{op.optimal_seconds}, CyclesToSeconds(op.cycles));
     }
     total_flops += std::max(op.flop_count, int64{0});
     total_transcendentals += std::max(op.transcendental_count, int64{0});
@@ -115,15 +121,16 @@ string HumanReadableProfileBuilder::ToString() const {
 
   VLOG(1) << "Total floating point ops: " << total_flops;
 
-  print_op({"[total]", "[total]", /*category=*/"", total_cycles_, total_flops,
-            total_transcendentals, total_bytes, optimal_seconds_sum},
+  print_op({is_entry_computation_ ? "[total] [entry]" : "[total]", "[total]",
+            /*category=*/"", total_cycles_, total_flops, total_transcendentals,
+            total_bytes, static_cast<float>(optimal_seconds_sum)},
            /*is_total=*/true);
 
   // Sort ops in decreasing order of cycles, and print them.
   std::vector<OpInfo> sorted_ops(op_infos_);
-  std::sort(
-      sorted_ops.begin(), sorted_ops.end(),
-      [](const OpInfo& a, const OpInfo& b) { return a.cycles > b.cycles; });
+  absl::c_sort(sorted_ops, [](const OpInfo& a, const OpInfo& b) {
+    return a.cycles > b.cycles;
+  });
   for (const auto& op : sorted_ops) {
     print_op(op);
   }
@@ -157,8 +164,10 @@ string HumanReadableProfileBuilder::ToString() const {
         entry.text = op.name;
         entry.short_text = op.short_name;
         entry.category_text = op.category;
-        entry.metric =
-            CyclesToMicroseconds(op.cycles) - op.optimal_seconds * 1e6;
+        // Ignore ops that run faster than the estimated optimal here, as we do
+        // when calculating optimal_seconds_sum.
+        entry.metric = std::max(
+            0., CyclesToMicroseconds(op.cycles) - op.optimal_seconds * 1e6);
         total_discrepancy_in_microseconds += entry.metric;
         table.AddEntry(std::move(entry));
       }

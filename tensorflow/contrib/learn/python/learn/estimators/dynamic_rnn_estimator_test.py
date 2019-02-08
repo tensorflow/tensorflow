@@ -37,8 +37,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn_cell
@@ -155,7 +155,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
     sequence_input = dynamic_rnn_estimator.build_sequence_input(
         self.GetColumnsToTensors(), self.sequence_feature_columns,
         self.context_feature_columns)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       sess.run(lookup_ops.tables_initializer())
       sequence_input_val = sess.run(sequence_input)
@@ -330,7 +330,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
     actual_state = dynamic_rnn_estimator.dict_to_state_tuple(state_dict, cell)
     flattened_state = dynamic_rnn_estimator.state_tuple_to_dict(actual_state)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       (state_dict_val, actual_state_val, flattened_state_val) = sess.run(
           [state_dict, actual_state, flattened_state])
 
@@ -524,7 +524,7 @@ class DynamicRNNEstimatorLearningTest(test.TestCase):
       def input_fn():
         starts = random_ops.random_uniform(
             [batch_size], maxval=(2 * np.pi), seed=seed)
-        sin_curves = functional_ops.map_fn(
+        sin_curves = map_fn.map_fn(
             _sin_fn, (starts,), dtype=dtypes.float32)
         inputs = array_ops.expand_dims(
             array_ops.slice(sin_curves, [0, 0], [batch_size, sequence_length]),
@@ -668,7 +668,7 @@ class DynamicRNNEstimatorLearningTest(test.TestCase):
         sequences = centers + noise
 
         inputs = array_ops.expand_dims(sequences, 2)
-        labels = math_ops.reduce_mean(sequences, reduction_indices=[1])
+        labels = math_ops.reduce_mean(sequences, axis=[1])
         return {'inputs': inputs}, labels
 
       return input_fn
@@ -722,8 +722,8 @@ class DynamicRNNEstimatorLearningTest(test.TestCase):
         inputs = array_ops.expand_dims(math_ops.to_float(random_sequence), 2)
         labels = math_ops.to_int32(
             array_ops.squeeze(
-                math_ops.reduce_sum(
-                    inputs, reduction_indices=[1]) > (sequence_length / 2.0)))
+                math_ops.reduce_sum(inputs, axis=[1]) > (
+                    sequence_length / 2.0)))
         return {'inputs': inputs}, labels
 
       return input_fn

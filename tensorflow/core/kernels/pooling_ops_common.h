@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_POOLING_OPS_COMMON_H_
-#define TENSORFLOW_KERNELS_POOLING_OPS_COMMON_H_
+#ifndef TENSORFLOW_CORE_KERNELS_POOLING_OPS_COMMON_H_
+#define TENSORFLOW_CORE_KERNELS_POOLING_OPS_COMMON_H_
 
 #include <vector>
 
@@ -605,4 +605,4 @@ void SpatialAvgPool(OpKernelContext* context, Tensor* output,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_POOLING_OPS_COMMON_H_
+#endif  // TENSORFLOW_CORE_KERNELS_POOLING_OPS_COMMON_H_

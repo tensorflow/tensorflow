@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -45,11 +46,12 @@ class AddLeadingUnitDimensionsTest(test.TestCase):
     ret = random_grad.add_leading_unit_dimensions(1.0, 2)
     self.assertAllEqual(ret.shape, [1, 1])
 
+  @test_util.run_deprecated_v1
   def testUnknownShape(self):
     x = array_ops.placeholder(dtypes.float32)
     num_dimensions = array_ops.placeholder(dtypes.int32)
     ret = random_grad.add_leading_unit_dimensions(x, num_dimensions)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ret_val = sess.run(ret, {x: np.ones([2, 2]), num_dimensions: 2})
     self.assertAllEqual(ret_val.shape, [1, 1, 2, 2])
 
@@ -72,6 +74,7 @@ class RandomGammaGradTest(test.TestCase):
   some statistical properties of the derivative.
   """
 
+  @test_util.run_deprecated_v1
   def testGradientsShape(self):
     shape = [2, 3]
     alpha = array_ops.ones([2, 2])
@@ -81,6 +84,7 @@ class RandomGammaGradTest(test.TestCase):
     self.assertAllEqual(grads_alpha.shape, alpha.shape)
     self.assertAllEqual(grads_beta.shape, beta.shape)
 
+  @test_util.run_deprecated_v1
   def testGradientsShapeWithOneSamplePerParameter(self):
     shape = []
     alpha = array_ops.ones([2, 2])
@@ -90,6 +94,7 @@ class RandomGammaGradTest(test.TestCase):
     self.assertAllEqual(grads_alpha.shape, alpha.shape)
     self.assertAllEqual(grads_beta.shape, beta.shape)
 
+  @test_util.run_deprecated_v1
   def testGradientsUnknownShape(self):
     shape = array_ops.placeholder(dtypes.int32)
     alpha = array_ops.placeholder(dtypes.float32)
@@ -99,7 +104,7 @@ class RandomGammaGradTest(test.TestCase):
 
     alpha_val = np.ones([1, 2])
     beta_val = np.ones([2, 1])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       grads_alpha_val, grads_beta_val = sess.run(
           [grads_alpha, grads_beta],
           {alpha: alpha_val, beta: beta_val, shape: [2, 1]})
@@ -138,9 +143,11 @@ class RandomGammaGradTest(test.TestCase):
     except ImportError as e:
       tf_logging.warn("Cannot use special functions in a test: %s" % str(e))
 
+  @test_util.run_deprecated_v1
   def testCompareToExplicitDerivativeFloat(self):
     self._testCompareToExplicitDerivative(dtypes.float32)
 
+  @test_util.run_deprecated_v1
   def testCompareToExplicitDerivativeDouble(self):
     self._testCompareToExplicitDerivative(dtypes.float64)
 
@@ -182,12 +189,15 @@ class RandomGammaGradTest(test.TestCase):
 
     self.assertAllClose(actual_val, expected_val, rtol=1e-3, atol=1e-3)
 
+  @test_util.run_deprecated_v1
   def testCompareToImplicitDerivativeFloat(self):
     self._testCompareToImplicitDerivative(dtypes.float32)
 
+  @test_util.run_deprecated_v1
   def testCompareToImplicitDerivativeDouble(self):
     self._testCompareToImplicitDerivative(dtypes.float64)
 
+  @test_util.run_deprecated_v1
   def testAverageAlphaGradient(self):
     """Statistical test for the gradient.
 
@@ -207,6 +217,7 @@ class RandomGammaGradTest(test.TestCase):
     dsample_dalpha_val = self.evaluate(dsample_dalpha)
     self.assertAllClose(dsample_dalpha_val, [1.0] * 3, atol=1e-1, rtol=1e-1)
 
+  @test_util.run_deprecated_v1
   def testQuadraticLoss(self):
     """Statistical test for the gradient.
 

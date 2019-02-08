@@ -355,11 +355,15 @@ Status LoadSessionBundleOrSavedModelBundle(
     const SessionOptions& session_options, const RunOptions& run_options,
     const string& export_dir,
     const std::unordered_set<string>& saved_model_tags,
-    SavedModelBundle* saved_model_bundle) {
+    SavedModelBundle* saved_model_bundle, bool* is_session_bundle) {
+  if (is_session_bundle != nullptr) {
+    *is_session_bundle = false;
+  }
   if (MaybeSavedModelDirectory(export_dir)) {
     LOG(INFO)
         << "Attempting to load native SavedModelBundle in bundle-shim from: "
         << export_dir;
+
     return LoadSavedModel(session_options, run_options, export_dir,
                           saved_model_tags, saved_model_bundle);
   } else if (IsPossibleExportDirectory(export_dir)) {
@@ -368,6 +372,9 @@ Status LoadSessionBundleOrSavedModelBundle(
     LOG(INFO) << "Attempting to up-convert SessionBundle to SavedModelBundle "
                  "in bundle-shim from: "
               << export_dir;
+    if (is_session_bundle != nullptr) {
+      *is_session_bundle = true;
+    }
     return LoadSavedModelFromLegacySessionBundlePath(
         session_options, run_options, export_dir, saved_model_bundle);
   }

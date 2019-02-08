@@ -6,10 +6,6 @@ tf_class {
     name: "args"
     mtype: "<type \'getset_descriptor\'>"
   }
-  member {
-    name: "message"
-    mtype: "<type \'getset_descriptor\'>"
-  }
   member_method {
     name: "__init__"
   }

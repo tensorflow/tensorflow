@@ -49,115 +49,119 @@ stats = try_import("scipy.stats")
 class DirichletTest(test.TestCase):
 
   def testSimpleShapes(self):
-    with self.test_session():
-      alpha = np.random.rand(3)
-      dist = dirichlet_lib.Dirichlet(alpha)
-      self.assertEqual(3, self.evaluate(dist.event_shape_tensor()))
-      self.assertAllEqual([], self.evaluate(dist.batch_shape_tensor()))
-      self.assertEqual(tensor_shape.TensorShape([3]), dist.event_shape)
-      self.assertEqual(tensor_shape.TensorShape([]), dist.batch_shape)
+    alpha = np.random.rand(3)
+    dist = dirichlet_lib.Dirichlet(alpha)
+    self.assertEqual(3, self.evaluate(dist.event_shape_tensor()))
+    self.assertAllEqual([], self.evaluate(dist.batch_shape_tensor()))
+    self.assertEqual(tensor_shape.TensorShape([3]), dist.event_shape)
+    self.assertEqual(tensor_shape.TensorShape([]), dist.batch_shape)
 
   def testComplexShapes(self):
-    with self.test_session():
-      alpha = np.random.rand(3, 2, 2)
-      dist = dirichlet_lib.Dirichlet(alpha)
-      self.assertEqual(2, self.evaluate(dist.event_shape_tensor()))
-      self.assertAllEqual([3, 2], self.evaluate(dist.batch_shape_tensor()))
-      self.assertEqual(tensor_shape.TensorShape([2]), dist.event_shape)
-      self.assertEqual(tensor_shape.TensorShape([3, 2]), dist.batch_shape)
+    alpha = np.random.rand(3, 2, 2)
+    dist = dirichlet_lib.Dirichlet(alpha)
+    self.assertEqual(2, self.evaluate(dist.event_shape_tensor()))
+    self.assertAllEqual([3, 2], self.evaluate(dist.batch_shape_tensor()))
+    self.assertEqual(tensor_shape.TensorShape([2]), dist.event_shape)
+    self.assertEqual(tensor_shape.TensorShape([3, 2]), dist.batch_shape)
 
   def testConcentrationProperty(self):
     alpha = [[1., 2, 3]]
-    with self.test_session():
-      dist = dirichlet_lib.Dirichlet(alpha)
-      self.assertEqual([1, 3], dist.concentration.get_shape())
-      self.assertAllClose(alpha, self.evaluate(dist.concentration))
+    dist = dirichlet_lib.Dirichlet(alpha)
+    self.assertEqual([1, 3], dist.concentration.get_shape())
+    self.assertAllClose(alpha, self.evaluate(dist.concentration))
 
   def testPdfXProper(self):
     alpha = [[1., 2, 3]]
-    with self.test_session():
-      dist = dirichlet_lib.Dirichlet(alpha, validate_args=True)
-      self.evaluate(dist.prob([.1, .3, .6]))
-      self.evaluate(dist.prob([.2, .3, .5]))
-      # Either condition can trigger.
-      with self.assertRaisesOpError("samples must be positive"):
-        self.evaluate(dist.prob([-1., 1.5, 0.5]))
-      with self.assertRaisesOpError("samples must be positive"):
-        self.evaluate(dist.prob([0., .1, .9]))
-      with self.assertRaisesOpError(
-          "sample last-dimension must sum to `1`"):
-        self.evaluate(dist.prob([.1, .2, .8]))
+    dist = dirichlet_lib.Dirichlet(alpha, validate_args=True)
+    self.evaluate(dist.prob([.1, .3, .6]))
+    self.evaluate(dist.prob([.2, .3, .5]))
+    # Either condition can trigger.
+    with self.assertRaisesOpError("samples must be positive"):
+      self.evaluate(dist.prob([-1., 1.5, 0.5]))
+    with self.assertRaisesOpError("samples must be positive"):
+      self.evaluate(dist.prob([0., .1, .9]))
+    with self.assertRaisesOpError("sample last-dimension must sum to `1`"):
+      self.evaluate(dist.prob([.1, .2, .8]))
+
+  def testLogPdfOnBoundaryIsFiniteWhenAlphaIsOne(self):
+    # Test concentration = 1. for each dimension.
+    concentration = 3 * np.ones((10, 10)).astype(np.float32)
+    concentration[range(10), range(10)] = 1.
+    x = 1 / 9. * np.ones((10, 10)).astype(np.float32)
+    x[range(10), range(10)] = 0.
+    dist = dirichlet_lib.Dirichlet(concentration)
+    log_prob = self.evaluate(dist.log_prob(x))
+    self.assertAllEqual(
+        np.ones_like(log_prob, dtype=np.bool), np.isfinite(log_prob))
+
+    # Test when concentration[k] = 1., and x is zero at various dimensions.
+    dist = dirichlet_lib.Dirichlet(10 * [1.])
+    log_prob = self.evaluate(dist.log_prob(x))
+    self.assertAllEqual(
+        np.ones_like(log_prob, dtype=np.bool), np.isfinite(log_prob))
 
   def testPdfZeroBatches(self):
-    with self.test_session():
-      alpha = [1., 2]
-      x = [.5, .5]
-      dist = dirichlet_lib.Dirichlet(alpha)
-      pdf = dist.prob(x)
-      self.assertAllClose(1., self.evaluate(pdf))
-      self.assertEqual((), pdf.get_shape())
+    alpha = [1., 2]
+    x = [.5, .5]
+    dist = dirichlet_lib.Dirichlet(alpha)
+    pdf = dist.prob(x)
+    self.assertAllClose(1., self.evaluate(pdf))
+    self.assertEqual((), pdf.get_shape())
 
   def testPdfZeroBatchesNontrivialX(self):
-    with self.test_session():
-      alpha = [1., 2]
-      x = [.3, .7]
-      dist = dirichlet_lib.Dirichlet(alpha)
-      pdf = dist.prob(x)
-      self.assertAllClose(7. / 5, self.evaluate(pdf))
-      self.assertEqual((), pdf.get_shape())
+    alpha = [1., 2]
+    x = [.3, .7]
+    dist = dirichlet_lib.Dirichlet(alpha)
+    pdf = dist.prob(x)
+    self.assertAllClose(7. / 5, self.evaluate(pdf))
+    self.assertEqual((), pdf.get_shape())
 
   def testPdfUniformZeroBatches(self):
-    with self.test_session():
-      # Corresponds to a uniform distribution
-      alpha = [1., 1, 1]
-      x = [[.2, .5, .3], [.3, .4, .3]]
-      dist = dirichlet_lib.Dirichlet(alpha)
-      pdf = dist.prob(x)
-      self.assertAllClose([2., 2.], self.evaluate(pdf))
-      self.assertEqual((2), pdf.get_shape())
+    # Corresponds to a uniform distribution
+    alpha = [1., 1, 1]
+    x = [[.2, .5, .3], [.3, .4, .3]]
+    dist = dirichlet_lib.Dirichlet(alpha)
+    pdf = dist.prob(x)
+    self.assertAllClose([2., 2.], self.evaluate(pdf))
+    self.assertEqual((2), pdf.get_shape())
 
   def testPdfAlphaStretchedInBroadcastWhenSameRank(self):
-    with self.test_session():
-      alpha = [[1., 2]]
-      x = [[.5, .5], [.3, .7]]
-      dist = dirichlet_lib.Dirichlet(alpha)
-      pdf = dist.prob(x)
-      self.assertAllClose([1., 7. / 5], self.evaluate(pdf))
-      self.assertEqual((2), pdf.get_shape())
+    alpha = [[1., 2]]
+    x = [[.5, .5], [.3, .7]]
+    dist = dirichlet_lib.Dirichlet(alpha)
+    pdf = dist.prob(x)
+    self.assertAllClose([1., 7. / 5], self.evaluate(pdf))
+    self.assertEqual((2), pdf.get_shape())
 
   def testPdfAlphaStretchedInBroadcastWhenLowerRank(self):
-    with self.test_session():
-      alpha = [1., 2]
-      x = [[.5, .5], [.2, .8]]
-      pdf = dirichlet_lib.Dirichlet(alpha).prob(x)
-      self.assertAllClose([1., 8. / 5], self.evaluate(pdf))
-      self.assertEqual((2), pdf.get_shape())
+    alpha = [1., 2]
+    x = [[.5, .5], [.2, .8]]
+    pdf = dirichlet_lib.Dirichlet(alpha).prob(x)
+    self.assertAllClose([1., 8. / 5], self.evaluate(pdf))
+    self.assertEqual((2), pdf.get_shape())
 
   def testPdfXStretchedInBroadcastWhenSameRank(self):
-    with self.test_session():
-      alpha = [[1., 2], [2., 3]]
-      x = [[.5, .5]]
-      pdf = dirichlet_lib.Dirichlet(alpha).prob(x)
-      self.assertAllClose([1., 3. / 2], self.evaluate(pdf))
-      self.assertEqual((2), pdf.get_shape())
+    alpha = [[1., 2], [2., 3]]
+    x = [[.5, .5]]
+    pdf = dirichlet_lib.Dirichlet(alpha).prob(x)
+    self.assertAllClose([1., 3. / 2], self.evaluate(pdf))
+    self.assertEqual((2), pdf.get_shape())
 
   def testPdfXStretchedInBroadcastWhenLowerRank(self):
-    with self.test_session():
-      alpha = [[1., 2], [2., 3]]
-      x = [.5, .5]
-      pdf = dirichlet_lib.Dirichlet(alpha).prob(x)
-      self.assertAllClose([1., 3. / 2], self.evaluate(pdf))
-      self.assertEqual((2), pdf.get_shape())
+    alpha = [[1., 2], [2., 3]]
+    x = [.5, .5]
+    pdf = dirichlet_lib.Dirichlet(alpha).prob(x)
+    self.assertAllClose([1., 3. / 2], self.evaluate(pdf))
+    self.assertEqual((2), pdf.get_shape())
 
   def testMean(self):
-    with self.test_session():
-      alpha = [1., 2, 3]
-      dirichlet = dirichlet_lib.Dirichlet(concentration=alpha)
-      self.assertEqual(dirichlet.mean().get_shape(), [3])
-      if not stats:
-        return
-      expected_mean = stats.dirichlet.mean(alpha)
-      self.assertAllClose(self.evaluate(dirichlet.mean()), expected_mean)
+    alpha = [1., 2, 3]
+    dirichlet = dirichlet_lib.Dirichlet(concentration=alpha)
+    self.assertEqual(dirichlet.mean().get_shape(), [3])
+    if not stats:
+      return
+    expected_mean = stats.dirichlet.mean(alpha)
+    self.assertAllClose(self.evaluate(dirichlet.mean()), expected_mean)
 
   def testCovarianceFromSampling(self):
     alpha = np.array([[1., 2, 3],
@@ -197,73 +201,66 @@ class DirichletTest(test.TestCase):
     self.assertAllClose(sample_stddev_, analytic_stddev, atol=0.02, rtol=0.)
 
   def testVariance(self):
-    with self.test_session():
-      alpha = [1., 2, 3]
-      denominator = np.sum(alpha)**2 * (np.sum(alpha) + 1)
-      dirichlet = dirichlet_lib.Dirichlet(concentration=alpha)
-      self.assertEqual(dirichlet.covariance().get_shape(), (3, 3))
-      if not stats:
-        return
-      expected_covariance = np.diag(stats.dirichlet.var(alpha))
-      expected_covariance += [[0., -2, -3], [-2, 0, -6],
-                              [-3, -6, 0]] / denominator
-      self.assertAllClose(
-          self.evaluate(dirichlet.covariance()), expected_covariance)
+    alpha = [1., 2, 3]
+    denominator = np.sum(alpha)**2 * (np.sum(alpha) + 1)
+    dirichlet = dirichlet_lib.Dirichlet(concentration=alpha)
+    self.assertEqual(dirichlet.covariance().get_shape(), (3, 3))
+    if not stats:
+      return
+    expected_covariance = np.diag(stats.dirichlet.var(alpha))
+    expected_covariance += [[0., -2, -3], [-2, 0, -6], [-3, -6, 0]
+                           ] / denominator
+    self.assertAllClose(
+        self.evaluate(dirichlet.covariance()), expected_covariance)
 
   def testMode(self):
-    with self.test_session():
-      alpha = np.array([1.1, 2, 3])
-      expected_mode = (alpha - 1) / (np.sum(alpha) - 3)
-      dirichlet = dirichlet_lib.Dirichlet(concentration=alpha)
-      self.assertEqual(dirichlet.mode().get_shape(), [3])
-      self.assertAllClose(self.evaluate(dirichlet.mode()), expected_mode)
+    alpha = np.array([1.1, 2, 3])
+    expected_mode = (alpha - 1) / (np.sum(alpha) - 3)
+    dirichlet = dirichlet_lib.Dirichlet(concentration=alpha)
+    self.assertEqual(dirichlet.mode().get_shape(), [3])
+    self.assertAllClose(self.evaluate(dirichlet.mode()), expected_mode)
 
   def testModeInvalid(self):
-    with self.test_session():
-      alpha = np.array([1., 2, 3])
-      dirichlet = dirichlet_lib.Dirichlet(concentration=alpha,
-                                          allow_nan_stats=False)
-      with self.assertRaisesOpError("Condition x < y.*"):
-        self.evaluate(dirichlet.mode())
+    alpha = np.array([1., 2, 3])
+    dirichlet = dirichlet_lib.Dirichlet(
+        concentration=alpha, allow_nan_stats=False)
+    with self.assertRaisesOpError("Condition x < y.*"):
+      self.evaluate(dirichlet.mode())
 
   def testModeEnableAllowNanStats(self):
-    with self.test_session():
-      alpha = np.array([1., 2, 3])
-      dirichlet = dirichlet_lib.Dirichlet(concentration=alpha,
-                                          allow_nan_stats=True)
-      expected_mode = np.zeros_like(alpha) + np.nan
+    alpha = np.array([1., 2, 3])
+    dirichlet = dirichlet_lib.Dirichlet(
+        concentration=alpha, allow_nan_stats=True)
+    expected_mode = np.zeros_like(alpha) + np.nan
 
-      self.assertEqual(dirichlet.mode().get_shape(), [3])
-      self.assertAllClose(self.evaluate(dirichlet.mode()), expected_mode)
+    self.assertEqual(dirichlet.mode().get_shape(), [3])
+    self.assertAllClose(self.evaluate(dirichlet.mode()), expected_mode)
 
   def testEntropy(self):
-    with self.test_session():
-      alpha = [1., 2, 3]
-      dirichlet = dirichlet_lib.Dirichlet(concentration=alpha)
-      self.assertEqual(dirichlet.entropy().get_shape(), ())
-      if not stats:
-        return
-      expected_entropy = stats.dirichlet.entropy(alpha)
-      self.assertAllClose(self.evaluate(dirichlet.entropy()), expected_entropy)
+    alpha = [1., 2, 3]
+    dirichlet = dirichlet_lib.Dirichlet(concentration=alpha)
+    self.assertEqual(dirichlet.entropy().get_shape(), ())
+    if not stats:
+      return
+    expected_entropy = stats.dirichlet.entropy(alpha)
+    self.assertAllClose(self.evaluate(dirichlet.entropy()), expected_entropy)
 
   def testSample(self):
-    with self.test_session():
-      alpha = [1., 2]
-      dirichlet = dirichlet_lib.Dirichlet(alpha)
-      n = constant_op.constant(100000)
-      samples = dirichlet.sample(n)
-      sample_values = self.evaluate(samples)
-      self.assertEqual(sample_values.shape, (100000, 2))
-      self.assertTrue(np.all(sample_values > 0.0))
-      if not stats:
-        return
-      self.assertLess(
-          stats.kstest(
-              # Beta is a univariate distribution.
-              sample_values[:, 0],
-              stats.beta(
-                  a=1., b=2.).cdf)[0],
-          0.01)
+    alpha = [1., 2]
+    dirichlet = dirichlet_lib.Dirichlet(alpha)
+    n = constant_op.constant(100000)
+    samples = dirichlet.sample(n)
+    sample_values = self.evaluate(samples)
+    self.assertEqual(sample_values.shape, (100000, 2))
+    self.assertTrue(np.all(sample_values > 0.0))
+    if not stats:
+      return
+    self.assertLess(
+        stats.kstest(
+            # Beta is a univariate distribution.
+            sample_values[:, 0],
+            stats.beta(a=1., b=2.).cdf)[0],
+        0.01)
 
   def testDirichletFullyReparameterized(self):
     alpha = constant_op.constant([1.0, 2.0, 3.0])

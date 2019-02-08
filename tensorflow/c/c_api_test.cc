@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb_text.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -162,6 +163,7 @@ TEST(CAPI, AllocateTensor) {
   EXPECT_EQ(dims[0], TF_Dim(t, 0));
   EXPECT_EQ(dims[1], TF_Dim(t, 1));
   EXPECT_EQ(num_bytes, TF_TensorByteSize(t));
+  EXPECT_EQ(6, TF_TensorElementCount(t));
   TF_DeleteTensor(t);
 }
 
@@ -186,23 +188,40 @@ TEST(CAPI, LibraryLoadFunctions) {
   // tf_cuda_cc_test() bazel rule and remove the next line.
   if (!GPUDeviceName().empty()) return;
 
-  // Load the library.
-  TF_Status* status = TF_NewStatus();
-  TF_Library* lib =
-      TF_LoadLibrary("tensorflow/c/test_op.so", status);
-  TF_Code code = TF_GetCode(status);
-  string status_msg(TF_Message(status));
-  TF_DeleteStatus(status);
-  ASSERT_EQ(TF_OK, code) << status_msg;
+#if !defined(TENSORFLOW_NO_SHARED_OBJECTS)
+  {
+    // Load the library.
+    TF_Status* status = TF_NewStatus();
+    TF_Library* lib =
+        TF_LoadLibrary("tensorflow/c/test_op1.so", status);
+    TF_Code code = TF_GetCode(status);
+    string status_msg(TF_Message(status));
+    TF_DeleteStatus(status);
+    ASSERT_EQ(TF_OK, code) << status_msg;
 
-  // Test op list.
-  TF_Buffer op_list_buf = TF_GetOpList(lib);
-  tensorflow::OpList op_list;
-  EXPECT_TRUE(op_list.ParseFromArray(op_list_buf.data, op_list_buf.length));
-  ASSERT_EQ(op_list.op_size(), 1);
-  EXPECT_EQ("TestCApi", op_list.op(0).name());
-
-  TF_DeleteLibraryHandle(lib);
+    // Test op list.
+    TF_Buffer op_list_buf = TF_GetOpList(lib);
+    tensorflow::OpList op_list;
+    EXPECT_TRUE(op_list.ParseFromArray(op_list_buf.data, op_list_buf.length));
+    ASSERT_EQ(op_list.op_size(), 1);
+    EXPECT_EQ("TestCApi1", op_list.op(0).name());
+    TF_DeleteLibraryHandle(lib);
+  }
+#endif  // !defined(TENSORFLOW_NO_SHARED_OBJECTS)
+  {
+    TF_Buffer* op_list_buffer = TF_GetAllOpList();
+    tensorflow::OpList op_list;
+    op_list.ParseFromArray(op_list_buffer->data, op_list_buffer->length);
+    ASSERT_GE(op_list.op_size(), 1);
+    typedef tensorflow::protobuf::RepeatedPtrField<tensorflow::OpDef> OpDefs;
+    const OpDefs& ops = op_list.op();
+    bool found = std::find_if(ops.begin(), ops.end(),
+                              [](const tensorflow::OpDef& op_def) {
+                                return op_def.name() == "TestCApi";
+                              }) != ops.end();
+    EXPECT_TRUE(found);
+    TF_DeleteBuffer(op_list_buffer);
+  }
 }
 
 void TestEncodeDecode(int line, const std::vector<string>& data) {
@@ -259,8 +278,8 @@ TEST(CAPI, DeprecatedSession) {
   TF_Run(session, run_options, nullptr, nullptr, 0, nullptr, nullptr, 0,
          nullptr, 0, run_metadata, s);
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s)) << TF_Message(s);
-  EXPECT_EQ(std::string("Session was not created with a graph before Run()!"),
-            std::string(TF_Message(s)));
+  EXPECT_EQ("Session was not created with a graph before Run()!",
+            string(TF_Message(s)));
   TF_DeleteBuffer(run_metadata);
   TF_DeleteBuffer(run_options);
 
@@ -1224,8 +1243,8 @@ class CApiColocationTest : public ::testing::Test {
         TF_OperationGetAttrMetadata(op, tensorflow::kColocationAttrName, s_);
     if (expected.empty()) {
       ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
-      EXPECT_EQ(std::string("Operation 'add' has no attr named '_class'."),
-                std::string(TF_Message(s_)));
+      EXPECT_EQ("Operation 'add' has no attr named '_class'.",
+                string(TF_Message(s_)));
       return;
     }
     EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
@@ -1369,16 +1388,16 @@ TEST(CAPI, SavedModel) {
     input.flat<string>()(i) = example.SerializeAsString();
   }
 
-  const tensorflow::string input_op_name =
-      std::string(tensorflow::ParseTensorName(input_name).first);
+  const tensorflow::string input_op_name(
+      tensorflow::ParseTensorName(input_name).first);
   TF_Operation* input_op =
       TF_GraphOperationByName(graph, input_op_name.c_str());
   ASSERT_TRUE(input_op != nullptr);
   csession.SetInputs({{input_op, TF_TensorFromTensor(input, s)}});
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
-  const tensorflow::string output_op_name =
-      std::string(tensorflow::ParseTensorName(output_name).first);
+  const tensorflow::string output_op_name(
+      tensorflow::ParseTensorName(output_name).first);
   TF_Operation* output_op =
       TF_GraphOperationByName(graph, output_op_name.c_str());
   ASSERT_TRUE(output_op != nullptr);
@@ -1447,6 +1466,41 @@ TEST(CAPI, DeletingNullPointerIsSafe) {
   TF_DeleteApiDefMap(nullptr);
 
   TF_DeleteStatus(status);
+}
+
+TEST(CAPI, TestBitcastFrom_Reshape) {
+  int64_t dims[] = {2, 3};
+  TF_Tensor* a =
+      TF_AllocateTensor(TF_UINT64, dims, 2, 6 * TF_DataTypeSize(TF_UINT64));
+  TF_Tensor* b =
+      TF_AllocateTensor(TF_UINT64, nullptr, 0, TF_DataTypeSize(TF_UINT64));
+  EXPECT_NE(a, nullptr);
+  EXPECT_NE(b, nullptr);
+
+  EXPECT_EQ(6, TF_TensorElementCount(a));
+  EXPECT_EQ(1, TF_TensorElementCount(b));
+  EXPECT_EQ(6 * TF_DataTypeSize(TF_UINT64), TF_TensorByteSize(a));
+  EXPECT_EQ(TF_DataTypeSize(TF_UINT64), TF_TensorByteSize(b));
+
+  int64_t new_dims[] = {3, 2};
+  TF_Status* status = TF_NewStatus();
+  TF_TensorBitcastFrom(a, TF_UINT64, b, new_dims, 2, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status));
+  TF_DeleteStatus(status);
+
+  EXPECT_EQ(6, TF_TensorElementCount(a));
+  EXPECT_EQ(6, TF_TensorElementCount(b));
+  EXPECT_EQ(6 * TF_DataTypeSize(TF_UINT64), TF_TensorByteSize(a));
+  EXPECT_EQ(6 * TF_DataTypeSize(TF_UINT64), TF_TensorByteSize(b));
+
+  // Check that a write to one tensor shows up in the other.
+  *(static_cast<int64_t*>(TF_TensorData(a))) = 4;
+  EXPECT_EQ(4, *(static_cast<int64_t*>(TF_TensorData(b))));
+  *(static_cast<int64_t*>(TF_TensorData(b))) = 6;
+  EXPECT_EQ(6, *(static_cast<int64_t*>(TF_TensorData(a))));
+
+  TF_DeleteTensor(a);
+  TF_DeleteTensor(b);
 }
 
 REGISTER_OP("TestOpWithNoGradient")
@@ -2329,15 +2383,9 @@ TEST(TestApiDef, TestCreateApiDef) {
   // tf_cuda_cc_test() bazel rule and remove the next line.
   if (!GPUDeviceName().empty()) return;
 
+  TF_Buffer* op_list_buf = TF_GetAllOpList();
   TF_Status* status = TF_NewStatus();
-  TF_Library* lib =
-      TF_LoadLibrary("tensorflow/c/test_op.so", status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteStatus(status);
-
-  TF_Buffer op_list_buf = TF_GetOpList(lib);
-  status = TF_NewStatus();
-  auto* api_def_map = TF_NewApiDefMap(&op_list_buf, status);
+  auto* api_def_map = TF_NewApiDefMap(op_list_buf, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);
 
@@ -2355,7 +2403,7 @@ TEST(TestApiDef, TestCreateApiDef) {
 
   TF_DeleteBuffer(api_def_buf);
   TF_DeleteApiDefMap(api_def_map);
-  TF_DeleteLibraryHandle(lib);
+  TF_DeleteBuffer(op_list_buf);
 }
 
 TEST(TestApiDef, TestCreateApiDefWithOverwrites) {
@@ -2363,15 +2411,9 @@ TEST(TestApiDef, TestCreateApiDefWithOverwrites) {
   // tf_cuda_cc_test() bazel rule and remove the next line.
   if (!GPUDeviceName().empty()) return;
 
+  TF_Buffer* op_list_buf = TF_GetAllOpList();
   TF_Status* status = TF_NewStatus();
-  TF_Library* lib =
-      TF_LoadLibrary("tensorflow/c/test_op.so", status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteStatus(status);
-
-  TF_Buffer op_list_buf = TF_GetOpList(lib);
-  status = TF_NewStatus();
-  auto* api_def_map = TF_NewApiDefMap(&op_list_buf, status);
+  auto* api_def_map = TF_NewApiDefMap(op_list_buf, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);
 
@@ -2400,7 +2442,7 @@ TEST(TestApiDef, TestCreateApiDefWithOverwrites) {
 
   TF_DeleteBuffer(api_def_buf);
   TF_DeleteApiDefMap(api_def_map);
-  TF_DeleteLibraryHandle(lib);
+  TF_DeleteBuffer(op_list_buf);
 }
 
 class DummyKernel : public tensorflow::OpKernel {

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -34,9 +34,9 @@ WhileThunk::WhileThunk(
       // and body_thunk_sequence_ constructors because these SequentialThunks
       // are logically "part of" this WhileThunk, and shouldn't be profiled
       // separately from it.
-      condition_thunk_sequence_(MakeUnique<SequentialThunk>(
+      condition_thunk_sequence_(absl::make_unique<SequentialThunk>(
           std::move(*condition_thunk_sequence), nullptr)),
-      body_thunk_sequence_(MakeUnique<SequentialThunk>(
+      body_thunk_sequence_(absl::make_unique<SequentialThunk>(
           std::move(*body_thunk_sequence), nullptr)) {}
 
 Status WhileThunk::Initialize(const GpuExecutable& executable,
@@ -70,7 +70,7 @@ Status WhileThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
     if (!block_status.ok()) {
       return InternalError(
           "Failed to complete all kernels launched on stream %p: %s", stream,
-          block_status.error_message().c_str());
+          block_status.error_message());
     }
 
     if (!condition_result) {

@@ -17,16 +17,16 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace window_util {
 
-Window MakeWindow(tensorflow::gtl::ArraySlice<int64> sizes) {
+Window MakeWindow(absl::Span<const int64> sizes) {
   Window window;
   for (int64 size : sizes) {
     auto* dimension = window.add_dimensions();
@@ -38,7 +38,7 @@ Window MakeWindow(tensorflow::gtl::ArraySlice<int64> sizes) {
   return window;
 }
 
-PaddingConfig MakeSymmetricPadding(tensorflow::gtl::ArraySlice<int64> sizes) {
+PaddingConfig MakeSymmetricPadding(absl::Span<const int64> sizes) {
   PaddingConfig config;
   for (int64 size : sizes) {
     auto* dimension = config.add_dimensions();
@@ -49,8 +49,8 @@ PaddingConfig MakeSymmetricPadding(tensorflow::gtl::ArraySlice<int64> sizes) {
 }
 
 /* static */ string ToString(const WindowDimension& dim) {
-  using tensorflow::strings::StrAppend;
-  using tensorflow::strings::StrCat;
+  using absl::StrAppend;
+  using absl::StrCat;
   string str = StrCat("(size=", dim.size());
   if (dim.stride() != 1) {
     StrAppend(&str, ",stride=", dim.stride());
@@ -75,8 +75,8 @@ PaddingConfig MakeSymmetricPadding(tensorflow::gtl::ArraySlice<int64> sizes) {
 }
 
 string ToString(const Window& window) {
-  using tensorflow::strings::StrAppend;
-  using tensorflow::strings::StrCat;
+  using absl::StrAppend;
+  using absl::StrCat;
 
   string str;
   const auto add_field =
@@ -138,25 +138,23 @@ bool HasPadding(const Window& window) {
 }
 
 bool HasSymmetricPadding(const Window& window) {
-  return std::all_of(window.dimensions().begin(), window.dimensions().end(),
-                     [](const WindowDimension& dim) {
-                       return dim.padding_low() == dim.padding_high();
-                     });
+  return absl::c_all_of(window.dimensions(), [](const WindowDimension& dim) {
+    return dim.padding_low() == dim.padding_high();
+  });
 }
 
 bool HasSymmetricPadding(const PaddingConfig& padding_config) {
-  return std::all_of(padding_config.dimensions().begin(),
-                     padding_config.dimensions().end(),
-                     [](const PaddingConfig::PaddingConfigDimension& dim) {
-                       return dim.edge_padding_low() == dim.edge_padding_high();
-                     });
+  return absl::c_all_of(padding_config.dimensions(),
+                        [](const PaddingConfig::PaddingConfigDimension& dim) {
+                          return dim.edge_padding_low() ==
+                                 dim.edge_padding_high();
+                        });
 }
 
 bool HasNegativePadding(const Window& window) {
-  return std::any_of(window.dimensions().begin(), window.dimensions().end(),
-                     [](const WindowDimension& dim) {
-                       return dim.padding_low() < 0 || dim.padding_high() < 0;
-                     });
+  return absl::c_any_of(window.dimensions(), [](const WindowDimension& dim) {
+    return dim.padding_low() < 0 || dim.padding_high() < 0;
+  });
 }
 
 bool HasBaseDilation(const Window& window) {
@@ -184,6 +182,16 @@ bool HasWindowReversal(const Window& window) {
     }
   }
   return false;
+}
+
+bool AllOrNoneReversed(const Window& window) {
+  if (window.dimensions().empty()) {
+    return true;
+  }
+  bool reversed = window.dimensions()[0].window_reversal();
+  return absl::c_all_of(window.dimensions(), [&](const WindowDimension& dim) {
+    return dim.window_reversal() == reversed;
+  });
 }
 
 bool HasDilation(const Window& window) {

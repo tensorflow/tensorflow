@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_STATUSOR_INTERNALS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_STATUSOR_INTERNALS_H_
 
-
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/stream_executor/lib/status.h"
 

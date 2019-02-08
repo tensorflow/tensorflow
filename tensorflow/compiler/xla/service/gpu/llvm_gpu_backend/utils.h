@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace llvm {
 class LLVMContext;
@@ -41,8 +41,8 @@ std::unique_ptr<llvm::Module> LoadIRModule(const string& filename,
 //
 // For example:
 //   ReplaceFilenameExtension("/foo/baz.txt", "cc") --> "/foo/baz.cc"
-string ReplaceFilenameExtension(tensorflow::StringPiece filename,
-                                tensorflow::StringPiece new_extension);
+string ReplaceFilenameExtension(absl::string_view filename,
+                                absl::string_view new_extension);
 
 }  // namespace gpu
 }  // namespace xla

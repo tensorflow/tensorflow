@@ -195,7 +195,7 @@ class ARModelTest(test.TestCase):
     self.train_helper(input_window_size=10,
                       loss=ar_model.ARModel.NORMAL_LIKELIHOOD_LOSS,
                       train_steps=300,
-                      max_loss=2.5,
+                      max_loss=50.,  # Just make sure there are no exceptions.
                       anomaly_distribution=None)
 
   def test_autoregression_normal_multiple_periods(self):

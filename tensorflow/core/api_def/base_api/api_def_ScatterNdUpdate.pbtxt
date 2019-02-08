@@ -70,5 +70,7 @@ The resulting update to ref would look like this:
 
 See `tf.scatter_nd` for more details about how to make updates to
 slices.
+
+See also `tf.scatter_update` and `tf.batch_scatter_update`.
 END
 }

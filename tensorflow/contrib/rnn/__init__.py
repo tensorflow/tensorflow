@@ -14,8 +14,6 @@
 # ==============================================================================
 """RNN Cells and additional RNN operations.
 
-See @{$python/contrib.rnn} guide.
-
 <!--From core-->
 @@RNNCell
 @@LayerRNNCell

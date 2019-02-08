@@ -130,7 +130,7 @@ class _ReplicaDeviceChooser(object):
     return worker_device.to_string()
 
 
-@tf_export("train.replica_device_setter")
+@tf_export(v1=["train.replica_device_setter"])
 def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
                           worker_device="/job:worker", merge_devices=True,
                           cluster=None, ps_ops=None, ps_strategy=None):

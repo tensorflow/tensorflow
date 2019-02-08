@@ -14,14 +14,18 @@ py_library(
     name = "opt_py",
     srcs = [
         "__init__.py",
+        "python/training/adam_gs_optimizer.py",
         "python/training/adamax.py",
         "python/training/addsign.py",
+        "python/training/agn_optimizer.py",
         "python/training/drop_stale_gradient_optimizer.py",
         "python/training/elastic_average_optimizer.py",
         "python/training/external_optimizer.py",
         "python/training/ggt.py",
         "python/training/lars_optimizer.py",
+        "python/training/lazy_adam_gs_optimizer.py",
         "python/training/lazy_adam_optimizer.py",
+        "python/training/matrix_functions.py",
         "python/training/model_average_optimizer.py",
         "python/training/moving_average_optimizer.py",
         "python/training/multitask_optimizer_wrapper.py",
@@ -55,6 +59,21 @@ py_library(
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "adam_gs_optimizer_test",
+    srcs = ["python/training/adam_gs_optimizer_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -147,6 +166,25 @@ py_test(
 )
 
 py_test(
+    name = "lazy_adam_gs_optimizer_test",
+    srcs = ["python/training/lazy_adam_gs_optimizer_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
     name = "lazy_adam_optimizer_test",
     srcs = ["python/training/lazy_adam_optimizer_test.py"],
     srcs_version = "PY2AND3",
@@ -158,8 +196,10 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -243,6 +283,27 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "agn_optimizer_test",
+    srcs = ["python/training/agn_optimizer_test.py"],
+    additional_deps = [
+        ":opt_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//third_party/py/numpy",
+    ],
+    tags = [
+        "notap",  # this test launches a local server
+    ],
+)
+
+tf_py_test(
     name = "elastic_average_optimizer_test",
     srcs = ["python/training/elastic_average_optimizer_test.py"],
     additional_deps = [
@@ -257,6 +318,9 @@ tf_py_test(
         "//tensorflow/python:ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//third_party/py/numpy",
+    ],
+    tags = [
+        "oss_serial",
     ],
 )
 
@@ -349,8 +413,9 @@ py_test(
 
 py_test(
     name = "shampoo_test",
-    size = "large",
+    size = "medium",
     srcs = ["python/training/shampoo_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
@@ -370,6 +435,21 @@ py_test(
 py_test(
     name = "lars_optimizer_test",
     srcs = ["python/training/lars_optimizer_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "matrix_functions_test",
+    srcs = ["python/training/matrix_functions_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",

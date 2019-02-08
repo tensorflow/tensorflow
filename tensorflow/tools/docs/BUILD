@@ -37,6 +37,7 @@ py_library(
     name = "doc_controls",
     srcs = ["doc_controls.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
 )
 
 py_test(
@@ -80,7 +81,7 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
-py_binary(
+py_library(
     name = "generate_lib",
     srcs = ["generate_lib.py"],
     srcs_version = "PY2AND3",
@@ -91,9 +92,10 @@ py_binary(
         ":parser",
         ":pretty_docs",
         ":py_guide_parser",
-        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
+        "//tensorflow/python:util",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
+        "@six_archive//:six",
     ],
 )
 
@@ -125,7 +127,6 @@ py_test(
     name = "build_docs_test",
     size = "small",
     srcs = ["build_docs_test.py"],
-    data = ["//tensorflow/docs_src"],
     srcs_version = "PY2AND3",
     tags = [
         # No reason to run sanitizers or fastbuild for this test.
@@ -141,14 +142,37 @@ py_test(
     ],
 )
 
+py_test(
+    name = "generate2_test",
+    srcs = ["generate2_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        # No reason to run sanitizers or fastbuild for this test.
+        "noasan",
+        "nomsan",
+        "notsan",
+        "optonly",
+    ],
+    deps = [
+        ":generate2_lib",
+    ],
+)
+
 py_binary(
-    name = "generate_1_0",
-    srcs = ["generate_1_0.py"],
+    name = "generate2",
+    srcs = ["generate2.py"],
+    srcs_version = "PY2AND3",
+    deps = [":generate2_lib"],
+)
+
+py_library(
+    name = "generate2_lib",
+    srcs = ["generate2.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":generate_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/debug:debug_py",
+        "//tensorflow/python:util",
     ],
 )
 

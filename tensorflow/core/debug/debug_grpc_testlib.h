@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_DEBUG_GRPC_TESTLIB_H_
-#define TENSORFLOW_DEBUG_GRPC_TESTLIB_H_
+#ifndef TENSORFLOW_CORE_DEBUG_DEBUG_GRPC_TESTLIB_H_
+#define TENSORFLOW_CORE_DEBUG_DEBUG_GRPC_TESTLIB_H_
 
 #include <atomic>
 #include <unordered_set>
@@ -84,4 +84,4 @@ bool PollTillFirstRequestSucceeds(const string& server_url,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_DEBUG_GRPC_TESTLIB_H_
+#endif  // TENSORFLOW_CORE_DEBUG_DEBUG_GRPC_TESTLIB_H_

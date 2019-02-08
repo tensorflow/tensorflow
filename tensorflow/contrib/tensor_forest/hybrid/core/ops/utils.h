@@ -13,8 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef LEARNING_LIB_TENSOR_FOREST_HYBRID_CORE_OPS_UTILS_H_
-#define LEARNING_LIB_TENSOR_FOREST_HYBRID_CORE_OPS_UTILS_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_HYBRID_CORE_OPS_UTILS_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_HYBRID_CORE_OPS_UTILS_H_
 #include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
@@ -43,4 +43,4 @@ void GetFeatureSet(int32 tree_num, int32 node_num, int32 random_seed,
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-#endif  // LEARNING_LIB_TENSOR_FOREST_HYBRID_CORE_OPS_UTILS_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_HYBRID_CORE_OPS_UTILS_H_

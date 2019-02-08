@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/strings/base64.h"
@@ -161,6 +162,11 @@ Status FillFunctionBody(
     const std::vector<const Node*>& body_nodes,
     const std::unordered_map<string, string>& tensor_renaming,
     FunctionDef* fdef) {
+  std::unordered_set<string> func_attr_names;
+  for (const auto& func_attr : fdef->signature().attr()) {
+    func_attr_names.insert(func_attr.name());
+  }
+
   std::vector<const Edge*> in_edges;
   std::vector<const Edge*> control_edges;
   for (const Node* node : body_nodes) {
@@ -241,6 +247,41 @@ Status FillFunctionBody(
     // A function is stateful if any of its nodes are stateful.
     if (node->op_def().is_stateful()) {
       fdef->mutable_signature()->set_is_stateful(true);
+    }
+
+    // If this node has any attributes with placeholder value, add the
+    // attribute to FunctionDef signature.
+    for (const auto& iter : node->attrs()) {
+      if (iter.second.placeholder().empty()) {
+        continue;
+      }
+
+      // If we already added the attribute, skip it.
+      string func_attr_name = iter.second.placeholder();
+      if (func_attr_names.find(func_attr_name) != func_attr_names.end()) {
+        continue;
+      }
+
+      // This node's attribute is a placeholder value, so it does not have type
+      // information. We check node's OpDef for attribute type.
+      string node_attr_name = iter.first;
+      const OpDef::AttrDef* node_attr_def = nullptr;
+      for (const auto& node_attr : node->op_def().attr()) {
+        if (node_attr.name() == node_attr_name) {
+          node_attr_def = &node_attr;
+        }
+      }
+      if (!node_attr_def) {
+        return errors::Unimplemented(
+            "Placeholder value is not supported for attributes not in OpDef. "
+            "Attribute: ",
+            node_attr_name, ", OpDef: ", node->op_def().DebugString());
+      }
+      OpDef::AttrDef* attr_def = fdef->mutable_signature()->add_attr();
+      attr_def->set_name(func_attr_name);
+      attr_def->set_type(node_attr_def->type());
+
+      func_attr_names.insert(func_attr_name);
     }
   }
   return Status::OK();
@@ -391,26 +432,26 @@ Status ProcessInputs(
     EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
   input_tensors->reserve(ninputs);
   for (int i = 0; i < ninputs; ++i) {
-    const Node& node = inputs[i].oper->node;
+    Node* node = &inputs[i].oper->node;
     int idx = inputs[i].index;
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        fn_body->graph.IsValidOutputTensor(&node, idx),
+        fn_body->graph.IsValidOutputTensor(node, idx),
         "Encountered while processing input ", i, " into function '", fn_name,
         "'");
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNonRefOutput(&node, idx),
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNonRefOutput(node, idx),
                                     "Encountered while processing input ", i,
                                     " into function '", fn_name, "'");
 
-    input_tensors->emplace_back(&node, idx);
+    input_tensors->emplace_back(node, idx);
 
-    const auto& iter = input_nodes->find(&node);
+    const auto& iter = input_nodes->find(node);
     if (iter == input_nodes->end()) {
-      input_nodes->insert({&node, {idx}});
+      input_nodes->insert({node, {idx}});
     } else {
       auto& indices = iter->second;
       if (std::find(indices.begin(), indices.end(), idx) != indices.end()) {
-        return InvalidArgument("TF_Output ", node.name(), ":", idx,
+        return InvalidArgument("TF_Output ", node->name(), ":", idx,
                                " appears more than once in the input list");
       }
       indices.push_back(idx);
@@ -427,16 +468,16 @@ Status ProcessOutputs(const TF_Graph* fn_body, const char* fn_name,
     EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
   output_tensors->reserve(noutputs);
   for (int i = 0; i < noutputs; ++i) {
-    const Node& node = outputs[i].oper->node;
+    Node* node = &outputs[i].oper->node;
     int idx = outputs[i].index;
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        fn_body->graph.IsValidOutputTensor(&node, idx),
+        fn_body->graph.IsValidOutputTensor(node, idx),
         "Encountered while processing output ", i, " from function '", fn_name,
         "'");
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNonRefOutput(&node, idx),
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNonRefOutput(node, idx),
                                     "Encountered while creating function '",
                                     fn_name, "'");
-    output_tensors->emplace_back(&node, idx);
+    output_tensors->emplace_back(node, idx);
   }
   return Status::OK();
 }

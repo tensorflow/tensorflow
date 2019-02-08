@@ -18,8 +18,8 @@ limitations under the License.
 // reduce code duplication and ensure consistency across the different
 // resizers, it performs the input validation.
 
-#ifndef TENSORFLOW_KERNELS_IMAGE_RESIZER_STATE_H_
-#define TENSORFLOW_KERNELS_IMAGE_RESIZER_STATE_H_
+#ifndef TENSORFLOW_CORE_KERNELS_IMAGE_RESIZER_STATE_H_
+#define TENSORFLOW_CORE_KERNELS_IMAGE_RESIZER_STATE_H_
 
 #define EIGEN_USE_THREADS
 
@@ -28,12 +28,12 @@ limitations under the License.
 #include <array>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
 
@@ -191,4 +191,4 @@ struct ImageResizerGradientState {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_IMAGE_RESIZER_STATE_H_
+#endif  // TENSORFLOW_CORE_KERNELS_IMAGE_RESIZER_STATE_H_

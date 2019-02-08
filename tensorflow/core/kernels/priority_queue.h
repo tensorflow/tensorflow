@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_PRIORITY_QUEUE_H_
-#define TENSORFLOW_KERNELS_PRIORITY_QUEUE_H_
+#ifndef TENSORFLOW_CORE_KERNELS_PRIORITY_QUEUE_H_
+#define TENSORFLOW_CORE_KERNELS_PRIORITY_QUEUE_H_
 
 #include <deque>
 #include <queue>
@@ -68,7 +68,7 @@ class PriorityQueue
   Status MatchesPriorityNodeDefTypes(const NodeDef& node_def) const;
   Status MatchesPriorityNodeDefShapes(const NodeDef& node_def) const;
 
-  int32 size() override {
+  int32 size() const override {
     mutex_lock lock(mu_);
     return queues_[0].size();
   }
@@ -90,4 +90,4 @@ class PriorityQueue
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_PRIORITY_QUEUE_H_
+#endif  // TENSORFLOW_CORE_KERNELS_PRIORITY_QUEUE_H_

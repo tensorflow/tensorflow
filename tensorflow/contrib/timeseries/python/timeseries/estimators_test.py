@@ -30,7 +30,7 @@ from tensorflow.contrib.timeseries.python.timeseries import saved_model_utils
 
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator_lib
-from tensorflow.python.feature_column import feature_column
+from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
@@ -69,8 +69,10 @@ class TimeSeriesRegressorTest(test.TestCase):
         input_pipeline.NumpyReader(features), shuffle_seed=3, num_threads=1,
         batch_size=16, window_size=16)
     first_estimator.train(input_fn=train_input_fn, steps=1)
-    first_loss_before_fit = first_estimator.evaluate(
-        input_fn=eval_input_fn, steps=1)["loss"]
+    first_evaluation = first_estimator.evaluate(
+        input_fn=eval_input_fn, steps=1)
+    first_loss_before_fit = first_evaluation["loss"]
+    self.assertAllEqual(first_loss_before_fit, first_evaluation["average_loss"])
     self.assertAllEqual([], first_loss_before_fit.shape)
     first_estimator.train(input_fn=train_input_fn, steps=1)
     first_loss_after_fit = first_estimator.evaluate(
@@ -96,8 +98,8 @@ class TimeSeriesRegressorTest(test.TestCase):
     ) = list(second_estimator.predict(input_fn=predict_input_fn))
     self.assertAllEqual([10, 1], estimator_predictions["mean"].shape)
     input_receiver_fn = first_estimator.build_raw_serving_input_receiver_fn()
-    export_location = first_estimator.export_savedmodel(self.get_temp_dir(),
-                                                        input_receiver_fn)
+    export_location = first_estimator.export_saved_model(
+        self.get_temp_dir(), input_receiver_fn)
     with ops.Graph().as_default():
       with session.Session() as sess:
         signatures = loader.load(sess, [tag_constants.SERVING], export_location)
@@ -214,6 +216,50 @@ class TimeSeriesRegressorTest(test.TestCase):
           exogenous_feature_columns=exogenous_feature_columns)
     self._fit_restore_fit_test_template(_estimator_fn, dtype=dtype)
 
+  def test_structural_ensemble_numpy_input(self):
+    numpy_data = {"times": numpy.arange(50),
+                  "values": numpy.random.normal(size=[50])}
+    estimators.StructuralEnsembleRegressor(
+        num_features=1, periodicities=[], model_dir=self.get_temp_dir(),
+        config=_SeedRunConfig()).train(
+            input_pipeline.WholeDatasetInputFn(
+                input_pipeline.NumpyReader(numpy_data)),
+            steps=1)
+
+  def test_ar_lstm_regressor(self):
+    dtype = dtypes.float32
+    model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+    exogenous_feature_columns = (
+        feature_column.numeric_column("exogenous"),
+    )
+    estimator = estimators.LSTMAutoRegressor(
+        periodicities=10,
+        input_window_size=10,
+        output_window_size=6,
+        model_dir=model_dir,
+        num_features=1,
+        extra_feature_columns=exogenous_feature_columns,
+        num_units=10,
+        config=_SeedRunConfig())
+    times = numpy.arange(20, dtype=numpy.int64)
+    values = numpy.arange(20, dtype=dtype.as_numpy_dtype)
+    exogenous = numpy.arange(20, dtype=dtype.as_numpy_dtype)
+    features = {
+        feature_keys.TrainEvalFeatures.TIMES: times,
+        feature_keys.TrainEvalFeatures.VALUES: values,
+        "exogenous": exogenous
+    }
+    train_input_fn = input_pipeline.RandomWindowInputFn(
+        input_pipeline.NumpyReader(features), shuffle_seed=2, num_threads=1,
+        batch_size=16, window_size=16)
+    eval_input_fn = input_pipeline.RandomWindowInputFn(
+        input_pipeline.NumpyReader(features), shuffle_seed=3, num_threads=1,
+        batch_size=16, window_size=16)
+    estimator.train(input_fn=train_input_fn, steps=1)
+    evaluation = estimator.evaluate(
+        input_fn=eval_input_fn, steps=1)
+    self.assertAllEqual(evaluation["loss"], evaluation["average_loss"])
+    self.assertAllEqual([], evaluation["loss"].shape)
 
 if __name__ == "__main__":
   test.main()

@@ -18,6 +18,8 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_binary")
+load("//tensorflow:tensorflow.bzl", "if_not_v2")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 py_library(
@@ -45,7 +47,7 @@ py_library(
         ":cli_test_utils",
         ":debug_py",
         ":grpc_debug_test_server",
-        ":offline_analyzer",
+        ":offline_analyzer_lib",
         ":session_debug_testlib",
         ":source_remote",
     ] + if_not_windows([
@@ -391,6 +393,13 @@ py_binary(
     name = "offline_analyzer",
     srcs = ["cli/offline_analyzer.py"],
     srcs_version = "PY2AND3",
+    deps = [":offline_analyzer_lib"],
+)
+
+py_library(
+    name = "offline_analyzer_lib",
+    srcs = ["cli/offline_analyzer.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":analyzer_cli",
         ":debug_data",
@@ -402,16 +411,24 @@ py_binary(
 py_library(
     name = "debug_examples",
     deps = [
-        ":debug_errors",
-        ":debug_fibonacci",
-        ":debug_keras",
-        ":debug_mnist",
-        ":debug_tflearn_iris",
-    ],
+        ":debug_errors_lib",
+        ":debug_fibonacci_lib",
+        ":debug_keras_lib",
+    ] + if_not_v2([
+        ":debug_mnist_lib",
+        ":debug_tflearn_iris_lib",
+    ]),
 )
 
 py_binary(
     name = "debug_fibonacci",
+    srcs = ["examples/debug_fibonacci.py"],
+    srcs_version = "PY2AND3",
+    deps = [":debug_fibonacci_lib"],
+)
+
+py_library(
+    name = "debug_fibonacci_lib",
     srcs = ["examples/debug_fibonacci.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -426,6 +443,13 @@ py_binary(
     name = "debug_errors",
     srcs = ["examples/debug_errors.py"],
     srcs_version = "PY2AND3",
+    deps = [":debug_errors_lib"],
+)
+
+py_library(
+    name = "debug_errors_lib",
+    srcs = ["examples/debug_errors.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":debug_py",
         "//tensorflow:tensorflow_py",
@@ -435,6 +459,13 @@ py_binary(
 
 py_binary(
     name = "debug_mnist",
+    srcs = ["examples/debug_mnist.py"],
+    srcs_version = "PY2AND3",
+    deps = [":debug_mnist_lib"],
+)
+
+py_library(
+    name = "debug_mnist_lib",
     srcs = ["examples/debug_mnist.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -448,6 +479,13 @@ py_binary(
     name = "debug_tflearn_iris",
     srcs = ["examples/debug_tflearn_iris.py"],
     srcs_version = "PY2AND3",
+    deps = [":debug_tflearn_iris_lib"],
+)
+
+py_library(
+    name = "debug_tflearn_iris_lib",
+    srcs = ["examples/debug_tflearn_iris.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":debug_py",
         "//tensorflow:tensorflow_py",
@@ -457,6 +495,13 @@ py_binary(
 
 py_binary(
     name = "debug_keras",
+    srcs = ["examples/debug_keras.py"],
+    srcs_version = "PY2AND3",
+    deps = [":debug_keras_lib"],
+)
+
+py_library(
+    name = "debug_keras_lib",
     srcs = ["examples/debug_keras.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -556,6 +601,7 @@ py_test(
         ":source_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
+        "//tensorflow/python:cond_v2",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
@@ -565,6 +611,7 @@ py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_v2",
         "//third_party/py/numpy",
     ],
 )
@@ -576,7 +623,6 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
-        "nomac",
         "oss_serial",
     ],
     deps = [
@@ -615,7 +661,7 @@ cuda_py_test(
 
 py_test(
     name = "framework_test",
-    size = "small",
+    size = "medium",
     srcs = ["wrappers/framework_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -969,6 +1015,12 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    tags = [
+        "manual",
+        "no_pip",
+        "no_windows",
+        "notap",
+    ],
 )
 
 cuda_py_test(
@@ -1047,7 +1099,6 @@ cuda_py_test(
     tags = [
         "no_oss",  # Incompatible with bazel_pip.
         "no_windows",
-        "nomac",  # TODO(cais): Install of futures and grpcio on all macs.
         "notsan",
     ],
 )
@@ -1102,6 +1153,23 @@ py_test(
     ],
 )
 
+py_test(
+    name = "disk_usage_test",
+    size = "small",
+    srcs = ["wrappers/disk_usage_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dumping_wrapper",
+        ":hooks",
+        "//tensorflow/python:client",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
+)
+
 sh_test(
     name = "examples_test",
     size = "medium",
@@ -1113,5 +1181,8 @@ sh_test(
         ":debug_mnist",
         ":debug_tflearn_iris",
         ":offline_analyzer",
+    ],
+    tags = [
+        "no_windows",
     ],
 )

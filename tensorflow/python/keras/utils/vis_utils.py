@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
 try:
@@ -67,6 +67,7 @@ def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
   """
   from tensorflow.python.keras.layers.wrappers import Wrapper
   from tensorflow.python.keras.models import Sequential
+  from tensorflow.python.util import nest
 
   _check_pydot()
   dot = pydot.Dot()
@@ -77,7 +78,7 @@ def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
   if isinstance(model, Sequential):
     if not model.built:
       model.build()
-  layers = model.layers
+  layers = model._layers
 
   # Create graph nodes.
   for layer in layers:
@@ -120,14 +121,14 @@ def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
     for i, node in enumerate(layer._inbound_nodes):
       node_key = layer.name + '_ib-' + str(i)
       if node_key in model._network_nodes:  # pylint: disable=protected-access
-        for inbound_layer in node.inbound_layers:
+        for inbound_layer in nest.flatten(node.inbound_layers):
           inbound_layer_id = str(id(inbound_layer))
           layer_id = str(id(layer))
           dot.add_edge(pydot.Edge(inbound_layer_id, layer_id))
   return dot
 
 
-@tf_export('keras.utils.plot_model')
+@keras_export('keras.utils.plot_model')
 def plot_model(model,
                to_file='model.png',
                show_shapes=False,

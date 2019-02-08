@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_AVGPOOLING_OP_H_
-#define TENSORFLOW_KERNELS_AVGPOOLING_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_AVGPOOLING_OP_H_
+#define TENSORFLOW_CORE_KERNELS_AVGPOOLING_OP_H_
 // Functor definition for AvgPoolingOp, must be compilable by nvcc.
 
 #include "tensorflow/core/framework/tensor_types.h"
@@ -76,4 +76,4 @@ bool RunAvePoolBackwardNHWC(const T* const top_diff, const int num,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_AVGPOOLING_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_AVGPOOLING_OP_H_

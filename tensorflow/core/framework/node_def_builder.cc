@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -24,34 +25,41 @@ limitations under the License.
 namespace tensorflow {
 
 NodeDefBuilder::NodeOut::NodeOut(StringPiece n, int i, DataType dt)
-    : node(std::string(n)), index(i), data_type(dt) {}
+    : node(n), index(i), data_type(dt) {}
 
 NodeDefBuilder::NodeOut::NodeOut() {
   // uninitialized, call Reset() before use.
 }
 
 void NodeDefBuilder::NodeOut::Reset(StringPiece n, int i, DataType dt) {
-  node = std::string(n);
+  node = string(n);
   index = i;
   data_type = dt;
 }
 
 NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
-                               const OpRegistryInterface* op_registry) {
-  node_def_.set_name(std::string(name));
-  const Status status =
-      op_registry->LookUpOpDef(std::string(op_name), &op_def_);
+                               const OpRegistryInterface* op_registry,
+                               const NodeDebugInfo* debug) {
+  node_def_.set_name(string(name));
+  const Status status = op_registry->LookUpOpDef(string(op_name), &op_def_);
   if (status.ok()) {
     Initialize();
   } else {
     errors_.push_back(status.error_message());
     inputs_specified_ = 0;
   }
+  if (debug != nullptr) MergeDebugInfo(*debug, &node_def_);
+}
+
+NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
+                               const NodeDebugInfo& debug)
+    : NodeDefBuilder(name, op_name) {
+  MergeDebugInfo(debug, &node_def_);
 }
 
 NodeDefBuilder::NodeDefBuilder(StringPiece name, const OpDef* op_def)
     : op_def_(op_def) {
-  node_def_.set_name(std::string(name));
+  node_def_.set_name(string(name));
   Initialize();
 }
 
@@ -171,7 +179,7 @@ void NodeDefBuilder::AddInput(StringPiece src_node, int src_index) {
   } else if (src_index > 0) {
     node_def_.add_input(strings::StrCat(src_node, ":", src_index));
   } else {
-    node_def_.add_input(std::string(src_node));
+    node_def_.add_input(string(src_node));
   }
 }
 
@@ -194,12 +202,12 @@ void NodeDefBuilder::VerifyInputRef(const OpDef::ArgDef* input_arg,
 }
 
 NodeDefBuilder& NodeDefBuilder::ControlInput(StringPiece src_node) {
-  control_inputs_.push_back(std::string(src_node));
+  control_inputs_.emplace_back(src_node);
   return *this;
 }
 
 NodeDefBuilder& NodeDefBuilder::Device(StringPiece device_spec) {
-  node_def_.set_device(std::string(device_spec));
+  node_def_.set_device(string(device_spec));
   return *this;
 }
 

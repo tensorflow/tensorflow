@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/channel_tracker.h"
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -72,21 +72,21 @@ ChannelHandle ChannelTracker::AllocateHandle(ChannelHandle::ChannelType type) {
 }
 
 Status ChannelTracker::RegisterSendInternal(const ChannelHandle& handle) {
-  if (opaque_to_channel_.count(handle.handle()) == 0) {
-    return NotFound("channel handle not found: %lld", handle.handle());
+  if (!opaque_to_channel_.contains(handle.handle())) {
+    return NotFound("channel handle not found: %d", handle.handle());
   }
   Channel& channel = opaque_to_channel_[handle.handle()];
   if (channel.type == ChannelHandle::HOST_TO_DEVICE) {
     return FailedPrecondition(
         "host-to-device channels cannot be used with a Send operation; "
-        "channel handle: %lld",
+        "channel handle: %d",
         handle.handle());
   }
 
   if (channel.has_sender) {
     return FailedPrecondition(
         "when registering send, passed a channel handle that is already used "
-        "by a sender: %lld",
+        "by a sender: %d",
         handle.handle());
   }
   channel.has_sender = true;
@@ -94,14 +94,14 @@ Status ChannelTracker::RegisterSendInternal(const ChannelHandle& handle) {
 }
 
 Status ChannelTracker::RegisterRecvInternal(const ChannelHandle& handle) {
-  if (opaque_to_channel_.count(handle.handle()) == 0) {
-    return NotFound("channel handle not found: %lld", handle.handle());
+  if (!opaque_to_channel_.contains(handle.handle())) {
+    return NotFound("channel handle not found: %d", handle.handle());
   }
   Channel& channel = opaque_to_channel_[handle.handle()];
   if (channel.type == ChannelHandle::DEVICE_TO_HOST) {
     return FailedPrecondition(
         "device-to-host channels cannot be used with a Recv operation; "
-        "channel handle: %lld",
+        "channel handle: %d",
         handle.handle());
   }
 
@@ -109,7 +109,7 @@ Status ChannelTracker::RegisterRecvInternal(const ChannelHandle& handle) {
   if (channel.receiver_count >= 1) {
     return FailedPrecondition(
         "when registering recv, passed a channel handle that is already used "
-        "by a receiver: %lld",
+        "by a receiver: %d",
         handle.handle());
   }
   channel.receiver_count += 1;

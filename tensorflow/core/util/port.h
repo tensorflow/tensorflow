@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_PORT_H_
-#define TENSORFLOW_UTIL_PORT_H_
+#ifndef TENSORFLOW_CORE_UTIL_PORT_H_
+#define TENSORFLOW_CORE_UTIL_PORT_H_
 
 namespace tensorflow {
 
@@ -30,4 +30,4 @@ bool IsMklEnabled();
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_PORT_H_
+#endif  // TENSORFLOW_CORE_UTIL_PORT_H_

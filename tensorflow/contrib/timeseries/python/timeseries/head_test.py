@@ -38,7 +38,7 @@ from tensorflow.core.example import example_pb2
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.estimator import estimator_lib
-from tensorflow.python.feature_column import feature_column
+from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -104,7 +104,7 @@ class EvaluationMetricsTests(test.TestCase):
           "ticker":
               array_ops.reshape(
                   math_ops.cast(
-                      variables.Variable(
+                      variables.VariableV1(
                           name="ticker",
                           initial_value=0,
                           dtype=dtypes.int64,
@@ -122,7 +122,7 @@ class EvaluationMetricsTests(test.TestCase):
           metric[1] for metric in outputs.eval_metric_ops.values()]
       loss_mean, loss_update = metrics.mean(outputs.loss)
       metric_update_ops.append(loss_update)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         coordinator = coordinator_lib.Coordinator()
         queue_runner_impl.start_queue_runners(sess, coord=coordinator)
         variables.local_variables_initializer().run()
@@ -172,6 +172,7 @@ class EvaluationMetricsTests(test.TestCase):
     evaluation = estimator.evaluate(input_fn, steps=1)
     self.assertIn("plain_boring_metric386", evaluation)
     self.assertIn("fun_metric101", evaluation)
+    self.assertIn("average_loss", evaluation)
     # The values are deterministic because of fixed tf_random_seed.
     # However if they become flaky, remove such exacts comparisons.
     self.assertAllClose(evaluation["plain_boring_metric386"], 1.130380)
@@ -398,10 +399,11 @@ class OneShotTests(parameterized.TestCase):
         num_threads=1, batch_size=16, window_size=16)
     estimator.train(input_fn=train_input_fn, steps=5)
     result = estimator.evaluate(input_fn=train_input_fn, steps=1)
+    self.assertIn("average_loss", result)
     self.assertNotIn(feature_keys.State.STATE_TUPLE, result)
     input_receiver_fn = estimator.build_raw_serving_input_receiver_fn()
-    export_location = estimator.export_savedmodel(_new_temp_dir(),
-                                                  input_receiver_fn)
+    export_location = estimator.export_saved_model(_new_temp_dir(),
+                                                   input_receiver_fn)
     graph = ops.Graph()
     with graph.as_default():
       with session_lib.Session() as session:
@@ -436,7 +438,7 @@ class OneShotTests(parameterized.TestCase):
         output = session.run(fetches, feed_dict=feeds)
         self.assertEqual((2, 15, 5), output["mean"].shape)
     # Build a parsing input function, then make a tf.Example for it to parse.
-    export_location = estimator.export_savedmodel(
+    export_location = estimator.export_saved_model(
         _new_temp_dir(),
         estimator.build_one_shot_parsing_serving_input_receiver_fn(
             filtering_length=20, prediction_length=15))

@@ -86,7 +86,6 @@ def _OptimizerOptions():
         yield cfg
 
 
-@test_util.with_c_shapes
 class FunctionTest(test.TestCase):
   """Test methods for verifying Function support.
 
@@ -104,8 +103,9 @@ class FunctionTest(test.TestCase):
       call = MyIdentityFunc([18.0])
       self.assertEqual("MyIdentity", call.op.name)
       with session.Session() as sess:
-        self.assertAllEqual([18.0], sess.run(call))
+        self.assertAllEqual([18.0], self.evaluate(call))
 
+  @test_util.run_deprecated_v1
   def testIdentityImplicitDeref(self):
 
     @function.Defun(dtypes.float32, func_name="MyIdentity")
@@ -113,13 +113,13 @@ class FunctionTest(test.TestCase):
       return a
 
     with ops.Graph().as_default():
-      var = variables.Variable([18.0])
+      var = variables.VariableV1([18.0])
       call = MyIdentityFunc(var._ref())  # pylint: disable=protected-access
       self.assertEqual("MyIdentity", call.op.name)
       for cfg in _OptimizerOptions():
         with session.Session(config=cfg) as sess:
-          sess.run(var.initializer)
-          self.assertAllEqual([18.0], sess.run(call))
+          self.evaluate(var.initializer)
+          self.assertAllEqual([18.0], self.evaluate(call))
 
   def testIdentityOutputName(self):
 
@@ -132,7 +132,7 @@ class FunctionTest(test.TestCase):
       call = MyIdentityFunc([18.0])
       self.assertEqual("MyIdentity", call.op.name)
       with session.Session() as sess:
-        self.assertAllEqual([18.0], sess.run(call))
+        self.assertAllEqual([18.0], self.evaluate(call))
 
   def testTooManyOutputNames(self):
 
@@ -160,7 +160,7 @@ class FunctionTest(test.TestCase):
       call = APlus2B([1.0], [2.0])
       self.assertEqual("APlus2B", call.op.name)
       with session.Session() as sess:
-        self.assertAllEqual([5.0], sess.run(call))
+        self.assertAllEqual([5.0], self.evaluate(call))
 
   def testFunctionWithNoOutput(self):
 
@@ -189,7 +189,7 @@ class FunctionTest(test.TestCase):
       call = APlus2B([1.0], [2.0])
       self.assertEqual("APlus2B", call.op.name)
       with session.Session() as sess:
-        self.assertAllEqual([5.0], sess.run(call))
+        self.assertAllEqual([5.0], self.evaluate(call))
 
   def testDefineFunctionDuplicateOutputs(self):
 
@@ -226,8 +226,8 @@ class FunctionTest(test.TestCase):
       call_g = XSquarePlusOneGrad([2.0], [0.1])
 
       with session.Session() as sess:
-        self.assertAllClose([5.0], sess.run(call_f))
-        self.assertAllClose([0.4], sess.run(call_g))
+        self.assertAllClose([5.0], self.evaluate(call_f))
+        self.assertAllClose([0.4], self.evaluate(call_g))
 
   def testTanhSymGrad(self):
 
@@ -324,6 +324,7 @@ class FunctionTest(test.TestCase):
       self.assertEqual(x.get_shape(), dx.get_shape())
       self.assertEqual(y.get_shape(), dy.get_shape())
 
+  @test_util.run_deprecated_v1
   def testSymGradAttr(self):
 
     @function.Defun(noinline=True)
@@ -347,7 +348,7 @@ class FunctionTest(test.TestCase):
                 do_function_inlining=True,
                 do_constant_folding=True)))
 
-    with self.test_session(graph=g, config=cfg):
+    with self.session(graph=g, config=cfg):
       self.assertAllClose(y.eval(), 6.)
       self.assertAllClose(dx.eval(), 2.)
 
@@ -367,7 +368,7 @@ class FunctionTest(test.TestCase):
       else:
         dx, dy = gradients_impl.gradients([z], [x, y])
       with session.Session() as sess:
-        dx_val, dy_val = sess.run([dx, dy])
+        dx_val, dy_val = self.evaluate([dx, dy])
         self.assertEqual([2.0], dx_val)
         self.assertEqual([0.0], dy_val)
 
@@ -389,7 +390,7 @@ class FunctionTest(test.TestCase):
       call = AConstant()
       self.assertEqual("AConstant", call.op.name)
       with session.Session() as sess:
-        self.assertAllEqual([42], sess.run(call))
+        self.assertAllEqual([42], self.evaluate(call))
 
   def testDefineFunctionNames(self):
 
@@ -419,7 +420,7 @@ class FunctionTest(test.TestCase):
       with ops.control_dependencies([z]):
         return x * 2
 
-    with ops.Graph().as_default(), self.test_session():
+    with ops.Graph().as_default(), self.cached_session():
       z = Foo(constant_op.constant(3.0))
       self.assertAllEqual(z.eval(), 6.0)
 
@@ -434,12 +435,13 @@ class FunctionTest(test.TestCase):
     # Foo contains a stateful op (Assert).
     self.assertEqual([("Assert", "Assert")], Foo.stateful_ops)
     g = ops.Graph()
-    with g.as_default(), self.test_session():
+    with g.as_default(), self.cached_session():
       self.assertAllEqual(Foo(constant_op.constant(3.0)).eval(), 6.0)
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "assertion failed.*-3"):
         self.assertAllEqual(Foo(constant_op.constant(-3.0)).eval(), 6.0)
 
+  @test_util.run_deprecated_v1
   def testAssertWrapper(self):
 
     @function.Defun(dtypes.float32)
@@ -448,14 +450,15 @@ class FunctionTest(test.TestCase):
           [control_flow_ops.Assert(math_ops.less_equal(x, 10.0), [x])]):
         return array_ops.identity(x)
 
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(1.0, MyFn(1.0).eval())
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "assertion"):
         _ = MyFn(100.0).eval()
 
+  @test_util.run_deprecated_v1
   def testWhileLoopCallsFunc(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
 
       @function.Defun(dtypes.float32)
       def Times2(x):
@@ -470,9 +473,10 @@ class FunctionTest(test.TestCase):
 
       loop = control_flow_ops.while_loop(lambda x: x < 1e5, Body, [1.0])
 
-      ans = sess.run(loop)
+      ans = self.evaluate(loop)
       self.assertAllClose(ans, 131072.)
 
+  @test_util.run_deprecated_v1
   def testControlFlowStrictness(self):
     """Inlined functions must not execute in a untaken control flow branch."""
 
@@ -519,6 +523,7 @@ class FunctionTest(test.TestCase):
                                    "assertion"):
         sess.run(loop, {pred: True, x: 3})
 
+  @test_util.run_deprecated_v1
   def testVar(self):
 
     @function.Defun(dtypes.float32)
@@ -530,10 +535,11 @@ class FunctionTest(test.TestCase):
       v = variables.Variable(constant_op.constant(10.0))
       z = Foo(v)
 
-    with self.test_session(graph=g):
+    with self.session(graph=g):
       variables.global_variables_initializer().run()
       self.assertAllEqual(z.eval(), 101.)
 
+  @test_util.run_deprecated_v1
   def testResourceVarAsImplicitInput(self):
     g = ops.Graph()
     with g.as_default(), ops.device("cpu:0"):
@@ -552,10 +558,10 @@ class FunctionTest(test.TestCase):
       expected_val = v.value()
       actual_val, actual_shape = Foo()
 
-    with self.test_session(graph=g):
+    with self.session(graph=g):
       v.initializer.run()
-      self.assertAllEqual(expected_val.eval(), actual_val.eval())
-      self.assertAllEqual(expected_shape, actual_shape.eval())
+      self.assertAllEqual(expected_val.eval(), self.evaluate(actual_val))
+      self.assertAllEqual(expected_shape, self.evaluate(actual_shape))
 
   def testDefineErrors(self):
     with ops.Graph().as_default():
@@ -652,8 +658,8 @@ class FunctionTest(test.TestCase):
       # pylint: enable=unexpected-keyword-arg
       self.assertEqual("next", call2.op.name)
       with session.Session() as sess:
-        self.assertAllEqual([1], sess.run(call1))
-        self.assertAllEqual([0], sess.run(call2))
+        self.assertAllEqual([1], self.evaluate(call1))
+        self.assertAllEqual([0], self.evaluate(call2))
 
   def testNestedFunction(self):
 
@@ -667,7 +673,7 @@ class FunctionTest(test.TestCase):
 
     with ops.Graph().as_default():
       z = CubeXPlusY(3.0, -2.0)
-      with self.test_session():
+      with self.cached_session():
         self.assertAllEqual(z.eval(), 25.0)
 
   def testNestedDefinedFunction(self):
@@ -683,7 +689,7 @@ class FunctionTest(test.TestCase):
 
     with ops.Graph().as_default():
       z = CubeXPlusY(3.0, -2.0)
-      with self.test_session():
+      with self.cached_session():
         self.assertAllEqual(z.eval(), 25.0)
 
   def testUnusedFunction(self):
@@ -709,6 +715,7 @@ class FunctionTest(test.TestCase):
     gdef = g.as_graph_def()
     self.assertEqual(0, len(gdef.library.function))
 
+  @test_util.run_deprecated_v1
   def testReduction(self):
     g = ops.Graph()
 
@@ -732,11 +739,12 @@ class FunctionTest(test.TestCase):
       dx1, = gradients_impl.gradients([y1], [x])
 
     # Both should produce the same result and gradient.
-    with self.test_session(graph=g) as sess:
+    with self.session(graph=g) as sess:
       vals = sess.run([y0, y1, dx0, dx1], {x: np.random.uniform(size=(3, 7))})
       self.assertAllClose(vals[0], vals[1])
       self.assertAllClose(vals[2], vals[3])
 
+  @test_util.run_deprecated_v1
   def testCapture(self):
     g = ops.Graph()
     with g.as_default():
@@ -762,7 +770,7 @@ class FunctionTest(test.TestCase):
 
       z = Bar()
 
-    with self.test_session(graph=g):
+    with self.session(graph=g):
       variables.global_variables_initializer().run()
       self.assertAllEqual(y.eval(), [[12.0]])
       self.assertAllEqual(z.eval(), [[1.0]])
@@ -783,6 +791,7 @@ class FunctionTest(test.TestCase):
         # NOTE: We still do not support capturing control deps.
         _ = Foo(x)
 
+  @test_util.run_deprecated_v1
   def testCaptureInWhileLoop(self):
     g = ops.Graph()
     with g.as_default():
@@ -795,9 +804,10 @@ class FunctionTest(test.TestCase):
 
       y = Foo()
 
-    with self.test_session(graph=g) as sess:
-      self.assertEqual(sess.run(y), 10)
+    with self.session(graph=g) as sess:
+      self.assertEqual(self.evaluate(y), 10)
 
+  @test_util.run_deprecated_v1
   def testCaptureInCond(self):
     g = ops.Graph()
     with g.as_default():
@@ -810,9 +820,9 @@ class FunctionTest(test.TestCase):
       y = Foo(True)
       z = Foo(False)
 
-    with self.test_session(graph=g) as sess:
-      self.assertEqual(sess.run(y), 1)
-      self.assertEqual(sess.run(z), 2)
+    with self.session(graph=g) as sess:
+      self.assertEqual(self.evaluate(y), 1)
+      self.assertEqual(self.evaluate(z), 2)
 
   def testStableName(self):
 
@@ -827,6 +837,7 @@ class FunctionTest(test.TestCase):
       self.assertEqual("Foo_aCYSbwBkR5A",
                        Foo.instantiate([dtypes.float32] * 3).name)
 
+  @test_util.run_deprecated_v1
   def testSignatureHash(self):
     # Foo.Inner and Bar.Inner have identical function body but have
     # different signatures. They should be treated as two different functions.
@@ -855,8 +866,8 @@ class FunctionTest(test.TestCase):
       y = Foo(x)
       z = Bar(x)
 
-    with self.test_session(graph=g) as sess:
-      v0, v1 = sess.run([y, z])
+    with self.session(graph=g) as sess:
+      v0, v1 = self.evaluate([y, z])
       self.assertAllEqual(v0, 20.)
       self.assertAllEqual(v1, 20.)
 
@@ -879,6 +890,7 @@ class FunctionTest(test.TestCase):
       y = Bar(array_ops.zeros([1, 2, 3]))
       self.assertAllEqual(y.get_shape().as_list(), [1, 1, 2, 3])
 
+  @test_util.run_deprecated_v1
   def testVariableReuse(self):
 
     def LinearWithReuse(input_tensor, reuse=None):
@@ -902,11 +914,12 @@ class FunctionTest(test.TestCase):
     self.assertEqual(global_vars[0].name, "linear/w:0")
 
     with session.Session() as sess:
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       output_val = sess.run(
           output_op, feed_dict={input_op: np.random.rand(32, 100)})
       self.assertEqual(output_val.shape, (32, 100))
 
+  @test_util.run_deprecated_v1
   def testFunctionCallInDifferentVariableScopes(self):
 
     @function.Defun(dtypes.float32)
@@ -930,7 +943,7 @@ class FunctionTest(test.TestCase):
     self.assertEqual(global_vars[0].name, "vs1/var:0")
 
     with session.Session() as sess:
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       out1, out2 = sess.run(
           [out1_op, out2_op], feed_dict={input_op: np.linspace(1, 10, 10)})
       self.assertAllEqual(out1, np.linspace(2, 11, 10))
@@ -970,6 +983,7 @@ class FunctionTest(test.TestCase):
       self.assertAllClose(
           np.array([1.0, 0.0]).astype(np.float32), sess.run(dinp, {inp: x}))
 
+  @test_util.run_deprecated_v1
   def testFunctionMarkedStateful(self):
 
     @function.Defun(dtypes.int32, dtypes.float32)
@@ -993,10 +1007,11 @@ class FunctionTest(test.TestCase):
     result_2 = Bar(constant_op.constant(100, dtype=dtypes.int64))
 
     with session.Session() as sess:
-      self.assertEqual(4.0, sess.run(result_1))
-      self.assertEqual(100, sess.run(result_2))
+      self.assertEqual(4.0, self.evaluate(result_1))
+      self.assertEqual(100, self.evaluate(result_2))
       self.assertEqual((4.0, 100), sess.run((result_1, result_2)))
 
+  @test_util.run_deprecated_v1
   def testStatefulFunction(self):
 
     @function.Defun()
@@ -1039,6 +1054,29 @@ class FunctionTest(test.TestCase):
         self.assertFalse(all(val3 == val1))
         self.assertFalse(all(val4 == val2))
 
+  def testStatefulFunctionWithWhitelisting(self):
+    t = random_ops.random_uniform([100], maxval=10, dtype=dtypes.int32)
+
+    @function.Defun(capture_by_value=True)
+    def StatefulFn():
+      return t + constant_op.constant(3, dtype=dtypes.int32)
+
+    # First time we try to capture a stateful RandomUniform op.
+    with self.assertRaisesRegexp(ValueError, "Cannot capture a stateful node"):
+      res = StatefulFn()
+
+    # This time we whitelist this op, so that its recreated.
+    @function.Defun(capture_by_value=True, whitelisted_stateful_ops=set([t.op]))
+    def StatefulFn2():
+      return t + constant_op.constant(3, dtype=dtypes.int32)
+
+    res = StatefulFn2()
+    with session.Session() as sess:
+      r = sess.run(res)
+      for i in r:
+        self.assertGreaterEqual(i, 3)
+
+  @test_util.run_deprecated_v1
   def testSameFunctionOnTwoDevices(self):
 
     @function.Defun(dtypes.float32)
@@ -1054,10 +1092,11 @@ class FunctionTest(test.TestCase):
     for config in _OptimizerOptions():
       config.device_count["CPU"] = 2
       with session.Session(config=config) as sess:
-        self.assertEqual(42.0, sess.run(f_0))
-        self.assertEqual(44.0, sess.run(f_1))
+        self.assertEqual(42.0, self.evaluate(f_0))
+        self.assertEqual(44.0, self.evaluate(f_1))
         self.assertEqual((42.0, 44.0), sess.run((f_0, f_1)))
 
+  @test_util.run_deprecated_v1
   def testGuaranteedConstsAreCaptured(self):
     var = variables.Variable(1.0)
     const = array_ops.guarantee_const(var)
@@ -1077,10 +1116,11 @@ class FunctionTest(test.TestCase):
       self.assertNotEqual("GuaranteeConst", fifth.consumers()[0].node_def.op)
       return output
 
-    with self.test_session(use_gpu=False) as sess:
-      sess.run(var.initializer)
+    with self.session(use_gpu=False) as sess:
+      self.evaluate(var.initializer)
       _ = sess.run(CapturesGuaranteedConst(), {also_not_const: 1.0})
 
+  @test_util.run_deprecated_v1
   def testSameFunctionDifferentGrads(self):
 
     def PartOne(x):
@@ -1128,15 +1168,14 @@ class FunctionTest(test.TestCase):
       y2 = PartThree(x2)
       dx2, = gradients_impl.gradients(ys=[y2], xs=[x2])
 
-    with self.test_session(graph=g) as sess:
-      v0, v1, v2 = sess.run([dx0, dx1, dx2])
+    with self.session(graph=g) as sess:
+      v0, v1, v2 = self.evaluate([dx0, dx1, dx2])
 
     self.assertAllEqual(v0, 2.)
     self.assertAllEqual(v1, 101.)
     self.assertAllEqual(v2, 50.)
 
 
-@test_util.with_c_shapes
 class FunctionsFromProtos(test.TestCase):
 
   def expectFunctionsEqual(self, func, grad_func=None, new_func=None):
@@ -1153,6 +1192,7 @@ class FunctionsFromProtos(test.TestCase):
     self.assertEqual(func.declared_input_types, new_func.declared_input_types)
     self.assertEqual(func.captured_inputs, new_func.captured_inputs)
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
 
     @function.Defun(dtypes.float32, dtypes.float32)
@@ -1247,7 +1287,7 @@ class FunctionsFromProtos(test.TestCase):
       gradients_impl.gradients([f1, f2, f3, f4], c)
 
     library = g.as_graph_def().library
-    new_funcs = function._from_library(library)
+    new_funcs = function.from_library(library)
 
     def CheckNewFunc(func):
       new_func = [f for f in new_funcs if f.name == func.name]
@@ -1263,7 +1303,7 @@ class FunctionsFromProtos(test.TestCase):
 
   def testFromLibraryEmptyLib(self):
     library = function_pb2.FunctionDefLibrary()
-    self.assertEqual(len(function._from_library(library)), 0)
+    self.assertEqual(len(function.from_library(library)), 0)
 
   def testFromLibraryMissingFuncDef(self):
 
@@ -1287,7 +1327,7 @@ class FunctionsFromProtos(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError,
         "FunctionDefLibrary missing 'G1_[0-9a-zA-Z]{8,11}' FunctionDef"):
-      function._from_library(library)
+      function.from_library(library)
 
     # Create invalid function def that is missing F1 function def
     library = function_pb2.FunctionDefLibrary()
@@ -1297,7 +1337,7 @@ class FunctionsFromProtos(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError,
         "FunctionDefLibrary missing 'F1_[0-9a-zA-Z]{8,11}' FunctionDef"):
-      function._from_library(library)
+      function.from_library(library)
 
   def testFromLibraryCyclicGradFuncs(self):
 
@@ -1326,22 +1366,43 @@ class FunctionsFromProtos(test.TestCase):
 
     with self.assertRaisesRegexp(
         ValueError, "FunctionDefLibrary contains cyclic gradient functions!"):
-      function._from_library(library)
+      function.from_library(library)
 
   def testExperimentalAttrs(self):
 
     @function.Defun(dtypes.int32, experimental_tag="tag_value")
-    def FunctionWithAttr(i):
+    def FunctionWithStrAttr(i):
       return array_ops.identity(i)
 
-    self.assertTrue("experimental_tag" in FunctionWithAttr.definition.attr)
-    self.assertEqual(FunctionWithAttr.definition.attr["experimental_tag"].s,
+    @function.Defun(dtypes.int32, experimental_tag=123)
+    def FunctionWithIntAttr(i):
+      return array_ops.identity(i)
+
+    @function.Defun(dtypes.int32, experimental_tag=123.0)
+    def FunctionWithFloatAttr(i):
+      return array_ops.identity(i)
+
+    @function.Defun(dtypes.int32, experimental_tag=True)
+    def FunctionWithBoolAttr(i):
+      return array_ops.identity(i)
+
+    self.assertTrue("experimental_tag" in FunctionWithStrAttr.definition.attr)
+    self.assertEqual(FunctionWithStrAttr.definition.attr["experimental_tag"].s,
                      b"tag_value")
+    self.assertTrue("experimental_tag" in FunctionWithIntAttr.definition.attr)
+    self.assertEqual(FunctionWithIntAttr.definition.attr["experimental_tag"].i,
+                     123)
+    self.assertTrue("experimental_tag" in FunctionWithFloatAttr.definition.attr)
+    self.assertEqual(
+        FunctionWithFloatAttr.definition.attr["experimental_tag"].f, 123.0)
+    self.assertTrue("experimental_tag" in FunctionWithBoolAttr.definition.attr)
+    self.assertEqual(FunctionWithBoolAttr.definition.attr["experimental_tag"].b,
+                     True)
 
 
-@test_util.with_c_shapes
 class FunctionOverloadTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
 
     @function.Defun()
@@ -1353,7 +1414,7 @@ class FunctionOverloadTest(test.TestCase):
       x = Sinh(constant_op.constant(0.25, dtypes.float32))
       y = Sinh(constant_op.constant(0.25, dtypes.float64))
 
-    with self.test_session(graph=g):
+    with self.session(graph=g):
       self.assertAllClose(x.eval(), np.sinh(0.25))
       self.assertAllClose(y.eval(), np.sinh(0.25))
 
@@ -1374,7 +1435,7 @@ class FunctionOverloadTest(test.TestCase):
         y = F(x)
         dx, = gradients_impl.gradients(y, x)
 
-        with self.test_session(graph=g):
+        with self.session(graph=g):
           self.assertAllClose(dx.eval(), 0.25)
 
   def testDocString(self):
@@ -1392,9 +1453,9 @@ class FunctionOverloadTest(test.TestCase):
                      "Successor of x.")
 
 
-@test_util.with_c_shapes
 class FunctionCaptureByValueTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testCaptureByValue(self):
     g = ops.Graph()
     with g.as_default():
@@ -1418,11 +1479,10 @@ class FunctionCaptureByValueTest(test.TestCase):
 
     self.assertEqual(0, len(Foo.captured_inputs))
 
-    with self.test_session(graph=g):
+    with self.session(graph=g):
       self.assertAllEqual(y.eval(), [[12.0]])
 
 
-@test_util.with_c_shapes
 class UnrollLSTMTest(test.TestCase):
   BATCH_SIZE = 16
   LSTM_DIMS = 32
@@ -1517,7 +1577,7 @@ class UnrollLSTMTest(test.TestCase):
       tf_logging.info("time: %f txt size: %d gdef bin size: %d", finish - start,
                       len(str(gdef)), len(gdef.SerializeToString()))
       with g.as_default(), session.Session(config=cfg) as sess:
-        return sess.run(m)
+        return self.evaluate(m)
 
     mv0 = RunForward("complete")
     for cfg in _OptimizerOptions():
@@ -1546,7 +1606,7 @@ class UnrollLSTMTest(test.TestCase):
       tf_logging.info("time: %f txt size: %d gdef bin size: %d", finish - start,
                       len(str(gdef)), len(gdef.SerializeToString()))
       with g.as_default(), session.Session(config=cfg) as sess:
-        return sess.run(dw)
+        return self.evaluate(dw)
 
     d0 = RunForwardBackward("complete")
     for cfg in _OptimizerOptions():
@@ -1559,7 +1619,6 @@ class UnrollLSTMTest(test.TestCase):
       self.assertAllClose(d0, d3, rtol=1e-4, atol=1e-4)
 
 
-@test_util.with_c_shapes
 class FunctionInlineControlTest(test.TestCase):
 
   def testFoo(self):
@@ -1618,29 +1677,19 @@ class FunctionInlineControlTest(test.TestCase):
       self.assertEqual(MetadataHasCell(run_metadata), noinline)
 
 
-@function.Defun(*[dtypes.float32] * 3)
-def Linear(w, b, x):
-  return nn_ops.relu(math_ops.matmul(x, w) + b)
-
-
-@function.Defun(*[dtypes.float32] * 5)
-def Linear2(w1, b1, w2, b2, x):
-  return Linear(w2, b2, Linear(w1, b1, x))
-
-
-@function.Defun(*[dtypes.float32] * 3)
-def LinearWithCApi(w, b, x):
-  return nn_ops.relu(math_ops.matmul(x, w) + b)
-
-
-@function.Defun(*[dtypes.float32] * 5)
-def Linear2WithCApi(w1, b1, w2, b2, x):
-  return LinearWithCApi(w2, b2, LinearWithCApi(w1, b1, x))
-
-
 class ModuleFunctionTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
+
+    @function.Defun(*[dtypes.float32] * 3)
+    def LinearWithCApi(w, b, x):
+      return nn_ops.relu(math_ops.matmul(x, w) + b)
+
+    @function.Defun(*[dtypes.float32] * 5)
+    def Linear2WithCApi(w1, b1, w2, b2, x):
+      return LinearWithCApi(w2, b2, LinearWithCApi(w1, b1, x))
+
     with ops.Graph().as_default():
       a, b, c, d, e = [
           constant_op.constant([[_]], dtype=dtypes.float32) for _ in range(5)
@@ -1648,11 +1697,10 @@ class ModuleFunctionTest(test.TestCase):
       y = LinearWithCApi(a, b, c)
       z = Linear2WithCApi(a, b, c, d, e)
       with session.Session() as sess:
-        self.assertAllEqual([[1]], sess.run(y))
-        self.assertAllEqual([[5]], sess.run(z))
+        self.assertAllEqual([[1]], self.evaluate(y))
+        self.assertAllEqual([[5]], self.evaluate(z))
 
 
-@test_util.with_c_shapes
 class VariableHoistingTest(test.TestCase):
 
   def _testSimpleModel(self, use_forward_func, use_resource=False):
@@ -1701,9 +1749,9 @@ class VariableHoistingTest(test.TestCase):
     self.assertEqual("Foo/w", w.op.name)
     self.assertEqual("Foo/b", b.op.name)
 
-    with self.test_session(graph=g) as sess:
-      sess.run(variables.global_variables_initializer())
-      w, b, x, y0, loss, dw, db = sess.run([w, b, x, y0, loss, dw, db])
+    with self.session(graph=g) as sess:
+      self.evaluate(variables.global_variables_initializer())
+      w, b, x, y0, loss, dw, db = self.evaluate([w, b, x, y0, loss, dw, db])
 
     self.assertAllEqual(w.shape, (64, 64))
     self.assertAllClose(np.sum(w), 2050.44)
@@ -1715,10 +1763,12 @@ class VariableHoistingTest(test.TestCase):
     self.assertAllEqual(db.shape, (64,))
     self.assertAllClose(np.sum(db), 0.509, rtol=1e-2)
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     self._testSimpleModel(True)
     self._testSimpleModel(False)
 
+  @test_util.run_deprecated_v1
   def testBasicResource(self):
     self._testSimpleModel(True, use_resource=True)
     self._testSimpleModel(False, use_resource=True)

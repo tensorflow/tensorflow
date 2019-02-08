@@ -102,9 +102,10 @@ class PublicAPIVisitor(object):
     """Override the default root name of 'tf'."""
     self._root_name = root_name
 
-  def _is_private(self, path, name):
+  def _is_private(self, path, name, obj=None):
     """Return whether a name is private."""
     # TODO(wicke): Find out what names to exclude.
+    del obj  # Unused.
     return ((path in self._private_map and
              name in self._private_map[path]) or
             (name.startswith('_') and not re.match('__.*__$', name) or
@@ -129,7 +130,7 @@ class PublicAPIVisitor(object):
 
     # Remove things that are not visible.
     for name, child in list(children):
-      if self._is_private(full_path, name):
+      if self._is_private(full_path, name, child):
         children.remove((name, child))
 
     self._visitor(path, parent, children)

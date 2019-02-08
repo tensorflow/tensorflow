@@ -18,9 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import distributions
-
 from tensorflow.contrib.rnn.python.ops import lstm_ops
+from tensorflow.contrib.timeseries.python.timeseries import math_utils
 from tensorflow.contrib.timeseries.python.timeseries import model
 from tensorflow.contrib.timeseries.python.timeseries import model_utils
 from tensorflow.contrib.timeseries.python.timeseries.feature_keys import PredictionFeatures
@@ -102,12 +101,12 @@ class FlatPredictionModel(training.Model):
       [batch size, output window size, num_features], where num_features is the
       same as the constructor argument.
     """
-    if input_window_features.shape[1].value == 0:
+    if input_window_features.shape.dims[1].value == 0:
       # TODO(allenl): Make reshape()'s static shape information work on
       # zero-size Tensors? Currently this special case is required because
       # otherwise the Dense layers get unknown last dimensions.
       activation = self._output_flatten(output_window_features)
-    elif output_window_features.shape[2].value == 0:
+    elif output_window_features.shape.dims[2].value == 0:
       activation = self._input_flatten(input_window_features)
     else:
       activation = array_ops.concat(
@@ -191,6 +190,43 @@ class ARModel(model.TimeSeriesModel):
 
   Note that this class can also be used to regress against time only by setting
   the input_window_size to zero.
+
+  Each periodicity in the `periodicities` arg is divided by the
+  `num_time_buckets` into time buckets that are represented as features added
+  to the model.
+
+  A good heuristic for picking an appropriate periodicity for a given data set
+  would be the length of cycles in the data. For example, energy usage in a
+  home is typically cyclic each day. If the time feature in a home energy
+  usage dataset is in the unit of hours, then 24 would be an appropriate
+  periodicity. Similarly, a good heuristic for `num_time_buckets` is how often
+  the data is expected to change within the cycle. For the aforementioned home
+  energy usage dataset and periodicity of 24, then 48 would be a reasonable
+  value if usage is expected to change every half hour.
+
+  Each feature's value for a given example with time t is the difference
+  between t and the start of the time bucket it falls under. If it doesn't fall
+  under a feature's associated time bucket, then that feature's value is zero.
+
+  For example: if `periodicities` = (9, 12) and `num_time_buckets` = 3, then 6
+  features would be added to the model, 3 for periodicity 9 and 3 for
+  periodicity 12.
+
+  For an example data point where t = 17:
+  - It's in the 3rd time bucket for periodicity 9 (2nd period is 9-18 and 3rd
+    time bucket is 15-18)
+  - It's in the 2nd time bucket for periodicity 12 (2nd period is 12-24 and
+    2nd time bucket is between 16-20).
+
+  Therefore the 6 added features for this row with t = 17 would be:
+
+  # Feature name (periodicity#_timebucket#), feature value
+  P9_T1, 0 # not in first time bucket
+  P9_T2, 0 # not in second time bucket
+  P9_T3, 2 # 17 - 15 since 15 is the start of the 3rd time bucket
+  P12_T1, 0 # not in first time bucket
+  P12_T2, 1 # 17 - 16 since 16 is the start of the 2nd time bucket
+  P12_T3, 0 # not in third time bucket
   """
   SQUARED_LOSS = "squared_loss"
   NORMAL_LIKELIHOOD_LOSS = "normal_likelihood_loss"
@@ -208,7 +244,9 @@ class ARModel(model.TimeSeriesModel):
 
     Args:
       periodicities: periodicities of the input data, in the same units as the
-        time feature. Note this can be a single value or a list of values for
+        time feature (for example 24 if feeding hourly data with a daily
+        periodicity, or 60 * 24 if feeding minute-level data with daily
+        periodicity). Note this can be a single value or a list of values for
         multiple periodicities.
       input_window_size: Number of past time steps of data to look at when doing
         the regression.
@@ -218,21 +256,18 @@ class ARModel(model.TimeSeriesModel):
       prediction_model_factory: A callable taking arguments `num_features`,
         `input_window_size`, and `output_window_size` and returning a
         `tf.keras.Model`. The `Model`'s `call()` takes two arguments: an input
-        window and an output window, and returns a dictionary of
-        predictions. See `FlatPredictionModel` for an example. Example usage:
+        window and an output window, and returns a dictionary of predictions.
+        See `FlatPredictionModel` for an example. Example usage:
 
-        ```python
-        model = ar_model.ARModel(
-          periodicities=2, num_features=3,
-          prediction_model_factory=functools.partial(
-              FlatPredictionModel,
-              hidden_layer_sizes=[10, 10]))
-        ```
+        ```python model = ar_model.ARModel( periodicities=2, num_features=3,
+        prediction_model_factory=functools.partial( FlatPredictionModel,
+        hidden_layer_sizes=[10, 10])) ```
 
         The default model computes predictions as a linear function of flattened
         input and output windows.
       num_time_buckets: Number of buckets into which to divide (time %
-        periodicity) for generating time based features.
+        periodicity). This value multiplied by the number of periodicities is
+        the number of time features added to the model.
       loss: Loss function to use for training. Currently supported values are
         SQUARED_LOSS and NORMAL_LIKELIHOOD_LOSS. Note that for
         NORMAL_LIKELIHOOD_LOSS, we train the covariance term as well. For
@@ -240,10 +275,9 @@ class ARModel(model.TimeSeriesModel):
         observations and predictions, while the training loss is computed on
         normalized data (if input statistics are available).
       exogenous_feature_columns: A list of `tf.feature_column`s (for example
-          `tf.feature_column.embedding_column`) corresponding to exogenous
-          features which provide extra information to the model but are not part
-          of the series to be predicted. Passed to
-          `tf.feature_column.input_layer`.
+        `tf.feature_column.embedding_column`) corresponding to
+        features which provide extra information to the model but are not part
+        of the series to be predicted.
     """
     self._model_factory = prediction_model_factory
     self.input_window_size = input_window_size
@@ -264,10 +298,10 @@ class ARModel(model.TimeSeriesModel):
     elif (not isinstance(periodicities, list) and
           not isinstance(periodicities, tuple)):
       periodicities = [periodicities]
-    self._periods = [int(p) for p in periodicities]
-    for p in self._periods:
+    self._periodicities = [int(p) for p in periodicities]
+    for p in self._periodicities:
       assert p > 0
-    assert len(self._periods) or self.input_window_size
+    assert len(self._periodicities) or self.input_window_size
     assert output_window_size > 0
 
   def initialize_graph(self, input_statistics=None):
@@ -364,9 +398,9 @@ class ARModel(model.TimeSeriesModel):
     input_feature_size = 0
     output_window_features = []
     output_feature_size = 0
-    if self._periods:
+    if self._periodicities:
       _, time_features = self._compute_time_features(times)
-      num_time_features = self._buckets * len(self._periods)
+      num_time_features = self._buckets * len(self._periodicities)
       time_features = array_ops.reshape(
           time_features,
           [batch_size,
@@ -403,7 +437,7 @@ class ARModel(model.TimeSeriesModel):
       output_window_features = array_ops.zeros(
           [batch_size, self.output_window_size, 0],
           dtype=self.dtype)
-    static_batch_size = times.get_shape()[0].value
+    static_batch_size = times.get_shape().dims[0].value
     input_window_features.set_shape(
         [static_batch_size, self.input_window_size, input_feature_size])
     output_window_features.set_shape(
@@ -427,11 +461,12 @@ class ARModel(model.TimeSeriesModel):
     if self.loss == ARModel.NORMAL_LIKELIHOOD_LOSS:
       covariance = prediction_ops["covariance"]
       sigma = math_ops.sqrt(gen_math_ops.maximum(covariance, 1e-5))
-      normal = distributions.Normal(loc=targets, scale=sigma)
-      loss_op = -math_ops.reduce_sum(normal.log_prob(prediction))
+      loss_op = -math_ops.reduce_sum(
+          math_utils.normal_log_prob(targets, sigma, prediction))
     else:
       assert self.loss == ARModel.SQUARED_LOSS, self.loss
-      loss_op = math_ops.reduce_sum(math_ops.square(prediction - targets))
+      loss_op = math_ops.reduce_sum(
+          math_ops.squared_difference(prediction, targets))
     loss_op /= math_ops.cast(
         math_ops.reduce_prod(array_ops.shape(targets)), loss_op.dtype)
     return loss_op
@@ -737,7 +772,7 @@ class ARModel(model.TimeSeriesModel):
       # windows matching self.window_size (as with training), but this looping
       # allows easy plotting of "in-sample" predictions.
       times.get_shape().assert_has_rank(2)
-      static_window_size = times.get_shape()[1].value
+      static_window_size = times.get_shape().dims[1].value
       if (static_window_size is not None
           and static_window_size < self.window_size):
         raise ValueError(
@@ -849,12 +884,12 @@ class ARModel(model.TimeSeriesModel):
   def _compute_time_features(self, time):
     """Compute some features on the time value."""
     batch_size = array_ops.shape(time)[0]
-    num_periods = len(self._periods)
+    num_periods = len(self._periodicities)
     # Reshape to 3D.
     periods = constant_op.constant(
-        self._periods, shape=[1, 1, num_periods, 1], dtype=time.dtype)
+        self._periodicities, shape=[1, 1, num_periods, 1], dtype=time.dtype)
     time = array_ops.reshape(time, [batch_size, -1, 1, 1])
-    window_offset = time / self._periods
+    window_offset = time / self._periodicities
     # Cast to appropriate type and scale to [0, 1) range
     mod = (math_ops.cast(time % periods, self.dtype) * self._buckets /
            math_ops.cast(periods, self.dtype))
@@ -930,16 +965,11 @@ class AnomalyMixtureARModel(ARModel):
       anomaly_variance = prediction_ops["anomaly_params"]
       anomaly_sigma = math_ops.sqrt(
           gen_math_ops.maximum(anomaly_variance, 1e-5))
-      normal = distributions.Normal(loc=targets, scale=anomaly_sigma)
-      log_prob = normal.log_prob(prediction)
+      log_prob = math_utils.normal_log_prob(targets, anomaly_sigma, prediction)
     else:
       assert self._anomaly_distribution == AnomalyMixtureARModel.CAUCHY_ANOMALY
       anomaly_scale = prediction_ops["anomaly_params"]
-      cauchy = distributions.StudentT(
-          df=array_ops.ones([], dtype=anomaly_scale.dtype),
-          loc=targets,
-          scale=anomaly_scale)
-      log_prob = cauchy.log_prob(prediction)
+      log_prob = math_utils.cauchy_log_prob(targets, anomaly_scale, prediction)
     return log_prob
 
   def loss_op(self, targets, prediction_ops):
@@ -948,8 +978,7 @@ class AnomalyMixtureARModel(ARModel):
     covariance = prediction_ops["covariance"]
     # Normal data log probability.
     sigma = math_ops.sqrt(gen_math_ops.maximum(covariance, 1e-5))
-    normal1 = distributions.Normal(loc=targets, scale=sigma)
-    log_prob1 = normal1.log_prob(prediction)
+    log_prob1 = math_utils.normal_log_prob(targets, sigma, prediction)
     log_prob1 += math_ops.log(1 - self._anomaly_prior_probability)
     # Anomaly log probability.
     log_prob2 = self._anomaly_log_prob(targets, prediction_ops)

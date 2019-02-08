@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.contrib.solvers.python.ops import linear_equations
 from tensorflow.contrib.solvers.python.ops import util
 from tensorflow.python.framework import constant_op
@@ -54,7 +55,7 @@ def _get_linear_equations_tests(dtype_, use_static_shape_, shape_):
     x_np = np.zeros_like(rhs_np)
     tol = 1e-6 if dtype_ == np.float64 else 1e-3
     max_iter = 20
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       if use_static_shape_:
         a = constant_op.constant(a_np)
         rhs = constant_op.constant(rhs_np)
@@ -113,7 +114,8 @@ def _get_linear_equations_tests(dtype_, use_static_shape_, shape_):
 if __name__ == "__main__":
   for dtype in np.float32, np.float64:
     for size in 1, 4, 10:
-      for use_static_shape in True, False:
+      # TF2 does not support placeholders under eager so we skip it
+      for use_static_shape in set([True, tf2.enabled()]):
         shape = [size, size]
         arg_string = "%s_%s_staticshape_%s" % (dtype.__name__, size,
                                                use_static_shape)

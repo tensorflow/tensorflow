@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_CORE_ERRORS_H_
-#define TENSORFLOW_LIB_CORE_ERRORS_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_ERRORS_H_
+#define TENSORFLOW_CORE_LIB_CORE_ERRORS_H_
 
 #include <sstream>
 
@@ -131,11 +131,27 @@ inline string FormatNodeNameForError(const string& name) {
 // LINT.ThenChange(//tensorflow/python/client/session.py)
 template <typename T>
 string FormatNodeNamesForError(const T& names) {
-  ::tensorflow::str_util::Formatter<string> f(
-      [](string* output, const string& s) {
+  return ::tensorflow::str_util::Join(
+      names, ", ", [](string* output, const string& s) {
         ::tensorflow::strings::StrAppend(output, FormatNodeNameForError(s));
       });
-  return ::tensorflow::str_util::Join(names, ", ", f);
+}
+// LINT.IfChange
+inline string FormatColocationNodeForError(const string& name) {
+  return strings::StrCat("{{colocation_node ", name, "}}");
+}
+// LINT.ThenChange(//tensorflow/python/framework/error_interpolation.py)
+template <typename T>
+string FormatColocationNodeForError(const T& names) {
+  return ::tensorflow::str_util::Join(
+      names, ", ", [](string* output, const string& s) {
+        ::tensorflow::strings::StrAppend(output,
+                                         FormatColocationNodeForError(s));
+      });
+}
+
+inline string FormatFunctionForError(const string& name) {
+  return strings::StrCat("{{function_node ", name, "}}");
 }
 
 // The CanonicalCode() for non-errors.
@@ -144,4 +160,4 @@ using ::tensorflow::error::OK;
 }  // namespace errors
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_CORE_ERRORS_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_ERRORS_H_

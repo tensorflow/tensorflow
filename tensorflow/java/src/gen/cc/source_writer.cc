@@ -16,7 +16,6 @@ limitations under the License.
 #include <string>
 #include <algorithm>
 #include <list>
-#include <string>
 
 #include "tensorflow/java/src/gen/cc/source_writer.h"
 

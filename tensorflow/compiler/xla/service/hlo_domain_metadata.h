@@ -20,11 +20,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
 
@@ -42,9 +42,12 @@ class DomainMetadata {
     // operand/user pathways, without crossing a kDomain instruction of a given
     // kind. The reach_set can contain kDomain instructions of other kinds, if
     // two domains of different kind intersect each other.
-    tensorflow::gtl::FlatSet<HloInstruction*> reach_set;
+    absl::flat_hash_set<HloInstruction*> reach_set;
 
-    // The same instructions in reach_set, but purged from kDomain instructions.
+    // The same instructions in reach_set, but purged from kDomain instructions
+    // and ordered according to their computation graph post-order, i.e.
+    // if instructions[pos_a] depends on instructions[pos_b], then pos_a >
+    // pos_b.
     std::vector<HloInstruction*> instructions;
 
     // If we consider a graph edge as an arrow oriented from the operand to the
@@ -52,8 +55,8 @@ class DomainMetadata {
     // whose dataflow enters the reach set (domain), while the exit_domains
     // contains the set of kDomain instructions whose dataflow exit the reach
     // set.
-    tensorflow::gtl::FlatSet<HloInstruction*> enter_domains;
-    tensorflow::gtl::FlatSet<HloInstruction*> exit_domains;
+    absl::flat_hash_set<HloInstruction*> enter_domains;
+    absl::flat_hash_set<HloInstruction*> exit_domains;
   };
 
   virtual ~DomainMetadata() = default;
@@ -63,11 +66,14 @@ class DomainMetadata {
 
   // Returns the metadata type. A unique identifier which describes the real
   // metadata type.
-  virtual tensorflow::StringPiece Kind() const = 0;
+  virtual absl::string_view Kind() const = 0;
 
   // Compares the metadata object with another one and returns true if the
   // two matches.
   virtual bool Matches(const DomainMetadata& other) const = 0;
+
+  // Returns the hash value of the metadata.
+  virtual size_t Hash() const = 0;
 
   // Returns a string representation of the metadata.
   virtual string ToString() const = 0;

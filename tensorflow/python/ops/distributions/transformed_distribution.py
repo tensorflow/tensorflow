@@ -30,6 +30,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import distribution as distribution_lib
 from tensorflow.python.ops.distributions import identity_bijector
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 __all__ = [
     "TransformedDistribution",
@@ -166,7 +167,7 @@ class TransformedDistribution(distribution_lib.Distribution):
   distribution:
 
   ```python
-  ds = tf.contrib.distributions
+  ds = tfp.distributions
   log_normal = ds.TransformedDistribution(
     distribution=ds.Normal(loc=0., scale=1.),
     bijector=ds.bijectors.Exp(),
@@ -176,7 +177,7 @@ class TransformedDistribution(distribution_lib.Distribution):
   A `LogNormal` made from callables:
 
   ```python
-  ds = tf.contrib.distributions
+  ds = tfp.distributions
   log_normal = ds.TransformedDistribution(
     distribution=ds.Normal(loc=0., scale=1.),
     bijector=ds.bijectors.Inline(
@@ -190,7 +191,7 @@ class TransformedDistribution(distribution_lib.Distribution):
   Another example constructing a Normal from a StandardNormal:
 
   ```python
-  ds = tf.contrib.distributions
+  ds = tfp.distributions
   normal = ds.TransformedDistribution(
     distribution=ds.Normal(loc=0., scale=1.),
     bijector=ds.bijectors.Affine(
@@ -208,7 +209,7 @@ class TransformedDistribution(distribution_lib.Distribution):
   multivariate Normal as a `TransformedDistribution`.
 
   ```python
-  ds = tf.contrib.distributions
+  ds = tfp.distributions
   # We will create two MVNs with batch_shape = event_shape = 2.
   mean = [[-1., 0],      # batch:0
           [0., 1]]       # batch:1
@@ -227,6 +228,14 @@ class TransformedDistribution(distribution_lib.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                distribution,
                bijector=None,

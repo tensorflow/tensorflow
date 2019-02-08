@@ -35,6 +35,7 @@ def raise_exception():
 
 class SmartCondTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testTrue(self):
     with ops.Graph().as_default():
       with session.Session():
@@ -44,6 +45,7 @@ class SmartCondTest(test_util.TensorFlowTestCase):
                                   lambda: math_ops.multiply(y, 5))
         self.assertEqual(z.eval(), 32)
 
+  @test_util.run_deprecated_v1
   def testFalse(self):
     with ops.Graph().as_default():
       with session.Session():
@@ -99,6 +101,7 @@ class SmartCondTest(test_util.TensorFlowTestCase):
 
 class SmartCaseTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testTrue(self):
     x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     conditions = [(True, lambda: constant_op.constant(1)),
@@ -109,9 +112,10 @@ class SmartCaseTest(test_util.TensorFlowTestCase):
                               exclusive=True)
     with session.Session() as sess:
       # No feed_dict necessary
-      self.assertEqual(sess.run(y), 1)
-      self.assertEqual(sess.run(z), 1)
+      self.assertEqual(self.evaluate(y), 1)
+      self.assertEqual(self.evaluate(z), 1)
 
+  @test_util.run_deprecated_v1
   def testFalse(self):
     conditions = [(False, raise_exception)]
     y = smart_cond.smart_case(conditions,
@@ -121,9 +125,10 @@ class SmartCaseTest(test_util.TensorFlowTestCase):
                               default=lambda: constant_op.constant(1),
                               exclusive=True)
     with session.Session() as sess:
-      self.assertEqual(sess.run(y), 1)
-      self.assertEqual(sess.run(z), 1)
+      self.assertEqual(self.evaluate(y), 1)
+      self.assertEqual(self.evaluate(z), 1)
 
+  @test_util.run_deprecated_v1
   def testMix(self):
     x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
     y = constant_op.constant(10)

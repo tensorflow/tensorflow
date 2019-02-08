@@ -88,7 +88,7 @@ class DatasetDataProviderTest(test.TestCase):
     height = 300
     width = 280
 
-    with self.test_session():
+    with self.cached_session():
       test_dataset = _create_tfrecord_dataset(dataset_dir)
       provider = dataset_data_provider.DatasetDataProvider(test_dataset)
       key, image, label = provider.get(['record_key', 'image', 'label'])
@@ -111,7 +111,7 @@ class DatasetDataProviderTest(test.TestCase):
     height = 300
     width = 280
 
-    with self.test_session():
+    with self.cached_session():
       provider = dataset_data_provider.DatasetDataProvider(
           _create_tfrecord_dataset(dataset_dir))
     [image] = provider.get(['image'])
@@ -128,7 +128,7 @@ class DatasetDataProviderTest(test.TestCase):
     dataset_dir = tempfile.mkdtemp(prefix=os.path.join(self.get_temp_dir(),
                                                        'tfrecord_dataset'))
 
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         dataset_data_provider.DatasetDataProvider(
             _create_tfrecord_dataset(dataset_dir), record_key='image')

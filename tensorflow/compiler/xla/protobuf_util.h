@@ -39,6 +39,10 @@ extern bool ProtobufEquals(const tensorflow::protobuf::Message& m1,
 Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,
                             const string& directory, const string& file_name);
 
+// Registers a function that may either expand a dirpath or forward the original
+// dirpath along as-is.
+void RegisterDirectoryExpander(const std::function<string(string)>& expander);
+
 }  // namespace protobuf_util
 }  // namespace xla
 

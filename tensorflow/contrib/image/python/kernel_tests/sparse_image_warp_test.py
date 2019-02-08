@@ -107,7 +107,7 @@ class SparseImageWarpTest(test_util.TensorFlowTestCase):
         regularization_weight=regularization,
         num_boundary_points=num_boundary_points)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       warped_image, input_image, _ = sess.run(
           [warped_image_op, input_image_op, flow_field])
 
@@ -149,7 +149,7 @@ class SparseImageWarpTest(test_util.TensorFlowTestCase):
         interpolation_order=order,
         num_boundary_points=num_boundary_points)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       warped_image, input_image, flow = sess.run(
           [warped_image_op, input_image_op, flow_field])
       # Check that it moved the pixel correctly.
@@ -176,7 +176,7 @@ class SparseImageWarpTest(test_util.TensorFlowTestCase):
     test_data_dir = test.test_src_dir_path('contrib/image/python/'
                                            'kernel_tests/test_data/')
     input_file = test_data_dir + 'Yellow_Smiley_Face.png'
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       input_image = self.load_image(input_file, sess)
     control_points = np.asarray([[64, 59], [180 - 64, 59], [39, 111],
                                  [180 - 39, 111], [90, 143], [58, 134],
@@ -199,7 +199,7 @@ class SparseImageWarpTest(test_util.TensorFlowTestCase):
             control_points_op + control_point_displacements_op,
             interpolation_order=interpolation_order,
             num_boundary_points=num_boundary_points)
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           warped_image = sess.run(warp_op)
           out_image = np.uint8(warped_image[0, :, :, :] * 255)
           target_file = (
@@ -244,7 +244,7 @@ class SparseImageWarpTest(test_util.TensorFlowTestCase):
     opt_func = optimizer.apply_gradients(zip(grad, [image]))
     init_op = variables.global_variables_initializer()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(5):
         sess.run([loss, opt_func])

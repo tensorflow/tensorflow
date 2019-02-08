@@ -142,6 +142,7 @@ cc_library(
     ],
     includes = [
         ".",
+        "cuda/",
         "cuda/extras/CUPTI/include/",
     ],
     visibility = ["//visibility:public"],
@@ -160,4 +161,4 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-%{cuda_include_genrules}
+%{copy_rules}

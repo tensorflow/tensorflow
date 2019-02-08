@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_CWISE_OPS_COMMON_H_
-#define TENSORFLOW_KERNELS_CWISE_OPS_COMMON_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CWISE_OPS_COMMON_H_
+#define TENSORFLOW_CORE_KERNELS_CWISE_OPS_COMMON_H_
 
 // See docs in ../ops/math_ops.cc.
 
@@ -264,7 +264,8 @@ class UnaryVariantOp : public OpKernel {
     const Variant& v = inp.scalar<Variant>()();
     Variant v_out;
     OP_REQUIRES_OK(ctx, UnaryOpVariant<Device>(ctx, OpEnum, v, &v_out));
-    Tensor out(cpu_allocator(), DT_VARIANT, TensorShape());
+    int numa_node = DeviceNumaNode(ctx->device());
+    Tensor out(cpu_allocator(numa_node), DT_VARIANT, TensorShape());
     out.scalar<Variant>()() = std::move(v_out);
     ctx->set_output(0, std::move(out));
   }
@@ -602,4 +603,4 @@ struct ApproximateEqual<CPUDevice, T> {
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CWISE_OPS_COMMON_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CWISE_OPS_COMMON_H_

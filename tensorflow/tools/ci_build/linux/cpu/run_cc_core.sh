@@ -26,6 +26,7 @@ echo ""
 
 # Run configure.
 export TF_NEED_CUDA=0
+export TF_NEED_ROCM=0
 export CC_OPT_FLAGS='-mavx'
 # Only running cc tests, python version does not matter.
 export PYTHON_BIN_PATH=`which python`

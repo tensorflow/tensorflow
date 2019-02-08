@@ -15,20 +15,23 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/overflow_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace xla {
 
-using ::tensorflow::str_util::Join;
-using ::tensorflow::strings::StrCat;
+using absl::StrCat;
+using absl::StrJoin;
 
 HloSharding HloSharding::AssignDevice(int64 device_id) {
   return HloSharding(device_id);
 }
 
 HloSharding HloSharding::Tile1D(const Shape& input_shape, int64 num_tiles) {
-  CHECK_EQ(1, ShapeUtil::Rank(input_shape));
+  CHECK_EQ(1, input_shape.rank());
   CHECK_GT(num_tiles, 1);
   std::vector<int64> dimensions(1, num_tiles);
   Array<int64> assignment(dimensions);
@@ -53,10 +56,9 @@ HloSharding HloSharding::Tuple(const ShapeTree<HloSharding>& sub_shardings) {
   return HloSharding(flattened_list);
 }
 
-HloSharding HloSharding::Tuple(
-    const Shape& tuple_shape,
-    tensorflow::gtl::ArraySlice<HloSharding> shardings) {
-  CHECK(ShapeUtil::IsTuple(tuple_shape)) << ShapeUtil::HumanString(tuple_shape);
+HloSharding HloSharding::Tuple(const Shape& tuple_shape,
+                               absl::Span<const HloSharding> shardings) {
+  CHECK(tuple_shape.IsTuple()) << ShapeUtil::HumanString(tuple_shape);
   for (auto& sharding : shardings) {
     CHECK(!sharding.IsTuple()) << sharding.ToString();
   }
@@ -69,20 +71,17 @@ HloSharding HloSharding::Tuple(
 
 HloSharding HloSharding::SingleTuple(const Shape& tuple_shape,
                                      const HloSharding& sharding) {
-  CHECK(ShapeUtil::IsTuple(tuple_shape)) << ShapeUtil::HumanString(tuple_shape);
+  CHECK(tuple_shape.IsTuple()) << ShapeUtil::HumanString(tuple_shape);
   CHECK(!sharding.IsTuple()) << sharding.ToString();
-  int64 leaf_count = ShapeUtil::GetLeafCount(tuple_shape);
+  int64 leaf_count = RequiredLeaves(tuple_shape);
   std::vector<HloSharding> flattened_list;
-  flattened_list.reserve(leaf_count);
-  for (int64 i = 0; i < leaf_count; ++i) {
-    flattened_list.push_back(sharding);
-  }
+  flattened_list.resize(leaf_count, sharding);
   return HloSharding(flattened_list);
 }
 
 HloSharding HloSharding::Single(const Shape& shape,
                                 const HloSharding& sharding) {
-  return ShapeUtil::IsTuple(shape) ? SingleTuple(shape, sharding) : sharding;
+  return shape.IsTuple() ? SingleTuple(shape, sharding) : sharding;
 }
 
 string HloSharding::ToString() const {
@@ -92,7 +91,7 @@ string HloSharding::ToString() const {
     for (const HloSharding& element : tuple_elements_) {
       parts.push_back(element.ToString());
     }
-    return StrCat("{", tensorflow::str_util::Join(parts, ", "), "}");
+    return StrCat("{", absl::StrJoin(parts, ", "), "}");
   }
 
   if (replicated_) {
@@ -101,20 +100,19 @@ string HloSharding::ToString() const {
     return StrCat(
         "{maximal device=", static_cast<int64>(*tile_assignment_.begin()), "}");
   } else {
-    return StrCat("{devices=[", Join(tile_assignment_.dimensions(), ","), "]",
-                  Join(tile_assignment_, ","), "}");
+    return StrCat("{devices=[", StrJoin(tile_assignment_.dimensions(), ","),
+                  "]", StrJoin(tile_assignment_, ","), "}");
   }
 }
 
 bool HloSharding::UsesDevice(int64 device) const {
   if (IsTuple()) {
-    return std::any_of(
-        tuple_elements_.begin(), tuple_elements_.end(),
-        [&](const HloSharding& s) { return s.UsesDevice(device); });
+    return absl::c_any_of(tuple_elements_, [&](const HloSharding& s) {
+      return s.UsesDevice(device);
+    });
   }
   const auto& devices = tile_assignment_;
-  return replicated_ ||
-         std::find(devices.begin(), devices.end(), device) != devices.end();
+  return replicated_ || absl::c_linear_search(devices, device);
 }
 
 std::map<int64, int64> HloSharding::UsedDevices(int64* count) const {
@@ -144,7 +142,7 @@ std::vector<int64> HloSharding::TileIndexForDevice(int64 device) const {
   CHECK(!maximal_);
   CHECK(!IsTuple());
   std::vector<int64> ret_index;
-  tile_assignment_.Each([&](tensorflow::gtl::ArraySlice<int64> index, int64 d) {
+  tile_assignment_.Each([&](absl::Span<const int64> index, int64 d) {
     if (d == device) {
       ret_index = {index.begin(), index.end()};
     }
@@ -153,8 +151,7 @@ std::vector<int64> HloSharding::TileIndexForDevice(int64 device) const {
   return ret_index;
 }
 
-int64 HloSharding::DeviceForTileIndex(
-    tensorflow::gtl::ArraySlice<int64> index) const {
+int64 HloSharding::DeviceForTileIndex(absl::Span<const int64> index) const {
   CHECK(!replicated_);
   CHECK(!IsTuple());
   if (maximal_) {
@@ -244,16 +241,16 @@ StatusOr<HloSharding> HloSharding::GetTupleSharding(const Shape& shape) const {
   return Tuple(ShapeTree<HloSharding>(shape, *this));
 }
 
-tensorflow::gtl::optional<int64> HloSharding::UniqueDevice() const {
+absl::optional<int64> HloSharding::UniqueDevice() const {
   if (IsTuple()) {
     if (tuple_elements_.empty()) {
-      return tensorflow::gtl::nullopt;
+      return absl::nullopt;
     }
-    tensorflow::gtl::optional<int64> unique_device;
+    absl::optional<int64> unique_device;
     for (auto& tuple_sharding : tuple_elements_) {
       auto device = tuple_sharding.UniqueDevice();
       if (!device || (unique_device && *device != *unique_device)) {
-        return tensorflow::gtl::nullopt;
+        return absl::nullopt;
       }
       unique_device = device;
     }
@@ -262,7 +259,7 @@ tensorflow::gtl::optional<int64> HloSharding::UniqueDevice() const {
   if (!replicated_ && maximal_) {
     return static_cast<int64>(*tile_assignment_.begin());
   }
-  return tensorflow::gtl::nullopt;
+  return absl::nullopt;
 }
 
 int64 HloSharding::GetUniqueDevice() const {
@@ -272,7 +269,7 @@ int64 HloSharding::GetUniqueDevice() const {
 }
 
 Status HloSharding::ValidateTuple(const Shape& shape, int64 num_devices) const {
-  if (!ShapeUtil::IsTuple(shape)) {
+  if (!shape.IsTuple()) {
     return tensorflow::errors::InvalidArgument(
         StrCat("Sharding is tuple-shaped but validation shape is not."));
   }
@@ -308,7 +305,7 @@ Status HloSharding::Validate(const Shape& shape, int64 num_devices) const {
 
 Status HloSharding::ValidateNonTuple(const Shape& shape,
                                      int64 num_devices) const {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     return tensorflow::errors::InvalidArgument(
         StrCat("Validation shape is a tuple but sharding is not."));
   }
@@ -319,15 +316,15 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   // All tile assignments must be less than the number of available cores and
   // unique.
   Status status = Status::OK();
-  std::set<int64> seen_cores;
+  absl::flat_hash_set<int64> seen_cores;
   tile_assignment_.Each(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, int32 core) {
+      [&](absl::Span<const int64> indices, int32 core) {
         // Don't overwrite a bad status, so we report the first error.
         if (status.ok()) {
           if (core >= num_devices) {
             status = tensorflow::errors::InvalidArgument(StrCat(
                 "core ", core, " > ", num_devices, " in tile assignment"));
-          } else if (seen_cores.count(core) != 0) {
+          } else if (seen_cores.contains(core)) {
             status = tensorflow::errors::InvalidArgument(
                 StrCat("core ", core, " is not unique in tile assignment"));
           }
@@ -343,7 +340,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   }
 
   // The tile assignment tensor must have the same rank as the input.
-  if (ShapeUtil::Rank(shape) != tile_assignment_.num_dimensions()) {
+  if (shape.rank() != tile_assignment_.num_dimensions()) {
     return tensorflow::errors::InvalidArgument(
         "Number of tile assignment dimensions is different to the input rank. "
         "sharding=",
@@ -373,10 +370,28 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
     return HloSharding(tuple_shardings);
   } else if (proto.type() == OpSharding::Type::OpSharding_Type_REPLICATED) {
     return Replicate();
-  } else if (proto.type() == OpSharding::Type::OpSharding_Type_MAXIMAL ||
-             proto.tile_assignment_devices().size() == 1) {
+  } else if (proto.tile_assignment_devices().size() == 1) {
     return HloSharding(proto.tile_assignment_devices(0));
   }
+
+  TF_RET_CHECK(proto.type() != OpSharding::Type::OpSharding_Type_MAXIMAL)
+      << "Maximal sharding is expected to have single device assignment, but "
+      << proto.tile_assignment_devices().size() << " has provided.";
+
+  TF_RET_CHECK(proto.tile_assignment_devices().size() > 1);
+  TF_RET_CHECK(!proto.tile_assignment_dimensions().empty());
+
+  // RE: the product of tile assignment tensor dimensions must be
+  // equal to tile_assignment_devices.size().
+  int64 product_of_dimensions = 1;
+  for (auto dimension : proto.tile_assignment_dimensions()) {
+    TF_RET_CHECK(dimension > 0);
+    product_of_dimensions =
+        MultiplyWithoutOverflow(product_of_dimensions, dimension);
+    TF_RET_CHECK(product_of_dimensions > 0);
+  }
+  TF_RET_CHECK(product_of_dimensions == proto.tile_assignment_devices().size());
+
   // Some versions of gcc cannot infer the TileAssignment constructor from a
   // braced initializer-list, so create one manually.
   std::vector<int64> devices(proto.tile_assignment_devices().begin(),
@@ -422,8 +437,8 @@ Shape HloSharding::TileShape(const Shape& shape) const {
   }
   Shape result_shape = shape;
   for (int64 i = 0; i < shape.dimensions_size(); ++i) {
-    (*result_shape.mutable_dimensions())[i] =
-        CeilOfRatio<int64>(shape.dimensions(i), tile_assignment_.dim(i));
+    result_shape.set_dimensions(
+        i, CeilOfRatio<int64>(shape.dimensions(i), tile_assignment_.dim(i)));
   }
   return result_shape;
 }
@@ -431,29 +446,42 @@ Shape HloSharding::TileShape(const Shape& shape) const {
 HloSharding HloSharding::GetSubSharding(const Shape& shape,
                                         const ShapeIndex& index) const {
   CHECK(IsTuple());
-
-  Shape sub_shape = ShapeUtil::GetSubshape(shape, index);
-  ShapeTree<HloSharding> sub_shape_tree(sub_shape, Replicate());
-  sub_shape_tree.CopySubtreeFrom(GetAsShapeTree(shape), index, {});
-  return ShapeUtil::IsTuple(sub_shape) ? Tuple(sub_shape_tree)
-                                       : sub_shape_tree.element(ShapeIndex({}));
+  int64 sharding_index = 0;
+  const Shape* sub_shape = &shape;
+  for (int64 idx : index) {
+    for (int64 i = 0; i < idx; ++i) {
+      sharding_index +=
+          ShapeUtil::GetLeafCount(ShapeUtil::GetSubshape(*sub_shape, {i}));
+    }
+    sub_shape = &ShapeUtil::GetSubshape(*sub_shape, {idx});
+  }
+  if (sub_shape->IsTuple()) {
+    auto begin_it = tuple_elements_.begin() + sharding_index;
+    std::vector<HloSharding> sub_shardings(
+        begin_it, begin_it + ShapeUtil::GetLeafCount(*sub_shape));
+    return HloSharding::Tuple(*sub_shape, sub_shardings);
+  } else {
+    return tuple_elements_[sharding_index];
+  }
 }
 
-tensorflow::gtl::optional<HloSharding> HloSharding::ExtractSingleSharding()
-    const {
+absl::optional<HloSharding> HloSharding::ExtractSingleSharding() const {
   if (!IsTuple()) {
     return *this;
   }
+  if (tuple_elements_.empty()) {
+    return absl::nullopt;
+  }
   for (int64 i = 1; i < tuple_elements_.size(); ++i) {
     if (tuple_elements_[0] != tuple_elements_[i]) {
-      return tensorflow::gtl::optional<HloSharding>();
+      return absl::nullopt;
     }
   }
   return tuple_elements_.front();
 }
 
 size_t HloSharding::Hash() const {
-  if (!tuple_) {
+  if (tuple_) {
     size_t h = 0;
     for (const auto& element : tuple_elements_) {
       h = tensorflow::Hash64Combine(h, element.Hash());

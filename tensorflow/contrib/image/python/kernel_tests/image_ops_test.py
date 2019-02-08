@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.image.ops import gen_image_ops
 from tensorflow.contrib.image.python.ops import image_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -39,7 +40,7 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
 
   def test_zeros(self):
     for dtype in _DTYPES:
-      with self.test_session():
+      with self.cached_session():
         for shape in [(5, 5), (24, 24), (2, 24, 24, 3)]:
           for angle in [0, 1, np.pi / 2.0]:
             image = array_ops.zeros(shape, dtype)
@@ -49,7 +50,7 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
 
   def test_rotate_even(self):
     for dtype in _DTYPES:
-      with self.test_session():
+      with self.cached_session():
         image = array_ops.reshape(
             math_ops.cast(math_ops.range(36), dtype), (6, 6))
         image_rep = array_ops.tile(image[None, :, :, None], [3, 1, 1, 1])
@@ -71,7 +72,7 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
 
   def test_rotate_odd(self):
     for dtype in _DTYPES:
-      with self.test_session():
+      with self.cached_session():
         image = array_ops.reshape(
             math_ops.cast(math_ops.range(25), dtype), (5, 5))
         image_rep = array_ops.tile(image[None, :, :, None], [3, 1, 1, 1])
@@ -91,7 +92,7 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
 
   def test_translate(self):
     for dtype in _DTYPES:
-      with self.test_session():
+      with self.cached_session():
         image = constant_op.constant(
             [[1, 0, 1, 0],
              [0, 1, 0, 1],
@@ -107,7 +108,7 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
 
   def test_compose(self):
     for dtype in _DTYPES:
-      with self.test_session():
+      with self.cached_session():
         image = constant_op.constant(
             [[1, 1, 1, 0],
              [1, 0, 0, 0],
@@ -131,7 +132,7 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
 
   def test_extreme_projective_transform(self):
     for dtype in _DTYPES:
-      with self.test_session():
+      with self.cached_session():
         image = constant_op.constant(
             [[1, 0, 1, 0],
              [0, 1, 0, 1],
@@ -147,7 +148,7 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
                              [0, 0, 0, 0]])
 
   def test_bilinear(self):
-    with self.test_session():
+    with self.cached_session():
       image = constant_op.constant(
           [[0, 0, 0, 0, 0],
            [0, 1, 1, 1, 0],
@@ -176,7 +177,7 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
            [0, 0, 1, 0, 0]])
 
   def test_bilinear_uint8(self):
-    with self.test_session():
+    with self.cached_session():
       image = constant_op.constant(
           np.asarray(
               [[0.0, 0.0, 0.0, 0.0, 0.0],
@@ -209,7 +210,7 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([3, 5], result.get_shape())
 
   def _test_grad(self, shape_to_test):
-    with self.test_session():
+    with self.cached_session():
       test_image_shape = shape_to_test
       test_image = np.random.randn(*test_image_shape)
       test_image_tensor = constant_op.constant(
@@ -228,7 +229,7 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
       self.assertLess(left_err, 1e-10)
 
   def _test_grad_different_shape(self, input_shape, output_shape):
-    with self.test_session():
+    with self.cached_session():
       test_image_shape = input_shape
       test_image = np.random.randn(*test_image_shape)
       test_image_tensor = constant_op.constant(
@@ -262,6 +263,31 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
     self._test_grad_different_shape([4, 12, 3], [8, 24, 3])
     self._test_grad_different_shape([3, 4, 12, 3], [3, 8, 24, 3])
 
+  def test_projective_transform_v1(self):
+    """The original ImageProjectiveTransform op should take 2 arguments."""
+    image = constant_op.constant([[[[1], [0]], [[0], [1]]]])
+    transform = constant_op.constant([[1., 0., 0., 0., 1., 0., 0., 0.]])
+    result = gen_image_ops.image_projective_transform(
+        image, transform, interpolation="NEAREST")
+    with self.cached_session():
+      self.assertAllEqual([[[[1], [0]], [[0], [1]]]], result.eval())
+
+  def test_transform_data_types(self):
+    for dtype in _DTYPES:
+      image = constant_op.constant([[1, 2], [3, 4]], dtype=dtype)
+      value = image_ops.transform(image, [1] * 8)
+      with self.test_session(use_gpu=True):
+        self.assertAllEqual(
+            value.eval(),
+            np.array([[4, 4], [4, 4]]).astype(dtype.as_numpy_dtype()))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_transform_eager(self):
+    image = constant_op.constant([[1., 2.], [3., 4.]])
+    value = image_ops.transform(image, [1] * 8)
+    with self.test_session(use_gpu=True):
+      self.assertAllEqual(self.evaluate(value), np.array([[4, 4], [4, 4]]))
+
 
 class BipartiteMatchTest(test_util.TensorFlowTestCase):
 
@@ -276,7 +302,7 @@ class BipartiteMatchTest(test_util.TensorFlowTestCase):
     expected_col_to_row_match_np = np.array(expected_col_to_row_match,
                                             dtype=np.int32)
 
-    with self.test_session():
+    with self.cached_session():
       distance_mat_tf = constant_op.constant(distance_mat_np,
                                              shape=distance_mat_shape)
       location_to_prior, prior_to_location = image_ops.bipartite_match(

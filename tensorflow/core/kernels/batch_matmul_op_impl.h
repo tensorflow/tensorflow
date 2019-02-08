@@ -15,6 +15,9 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
+#ifndef TENSORFLOW_CORE_KERNELS_BATCH_MATMUL_OP_IMPL_H_
+#define TENSORFLOW_CORE_KERNELS_BATCH_MATMUL_OP_IMPL_H_
+
 #define EIGEN_USE_THREADS
 
 #include <vector>
@@ -30,6 +33,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
+
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#endif
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
@@ -613,3 +620,5 @@ class BatchMatMul : public OpKernel {
       BatchMatMul<SYCLDevice, TYPE>)
 #endif  // TENSORFLOW_USE_SYCL
 }  // end namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_KERNELS_BATCH_MATMUL_OP_IMPL_H_

@@ -22,8 +22,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
-#include "tensorflow/stream_executor/platform/port.h"
-
+#include "absl/base/macros.h"
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
@@ -79,10 +78,6 @@ class DeviceDescription {
   // legitimate kernel launch request.
   const BlockDim &block_dim_limit() const { return block_dim_limit_; }
 
-  // Returns the limit on the number of simultaneously resident blocks
-  // on a multiprocessor.
-  uint64 blocks_per_core_limit() const { return blocks_per_core_limit_; }
-
   // Returns the limit on the total number of threads that can be launched in a
   // single block; i.e. the limit on x * y * z dimensions of a ThreadDim.
   // This limit affects what constitutes a legitimate kernel launch request.
@@ -108,27 +103,6 @@ class DeviceDescription {
   // simultaneously used by a block.
   const uint64 &registers_per_block_limit() const {
     return registers_per_block_limit_;
-  }
-
-  // Returns the limit on the total number of registers that can be
-  // allocated to a thread.
-  const uint64 &registers_per_thread_limit() const {
-    return registers_per_thread_limit_;
-  }
-
-  // Returns the granularity at which warps are allocated resources.
-  const uint64 &warp_alloc_granularity() const {
-    return warp_alloc_granularity_;
-  }
-
-  // Returns the granularity at which registers are allocated to warps.
-  const uint64 &register_alloc_granularity() const {
-    return register_alloc_granularity_;
-  }
-
-  // Returns the granularity at which shared memory is allocated to warps.
-  const uint64 &shared_memory_alloc_granularity() const {
-    return shared_memory_alloc_granularity_;
   }
 
   // Returns the number of address bits available to kernel code running on the
@@ -158,6 +132,11 @@ class DeviceDescription {
   // If a CUDA compute capability is not available, the major version will be
   // zero, and the return value will be false.
   bool cuda_compute_capability(int *major, int *minor) const;
+
+  // Returns the AMDGPU ISA version if we're running on the ROCm platform.
+  // If the information is not available, the version is not modified,
+  // and the return value will be false.
+  bool rocm_amdgpu_isa_version(int *version) const;
 
   // Returns the maximum amount of shared memory present on a single core
   // (i.e. Streaming Multiprocessor on NVIDIA GPUs; Compute Unit for OpenCL
@@ -200,19 +179,12 @@ class DeviceDescription {
   ThreadDim thread_dim_limit_;
   BlockDim block_dim_limit_;
 
-  uint64 blocks_per_core_limit_;
-
   uint64 threads_per_core_limit_;
   uint64 threads_per_block_limit_;
   uint64 threads_per_warp_;
 
   uint64 registers_per_core_limit_;
   uint64 registers_per_block_limit_;
-  uint64 registers_per_thread_limit_;
-
-  uint64 warp_alloc_granularity_;
-  uint64 register_alloc_granularity_;
-  uint64 shared_memory_alloc_granularity_;
 
   uint64 device_address_bits_;
   uint64 device_memory_size_;
@@ -227,6 +199,9 @@ class DeviceDescription {
   // CUDA "CC" major value, -1 if not available.
   int cuda_compute_capability_major_;
   int cuda_compute_capability_minor_;
+
+  // ROCM AMDGPU ISA version, 0 if not available.
+  int rocm_amdgpu_isa_version_;
 
   int numa_node_;
   int core_count_;
@@ -270,10 +245,6 @@ class DeviceDescriptionBuilder {
     device_description_->block_dim_limit_ = value;
   }
 
-  void set_blocks_per_core_limit(uint64 value) {
-    device_description_->blocks_per_core_limit_ = value;
-  }
-
   void set_threads_per_core_limit(uint64 value) {
     device_description_->threads_per_core_limit_ = value;
   }
@@ -289,19 +260,6 @@ class DeviceDescriptionBuilder {
   }
   void set_registers_per_block_limit(uint64 value) {
     device_description_->registers_per_block_limit_ = value;
-  }
-  void set_registers_per_thread_limit(uint64 value) {
-    device_description_->registers_per_thread_limit_ = value;
-  }
-
-  void set_warp_alloc_granularity(uint64 value) {
-    device_description_->warp_alloc_granularity_ = value;
-  }
-  void set_register_alloc_granularity(uint64 value) {
-    device_description_->register_alloc_granularity_ = value;
-  }
-  void set_shared_memory_alloc_granularity(uint64 value) {
-    device_description_->shared_memory_alloc_granularity_ = value;
   }
 
   void set_device_address_bits(uint64 value) {
@@ -328,6 +286,10 @@ class DeviceDescriptionBuilder {
   void set_cuda_compute_capability(int major, int minor) {
     device_description_->cuda_compute_capability_major_ = major;
     device_description_->cuda_compute_capability_minor_ = minor;
+  }
+
+  void set_rocm_amdgpu_isa_version(int version) {
+    device_description_->rocm_amdgpu_isa_version_ = version;
   }
 
   void set_numa_node(int value) { device_description_->numa_node_ = value; }
@@ -359,9 +321,8 @@ class DeviceDescriptionBuilder {
 bool ThreadDimOk(const DeviceDescription &device_description,
                  const ThreadDim &thread_dim);
 
-// [deprecated] Use MathUtil::CeilOfRatio directly instead.
-//
 // Equivalent to ceil(double(element_count) / threads_per_block).
+ABSL_DEPRECATED("Use MathUtil::CeilOfRatio directly instead.")
 uint64 DivideCeil(uint64 x, uint64 y);
 
 // Calculate the number of threads/blocks required to process element_count
@@ -371,21 +332,6 @@ uint64 DivideCeil(uint64 x, uint64 y);
 void CalculateDimensionality(const DeviceDescription &device_description,
                              uint64 element_count, uint64 *threads_per_block,
                              uint64 *block_count);
-
-// Compute and return maximum blocks per core (occupancy) based on the
-// device description, some kernel characteristics and the number of threads per
-// block.  If unable to compute occupancy, zero is returned.
-uint64 CalculateOccupancy(const DeviceDescription &device_description,
-                          uint64 registers_per_thread,
-                          uint64 shared_memory_per_block,
-                          const ThreadDim &thread_dims);
-
-// Compute and return the maximum number of registers per thread which
-// achieves the target occupancy.  If the target is not possible then
-// zero is returned.
-uint64 CalculateRegisterLimitForTargetOccupancy(
-    const DeviceDescription &device_description, uint64 shared_memory_per_block,
-    const ThreadDim &thread_dims, uint64 target_blocks_per_core);
 
 }  // namespace stream_executor
 

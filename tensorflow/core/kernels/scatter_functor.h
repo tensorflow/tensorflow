@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SCATTER_FUNCTOR_H_
-#define TENSORFLOW_KERNELS_SCATTER_FUNCTOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SCATTER_FUNCTOR_H_
+#define TENSORFLOW_CORE_KERNELS_SCATTER_FUNCTOR_H_
 
 #include <type_traits>
 
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -488,4 +488,4 @@ struct ScatterScalarFunctorSYCL {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_SCATTER_FUNCTOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SCATTER_FUNCTOR_H_

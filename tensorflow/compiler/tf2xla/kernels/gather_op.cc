@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
-#include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -95,11 +94,11 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
   //  operand = s32[3,3] parameter(0)
   //  indices = s32[2] parameter(1)
   //  gather = s32[3,2] gather(operand, indices),
-  //       output_window_dims={0},
-  //       elided_window_dims={1},
-  //       gather_dims_to_operand_dims={1},
+  //       offset_dims={0},
+  //       collapsed_slice_dims={1},
+  //       start_index_map={1},
   //       index_vector_dim=1,
-  //       window_bounds={3, 1}
+  //       slice_sizes={3, 1}
   //
   //
   // Example of an N-D gather pulling out slices of shape [1,1,2] out of a
@@ -108,42 +107,42 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
   //  operand = s32[3,3,2] parameter(0)
   //  indices = s32[2,2] parameter(1)
   //  gather = s32[2,2] gather(operand, indices),
-  //       output_window_dims={1},
-  //       elided_window_dims={0,1},
-  //       gather_dims_to_operand_dims={0,1},
+  //       offset_dims={1},
+  //       collapsed_slice_dims={0,1},
+  //       start_index_map={0,1},
   //       index_vector_dim=0,
-  //       window_bounds={1,1,2}
+  //       slice_sizes={1,1,2}
 
   xla::GatherDimensionNumbers dim_numbers;
-  std::vector<int64> window_bounds;
-  window_bounds.reserve(input_shape.dims());
+  std::vector<int64> slice_sizes;
+  slice_sizes.reserve(input_shape.dims());
   for (int64 i = 0; i < input_shape.dims(); i++) {
     int64 window_bound;
     if (axis <= i && i < (axis + num_index_dims)) {
-      dim_numbers.add_elided_window_dims(i);
+      dim_numbers.add_collapsed_slice_dims(i);
       window_bound = 1;
     } else {
       window_bound = input_shape.dim_size(i);
     }
 
-    window_bounds.push_back(window_bound);
+    slice_sizes.push_back(window_bound);
 
     if (i < axis) {
-      dim_numbers.add_output_window_dims(i);
+      dim_numbers.add_offset_dims(i);
     } else if (i >= (axis + num_index_dims)) {
       int64 indices_rank =
           indices_are_nd ? (indices_shape.dims() - 1) : indices_shape.dims();
-      dim_numbers.add_output_window_dims(i + indices_rank - num_index_dims);
+      dim_numbers.add_offset_dims(i + indices_rank - num_index_dims);
     }
   }
 
   dim_numbers.set_index_vector_dim(indices_are_nd ? (indices_shape.dims() - 1)
                                                   : indices_shape.dims());
   for (int64 i = axis; i < axis + num_index_dims; i++) {
-    dim_numbers.add_gather_dims_to_operand_dims(i);
+    dim_numbers.add_start_index_map(i);
   }
 
-  *gather_output = xla::Gather(input, indices, dim_numbers, window_bounds);
+  *gather_output = xla::Gather(input, indices, dim_numbers, slice_sizes);
   return Status::OK();
 }
 
@@ -168,13 +167,13 @@ class GatherOp : public XlaOpKernel {
 
       OP_REQUIRES_OK(context, context->ConstantInputAsIntScalar(2, &axis));
       const auto params_dims = input_shape.dims();
+      OP_REQUIRES(
+          context, -params_dims <= axis && axis < params_dims,
+          errors::InvalidArgument("Expected axis in the range [", -params_dims,
+                                  ", ", params_dims, "), but got ", axis));
       if (axis < 0) {
         axis += params_dims;
       }
-      OP_REQUIRES(
-          context, 0 <= axis && axis < params_dims,
-          errors::InvalidArgument("Expected axis in the range [", -params_dims,
-                                  ", ", params_dims, "), but got ", axis));
     }
 
     DataType index_type = input_type(1);
@@ -194,7 +193,7 @@ class GatherOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("Gather"), GatherOp);
-REGISTER_XLA_OP(Name("GatherV2").CompileTimeConstInput("axis"), GatherOp);
+REGISTER_XLA_OP(Name("GatherV2").CompileTimeConstantInput("axis"), GatherOp);
 
 class GatherNdOp : public XlaOpKernel {
  public:

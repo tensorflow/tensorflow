@@ -165,7 +165,7 @@ class FunctionalRnnTest(test_util.TensorFlowTestCase):
 
       fetches = self._CreateRnnGraph(
           fn, cell, tf_inputs, tf_slen, is_bidirectional, time_major=time_major)
-      with self.test_session(graph=graph) as sess:
+      with self.session(graph=graph) as sess:
         sess.run(variables.global_variables_initializer())
         # Note that cell.trainable_variables it not always set.
         self._MaybeResetVariables(variable_cache, sess,

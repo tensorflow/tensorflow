@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_HEXAGON_SOC_INTERFACE_H_
-#define TENSORFLOW_PLATFORM_HEXAGON_SOC_INTERFACE_H_
+#ifndef TENSORFLOW_CORE_KERNELS_HEXAGON_SOC_INTERFACE_H_
+#define TENSORFLOW_CORE_KERNELS_HEXAGON_SOC_INTERFACE_H_
 
 // Declaration of APIs provided by hexagon shared library. This header is shared
 // with both hexagon library built with qualcomm SDK and tensorflow.
@@ -111,4 +111,4 @@ void soc_interface_SetDebugFlag(uint64_t flag);
 }
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_PLATFORM_HEXAGON_SOC_INTERFACE_H_
+#endif  // TENSORFLOW_CORE_KERNELS_HEXAGON_SOC_INTERFACE_H_

@@ -35,6 +35,28 @@ from tensorflow.python.util import tf_inspect
 from tensorflow.tools.docs import doc_controls
 
 
+def is_free_function(py_object, full_name, index):
+  """Check if input is a free function (and not a class- or static method).
+
+  Args:
+    py_object: The the object in question.
+    full_name: The full name of the object, like `tf.module.symbol`.
+    index: The {full_name:py_object} dictionary for the public API.
+
+  Returns:
+    True if the obeject is a stand-alone function, and not part of a class
+    definition.
+  """
+  if not tf_inspect.isfunction(py_object):
+    return False
+
+  parent_name = full_name.rsplit('.', 1)[0]
+  if tf_inspect.isclass(index[parent_name]):
+    return False
+
+  return True
+
+
 # A regular expression capturing a python identifier.
 IDENTIFIER_RE = r'[a-zA-Z_]\w*'
 
@@ -74,7 +96,7 @@ class _Errors(object):
     return self._errors == other._errors  # pylint: disable=protected-access
 
 
-def documentation_path(full_name):
+def documentation_path(full_name, is_fragment=False):
   """Returns the file path for the documentation for the given API symbol.
 
   Given the fully qualified name of a library symbol, compute the path to which
@@ -84,12 +106,22 @@ def documentation_path(full_name):
 
   Args:
     full_name: Fully qualified name of a library symbol.
-
+    is_fragment: If `False` produce a direct markdown link (`tf.a.b.c` -->
+      `tf/a/b/c.md`). If `True` produce fragment link, `tf.a.b.c` -->
+      `tf/a/b.md#c`
   Returns:
     The file path to which to write the documentation for `full_name`.
   """
-  dirs = full_name.split('.')
-  return os.path.join(*dirs) + '.md'
+  parts = full_name.split('.')
+  if is_fragment:
+    parts, fragment = parts[:-1], parts[-1]
+
+  result = os.path.join(*parts) + '.md'
+
+  if is_fragment:
+    result = result + '#' + fragment
+
+  return result
 
 
 def _get_raw_docstring(py_object):
@@ -136,8 +168,7 @@ class ReferenceResolver(object):
       doc.
   """
 
-  def __init__(self, duplicate_of, doc_index, is_class, is_module,
-               py_module_names):
+  def __init__(self, duplicate_of, doc_index, is_fragment, py_module_names):
     """Initializes a Reference Resolver.
 
     Args:
@@ -145,15 +176,15 @@ class ReferenceResolver(object):
         symbols.
       doc_index: A `dict` mapping symbol name strings to objects with `url`
         and `title` fields. Used to resolve @{$doc} references in docstrings.
-      is_class: A map from full names to bool for each symbol.
-      is_module: A map from full names to bool for each symbol.
+      is_fragment: A map from full names to bool for each symbol. If True the
+        object lives at a page fragment `tf.a.b.c` --> `tf/a/b#c`. If False
+        object has a page to itself: `tf.a.b.c` --> `tf/a/b/c`.
       py_module_names: A list of string names of Python modules.
     """
     self._duplicate_of = duplicate_of
     self._doc_index = doc_index
-    self._is_class = is_class
-    self._is_module = is_module
-    self._all_names = set(is_class.keys())
+    self._is_fragment = is_fragment
+    self._all_names = set(is_fragment.keys())
     self._py_module_names = py_module_names
 
     self.current_doc_full_name = None
@@ -180,21 +211,18 @@ class ReferenceResolver(object):
     Returns:
       an instance of `ReferenceResolver` ()
     """
-    is_class = {
-        name: tf_inspect.isclass(visitor.index[name])
-        for name, obj in visitor.index.items()
-    }
+    is_fragment = {}
+    for name, obj in visitor.index.items():
+      has_page = (
+          tf_inspect.isclass(obj) or tf_inspect.ismodule(obj) or
+          is_free_function(obj, name, visitor.index))
 
-    is_module = {
-        name: tf_inspect.ismodule(visitor.index[name])
-        for name, obj in visitor.index.items()
-    }
+      is_fragment[name] = not has_page
 
     return cls(
         duplicate_of=visitor.duplicate_of,
         doc_index=doc_index,
-        is_class=is_class,
-        is_module=is_module,
+        is_fragment=is_fragment,
         **kwargs)
 
   @classmethod
@@ -210,6 +238,10 @@ class ReferenceResolver(object):
     Args:
       filepath: The file path to write the json to.
     """
+    try:
+      os.makedirs(os.path.dirname(filepath))
+    except OSError:
+      pass
     json_dict = {}
     for key, value in self.__dict__.items():
       # Drop these two fields. `_doc_index` is not serializable. `_all_names` is
@@ -223,7 +255,7 @@ class ReferenceResolver(object):
       json_dict[key.lstrip('_')] = value
 
     with open(filepath, 'w') as f:
-      json.dump(json_dict, f)
+      json.dump(json_dict, f, indent=2, sort_keys=True)
 
   def replace_references(self, string, relative_path_to_root):
     """Replace "@{symbol}" references with links to symbol's documentation page.
@@ -339,19 +371,7 @@ class ReferenceResolver(object):
       raise TFDocsError(
           'Cannot make link to "%s": Not in index.' % master_name)
 
-    # If this is a member of a class, link to the class page with an anchor.
-    ref_path = None
-    if not (self._is_class[master_name] or self._is_module[master_name]):
-      idents = master_name.split('.')
-      if len(idents) > 1:
-        class_name = '.'.join(idents[:-1])
-        assert class_name in self._all_names
-        if self._is_class[class_name]:
-          ref_path = documentation_path(class_name) + '#%s' % idents[-1]
-
-    if not ref_path:
-      ref_path = documentation_path(master_name)
-
+    ref_path = documentation_path(master_name, self._is_fragment[master_name])
     return os.path.join(relative_path_to_root, ref_path)
 
   def _one_ref(self, match, relative_path_to_root):
@@ -947,6 +967,7 @@ class _ClassPageInfo(object):
     self._aliases = None
     self._doc = None
     self._guides = None
+    self._namedtuplefields = None
 
     self._bases = None
     self._properties = []
@@ -1030,6 +1051,17 @@ class _ClassPageInfo(object):
     self._guides = guides
 
   @property
+  def namedtuplefields(self):
+    return self._namedtuplefields
+
+  def set_namedtuplefields(self, py_class):
+    if issubclass(py_class, tuple):
+      if all(
+          hasattr(py_class, attr)
+          for attr in ('_asdict', '_fields', '_make', '_replace')):
+        self._namedtuplefields = py_class._fields
+
+  @property
   def bases(self):
     """Returns a list of `_LinkInfo` objects pointing to the class' parents."""
     return self._bases
@@ -1066,7 +1098,15 @@ class _ClassPageInfo(object):
   @property
   def properties(self):
     """Returns a list of `_PropertyInfo` describing the class' properties."""
-    return self._properties
+    props_dict = {prop.short_name: prop for prop in self._properties}
+    props = []
+    if self.namedtuplefields:
+      for field in self.namedtuplefields:
+        props.append(props_dict.pop(field))
+
+    props.extend(sorted(props_dict.values()))
+
+    return props
 
   def _add_property(self, short_name, full_name, obj, doc):
     """Adds a `_PropertyInfo` entry to the `properties` list.
@@ -1077,6 +1117,9 @@ class _ClassPageInfo(object):
       obj: The property object itself
       doc: The property's parsed docstring, a `_DocstringInfo`.
     """
+    # Hide useless namedtuple docs-trings
+    if re.match('Alias for field number [0-9]+', doc.docstring):
+      doc = doc._replace(docstring='', brief='')
     property_info = _PropertyInfo(short_name, full_name, obj, doc)
     self._properties.append(property_info)
 
@@ -1156,6 +1199,7 @@ class _ClassPageInfo(object):
       py_class: The class object being documented
       parser_config: An instance of ParserConfig.
     """
+    self.set_namedtuplefields(py_class)
     doc_path = documentation_path(self.full_name)
     relative_path = os.path.relpath(
         path='.', start=os.path.dirname(doc_path) or '.')
@@ -1435,7 +1479,7 @@ class ParserConfig(object):
     self.base_dir = base_dir
     self.defined_in_prefix = 'tensorflow/'
     self.code_url_prefix = (
-        'https://www.tensorflow.org/code/tensorflow/')  # pylint: disable=line-too-long
+        '/code/stable/tensorflow/')  # pylint: disable=line-too-long
 
   def py_name_to_object(self, full_name):
     """Return the Python object for a Python symbol name."""
@@ -1695,15 +1739,18 @@ class _Metadata(object):
 
   Attributes:
     name: The name of the page being described by the Metadata block.
+    version: The source version.
   """
 
-  def __init__(self, name):
+  def __init__(self, name, version='Stable'):
     """Creates a Metadata builder.
 
     Args:
       name: The name of the page being described by the Metadata block.
+      version: The source version.
     """
     self.name = name
+    self.version = version
     self._content = []
 
   def append(self, item):
@@ -1720,6 +1767,7 @@ class _Metadata(object):
     parts = ['<div itemscope itemtype="%s">' % schema]
 
     parts.append('<meta itemprop="name" content="%s" />' % self.name)
+    parts.append('<meta itemprop="path" content="%s" />' % self.version)
     for item in self._content:
       parts.append('<meta itemprop="property" content="%s"/>' % item)
 

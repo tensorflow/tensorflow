@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef GDR_WORKER_H_
-#define GDR_WORKER_H_
+#ifndef TENSORFLOW_CONTRIB_GDR_GDR_WORKER_H_
+#define TENSORFLOW_CONTRIB_GDR_GDR_WORKER_H_
 
 #include "tensorflow/contrib/gdr/gdr_memory_manager.h"
 
@@ -25,7 +25,8 @@ namespace tensorflow {
 
 class GdrWorker : public GrpcWorker {
  public:
-  GdrWorker(WorkerEnv* env, RemoteMemoryManager* remote_memory_manager);
+  GdrWorker(WorkerEnv* env, const ConfigProto& config,
+            RemoteMemoryManager* remote_memory_manager);
 
   // Serve the RecvTensorRequest but omit the tensor content and transmit it
   // out-of-band using GPU Direct RDMA whenever possible.
@@ -37,11 +38,15 @@ class GdrWorker : public GrpcWorker {
                                    ::grpc::ByteBuffer* response,
                                    StatusCallback done) override;
 
+  virtual void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                            RecvBufResponse* response,
+                            StatusCallback done) override;
+
  private:
   RemoteMemoryManager* remote_memory_manager_;  // Not owned
-  RecentRequestIds recv_tensor_recent_request_ids_;
+  RecentRequestIds recent_request_ids_;
 };
 
 }  // namespace tensorflow
 
-#endif  // GDR_WORKER_H_
+#endif  // TENSORFLOW_CONTRIB_GDR_GDR_WORKER_H_

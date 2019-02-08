@@ -66,7 +66,7 @@ class OptimizersTest(test.TestCase):
     ]
     for optimizer in optimizers:
       with ops.Graph().as_default() as g:
-        with self.test_session(graph=g) as session:
+        with self.session(graph=g) as session:
           x, var, loss, global_step = _setup_model()
           train = optimizers_lib.optimize_loss(
               loss, global_step, learning_rate=0.1, optimizer=optimizer)
@@ -82,7 +82,7 @@ class OptimizersTest(test.TestCase):
       return gradient_descent.GradientDescentOptimizer(learning_rate=0.1)
 
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         x, var, loss, global_step = _setup_model()
         train = optimizers_lib.optimize_loss(
             loss, global_step, learning_rate=None, optimizer=optimizer_fn)
@@ -96,14 +96,14 @@ class OptimizersTest(test.TestCase):
     optimizers = ["blah", variables.Variable, object(), lambda x: None]
     for optimizer in optimizers:
       with ops.Graph().as_default() as g:
-        with self.test_session(graph=g):
+        with self.session(graph=g):
           _, _, loss, global_step = _setup_model()
           with self.assertRaises(ValueError):
             optimizers_lib.optimize_loss(
                 loss, global_step, learning_rate=0.1, optimizer=optimizer)
 
   def testBadSummaries(self):
-    with ops.Graph().as_default() as g, self.test_session(graph=g):
+    with ops.Graph().as_default() as g, self.session(graph=g):
       _, _, loss, global_step = _setup_model()
       with self.assertRaises(ValueError):
         optimizers_lib.optimize_loss(
@@ -111,7 +111,7 @@ class OptimizersTest(test.TestCase):
             summaries=["loss", "bad_summary"])
 
   def testInvalidLoss(self):
-    with ops.Graph().as_default() as g, self.test_session(graph=g):
+    with ops.Graph().as_default() as g, self.session(graph=g):
       _, _, _, global_step = _setup_model()
       with self.assertRaises(ValueError):
         optimizers_lib.optimize_loss(
@@ -121,7 +121,7 @@ class OptimizersTest(test.TestCase):
             [[1.0]], global_step, learning_rate=0.1, optimizer="SGD")
 
   def testInvalidGlobalStep(self):
-    with ops.Graph().as_default() as g, self.test_session(graph=g):
+    with ops.Graph().as_default() as g, self.session(graph=g):
       x = array_ops.placeholder(dtypes.float32, [])
       var = variable_scope.get_variable(
           "test", [], initializer=init_ops.constant_initializer(10))
@@ -157,7 +157,7 @@ class OptimizersTest(test.TestCase):
             optimizer="SGD")
 
   def testInvalidLearningRate(self):
-    with ops.Graph().as_default() as g, self.test_session(graph=g):
+    with ops.Graph().as_default() as g, self.session(graph=g):
       _, _, loss, global_step = _setup_model()
       with self.assertRaises(ValueError):
         optimizers_lib.optimize_loss(
@@ -165,7 +165,7 @@ class OptimizersTest(test.TestCase):
 
   def testGradientNoise(self):
     random_seed.set_random_seed(42)
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x, var, loss, global_step = _setup_model()
       train = optimizers_lib.optimize_loss(
           loss,
@@ -182,7 +182,7 @@ class OptimizersTest(test.TestCase):
 
   def testGradientNoiseWithClipping(self):
     random_seed.set_random_seed(42)
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x, var, loss, global_step = _setup_model()
       train = optimizers_lib.optimize_loss(
           loss,
@@ -198,7 +198,7 @@ class OptimizersTest(test.TestCase):
       self.assertEqual(global_step_value, 1)
 
   def testGradientClip(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x, var, loss, global_step = _setup_model()
       train = optimizers_lib.optimize_loss(
           loss,
@@ -213,7 +213,7 @@ class OptimizersTest(test.TestCase):
       self.assertEqual(global_step_value, 1)
 
   def testAdaptiveGradientClip(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x, var, loss, global_step = _setup_model()
       clip_gradients = optimizers_lib.adaptive_clipping_fn()
       train = optimizers_lib.optimize_loss(
@@ -234,7 +234,7 @@ class OptimizersTest(test.TestCase):
       self.assertEqual(2, var_count)
 
   def testGradientMultiply(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x, var, loss, global_step = _setup_model()
       train = optimizers_lib.optimize_loss(
           loss,
@@ -244,6 +244,42 @@ class OptimizersTest(test.TestCase):
           gradient_multipliers={var: 7.})
       variables.global_variables_initializer().run()
       session.run(train, feed_dict={x: 5})
+      var_value, global_step_value = session.run([var, global_step])
+      # var(0) = 10, x = 5, var(0)/dx = 5,
+      # var(1) = var(0) - learning_rate * gradient_multiplier * var(0)/dx
+      self.assertAlmostEqual(var_value, 6.5, 4)
+      self.assertEqual(global_step_value, 1)
+
+  def testGradientMultiplyInt32Tensor(self):
+    with self.cached_session() as session:
+      x, var, loss, global_step = _setup_model()
+      v = array_ops.placeholder(dtypes.float32, [])
+      train = optimizers_lib.optimize_loss(
+          loss,
+          global_step,
+          learning_rate=0.1,
+          optimizer="SGD",
+          gradient_multipliers={var: v})
+      variables.global_variables_initializer().run()
+      session.run(train, feed_dict={x: 5, v: 7.})
+      var_value, global_step_value = session.run([var, global_step])
+      # var(0) = 10, x = 5, var(0)/dx = 5,
+      # var(1) = var(0) - learning_rate * gradient_multiplier * var(0)/dx
+      self.assertAlmostEqual(var_value, 6.5, 4)
+      self.assertEqual(global_step_value, 1)
+
+  def testGradientMultiplyInt64Tensor(self):
+    with self.cached_session() as session:
+      x, var, loss, global_step = _setup_model()
+      v = array_ops.placeholder(dtypes.float64, [])
+      train = optimizers_lib.optimize_loss(
+          loss,
+          global_step,
+          learning_rate=0.1,
+          optimizer="SGD",
+          gradient_multipliers={var: v})
+      variables.global_variables_initializer().run()
+      session.run(train, feed_dict={x: 5, v: 7.})
       var_value, global_step_value = session.run([var, global_step])
       # var(0) = 10, x = 5, var(0)/dx = 5,
       # var(1) = var(0) - learning_rate * gradient_multiplier * var(0)/dx
@@ -270,7 +306,7 @@ class OptimizersTest(test.TestCase):
         gradient_descent.GradientDescentOptimizer(learning_rate=0.1)
     ]
     for optimizer in optimizers:
-      with ops.Graph().as_default() as g, self.test_session(graph=g) as session:
+      with ops.Graph().as_default() as g, self.session(graph=g) as session:
         x = array_ops.placeholder(dtypes.float32, [])
         var = variable_scope.get_variable(
             "test", [], initializer=init_ops.constant_initializer(10))
@@ -295,7 +331,7 @@ class OptimizersTest(test.TestCase):
         gradient_descent.GradientDescentOptimizer(learning_rate=0.1)
     ]
     for optimizer in optimizers:
-      with ops.Graph().as_default() as g, self.test_session(graph=g):
+      with ops.Graph().as_default() as g, self.session(graph=g):
         x = array_ops.placeholder(dtypes.float32, [])
         var = variable_scope.get_variable(
             "test", [], initializer=init_ops.constant_initializer(10))
@@ -319,7 +355,7 @@ class OptimizersTest(test.TestCase):
         gradient_descent.GradientDescentOptimizer(learning_rate=0.1)
     ]
     for optimizer in optimizers:
-      with ops.Graph().as_default() as g, self.test_session(graph=g) as session:
+      with ops.Graph().as_default() as g, self.session(graph=g) as session:
         x, var, loss, global_step = _setup_model()
         update_var = variable_scope.get_variable(
             "update", [], initializer=init_ops.constant_initializer(10))
@@ -342,7 +378,7 @@ class OptimizersTest(test.TestCase):
         gradient_descent.GradientDescentOptimizer(learning_rate=0.1)
     ]
     for optimizer in optimizers:
-      with ops.Graph().as_default() as g, self.test_session(graph=g) as session:
+      with ops.Graph().as_default() as g, self.session(graph=g) as session:
         x, var, loss, global_step = _setup_model()
         update_var = variable_scope.get_variable(
             "update", [], initializer=init_ops.constant_initializer(10))
@@ -365,7 +401,7 @@ class OptimizersTest(test.TestCase):
         gradient_descent.GradientDescentOptimizer(learning_rate=0.1)
     ]
     for optimizer in optimizers:
-      with ops.Graph().as_default() as g, self.test_session(graph=g) as session:
+      with ops.Graph().as_default() as g, self.session(graph=g) as session:
         x, var, loss, global_step = _setup_model()
         update_var = variable_scope.get_variable(
             "update", [], initializer=init_ops.constant_initializer(10))
@@ -389,7 +425,7 @@ class OptimizersTest(test.TestCase):
         gradient_descent.GradientDescentOptimizer(learning_rate=0.1)
     ]
     for optimizer in optimizers:
-      with ops.Graph().as_default() as g, self.test_session(graph=g) as session:
+      with ops.Graph().as_default() as g, self.session(graph=g) as session:
         x, var, loss, global_step = _setup_model()
         update_var = variable_scope.get_variable(
             "update", [], initializer=init_ops.constant_initializer(10))
@@ -413,7 +449,7 @@ class OptimizersTest(test.TestCase):
         gradient_descent.GradientDescentOptimizer(learning_rate=0.1)
     ]
     for optimizer in optimizers:
-      with ops.Graph().as_default() as g, self.test_session(graph=g) as session:
+      with ops.Graph().as_default() as g, self.session(graph=g) as session:
         x, var, loss, global_step = _setup_model()
         update_var = variable_scope.get_variable(
             "update", [], initializer=init_ops.constant_initializer(10))
@@ -433,7 +469,7 @@ class OptimizersTest(test.TestCase):
 class AdaptiveClipping(test.TestCase):
 
   def testAverages(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       scale = 2.
       grad = array_ops.ones([3, 4]) * scale
       log_norm = np.log(np.sqrt(scale**2 * grad.get_shape().num_elements()))
@@ -463,7 +499,7 @@ class AdaptiveClipping(test.TestCase):
       self.assertAlmostEqual(float(sq_mean), log_norm**2, places=4)
 
   def testClip(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       spike = 1000.
       multiplier = array_ops.placeholder(dtypes.float32, [], "multiplier")
       step = array_ops.placeholder(dtypes.int32, [], "step")

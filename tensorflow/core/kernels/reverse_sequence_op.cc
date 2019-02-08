@@ -64,7 +64,7 @@ void CheckErrors(OpKernelContext* context, int batch_dim, int seq_dim) {
   OP_REQUIRES(context, seq_lens.NumElements() == input.dim_size(batch_dim),
               errors::InvalidArgument("len(seq_lens) != input.dims(", batch_dim,
                                       "), ", "(", seq_lens.NumElements(),
-                                      " vs. ", input.dim_size(batch_dim)));
+                                      " vs. ", input.dim_size(batch_dim), ")"));
 
   for (size_t d = 0; d < seq_lens_vec.size(); ++d) {
     OP_REQUIRES(context, seq_lens_vec[d] >= 0,
@@ -91,7 +91,7 @@ void CheckErrorsGPU(OpKernelContext* context, int batch_dim, int seq_dim) {
   OP_REQUIRES(context, seq_lens.NumElements() == input.dim_size(batch_dim),
               errors::InvalidArgument("len(seq_lens) != input.dims(", batch_dim,
                                       "), ", "(", seq_lens.NumElements(),
-                                      " vs. ", input.dim_size(batch_dim)));
+                                      " vs. ", input.dim_size(batch_dim), ")"));
 }
 
 template <>
@@ -127,6 +127,7 @@ class ReverseSequenceOp : public OpKernel {
     auto seq_lens_t = seq_lens.vec<Tlen>();
 
     CheckErrors<Device, Tlen>(context, batch_dim_, seq_dim_);
+    if (!context->status().ok()) return;
 
     const int input_dims = input.dims();
 

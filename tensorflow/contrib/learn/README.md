@@ -7,12 +7,11 @@ warnings. A high-level overview is below.
 
 ## Canned Estimators
 
-Many canned estimators (subclasses of `Estimator`) have equivalents in core:
+Many canned estimators (subclasses of `Estimator`) have equivalents in core
+exposed under `tf.estimator`:
 `DNNClassifier`, `DNNRegressor`, `DNNEstimator`, `LinearClassifier`,
-`LinearRegressor`, `DNNLinearCombinedClassifier` and
-`DNNLinearCombinedRegressor`. They are exposed under `tf.estimator`.
-`DNNEstimator`, `LinearEstimator` and `DNNLinearCombinedEstimator`
-are exposed under `tf.contrib.estimator`.
+`LinearRegressor`, `LinearEstimator`, `DNNLinearCombinedClassifier`,
+`DNNLinearCombinedRegressor` and `DNNLinearCombinedEstimator`.
 
 To migrate to the new api, users need to take the following steps:
 
@@ -45,7 +44,7 @@ To migrate to the new api, users need to take the following steps:
   `tf.contrib.learn` classifiers and regressors supported labels with shape
   `[batch_size]`.
 * If you pass custom metrics from the `evaluate()` method call, use
-  `tf.contrib.estimator.add_metrics`.
+  `tf.estimator.add_metrics`.
 * Replace your `serving_input_fn` with a `serving_input_receiver_fn`.
   Note this should be entirely distinct from your training `input_fn`, so if you
   previously had one `input_fn` with different "modes", you should now factor
@@ -63,10 +62,10 @@ Some remaining estimators/classes:
   with a custom `model_fn`, or with `DNNEstimator`.
 * `StateSavingRnnEstimator`: Consider a custom `model_fn`.
 * SVM: Consider a custom `model_fn`.
-* `LinearComposableModel` and `DNNComposableModel`: Not supported. 
+* `LinearComposableModel` and `DNNComposableModel`: Not supported.
   Consider `tf.contrib.estimator.DNNEstimator`, or write a custom model_fn.
 * `MetricSpec`: Deprecated. For adding custom metrics to canned Estimators, use
-  `tf.contrib.estimator.add_metrics`.
+  `tf.estimator.add_metrics`.
 
 ## Estimator
 `tf.contrib.learn.Estimator` is migrated to `tf.estimator.Estimator`.
@@ -112,18 +111,17 @@ Some arguments are renamed, please refer to documentation. In addition:
 
 Switch to `tf.estimator.train_and_evaluate`. Some differences:
 
-* Most of the constructor arguments, like `train_input_fn`, `eval_input_fn`,
-  should be wrapped into `tf.estimator.TrainSpec` and `tf.estimator.EvalSpec`.
-* Remove the `experiment_fn`. Instead, create the `Estimator`,
-  `train_spec` and `eval_spec`, then call `tf.estimator.train_and_evaluate`
-  directly.
-* Inside `tf.estimator.EvalSpec`, the `exporter` field is the replacement
-  for `export_strategy`. To be precise, `tf.estimator.LatestExporter` is the
-  replacement for `tf.contrib.learn.make_export_strategy`. If you want to export
-  only at the end of training  use `tf.estimator.FinalExporter`.
-* If the `TF_CONFIG` environment variable is constructed manually, please read
-  the `train_and_evaluate` documentation for the new requirementds (in
-  particular, the chief node and evaluator node).
+*   Most of the constructor arguments, like `train_input_fn`, `eval_input_fn`,
+    should be wrapped into `tf.estimator.TrainSpec` and `tf.estimator.EvalSpec`.
+*   Remove the `experiment_fn`. Instead, create the `Estimator`, `train_spec`
+    and `eval_spec`, then call `tf.estimator.train_and_evaluate` directly.
+*   Inside `tf.estimator.EvalSpec`, the `exporter` field is the replacement for
+    `export_strategy`. To be precise, `tf.estimator.LatestExporter` is the
+    replacement for `tf.contrib.learn.make_export_strategy`. If you want to
+    export only at the end of training use `tf.estimator.FinalExporter`.
+*   If the `TF_CONFIG` environment variable is constructed manually, please read
+    the `train_and_evaluate` documentation for the new requirements (in
+    particular, the chief node and evaluator node).
 
 ## Others Classes and Functions
 

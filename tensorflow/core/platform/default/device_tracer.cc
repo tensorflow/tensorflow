@@ -31,6 +31,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/internal/cpu/host_tracer.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace {
 
@@ -132,7 +134,17 @@ class CUPTIManager {
  public:
   CUPTIManager() {
     cupti_wrapper_.reset(new perftools::gputools::profiler::CuptiWrapper());
-    CUPTI_CALL(ActivityRegisterCallbacks(BufferRequested, BufferCompleted));
+  }
+
+  static CUPTIManager *Create() {
+    auto manager = absl::make_unique<CUPTIManager>();
+    CUptiResult status = manager->cupti_wrapper_->ActivityRegisterCallbacks(
+        BufferRequested, BufferCompleted);
+    if (status != CUPTI_SUCCESS) {
+      LOG(ERROR) << "Failed to initialize CUPTI: " << status;
+      return nullptr;
+    }
+    return manager.release();
   }
 
   // Enables tracing and delivers event callbacks to 'client'.
@@ -254,7 +266,7 @@ void CUPTIManager::InternalBufferCompleted(CUcontext ctx, uint32_t streamId,
 }
 
 CUPTIManager *GetCUPTIManager() {
-  static CUPTIManager *manager = new CUPTIManager();
+  static CUPTIManager *manager = CUPTIManager::Create();
   return manager;
 }
 
@@ -287,19 +299,24 @@ CUPTIManager *GetCUPTIManager() {
 // for the duration of the CUPTI API callback.
 TF_STATIC_THREAD_LOCAL_POD(const char *, tls_current_annotation);
 
-class DeviceTracerImpl : public DeviceTracer,
-                         public CUPTIClient,
-                         public tracing::TraceCollector {
+class TraceCollectorImpl : public tracing::TraceCollector {
  public:
-  DeviceTracerImpl();
-  ~DeviceTracerImpl() override;
+  class ActivityHandle : public Handle {
+   public:
+    ActivityHandle(string &&name, int level)
+        : trace_me_(std::move(name), level) {}
 
-  // DeviceTracer interface:
-  Status Start() override;
-  Status Stop() override;
-  Status Collect(StepStatsCollector *collector) override;
+   private:
+    profiler::TraceMe trace_me_;
+  };
+  TraceCollectorImpl() { tracing::SetTraceCollector(this); }
 
-  // tracing::TraceCollector interface:
+  ~TraceCollectorImpl() override {
+    DCHECK(!active_trace_session_)
+        << "Unexpected active trace session detected. ";
+  }
+
+  // Note the method can be called after a call to Stop().
   virtual std::unique_ptr<Handle> CreateAnnotationHandle(
       StringPiece name_part1, StringPiece name_part2) const {
     struct Impl : public tracing::TraceCollector::Handle {
@@ -311,15 +328,59 @@ class DeviceTracerImpl : public DeviceTracer,
       }
       ~Impl() override { tls_current_annotation.get() = nullptr; }
     };
-    return std::unique_ptr<Handle>(
-        new Impl{ConcatenateNames(name_part1, name_part2)});
+    return absl::make_unique<Impl>(ConcatenateNames(name_part1, name_part2));
   }
 
-  virtual std::unique_ptr<Handle> CreateActivityHandle(StringPiece, StringPiece,
-                                                       bool) const {
-    // We don't do anything with 'Activities' yet.
-    return nullptr;
+  virtual std::unique_ptr<Handle> CreateActivityHandle(
+      StringPiece name_part1, StringPiece name_part2, bool is_expensive) const {
+    if (!IsEnabledForActivities(is_expensive)) {
+      return nullptr;
+    }
+    return absl::make_unique<ActivityHandle>(
+        ConcatenateNames(name_part1, name_part2), GetLevel(is_expensive));
   }
+
+  bool IsEnabledForAnnotations() const override {
+    return active_trace_session_.load(std::memory_order_relaxed);
+  }
+
+  bool IsEnabledForActivities(bool is_expensive) const override {
+    return profiler::TraceMeRecorder::Active(GetLevel(is_expensive));
+  }
+
+  void Start() {
+    DCHECK(!active_trace_session_)
+        << "Unexpected active trace session detected. ";
+    active_trace_session_ = true;
+  }
+
+  void Stop() {
+    DCHECK(active_trace_session_) << "No active trace session detected. ";
+    active_trace_session_ = false;
+  }
+
+ private:
+  static int GetLevel(bool is_expensive) {
+    return profiler::GetTFTraceMeLevel(is_expensive);
+  }
+
+  std::atomic<bool> active_trace_session_;
+};
+
+TraceCollectorImpl *GlobalDefaultTraceCollector() {
+  static auto *instance = new TraceCollectorImpl();
+  return instance;
+}
+
+class DeviceTracerImpl : public DeviceTracer, public CUPTIClient {
+ public:
+  DeviceTracerImpl(CUPTIManager *cupti_manager);
+  ~DeviceTracerImpl() override;
+
+  // DeviceTracer interface:
+  Status Start() override;
+  Status Stop() override;
+  Status Collect(StepStatsCollector *collector) override;
 
  protected:
   // This callback is used exclusively by CUPTIManager.
@@ -375,15 +436,16 @@ class DeviceTracerImpl : public DeviceTracer,
   int64 end_walltime_us_ GUARDED_BY(mu_);
   uint64_t start_timestamp_ GUARDED_BY(mu_);
   uint64_t end_timestamp_ GUARDED_BY(mu_);
+  std::unique_ptr<profiler::cpu::HostTracer> host_tracer_ GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(DeviceTracerImpl);
 };
 
-DeviceTracerImpl::DeviceTracerImpl() {
+DeviceTracerImpl::DeviceTracerImpl(CUPTIManager *cupti_manager)
+    : cupti_manager_(cupti_manager) {
   VLOG(1) << "DeviceTracer created.";
-  cupti_manager_ = GetCUPTIManager();
-  CHECK(cupti_manager_);
   cupti_wrapper_.reset(new perftools::gputools::profiler::CuptiWrapper());
+  host_tracer_ = profiler::cpu::HostTracer::Create(2);
   enabled_ = false;
 }
 
@@ -411,7 +473,7 @@ Status DeviceTracerImpl::Start() {
   }
 
   // Register as a TraceEngine to receive ScopedAnnotations.
-  tracing::SetTraceCollector(this);
+  GlobalDefaultTraceCollector()->Start();
 
   // Intercept launch and memcpy calls to capture the Op name annotation.
   // TODO(pbar) Add callbacks for memcpy variants.
@@ -448,6 +510,7 @@ Status DeviceTracerImpl::Start() {
 
   CUPTI_CALL(GetTimestamp(&start_timestamp_));
   start_walltime_us_ = NowInUsec();
+  host_tracer_->Start().IgnoreError();
   enabled_ = true;
   return Status::OK();
 }
@@ -459,11 +522,13 @@ Status DeviceTracerImpl::Stop() {
     return Status::OK();
   }
   CUPTI_CALL(Unsubscribe(subscriber_));
-  tracing::SetTraceCollector(nullptr);
+  GlobalDefaultTraceCollector()->Stop();
+
   TF_RETURN_IF_ERROR(cupti_manager_->DisableTrace());
   end_walltime_us_ = NowInUsec();
   CUPTI_CALL(GetTimestamp(&end_timestamp_));
   enabled_ = false;
+  host_tracer_->Stop().IgnoreError();
   return Status::OK();
 }
 
@@ -630,13 +695,20 @@ Status DeviceTracerImpl::Collect(StepStatsCollector *collector) {
     collector->Save(memcpy_device, ns);
     collector->Save(strings::StrCat(stream_device, rec.stream_id), nscopy);
   }
+
+  host_tracer_->CollectDataToCollector(collector).IgnoreError();
   return Status::OK();
 }
 
 }  // namespace devicetracer
 
 std::unique_ptr<DeviceTracer> CreateDeviceTracer() {
-  std::unique_ptr<DeviceTracer> tracer(new devicetracer::DeviceTracerImpl());
+  devicetracer::CUPTIManager *cupti_manager = devicetracer::GetCUPTIManager();
+  if (cupti_manager == nullptr) {
+    return nullptr;
+  }
+  std::unique_ptr<DeviceTracer> tracer(
+      new devicetracer::DeviceTracerImpl(cupti_manager));
   return tracer;
 }
 

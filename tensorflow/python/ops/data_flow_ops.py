@@ -39,6 +39,7 @@ from tensorflow.python.ops import resource_variable_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: enable=wildcard-import
@@ -78,7 +79,7 @@ def _as_shape_list(shapes,
     shapes = [shapes]
   shapes = [tensor_shape.as_shape(shape) for shape in shapes]
   if not unknown_dim_allowed:
-    if any([not shape.is_fully_defined() for shape in shapes]):
+    if any(not shape.is_fully_defined() for shape in shapes):
       raise ValueError("All shapes must be fully defined: %s" % shapes)
   if not unknown_rank_allowed:
     if any([shape.dims is None for shape in shapes]):
@@ -112,7 +113,9 @@ def _shape_common(s1, s2):
 
 
 # pylint: disable=protected-access
-@tf_export("QueueBase")
+@tf_export("queue.QueueBase",
+           v1=["queue.QueueBase", "io.QueueBase", "QueueBase"])
+@deprecation.deprecated_endpoints(["io.QueueBase", "QueueBase"])
 class QueueBase(object):
   """Base class for queue implementations.
 
@@ -169,7 +172,10 @@ class QueueBase(object):
       self._names = None
     self._queue_ref = queue_ref
     if context.executing_eagerly():
-      self._name = context.context().scope_name
+      if context.context().scope_name:
+        self._name = context.context().scope_name
+      else:
+        self._name = "Empty"
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
           queue_ref, None)
     else:
@@ -196,11 +202,11 @@ class QueueBase(object):
       raise TypeError("A list of queues expected")
 
     dtypes = queues[0].dtypes
-    if not all([dtypes == q.dtypes for q in queues[1:]]):
+    if not all(dtypes == q.dtypes for q in queues[1:]):
       raise TypeError("Queues do not have matching component dtypes.")
 
     names = queues[0].names
-    if not all([names == q.names for q in queues[1:]]):
+    if not all(names == q.names for q in queues[1:]):
       raise TypeError("Queues do not have matching component names.")
 
     queue_shapes = [q.shapes for q in queues]
@@ -374,10 +380,16 @@ class QueueBase(object):
 
       # NOTE(mrry): Not using a shape function because we need access to
       # the `QueueBase` object.
-      batch_dim = vals[0].get_shape().with_rank_at_least(1)[0]
+      # NOTE(fchollet): the code that follow is verbose because it needs to be
+      # compatible with both TF v1 TensorShape behavior and TF v2 behavior.
+      batch_dim = tensor_shape.dimension_value(
+          vals[0].get_shape().with_rank_at_least(1)[0])
+      batch_dim = tensor_shape.Dimension(batch_dim)
       for val, shape in zip(vals, self._shapes):
-        batch_dim = batch_dim.merge_with(
+        val_batch_dim = tensor_shape.dimension_value(
             val.get_shape().with_rank_at_least(1)[0])
+        val_batch_dim = tensor_shape.Dimension(val_batch_dim)
+        batch_dim = batch_dim.merge_with(val_batch_dim)
         val.get_shape()[1:].assert_is_compatible_with(shape)
 
       return gen_data_flow_ops.queue_enqueue_many_v2(
@@ -604,7 +616,12 @@ def _shared_name(shared_name):
   return shared_name
 
 
-@tf_export("RandomShuffleQueue")
+@tf_export(
+    "queue.RandomShuffleQueue",
+    v1=["queue.RandomShuffleQueue",
+        "io.RandomShuffleQueue", "RandomShuffleQueue"])
+@deprecation.deprecated_endpoints(
+    ["io.RandomShuffleQueue", "RandomShuffleQueue"])
 class RandomShuffleQueue(QueueBase):
   """A queue implementation that dequeues elements in a random order.
 
@@ -689,7 +706,8 @@ class RandomShuffleQueue(QueueBase):
     super(RandomShuffleQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("FIFOQueue")
+@tf_export("queue.FIFOQueue", v1=["queue.FIFOQueue", "FIFOQueue"])
+@deprecation.deprecated_endpoints("FIFOQueue")
 class FIFOQueue(QueueBase):
   """A queue implementation that dequeues elements in first-in first-out order.
 
@@ -746,7 +764,10 @@ class FIFOQueue(QueueBase):
     super(FIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("PaddingFIFOQueue")
+@tf_export(
+    "queue.PaddingFIFOQueue",
+    v1=["queue.PaddingFIFOQueue", "io.PaddingFIFOQueue", "PaddingFIFOQueue"])
+@deprecation.deprecated_endpoints(["io.PaddingFIFOQueue", "PaddingFIFOQueue"])
 class PaddingFIFOQueue(QueueBase):
   """A FIFOQueue that supports batching variable-sized tensors by padding.
 
@@ -820,7 +841,9 @@ class PaddingFIFOQueue(QueueBase):
     super(PaddingFIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("PriorityQueue")
+@tf_export("queue.PriorityQueue",
+           v1=["queue.PriorityQueue", "io.PriorityQueue", "PriorityQueue"])
+@deprecation.deprecated_endpoints(["io.PriorityQueue", "PriorityQueue"])
 class PriorityQueue(QueueBase):
   """A queue implementation that dequeues elements in prioritized order.
 
@@ -1135,7 +1158,7 @@ class Barrier(object):
         self._barrier_ref, name=name)
 
 
-@tf_export("ConditionalAccumulatorBase")
+@tf_export(v1=["ConditionalAccumulatorBase"])
 class ConditionalAccumulatorBase(object):
   """A conditional accumulator for aggregating gradients.
 
@@ -1214,7 +1237,7 @@ class ConditionalAccumulatorBase(object):
         name=name)
 
 
-@tf_export("ConditionalAccumulator")
+@tf_export(v1=["ConditionalAccumulator"])
 class ConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating gradients.
 
@@ -1229,7 +1252,8 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
                dtype,
                shape=None,
                shared_name=None,
-               name="conditional_accumulator"):
+               name="conditional_accumulator",
+               reduction_type="MEAN"):
     """Creates a new ConditionalAccumulator.
 
     Args:
@@ -1238,9 +1262,14 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
       shared_name: Optional. If non-empty, this accumulator will be shared under
         the given name across multiple sessions.
       name: Optional name for the accumulator.
+      reduction_type: Reduction type to use when taking the gradient.
     """
     accumulator_ref = gen_data_flow_ops.conditional_accumulator(
-        dtype=dtype, shape=shape, shared_name=shared_name, name=name)
+        dtype=dtype,
+        shape=shape,
+        shared_name=shared_name,
+        name=name,
+        reduction_type=reduction_type)
     super(ConditionalAccumulator, self).__init__(dtype, shape, accumulator_ref)
 
   def apply_grad(self, grad, local_step=0, name=None):
@@ -1294,7 +1323,10 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     return out
 
 
-@tf_export("SparseConditionalAccumulator")
+@tf_export(
+    "sparse.SparseConditionalAccumulator",
+    v1=["sparse.SparseConditionalAccumulator", "SparseConditionalAccumulator"])
+@deprecation.deprecated_endpoints("SparseConditionalAccumulator")
 class SparseConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating sparse gradients.
 
@@ -1312,15 +1344,21 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
     shared_name: Optional. If non-empty, this accumulator will be shared under
       the given name across multiple sessions.
     name: Optional name for the accumulator.
+    reduction_type: Reduction type to use when taking the gradient.
   """
 
   def __init__(self,
                dtype,
                shape=None,
                shared_name=None,
-               name="sparse_conditional_accumulator"):
+               name="sparse_conditional_accumulator",
+               reduction_type="MEAN"):
     accumulator_ref = gen_data_flow_ops.sparse_conditional_accumulator(
-        dtype=dtype, shape=shape, shared_name=shared_name, name=name)
+        dtype=dtype,
+        shape=shape,
+        shared_name=shared_name,
+        name=name,
+        reduction_type=reduction_type)
     super(SparseConditionalAccumulator, self).__init__(dtype, shape,
                                                        accumulator_ref)
 

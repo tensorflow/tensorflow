@@ -31,7 +31,7 @@ class LARSOptimizerTest(test.TestCase):
   def testLARSGradientOneStep(self):
     for _ in range(10):
       for dtype in [dtypes.float32, dtypes.float64]:
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           shape = [3, 3]
           var_np = np.ones(shape)
           grad_np = np.ones(shape)
@@ -77,7 +77,7 @@ class LARSOptimizerTest(test.TestCase):
   def testLARSGradientMultiStep(self):
     for _ in range(10):
       for dtype in [dtypes.float32, dtypes.float64]:
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           shape = [3, 3]
           var_np = np.ones(shape)
           grad_np = np.ones(shape)

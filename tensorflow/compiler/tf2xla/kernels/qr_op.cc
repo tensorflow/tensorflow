@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/lib/qr.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/qr.h"
 
 namespace tensorflow {
 namespace {
@@ -23,15 +23,10 @@ namespace {
 class QROp : public XlaOpKernel {
  public:
   explicit QROp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    bool full_matrices;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("full_matrices", &full_matrices));
-    OP_REQUIRES(
-        ctx, full_matrices,
-        errors::Unimplemented("full_matrices=False case of QR decomposition is "
-                              "not implemented in TF/XLA"));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("full_matrices", &full_matrices_));
   }
   void Compile(XlaOpKernelContext* ctx) override {
-    auto result = QRDecomposition(ctx->Input(0));
+    auto result = xla::QRDecomposition(ctx->Input(0), full_matrices_);
     if (!result.ok()) {
       ctx->SetStatus(result.status());
       return;
@@ -39,6 +34,11 @@ class QROp : public XlaOpKernel {
     ctx->SetOutput(0, result.ValueOrDie().q);
     ctx->SetOutput(1, result.ValueOrDie().r);
   }
+
+ private:
+  // If true, compute full-sized q and r. If false, compute only the leading P
+  // columns of q.
+  bool full_matrices_;
 };
 
 REGISTER_XLA_OP(Name("Qr").TypeConstraint("T", kFloatTypes), QROp);

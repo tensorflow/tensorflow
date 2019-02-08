@@ -97,10 +97,23 @@ class XLATestCase(test.TestCase):
     ])
     self._numeric_tf_types = set(
         self.int_tf_types | self._float_tf_types | self.complex_tf_types)
+    self.quantized_tf_types = set(
+        dtype for dtype in self._all_tf_types if dtype.is_quantized)
 
-    self._all_types = set(
-        [dtype.as_numpy_dtype for dtype in self._all_tf_types])
+    # Quantized types don't have a numpy equivalent, include them in
+    # all_tf_types but not in all_types.
+    # TODO(b/115960798): Parametrize tests on TF types instead of numpy types
+    # and remove all_types.
+    self._all_types = set(dtype.as_numpy_dtype
+                          for dtype in self._all_tf_types
+                          if not dtype.is_quantized)
     self._int_types = set([dtype.as_numpy_dtype for dtype in self.int_tf_types])
+    self.signed_int_types = set(dtype.as_numpy_dtype
+                                for dtype in self.int_tf_types
+                                if not dtype.is_unsigned)
+    self.unsigned_int_types = set(dtype.as_numpy_dtype
+                                  for dtype in self.int_tf_types
+                                  if dtype.is_unsigned)
     self._float_types = set(
         [dtype.as_numpy_dtype for dtype in self._float_tf_types])
     self.complex_types = set([

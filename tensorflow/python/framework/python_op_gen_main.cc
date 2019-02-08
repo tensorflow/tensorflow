@@ -52,7 +52,7 @@ Status ReadOpListFromFile(const string& filename,
     if (scanner.One(strings::Scanner::LETTER_DIGIT_DOT)
             .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
             .GetResult(nullptr, &op_name)) {
-      op_list->emplace_back(op_name.ToString());
+      op_list->emplace_back(op_name);
     }
     s = input_buffer->ReadLine(&line_contents);
   }

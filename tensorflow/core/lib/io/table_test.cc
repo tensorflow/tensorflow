@@ -96,9 +96,16 @@ class StringSink : public WritableFile {
 
   Status Close() override { return Status::OK(); }
   Status Flush() override { return Status::OK(); }
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented("StringSink does not support Name()");
+  }
   Status Sync() override { return Status::OK(); }
+  Status Tell(int64* pos) override {
+    *pos = contents_.size();
+    return Status::OK();
+  }
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     contents_.append(data.data(), data.size());
     return Status::OK();
   }
@@ -115,6 +122,10 @@ class StringSource : public RandomAccessFile {
   ~StringSource() override {}
 
   uint64 Size() const { return contents_.size(); }
+
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented("StringSource does not support Name()");
+  }
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
@@ -147,7 +158,7 @@ class Constructor {
   virtual ~Constructor() {}
 
   void Add(const string& key, const StringPiece& value) {
-    data_[key] = std::string(value);
+    data_[key] = string(value);
   }
 
   // Finish constructing the data structure with all the keys that have
@@ -188,7 +199,7 @@ class BlockConstructor : public Constructor {
       builder.Add(it->first, it->second);
     }
     // Open the block
-    data_ = std::string(builder.Finish());
+    data_ = string(builder.Finish());
     BlockContents contents;
     contents.data = data_;
     contents.cachable = false;
@@ -515,7 +526,7 @@ TEST_F(Harness, Randomized) {
       for (int e = 0; e < num_entries; e++) {
         string v;
         Add(test::RandomKey(&rnd, rnd.Skewed(4)),
-            std::string(test::RandomString(&rnd, rnd.Skewed(5), &v)));
+            string(test::RandomString(&rnd, rnd.Skewed(5), &v)));
       }
       Test(&rnd);
     }

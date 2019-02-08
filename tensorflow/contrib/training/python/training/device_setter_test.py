@@ -98,10 +98,10 @@ class GreedyLoadBalancingStrategyTest(test.TestCase):
             cluster=_CLUSTER_SPEC,
             ps_strategy=device_setter_lib.GreedyLoadBalancingStrategy(
                 2, device_setter_lib.byte_size_load_fn))):
-      u = variables.Variable(array_ops.zeros([2, 2]))
-      v = variables.Variable(array_ops.zeros([2, 1]))
-      w = variables.Variable(array_ops.zeros([2, 2]))
-      x = variables.Variable(array_ops.zeros([1, 3]))
+      u = variables.VariableV1(array_ops.zeros([2, 2]))
+      v = variables.VariableV1(array_ops.zeros([2, 1]))
+      w = variables.VariableV1(array_ops.zeros([2, 2]))
+      x = variables.VariableV1(array_ops.zeros([1, 3]))
       a = v + w
       self.assertDeviceEqual("/job:ps/task:0", u.device)
       self.assertDeviceEqual("/job:ps/task:0", u.initializer.device)

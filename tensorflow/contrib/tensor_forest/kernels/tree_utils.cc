@@ -67,11 +67,11 @@ float ClassificationSplitScore(
     const Eigen::Tensor<float, 1, Eigen::RowMajor>& splits,
     const Eigen::Tensor<float, 1, Eigen::RowMajor>& rights, int32 num_classes,
     int i) {
-  Eigen::array<int, 1> offsets;
+  Eigen::array<Eigen::Index, 1> offsets;
   // Class counts are stored with the total in [0], so the length of each
   // count vector is num_classes + 1.
   offsets[0] = i * (num_classes + 1) + 1;
-  Eigen::array<int, 1> extents;
+  Eigen::array<Eigen::Index, 1> extents;
   extents[0] = num_classes;
   return WeightedGiniImpurity(splits.slice(offsets, extents)) +
          WeightedGiniImpurity(rights.slice(offsets, extents));
@@ -97,7 +97,7 @@ void GetTwoBestClassification(const Tensor& total_counts,
   // arguments to ClassificationSplitScore.
   const Eigen::Tensor<float, 1, Eigen::RowMajor> splits =
       split_counts.Slice(accumulator, accumulator + 1).unaligned_flat<float>();
-  Eigen::array<int, 1> bcast;
+  Eigen::array<Eigen::Index, 1> bcast;
   bcast[0] = num_splits;
   const Eigen::Tensor<float, 1, Eigen::RowMajor> rights =
       tc.broadcast(bcast) - splits;
@@ -130,8 +130,8 @@ float RegressionSplitScore(
     const Eigen::Tensor<float, 1, Eigen::RowMajor>& right_sums,
     const Eigen::Tensor<float, 1, Eigen::RowMajor>& right_squares,
     int32 accumulator, int32 num_regression_dims, int i) {
-  Eigen::array<int, 1> offsets = {i * num_regression_dims + 1};
-  Eigen::array<int, 1> extents = {num_regression_dims - 1};
+  Eigen::array<Eigen::Index, 1> offsets = {i * num_regression_dims + 1};
+  Eigen::array<Eigen::Index, 1> extents = {num_regression_dims - 1};
   float left_count = splits_count_accessor(accumulator, i, 0);
   float right_count = totals_count_accessor(accumulator, 0) - left_count;
 
@@ -178,7 +178,7 @@ void GetTwoBestRegression(const Tensor& total_sums, const Tensor& total_squares,
   const auto splits_count_accessor = split_sums.tensor<float, 3>();
   const auto totals_count_accessor = total_sums.tensor<float, 2>();
 
-  Eigen::array<int, 1> bcast;
+  Eigen::array<Eigen::Index, 1> bcast;
   bcast[0] = num_splits;
   const auto right_sums = tc_sum.broadcast(bcast) - splits_sum;
   const auto right_squares = tc_square.broadcast(bcast) - splits_square;

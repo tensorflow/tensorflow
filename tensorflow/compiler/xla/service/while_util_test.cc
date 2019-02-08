@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/while_util.h"
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -179,8 +180,8 @@ body {
 
 cond {
   param.c = (s32[], s32[]) parameter(0)
-  token = token[] after-all()
-  infeed = (pred[], token[]) infeed(token)
+  token0 = token[] after-all()
+  infeed = (pred[], token[]) infeed(token0)
   ROOT condition = pred[] get-tuple-element(infeed), index=0
 }
 
@@ -206,7 +207,7 @@ ENTRY main {
   auto is_while = [](const HloInstruction* instr) {
     return instr->opcode() == HloOpcode::kWhile;
   };
-  EXPECT_EQ(c_count_if(main->instructions(), is_while), 1);
+  EXPECT_EQ(absl::c_count_if(main->instructions(), is_while), 1);
 }
 }  // namespace
 }  // namespace xla

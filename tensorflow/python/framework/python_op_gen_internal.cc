@@ -15,18 +15,20 @@ limitations under the License.
 
 #include "tensorflow/python/framework/python_op_gen_internal.h"
 
+#include <float.h>
 #include <stdio.h>
+#include <iomanip>
 #include <sstream>
 #include <unordered_map>
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
-#include "tensorflow/core/framework/tensor.pb_text.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor.pb_text.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -43,6 +45,9 @@ namespace tensorflow {
 namespace python_op_gen_internal {
 
 const int kRightMargin = 78;
+// Names specified in tf_export decorators are exported to
+// TensorFlow 2.0 by default.
+const int kLatestAPIExportVersion = 2;
 
 bool IsPythonReserved(const string& s) {
   static const std::set<string>* const kPythonReserved = new std::set<string>(
@@ -435,7 +440,12 @@ string AttrValueToPython(const string& type, const AttrValue& value,
     if (std::isnan(value.f()) || std::isinf(value.f())) {
       return strings::StrCat("float('", value.f(), "')");
     } else {
-      return strings::StrCat(value.f());
+      // Use locale-independent conversion.
+      static_assert(FLT_DIG < 10, "FLT_DIG is too big");
+      std::ostringstream s;
+      s.imbue(std::locale::classic());
+      s << std::setprecision(FLT_DIG) << value.f();
+      return s.str();
     }
   } else if (type == "bool") {
     return value.b() ? "True" : "False";
@@ -478,15 +488,6 @@ const ApiDef::Attr* FindAttr(StringPiece name, const ApiDef& api_def) {
   for (int i = 0; i < api_def.attr_size(); ++i) {
     if (api_def.attr(i).name() == name) {
       return &api_def.attr(i);
-    }
-  }
-  return nullptr;
-}
-
-const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def) {
-  for (int i = 0; i < api_def.in_arg_size(); ++i) {
-    if (api_def.in_arg(i).name() == name) {
-      return &api_def.in_arg(i);
     }
   }
   return nullptr;
@@ -587,28 +588,42 @@ void GenPythonOp::AddExport() {
   if (api_def_.visibility() != ApiDef::VISIBLE) {
     return;
   }
+  // Whether op should be available in latest export version.
+  bool op_available_in_latest =
+      !api_def_.deprecation_version() ||
+      api_def_.deprecation_version() > kLatestAPIExportVersion;
 
-  // Add @tf_export decorator.
-  strings::StrAppend(&result_, "@tf_export(");
+  string names;
+  string names_v1;
+  string deprecated_endpoints;
 
-  // Add all endpoint names to tf_export.
-  bool first_endpoint = true;
-  std::vector<string> deprecated_endpoints;
   for (const auto& endpoint : api_def_.endpoint()) {
-    if (!first_endpoint) {
-      strings::StrAppend(&result_, ", ");
-    } else {
-      first_endpoint = false;
-    }
     string endpoint_name;
     python_op_gen_internal::GenerateLowerCaseOpName(endpoint.name(),
                                                     &endpoint_name);
-    if (endpoint.deprecated()) {
-      deprecated_endpoints.push_back(endpoint_name);
+    if (endpoint.deprecated() || endpoint.deprecation_version() > 0) {
+      AddDelimiter(&deprecated_endpoints, ", ");
+      strings::StrAppend(&deprecated_endpoints, "'", endpoint_name, "'");
     }
-    strings::StrAppend(&result_, "'", endpoint_name, "'");
+    // Add all endpoints to TensorFlow 1.* API.
+    AddDelimiter(&names_v1, ", ");
+    strings::StrAppend(&names_v1, "'", endpoint_name, "'");
+    // Add non-deprecated endpoints to TensorFlow 2.* API.
+    if (op_available_in_latest &&
+        (!endpoint.deprecation_version() ||
+         endpoint.deprecation_version() > kLatestAPIExportVersion)) {
+      AddDelimiter(&names, ", ");
+      strings::StrAppend(&names, "'", endpoint_name, "'");
+    }
   }
-  strings::StrAppend(&result_, ")\n");
+
+  // tf_export decorator has the following format:
+  // @tf_export(v2_name, v2_name, v1=[v1_name, v1_name])
+  if (names != names_v1) {
+    AddDelimiter(&names, ", ");
+    strings::StrAppend(&names, "v1=[", names_v1, "]");
+  }
+  strings::StrAppend(&result_, "@tf_export(", names, ")\n");
 
   // If all endpoints are deprecated, add @deprecated decorator.
   if (!api_def_.deprecation_message().empty()) {
@@ -617,17 +632,8 @@ void GenPythonOp::AddExport() {
   }
   // Add @deprecated_endpoints decorator.
   if (!deprecated_endpoints.empty()) {
-    strings::StrAppend(&result_, "@deprecated_endpoints(");
-    bool first_endpoint = true;
-    for (auto& endpoint_name : deprecated_endpoints) {
-      if (first_endpoint) {
-        first_endpoint = false;
-      } else {
-        strings::StrAppend(&result_, ", ");
-      }
-      strings::StrAppend(&result_, "'", endpoint_name, "'");
-    }
-    strings::StrAppend(&result_, ")\n");
+    strings::StrAppend(&result_, "@deprecated_endpoints(", deprecated_endpoints,
+                       ")\n");
   }
 }
 
@@ -798,8 +804,8 @@ void GenPythonOp::AddDocStringOutputs() {
 }
 
 void GenPythonOp::AddBody(const string& prefix) {
-  const string apply_prefix =
-      strings::StrCat(prefix, "_result = _op_def_lib.apply_op(");
+  const string apply_prefix = strings::StrCat(
+      prefix, "_result = _op_def_lib.apply_op(\"", op_def_.name(), "\", ");
   AddBodyNoReturn(apply_prefix);
   if (num_outs_ > 1) {
     strings::StrAppend(&result_, prefix, "_result = _", op_def_.name(),
@@ -809,7 +815,7 @@ void GenPythonOp::AddBody(const string& prefix) {
 }
 
 void GenPythonOp::AddBodyNoReturn(const string& apply_prefix) {
-  string args = strings::StrCat("\"", op_def_.name(), "\", ");
+  string args;
   for (size_t i = 0; i < param_names_.size(); ++i) {
     strings::StrAppend(&args, AvoidPythonReserved(param_names_[i].GetName()),
                        "=", param_names_[i].GetRenameTo(), ", ");

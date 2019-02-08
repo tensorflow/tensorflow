@@ -32,6 +32,10 @@ COMMAND=("$@")
 
 export CI_BUILD_PYTHON="${CI_BUILD_PYTHON:-python}"
 export PYTHON_BIN_PATH="${PYTHON_BIN_PATH:-$(which ${CI_BUILD_PYTHON})}"
+# XLA currently does not build under Android, so disable it for now.
+if [[ "${CONTAINER_TYPE}" == 'android' ]]; then
+  export TF_ENABLE_XLA=0
+fi
 
 pushd "${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
 yes "" | $PYTHON_BIN_PATH configure.py

@@ -37,7 +37,7 @@ const char* const kGradientSuffix = " (gradient)";
 
 // Convert to Trace proto into a short readable string.
 string GetTraceString(const CallStack::Trace& trace) {
-  string ntrace = io::Basename(trace.file()).ToString();
+  string ntrace(io::Basename(trace.file()));
   ntrace += strings::StrCat(":", trace.lineno());
   if (trace.function().length() < 20) {
     ntrace += ":" + trace.function();
@@ -113,7 +113,7 @@ class FunctionTable {
     // function index should start from 1.
     func_pb->set_id(function_table_.size());
 
-    string file_base = io::Basename(file_path).ToString();
+    string file_base(io::Basename(file_path));
     file_base = file_base.substr(0, file_base.find_last_of("."));
     func_pb->set_name(
         string_table_->GetIndex(strings::StrCat(file_base, ":", func_name)));
@@ -183,7 +183,7 @@ class Samples {
   // This method adds the statistics of graph nodes created by the python
   // call.
   void Add(const CodeNode* node, const std::vector<uint64>& location_ids) {
-    // displayed leaf might not be true leaf. Retrive the true leaves for
+    // displayed leaf might not be true leaf. Retrieve the true leaves for
     // stats.
     std::vector<const CodeNode*> all_leaf = FetchAllLeaf(node);
     CHECK(!all_leaf.empty()) << node->name();

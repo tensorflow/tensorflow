@@ -98,7 +98,7 @@ class MultivariateTests(test.TestCase):
         observation_model=observation_model,
         predicted_observations=(observed_mean, observed_var),
         observation_noise=observation_noise_covariance)
-    with self.test_session() as session:
+    with self.cached_session() as session:
       evaled_state = numpy.array([[1., 1., 1., 1.]])
       evaled_state_var = numpy.eye(4)[None]
       for i in range(500):
@@ -136,7 +136,7 @@ class KalmanFilterNonBatchTest(test.TestCase):
 
   def test_observed_from_state(self):
     """Compare observation mean and noise to hand-computed values."""
-    with self.test_session():
+    with self.cached_session():
       state = constant_op.constant([[2., 1.]])
       state_var = constant_op.constant([[[4., 0.], [0., 3.]]])
       observed_mean, observed_var = self.kalman_filter.observed_from_state(
@@ -171,7 +171,7 @@ class KalmanFilterNonBatchTest(test.TestCase):
             observation_model=observation_model,
             predicted_observations=predicted_observations,
             observation_noise=observation_noise))
-    with self.test_session() as session:
+    with self.cached_session() as session:
       evaled_state, evaled_state_var = session.run([state, state_var])
       for _ in range(300):
         evaled_state, evaled_state_var = session.run(
@@ -231,7 +231,7 @@ class KalmanFilterNonBatchTest(test.TestCase):
 
   def test_predict_state_mean(self):
     """Compare state mean transitions with simple hand-computed values."""
-    with self.test_session():
+    with self.cached_session():
       state = constant_op.constant([[4., 2.]])
       state = self.kalman_filter.predict_state_mean(
           state, self.transition_fn([1]))
@@ -245,7 +245,7 @@ class KalmanFilterNonBatchTest(test.TestCase):
 
   def test_predict_state_var(self):
     """Compare a variance transition with simple hand-computed values."""
-    with self.test_session():
+    with self.cached_session():
       state_var = constant_op.constant([[[1., 0.], [0., 2.]]])
       state_var = self.kalman_filter.predict_state_var(
           state_var, self.transition_fn([1]), self.power_sum_fn([1]))
@@ -259,7 +259,7 @@ class KalmanFilterNonBatchTest(test.TestCase):
     Tests that correct values have high probability and incorrect values
     have low probability when there is low uncertainty.
     """
-    with self.test_session():
+    with self.cached_session():
       state = constant_op.constant([[4., 2.]])
       state_var = constant_op.constant([[[0.0001, 0.], [0., 0.0001]]])
       observation = constant_op.constant([[
@@ -289,7 +289,7 @@ class KalmanFilterNonBatchTest(test.TestCase):
       self.assertGreater(first_log_prob.eval()[0], numpy.log(0.99))
 
   def test_predict_n_ahead_mean(self):
-    with self.test_session():
+    with self.cached_session():
       original_state = constant_op.constant([[4., 2.]])
       n = 5
       iterative_state = original_state
@@ -304,7 +304,7 @@ class KalmanFilterNonBatchTest(test.TestCase):
             self.transition_fn([1]))
 
   def test_predict_n_ahead_var(self):
-    with self.test_session():
+    with self.cached_session():
       original_var = constant_op.constant([[[2., 3.], [4., 5.]]])
       n = 5
       iterative_var = original_var
@@ -330,7 +330,7 @@ class KalmanFilterBatchTest(test.TestCase):
     Tests that correct values have high probability and incorrect values
     have low probability when there is low uncertainty.
     """
-    with self.test_session():
+    with self.cached_session():
       state = constant_op.constant([[4., 2.], [5., 3.], [6., 4.]])
       state_var = constant_op.constant(3 * [[[0.0001, 0.], [0., 0.0001]]])
       observation = constant_op.constant([
@@ -378,7 +378,7 @@ class KalmanFilterBatchTest(test.TestCase):
       self.assertLess(third_log_prob.sum(), numpy.log(0.01))
 
   def test_predict_n_ahead_mean(self):
-    with self.test_session():
+    with self.cached_session():
       kf = kalman_filter.KalmanFilter()
       transition_fn, _ = _powers_and_sums_from_transition_matrix(
           state_transition=STATE_TRANSITION,
@@ -396,7 +396,7 @@ class KalmanFilterBatchTest(test.TestCase):
       self.assertAllClose(state2.eval()[2], batch_eval[2])
 
   def test_predict_n_ahead_var(self):
-    with self.test_session():
+    with self.cached_session():
       kf = kalman_filter.KalmanFilter()
       transition_fn, power_sum_fn = _powers_and_sums_from_transition_matrix(
           state_transition=STATE_TRANSITION,

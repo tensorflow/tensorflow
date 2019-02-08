@@ -38,6 +38,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 
 #include <algorithm>
+
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -224,7 +226,10 @@ StatusOr<bool> PerformSinkReshapeOrTranspose(
     // changes, so all the fused instructions have the same dimensions.
     for (const auto& fused_instruction : instruction->fused_instructions()) {
       Shape* shape = fused_instruction->mutable_shape();
-      *shape->mutable_dimensions() = new_operand_shape.dimensions();
+      shape->clear_dimensions();
+      for (int64 i : new_operand_shape.dimensions()) {
+        shape->add_dimensions(i);
+      }
       *shape->mutable_layout() = new_operand_shape.layout();
     }
   }
@@ -374,7 +379,7 @@ StatusOr<bool> TryReshapeMoveOnCandidates(
 
     removed = false;
     for (auto operand : nontrivial_operands) {
-      if (c_any_of(operand->users(), [&](HloInstruction* user) {
+      if (absl::c_any_of(operand->users(), [&](HloInstruction* user) {
             return !reshape_candidates->count(user);
           })) {
         for (auto* user : operand->users()) {

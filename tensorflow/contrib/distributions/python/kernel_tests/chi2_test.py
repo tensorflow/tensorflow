@@ -29,7 +29,7 @@ from tensorflow.python.platform import test
 class Chi2Test(test.TestCase):
 
   def testChi2LogPDF(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       df = constant_op.constant([2.0] * batch_size, dtype=np.float64)
       df_v = 2.0
@@ -46,7 +46,7 @@ class Chi2Test(test.TestCase):
       self.assertAllClose(pdf.eval(), np.exp(expected_log_pdf))
 
   def testChi2CDF(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       df = constant_op.constant([2.0] * batch_size, dtype=np.float64)
       df_v = 2.0
@@ -60,7 +60,7 @@ class Chi2Test(test.TestCase):
       self.assertAllClose(cdf.eval(), expected_cdf)
 
   def testChi2Mean(self):
-    with self.test_session():
+    with self.cached_session():
       df_v = np.array([1., 3, 5], dtype=np.float64)
       expected_mean = stats.chi2.mean(df_v)
       chi2 = chi2_lib.Chi2(df=df_v)
@@ -68,7 +68,7 @@ class Chi2Test(test.TestCase):
       self.assertAllClose(chi2.mean().eval(), expected_mean)
 
   def testChi2Variance(self):
-    with self.test_session():
+    with self.cached_session():
       df_v = np.array([1., 3, 5], np.float64)
       expected_variances = stats.chi2.var(df_v)
       chi2 = chi2_lib.Chi2(df=df_v)
@@ -76,7 +76,7 @@ class Chi2Test(test.TestCase):
       self.assertAllClose(chi2.variance().eval(), expected_variances)
 
   def testChi2Entropy(self):
-    with self.test_session():
+    with self.cached_session():
       df_v = np.array([1., 3, 5], dtype=np.float64)
       expected_entropy = stats.chi2.entropy(df_v)
       chi2 = chi2_lib.Chi2(df=df_v)
@@ -84,7 +84,7 @@ class Chi2Test(test.TestCase):
       self.assertAllClose(chi2.entropy().eval(), expected_entropy)
 
   def testChi2WithAbsDf(self):
-    with self.test_session():
+    with self.cached_session():
       df_v = np.array([-1.3, -3.2, 5], dtype=np.float64)
       chi2 = chi2_lib.Chi2WithAbsDf(df=df_v)
       self.assertAllClose(

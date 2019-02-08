@@ -18,13 +18,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/TargetSelect.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -34,9 +34,9 @@ namespace {
 
 using ::tensorflow::cpu_function_runtime::BufferInfo;
 
-void ExpectErrorContains(const Status& status, StringPiece str) {
+void ExpectErrorContains(const Status& status, absl::string_view str) {
   EXPECT_NE(Status::OK(), status);
-  EXPECT_TRUE(str_util::StrContains(status.error_message(), str))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), str))
       << "expected error: " << status.error_message() << " to contain: " << str;
 }
 
@@ -181,13 +181,15 @@ TEST(CodegenTest, Golden) {
        BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/1),
        BufferInfo::MakeTempBuffer(3), BufferInfo::MakeTempBuffer(120)},
       5, {}));
-  compile_result.program_shape = xla::ShapeUtil::MakeProgramShape(
-      {
-          xla::ShapeUtil::MakeShape(xla::F32, {1, 2}),
-          xla::ShapeUtil::MakeShape(xla::S64, {3, 4}),
-      },
-      xla::ShapeUtil::MakeTupleShape(
-          {xla::ShapeUtil::MakeShape(xla::U32, {5, 6})}));
+  compile_result.program_shape =
+      xla::ShapeUtil::MakeProgramShape(
+          {
+              xla::ShapeUtil::MakeShape(xla::F32, {1, 2}),
+              xla::ShapeUtil::MakeShape(xla::S64, {3, 4}),
+          },
+          xla::ShapeUtil::MakeTupleShape(
+              {xla::ShapeUtil::MakeShape(xla::U32, {5, 6})}))
+          .ToProto();
   compile_result.entry_point = "entry_point";
   compile_result.pointer_size = 8;
 

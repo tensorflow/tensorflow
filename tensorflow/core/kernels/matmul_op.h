@@ -13,13 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_MATMUL_OP_H_
-#define TENSORFLOW_KERNELS_MATMUL_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_MATMUL_OP_H_
+#define TENSORFLOW_CORE_KERNELS_MATMUL_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/hash/hash.h"
+
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#endif
 
 namespace tensorflow {
 namespace functor {
@@ -117,4 +121,4 @@ typedef Eigen::GpuDevice GPUDevice;
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_MATMUL_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_MATMUL_OP_H_

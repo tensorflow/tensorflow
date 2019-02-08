@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_DEVICE_FACTORY_H_
-#define TENSORFLOW_COMMON_RUNTIME_DEVICE_FACTORY_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_FACTORY_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_FACTORY_H_
 
 #include <string>
 #include <vector>
@@ -40,18 +40,19 @@ class DeviceFactory {
   // CPU devices are added first.
   static Status AddDevices(const SessionOptions& options,
                            const string& name_prefix,
-                           std::vector<Device*>* devices);
+                           std::vector<std::unique_ptr<Device>>* devices);
 
   // Helper for tests.  Create a single device of type "type".  The
   // returned device is always numbered zero, so if creating multiple
   // devices of the same type, supply distinct name_prefix arguments.
-  static Device* NewDevice(const string& type, const SessionOptions& options,
-                           const string& name_prefix);
+  static std::unique_ptr<Device> NewDevice(const string& type,
+                                           const SessionOptions& options,
+                                           const string& name_prefix);
 
   // Most clients should call AddDevices() instead.
-  virtual Status CreateDevices(const SessionOptions& options,
-                               const string& name_prefix,
-                               std::vector<Device*>* devices) = 0;
+  virtual Status CreateDevices(
+      const SessionOptions& options, const string& name_prefix,
+      std::vector<std::unique_ptr<Device>>* devices) = 0;
 
   // Return the device priority number for a "device_type" string.
   //
@@ -126,4 +127,4 @@ class Registrar {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_DEVICE_FACTORY_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_FACTORY_H_

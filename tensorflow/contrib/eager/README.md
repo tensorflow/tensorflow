@@ -44,7 +44,6 @@ Installation instructions at https://www.tensorflow.org/install/
 
 For an introduction to eager execution in TensorFlow, see:
 
-- [User Guide](https://www.tensorflow.org/guide/eager) ([source](../../docs_src/guide/eager.md))
-- Notebook: [Basic Usage](python/examples/notebooks/1_basics.ipynb)
-- Notebook: [Gradients](python/examples/notebooks/2_gradients.ipynb)
-- Notebook: [Importing Data](python/examples/notebooks/3_datasets.ipynb)
+- [User Guide](https://www.tensorflow.org/guide/eager) ([source](https://github.com/tensorflow/docs/blob/master/site/en/tutorials/eager/index.md))
+- Notebook: [Basic Usage](https://github.com/tensorflow/docs/blob/master/site/en/tutorials/eager/eager_basics.ipynb)
+- Notebook: [Automatic differentiation and gradient tape](https://github.com/tensorflow/docs/blob/master/site/en/tutorials/eager/automatic_differentiation.ipynb)

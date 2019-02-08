@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -42,8 +41,7 @@ se::Platform::Id GenericTransferManager::PlatformId() const {
 }
 
 Status GenericTransferManager::WriteSingleTupleIndexTable(
-    se::Stream* stream,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> elements,
+    se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
     const Shape& shape, se::DeviceMemoryBase* region) {
   TF_RET_CHECK(elements.size() == ShapeUtil::TupleElementCount(shape));
 
@@ -84,7 +82,7 @@ Status GenericTransferManager::TransferLiteralFromDeviceInternal(
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       device_buffer.on_host_shape(),
       [&](const Shape& subshape, const ShapeIndex& index) -> Status {
-        if (ShapeUtil::IsArray(subshape)) {
+        if (subshape.IsArray()) {
           TF_RETURN_IF_ERROR(executor->SynchronousMemcpyD2H(
               /*source=*/device_buffer.buffer(index),
               /*size=*/GetByteSizeRequirement(subshape),
@@ -121,12 +119,12 @@ Status GenericTransferManager::TransferLiteralToDeviceAsync(
       device_buffer.on_host_shape(),
       [&](const Shape& device_subshape, const ShapeIndex& index) -> Status {
         se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
-        if (ShapeUtil::IsArray(device_subshape)) {
+        if (device_subshape.IsArray()) {
           TF_RET_CHECK(GetByteSizeRequirement(device_subshape) ==
                        device_memory.size());
           // Element is array-shaped: transfer array data to device buffer.
           const auto subliteral = LiteralSlice(literal, index);
-          std::unique_ptr<Literal> relayed_out_literal;
+          Literal relayed_out_literal;
           const void* source;
           if (LayoutUtil::Equal(device_subshape.layout(),
                                 subliteral.shape().layout())) {
@@ -139,7 +137,7 @@ Status GenericTransferManager::TransferLiteralToDeviceAsync(
             // Relayout data before transferring.
             relayed_out_literal = subliteral.Relayout(device_subshape.layout(),
                                                       /*shape_index=*/{});
-            source = relayed_out_literal->untyped_data();
+            source = relayed_out_literal.untyped_data();
             TF_RETURN_IF_ERROR(TransferBufferToDevice(
                 stream,
                 /*size=*/GetByteSizeRequirement(device_subshape), source,
@@ -163,7 +161,7 @@ Status GenericTransferManager::TransferLiteralFromOutfeed(
 }
 
 Status GenericTransferManager::ResetDevices(
-    tensorflow::gtl::ArraySlice<se::StreamExecutor*>
+    absl::Span<se::StreamExecutor* const>
     /*executors*/) {
   return Unimplemented(
       "Device reset is not yet supported on this platform (b/30481585)");

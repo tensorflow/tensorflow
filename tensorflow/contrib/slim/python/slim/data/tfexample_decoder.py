@@ -25,18 +25,21 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.contrib.slim.python.slim.data import data_decoder
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
 
 
+@six.add_metaclass(abc.ABCMeta)
 class ItemHandler(object):
   """Specifies the item-to-Features mapping for tf.parse_example.
 
@@ -44,8 +47,6 @@ class ItemHandler(object):
   proto as well as a function that post-processes the results of Example
   parsing.
   """
-
-  __metaclass__ = abc.ABCMeta
 
   def __init__(self, keys):
     """Constructs the handler with the name of the tf.Feature keys to use.
@@ -395,8 +396,8 @@ class Image(ItemHandler):
     image_format = keys_to_tensors[self._format_key]
 
     if self._repeated:
-      return functional_ops.map_fn(lambda x: self._decode(x, image_format),
-                                   image_buffer, dtype=self._dtype)
+      return map_fn.map_fn(lambda x: self._decode(x, image_format),
+                           image_buffer, dtype=self._dtype)
     else:
       return self._decode(image_buffer, image_format)
 
@@ -416,12 +417,17 @@ class Image(ItemHandler):
 
     def decode_image():
       """Decodes a image based on the headers."""
-      return image_ops.decode_image(image_buffer, channels=self._channels)
+      return math_ops.cast(
+          image_ops.decode_image(image_buffer, channels=self._channels),
+          self._dtype)
 
     def decode_jpeg():
       """Decodes a jpeg image with specified '_dct_method'."""
-      return image_ops.decode_jpeg(
-          image_buffer, channels=self._channels, dct_method=self._dct_method)
+      return math_ops.cast(
+          image_ops.decode_jpeg(
+              image_buffer,
+              channels=self._channels,
+              dct_method=self._dct_method), self._dtype)
 
     def check_jpeg():
       """Checks if an image is jpeg."""

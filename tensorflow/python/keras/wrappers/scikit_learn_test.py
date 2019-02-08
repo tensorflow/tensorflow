@@ -102,7 +102,7 @@ def assert_regression_works(reg):
 class ScikitLearnAPIWrapperTest(test.TestCase):
 
   def test_classify_build_fn(self):
-    with self.test_session():
+    with self.cached_session():
       clf = keras.wrappers.scikit_learn.KerasClassifier(
           build_fn=build_fn_clf,
           hidden_dim=HIDDEN_DIM,
@@ -118,7 +118,7 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
       def __call__(self, hidden_dim):
         return build_fn_clf(hidden_dim)
 
-    with self.test_session():
+    with self.cached_session():
       clf = keras.wrappers.scikit_learn.KerasClassifier(
           build_fn=ClassBuildFnClf(),
           hidden_dim=HIDDEN_DIM,
@@ -134,7 +134,7 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
       def __call__(self, hidden_dim):
         return build_fn_clf(hidden_dim)
 
-    with self.test_session():
+    with self.cached_session():
       clf = InheritClassBuildFnClf(
           build_fn=None,
           hidden_dim=HIDDEN_DIM,
@@ -144,7 +144,7 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
       assert_classification_works(clf)
 
   def test_regression_build_fn(self):
-    with self.test_session():
+    with self.cached_session():
       reg = keras.wrappers.scikit_learn.KerasRegressor(
           build_fn=build_fn_reg,
           hidden_dim=HIDDEN_DIM,
@@ -160,7 +160,7 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
       def __call__(self, hidden_dim):
         return build_fn_reg(hidden_dim)
 
-    with self.test_session():
+    with self.cached_session():
       reg = keras.wrappers.scikit_learn.KerasRegressor(
           build_fn=ClassBuildFnReg(),
           hidden_dim=HIDDEN_DIM,
@@ -176,7 +176,7 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
       def __call__(self, hidden_dim):
         return build_fn_reg(hidden_dim)
 
-    with self.test_session():
+    with self.cached_session():
       reg = InheritClassBuildFnReg(
           build_fn=None,
           hidden_dim=HIDDEN_DIM,

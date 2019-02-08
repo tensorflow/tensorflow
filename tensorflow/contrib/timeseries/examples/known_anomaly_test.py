@@ -28,7 +28,7 @@ class KnownAnomalyExampleTest(test.TestCase):
   def test_shapes_and_variance_structural_ar(self):
     (times, observed, all_times, mean, upper_limit, lower_limit,
      anomaly_locations) = known_anomaly.train_and_evaluate_exogenous(
-         train_steps=1, estimator_fn=known_anomaly.autoregressive_esitmator)
+         train_steps=1, estimator_fn=known_anomaly.autoregressive_estimator)
     self.assertAllEqual(
         anomaly_locations,
         [25, 50, 75, 100, 125, 150, 175, 249])
@@ -40,7 +40,7 @@ class KnownAnomalyExampleTest(test.TestCase):
   def test_shapes_and_variance_structural_ssm(self):
     (times, observed, all_times, mean, upper_limit, lower_limit,
      anomaly_locations) = known_anomaly.train_and_evaluate_exogenous(
-         train_steps=50, estimator_fn=known_anomaly.state_space_esitmator)
+         train_steps=50, estimator_fn=known_anomaly.state_space_estimator)
     self.assertAllEqual(
         anomaly_locations,
         [25, 50, 75, 100, 125, 150, 175, 249])

@@ -133,14 +133,14 @@ def ensure_graph_is_valid(graph_def):
   """
   node_map = {}
   for node in graph_def.node:
-    if node.name not in node_map.keys():
+    if node.name not in node_map:
       node_map[node.name] = node
     else:
       raise ValueError("Duplicate node names detected for ", node.name)
   for node in graph_def.node:
     for input_name in node.input:
       input_node_name = node_name_from_input(input_name)
-      if input_node_name not in node_map.keys():
+      if input_node_name not in node_map:
         raise ValueError("Input for ", node.name, " not found: ", input_name)
 
 
@@ -225,7 +225,7 @@ def fold_batch_norms(input_graph_def):
   """
   input_node_map = {}
   for node in input_graph_def.node:
-    if node.name not in input_node_map.keys():
+    if node.name not in input_node_map:
       input_node_map[node.name] = node
     else:
       raise ValueError("Duplicate node names detected for ", node.name)
@@ -390,7 +390,7 @@ def fuse_resize_and_conv(input_graph_def, output_node_names):
 
   input_node_map = {}
   for node in input_graph_def.node:
-    if node.name not in input_node_map.keys():
+    if node.name not in input_node_map:
       input_node_map[node.name] = node
     else:
       raise ValueError("Duplicate node names detected for ", node.name)

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef GDR_MEMORY_MANAGER_H_
-#define GDR_MEMORY_MANAGER_H_
+#ifndef TENSORFLOW_CONTRIB_GDR_GDR_MEMORY_MANAGER_H_
+#define TENSORFLOW_CONTRIB_GDR_GDR_MEMORY_MANAGER_H_
 
 #include "google/protobuf/any.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -57,4 +57,4 @@ RemoteMemoryManager* CreateRemoteMemoryManager(const string& host,
 
 }  // namespace tensorflow
 
-#endif  // GDR_MEMORY_MANAGER_H_
+#endif  // TENSORFLOW_CONTRIB_GDR_GDR_MEMORY_MANAGER_H_

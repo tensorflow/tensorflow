@@ -27,10 +27,12 @@ echo ""
 
 # Run configure.
 export TF_NEED_CUDA=0
+export TF_NEED_ROCM=0
 export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python2)
 yes "" | $PYTHON_BIN_PATH configure.py
 which bazel
+# TODO(b/122370901): Fix nomac, no_mac inconsistency.
 bazel test --test_tag_filters=-no_oss,-gpu,-benchmark-test,-nomac,-no_mac \
     --test_timeout 300,450,1200,3600 --config=opt \
     --announce_rc \

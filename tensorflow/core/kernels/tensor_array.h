@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_TENSOR_ARRAY_H_
-#define TENSORFLOW_KERNELS_TENSOR_ARRAY_H_
+#ifndef TENSORFLOW_CORE_KERNELS_TENSOR_ARRAY_H_
+#define TENSORFLOW_CORE_KERNELS_TENSOR_ARRAY_H_
 
 #include <limits.h>
 #include <vector>
@@ -81,7 +81,8 @@ Status TensorSetZero(OpKernelContext* ctx, Tensor* value) {
   Status TensorSetZero<Device, T>(OpKernelContext * ctx, Tensor * value);
 
 #define TENSOR_ARRAY_SET_ZERO_CPU(T) TENSOR_ARRAY_SET_ZERO(CPUDevice, T)
-TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_CPU)
+TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_CPU);
+TF_CALL_bool(TENSOR_ARRAY_SET_ZERO_CPU);
 #undef TENSOR_ARRAY_SET_ZERO_CPU
 
 #if GOOGLE_CUDA
@@ -260,7 +261,7 @@ class TensorArray : public ResourceBase {
     return Status::OK();
   }
 
-  string DebugString() override {
+  string DebugString() const override {
     mutex_lock l(mu_);
     CHECK(!closed_);
     return strings::StrCat("TensorArray[", tensors_.size(), "]");
@@ -375,7 +376,7 @@ class TensorArray : public ResourceBase {
   const DataType dtype_;
   Tensor handle_;
 
-  mutex mu_;
+  mutable mutex mu_;
 
   // Marks that the tensor_array_ has been cleared.
   bool closed_ GUARDED_BY(mu_);
@@ -629,4 +630,4 @@ Status TensorArray::LockedRead(OpKernelContext* ctx, const int32 index,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_TENSOR_ARRAY_H_
+#endif  // TENSORFLOW_CORE_KERNELS_TENSOR_ARRAY_H_

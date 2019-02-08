@@ -24,4 +24,18 @@ message CudnnConvBackendConfig {
   // true, cudnn may choose not to use tensor cores, e.g. because the GPU or
   // selected algorithm doesn't support it.
   bool tensor_ops_enabled = 2;
+
+  // The scaling factor multiplied with the convolution result.
+  double conv_result_scale = 4;
+
+  // Below are the fields related to cuDNN's fused convolution. Refer to
+  // CudnnConvParams for their meanings.
+
+  // The requested activation (e.g. relu) after the convolution. It is with type
+  // stream_executor::dnn::ActivationMode.
+  int64 activation_mode = 3;
+
+  // The scaling factor multiplied with the side input. If no side input buffer
+  // is provided, this field must be 0.
+  double side_input_scale = 5;
 }

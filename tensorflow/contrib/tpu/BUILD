@@ -1,22 +1,25 @@
 # Description: Operations defined for Cloud TPUs
 
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_library",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
+    "tf_py_test",
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+
+licenses(["notice"])  # Apache 2.0
 
 package(
     default_visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
+        "//knowledge/cerebra/sense/im2query:__subpackages__",
         "//learning/brain:__subpackages__",
         "//learning/deepmind:__subpackages__",
+        "//medical/pathology:__subpackages__",
         "//tensorflow:__subpackages__",
+        "//vr/perception:__subpackages__",
     ],
 )
 
@@ -35,21 +38,10 @@ cc_library(
 )
 
 py_library(
-    name = "tpu_estimator",
-    srcs = [
-        "python/tpu/error_handling.py",
-        "python/tpu/tpu_config.py",
-        "python/tpu/tpu_context.py",
-        "python/tpu/tpu_estimator.py",
-        "python/tpu/util.py",
-    ],
+    name = "async_checkpoint",
+    srcs = ["python/tpu/async_checkpoint.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":tpu_lib",
-        "//tensorflow/compiler/xla/experimental/xla_sharding",
-        "//tensorflow/compiler/xla/python_api:xla_shape",
-        "//tensorflow/contrib/training:training_py",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -63,6 +55,45 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
+    ],
+)
+
+py_library(
+    name = "tpu_estimator",
+    srcs = [
+        "python/tpu/_tpu_estimator_embedding.py",
+        "python/tpu/error_handling.py",
+        "python/tpu/tpu_config.py",
+        "python/tpu/tpu_context.py",
+        "python/tpu/tpu_estimator.py",
+        "python/tpu/util.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":async_checkpoint",
+        ":feature_column",
+        ":functional",
+        ":tpu_embedding",
+        ":tpu_lib",
+        ":tpu_ordinal_selector_py",
+        "//tensorflow/contrib/training:training_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:function",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:summary_ops_v2",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/estimator:util",
         "@six_archive//:six",
     ],
 )
@@ -77,11 +108,16 @@ tf_gen_op_libs(
         "replication_ops",
         "tpu_configuration_ops",
         "tpu_embedding_ops",
+        "tpu_ordinal_selector_op",
+        "functional_ops",
     ],
     deps = [
-        "//tensorflow/contrib/tpu/proto:tpu_embedding_config_proto_cc",
+        "//tensorflow/contrib/tpu/utils:tpu_embedding_optimization_parameters_utils",
+        "//tensorflow/contrib/tpu/utils:tpu_embedding_output_layout_utils",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
     ],
 )
 
@@ -98,13 +134,21 @@ tf_custom_op_library(
         "ops/tpu_embedding_ops.cc",
     ],
     deps = [
-        "//tensorflow/contrib/tpu/proto:tpu_embedding_config_proto_cc",
+        "//tensorflow/contrib/tpu/utils:tpu_embedding_optimization_parameters_utils",
+        "//tensorflow/contrib/tpu/utils:tpu_embedding_output_layout_utils",
         "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
     ],
 )
 
 tf_gen_op_wrapper_py(
     name = "tpu_ops",
+    hidden = [
+        "SendTPUEmbeddingGradients",
+        "EnqueueTPUEmbeddingIntegerBatch",
+        "EnqueueTPUEmbeddingSparseBatch",
+        "EnqueueTPUEmbeddingSparseTensorBatch",
+    ],
     deps = [
         ":cross_replica_ops_op_lib",
         ":heartbeat_ops_op_lib",
@@ -114,6 +158,62 @@ tf_gen_op_wrapper_py(
         ":replication_ops_op_lib",
         ":tpu_configuration_ops_op_lib",
         ":tpu_embedding_ops_op_lib",
+    ],
+)
+
+tf_custom_op_library(
+    name = "python/ops/_tpu_ordinal_selector_op.so",
+    srcs = ["ops/tpu_ordinal_selector_op.cc"],
+)
+
+tf_custom_op_py_library(
+    name = "tpu_ordinal_selector_py",
+    srcs = ["python/ops/tpu_ordinal_selector_op.py"],
+    dso = [":python/ops/_tpu_ordinal_selector_op.so"],
+    kernels = [
+        ":tpu_ordinal_selector_op_op_lib",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tpu_ordinal_selector_op",
+    ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "tpu_ordinal_selector_op",
+    deps = [
+        ":tpu_ordinal_selector_op_op_lib",
+    ],
+)
+
+tf_custom_op_library(
+    name = "python/ops/_functional_ops.so",
+    srcs = ["ops/functional_ops.cc"],
+)
+
+tf_gen_op_wrapper_py(
+    name = "gen_functional_ops",
+    out = "python/tpu/gen_functional_ops.py",
+    hidden = [
+        "TPUPartitionedCall",
+    ],
+    deps = [":functional_ops_op_lib"],
+)
+
+tf_custom_op_py_library(
+    name = "functional",
+    srcs = ["python/tpu/functional.py"],
+    dso = [":python/ops/_functional_ops.so"],
+    kernels = [
+        ":functional_ops_op_lib",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        ":gen_functional_ops",
     ],
 )
 
@@ -131,7 +231,7 @@ py_library(
 
 tf_custom_op_py_library(
     name = "tpu_py",
-    srcs = glob(["python/ops/*.py"]),
+    srcs = ["python/ops/tpu_ops.py"],
     dso = [":python/ops/_tpu_ops.so"],
     kernels = [
         ":all_ops",
@@ -140,6 +240,7 @@ tf_custom_op_py_library(
     deps = [
         ":profiler",
         ":tpu_ops",
+        "//tensorflow/contrib/compiler:xla",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -156,7 +257,9 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":feature_column",
         ":keras_support",  # split out to avoid cycle with tpu_strategy
+        ":tpu_embedding",
         ":tpu_estimator",
         ":tpu_lib",
     ],
@@ -166,21 +269,23 @@ py_library(
     name = "keras_support",
     srcs = [
         "python/tpu/keras_support.py",
+        "python/tpu/keras_tpu_variables.py",
     ],
     srcs_version = "PY2AND3",
     visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
         "//learning/brain:__subpackages__",
         "//tensorflow:__subpackages__",
-        "//third_party/cloud_tpu/models/keras:__subpackages__",
+        "//third_party/cloud_tpu/models/keras_colab:__subpackages__",
+        "//third_party/cloud_tpu/models/resnet50_keras:__subpackages__",
     ],
     deps = [
         ":tpu_lib",
-        "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
         "//tensorflow/contrib/distribute",
         "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf/tpu:compilation_result_proto_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -207,6 +312,7 @@ py_library(
         "python/tpu/bfloat16.py",
         "python/tpu/device_assignment.py",
         "python/tpu/session_support.py",
+        "python/tpu/tensor_tracer.py",
         "python/tpu/topology.py",
         "python/tpu/tpu.py",
         "python/tpu/tpu_feed.py",
@@ -221,10 +327,17 @@ py_library(
         ":datasets",
         ":profiler",
         ":tpu_py",
-        "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
-        "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
-        "//tensorflow/contrib/tpu/proto:topology_proto_py",
+        "//tensorflow/compiler/xla/experimental/xla_sharding",
+        "//tensorflow/compiler/xla/python_api:xla_shape",
+        "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
+        "//tensorflow/contrib/compiler:xla",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf/tpu:compilation_result_proto_py",
+        "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_py",
+        "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_py",
+        "//tensorflow/core/protobuf/tpu:topology_proto_py",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
@@ -259,12 +372,15 @@ py_library(
 
 tf_py_test(
     name = "datasets_test",
+    size = "medium",
     srcs = ["python/tpu/datasets_test.py"],
     additional_deps = [
         "//tensorflow/python:client_testlib",
         ":datasets",
     ],
     grpc_enabled = True,
+    shard_count = 4,
+    tags = ["no_oss"],
 )
 
 tf_py_test(
@@ -315,17 +431,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "tpu_function_test",
-    size = "small",
-    srcs = ["python/tpu/tpu_function_test.py"],
-    additional_deps = [
-        ":tpu",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-tf_py_test(
     name = "tpu_config_test",
     size = "small",
     srcs = ["python/tpu/tpu_config_test.py"],
@@ -349,10 +454,63 @@ tf_py_test(
 
 tf_py_test(
     name = "topology_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/tpu/topology_test.py"],
     additional_deps = [
         ":tpu",
         "//tensorflow/python:framework_test_lib",
     ],
+)
+
+py_library(
+    name = "tpu_embedding",
+    srcs = ["python/tpu/tpu_embedding.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tpu_lib",
+        ":tpu_ops",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "feature_column",
+    srcs = ["python/tpu/feature_column.py"],
+    deps = [
+        ":tpu_lib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
+    ],
+)
+
+tf_py_test(
+    name = "feature_column_test",
+    srcs = [
+        "python/tpu/feature_column_test.py",
+    ],
+    additional_deps = [
+        ":feature_column",
+        "//third_party/py/numpy",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
+    ],
+    main = "python/tpu/feature_column_test.py",
 )

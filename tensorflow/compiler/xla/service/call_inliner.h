@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE__CALL_INLINER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE__CALL_INLINER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CALL_INLINER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CALL_INLINER_H_
 
 #include <deque>
 
@@ -25,7 +25,7 @@ namespace xla {
 
 // For every kCall operation in the main computation, we inline the body of the
 // called function, and proceed recursively.
-class CallInliner : public HloPassInterface {
+class CallInliner : public HloModulePass {
  public:
   using InlinedInstructionMap =
       std::unordered_map<HloInstruction*, HloInstruction*>;
@@ -35,11 +35,11 @@ class CallInliner : public HloPassInterface {
   static StatusOr<InlinedInstructionMap> Inline(HloInstruction* call);
 
   ~CallInliner() override = default;
-  tensorflow::StringPiece name() const override { return "CallInliner"; }
+  absl::string_view name() const override { return "CallInliner"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 };
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE__CALL_INLINER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CALL_INLINER_H_

@@ -27,31 +27,31 @@ from tensorflow.python.platform import test
 class DeprecatedSummariesTest(test.TestCase):
 
   def testScalarSummary(self):
-    with self.test_session():
+    with self.cached_session():
       c = constant_op.constant(3)
       s = logging_ops.scalar_summary('tag', c)
       self.assertEqual(s.op.type, u'ScalarSummary')
 
   def testHistogramSummary(self):
-    with self.test_session():
+    with self.cached_session():
       c = constant_op.constant(3)
       s = logging_ops.histogram_summary('tag', c)
       self.assertEqual(s.op.type, u'HistogramSummary')
 
   def testImageSummary(self):
-    with self.test_session():
+    with self.cached_session():
       i = array_ops.ones((5, 4, 4, 3))
       s = logging_ops.image_summary('tag', i)
       self.assertEqual(s.op.type, u'ImageSummary')
 
   def testAudioSummary(self):
-    with self.test_session():
+    with self.cached_session():
       c = constant_op.constant(3.0)
       s = logging_ops.audio_summary('tag', c, sample_rate=8000)
       self.assertEqual(s.op.type, u'AudioSummaryV2')
 
   def testMergeSummary(self):
-    with self.test_session():
+    with self.cached_session():
       c = constant_op.constant(3)
       a = logging_ops.scalar_summary('a', c)
       b = logging_ops.scalar_summary('b', c)

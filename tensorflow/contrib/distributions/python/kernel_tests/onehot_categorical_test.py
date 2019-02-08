@@ -44,7 +44,7 @@ class OneHotCategoricalTest(test.TestCase):
   def testP(self):
     p = [0.2, 0.8]
     dist = onehot_categorical.OneHotCategorical(probs=p)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(p, dist.probs.eval())
       self.assertAllEqual([2], dist.logits.get_shape())
 
@@ -52,14 +52,14 @@ class OneHotCategoricalTest(test.TestCase):
     p = np.array([0.2, 0.8], dtype=np.float32)
     logits = np.log(p) - 50.
     dist = onehot_categorical.OneHotCategorical(logits=logits)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual([2], dist.probs.get_shape())
       self.assertAllEqual([2], dist.logits.get_shape())
       self.assertAllClose(dist.probs.eval(), p)
       self.assertAllClose(dist.logits.eval(), logits)
 
   def testShapes(self):
-    with self.test_session():
+    with self.cached_session():
       for batch_shape in ([], [1], [2, 3, 4]):
         dist = make_onehot_categorical(batch_shape, 10)
         self.assertAllEqual(batch_shape, dist.batch_shape.as_list())
@@ -97,7 +97,7 @@ class OneHotCategoricalTest(test.TestCase):
         np.array([1]+[0]*4, dtype=np.int64)).dtype)
 
   def testUnknownShape(self):
-    with self.test_session():
+    with self.cached_session():
       logits = array_ops.placeholder(dtype=dtypes.float32)
       dist = onehot_categorical.OneHotCategorical(logits)
       sample = dist.sample()
@@ -112,7 +112,7 @@ class OneHotCategoricalTest(test.TestCase):
   def testEntropyNoBatch(self):
     logits = np.log([0.2, 0.8]) - 50.
     dist = onehot_categorical.OneHotCategorical(logits)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(
           dist.entropy().eval(),
           -(0.2 * np.log(0.2) + 0.8 * np.log(0.8)))
@@ -120,7 +120,7 @@ class OneHotCategoricalTest(test.TestCase):
   def testEntropyWithBatch(self):
     logits = np.log([[0.2, 0.8], [0.6, 0.4]]) - 50.
     dist = onehot_categorical.OneHotCategorical(logits)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(dist.entropy().eval(), [
           -(0.2 * np.log(0.2) + 0.8 * np.log(0.8)),
           -(0.6 * np.log(0.6) + 0.4 * np.log(0.4))
@@ -128,7 +128,7 @@ class OneHotCategoricalTest(test.TestCase):
 
   def testPmf(self):
     # check that probability of samples correspond to their class probabilities
-    with self.test_session():
+    with self.cached_session():
       logits = self._rng.random_sample(size=(8, 2, 10))
       prob = np.exp(logits)/np.sum(np.exp(logits), axis=-1, keepdims=True)
       dist = onehot_categorical.OneHotCategorical(logits=logits)
@@ -138,7 +138,7 @@ class OneHotCategoricalTest(test.TestCase):
       self.assertAllClose(expected_prob, np_prob.flatten())
 
   def testSample(self):
-    with self.test_session():
+    with self.cached_session():
       probs = [[[0.2, 0.8], [0.4, 0.6]]]
       dist = onehot_categorical.OneHotCategorical(math_ops.log(probs) - 50.)
       n = 100
@@ -150,7 +150,7 @@ class OneHotCategoricalTest(test.TestCase):
       self.assertFalse(np.any(sample_values > 1))
 
   def testSampleWithSampleShape(self):
-    with self.test_session():
+    with self.cached_session():
       probs = [[[0.2, 0.8], [0.4, 0.6]]]
       dist = onehot_categorical.OneHotCategorical(math_ops.log(probs) - 50.)
       samples = dist.sample((100, 100), seed=123)
@@ -166,7 +166,7 @@ class OneHotCategoricalTest(test.TestCase):
       exp_logits = np.exp(logits)
       return exp_logits / exp_logits.sum(axis=-1, keepdims=True)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for categories in [2, 10]:
         for batch_size in [1, 2]:
           p_logits = self._rng.random_sample((batch_size, categories))
@@ -193,7 +193,7 @@ class OneHotCategoricalTest(test.TestCase):
           self.assertAllClose(kl_sample_, kl_expected, atol=1e-2, rtol=0.)
 
   def testSampleUnbiasedNonScalarBatch(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       logits = self._rng.rand(4, 3, 2).astype(np.float32)
       dist = onehot_categorical.OneHotCategorical(logits=logits)
       n = int(3e3)
@@ -221,7 +221,7 @@ class OneHotCategoricalTest(test.TestCase):
           actual_covariance_, sample_covariance_, atol=0., rtol=0.10)
 
   def testSampleUnbiasedScalarBatch(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       logits = self._rng.rand(3).astype(np.float32)
       dist = onehot_categorical.OneHotCategorical(logits=logits)
       n = int(1e4)

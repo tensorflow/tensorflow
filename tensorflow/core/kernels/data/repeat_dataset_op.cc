@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class RepeatDatasetOp : public UnaryDatasetOpKernel {
@@ -51,14 +51,14 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       if (count_ < 0) {
-        return std::unique_ptr<IteratorBase>(new ForeverIterator(
-            {this, strings::StrCat(prefix, "::ForeverRepeat")}));
+        return absl::make_unique<ForeverIterator>(ForeverIterator::Params{
+            this, strings::StrCat(prefix, "::ForeverRepeat")});
       } else if (count_ == 0) {
-        return std::unique_ptr<IteratorBase>(new EmptyIterator(
-            {this, strings::StrCat(prefix, "::EmptyRepeat")}));
+        return absl::make_unique<EmptyIterator>(EmptyIterator::Params{
+            this, strings::StrCat(prefix, "::EmptyRepeat")});
       } else {
-        return std::unique_ptr<IteratorBase>(new FiniteIterator(
-            {this, strings::StrCat(prefix, "::FiniteRepeat")}));
+        return absl::make_unique<FiniteIterator>(FiniteIterator::Params{
+            this, strings::StrCat(prefix, "::FiniteRepeat")});
       }
     }
 
@@ -70,6 +70,23 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
     }
 
     string DebugString() const override { return "RepeatDatasetOp::Dataset"; }
+
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (count_ < 0) {
+        if (n == 0) {
+          return 0;
+        }
+        return kInfiniteCardinality;
+      }
+      if (count_ == 0) {
+        return 0;
+      }
+      if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+        return n;
+      }
+      return count_ * n;
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -97,6 +114,12 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         return Status::OK();
       }
@@ -139,6 +162,12 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
@@ -172,40 +201,53 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
     class ForeverIterator : public DatasetIterator<Dataset> {
      public:
       explicit ForeverIterator(const Params& params)
-          : DatasetIterator<Dataset>(params), input_impl_(nullptr) {}
+          : DatasetIterator<Dataset>(params),
+            input_impl_(nullptr),
+            first_call_(true) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        mutex_lock l(mu_);
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
         do {
-          bool first_call = false;
           if (!input_impl_) {
-            first_call = true;
             TF_RETURN_IF_ERROR(
                 dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
           }
-          TF_RETURN_IF_ERROR(
-              input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
-          if (!*end_of_sequence) {
+          Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+          if (first_call_ && *end_of_sequence) {
+            // If the first call to GetNext() fails because the end
+            // of sequence has been reached, we terminate the
+            // iteration immediately. (Otherwise, this iterator
+            // would loop infinitely and never produce a value.)
+            input_impl_.reset();
             return Status::OK();
+          }
+          first_call_ = false;
+          if (!*end_of_sequence) {
+            return s;
           } else {
             input_impl_.reset();
-            if (first_call) {
-              // If the first call to GetNext() fails because the end
-              // of sequence has been reached, we terminate the
-              // iteration immediately. (Otherwise, this iterator
-              // would loop infinitely and never produce a value.)
-              return Status::OK();
-            }
+            first_call_ = true;
           }
         } while (true);
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        if (input_impl_)
+        if (!first_call_)
           TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         else
           TF_RETURN_IF_ERROR(
@@ -218,10 +260,12 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         if (reader->Contains(full_name("uninitialized"))) {
           input_impl_.reset();
+          first_call_ = true;
         } else {
           TF_RETURN_IF_ERROR(
               dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+          first_call_ = false;
         }
         return Status::OK();
       }
@@ -229,6 +273,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
      private:
       mutex mu_;
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      bool first_call_ GUARDED_BY(mu_);
     };
 
     const int64 count_;
@@ -240,5 +285,5 @@ REGISTER_KERNEL_BUILDER(Name("RepeatDataset").Device(DEVICE_CPU),
                         RepeatDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

@@ -149,6 +149,7 @@ class ChainingStateManager(_OverridableStateManager):
         key_dtype=dtypes.int64,
         default_values=self._start_state,
         empty_key=-1,
+        deleted_key=-2,
         name="cached_states",
         checkpoint=self._checkpoint_state)
 

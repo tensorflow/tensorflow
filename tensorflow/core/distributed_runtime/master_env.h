@@ -99,4 +99,4 @@ struct MasterEnv {
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MASTER_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MASTER_ENV_H_

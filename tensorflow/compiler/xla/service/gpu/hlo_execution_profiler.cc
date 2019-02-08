@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -33,7 +34,7 @@ namespace gpu {
 namespace {
 void InitAndStartTimer(std::stack<std::unique_ptr<se::Timer>>* timers,
                        se::Stream* stream) {
-  timers->push(MakeUnique<se::Timer>(stream->parent()));
+  timers->push(absl::make_unique<se::Timer>(stream->parent()));
   stream->InitTimer(timers->top().get()).ThenStartTimer(timers->top().get());
 }
 
@@ -115,7 +116,7 @@ HloExecutionProfiler::MakeScopedInstructionProfiler(
     CHECK(hlo_instructions_.insert(hlo_instruction).second)
         << hlo_instruction->name();
   }
-  return MakeUnique<ScopedInstructionProfiler>(this, hlo_instruction);
+  return absl::make_unique<ScopedInstructionProfiler>(this, hlo_instruction);
 }
 
 }  // namespace gpu

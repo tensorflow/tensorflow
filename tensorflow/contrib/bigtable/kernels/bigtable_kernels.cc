@@ -172,6 +172,11 @@ class BigtableTableOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("BigtableTable").Device(DEVICE_CPU),
                         BigtableTableOp);
 
+}  // namespace
+
+namespace data {
+namespace {
+
 class ToBigtableOp : public AsyncOpKernel {
  public:
   explicit ToBigtableOp(OpKernelConstruction* ctx)
@@ -354,5 +359,6 @@ REGISTER_KERNEL_BUILDER(Name("DatasetToBigtable").Device(DEVICE_CPU),
                         ToBigtableOp);
 
 }  // namespace
+}  // namespace data
 
 }  // namespace tensorflow

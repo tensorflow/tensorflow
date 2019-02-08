@@ -1,14 +1,14 @@
 op {
   graph_op_name: "ReverseV2"
   endpoint {
-    name: "manip.reverse"
+    name: "reverse"
   }
   endpoint {
-    name: "reverse"
-    deprecated: true
+    name: "manip.reverse"
+    deprecation_version: 2
   }
   endpoint {
     name: "reverse_v2"
-    deprecated: true
+    deprecation_version: 2
   }
 }

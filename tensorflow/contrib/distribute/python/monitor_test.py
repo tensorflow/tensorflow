@@ -23,9 +23,9 @@ import numpy
 
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import monitor as monitor_lib
-from tensorflow.contrib.distribute.python import one_device_strategy
 from tensorflow.contrib.distribute.python.single_loss_example import single_loss_example
 from tensorflow.python.client import session
+from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import ops
@@ -45,7 +45,7 @@ class MonitorTest(test.TestCase, parameterized.TestCase):
       if context.executing_eagerly():
         monitor = monitor_lib.Monitor(single_loss_step, None)
       else:
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           monitor = monitor_lib.Monitor(single_loss_step, sess)
 
       monitor.run_steps(1)

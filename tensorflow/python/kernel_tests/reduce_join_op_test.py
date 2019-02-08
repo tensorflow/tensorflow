@@ -25,6 +25,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
@@ -113,13 +114,13 @@ class ReduceJoinTest(UnicodeTestCase):
       keep_dims: Whether or not to retain reduced dimensions.
       separator: The separator to use for joining.
     """
-    with self.test_session():
+    with self.cached_session():
       output = string_ops.reduce_join(
           inputs=input_array,
           axis=axis,
           keep_dims=keep_dims,
           separator=separator)
-      output_array = output.eval()
+      output_array = self.evaluate(output)
 
     self.assertAllEqualUnicode(truth, output_array)
     self.assertAllEqual(truth_shape, output.get_shape())
@@ -136,7 +137,7 @@ class ReduceJoinTest(UnicodeTestCase):
       axis: The indices to reduce.
       separator: The separator to use when joining.
     """
-    with self.test_session():
+    with self.cached_session():
       output = string_ops.reduce_join(
           inputs=input_array, axis=axis, keep_dims=False, separator=separator)
       output_keep_dims = string_ops.reduce_join(
@@ -149,10 +150,10 @@ class ReduceJoinTest(UnicodeTestCase):
       if not axis:
         truth = constant_op.constant(truth)
       truth_squeezed = array_ops.squeeze(truth, axis=axis)
-      output_array = output.eval()
-      output_keep_dims_array = output_keep_dims.eval()
-      truth_array = truth.eval()
-      truth_squeezed_array = truth_squeezed.eval()
+      output_array = self.evaluate(output)
+      output_keep_dims_array = self.evaluate(output_keep_dims)
+      truth_array = self.evaluate(truth)
+      truth_squeezed_array = self.evaluate(truth_squeezed)
     self.assertAllEqualUnicode(truth_array, output_keep_dims_array)
     self.assertAllEqualUnicode(truth_squeezed_array, output_array)
     self.assertAllEqual(truth.get_shape(), output_keep_dims.get_shape())
@@ -230,24 +231,26 @@ class ReduceJoinTest(UnicodeTestCase):
         axis=1,
         separator="  ")
 
+  @test_util.run_deprecated_v1
   def testUnknownShape(self):
     input_array = [["a"], ["b"]]
     truth = ["ab"]
     truth_shape = None
-    with self.test_session():
+    with self.cached_session():
       placeholder = array_ops.placeholder(dtypes.string, name="placeholder")
       reduced = string_ops.reduce_join(placeholder, axis=0)
       output_array = reduced.eval(feed_dict={placeholder.name: input_array})
       self.assertAllEqualUnicode(truth, output_array)
       self.assertAllEqual(truth_shape, reduced.get_shape())
 
+  @test_util.run_deprecated_v1
   def testUnknownIndices(self):
     input_array = [["this", "is", "a", "test"],
                    ["please", "do", "not", "panic"]]
     truth_dim_zero = ["thisplease", "isdo", "anot", "testpanic"]
     truth_dim_one = ["thisisatest", "pleasedonotpanic"]
     truth_shape = None
-    with self.test_session():
+    with self.cached_session():
       placeholder = array_ops.placeholder(dtypes.int32, name="placeholder")
       reduced = string_ops.reduce_join(input_array, axis=placeholder)
       output_array_dim_zero = reduced.eval(feed_dict={placeholder.name: [0]})
@@ -297,8 +300,9 @@ class ReduceJoinTest(UnicodeTestCase):
       for permutation in itertools.permutations(xrange(num_dims), i):
         self._testMultipleReduceJoin(input_array, axis=permutation)
 
+  @test_util.run_deprecated_v1
   def testInvalidReductionIndices(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(ValueError, "Invalid reduction dim"):
         string_ops.reduce_join(inputs="", axis=0)
       with self.assertRaisesRegexp(ValueError,
@@ -313,20 +317,21 @@ class ReduceJoinTest(UnicodeTestCase):
         string_ops.reduce_join(inputs=[[""]], axis=[0, 2])
 
   def testZeroDims(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = np.zeros([0, 1], dtype=str)
 
       # Reduction that drops the dim of size 0.
       output = string_ops.reduce_join(inputs=inputs, axis=0)
-      self.assertAllEqualUnicode([""], output.eval())
+      self.assertAllEqualUnicode([""], self.evaluate(output))
 
       # Reduction that keeps the dim of size 0.
       output = string_ops.reduce_join(inputs=inputs, axis=1)
-      output_shape = output.eval().shape
+      output_shape = self.evaluate(output).shape
       self.assertAllEqual([0], output_shape)
 
+  @test_util.run_deprecated_v1
   def testInvalidArgsUnknownShape(self):
-    with self.test_session():
+    with self.cached_session():
       placeholder = array_ops.placeholder(dtypes.string, name="placeholder")
       index_too_high = string_ops.reduce_join(placeholder, axis=1)
       duplicate_index = string_ops.reduce_join(placeholder, axis=[-1, 1])
@@ -335,8 +340,9 @@ class ReduceJoinTest(UnicodeTestCase):
       with self.assertRaisesOpError("Duplicate reduction dimension 1"):
         duplicate_index.eval(feed_dict={placeholder.name: [[""]]})
 
+  @test_util.run_deprecated_v1
   def testInvalidArgsUnknownIndices(self):
-    with self.test_session():
+    with self.cached_session():
       placeholder = array_ops.placeholder(dtypes.int32, name="placeholder")
       reduced = string_ops.reduce_join(["test", "test2"], axis=placeholder)
 

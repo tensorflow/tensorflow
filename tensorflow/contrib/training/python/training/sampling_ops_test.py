@@ -146,7 +146,7 @@ class StratifiedSampleTest(test.TestCase):
 
     for illegal_label in illegal_labels:
       # Run session that should fail.
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         with self.assertRaises(errors_impl.InvalidArgumentError):
           sess.run([val_tf, lbl_tf],
                    feed_dict={label_ph: illegal_label,
@@ -154,7 +154,7 @@ class StratifiedSampleTest(test.TestCase):
 
     for illegal_prob in illegal_probs:
       # Run session that should fail.
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         with self.assertRaises(errors_impl.InvalidArgumentError):
           sess.run([prob_tf],
                    feed_dict={label_ph: valid_labels,
@@ -172,7 +172,7 @@ class StratifiedSampleTest(test.TestCase):
     summary_op = logging_ops.merge_summary(
         ops.get_collection(ops.GraphKeys.SUMMARIES))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       coord = coordinator.Coordinator()
       threads = queue_runner_impl.start_queue_runners(coord=coord)
 
@@ -197,7 +197,7 @@ class StratifiedSampleTest(test.TestCase):
         batch_size,
         init_probs=[0, .3, 0, .7, 0],
         enqueue_many=True)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       coord = coordinator.Coordinator()
       threads = queue_runner_impl.start_queue_runners(coord=coord)
 
@@ -228,7 +228,7 @@ class StratifiedSampleTest(test.TestCase):
 
     # Run graph to make sure there are no shape-related runtime errors.
     for vals, labels in legal_input_pairs:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         sess.run([val_tf, labels_tf],
                  feed_dict={vals_ph: vals,
                             labels_ph: labels})
@@ -253,7 +253,7 @@ class StratifiedSampleTest(test.TestCase):
     self.assertEqual(len(val_list), len(val_input_batch))
     self.assertTrue(isinstance(lbls, ops.Tensor))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       coord = coordinator.Coordinator()
       threads = queue_runner_impl.start_queue_runners(coord=coord)
 
@@ -283,7 +283,7 @@ class StratifiedSampleTest(test.TestCase):
     # Run session and keep track of how frequently the labels and values appear.
     data_l = []
     label_l = []
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Need to initialize variables that keep running total of classes seen.
       variables.global_variables_initializer().run()
 
@@ -374,7 +374,7 @@ class RejectionSampleTest(test.TestCase):
         'rejection_sample/prob_with_checks:0')
 
     # Run session that should fail.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for illegal_prob in [-0.1, 1.1]:
         with self.assertRaises(errors_impl.InvalidArgumentError):
           sess.run(prob_tensor, feed_dict={prob_ph: illegal_prob})
@@ -393,7 +393,7 @@ class RejectionSampleTest(test.TestCase):
     sample = sampling_ops.rejection_sample(tensor_list, accept_prob_fn,
                                            batch_size)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       coord = coordinator.Coordinator()
       threads = queue_runner_impl.start_queue_runners(coord=coord)
 

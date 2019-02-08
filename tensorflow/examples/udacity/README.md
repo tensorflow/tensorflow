@@ -3,6 +3,12 @@ Assignments for Udacity Deep Learning class with TensorFlow
 
 Course information can be found at https://www.udacity.com/course/deep-learning--ud730
 
+## Getting Started with Docker
+
+If you are new to Docker, follow
+[Docker document](https://docs.docker.com/machine/get-started/) to start a
+docker instance. Kindly read the requirements of Windows and Mac carefully.
+
 Running the Docker container from the Google Cloud repository
 -------------------------------------------------------------
 
@@ -17,11 +23,20 @@ Accessing the Notebooks
 
 On linux, go to: http://127.0.0.1:8888
 
-On mac, find the virtual machine's IP using:
+On mac, go to terminal and find the virtual machine's IP using:
 
     docker-machine ip default
 
-Then go to: http://IP:8888 (likely http://192.168.99.100:8888)
+Then go to: http://(ip address received from the above command):8888 (likely
+http://192.168.99.100:8888)
+
+On Windows, use powershell to find the virtual machine's IP using:
+
+    docker-machine ip default
+    
+
+Then go to: http://(ip address received from the above command):8888 (likely
+http://192.168.99.100:8888)
 
 FAQ
 ---

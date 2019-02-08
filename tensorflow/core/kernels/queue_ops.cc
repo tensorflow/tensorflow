@@ -65,7 +65,7 @@ class FakeQueueOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    ResourceHandle ref = context->input(0).flat<ResourceHandle>()(0);
+    const ResourceHandle& ref = context->input(0).flat<ResourceHandle>()(0);
     handle_.AccessTensor(context)->flat<string>()(0) = ref.container();
     handle_.AccessTensor(context)->flat<string>()(1) = ref.name();
     context->set_output_ref(0, &mu_, handle_.AccessTensor(context));

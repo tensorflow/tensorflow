@@ -21,6 +21,7 @@ from __future__ import print_function
 from contextlib import contextmanager
 import copy
 
+from tensorflow.contrib.tpu.python.tpu import _tpu_estimator_embedding
 from tensorflow.contrib.tpu.python.tpu import device_assignment  as tpu_device_assignment
 from tensorflow.contrib.tpu.python.tpu import tpu_config
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
@@ -35,12 +36,13 @@ _NUM_CORES_TO_COMPUTATION_SHAPE = {
     1: [1, 1, 1],
     2: [1, 1, 2],
     4: [1, 2, 2],
-    8: [2, 2, 2]
+    8: [2, 2, 2],
+    16: [4, 2, 2],
 }
 
 
 class TPUContext(object):
-  """The context of current input_fn invocation."""
+  """A context that holds the current configuration of the TPU computation."""
 
   def __init__(self,
                internal_ctx,
@@ -117,6 +119,11 @@ class TPUContext(object):
     return self._internal_ctx.num_hosts
 
   @property
+  def current_host(self):
+    """The current host index for the TPU system."""
+    return self._invocation_index
+
+  @property
   def num_of_replicas_per_host(self):
     """The number of replicas for each host."""
     if self._internal_ctx.model_parallelism_enabled:
@@ -148,6 +155,20 @@ class TPUContext(object):
     # as far as model is replicated to all cores in the system.
     return self._internal_ctx.device_for_replica(replica_id)
 
+  @property
+  def tpu_host_placement_function(self):
+    """Returns the TPU host place function.
+
+    The place function takes host_id as the input and returns the TF device
+    for the correspoding host.
+    """
+
+    def _placement_function(host_id):
+      """Return the host device given host_id."""
+      return self._internal_ctx.tpu_host_placement_function(host_id=host_id)
+
+    return _placement_function
+
 
 class _InternalTPUContext(object):
   """A context holds immutable states of TPU computation.
@@ -172,8 +193,14 @@ class _InternalTPUContext(object):
   ```
   """
 
-  def __init__(self, config, train_batch_size, eval_batch_size,
-               predict_batch_size, use_tpu, eval_on_tpu=True):
+  def __init__(self,
+               config,
+               train_batch_size,
+               eval_batch_size,
+               predict_batch_size,
+               use_tpu,
+               eval_on_tpu=True,
+               embedding_config_spec=None):
     self._config = config
     self._train_batch_size = train_batch_size
     self._eval_batch_size = eval_batch_size
@@ -188,7 +215,7 @@ class _InternalTPUContext(object):
         use_tpu and config.tpu_config.num_cores_per_replica)
     self._mode = None
     num_cores_per_replica = config.tpu_config.num_cores_per_replica
-    if num_cores_per_replica:
+    if self._model_parallelism_enabled:
       self._computation_shape = _NUM_CORES_TO_COMPUTATION_SHAPE[
           num_cores_per_replica]
     else:
@@ -196,6 +223,8 @@ class _InternalTPUContext(object):
     self._lazy_tpu_system_metadata_dict = {}  # key by master address
     self._lazy_device_assignment_dict = {}  # key by master address
     self._lazy_validation_dict = {}  # key by ModeKeys
+    self._embedding_config_spec = embedding_config_spec
+    self._lazy_embedding_config_dict = {}  # key by master address
 
   def _assert_mode(self):
     if self._mode is None:
@@ -274,6 +303,30 @@ class _InternalTPUContext(object):
     return device_assignment
 
   @property
+  def embedding_config(self):
+    """Returns the embedding config based on current mode."""
+    master = self._get_master_address()
+    if master in self._lazy_embedding_config_dict:
+      embedding_config = self._lazy_embedding_config_dict[master]
+    else:
+      embedding_config = None
+      if self._use_tpu and self._embedding_config_spec:
+        embedding_config = _tpu_estimator_embedding.EmbeddingConfig(
+            self._embedding_config_spec, self._train_batch_size,
+            self._eval_batch_size, self.num_hosts, self.num_cores, master)
+        if not embedding_config.has_embedding_tables():
+          embedding_config = None
+      self._lazy_embedding_config_dict[master] = embedding_config
+
+    if embedding_config is not None:
+      mode = self._assert_mode()
+      # Dynamically attach tpu_embedding based on mode. With
+      # this, we could keep embedding_config immutable but call site always
+      # accesses the unified API '.tpu_embedding'.
+      embedding_config.tpu_embedding = embedding_config.get_tpu_embedding(mode)
+    return embedding_config
+
+  @property
   def model_parallelism_enabled(self):
     return self._model_parallelism_enabled
 
@@ -298,6 +351,7 @@ class _InternalTPUContext(object):
 
   @property
   def num_of_replicas_per_host(self):
+    """Return the number of replicas per host."""
     if self.model_parallelism_enabled:
       return self.num_replicas // self.num_hosts
     else:
@@ -390,12 +444,6 @@ class _InternalTPUContext(object):
       logging.info('_is_running_on_cpu: eval_on_tpu disabled')
       return True
 
-    if mode != model_fn_lib.ModeKeys.PREDICT:
-      return False
-
-    # There are actually 2 use cases when running with mode.PREDICT: prediction
-    # and saving the model.  We run actual predictions on the TPU, but
-    # model export is run on the CPU.
     if is_export_mode:
       return True
 
@@ -544,8 +592,8 @@ class _InternalTPUContext(object):
       """
       if self.model_parallelism_enabled:
         # We put both enqueue/dequeue ops at tpu.core(0) in each replica.
-        replica = self.device_assignment.lookup_replicas(
-            host_id, (0, 0, 0))[shard_index_in_host]
+        replica = self.device_assignment.lookup_replicas(host_id,
+                                                         0)[shard_index_in_host]
         return self.device_assignment.tpu_ordinal(replica=replica)
       else:
         return shard_index_in_host % self.num_of_cores_per_host
@@ -586,6 +634,17 @@ class _InternalTPUContext(object):
 
         raise ValueError(message)
 
+    if self._config.tpu_config.num_cores_per_replica:
+      num_cores_per_replica = self._config.tpu_config.num_cores_per_replica
+      num_cores_per_host = self._get_tpu_system_metadata().num_of_cores_per_host
+      if num_cores_per_replica > num_cores_per_host:
+        raise ValueError(
+            'The num of cores required by the model parallelism, specified by '
+            'TPUConfig.num_cores_per_replica, is larger than the '
+            'num_cores_per_host. num_cores_per_replica: {}, '
+            'num_cores_per_host: {}'.format(num_cores_per_replica,
+                                            num_cores_per_host))
+
     if mode == model_fn_lib.ModeKeys.TRAIN:
       if (self._train_batch_size % num_replicas != 0 and
           not self.is_input_broadcast_with_iterators()):
@@ -605,8 +664,8 @@ class _InternalTPUContext(object):
             .format(self._eval_batch_size, num_replicas))
       if num_hosts > 1 and not self.is_input_broadcast_with_iterators():
         raise ValueError(
-            'TPUEstimator.evaluate should be running on single TPU worker. '
-            'got {}.'.format(num_hosts))
+            'TPUEstimator.evaluate should be running on single TPU'
+            ' instead of a Pod.')
     else:
       assert mode == model_fn_lib.ModeKeys.PREDICT
       if self._predict_batch_size is None:
@@ -684,16 +743,21 @@ class _OneCoreTPUContext(_InternalTPUContext):
 
 
 def _get_tpu_context(config, train_batch_size, eval_batch_size,
-                     predict_batch_size, use_tpu, eval_on_tpu):
+                     predict_batch_size, use_tpu, eval_on_tpu,
+                     embedding_config_spec):
   """Returns an instance of `_InternalTPUContext`."""
 
   if (config.tpu_config.num_shards == 1 and
       config.tpu_config.num_cores_per_replica is None):
+    if embedding_config_spec is not None:
+      raise ValueError('Setting TPUConfig.num_shards==1 is unsupported '
+                       'when embedding_config_spec is not None.')
     logging.warning(
         'Setting TPUConfig.num_shards==1 is an unsupported behavior. '
-        'Please fix as soon as possible (leaving num_shards as None.')
+        'Please fix as soon as possible (leaving num_shards as None.)')
     return _OneCoreTPUContext(config, train_batch_size, eval_batch_size,
                               predict_batch_size, use_tpu)
 
   return _InternalTPUContext(config, train_batch_size, eval_batch_size,
-                             predict_batch_size, use_tpu, eval_on_tpu)
+                             predict_batch_size, use_tpu, eval_on_tpu,
+                             embedding_config_spec)

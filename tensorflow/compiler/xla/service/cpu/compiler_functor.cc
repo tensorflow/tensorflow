@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/llvm_ir_runtime.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -61,27 +61,19 @@ Disabling these as a starting point.
 // TODO(b/64227304) Creating a custom pass pipeline will replace this.
 
 namespace {
-class FilteredFunctionPassManager : public llvm::legacy::FunctionPassManager {
- public:
-  FilteredFunctionPassManager(llvm::Module* m, bool disable_expensive_passes)
-      : llvm::legacy::FunctionPassManager(m),
-        disable_expensive_passes_(disable_expensive_passes) {}
-  void add(llvm::Pass* p) override {
-    llvm::legacy::FunctionPassManager::add(p);
-  }
-
- private:
-  bool disable_expensive_passes_;
-};
-
 class FilteredPassManager : public llvm::legacy::PassManager {
  public:
   explicit FilteredPassManager(bool disable_expensive_passes)
       : disable_expensive_passes_(disable_expensive_passes) {}
   void add(llvm::Pass* p) override {
+    llvm::StringRef PassName = p->getPassName();
+    if (PassName.contains("Warn about non-applied transformations")) {
+      delete p;
+      return;
+    }
     if (disable_expensive_passes_) {
-      llvm::StringRef PassName = p->getPassName();
       if (PassName.contains("Unroll loops")) {
+        delete p;
         return;
       }
     }
@@ -96,8 +88,7 @@ class FilteredPassManager : public llvm::legacy::PassManager {
 std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
     llvm::Module& module) const {
   FilteredPassManager module_passes(disable_expensive_passes_);
-  FilteredFunctionPassManager function_passes(&module,
-                                              disable_expensive_passes_);
+  llvm::legacy::FunctionPassManager function_passes(&module);
 
   VLOG(2) << "IR before optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
@@ -205,7 +196,7 @@ void CompilerFunctor::AddTargetInfoPasses(
     llvm::legacy::PassManagerBase* passes) const {
   llvm::Triple target_triple(target_machine_->getTargetTriple());
   auto target_library_info_impl =
-      MakeUnique<llvm::TargetLibraryInfoImpl>(target_triple);
+      absl::make_unique<llvm::TargetLibraryInfoImpl>(target_triple);
   target_library_info_impl->addVectorizableFunctions(
       VectorFunctionsForTargetLibraryInfoImpl());
   passes->add(

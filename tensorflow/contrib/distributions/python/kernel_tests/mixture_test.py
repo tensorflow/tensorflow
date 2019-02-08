@@ -152,7 +152,7 @@ class MixtureTest(test.TestCase):
   use_static_graph = False
 
   def testShapes(self):
-    with self.test_session():
+    with self.cached_session():
       for batch_shape in ([], [1], [2, 3, 4]):
         dist = make_univariate_mixture(batch_shape, num_components=10,
                                        use_static_graph=self.use_static_graph)
@@ -200,7 +200,7 @@ class MixtureTest(test.TestCase):
           use_static_graph=self.use_static_graph)
 
   def testBrokenShapesDynamic(self):
-    with self.test_session():
+    with self.cached_session():
       d0_param = array_ops.placeholder(dtype=dtypes.float32)
       d1_param = array_ops.placeholder(dtype=dtypes.float32)
       d = ds.Mixture(
@@ -246,7 +246,7 @@ class MixtureTest(test.TestCase):
     # mixture are checked for equivalence.
 
   def testMeanUnivariate(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for batch_shape in ((), (2,), (2, 3)):
         dist = make_univariate_mixture(
             batch_shape=batch_shape, num_components=2,
@@ -268,7 +268,7 @@ class MixtureTest(test.TestCase):
         self.assertAllClose(true_mean, mean_value)
 
   def testMeanMultivariate(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for batch_shape in ((), (2,), (2, 3)):
         dist = make_multivariate_mixture(
             batch_shape=batch_shape, num_components=2, event_shape=(4,),
@@ -296,7 +296,7 @@ class MixtureTest(test.TestCase):
   def testStddevShapeUnivariate(self):
     num_components = 2
     # This is the same shape test which is done in 'testMeanUnivariate'.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for batch_shape in ((), (2,), (2, 3)):
         dist = make_univariate_mixture(
             batch_shape=batch_shape, num_components=num_components,
@@ -337,7 +337,7 @@ class MixtureTest(test.TestCase):
     num_components = 2
 
     # This is the same shape test which is done in 'testMeanMultivariate'.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for batch_shape in ((), (2,), (2, 3)):
         dist = make_multivariate_mixture(
             batch_shape=batch_shape,
@@ -392,12 +392,12 @@ class MixtureTest(test.TestCase):
         ],
         use_static_graph=self.use_static_graph)
     mix_dev = mixture_dist.stddev()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual_stddev = sess.run(mix_dev)
     self.assertAllClose(actual_stddev, ground_truth_stddev)
 
   def testProbScalarUnivariate(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dist = make_univariate_mixture(batch_shape=[], num_components=2,
                                      use_static_graph=self.use_static_graph)
       for x in [
@@ -423,7 +423,7 @@ class MixtureTest(test.TestCase):
         self.assertAllClose(total_prob, p_x_value)
 
   def testProbScalarMultivariate(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dist = make_multivariate_mixture(
           batch_shape=[], num_components=2, event_shape=[3],
           use_static_graph=self.use_static_graph)
@@ -452,7 +452,7 @@ class MixtureTest(test.TestCase):
         self.assertAllClose(total_prob, p_x_value)
 
   def testProbBatchUnivariate(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dist = make_univariate_mixture(batch_shape=[2, 3], num_components=2,
                                      use_static_graph=self.use_static_graph)
 
@@ -479,7 +479,7 @@ class MixtureTest(test.TestCase):
         self.assertAllClose(total_prob, p_x_value)
 
   def testProbBatchMultivariate(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dist = make_multivariate_mixture(
           batch_shape=[2, 3], num_components=2, event_shape=[4],
           use_static_graph=self.use_static_graph)
@@ -506,7 +506,7 @@ class MixtureTest(test.TestCase):
         self.assertAllClose(total_prob, p_x_value)
 
   def testSampleScalarBatchUnivariate(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       num_components = 3
       batch_shape = []
       dist = make_univariate_mixture(
@@ -539,7 +539,7 @@ class MixtureTest(test.TestCase):
     mus = [-5.0, 0.0, 5.0, 4.0, 20.0]
     sigmas = [0.1, 5.0, 3.0, 0.2, 4.0]
 
-    with self.test_session():
+    with self.cached_session():
       n = 100
 
       random_seed.set_random_seed(654321)
@@ -567,7 +567,7 @@ class MixtureTest(test.TestCase):
       self.assertAllClose(samples1, samples2)
 
   def testSampleScalarBatchMultivariate(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       num_components = 3
       dist = make_multivariate_mixture(
           batch_shape=[], num_components=num_components, event_shape=[2],
@@ -592,7 +592,7 @@ class MixtureTest(test.TestCase):
         self.assertAllClose(which_dist_samples, sample_values[which_c, :])
 
   def testSampleBatchUnivariate(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       num_components = 3
       dist = make_univariate_mixture(
           batch_shape=[2, 3], num_components=num_components,
@@ -620,7 +620,7 @@ class MixtureTest(test.TestCase):
                             sample_values[which_c_s, which_c_b0, which_c_b1])
 
   def _testSampleBatchMultivariate(self, fully_known_batch_shape):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       num_components = 3
       if fully_known_batch_shape:
         batch_shape = [2, 3]
@@ -672,7 +672,7 @@ class MixtureTest(test.TestCase):
     self._testSampleBatchMultivariate(fully_known_batch_shape=False)
 
   def testEntropyLowerBoundMultivariate(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for batch_shape in ((), (2,), (2, 3)):
         dist = make_multivariate_mixture(
             batch_shape=batch_shape, num_components=2, event_shape=(4,),
@@ -732,7 +732,7 @@ class MixtureTest(test.TestCase):
     x_cdf_tf = mixture_tf.cdf(x_tensor)
     x_log_cdf_tf = mixture_tf.log_cdf(x_tensor)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for x_feed in xs_to_check:
         x_cdf_tf_result, x_log_cdf_tf_result = sess.run(
             [x_cdf_tf, x_log_cdf_tf], feed_dict={x_tensor: x_feed})
@@ -778,7 +778,7 @@ class MixtureTest(test.TestCase):
     x_cdf_tf = mixture_tf.cdf(x_tensor)
     x_log_cdf_tf = mixture_tf.log_cdf(x_tensor)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for x_feed in xs_to_check:
         x_cdf_tf_result, x_log_cdf_tf_result = sess.run(
             [x_cdf_tf, x_log_cdf_tf],
@@ -802,7 +802,7 @@ class MixtureTest(test.TestCase):
     Mixture's use of dynamic partition requires `random_gamma` correctly returns
     an empty `Tensor`.
     """
-    with self.test_session():
+    with self.cached_session():
       gm = ds.Mixture(
           cat=ds.Categorical(probs=[.3, .7]),
           components=[ds.Gamma(1., 2.),

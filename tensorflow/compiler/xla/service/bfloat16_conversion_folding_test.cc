@@ -38,7 +38,7 @@ class TestBFloat16Support : public BFloat16Support {
         hlo.opcode() == HloOpcode::kSubtract ||
         hlo.opcode() == HloOpcode::kTuple ||
         hlo.opcode() == HloOpcode::kGetTupleElement ||
-        hlo.opcode() == HloOpcode::kCrossReplicaSum) {
+        hlo.opcode() == HloOpcode::kAllReduce) {
       return true;
     }
     return false;
@@ -49,7 +49,7 @@ class TestBFloat16Support : public BFloat16Support {
         hlo.opcode() == HloOpcode::kSubtract ||
         hlo.opcode() == HloOpcode::kTuple ||
         hlo.opcode() == HloOpcode::kGetTupleElement ||
-        hlo.opcode() == HloOpcode::kCrossReplicaSum) {
+        hlo.opcode() == HloOpcode::kAllReduce) {
       return true;
     }
     return false;
@@ -58,7 +58,7 @@ class TestBFloat16Support : public BFloat16Support {
   bool SupportsMixedPrecisions(const HloInstruction& hlo) const override {
     if (hlo.opcode() == HloOpcode::kAdd || hlo.opcode() == HloOpcode::kTuple ||
         hlo.opcode() == HloOpcode::kGetTupleElement ||
-        hlo.opcode() == HloOpcode::kCrossReplicaSum) {
+        hlo.opcode() == HloOpcode::kAllReduce) {
       return true;
     }
     return false;
@@ -67,6 +67,10 @@ class TestBFloat16Support : public BFloat16Support {
 
 class BFloat16ConversionFoldingTest : public HloTestBase {
  protected:
+  BFloat16ConversionFoldingTest()
+      : HloTestBase(/*verifier_layout_sensitive=*/false,
+                    /*allow_mixed_precision_in_hlo_verifier=*/true) {}
+
   bool FoldConversions(HloModule* module) {
     TestBFloat16Support bfloat16_support_;
     BFloat16ConversionFolding fold(&bfloat16_support_);
@@ -99,7 +103,7 @@ TEST_F(BFloat16ConversionFoldingTest, FoldIfSupported) {
       HloInstruction::CreateBinary(f32_shape, HloOpcode::kAdd, convert1, c));
   builder.AddInstruction(HloInstruction::CreateConvert(bf16_shape, add1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_TRUE(FoldConversions(module.get()));
@@ -134,7 +138,7 @@ TEST_F(BFloat16ConversionFoldingTest, DoNotFoldIfUnsupported) {
   HloInstruction* convert2 =
       builder.AddInstruction(HloInstruction::CreateConvert(bf16_shape, mul1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_FALSE(FoldConversions(module.get()));
@@ -169,7 +173,7 @@ TEST_F(BFloat16ConversionFoldingTest, DoNotFoldUnsupportedMixedPrecision) {
   HloInstruction* convert2 =
       builder.AddInstruction(HloInstruction::CreateConvert(bf16_shape, sub1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_FALSE(FoldConversions(module.get()));
@@ -199,7 +203,7 @@ TEST_F(BFloat16ConversionFoldingTest, DoNotFoldTuple) {
   HloInstruction* convert1 =
       builder.AddInstruction(HloInstruction::CreateConvert(bf16_shape, gte));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_FALSE(FoldConversions(module.get()));
@@ -209,10 +213,10 @@ TEST_F(BFloat16ConversionFoldingTest, DoNotFoldTuple) {
   EXPECT_EQ(tuple->operand(1), convert0);
 }
 
-TEST_F(BFloat16ConversionFoldingTest, FoldCrossReplicaSumTupleOutput) {
+TEST_F(BFloat16ConversionFoldingTest, FoldAllReduceTupleOutput) {
   auto builder = HloComputation::Builder(TestName());
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation::Builder sum_builder("add");
   auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {}), "x"));
@@ -232,11 +236,10 @@ TEST_F(BFloat16ConversionFoldingTest, FoldCrossReplicaSumTupleOutput) {
   HloInstruction* b = builder.AddInstruction(
       HloInstruction::CreateParameter(1, f32_shape, "b"));
 
-  HloInstruction* crs =
-      builder.AddInstruction(HloInstruction::CreateCrossReplicaSum(
-          ShapeUtil::MakeTupleShape({f32_shape, f32_shape}), {convert_a, b},
-          sum, /*replica_group_ids=*/{}, /*barrier=*/"",
-          /*all_reduce_id=*/tensorflow::gtl::nullopt));
+  HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
+      ShapeUtil::MakeTupleShape({f32_shape, f32_shape}), {convert_a, b}, sum,
+      /*replica_groups=*/{}, /*barrier=*/"",
+      /*all_reduce_id=*/absl::nullopt));
   HloInstruction* gte_a = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(f32_shape, crs, 0));
   HloInstruction* gte_b = builder.AddInstruction(

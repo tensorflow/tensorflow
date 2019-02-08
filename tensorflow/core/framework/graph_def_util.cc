@@ -103,7 +103,7 @@ static Status RemoveNewDefaultAttrsFromNodeDef(
         return errors::InvalidArgument(
             "Attr '", attr.first,
             "' missing in producer's OpDef: ", SummarizeOpDef(*producer_op_def),
-            " but found in node: ", SummarizeNodeDef(*node_def));
+            " but found in node: ", FormatNodeDefForError(*node_def));
       }
       // ...and it has the same value as the default in producer,
       if (producer_attr_def->has_default_value() &&

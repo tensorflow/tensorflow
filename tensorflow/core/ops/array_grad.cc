@@ -354,6 +354,27 @@ Status TransposeGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Transpose", TransposeGrad);
 
+Status GatherNdGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FDH::Define(
+      // Arg defs
+      {"params: Tparams", "indices: Tindices", "doutput: Tparams"},
+      // Ret val defs
+      {"dparams: Tparams", "dindices: Tindices"},
+      // Attr defs
+      {"Tparams: type", "Tindices: type"},
+      // Nodes
+      {
+        {{"x_shape"}, "Shape", {"params"}, {{"T", "$Tparams"}}},
+        {{"dparams"}, "ScatterNd", {"indices", "doutput", "x_shape"},
+         {{"T", "$Tparams"}, {"Tindices", "$Tindices"}}},
+        {{"dindices"}, "ZerosLike", {"indices"}, {{"T", "$Tindices"}}},
+      });
+  // clang-format on
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("GatherNd", GatherNdGrad);
+
 Status ConjugateTransposeGrad(const AttrSlice& attrs, FunctionDef* g) {
   *g = FDH::Define(
       // Arg defs

@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.platform import test
@@ -30,17 +31,17 @@ from tensorflow.python.platform import test
 class ReshapeTest(test.TestCase):
 
   def _testReshape(self, x, y, use_gpu=False):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       np_ans = x.reshape(y)
       tf_ans = array_ops.reshape(x, y)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
       self.assertEqual(tf_ans.get_shape(), out.shape)
       self.assertShapeEqual(np_ans, tf_ans)
 
       # Repeat with an int64 shape tensor.
       y64 = constant_op.constant(y, dtype=dtypes.int64)
       tf_ans = array_ops.reshape(x, y64)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
       self.assertEqual(tf_ans.get_shape(), out.shape)
       self.assertShapeEqual(np_ans, tf_ans)
 
@@ -91,10 +92,11 @@ class ReshapeTest(test.TestCase):
   # TODO(vrv): Add tests for failure conditions once python test_util
   # reports errors.
 
+  @test_util.run_deprecated_v1
   def testFloatReshapeGradThreeDimensions(self):
     x = np.arange(1., 25.).reshape([2, 3, 4]).astype(np.float32)
     s = list(np.shape(x))
-    with self.test_session():
+    with self.cached_session():
       input_tensor = constant_op.constant(x)
       reshape_out = array_ops.reshape(input_tensor, [1, 8, 3])
       err = gradient_checker.compute_gradient_error(
@@ -111,6 +113,7 @@ class ReshapeTest(test.TestCase):
     self._testBothReshape(x, [0, 0, 0])
     self._testBothReshape(x, [1, -1, 5])
 
+  @test_util.run_deprecated_v1
   def testErrors(self):
     y = constant_op.constant(0.0, shape=[23, 29, 31])
     with self.assertRaisesRegexp(ValueError, "must be evenly divisible by 17"):
@@ -121,6 +124,7 @@ class ReshapeTest(test.TestCase):
                                  "Cannot reshape a tensor with 4096 elements"):
       array_ops.reshape(z, [4095])
 
+  @test_util.run_deprecated_v1
   def testPartialShapes(self):
     x = array_ops.placeholder(dtypes.float32)
 

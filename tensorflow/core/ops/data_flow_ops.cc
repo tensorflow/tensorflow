@@ -419,6 +419,7 @@ REGISTER_OP("ConditionalAccumulator")
     .Attr("shape: shape")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
+    .Attr("reduction_type: { 'MEAN', 'SUM' } = 'MEAN' ")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(2));
@@ -456,6 +457,7 @@ REGISTER_OP("SparseConditionalAccumulator")
     .Attr("shape: shape")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
+    .Attr("reduction_type: { 'MEAN', 'SUM' } = 'MEAN' ")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(2));

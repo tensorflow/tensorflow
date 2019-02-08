@@ -30,7 +30,8 @@ TEST(ComputeEngineMetadataClientTest, GetMetadata) {
 
   std::shared_ptr<HttpRequest::Factory> http_factory =
       std::make_shared<FakeHttpRequestFactory>(&requests);
-  ComputeEngineMetadataClient client(http_factory, 0);
+  ComputeEngineMetadataClient client(http_factory,
+                                     RetryConfig(0 /* init_delay_time_us */));
 
   std::vector<char> result;
   TF_EXPECT_OK(
@@ -56,7 +57,8 @@ TEST(ComputeEngineMetadataClientTest, RetryOnFailure) {
 
   std::shared_ptr<HttpRequest::Factory> http_factory =
       std::make_shared<FakeHttpRequestFactory>(&requests);
-  ComputeEngineMetadataClient client(http_factory, 0);
+  ComputeEngineMetadataClient client(http_factory,
+                                     RetryConfig(0 /* init_delay_time_us */));
 
   std::vector<char> result;
   TF_EXPECT_OK(

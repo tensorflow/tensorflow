@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_WORK_SHARDER_H_
-#define TENSORFLOW_UTIL_WORK_SHARDER_H_
+#ifndef TENSORFLOW_CORE_UTIL_WORK_SHARDER_H_
+#define TENSORFLOW_CORE_UTIL_WORK_SHARDER_H_
 
 #include <functional>
 
@@ -23,6 +23,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+// DEPRECATED: Prefer threadpool->TransformRangeConcurrently, which allows you
+// to directly specify the shard size. Use this function only if you want to
+// manually cap parallelism.
 // Shards the "total" unit of work assuming each unit of work having
 // roughly "cost_per_unit". Each unit of work is indexed 0, 1, ...,
 // total - 1. Each shard contains 1 or more units of work and the
@@ -95,4 +98,4 @@ class Sharder {
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_WORK_SHARDER_H_
+#endif  // TENSORFLOW_CORE_UTIL_WORK_SHARDER_H_

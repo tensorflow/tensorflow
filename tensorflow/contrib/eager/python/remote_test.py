@@ -23,15 +23,18 @@ import os
 
 import numpy as np
 
+from tensorflow.contrib.eager.python import parameter_server
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.eager import remote
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -44,8 +47,9 @@ def run_sync_and_async(f):
 
   @functools.wraps(f)
   def decorator(self, *args, **kwargs):
-    with context.execution_mode(context.ASYNC):
-      f(self, *args, **kwargs)
+    # TODO(b/117110239): Re-enable.
+    # with context.execution_mode(context.ASYNC):
+    #   f(self, *args, **kwargs)
 
     with context.execution_mode(context.SYNC):
       f(self, *args, **kwargs)
@@ -85,6 +89,7 @@ class RemoteExecutionTest(test.TestCase):
     self._cached_server1_target = self._cached_server1.target[len("grpc://"):]
     self._cached_server2_target = self._cached_server2.target[len("grpc://"):]
 
+  def setUp(self):
     # Start the local server.
     context.set_server_def(
         server_def=get_server_def(
@@ -117,6 +122,24 @@ class RemoteExecutionTest(test.TestCase):
       x2 = array_ops.ones([2, 2])
       y = math_ops.matmul(x1, x2)
     np.testing.assert_array_equal([[2, 2], [2, 2]], y.numpy())
+
+  def testParameterServer(self):
+    with parameter_server.parameter_server_scope(
+        is_chief=True, ps_job_name=JOB_NAME, num_ps_tasks=3):
+      v0 = variables.Variable([1.0], name="v0")
+      v1 = variables.Variable([2.0], name="v1")
+    v0.assign(v0 * v1)
+    self.assertAllEqual(v0.read_value(), [2.0])
+    self.assertAllEqual(v0.device,
+                        "/job:%s/replica:0/task:0/device:CPU:0" % JOB_NAME)
+    self.assertAllEqual(v1.device,
+                        "/job:%s/replica:0/task:1/device:CPU:0" % JOB_NAME)
+    v1.assign_add(v1)
+    # Simulate aliasing another variable of the same name as v1
+    with ops.device("/job:%s/replica:0/task:1/device:CPU:0" % JOB_NAME):
+      v1_replica = parameter_server.SharedVariable(
+          [1.0], name="v1", initialize=False)
+    self.assertAllEqual(v1_replica.read_value(), [4.0])
 
   @run_sync_and_async
   def testSimpleWeightRead(self):
@@ -171,6 +194,44 @@ class RemoteExecutionTest(test.TestCase):
       x1 = array_ops.ones([2, 2])
     y = math_ops.matmul(x1, x1)
     np.testing.assert_array_equal([[2, 2], [2, 2]], y.numpy())
+
+  @run_sync_and_async
+  def testConnectToRemoteServer(self):
+    """Basic server connection."""
+    remote.connect_to_remote_host(self._cached_server1_target)
+
+    with ops.device("job:worker/replica:0/task:1/device:CPU:0"):
+      x1 = array_ops.ones([2, 2])
+      x2 = array_ops.ones([2, 2])
+      y = math_ops.matmul(x1, x2)
+    np.testing.assert_array_equal([[2, 2], [2, 2]], y.numpy())
+
+  @run_sync_and_async
+  def testContextDeviceUpdated(self):
+    """Tests that the context device is correctly updated."""
+
+    with ops.device("cpu:0"):
+      x1 = array_ops.ones([2, 2])
+      x2 = array_ops.ones([2, 2])
+      y = math_ops.matmul(x1, x2)
+    np.testing.assert_array_equal([[2, 2], [2, 2]], y.numpy())
+
+    # `y` is placed on the local CPU as expected.
+    self.assertEqual(y.device,
+                     "/job:%s/replica:0/task:0/device:CPU:0" % JOB_NAME)
+
+  @run_sync_and_async
+  def testGPUToRemoteCopy(self):
+    """Tests that the remote copy happens satisfactorily."""
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs.")
+
+    x1 = array_ops.ones([2, 2]).gpu()
+
+    with ops.device("/job:remote_device/replica:0/task:1/device:CPU:0"):
+      x2 = x1._copy()  # pylint: disable=protected-access
+
+    np.testing.assert_array_equal(x1.numpy(), x2.numpy())
 
 
 if __name__ == "__main__":

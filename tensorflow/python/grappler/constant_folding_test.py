@@ -61,7 +61,7 @@ class ConstantFoldingTest(test.TestCase):
           back_prop=False,
           parallel_iterations=1)
       with session.Session() as sess:
-        y_v = sess.run(y)
+        y_v = self.evaluate(y)
         self.assertAllEqual(np.zeros([10, 20, 30]), y_v)
 
 

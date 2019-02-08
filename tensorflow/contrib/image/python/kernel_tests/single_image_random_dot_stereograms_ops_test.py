@@ -47,7 +47,7 @@ class SingleImageRandomDotStereogramsTest(test_util.TensorFlowTestCase):
         normalize=True)
     shape_1 = sirds_1.get_shape().as_list()
     self.assertEqual(shape_1, [768, 1024, 1])
-    with self.test_session():
+    with self.cached_session():
       r_tf_1 = sirds_1.eval()
       self.assertAllEqual(shape_1, r_tf_1.shape)
 
@@ -59,7 +59,7 @@ class SingleImageRandomDotStereogramsTest(test_util.TensorFlowTestCase):
         normalize=True)
     shape_2 = sirds_2.get_shape().as_list()
     self.assertEqual(shape_2, [768, 1024, 3])
-    with self.test_session():
+    with self.cached_session():
       r_tf_2 = sirds_2.eval()
       self.assertAllEqual(shape_2, r_tf_2.shape)
 
@@ -73,7 +73,7 @@ class SingleImageRandomDotStereogramsTest(test_util.TensorFlowTestCase):
         output_image_shape=[1200, 800, 1])
     shape_3 = sirds_3.get_shape().as_list()
     self.assertEqual(shape_3, [800, 1200, 1])
-    with self.test_session():
+    with self.cached_session():
       r_tf_3 = sirds_3.eval()
       self.assertAllEqual(shape_3, r_tf_3.shape)
 

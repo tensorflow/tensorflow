@@ -40,7 +40,7 @@ class ArgMinMaxTest(xla_test.XLATestCase):
       op_input: numpy input array to use as input to 'op'.
       expected: numpy array representing the expected output of 'op'.
     """
-    with self.test_session() as session:
+    with self.cached_session() as session:
       with self.test_scope():
         pinp = array_ops.placeholder(
             dtypes.as_dtype(op_input.dtype), op_input.shape, name="a")
@@ -50,12 +50,12 @@ class ArgMinMaxTest(xla_test.XLATestCase):
 
   def testArgMinMax(self):
     # Complex numbers do not support argmin/argmax.
-    minmax_types = set(self.numeric_types) - set(self.complex_types)
+    minmax_types = self.all_types & {np.int32, np.int64}
     for dtype in minmax_types:
       # output_type is a numpy data type that is used to specify the desired
       # output type of the op as well as to convert the Python number to the
       # array scalar of the type.
-      for output_type in self.int_types:
+      for output_type in minmax_types:
         self._assertOpOutputMatchesExpected(
             math_ops.argmax,
             axis=0,

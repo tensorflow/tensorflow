@@ -32,6 +32,10 @@ class WorkerCacheWrapper : public WorkerCacheInterface {
   virtual void ListWorkers(std::vector<string>* workers) const {
     return wrapped_->ListWorkers(workers);
   }
+  virtual void ListWorkersInJob(const string& job_name,
+                                std::vector<string>* workers) const {
+    return wrapped_->ListWorkersInJob(job_name, workers);
+  }
 
   // If "target" names a remote task for which an RPC channel exists
   // or can be constructed, returns a pointer to a WorkerInterface object

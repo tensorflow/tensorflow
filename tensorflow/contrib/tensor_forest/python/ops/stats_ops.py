@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from tensorflow.contrib.tensor_forest.python.ops import gen_stats_ops
 # pylint: disable=unused-import
 from tensorflow.contrib.tensor_forest.python.ops.gen_stats_ops import finalize_tree
@@ -25,10 +27,12 @@ from tensorflow.contrib.tensor_forest.python.ops.gen_stats_ops import process_in
 # pylint: enable=unused-import
 
 from tensorflow.contrib.util import loader
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resources
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver
+from tensorflow.python.training.checkpointable import tracking
 
 
 _stats_ops = loader.load_op_library(
@@ -84,8 +88,58 @@ class FertileStatsVariableSavable(saver.BaseSaverBuilder.SaveableObject):
           params=self.params.serialized_params_proto)
 
 
-def fertile_stats_variable(params, stats_config, name,
-                           container=None):
+class FertileStatsVariable(tracking.TrackableResource):
+  """A Fertile stats variable."""
+
+  def __init__(self, params, stats_config, name, container=None):
+    self._params = params
+    self._stats_config = stats_config
+    self._name = name
+    self._container = container
+    self._init_op = None
+    super(FertileStatsVariable, self).__init__()
+    self._resource_handle = self.create_resource()
+
+  def create_resource(self):
+    if context.executing_eagerly():
+      # TODO(allenl): This will leak memory due to kernel caching by the
+      # shared_name attribute value (but is better than the alternative of
+      # sharing everything by default when executing eagerly; hopefully creating
+      # tables in a loop is uncommon).
+      shared_name = "fertile_stats_variable_%d" % (ops.uid(),)
+    else:
+      shared_name = self._name
+    return gen_stats_ops.fertile_stats_resource_handle_op(
+        self._container, shared_name=shared_name, name=self._name)
+
+  def initialize(self):
+    return gen_stats_ops.create_fertile_stats_variable(
+        self.resource_handle,
+        self._stats_config,
+        params=self._params.serialized_params_proto)
+
+  @property
+  def initializer(self):
+    if self._init_op is None:
+      self._init_op = self.initialize()
+    return self._init_op
+
+  def is_initialized(self):
+    return gen_stats_ops.fertile_stats_is_initialized_op(self.resource_handle)
+
+  def _gather_saveables_for_checkpoint(self):
+    """For object-based checkpointing."""
+    return {
+        "fertile_stats_variable":
+            functools.partial(
+                FertileStatsVariableSavable,
+                params=self._params,
+                stats_handle=self.resource_handle,
+                create_op=self.initializer)
+    }
+
+
+def fertile_stats_variable(params, stats_config, name, container=None):
   r"""Creates a stats object and returns a handle to it.
 
   Args:
@@ -98,17 +152,15 @@ def fertile_stats_variable(params, stats_config, name,
     A `Tensor` of type mutable `string`. The handle to the stats.
   """
   with ops.name_scope(name, "FertileStatsVariable") as name:
-    resource_handle = gen_stats_ops.fertile_stats_resource_handle_op(
-        container, shared_name=name, name=name)
-
-    create_op = gen_stats_ops.create_fertile_stats_variable(
-        resource_handle, stats_config,
-        params=params.serialized_params_proto)
-    is_initialized_op = gen_stats_ops.fertile_stats_is_initialized_op(
-        resource_handle)
+    fertile_stats_var = FertileStatsVariable(params, stats_config, name,
+                                             container)
+    resource_handle = fertile_stats_var.resource_handle
+    create_op = fertile_stats_var.initializer
+    is_initialized_op = fertile_stats_var.is_initialized()
     # Adds the variable to the savable list.
-    saveable = FertileStatsVariableSavable(params, resource_handle, create_op,
-                                           resource_handle.name)
+    saveable = (
+        fertile_stats_var._gather_saveables_for_checkpoint()[  # pylint: disable=protected-access
+            "fertile_stats_variable"](name=resource_handle.name))
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
     resources.register_resource(resource_handle, create_op, is_initialized_op)
     return resource_handle

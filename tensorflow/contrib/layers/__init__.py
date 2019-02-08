@@ -14,8 +14,6 @@
 # ==============================================================================
 """Ops for building neural network layers, regularizers, summaries, etc.
 
-See the @{$python/contrib.layers} guide.
-
 @@avg_pool2d
 @@avg_pool3d
 @@batch_norm

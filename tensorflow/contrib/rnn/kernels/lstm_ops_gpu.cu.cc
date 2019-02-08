@@ -31,6 +31,49 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace {
 
+struct FloatToHalf {
+  __host__ __device__ EIGEN_STRONG_INLINE Eigen::half operator()(
+      const float& x) const {
+    return Eigen::half_impl::float_to_half_rtne(x);
+  }
+};
+
+template <typename U, typename T>
+__host__ __device__ EIGEN_STRONG_INLINE
+    typename std::enable_if<!std::is_same<T, U>::value, U>::type
+    strict_cast(T t);
+
+template <typename U, typename T>
+__host__ __device__ EIGEN_STRONG_INLINE
+    typename std::enable_if<std::is_same<T, U>::value, U>::type
+    strict_cast(T t) {
+  return t;
+}
+
+template <>
+__host__ __device__ EIGEN_STRONG_INLINE Eigen::half
+strict_cast<Eigen::half, float>(float t) {
+  return FloatToHalf()(t);
+}
+
+}  // namespace
+
+template <typename T>
+struct TensorZero<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat t) {
+    t.device(d) = t.constant(strict_cast<T>(0.f));
+  }
+};
+
+template <typename T>
+struct TensorUnalignedZero<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::UnalignedFlat t) {
+    t.device(d) = t.constant(strict_cast<T>(0.f));
+  }
+};
+
+namespace {
+
 // Adds bias, applies non-linearities and gates.
 //
 // Launch with a 2D setup such that there is one thread per (example,
@@ -42,11 +85,14 @@ namespace {
 template <typename T, bool use_peephole>
 __global__ void lstm_gates(const T* icfo, const T* b, const T* cs_prev,
                            const T* wci, const T* wcf, const T* wco, T* o, T* h,
-                           T* ci, T* cs, T* co, T* i, T* f, const T forget_bias,
-                           const T cell_clip, const int batch_size,
-                           const int cell_size) {
+                           T* ci, T* cs, T* co, T* i, T* f,
+                           const float forget_bias, const float cell_clip,
+                           const int batch_size, const int cell_size) {
   const int batch_id = blockIdx.x * blockDim.x + threadIdx.x;
   const int act_id = blockIdx.y * blockDim.y + threadIdx.y;
+
+  T forget_bias_t = strict_cast<T>(forget_bias);
+  T cell_clip_t = strict_cast<T>(cell_clip);
 
   if (batch_id >= batch_size || act_id >= cell_size) return;
 
@@ -95,7 +141,7 @@ __global__ void lstm_gates(const T* icfo, const T* b, const T* cs_prev,
   //
   const int gid = batch_id * cell_size * 4 + act_id;
   const int cid = batch_id * cell_size + act_id;
-  Eigen::internal::scalar_sigmoid_op<T> sigmoid_op;
+  Eigen::internal::scalar_logistic_op<T> sigmoid_op;
   Eigen::internal::scalar_tanh_op<T> tanh_op;
   Eigen::scalar_clip_op<T> clip_op;
 
@@ -115,16 +161,16 @@ __global__ void lstm_gates(const T* icfo, const T* b, const T* cs_prev,
   T f_local;
   if (use_peephole) {
     f_local = sigmoid_op(icfo[2 * cell_size + gid] + b[2 * cell_size + act_id] +
-                         forget_bias + cs_prev[cid] * wcf[act_id]);
+                         forget_bias_t + cs_prev[cid] * wcf[act_id]);
   } else {
     f_local = sigmoid_op(icfo[2 * cell_size + gid] + b[2 * cell_size + act_id] +
-                         forget_bias);
+                         forget_bias_t);
   }
   f[cid] = f_local;
 
   T cs_local = i_local * ci_local + f_local * cs_prev[cid];
-  if (cell_clip > 0.0) {
-    cs_local = clip_op(cs_local, cell_clip);
+  if (cell_clip > 0.0f) {
+    cs_local = clip_op(cs_local, cell_clip_t);
   }
   cs[cid] = cs_local;
 
@@ -174,8 +220,8 @@ __global__ void concat_xh(T* xh, const T* x, const T* h_prev,
 
 template <typename T>
 void LSTMBlockCellFpropWithCUDA(
-    OpKernelContext* ctx, const GPUDevice& d, const T forget_bias,
-    const T cell_clip, bool use_peephole, typename TTypes<T>::ConstMatrix x,
+    OpKernelContext* ctx, const GPUDevice& d, const float forget_bias,
+    const float cell_clip, bool use_peephole, typename TTypes<T>::ConstMatrix x,
     typename TTypes<T>::ConstMatrix cs_prev,
     typename TTypes<T>::ConstMatrix h_prev, typename TTypes<T>::ConstMatrix w,
     typename TTypes<T>::ConstVec wci, typename TTypes<T>::ConstVec wcf,
@@ -202,7 +248,8 @@ void LSTMBlockCellFpropWithCUDA(
   // states1 = xh * w
   typename TTypes<T>::ConstMatrix const_xh(xh.data(), xh.dimensions());
   TensorBlasGemm<GPUDevice, T, true /* USE_CUBLAS */>::compute(
-      ctx, d, false, false, T(1), const_xh, w, T(0), icfo);
+      ctx, d, false, false, typename gemm_compute_type<T>::type(1.f), const_xh,
+      w, typename gemm_compute_type<T>::type(0.f), icfo);
 
   // Add bias, apply non-linearities and gating.
   //
@@ -357,8 +404,9 @@ void LSTMBlockCellBpropWithCUDA(
   template struct TensorAdd<GPUDevice, T>;                                     \
   template <>                                                                  \
   void LSTMBlockCellFprop<GPUDevice, T, true /* USE_CUBLAS */>::operator()(    \
-      OpKernelContext* ctx, const GPUDevice& d, const T forget_bias,           \
-      const T cell_clip, bool use_peephole, typename TTypes<T>::ConstMatrix x, \
+      OpKernelContext* ctx, const GPUDevice& d, const float forget_bias,       \
+      const float cell_clip, bool use_peephole,                                \
+      typename TTypes<T>::ConstMatrix x,                                       \
       typename TTypes<T>::ConstMatrix cs_prev,                                 \
       typename TTypes<T>::ConstMatrix h_prev,                                  \
       typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec wci,     \
@@ -368,10 +416,10 @@ void LSTMBlockCellBpropWithCUDA(
       typename TTypes<T>::Matrix f, typename TTypes<T>::Matrix o,              \
       typename TTypes<T>::Matrix ci, typename TTypes<T>::Matrix co,            \
       typename TTypes<T>::Matrix icfo, typename TTypes<T>::Matrix h) {         \
-    LSTMBlockCellFpropWithCUDA(ctx, d, forget_bias, cell_clip, use_peephole,   \
-                               x, cs_prev, h_prev, w, wci, wcf, wco, b, xh, i, \
-                               cs, f, o, ci, co, icfo, h, batch_size_,         \
-                               cell_size_, input_size_);                       \
+    LSTMBlockCellFpropWithCUDA<T>(ctx, d, forget_bias, cell_clip,              \
+                                  use_peephole, x, cs_prev, h_prev, w, wci,    \
+                                  wcf, wco, b, xh, i, cs, f, o, ci, co, icfo,  \
+                                  h, batch_size_, cell_size_, input_size_);    \
   }                                                                            \
   template <>                                                                  \
   void LSTMBlockCellBprop<GPUDevice, T, true /* USE_CUBLAS */>::operator()(    \
@@ -403,6 +451,7 @@ void LSTMBlockCellBpropWithCUDA(
   template struct BlockLSTMBprop<GPUDevice, T, true /* USE_CUBLAS */>;
 
 DEFINE_GPU_SPECS(float);
+DEFINE_GPU_SPECS(Eigen::half);
 // DEFINE_GPU_SPECS(double);
 #undef DEFINE_GPU_SPECS
 

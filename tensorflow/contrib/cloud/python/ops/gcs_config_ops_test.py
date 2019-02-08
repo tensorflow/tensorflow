@@ -26,7 +26,7 @@ class GcsConfigOpsTest(test.TestCase):
 
   def testSetBlockCache(self):
     cfg = gcs_config_ops.BlockCacheParams(max_bytes=1024*1024*1024)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       gcs_config_ops.configure_gcs(sess, block_cache=cfg)
 
   def testConfigureGcsHook(self):
@@ -36,7 +36,7 @@ class GcsConfigOpsTest(test.TestCase):
              'type': 'authorized_user'}
     hook = gcs_config_ops.ConfigureGcsHook(credentials=creds)
     hook.begin()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run = lambda _, feed_dict=None, options=None, run_metadata=None: None
       hook.after_create_session(sess, None)
 

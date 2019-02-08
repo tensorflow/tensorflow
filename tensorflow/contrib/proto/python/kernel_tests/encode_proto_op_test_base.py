@@ -15,9 +15,6 @@
 # =============================================================================
 """Table-driven test for encode_proto op.
 
-This test is run once with each of the *.TestCase.pbtxt files
-in the test directory.
-
 It tests that encode_proto is a lossless inverse of decode_proto
 (for the specified fields).
 """
@@ -55,7 +52,7 @@ class EncodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
 
   def testBadInputs(self):
     # Invalid field name
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError('Unknown field: non_existent_field'):
         self._encode_module.encode_proto(
             sizes=[[1]],
@@ -64,7 +61,7 @@ class EncodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
             field_names=['non_existent_field']).eval()
 
     # Incorrect types.
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError(
           'Incompatible type for field double_value.'):
         self._encode_module.encode_proto(
@@ -74,7 +71,7 @@ class EncodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
             field_names=['double_value']).eval()
 
     # Incorrect shapes of sizes.
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError(
           r'sizes should be batch_size \+ \[len\(field_names\)\]'):
         sizes = array_ops.placeholder(dtypes.int32)
@@ -89,7 +86,7 @@ class EncodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
             })
 
     # Inconsistent shapes of values.
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError(
           'Values must match up to the last dimension'):
         sizes = array_ops.placeholder(dtypes.int32)
@@ -109,7 +106,7 @@ class EncodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
     field_names = [f.name for f in fields]
     out_types = [f.dtype for f in fields]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sizes, field_tensors = self._decode_module.decode_proto(
           in_bufs,
           message_type=message_type,
@@ -145,7 +142,8 @@ class EncodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
         # loss of packing in the encoding).
         self.assertEqual(in_buf, out_buf)
 
-  @parameterized.named_parameters(*test_base.ProtoOpTestBase.named_parameters())
+  @parameterized.named_parameters(
+      *test_base.ProtoOpTestBase.named_parameters(extension=False))
   def testRoundtrip(self, case):
     in_bufs = [value.SerializeToString() for value in case.values]
 
@@ -154,7 +152,8 @@ class EncodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
     return self._testRoundtrip(
         in_bufs, 'tensorflow.contrib.proto.TestValue', case.fields)
 
-  @parameterized.named_parameters(*test_base.ProtoOpTestBase.named_parameters())
+  @parameterized.named_parameters(
+      *test_base.ProtoOpTestBase.named_parameters(extension=False))
   def testRoundtripPacked(self, case):
     # Now try with the packed serialization.
     # We test the packed representations by loading the same test cases using

@@ -15,7 +15,7 @@
 """Command-line interface to inspect and execute a graph in a SavedModel.
 
 For detailed usages and examples, please refer to:
-https://www.tensorflow.org/guide/saved_model_cli
+https://www.tensorflow.org/guide/saved_model#cli_to_inspect_and_execute_savedmodel
 
 """
 
@@ -30,23 +30,21 @@ import sys
 import warnings
 
 import numpy as np
-
 from six import integer_types
-from tensorflow.contrib.saved_model.python.saved_model import reader
-from tensorflow.contrib.saved_model.python.saved_model import signature_def_utils
+
 from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.framework import meta_graph as meta_graph_lib
 from tensorflow.python.framework import ops as ops_lib
-from tensorflow.python.platform import app  # pylint: disable=unused-import
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.platform import app  # pylint: disable=unused-import
 from tensorflow.python.saved_model import loader
 from tensorflow.python.tools import saved_model_utils
 
 # Set of ops to blacklist.
-_OP_BLACKLIST = set(['WriteFile', 'ReadFile'])
+_OP_BLACKLIST = set(['WriteFile', 'ReadFile', 'PrintV2'])
 
 
 def _show_tag_sets(saved_model_dir):
@@ -57,7 +55,7 @@ def _show_tag_sets(saved_model_dir):
   Args:
     saved_model_dir: Directory containing the SavedModel to inspect.
   """
-  tag_sets = reader.get_saved_model_tag_sets(saved_model_dir)
+  tag_sets = saved_model_utils.get_saved_model_tag_sets(saved_model_dir)
   print('The given SavedModel contains the following tag-sets:')
   for tag_set in sorted(tag_sets):
     print(', '.join(sorted(tag_set)))
@@ -97,8 +95,7 @@ def _get_inputs_tensor_info_from_meta_graph_def(meta_graph_def,
   Returns:
     A dictionary that maps input tensor keys to TensorInfos.
   """
-  return signature_def_utils.get_signature_def_by_key(meta_graph_def,
-                                                      signature_def_key).inputs
+  return meta_graph_def.signature_def[signature_def_key].inputs
 
 
 def _get_outputs_tensor_info_from_meta_graph_def(meta_graph_def,
@@ -116,8 +113,7 @@ def _get_outputs_tensor_info_from_meta_graph_def(meta_graph_def,
   Returns:
     A dictionary that maps output tensor keys to TensorInfos.
   """
-  return signature_def_utils.get_signature_def_by_key(meta_graph_def,
-                                                      signature_def_key).outputs
+  return meta_graph_def.signature_def[signature_def_key].outputs
 
 
 def _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, indent=0):
@@ -140,7 +136,7 @@ def _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, indent=0):
   outputs_tensor_info = _get_outputs_tensor_info_from_meta_graph_def(
       meta_graph_def, signature_def_key)
 
-  indent_str = "  " * indent
+  indent_str = '  ' * indent
   def in_print(s):
     print(indent_str + s)
 
@@ -166,7 +162,7 @@ def _print_tensor_info(tensor_info, indent=0):
     tensor_info: TensorInfo object to be printed.
     indent: How far (in increments of 2 spaces) to indent each line output
   """
-  indent_str = "  " * indent
+  indent_str = '  ' * indent
   def in_print(s):
     print(indent_str + s)
 
@@ -193,7 +189,7 @@ def _show_all(saved_model_dir):
   Args:
     saved_model_dir: Directory containing the SavedModel to inspect.
   """
-  tag_sets = reader.get_saved_model_tag_sets(saved_model_dir)
+  tag_sets = saved_model_utils.get_saved_model_tag_sets(saved_model_dir)
   for tag_set in sorted(tag_sets):
     print("\nMetaGraphDef with tag-set: '%s' "
           "contains the following SignatureDefs:" % ', '.join(tag_set))
@@ -270,7 +266,8 @@ def scan_meta_graph_def(meta_graph_def):
 
 def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
                                    input_tensor_key_feed_dict, outdir,
-                                   overwrite_flag, tf_debug=False):
+                                   overwrite_flag, worker=None, init_tpu=False,
+                                   tf_debug=False):
   """Runs SavedModel and fetch all outputs.
 
   Runs the input dictionary through the MetaGraphDef within a SavedModel
@@ -288,6 +285,10 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
         it will be created.
     overwrite_flag: A boolean flag to allow overwrite output file if file with
         the same name exists.
+    worker: If provided, the session will be run on the worker.  Valid worker
+        specification is a bns or gRPC path.
+    init_tpu: If true, the TPU system will be initialized after the session
+        is created.
     tf_debug: A boolean flag to use TensorFlow Debugger (TFDBG) to observe the
         intermediate Tensor values and runtime GraphDefs while running the
         SavedModel.
@@ -308,7 +309,7 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
 
   # Check if input tensor keys are valid.
   for input_key_name in input_tensor_key_feed_dict.keys():
-    if input_key_name not in inputs_tensor_info.keys():
+    if input_key_name not in inputs_tensor_info:
       raise ValueError(
           '"%s" is not a valid input key. Please choose from %s, or use '
           '--show option.' %
@@ -328,7 +329,13 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
       for tensor_key in output_tensor_keys_sorted
   ]
 
-  with session.Session(graph=ops_lib.Graph()) as sess:
+  with session.Session(worker, graph=ops_lib.Graph()) as sess:
+    if init_tpu:
+      print('Initializing TPU System ...')
+      # This is needed for freshly started worker, or if the job
+      # restarts after a preemption.
+      sess.run(tf.contrib.tpu.initialize_system())
+
     loader.load(sess, tag_set.split(','), saved_model_dir)
 
     if tf_debug:
@@ -544,7 +551,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   input_examples = preprocess_input_examples_arg_string(input_examples_str)
 
   for input_tensor_key, (filename, variable_name) in inputs.items():
-    data = np.load(file_io.FileIO(filename, mode='r'))
+    data = np.load(file_io.FileIO(filename, mode='rb'))
 
     # When a variable_name key is specified for the input file
     if variable_name:
@@ -632,7 +639,8 @@ def run(args):
       args.inputs, args.input_exprs, args.input_examples)
   run_saved_model_with_feed_dict(args.dir, args.tag_set, args.signature_def,
                                  tensor_key_feed_dict, args.outdir,
-                                 args.overwrite, tf_debug=args.tf_debug)
+                                 args.overwrite, worker=args.worker,
+                                 init_tpu=args.init_tpu, tf_debug=args.tf_debug)
 
 
 def scan(args):
@@ -645,9 +653,31 @@ def scan(args):
     scan_meta_graph_def(
         saved_model_utils.get_meta_graph_def(args.dir, args.tag_set))
   else:
-    saved_model = reader.read_saved_model(args.dir)
+    saved_model = saved_model_utils.read_saved_model(args.dir)
     for meta_graph_def in saved_model.meta_graphs:
       scan_meta_graph_def(meta_graph_def)
+
+
+def convert_with_tensorrt(args):
+  """Function triggered by 'convert tensorrt' command.
+
+  Args:
+    args: A namespace parsed from command line.
+  """
+  # Import here instead of at top, because this will crash if TensorRT is
+  # not installed
+  from tensorflow.contrib import tensorrt  # pylint: disable=g-import-not-at-top
+  tensorrt.create_inference_graph(
+      None,
+      None,
+      max_batch_size=args.max_batch_size,
+      max_workspace_size_bytes=args.max_workspace_size_bytes,
+      precision_mode=args.precision_mode,
+      minimum_segment_size=args.minimum_segment_size,
+      is_dynamic_op=args.is_dynamic_op,
+      input_saved_model_dir=args.dir,
+      input_saved_model_tags=args.tag_set.split(','),
+      output_saved_model_dir=args.output_dir)
 
 
 def create_parser():
@@ -769,6 +799,18 @@ def create_parser():
       help='if set, will use TensorFlow Debugger (tfdbg) to watch the '
            'intermediate Tensors and runtime GraphDefs while running the '
            'SavedModel.')
+  parser_run.add_argument(
+      '--worker',
+      type=str,
+      default=None,
+      help='if specified, a Session will be run on the worker. '
+           'Valid worker specification is a bns or gRPC path.')
+  parser_run.add_argument(
+      '--init_tpu',
+      action='store_true',
+      default=None,
+      help='if specified, tpu.initialize_system will be called on the Session. '
+           'This option should be only used if the worker is a TPU job.')
   parser_run.set_defaults(func=run)
 
   # scan command
@@ -790,6 +832,71 @@ def create_parser():
       type=str,
       help='tag-set of graph in SavedModel to scan, separated by \',\'')
   parser_scan.set_defaults(func=scan)
+
+  # convert command
+  convert_msg = ('Usage example:\n'
+                 'To convert the SavedModel to one that have TensorRT ops:\n'
+                 '$saved_model_cli convert \\\n'
+                 '   --dir /tmp/saved_model \\\n'
+                 '   --tag_set serve \\\n'
+                 '   --output_dir /tmp/saved_model_trt \\\n'
+                 '   tensorrt \n')
+  parser_convert = subparsers.add_parser(
+      'convert',
+      description=convert_msg,
+      formatter_class=argparse.RawTextHelpFormatter)
+  parser_convert.add_argument(
+      '--dir',
+      type=str,
+      required=True,
+      help='directory containing the SavedModel to convert')
+  parser_convert.add_argument(
+      '--output_dir',
+      type=str,
+      required=True,
+      help='output directory for the converted SavedModel')
+  parser_convert.add_argument(
+      '--tag_set',
+      type=str,
+      required=True,
+      help='tag-set of graph in SavedModel to convert, separated by \',\'')
+  convert_subparsers = parser_convert.add_subparsers(
+      title='conversion methods',
+      description='valid conversion methods',
+      help='the conversion to run with the SavedModel')
+  parser_convert_with_tensorrt = convert_subparsers.add_parser(
+      'tensorrt',
+      description='Convert the SavedModel with Tensorflow-TensorRT integration',
+      formatter_class=argparse.RawTextHelpFormatter)
+  parser_convert_with_tensorrt.add_argument(
+      '--max_batch_size',
+      type=int,
+      default=1,
+      help='max size for the input batch')
+  parser_convert_with_tensorrt.add_argument(
+      '--max_workspace_size_bytes',
+      type=int,
+      default=2 << 20,
+      help=('the maximum GPU temporary memory which the TRT engine can use at '
+            'execution time'))
+  parser_convert_with_tensorrt.add_argument(
+      '--precision_mode',
+      type=str,
+      default='FP32',
+      help='one of FP32, FP16 and INT8')
+  parser_convert_with_tensorrt.add_argument(
+      '--minimum_segment_size',
+      type=int,
+      default=3,
+      help=('the minimum number of nodes required for a subgraph to be replaced'
+            'in a TensorRT node'))
+  parser_convert_with_tensorrt.add_argument(
+      '--is_dynamic_op',
+      type=bool,
+      default=False,
+      help=('whether to generate dynamic TRT ops which will build the TRT '
+            'network and engine at run time'))
+  parser_convert_with_tensorrt.set_defaults(func=convert_with_tensorrt)
 
   return parser
 

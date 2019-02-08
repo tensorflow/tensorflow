@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_JAVA_UTILS_JNI_H_
-#define TENSORFLOW_JAVA_UTILS_JNI_H_
+#ifndef TENSORFLOW_JAVA_SRC_MAIN_NATIVE_UTILS_JNI_H_
+#define TENSORFLOW_JAVA_SRC_MAIN_NATIVE_UTILS_JNI_H_
 
 #include <jni.h>
 
@@ -30,4 +30,4 @@ void resolveOutputs(JNIEnv* env, const char* type, jlongArray src_op,
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
-#endif /* TENSORFLOW_JAVA_UTILS_JNI_H_ */
+#endif  // TENSORFLOW_JAVA_SRC_MAIN_NATIVE_UTILS_JNI_H_

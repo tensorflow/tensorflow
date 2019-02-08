@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os.path
 import time
+import warnings
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import summary_pb2
@@ -278,7 +279,7 @@ class SummaryToEventTransformer(object):
     self.event_writer.add_event(event)
 
 
-@tf_export("summary.FileWriter")
+@tf_export(v1=["summary.FileWriter"])
 class FileWriter(SummaryToEventTransformer):
   """Writes `Summary` protocol buffers to event files.
 
@@ -364,6 +365,8 @@ class FileWriter(SummaryToEventTransformer):
     else:
       event_writer = EventFileWriter(logdir, max_queue, flush_secs,
                                      filename_suffix)
+
+    self._closed = False
     super(FileWriter, self).__init__(event_writer, graph, graph_def)
 
   def __enter__(self):
@@ -378,12 +381,23 @@ class FileWriter(SummaryToEventTransformer):
     """Returns the directory where event file will be written."""
     return self.event_writer.get_logdir()
 
+  def _warn_if_event_writer_is_closed(self):
+    if self._closed:
+      warnings.warn("Attempting to use a closed FileWriter. "
+                    "The operation will be a noop unless the FileWriter "
+                    "is explicitly reopened.")
+
+  def _add_event(self, event, step):
+    self._warn_if_event_writer_is_closed()
+    super(FileWriter, self)._add_event(event, step)
+
   def add_event(self, event):
     """Adds an event to the event file.
 
     Args:
       event: An `Event` protocol buffer.
     """
+    self._warn_if_event_writer_is_closed()
     self.event_writer.add_event(event)
 
   def flush(self):
@@ -392,6 +406,9 @@ class FileWriter(SummaryToEventTransformer):
     Call this method to make sure that all pending events have been written to
     disk.
     """
+    # Flushing a closed EventFileWriterV2 raises an exception. It is,
+    # however, a noop for EventFileWriter.
+    self._warn_if_event_writer_is_closed()
     self.event_writer.flush()
 
   def close(self):
@@ -400,6 +417,7 @@ class FileWriter(SummaryToEventTransformer):
     Call this method when you do not need the summary writer anymore.
     """
     self.event_writer.close()
+    self._closed = True
 
   def reopen(self):
     """Reopens the EventFileWriter.
@@ -410,3 +428,4 @@ class FileWriter(SummaryToEventTransformer):
     Does nothing if the EventFileWriter was not closed.
     """
     self.event_writer.reopen()
+    self._closed = False

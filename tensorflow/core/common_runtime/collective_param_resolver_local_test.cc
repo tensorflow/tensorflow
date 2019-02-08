@@ -37,43 +37,122 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
     string task_name = "/job:localhost/replica:0/task:0";
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", NUM_DEVS});
-    TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices_));
-    device_mgr_.reset(new DeviceMgr(devices_));
+    std::vector<std::unique_ptr<Device>> devices;
+    TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices));
+    device_mgr_.reset(new DeviceMgr(std::move(devices)));
     drl_.reset(new DeviceResolverLocal(device_mgr_.get()));
-    prl_.reset(new CollectiveParamResolverLocal(device_mgr_.get(), drl_.get(),
-                                                task_name));
+    prl_.reset(new CollectiveParamResolverLocal(cp, device_mgr_.get(),
+                                                drl_.get(), task_name));
   }
 
-  void GenSubdivPerms(const string& device, int source_rank,
-                      CollectiveParams* cp) {
-    CollectiveParamResolverLocal::GenerateSubdivPerms(device, source_rank, cp);
+  void RunCompleteDefaultRanking(
+      const CollectiveParams& shared_cp,
+      const std::vector<DeviceLocality>& localities,
+      const std::vector<int32>& gpu_ring_order,
+      const std::vector<string>& expected_device_order) {
+    CollectiveParams cp;
+    cp.instance.device_names = shared_cp.instance.device_names;
+    CollectiveParamResolverLocal::InstanceRec ir;
+    {
+      mutex_lock l(ir.out_mu);
+      ir.shared.name = shared_cp.name;
+      ir.shared.group = shared_cp.group;
+      ir.shared.instance = shared_cp.instance;
+      if (!gpu_ring_order.empty()) {
+        ir.shared.instance.gpu_ring_order = "";
+        for (int i = 0; i < static_cast<int32>(gpu_ring_order.size() - 1);
+             ++i) {
+          ir.shared.instance.gpu_ring_order = strings::StrCat(
+              ir.shared.instance.gpu_ring_order, gpu_ring_order[i], ",");
+        }
+        ir.shared.instance.gpu_ring_order = strings::StrCat(
+            ir.shared.instance.gpu_ring_order, gpu_ring_order.back());
+      }
+      VLOG(2) << "gpu_ring_order " << ir.shared.instance.gpu_ring_order;
+      prl_->CompleteDefaultRanking(nullptr, &cp, &ir, localities);
+      EXPECT_EQ(ir.shared.instance.device_names, expected_device_order);
+    }
   }
 
-  // Calls GenerateBcastSubdivPerms for device at `device_rank`.  Checks if the
-  // generated subdiv perms, ranks, and source ranks match the expected values.
-  void BcastSubdivPerms(
-      CollectiveParams* cp, const std::vector<int>& dev_per_task,
-      int device_rank, int source_rank,
-      const std::vector<std::vector<int>>& expected_subdiv_perms,
-      const std::vector<int>& expected_subdiv_rank,
-      const std::vector<int>& expected_subdiv_source_rank) {
-    cp->subdiv_rank.clear();
-    cp->instance.impl_details.subdiv_permutations.clear();
-    cp->instance.impl_details.subdiv_source_rank.clear();
-    CollectiveParamResolverLocal::GenerateBcastSubdivPerms(
-        cp->instance.device_names[device_rank], source_rank, dev_per_task, cp);
-    EXPECT_EQ(expected_subdiv_perms,
-              cp->instance.impl_details.subdiv_permutations);
-    EXPECT_EQ(expected_subdiv_rank, cp->subdiv_rank);
-    EXPECT_EQ(expected_subdiv_source_rank,
-              cp->instance.impl_details.subdiv_source_rank);
-  }
-
-  std::vector<Device*> devices_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<DeviceResolverLocal> drl_;
   std::unique_ptr<CollectiveParamResolverLocal> prl_;
 };
+
+TEST_F(CollectiveParamResolverLocalTest, CompleteDefaultRanking) {
+  constexpr int kNumGpus = 8;
+  CollectiveParams cp;
+  std::vector<DeviceLocality> localities(kNumGpus);
+  cp.name = "PRLTest";
+  cp.group.device_type = DeviceType("GPU");
+  cp.group.num_tasks = 1;
+  cp.group.group_size = kNumGpus;
+  cp.instance.instance_key = 5;
+  cp.instance.type = REDUCTION_COLLECTIVE;
+  cp.instance.data_type = DataType(DT_FLOAT);
+  std::unordered_set<int> clique1 = {0, 1, 6, 7};
+  for (int gpu_idx = 0; gpu_idx < kNumGpus; ++gpu_idx) {
+    cp.instance.task_names.push_back("/job:localhost/replica:0/task:0");
+    cp.instance.device_names.push_back(strings::StrCat(
+        "/job:localhost/replica:0/task:0/device:GPU:", gpu_idx));
+    DeviceLocality* locality = &localities[gpu_idx];
+    // Build localities so that 0,1,6,7 and 2,3,4,5 form 2 strongly connected
+    // components.  Across components, connect 3 and 7.
+    for (int link_idx = 0; link_idx < kNumGpus; ++link_idx) {
+      if (gpu_idx == link_idx) continue;
+      bool gpu_in_clique1 = clique1.find(gpu_idx) != clique1.end();
+      bool link_in_clique1 = clique1.find(link_idx) != clique1.end();
+      if ((gpu_in_clique1 && link_in_clique1) ||
+          (!gpu_in_clique1 && !link_in_clique1)) {
+        LocalLinks* links = locality->mutable_links();
+        InterconnectLink* ilink = links->add_link();
+        ilink->set_device_id(link_idx);
+        ilink->set_strength(2);
+      } else if ((gpu_idx == 3 && link_idx == 7) ||
+                 (gpu_idx == 7 && link_idx == 3)) {
+        LocalLinks* links = locality->mutable_links();
+        InterconnectLink* ilink = links->add_link();
+        ilink->set_device_id(link_idx);
+        ilink->set_strength(1);
+      }
+    }
+  }
+  RunCompleteDefaultRanking(cp, localities, {1, 3, 5, 7, 6, 4, 2, 0},
+                            {
+                                "/job:localhost/replica:0/task:0/device:GPU:1",
+                                "/job:localhost/replica:0/task:0/device:GPU:3",
+                                "/job:localhost/replica:0/task:0/device:GPU:5",
+                                "/job:localhost/replica:0/task:0/device:GPU:7",
+                                "/job:localhost/replica:0/task:0/device:GPU:6",
+                                "/job:localhost/replica:0/task:0/device:GPU:4",
+                                "/job:localhost/replica:0/task:0/device:GPU:2",
+                                "/job:localhost/replica:0/task:0/device:GPU:0",
+                            });
+  RunCompleteDefaultRanking(cp, localities, {7, 6, 5, 4, 3, 2, 1, 0},
+                            {
+                                "/job:localhost/replica:0/task:0/device:GPU:7",
+                                "/job:localhost/replica:0/task:0/device:GPU:6",
+                                "/job:localhost/replica:0/task:0/device:GPU:5",
+                                "/job:localhost/replica:0/task:0/device:GPU:4",
+                                "/job:localhost/replica:0/task:0/device:GPU:3",
+                                "/job:localhost/replica:0/task:0/device:GPU:2",
+                                "/job:localhost/replica:0/task:0/device:GPU:1",
+                                "/job:localhost/replica:0/task:0/device:GPU:0",
+                            });
+  // With no gpu_ring_order passed, automatic link detection should kick in.
+  // Starting at dev 0, the best order would be: 0,1,6,7,3,2,4,5
+  RunCompleteDefaultRanking(cp, localities, {},
+                            {
+                                "/job:localhost/replica:0/task:0/device:GPU:0",
+                                "/job:localhost/replica:0/task:0/device:GPU:1",
+                                "/job:localhost/replica:0/task:0/device:GPU:6",
+                                "/job:localhost/replica:0/task:0/device:GPU:7",
+                                "/job:localhost/replica:0/task:0/device:GPU:3",
+                                "/job:localhost/replica:0/task:0/device:GPU:2",
+                                "/job:localhost/replica:0/task:0/device:GPU:4",
+                                "/job:localhost/replica:0/task:0/device:GPU:5",
+                            });
+}
 
 TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
   CollectiveParams cps[NUM_DEVS];
@@ -96,7 +175,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
     Env::Default()->SchedClosure([this, i, cp, &note, &statuses]() {
       prl_->CompleteParamsAsync(cp->instance.device_names[0], cp,
                                 nullptr /*CancellationManager*/,
-                                [this, &statuses, &note, i](const Status& s) {
+                                [&statuses, &note, i](const Status& s) {
                                   statuses[i] = s;
                                   note[i].Notify();
                                 });
@@ -114,7 +193,6 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
           cps[i].instance.device_names[j]);
       EXPECT_TRUE(cps[i].task.is_local[j]);
     }
-    EXPECT_EQ(cps[i].subdiv_rank[0], i);
     EXPECT_EQ(cps[i].instance.impl_details.subdiv_source_rank.size(), 0);
     EXPECT_FALSE(cps[i].is_source);
     EXPECT_EQ(cps[i].default_rank, i);
@@ -122,28 +200,35 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
   }
 }
 
+void InitializeCollectiveParamsForBroadcast(int instance_key, int device_idx,
+                                            bool is_source,
+                                            CollectiveParams* cp) {
+  cp->group.group_key = 1;
+  cp->group.group_size = 3;
+  cp->group.device_type = DeviceType("CPU");
+  cp->group.num_tasks = 1;
+  cp->instance.instance_key = instance_key;
+  cp->instance.type = BROADCAST_COLLECTIVE;
+  cp->instance.data_type = DataType(DT_FLOAT);
+  cp->instance.shape = TensorShape({5});
+  cp->instance.device_names.push_back(strings::StrCat(
+      "/job:localhost/replica:0/task:0/device:CPU:", device_idx));
+  cp->instance.impl_details.subdiv_offsets.push_back(0);
+  cp->is_source = is_source;
+}
+
 TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
+  constexpr int kInstanceKey = 5;
   CollectiveParams cps[NUM_DEVS];
   Status statuses[NUM_DEVS];
   Notification note[NUM_DEVS];
   for (int i = 0; i < NUM_DEVS; ++i) {
     CollectiveParams* cp = &cps[i];
-    cp->group.group_key = 1;
-    cp->group.group_size = 3;
-    cp->group.device_type = DeviceType("CPU");
-    cp->group.num_tasks = 1;
-    cp->instance.instance_key = 3;
-    cp->instance.type = BROADCAST_COLLECTIVE;
-    cp->instance.data_type = DataType(DT_FLOAT);
-    cp->instance.shape = TensorShape({5});
-    cp->instance.device_names.push_back(
-        strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i));
-    cp->instance.impl_details.subdiv_offsets.push_back(0);
-    cp->is_source = (i == 1);
+    InitializeCollectiveParamsForBroadcast(kInstanceKey, i, i == 1, cp);
     Env::Default()->SchedClosure([this, i, cp, &note, &statuses]() {
       prl_->CompleteParamsAsync(cp->instance.device_names[0], cp,
                                 nullptr /*CancellationManager*/,
-                                [this, &statuses, &note, i](const Status& s) {
+                                [&statuses, &note, i](const Status& s) {
                                   statuses[i] = s;
                                   note[i].Notify();
                                 });
@@ -161,188 +246,44 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
           cps[i].instance.device_names[j]);
       EXPECT_TRUE(cps[i].task.is_local[j]);
     }
-    ASSERT_GT(cps[i].subdiv_rank.size(), 0);
-    EXPECT_EQ(cps[i].subdiv_rank[0], i);
-    ASSERT_GT(cps[i].instance.impl_details.subdiv_source_rank.size(), 0);
-    EXPECT_EQ(cps[i].instance.impl_details.subdiv_source_rank[0], 1);
     EXPECT_EQ(cps[i].is_source, (i == 1));
     EXPECT_EQ(cps[i].default_rank, i);
     EXPECT_TRUE(cps[i].instance.same_num_devices_per_task);
   }
 }
 
-TEST_F(CollectiveParamResolverLocalTest, GenerateSubdivPerms) {
-  static const int kNumDevsPerTask = 8;
-  static const int kNumTasks = 3;
-  static const int kNumDevs = kNumDevsPerTask * kNumTasks;
-  CollectiveParams cp;
-  std::vector<string> device_names;
-  std::vector<string> task_names;
-  cp.group.group_key = 1;
-  cp.group.group_size = kNumDevs;
-  cp.group.device_type = DeviceType("GPU");
-  cp.group.num_tasks = kNumTasks;
-  cp.instance.instance_key = 3;
-  cp.instance.type = REDUCTION_COLLECTIVE;
-  cp.instance.data_type = DataType(DT_FLOAT);
-  cp.instance.shape = TensorShape({5});
-  cp.instance.impl_details.subdiv_offsets.push_back(0);
-  cp.is_source = false;
-  for (int i = 0; i < kNumDevs; ++i) {
-    int task_id = i / kNumDevsPerTask;
-    int dev_id = i % kNumDevsPerTask;
-    string task_name = strings::StrCat("/job:worker/replica:0/task:", task_id);
-    task_names.push_back(task_name);
-    string device_name = strings::StrCat(task_name, "/device:GPU:", dev_id);
-    device_names.push_back(device_name);
-    cp.instance.task_names.push_back(task_name);
-    cp.instance.device_names.push_back(device_name);
+// If we don't mark any participant in a broadcast as the source, we essentially
+// create a collective group with only broadcast recvs.  In that case, we should
+// get an internal error from param resolution.
+TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcastForgotSender) {
+  constexpr int kInstanceKey = 8;
+  CollectiveParams cps[NUM_DEVS];
+  Status statuses[NUM_DEVS];
+  Notification note[NUM_DEVS];
+  for (int i = 0; i < NUM_DEVS; ++i) {
+    CollectiveParams* cp = &cps[i];
+    InitializeCollectiveParamsForBroadcast(kInstanceKey, i, false, cp);
+    Env::Default()->SchedClosure([this, i, cp, &note, &statuses]() {
+      prl_->CompleteParamsAsync(cp->instance.device_names[0], cp,
+                                nullptr /*CancellationManager*/,
+                                [&statuses, &note, i](const Status& s) {
+                                  statuses[i] = s;
+                                  note[i].Notify();
+                                });
+    });
   }
-
-  int test_rank = 0;
-  cp.default_rank = test_rank;
-  cp.instance.impl_details.subdiv_offsets = {0, 4};
-  GenSubdivPerms(cp.instance.device_names[test_rank], 0, &cp);
-  std::vector<int> expected_0 = {0,  1,  2,  3,  4,  5,  6,  7,
-                                 8,  9,  10, 11, 12, 13, 14, 15,
-                                 16, 17, 18, 19, 20, 21, 22, 23};
-  std::vector<int> expected_1 = {4, 5, 6,  7,  0,  1,  2,  3,  12, 13, 14, 15,
-                                 8, 9, 10, 11, 20, 21, 22, 23, 16, 17, 18, 19};
-  for (int i = 0; i < kNumDevs; ++i) {
-    EXPECT_EQ(expected_0[i],
-              cp.instance.impl_details.subdiv_permutations[0][i]);
-    EXPECT_EQ(expected_1[i],
-              cp.instance.impl_details.subdiv_permutations[1][i]);
+  for (int i = 0; i < NUM_DEVS; ++i) {
+    note[i].WaitForNotification();
   }
-  EXPECT_EQ(0, cp.subdiv_rank[0]);
-  EXPECT_EQ(4, cp.subdiv_rank[1]);
-
-  test_rank = 3;
-  cp.default_rank = test_rank;
-  cp.instance.impl_details.subdiv_offsets = {3, -3};
-  cp.instance.impl_details.subdiv_permutations.clear();
-  GenSubdivPerms(cp.instance.device_names[test_rank], 0, &cp);
-  expected_0 = {3,  4, 5, 6,  7,  0,  1,  2,  11, 12, 13, 14,
-                15, 8, 9, 10, 19, 20, 21, 22, 23, 16, 17, 18};
-  expected_1 = {4, 3,  2,  1,  0,  7,  6,  5,  12, 11, 10, 9,
-                8, 15, 14, 13, 20, 19, 18, 17, 16, 23, 22, 21};
-  for (int i = 0; i < kNumDevs; ++i) {
-    EXPECT_EQ(expected_0[i],
-              cp.instance.impl_details.subdiv_permutations[0][i]);
-    EXPECT_EQ(expected_1[i],
-              cp.instance.impl_details.subdiv_permutations[1][i]);
+  for (int i = 0; i < NUM_DEVS; ++i) {
+    EXPECT_EQ(statuses[i].code(), error::INTERNAL);
+    EXPECT_EQ(statuses[i].error_message(),
+              strings::StrCat(
+                  "Instance ", kInstanceKey,
+                  " found no source for broadcast.  This could mean that there"
+                  " were group_size=",
+                  NUM_DEVS, " BcastRecvs but no BcastSend."));
   }
-  EXPECT_EQ(0, cp.subdiv_rank[0]);
-  EXPECT_EQ(1, cp.subdiv_rank[1]);
-}
-
-TEST_F(CollectiveParamResolverLocalTest, GenerateBcastSubdivPerms1Task8GPU) {
-  CollectiveParams cp;
-  cp.group.device_type = DeviceType("GPU");
-  cp.group.num_tasks = 1;
-  cp.instance.type = BROADCAST_COLLECTIVE;
-  for (int i = 0; i < 8; i++) {
-    string dev_name =
-        strings::StrCat("/job:worker/replica:0/task:0/device:GPU:", i);
-    cp.instance.device_names.push_back(dev_name);
-  }
-  std::vector<int> dev_per_task = {8};
-
-  // source 0 device 0
-  BcastSubdivPerms(&cp, dev_per_task, 0, 0, {{0, 1, 2, 3, 4, 5, 6, 7}}, {0},
-                   {0});
-
-  // source 2 device 2
-  BcastSubdivPerms(&cp, dev_per_task, 2, 2, {{0, 1, 2, 3, 4, 5, 6, 7}}, {2},
-                   {2});
-
-  // source 2 device 0
-  BcastSubdivPerms(&cp, dev_per_task, 0, 2, {{0, 1, 2, 3, 4, 5, 6, 7}}, {0},
-                   {2});
-}
-
-TEST_F(CollectiveParamResolverLocalTest, GenerateBcastSubdivPerms4Tasks8GPU) {
-  CollectiveParams cp;
-  cp.group.device_type = DeviceType("GPU");
-  cp.group.num_tasks = 4;
-  cp.instance.type = BROADCAST_COLLECTIVE;
-  for (int ti = 0; ti < cp.group.num_tasks; ti++) {
-    for (int di = 0; di < 8; di++) {
-      string dev_name = strings::StrCat("/job:worker/replica:0/task:", ti,
-                                        "/device:GPU:", di);
-      cp.instance.device_names.push_back(dev_name);
-    }
-  }
-  std::vector<int> dev_per_task = {8, 8, 8, 8};
-
-  // source 0 device 0
-  BcastSubdivPerms(&cp, dev_per_task, 0, 0,
-                   {{0, 8, 16, 24},
-                    {0, 1, 2, 3, 4, 5, 6, 7},
-                    {8, 9, 10, 11, 12, 13, 14, 15},
-                    {16, 17, 18, 19, 20, 21, 22, 23},
-                    {24, 25, 26, 27, 28, 29, 30, 31}},
-                   {0, 0, -1, -1, -1}, {0, 0, 0, 0, 0});
-
-  // source 2 device 0
-  BcastSubdivPerms(&cp, dev_per_task, 0, 2,
-                   {{2, 8, 16, 24},
-                    {0, 1, 2, 3, 4, 5, 6, 7},
-                    {8, 9, 10, 11, 12, 13, 14, 15},
-                    {16, 17, 18, 19, 20, 21, 22, 23},
-                    {24, 25, 26, 27, 28, 29, 30, 31}},
-                   {-1, 0, -1, -1, -1}, {0, 2, 0, 0, 0});
-
-  // source 9 device 9
-  BcastSubdivPerms(&cp, dev_per_task, 9, 9,
-                   {{0, 9, 16, 24},
-                    {0, 1, 2, 3, 4, 5, 6, 7},
-                    {8, 9, 10, 11, 12, 13, 14, 15},
-                    {16, 17, 18, 19, 20, 21, 22, 23},
-                    {24, 25, 26, 27, 28, 29, 30, 31}},
-                   {1, -1, 1, -1, -1}, {1, 0, 1, 0, 0});
-}
-
-TEST_F(CollectiveParamResolverLocalTest,
-       GenerateBcastSubdivPerms4TasksVariableGPU) {
-  CollectiveParams cp;
-  cp.group.device_type = DeviceType("GPU");
-  cp.group.num_tasks = 4;
-  std::vector<int> dev_per_task = {4, 4, 6, 8};
-  for (int ti = 0; ti < cp.group.num_tasks; ti++) {
-    for (int di = 0; di < dev_per_task[ti]; di++) {
-      string dev_name = strings::StrCat("/job:worker/replica:0/task:", ti,
-                                        "/device:GPU:", di);
-      cp.instance.device_names.push_back(dev_name);
-    }
-  }
-
-  // source 0 device 0
-  BcastSubdivPerms(&cp, dev_per_task, 0, 0,
-                   {{0, 4, 8, 14},
-                    {0, 1, 2, 3},
-                    {4, 5, 6, 7},
-                    {8, 9, 10, 11, 12, 13},
-                    {14, 15, 16, 17, 18, 19, 20, 21}},
-                   {0, 0, -1, -1, -1}, {0, 0, 0, 0, 0});
-
-  // source 2 device 0
-  BcastSubdivPerms(&cp, dev_per_task, 0, 2,
-                   {{2, 4, 8, 14},
-                    {0, 1, 2, 3},
-                    {4, 5, 6, 7},
-                    {8, 9, 10, 11, 12, 13},
-                    {14, 15, 16, 17, 18, 19, 20, 21}},
-                   {-1, 0, -1, -1, -1}, {0, 2, 0, 0, 0});
-
-  // source 9 device 5
-  BcastSubdivPerms(&cp, dev_per_task, 5, 9,
-                   {{0, 4, 9, 14},
-                    {0, 1, 2, 3},
-                    {4, 5, 6, 7},
-                    {8, 9, 10, 11, 12, 13},
-                    {14, 15, 16, 17, 18, 19, 20, 21}},
-                   {-1, -1, 1, -1, -1}, {2, 0, 0, 1, 0});
 }
 
 }  // namespace tensorflow

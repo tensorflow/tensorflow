@@ -145,7 +145,7 @@ class DocControlsTest(googletest.TestCase):
     self.assertTrue(
         doc_controls.should_skip_class_attr(GrandChild, 'my_method'))
 
-  def testfor_subclass_implementers(self):
+  def test_for_subclass_implementers(self):
 
     class GrandParent(object):
 
@@ -174,6 +174,43 @@ class DocControlsTest(googletest.TestCase):
     self.assertFalse(doc_controls.should_skip_class_attr(Parent, 'my_method'))
     self.assertTrue(doc_controls.should_skip_class_attr(Child, 'my_method'))
     self.assertTrue(
+        doc_controls.should_skip_class_attr(GrandChild, 'my_method'))
+    self.assertTrue(
+        doc_controls.should_skip_class_attr(Grand2Child, 'my_method'))
+
+  def test_for_subclass_implementers_short_circuit(self):
+
+    class GrandParent(object):
+
+      @doc_controls.for_subclass_implementers
+      def my_method(self):
+        pass
+
+    class Parent(GrandParent):
+
+      def my_method(self):
+        pass
+
+    class Child(Parent):
+
+      @doc_controls.do_not_doc_inheritable
+      def my_method(self):
+        pass
+
+    class GrandChild(Child):
+
+      @doc_controls.for_subclass_implementers
+      def my_method(self):
+        pass
+
+    class Grand2Child(Child):
+      pass
+
+    self.assertFalse(
+        doc_controls.should_skip_class_attr(GrandParent, 'my_method'))
+    self.assertTrue(doc_controls.should_skip_class_attr(Parent, 'my_method'))
+    self.assertTrue(doc_controls.should_skip_class_attr(Child, 'my_method'))
+    self.assertFalse(
         doc_controls.should_skip_class_attr(GrandChild, 'my_method'))
     self.assertTrue(
         doc_controls.should_skip_class_attr(Grand2Child, 'my_method'))

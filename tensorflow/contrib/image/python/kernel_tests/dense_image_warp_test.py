@@ -24,7 +24,7 @@ from tensorflow.contrib.image.python.ops import dense_image_warp
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
@@ -50,7 +50,7 @@ class DenseImageWarpTest(test_util.TensorFlowTestCase):
 
     interp = dense_image_warp._interpolate_bilinear(grid, query_points)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predicted = sess.run(interp)
       self.assertAllClose(expected_results, predicted)
 
@@ -64,7 +64,7 @@ class DenseImageWarpTest(test_util.TensorFlowTestCase):
     interp = dense_image_warp._interpolate_bilinear(
         grid, query_points, indexing='xy')
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predicted = sess.run(interp)
       self.assertAllClose(expected_results, predicted)
 
@@ -78,7 +78,7 @@ class DenseImageWarpTest(test_util.TensorFlowTestCase):
 
     interp = dense_image_warp._interpolate_bilinear(grid, query_points)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predicted = sess.run(interp)
       self.assertAllClose(expected_results, predicted)
 
@@ -160,7 +160,7 @@ class DenseImageWarpTest(test_util.TensorFlowTestCase):
                                                         flow_type)
     interp = dense_image_warp.dense_image_warp(image, flows)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       rand_image, rand_flows = self.get_random_image_and_flows(
           shape, image_type, flow_type)
       rand_flows *= 0
@@ -191,7 +191,7 @@ class DenseImageWarpTest(test_util.TensorFlowTestCase):
                                                         flow_type)
     interp = dense_image_warp.dense_image_warp(image, flows)
     low_precision = image_type == 'float16' or flow_type == 'float16'
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       rand_image, rand_flows = self.get_random_image_and_flows(
           shape, image_type, flow_type)
 
@@ -249,7 +249,7 @@ class DenseImageWarpTest(test_util.TensorFlowTestCase):
     opt_func = optimizer.apply_gradients(zip(grad, [flows]))
     init_op = variables.global_variables_initializer()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(10):
         sess.run(opt_func)
@@ -259,7 +259,7 @@ class DenseImageWarpTest(test_util.TensorFlowTestCase):
 
     shape = [1, 2, 1, 1]
     msg = 'Should have raised an exception for invalid image size'
-    with self.assertRaises(ValueError, msg=msg):
+    with self.assertRaises(errors.InvalidArgumentError, msg=msg):
       self.check_interpolation_correctness(shape, 'float32', 'float32')
 
 

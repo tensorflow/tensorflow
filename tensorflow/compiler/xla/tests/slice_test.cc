@@ -18,6 +18,11 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -25,15 +30,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
-
-using ::tensorflow::str_util::Join;
 
 class SliceTest : public ClientLibraryTestBase {};
 
@@ -165,6 +166,26 @@ TEST_F(SliceTest, SliceR4ThreeDimsMiddleMinor) {
   ComputeAndCompareR4(&builder, *expected, {}, ErrorSpec(0.000001));
 }
 
+TEST_F(SliceTest, SliceOfReshape) {
+  Array2D<int> values(2 * 3 * 24, 7);
+  values.FillIota(1);
+  XlaBuilder builder(TestName());
+  auto original = ConstantR2FromArray2D(&builder, values);
+  auto reshape = Reshape(original, {24, 3, 2, 7});
+  Slice(reshape, {0, 0, 0, 0}, {11, 3, 2, 7}, {1, 1, 1, 1});
+  ComputeAndCompare(&builder, {});
+}
+
+TEST_F(SliceTest, SliceOfCollapsingReshape) {
+  Array4D<int> values(2, 3, 5, 7);
+  values.FillIota(1);
+  XlaBuilder builder(TestName());
+  auto original = ConstantR4FromArray4D(&builder, values);
+  auto reshape = Reshape(original, {2 * 3 * 5, 7});
+  Slice(reshape, {0, 0}, {4, 7}, {1, 1});
+  ComputeAndCompare(&builder, {});
+}
+
 XLA_TEST_F(SliceTest, StridedSliceR4WithOutputLayout) {
   Array4D<float> values(2, 4, 6, 8);
   values.FillRandom(3.14f);
@@ -175,8 +196,8 @@ XLA_TEST_F(SliceTest, StridedSliceR4WithOutputLayout) {
   XlaBuilder builder(TestName());
   auto original = ConstantR4FromArray4D(&builder, values);
   Slice(original, {0, 0, 0, 0}, {2, 4, 6, 8}, {1, 1, 2, 1});
-  ComputeAndCompareLiteral(&builder, *expected_literal, {}, ErrorSpec(0.000001),
-                           &expected_literal->shape());
+  ComputeAndCompareLiteral(&builder, expected_literal, {}, ErrorSpec(0.000001),
+                           &expected_literal.shape());
 }
 
 struct R1Spec {
@@ -193,26 +214,26 @@ class SliceR1Test : public ClientLibraryTestBase,
  protected:
   template <typename NativeT>
   void Run(const R1Spec& spec) {
-    // This can't be an std::vector, since you can't grab an ArraySlice of a
+    // This can't be an std::vector, since you can't grab a Span of a
     // vector<bool>.
-    tensorflow::gtl::InlinedVector<NativeT, 1> input(spec.input_dim0);
+    absl::InlinedVector<NativeT, 1> input(spec.input_dim0);
     std::iota(input.begin(), input.end(), NativeT());
     auto literal = LiteralUtil::CreateR1<NativeT>(input);
 
     XlaBuilder builder(TestName());
-    auto original = Parameter(&builder, 0, literal->shape(), "p0");
+    auto original = Parameter(&builder, 0, literal.shape(), "p0");
     Slice(original, {spec.slice_start}, {spec.slice_limit},
           {spec.slice_stride});
 
     // Ditto.
-    tensorflow::gtl::InlinedVector<NativeT, 1> expected;
+    absl::InlinedVector<NativeT, 1> expected;
     for (int i = spec.slice_start; i < spec.slice_limit;
          i += spec.slice_stride) {
       expected.push_back(i);
     }
 
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
-                            client_->TransferToServer(*literal));
+                            client_->TransferToServer(literal));
     ComputeAndCompareR1<NativeT>(&builder, expected, {arg.get()});
   }
 };
@@ -222,9 +243,8 @@ class SliceR1LargeTest : public SliceR1Test {};
 
 string SliceR1TestDataToString(const ::testing::TestParamInfo<R1Spec>& data) {
   const R1Spec& spec = data.param;
-  return ::tensorflow::strings::Printf("%lld_%lld_%lld_%lld", spec.input_dim0,
-                                       spec.slice_start, spec.slice_limit,
-                                       spec.slice_stride);
+  return absl::StrFormat("%d_%d_%d_%d", spec.input_dim0, spec.slice_start,
+                         spec.slice_limit, spec.slice_stride);
 }
 
 XLA_TEST_P(SliceR1Test, DoIt_F32) { Run<float>(GetParam()); }
@@ -252,7 +272,6 @@ XLA_TEST_P(SliceR1LargeTest, DoIt_U64) { Run<uint64>(GetParam()); }
 XLA_TEST_P(SliceR1LargeTest, DoIt_S64) { Run<int64>(GetParam()); }
 
 XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
-
 
 // Tests for R1 slice ops.
 // The format for each testcase is {input size, start, limit, stride}.
@@ -376,11 +395,11 @@ XLA_TEST_P(SliceR2Test, DoIt) {
       input, LayoutUtil::MakeLayout(spec.layout));
 
   XlaBuilder builder(TestName());
-  auto a = Parameter(&builder, 0, literal->shape(), "p0");
+  auto a = Parameter(&builder, 0, literal.shape(), "p0");
   Slice(a, spec.slice_starts, spec.slice_limits, spec.slice_strides);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
-                          client_->TransferToServer(*literal));
+                          client_->TransferToServer(literal));
   std::unique_ptr<Array2D<int32>> expected = ReferenceUtil::Slice2D(
       input, spec.slice_starts, spec.slice_limits, spec.slice_strides);
   ComputeAndCompareR2<int32>(&builder, *expected, {arg.get()});
@@ -412,6 +431,7 @@ INSTANTIATE_TEST_CASE_P(
         R2Spec{511, 513, {{129, 300}}, {{400, 500}}, {{7, 11}}, {{0, 1}}},  //
         R2Spec{511, 513, {{129, 300}}, {{400, 500}}, {{11, 7}}, {{1, 0}}},  //
         R2Spec{511, 513, {{129, 300}}, {{400, 500}}, {{11, 7}}, {{0, 1}}},  //
+        R2Spec{8672, 512, {{8, 0}}, {{8672, 512}}, {{542, 1}}, {{1, 0}}},   //
         R2Spec{
             511, 513, {{129, 300}}, {{400, 500}}, {{101, 129}}, {{1, 0}}},  //
         R2Spec{
@@ -448,13 +468,11 @@ struct R4Spec {
 
 string R4SpecToString(const ::testing::TestParamInfo<R4Spec>& data) {
   const R4Spec& spec = data.param;
-  return tensorflow::strings::StrCat(              //
-      "input_", Join(spec.input_dims, "x"),        //
-      "__layout_", Join(spec.input_layout, ""),    //
-      "__starts_", Join(spec.slice_starts, "x"),   //
-      "__limits_", Join(spec.slice_limits, "x"),   //
-      "__strides_", Join(spec.slice_strides, "x")  //
-  );
+  return absl::StrCat("input_", absl::StrJoin(spec.input_dims, "x"),
+                      "__layout_", absl::StrJoin(spec.input_layout, ""),
+                      "__starts_", absl::StrJoin(spec.slice_starts, "x"),
+                      "__limits_", absl::StrJoin(spec.slice_limits, "x"),
+                      "__strides_", absl::StrJoin(spec.slice_strides, "x"));
 }
 
 class SliceR4Test : public ClientLibraryTestBase,
@@ -469,9 +487,9 @@ class SliceR4Test : public ClientLibraryTestBase,
     XlaBuilder builder(TestName());
     auto literal = LiteralUtil::CreateR4FromArray4DWithLayout(
         values, LayoutUtil::MakeLayout(spec.input_layout));
-    auto parameter = Parameter(&builder, 0, literal->shape(), "p0");
+    auto parameter = Parameter(&builder, 0, literal.shape(), "p0");
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
-                            client_->TransferToServer(*literal));
+                            client_->TransferToServer(literal));
     Slice(parameter, spec.slice_starts, spec.slice_limits, spec.slice_strides);
     ComputeAndCompareR4(&builder, *expected, {arg.get()}, ErrorSpec(0.000001));
   }

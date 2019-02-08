@@ -1,0 +1,77 @@
+path: "tensorflow.lite.OpHint"
+tf_class {
+  is_instance: "<class \'tensorflow.lite.python.op_hint.OpHint\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "AGGREGATE_FIRST"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "AGGREGATE_LAST"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "AGGREGATE_STACK"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "CHILDREN_INPUTS_MAPPINGS"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "FUNCTION_AGGREGATE_ATTR"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "FUNCTION_INPUT_INDEX_ATTR"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "FUNCTION_LEVEL_ATTR"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "FUNCTION_NAME_ATTR"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "FUNCTION_OUTPUT_INDEX_ATTR"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "FUNCTION_SORT_INDEX_ATTR"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "FUNCTION_UUID_ATTR"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "OpHintArgumentTracker"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TFLITE_INPUT_INDICES"
+    mtype: "<type \'str\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'function_name\', \'level\', \'children_inputs_mappings\'], varargs=None, keywords=kwargs, defaults=[\'1\', \'None\'], "
+  }
+  member_method {
+    name: "add_input"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "add_inputs"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "add_output"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "add_outputs"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+}

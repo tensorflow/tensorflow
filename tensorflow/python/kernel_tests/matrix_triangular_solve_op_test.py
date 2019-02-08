@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.platform import test
@@ -74,7 +75,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
         a_np = np.tile(a_np, batch_dims + [1, 1])
         b = np.tile(b, batch_dims + [1, 1])
 
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         if use_placeholder:
           a_tf = array_ops.placeholder(a.dtype)
           b_tf = array_ops.placeholder(b.dtype)
@@ -87,12 +88,13 @@ class MatrixTriangularSolveOpTest(test.TestCase):
           b_tf = constant_op.constant(b)
           tf_ans = linalg_ops.matrix_triangular_solve(
               a_tf, b_tf, lower=lower, adjoint=adjoint)
-          tf_val = tf_ans.eval()
+          tf_val = self.evaluate(tf_ans)
           np_ans = np.linalg.solve(a_np, b)
           self.assertEqual(np_ans.shape, tf_ans.get_shape())
         self.assertEqual(np_ans.shape, tf_val.shape)
         self.assertAllClose(np_ans, tf_val)
 
+  @test_util.run_deprecated_v1
   def testSolve(self):
     # 1x1 matrix, single rhs.
     matrix = np.array([[0.1]])
@@ -106,6 +108,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
     rhs1 = np.array([[1., 0., 1.], [0., 1., 1.]])
     self._verifySolveAllWaysReal(matrix, rhs1)
 
+  @test_util.run_deprecated_v1
   def testSolveComplex(self):
     # 1x1 matrix, single rhs.
     matrix = np.array([[0.1 + 1j * 0.1]])
@@ -122,6 +125,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
     rhs1 += 1j * rhs1
     self._verifySolveAllWaysComplex(matrix, rhs1)
 
+  @test_util.run_deprecated_v1
   def testSolveBatch(self):
     matrix = np.array([[1., 2.], [3., 4.]])
     rhs = np.array([[1., 0., 1.], [0., 1., 1.]])
@@ -130,6 +134,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
     # Batch of 3x2x2x2 matrices, 3x2x2x3 right-hand sides.
     self._verifySolveAllWaysReal(matrix, rhs, batch_dims=[3, 2])
 
+  @test_util.run_deprecated_v1
   def testSolveBatchComplex(self):
     matrix = np.array([[1., 2.], [3., 4.]]).astype(np.complex64)
     matrix += 1j * matrix
@@ -140,21 +145,23 @@ class MatrixTriangularSolveOpTest(test.TestCase):
     # Batch of 3x2x2x2 matrices, 3x2x2x3 right-hand sides.
     self._verifySolveAllWaysComplex(matrix, rhs, batch_dims=[3, 2])
 
+  @test_util.run_deprecated_v1
   def testNonSquareMatrix(self):
     # A non-square matrix should cause an error.
     matrix = np.array([[1., 2., 3.], [3., 4., 5.]])
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         self._verifySolve(matrix, matrix)
       with self.assertRaises(ValueError):
         self._verifySolve(matrix, matrix, batch_dims=[2, 3])
 
+  @test_util.run_deprecated_v1
   def testWrongDimensions(self):
     # The matrix should have the same number of rows as the
     # right-hand sides.
     matrix = np.array([[1., 0.], [0., 1.]])
     rhs = np.array([[1., 0.]])
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         self._verifySolve(matrix, rhs)
       with self.assertRaises(ValueError):
@@ -164,7 +171,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
     # The input should be invertible.
     # The matrix is singular because it has a zero on the diagonal.
     singular_matrix = np.array([[1., 0., -1.], [-1., 0., 1.], [0., -1., 1.]])
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("Input matrix is not invertible."):
         self._verifySolve(singular_matrix, singular_matrix)
       with self.assertRaisesOpError("Input matrix is not invertible."):

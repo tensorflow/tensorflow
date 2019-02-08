@@ -44,12 +44,14 @@ einsum = special_math_ops.einsum
 eye = linalg_ops.eye
 inv = linalg_ops.matrix_inverse
 logm = gen_linalg_ops.matrix_logarithm
+lu = gen_linalg_ops.lu
 tf_export('linalg.logm')(logm)
 lstsq = linalg_ops.matrix_solve_ls
 norm = linalg_ops.norm
 qr = linalg_ops.qr
 set_diag = array_ops.matrix_set_diag
 solve = linalg_ops.matrix_solve
+sqrtm = linalg_ops.matrix_square_root
 svd = linalg_ops.svd
 tensordot = math_ops.tensordot
 trace = math_ops.trace
@@ -87,7 +89,7 @@ def logdet(matrix, name=None):
     chol = gen_linalg_ops.cholesky(matrix)
     return 2.0 * math_ops.reduce_sum(
         math_ops.log(math_ops.real(array_ops.matrix_diag_part(chol))),
-        reduction_indices=[-1])
+        axis=[-1])
 
 
 @tf_export('linalg.adjoint')
@@ -102,6 +104,7 @@ def adjoint(matrix, name=None):
   tf.linalg.adjoint(x)  # [[1 - 1j, 4 - 4j],
                         #  [2 - 2j, 5 - 5j],
                         #  [3 - 3j, 6 - 6j]]
+  ```
 
   Args:
     matrix:  A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`,

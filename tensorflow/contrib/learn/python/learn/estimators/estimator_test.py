@@ -1368,7 +1368,7 @@ class ReplicaDeviceSetterTest(test.TestCase):
       table = lookup.MutableHashTable(dtypes.string, dtypes.int64, default_val)
       input_string = constant_op.constant(['brain', 'salad', 'tank'])
       output = table.lookup(input_string)
-    self.assertDeviceEqual('/job:ps/task:0', table._table_ref.device)
+    self.assertDeviceEqual('/job:ps/task:0', table.resource_handle.device)
     self.assertDeviceEqual('/job:ps/task:0', output.device)
 
   def testMutableHashTableIsLocal(self):
@@ -1378,7 +1378,7 @@ class ReplicaDeviceSetterTest(test.TestCase):
       table = lookup.MutableHashTable(dtypes.string, dtypes.int64, default_val)
       input_string = constant_op.constant(['brain', 'salad', 'tank'])
       output = table.lookup(input_string)
-    self.assertDeviceEqual('', table._table_ref.device)
+    self.assertDeviceEqual('', table.resource_handle.device)
     self.assertDeviceEqual('', output.device)
 
   def testTaskIsSetOnWorkerWhenJobNameIsSet(self):

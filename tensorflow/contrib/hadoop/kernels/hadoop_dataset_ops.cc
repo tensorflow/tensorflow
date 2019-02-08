@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 static const size_t kSyncMarkerSize = 16;
@@ -332,9 +333,10 @@ class SequenceFileDatasetOp : public DatasetOpKernel {
   };
   DataTypeVector output_types_;
 };
-}  // namespace
 
 REGISTER_KERNEL_BUILDER(Name("SequenceFileDataset").Device(DEVICE_CPU),
                         SequenceFileDatasetOp);
 
+}  // namespace
+}  // namespace data
 }  // namespace tensorflow

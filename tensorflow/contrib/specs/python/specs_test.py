@@ -38,7 +38,7 @@ def _rand(*size):
 class SpecsTest(test.TestCase):
 
   def testSimpleConv(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = constant_op.constant(_rand(1, 18, 19, 5))
       spec = "net = Cr(64, [5, 5])"
       outputs = specs.create_net(spec, inputs)
@@ -53,7 +53,7 @@ class SpecsTest(test.TestCase):
   def testUnary(self):
     # This is just a quick and dirty check that these ops exist
     # and work as unary ops.
-    with self.test_session():
+    with self.cached_session():
       inputs = constant_op.constant(_rand(17, 55))
       spec = "net = Do(0.5) | Bn | Unit(1) | Relu | Sig | Tanh | Smax"
       outputs = specs.create_net(spec, inputs)
@@ -63,7 +63,7 @@ class SpecsTest(test.TestCase):
       self.assertEqual(tuple(result.shape), (17, 55))
 
   def testAdd(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = constant_op.constant(_rand(17, 55))
       spec = "net = Fs(10) + Fr(10)"
       outputs = specs.create_net(spec, inputs)
@@ -77,7 +77,7 @@ class SpecsTest(test.TestCase):
           "<> variablev2 dot variablev2 biasadd relu add")
 
   def testMpPower(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = constant_op.constant(_rand(1, 64, 64, 5))
       spec = "M2 = Mp([2, 2]); net = M2**3"
       outputs = specs.create_net(spec, inputs)
@@ -90,7 +90,7 @@ class SpecsTest(test.TestCase):
           "_ maxpool maxpool maxpool")
 
   def testAbbrevPower(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = constant_op.constant(_rand(1, 64, 64, 5))
       spec = "C3 = Cr([3, 3]); M2 = Mp([2, 2]); net = (C3(5) | M2)**3"
       outputs = specs.create_net(spec, inputs)
@@ -106,7 +106,7 @@ class SpecsTest(test.TestCase):
           " biasadd relu maxpool")
 
   def testAbbrevPower2(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = constant_op.constant(_rand(1, 64, 64, 5))
       spec = "C3 = Cr(_1=[3, 3]); M2 = Mp([2, 2]);"
       spec += "net = (C3(_0=5) | M2)**3"
@@ -123,7 +123,7 @@ class SpecsTest(test.TestCase):
           " maxpool")
 
   def testConc(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = constant_op.constant(_rand(10, 20))
       spec = "net = Conc(1, Fs(20), Fs(10))"
       outputs = specs.create_net(spec, inputs)
@@ -137,7 +137,7 @@ class SpecsTest(test.TestCase):
           "<> variablev2 dot variablev2 biasadd sig _ concatv2")
 
   def testImport(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = constant_op.constant(_rand(10, 20))
       spec = ("S = Import('from tensorflow.python.ops" +
               " import math_ops; f = math_ops.sigmoid')")
@@ -150,7 +150,7 @@ class SpecsTest(test.TestCase):
       self.assertEqual(summaries.tf_spec_structure(spec, inputs), "_ sig sig")
 
   def testKeywordRestriction(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = constant_op.constant(_rand(10, 20))
       spec = "import re; net = Conc(1, Fs(20), Fs(10))"
       self.assertRaises(ValueError, lambda: specs.create_net(spec, inputs))
@@ -179,7 +179,7 @@ class SpecsTest(test.TestCase):
   # XXX: the cleverness of this code is over 9000
   # TODO: original author please fix
   def DISABLED_testVar(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with specs.ops:
         # pylint: disable=undefined-variable
         v = Var("test_var",
@@ -196,7 +196,7 @@ class SpecsTest(test.TestCase):
   # XXX: the cleverness of this code is over 9000
   # TODO: original author please fix
   def DISABLED_testShared(self):
-    with self.test_session():
+    with self.cached_session():
       with specs.ops:
         # pylint: disable=undefined-variable
         f = Shared(Fr(100))

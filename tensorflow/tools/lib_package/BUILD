@@ -112,6 +112,7 @@ pkg_tar(
 genrule(
     name = "clicenses_generate",
     srcs = [
+        "//third_party/icu/data:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
@@ -125,6 +126,7 @@ genrule(
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",
+        "@icu//:icu4c/LICENSE",
         "@jpeg//:LICENSE.md",
         "@llvm//:LICENSE.TXT",
         "@lmdb//:LICENSE",
@@ -136,23 +138,23 @@ genrule(
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
     ] + select({
-        "//tensorflow:with_aws_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_aws_support": [],
+        "//conditions:default": [
             "@aws//:LICENSE",
         ],
-        "//conditions:default": [],
     }) + select({
-        "//tensorflow:with_gcp_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_gcp_support": [],
+        "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_jemalloc_linux_x86_64": [
-            "@jemalloc//:COPYING",
-        ],
-        "//tensorflow:with_jemalloc_linux_ppc64le": [
-            "@jemalloc//:COPYING",
-        ],
-        "//conditions:default": [],
     }) + select({
         "//tensorflow/core/kernels:xsmm": [
             "@libxsmm_archive//:LICENSE.md",
@@ -160,6 +162,7 @@ genrule(
         "//conditions:default": [],
     }) + if_cuda([
         "@cub_archive//:LICENSE.TXT",
+        "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
@@ -167,7 +170,6 @@ genrule(
         "grpc",
         [
             "@grpc//:LICENSE",
-            "@grpc//third_party/nanopb:LICENSE.txt",
             "@grpc//third_party/address_sorting:LICENSE",
         ],
     ),
@@ -179,6 +181,7 @@ genrule(
 genrule(
     name = "jnilicenses_generate",
     srcs = [
+        "//third_party/icu/data:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
@@ -192,6 +195,7 @@ genrule(
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",
+        "@icu//:icu4j/main/shared/licenses/LICENSE",
         "@jpeg//:LICENSE.md",
         "@llvm//:LICENSE.TXT",
         "@lmdb//:LICENSE",
@@ -202,24 +206,26 @@ genrule(
         "@protobuf_archive//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
+        "@grpc//:LICENSE",
+        "@grpc//third_party/address_sorting:LICENSE",
     ] + select({
-        "//tensorflow:with_aws_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_aws_support": [],
+        "//conditions:default": [
             "@aws//:LICENSE",
         ],
-        "//conditions:default": [],
     }) + select({
-        "//tensorflow:with_gcp_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_gcp_support": [],
+        "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_jemalloc_linux_x86_64": [
-            "@jemalloc//:COPYING",
-        ],
-        "//tensorflow:with_jemalloc_linux_ppc64le": [
-            "@jemalloc//:COPYING",
-        ],
-        "//conditions:default": [],
     }) + select({
         "//tensorflow/core/kernels:xsmm": [
             "@libxsmm_archive//:LICENSE.md",
@@ -227,6 +233,7 @@ genrule(
         "//conditions:default": [],
     }) + if_cuda([
         "@cub_archive//:LICENSE.TXT",
+        "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",

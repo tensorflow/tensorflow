@@ -61,6 +61,9 @@ class DecodeCSVOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input_list("record_defaults", &record_defaults));
 
     for (int i = 0; i < record_defaults.size(); ++i) {
+      OP_REQUIRES(ctx, record_defaults[i].dims() <= 1,
+                  errors::InvalidArgument(
+                      "Each record default should be at most rank 1"));
       OP_REQUIRES(ctx, record_defaults[i].NumElements() < 2,
                   errors::InvalidArgument(
                       "There should only be 1 default per field but field ", i,

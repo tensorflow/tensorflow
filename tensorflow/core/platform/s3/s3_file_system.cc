@@ -150,13 +150,13 @@ Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
     return errors::InvalidArgument("S3 path doesn't start with 's3://': ",
                                    fname);
   }
-  *bucket = bucketp.ToString();
+  *bucket = string(bucketp);
   if (bucket->empty() || *bucket == ".") {
     return errors::InvalidArgument("S3 path doesn't contain a bucket name: ",
                                    fname);
   }
   str_util::ConsumePrefix(&objectp, "/");
-  *object = objectp.ToString();
+  *object = string(objectp);
   if (!empty_object_ok && object->empty()) {
     return errors::InvalidArgument("S3 path doesn't contain an object name: ",
                                    fname);
@@ -169,6 +169,10 @@ class S3RandomAccessFile : public RandomAccessFile {
   S3RandomAccessFile(const string& bucket, const string& object,
                      std::shared_ptr<Aws::S3::S3Client> s3_client)
       : bucket_(bucket), object_(object), s3_client_(s3_client) {}
+
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented("S3RandomAccessFile does not support Name()");
+  }
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
@@ -211,7 +215,7 @@ class S3WritableFile : public WritableFile {
             std::ios_base::binary | std::ios_base::trunc | std::ios_base::in |
                 std::ios_base::out)) {}
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     if (!outfile_) {
       return errors::FailedPrecondition(
           "The internal temporary file is not writable.");
@@ -234,6 +238,10 @@ class S3WritableFile : public WritableFile {
   }
 
   Status Flush() override { return Sync(); }
+
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented("S3WritableFile does not support Name()");
+  }
 
   Status Sync() override {
     if (!outfile_) {

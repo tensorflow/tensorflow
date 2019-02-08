@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_JAVA_GRAPH_JNI_H_
-#define TENSORFLOW_JAVA_GRAPH_JNI_H_
+#ifndef TENSORFLOW_JAVA_SRC_MAIN_NATIVE_GRAPH_JNI_H_
+#define TENSORFLOW_JAVA_SRC_MAIN_NATIVE_GRAPH_JNI_H_
 
 #include <jni.h>
 
@@ -85,4 +85,4 @@ JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_addGradients(
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
-#endif  // TENSORFLOW_JAVA_GRAPH_JNI_H_
+#endif  // TENSORFLOW_JAVA_SRC_MAIN_NATIVE_GRAPH_JNI_H_

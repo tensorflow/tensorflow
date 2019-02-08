@@ -21,13 +21,15 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
 class ZeroDivisionTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testZeros(self):
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       for dtype in dtypes.uint8, dtypes.int16, dtypes.int32, dtypes.int64:
         zero = constant_op.constant(0, dtype=dtype)
         one = constant_op.constant(1, dtype=dtype)
@@ -36,7 +38,7 @@ class ZeroDivisionTest(test.TestCase):
           bads.append(one % zero)
         for bad in bads:
           try:
-            result = bad.eval()
+            result = self.evaluate(bad)
           except errors_impl.OpError as e:
             # Ideally, we'd get a nice exception.  In theory, this should only
             # happen on CPU, but 32 bit integer GPU division is actually on
