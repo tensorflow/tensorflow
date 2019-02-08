@@ -478,29 +478,30 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
       return;
     }
 
-    int bound_index;
-    // get the width if present
-    if (!absl::SimpleAtoi(tokens[1], &graph_width)) {
-      bound_index = 1;
-      graph_width = kDefaultWidth;
+    int bound_index = 1;
+    // Get the <width> if present.
+    if (absl::SimpleAtoi(tokens[bound_index], &graph_width)) {
+      bound_index++;
     } else {
-      bound_index = 2;
+      // <width> not found, need to reset graph_width.
+      graph_width = kDefaultWidth;
     }
-    // get the '/'
+    // Get the '/'.
     if (bound_index < tokens.size()) {
+      // This token must be a '/'.
       if (tokens[bound_index] != "/") {
-        std::cerr << "Expect a /, but get a '" << tokens[1] << "'."
+        std::cerr << "Expect a /, but get a '" << tokens[bound_index] << "'."
                   << std::endl;
         return;
       }
       bound_index++;
     }
-    // get the boundary nodes
+    // Get the boundary nodes.
     while (bound_index < tokens.size()) {
       string bnode_name = tokens[bound_index];
       const HloInstruction* binstr = FindInstruction(module, bnode_name);
       if (!binstr) {
-        std::cerr << "Couldn't find HloInstruction named " << node_name << "."
+        std::cerr << "Couldn't find HloInstruction named " << bnode_name << "."
                   << std::endl;
         return;
       }
@@ -538,7 +539,7 @@ void InteractiveDumpGraphs(const Options& opts, const HloModule& module) {
                 << std::endl;
       continue;
     }
-    std::vector<string> tokens = absl::StrSplit(line, ' ');
+    std::vector<string> tokens = absl::StrSplit(line, ' ', absl::SkipEmpty());
     if (tokens[0] == "quit" || tokens[0] == "exit") {
       break;
     } else if (tokens[0] == "help") {

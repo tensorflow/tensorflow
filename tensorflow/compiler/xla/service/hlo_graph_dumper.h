@@ -65,7 +65,7 @@ string DumpGraph(const HloComputation& computation, const string& label,
 // before it's omitted from the graph.
 //
 // The optional boundary specifies a set of boundary nodes, beyond which nodes
-// will be omitted even if they  are within the radius.
+// will be omitted even if they are within the radius.
 string DumpNeighborhoodAround(
     const HloInstruction& node, int radius,
     const absl::flat_hash_set<const HloInstruction*>& boundary = {},
