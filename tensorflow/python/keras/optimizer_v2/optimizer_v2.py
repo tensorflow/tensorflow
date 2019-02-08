@@ -559,7 +559,7 @@ class OptimizerV2(checkpointable.Checkpointable):
         self._weights.append(self._iterations)
     for name, value in self._hyper.items():
       if isinstance(value, ops.Tensor) or callable(value):
-        pass
+        continue
       else:
         self._hyper[name] = self.add_weight(
             name,
