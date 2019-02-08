@@ -55,6 +55,20 @@ class Tile {
   // Returns the dimensions of the tile.
   const std::vector<int64>& dimensions() const { return dimensions_; }
 
+  Tile& add_dimensions(int64 value) {
+    dimensions_.push_back(value);
+    return *this;
+  }
+
+  Tile& clear_dimensions() {
+    dimensions_.clear();
+    return *this;
+  }
+
+  // This dimension size means the corresponding dimension in the shape is
+  // combined with the next minor dimension before tiling is applied.
+  static constexpr int64 kCombineDimension = std::numeric_limits<int64>::min();
+
  private:
   // The bounds of the tile.
   std::vector<int64> dimensions_;

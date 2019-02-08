@@ -275,6 +275,7 @@ class HloParser {
                            std::vector<bool>* dynamic_dimensions);
   bool ParseShape(Shape* result);
   bool ParseLayout(Layout* layout);
+  bool ParseTiles(std::vector<Tile>* tiles);
   bool ParseOpcode(HloOpcode* result);
   bool ParseFftType(FftType* result);
   bool ParseTriangularSolveTranspose(TriangularSolveOptions::Transpose* result);
@@ -3203,9 +3204,46 @@ bool HloParser::ParseDimensionSizes(std::vector<int64>* dimension_sizes,
                    parse_and_add_item);
 }
 
-// layout ::= '{' int64_list '}'
+// tiles
+//   ::= /*empty*/
+//   ::= 'T' '(' dim_list ')'
+// dim_list
+//   ::= /*empty*/
+//   ::= (int64 | '*') (',' (int64 | '*'))*
+bool HloParser::ParseTiles(std::vector<Tile>* tiles) {
+  auto parse_and_add_tile_dimension = [&]() {
+    tensorflow::int64 i;
+    if (ParseInt64(&i)) {
+      tiles->back().add_dimensions(i);
+      return true;
+    }
+    if (lexer_.GetKind() == TokKind::kAsterisk) {
+      tiles->back().add_dimensions(Tile::kCombineDimension);
+      lexer_.Lex();
+      return true;
+    }
+    return false;
+  };
+
+  do {
+    tiles->push_back(Tile());
+    if (!ParseList(TokKind::kLparen, TokKind::kRparen, TokKind::kComma,
+                   parse_and_add_tile_dimension)) {
+      return false;
+    }
+  } while (lexer_.GetKind() == TokKind::kLparen);
+  return true;
+}
+
+// layout ::= '{' int64_list (':' tiles element_size_in_bits)? '}'
+// element_size_in_bits
+//   ::= /*empty*/
+//   ::= 'E' '(' int64 ')'
 bool HloParser::ParseLayout(Layout* layout) {
   std::vector<int64> minor_to_major;
+  std::vector<Tile> tiles;
+  tensorflow::int64 element_size_in_bits = 0;
+
   auto parse_and_add_item = [&]() {
     int64 i;
     if (!ParseInt64(&i)) {
@@ -3214,11 +3252,60 @@ bool HloParser::ParseLayout(Layout* layout) {
     minor_to_major.push_back(i);
     return true;
   };
-  if (!ParseList(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
-                 parse_and_add_item)) {
+
+  if (!ParseToken(TokKind::kLbrace,
+                  StrCat("expects layout to start with ",
+                         TokKindToString(TokKind::kLbrace)))) {
     return false;
   }
-  *layout = LayoutUtil::MakeLayout(minor_to_major);
+  if (lexer_.GetKind() != TokKind::kRbrace) {
+    if (lexer_.GetKind() == TokKind::kInt) {
+      // Parse minor to major.
+      do {
+        if (!parse_and_add_item()) {
+          return false;
+        }
+      } while (EatIfPresent(TokKind::kComma));
+    }
+
+    if (lexer_.GetKind() == TokKind::kColon) {
+      lexer_.Lex();
+      if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "T") {
+        lexer_.Lex();
+        ParseTiles(&tiles);
+      }
+
+      if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "E") {
+        // Parse element size in bits.
+        lexer_.Lex();
+        if (!ParseToken(TokKind::kLparen,
+                        StrCat("expects element size in bits to start with ",
+                               TokKindToString(TokKind::kLparen)))) {
+          return false;
+        }
+        if (!ParseInt64(&element_size_in_bits)) {
+          return false;
+        }
+        if (!ParseToken(TokKind::kRparen,
+                        StrCat("expects element size in bits to end with ",
+                               TokKindToString(TokKind::kRparen)))) {
+          return false;
+        }
+      }
+    }
+  }
+  if (!ParseToken(TokKind::kRbrace,
+                  StrCat("expects layout to end with ",
+                         TokKindToString(TokKind::kRbrace)))) {
+    return false;
+  }
+
+  std::vector<Tile> vec_tiles(tiles.size());
+  for (int i = 0; i < tiles.size(); i++) {
+    vec_tiles[i] = Tile(tiles[i]);
+  }
+  *layout =
+      LayoutUtil::MakeLayout(minor_to_major, vec_tiles, element_size_in_bits);
   return true;
 }
 
@@ -3290,12 +3377,19 @@ bool HloParser::ParseShape(Shape* result) {
   //
   // The open brace could either be the start of a computation or the start of a
   // layout for the f32[123] shape. We consider it the start of a layout if the
-  // next token after the open brace is a integer
+  // next token after the open brace is an integer or a colon.
   if (lexer_.GetKind() == TokKind::kLbrace &&
-      lexer_.LookAhead() == TokKind::kInt) {
+      (lexer_.LookAhead() == TokKind::kInt ||
+       lexer_.LookAhead() == TokKind::kColon)) {
     Layout layout;
     if (!ParseLayout(&layout)) {
       return false;
+    }
+    if (layout.minor_to_major_size() != result->rank()) {
+      return Error(
+          lexer_.GetLoc(),
+          StrFormat("Dimensions size is %ld, but minor to major size is %ld.",
+                    result->rank(), layout.minor_to_major_size()));
     }
     *result->mutable_layout() = layout;
   }
