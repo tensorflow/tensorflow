@@ -44,10 +44,9 @@ from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
-from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -476,8 +475,9 @@ class Model(Network):
                 sample_weight = mask
               else:
                 # Update dimensions of weights to match with mask if possible.
-                mask, _, sample_weight = squeeze_or_expand_dimensions(
-                    mask, None, sample_weight)
+                mask, _, sample_weight = (
+                    losses_utils.squeeze_or_expand_dimensions(
+                        mask, None, sample_weight))
                 sample_weight *= mask
 
             output_loss = loss_fn(y_true, y_pred, sample_weight=sample_weight)
@@ -489,7 +489,7 @@ class Model(Network):
 
             # Keep track of stateful result tensor and function for the loss.
             # Reset reduction here as metric wrapper will take care of that.
-            loss_fn.reduction = losses_impl.ReductionV2.NONE
+            loss_fn.reduction = losses_utils.ReductionV2.NONE
             output_loss_metric = metrics_module.SumOverBatchSizeMetricWrapper(
                 loss_fn, name=loss_fn.name)
             result_tensor = self._call_metric_fn(output_loss_metric, y_true,

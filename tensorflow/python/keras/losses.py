@@ -27,9 +27,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
-from tensorflow.python.keras.utils.losses_utils import compute_weighted_loss
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_variable
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -63,7 +63,7 @@ class Loss(object):
   """
 
   def __init__(self,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name=None):
     self.reduction = reduction
     self.name = name
@@ -97,7 +97,7 @@ class Loss(object):
     with ops.name_scope(scope_name, format(self.__class__.__name__),
                         (y_pred, y_true, sample_weight)):
       losses = self.call(y_true, y_pred)
-      return compute_weighted_loss(
+      return losses_utils.compute_weighted_loss(
           losses, sample_weight, reduction=self.reduction)
 
   @classmethod
@@ -141,7 +141,7 @@ class LossFunctionWrapper(Loss):
 
   def __init__(self,
                fn,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name=None,
                **kwargs):
     super(LossFunctionWrapper, self).__init__(reduction=reduction, name=name)
@@ -192,7 +192,7 @@ class MeanSquaredError(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name='mean_squared_error'):
     super(MeanSquaredError, self).__init__(
         mean_squared_error, name=name, reduction=reduction)
@@ -222,7 +222,7 @@ class MeanAbsoluteError(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name='mean_absolute_error'):
     super(MeanAbsoluteError, self).__init__(
         mean_absolute_error, name=name, reduction=reduction)
@@ -252,7 +252,7 @@ class MeanAbsolutePercentageError(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name='mean_absolute_percentage_error'):
     super(MeanAbsolutePercentageError, self).__init__(
         mean_absolute_percentage_error, name=name, reduction=reduction)
@@ -282,7 +282,7 @@ class MeanSquaredLogarithmicError(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name='mean_squared_logarithmic_error'):
     super(MeanSquaredLogarithmicError, self).__init__(
         mean_squared_logarithmic_error, name=name, reduction=reduction)
@@ -326,7 +326,7 @@ class BinaryCrossentropy(LossFunctionWrapper):
   def __init__(self,
                from_logits=False,
                label_smoothing=0,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name='binary_crossentropy'):
     super(BinaryCrossentropy, self).__init__(
         binary_crossentropy,
@@ -382,7 +382,7 @@ class CategoricalCrossentropy(LossFunctionWrapper):
   def __init__(self,
                from_logits=False,
                label_smoothing=0,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name='categorical_crossentropy'):
     super(CategoricalCrossentropy, self).__init__(
         categorical_crossentropy,
@@ -434,7 +434,7 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
 
   def __init__(self,
                from_logits=False,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name=None):
     super(SparseCategoricalCrossentropy, self).__init__(
         sparse_categorical_crossentropy,
@@ -470,7 +470,7 @@ class Hinge(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name=None):
     super(Hinge, self).__init__(hinge, name=name, reduction=reduction)
 
@@ -502,7 +502,7 @@ class SquaredHinge(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name='squared_hinge'):
     super(SquaredHinge, self).__init__(
         squared_hinge, name=name, reduction=reduction)
@@ -529,7 +529,7 @@ class CategoricalHinge(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name='categorical_hinge'):
     super(CategoricalHinge, self).__init__(
         categorical_hinge, name=name, reduction=reduction)
@@ -558,7 +558,7 @@ class LogLoss(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name='logloss'):
     super(LogLoss, self).__init__(logloss, name=name, reduction=reduction)
 
@@ -586,7 +586,7 @@ class Poisson(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name='poisson'):
     super(Poisson, self).__init__(poisson, name=name, reduction=reduction)
 
@@ -614,7 +614,7 @@ class LogCosh(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name='logcosh'):
     super(LogCosh, self).__init__(logcosh, name=name, reduction=reduction)
 
@@ -642,7 +642,7 @@ class KLDivergence(LossFunctionWrapper):
   """
 
   def __init__(self,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name='kullback_leibler_divergence'):
     super(KLDivergence, self).__init__(
         kullback_leibler_divergence, name=name, reduction=reduction)
@@ -685,7 +685,7 @@ class Huber(LossFunctionWrapper):
 
   def __init__(self,
                delta=1.0,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name='huber_loss'):
     super(Huber, self).__init__(
         huber_loss, name=name, reduction=reduction, delta=delta)
@@ -985,7 +985,7 @@ class CosineProximity(Loss):
 
   def __init__(self,
                axis=-1,
-               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name=None):
     super(CosineProximity, self).__init__(reduction=reduction, name=name)
     self.axis = axis

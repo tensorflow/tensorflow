@@ -349,6 +349,7 @@ renames = {
     'tf.logging.warn': 'tf.compat.v1.logging.warn',
     'tf.logging.warning': 'tf.compat.v1.logging.warning',
     'tf.logical_xor': 'tf.math.logical_xor',
+    'tf.losses.Reduction': 'tf.compat.v1.losses.Reduction',
     'tf.losses.absolute_difference': 'tf.compat.v1.losses.absolute_difference',
     'tf.losses.add_loss': 'tf.compat.v1.losses.add_loss',
     'tf.losses.compute_weighted_loss': 'tf.compat.v1.losses.compute_weighted_loss',
