@@ -457,10 +457,7 @@ cc_library(
     hdrs = ["platform/logger.h"],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
-    deps = [
-        ":lib_proto_parsing",
-        "@protobuf_archive//:protobuf",
-    ],
+    deps = [":lib_proto_parsing"],
 )
 
 filegroup(
