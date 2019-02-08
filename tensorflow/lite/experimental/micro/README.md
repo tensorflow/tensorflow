@@ -324,7 +324,7 @@ Follow these steps to build and run the Tensorflow Micro Speech tests.
 
 1. Follow the procedure outlined in the [Micro Speech Getting Started section](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_speech#getting-started) to download the Tensorflow source code and the support libraries.  
 
-2. Download the Eta Compute SDK, version 0.0.17 (Contact info@etacompute.com  for more information on obtaining the Eta Compute SDK and ECM3531 evalution board).
+2. Download the Eta Compute SDK, version 0.0.17 (Contact info@etacompute.com).
 
 3. Edit the file tensorflow/lite/experimental/micro/tools/make/targets/ecm3531_makefile.inc  so that the variable ETA_SDK points to the location where the Eta Compute SDK is installed, and the variable GCC_ARM points to the Arm compiler (arm-none-eabi-gcc, version = arm-none-eabi-gcc (gcc version 7.3.1 20180622, ARM/embedded-7-branch revision 261907, 7-2018-q2-update).  The compiler is also downloaded when you run the tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh script.
 
