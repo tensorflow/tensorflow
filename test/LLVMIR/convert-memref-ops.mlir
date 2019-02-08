@@ -91,3 +91,57 @@ func @store(%static : memref<10x42xf32>, %dynamic : memref<?x?xf32>,
   store %val, %mixed[%i, %j] : memref<42x?xf32>
   return
 }
+
+// CHECK-LABEL: func @memref_cast
+func @memref_cast(%static : memref<10x42xf32>, %dynamic : memref<?x?xf32>,
+                  %mixed : memref<42x?xf32>) {
+// CHECK-NEXT: %0 = "llvm.undef"() : () -> !llvm<"{ float*, i64, i64 }">
+// CHECK-NEXT: %1 = "llvm.extractvalue"(%arg0) {position: [0]} : (!llvm<"{ float* }">) -> !llvm<"float*">
+// CHECK-NEXT: %2 = "llvm.insertvalue"(%0, %1) {position: [0]} : (!llvm<"{ float*, i64, i64 }">, !llvm<"float*">) -> !llvm<"{ float*, i64, i64 }">
+// CHECK-NEXT: %3 = "llvm.constant"() {value: 10 : index} : () -> !llvm<"i64">
+// CHECK-NEXT: %4 = "llvm.insertvalue"(%2, %3) {position: [1]} : (!llvm<"{ float*, i64, i64 }">, !llvm<"i64">) -> !llvm<"{ float*, i64, i64 }">
+// CHECK-NEXT: %5 = "llvm.constant"() {value: 42 : index} : () -> !llvm<"i64">
+// CHECK-NEXT: %6 = "llvm.insertvalue"(%4, %5) {position: [2]} : (!llvm<"{ float*, i64, i64 }">, !llvm<"i64">) -> !llvm<"{ float*, i64, i64 }">
+  %0 = memref_cast %static : memref<10x42xf32> to memref<?x?xf32>
+
+// CHECK-NEXT: %7 = "llvm.undef"() : () -> !llvm<"{ float*, i64 }">
+// CHECK-NEXT: %8 = "llvm.extractvalue"(%arg0) {position: [0]} : (!llvm<"{ float* }">) -> !llvm<"float*">
+// CHECK-NEXT: %9 = "llvm.insertvalue"(%7, %8) {position: [0]} : (!llvm<"{ float*, i64 }">, !llvm<"float*">) -> !llvm<"{ float*, i64 }">
+// CHECK-NEXT: %10 = "llvm.constant"() {value: 10 : index} : () -> !llvm<"i64">
+// CHECK-NEXT: %11 = "llvm.insertvalue"(%9, %10) {position: [1]} : (!llvm<"{ float*, i64 }">, !llvm<"i64">) -> !llvm<"{ float*, i64 }">
+  %1 = memref_cast %static : memref<10x42xf32> to memref<?x42xf32>
+
+// CHECK-NEXT: %12 = "llvm.undef"() : () -> !llvm<"{ float* }">
+// CHECK-NEXT: %13 = "llvm.extractvalue"(%arg1) {position: [0]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"float*">
+// CHECK-NEXT: %14 = "llvm.insertvalue"(%12, %13) {position: [0]} : (!llvm<"{ float* }">, !llvm<"float*">) -> !llvm<"{ float* }">
+  %2 = memref_cast %dynamic : memref<?x?xf32> to memref<10x12xf32>
+
+// CHECK-NEXT: %15 = "llvm.undef"() : () -> !llvm<"{ float*, i64 }">
+// CHECK-NEXT: %16 = "llvm.extractvalue"(%arg1) {position: [0]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"float*">
+// CHECK-NEXT: %17 = "llvm.insertvalue"(%15, %16) {position: [0]} : (!llvm<"{ float*, i64 }">, !llvm<"float*">) -> !llvm<"{ float*, i64 }">
+// CHECK-NEXT: %18 = "llvm.extractvalue"(%arg1) {position: [1]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"i64">
+// CHECK-NEXT: %19 = "llvm.insertvalue"(%17, %18) {position: [1]} : (!llvm<"{ float*, i64 }">, !llvm<"i64">) -> !llvm<"{ float*, i64 }">
+  %3 = memref_cast %dynamic : memref<?x?xf32> to memref<?x12xf32>
+
+// CHECK-NEXT: %20 = "llvm.undef"() : () -> !llvm<"{ float*, i64, i64 }">
+// CHECK-NEXT: %21 = "llvm.extractvalue"(%arg2) {position: [0]} : (!llvm<"{ float*, i64 }">) -> !llvm<"float*">
+// CHECK-NEXT: %22 = "llvm.insertvalue"(%20, %21) {position: [0]} : (!llvm<"{ float*, i64, i64 }">, !llvm<"float*">) -> !llvm<"{ float*, i64, i64 }">
+// CHECK-NEXT: %23 = "llvm.constant"() {value: 42 : index} : () -> !llvm<"i64">
+// CHECK-NEXT: %24 = "llvm.insertvalue"(%22, %23) {position: [1]} : (!llvm<"{ float*, i64, i64 }">, !llvm<"i64">) -> !llvm<"{ float*, i64, i64 }">
+// CHECK-NEXT: %25 = "llvm.extractvalue"(%arg2) {position: [1]} : (!llvm<"{ float*, i64 }">) -> !llvm<"i64">
+// CHECK-NEXT: %26 = "llvm.insertvalue"(%24, %25) {position: [2]} : (!llvm<"{ float*, i64, i64 }">, !llvm<"i64">) -> !llvm<"{ float*, i64, i64 }">
+  %4 = memref_cast %mixed : memref<42x?xf32> to memref<?x?xf32>
+
+// CHECK-NEXT: %27 = "llvm.undef"() : () -> !llvm<"{ float* }">
+// CHECK-NEXT: %28 = "llvm.extractvalue"(%arg2) {position: [0]} : (!llvm<"{ float*, i64 }">) -> !llvm<"float*">
+// CHECK-NEXT: %29 = "llvm.insertvalue"(%27, %28) {position: [0]} : (!llvm<"{ float* }">, !llvm<"float*">) -> !llvm<"{ float* }">
+  %5 = memref_cast %mixed : memref<42x?xf32> to memref<42x1xf32>
+
+// CHECK-NEXT: %30 = "llvm.undef"() : () -> !llvm<"{ float*, i64 }">
+// CHECK-NEXT: %31 = "llvm.extractvalue"(%arg2) {position: [0]} : (!llvm<"{ float*, i64 }">) -> !llvm<"float*">
+// CHECK-NEXT: %32 = "llvm.insertvalue"(%30, %31) {position: [0]} : (!llvm<"{ float*, i64 }">, !llvm<"float*">) -> !llvm<"{ float*, i64 }">
+// CHECK-NEXT: %33 = "llvm.constant"() {value: 42 : index} : () -> !llvm<"i64">
+// CHECK-NEXT: %34 = "llvm.insertvalue"(%32, %33) {position: [1]} : (!llvm<"{ float*, i64 }">, !llvm<"i64">) -> !llvm<"{ float*, i64 }">
+  %6 = memref_cast %mixed : memref<42x?xf32> to memref<?x1xf32>
+  return
+}

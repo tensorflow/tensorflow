@@ -48,6 +48,11 @@ public:
   // Dispatches to the private functions below based on the actual type.
   static Type convert(Type t, llvm::Module &llvmModule);
 
+  // Convert the element type of the memref `t` to to an LLVM type, get a
+  // pointer LLVM type pointing to the converted `t`, wrap it into the MLIR LLVM
+  // dialect type and return.
+  static Type getMemRefElementPtrType(MemRefType t, llvm::Module &llvmModule);
+
   // Convert a non-empty list of types to an LLVM IR dialect type wrapping an
   // LLVM IR structure type, elements of which are formed by converting
   // individual types in the given list.  Register the type in the `llvmModule`.
@@ -262,6 +267,16 @@ Type TypeConverter::convertType(Type type) {
 
 Type TypeConverter::convert(Type t, llvm::Module &module) {
   return TypeConverter(module, t.getContext()).convertType(t);
+}
+
+Type TypeConverter::getMemRefElementPtrType(MemRefType t,
+                                            llvm::Module &module) {
+  auto elementType = t.getElementType();
+  auto converted = convert(elementType, module);
+  if (!converted)
+    return {};
+  llvm::Type *llvmType = converted.cast<LLVM::LLVMType>().getUnderlyingType();
+  return LLVM::LLVMType::get(t.getContext(), llvmType->getPointerTo());
 }
 
 Type TypeConverter::pack(ArrayRef<Type> types, llvm::Module &module,
@@ -619,6 +634,80 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
   }
 };
 
+struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
+  using LLVMLegalizationPattern<MemRefCastOp>::LLVMLegalizationPattern;
+
+  PatternMatchResult match(Instruction *op) const override {
+    if (!LLVMLegalizationPattern<MemRefCastOp>::match(op))
+      return matchFailure();
+    auto memRefCastOp = op->cast<MemRefCastOp>();
+    MemRefType sourceType =
+        memRefCastOp->getOperand()->getType().cast<MemRefType>();
+    MemRefType targetType = memRefCastOp->getType();
+    return (isSupportedMemRefType(targetType) &&
+            isSupportedMemRefType(sourceType))
+               ? matchSuccess()
+               : matchFailure();
+  }
+
+  SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
+                                  FuncBuilder &rewriter) const override {
+    auto memRefCastOp = op->cast<MemRefCastOp>();
+    auto targetType = memRefCastOp->getType();
+    auto sourceType = memRefCastOp->getOperand()->getType().cast<MemRefType>();
+
+    // Create the new MemRef descriptor.
+    auto structType = TypeConverter::convert(targetType, getModule());
+    Value *newDescriptor = rewriter.create<LLVM::UndefOp>(
+        op->getLoc(), structType, ArrayRef<Value *>{});
+
+    // Copy the data buffer pointer.
+    auto elementTypePtr =
+        TypeConverter::getMemRefElementPtrType(targetType, getModule());
+    Value *oldDescriptor = operands[0];
+    Value *buffer = rewriter.create<LLVM::ExtractValueOp>(
+        op->getLoc(), elementTypePtr, ArrayRef<Value *>{oldDescriptor},
+        getPositionAttribute(rewriter, 0));
+    newDescriptor = rewriter.create<LLVM::InsertValueOp>(
+        op->getLoc(), structType, ArrayRef<Value *>{newDescriptor, buffer},
+        getPositionAttribute(rewriter, 0));
+
+    // Fill in the dynamic sizes of the new descriptor.  If the size was
+    // dynamic, copy it from the old descriptor.  If the size was static, insert
+    // the constant.  Note that the positions of dynamic sizes in the
+    // descriptors start from 1 (the buffer pointer is at position zero).
+    int64_t sourceDynamicDimIdx = 1;
+    int64_t targetDynamicDimIdx = 1;
+    for (int i = 0, e = sourceType.getRank(); i < e; ++i) {
+      // Ignore new static sizes (they will be known from the type).  If the
+      // size was dynamic, update the index of dynamic types.
+      if (targetType.getShape()[i] != -1) {
+        if (sourceType.getShape()[i] == -1)
+          ++sourceDynamicDimIdx;
+        continue;
+      }
+
+      auto sourceSize = sourceType.getShape()[i];
+      Value *size =
+          sourceSize == -1
+              ? rewriter.create<LLVM::ExtractValueOp>(
+                    op->getLoc(), getIndexType(),
+                    ArrayRef<Value *>{oldDescriptor},
+                    getPositionAttribute(rewriter, sourceDynamicDimIdx++))
+              : createIndexConstant(rewriter, op->getLoc(), sourceSize);
+      newDescriptor = rewriter.create<LLVM::InsertValueOp>(
+          op->getLoc(), structType, ArrayRef<Value *>{newDescriptor, size},
+          getPositionAttribute(rewriter, targetDynamicDimIdx++));
+    }
+    assert(sourceDynamicDimIdx - 1 == sourceType.getNumDynamicDims() &&
+           "source dynamic dimensions were not processed");
+    assert(targetDynamicDimIdx - 1 == targetType.getNumDynamicDims() &&
+           "target dynamic dimensions were not set up");
+
+    return {newDescriptor};
+  }
+};
+
 // Common base for load and store operations on MemRefs.  Restricts the match
 // to supported MemRef types.  Provides functionality to emit code accessing a
 // specific element of the underlying data buffer.
@@ -669,12 +758,8 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
   // indies.
   Value *getElementPtr(Location loc, MemRefType type, Value *memRefDescriptor,
                        ArrayRef<Value *> indices, FuncBuilder &rewriter) const {
-    auto elementType =
-        TypeConverter::convert(type.getElementType(), this->getModule());
-    auto elementTypePtr = rewriter.getType<LLVM::LLVMType>(
-        elementType.template cast<LLVM::LLVMType>()
-            .getUnderlyingType()
-            ->getPointerTo());
+    auto elementTypePtr =
+        TypeConverter::getMemRefElementPtrType(type, this->getModule());
 
     // Get the list of MemRef sizes.  Static sizes are defined as constants.
     // Dynamic sizes are extracted from the MemRef descriptor, where they start
@@ -851,9 +936,10 @@ protected:
         AddFOpLowering, AddIOpLowering, AllocOpLowering, BranchOpLowering,
         Call0OpLowering, CallOpLowering, CmpIOpLowering, CondBranchOpLowering,
         ConstLLVMOpLowering, DeallocOpLowering, DivISOpLowering,
-        DivIUOpLowering, LoadOpLowering, MulFOpLowering, MulIOpLowering,
-        RemISOpLowering, RemIUOpLowering, ReturnOpLowering, StoreOpLowering,
-        SubFOpLowering, SubIOpLowering>::build(&converterStorage, *llvmDialect);
+        DivIUOpLowering, LoadOpLowering, MemRefCastOpLowering, MulFOpLowering,
+        MulIOpLowering, RemISOpLowering, RemIUOpLowering, ReturnOpLowering,
+        StoreOpLowering, SubFOpLowering,
+        SubIOpLowering>::build(&converterStorage, *llvmDialect);
   }
 
   // Convert types using the stored LLVM IR module.
