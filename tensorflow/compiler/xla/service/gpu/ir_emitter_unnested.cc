@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/tuple_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -483,6 +484,41 @@ Status IrEmitterUnnested::HandleFft(HloInstruction* fft) {
       LayoutUtil::IsMonotonicWithDim0Major(fft->operand(0)->shape().layout()));
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(fft->shape().layout()));
   AddThunkToThunkSequence(BuildFftThunk(fft));
+  return Status::OK();
+}
+
+Status IrEmitterUnnested::HandleTriangularSolve(HloInstruction* hlo) {
+  auto has_fortran_layout = [](const Layout& layout) {
+    int n = layout.minor_to_major_size();
+    return layout.minor_to_major(0) == n - 2 &&
+           layout.minor_to_major(1) == n - 1;
+  };
+  TF_RET_CHECK(has_fortran_layout(hlo->operand(0)->shape().layout()));
+  TF_RET_CHECK(has_fortran_layout(hlo->operand(1)->shape().layout()));
+  TF_RET_CHECK(has_fortran_layout(hlo->shape().layout()));
+
+  std::vector<std::unique_ptr<Thunk>> thunks;
+
+  // Triangular solve is in-place on 'b', so copy 'b' to the output if they
+  // aren't the same buffer.
+  auto operand_buffer = GetAllocationSlice(*hlo->operand(1));
+  auto destination_buffer = GetAllocationSlice(*hlo);
+  if (operand_buffer != destination_buffer) {
+    thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
+        /*source_address=*/operand_buffer,
+        /*destination_buffer=*/destination_buffer,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(hlo->operand(1)->shape()), hlo));
+  }
+
+  thunks.push_back(BuildTriangularSolveThunk(hlo));
+
+  // Elide the sequential thunk if there's no copy.
+  if (thunks.size() == 1) {
+    AddThunkToThunkSequence(std::move(thunks[0]));
+  } else {
+    AddThunkToThunkSequence(
+        absl::make_unique<SequentialThunk>(std::move(thunks), hlo));
+  }
   return Status::OK();
 }
 
@@ -958,18 +994,18 @@ Status IrEmitterUnnested::HandleScatter(HloInstruction* scatter) {
       BuildKernelThunk(scatter,
                        /*implements_whole_instruction=*/thunks.empty()));
 
-  TF_RETURN_IF_ERROR(
-      EmitScatter(thunks.back().get(), scatter,
-                  /*scatter_indices_gen=*/
-                  [=](const IrArray::Index& index) {
-                    return GetIrArray(*scatter_indices, *scatter)
-                        .EmitReadArrayElement(index, &b_, "scatter_index");
-                  },
-                  /*updates_gen=*/
-                  [=](const IrArray::Index& index) {
-                    return GetIrArray(*updates, *scatter)
-                        .EmitReadArrayElement(index, &b_, "update");
-                  }));
+  TF_RETURN_IF_ERROR(EmitScatter(
+      thunks.back().get(), scatter,
+      /*scatter_indices_gen=*/
+      [=](const IrArray::Index& index) {
+        return GetIrArray(*scatter_indices, *scatter)
+            .EmitReadArrayElement(index, &b_, "scatter_index");
+      },
+      /*updates_gen=*/
+      [=](const IrArray::Index& index) {
+        return GetIrArray(*updates, *scatter)
+            .EmitReadArrayElement(index, &b_, "update");
+      }));
 
   // Elide the sequential thunk if there's no copy.
   if (thunks.size() == 1) {
@@ -1757,6 +1793,29 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildFftThunk(
       /*output_shape=*/inst->shape(), inst);
 }
 
+std::unique_ptr<Thunk> IrEmitterUnnested::BuildTriangularSolveThunk(
+    const HloInstruction* inst) {
+  const HloInstruction* a = inst->operand(0);
+  const HloInstruction* b = inst->operand(1);
+  int64 m = b->shape().dimensions(b->shape().rank() - 2);
+  int64 n = b->shape().dimensions(b->shape().rank() - 1);
+  int64 batch_size = std::accumulate(
+      b->shape().dimensions().begin(), b->shape().dimensions().end() - 2,
+      int64{1}, [](int64 a, int64 b) { return a * b; });
+  int64 elem_size =
+      ShapeUtil::ByteSizeOfPrimitiveType(inst->shape().element_type());
+  int64 a_batch_stride = inst->triangular_solve_options().left_side()
+                             ? m * m * elem_size
+                             : n * n * elem_size;
+  int64 b_batch_stride = m * n * elem_size;
+  return absl::make_unique<TriangularSolveThunk>(
+      inst->triangular_solve_options(),
+      /*a_input_buffer=*/GetAllocationSlice(*a),
+      /*b_input_buffer=*/GetAllocationSlice(*inst),
+      inst->shape().element_type(), batch_size, m, n, a_batch_stride,
+      b_batch_stride, inst);
+}
+
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
     HloInstruction* hlo, const ShapeIndex& index) {
   bool fused = HloOpcode::kFusion == hlo->opcode();
@@ -2131,7 +2190,6 @@ std::vector<IrArray> IrEmitterUnnested::ConstructIrArrayForInputs(
   }
   return param_arrays;
 }
-
 
 int IrEmitterUnnested::ConstructInputReducedShapeAndCastInputIrArrayToShape(
     const HloInstruction& hlo, const std::vector<IrArray>& param_arrays,
@@ -2966,12 +3024,11 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
   // since we touch threadIdx.x and blockIdx.x at the beginning of the kernel
   // *anyway*.
   if (!reduction_info && unnested_hlo->IsMultiOutputFusion()) {
-    KernelSupportLibrary{&b_}.If(
-        "emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
-          llvm_ir::EmitTuple(GetIrArray(*unnested_hlo, *unnested_hlo),
-                             ConstructIrArrayForOutputs(*unnested_hlo), &b_,
-                             module_);
-        });
+    KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
+      llvm_ir::EmitTuple(GetIrArray(*unnested_hlo, *unnested_hlo),
+                         ConstructIrArrayForOutputs(*unnested_hlo), &b_,
+                         module_);
+    });
   }
 
   // For each tiled parameter, cast its input IrArray to the corresponding

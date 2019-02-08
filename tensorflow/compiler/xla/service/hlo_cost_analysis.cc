@@ -546,6 +546,21 @@ Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleTriangularSolve(const HloInstruction* hlo) {
+  float bytes_accessed = GetShapeSize(hlo->operand(0)->shape()) / 2.0f;
+  bytes_accessed += GetShapeSize(hlo->operand(1)->shape());
+  current_properties_[kBytesAccessedKey] = bytes_accessed;
+
+  const Shape& a_shape = hlo->operand(0)->shape();
+  const Shape& b_shape = hlo->operand(1)->shape();
+  // Estimate as batch * mn^2 / 2 flops.
+  int64 elems = a_shape.dimensions(a_shape.dimensions_size() - 1);
+  elems *= ShapeUtil::ElementsIn(b_shape);
+  // Each output elment requires reduction_widht FMA operations.
+  current_properties_[kFlopsKey] = kFmaFlops * elems;
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleAllReduce(const HloInstruction* crs) {
   // We assume 2 replicas, so that each output element is the sum of two input
   // elements.

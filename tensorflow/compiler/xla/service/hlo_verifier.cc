@@ -168,6 +168,15 @@ Status ShapeVerifier::HandleFft(HloInstruction* fft) {
   return CheckShape(fft, expected);
 }
 
+Status ShapeVerifier::HandleTriangularSolve(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(CheckOperandCount(hlo, 2));
+  TF_ASSIGN_OR_RETURN(const Shape expected,
+                      ShapeInference::InferTriangularSolveShape(
+                          hlo->operand(0)->shape(), hlo->operand(1)->shape(),
+                          hlo->triangular_solve_options()));
+  return CheckShape(hlo, expected);
+}
+
 Status ShapeVerifier::HandleAllReduce(HloInstruction* crs) {
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : crs->operands()) {

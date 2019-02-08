@@ -429,7 +429,6 @@ class XlaBuilder {
       const Shape& shape_with_layout, const string& opaque,
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout);
 
-
   XlaOp Reduce(const XlaOp& operand, const XlaOp& init_value,
                const XlaComputation& computation,
                absl::Span<const int64> dimensions_to_reduce);
@@ -792,6 +791,9 @@ class XlaBuilder {
       const PrecisionConfig* precision_config);
   friend XlaOp Fft(const XlaOp& operand, FftType fft_type,
                    absl::Span<const int64> fft_length);
+  friend XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
+                               bool unit_diagonal,
+                               TriangularSolveOptions::Transpose transpose_a);
   friend XlaOp Infeed(XlaBuilder* builder, const Shape& shape,
                       const string& config);
   friend void Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
@@ -1311,6 +1313,32 @@ XlaOp ConvGeneralDilated(const XlaOp& lhs, const XlaOp& rhs,
 // with the given FFT length.
 XlaOp Fft(const XlaOp& operand, FftType fft_type,
           absl::Span<const int64> fft_length);
+
+// Solves systems of linear equations with lower or upper triangular coefficient
+// matrices by forward- or back-substitution. Broadcasting along leading
+// dimensions, this routine solves for x in one of the matrix systems
+//   `op(a) * x = b`,  or `x * op(a) = b`,
+// for the variable `x` given `a` and `b`, where `op(a)` is either
+//   `op(a) = a`,  or `op(a) = transpose(a)`,  or `op(a) = conj(transpose(a))`.
+//
+// * `a` is a tensor of shape `[..., M, M]` whose innermost 2 dimensions form
+//   square matrices. If `lower` is true (false), then the strictly upper
+//   (lower) triangular part of each innermost matrix in `a` is assumed to be
+//   zero and is not accessed.
+// * `b` is a tensor of shape `[..., M, K]` if `left_side` is true, otherwise a
+//   tensor of shape `[..., K, M]`.
+// * `left_side` is a boolean, indicating whether to solve a system of the form
+//   op(a) * x = b (true) or x * op(a) = b (false).
+// * `lower` is a boolean, indicating whether the argument `a` is
+// lower-triangular
+//   (true) or upper-triangular (false).
+// * If `unit_diagonal` is true, the diagonal elements of `a` are assumed to be
+//   1 and not accessed.
+// * `transpose_a` indicates which function `op` we use to transform the tensor
+//   `a`: the identity function, transpose(a), or conjugate(transpose(a))
+XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
+                      bool unit_diagonal,
+                      TriangularSolveOptions::Transpose transpose_a);
 
 // Enqueues an infeed instruction onto the computation, which writes data of
 // the given shape to the infeed buffer of the device.

@@ -13,27 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GATHER_EXPANDER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GATHER_EXPANDER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_TRIANGULAR_SOLVE_EXPANDER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_TRIANGULAR_SOLVE_EXPANDER_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/op_expander_pass.h"
 
 namespace xla {
 
-// This pass rewrites gather operations into (roughly) while loops of dynamic
-// slices.  This lets backends that don't support gather directly to
-// nevertheless have a minimum level of support.
-class GatherExpander : public OpExpanderPass {
+class TriangularSolveExpander : public OpExpanderPass {
  public:
-  absl::string_view name() const override { return "gather_expander"; }
+  absl::string_view name() const override {
+    return "triangular_solve_expander";
+  }
 
  protected:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
 
   StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* gather_inst) override;
+      HloInstruction* instruction) override;
+
+ private:
+  // Mapping from op signatures to existing computations.
+  absl::flat_hash_map<string, HloComputation*> computation_cache_;
 };
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GATHER_EXPANDER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_TRIANGULAR_SOLVE_EXPANDER_H_

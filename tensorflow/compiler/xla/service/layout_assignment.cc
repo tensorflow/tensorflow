@@ -2070,6 +2070,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kSort:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
+    case HloOpcode::kTriangularSolve:
     case HloOpcode::kTupleSelect:
     case HloOpcode::kWhile:
       return false;

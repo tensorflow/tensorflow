@@ -95,6 +95,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
+#include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 #include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
@@ -254,6 +255,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
   pipeline.AddPass<MapInliner>();
+
+  pipeline.AddPass<TriangularSolveExpander>();
 
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
   // pass.
