@@ -1378,7 +1378,7 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithFunctionalControlFlow) {
 
   // All `PartitionedCall` nodes in the optimized graph must be inlined, and
   // `If` node must be lowered to `Switch` and `Merge` nodes.
-  EXPECT_EQ(count_nodes_with_op("PartitionedCallOp"), 0);
+  EXPECT_EQ(count_nodes_with_op("PartitionedCall"), 0);
   EXPECT_EQ(count_nodes_with_op("If"), 0);
   EXPECT_EQ(count_nodes_with_op("Switch"), 3);
   EXPECT_EQ(count_nodes_with_op("Merge"), 1);
