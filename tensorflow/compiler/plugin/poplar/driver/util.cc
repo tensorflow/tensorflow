@@ -150,6 +150,11 @@ const xla::HloComputation* GetRepeatBody(const xla::HloInstruction* inst) {
   return inst->to_apply()->root_instruction()->to_apply();
 }
 
+bool IsSupportedSharding(const HloSharding& sharding) {
+  // We currently only support sharding with unique devices.
+  return sharding.HasUniqueDevice();
+}
+
 bool IsInterIpuCopy(const HloInstruction* inst) {
   return inst->opcode() == HloOpcode::kCustomCall &&
          inst->custom_call_target() == "inter_ipu_copy";

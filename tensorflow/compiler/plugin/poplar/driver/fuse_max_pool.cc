@@ -64,9 +64,10 @@ static const std::vector<HloMatcherPattern> patterns = {
 // clang-format on
 
 FuseMaxPool::FuseMaxPool(struct CompilerAnnotations& annotations)
-    : HloMatcher(patterns, annotations, false) {}
+    : HloMatcher(patterns, annotations, false, true) {}
 
-bool FuseMaxPool::HandleMatch(HloMatcherMatched& match) {
+bool FuseMaxPool::HandleMatch(HloMatcherMatched& match,
+                              const absl::optional<int64> sharding_device) {
   const unsigned max_pool_fwd_pattern_index = 0;
   const unsigned max_pool_bwd_pattern_index = 1;
   auto& pattern = patterns_[match.pattern_idx];
@@ -76,7 +77,7 @@ bool FuseMaxPool::HandleMatch(HloMatcherMatched& match) {
     const HloInstruction* input =
         match.instruction_mapping[pattern.GetOutputs()[0]]->operand(0);
     HloInstruction* call_to_outlined_computation =
-        OutlineExpressionFromComputation(match, name);
+        OutlineExpressionFromComputation(match, name, sharding_device);
     input_to_fwd_max_pool_map_[input] = call_to_outlined_computation;
   } else {
     CHECK_EQ(match.pattern_idx, max_pool_bwd_pattern_index);
@@ -91,7 +92,8 @@ bool FuseMaxPool::HandleMatch(HloMatcherMatched& match) {
     // Found a match, we can outline now, but do need to add the output
     // tensor as a parameter
     std::string name = op_prefix_ + pattern.GetType();
-    OutlineExpressionFromComputation(match, name, {it->second});
+    OutlineExpressionFromComputation(match, name, sharding_device,
+                                     {it->second});
   }
   return true;
 }

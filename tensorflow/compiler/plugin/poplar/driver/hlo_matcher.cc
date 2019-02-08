@@ -522,15 +522,18 @@ HloMatcherPattern::VerifyAndGetGraphs() {
 HloMatcher::HloMatcher(const std::vector<HloMatcherPattern>& patterns,
                        struct CompilerAnnotations& annotations,
                        bool root_computation_only,
+                       bool requires_unique_sharding,
                        unsigned look_through_max_depth)
     : patterns_(std::move(patterns)),
       annotations_(annotations),
       root_computation_only_(root_computation_only),
+      requires_unique_sharding_(requires_unique_sharding),
       look_through_max_depth_(look_through_max_depth) {}
 
 // A set of sets of ops which are all associative together
 static std::set<std::set<HloOpcode>> associative_ops_sets = {
-    {HloOpcode::kMultiply}, {HloOpcode::kAdd},
+    {HloOpcode::kMultiply},
+    {HloOpcode::kAdd},
 };
 
 absl::optional<Trace> HloMatcher::FindNextMatchingOp(
@@ -721,7 +724,49 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
     matched = MatchDAGIsomorphism(match.instruction_mapping, root, pattern);
   }
 
-  return matched ? HandleMatch(match) : false;
+  if (matched) {
+    // Optional unique device this fusion will be performed on.
+    absl::optional<int64> sharding_device = absl::nullopt;
+    if (requires_unique_sharding_) {
+      // Check that all the instructions have compatible sharding - i.e. all
+      // non-input instructions in the pattern are using the same unique device.
+      absl::flat_hash_set<int64> sharding_devices;
+
+      for (auto pair : match.instruction_mapping) {
+        NodeId id = pair.first;
+        HloInstruction* inst = pair.second;
+        const bool is_input =
+            absl::c_find(pattern.GetInputs(), id) != pattern.GetInputs().end();
+        if (!is_input && inst->has_sharding()) {
+          auto sharding = inst->sharding();
+          // We ignore sharding if any of the following are true:
+          // * it's not supported sharding information.
+          // * it's a (wide) constant.
+          bool ignore_sharding = !IsSupportedSharding(sharding);
+          ignore_sharding |=
+              (inst->opcode() == HloOpcode::kConstant) ||
+              (inst->opcode() == HloOpcode::kBroadcast &&
+               inst->operand(0)->opcode() == HloOpcode::kConstant) ||
+              IsPopOpsFusion(inst, "wide_const");
+          if (!ignore_sharding) {
+            sharding_devices.insert(*sharding.UniqueDevice());
+          }
+        }
+      }
+
+      if (sharding_devices.size() == 1) {
+        // If we have one sharding device then we use that sharding information
+        // for the whole fusion.
+        sharding_device = *std::begin(sharding_devices);
+      } else if (sharding_devices.size() > 1) {
+        // Multiple devices.
+        return false;
+      }
+    }
+    return HandleMatch(match, sharding_device);
+  } else {
+    return false;
+  }
 }
 
 bool HloMatcher::MatchPatternStart(HloComputation* computation) {
@@ -805,9 +850,10 @@ std::set<HloInstruction*> HloMatcher::ReorderGraph(
     root.inst->ReplaceAllUsesWith(target_user.inst);
     target_user.inst->ReplaceOperandWith(target_user.op_idx, root.inst);
     root.inst->ReplaceOperandWith(root.op_idx, target.inst);
-    absl::c_transform(trace, std::inserter(modified_instructions,
-                                           modified_instructions.begin()),
-                      [](InstructionIndex const& x) { return x.inst; });
+    absl::c_transform(
+        trace,
+        std::inserter(modified_instructions, modified_instructions.begin()),
+        [](InstructionIndex const& x) { return x.inst; });
   }
   return modified_instructions;
 }
@@ -815,6 +861,7 @@ std::set<HloInstruction*> HloMatcher::ReorderGraph(
 HloInstruction* HloMatcher::OutlineExpressionFromComputation(
     const HloMatcherMatched& matched,
     const std::string& outlined_computation_name,
+    const absl::optional<int64> sharding_device,
     std::vector<HloInstruction*> forced_parameters) {
   HloComputation* computation = matched.computation;
   auto pattern = patterns_[matched.pattern_idx];
@@ -952,8 +999,8 @@ HloInstruction* HloMatcher::OutlineExpressionFromComputation(
   fusion->set_backend_config(backend_config);
 
   fusion->set_metadata(old->metadata());
-  if (old->has_sharding()) {
-    fusion->set_sharding(old->sharding());
+  if (sharding_device) {
+    fusion->set_device_sharding(*sharding_device);
   }
 
   // Replace the uses with the new outputs.

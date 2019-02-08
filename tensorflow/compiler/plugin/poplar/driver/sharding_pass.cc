@@ -30,9 +30,7 @@ static bool HaveSharding(HloComputation* comp) {
   for (auto* inst : comp->instructions()) {
     if (inst->has_sharding()) {
       auto sharding = inst->sharding();
-      // We currently only support sharding with unique devices.
-      const bool supported_sharding = sharding.HasUniqueDevice();
-      if (supported_sharding) {
+      if (IsSupportedSharding(sharding)) {
         return true;
       }
       LOG(INFO) << "Instruction " << inst->name()

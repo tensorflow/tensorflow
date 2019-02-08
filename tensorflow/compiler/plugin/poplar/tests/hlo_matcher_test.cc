@@ -29,13 +29,16 @@ class TestMatcher : public HloMatcher {
  public:
   TestMatcher(const std::vector<HloMatcherPattern>& patterns,
               CompilerAnnotations& annotations, bool root_only,
+              bool requires_unique_sharding = true,
               unsigned int look_through_depth = 0)
-      : HloMatcher(patterns, annotations, root_only, look_through_depth) {}
+      : HloMatcher(patterns, annotations, root_only, requires_unique_sharding,
+                   look_through_depth) {}
 
  private:
-  bool HandleMatch(HloMatcherMatched& match) override {
+  bool HandleMatch(HloMatcherMatched& match,
+                   const absl::optional<int64> sharding_device) override {
     auto pattern = patterns_[match.pattern_idx];
-    OutlineExpressionFromComputation(match, pattern.GetType());
+    OutlineExpressionFromComputation(match, pattern.GetType(), sharding_device);
     replace_count++;
     const int replaced_instructions =
         match.instruction_mapping.size() - pattern.GetInputs().size();
@@ -245,7 +248,7 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
   md.set_op_name("long/bc");
   b1->set_metadata(md);
 
-  b1->set_sharding(HloSharding::AssignDevice(1));
+  b1->set_device_sharding(1);
 
   auto computation = builder.Build();
 
@@ -487,7 +490,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOps) {
   // clang-format on
 
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, false, look_through_depth);
+  TestMatcher matcher(patterns, annotations, false, true, look_through_depth);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
@@ -560,7 +563,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsParameter) {
   // clang-format on
 
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, false, look_through_depth);
+  TestMatcher matcher(patterns, annotations, false, true, look_through_depth);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
@@ -640,7 +643,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsLongerChain) {
   // clang-format on
 
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, false, look_through_depth);
+  TestMatcher matcher(patterns, annotations, false, true, look_through_depth);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
@@ -723,7 +726,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsChainTooLong) {
   // clang-format on
 
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, false, look_through_depth);
+  TestMatcher matcher(patterns, annotations, false, true, look_through_depth);
 
   EXPECT_FALSE(matcher.Run(hlo_module.get()).ValueOrDie());
 }
@@ -779,7 +782,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsPartialInChainUsed) {
   // clang-format on
 
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, false, look_through_depth);
+  TestMatcher matcher(patterns, annotations, false, true, look_through_depth);
 
   EXPECT_FALSE(matcher.Run(hlo_module.get()).ValueOrDie());
 }
@@ -826,7 +829,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsDifferentAssociativitySets) {
   // clang-format on
 
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, false, look_through_depth);
+  TestMatcher matcher(patterns, annotations, false, true, look_through_depth);
 
   EXPECT_FALSE(matcher.Run(hlo_module.get()).ValueOrDie());
 }
@@ -872,7 +875,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsRootNonAssociative) {
   // clang-format on
 
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, false, look_through_depth);
+  TestMatcher matcher(patterns, annotations, false, true, look_through_depth);
 
   EXPECT_FALSE(matcher.Run(hlo_module.get()).ValueOrDie());
 }
@@ -1241,6 +1244,418 @@ TEST_F(HloMatcherTest, MatchTestMultipleOutputsMultipleMatches) {
   CHECK_EQ(root->operand(1)->opcode(), HloOpcode::kGetTupleElement);
   CHECK_EQ(root->operand(2)->opcode(), HloOpcode::kGetTupleElement);
   CHECK_EQ(root->operand(3)->opcode(), HloOpcode::kGetTupleElement);
+}
+
+TEST_F(HloMatcherTest, TestShardingSame) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+
+  auto builder = HloComputation::Builder(TestName());
+
+  auto i1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "in1"));
+  i1->set_device_sharding(0);
+
+  auto i2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "in2"));
+  i2->set_device_sharding(0);
+
+  auto i3 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape, "in3"));
+  i3->set_device_sharding(0);
+
+  auto add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i2));
+  add1->set_device_sharding(0);
+
+  auto add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add1, i3));
+  add2->set_device_sharding(0);
+
+  auto tuple = builder.AddInstruction(HloInstruction::CreateTuple({add2}));
+  tuple->set_device_sharding(0);
+
+  auto computation = builder.Build();
+
+  auto hlo_module = CreateNewVerifiedModule();
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  // clang-format off
+  std::vector<HloMatcherPattern> patterns = {
+    HloMatcherPattern(
+      PatternType("test"),
+      PatternMetaTarget(0),
+      PatternInputs({1, 2}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({1, 2})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
+
+  CompilerAnnotations annotations(hlo_module.get());
+  TestMatcher matcher(patterns, annotations, false, true);
+
+  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+
+  ASSERT_EQ(2, matcher.replace_count);
+  EXPECT_EQ(6, hlo_module->entry_computation()->instruction_count());
+}
+
+TEST_F(HloMatcherTest, TestShardingDifferentDontIgnoreSharding) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+
+  auto builder = HloComputation::Builder(TestName());
+
+  auto i1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "in1"));
+  i1->set_device_sharding(0);
+
+  auto i2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "in2"));
+  i2->set_device_sharding(0);
+
+  auto i3 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape, "in3"));
+  i3->set_device_sharding(0);
+
+  auto add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i2));
+  add1->set_device_sharding(0);
+
+  auto add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add1, i3));
+  add2->set_device_sharding(1);
+
+  auto tuple = builder.AddInstruction(HloInstruction::CreateTuple({add2}));
+  tuple->set_device_sharding(0);
+
+  auto computation = builder.Build();
+
+  auto hlo_module = CreateNewVerifiedModule();
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  // clang-format off
+  std::vector<HloMatcherPattern> patterns = {
+    HloMatcherPattern(
+      PatternType("test"),
+      PatternMetaTarget(0),
+      PatternInputs({2, 3, 4}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({1, 2})},
+        {HloOpcode::kAdd, NodeOperands({3, 4})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
+
+  CompilerAnnotations annotations(hlo_module.get());
+  TestMatcher matcher(patterns, annotations, false, true);
+
+  EXPECT_FALSE(matcher.Run(hlo_module.get()).ValueOrDie());
+}
+
+TEST_F(HloMatcherTest, TestShardingDifferentIgnoreSharding) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+
+  auto builder = HloComputation::Builder(TestName());
+
+  auto i1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "in1"));
+  i1->set_device_sharding(0);
+
+  auto i2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "in2"));
+  i2->set_device_sharding(0);
+
+  auto i3 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape, "in3"));
+  i3->set_device_sharding(0);
+
+  auto add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i2));
+  add1->set_device_sharding(0);
+
+  auto add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add1, i3));
+  add2->set_device_sharding(1);
+
+  auto tuple = builder.AddInstruction(HloInstruction::CreateTuple({add2}));
+  tuple->set_device_sharding(0);
+
+  auto computation = builder.Build();
+
+  auto hlo_module = CreateNewVerifiedModule();
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  // clang-format off
+  std::vector<HloMatcherPattern> patterns = {
+    HloMatcherPattern(
+      PatternType("test"),
+      PatternMetaTarget(0),
+      PatternInputs({2, 3, 4}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({1, 2})},
+        {HloOpcode::kAdd, NodeOperands({3, 4})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
+
+  CompilerAnnotations annotations(hlo_module.get());
+  TestMatcher matcher(patterns, annotations, false, false);
+
+  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+
+  ASSERT_EQ(1, matcher.replace_count);
+  EXPECT_EQ(5, hlo_module->entry_computation()->instruction_count());
+}
+
+TEST_F(HloMatcherTest, TestShardingIncomplete) {
+  // In this test we provide incomplete sharding and check that it
+  // gets applied to the whole pattern.
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+
+  auto builder = HloComputation::Builder(TestName());
+
+  auto i1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "in1"));
+  i1->set_device_sharding(0);
+
+  auto i2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "in2"));
+  i2->set_device_sharding(0);
+
+  auto i3 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape, "in3"));
+  i3->set_device_sharding(0);
+
+  auto add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i2));
+  add1->set_device_sharding(0);
+
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add1, i3));
+
+  auto computation = builder.Build();
+
+  auto hlo_module = CreateNewVerifiedModule();
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  // clang-format off
+  std::vector<HloMatcherPattern> patterns = {
+    HloMatcherPattern(
+      PatternType("test"),
+      PatternMetaTarget(0),
+      PatternInputs({2, 3, 4}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({1, 2})},
+        {HloOpcode::kAdd, NodeOperands({3, 4})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
+
+  CompilerAnnotations annotations(hlo_module.get());
+  TestMatcher matcher(patterns, annotations, false, true);
+
+  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+  auto entry = hlo_module->entry_computation();
+  ASSERT_EQ(1, matcher.replace_count);
+  EXPECT_EQ(4, entry->instruction_count());
+  EXPECT_EQ(0, *entry->root_instruction()->sharding_unique_device());
+}
+
+TEST_F(HloMatcherTest, TestShardingInputDifferentShard) {
+  // In this test we provide incomplete sharding and inputs on different shards.
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+
+  auto builder = HloComputation::Builder(TestName());
+
+  auto i1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "in1"));
+  i1->set_device_sharding(1);
+
+  auto i2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "in2"));
+  i2->set_device_sharding(2);
+
+  auto i3 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape, "in3"));
+  i3->set_device_sharding(3);
+
+  auto add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i2));
+  add1->set_device_sharding(0);
+
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add1, i3));
+
+  auto computation = builder.Build();
+
+  auto hlo_module = CreateNewVerifiedModule();
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  // clang-format off
+  std::vector<HloMatcherPattern> patterns = {
+    HloMatcherPattern(
+      PatternType("test"),
+      PatternMetaTarget(0),
+      PatternInputs({2, 3, 4}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({1, 2})},
+        {HloOpcode::kAdd, NodeOperands({3, 4})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
+
+  CompilerAnnotations annotations(hlo_module.get());
+  TestMatcher matcher(patterns, annotations, false, true);
+
+  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+  auto entry = hlo_module->entry_computation();
+  ASSERT_EQ(1, matcher.replace_count);
+  EXPECT_EQ(4, entry->instruction_count());
+  EXPECT_EQ(0, *entry->root_instruction()->sharding_unique_device());
+}
+
+TEST_F(HloMatcherTest, TestShardingIgnoreConstSharding) {
+  // In this test we provide incomplete sharding and inputs on different shards.
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+
+  auto builder = HloComputation::Builder(TestName());
+
+  auto i1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "in1"));
+  i1->set_device_sharding(1);
+
+  auto i2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "in2"));
+  i2->set_device_sharding(2);
+
+  auto c1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
+  c1->set_device_sharding(3);
+
+  auto add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i2));
+  add1->set_device_sharding(0);
+
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add1, c1));
+
+  auto computation = builder.Build();
+
+  auto hlo_module = CreateNewVerifiedModule();
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  // clang-format off
+  std::vector<HloMatcherPattern> patterns = {
+    HloMatcherPattern(
+      PatternType("test"),
+      PatternMetaTarget(0),
+      PatternInputs({3, 4}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({1, 2})},
+        {HloOpcode::kAdd, NodeOperands({3, 4})},
+        {HloOpcode::kConstant, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
+
+  CompilerAnnotations annotations(hlo_module.get());
+  TestMatcher matcher(patterns, annotations, false, true);
+
+  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+  auto entry = hlo_module->entry_computation();
+  ASSERT_EQ(1, matcher.replace_count);
+  EXPECT_EQ(3, entry->instruction_count());
+  EXPECT_EQ(0, *entry->root_instruction()->sharding_unique_device());
+}
+
+TEST_F(HloMatcherTest, TestShardingIgnoreWideConstSharding) {
+  // In this test we provide incomplete sharding and inputs on different shards.
+  Shape shape = ShapeUtil::MakeShape(F32, {10});
+
+  auto builder = HloComputation::Builder(TestName());
+
+  auto i1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "in1"));
+  i1->set_device_sharding(1);
+
+  auto i2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "in2"));
+  i2->set_device_sharding(2);
+
+  auto c1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
+  c1->set_device_sharding(3);
+  auto b1 =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(shape, c1, {}));
+  b1->set_device_sharding(4);
+
+  auto add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i2));
+  add1->set_device_sharding(0);
+
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add1, b1));
+
+  auto computation = builder.Build();
+
+  auto hlo_module = CreateNewVerifiedModule();
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  // clang-format off
+  std::vector<HloMatcherPattern> patterns = {
+    HloMatcherPattern(
+      PatternType("test"),
+      PatternMetaTarget(0),
+      PatternInputs({4, 5}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({1, 2})},
+        {HloOpcode::kAdd, NodeOperands({4, 5})},
+        {HloOpcode::kBroadcast, NodeOperands({3})},
+        {HloOpcode::kConstant, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
+
+  CompilerAnnotations annotations(hlo_module.get());
+  TestMatcher matcher(patterns, annotations, false, true);
+
+  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+  auto entry = hlo_module->entry_computation();
+  ASSERT_EQ(1, matcher.replace_count);
+  EXPECT_EQ(3, entry->instruction_count());
+  EXPECT_EQ(0, *entry->root_instruction()->sharding_unique_device());
 }
 
 }  // namespace
