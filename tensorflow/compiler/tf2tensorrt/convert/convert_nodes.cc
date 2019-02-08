@@ -383,15 +383,14 @@ tensorflow::Status CreateBroadcastableScalarConstant(
 // includes the batch dimension, while TRT does not. TF can also use negative
 // indices.
 // TODO(tmorris): Use this method in more ops.
-tensorflow::Status ConvertAxis(int tf_axis, int trt_nb_dims, bool check_bounds,
+tensorflow::Status ConvertAxis(int tf_axis, int trt_nb_dims,
                                absl::string_view node_name, int* trt_axis) {
   const int tf_nb_dims = trt_nb_dims + 1;
   // Check bounds.
-  if (check_bounds && (tf_axis < -tf_nb_dims || tf_axis >= tf_nb_dims)) {
+  if (tf_axis < -tf_nb_dims || tf_axis >= tf_nb_dims) {
     return tensorflow::errors::InvalidArgument(
-        "Axis value of ", std::to_string(tf_axis),
-        " is out of bounds, must be in range [", -tf_nb_dims, ", ", tf_nb_dims,
-        "), at ", node_name);
+        "Axis value of ", tf_axis, " is out of bounds, must be in range [",
+        -tf_nb_dims, ", ", tf_nb_dims, "), at ", node_name);
   }
   // Make negative axis positive.
   if (tf_axis < 0) tf_axis += tf_nb_dims;
@@ -3452,7 +3451,7 @@ tensorflow::Status ConvertGather(OpConverterParams* params) {
   }
   int trt_axis = 0;
   TF_RETURN_IF_ERROR(ConvertAxis(axis[0], inputs.at(0).GetTrtDims().nbDims,
-                                 true, node_def.name(), &trt_axis));
+                                 node_def.name(), &trt_axis));
   if (params->validation_only) return Status::OK();
 
   nvinfer1::IGatherLayer* layer = params->converter->network()->addGather(
