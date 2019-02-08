@@ -897,22 +897,14 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
       optional<HloComputation*> to_apply;
-      // TODO(b/122298745): Make this required.
-      attrs["to_apply"] = {/*required=*/false, AttrTy::kHloComputation,
+      attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs) ||
           dimensions->size() != 1) {
         return false;
       }
-      if (to_apply.has_value()) {
-        instruction = builder->AddInstruction(HloInstruction::CreateSort(
-            shape, dimensions->at(0), operands, to_apply.value()));
-      } else {
-        instruction = builder->AddInstruction(HloInstruction::CreateSort(
-            shape, dimensions->at(0),
-            /*keys=*/operands[0],
-            /*values=*/absl::Span<HloInstruction* const>(operands).subspan(1)));
-      }
+      instruction = builder->AddInstruction(HloInstruction::CreateSort(
+          shape, dimensions->at(0), operands, to_apply.value()));
       break;
     }
     case HloOpcode::kTuple: {

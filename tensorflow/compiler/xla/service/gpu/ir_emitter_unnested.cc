@@ -1153,17 +1153,7 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   std::vector<std::unique_ptr<Thunk>> thunks;
   Shape keys_shape = sort->operand(0)->shape();
   int64 dimension_to_sort = sort->dimensions(0);
-  // In case there is a 'values' parameter that is a iota, we take note and use
-  // it later to ensure a stable sort. Otherwise, we don't guarantee a stable
-  // sort.
-  int64 iota_values_parameter_index = -1;
   for (int64 i = 0; i < sort->operand_count(); ++i) {
-    if (i > 0 && sort->operand(i)->opcode() == HloOpcode::kIota &&
-        ShapeUtil::ElementIsIntegral(sort->operand(i)->shape()) &&
-        Cast<HloIotaInstruction>(sort->operand(i))->iota_dimension() ==
-            dimension_to_sort) {
-      iota_values_parameter_index = i;
-    }
     ShapeIndex shape_index =
         sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
     // We assume that the layout of all involved operands and outputs is the
@@ -1276,25 +1266,23 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
                                              : standard_launch_dimensions;
     UpdateLaunchDimensions(launch_dimensions, thunks.back().get(),
                            ir_emitter_context_->llvm_module());
-    IrArray keys_array;
     std::vector<IrArray> values_arrays;
-    values_arrays.reserve(sort->operand_count() - 1);
+    values_arrays.reserve(sort->operand_count());
     for (int64 i = 0; i < sort->operand_count(); ++i) {
       ShapeIndex shape_index =
           sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
-      if (i == 0) {
-        keys_array = GetIrArray(*sort, *sort, shape_index);
-      } else {
-        values_arrays.push_back(GetIrArray(*sort, *sort, shape_index));
-      }
+      values_arrays.push_back(GetIrArray(*sort, *sort, shape_index));
     }
     return llvm_ir::EmitSortInPlace(
-        dimension_to_sort, keys_array, values_arrays,
-        iota_values_parameter_index, IrName(sort), xor_masks, &b_,
+        dimension_to_sort, values_arrays, IrName(sort), xor_masks, &b_,
         launch_dimensions,
         xor_masks.size() > 1 ? num_iterations_in_sort_dim
                              : standard_num_iterations_in_sort_dim,
-        kTileSize);
+        kTileSize,
+        [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
+          return EmitCallToNestedComputation(*sort->to_apply(), operands,
+                                             output);
+        });
   };
   std::vector<int64> xor_masks;
   for (int64 stage = 0; stage < num_stages; ++stage) {
