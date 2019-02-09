@@ -87,22 +87,10 @@ def get_full_variable_names(
   for table_name in table_to_config_dict:
     embedding_var_name = _get_embedding_var_name_from_table_name(table_name)
     (scope_name, var_name) = collection[0][embedding_var_name]
-
-    if table_name in embedding_variable_name_by_table:
-      existed_scope_name, existed_var_name = (
-          embedding_variable_name_by_table[table_name])
-      if existed_scope_name != scope_name or existed_var_name != var_name:
-        raise RuntimeError(
-            'Internal error: For table {}, scope and/or var_name mismatch(es). '
-            'expected scope {} var_name {}; got scope {} var_name {}'.format(
-                table_name, existed_scope_name, existed_var_name, scope_name,
-                var_name))
-    else:
-      embedding_variable_name_by_table[table_name] = (
-          _get_embedding_variable_name(scope_name, var_name)
-      )
-      slot_variable_names_by_table[table_name] = _get_slot_variable_names(
-          scope_name, var_name, optimization_parameters)
+    embedding_variable_name_by_table[table_name] = (
+        _get_embedding_variable_name(scope_name, var_name))
+    slot_variable_names_by_table[table_name] = _get_slot_variable_names(
+        scope_name, var_name, optimization_parameters)
 
   graph.clear_collection(tpu_fc._TPU_FC_TO_SCOPE)  # pylint: disable=protected-access
   return embedding_variable_name_by_table, slot_variable_names_by_table
