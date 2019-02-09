@@ -31,6 +31,10 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
+
+
+__all__ = ["CriticalSection"]
 
 
 # Graph Keys
@@ -66,6 +70,7 @@ def _get_colocation(op):
     return None
 
 
+@tf_export("CriticalSection")
 class CriticalSection(object):
   """Critical section.
 
@@ -179,37 +184,36 @@ class CriticalSection(object):
   def name(self):
     return self._handle.op.name
 
-  def execute(self, fn, *args, **kwargs):
-    """Execute function `fn(*args, **kwargs)` inside the CriticalSection.
+  def execute(self, fn, exclusive_resource_access=True, name=None):
+    """Execute function `fn()` inside the critical section.
+
+    `fn` should not accept any arguments.  To add extra arguments to when
+    calling `fn` in the critical section, create a lambda:
+
+    ```python
+    critical_section.execute(lambda: fn(*my_args, **my_kwargs))
+    ```
 
     Args:
       fn: The function to execute.  Must return at least one tensor.
-      *args: Additional positional arguments to `fn`.
-      **kwargs: Additional keyword arguments to `fn`.
-        Several keywords are reserved for `execute`.  These are:
-
-        - name; The name to use when creating the execute operation.
-        - exclusive_resource_access; Whether the resources required by
-          `fn` should be exclusive to this `CriticalSection`.  Default: `True`.
-          You may want to set this to `False` if you will be accessing a
-          resource in read-only mode in two different CriticalSections.
+      exclusive_resource_access: Whether the resources required by
+        `fn` should be exclusive to this `CriticalSection`.  Default: `True`.
+        You may want to set this to `False` if you will be accessing a
+        resource in read-only mode in two different CriticalSections.
+      name: The name to use when creating the execute operation.
 
     Returns:
-      The tensors returned from `fn(*args, **kwargs)`.
+      The tensors returned from `fn()`.
 
     Raises:
       ValueError: If `fn` attempts to lock this `CriticalSection` in any nested
         or lazy way that may cause a deadlock.
-      ValueError: If `exclusive_resource_access` is not provided (is `True`) and
+      ValueError: If `exclusive_resource_access == True` and
         another `CriticalSection` has an execution requesting the same
-        resources as in `*args`, `**kwargs`, and any additionally captured
-        inputs in `fn`.  Note, even if `exclusive_resource_access` is `True`,
-        if another execution in another `CriticalSection` was created without
-        `exclusive_resource_access=True`, a `ValueError` will be raised.
+        resources as `fn``.  Note, even if `exclusive_resource_access` is
+        `True`, if another execution in another `CriticalSection` was created
+        without `exclusive_resource_access=True`, a `ValueError` will be raised.
     """
-    name = kwargs.pop("name", None)
-    exclusive_resource_access = kwargs.pop("exclusive_resource_access", True)
-
     with ops.name_scope(name, "critical_section_execute", []):
 
       # Ensure that mutex locking only happens *after* all args and
@@ -222,7 +226,7 @@ class CriticalSection(object):
         with ops.get_default_graph()._lock:  # pylint: disable=protected-access
           existing_ops = ops.get_default_graph().get_operations()
           with ops.control_dependencies([lock]):
-            r = fn(*args, **kwargs)
+            r = fn()
           # TODO(ebrevdo): If creating critical sections in a python loop, this
           # makes graph creation time quadratic.  Revisit if this
           # becomes a problem.
@@ -230,7 +234,7 @@ class CriticalSection(object):
                          .difference(existing_ops))
       else:
         with ops.control_dependencies([lock]):
-          r = fn(*args, **kwargs)
+          r = fn()
 
       if not context.executing_eagerly():
         self._add_control_dependencies_to_lock(created_ops, lock.op)
