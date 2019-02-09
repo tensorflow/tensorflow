@@ -1344,7 +1344,9 @@ class DropoutWrapper(_RNNCellWrapperV1):
 
   def zero_state(self, batch_size, dtype):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
-      return self._cell.zero_state(batch_size, dtype)
+      if (hasattr(self._cell, "zero_state")):
+        return self._cell.zero_state(batch_size, dtype)
+      return super(DropoutWrapper, self).zero_state(batch_size, dtype)
 
   def _variational_recurrent_dropout_value(
       self, index, value, noise, keep_prob):
@@ -1542,7 +1544,9 @@ class ResidualWrapper(_RNNCellWrapperV1):
 
   def zero_state(self, batch_size, dtype):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
-      return self._cell.zero_state(batch_size, dtype)
+      if (hasattr(self._cell, "zero_state")):
+        return self._cell.zero_state(batch_size, dtype)
+      return super(ResidualWrapper, self).zero_state(batch_size, dtype)
 
   def _call_wrapped_cell(self, inputs, state, cell_call_fn, **kwargs):
     """Run the cell and then apply the residual_fn on its inputs to its outputs.
