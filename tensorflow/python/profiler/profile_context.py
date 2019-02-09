@@ -342,11 +342,11 @@ class ProfileContext(object):
         raise errors.InternalError(None, None,
                                    'Already in context or context not cleaned.')
       else:
-        setattr(session.BaseSession, 'run', _profiled_run)
-        setattr(session.BaseSession, '__init__', _profiled_init)
-        setattr(session.BaseSession, '_profiler_run_internal', self.old_run)
-        setattr(session.BaseSession, '_profiler_init_internal', self.old_init)
-        setattr(session.BaseSession, 'profile_context', self)
+        session.BaseSession.run = _profiled_run
+        session.BaseSession.__init__ = _profiled_init
+        session.BaseSession._profiler_run_internal = self.old_run
+        session.BaseSession._profiler_init_internal = self.old_init
+        session.BaseSession.profile_context = self
         return self
     else:
       return self
@@ -355,8 +355,8 @@ class ProfileContext(object):
     if not self._enabled:
       return
     print_mdl.DeleteProfiler()
-    setattr(session.BaseSession, 'run', self.old_run)
-    setattr(session.BaseSession, '__init__', self.old_init)
-    setattr(session.BaseSession, '_profiler_run_internal', None)
-    setattr(session.BaseSession, '_profiler_init_internal', None)
-    setattr(session.BaseSession, 'profile_context', None)
+    session.BaseSession.run = self.old_run
+    session.BaseSession.__init__ = self.old_init
+    session.BaseSession._profiler_run_internal = None
+    session.BaseSession._profiler_init_internal = None
+    session.BaseSession.profile_context = None

@@ -935,7 +935,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
     # For slicing, bind getitem differently than a tensor (use SliceHelperVar
     # instead)
     # pylint: disable=protected-access
-    setattr(cls, "__getitem__", array_ops._SliceHelperVar)
+    cls.__getitem__ = array_ops._SliceHelperVar
 
   @classmethod
   def _OverloadOperator(cls, operator):  # pylint: disable=invalid-name

@@ -99,7 +99,7 @@ def convert(
 
     # Sometimes the decorator is just desugared, making it impossible to detect.
     # This attribute makes detection easier.
-    setattr(wrapper, '__ag_compiled', True)
+    wrapper.__ag_compiled = True
     return wrapper
 
   return decorator
@@ -163,7 +163,7 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
     else:
       raise ValueError('unknown value for run_as: %s' % run_as)
 
-    setattr(wrapper, '__ag_compiled', True)
+    wrapper.__ag_compiled = True
     return wrapper
 
   return decorator

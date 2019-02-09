@@ -523,7 +523,7 @@ class _DefinedFunction(object):
     # Set a hidden attr in 'op' so that gradients_impl can refer back
     # to this _DefinedFunction instance to access python_grad_func.
     assert isinstance(op, ops.Operation)
-    setattr(op, "__defun", self)
+    op.__defun = self
 
     if self._shape_func is not None:
       shapes = self._shape_func(op)

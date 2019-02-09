@@ -1115,13 +1115,13 @@ class SVTimerCheckpointThread(coordinator.LooperThread):
 
 
 # TODO(sherrym): All non-PEP8 compliant names will be deprecated shortly.
-setattr(Supervisor, "PrepareSession", Supervisor.prepare_or_wait_for_session)
-setattr(Supervisor, "StartQueueRunners", Supervisor.start_queue_runners)
-setattr(Supervisor, "StartStandardServices", Supervisor.start_standard_services)
-setattr(Supervisor, "Stop", Supervisor.stop)
-setattr(Supervisor, "RequestStop", Supervisor.request_stop)
-setattr(Supervisor, "Loop", Supervisor.loop)
-setattr(Supervisor, "ShouldStop", Supervisor.should_stop)
-setattr(Supervisor, "StopOnException", Supervisor.stop_on_exception)
-setattr(Supervisor, "WaitForStop", Supervisor.wait_for_stop)
-setattr(Supervisor, "SummaryComputed", Supervisor.summary_computed)
+Supervisor.PrepareSession = Supervisor.prepare_or_wait_for_session
+Supervisor.StartQueueRunners = Supervisor.start_queue_runners
+Supervisor.StartStandardServices = Supervisor.start_standard_services
+Supervisor.Stop = Supervisor.stop
+Supervisor.RequestStop = Supervisor.request_stop
+Supervisor.Loop = Supervisor.loop
+Supervisor.ShouldStop = Supervisor.should_stop
+Supervisor.StopOnException = Supervisor.stop_on_exception
+Supervisor.WaitForStop = Supervisor.wait_for_stop
+Supervisor.SummaryComputed = Supervisor.summary_computed

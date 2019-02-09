@@ -141,7 +141,7 @@ class _Loader(object):
         # that allows `obj()` syntax to work. This is done per-instance to
         # allow `callable` to be used to find out if an object is callable.
         if reference.local_name == "__call__":
-          setattr(type(obj), "__call__", _call_attribute)
+          type(obj).__call__ = _call_attribute
 
   def _restore_checkpoint(self):
     """Load state from checkpoint into the deserialized objects."""

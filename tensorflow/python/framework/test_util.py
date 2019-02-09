@@ -1088,7 +1088,7 @@ def deprecated_graph_mode_only(func=None):
     if tf_inspect.isclass(f):
       setup = f.__dict__.get("setUp")
       if setup is not None:
-        setattr(f, "setUp", decorator(setup))
+        f.setUp = decorator(setup)
 
       for name, value in f.__dict__.copy().items():
         if (callable(value) and
@@ -1139,7 +1139,7 @@ def run_v1_only(reason, func=None):
     if tf_inspect.isclass(f):
       setup = f.__dict__.get("setUp")
       if setup is not None:
-        setattr(f, "setUp", decorator(setup))
+        f.setUp = decorator(setup)
 
       for name, value in f.__dict__.copy().items():
         if (callable(value) and

@@ -88,7 +88,7 @@ def make_decorator(target,
     decorator_name = getattr(frame, 'name', frame[2])  # Caller's name
   decorator = TFDecorator(decorator_name, target, decorator_doc,
                           decorator_argspec)
-  setattr(decorator_func, '_tf_decorator', decorator)
+  decorator_func._tf_decorator = decorator
   # Objects that are callables (e.g., a functools.partial object) may not have
   # the following attributes.
   if hasattr(target, '__name__'):

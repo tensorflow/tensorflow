@@ -45,8 +45,8 @@ class CreatePythonApiTest(test.TestCase):
   def setUp(self):
     # Add fake op to a module that has 'tensorflow' in the name.
     sys.modules[_MODULE_NAME] = imp.new_module(_MODULE_NAME)
-    setattr(sys.modules[_MODULE_NAME], 'test_op', test_op)
-    setattr(sys.modules[_MODULE_NAME], 'TestClass', TestClass)
+    sys.modules[_MODULE_NAME].test_op = test_op
+    sys.modules[_MODULE_NAME].TestClass = TestClass
     test_op.__module__ = _MODULE_NAME
     TestClass.__module__ = _MODULE_NAME
     tf_export('consts._TEST_CONSTANT').export_constant(
