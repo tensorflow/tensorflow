@@ -1971,11 +1971,12 @@ class Model(Network):
               self._per_output_weighted_metrics[i], i))
 
     # Create a metric wrapper for each output loss.
-    self._output_loss_metrics = [
-        metrics_module.SumOverBatchSize() if hasattr(loss_fn, 'reduction') else
-        metrics_module.SumOverBatchSizeMetricWrapper(loss_fn)
-        for loss_fn in self.loss_functions
-    ]
+    if len(self.outputs) > 1:
+      self._output_loss_metrics = [
+          metrics_module.SumOverBatchSize() if hasattr(loss_fn, 'reduction')
+          else metrics_module.SumOverBatchSizeMetricWrapper(loss_fn)
+          for loss_fn in self.loss_functions
+      ]
 
     self._per_output_metrics = updated_per_output_metrics
     self._per_output_weighted_metrics = updated_per_output_weighted_metrics
