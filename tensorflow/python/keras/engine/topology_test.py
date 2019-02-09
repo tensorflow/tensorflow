@@ -755,7 +755,7 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
       self.assertTrue(hasattr(b, '_keras_mask'))
       self.assertAllEqual(
           self.evaluate(array_ops.ones_like(mask)),
-          self.evaluate(getattr(b, '_keras_mask')))
+          self.evaluate(b._keras_mask))
       self.assertAllEqual(self.evaluate(a * mask), self.evaluate(b))
     else:
       x = input_layer_lib.Input(shape=(32,))

@@ -198,7 +198,7 @@ def _is_attrs_instance(obj):
 
 def _get_attrs_values(obj):
   """Returns the list of values from an attrs instance."""
-  attrs = getattr(obj.__class__, '__attrs_attrs__')
+  attrs = obj.__class__.__attrs_attrs__
   return [getattr(obj, a.name) for a in attrs]
 
 

@@ -150,7 +150,7 @@ def rewrap(decorator_func, previous_target, new_target):
   target = None
   while hasattr(cur, '_tf_decorator'):
     innermost_decorator = cur
-    target = getattr(cur, '_tf_decorator')
+    target = cur._tf_decorator
     if target.decorated_target is previous_target:
       break
     cur = target.decorated_target
@@ -201,7 +201,7 @@ def unwrap(maybe_tf_decorator):
     if isinstance(cur, TFDecorator):
       decorators.append(cur)
     elif hasattr(cur, '_tf_decorator'):
-      decorators.append(getattr(cur, '_tf_decorator'))
+      decorators.append(cur._tf_decorator)
     else:
       break
     if not hasattr(decorators[-1], 'decorated_target'):

@@ -190,24 +190,22 @@ class TfMakeDecoratorTest(test.TestCase):
 
   def testAttachesATFDecoratorAttr(self):
     decorated = tf_decorator.make_decorator(test_function, test_wrapper)
-    decorator = getattr(decorated, '_tf_decorator')
-    self.assertIsInstance(decorator, tf_decorator.TFDecorator)
+    self.assertIsInstance(decorated._tf_decorator, tf_decorator.TFDecorator)
 
   def testAttachesWrappedAttr(self):
     decorated = tf_decorator.make_decorator(test_function, test_wrapper)
-    wrapped_attr = getattr(decorated, '__wrapped__')
-    self.assertIs(test_function, wrapped_attr)
+    self.assertIs(test_function, decorated.__wrapped__)
 
   def testSetsTFDecoratorNameToDecoratorNameArg(self):
     decorated = tf_decorator.make_decorator(test_function, test_wrapper,
                                             'test decorator name')
-    decorator = getattr(decorated, '_tf_decorator')
+    decorator = decorated._tf_decorator
     self.assertEqual('test decorator name', decorator.decorator_name)
 
   def testSetsTFDecoratorDocToDecoratorDocArg(self):
     decorated = tf_decorator.make_decorator(
         test_function, test_wrapper, decorator_doc='test decorator doc')
-    decorator = getattr(decorated, '_tf_decorator')
+    decorator = decorated._tf_decorator
     self.assertEqual('test decorator doc', decorator.decorator_doc)
 
   def testUpdatesDictWithMissingEntries(self):
@@ -232,8 +230,7 @@ class TfMakeDecoratorTest(test.TestCase):
         defaults=(1, 'hello'))
     decorated = tf_decorator.make_decorator(test_function, test_wrapper, '', '',
                                             argspec)
-    decorator = getattr(decorated, '_tf_decorator')
-    self.assertEqual(argspec, decorator.decorator_argspec)
+    self.assertEqual(argspec, decorated._tf_decorator.decorator_argspec)
 
   def testSetsDecoratorNameToFunctionThatCallsMakeDecoratorIfAbsent(self):
 
@@ -241,7 +238,7 @@ class TfMakeDecoratorTest(test.TestCase):
       return tf_decorator.make_decorator(test_function, wrapper)
 
     decorated = test_decorator_name(test_wrapper)
-    decorator = getattr(decorated, '_tf_decorator')
+    decorator = decorated._tf_decorator
     self.assertEqual('test_decorator_name', decorator.decorator_name)
 
   def testCompatibleWithNamelessCallables(self):

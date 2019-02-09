@@ -639,7 +639,7 @@ def save_optimizer_weights_to_hdf5_group(hdf5_group, optimizer):
       optimizer: optimizer instance.
   """
 
-  symbolic_weights = getattr(optimizer, 'weights')
+  symbolic_weights = optimizer.weights
   if symbolic_weights:
     weights_group = hdf5_group.create_group('optimizer_weights')
     weight_names = [str(w.name).encode('utf8') for w in symbolic_weights]

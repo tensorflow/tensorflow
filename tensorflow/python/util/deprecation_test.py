@@ -303,7 +303,7 @@ class DeprecationTest(test.TestCase):
         "\n"
         "\nReturns:"
         "\n  Sum of args." % (date, instructions),
-        getattr(_Object, "_fn").__doc__)
+        _Object._fn.__doc__)
 
     # Assert calling new fn issues log warning.
     self.assertEqual(3, _Object()._fn(1, 2))
@@ -333,7 +333,7 @@ class DeprecationTest(test.TestCase):
         "\n"
         "\nWarning: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:\n%s" % (date, instructions),
-        getattr(_Object, "_fn").__doc__)
+        _Object._fn.__doc__)
 
     # Assert calling new fn issues log warning.
     self.assertEqual(3, _Object()._fn(1, 2))
@@ -363,7 +363,7 @@ class DeprecationTest(test.TestCase):
         "\nWarning: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:"
         "\n%s" % (date, instructions),
-        getattr(_Object, "_fn").__doc__)
+        _Object._fn.__doc__)
 
     # Assert calling new fn issues log warning.
     self.assertEqual(3, _Object()._fn(1, 2))
@@ -418,7 +418,7 @@ class DeprecationTest(test.TestCase):
         "\n"
         "\nReturns:"
         "\n  String." % (date, instructions),
-        getattr(_Object, "_prop").__doc__)
+        _Object._prop.__doc__)
 
     # Assert calling new fn issues log warning.
     self.assertEqual("prop_with_doc", _Object()._prop)
@@ -449,7 +449,7 @@ class DeprecationTest(test.TestCase):
         "\nWarning: THIS FUNCTION IS DEPRECATED. It will be removed after %s."
         "\nInstructions for updating:"
         "\n%s" % (date, instructions),
-        getattr(_Object, "_prop").__doc__)
+        _Object._prop.__doc__)
 
     # Assert calling new fn issues log warning.
     self.assertEqual("prop_no_doc", _Object()._prop)

@@ -198,8 +198,8 @@ class ForestHParams(object):
   def fill(self):
     """Intelligently sets any non-specific parameters."""
     # Fail fast if num_classes or num_features isn't set.
-    _ = getattr(self, 'num_classes')
-    _ = getattr(self, 'num_features')
+    _ = self.num_classes
+    _ = self.num_features
 
     self.bagged_num_features = int(self.feature_bagging_fraction *
                                    self.num_features)

@@ -71,7 +71,7 @@ def _get_attrs_items(obj):
   Returns:
     A list of (attr_name, attr_value) pairs, sorted by attr_name.
   """
-  attrs = getattr(obj.__class__, "__attrs_attrs__")
+  attrs = obj.__class__.__attrs_attrs__
   attr_names = sorted([a.name for a in attrs])
   return [(attr_name, getattr(obj, attr_name)) for attr_name in attr_names]
 
