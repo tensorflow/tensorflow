@@ -23,6 +23,7 @@ import weakref
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import dtypes
@@ -135,9 +136,11 @@ class FuncGraph(ops.Graph):
     captures: Maps external tensor -> internal tensor (i.e. input placeholder).
       The entries are in the order they were captured.
     seed: The graph-level random seed.
+    capture_by_value: If True, the func graph will capture Variables by value
+      instead of reference.
   """
 
-  def __init__(self, name, collections=None):
+  def __init__(self, name, collections=None, capture_by_value=None):
     """Construct a new FuncGraph.
 
     The graph will inherit its graph key, collections, seed, and distribution
@@ -152,6 +155,9 @@ class FuncGraph(ops.Graph):
         The current whitelisted collections are the global variables, the
         local variables, and the trainable variables.
         Defaults to None.
+      capture_by_value: An optional boolean. If True, the func graph will
+        capture Variables by value instead of reference. By default inherit
+        from outer graphs, and failing that will default to False.
     """
     super(FuncGraph, self).__init__()
 
@@ -163,6 +169,14 @@ class FuncGraph(ops.Graph):
     self._weak_variables = []
     self.outer_graph = ops.get_default_graph()
     self.captures = py_collections.OrderedDict()
+    # Inherit capture-by-value from outer graph.
+    if capture_by_value is not None:
+      self.capture_by_value = capture_by_value
+    elif self.outer_graph is not None and isinstance(
+        self.outer_graph, FuncGraph):
+      self.capture_by_value = self.outer_graph.capture_by_value
+    else:
+      self.capture_by_value = False
 
     self._building_function = True
     # Map from resource tensor name to last op (in program order) which uses
@@ -281,11 +295,39 @@ class FuncGraph(ops.Graph):
   def variables(self, var_list):
     self._weak_variables = [weakref.ref(v) for v in var_list]
 
+  def _capture_by_value(
+      self,
+      op_type,
+      inputs,
+      dtypes,  # pylint: disable=redefined-outer-name
+      input_types=None,
+      name=None,
+      attrs=None,
+      op_def=None,
+      compute_shapes=True,
+      compute_device=True):
+    # When capturing by value, do the read outside
+    reverse_captures = dict((v, k) for k, v in self.captures.items())
+    uncaptured_inputs = [reverse_captures.get(t, t) for t in inputs]
+    with ops.init_scope():
+      if context.executing_eagerly():
+        attr_list = ("dtype", int(attrs["dtype"].type))
+        value, = execute.execute(
+            compat.as_bytes(op_type), 1, uncaptured_inputs, attr_list,
+            context.context())
+      else:
+        op = ops.get_default_graph().create_op(
+            op_type, uncaptured_inputs, dtypes, input_types, name, attrs,
+            op_def, compute_shapes, compute_device)
+        value = op.outputs[0]
+    captured_value = self.capture(value)
+    return captured_value.op
+
   def create_op(
       self,
       op_type,
       inputs,
-      dtypes,
+      dtypes,  # pylint: disable=redefined-outer-name
       input_types=None,
       name=None,
       attrs=None,
@@ -324,6 +366,12 @@ class FuncGraph(ops.Graph):
     Returns:
       An `Operation` object.
     """
+    if self.capture_by_value and op_type in ["ReadVariableOp",
+                                             "ResourceGather"]:
+      return self._capture_by_value(
+          op_type, inputs, dtypes, input_types, name, attrs, op_def,
+          compute_shapes, compute_device)
+
     # This capturing logic interacts poorly with control flow contexts which
     # want to replace inputs of ops far too late in the process. This can lead
     # the context to get confused and try to create an Enter for an Enter. We
@@ -418,7 +466,8 @@ def func_graph_from_py_func(name,
                             add_control_dependencies=True,
                             arg_names=None,
                             op_return_value=None,
-                            collections=None):
+                            collections=None,
+                            capture_by_value=None):
   """Returns a `FuncGraph` generated from `python_func`.
 
   Args:
@@ -454,6 +503,9 @@ def func_graph_from_py_func(name,
       The current whitelisted collections are the global variables, the
       local variables, and the trainable variables.
       Defaults to None.
+    capture_by_value: An optional boolean. If True, the func graph will capture
+      Variables by value instead of reference. By default inherit from outer
+      graphs, and failing that will default to False.
 
   Returns:
     A FuncGraph.
@@ -465,7 +517,8 @@ def func_graph_from_py_func(name,
   if op_return_value is not None:
     assert isinstance(op_return_value, ops.Tensor), op_return_value
   if func_graph is None:
-    func_graph = FuncGraph(name, collections=collections)
+    func_graph = FuncGraph(name, collections=collections,
+                           capture_by_value=capture_by_value)
   assert isinstance(func_graph, FuncGraph)
   if add_control_dependencies:
     control_manager = AutomaticControlDependencies

@@ -1044,7 +1044,8 @@ class Function(object):
                input_signature=None,
                attributes=None,
                autograph=True,
-               autograph_options=None):
+               autograph_options=None,
+               capture_by_value=None):
     """Initializes a `Function`.
 
     Args:
@@ -1061,6 +1062,9 @@ class Function(object):
       autograph_options: Experimental knobs to control behavior
         `when autograph=True`. See https://www.tensorflow.org/guide/autograph
         for more information.
+      capture_by_value: Experimental. Whether to capture resource variables by
+        value or reference. If None, will inherit from a parent context or
+        default to False.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -1078,6 +1082,7 @@ class Function(object):
     self._function_cache = collections.OrderedDict()
     self._garbage_collector = _FunctionGarbageCollector(self._function_cache)
     self._function_attributes = attributes or {}
+    self._capture_by_value = capture_by_value
 
     self._lock = threading.Lock()
     # _descriptor_cache is a of instance of a class to an instance-specific
@@ -1340,13 +1345,15 @@ class Function(object):
                 self._input_signature,
                 autograph=self._autograph,
                 autograph_options=self._autograph_options,
-                arg_names=arg_names), self._function_attributes)
+                arg_names=arg_names,
+                capture_by_value=self._capture_by_value),
+            self._function_attributes)
         # pylint: disable=protected-access
         # Tell the ConcreteFunction to clean up its graph once it goes out of
         # scope. ConcreteFunction does not do this in its constructor since it
         # gets used in some places (like Keras) where the FuncGraph lives
         # longer than the ConcreteFunction.
-        graph_function._garbage_collector = _ConcreteFunctionGarbageCollector(
+        graph_function._garbage_collector = ConcreteFunctionGarbageCollector(
             graph_function.graph)
         # pylint: enable=protected-access
         self._function_cache[cache_key] = graph_function
@@ -1869,7 +1876,7 @@ class _FunctionGarbageCollector(object):
       pass
 
 
-class _ConcreteFunctionGarbageCollector(object):
+class ConcreteFunctionGarbageCollector(object):
   """Cleans up reference cycles when a `ConcreteFunction` goes out of scope."""
 
   def __init__(self, func_graph):
