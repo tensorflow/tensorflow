@@ -242,6 +242,7 @@ cc_library(
 
 cc_library(
     name = "rocm_kernel",
+    srcs = if_rocm_is_configured(["rocm_kernel.cc"]),
     hdrs = if_rocm_is_configured(["rocm_kernel.h"]),
     deps = if_rocm_is_configured([
         ":rocm_driver",
