@@ -360,8 +360,45 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
                                  numOpArgs));
   }
 
+  // A map to collect all nested DAG child nodes' names, with operand index as
+  // the key.
+  llvm::DenseMap<unsigned, std::string> childNodeNames;
+
+  // First go through all the child nodes who are nested DAG constructs to
+  // create ops for them, so that we can use the results in the current node.
+  // This happens in a recursive manner.
+  for (unsigned i = 0, e = resultOp.getNumOperands(); i != e; ++i) {
+    if (auto child = tree.getArgAsNestedDag(i)) {
+      childNodeNames[i] =
+          handleRewritePattern(child, i, depth + 1, tree.getArgName(i));
+    }
+  }
+
   std::string resultValue =
       treeName.empty() ? getUniqueValueName(&resultOp) : treeName.str();
+
+  // Then we build the new op corresponding to this DAG node.
+
+  // Returns the name we should use for the `index`-th argument of this
+  // DAG node. This is needed because the we can reference an argument
+  // 1) generated from a nested DAG node and implicitly named,
+  // 2) bound in the source pattern and explicitly named,
+  // 3) bound in the result pattern and explicitly named.
+  auto deduceArgName = [&](unsigned index) -> std::string {
+    if (tree.isNestedDagArg(index)) {
+      // Implicitly named
+      return childNodeNames[index];
+    }
+
+    auto name = tree.getArgName(index);
+    if (this->pattern.isArgBoundInSourcePattern(name)) {
+      // Bound in source pattern, explicitly named
+      return std::string("s.") + name.str();
+    }
+
+    // Bound in result pattern, explicitly named
+    return name.str();
+  };
 
   // TODO: this is a hack to support various constant ops. We are assuming
   // all of them have no operands and one attribute here. Figure out a better
@@ -385,11 +422,11 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
     // Start each operand on its own line.
     (os << ",\n").indent(6);
 
-    auto name = tree.getArgName(i);
-    pattern.ensureArgBoundInSourcePattern(name);
     if (!operand.name.empty())
       os << "/*" << operand.name << "=*/";
-    os << "s." << name;
+
+    os << deduceArgName(i);
+
     // TODO(jpienaar): verify types
     ++i;
   }
