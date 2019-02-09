@@ -161,7 +161,7 @@ def _create_tpu_mirrored_variable(  # pylint: disable=missing-docstring
         strategy, device_map, value_list, aggregation,
         logical_device=logical_device)
 
-  if not context.executing_eagerly():
+  if not (context.executing_eagerly() or ops.inside_function()):
     g = ops.get_default_graph()
     # If "trainable" is True, next_creator() will add the member variables
     # to the TRAINABLE_VARIABLES collection, so we manually remove
@@ -536,9 +536,10 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
             # name as the absolute name of the variable.
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
             # Initialize replicas with the same value:
-            if context.executing_eagerly():
-              kwargs["initial_value"] = array_ops.identity(
-                  value_list[0].value())
+            if context.executing_eagerly() or ops.inside_function():
+              with ops.init_scope():
+                kwargs["initial_value"] = array_ops.identity(
+                    value_list[0].value())
             else:
               def initial_value_fn(device=d):
                 with ops.device(device):
