@@ -1456,7 +1456,7 @@ def get_input_shape_and_dtype(layer):
       does not have a defined input shape.
 
   Raises:
-    ValueError: in case an empty Sequential or Graph Network is passed.
+    ValueError: in case an empty Sequential or Functional model is passed.
   """
 
   def _is_graph_model(layer):
