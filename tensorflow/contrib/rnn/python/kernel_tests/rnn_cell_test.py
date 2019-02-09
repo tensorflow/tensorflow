@@ -1554,6 +1554,16 @@ class RNNCellTest(test.TestCase):
       self.assertEqual(len(outputs), batch)
       self.assertEqual(len(state), batch)
 
+  def testWrapperWithKerasLSTMCellGetInitialState(self):
+    for wrapper in [
+        rnn_cell_impl.DropoutWrapperV2,
+        rnn_cell_impl.DropoutWrapper,
+        rnn_cell_impl.ResidualWrapperV2,
+        rnn_cell_impl.ResidualWrapper]:
+      cell = keras_layers.LSTMCell(10)
+      cell = wrapper(cell)
+      cell.get_initial_state(batch_size=4, dtype=dtypes.float32)
+
 
 class LayerNormBasicLSTMCellTest(test.TestCase):
 
