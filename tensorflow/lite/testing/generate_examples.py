@@ -167,7 +167,7 @@ def toco_options(data_types,
 
 def format_result(t):
   """Convert a tensor to a format that can be used in test specs."""
-  if np.issubdtype(t.dtype, np.number):
+  if t.dtype.kind not in [np.dtype(np.string_).kind, np.dtype(np.object_).kind]:
     # Output 9 digits after the point to ensure the precision is good enough.
     values = ["{:.9f}".format(value) for value in list(t.flatten())]
     return ",".join(values)
