@@ -24,6 +24,6 @@ def : Pat<(X_AddOp $lhs, $rhs), (Y_AddOp $lhs, U:$rhs, T_Const_Attr:$x)>;
 // CHECK: PatternMatchResult match(Instruction *
 // CHECK: void rewrite(Instruction *op, std::unique_ptr<PatternState>
 // CHECK:              PatternRewriter &rewriter)
-// CHECK: rewriter.replaceOpWithNewOp<AddOp>(op, op->getResult(0)->getType()
+// CHECK: rewriter.create<Y::AddOp>(loc, op->getResult(0)->getType()
 // CHECK: void populateWithGenerated
 // CHECK: patterns->push_back(std::make_unique<GeneratedConvert0>(context))

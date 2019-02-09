@@ -183,6 +183,10 @@ public:
   // Returns the DAG tree root node of the `index`-th result pattern.
   DagNode getResultPattern(unsigned index) const;
 
+  // Returns true if an argument with the given `name` is bound in source
+  // pattern.
+  bool isArgBoundInSourcePattern(llvm::StringRef name) const;
+
   // Checks whether an argument with the given `name` is bound in source
   // pattern. Prints fatal error if not; does nothing otherwise.
   void ensureArgBoundInSourcePattern(llvm::StringRef name) const;

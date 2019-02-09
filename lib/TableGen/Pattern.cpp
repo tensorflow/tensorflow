@@ -183,9 +183,13 @@ tblgen::DagNode tblgen::Pattern::getResultPattern(unsigned index) const {
   return tblgen::DagNode(cast<llvm::DagInit>(results->getElement(index)));
 }
 
+bool tblgen::Pattern::isArgBoundInSourcePattern(llvm::StringRef name) const {
+  return boundArguments.find(name) != boundArguments.end();
+}
+
 void tblgen::Pattern::ensureArgBoundInSourcePattern(
     llvm::StringRef name) const {
-  if (boundArguments.find(name) == boundArguments.end())
+  if (!isArgBoundInSourcePattern(name))
     PrintFatalError(def.getLoc(),
                     Twine("referencing unbound variable '") + name + "'");
 }
