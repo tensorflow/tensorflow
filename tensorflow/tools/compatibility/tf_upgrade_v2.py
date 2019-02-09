@@ -552,7 +552,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.nest.map_structure",
         "tf.contrib.framework.nest.pack_sequence_as":
             "tf.nest.pack_sequence_as",
-        "tf.contrib.framework.constant_value":
+        "tf.contrib.util.constant_value":
             "tf.get_static_value",
         "tf.contrib.saved_model.load_keras_model":
             "tf.keras.experimental.load_from_saved_model",
