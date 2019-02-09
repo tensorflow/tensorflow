@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -49,6 +50,7 @@ class LoadTest(test.TestCase):
       local_variable = variables.VariableV1(
           1.,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          trainable=False,
           use_resource=True)
       output = array_ops.identity(start * v * local_variable, name="output")
       with session_lib.Session() as session:
@@ -70,6 +72,19 @@ class LoadTest(test.TestCase):
       fn(constant_op.constant(2.))
     self.assertEqual({"output": 6.},
                      self.evaluate(fn(start=constant_op.constant(2.))))
+    self.assertAllEqual([3., 1.], self.evaluate(imported.variables))
+    imported.variables[0].assign(4.)
+    self.assertEqual({"output": 8.},
+                     self.evaluate(fn(start=constant_op.constant(2.))))
+    imported.variables[1].assign(2.)
+    self.assertEqual({"output": 24.},
+                     self.evaluate(fn(start=constant_op.constant(3.))))
+    self.assertTrue(imported.variables[0].trainable)
+    self.assertFalse(imported.variables[1].trainable)
+    with backprop.GradientTape() as tape:
+      output = fn(start=constant_op.constant(4.))
+    self.assertEqual(imported.variables[:1], list(tape.watched_variables()))
+    self.assertEqual(8., tape.gradient(output, imported.variables[0]).numpy())
 
   def test_ref_variable_import(self):
     with self.assertRaises(NotImplementedError):

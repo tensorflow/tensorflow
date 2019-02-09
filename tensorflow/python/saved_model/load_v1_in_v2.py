@@ -108,7 +108,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     root = tracking.AutoCheckpointable()
     root.signatures = signature_serialization.create_signature_map(
         signature_functions)
-    # TODO(allenl): Lift out variables and make a ".variables" property
+    root.variables = list(wrapped.graph.variables)
     return root
 
 
