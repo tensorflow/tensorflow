@@ -203,6 +203,25 @@ class Add : public BuiltinOperator<AddOperator, ::tflite::AddOptions,
   }
 };
 
+class AddN : public BuiltinOperator<AddNOperator, ::tflite::AddNOptions,
+                                    ::tflite::BuiltinOptions_AddNOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateAddNOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
+  }
+};
+
 class SpaceToBatchND
     : public BuiltinOperator<SpaceToBatchNDOperator,
                              ::tflite::SpaceToBatchNDOptions,
@@ -624,6 +643,39 @@ class MaxPool : public BuiltinOperator<MaxPoolOperator, ::tflite::Pool2DOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
+class Maximum : public SimpleOperator<TensorFlowMaximumOperator> {
+ public:
+  explicit Maximum() : SimpleOperator("MAXIMUM", OperatorType::kMaximum) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
+class Minimum : public SimpleOperator<TensorFlowMinimumOperator> {
+ public:
+  explicit Minimum() : SimpleOperator("MINIMUM", OperatorType::kMinimum) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -796,6 +848,12 @@ class Transpose
                    TocoOperator* op) const override {}
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1085,6 +1143,12 @@ class ReduceMax
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1106,6 +1170,12 @@ class ReduceMin
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1152,6 +1222,20 @@ class ReduceAny
   }
 };
 
+class Relu6 : public SimpleOperator<Relu6Operator> {
+ public:
+  explicit Relu6() : SimpleOperator("RELU6", OperatorType::kRelu6) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
 class ResizeBilinear
     : public BuiltinOperator<ResizeBilinearOperator,
                              ::tflite::ResizeBilinearOptions,
@@ -1170,6 +1254,12 @@ class ResizeBilinear
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op takes int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1193,6 +1283,12 @@ class ResizeNearestNeighbor
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1240,6 +1336,14 @@ class Split
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2, for int32 it's version 3.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    } else if (input_array.data_type == ArrayDataType::kInt32) {
+      return 3;
+    }
     return 1;
   }
 };
@@ -1308,6 +1412,11 @@ class TopK_V2 : public BuiltinOperator<TopKV2Operator, ::tflite::TopKV2Options,
                    TocoOperator* op) const override {}
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1329,6 +1438,12 @@ class ArgMax : public BuiltinOperator<ArgMaxOperator, ::tflite::ArgMaxOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+
     return 1;
   }
 };
@@ -1350,6 +1465,12 @@ class ArgMin : public BuiltinOperator<ArgMinOperator, ::tflite::ArgMinOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+
     return 1;
   }
 };
@@ -1546,6 +1667,20 @@ class LeakyRelu
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
+  }
+};
+
+class Logistic : public SimpleOperator<LogisticOperator> {
+ public:
+  explicit Logistic() : SimpleOperator("LOGISTIC", OperatorType::kLogistic) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1894,6 +2029,106 @@ class Dequantize
   }
 };
 
+class Equal : public SimpleOperator<TensorFlowEqualOperator> {
+ public:
+  explicit Equal() : SimpleOperator("EQUAL", OperatorType::kEqual) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
+class NotEqual : public SimpleOperator<TensorFlowNotEqualOperator> {
+ public:
+  explicit NotEqual() : SimpleOperator("NOT_EQUAL", OperatorType::kNotEqual) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
+class Greater : public SimpleOperator<TensorFlowGreaterOperator> {
+ public:
+  explicit Greater() : SimpleOperator("GREATER", OperatorType::kGreater) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
+class GreaterEqual : public SimpleOperator<TensorFlowGreaterEqualOperator> {
+ public:
+  explicit GreaterEqual()
+      : SimpleOperator("GREATER_EQUAL", OperatorType::kGreaterEqual) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
+class Less : public SimpleOperator<TensorFlowLessOperator> {
+ public:
+  explicit Less() : SimpleOperator("LESS", OperatorType::kLess) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
+class LessEqual : public SimpleOperator<TensorFlowLessEqualOperator> {
+ public:
+  explicit LessEqual()
+      : SimpleOperator("LESS_EQUAL", OperatorType::kLessEqual) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
+class Select : public SimpleOperator<SelectOperator> {
+ public:
+  explicit Select() : SimpleOperator("SELECT", OperatorType::kSelect) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
 namespace {
 // Build a vector containing all the known operators.
 std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
@@ -1903,6 +2138,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   // Builtin Operators.
   ops.push_back(
       MakeUnique<Add>(::tflite::BuiltinOperator_ADD, OperatorType::kAdd));
+  ops.push_back(
+      MakeUnique<AddN>(::tflite::BuiltinOperator_ADD_N, OperatorType::kAddN));
   ops.push_back(
       MakeUnique<Div>(::tflite::BuiltinOperator_DIV, OperatorType::kDiv));
   ops.push_back(
@@ -2054,38 +2291,27 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       MakeUnique<SimpleOperator<ReluOperator>>("RELU", OperatorType::kRelu));
   ops.push_back(MakeUnique<SimpleOperator<Relu1Operator>>(
       "RELU_N1_TO_1", OperatorType::kRelu1));
-  ops.push_back(
-      MakeUnique<SimpleOperator<Relu6Operator>>("RELU6", OperatorType::kRelu6));
+  ops.push_back(MakeUnique<Relu6>());
   ops.push_back(
       MakeUnique<SimpleOperator<PReluOperator>>("PRELU", OperatorType::kPRelu));
-  ops.push_back(MakeUnique<SimpleOperator<LogisticOperator>>(
-      "LOGISTIC", OperatorType::kLogistic));
+  ops.push_back(MakeUnique<Logistic>());
   ops.push_back(
       MakeUnique<SimpleOperator<TanhOperator>>("TANH", OperatorType::kTanh));
   ops.push_back(
       MakeUnique<SimpleOperator<ExpOperator>>("EXP", OperatorType::kExp));
   ops.push_back(MakeUnique<SimpleOperator<LogSoftmaxOperator>>(
       "LOG_SOFTMAX", OperatorType::kLogSoftmax));
-  ops.push_back(MakeUnique<SimpleOperator<TensorFlowMaximumOperator>>(
-      "MAXIMUM", OperatorType::kMaximum));  //  Element-wise Maximum
-  ops.push_back(MakeUnique<SimpleOperator<TensorFlowMinimumOperator>>(
-      "MINIMUM", OperatorType::kMinimum));  //  Element-wise Minimum
-  ops.push_back(MakeUnique<SimpleOperator<TensorFlowGreaterOperator>>(
-      "GREATER", OperatorType::kGreater));
-  ops.push_back(MakeUnique<SimpleOperator<TensorFlowGreaterEqualOperator>>(
-      "GREATER_EQUAL", OperatorType::kGreaterEqual));
-  ops.push_back(MakeUnique<SimpleOperator<TensorFlowLessOperator>>(
-      "LESS", OperatorType::kLess));
-  ops.push_back(MakeUnique<SimpleOperator<TensorFlowLessEqualOperator>>(
-      "LESS_EQUAL", OperatorType::kLessEqual));
-  ops.push_back(MakeUnique<SimpleOperator<TensorFlowEqualOperator>>(
-      "EQUAL", OperatorType::kEqual));
-  ops.push_back(MakeUnique<SimpleOperator<TensorFlowNotEqualOperator>>(
-      "NOT_EQUAL", OperatorType::kNotEqual));
+  ops.push_back(MakeUnique<Maximum>());  //  Element-wise Maximum
+  ops.push_back(MakeUnique<Minimum>());  //  Element-wise Minimum
+  ops.push_back(MakeUnique<Greater>());
+  ops.push_back(MakeUnique<GreaterEqual>());
+  ops.push_back(MakeUnique<Less>());
+  ops.push_back(MakeUnique<LessEqual>());
+  ops.push_back(MakeUnique<Equal>());
+  ops.push_back(MakeUnique<NotEqual>());
   ops.push_back(
       MakeUnique<SimpleOperator<NegOperator>>("NEG", OperatorType::kNeg));
-  ops.push_back(MakeUnique<SimpleOperator<SelectOperator>>(
-      "SELECT", OperatorType::kSelect));
+  ops.push_back(MakeUnique<Select>());
   ops.push_back(
       MakeUnique<SimpleOperator<SliceOperator>>("SLICE", OperatorType::kSlice));
   ops.push_back(

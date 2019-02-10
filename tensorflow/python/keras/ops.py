@@ -20,7 +20,6 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
-from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -56,22 +55,33 @@ keras_export(v1=["keras.initializers.he_uniform"])(
 
 keras_export("keras.initializers.Initializer", v1=[])(
     init_ops_v2.Initializer)
-keras_export("keras.initializers.Zeros", v1=[])(
-    init_ops_v2.Zeros)
-keras_export("keras.initializers.Ones", v1=[])(
-    init_ops_v2.Ones)
-keras_export("keras.initializers.Constant", v1=[])(
-    init_ops_v2.Constant)
+keras_export(
+    "keras.initializers.Zeros", "keras.initializers.zeros", v1=[])(
+        init_ops_v2.Zeros)
+keras_export(
+    "keras.initializers.Ones", "keras.initializers.ones", v1=[])(
+        init_ops_v2.Ones)
+keras_export(
+    "keras.initializers.Constant", "keras.initializers.constant", v1=[])(
+        init_ops_v2.Constant)
 keras_export("keras.initializers.VarianceScaling", v1=[])(
     init_ops_v2.VarianceScaling)
-keras_export("keras.initializers.Orthogonal", v1=[])(
-    init_ops_v2.Orthogonal)
-keras_export("keras.initializers.Identity", v1=[])(
-    init_ops_v2.Identity)
-keras_export("keras.initializers.GlorotUniform", v1=[])(
-    init_ops_v2.GlorotUniform)
-keras_export("keras.initializers.GlorotNormal", v1=[])(
-    init_ops_v2.GlorotNormal)
+keras_export(
+    "keras.initializers.Orthogonal", "keras.initializers.orthogonal", v1=[])(
+        init_ops_v2.Orthogonal)
+keras_export(
+    "keras.initializers.Identity", "keras.initializers.identity", v1=[])(
+        init_ops_v2.Identity)
+keras_export(
+    "keras.initializers.GlorotUniform",
+    "keras.initializers.glorot_uniform",
+    v1=[])(
+        init_ops_v2.GlorotUniform)
+keras_export(
+    "keras.initializers.GlorotNormal",
+    "keras.initializers.glorot_normal",
+    v1=[])(
+        init_ops_v2.GlorotNormal)
 keras_export("keras.initializers.lecun_normal", v1=[])(
     init_ops_v2.lecun_normal)
 keras_export("keras.initializers.lecun_uniform", v1=[])(
@@ -90,6 +100,3 @@ keras_export("keras.initializers.TruncatedNormal", v1=[])(
 
 
 keras_export("keras.backend.name_scope")(ops.name_scope)
-
-keras_export("keras.losses.Reduction", v1=[])(
-    losses_impl.ReductionV2)

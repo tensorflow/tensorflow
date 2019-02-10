@@ -27,6 +27,7 @@ from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python import keras
+from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import test
@@ -216,6 +217,22 @@ def get_predict_dataset(distribution):
   return dataset
 
 
+def convert_numpy_to_dataset_with_unknown_cardinality(inputs,
+                                                      targets=None):
+  if targets is not None:
+    input_slices = (inputs, targets)
+    dummy_op = (lambda inp, target: True)
+  else:
+    input_slices = inputs
+    dummy_op = (lambda inp: True)
+
+  original_dataset = (dataset_ops.Dataset.from_tensor_slices(
+      input_slices))
+  ds_with_unknown_cardinality = (original_dataset.filter(dummy_op).
+                                 batch(10, drop_remainder=True))
+  return ds_with_unknown_cardinality
+
+
 def multi_input_output_model():
   a = keras.layers.Input(shape=(3,), name='input_a')
   b = keras.layers.Input(shape=(5,), name='input_b')
@@ -230,6 +247,8 @@ def multi_input_output_model():
   return model
 
 
+# TODO(josh11b): Add combinations.one_device_strategy_gpu once it works with
+# TestDistributionStrategyWithCallbacks.test_callbacks_in_predict.
 strategies_minus_tpu = [
     combinations.default_strategy,
     combinations.one_device_strategy,
@@ -244,15 +263,13 @@ tpu_strategies = [
 
 
 def strategy_minus_tpu_combinations():
-  return combinations.combine(
-      distribution=strategies_minus_tpu,
-      mode=['graph', 'eager'])
+  return combinations.combine(distribution=strategies_minus_tpu,
+                              mode=['graph', 'eager'])
 
 
 def tpu_strategy_combinations():
-  return combinations.combine(
-      distribution=tpu_strategies,
-      mode=['graph'])
+  return combinations.combine(distribution=tpu_strategies,
+                              mode=['graph'])
 
 
 def all_strategy_combinations():
@@ -287,9 +304,9 @@ def strategy_and_optimizer_combinations():
 
 
 def strategy_for_numpy_input_combinations():
-  return combinations.combine(
-      distribution=strategies_minus_tpu + tpu_strategies,
-      mode=['graph'])
+  one_gpu = combinations.one_device_strategy_gpu
+  return (all_strategy_combinations() +
+          combinations.combine(distribution=[one_gpu], mode=['graph', 'eager']))
 
 
 class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
@@ -841,9 +858,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       model.fit(dataset_dict, epochs=1, steps_per_epoch=2, verbose=1)
 
-  # TODO(b/122743976): Include TPUStrategy for this test as well once
-  # step inference is supported.
-  @combinations.generate(strategy_minus_tpu_combinations())
+  @combinations.generate(all_strategy_combinations())
   def test_fit_eval_and_predict_methods_on_dataset_without_steps(
       self, distribution):
     with self.cached_session():
@@ -864,7 +879,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       predict_with_numpy = model.predict(inputs, batch_size=10)
 
       dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-      dataset = dataset.batch(10)
+      dataset = dataset.batch(10, drop_remainder=True)
       fit_with_ds = model.fit(dataset, epochs=1).history
       eval_with_ds = model.evaluate(dataset)
       predict_dataset = dataset_ops.Dataset.from_tensor_slices(inputs)
@@ -876,6 +891,61 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           eval_with_numpy, eval_with_ds, atol=1e-4, rtol=1e-4)
       self.assertAllClose(
           predict_with_numpy, predict_with_ds, atol=1e-4, rtol=1e-4)
+
+  @combinations.generate(all_strategy_combinations())
+  def test_on_dataset_with_unknown_cardinality_without_steps(
+      self, distribution):
+    with self.cached_session():
+      with distribution.scope():
+        model = get_model()
+        optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+        loss = 'mse'
+        metrics = ['mae', keras.metrics.CategoricalAccuracy()]
+        model.compile(optimizer, loss, metrics=metrics)
+
+      inputs = np.zeros((1000, 3), dtype=np.float32)
+      targets = np.zeros((1000, 4), dtype=np.float32)
+      # steps/steps_per_epoch are calculated when using numpy arrays as
+      # input data.
+      fit_with_numpy = model.fit(inputs, targets, epochs=1,
+                                 batch_size=10).history
+      fit_with_numpy_multiple_epochs = model.fit(
+          inputs, targets, epochs=2, batch_size=10).history
+      eval_with_numpy = model.evaluate(inputs, targets, batch_size=10)
+      predict_with_numpy = model.predict(inputs, batch_size=10)
+
+      dataset = convert_numpy_to_dataset_with_unknown_cardinality(
+          inputs, targets)
+      predict_dataset = convert_numpy_to_dataset_with_unknown_cardinality(
+          inputs)
+
+      self.assertEqual(keras.backend.get_value(cardinality.cardinality(
+          dataset)), cardinality.UNKNOWN)
+      self.assertEqual(keras.backend.get_value(cardinality.cardinality(
+          predict_dataset)), cardinality.UNKNOWN)
+
+      eval_with_ds = model.evaluate(dataset)
+      predict_with_ds = model.predict(predict_dataset)
+      self.assertAllClose(
+          eval_with_numpy, eval_with_ds, atol=1e-4, rtol=1e-4)
+      self.assertAllClose(
+          predict_with_numpy, predict_with_ds, atol=1e-4, rtol=1e-4)
+
+      if (distributed_training_utils.is_tpu_strategy(distribution) and
+          distribution.extended.steps_per_run != 1):
+        with self.assertRaisesRegexp(ValueError, '`steps_per_epoch` '
+                                     'should be specified'):
+          fit_with_ds = model.fit(dataset, epochs=1)
+      else:
+        fit_with_ds = model.fit(dataset,
+                                epochs=1).history
+        fit_with_ds_multiple_epochs = model.fit(dataset,
+                                                epochs=2).history
+        self.assertAllClose(
+            fit_with_numpy, fit_with_ds, atol=1e-4, rtol=1e-4)
+        self.assertAllClose(
+            fit_with_numpy_multiple_epochs,
+            fit_with_ds_multiple_epochs, atol=1e-4, rtol=1e-4)
 
   @combinations.generate(all_strategy_combinations())
   def test_fit_eval_and_predict_methods_on_dataset(self, distribution):

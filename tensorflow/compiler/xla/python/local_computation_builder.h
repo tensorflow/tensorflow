@@ -424,8 +424,11 @@ class LocalComputationBuilder {
 
   LocalOp Cholesky(const LocalOp& a);
 
+  // `transpose_a` is the integer value of a TriangularSolveOptions::Transpose
+  // enum. We use an integer here so we don't have to teach SWIG about the
+  // enum.
   LocalOp TriangularSolve(const LocalOp& a, const LocalOp& b, bool left_side,
-                          bool lower, bool transpose_a, bool conjugate_a);
+                          bool lower, bool unit_diagonal, int transpose_a);
 
   LocalOp Gather(const LocalOp& input, const LocalOp& start_indices,
                  const GatherDimensionNumbers& dimension_numbers,

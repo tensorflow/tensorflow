@@ -3057,6 +3057,10 @@ tf_module {
     argspec: "args=[\'input\', \'out_type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "ShardDataset"
+    argspec: "args=[\'input_dataset\', \'num_shards\', \'index\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "ShardedFilename"
     argspec: "args=[\'basename\', \'shard\', \'num_shards\'], varargs=None, keywords=None, defaults=None"
   }

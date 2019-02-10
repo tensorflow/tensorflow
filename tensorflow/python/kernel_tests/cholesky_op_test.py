@@ -163,7 +163,9 @@ class CholeskyOpTest(test.TestCase):
     with self.assertRaises(ValueError):
       linalg_ops.cholesky(tensor3)
 
-  @test_util.disable_xla("This test never passed for XLA")  # all nan on XLA
+  # The below invalid Cholesky call returns an error with TF Classic and just
+  # returns NaNs with XLA.
+  @test_util.disable_xla("b/123337890")
   def testNotInvertibleCPU(self):
     # The input should be invertible.
     with self.session(use_gpu=True):

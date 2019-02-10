@@ -19,6 +19,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/common_runtime/process_state.h"
+#include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_feature_guard.h"
@@ -53,15 +54,22 @@ struct LocalDevice::EigenThreadPoolInfo {
 
   explicit EigenThreadPoolInfo(const SessionOptions& options, int numa_node,
                                Allocator* allocator) {
+    // Use session setting if specified.
     int32 intra_op_parallelism_threads =
         options.config.intra_op_parallelism_threads();
+    // If no session setting, use environment setting.
     if (intra_op_parallelism_threads == 0) {
-      intra_op_parallelism_threads = port::NumSchedulableCPUs();
-      if (numa_node != port::kNUMANoAffinity) {
-        // Assume that CPUs are equally distributed over available NUMA nodes.
-        // This may not be true, but there isn't currently a better way of
-        // determining the number of CPUs specific to the requested node.
-        intra_op_parallelism_threads /= port::NUMANumNodes();
+      static int env_num_threads = NumIntraOpThreadsFromEnvironment();
+      intra_op_parallelism_threads = env_num_threads;
+      // If no session setting or environment, compute a reasonable default.
+      if (intra_op_parallelism_threads == 0) {
+        intra_op_parallelism_threads = port::NumSchedulableCPUs();
+        if (numa_node != port::kNUMANoAffinity) {
+          // Assume that CPUs are equally distributed over available NUMA nodes.
+          // This may not be true, but there isn't currently a better way of
+          // determining the number of CPUs specific to the requested node.
+          intra_op_parallelism_threads /= port::NUMANumNodes();
+        }
       }
     }
     ThreadOptions thread_opts;

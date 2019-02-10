@@ -309,6 +309,7 @@ cc_library(
         "reference/integer_ops/conv.h",
         "reference/integer_ops/depthwise_conv.h",
         "reference/integer_ops/dequantize.h",
+        "reference/integer_ops/logistic.h",
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/softmax.h",
         "reference/reference_ops.h",
@@ -591,6 +592,7 @@ cc_test(
         ":reference_base",
         ":test_util",
         ":types",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )

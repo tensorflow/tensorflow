@@ -91,6 +91,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleFft(HloInstructionPtr fft) override {
     return DefaultAction(fft);
   }
+  Status HandleTriangularSolve(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
   Status HandleAllReduce(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }

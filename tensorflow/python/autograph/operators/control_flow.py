@@ -153,8 +153,7 @@ def while_stmt(test, body, init_state, extra_deps, opts=None):
   # TODO(mdan): Consider adding a generic mechanism for dynamic dispatch.
   # That could be something as simple as a collection of dispatch rules, with
   # some prioritization.
-  if any(tensor_util.is_tensor(v)
-         for v in nest.flatten(init_state + extra_deps)):
+  if any(tensor_util.is_tensor(v) for v in nest.flatten(extra_deps)):
     return _tf_while_stmt(test, body, init_state, opts)
   else:
     return _py_while_stmt(test, body, init_state, opts)

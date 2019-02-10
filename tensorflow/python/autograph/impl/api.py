@@ -193,16 +193,24 @@ def converted_call(f, owner, options, *args, **kwargs):
         'Entity {} appears to be decorated by wrapt, which is not yet supported'
         ' by AutoGraph. The function will be called without transformation.'
         ' You may however apply AutoGraph before the decorator.'.format(f), 1)
+    logging.log(2, 'Permanently whitelisted: %s: wrapt decorated', f)
+    return f(*args, **kwargs)
+
+  # Constructors are permanently whitelisted.
+  # TODO(mdan): Toggle as experimental feature instead.
+  # TODO(b/124016764): Remove this limitation.
+  if tf_inspect.isclass(f):
+    logging.log(2, 'Permanently whitelisted: %s: constructor', f)
     return f(*args, **kwargs)
 
   # Other built-in modules are permanently whitelisted.
   # TODO(mdan): Figure out how to do this consistently for all stdlib modules.
   if (f in collections.__dict__.values() or f in pdb.__dict__.values() or
       f in copy.__dict__.values()):
+    logging.log(2, 'Permanently whitelisted: %s: part of builtin module', f)
     return f(*args, **kwargs)
 
   # TODO(mdan): This needs cleanup.
-  # In particular, we may want to avoid renaming functions altogether.
   if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
 
     # TODO(mdan): This may be inconsistent in certain situations.
@@ -275,6 +283,9 @@ def converted_call(f, owner, options, *args, **kwargs):
 
     elif tf_inspect.isclass(f):
       # Constructors
+      # Note: Until we support class constructurs, and enable whole-class
+      # conversion with an experimental flag, this branch is dead code.
+      # TODO(mdan): Consider removing unless there is a compelling use case.
       target_entity = f
       arg_map_target = f.__init__
       effective_args = args
@@ -337,7 +348,7 @@ def converted_call(f, owner, options, *args, **kwargs):
         'Entity %s could not be transformed and will be staged without change.'
         ' Error details can be found in the logs when running with the env'
         ' variable AUTOGRAPH_VERBOSITY=5. Please report this to the AutoGraph'
-        ' team. Cause: %s', e)
+        ' team. Cause: %s', target_entity, e)
 
     return f(*args, **kwargs)
 

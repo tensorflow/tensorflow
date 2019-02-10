@@ -21,7 +21,6 @@ from __future__ import division
 from __future__ import print_function
 import tensorflow as tf
 
-from tensorflow.lite.python import lite
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import activations
@@ -142,7 +141,7 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
     # TODO(raziel): layers stuff -- chop if un-layerizing Op.
     self.input_spec = base_layer.InputSpec(ndim=2)
 
-    self._tflite_wrapper = lite.OpHint("UnidirectionalSequenceLstm")
+    self._tflite_wrapper = tf.lite.OpHint("UnidirectionalSequenceLstm")
 
     self._num_units = num_units
     self._use_peepholes = use_peepholes
@@ -557,7 +556,7 @@ def dynamic_rnn(cell,
       "parent_last_child_output": parent_last_child_output,
       "internal_children_input_output": internal_children_input_output
   }
-  tflite_wrapper = lite.OpHint(
+  tflite_wrapper = tf.lite.OpHint(
       "TfLiteDynamicRnn",
       level=2,
       children_inputs_mappings=inputs_outputs_mappings)

@@ -79,12 +79,10 @@ static Status TensorListDeviceCopy(
   to->max_num_elements = from.max_num_elements;
   to->tensors.reserve(from.tensors.size());
   for (const Tensor& t : from.tensors) {
-    Tensor tmp(t.dtype());
-    // Do not copy uninitialized tensors.
+    to->tensors.emplace_back(t.dtype());
     if (t.dtype() != DT_INVALID) {
-      TF_RETURN_IF_ERROR(copy(t, &tmp));
+      TF_RETURN_IF_ERROR(copy(t, &to->tensors.back()));
     }
-    to->tensors.push_back(tmp);
   }
   return Status::OK();
 }

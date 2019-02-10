@@ -131,13 +131,13 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     input_details = interpreter.get_input_details()
     self.assertEqual(1, len(input_details))
     self.assertEqual('Placeholder', input_details[0]['name'])
-    self.assertEqual(np.object_, input_details[0]['dtype'])
+    self.assertEqual(np.string_, input_details[0]['dtype'])
     self.assertTrue(([4] == input_details[0]['shape']).all())
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
     self.assertEqual('Reshape', output_details[0]['name'])
-    self.assertEqual(np.object_, output_details[0]['dtype'])
+    self.assertEqual(np.string_, output_details[0]['dtype'])
     self.assertTrue(([2, 2] == output_details[0]['shape']).all())
     # TODO(b/122659643): Test setting/getting string data via the python
     # interpreter API after support has been added.

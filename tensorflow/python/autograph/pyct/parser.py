@@ -38,7 +38,7 @@ def parse_entity(entity):
   """Returns the AST of given entity."""
   try:
     with _parse_lock:
-      source = tf_inspect.getsource(entity)
+      source = tf_inspect.getsource_no_unwrap(entity)
   except (IOError, OSError) as e:
     raise ValueError(
         'Unable to locate the source code of {}. Note that functions defined'
@@ -111,7 +111,7 @@ def parse_str(src):
   """Returns the AST of given piece of code."""
   # TODO(mdan): This should exclude the module things are autowrapped in.
 
-  if six.PY2 and re.search('\\Wprint\\(', src):
+  if six.PY2 and re.search('\\Wprint\\s*\\(', src):
     # This special treatment is required because gast.parse is not aware of
     # whether print_function was present in the original context.
     src = 'from __future__ import print_function\n' + src

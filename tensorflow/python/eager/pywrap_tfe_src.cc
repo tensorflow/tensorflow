@@ -2676,9 +2676,10 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
       for (Py_ssize_t j = 0; j < len; j++) {
         PyObject* py_input = PySequence_Fast_GET_ITEM(input, j);
         tensorflow::Safe_PyObjectPtr py_eager_tensor;
-        if (!ConvertToTensor(op_exec_info, py_input, &py_eager_tensor,
-                             []() { Py_RETURN_NONE; },
-                             [](const TF_DataType& dtype) {}, status)) {
+        if (!ConvertToTensor(
+                op_exec_info, py_input, &py_eager_tensor,
+                []() { Py_RETURN_NONE; }, [](const TF_DataType& dtype) {},
+                status)) {
           return nullptr;
         }
 
@@ -2823,10 +2824,13 @@ namespace {
 const char kTensor[] = "T";
 const char kIndexedSlices[] = "I";
 const char kList[] = "L";
+const char kListEnd[] = "l";
 const char kTuple[] = "U";
+const char kTupleEnd[] = "u";
 const char kDict[] = "D";
 const char kRaw[] = "R";
 const char kShape[] = "s";
+const char kShapeDelim[] = "-";
 const char kDType[] = "d";
 const char kNone[] = "n";
 
@@ -2866,7 +2870,7 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg, EncodeResult* result) {
 
     absl::StrAppend(&result->str, kShape);
     for (tensorflow::int64 dim_size : tensor_shape.dim_sizes()) {
-      absl::StrAppend(&result->str, dim_size);
+      absl::StrAppend(&result->str, dim_size, kShapeDelim);
     }
 
     return tensorflow::Status::OK();
@@ -2928,6 +2932,7 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result);
 
 // This function doesn't set the type of sequence before
 tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
+                                         const char* end_type,
                                          EncodeResult* result) {
   tensorflow::Safe_PyObjectPtr arg_seq(
       PySequence_Fast(arg, "unable to create seq from list/tuple"));
@@ -2942,6 +2947,7 @@ tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
       TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(item, result));
     }
   }
+  absl::StrAppend(&result->str, end_type);
 
   return tensorflow::Status::OK();
 }
@@ -2980,9 +2986,9 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result) {
       TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(dense_shape.get(), result));
     }
   } else if (PyList_Check(arg)) {
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kList, result));
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kList, kListEnd, result));
   } else if (PyTuple_Check(arg)) {
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kTuple, result));
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kTuple, kTupleEnd, result));
   } else if (PyDict_Check(arg)) {
     tensorflow::Safe_PyObjectPtr keys(PyDict_Keys(arg));
     if (PyList_Sort(keys.get()) == -1) {
@@ -3032,4 +3038,37 @@ PyObject* TFE_Py_EncodeArg(PyObject* arg) {
   }
 
   return result.ToPyTuple();
+}
+
+// A method prints incoming messages directly to Python's
+// stdout using Python's C API. This is necessary in Jupyter notebooks
+// and colabs where messages to the C stdout don't go to the notebook
+// cell outputs, but calls to Python's stdout do.
+void PrintToPythonStdout(const char* msg) {
+  if (Py_IsInitialized()) {
+    PyGILState_STATE py_threadstate;
+    py_threadstate = PyGILState_Ensure();
+
+    string string_msg = msg;
+    // PySys_WriteStdout truncates strings over 1000 bytes, so
+    // we write the message in chunks small enough to not be truncated.
+    int CHUNK_SIZE = 900;
+    auto len = string_msg.length();
+    for (int i = 0; i < len; i += CHUNK_SIZE) {
+      PySys_WriteStdout("%s", string_msg.substr(i, CHUNK_SIZE).c_str());
+    }
+    PySys_WriteStdout("\n");
+
+    PyGILState_Release(py_threadstate);
+  }
+}
+
+// Register PrintToPythonStdout as a log listener, to allow
+// printing in colabs and jupyter notebooks to work.
+void TFE_Py_EnableInteractivePythonLogging() {
+  static bool enabled_interactive_logging = false;
+  if (!enabled_interactive_logging) {
+    enabled_interactive_logging = true;
+    TF_RegisterLogListener(PrintToPythonStdout);
+  }
 }

@@ -356,8 +356,20 @@ void BenchmarkTfLiteModel::Init() {
     }
   }
 
-  if (interpreter->AllocateTensors() != kTfLiteOk) {
+  // Don't allocate tensors if we have delegates.
+  if (delegates_.empty() && interpreter->AllocateTensors() != kTfLiteOk) {
     TFLITE_LOG(FATAL) << "Failed to allocate tensors!";
+  }
+}
+
+void BenchmarkTfLiteModel::ApplyDelegates() {
+  for (int i = 0; i < delegates_.size(); ++i) {
+    if (interpreter->ModifyGraphWithDelegate(delegates_[i].get()) !=
+        kTfLiteOk) {
+      TFLITE_LOG(FATAL) << "Failed to apply delegate # " << i;
+    } else {
+      TFLITE_LOG(INFO) << "Applied Delegate # " << i;
+    }
   }
 }
 

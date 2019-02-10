@@ -956,10 +956,10 @@ def dtype(x):
       # Keras variable
       >>> kvar = K.variable(np.array([[1, 2], [3, 4]]))
       >>> K.dtype(kvar)
-      'float32_ref'
+      'float32'
       >>> kvar = K.variable(np.array([[1, 2], [3, 4]]), dtype='float32')
       >>> K.dtype(kvar)
-      'float32_ref'
+      'float32'
   ```
   """
   return x.dtype.base_dtype.name
@@ -1590,7 +1590,7 @@ def min(x, axis=None, keepdims=False):
           the reduced dimension is retained with length 1.
 
   Returns:
-      A tensor with miminum values of `x`.
+      A tensor with minimum values of `x`.
   """
   return math_ops.reduce_min(x, axis, keepdims)
 
@@ -2893,7 +2893,7 @@ class GraphExecutionFunction(object):
                       'should be a list or tuple.')
     self.inputs = nest.flatten(inputs)
     self._outputs_structure = outputs
-    self.outputs = nest.flatten(outputs)
+    self.outputs = cast_variables_to_tensor(nest.flatten(outputs))
     with ops.control_dependencies(self.outputs):
       updates_ops = []
       for update in updates:
@@ -3053,14 +3053,13 @@ class EagerExecutionFunction(object):
     if not isinstance(updates, (list, tuple)):
       raise TypeError('`updates` in a Keras backend function '
                       'should be a list or tuple.')
+    self.name = name
     self.inputs = nest.flatten(inputs)
     self._outputs_structure = outputs
-    self.outputs = nest.flatten(outputs)
-    self.name = name
-
     graph = get_graph()
     # Consolidate updates
     with graph.as_default():
+      self.outputs = cast_variables_to_tensor(nest.flatten(outputs))
       with ops.control_dependencies(self.outputs):
         # In general, updates should be run after the outputs have been
         # computed. However, we can only ensure this when we create
@@ -4144,8 +4143,8 @@ def conv1d(x,
   x = nn.convolution(
       input=x,
       filter=kernel,
-      dilation_rate=(dilation_rate,),
-      strides=(strides,),
+      dilation_rate=dilation_rate,
+      strides=strides,
       padding=padding,
       data_format=tf_data_format)
   if data_format == 'channels_first' and tf_data_format == 'NWC':
@@ -4366,6 +4365,7 @@ def separable_conv2d(x,
   Raises:
       ValueError: if `data_format` is neither `channels_last` or
       `channels_first`.
+      ValueError: if `strides` is not a tuple of 2 integers.
   """
   if data_format is None:
     data_format = image_data_format()
@@ -4573,6 +4573,8 @@ def pool2d(x,
   Raises:
       ValueError: if `data_format` is neither `"channels_last"` or
       `"channels_first"`.
+      ValueError: if `pool_size` is not a tuple of 2 integers.
+      ValueError: if `strides` is not a tuple of 2 integers.
       ValueError: if `pool_mode` is neither `"max"` or `"avg"`.
   """
   if data_format is None:
@@ -5262,3 +5264,13 @@ def configure_and_create_distributed_session(distribution_strategy):
 def is_tpu_strategy(strategy):
   """We're executing TPU Strategy."""
   return strategy is not None and strategy.__class__.__name__ == 'TPUStrategy'
+
+
+def cast_variables_to_tensor(tensors):
+
+  def _cast_variables_to_tensor(tensor):
+    if isinstance(tensor, variables_module.Variable):
+      return array_ops.identity(tensor)
+    return tensor
+
+  return nest.map_structure(_cast_variables_to_tensor, tensors)

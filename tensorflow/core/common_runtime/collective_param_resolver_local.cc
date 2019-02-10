@@ -38,9 +38,9 @@ void CollectiveParamResolverLocal::InstanceRec::WaitForOutMu(mutex_lock& lock) {
 }
 
 CollectiveParamResolverLocal::CollectiveParamResolverLocal(
-    const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
-    const string& task_name)
-    : nccl_(false),  // (b/111897089): turn on NCCL collectives.
+    const ConfigProto& config, const DeviceMgr* dev_mgr,
+    DeviceResolverInterface* dev_resolver, const string& task_name)
+    : nccl_(config.experimental().collective_nccl()),
       dev_mgr_(dev_mgr),
       dev_resolver_(dev_resolver),
       task_name_(task_name) {}
@@ -144,7 +144,6 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
 }
 
 namespace {
-
 struct DevRec {
   string task;
   string device;
@@ -361,7 +360,7 @@ void SortDevicesAndTasks(CollectiveParams* cp) {
   for (int i = 0; i < perm.size(); ++i) {
     perm[i] = i;
   }
-  std::sort(perm.begin(), perm.end(), [cp](const int& a, const int& b) {
+  std::sort(perm.begin(), perm.end(), [cp](int a, int b) {
     return cp->instance.device_names[a] < cp->instance.device_names[b];
   });
   std::vector<string> new_devs;
@@ -585,7 +584,7 @@ void CollectiveParamResolverLocal::CallInitInstanceSharedParams(
 void CollectiveParamResolverLocal::CompleteParamsAsync(
     const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
     const StatusCallback& done) {
-  VLOG(1) << "CompleteParams " << device << " for " << cp << ": "
+  VLOG(1) << "CompleteParams local " << device << " for " << cp << ": "
           << cp->ToString();
   CompleteGroupLocal(
       device, cp,

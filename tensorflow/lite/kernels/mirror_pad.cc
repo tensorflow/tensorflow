@@ -37,6 +37,10 @@ struct PaddedTensor {
   // Note: This is not owned by default. It will point to the value
   // in the input tensor.
   const void* value = nullptr;
+  // The start index of the values of this tensor in the output buffer.
+  int start = -1;
+  // The end index of the values of this tensor in the output buffer.
+  int end = -1;
   // If this tensor is not one value, then this vector will have
   // all the tensors that belongs to this tensor.
   // Pointers are not owned.
@@ -66,30 +70,37 @@ struct PaddedTensor {
 struct OpData {
   // Holds intermediate data structure of the padded tensor.
   std::vector<PaddedTensor> pad_tensor_buffer;
-  // Total number of intermediate elements in the pad_tensor_buffer.
-  int num_elements;
 };
 
 // Util method to initialize the memory of the padded tensor.
-// Returns the index of the current item processed in 'padded_tensor_buffer'
-int InitializeTensorMemory(const TfLiteIntArray* const dims, int dim_index,
-                           int dims_size,
-                           std::vector<PaddedTensor>* padded_tensor_buffer,
-                           int element_index, int num_elements) {
-  if (dim_index >= dims_size) {
-    return element_index;
+void InitializeTensorMemory(const TfLiteIntArray* const dims, int dims_size,
+                            std::vector<PaddedTensor>* padded_tensor_buffer) {
+  int dimension_index = 0;
+  int element_index = 0;
+  // We hold 2 vectors with values for nodes in current level, and
+  // nodes in the next level, and swap while moving on dimensions of the tensor.
+  std::vector<PaddedTensor*> current_nodes, next_level;
+  current_nodes.push_back(&(*padded_tensor_buffer)[element_index]);
+  current_nodes[0]->start = current_nodes[0]->end = -1;
+  element_index++;
+  int next_level_size = 1;
+  while (!current_nodes.empty() && dimension_index < dims_size) {
+    next_level_size *= dims->data[dimension_index];
+    next_level.resize(next_level_size);
+    // Index of elements in next level.
+    int index = 0;
+    for (auto* padded_tensor : current_nodes) {
+      padded_tensor->values.resize(dims->data[dimension_index]);
+      for (int i = 0; i < dims->data[dimension_index]; ++i) {
+        padded_tensor->values[i] = &(*padded_tensor_buffer)[element_index];
+        padded_tensor->values[i]->start = padded_tensor->values[i]->end = -1;
+        next_level[index++] = padded_tensor->values[i];
+        element_index++;
+      }
+    }
+    std::swap(current_nodes, next_level);
+    dimension_index++;
   }
-  PaddedTensor* padded_tensor = &(*padded_tensor_buffer)[element_index];
-  padded_tensor->values.clear();
-  padded_tensor->values.reserve(dims->data[dim_index]);
-  for (int i = 0; i < dims->data[dim_index]; ++i) {
-    ++element_index;
-    padded_tensor->values.emplace_back(&(*padded_tensor_buffer)[element_index]);
-    element_index = InitializeTensorMemory(dims, dim_index + 1, dims_size,
-                                           padded_tensor_buffer, element_index,
-                                           num_elements);
-  }
-  return element_index;
 }
 
 // Returns pointer to the value at the specified index in 'data'.
@@ -117,20 +128,6 @@ inline const void* GetValuePointerAtIndex(const void* data, int index,
   return nullptr;
 }
 
-// Util method that increment index in the N-d array.
-void IncrementTensorIndex(const TfLiteIntArray* dims,
-                          std::vector<int>* tensor_index_ptr) {
-  int dimension_index = dims->size - 1;
-  auto& tensor_index = *tensor_index_ptr;
-  tensor_index[dimension_index]++;
-  while (dimension_index >= 0 &&
-         tensor_index[dimension_index] == dims->data[dimension_index]) {
-    tensor_index[dimension_index] = 0;
-    dimension_index--;
-    if (dimension_index >= 0) tensor_index[dimension_index]++;
-  }
-}
-
 // Fills the 'padded_tensor' with data from 'input_tensor'.
 TfLiteStatus InitFromInputTensor(const TfLiteTensor* input_tensor,
                                  PaddedTensor* padded_tensor) {
@@ -145,13 +142,13 @@ TfLiteStatus InitFromInputTensor(const TfLiteTensor* input_tensor,
   std::vector<int> tensor_index(dims->size, 0);
   int flat_index = 0;
   const int num_elements = NumElements(input_tensor);
+  auto* tensor = padded_tensor->GetMutable(tensor_index);
   while (flat_index < num_elements) {
-    auto* tensor = padded_tensor->GetMutable(tensor_index);
     if (tensor == nullptr) {
       return kTfLiteError;
     }
     tensor->value = GetValuePointerAtIndex(data, flat_index, data_type);
-    IncrementTensorIndex(dims, &tensor_index);
+    ++tensor;
     ++flat_index;
   }
 
@@ -245,25 +242,40 @@ TfLiteStatus PadTensor(const TfLiteTensor* padding_matrix, int offset,
 // Fills 'output_data' with data from 'padded_tensor'.
 // The function does this recursively by setting left padding first then
 // original data, followed by the right padding.
+// The functions returns the index in 'output_data' to be filled with data.
 template <typename T>
-int FillOutput(const PaddedTensor* padded_tensor, T* output_data,
+int FillOutput(PaddedTensor* padded_tensor, T* output_data,
                int index_in_output) {
   if (padded_tensor == nullptr || output_data == nullptr) {
     return -1;
   }
+  // Check if this tensor value was computed and written in the output
+  // already. If yes, just copy the values.
+  if (padded_tensor->start != -1) {
+    const int size = padded_tensor->end - padded_tensor->start + 1;
+    memcpy(output_data + index_in_output, output_data + padded_tensor->start,
+           size * sizeof(T));
+    return index_in_output + size;
+  }
+  // Record the start index in the output.
+  padded_tensor->start = index_in_output;
+  // Check for single value.
   if (padded_tensor->value != nullptr) {
     output_data[index_in_output] = *static_cast<const T*>(padded_tensor->value);
+    padded_tensor->end = index_in_output;
     return index_in_output + 1;
   }
-  for (const auto* tensor : padded_tensor->left_pad_ptrs) {
+  for (auto* tensor : padded_tensor->left_pad_ptrs) {
     index_in_output = FillOutput(tensor, output_data, index_in_output);
   }
-  for (const auto& tensor : padded_tensor->values) {
+  for (auto& tensor : padded_tensor->values) {
     index_in_output = FillOutput(tensor, output_data, index_in_output);
   }
-  for (const auto* tensor : padded_tensor->right_pad_ptrs) {
+  for (auto* tensor : padded_tensor->right_pad_ptrs) {
     index_in_output = FillOutput(tensor, output_data, index_in_output);
   }
+  // Record the end index in the output.
+  padded_tensor->end = index_in_output - 1;
   return index_in_output;
 }
 
@@ -308,8 +320,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   PaddedTensor& padded_tensor = op_data->pad_tensor_buffer[0];
   // Initialize memory.
-  InitializeTensorMemory(input_tensor->dims, 0, input_dims,
-                         &op_data->pad_tensor_buffer, 0, op_data->num_elements);
+  InitializeTensorMemory(input_tensor->dims, input_dims,
+                         &op_data->pad_tensor_buffer);
   // Set the values from the input_tensor.
   TF_LITE_ENSURE_STATUS(InitFromInputTensor(input_tensor, &padded_tensor));
   const int offset =
@@ -380,7 +392,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     num_elements += extra_nodes;
   }
   op_data->pad_tensor_buffer.resize(num_elements);
-  op_data->num_elements = num_elements;
 
   if (!IsConstantTensor(padding_matrix)) {
     SetTensorToDynamic(output_tensor);
