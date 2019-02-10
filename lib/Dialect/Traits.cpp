@@ -17,6 +17,7 @@
 
 #include "mlir/Dialect/Traits.h"
 #include "mlir/IR/StandardTypes.h"
+#include "llvm/Support/FormatVariadic.h"
 
 using namespace mlir;
 
@@ -161,7 +162,9 @@ bool OpTrait::impl::verifyCompatibleOperandBroadcast(const Instruction *op) {
     return op->emitOpError("operands don't have broadcast-compatible types");
   if (broadcastedType != retType)
     return op->emitOpError(
-        "result type is not broadcast-compatible with operand types");
+        llvm::formatv("result type '{0}' is not the expected broadcasted type "
+                      "'{1}' compute from the operand types",
+                      retType, broadcastedType));
 
   return false;
 }
