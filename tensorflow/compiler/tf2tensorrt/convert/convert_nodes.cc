@@ -2106,7 +2106,7 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
   // Mark axes to remove by setting them to 0.
   TFAttrs attrs(node_def);
   auto squeeze_dims = attrs.get<std::vector<int>>("squeeze_dims");
-  if (squeeze_dims.size() == 0) {
+  if (squeeze_dims.empty()) {
     return tensorflow::errors::Unimplemented(
         "Squeeze is only implemented for explicit dims, at ", node_def.name());
   }
@@ -2274,7 +2274,7 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
       pad_dims.push_back(i);
     }
   }
-  if (pad_dims.size() == 0) {
+  if (pad_dims.empty()) {
     // No dimensions are changed. We could create a padding layer anyway with
     // values of 0.
     if (params->validation_only) return Status::OK();
@@ -3138,7 +3138,7 @@ tensorflow::Status ConvertPad(OpConverterParams* params) {
   }
 
   // No padding at all, we should exit
-  if (pad_index.size() == 0) {
+  if (pad_index.empty()) {
     params->outputs->push_back(inputs.at(0));
     return tensorflow::Status::OK();
   }

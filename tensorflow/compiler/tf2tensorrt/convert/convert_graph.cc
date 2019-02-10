@@ -222,7 +222,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
         cres->thr_->join();
         const auto& calibration_table =
             cres->calibrator_->getCalibrationTableAsString();
-        if (!calibration_table.size()) {
+        if (calibration_table.empty()) {
           LOG(ERROR) << "Calibration table is empty";
           return tensorflow::errors::Unknown(
               "Calibration table is missing. This shouldn't have happened!");
@@ -662,8 +662,8 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
         info.use_calibration,
         /*convert_successfully=*/nullptr));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
-    segment_string =
-        string((const char*)engine_data->data(), engine_data->size());
+    segment_string = string(static_cast<const char*>(engine_data->data()),
+                            engine_data->size());
     if (calibrate_int8) {
       // See above comment about why not putting this inside the 'else' branch.
       segment_string = info.segment_graph_def.SerializeAsString();
