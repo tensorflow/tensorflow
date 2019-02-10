@@ -35,7 +35,6 @@ namespace {
 
 using absl::optional;
 using se::DeviceMemoryBase;
-using se::dnn::AlgorithmConfig;
 using se::dnn::AlgorithmDesc;
 
 class ScratchAllocator : public se::ScratchAllocator {

@@ -94,7 +94,6 @@ bool IsEngineOutput(absl::string_view name) {
 namespace convert {
 using absl::StrAppend;
 using absl::StrCat;
-using ::tensorflow::str_util::Split;
 
 inline tensorflow::Status ConvertDType(tensorflow::DataType tf_dtype,
                                        nvinfer1::DataType* trt_dtype) {
@@ -297,8 +296,8 @@ Status Converter::GetTrtBroadcastShape(
 
   const int max_nb_dims = nvinfer1::Dims::MAX_DIMS + 1;
   auto compute_output_dims =
-      [max_nb_dims](const TRT_TensorOrWeights& input, int broadcast_num_dims,
-                    int* output_dims_array, nvinfer1::Dims* output_dims) {
+      [](const TRT_TensorOrWeights& input, int broadcast_num_dims,
+         int* output_dims_array, nvinfer1::Dims* output_dims) {
         const nvinfer1::Dims input_dims = input.GetTrtDims();
         std::fill(output_dims_array, output_dims_array + max_nb_dims, 1);
         std::copy(input_dims.d, input_dims.d + input_dims.nbDims,
