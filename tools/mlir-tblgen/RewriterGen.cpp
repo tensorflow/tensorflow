@@ -218,19 +218,21 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int index, int depth,
   auto *namedAttr = op.getArg(index).get<NamedAttribute *>();
   auto matcher = tree.getArgAsLeaf(index);
 
-  if (!matcher.isUnspecified() && !matcher.isAttrMatcher()) {
-    PrintFatalError(
-        loc, formatv("the {1}-th argument of op '{0}' should be an attribute",
-                     op.getOperationName(), index + 1));
-  }
+  if (!matcher.isUnspecified()) {
+    if (!matcher.isAttrMatcher()) {
+      PrintFatalError(
+          loc, formatv("the {1}-th argument of op '{0}' should be an attribute",
+                       op.getOperationName(), index + 1));
+    }
 
-  // If a constraint is specified, we need to generate C++ statements to
-  // check the constraint.
-  std::string condition =
-      formatv(matcher.getConditionTemplate().c_str(),
-              formatv("op{0}->getAttrOfType<{1}>(\"{2}\")", depth,
-                      namedAttr->attr.getStorageType(), namedAttr->getName()));
-  os.indent(indent) << "if (!(" << condition << ")) return matchFailure();\n";
+    // If a constraint is specified, we need to generate C++ statements to
+    // check the constraint.
+    std::string condition = formatv(
+        matcher.getConditionTemplate().c_str(),
+        formatv("op{0}->getAttrOfType<{1}>(\"{2}\")", depth,
+                namedAttr->attr.getStorageType(), namedAttr->getName()));
+    os.indent(indent) << "if (!(" << condition << ")) return matchFailure();\n";
+  }
 
   // Capture the value
   auto name = tree.getArgName(index);
