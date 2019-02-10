@@ -581,9 +581,7 @@ def _slice_helper(tensor, slice_spec, var=None):
   """
   if isinstance(slice_spec, bool) or \
   (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \
-  (isinstance(slice_spec, np.ndarray) and slice_spec.dtype == bool) or \
-  (isinstance(slice_spec, (list, tuple)) and
-   np.asarray(slice_spec).dtype == bool):
+  (isinstance(slice_spec, np.ndarray) and slice_spec.dtype == bool):
     return boolean_mask(tensor=tensor, mask=slice_spec)
 
   if not isinstance(slice_spec, (list, tuple)):
