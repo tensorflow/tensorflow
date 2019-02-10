@@ -113,7 +113,7 @@ def fit_distributed(model,
         initial_epoch=initial_epoch,
         steps_per_epoch=steps_per_epoch,
         validation_steps=validation_steps,
-        validation_freq=1)
+        validation_freq=validation_freq)
   else:
     return training_arrays.fit_loop(
         model,
