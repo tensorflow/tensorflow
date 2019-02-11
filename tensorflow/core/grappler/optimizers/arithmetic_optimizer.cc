@@ -2721,7 +2721,7 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
   ~OptimizeMaxOrMinOfMonotonicStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsMax(*node) || IsMin(*node);
+    return IsMax(*node) || IsMin(*node) || IsAnyMaxPool(*node);
   }
 
   Status TrySimplify(NodeDef* reduction_node,
@@ -2735,10 +2735,13 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
     // 0. inner_function is not in the preserve set,
     // 1. inner_function's Op is element-wise monotonic
     // 2. inner_function's output is not being consumed elsewhere.
+    // 3. is monotonic increasing if reduction_node is a pooling operation
+    //    since we don't have MinPool operations.
     bool is_non_decreasing = false;
     if (!IsInPreserveSet(*inner_function) &&
         IsElementWiseMonotonic(*inner_function, &is_non_decreasing) &&
-        ctx().node_map->GetOutputs(inner_function->name()).size() == 1) {
+        ctx().node_map->GetOutputs(inner_function->name()).size() == 1 &&
+        (is_non_decreasing || !IsAnyMaxPool(*reduction_node))) {
       // Swap the first inputs of the inner function Op & the reduction Op.
       NodeDef* inner_input;
       TF_RETURN_IF_ERROR(GetInputNode(inner_function->input(0), &inner_input));

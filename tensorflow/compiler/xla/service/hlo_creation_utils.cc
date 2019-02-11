@@ -17,10 +17,15 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/client/lib/comparators.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -274,31 +279,19 @@ StatusOr<HloInstruction*> MakeSortHlo(
     HloModule* module) {
   CHECK(!operands.empty()) << "Sort Hlo requires at least one operand.";
   HloComputation* compare_computation;
-  {
-    auto b = HloComputation::Builder("Sort.Compare");
-    Shape key_scalar_shape =
-        ShapeUtil::MakeShape(operands[0]->shape().element_type(), {});
-    auto lhs = b.AddInstruction(
-        HloInstruction::CreateParameter(0, key_scalar_shape, "p.0.lhs"));
-    auto rhs = b.AddInstruction(
-        HloInstruction::CreateParameter(1, key_scalar_shape, "p.0.rhs"));
-    int parameter_count = 2;
-    for (const auto* operand : operands.subspan(1)) {
-      Shape scalar_shape =
-          ShapeUtil::MakeShape(operand->shape().element_type(), {});
-      b.AddInstruction(HloInstruction::CreateParameter(
-          parameter_count, scalar_shape,
-          StrCat("p.", parameter_count / 2, ".lhs")));
-      ++parameter_count;
-      b.AddInstruction(HloInstruction::CreateParameter(
-          parameter_count, scalar_shape,
-          StrCat("p.", parameter_count / 2, ".rhs")));
-      ++parameter_count;
-    }
-    b.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, lhs, rhs));
-    compare_computation = module->AddEmbeddedComputation(b.Build());
+  XlaBuilder b("Sort.Compare");
+  std::vector<PrimitiveType> operand_types(operands.size());
+  for (int64 i = 0; i < operands.size(); ++i) {
+    operand_types[i] = operands[i]->shape().element_type();
   }
+  XlaComputation comparator = CreateScalarLtComputation(operand_types, &b);
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape, comparator.GetProgramShape());
+  HloModuleConfig config(program_shape);
+  TF_ASSIGN_OR_RETURN(auto new_module,
+                      HloModule::CreateFromProto(comparator.proto(), config));
+  HloCloneContext context(module);
+  compare_computation =
+      module->DeepCloneComputation(new_module->entry_computation(), &context);
   return builder->AddInstruction(HloInstruction::CreateSort(
       sort_shape, dimension_to_sort, operands, compare_computation));
 }

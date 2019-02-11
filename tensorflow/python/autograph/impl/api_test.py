@@ -41,6 +41,9 @@ from tensorflow.python.util import tf_inspect
 tf = utils.fake_tf()
 
 
+testing_global_numeric = 2
+
+
 class TestResource(str):
   pass
 
@@ -320,6 +323,7 @@ class ApiTest(test.TestCase):
       x = api.converted_call(tc, None, converter.ConversionOptions())
       self.assertEqual(1, self.evaluate(x))
 
+  @test_util.run_deprecated_v1
   def test_converted_call_constructor(self):
 
     class TestClass(object):
@@ -332,12 +336,14 @@ class ApiTest(test.TestCase):
           return -self.x
         return self.x
 
-    with self.cached_session() as sess:
-      tc = api.converted_call(TestClass, None, converter.ConversionOptions(),
-                              constant_op.constant(-1))
-      # tc is now a converted object.
-      x = tc.test_method()
-      self.assertEqual(1, self.evaluate(x))
+    tc = api.converted_call(TestClass, None, converter.ConversionOptions(),
+                            constant_op.constant(-1))
+    # tc is still a TestClass - constructors are whitelisted.
+    # TODO(b/124016764): Support this use case.
+    # The error below is specific to the `if` statement not being converted.
+    with self.assertRaisesRegex(
+        TypeError, 'Using a `tf.Tensor` as a Python `bool`'):
+      tc.test_method()
 
   def test_converted_call_already_converted(self):
 
@@ -492,6 +498,20 @@ class ApiTest(test.TestCase):
     with self.cached_session() as sess:
       x = compiled_fn(constant_op.constant([4, 8]))
       self.assertListEqual([1, 2], self.evaluate(x).tolist())
+
+  def test_to_graph_with_globals(self):
+
+    def test_fn(x):
+      global testing_global_numeric
+      testing_global_numeric = x + testing_global_numeric
+      return testing_global_numeric
+
+    compiled_fn = api.to_graph(test_fn)
+
+    x = compiled_fn(constant_op.constant(3))
+    self.assertEqual(5, self.evaluate(x))
+    # TODO(b/122368197): This should be the constant 5!
+    self.assertEqual(2, testing_global_numeric)
 
   def test_to_code_basic(self):
 

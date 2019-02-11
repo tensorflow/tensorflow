@@ -543,16 +543,17 @@ inline void Relu6(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
+template <typename T>
 inline void ReluX(const tflite::ActivationParams& params,
-                  const RuntimeShape& input_shape, const uint8* input_data,
-                  const RuntimeShape& output_shape, uint8* output_data) {
+                  const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
   gemmlowp::ScopedProfilingLabel label("Quantized ReluX (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  const uint8 max_value = params.quantized_activation_max;
-  const uint8 min_value = params.quantized_activation_min;
+  const T max_value = params.quantized_activation_max;
+  const T min_value = params.quantized_activation_min;
   for (int i = 0; i < flat_size; ++i) {
-    const uint8 val = input_data[i];
-    const uint8 clamped =
+    const T val = input_data[i];
+    const T clamped =
         val > max_value ? max_value : val < min_value ? min_value : val;
     output_data[i] = clamped;
   }

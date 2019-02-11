@@ -1037,6 +1037,13 @@ tf.print('abc')
       _, unused_report, unused_errors, actual = self._upgrade(text)
       self.assertEqual(actual, expected)
 
+  def testMapAndBatch(self):
+    suffix = ".data.experimental.map_and_batch_with_legacy_function(args)"
+    text = "tf" + suffix
+    expected = "tf.compat.v1" + suffix
+    _, unused_report, unused_errors, actual = self._upgrade(text)
+    self.assertEqual(actual, expected)
+
   def testCast(self):
     for (name, dtype) in [("int32", "int32"),
                           ("int64", "int64"),
@@ -1147,6 +1154,12 @@ def _log_prob(self, x):
   def test_is_tensor_upgrade(self):
     text = "tf.contrib.framework.is_tensor(x)"
     expected = "tf.is_tensor(x)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
+  def test_CriticalSection_upgrade(self):
+    text = "tf.contrib.framework.CriticalSection(shared_name='blah')"
+    expected = "tf.CriticalSection(shared_name='blah')"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 

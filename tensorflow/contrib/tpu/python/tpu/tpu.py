@@ -24,11 +24,10 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.compiler import xla
 from tensorflow.contrib.framework.python.framework import experimental
-from tensorflow.contrib.tpu.proto import dynamic_padding_pb2 as dynamic_padding
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_function
-
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.protobuf.tpu import dynamic_padding_pb2 as dynamic_padding
 from tensorflow.python.compat import compat as api_compat
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes

@@ -39,6 +39,7 @@ from tensorflow.python.data.util import sparse
 from tensorflow.python.data.util import structure as structure_lib
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -47,6 +48,7 @@ from tensorflow.python.framework import random_seed as core_random_seed
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -85,12 +87,12 @@ class DatasetV2(object):
     Args:
       variant_tensor: A DT_VARIANT tensor that represents the dataset.
     """
-    self._dataset_variant_tensor = variant_tensor
+    self._variant_tensor_attr = variant_tensor
     self._graph_attr = ops.get_default_graph()
 
   @property
   def _variant_tensor(self):
-    return self._dataset_variant_tensor
+    return self._variant_tensor_attr
 
   @_variant_tensor.setter
   def _variant_tensor(self, _):
@@ -142,6 +144,8 @@ class DatasetV2(object):
     return any(
         [input_dataset._has_captured_ref() for input_dataset in self._inputs()])  # pylint: disable=protected-access
 
+  # TODO(jsimsa): Change this to be the transitive closure of functions used
+  # by this dataset and its inputs.
   def _functions(self):
     """Returns a list of functions associated with this dataset.
 
@@ -1152,6 +1156,18 @@ class DatasetV2(object):
   def filter(self, predicate):
     """Filters this dataset according to `predicate`.
 
+    ```python
+    d = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+    
+    d = d.filter(lambda x: x < 3) # [1, 2]
+
+    # `tf.math.equal(x, y)` is required for equality comparison
+    def filter_fn(x):
+      return tf.math.equal(x, 1)
+
+    d = d.filter(filter_fn) # [1]
+    ```
+
     Args:
       predicate: A function mapping a nested structure of tensors (having shapes
         and types defined by `self.output_shapes` and `self.output_types`) to a
@@ -1630,6 +1646,43 @@ class DatasetV1(DatasetV2):
           ParallelMapDataset(
               self, map_func, num_parallel_calls, preserve_cardinality=False))
 
+  @deprecation.deprecated(None, "Use `tf.data.Dataset.map()")
+  def map_with_legacy_function(self, map_func, num_parallel_calls=None):
+    """Maps `map_func` across the elements of this dataset.
+
+    NOTE: This is an escape hatch for existing uses of `map` that do not work
+    with V2 functions. New uses are strongly discouraged and existing uses
+    should migrate to `map` as this method will not be removed in V2.
+
+    Args:
+      map_func: A function mapping a nested structure of tensors (having shapes
+        and types defined by `self.output_shapes` and `self.output_types`) to
+        another nested structure of tensors.
+      num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
+        representing the number elements to process asynchronously in parallel.
+        If not specified, elements will be processed sequentially. If the value
+        `tf.data.experimental.AUTOTUNE` is used, then the number of parallel
+        calls is set dynamically based on available CPU.
+
+    Returns:
+      Dataset: A `Dataset`.
+    """
+    if num_parallel_calls is None:
+      return DatasetV1Adapter(
+          MapDataset(
+              self,
+              map_func,
+              preserve_cardinality=False,
+              use_legacy_function=True))
+    else:
+      return DatasetV1Adapter(
+          ParallelMapDataset(
+              self,
+              map_func,
+              num_parallel_calls,
+              preserve_cardinality=False,
+              use_legacy_function=True))
+
   @functools.wraps(DatasetV2.flat_map)
   def flat_map(self, map_func):
     return DatasetV1Adapter(super(DatasetV1, self).flat_map(map_func))
@@ -2058,9 +2111,9 @@ structure_lib.Structure._register_custom_converter(DatasetV2,
 
 
 class StructuredFunctionWrapper(object):
-  """A wrapper for `Defun` that supports structured arguments and return values.
-  """
+  """A function wrapper that supports structured arguments and return values."""
 
+  # pylint: disable=protected-access
   def __init__(self,
                func,
                transformation_name,
@@ -2070,6 +2123,7 @@ class StructuredFunctionWrapper(object):
                input_types=None,
                input_structure=None,
                add_to_graph=True,
+               use_legacy_function=False,
                defun_kwargs=None):
     """Creates a new `StructuredFunctionWrapper` for the given function.
 
@@ -2091,9 +2145,12 @@ class StructuredFunctionWrapper(object):
         defines the element types and structure for `func` arguments.
       add_to_graph: (Optional.) If `True`, the function will be added to the
         default graph.
+      use_legacy_function: (Optional.) A boolean that determines whether the
+        function be created using `tensorflow.python.eager.function.defun`
+        (default behavior) or `tensorflow.python.framework.function.Defun`
+        (legacy beheavior).
       defun_kwargs: (Optional.) A dictionary mapping string argument names to
-        values. If supplied, will be passed to `function.Defun()` as keyword
-        arguments.
+        values. If supplied, will be passed to `function` as keyword arguments.
 
     Raises:
       ValueError: If an invalid combination of `dataset`, `input_classes`,
@@ -2113,7 +2170,7 @@ class StructuredFunctionWrapper(object):
           raise ValueError("Either `dataset`, `input_structure` or all of "
                            "`input_classes`, `input_shapes`, and `input_types` "
                            "must be specified.")
-        self._input_structure = dataset._element_structure  # pylint: disable=protected-access
+        self._input_structure = dataset._element_structure
     else:
       if not (dataset is None and input_classes is None and input_shapes is None
               and input_types is None):
@@ -2122,24 +2179,38 @@ class StructuredFunctionWrapper(object):
                          "must be specified.")
       self._input_structure = input_structure
 
-    self._transformation_name = transformation_name
-    readable_transformation_name = transformation_name.replace(
-        ".", "_")[:-2] if len(transformation_name) > 2 else ""
-    self._func_name = "_".join([
-        readable_transformation_name,
-        function_utils.get_func_name(func),
-        str(ops.uid())
-    ])
-
     if defun_kwargs is None:
       defun_kwargs = {}
 
-    @function.Defun(
-        *self._input_structure._flat_types, func_name=self._func_name,  # pylint: disable=protected-access
-        **defun_kwargs)
-    def tf_data_structured_function_wrapper(*args):
+    readable_transformation_name = transformation_name.replace(
+        ".", "_")[:-2] if len(transformation_name) > 2 else ""
+
+    func_name = "_".join(
+        [readable_transformation_name,
+         function_utils.get_func_name(func)])
+
+    def _warn_if_collections(transformation_name, graph, initial_length):
+      """Prints a warning if the given graph uses common graph collections.
+
+      NOTE(mrry): Currently a warning is only generated for lookup tables. Any
+      variables created will be automatically hoisted out to the outermost scope
+      using `init_scope()`. Some collections (such as for control-flow contexts)
+      are benign and should not generate a warning.
+
+      Args:
+        transformation_name: A human-readable name for the transformation.
+        graph: The graph to check for collections.
+        initial_length: The initial length of the lookup table collection.
+      """
+      length = len(graph.get_collection(ops.GraphKeys.TABLE_INITIALIZERS))
+      if length != initial_length:
+        warnings.warn("Creating lookup tables inside a function passed to %s "
+                      "is not supported. Create each table outside the "
+                      "function, and capture it inside the function to use it."
+                      % transformation_name)
+
+    def _wrapper_helper(*args):
       """Wrapper for passing nested structures to and from tf.data functions."""
-      # pylint: disable=protected-access
       nested_args = self._input_structure._from_compatible_tensor_list(args)
       if not _should_unpack_args(nested_args):
         nested_args = (nested_args,)
@@ -2163,18 +2234,53 @@ class StructuredFunctionWrapper(object):
       except (ValueError, TypeError):
         raise TypeError("Unsupported return value from function passed to "
                         "%s: %s." % (transformation_name, ret))
+      return ret
 
-      _warn_if_collections(transformation_name)
-      return self._output_structure._to_tensor_list(ret)
+    if use_legacy_function:
+      func_name = func_name + "_" + str(ops.uid())
 
-    self._function = tf_data_structured_function_wrapper
-    if add_to_graph:
-      self._function.add_to_graph(ops.get_default_graph())
+      @function.Defun(
+          *self._input_structure._flat_types,
+          func_name=func_name,
+          **defun_kwargs)
+      def wrapper_fn(*args):
+        ret = _wrapper_helper(*args)
+        _warn_if_collections(transformation_name, ops.get_default_graph(), 0)
+        return self._output_structure._to_tensor_list(ret)
+
+      self._function = wrapper_fn
+      if add_to_graph:
+        self._function.add_to_graph(ops.get_default_graph())
+      else:
+        # Use the private method that will execute `wrapper_fn` but delay adding
+        # it to the graph in case (e.g.) we need to rerun the function.
+        self._function._create_definition_if_needed()
     else:
-      # Use the private method that will execute
-      # `tf_data_structured_function_wrapper` but delay adding it to the graph
-      # in case (e.g.) we need to rerun the function.
-      self._function._create_definition_if_needed()  # pylint: disable=protected-access
+      defun_kwargs.update({"func_name": func_name})
+
+      @eager_function.defun_with_attributes(
+          input_signature=[
+              tensor_spec.TensorSpec(input_shape, input_type)  # pylint: disable=g-complex-comprehension
+              for input_shape, input_type in zip(
+                  self._input_structure._flat_shapes,
+                  self._input_structure._flat_types)
+          ],
+          attributes=defun_kwargs)
+      def wrapper_fn(*args):  # pylint: disable=missing-docstring
+        ret = _wrapper_helper(*args)
+        ret = self._output_structure._to_tensor_list(ret)
+        return [ops.convert_to_tensor(t) for t in ret]
+
+      initial_length = len(ops.get_default_graph().get_collection(
+          ops.GraphKeys.TABLE_INITIALIZERS))
+
+      self._function = wrapper_fn._get_concrete_function_internal()
+      if add_to_graph:
+        self._function.add_to_graph(ops.get_default_graph())
+
+      _warn_if_collections(transformation_name, self._function.graph,
+                           initial_length)
+  # pylint: enable=protected-access
 
   @property
   def output_structure(self):
@@ -2747,24 +2853,6 @@ def _should_unpack_args(args):
   return type(args) is tuple  # pylint: disable=unidiomatic-typecheck
 
 
-def _warn_if_collections(transformation_name):
-  """Prints warning message if the current graph uses common graph collections.
-
-  NOTE(mrry): Currently a warning is only generated for lookup tables. Any
-  variables created will be automatically hoisted out to the outermost scope
-  using `init_scope()`. Some collections (such as for control-flow contexts)
-  are benign and should not generate a warning.
-
-  Args:
-    transformation_name: A human-readable name for the transformation.
-  """
-  if ops.get_default_graph().get_collection(ops.GraphKeys.TABLE_INITIALIZERS):
-    warnings.warn("Creating lookup tables inside a function passed to %s is not"
-                  " supported. Create each table outside the function, and "
-                  "capture it inside the function to use it."
-                  % transformation_name)
-
-
 class MapDataset(UnaryDataset):
   """A `Dataset` that maps a function over elements in its input."""
 
@@ -2772,13 +2860,17 @@ class MapDataset(UnaryDataset):
                input_dataset,
                map_func,
                use_inter_op_parallelism=True,
-               preserve_cardinality=False):
+               preserve_cardinality=False,
+               use_legacy_function=False):
     """See `Dataset.map()` for details."""
     self._input_dataset = input_dataset
     self._use_inter_op_parallelism = use_inter_op_parallelism
     self._preserve_cardinality = preserve_cardinality
     self._map_func = StructuredFunctionWrapper(
-        map_func, self._transformation_name(), dataset=input_dataset)
+        map_func,
+        self._transformation_name(),
+        dataset=input_dataset,
+        use_legacy_function=use_legacy_function)
     variant_tensor = gen_dataset_ops.map_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,
@@ -2807,12 +2899,16 @@ class ParallelMapDataset(UnaryDataset):
                map_func,
                num_parallel_calls,
                use_inter_op_parallelism=True,
-               preserve_cardinality=False):
+               preserve_cardinality=False,
+               use_legacy_function=False):
     """See `Dataset.map()` for details."""
     self._input_dataset = input_dataset
     self._use_inter_op_parallelism = use_inter_op_parallelism
     self._map_func = StructuredFunctionWrapper(
-        map_func, self._transformation_name(), dataset=input_dataset)
+        map_func,
+        self._transformation_name(),
+        dataset=input_dataset,
+        use_legacy_function=use_legacy_function)
     self._num_parallel_calls = ops.convert_to_tensor(
         num_parallel_calls, dtype=dtypes.int32, name="num_parallel_calls")
     self._preserve_cardinality = preserve_cardinality

@@ -2114,8 +2114,7 @@ class UnifiedGRU(GRU):
           time_major=self.time_major,
           zero_output_for_mask=self.zero_output_for_mask)
       # This is a dummy tensor for testing purpose.
-      runtime = constant_op.constant(
-          'unknown', dtype=dtypes.string, name='runtime')
+      runtime = _runtime('unknown')
     else:
       last_output, outputs, runtime, states = self._defun_gru_call(
           inputs, initial_state, training)
@@ -2266,8 +2265,7 @@ def standard_gru(inputs, init_h, kernel, recurrent_kernel, bias, activation,
       unroll=False,
       time_major=time_major,
       input_length=timesteps)
-  return last_output, outputs, new_states[0], constant_op.constant(
-      'cpu', dtype=dtypes.string, name='runtime')
+  return last_output, outputs, new_states[0], _runtime('cpu')
 
 
 def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, time_major):
@@ -2309,8 +2307,7 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, time_major):
   if not time_major:
     outputs = array_ops.transpose(outputs, perm=[1, 0, 2])
   h = h[0]
-  return last_output, outputs, h, constant_op.constant(
-      'cudnn', dtype=dtypes.string, name='runtime')
+  return last_output, outputs, h, _runtime('cudnn')
 
 
 @keras_export('keras.layers.LSTMCell')
@@ -3090,8 +3087,7 @@ class UnifiedLSTM(LSTM):
           input_length=timesteps,
           time_major=self.time_major,
           zero_output_for_mask=self.zero_output_for_mask)
-      runtime = constant_op.constant(
-          'unknown', dtype=dtypes.string, name='runtime')
+      runtime = _runtime('unknown')
     else:
       # Use the new defun approach for backend implementation swap.
       # Note that different implementations need to have same function
@@ -3266,8 +3262,7 @@ def standard_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias,
       unroll=False,
       time_major=time_major,
       input_length=timesteps)
-  return last_output, outputs, new_states[0], new_states[
-      1], constant_op.constant('cpu', dtype=dtypes.string, name='runtime')
+  return last_output, outputs, new_states[0], new_states[1], _runtime('cpu')
 
 
 def cudnn_lstm(inputs, input_h, input_c, kernel, recurrent_kernel, bias,
@@ -3298,8 +3293,7 @@ def cudnn_lstm(inputs, input_h, input_c, kernel, recurrent_kernel, bias,
   h = h[0]
   c = c[0]
 
-  return last_output, outputs, h, c, constant_op.constant(
-      'cudnn', dtype=dtypes.string, name='runtime')
+  return last_output, outputs, h, c, _runtime('cudnn')
 
 
 def _generate_dropout_mask(ones, rate, training=None, count=1):
@@ -3418,3 +3412,9 @@ def _generate_defun_backend(unique_api_name, preferred_device, func):
   }
   return function.defun_with_attributes(func=func,
                                         attributes=function_attributes)
+
+
+def _runtime(runtime_name):
+  with ops.device('/cpu:0'):
+    return constant_op.constant(
+        runtime_name, dtype=dtypes.string, name='runtime')

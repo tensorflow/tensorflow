@@ -43,6 +43,10 @@ class CollectiveOpKernel : public AsyncOpKernel {
       // Call in a blockable thread because it's not guaranteed that
       // this call cannot block.
       c->env()->SchedClosure([this, c, done, col_exec]() {
+        VLOG(1) << "CollectiveOpKernel CompleteParams for collective "
+                << col_params_.name << " device " << c->device()->name()
+                << " group " << col_params_.group.group_key << " instance "
+                << col_params_.instance.instance_key;
         col_exec->CompleteParamsAsync(
             c->device()->name(), &col_params_, c->cancellation_manager(),
             [this, c, done](const Status& s) {
@@ -149,10 +153,18 @@ class CollectiveReduceOpKernel : public CollectiveOpKernel {
       col_params_.instance.shape = c->input(0).shape();
     }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
-    auto actual_done = [c, col_exec, done](const Status& s) {
+
+    int32 instance_key = col_params_.instance.instance_key;
+    auto actual_done = [c, instance_key, done](const Status& s) {
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
+      VLOG(1) << "CollectiveReduceKernel ExecuteAsync done for device "
+              << c->device()->name() << " instance " << instance_key;
     };
+    VLOG(1) << "CollectiveReduceKernel ExecuteAsync start for collective "
+            << col_params_.name << " device " << c->device()->name()
+            << " group " << col_params_.group.group_key << " instance "
+            << instance_key;
     col_exec->ExecuteAsync(c, col_params_, GetCollectiveKey(c), actual_done);
   }
 
@@ -211,10 +223,17 @@ class CollectiveBcastSendOpKernel : public CollectiveOpKernel {
                          " does not match shape of input"),
         done);
 
-    auto actual_done = [c, col_exec, done](const Status& s) {
+    int32 instance_key = col_params_.instance.instance_key;
+    auto actual_done = [c, instance_key, done](const Status& s) {
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
+      VLOG(1) << "CollectiveBcastSendOpKernel ExecuteAsync done for device "
+              << c->device()->name() << " instance " << instance_key;
     };
+    VLOG(1) << "CollectiveBcastSendOpKernel ExecuteAsync start for collective "
+            << col_params_.name << " device " << c->device()->name()
+            << " group " << col_params_.group.group_key << " instance "
+            << instance_key;
     col_exec->ExecuteAsync(c, col_params_, GetCollectiveKey(c), actual_done);
   }
 
@@ -266,10 +285,17 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpKernel {
     }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
 
-    auto actual_done = [c, col_exec, done](const Status& s) {
+    int32 instance_key = col_params_.instance.instance_key;
+    auto actual_done = [c, instance_key, done](const Status& s) {
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
+      VLOG(1) << "CollectiveBcastRecvOpKernel ExecuteAsync done for device "
+              << c->device()->name() << " instance " << instance_key;
     };
+    VLOG(1) << "CollectiveBcastRecvOpKernel ExecuteAsync start for collective "
+            << col_params_.name << " device " << c->device()->name()
+            << " group " << col_params_.group.group_key << " instance "
+            << instance_key;
     col_exec->ExecuteAsync(c, col_params_, GetCollectiveKey(c), actual_done);
   }
 

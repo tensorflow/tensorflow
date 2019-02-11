@@ -158,11 +158,14 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     size_50 = _construct_graph_of_size(50)
     size_500 = _construct_graph_of_size(500)
 
-    # Check reasonable graph construction time.
-    self.assertLess(size_50, 5)
     # Check construction time grows approx. linearly with size.
     e = 2  # Fudge factor to prevent flakiness.
     self.assertLess(size_500, (10 * e) * size_50)
+
+  def test_no_mask_tracking(self):
+    x = keras.backend.placeholder((10, 10))
+    y = keras.layers.Masking(0.)(x)
+    self.assertTrue(y._keras_mask._keras_history_checked)
 
 
 if __name__ == '__main__':

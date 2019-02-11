@@ -33,6 +33,10 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
+    name: "CriticalSection"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DType"
     mtype: "<type \'type\'>"
   }

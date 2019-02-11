@@ -158,13 +158,20 @@ struct div_no_nan_op {
       return 0;
     }
   }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
+  packetOp(const Packet& a, const Packet& b) const {
+    const Packet mask = pcmp_eq(b, pzero(b));
+    const Packet quotient = scalar_quotient_op<T>().packetOp(a, b);
+    return pandnot(quotient, mask);
+  }
 };
 
 template <typename T>
 struct functor_traits<div_no_nan_op<T>> {
   enum {
     Cost = functor_traits<scalar_quotient_op<T>>::Cost + NumTraits<T>::AddCost,
-    PacketAccess = false,
+    PacketAccess = true,
   };
 };
 

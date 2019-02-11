@@ -19,6 +19,7 @@ from __future__ import division as _division
 from __future__ import print_function as _print_function
 
 import os as _os
+import sys as _sys
 
 # pylint: disable=g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
@@ -41,3 +42,10 @@ _component_api_helper.package_hook(
 #
 # This make this one symbol available directly.
 from tensorflow.python.compat.v2_compat import enable_v2_behavior  # pylint: disable=g-import-not-at-top
+
+# Add module aliases
+_current_module = _sys.modules[__name__]
+if hasattr(_current_module, 'keras'):
+  losses = keras.losses
+  metrics = keras.metrics
+  optimizers = keras.optimizers

@@ -584,7 +584,7 @@ void CollectiveParamResolverLocal::CallInitInstanceSharedParams(
 void CollectiveParamResolverLocal::CompleteParamsAsync(
     const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
     const StatusCallback& done) {
-  VLOG(1) << "CompleteParams " << device << " for " << cp << ": "
+  VLOG(1) << "CompleteParams local " << device << " for " << cp << ": "
           << cp->ToString();
   CompleteGroupLocal(
       device, cp,

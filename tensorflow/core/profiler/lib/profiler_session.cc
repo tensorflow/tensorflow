@@ -47,6 +47,12 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
     resource.set_name("0");
     resource.set_resource_id(0);
     (*device.mutable_resources())[0] = resource;
+    for (const auto& thread_name : device_stats->thread_names()) {
+      tensorflow::tpu::Resource resource;
+      resource.set_resource_id(thread_name.first);
+      resource.set_name(thread_name.second);
+      (*device.mutable_resources())[thread_name.first] = resource;
+    }
     (*trace_devices)[device_id] = device;
 
     // Emit events.
@@ -76,7 +82,7 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
 }  // namespace
 
 /*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create(
-    EagerContext* const context) {
+    ProfilerContext* const context) {
   return absl::WrapUnique(new ProfilerSession(context));
 }
 
@@ -104,13 +110,13 @@ Status ProfilerSession::SerializeToString(string* content) {
   return Status::OK();
 }
 
-ProfilerSession::ProfilerSession(EagerContext* const context)
+ProfilerSession::ProfilerSession(ProfilerContext* const context)
     : start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
   LOG(INFO) << "Profile Session started.";
 
-  if (context != nullptr) {
-    profilers_.push_back(
-        tensorflow::profiler::runtime::EagerProfiler::Create(context));
+  if (context->eager_context != nullptr) {
+    profilers_.push_back(tensorflow::profiler::runtime::EagerProfiler::Create(
+        context->eager_context));
   }
   profilers_.push_back(tensorflow::profiler::gpu::Tracer::Create());
 

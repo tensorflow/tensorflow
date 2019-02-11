@@ -2738,6 +2738,22 @@ py_library(
 )
 
 py_library(
+    name = "critical_section_ops",
+    srcs = ["ops/critical_section_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":control_flow_ops",
+        ":dtypes",
+        ":framework_ops",
+        ":resource_variable_ops_gen",
+        ":tensor_array_ops",
+        ":util",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
     name = "list_ops",
     srcs = ["ops/list_ops.py"],
     srcs_version = "PY2AND3",
@@ -3148,6 +3164,7 @@ py_library(
         ":clip_ops",
         ":confusion_matrix",
         ":control_flow_ops",
+        ":critical_section_ops",
         ":cudnn_rnn_grad",
         ":data_flow_grad",
         ":data_flow_ops",

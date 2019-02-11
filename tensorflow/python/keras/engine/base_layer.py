@@ -1353,32 +1353,35 @@ class Layer(checkpointable.Checkpointable):
           self.add_loss(mean_activity_loss, inputs=inputs)
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):
-    if getattr(self, '_compute_output_and_mask_jointly', False):
-      # Mask is already computed for Keras Graph Networks.
-      return
-
     flat_outputs = nest.flatten(outputs)
-    if all(getattr(x, '_keras_mask', None) is not None for x in flat_outputs):
-      # Mask is already computed by sublayers.
-      return
+    mask_already_computed = (
+        getattr(self, '_compute_output_and_mask_jointly', False) or
+        all(getattr(x, '_keras_mask', None) is not None for x in flat_outputs))
 
-    if hasattr(self, 'compute_mask'):
-      output_masks = self.compute_mask(inputs, previous_mask)
-      # `compute_mask` can return a single `None` even when a Layer
-      # has multiple outputs.
-      if output_masks is None:
-        flat_masks = [None for _ in flat_outputs]
+    if not mask_already_computed:
+      if hasattr(self, 'compute_mask'):
+        output_masks = self.compute_mask(inputs, previous_mask)
+        # `compute_mask` can return a single `None` even when a Layer
+        # has multiple outputs.
+        if output_masks is None:
+          flat_masks = [None for _ in flat_outputs]
+        else:
+          flat_masks = nest.flatten(output_masks)
       else:
-        flat_masks = nest.flatten(output_masks)
-    else:
-      flat_masks = [None for _ in flat_outputs]
+        flat_masks = [None for _ in flat_outputs]
 
-    for output, mask in zip(flat_outputs, flat_masks):
-      try:
-        output._keras_mask = mask
-      except AttributeError:
-        # C Type such as np.ndarray.
-        pass
+      for output, mask in zip(flat_outputs, flat_masks):
+        try:
+          output._keras_mask = mask
+        except AttributeError:
+          # C Type such as np.ndarray.
+          pass
+
+    if tf_utils.are_all_symbolic_tensors(flat_outputs):
+      for output in flat_outputs:
+        if getattr(output, '_keras_mask', None) is not None:
+          # Do not track masks for `TensorFlowOpLayer` construction.
+          output._keras_mask._keras_history_checked = True
 
   def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):
     call_convention = getattr(

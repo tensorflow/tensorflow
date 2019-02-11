@@ -103,6 +103,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:symbolic_shapes",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 

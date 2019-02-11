@@ -1,0 +1,21 @@
+path: "tensorflow.losses.Loss"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras.losses.Loss\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'reduction\', \'name\'], varargs=None, keywords=None, defaults=[\'sum_over_batch_size\', \'None\'], "
+  }
+  member_method {
+    name: "call"
+    argspec: "args=[\'self\', \'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_config"
+    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

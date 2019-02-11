@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/encapsulate_xla_computations_pass.h"
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -35,6 +39,25 @@ const char* const EncapsulateXlaComputationsPass::kXlaClusterAttr =
 namespace {
 
 const char* const kXlaClusterOutput = "XlaClusterOutput";
+
+bool IsCpuGpuCompile(const Graph* graph) {
+  for (Node* n : graph->nodes()) {
+    string name;
+    // Only consider nodes being compiled.
+    if (!GetNodeAttr(n->attrs(),
+                     EncapsulateXlaComputationsPass::kXlaClusterAttr, &name)
+             .ok())
+      continue;
+    // Early return for any node with a device that is not a CPU or GPU.
+    DeviceNameUtils::ParsedName parsed;
+    if (DeviceNameUtils::ParseFullName(n->def().device(), &parsed)) {
+      if (parsed.type != DEVICE_CPU && parsed.type != DEVICE_GPU) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
 
 // Checks if a graph node is marked to be a guaranteed constant.
 bool is_guaranteed_constant(const Node& n) {
@@ -352,12 +375,19 @@ Status EncapsulateXlaComputationsPass::Run(
           << dump_graph::DumpGraphToFile("encapsulate_xla_computations_before",
                                          **options.graph, options.flib_def);
 
-  TF_RETURN_IF_ERROR(Encapsulate(options.graph, options.flib_def));
+  const char* additional_help =
+      IsCpuGpuCompile(options.graph->get())
+          ? xla::status_macros::kPossibleAutoJitAlternative
+          : "";
+
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(Encapsulate(options.graph, options.flib_def),
+                                  additional_help);
   VLOG(1) << "EncapsulateXlaComputations() half-way: "
           << dump_graph::DumpGraphToFile("encapsulate_xla_computations_halfway",
                                          **options.graph, options.flib_def);
 
-  TF_RETURN_IF_ERROR(BuildXlaLaunchOps(options.graph->get()));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(BuildXlaLaunchOps(options.graph->get()),
+                                  additional_help);
   VLOG(1) << "EncapsulateXlaComputations() finished: "
           << dump_graph::DumpGraphToFile("encapsulate_xla_computations_after",
                                          **options.graph, options.flib_def);

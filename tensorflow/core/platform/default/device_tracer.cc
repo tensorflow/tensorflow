@@ -445,6 +445,7 @@ DeviceTracerImpl::DeviceTracerImpl(CUPTIManager *cupti_manager)
     : cupti_manager_(cupti_manager) {
   VLOG(1) << "DeviceTracer created.";
   cupti_wrapper_.reset(new perftools::gputools::profiler::CuptiWrapper());
+  host_tracer_ = profiler::cpu::HostTracer::Create(2);
   enabled_ = false;
 }
 
@@ -509,7 +510,6 @@ Status DeviceTracerImpl::Start() {
 
   CUPTI_CALL(GetTimestamp(&start_timestamp_));
   start_walltime_us_ = NowInUsec();
-  host_tracer_ = profiler::cpu::HostTracer::Create(2);
   host_tracer_->Start().IgnoreError();
   enabled_ = true;
   return Status::OK();
