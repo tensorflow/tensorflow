@@ -30,7 +30,6 @@ from tensorflow.python.platform import test
 @keras_parameterized.run_with_all_model_types(exclude_models=['sequential'])
 @keras_parameterized.run_all_keras_modes
 class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
-  # TODO(psv): Remove the run_eagerly checks here when b/123082095 is fixed.
 
   def _get_multi_io_model(self):
     inp_1 = layers.Input(shape=(1,), name='input_1')
@@ -119,7 +118,9 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
         'output_2_mean_squared_error': [7.5, 7.5],
         'output_1_weighted_mean_squared_error': [9.286, 9.286],
         'output_2_weighted_mean_squared_error': [4.375, 4.375],
-        'loss': [41.25, 41.25]
+        'loss': [41.25, 41.25],
+        'output_1_loss': [32.5, 32.5],
+        'output_2_loss': [8.75, 8.75],
     }
 
     # In the order: 'loss', 'output_1_loss', 'output_2_loss',
@@ -137,11 +138,6 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
                         batch_size=2,
                         epochs=2,
                         shuffle=False)
-
-    if not model.run_eagerly:
-      self.expected_fit_result['output_1_loss'] = [32.5, 32.5]
-      self.expected_fit_result['output_2_loss'] = [8.75, 8.75]
-
     for key, value in self.expected_fit_result.items():
       self.assertAllClose(history.history[key], value, 1e-3)
 
@@ -153,13 +149,8 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
                                      'output_1': self.weights_1,
                                      'output_2': self.weights_2,
                                  })
-
-    if model.run_eagerly:
-      self.expected_batch_result = [41.25, 58, 10.75, 7.5, 9.286, 7.5, 4.375]
     self.assertAllClose(eval_result, self.expected_batch_result, 1e-3)
 
-    if model.run_eagerly:
-      return
     # Verify that metric value is same with arbitrary weights and batch size.
     x = np.random.random((50, 1))
     y = np.random.random((50, 1))
@@ -191,18 +182,12 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
     model = self._get_multi_io_model()
     history = model.fit_generator(
         self._custom_generator(), steps_per_epoch=2, epochs=2)
-
-    if not model.run_eagerly:
-      self.expected_fit_result['output_1_loss'] = [32.5, 32.5]
-      self.expected_fit_result['output_2_loss'] = [8.75, 8.75]
     for key, value in self.expected_fit_result.items():
       self.assertAllClose(history.history[key], value, 1e-3)
 
   def test_eval_generator(self):
     model = self._get_multi_io_model()
     eval_result = model.evaluate_generator(self._custom_generator(), steps=2)
-    if model.run_eagerly:
-      self.expected_batch_result = [41.25, 58, 10.75, 7.5, 9.286, 7.5, 4.375]
     self.assertAllClose(eval_result, self.expected_batch_result, 1e-3)
 
 

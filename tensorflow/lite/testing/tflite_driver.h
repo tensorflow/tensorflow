@@ -49,7 +49,7 @@ class TfLiteDriver : public TestRunner {
   void SetExpectation(int id, const string& csv_values) override;
   void Invoke() override;
   bool CheckResults() override;
-  string ReadOutput(int id) override { return "no-op"; }
+  string ReadOutput(int id) override;
 
  private:
   void DeallocateStringTensor(TfLiteTensor* t) {

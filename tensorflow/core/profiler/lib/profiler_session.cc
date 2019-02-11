@@ -17,7 +17,6 @@ limitations under the License.
 #include <string>
 #include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -48,6 +47,12 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
     resource.set_name("0");
     resource.set_resource_id(0);
     (*device.mutable_resources())[0] = resource;
+    for (const auto& thread_name : device_stats->thread_names()) {
+      tensorflow::tpu::Resource resource;
+      resource.set_resource_id(thread_name.first);
+      resource.set_name(thread_name.second);
+      (*device.mutable_resources())[thread_name.first] = resource;
+    }
     (*trace_devices)[device_id] = device;
 
     // Emit events.
@@ -56,7 +61,11 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
       auto* event = trace->add_trace_events();
       auto* args = event->mutable_args();
       event->set_device_id(device_id);
-      event->set_resource_id(0);
+      if (device_stats->device().find("host:CPU") != string::npos) {
+        event->set_resource_id(node.thread_id());
+      } else {
+        event->set_resource_id(0);
+      }
       event->set_name(node.node_name());
       event->set_timestamp_ps(
           (node.all_start_micros() - profile_start_time_micros) *
@@ -73,7 +82,7 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
 }  // namespace
 
 /*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create(
-    EagerContext* const context) {
+    ProfilerContext* const context) {
   return absl::WrapUnique(new ProfilerSession(context));
 }
 
@@ -101,13 +110,13 @@ Status ProfilerSession::SerializeToString(string* content) {
   return Status::OK();
 }
 
-ProfilerSession::ProfilerSession(EagerContext* const context)
+ProfilerSession::ProfilerSession(ProfilerContext* const context)
     : start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
   LOG(INFO) << "Profile Session started.";
 
-  if (context != nullptr) {
-    profilers_.push_back(
-        tensorflow::profiler::runtime::EagerProfiler::Create(context));
+  if (context->eager_context != nullptr) {
+    profilers_.push_back(tensorflow::profiler::runtime::EagerProfiler::Create(
+        context->eager_context));
   }
   profilers_.push_back(tensorflow::profiler::gpu::Tracer::Create());
 

@@ -79,6 +79,34 @@ XlaOp IsNan(XlaOp operand) {
   });
 }
 
+XlaOp IsNegZero(XlaOp operand) {
+  auto& b = *operand.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IsNegZero", operand));
+    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
+
+    // The bitwise representation of -0 in bfloat16 and IEEE 754 is 0x80...0
+    // (sign bit on, all other bits off).
+    switch (shape.element_type()) {
+      case F64:
+        return Eq(BitcastConvertType(operand, U64),
+                  ConstantR0WithType(&b, U64, uint64{1} << 63));
+      case F32:
+        return Eq(BitcastConvertType(operand, U32),
+                  ConstantR0WithType(&b, U32, uint32{1} << 31));
+      case F16:
+      case BF16:
+        // Not all XLA backends handle U16 well, so we convert to F32/U32.
+        // TODO(jlebar): It would be nice if we could stay in (B)F16/U16 for
+        // backends that *do* support it.
+        return Eq(BitcastConvertType(ConvertElementType(operand, F32), U32),
+                  ConstantR0WithType(&b, U32, uint32{1} << 31));
+      default:
+        LOG(FATAL) << "Expected real fp type.";
+    }
+  });
+}
+
 XlaOp Sqrt(XlaOp operand) { return Pow(operand, ScalarLike(operand, 0.5)); }
 
 XlaOp Rsqrt(XlaOp operand) { return Pow(operand, ScalarLike(operand, -0.5)); }

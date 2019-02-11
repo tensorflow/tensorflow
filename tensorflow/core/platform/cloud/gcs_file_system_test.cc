@@ -3155,8 +3155,8 @@ TEST(GcsFileSystemTest, AdditionalRequestHeaderTest) {
 TEST(GcsFileSystemTest, OverrideCacheParameters) {
   // Verify defaults are propagated correctly.
   GcsFileSystem fs1;
-  EXPECT_EQ(128 * 1024 * 1024, fs1.block_size());
-  EXPECT_EQ(2 * fs1.block_size(), fs1.max_bytes());
+  EXPECT_EQ(16 * 1024 * 1024, fs1.block_size());
+  EXPECT_EQ(fs1.block_size(), fs1.max_bytes());
   EXPECT_EQ(0, fs1.max_staleness());
   EXPECT_EQ(120, fs1.timeouts().connect);
   EXPECT_EQ(60, fs1.timeouts().idle);

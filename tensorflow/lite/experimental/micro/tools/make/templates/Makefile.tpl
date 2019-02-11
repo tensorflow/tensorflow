@@ -4,12 +4,8 @@ SRCS := \
 OBJS := \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(SRCS)))
 
-INCLUDES := \
--I. \
--I./third_party/gemmlowp \
--I./third_party/flatbuffers/include
-
 CXXFLAGS += %{CXX_FLAGS}%
+CCFLAGS += %{CC_FLAGS}%
 
 LDFLAGS += %{LINKER_FLAGS}%
 
@@ -20,7 +16,6 @@ LDFLAGS += %{LINKER_FLAGS}%
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 
 %{EXECUTABLE}% : $(OBJS)
-	$(CXX) $(LDFLAGS) $(OBJS) \
-	-o $@
+	$(CXX) $(CXXFLAGS) -o $@ $(OBJS) $(LDFLAGS)
 
 all: %{EXECUTABLE}%

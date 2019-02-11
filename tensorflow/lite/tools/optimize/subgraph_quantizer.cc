@@ -325,6 +325,27 @@ TfLiteStatus SubgraphQuantizer::AsymmetricQuantizeSingleInputOutputOp(
   return kTfLiteOk;
 }
 
+TfLiteStatus SubgraphQuantizer::AsymmetricQuantizeSoftmax(
+    BuiltinOperator op_code, OperatorT* op) {
+  TF_LITE_ENSURE_EQ(this->error_reporter_, op->inputs.size(), 1);
+  TF_LITE_ENSURE_EQ(this->error_reporter_, op->outputs.size(), 1);
+
+  if (IsSubgraphInput(op->inputs[0])) {
+    TF_LITE_ENSURE_STATUS(AsymmetricQuantizeTensor(op_code, op->inputs[0]));
+  }
+
+  auto output_tensor = subgraph_->tensors[op->outputs[0]].get();
+  if (output_tensor->type != TensorType_FLOAT32) {
+    return kTfLiteOk;
+  }
+
+  // Softmax output is hardcoded to have 1/256 as scale and -128 as zero point.
+  output_tensor->type = TensorType_INT8;
+  output_tensor->quantization->scale = {1.0f / 256.0f};
+  output_tensor->quantization->zero_point = {-128};
+  return kTfLiteOk;
+}
+
 bool SubgraphQuantizer::IsSubgraphInput(int32_t tensor_idx) const {
   return std::find(subgraph_->inputs.begin(), subgraph_->inputs.end(),
                    tensor_idx) != subgraph_->inputs.end();
@@ -342,8 +363,9 @@ TfLiteStatus SubgraphQuantizer::QuantizeOperator(int op_idx) {
     case BuiltinOperator_MAX_POOL_2D:
       return PropagateMinMaxForAvgAndMaxPool(op_code, op);
     case BuiltinOperator_SQUEEZE:
-    case BuiltinOperator_SOFTMAX:
       return AsymmetricQuantizeSingleInputOutputOp(op_code, op);
+    case BuiltinOperator_SOFTMAX:
+      return AsymmetricQuantizeSoftmax(op_code, op);
     default:
       return kTfLiteError;
   }

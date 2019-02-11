@@ -41,6 +41,18 @@ EXPORT_TAG_MAP = {
     mode_keys.ModeKeys.TEST: [tag_constants.EVAL],
 }
 
+# For every exported mode, a SignatureDef map should be created using the
+# functions `export_outputs_for_mode` and `build_all_signature_defs`. By
+# default, this map will contain a single Signature that defines the input
+# tensors and output predictions, losses, and/or metrics (depending on the mode)
+# The default keys used in the SignatureDef map are defined below.
+SIGNATURE_KEY_MAP = {
+    mode_keys.ModeKeys.PREDICT:
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+    mode_keys.ModeKeys.TRAIN:
+        signature_constants.DEFAULT_TRAIN_SIGNATURE_DEF_KEY,
+    mode_keys.ModeKeys.TEST: signature_constants.DEFAULT_EVAL_SIGNATURE_DEF_KEY
+}
 
 _SINGLE_FEATURE_DEFAULT_NAME = 'feature'
 _SINGLE_RECEIVER_DEFAULT_NAME = 'input'
@@ -262,18 +274,21 @@ def export_outputs_for_mode(
   Raises:
     ValueError: if an appropriate ExportOutput cannot be found for the mode.
   """
-  # TODO(b/113185250): move all model export helper functions into an util file.
+  if mode not in SIGNATURE_KEY_MAP:
+    raise ValueError(
+        'Export output type not found for mode: {}. Expected one of: {}.\n'
+        'One likely error is that V1 Estimator Modekeys were somehow passed to '
+        'this function. Please ensure that you are using the new ModeKeys.'
+        .format(mode, SIGNATURE_KEY_MAP.keys()))
+  signature_key = SIGNATURE_KEY_MAP[mode]
   if mode == mode_keys.ModeKeys.PREDICT:
     return get_export_outputs(serving_export_outputs, predictions)
   elif mode == mode_keys.ModeKeys.TRAIN:
-    return {mode: export_output_lib.TrainOutput(
-        loss=loss, predictions=predictions, metrics=metrics)}
-  elif mode == mode_keys.ModeKeys.TEST:
-    return {mode: export_output_lib.EvalOutput(
+    return {signature_key: export_output_lib.TrainOutput(
         loss=loss, predictions=predictions, metrics=metrics)}
   else:
-    raise ValueError(
-        'Export output type not found for mode: {}'.format(mode))
+    return {signature_key: export_output_lib.EvalOutput(
+        loss=loss, predictions=predictions, metrics=metrics)}
 
 
 def get_export_outputs(export_outputs, predictions):

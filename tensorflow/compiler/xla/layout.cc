@@ -30,7 +30,19 @@ TileProto Tile::ToProto() const {
 }
 
 string Tile::ToString() const {
-  return absl::StrCat("(", absl::StrJoin(dimensions(), ","), ")");
+  std::vector<string> elements;
+  for (auto dim : dimensions()) {
+    if (dim >= 0) {
+      elements.push_back(std::to_string(dim));
+    } else {
+      CHECK_EQ(dim, kCombineDimension)
+          << "Tile dimension size needs to be mininum int64 value if it's "
+             "negative. Value is "
+          << dim;
+      elements.push_back("*");
+    }
+  }
+  return absl::StrCat("(", absl::StrJoin(elements, ","), ")");
 }
 
 /* static */ Layout Layout::CreateFromProto(const LayoutProto& proto) {
@@ -64,11 +76,19 @@ LayoutProto Layout::ToProto() const {
 }
 
 string Layout::ToString() const {
-  // TODO(b/119839262): Emit tiles in string.
   if (format() == SPARSE) {
+    CHECK_EQ(tiles_size(), 0) << "Sparse layout should not be tiled.";
     return absl::StrCat("sparse{", max_sparse_elements(), "}");
   } else if (format() == DENSE) {
-    return absl::StrCat("{", absl::StrJoin(minor_to_major(), ","), "}");
+    string colon_string = tiles().empty() ? "" : "T";
+    for (Tile tile : tiles()) {
+      absl::StrAppend(&colon_string, tile.ToString());
+    }
+    if (element_size_in_bits() != 0) {
+      absl::StrAppend(&colon_string, "E(", element_size_in_bits(), ")");
+    }
+    return absl::StrCat("{", absl::StrJoin(minor_to_major(), ","),
+                        colon_string.empty() ? "" : ":", colon_string, "}");
   } else {
     CHECK_EQ(format(), INVALID_FORMAT);
     return "invalid{}";

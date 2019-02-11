@@ -46,6 +46,7 @@ cc_library(
         "//tensorflow/core:lib",
         # Required to be able to overload TensorResponse parsing.
         "//tensorflow/core/distributed_runtime:tensor_coding",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -166,7 +167,6 @@ cc_library(
     deps = [
         ":grpc_util",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/time",
     ],
 )
 
@@ -196,7 +196,6 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime:worker_session",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/time",
     ],
 )
 
@@ -408,6 +407,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:local_master",
         "//tensorflow/core/distributed_runtime:master_interface",
         "//tensorflow/core/distributed_runtime:message_wrappers",
+        "//tensorflow/core/distributed_runtime:request_id",
     ],
     alwayslink = 1,
 )

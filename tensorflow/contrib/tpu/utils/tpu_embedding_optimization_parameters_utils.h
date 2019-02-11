@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 #include "absl/base/casts.h"
-#include "tensorflow/contrib/tpu/proto/optimization_parameters.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/tpu/optimization_parameters.pb.h"
 
 namespace tensorflow {
 namespace tpu {

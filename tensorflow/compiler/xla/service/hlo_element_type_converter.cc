@@ -127,6 +127,7 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
       // These are ops where it does not make sense to convert them.
       if (opcode == HloOpcode::kParameter || opcode == HloOpcode::kConstant ||
           opcode == HloOpcode::kTuple || opcode == HloOpcode::kConvert ||
+          opcode == HloOpcode::kBitcastConvert ||
           opcode == HloOpcode::kGetTupleElement ||
           opcode == HloOpcode::kInfeed || opcode == HloOpcode::kOutfeed) {
         continue;
@@ -145,7 +146,7 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
           opcode == HloOpcode::kMap || opcode == HloOpcode::kReduce ||
           opcode == HloOpcode::kReduceWindow || opcode == HloOpcode::kScatter ||
           opcode == HloOpcode::kSelectAndScatter ||
-          opcode == HloOpcode::kConditional) {
+          opcode == HloOpcode::kSort || opcode == HloOpcode::kConditional) {
         continue;
       }
       TF_RET_CHECK(hlo->called_computations().empty()) << hlo->ToString();

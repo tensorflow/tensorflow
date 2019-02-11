@@ -74,13 +74,6 @@ struct OperationFilter {
   // have dummy XLA implementations.
   bool allow_dummy_ops;
 
-  // Whether Switch/Merge ops are allowed.  We avoid auto-clustering these ops
-  // for now since they can result in mismatching deadness in the output
-  // produced by an XLA cluster, something the TF executor does not allow today.
-  // However, we plan to auto-cluster these in some limited cases in the near
-  // future (b/123096195).
-  bool allow_switch_merge_ops;
-
   // Whether ops that produce or consume DT_VARIANT values are allowed.  We
   // don't auto-cluster these ops because we don't yet support live-in or
   // live-out DT_VARIANT values.
@@ -260,10 +253,6 @@ bool IsCompilableCall(const NodeDef& call_def,
       return false;
     }
     if (!op_filter.allow_control_trigger && node->IsControlTrigger()) {
-      return false;
-    }
-    if (!op_filter.allow_switch_merge_ops &&
-        (node->IsSwitch() || node->IsMerge())) {
       return false;
     }
     if (!op_filter.allow_dummy_ops && IsDummyImplOp(node->type_string())) {
@@ -504,7 +493,6 @@ Status FindCompilationCandidates(
     op_filter.allow_resource_ops = registration->compile_resource_ops;
     op_filter.allow_stateful_rng_ops = always_auto_cluster;
     op_filter.allow_control_trigger = always_auto_cluster;
-    op_filter.allow_switch_merge_ops = always_auto_cluster;
     op_filter.allow_dummy_ops = always_auto_cluster;
     op_filter.allow_ops_producing_or_consuming_variant = always_auto_cluster;
 
@@ -523,11 +511,6 @@ Status FindCompilationCandidates(
     }
     if (!op_filter.allow_control_trigger && node->IsControlTrigger()) {
       VLOG(2) << "Rejecting " << node->name() << ": is a control trigger op";
-      continue;
-    }
-    if (!op_filter.allow_switch_merge_ops &&
-        (node->IsSwitch() || node->IsMerge())) {
-      VLOG(2) << "Rejecting " << node->name() << ": is a switch or a merge op";
       continue;
     }
     if (!op_filter.allow_dummy_ops && IsDummyImplOp(node->type_string())) {
@@ -676,7 +659,6 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   op_filter.allow_resource_ops = true;
   op_filter.allow_stateful_rng_ops = true;
   op_filter.allow_control_trigger = true;
-  op_filter.allow_switch_merge_ops = true;
   op_filter.allow_dummy_ops = true;
   op_filter.allow_ops_producing_or_consuming_variant = true;
 
@@ -751,7 +733,7 @@ Status MarkForCompilationPass::Run(
     // deadness semantics of these nodes correctly and auto-clustering these
     // nodes can cause deadness to propagate to nodes that should be live.
     if (!deadness_analysis_disabled) {
-      if (!node->IsMerge() &&
+      if (node->IsMerge() ||
           deadness->HasInputsWithMismatchingDeadness(*node)) {
         VLOG(2) << "Rejecting " << node->name() << ": mismatching deadness.";
         return false;

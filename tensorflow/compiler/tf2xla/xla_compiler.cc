@@ -43,6 +43,8 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
@@ -1108,8 +1110,17 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   result->outputs.resize(context->retvals().size());
   std::vector<XlaExpression> retvals = context->retvals();
   if (options.resolve_compile_time_constants) {
-    TF_RETURN_IF_ERROR(ResolveConstantExpressionsToConstants(
-        client(), absl::Span<XlaExpression>(retvals)));
+    Status status = ResolveConstantExpressionsToConstants(
+        client(), absl::Span<XlaExpression>(retvals));
+
+    // If the HloEvaluator has not implemented an expression, just evaluate it
+    // at runtime.
+    if (status.code() == error::UNIMPLEMENTED) {
+      ConvertConstantsToExpressions(&builder,
+                                    absl::Span<XlaExpression>(retvals));
+    } else {
+      TF_RETURN_IF_ERROR(status);
+    }
   } else {
     ConvertConstantsToExpressions(&builder, absl::Span<XlaExpression>(retvals));
   }

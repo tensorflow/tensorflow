@@ -86,11 +86,17 @@ CollectiveParamResolverDistributed::CollectiveParamResolverDistributed(
       worker_cache_(worker_cache),
       group_leader_(task_name == config.experimental().collective_group_leader()
                         ? ""
-                        : config.experimental().collective_group_leader()) {}
+                        : config.experimental().collective_group_leader()) {
+  VLOG(1) << "CompleteParamResolverDistributed ctor task={" << task_name
+          << "} config.collective_group_leader={"
+          << config.experimental().collective_group_leader() << "}";
+}
 
 void CollectiveParamResolverDistributed::CompleteParamsAsync(
     const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
     const StatusCallback& done) {
+  VLOG(1) << "CompleteParams distributed " << device << " for " << cp << ": "
+          << cp->ToString();
   CompleteGroupDistributed(device, cp, cancel_mgr,
                            [this, device, cp, cancel_mgr, done](
                                const Status& s, const GroupRec* gr) {

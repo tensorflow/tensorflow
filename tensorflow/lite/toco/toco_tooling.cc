@@ -236,7 +236,8 @@ std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
   return model;
 }
 
-void Transform(const TocoFlags& toco_flags, Model* model) {
+tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
+                                       Model* model) {
   const FileFormat output_format = toco_flags.output_format();
   const IODataType inference_type = toco_flags.inference_type();
 
@@ -258,8 +259,8 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   // stop optimizations from crossing the input/output boundaries. For example
   // this will stop BatchNorm fusing if the output node is in between a conv
   // and BatchNorm layers.
-  RunGraphTransformations(model, "Removing unused ops",
-                          {new toco::RemoveUnusedOp});
+  TF_RETURN_IF_ERROR(RunGraphTransformationsWithStatus(
+      model, "Removing unused ops", {new toco::RemoveUnusedOp}));
 
   GraphTransformationsSet transformations;
   MakeGeneralGraphTransformationsSet(&transformations);
@@ -307,20 +308,21 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     identify_dilated_conv->set_identify_depthwise_conv(false);
   }
   transformations.Add(identify_dilated_conv);
-  RunGraphTransformations(model, "general graph transformations",
-                          transformations);
+  TF_RETURN_IF_ERROR(RunGraphTransformationsWithStatus(
+      model, "general graph transformations", transformations));
 
   if (quantize_output) {
     if (toco_flags.propagate_fake_quant_num_bits()) {
-      RunGraphTransformations(model,
-                              "fake quant propagation graph transformations",
-                              {new PropagateFakeQuantNumBits});
+      TF_RETURN_IF_ERROR(RunGraphTransformationsWithStatus(
+          model, "fake quant propagation graph transformations",
+          {new PropagateFakeQuantNumBits}));
     }
-    RunGraphTransformations(model, "pre-quantization graph transformations",
-                            {
-                                new HardcodeMinMax,
-                                new DropFakeQuant,
-                            });
+    TF_RETURN_IF_ERROR(RunGraphTransformationsWithStatus(
+        model, "pre-quantization graph transformations",
+        {
+            new HardcodeMinMax,
+            new DropFakeQuant,
+        }));
   }
 
   // Try to merge bidirectional sequence lstm or rnn if present.
@@ -328,8 +330,9 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   bidirectional_transformations.Add(new RemoveUnusedOp);
   bidirectional_transformations.Add(new toco::GroupBidirectionalSequenceLstm);
   bidirectional_transformations.Add(new toco::GroupBidirectionalSequenceRnn);
-  RunGraphTransformations(model, "Group bidirectional sequence lstm/rnn",
-                          bidirectional_transformations);
+  TF_RETURN_IF_ERROR(RunGraphTransformationsWithStatus(
+      model, "Group bidirectional sequence lstm/rnn",
+      bidirectional_transformations));
 
   // Fix any issues with IO edges. This must happen after any transform that
   // may modify the structure of the edges.
@@ -357,12 +360,12 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
           toco_flags.default_int16_ranges_max());
     }
     if (propagate_default_min_max->has_any_ranges_defined()) {
-      RunGraphTransformations(
+      TF_RETURN_IF_ERROR(RunGraphTransformationsWithStatus(
           model, "default min-max range propagation graph transformations",
           {
               propagate_default_min_max.release(),
               new HardcodeMinMax,
-          });
+          }));
     }
 
     CheckIsReadyForQuantization(*model);
@@ -372,17 +375,18 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
         toco_flags.allow_nudging_weights_to_use_fast_gemm_kernel());
     ensure_safe_for_int8_kernels->set_has_default_ranges_flag(
         has_default_ranges_flag);
-    RunGraphTransformations(model, "quantization graph transformations",
-                            {
-                                new RemoveTrivialQuantizedActivationFunc,
-                                new RemoveTrivialQuantizedMinMax,
-                                new Quantize,
-                                new RemoveFinalDequantizeOp,
-                                ensure_safe_for_int8_kernels,
-                            });
+    TF_RETURN_IF_ERROR(RunGraphTransformationsWithStatus(
+        model, "quantization graph transformations",
+        {
+            new RemoveTrivialQuantizedActivationFunc,
+            new RemoveTrivialQuantizedMinMax,
+            new Quantize,
+            new RemoveFinalDequantizeOp,
+            ensure_safe_for_int8_kernels,
+        }));
     if (SupportsShuffledFCWeights(output_format)) {
-      RunGraphTransformations(model, "shuffling of FC weights",
-                              {new ShuffleFCWeights});
+      TF_RETURN_IF_ERROR(RunGraphTransformationsWithStatus(
+          model, "shuffling of FC weights", {new ShuffleFCWeights}));
     }
   } else {
     GraphTransformationsSet dequantization_transformations{new Dequantize};
@@ -392,8 +396,9 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
       dequantization_transformations.Add(new DropFakeQuant);
     }
 
-    RunGraphTransformations(model, "dequantization graph transformations",
-                            dequantization_transformations);
+    TF_RETURN_IF_ERROR(RunGraphTransformationsWithStatus(
+        model, "dequantization graph transformations",
+        dequantization_transformations));
   }
 
   if (output_format == TENSORFLOW_GRAPHDEF) {
@@ -425,6 +430,7 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
               << " billion (note that a multiply-add is counted as 2 ops).";
   }
   model->ops_count = ops_count;
+  return tensorflow::Status::OK();
 }
 
 tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,

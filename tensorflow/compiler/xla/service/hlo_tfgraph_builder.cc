@@ -163,10 +163,10 @@ void HloTfGraphBuilder::SetNodeAttrs(const HloInstruction* instruction,
       // represented in a single Layout field.
       layout_string = ShapeUtil::HumanStringWithLayout(instruction->shape());
     } else if (instruction->shape().has_layout()) {
-      layout_string = StrCat(
-          "{",
-          absl::StrJoin(LayoutUtil::MinorToMajor(instruction->shape()), ","),
-          "}");
+      // For non-tuples, only emit the layout when the shape has a Layout.
+      // This extra check is required because LayoutUtil::HasLayout ignores
+      // token, opaque types etc.
+      layout_string = instruction->shape().layout().ToString();
     }
     attrs["layout"].set_s(layout_string);
   }

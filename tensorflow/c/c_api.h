@@ -549,6 +549,10 @@ TF_CAPI_EXPORT extern void TF_SetAttrTypeList(TF_OperationDescription* desc,
                                               const char* attr_name,
                                               const TF_DataType* values,
                                               int num_values);
+TF_CAPI_EXPORT extern void TF_SetAttrPlaceholder(TF_OperationDescription* desc,
+                                                 const char* attr_name,
+                                                 const char* placeholder);
+
 // Set a 'func' attribute to the specified name.
 // `value` must point to a string of length `length` bytes.
 TF_CAPI_EXPORT extern void TF_SetAttrFuncName(TF_OperationDescription* desc,

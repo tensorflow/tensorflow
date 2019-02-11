@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -35,6 +36,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/variable_ops.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/util/stream_executor_util.h"
@@ -304,10 +307,19 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   xla::LocalExecutable* executable;
   std::map<int, OptionalTensor> variables;
 
-  OP_REQUIRES_OK(
-      ctx, CompileToLocalExecutable(ctx, function_, platform_info_, resources_,
-                                    constants_, /*lazy=*/false, &client,
-                                    &variables, &kernel, &executable));
+  {
+    Status s = CompileToLocalExecutable(
+        ctx, function_, platform_info_, resources_, constants_, /*lazy=*/false,
+        &client, &variables, &kernel, &executable);
+    if (!s.ok() && (platform_info_.device_type().type_string() == DEVICE_CPU ||
+                    platform_info_.device_type().type_string() == DEVICE_GPU)) {
+      // Suggest auto jit if the failure was with GPU or CPU.
+      errors::AppendToMessage(&s,
+                              xla::status_macros::kPossibleAutoJitAlternative);
+    }
+
+    OP_REQUIRES_OK(ctx, s);
+  }
 
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;

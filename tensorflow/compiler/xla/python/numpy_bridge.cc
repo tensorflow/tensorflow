@@ -26,6 +26,10 @@ namespace swig {
 
 namespace numpy {
 
+Safe_PyObjectPtr make_safe(PyObject* object) {
+  return Safe_PyObjectPtr(object);
+}
+
 int PrimitiveTypeToNumpyType(PrimitiveType primitive_type) {
   switch (primitive_type) {
     case PRED:
@@ -349,13 +353,17 @@ StatusOr<OpMetadata> OpMetadataFromPyObject(PyObject* o) {
   return result;
 }
 
-PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal) {
+StatusOr<Safe_PyObjectPtr> PyObjectFromXlaLiteral(const LiteralSlice& literal) {
   if (literal.shape().IsTuple()) {
     int num_elements = ShapeUtil::TupleElementCount(literal.shape());
-    PyObject* tuple = PyTuple_New(num_elements);
+    std::vector<Safe_PyObjectPtr> elems(num_elements);
     for (int i = 0; i < num_elements; i++) {
-      PyTuple_SET_ITEM(tuple, i,
-                       PyObjectFromXlaLiteral(LiteralSlice(literal, {i})));
+      TF_ASSIGN_OR_RETURN(elems[i],
+                          PyObjectFromXlaLiteral(LiteralSlice(literal, {i})));
+    }
+    Safe_PyObjectPtr tuple = make_safe(PyTuple_New(num_elements));
+    for (int i = 0; i < num_elements; i++) {
+      PyTuple_SET_ITEM(tuple.get(), i, elems[i].release());
     }
     return tuple;
   } else {
@@ -365,10 +373,10 @@ PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal) {
       dimensions[i] = ShapeUtil::GetDimension(literal.shape(), i);
     }
     int np_type = PrimitiveTypeToNumpyType(literal.shape().element_type());
-    PyObject* array =
-        PyArray_EMPTY(rank, dimensions.data(), np_type, /*fortran=*/0);
-    CopyLiteralToNumpyArray(np_type, literal,
-                            reinterpret_cast<PyArrayObject*>(array));
+    Safe_PyObjectPtr array = make_safe(
+        PyArray_EMPTY(rank, dimensions.data(), np_type, /*fortran=*/0));
+    TF_RETURN_IF_ERROR(CopyLiteralToNumpyArray(
+        np_type, literal, reinterpret_cast<PyArrayObject*>(array.get())));
     return array;
   }
 }
@@ -408,6 +416,12 @@ Status CopyNumpyArrayToLiteral(int np_type, PyArrayObject* py_array,
     case NPY_BOOL:
       CopyNumpyArrayToLiteral<bool>(py_array, literal);
       break;
+    case NPY_INT8:
+      CopyNumpyArrayToLiteral<int8>(py_array, literal);
+      break;
+    case NPY_INT16:
+      CopyNumpyArrayToLiteral<int16>(py_array, literal);
+      break;
     case NPY_INT32:
       CopyNumpyArrayToLiteral<int32>(py_array, literal);
       break;
@@ -416,6 +430,9 @@ Status CopyNumpyArrayToLiteral(int np_type, PyArrayObject* py_array,
       break;
     case NPY_UINT8:
       CopyNumpyArrayToLiteral<uint8>(py_array, literal);
+      break;
+    case NPY_UINT16:
+      CopyNumpyArrayToLiteral<uint16>(py_array, literal);
       break;
     case NPY_UINT32:
       CopyNumpyArrayToLiteral<uint32>(py_array, literal);
@@ -445,11 +462,17 @@ Status CopyNumpyArrayToLiteral(int np_type, PyArrayObject* py_array,
   return Status::OK();
 }
 
-void CopyLiteralToNumpyArray(int np_type, const LiteralSlice& literal,
-                             PyArrayObject* py_array) {
+Status CopyLiteralToNumpyArray(int np_type, const LiteralSlice& literal,
+                               PyArrayObject* py_array) {
   switch (np_type) {
     case NPY_BOOL:
       CopyLiteralToNumpyArray<bool>(literal, py_array);
+      break;
+    case NPY_INT8:
+      CopyLiteralToNumpyArray<int8>(literal, py_array);
+      break;
+    case NPY_INT16:
+      CopyLiteralToNumpyArray<int16>(literal, py_array);
       break;
     case NPY_INT32:
       CopyLiteralToNumpyArray<int32>(literal, py_array);
@@ -459,6 +482,9 @@ void CopyLiteralToNumpyArray(int np_type, const LiteralSlice& literal,
       break;
     case NPY_UINT8:
       CopyLiteralToNumpyArray<uint8>(literal, py_array);
+      break;
+    case NPY_UINT16:
+      CopyLiteralToNumpyArray<uint16>(literal, py_array);
       break;
     case NPY_UINT32:
       CopyLiteralToNumpyArray<uint32>(literal, py_array);
@@ -482,8 +508,10 @@ void CopyLiteralToNumpyArray(int np_type, const LiteralSlice& literal,
       CopyLiteralToNumpyArray<complex128>(literal, py_array);
       break;
     default:
-      LOG(FATAL) << "No XLA literal container for Numpy type" << np_type;
+      return InvalidArgument(
+          "No XLA literal container for Numpy type number: %d", np_type);
   }
+  return Status::OK();
 }
 
 PyObject* LongToPyIntOrPyLong(long x) {  // NOLINT

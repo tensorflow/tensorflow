@@ -67,8 +67,10 @@ class ConstantFolding : public GraphOptimizer {
                                           const GraphProperties& properties);
   Status MaterializeReductionIndices(NodeDef* node,
                                      const GraphProperties& properties);
-
+  Status MaterializeConstantValuedNode(NodeDef* node,
+                                       const GraphProperties& properties);
   Status MaterializeConstants(const GraphProperties& properties);
+
   bool IsFoldable(const NodeDef& node) const;
 
   Status EvaluateNode(const NodeDef& node,
@@ -78,6 +80,7 @@ class ConstantFolding : public GraphOptimizer {
   Status EvaluateOneFoldable(const NodeDef& node, std::vector<NodeDef>* outputs,
                              bool* result_too_large);
 
+  Status FoldMergeNode(NodeDef* node, GraphDef* output_graph);
   Status FoldNode(NodeDef* node, GraphDef* output_graph,
                   bool* result_too_large);
 

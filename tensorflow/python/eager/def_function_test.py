@@ -21,6 +21,7 @@ import functools
 import weakref
 
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import constant_op
@@ -30,7 +31,9 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -266,7 +269,21 @@ class DefFunctionTest(test.TestCase):
     self.assertAllClose(4., concrete(constant_op.constant(2.)))
     signature_args, _ = concrete.structured_input_signature
     self.assertEqual(signature_args,
-                     (tensor_spec.TensorSpec(None, dtypes.float32),))
+                     (tensor_spec.TensorSpec(
+                         None, dtypes.float32, name='x'),))
+
+  def test_error_inner_capture(self):
+
+    @def_function.function
+    def f(inputs):
+      num_steps, _ = inputs.shape[:2]
+      outputs = []
+      for t in math_ops.range(num_steps):
+        outputs.append(inputs[t])
+      return outputs
+
+    with self.assertRaisesRegexp(ValueError, 'inner'):
+      f(array_ops.zeros(shape=(8, 42, 3)))
 
   def test_serialization_signature_cache(self):
 
@@ -286,10 +303,10 @@ class DefFunctionTest(test.TestCase):
 
     self.assertEqual(
         signatures_args,
-        set(((tensor_spec.TensorSpec([1, 2], dtypes.float32),
-              tensor_spec.TensorSpec([1], dtypes.float32)),
-             (tensor_spec.TensorSpec([1, 3], dtypes.int32),
-              tensor_spec.TensorSpec([1], dtypes.int32)))))
+        set(((tensor_spec.TensorSpec([1, 2], dtypes.float32, name='x'),
+              tensor_spec.TensorSpec([1], dtypes.float32, name='y')),
+             (tensor_spec.TensorSpec([1, 3], dtypes.int32, name='x'),
+              tensor_spec.TensorSpec([1], dtypes.int32, name='y')))))
 
   @test_util.assert_no_garbage_created
   def testFunctionReferenceCycles(self):
@@ -371,6 +388,18 @@ class DefFunctionTest(test.TestCase):
 
     self.assertAllEqual(add(v, v), 2.0)
 
+  def testShapeCache(self):
+    @def_function.function
+    def func(x):
+      return 2 * x
+
+    func_a = func.get_concrete_function(
+        tensor_spec.TensorSpec([None], dtypes.int32))
+    func_b = func.get_concrete_function(
+        tensor_spec.TensorSpec([None], dtypes.int32))
+
+    self.assertIs(func_a, func_b)
+
   def testInitializationInNestedCall(self):
     v_holder = []
 
@@ -393,6 +422,41 @@ class DefFunctionTest(test.TestCase):
     v_holder[1].assign(11.)
     self.assertAllClose([14., 15.], wrapper(constant_op.constant(2.)))
 
+  def testDeviceAnnotationRespected(self):
+    if not context.num_gpus():
+      self.skipTest("Needs multiple devices")
+
+    a = []
+
+    @def_function.function()
+    def create_variable():
+      with ops.init_scope():
+        initial_value = random_ops.random_uniform(
+            (2, 2), maxval=1000000, dtype=dtypes.int64)
+
+      if not a:
+        with ops.device("CPU:0"):
+          a.append(resource_variable_ops.ResourceVariable(initial_value))
+
+      return a[0].read_value()
+
+    created_variable_read = create_variable()
+    self.assertRegexpMatches(created_variable_read.device, "CPU")
+
+  def testDecorate(self):
+    func = def_function.function(lambda: 1)
+    def decorator(f):
+      return lambda: 1 + f()
+
+    func._decorate(decorator)
+    self.assertEqual(func().numpy(), 2)
+
+  def testDecorate_rejectedAfterTrace(self):
+    func = def_function.function(lambda: 1)
+    self.assertEqual(func().numpy(), 1)
+    msg = 'Functions cannot be decorated after they have been traced.'
+    with self.assertRaisesRegexp(ValueError, msg):
+      func._decorate(lambda f: f)
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

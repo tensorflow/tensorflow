@@ -119,9 +119,6 @@ Status GraphCompiler::Compile() {
   GetReversePostOrder(*graph_, &topo_sorted_nodes,
                       /*stable_comparator=*/NodeComparatorName());
 
-  std::vector<bool> control_output_dead;
-  control_output_dead.resize(graph_->num_node_ids());
-
   OpKernelContext::Params params;
   PartiallySetupParams(&params);
 
@@ -137,8 +134,8 @@ Status GraphCompiler::Compile() {
       return s;
     }
 
-    TF_RET_CHECK(!n->IsRecv() && !n->IsSend())
-        << "Unsupported node: " << n->DebugString();
+    TF_RET_CHECK(!n->IsRecv() && !n->IsSend() && !n->IsSwitch())
+        << "Not supported node: " << n->DebugString();
     params.op_kernel = op_kernel.get();
     absl::InlinedVector<AllocatorAttributes, 4> output_attr(n->num_outputs());
     params.output_attr_array = output_attr.data();
@@ -148,59 +145,38 @@ Status GraphCompiler::Compile() {
     tensor_inputs_.clear();
     tensor_inputs_.resize(n->num_inputs());
 
-    bool any_data_input_dead = false;
-    bool any_data_input_alive = false;
-    bool any_control_input_dead = false;
-
     // Set up inputs from outputs of previous nodes.
     for (auto* e : n->in_edges()) {
-      if (e->IsControlEdge()) {
-        any_control_input_dead |= control_output_dead[e->src()->id()];
-        continue;
-      }
-
+      if (e->IsControlEdge()) continue;
       const Node* src = e->src();
       TF_RET_CHECK(src->id() < output_registry.size());
       const NodeOutputs& src_outputs = output_registry[src->id()];
 
-      const TensorValue& src_output = src_outputs.at(e->src_output());
-      tensor_inputs_.at(e->dst_input()) = src_output;
-
-      any_data_input_alive |= src_output.tensor != nullptr;
-      any_data_input_dead |= src_output.tensor == nullptr;
+      tensor_inputs_.at(e->dst_input()) = src_outputs.at(e->src_output());
     }
 
-    bool node_is_dead = n->IsMerge()
-                            ? !any_data_input_alive
-                            : (any_data_input_dead || any_control_input_dead);
+    OpKernelContext op_context(&params, n->num_outputs());
+    VLOG(3) << "Translating " << params.op_kernel->name();
+    if (IsFunctional(n)) {
+      TF_RETURN_IF_ERROR(CompileFunctionalNode(n, &op_context));
+    } else {
+      device_->Compute(CHECK_NOTNULL(params.op_kernel), &op_context);
+      Status s = op_context.status();
+      if (!s.ok()) {
+        return AttachDef(s, n->def());
+      }
+    }
 
+    // Set up outputs. Also check if outputs from the previous computation is
+    // valid.
     NodeOutputs& outputs = output_registry[n->id()];
     outputs.resize(n->num_outputs());
-
-    if (!node_is_dead) {
-      OpKernelContext op_context(&params, n->num_outputs());
-      VLOG(3) << "Translating " << params.op_kernel->name();
-      if (IsFunctional(n)) {
-        TF_RETURN_IF_ERROR(CompileFunctionalNode(n, &op_context));
-      } else {
-        device_->Compute(CHECK_NOTNULL(params.op_kernel), &op_context);
-        Status s = op_context.status();
-        if (!s.ok()) {
-          return AttachDef(s, n->def());
-        }
+    for (int o = 0; o < n->num_outputs(); ++o) {
+      outputs[o] = op_context.release_output(o);
+      if (outputs[o].tensor == nullptr) {
+        return errors::Internal("Missing xla_context ", o, "-th output from ",
+                                FormatNodeForError(*n));
       }
-
-      // Set up outputs. Also check if outputs from the previous computation is
-      // valid.
-      for (int o = 0; o < n->num_outputs(); ++o) {
-        outputs[o] = op_context.release_output(o);
-        if (outputs[o].tensor == nullptr && !n->IsSwitch()) {
-          return errors::Internal("Missing xla_context ", o, "-th output from ",
-                                  FormatNodeForError(*n));
-        }
-      }
-    } else {
-      control_output_dead[n->id()] = true;
     }
   }
   return Status::OK();

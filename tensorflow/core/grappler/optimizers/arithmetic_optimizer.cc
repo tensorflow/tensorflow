@@ -52,7 +52,6 @@ limitations under the License.
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
-using tensorflow::str_util::StringReplace;
 using tensorflow::strings::StrCat;
 
 namespace tensorflow {
@@ -2722,8 +2721,7 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
   ~OptimizeMaxOrMinOfMonotonicStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAnyMax(*node) || IsAnyMin(*node) || IsArgMax(*node) ||
-           IsArgMin(*node);
+    return IsMax(*node) || IsMin(*node) || IsAnyMaxPool(*node);
   }
 
   Status TrySimplify(NodeDef* reduction_node,
@@ -2737,10 +2735,13 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
     // 0. inner_function is not in the preserve set,
     // 1. inner_function's Op is element-wise monotonic
     // 2. inner_function's output is not being consumed elsewhere.
+    // 3. is monotonic increasing if reduction_node is a pooling operation
+    //    since we don't have MinPool operations.
     bool is_non_decreasing = false;
     if (!IsInPreserveSet(*inner_function) &&
         IsElementWiseMonotonic(*inner_function, &is_non_decreasing) &&
-        ctx().node_map->GetOutputs(inner_function->name()).size() == 1) {
+        ctx().node_map->GetOutputs(inner_function->name()).size() == 1 &&
+        (is_non_decreasing || !IsAnyMaxPool(*reduction_node))) {
       // Swap the first inputs of the inner function Op & the reduction Op.
       NodeDef* inner_input;
       TF_RETURN_IF_ERROR(GetInputNode(inner_function->input(0), &inner_input));
@@ -2754,15 +2755,9 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
       if (!is_non_decreasing) {
         // Flip Min<->Max if the function is non-increasing, e.g.
         // Max(Neg(x)) = Neg(Min(x)).
-        const string opposite = FlipMinMax(*reduction_node);
+        const string opposite = IsMax(*reduction_node) ? "Min" : "Max";
         reduction_node->set_op(opposite);
       }
-
-      if (IsArgMax(*reduction_node) || IsArgMin(*reduction_node)) {
-        // ArgMax(Sqrt(x)) = ArgMax(x)
-        inner_function->set_op("Identity");
-      }
-
       AddToOptimizationQueue(reduction_node);
       AddToOptimizationQueue(inner_function);
       AddToOptimizationQueue(inner_input);
@@ -2781,16 +2776,6 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
         }
       }
       AddToOptimizationQueue(consumer);
-    }
-  }
-
- private:
-  string FlipMinMax(const NodeDef& node) {
-    const string& op = node.op();
-    if (IsAnyMax(node) || IsArgMax(node)) {
-      return str_util::StringReplace(op, "Max", "Min", false);
-    } else {
-      return str_util::StringReplace(op, "Min", "Max", false);
     }
   }
 };

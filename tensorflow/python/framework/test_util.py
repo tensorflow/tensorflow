@@ -1460,7 +1460,7 @@ def disable_all_xla(description):
       value = getattr(cls, name)
       if callable(value) and name.startswith(
           "test") and not name == "test_session":
-        setattr(cls, name, base_decorator(value))
+        setattr(cls, name, base_decorator(description)(value))
     return cls
 
   return disable_all_impl
