@@ -798,6 +798,8 @@ TEST_F(OperatorTest, VersioningGreaterEqualTest) {
   VersioningTest<TensorFlowGreaterEqualOperator>();
 }
 
+TEST_F(OperatorTest, VersioningPackTest) { VersioningTest<PackOperator>(); }
+
 TEST_F(OperatorTest, VersioningSelectTest) {
   SelectOperator select_op;
   select_op.inputs = {"input1"};
