@@ -423,7 +423,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.batch_to_space_nd":
             "tf.batch_to_space",
         "tf.batch_gather":
-            "tf.gather",
+            "tf.compat.v1.batch_gather",
         "tf.space_to_batch_nd":
             "tf.space_to_batch",
         "tf.nn.space_to_batch":
