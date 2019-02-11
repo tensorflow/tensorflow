@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# ==============================================================================
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,9 +32,13 @@ echo "Collecting system information..."
 OUTPUT_FILE=tf_env.txt
 python_bin_path=$(which python || which python3 || die "Cannot find Python binary")
 
+get_os() {
+  uname -a
+}
+
 {
   echo
-  echo "== cat /etc/issue ==============================================="
+  echo '== cat /etc/issue ==============================================='
   uname -a
   uname=`uname -s`
   if [ "$(uname)" == "Darwin" ]; then
@@ -41,33 +46,41 @@ python_bin_path=$(which python || which python3 || die "Cannot find Python binar
   elif [ "$(uname)" == "Linux" ]; then
     cat /etc/*release | grep VERSION
   fi
-  
+
   echo
-  echo '== are we in docker ============================================='
+  echo '== in docker container ? ========================================'
   num=`cat /proc/1/cgroup | grep docker | wc -l`;
   if [ $num -ge 1 ]; then
     echo "Yes"
   else
     echo "No"
   fi
-  
+
+  # Getting C++ compiler version
   echo
   echo '== compiler ====================================================='
   c++ --version 2>&1
-  
+
+  # Getting the operating system name
   echo
   echo '== uname -a ====================================================='
-  uname -a
-  
+  get_os
+
+  # Getting the Bazel version
+  echo
+  echo '== bazel ========================================================'
+  bazel version
+
   echo
   echo '== check pips ==================================================='
   pip list 2>&1 | grep "proto\|numpy\|tensorflow"
-  
-  
+
+
   echo
   echo '== check for virtualenv ========================================='
   ${python_bin_path} -c "import sys;print(hasattr(sys, \"real_prefix\"))"
-  
+
+  # Test tensorflow import
   echo
   echo '== tensorflow import ============================================'
 } >> ${OUTPUT_FILE}
@@ -98,12 +111,16 @@ DEBUG_LD=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tm
   else
     echo DYLD_LIBRARY_PATH ${DYLD_LIBRARY_PATH} ;
   fi
-  
-  
+
+  # Get Bazel version
+  echo
+  echo '== bazel ========================================================'
+  bazel version
+
   echo
   echo '== nvidia-smi ==================================================='
   nvidia-smi 2>&1
-  
+
   echo
   echo '== cuda libs  ==================================================='
 } >> ${OUTPUT_FILE}
@@ -115,9 +132,8 @@ find /usr/local -type f -name 'libudnn*'  2>/dev/null | grep cuda |  grep -v "\\
 mv $OUTPUT_FILE old-$OUTPUT_FILE
 grep -v -i google old-${OUTPUT_FILE} > $OUTPUT_FILE
 
-echo "Wrote environment to ${OUTPUT_FILE}. You can review the contents of that file."
+echo "Wrote environment to ${OUTPUT_FILE}. You can review the contents of that file"
 echo "and use it to populate the fields in the github issue template."
 echo
 echo "cat ${OUTPUT_FILE}"
 echo
-
