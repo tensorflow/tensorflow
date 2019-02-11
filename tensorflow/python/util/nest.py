@@ -626,7 +626,7 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
   The following code will not raise an exception:
   ```python
     shallow_tree = ["a", "b"]
-    input_tree = ["c", ["d", "e"]]
+    input_tree = ["c", ["d", "e"], "f"]
     assert_shallow_structure(shallow_tree, input_tree)
   ```
 
@@ -874,6 +874,14 @@ def map_structure_up_to(shallow_tree, func, *inputs, **kwargs):
   `shallow_tree`.
 
   Examples:
+
+  ```python
+  shallow_tree = [None, None]
+  inp_val = [1, 2, 3]
+  out = map_structure_up_to(shallow_tree, lambda x: 2 * x, inp_val)
+
+  # Output is: [2, 4]
+  ```
 
   ```python
   ab_tuple = collections.namedtuple("ab_tuple", "a, b")
