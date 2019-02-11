@@ -847,6 +847,8 @@ def _BroadcastToGrad(op, grad):
   # Group by ids and sum its gradients.
   grad_flatten = array_ops.reshape(grad, [-1])
   broadcast_ids_flatten = array_ops.reshape(broadcast_ids, [-1])
+  # TODO(apassos): Use reduce_sum for gradient now that we only support
+  # the usual numpy broadcast semantics.
   updates_grad_flatten = math_ops.unsorted_segment_sum(grad_flatten,
                                                        broadcast_ids_flatten,
                                                        input_value_size)

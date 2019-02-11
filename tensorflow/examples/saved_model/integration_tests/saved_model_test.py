@@ -59,6 +59,17 @@ class SavedModelTest(tf.test.TestCase):
     use_binary = resource_loader.get_path_to_datafile("use_rnn_cell")
     self.assertCommandSucceeded(use_binary, model_dir=export_dir)
 
+  @test_util.run_v2_only
+  def test_text_embedding_in_sequential_keras(self):
+    export_dir = self.get_temp_dir()
+    export_binary = resource_loader.get_path_to_datafile(
+        "export_simple_text_embedding")
+    self.assertCommandSucceeded(export_binary, export_dir=export_dir)
+
+    use_binary = resource_loader.get_path_to_datafile(
+        "use_model_in_sequential_keras")
+    self.assertCommandSucceeded(use_binary, model_dir=export_dir)
+
 if __name__ == "__main__":
   # tf.enable_v2_behavior()
   tf.test.main()

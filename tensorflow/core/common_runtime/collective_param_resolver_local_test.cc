@@ -175,7 +175,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
     Env::Default()->SchedClosure([this, i, cp, &note, &statuses]() {
       prl_->CompleteParamsAsync(cp->instance.device_names[0], cp,
                                 nullptr /*CancellationManager*/,
-                                [this, &statuses, &note, i](const Status& s) {
+                                [&statuses, &note, i](const Status& s) {
                                   statuses[i] = s;
                                   note[i].Notify();
                                 });

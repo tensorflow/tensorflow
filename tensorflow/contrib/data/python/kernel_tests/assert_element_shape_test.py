@@ -25,11 +25,13 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_v1_only("deprecated API, no eager or V2 test coverage")
 class AssertElementShapeTest(test_base.DatasetTestBase):
 
   def test_assert_element_shape(self):

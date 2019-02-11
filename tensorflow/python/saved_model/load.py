@@ -30,6 +30,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_deserialization
+from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
@@ -40,6 +41,7 @@ from tensorflow.python.training.checkpointable import graph_view
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
 from tensorflow.python.util import compat
+from tensorflow.python.util import nest
 
 
 class _Loader(object):
@@ -56,59 +58,71 @@ class _Loader(object):
         function_deserialization.load_function_def_library(
             meta_graph.graph_def.library))
     self._load_all()
-    self._setup_functions()
+    # TODO(b/124045874): There are limitations with functions whose captures
+    # trigger other functions to be executed. For now it is only guaranteed to
+    # work if the captures of a function only trigger functions without
+    # captures.
+    self._setup_functions_structures()
+    self._setup_functions_captures()
     self._restore_checkpoint()
 
-  def _setup_concrete_function(self, proto, concrete_function, coder):
-    """Setup captured tensors and outputs for a single concrete function."""
-    bound_inputs = [
-        self._get_tensor_from_node(node_id)
-        for node_id in proto.bound_inputs]
-    bound_variables = [
-        self._nodes[node_id]
-        for node_id in proto.bound_inputs
-        if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
-    ]
-    # TODO(andresp): This is only injecting the captured inputs into the
-    # concrete function, note that we did not modify the FuncGraph
-    # itself.
-    concrete_function._captured_inputs = bound_inputs  # pylint: disable=protected-access
-    concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
-    # By setting the structured_outputs directly, we can rely on this
-    # function_lib.ConcreteFunction object to perform the output repacking
-    # logic. The only limitation of that logic is that it only works
-    # with output that is convertible to Tensors and the conversion
-    # always happens. For example tf.TensorShape([2, 3]) will be
-    # converted to Tensor representing [2, 3].
-    original_outputs = coder.decode_proto(proto.output_signature)
-    # The original_outputs here had Tensors converted to TensorSpecs, so
-    # the restored function's structured_outputs field will not be
-    # exactly the same. Fortunately the repacking logic cares only about
-    # the structure.
-    # TODO(vbardiovsky): Should we just replicate the structures, with
-    # Nones instead of real objects?
-    concrete_function._func_graph.structured_outputs = original_outputs  # pylint: disable=protected-access
-    concrete_function._func_graph.structured_input_signature = (  # pylint: disable=protected-access
-        coder.decode_proto(proto.canonicalized_input_signature))
+    for node in self._nodes:
+      if isinstance(node, tracking.TrackableResource):
+        init_op = node.initialize()
+        ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
 
-  def _setup_functions(self):
-    """Setup captures and output structure in restored functions."""
+  def _setup_functions_structures(self):
+    """Setup structure for inputs and outputs of restored functions."""
     coder = nested_structure_coder.StructureCoder()
-    for name, concrete_function_proto in self._proto.concrete_functions.items():
-      self._setup_concrete_function(
-          concrete_function_proto,
-          self._concrete_functions[name],
-          coder)
+    for name, proto in sorted(self._proto.concrete_functions.items()):
+      concrete_function = self._concrete_functions[name]
+      # By setting the structured_outputs directly, we can rely on this
+      # function_lib.ConcreteFunction object to perform the output repacking
+      # logic. The only limitation of that logic is that it only works
+      # with output that is convertible to Tensors and the conversion
+      # always happens. For example tf.TensorShape([2, 3]) will be
+      # converted to Tensor representing [2, 3].
+      original_outputs = coder.decode_proto(proto.output_signature)
+      # The original_outputs here had Tensors converted to TensorSpecs, so
+      # the restored function's structured_outputs field will not be
+      # exactly the same. Fortunately the repacking logic cares only about
+      # the structure.
+      # TODO(vbardiovsky): Should we just replicate the structures, with
+      # Nones instead of real objects?
+      concrete_function._func_graph.structured_outputs = original_outputs  # pylint: disable=protected-access
+      concrete_function._func_graph.structured_input_signature = (  # pylint: disable=protected-access
+          coder.decode_proto(proto.canonicalized_input_signature))
+
+  def _setup_functions_captures(self):
+    """Setup captures and variables in restored functions."""
+    concrete_functions = sorted(self._proto.concrete_functions.items())
+    for name, proto in concrete_functions:
+      concrete_function = self._concrete_functions[name]
+      bound_inputs = [
+          self._get_tensor_from_node(node_id)
+          for node_id in proto.bound_inputs]
+      bound_variables = [
+          self._nodes[node_id]
+          for node_id in proto.bound_inputs
+          if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
+      ]
+      # TODO(andresp): This is only injecting the captured inputs into the
+      # concrete function, note that we did not modify the FuncGraph
+      # itself.
+      concrete_function._captured_inputs = bound_inputs  # pylint: disable=protected-access
+      concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
 
   def _get_tensor_from_node(self, node_id):
-    obj = self._nodes[node_id]
-    if resource_variable_ops.is_resource_variable(obj):
-      return obj.handle
-    elif isinstance(obj, tracking.TrackableAsset):
-      return obj.asset_path.handle
-    elif tensor_util.is_tensor(obj):
-      return obj
-    raise ValueError("Can't convert node %s to tensor" % (type(obj)))
+    """Resolves a node id into a tensor to be captured for a function."""
+    with ops.init_scope():
+      obj = self._nodes[node_id]
+      if resource_variable_ops.is_resource_variable(obj):
+        return obj.handle
+      elif isinstance(obj, tracking.TrackableAsset):
+        return obj.asset_path
+      elif tensor_util.is_tensor(obj):
+        return obj
+      raise ValueError("Can't convert node %s to tensor" % (type(obj)))
 
   def _load_all(self):
     """Load all saved objects and wire their properties."""
@@ -229,14 +243,64 @@ def _load_saved_object_graph_proto(filename):
     return saved_object_graph_pb2.SavedObjectGraph.FromString(contents)
 
 
-def load(export_dir):
-  """Load a SavedModel from `export_dir`."""
+def load(export_dir, tags=None):
+  """Load a SavedModel from `export_dir`.
+
+  Signatures associated with the SavedModel are available as functions:
+
+  ```python
+  imported = tf.saved_model.load(path)
+  f = imported.signatures["serving_default"]
+  print(f(x=tf.constant([[1.]])))
+  ```
+
+  Objects exported with `tf.saved_model.save` additionally have checkpointable
+  objects and functions assigned to attributes:
+
+  ```python
+  exported = tf.train.Checkpoint(v=tf.Variable(3.))
+  exported.f = tf.function(
+      lambda x: exported.v * x,
+      input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
+  tf.saved_model.save(exported, path)
+  imported = tf.saved_model.load(path)
+  assert 3. == imported.v.numpy()
+  assert 6. == imported.f(x=tf.constant(2.)).numpy()
+  ```
+
+  Args:
+    export_dir: The SavedModel directory to load from.
+    tags: A tag or sequence of tags identifying the MetaGraph to load. Optional
+      if the SavedModel contains a single MetaGraph, as for those exported from
+      `tf.saved_model.load`.
+
+  Returns:
+    A checkpointable object with a `signatures` attribute mapping from signature
+    keys to functions. If the SavedModel was exported by `tf.saved_model.load`,
+    it also points to checkpointable objects and functions which were attached
+    to the exported object.
+
+  Raises:
+    ValueError: If `tags` don't match a MetaGraph in the SavedModel.
+  """
+  if tags is not None:
+    # Supports e.g. tags=SERVING and tags=[SERVING]
+    tags = nest.flatten(tags)
   saved_model_proto = loader_impl.parse_saved_model(export_dir)
   object_graph_filename = os.path.join(
       compat.as_bytes(export_dir),
       compat.as_bytes(constants.EXTRA_ASSETS_DIRECTORY),
       compat.as_bytes("object_graph.pb"))
-  if file_io.file_exists(object_graph_filename):
+  if (file_io.file_exists(object_graph_filename)
+      and len(saved_model_proto.meta_graphs) == 1):
+    meta_graph_def = saved_model_proto.meta_graphs[0]
+    if (tags is not None
+        and set(tags) != set(meta_graph_def.meta_info_def.tags)):
+      raise ValueError(
+          ("The SavedModel at {} has one MetaGraph with tags {}, but got an "
+           "incompatible argument tags={} to tf.saved_model.load. You may omit "
+           "it, pass 'None', or pass matching tags.")
+          .format(export_dir, meta_graph_def.meta_info_def.tags, tags))
     object_graph_proto = _load_saved_object_graph_proto(object_graph_filename)
     with ops.init_scope():
       loader = _Loader(object_graph_proto,
@@ -244,7 +308,6 @@ def load(export_dir):
                        export_dir)
       root = loader.get(0)
   else:
-    raise NotImplementedError(
-        "Currently only SavedModels exported with `tf.saved_model.save` may be "
-        "imported. Other SavedModels may eventually be supported via load().")
+    with ops.init_scope():
+      root = load_v1_in_v2.load(export_dir, tags)
   return root

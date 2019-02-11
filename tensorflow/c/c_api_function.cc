@@ -162,6 +162,11 @@ Status FillFunctionBody(
     const std::vector<const Node*>& body_nodes,
     const std::unordered_map<string, string>& tensor_renaming,
     FunctionDef* fdef) {
+  std::unordered_set<string> func_attr_names;
+  for (const auto& func_attr : fdef->signature().attr()) {
+    func_attr_names.insert(func_attr.name());
+  }
+
   std::vector<const Edge*> in_edges;
   std::vector<const Edge*> control_edges;
   for (const Node* node : body_nodes) {
@@ -242,6 +247,41 @@ Status FillFunctionBody(
     // A function is stateful if any of its nodes are stateful.
     if (node->op_def().is_stateful()) {
       fdef->mutable_signature()->set_is_stateful(true);
+    }
+
+    // If this node has any attributes with placeholder value, add the
+    // attribute to FunctionDef signature.
+    for (const auto& iter : node->attrs()) {
+      if (iter.second.placeholder().empty()) {
+        continue;
+      }
+
+      // If we already added the attribute, skip it.
+      string func_attr_name = iter.second.placeholder();
+      if (func_attr_names.find(func_attr_name) != func_attr_names.end()) {
+        continue;
+      }
+
+      // This node's attribute is a placeholder value, so it does not have type
+      // information. We check node's OpDef for attribute type.
+      string node_attr_name = iter.first;
+      const OpDef::AttrDef* node_attr_def = nullptr;
+      for (const auto& node_attr : node->op_def().attr()) {
+        if (node_attr.name() == node_attr_name) {
+          node_attr_def = &node_attr;
+        }
+      }
+      if (!node_attr_def) {
+        return errors::Unimplemented(
+            "Placeholder value is not supported for attributes not in OpDef. "
+            "Attribute: ",
+            node_attr_name, ", OpDef: ", node->op_def().DebugString());
+      }
+      OpDef::AttrDef* attr_def = fdef->mutable_signature()->add_attr();
+      attr_def->set_name(func_attr_name);
+      attr_def->set_type(node_attr_def->type());
+
+      func_attr_names.insert(func_attr_name);
     }
   }
   return Status::OK();

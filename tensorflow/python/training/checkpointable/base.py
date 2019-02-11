@@ -862,3 +862,16 @@ class Checkpointable(object):
     return {OBJECT_CONFIG_JSON_KEY: functools.partial(
         PythonStringStateSaveable,
         state_callback=_state_callback)}
+
+  def _list_functions_for_serialization(self):
+    """Lists the functions of this checkpointable to serialize.
+
+    Internal sub-classes can override this with specific logic. E.g.
+    `AutoCheckpointable` provides an implementation that returns the `attr`
+    that return functions.
+
+    Returns:
+        A dictionary mapping attribute names to `Function` or
+        `ConcreteFunction`.
+    """
+    return dict()

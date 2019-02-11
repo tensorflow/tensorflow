@@ -29,10 +29,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-# NOTE: deprecated method in V2, no eager coverage added.
+@test_util.run_v1_only("deprecated API, no eager or V2 test coverage")
 class FromSparseTensorSlicesTest(test_base.DatasetTestBase):
 
-  @test_util.run_deprecated_v1
   def testFromSparseTensorSlices(self):
     """Test a dataset based on slices of a `tf.SparseTensor`."""
     st = array_ops.sparse_placeholder(dtypes.float64)

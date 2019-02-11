@@ -225,7 +225,7 @@ if platform.system() != "Windows":
       config: Serialized TPUEmbeddingConfiguration proto.
       learning_rates: A TensorList of float32 scalars, one for each dynamic
           learning rate tag: see the comments in
-          //third_party/tensorflow/contrib/tpu/proto/
+          //third_party/tensorflow/core/protobuf/tpu/
                                                optimization_parameters.proto.
           Multiple tables can share the same dynamic learning rate tag as
           specified in the configuration. If the learning rates for all tables

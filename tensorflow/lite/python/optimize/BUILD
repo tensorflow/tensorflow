@@ -13,6 +13,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/lite/python/interpreter_wrapper:python_error_reporter",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
         "//tensorflow/lite/tools/optimize:calibration_reader",

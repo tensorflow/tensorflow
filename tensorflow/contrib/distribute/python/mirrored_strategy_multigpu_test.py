@@ -606,6 +606,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
             aggregation="invalid")
 
   def testNonMatchingVariableCreation(self, distribution):
+    self.skipTest("b/123075960")
     def model_fn(name):
       v = variable_scope.variable(1.0, name=name)
       ds_context.get_replica_context().merge_call(lambda _: _)

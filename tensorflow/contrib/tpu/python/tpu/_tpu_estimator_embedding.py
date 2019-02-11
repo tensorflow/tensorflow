@@ -36,6 +36,65 @@ _SUPPORTED_FEATURE_COLUMNS = (core_fc._NumericColumn, core_fc_lib.NumericColumn)
 
 # pylint: enable=protected-access
 
+_TABLE_NAME_PREFIX = 'tbl_'
+_LEN_TABLE_NAME_PREFIX = len(_TABLE_NAME_PREFIX)
+
+
+def _get_table_name_from_embedding_var_name(embedding_var_name):
+  return '{}{}'.format(_TABLE_NAME_PREFIX, embedding_var_name)
+
+
+def _get_embedding_var_name_from_table_name(table_name):
+  return table_name[_LEN_TABLE_NAME_PREFIX:]
+
+
+def _get_embedding_variable_name(scope_name, var_name):
+  return '{}/{}'.format(scope_name, var_name)
+
+
+def _get_slot_variable_names(scope_name, var_name, optimization_parameters):
+  """Return embedding variable names which are consistent with CPU runs."""
+  if isinstance(optimization_parameters, tpu_embedding.AdagradParameters):
+    return tpu_embedding.AdagradSlotVariableName(
+        '{}/{}/Adagrad'.format(scope_name, var_name)
+    )
+  elif isinstance(optimization_parameters, tpu_embedding.AdamParameters):
+    return tpu_embedding.AdamSlotVariableNames(
+        '{}/{}/Adam/m'.format(scope_name, var_name),
+        '{}/{}/Adam/v'.format(scope_name, var_name)
+    )
+  elif isinstance(optimization_parameters,
+                  tpu_embedding.StochasticGradientDescentParameters):
+    return None
+  else:
+    raise ValueError('Support to infer full variable name '
+                     'for optimization_parameter {} has not been added.'
+                     .format(optimization_parameters))
+
+
+def get_full_variable_names(
+    graph, table_to_config_dict, optimization_parameters):
+  """Return embedding variable names and slot variables which are consistent with CPU runs."""
+  collection = graph.get_collection_ref(tpu_fc._TPU_FC_TO_SCOPE)  # pylint: disable=protected-access
+  if not collection:
+    raise RuntimeError(
+        'Embedding feature column did not capture any thing. Make sure the '
+        'feature columns passed to TPUEstimator constructor is properly '
+        'used in model_fn.')
+
+  embedding_variable_name_by_table = {}
+  slot_variable_names_by_table = {}
+  for table_name in table_to_config_dict:
+    embedding_var_name = _get_embedding_var_name_from_table_name(table_name)
+    (scope_name, var_name) = collection[0][embedding_var_name]
+    embedding_variable_name_by_table[table_name] = (
+        _get_embedding_variable_name(scope_name, var_name))
+    slot_variable_names_by_table[table_name] = _get_slot_variable_names(
+        scope_name, var_name, optimization_parameters)
+
+  graph.clear_collection(tpu_fc._TPU_FC_TO_SCOPE)  # pylint: disable=protected-access
+  return embedding_variable_name_by_table, slot_variable_names_by_table
+
 
 def get_tpu_embedding_config_from_feature_columns(feature_columns):
   """Create configs for TPUEmbedding from a list of feature columns.
@@ -63,7 +122,8 @@ def get_tpu_embedding_config_from_feature_columns(feature_columns):
   feature_to_table = {}
   for column in feature_columns:
     feature_name = column.get_feature_key_name()
-    table_name = 'tbl_{}'.format(column.get_embedding_var_name())
+    table_name = _get_table_name_from_embedding_var_name(
+        column.get_embedding_var_name())
     if feature_name in feature_to_table:
       raise ValueError(
           'Feature column {} is used with multiple embeddings and this is '
@@ -89,7 +149,7 @@ def _get_tpu_embedding_optimization_parameters(embedding_config_spec):
   elif embedding_config_spec.optimizer_type == 'sgd':
     return tpu_embedding.StochasticGradientDescentParameters(
         embedding_config_spec.learning_rate,
-        embedding_config_spec.use_gradient_accumulattion)
+        embedding_config_spec.use_gradient_accumulation)
   elif embedding_config_spec.optimizer_type == 'adam':
     return tpu_embedding.AdamParameters(
         embedding_config_spec.learning_rate,

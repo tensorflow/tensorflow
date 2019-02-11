@@ -57,7 +57,8 @@ enum class CoverageExtension {
 
 // The TestParam structure below is the preferred parameterization of tests. A
 // tuple version is defined in order to support value-parameterized tests.
-typedef std::tuple<DepthwiseConvInvocation, int, bool, bool, bool>
+typedef std::tuple<DepthwiseConvInvocation, int, bool, bool, bool,
+                   DepthwiseConvOutputRounding, bool>
     TestParamTuple;
 
 struct TestParam {
@@ -68,7 +69,9 @@ struct TestParam {
         tests_to_run(::testing::get<1>(param_tuple)),
         test_stride(::testing::get<2>(param_tuple)),
         test_pad(::testing::get<3>(param_tuple)),
-        test_depth_multiplier(::testing::get<4>(param_tuple)) {}
+        test_depth_multiplier(::testing::get<4>(param_tuple)),
+        output_rounding(::testing::get<5>(param_tuple)),
+        loose_tolerance(::testing::get<6>(param_tuple)) {}
 
   static std::string TestNameSuffix(
       const ::testing::TestParamInfo<TestParamTuple>& info) {
@@ -84,6 +87,9 @@ struct TestParam {
   bool test_stride = false;
   bool test_pad = false;
   bool test_depth_multiplier = false;
+  DepthwiseConvOutputRounding output_rounding =
+      DepthwiseConvOutputRounding::kNone;
+  bool loose_tolerance = false;
 };
 
 inline void DispatchDepthwiseConv(
@@ -183,9 +189,30 @@ int TestOneDepthwiseConvWithGivenOutputShift(
   op_params.output_offset = output_offset;
   op_params.output_multiplier = output_multiplier;
   op_params.output_shift = -output_shift;
-  reference_ops::DepthwiseConv(op_params, input_shape, input_data, filter_shape,
-                               filter_data, bias_shape, bias_data, output_shape,
-                               reference_output_data.data());
+  switch (test_param.output_rounding) {
+    case DepthwiseConvOutputRounding::kUpward:
+      reference_ops::DepthwiseConvBasicKernel<
+          DepthwiseConvOutputRounding::kAwayFromZero>::Run(op_params,
+                                                           input_shape,
+                                                           input_data,
+                                                           filter_shape,
+                                                           filter_data,
+                                                           bias_shape,
+                                                           bias_data,
+                                                           output_shape,
+                                                           reference_output_data
+                                                               .data());
+      break;
+    case DepthwiseConvOutputRounding::kAwayFromZero:
+      reference_ops::DepthwiseConv(
+          op_params, input_shape, input_data, filter_shape, filter_data,
+          bias_shape, bias_data, output_shape, reference_output_data.data());
+      break;
+    case DepthwiseConvOutputRounding::kNone:
+    default:
+      EXPECT_NE(test_param.output_rounding, DepthwiseConvOutputRounding::kNone);
+      break;
+  }
   DispatchDepthwiseConv(test_param, op_params, input_shape, input_data,
                         filter_shape, filter_data, bias_shape, bias_data,
                         output_shape, output_data.data());
@@ -221,10 +248,10 @@ int TestOneDepthwiseConvWithGivenOutputShift(
 
   // Normally we should require bit-for-bit exact results. Unfortunately a bug
   // in the Intel arm_neon_sse.h translation header that we use for x86 tests
-  // causes 1-bit inaccuracy in
-  // the vqrdmulh_n_s32 intrinsic, which causes off-by-1 errors in quantized
-  // DepthwiseConv ops. So we have to live with a few off-by-one errors for now,
-  // yet still ensure that no more than a small minority of values are wrong.
+  // causes 1-bit inaccuracy in the vqrdmulh_n_s32 intrinsic, which causes
+  // off-by-1 errors in quantized DepthwiseConv ops. So we have to live with a
+  // few off-by-one errors for now, yet still ensure that no more than a small
+  // minority of values are wrong.
   EXPECT_LT(std::abs(mean_diff), mean_tolerance);
   EXPECT_LT(mean_abs_diff, mean_tolerance);
   EXPECT_LE(std::abs(median_diff), diff_median_tolerance);
@@ -482,16 +509,21 @@ bool TryTestOneNeonDot3x3(const TestParam& test_param,
       dilation_width_factor, dilation_height_factor, padding_type);
 }
 
-void TestOneDepthwiseConv(DepthwiseConvInvocation forced_invocation) {
+void TestOneDepthwiseConv(DepthwiseConvInvocation forced_invocation,
+                          DepthwiseConvOutputRounding output_rounding) {
   TestParam test_param;
   test_param.forced_invocation = forced_invocation;
+  test_param.output_rounding = output_rounding;
   while (!TryTestOneDepthwiseConv(test_param, ParamsSpecialization::kNone)) {
   }
 }
 
-void TestOneDepthwiseConv3x3Filter(DepthwiseConvInvocation forced_invocation) {
+void TestOneDepthwiseConv3x3Filter(
+    DepthwiseConvInvocation forced_invocation,
+    DepthwiseConvOutputRounding output_rounding) {
   TestParam test_param;
   test_param.forced_invocation = forced_invocation;
+  test_param.output_rounding = output_rounding;
   while (!TryTestOneDepthwiseConv3x3Filter(test_param,
                                            ParamsSpecialization::kNone)) {
   }
@@ -505,7 +537,8 @@ void TestOneNeonDot3x3(const TestParam& test_param) {
 TEST(TestDepthwiseConv, TestDepthwiseConv) {
   const int kTestsToRun = 10 * 1000;
   for (int i = 0; i < kTestsToRun; i++) {
-    TestOneDepthwiseConv(DepthwiseConvInvocation::kNone);
+    TestOneDepthwiseConv(DepthwiseConvInvocation::kNone,
+                         DepthwiseConvOutputRounding::kAwayFromZero);
   }
 }
 
@@ -513,14 +546,16 @@ TEST(TestDepthwiseConv, TestDepthwiseConv) {
 TEST(TestDepthwiseConv, TestGenericKernel) {
   const int kTestsToRun = 10 * 1000;
   for (int i = 0; i < kTestsToRun; i++) {
-    TestOneDepthwiseConv(DepthwiseConvInvocation::kUseGenericKernel);
+    TestOneDepthwiseConv(DepthwiseConvInvocation::kUseGenericKernel,
+                         DepthwiseConvOutputRounding::kAwayFromZero);
   }
 }
 
 TEST(TestDepthwiseConv, TestKernel3x3Filter) {
   const int kTestsToRun = 1000;
   for (int i = 0; i < kTestsToRun; i++) {
-    TestOneDepthwiseConv3x3Filter(DepthwiseConvInvocation::kNone);
+    TestOneDepthwiseConv3x3Filter(DepthwiseConvInvocation::kNone,
+                                  DepthwiseConvOutputRounding::kAwayFromZero);
   }
 }
 
@@ -529,7 +564,8 @@ TEST(TestDepthwiseConv, TestKernel3x3Filter) {
 TEST(TestDepthwiseConv, TestGenericKernel3x3Filter) {
   const int kTestsToRun = 100;
   for (int i = 0; i < kTestsToRun; i++) {
-    TestOneDepthwiseConv3x3Filter(DepthwiseConvInvocation::kUseGenericKernel);
+    TestOneDepthwiseConv3x3Filter(DepthwiseConvInvocation::kUseGenericKernel,
+                                  DepthwiseConvOutputRounding::kAwayFromZero);
   }
 }
 
@@ -537,7 +573,8 @@ TEST(TestDepthwiseConv, TestGenericKernel3x3Filter) {
 TEST(TestDepthwiseConv, TestNeon3x3Filter) {
   const int kTestsToRun = 3 * 1000;
   for (int i = 0; i < kTestsToRun; i++) {
-    TestOneDepthwiseConv3x3Filter(DepthwiseConvInvocation::kUseNeon3x3);
+    TestOneDepthwiseConv3x3Filter(DepthwiseConvInvocation::kUseNeon3x3,
+                                  DepthwiseConvOutputRounding::kAwayFromZero);
   }
 }
 #endif
@@ -559,7 +596,9 @@ INSTANTIATE_TEST_SUITE_P(
         Values(1000),                                  // tests_to_run
         Bool(),                                        // test_stride
         Values(false),                                 // test_pad
-        Values(false)                                  // test_depth_multiplier
+        Values(false),                                 // test_depth_multiplier
+        Values(DepthwiseConvOutputRounding::kAwayFromZero),  // output_rounding
+        Values(false)                                        // loose_tolerance
         ),
     TestParam::TestNameSuffix);
 #endif
@@ -574,7 +613,9 @@ INSTANTIATE_TEST_SUITE_P(
         Values(100),                                      // tests_to_run
         Bool(),                                           // test_stride
         Bool(),                                           // test_pad
-        Bool()  // test_depth_multiplier
+        Bool(),                                        // test_depth_multiplier
+        Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
+        Values(false)                                  // loose_tolerance
         ),
     TestParam::TestNameSuffix);
 

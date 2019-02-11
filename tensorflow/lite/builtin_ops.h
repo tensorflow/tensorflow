@@ -132,6 +132,7 @@ typedef enum {
   kTfLiteBuiltinCeil = 104,
   kTfLiteBuiltinReverseV2 = 105,
   kTfLiteBuiltinAddN = 106,
+  kTfLiteBuiltinGatherNd = 107,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

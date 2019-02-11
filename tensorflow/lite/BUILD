@@ -11,6 +11,8 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 exports_files(glob([
     "testdata/*.bin",
     "testdata/*.pb",
+    "testdata/*.tflite",
+    "testdata/*.csv",
     "models/testdata/*",
 ]))
 

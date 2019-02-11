@@ -32,9 +32,20 @@ tf_to_tflite(
     ],
 )
 
+tf_to_tflite(
+    name = "gather_string",
+    src = "gather.pbtxt",
+    out = "gather_string.tflite",
+    options = [
+        "--input_arrays=input,indices",
+        "--output_arrays=output",
+    ],
+)
+
 filegroup(
     name = "interpreter_test_data",
     srcs = [
+        ":gather_string",
         ":permute_float",
         ":permute_uint8",
     ],

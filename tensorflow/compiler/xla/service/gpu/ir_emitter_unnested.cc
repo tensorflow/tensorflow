@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
-#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
@@ -60,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/tuple_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -487,6 +487,41 @@ Status IrEmitterUnnested::HandleFft(HloInstruction* fft) {
   return Status::OK();
 }
 
+Status IrEmitterUnnested::HandleTriangularSolve(HloInstruction* hlo) {
+  auto has_fortran_layout = [](const Layout& layout) {
+    int n = layout.minor_to_major_size();
+    return layout.minor_to_major(0) == n - 2 &&
+           layout.minor_to_major(1) == n - 1;
+  };
+  TF_RET_CHECK(has_fortran_layout(hlo->operand(0)->shape().layout()));
+  TF_RET_CHECK(has_fortran_layout(hlo->operand(1)->shape().layout()));
+  TF_RET_CHECK(has_fortran_layout(hlo->shape().layout()));
+
+  std::vector<std::unique_ptr<Thunk>> thunks;
+
+  // Triangular solve is in-place on 'b', so copy 'b' to the output if they
+  // aren't the same buffer.
+  auto operand_buffer = GetAllocationSlice(*hlo->operand(1));
+  auto destination_buffer = GetAllocationSlice(*hlo);
+  if (operand_buffer != destination_buffer) {
+    thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
+        /*source_address=*/operand_buffer,
+        /*destination_buffer=*/destination_buffer,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(hlo->operand(1)->shape()), hlo));
+  }
+
+  thunks.push_back(BuildTriangularSolveThunk(hlo));
+
+  // Elide the sequential thunk if there's no copy.
+  if (thunks.size() == 1) {
+    AddThunkToThunkSequence(std::move(thunks[0]));
+  } else {
+    AddThunkToThunkSequence(
+        absl::make_unique<SequentialThunk>(std::move(thunks), hlo));
+  }
+  return Status::OK();
+}
+
 Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
   HloInstruction* root = fusion->fused_expression_root();
   if (HloInstruction::FusionKind::kInput == fusion->fusion_kind()) {
@@ -546,7 +581,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         // a 1D array. The specialized version requires a initializer thunk that
         // initializes the output array to the initial value of the reduce.
         if (root->opcode() == HloOpcode::kReduce && root->shape().IsTuple()) {
-          // TODO(b/112040122): Support variadic reduce.
+          // TODO(b/118332391): Support variadic reduce.
           return Unimplemented("Variadic reduce is not supported on GPU");
         }
         return EmitReductionToVector(fusion);
@@ -635,7 +670,7 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
 }
 
 Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
-  // TODO(b/112040122): Support multi-output reduce.
+  // TODO(b/118332391): Support multi-output reduce.
   if (!reduce->shape().IsArray()) {
     return Unimplemented("Multi-output reduce is not supported on GPU");
   }
@@ -959,18 +994,18 @@ Status IrEmitterUnnested::HandleScatter(HloInstruction* scatter) {
       BuildKernelThunk(scatter,
                        /*implements_whole_instruction=*/thunks.empty()));
 
-  TF_RETURN_IF_ERROR(
-      EmitScatter(thunks.back().get(), scatter,
-                  /*scatter_indices_gen=*/
-                  [=](const IrArray::Index& index) {
-                    return GetIrArray(*scatter_indices, *scatter)
-                        .EmitReadArrayElement(index, &b_, "scatter_index");
-                  },
-                  /*updates_gen=*/
-                  [=](const IrArray::Index& index) {
-                    return GetIrArray(*updates, *scatter)
-                        .EmitReadArrayElement(index, &b_, "update");
-                  }));
+  TF_RETURN_IF_ERROR(EmitScatter(
+      thunks.back().get(), scatter,
+      /*scatter_indices_gen=*/
+      [=](const IrArray::Index& index) {
+        return GetIrArray(*scatter_indices, *scatter)
+            .EmitReadArrayElement(index, &b_, "scatter_index");
+      },
+      /*updates_gen=*/
+      [=](const IrArray::Index& index) {
+        return GetIrArray(*updates, *scatter)
+            .EmitReadArrayElement(index, &b_, "update");
+      }));
 
   // Elide the sequential thunk if there's no copy.
   if (thunks.size() == 1) {
@@ -1118,17 +1153,7 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   std::vector<std::unique_ptr<Thunk>> thunks;
   Shape keys_shape = sort->operand(0)->shape();
   int64 dimension_to_sort = sort->dimensions(0);
-  // In case there is a 'values' parameter that is a iota, we take note and use
-  // it later to ensure a stable sort. Otherwise, we don't guarantee a stable
-  // sort.
-  int64 iota_values_parameter_index = -1;
   for (int64 i = 0; i < sort->operand_count(); ++i) {
-    if (i > 0 && sort->operand(i)->opcode() == HloOpcode::kIota &&
-        ShapeUtil::ElementIsIntegral(sort->operand(i)->shape()) &&
-        Cast<HloIotaInstruction>(sort->operand(i))->iota_dimension() ==
-            dimension_to_sort) {
-      iota_values_parameter_index = i;
-    }
     ShapeIndex shape_index =
         sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
     // We assume that the layout of all involved operands and outputs is the
@@ -1241,25 +1266,23 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
                                              : standard_launch_dimensions;
     UpdateLaunchDimensions(launch_dimensions, thunks.back().get(),
                            ir_emitter_context_->llvm_module());
-    IrArray keys_array;
     std::vector<IrArray> values_arrays;
-    values_arrays.reserve(sort->operand_count() - 1);
+    values_arrays.reserve(sort->operand_count());
     for (int64 i = 0; i < sort->operand_count(); ++i) {
       ShapeIndex shape_index =
           sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
-      if (i == 0) {
-        keys_array = GetIrArray(*sort, *sort, shape_index);
-      } else {
-        values_arrays.push_back(GetIrArray(*sort, *sort, shape_index));
-      }
+      values_arrays.push_back(GetIrArray(*sort, *sort, shape_index));
     }
     return llvm_ir::EmitSortInPlace(
-        dimension_to_sort, keys_array, values_arrays,
-        iota_values_parameter_index, IrName(sort), xor_masks, &b_,
+        dimension_to_sort, values_arrays, IrName(sort), xor_masks, &b_,
         launch_dimensions,
         xor_masks.size() > 1 ? num_iterations_in_sort_dim
                              : standard_num_iterations_in_sort_dim,
-        kTileSize);
+        kTileSize,
+        [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
+          return EmitCallToNestedComputation(*sort->to_apply(), operands,
+                                             output);
+        });
   };
   std::vector<int64> xor_masks;
   for (int64 stage = 0; stage < num_stages; ++stage) {
@@ -1758,6 +1781,29 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildFftThunk(
       /*output_shape=*/inst->shape(), inst);
 }
 
+std::unique_ptr<Thunk> IrEmitterUnnested::BuildTriangularSolveThunk(
+    const HloInstruction* inst) {
+  const HloInstruction* a = inst->operand(0);
+  const HloInstruction* b = inst->operand(1);
+  int64 m = b->shape().dimensions(b->shape().rank() - 2);
+  int64 n = b->shape().dimensions(b->shape().rank() - 1);
+  int64 batch_size = std::accumulate(
+      b->shape().dimensions().begin(), b->shape().dimensions().end() - 2,
+      int64{1}, [](int64 a, int64 b) { return a * b; });
+  int64 elem_size =
+      ShapeUtil::ByteSizeOfPrimitiveType(inst->shape().element_type());
+  int64 a_batch_stride = inst->triangular_solve_options().left_side()
+                             ? m * m * elem_size
+                             : n * n * elem_size;
+  int64 b_batch_stride = m * n * elem_size;
+  return absl::make_unique<TriangularSolveThunk>(
+      inst->triangular_solve_options(),
+      /*a_input_buffer=*/GetAllocationSlice(*a),
+      /*b_input_buffer=*/GetAllocationSlice(*inst),
+      inst->shape().element_type(), batch_size, m, n, a_batch_stride,
+      b_batch_stride, inst);
+}
+
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
     HloInstruction* hlo, const ShapeIndex& index) {
   bool fused = HloOpcode::kFusion == hlo->opcode();
@@ -2132,7 +2178,6 @@ std::vector<IrArray> IrEmitterUnnested::ConstructIrArrayForInputs(
   }
   return param_arrays;
 }
-
 
 int IrEmitterUnnested::ConstructInputReducedShapeAndCastInputIrArrayToShape(
     const HloInstruction& hlo, const std::vector<IrArray>& param_arrays,
@@ -2967,12 +3012,11 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
   // since we touch threadIdx.x and blockIdx.x at the beginning of the kernel
   // *anyway*.
   if (!reduction_info && unnested_hlo->IsMultiOutputFusion()) {
-    KernelSupportLibrary{&b_}.If(
-        "emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
-          llvm_ir::EmitTuple(GetIrArray(*unnested_hlo, *unnested_hlo),
-                             ConstructIrArrayForOutputs(*unnested_hlo), &b_,
-                             module_);
-        });
+    KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
+      llvm_ir::EmitTuple(GetIrArray(*unnested_hlo, *unnested_hlo),
+                         ConstructIrArrayForOutputs(*unnested_hlo), &b_,
+                         module_);
+    });
   }
 
   // For each tiled parameter, cast its input IrArray to the corresponding

@@ -440,14 +440,16 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
                                           {operand_value},
                                           {operand_value->getType()}, b_);
     case HloOpcode::kSign: {
-      // TODO(b/32151903): Ensure consistent sign behavior for -0.0.
       auto type = operand_value->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
-      auto oeq = FCmpOEQ(operand_value, zero);
-      auto olt = FCmpOLT(operand_value, zero);
-      return Select(oeq, zero,
-                    Select(olt, llvm::ConstantFP::get(type, -1.0),
-                           llvm::ConstantFP::get(type, 1.0)));
+      auto ne0_i1 = FCmpONE(operand_value, zero);
+      auto ne0_float = UIToFP(ne0_i1, type);
+      llvm::Value* result = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign, {ne0_float, operand_value},
+          {operand_value->getType()}, b_);
+      auto is_nan = FCmpUNO(operand_value, operand_value);
+      result = Select(is_nan, operand_value, result);
+      return result;
     }
     case HloOpcode::kIsFinite: {
       // abs(x) o!= inf, this works because the comparison returns false if
@@ -855,6 +857,9 @@ llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
   return llvm_ir::EmitFloatMin(lhs_value, rhs_value, b_);
 }
 
+// TODO(b/123355973): We have an implementation of erfinv in math.cc.  We
+// shouldn't have two implementations, especially since this one isn't testable
+// (it's only observable via a normally-distributed RNG).
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
                                                       llvm::Value* x) {
   if (prim_type != F16 && prim_type != F32 && prim_type != F64) {
@@ -1767,18 +1772,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
     auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
     };
-    // TODO(b/118437727): Remove the R1 path.
-    llvm::Value* start_index_value;
-    if (hlo->operand(1)->shape().rank() == 1) {
-      llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
-      TF_ASSIGN_OR_RETURN(start_index_value,
-                          operand_to_generator.at(hlo->operand(1))(dim_index));
-    } else {
-      llvm_ir::IrArray::Index zero_index(index_type);
-      TF_ASSIGN_OR_RETURN(
-          start_index_value,
-          operand_to_generator.at(hlo->operand(1 + i))(zero_index));
-    }
+    llvm_ir::IrArray::Index zero_index(index_type);
+    TF_ASSIGN_OR_RETURN(
+        llvm::Value * start_index_value,
+        operand_to_generator.at(hlo->operand(1 + i))(zero_index));
 
     // Clamp the start index so that the sliced portion fits in the operand:
     // start_index = clamp(start_index, 0, operand_dim_size - output_dim_size)
@@ -1924,18 +1921,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
       return llvm::ConstantInt::get(index_type, c);
     };
 
-    llvm::Value* start_index_value;
-    // TODO(b/118437727): Remove the R1 path.
-    if (hlo->operand(2)->shape().rank() == 1) {
-      llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
-      TF_ASSIGN_OR_RETURN(start_index_value,
-                          operand_to_generator.at(hlo->operand(2))(dim_index));
-    } else {
-      llvm_ir::IrArray::Index zero_index(index_type);
-      TF_ASSIGN_OR_RETURN(
-          start_index_value,
-          operand_to_generator.at(hlo->operand(2 + i))(zero_index));
-    }
+    llvm_ir::IrArray::Index zero_index(index_type);
+    TF_ASSIGN_OR_RETURN(
+        llvm::Value * start_index_value,
+        operand_to_generator.at(hlo->operand(2 + i))(zero_index));
 
     // Clamp the start index so that the update region fits in the operand.
     // start_index = clamp(start_index, 0, input_dim_size - update_dim_size)
