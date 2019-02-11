@@ -1872,6 +1872,11 @@ void Pack(const PackParams& params, const RuntimeShape* const* input_shapes,
   gemmlowp::ScopedProfilingLabel label("Pack");
   const int dimensions = output_shape.DimensionsCount();
   int axis = params.axis;
+  if (axis < 0) {
+    axis += ((**input_shapes).DimensionsCount() + 1);
+  }
+  TFLITE_DCHECK_GE(axis, 0);
+  TFLITE_DCHECK_LE(axis, (**input_shapes).DimensionsCount());
   int inputs_count = params.inputs_count;
 
   int outer_size = 1;
@@ -1879,7 +1884,7 @@ void Pack(const PackParams& params, const RuntimeShape* const* input_shapes,
     outer_size *= output_shape.Dims(i);
   }
   int copy_size = 1;
-  for (int i = params.axis + 1; i < dimensions; i++) {
+  for (int i = axis + 1; i < dimensions; i++) {
     copy_size *= output_shape.Dims(i);
   }
   TFLITE_DCHECK_EQ((**input_shapes).FlatSize(), copy_size * outer_size);

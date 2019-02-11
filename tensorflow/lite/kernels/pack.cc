@@ -35,9 +35,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   const TfLiteTensor* input0 = GetInput(context, node, 0);
-  TF_LITE_ENSURE(context, NumDimensions(input0) >= data->axis);
-  // TODO(renjieliu): Support negative axis.
-  TF_LITE_ENSURE(context, data->axis >= 0);
+  int axis = data->axis;
+  if (axis < 0) {
+    axis += (NumDimensions(input0) + 1);
+  }
+  TF_LITE_ENSURE(context, 0 <= axis && axis <= NumDimensions(input0));
   if (input0->type != kTfLiteInt32 && input0->type != kTfLiteFloat32 &&
       input0->type != kTfLiteUInt8 && input0->type != kTfLiteInt16 &&
       input0->type != kTfLiteInt64) {
@@ -58,7 +60,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(dimension_size);
   int i = 0;
   for (int index = 0; index < dimension_size; ++index) {
-    if (index == data->axis) {
+    if (index == axis) {
       output_shape->data[index] = data->values_count;
     } else {
       output_shape->data[index] = input_shape->data[i++];

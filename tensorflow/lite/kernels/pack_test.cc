@@ -82,6 +82,36 @@ TEST(PackOpTest, FloatMultilDimensions) {
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
 }
 
+TEST(PackOpTest, FloatMultilDimensionsNegativeAxis1) {
+  PackOpModel<float> model({TensorType_FLOAT32, {2, 3}}, -1, 2);
+  model.SetInput(0, {1, 2, 3, 4, 5, 6});
+  model.SetInput(1, {7, 8, 9, 10, 11, 12});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3, 2));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray({1, 7, 2, 8, 3, 9, 4, 10, 5, 11, 6, 12}));
+}
+
+TEST(PackOpTest, FloatMultilDimensionsNegativeAxis2) {
+  PackOpModel<float> model({TensorType_FLOAT32, {2, 3}}, -2, 2);
+  model.SetInput(0, {1, 2, 3, 4, 5, 6});
+  model.SetInput(1, {7, 8, 9, 10, 11, 12});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 3));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
+}
+
+TEST(PackOpTest, FloatMultilDimensionsNegativeAxis3) {
+  PackOpModel<float> model({TensorType_FLOAT32, {2, 3}}, -3, 2);
+  model.SetInput(0, {1, 2, 3, 4, 5, 6});
+  model.SetInput(1, {7, 8, 9, 10, 11, 12});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 3));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
+}
+
 TEST(PackOpTest, FloatFiveDimensions) {
   PackOpModel<float> model({TensorType_FLOAT32, {2, 2, 2, 2}}, 1, 2);
   model.SetInput(0, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
