@@ -29,6 +29,10 @@ TFE_Profiler* TFE_NewProfiler(TFE_Context* ctx) {
   return new TFE_Profiler(ctx);
 }
 
+bool TFE_ProfilerIsOk(TFE_Profiler* profiler) {
+  return profiler->profiler->Status().ok();
+}
+
 void TFE_DeleteProfiler(TFE_Profiler* profiler) { delete profiler; }
 
 void TFE_ProfilerSerializeToString(TFE_Context* ctx, TFE_Profiler* profiler,
