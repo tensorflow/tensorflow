@@ -3616,6 +3616,8 @@ gpu_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
+    ],
+)
 
 cuda_py_test(
     name = "critical_section_test",
