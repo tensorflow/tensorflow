@@ -67,11 +67,13 @@ StatusOr<bool> ShardingPass::Run(HloModule* module) {
     bool done = false;
     while (!done) {
       done = true;
+      bool made_progress = false;
       for (auto* inst : comp->MakeInstructionPostOrder()) {
         if (!inst->has_sharding()) {
           for (auto* u : inst->users()) {
             if (u->has_sharding()) {
               inst->set_sharding(u->sharding());
+              made_progress = true;
               break;
             }
           }
@@ -80,6 +82,7 @@ StatusOr<bool> ShardingPass::Run(HloModule* module) {
           for (auto* u : inst->operands()) {
             if (u->has_sharding()) {
               inst->set_sharding(u->sharding());
+              made_progress = true;
               break;
             }
           }
@@ -87,6 +90,11 @@ StatusOr<bool> ShardingPass::Run(HloModule* module) {
         if (!inst->has_sharding()) {
           done = false;
         }
+      }
+      if (!done && !made_progress) {
+        return xla::FailedPrecondition(
+            "Could not apply sharding information to the %s computation.",
+            comp->name().c_str());
       }
     }
   }
