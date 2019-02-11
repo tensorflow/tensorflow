@@ -252,101 +252,13 @@ static absl::optional<int64> IsLayoutSensitiveOperand(
   return absl::nullopt;
 }
 
-struct TupleTensorSource {
-  // This source represents the (tuple) source.
-  TensorSource source;
-  // This path is the path from the `source` to the first non-tuple use of this
-  // tensor - note that this path can only contains GTEs.
-  std::vector<const HloInstruction*> path;
-};
-
-static std::vector<const HloInstruction*> CombinePrefixPath(
-    std::vector<const HloInstruction*> path_to_non_tuple_source,
-    std::vector<const HloInstruction*> path_from_non_tuple_source) {
-  if (path_to_non_tuple_source.size()) {
-    path_to_non_tuple_source.insert(path_to_non_tuple_source.end(),
-                                    path_from_non_tuple_source.begin(),
-                                    path_from_non_tuple_source.end());
-    return path_to_non_tuple_source;
-  } else {
-    return path_from_non_tuple_source;
-  }
-}
-
-// Depth First Tree traversal from source to non-tuple outputs, traversing
-// through GetTupleElement.
-static void FlattenInputs(
-    HloInstruction* inst, std::vector<const HloInstruction*> path,
-    HloInstruction* source, int64 flattened_tuple_idx,
-    absl::flat_hash_map<HloInstruction*, TupleTensorSource>&
-        input_to_tuple_source) {
-  const Shape& shape = inst->shape();
-  if (shape.IsTuple()) {
-    for (HloInstruction* user : inst->users()) {
-      if (user->opcode() == HloOpcode::kGetTupleElement) {
-        std::vector<const HloInstruction*> new_path(path);
-        new_path.push_back(user);
-
-        int64 new_flattened_tuple_idx =
-            InsertIntoTuple(shape, user->tuple_index(), flattened_tuple_idx);
-        FlattenInputs(user, new_path, source, new_flattened_tuple_idx,
-                      input_to_tuple_source);
-      }
-    }
-  } else {
-    input_to_tuple_source[inst] = {std::make_pair(source, flattened_tuple_idx),
-                                   path};
-  }
-}
-
-// Inputs to the graph are non-tuple tensors which originate from parameters or
-// infeeds. To find such tensors we traverse through GetTupleElement
-// instructions, keeping track of this path. For example, given following HLO
-// computation:
-// clang-format off
-//%comp (arg0: (f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2])) -> f32[1,4,4,2] {
-// %arg0 = (f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) parameter(0)
-// %gte0 = f32[1,4,4,2] get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=0
-// %gte1 = f32[1,1,2,2] get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=1
-// %convolution.36.29 = f32[1,4,4,2] convolution(%gte0, %gte1), window={size=1x1}, dim_labels=b01f_01io->b01f
-// %gte2 = (f32[1,2], f32[1,2]) get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=2
-// %gte2.0 = f32[1,2] get-tuple-element((f32[1,2], f32[1,2]) %gte2), index=0
-// %gte2.0_r = f32[2] reshape(%gte2.0)
-// %gte2.1 = f32[1,2] get-tuple-element((f32[1,2], f32[1,2]) %gte2), index=1
-// %gte2.1_r = f32[2] reshape(%gte2.1)
-// %gte3 = f32[2] get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=3
-// %gte4 = f32[2] get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=4
-// ROOT %batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(%convolution.36.29, %gte2.0_r, %gte2.1_r, %gte3, %gte4), epsilon=0.001, feature_index=3
-//}
-// clang-format on
-// In this graph %arg0 is the input, but we traverse the graph and find that
-// %gte0, %gte1, %gte2.0, %gte2.1, %gte3, %gte4 are the non tuple inputs and we
-// find the forward allocations for those.
-static absl::flat_hash_map<HloInstruction*, TupleTensorSource> FindInputs(
-    HloComputation* comp) {
-  absl::flat_hash_map<HloInstruction*, TupleTensorSource> input_to_tuple_source;
-  for (HloInstruction* inst : comp->MakeInstructionPostOrder()) {
-    if (inst->opcode() == HloOpcode::kParameter ||
-        inst->opcode() == HloOpcode::kInfeed) {
-      FlattenInputs(inst, {}, inst, 0, input_to_tuple_source);
-    }
-  }
-  return input_to_tuple_source;
-}
-
 StatusOr<bool> ForwardAllocation::Run(
     HloComputation* comp, std::set<const HloInstruction*>& ops_with_layout) {
   bool found_target = false;
-
-  auto input_to_tuple_source = FindInputs(comp);
-
-  const auto is_input = [&input_to_tuple_source, this](HloInstruction* inst) {
-    auto itr = input_to_tuple_source.find(inst);
-    if (itr != input_to_tuple_source.end()) {
-      return tensor_allocation_map.find(itr->second.source) ==
-             tensor_allocation_map.end();
-    }
-    return false;
+  const auto is_param_no_layout_pred = [this](HloInstruction* inst) {
+    return inst->opcode() == HloOpcode::kParameter &&
+           tensor_allocation_map.find(std::make_pair(inst, 0)) ==
+               tensor_allocation_map.end();
   };
 
   const auto is_layout_producer = [&ops_with_layout](HloInstruction* inst) {
@@ -374,7 +286,7 @@ StatusOr<bool> ForwardAllocation::Run(
                                                        get_consumers);
 
   const auto alloc_dependencies = layout_op_consumers.Transpose();
-  const auto source_ops = g.FindVertices(is_input);
+  const auto source_ops = g.FindVertices(is_param_no_layout_pred);
 
   // Get everything that depends on a source op
   const auto get_source_consumers = [is_layout_producer, layout_producing_ops,
@@ -444,16 +356,11 @@ StatusOr<bool> ForwardAllocation::Run(
           if (prefix_path_ok && suffix_path_ok) {
             if (!source_consumers[source].contains(layout_producer)) {
               auto layout_output_idx = *suffix_path_ok;
-              auto src = input_to_tuple_source[source].source;
+              auto src = std::make_pair(source, 0);
               std::vector<const HloInstruction*> csuffix(suffix.begin(),
                                                          suffix.end());
               std::vector<const HloInstruction*> cprefix(prefix.begin(),
                                                          prefix.end());
-
-              // We now need to recombine the prefix path as the source could
-              // come from a tuple.
-              cprefix = CombinePrefixPath(input_to_tuple_source[source].path,
-                                          cprefix);
 
               // Make sure that the layout producer can be executed before the
               // source - i.e. source is not reachable form the layout producer.
@@ -514,19 +421,15 @@ ForwardAllocation::ForwardAllocation(CompilerAnnotations& annotations)
 StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
   bool found_target = false;
 
-  // An op with a layout is an op with non-tuple shape that has been identified
-  // by the Allocation Finder to have a layout, a Tensor allocation target or
-  // any op that is in the path between the two.
+  // An op with a layout is an op that has been identified by the Allocation
+  // Finder to have a layout, a Tensor allocation target or any op that is in
+  // the path between the two.
   std::set<const HloInstruction*> ops_with_layout;
   for (auto& ta : tensor_allocation_map) {
-    if (!ta.first.first->shape().IsTuple()) {
-      ops_with_layout.insert(ta.first.first);
-    }
+    ops_with_layout.insert(ta.first.first);
     ops_with_layout.insert(ta.second.tgt);
     for (auto& inst : ta.second.forward_path) {
-      if (!inst->shape().IsTuple()) {
-        ops_with_layout.insert(inst);
-      }
+      ops_with_layout.insert(inst);
     }
   }
 
