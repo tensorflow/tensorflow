@@ -127,7 +127,9 @@ class LBetaTest(test.TestCase):
     x_b = [0.1]
     with self.session(use_gpu=True):
       self.assertAllClose(
-          1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_a))))
+          1,
+          self.evaluate(math_ops.exp(special_math_ops.lbeta(x_a))),
+          rtol=3e-6)
       self.assertAllClose(
           1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_b))))
       self.assertEqual((), special_math_ops.lbeta(x_a).get_shape())
