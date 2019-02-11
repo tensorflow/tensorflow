@@ -1247,7 +1247,7 @@ class FIFOQueueTest(test.TestCase):
   def testSelectQueue(self):
     with self.cached_session():
       num_queues = 10
-      qlist = list()
+      qlist = []
       for _ in xrange(num_queues):
         qlist.append(data_flow_ops.FIFOQueue(10, dtypes_lib.float32))
       # Enqueue/Dequeue into a dynamically selected queue
