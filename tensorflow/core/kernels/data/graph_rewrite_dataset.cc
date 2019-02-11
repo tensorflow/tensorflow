@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/graph_rewrite_dataset.h"
 
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
@@ -57,14 +58,9 @@ Status GraphRewriteDataset::Optimize(OpKernelContext* ctx) {
 
   // Some functions may have been modified without having their names
   // changed (for example, nested dataset graphs from FlatMap or
-  // Interleave). To avoid name conflicts, we remove these functions from
-  // flib_def_ before adding the optimized function library.
-  for (const FunctionDef& fd : graph_def.library().function()) {
-    if (flib_def_->Find(fd.signature().name()) != nullptr) {
-      TF_RETURN_IF_ERROR(flib_def_->RemoveFunction(fd.signature().name()));
-    }
-  }
-  TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph_def.library()));
+  // Interleave).
+  TF_RETURN_IF_ERROR(
+      AddToFunctionLibrary(flib_def_.get(), graph_def.library()));
 
   Graph graph(OpRegistry::Global());
   TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
@@ -82,9 +78,21 @@ Status GraphRewriteDataset::Optimize(OpKernelContext* ctx) {
 Status GraphRewriteDataset::AsGraphDefInternal(SerializationContext* ctx,
                                                DatasetGraphDefBuilder* b,
                                                Node** output) const {
+  SerializationContext::Params params;
+  // The optimized input needs access to the newly optimized functions when
+  // it is serialized. Here, we use the optimized function library for
+  // serialization, which is the union of the function library from the
+  // OpKernelContext at dataset creation time and newly optimized functions.
+  // This includes all functions that optimized_input_ may use.
+  params.flib_def = flib_def_.get();
+  params.input_list = ctx->input_list();
+  params.optimization_only = ctx->optimization_only();
+  SerializationContext optimized_ctx(params);
+
   // We only serialize the optimized dataset to avoid re-running
   // optimizations when the input pipeline is restored from a checkpoint.
-  TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, optimized_input_, output));
+  TF_RETURN_IF_ERROR(
+      b->AddInputDataset(&optimized_ctx, optimized_input_, output));
   return Status::OK();
 }
 

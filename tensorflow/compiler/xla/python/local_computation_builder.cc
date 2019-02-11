@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/cholesky.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/qr.h"
-#include "tensorflow/compiler/xla/client/lib/triangular_solve.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
@@ -928,11 +927,14 @@ LocalOp LocalComputationBuilder::QR(const LocalOp& a, bool full_matrices) {
   });
 }
 
-LocalOp LocalComputationBuilder::TriangularSolve(
-    const LocalOp& a, const LocalOp& b, bool left_side, bool lower,
-    bool transpose_a, bool conjugate_a, bool unit_diagonal) {
-  return xla::TriangularSolve(a.op(), b.op(), left_side, lower, transpose_a,
-                              conjugate_a, unit_diagonal);
+LocalOp LocalComputationBuilder::TriangularSolve(const LocalOp& a,
+                                                 const LocalOp& b,
+                                                 bool left_side, bool lower,
+                                                 bool unit_diagonal,
+                                                 int transpose_a) {
+  return xla::TriangularSolve(
+      a.op(), b.op(), left_side, lower, unit_diagonal,
+      xla::TriangularSolveOptions::Transpose(transpose_a));
 }
 
 LocalOp LocalComputationBuilder::Gather(

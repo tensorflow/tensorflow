@@ -20,8 +20,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import itertools
+import tensorflow as tf
 
-from tensorflow.lite.python import lite
 from tensorflow.python.keras import activations
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
@@ -70,7 +70,7 @@ class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
     # Inputs must be Rank-2.
     self.input_spec = base_layer.InputSpec(ndim=2)
 
-    self._tflite_wrapper = lite.OpHint("UnidirectionalSequenceRnn")
+    self._tflite_wrapper = tf.lite.OpHint("UnidirectionalSequenceRnn")
     self._num_units = num_units
     if activation:
       self._activation = activations.get(activation)

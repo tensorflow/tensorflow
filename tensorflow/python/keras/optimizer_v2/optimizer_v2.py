@@ -132,8 +132,8 @@ class OptimizerV2(checkpointable.Checkpointable):
   you divide your loss by the global batch size, which is done automatically
   if you use a member of `tf.keras.losses` or `tf.losses`. See the
   `reduction` argument of your loss which should be set to
-  `tf.losses.Reduction.SUM_OVER_BATCH_SIZE` for averaging or
-  `tf.losses.Reduction.SUM` for not.
+  `tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE` for averaging or
+  `tf.keras.losses.Reduction.SUM` for not.
 
   If you are not using these and you want to average gradients, you should use
   `tf.math.reduce_sum` to add up your per-example losses and then divide by the
@@ -559,7 +559,7 @@ class OptimizerV2(checkpointable.Checkpointable):
         self._weights.append(self._iterations)
     for name, value in self._hyper.items():
       if isinstance(value, ops.Tensor) or callable(value):
-        pass
+        continue
       else:
         self._hyper[name] = self.add_weight(
             name,

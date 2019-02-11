@@ -245,7 +245,7 @@ Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   for (auto dim : dnums.lhs_contracting_dimensions()) {
     reduction_width *= lhs_shape.dimensions(dim);
   }
-  // Each output elment requires reduction_widht FMA operations.
+  // Each output elment requires reduction_width FMA operations.
   current_properties_[kFlopsKey] =
       kFmaFlops * ShapeUtil::ElementsIn(dot_shape) * reduction_width;
   return Status::OK();
@@ -543,6 +543,21 @@ Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
   }
   current_properties_[kFlopsKey] = kFmaFlops * kFmaPerComplexMul * log_factors *
                                    ShapeUtil::ElementsIn(real_shape);
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleTriangularSolve(const HloInstruction* hlo) {
+  float bytes_accessed = GetShapeSize(hlo->operand(0)->shape()) / 2.0f;
+  bytes_accessed += GetShapeSize(hlo->operand(1)->shape());
+  current_properties_[kBytesAccessedKey] = bytes_accessed;
+
+  const Shape& a_shape = hlo->operand(0)->shape();
+  const Shape& b_shape = hlo->operand(1)->shape();
+  // Estimate as batch * mn^2 / 2 flops.
+  int64 elems = a_shape.dimensions(a_shape.dimensions_size() - 1);
+  elems *= ShapeUtil::ElementsIn(b_shape);
+  // Each output elment requires reduction_widht FMA operations.
+  current_properties_[kFlopsKey] = kFmaFlops * elems;
   return Status::OK();
 }
 

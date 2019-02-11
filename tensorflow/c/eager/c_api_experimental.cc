@@ -46,7 +46,17 @@ void TFE_ProfilerSerializeToString(TFE_Context* ctx, TFE_Profiler* profiler,
   };
 }
 
-void TFE_StartProfilerServer(TFE_Context* ctx, int port) {
-  auto server_thread = tensorflow::StartProfilerServer(&ctx->context, port);
-  ctx->context.AddChildThread(std::move(server_thread));
+TFE_ProfilerServerOptions* TFE_NewProfilerServerOptions() {
+  return new TFE_ProfilerServerOptions;
+}
+
+void TFE_ProfilerServerOptionsSetEagerContext(
+    TFE_ProfilerServerOptions* options, TFE_Context* ctx) {
+  options->profiler_context.eager_context = &ctx->context;
+}
+
+void TFE_StartProfilerServer(TFE_ProfilerServerOptions* options, int port) {
+  // Release child thread intentionally. The child thread can be terminate by
+  // terminating the main thread.
+  tensorflow::StartProfilerServer(&options->profiler_context, port).release();
 }

@@ -391,6 +391,10 @@ class HloComputation {
     fusion_instruction_ = fusion_instruction;
   }
 
+  // Clear the unique ID of the computation so that it can be re-assigned, such
+  // as for the purpose of compacting the unique IDs.
+  void ClearUniqueIdInternal() { unique_id_ = -1; }
+
   // The id of this computation should be unique within the module.
   void SetUniqueId(int64 id) {
     CHECK_EQ(unique_id_, -1);

@@ -279,6 +279,12 @@ def _fix_fdef(orig_fdef, functions):
       if attr_value.func.name:
         attr_value.func.name = functions[attr_value.func.name].name
 
+    # TODO(b/124205571): Avoid accidental sharing and destruction of restored
+    # resources. For now drop "shared_name" when loading functions to avoid
+    # sharing.
+    if "shared_name" in node_def.attr:
+      del node_def.attr["shared_name"]
+
   fdef.signature.name = _clean_function_name(fdef.signature.name)
   return fdef
 

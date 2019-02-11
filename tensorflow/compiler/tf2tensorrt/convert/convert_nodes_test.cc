@@ -1439,11 +1439,6 @@ TEST_F(OpConverterTest, ConvertReshape) {
   }
 
   struct TestParams {
-    TestParams(int input_batch_size, const std::vector<int>& input_tensor_dims,
-               const std::vector<int>& input_shape)
-        : batch_size(input_batch_size),
-          tensor_dims(input_tensor_dims),
-          shape(input_shape) {}
     int batch_size;
     std::vector<int> tensor_dims;
     std::vector<int> shape;
@@ -2381,11 +2376,6 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
   }
 
   struct TestParams {
-    TestParams(const std::vector<int>& input_dims, int axis,
-               const std::vector<int>& expected_output_dims)
-        : input_dims(input_dims),
-          axis(axis),
-          expected_output_dims(expected_output_dims) {}
     std::vector<int> input_dims;
     int axis;
     std::vector<int> expected_output_dims;
@@ -2498,11 +2488,6 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
   }
 
   struct TestParams {
-    TestParams(const std::vector<int>& input_dims, const std::vector<int>& axis,
-               const std::vector<int>& expected_output_dims)
-        : input_dims(input_dims),
-          axis(axis),
-          expected_output_dims(expected_output_dims) {}
     std::vector<int> input_dims;
     std::vector<int> axis;
     std::vector<int> expected_output_dims;
@@ -2675,29 +2660,6 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   }
 
   struct TestParams {
-    TestParams(const std::vector<int>& input_dims,
-               const std::vector<int>& expected_output_dims,
-               const std::vector<int>& begin, const std::vector<int>& end,
-               const std::vector<int>& begin_mask,
-               const std::vector<int>& end_mask,
-               const std::vector<int>& expected_output)
-        : input_dims(input_dims),
-          expected_output_dims(expected_output_dims),
-          begin(begin),
-          end(end),
-          expected_output(expected_output) {
-      // Masks are provided in terms of vectors for readability. Convert them to
-      // binary here.
-      this->begin_mask = 0;
-      for (int i = 0; i < begin_mask.size(); i++) {
-        if (begin_mask[i]) this->begin_mask |= (1 << i);
-      }
-      this->end_mask = 0;
-      for (int i = 0; i < end_mask.size(); i++) {
-        if (end_mask[i]) this->end_mask |= (1 << i);
-      }
-    }
-
     std::vector<int> input_dims;
     std::vector<int> expected_output_dims;
     std::vector<int> begin;
@@ -2707,87 +2669,112 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     std::vector<int> expected_output;
   };
 
+  auto get_mask = [](const std::vector<int>& mask) {
+    int result = 0;
+    for (int i = 0; i < mask.size(); i++) {
+      if (mask[i]) result += (1 << i);
+    }
+    return result;
+  };
+
   // Ok.
   const int kStridedSliceOKCases = 18;
   TestParams ok_params[kStridedSliceOKCases] = {
       // 2D Crop.
       TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 1, 2},
                  /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 0, 1, 2},
-                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 1, 0, 0},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 1, 0, 0}),
                  /*expected_output=*/{1, 2}},
       TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 1, 2},
                  /*begin=*/{0, 0, 1, 1}, /*end=*/{0, 0, 0, 0},
-                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 1, 1, 1}),
                  /*expected_output=*/{5, 6}},
       TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 1, 2},
                  /*begin=*/{0, 0, 1, 1}, /*end=*/{0, 1, 2, 3},
-                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 1, 0, 0},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 1, 0, 0}),
                  /*expected_output=*/{5, 6}},
       // 2D Crop, with transpose.
       TestParams{/*input_dims=*/{2, 3, 1}, /*expected_output_dims=*/{1, 2, 1},
                  /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 1, 2, 1},
-                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 0, 0, 0},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 0, 0, 0}),
                  /*expected_output=*/{1, 2}},
       TestParams{/*input_dims=*/{2, 3, 1}, /*expected_output_dims=*/{1, 2, 1},
                  /*begin=*/{0, 1, 1, 0}, /*end=*/{0, 2, 3, 1},
-                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 0, 0, 0},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 0, 0, 0}),
                  /*expected_output=*/{5, 6}},
       TestParams{/*input_dims=*/{2, 1, 3}, /*expected_output_dims=*/{1, 1, 2},
                  /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 1, 1, 2},
-                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 0, 0, 0},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 0, 0, 0}),
                  /*expected_output=*/{1, 2}},
       TestParams{/*input_dims=*/{2, 1, 3}, /*expected_output_dims=*/{1, 1, 2},
                  /*begin=*/{0, 1, 0, 1}, /*end=*/{0, 2, 1, 3},
-                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 0, 0, 0},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 0, 0, 0}),
                  /*expected_output=*/{5, 6}},
       // 2D Crop, with reshape.
       TestParams{/*input_dims=*/{2, 3}, /*expected_output_dims=*/{1, 2},
                  /*begin=*/{0, 0, 0}, /*end=*/{0, 1, 2},
-                 /*begin_mask=*/{0, 0, 0}, /*end_mask=*/{1, 0, 0},
+                 /*begin_mask=*/get_mask({0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 0, 0}),
                  /*expected_output=*/{1, 2}},
       TestParams{/*input_dims=*/{2, 3}, /*expected_output_dims=*/{1, 2},
                  /*begin=*/{0, 1, 1}, /*end=*/{0, 0, 0},
-                 /*begin_mask=*/{0, 0, 0}, /*end_mask=*/{1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 1, 1}),
                  /*expected_output=*/{5, 6}},
       // 1D Crop.
       TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 2, 2},
                  /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 0, 0, 2},
-                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 1, 1, 0},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 1, 1, 0}),
                  /*expected_output=*/{1, 2, 4, 5}},
       TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 1, 3},
                  /*begin=*/{0, 0, 1, 0}, /*end=*/{0, 0, 0, 0},
-                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 1, 1, 1}),
                  /*expected_output=*/{4, 5, 6}},
       // 1D Crop, with transpose.
       TestParams{/*input_dims=*/{2, 3, 1}, /*expected_output_dims=*/{1, 3, 1},
                  /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 1, 0, 0},
-                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 0, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 0, 1, 1}),
                  /*expected_output=*/{1, 2, 3}},
       TestParams{/*input_dims=*/{2, 3, 1}, /*expected_output_dims=*/{1, 3, 1},
                  /*begin=*/{0, 1, 0, 0}, /*end=*/{0, 0, 0, 0},
-                 /*begin_mask=*/{0, 0, 0, 0}, /*end_mask=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 1, 1, 1}),
                  /*expected_output=*/{4, 5, 6}},
       // 1D Crop, with reshape.
       TestParams{/*input_dims=*/{6}, /*expected_output_dims=*/{3},
                  /*begin=*/{0, 0}, /*end=*/{0, 3},
-                 /*begin_mask=*/{0, 0}, /*end_mask=*/{1, 0},
+                 /*begin_mask=*/get_mask({0, 0}), /*end_mask=*/get_mask({1, 0}),
                  /*expected_output=*/{1, 2, 3}},
       TestParams{/*input_dims=*/{1, 6}, /*expected_output_dims=*/{1, 3},
                  /*begin=*/{0, 0, 2}, /*end=*/{0, 0, 5},
-                 /*begin_mask=*/{0, 0, 0}, /*end_mask=*/{1, 1, 0},
+                 /*begin_mask=*/get_mask({0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 1, 0}),
                  /*expected_output=*/{3, 4, 5}},
       TestParams{/*input_dims=*/{6, 1}, /*expected_output_dims=*/{3, 1},
                  /*begin=*/{0, 2, 0}, /*end=*/{0, 5, 0},
-                 /*begin_mask=*/{0, 0, 0}, /*end_mask=*/{1, 0, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 0, 1}),
                  /*expected_output=*/{3, 4, 5}},
       // Negative axis.
       TestParams{/*input_dims=*/{6, 1}, /*expected_output_dims=*/{3, 1},
                  /*begin=*/{0, -6, 0}, /*end=*/{0, -3, 0},
-                 /*begin_mask=*/{0, 0, 0}, /*end_mask=*/{1, 0, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 0, 1}),
                  /*expected_output=*/{1, 2, 3}},
       TestParams{/*input_dims=*/{6, 1}, /*expected_output_dims=*/{5, 1},
                  /*begin=*/{0, 0, 0}, /*end=*/{0, -1, 0},
-                 /*begin_mask=*/{0, 0, 0}, /*end_mask=*/{1, 0, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 0, 1}),
                  /*expected_output=*/{1, 2, 3, 4, 5}},
   };
 
@@ -2956,27 +2943,6 @@ TEST_F(OpConverterTest, ConvertConv2D) {
   }
 
   struct TestParams {
-    TestParams(const std::vector<int>& input_dims,
-               const std::vector<float>& input,
-               const std::vector<int>& filter_dims,
-               const std::vector<float>& filter,
-               const std::vector<int>& strides, const string& padding,
-               const string& data_format, const std::vector<int>& dilations,
-               bool is_conv2d_backprop_input,
-               const std::vector<int>& expected_output_dims,
-               const std::vector<float>& expected_output)
-        : input_dims(input_dims),
-          input(input),
-          filter_dims(filter_dims),
-          filter(filter),
-          strides(strides),
-          padding(padding),
-          data_format(data_format),
-          dilations(dilations),
-          is_conv2d_backprop_input(is_conv2d_backprop_input),
-          expected_output_dims(expected_output_dims),
-          expected_output(expected_output) {}
-
     std::vector<int> input_dims;
     std::vector<float> input;
     std::vector<int> filter_dims;

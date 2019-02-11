@@ -378,7 +378,7 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     const string ones_name = strings::StrCat("ones", suffix);
     const string ctrl_zeros_name = strings::StrCat("^zeros", suffix);
     const string ctrl_ones_name = strings::StrCat("^ones", suffix);
-    EXPECT_EQ(27, output.node_size());
+    EXPECT_EQ(const_type == kFill ? 31 : 27, output.node_size());
     for (int i = 0; i < output.node_size(); ++i) {
       const NodeDef& node = output.node(i);
       const string& name = node.name();
@@ -3462,6 +3462,55 @@ TEST_F(ConstantFoldingCastConstTest, CastConstFolding) {
                                    fetch_cast_child);
         }
       }
+    }
+  }
+}
+
+TEST_F(ConstantFoldingTest, MaterializeConstantValuedNode) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output x =
+      ops::Placeholder(scope.WithOpName("x"), DT_FLOAT,
+                       ops::Placeholder::Shape(TensorShape({1, 2, 3, 4})));
+  Output ones_like = ops::OnesLike(scope.WithOpName("ones_like"), x);
+  Output zeros_like = ops::ZerosLike(scope.WithOpName("zeros_like"), x);
+  Output fill = ops::Fill(scope.WithOpName("fill"), {4, 3, 2, 1}, 42);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch = {"ones_like", "zeros_like", "fill"};
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 2, 3, 4}));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {{"x", x_t}});
+
+  ConstantFolding optimizer(/*opt_level=*/RewriterConfig::AGGRESSIVE,
+                            /*cpu_device=*/nullptr);
+  GraphDef output;
+  Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(output.node_size(), 6);
+  for (const auto& node : output.node()) {
+    if (node.name() != "x") {
+      EXPECT_EQ(node.op(), "Const");
+    }
+    if (node.name() == "ones_like" || node.name() == "zeros_like") {
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "^x");
+    }
+    if (node.name() == "fill") {
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0)[0], '^');
+      EXPECT_EQ(node.input(1)[0], '^');
+    }
+  }
+  auto tensors = EvaluateNodes(output, item.fetch, {{"x", x_t}});
+  ASSERT_EQ(item.fetch.size(), tensors.size());
+  ASSERT_EQ(tensors_expected.size(), tensors.size());
+  for (int i = 0; i < tensors.size(); i++) {
+    if (item.fetch[i] == "fill") {
+      test::ExpectTensorEqual<int>(tensors_expected[i], tensors[i]);
+    } else {
+      test::ExpectTensorEqual<float>(tensors_expected[i], tensors[i]);
     }
   }
 }

@@ -219,6 +219,10 @@ class Annotator(transformer.Base):
                  frozenset(self.current_analyzer.out[cfg_node]))
     return node
 
+  def visit_ExceptHandler(self, node):
+    # TODO(b/123995141) Add Exception Handlers to the CFG
+    return node
+
 
 def resolve(node, source_info, graphs):
   """Resolves the live symbols at the exit of control flow statements.

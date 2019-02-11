@@ -105,13 +105,19 @@ class BCast {
   static Vec FromShape(const TensorShape& shape);
   static TensorShape ToShape(const BCast::Vec& vec);
 
+  template <typename IndexType, int NDIMS>
+  static Eigen::array<IndexType, NDIMS> ToIndexArrayType(
+      const BCast::Vec& vec) {
+    CHECK_EQ(vec.size(), NDIMS);
+    Eigen::array<IndexType, NDIMS> ret;
+    for (int i = 0; i < NDIMS; ++i) ret[i] = vec[i];
+    return ret;
+  }
+
   template <int NDIMS>
   static Eigen::array<Eigen::DenseIndex, NDIMS> ToIndexArray(
       const BCast::Vec& vec) {
-    CHECK_EQ(vec.size(), NDIMS);
-    Eigen::array<Eigen::DenseIndex, NDIMS> ret;
-    for (int i = 0; i < NDIMS; ++i) ret[i] = vec[i];
-    return ret;
+    return ToIndexArrayType<Eigen::DenseIndex, NDIMS>(vec);
   }
 
  private:

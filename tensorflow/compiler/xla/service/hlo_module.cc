@@ -246,6 +246,34 @@ HloModuleProto HloModule::ToProto() const {
   return proto;
 }
 
+Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
+  absl::flat_hash_set<string> computation_names;
+  absl::flat_hash_set<int> computation_ids;
+  absl::flat_hash_set<string> instruction_names;
+  absl::flat_hash_set<int> instruction_ids;
+
+  for (const HloComputation* computation : computations()) {
+    TF_RET_CHECK(!ContainsKey(computation_names, computation->name()))
+        << "Computation name is not unique: " << computation->name();
+    computation_names.insert(computation->name());
+
+    TF_RET_CHECK(!ContainsKey(computation_ids, computation->unique_id()))
+        << "Computation id is not unique: " << computation->unique_id();
+    computation_ids.insert(computation->unique_id());
+
+    for (const HloInstruction* instruction : computation->instructions()) {
+      TF_RET_CHECK(!ContainsKey(instruction_names, instruction->name()))
+          << "Instruction name is not unique: " << instruction->name();
+      instruction_names.insert(instruction->name());
+
+      TF_RET_CHECK(!ContainsKey(instruction_ids, instruction->unique_id()))
+          << "Instruction id is not unique: " << instruction->unique_id();
+      instruction_ids.insert(instruction->unique_id());
+    }
+  }
+  return Status::OK();
+}
+
 /* static */
 StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     const HloModuleProto& proto, const HloModuleConfig& module_config) {
@@ -329,28 +357,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
                       DynamicParameterBinding::CreateFromProto(
                           proto.dynamic_parameter_binding()));
 
-  absl::flat_hash_set<string> computation_names;
-  absl::flat_hash_set<string> instruction_names;
-  absl::flat_hash_set<int> computation_ids;
-  absl::flat_hash_set<int> instruction_ids;
-  for (HloComputation* computation : module->computations()) {
-    TF_RET_CHECK(!ContainsKey(computation_names, computation->name()))
-        << "Computation name is not unique: " << computation->name();
-    computation_names.insert(computation->name());
-
-    TF_RET_CHECK(!ContainsKey(computation_ids, computation->unique_id()))
-        << "Computation id is not unique: " << computation->unique_id();
-    computation_ids.insert(computation->unique_id());
-    for (HloInstruction* instruction : computation->instructions()) {
-      TF_RET_CHECK(!ContainsKey(instruction_names, instruction->name()))
-          << "Instruction name is not unique: " << instruction->name();
-      instruction_names.insert(instruction->name());
-
-      TF_RET_CHECK(!ContainsKey(instruction_ids, instruction->unique_id()))
-          << "Instruction id is not unique: " << instruction->unique_id();
-      instruction_ids.insert(instruction->unique_id());
-    }
-  }
+  TF_RETURN_IF_ERROR(
+      module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
 
   if (proto.has_schedule()) {
     TF_ASSIGN_OR_RETURN(

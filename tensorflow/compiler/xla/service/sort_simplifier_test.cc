@@ -124,5 +124,37 @@ TEST_F(SortSimplifierTest, DontRemoveUnusedSortKey) {
   SortSimplifier simplifier;
   EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
 }
+
+TEST_F(SortSimplifierTest, RemoveUnusedFirstOperand) {
+  const char* hlo_string = R"(
+   HloModule permutation_sort
+
+   compare {
+     p.0.lhs = f32[] parameter(0)
+     p.0.rhs = f32[] parameter(1)
+     p.1.lhs = s32[] parameter(2)
+     p.1.rhs = s32[] parameter(3)
+     ROOT lt = pred[] less-than(p.1.lhs, p.1.rhs)
+   }
+
+   ENTRY sort_computation {
+     keys = f32[64,8732]{1,0} parameter(0)
+     values = s32[64,8732]{1,0} parameter(1)
+     sort = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys, values),
+       dimensions={1}, to_apply=compare
+     ROOT gte = s32[64,8732]{1,0} get-tuple-element(sort), index=1
+   })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  SortSimplifier simplifier;
+  uint64 num_executions = 0;
+  do {
+    num_executions++;
+  } while (simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_EQ(num_executions, 2);
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Sort(m::Parameter(1))));
+}
 }  // namespace
 }  // namespace xla

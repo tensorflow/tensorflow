@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -24,11 +25,15 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
@@ -39,6 +44,16 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
+
+using ::tensorflow::test::function::GDef;
+using ::tensorflow::test::function::NDef;
+using FDH = ::tensorflow::FunctionDefHelper;
+
+constexpr char kCPU[] = "/device:fakecpu:0";
+constexpr char kGPU[] = "/device:fakegpu:0";
+
+constexpr char kFullCPU[] = "/job:a/replica:0/task:0/device:fakecpu:0";
+constexpr char kFullGPU[] = "/job:a/replica:0/task:0/device:fakegpu:0";
 
 namespace {
 
@@ -203,6 +218,16 @@ class PlacerTest : public ::testing::Test {
   // names for use in placement, and later lookup.
   Status BuildGraph(const GraphDefBuilder& builder, Graph* out_graph) {
     TF_RETURN_IF_ERROR(GraphDefBuilderToGraph(builder, out_graph));
+    nodes_by_name_.clear();
+    for (Node* node : out_graph->nodes()) {
+      nodes_by_name_[node->name()] = node->id();
+    }
+    return Status::OK();
+  }
+
+  Status BuildGraph(const GraphDef& graph_def, Graph* out_graph) {
+    GraphConstructorOptions opts;
+    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, graph_def, out_graph));
     nodes_by_name_.clear();
     for (Node* node : out_graph->nodes()) {
       nodes_by_name_[node->name()] = node->id();
@@ -866,7 +891,7 @@ TEST_F(PlacerTest, TestResourceHandle) {
 }
 
 TEST_F(PlacerTest, TestResourceHandlesOnDifferentDevicesFails) {
-  auto handle_test = [this](bool allow_soft_placement) {
+  auto handle_test = [this](bool allow_soft_placement, bool set_assigned) {
     Graph g(OpRegistry::Global());
     {  // Scope for temporary variables used to construct g.
       GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -878,27 +903,41 @@ TEST_F(PlacerTest, TestResourceHandlesOnDifferentDevicesFails) {
                     b.opts().WithName("two_handles_in"));
       TF_EXPECT_OK(BuildGraph(b, &g));
 
-      GetNodeByName(g, "var_cpu")
-          ->set_assigned_device_name(
-              "/job:a/replica:0/task:0/device:fakecpu:0");
-      GetNodeByName(g, "var_gpu")
-          ->set_assigned_device_name(
-              "/job:a/replica:0/task:0/device:fakegpu:0");
+      if (set_assigned) {
+        GetNodeByName(g, "var_cpu")
+            ->set_assigned_device_name(
+                "/job:a/replica:0/task:0/device:fakecpu:0");
+        GetNodeByName(g, "var_gpu")
+            ->set_assigned_device_name(
+                "/job:a/replica:0/task:0/device:fakegpu:0");
+      } else {
+        GetNodeByName(g, "var_cpu")
+            ->set_requested_device("/job:a/replica:0/task:0/device:fakecpu:0");
+        GetNodeByName(g, "var_gpu")
+            ->set_requested_device("/job:a/replica:0/task:0/device:fakegpu:0");
+      }
     }
 
     SessionOptions options;
     options.config.set_allow_soft_placement(allow_soft_placement);
     options.config.set_log_device_placement(true);
     Status s = Place(&g, &options);
-    EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+    EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
     EXPECT_TRUE(str_util::StrContains(
         s.error_message(),
-        "Could not colocate node with its resource and reference inputs"));
+        "Cannot place the graph because a reference or resource edge "
+        "connects "
+        "colocation groups with incompatible assigned devices: "
+        "/job:a/replica:0/task:0/device:fakegpu:0 vs "
+        "/job:a/replica:0/task:0/device:fakecpu:0"));
+
     return Status::OK();
   };
 
-  TF_EXPECT_OK(handle_test(false));
-  TF_EXPECT_OK(handle_test(true));
+  TF_EXPECT_OK(handle_test(false, false));
+  TF_EXPECT_OK(handle_test(false, true));
+  TF_EXPECT_OK(handle_test(true, false));
+  TF_EXPECT_OK(handle_test(true, true));
 }
 
 // Test that an assignment of an operator to the wrong device
@@ -1615,6 +1654,128 @@ TEST_F(PlacerTest, TestGeneratorNodeDoesntFollowNonColocatedConsumers) {
   EXPECT_COLOCATED(g, "assign1", "var1_cpu");
   EXPECT_COLOCATED(g, "assign2", "var2_cpu");
   EXPECT_DEVICE_TYPE(g, "in", "FakeGPU");
+}
+
+REGISTER_KERNEL_BUILDER(Name("_Arg").Device("FakeCPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("_Arg").Device("FakeGPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("_Retval").Device("FakeCPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("_Retval").Device("FakeGPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("Identity").Device("FakeCPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("Identity").Device("FakeGPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("Const").Device("FakeCPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("Const").Device("FakeGPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("Mul").Device("FakeCPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("Mul").Device("FakeGPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("Add").Device("FakeCPU"), DummyOp);
+REGISTER_KERNEL_BUILDER(Name("Add").Device("FakeGPU"), DummyOp);
+
+TEST_F(PlacerTest, RequestedDeviceOnResourceGeneratorIsTreatedAsAssigned) {
+  /*
+   *    a:RES:GPU  b:RES:CPU
+   *       |         |
+   *       |         |
+   *       v         v
+   *      id1       id2
+   *     @loc:id2
+   */
+  FunctionDef func = test::function::ResourceOutput();
+  GraphDef graph = GDef(
+      {
+          NDef("a", "_Arg", {}, {{"T", DT_RESOURCE}}, kGPU),
+          NDef("b", "_Arg", {}, {{"T", DT_RESOURCE}}, kCPU),
+          NDef("id1", "Identity", {"a"},
+               {{"T", DT_RESOURCE},
+                {"_class", gtl::ArraySlice<string>({"loc:@id2"})}}),
+          NDef("id2", "Identity", {"b"}, {{"T", DT_RESOURCE}}),
+      },
+      // FunctionLib
+      {func});
+
+  Graph g(OpRegistry::Global());
+  TF_ASSERT_OK(BuildGraph(graph, &g));
+  Status s = Place(&g);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(),
+      "Cannot place the graph because a reference or resource edge connects "
+      "colocation groups with incompatible assigned devices:"));
+}
+
+TEST_F(PlacerTest, RequestedDeviceCanBeOverridden) {
+  /*
+   *     a:RES      b:RES
+   *       |         |
+   *     id_a:GPU   id_b:CPU
+   *       |         |
+   *       v         v
+   *      id1       id2
+   *     @loc:id2
+   */
+  FunctionDef func = test::function::ResourceOutput();
+  GraphDef graph = GDef(
+      {
+          NDef("a", "_Arg", {}, {{"T", DT_RESOURCE}}),
+          NDef("b", "_Arg", {}, {{"T", DT_RESOURCE}}),
+          NDef("id_a", "Identity", {"a"}, {{"T", DT_RESOURCE}}, kGPU),
+          NDef("id_b", "Identity", {"b"}, {{"T", DT_RESOURCE}}, kCPU),
+          NDef("id1", "Identity", {"id_a"},
+               {{"T", DT_RESOURCE},
+                {"_class", gtl::ArraySlice<string>({"loc:@id2"})}}),
+          NDef("id2", "Identity", {"id_b"}, {{"T", DT_RESOURCE}}),
+      },
+      // FunctionLib
+      {func});
+
+  Graph g(OpRegistry::Global());
+  TF_ASSERT_OK(BuildGraph(graph, &g));
+  TF_ASSERT_OK(Place(&g));
+
+  // All should be colocated
+  EXPECT_COLOCATED(g, "a", "b");
+  EXPECT_COLOCATED(g, "id_a", "id_b");
+  EXPECT_COLOCATED(g, "id1", "id2");
+  EXPECT_COLOCATED(g, "a", "id_a");
+  EXPECT_COLOCATED(g, "a", "id1");
+}
+
+TEST_F(PlacerTest, AssignedDevicesAreNotOverriddenDueToResourcesAndColocation) {
+  /*
+   *     a:RES      b:RES
+   *       |         |
+   *     id_a:GPU   id_b:CPU
+   *       |         |
+   *       v         v
+   *      id1       id2
+   *     @loc:id2
+   */
+  FunctionDef func = test::function::ResourceOutput();
+  GraphDef graph = GDef(
+      {
+          NDef("a", "_Arg", {}, {{"T", DT_RESOURCE}}),
+          NDef("b", "_Arg", {}, {{"T", DT_RESOURCE}}),
+          NDef("id_a", "Identity", {"a"}, {{"T", DT_RESOURCE}}),
+          NDef("id_b", "Identity", {"b"}, {{"T", DT_RESOURCE}}),
+          NDef("id1", "Identity", {"id_a"},
+               {{"T", DT_RESOURCE},
+                {"_class", gtl::ArraySlice<string>({"loc:@id2"})}}),
+          NDef("id2", "Identity", {"id_b"}, {{"T", DT_RESOURCE}}),
+      },
+      // FunctionLib
+      {func});
+
+  Graph g(OpRegistry::Global());
+  TF_ASSERT_OK(BuildGraph(graph, &g));
+  std::unordered_map<string, Node*> nodes = g.BuildNodeNameIndex();
+  GetNodeByName(g, "id_a")->set_assigned_device_name(kFullGPU);
+  GetNodeByName(g, "id_b")->set_assigned_device_name(kFullCPU);
+  Status s = Place(&g);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(),
+      "Cannot place the graph because a reference or resource edge connects "
+      "colocation groups with incompatible assigned devices: "
+      "/job:a/replica:0/task:0/device:fakecpu:0 vs "
+      "/job:a/replica:0/task:0/device:fakegpu:0"));
 }
 
 }  // namespace

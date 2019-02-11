@@ -393,7 +393,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
+  # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
   @test_util.run_v1_only("b/121264236")
   def testSkipEagerCaptureConstantsWithConflictingDevices(self):
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
@@ -410,9 +410,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
       expected_output = [8.0] * 10
       self.assertDatasetProduces(dataset, expected_output=expected_output)
 
-  # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
-  @test_util.run_v1_only(
-      "defun will convert RefVariables to ResourceVariables.")
+  # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
+  @test_util.run_v1_only("b/121264236")
   def testSkipEagerRefVariablesWithConflictingDevices(self):
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.cached_session(config=config):
@@ -424,7 +423,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
           b = variables.VariableV1(5.0)
         return math_ops.add(a, b)
 
-      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).map(func)
+      # Use the legacy function implementation as eager function will convert
+      # RefVariables to ResourceVariables.
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10)
+      dataset = dataset.map_with_legacy_function(func)
       self.evaluate(variables.global_variables_initializer())
       expected_output = [8.0] * 10
       self.assertDatasetProduces(
@@ -432,7 +434,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
           expected_output=expected_output,
           requires_initialization=True)
 
-  # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
+  # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
   @test_util.run_v1_only("b/121264236")
   def testSkipEagerResourceVariablesWithConflictingDevices(self):
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
@@ -451,7 +453,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).map(func)
       expected_error = (
           errors.InvalidArgumentError,
-          "Could not colocate node with its resource and reference inputs")
+          "Cannot place the graph because a reference or resource edge "
+          "connects colocation groups with incompatible assigned devices")
       self.assertDatasetProduces(
           dataset, expected_error=expected_error, requires_initialization=True)
 

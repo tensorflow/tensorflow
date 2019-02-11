@@ -17,7 +17,9 @@ def xla_proto_library(name, srcs = [], deps = [], visibility = None, testonly = 
     cc_proto_library(
         name = name,
         srcs = srcs,
-        deps = deps,
+        # Append well-known proto dep. As far as I know this is the only way
+        # for xla_proto_library to access google.protobuf.{Any,Duration,...}.
+        deps = deps + ["@protobuf_archive//:cc_wkt_protos"],
         cc_libs = if_static(
             ["@protobuf_archive//:protobuf"],
             otherwise = ["@protobuf_archive//:protobuf_headers"],

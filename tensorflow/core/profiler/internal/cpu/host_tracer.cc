@@ -79,6 +79,8 @@ Status HostTracer::CollectDataToCollector(
 
   const string cpu_name = "/host:CPU";
   for (auto& thread : events_) {
+    step_stats_collector->SaveThreadName(cpu_name, thread.thread.tid,
+                                         thread.thread.name);
     for (auto& event : thread.events) {
       if (!event.end_time) {
         auto it = end_times.find(event.activity_id);

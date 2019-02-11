@@ -44,7 +44,6 @@ namespace xla {
 namespace {
 
 using absl::StrCat;
-using absl::StrFormat;
 
 constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 

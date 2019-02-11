@@ -180,6 +180,9 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
     case kTfLiteUInt8:
       temp_sum->type = kTfLiteInt32;
       break;
+    case kTfLiteInt8:
+      temp_sum->type = kTfLiteInt32;
+      break;
     case kTfLiteBool:
       temp_sum->type = kTfLiteBool;
       break;
@@ -464,6 +467,9 @@ TfLiteStatus EvalGeneric(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteUInt8:
       return EvalType<uint8_t>(context, node, &op_context, reduce_type);
+      break;
+    case kTfLiteInt8:
+      return EvalType<int8_t>(context, node, &op_context, reduce_type);
       break;
     case kTfLiteBool:
       return EvalType<bool>(context, node, &op_context, reduce_type);

@@ -380,7 +380,7 @@ class _BaseFeaturesLayer(Layer):
     return array_ops.concat(output_tensors, -1)
 
 
-@keras_export('keras.layers.DenseFeatures', v1=[])
+@keras_export('keras.layers.DenseFeatures')
 class DenseFeatures(_BaseFeaturesLayer):
   """A layer that produces a dense `Tensor` based on given `feature_columns`.
 

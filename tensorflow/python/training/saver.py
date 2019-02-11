@@ -1552,12 +1552,13 @@ def export_meta_graph(filename=None,
     RuntimeError: If called with eager execution enabled.
 
   @compatibility(eager)
-  Exporting/importing meta graphs is not supported. No graph exists when eager
-  execution is enabled.
+  Exporting/importing meta graphs is not supported unless both `graph_def` and
+  `graph` are provided. No graph exists when eager execution is enabled.
   @end_compatibility
   """
   # pylint: enable=line-too-long
-  if context.executing_eagerly():
+  if context.executing_eagerly() and not (graph_def is not None and
+                                          graph is not None):
     raise RuntimeError("Exporting/importing meta graphs is not supported when "
                        "eager execution is enabled. No graph exists when eager "
                        "execution is enabled.")

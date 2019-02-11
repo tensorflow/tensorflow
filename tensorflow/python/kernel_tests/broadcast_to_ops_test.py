@@ -67,6 +67,16 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
           self.assertAllEqual(v_tf.eval(), v_np)
 
   @test_util.run_deprecated_v1
+  def testBroadcastToShapeInnerDim(self):
+    input_shape = [2, 1, 3]
+    output_shape = [2, 5, 3]
+    with self.cached_session(use_gpu=True):
+      x = np.array(np.random.randint(5, size=input_shape), dtype=np.int32)
+      v_tf = array_ops.broadcast_to(constant_op.constant(x), output_shape)
+      v_np = np.broadcast_to(x, output_shape)
+      self.assertAllEqual(v_tf.eval(), v_np)
+
+  @test_util.run_deprecated_v1
   def testBroadcastToScalar(self):
     with self.session(use_gpu=True):
       x = np.array(1, dtype=np.int32)
@@ -130,8 +140,8 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def testGradientWithBroadcastAllDimensions(self):
-    x = constant_op.constant([[1, 2, 3], [4, 5, 6]], dtype=dtypes.float32)
-    v = array_ops.broadcast_to(x, [5, 4, 6])
+    x = constant_op.constant([1], dtype=dtypes.float32)
+    v = array_ops.broadcast_to(x, [5, 2, 3])
     out = 2 * v
     with self.cached_session():
       err = gradient_checker.compute_gradient_error(x, x.get_shape(),
