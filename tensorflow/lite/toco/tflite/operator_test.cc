@@ -754,8 +754,10 @@ TEST_F(OperatorTest, BuiltinUnique) {
   EXPECT_EQ(output_toco_op->idx_out_type, op.idx_out_type);
 }
 
+// Test version for a simple Op with 2 versions and the input type controls the
+// version.
 template <typename Op>
-void VersioningTest() {
+void SimpleVersioningTest() {
   Op op;
   op.inputs = {"input1"};
   auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
@@ -775,30 +777,36 @@ void VersioningTest() {
 }
 
 TEST_F(OperatorTest, VersioningEqualTest) {
-  VersioningTest<TensorFlowEqualOperator>();
+  SimpleVersioningTest<TensorFlowEqualOperator>();
 }
 
 TEST_F(OperatorTest, VersioningNotEqualTest) {
-  VersioningTest<TensorFlowNotEqualOperator>();
+  SimpleVersioningTest<TensorFlowNotEqualOperator>();
 }
 
 TEST_F(OperatorTest, VersioningLessTest) {
-  VersioningTest<TensorFlowLessOperator>();
+  SimpleVersioningTest<TensorFlowLessOperator>();
 }
 
 TEST_F(OperatorTest, VersioningLessEqualTest) {
-  VersioningTest<TensorFlowLessEqualOperator>();
+  SimpleVersioningTest<TensorFlowLessEqualOperator>();
 }
 
 TEST_F(OperatorTest, VersioningGreaterTest) {
-  VersioningTest<TensorFlowGreaterOperator>();
+  SimpleVersioningTest<TensorFlowGreaterOperator>();
 }
 
 TEST_F(OperatorTest, VersioningGreaterEqualTest) {
-  VersioningTest<TensorFlowGreaterEqualOperator>();
+  SimpleVersioningTest<TensorFlowGreaterEqualOperator>();
 }
 
-TEST_F(OperatorTest, VersioningPackTest) { VersioningTest<PackOperator>(); }
+TEST_F(OperatorTest, VersioningSpaceToBatchNDTest) {
+  SimpleVersioningTest<SpaceToBatchNDOperator>();
+}
+
+TEST_F(OperatorTest, VersioningPackTest) {
+  SimpleVersioningTest<PackOperator>();
+}
 
 TEST_F(OperatorTest, VersioningSelectTest) {
   SelectOperator select_op;
