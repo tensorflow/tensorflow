@@ -1,59 +1,41 @@
 op {
-graph_op_name: "QuantizedConv2DPerChannel"
-visibility : HIDDEN
+  graph_op_name: "QuantizedConv2DPerChannel"
+  visibility : HIDDEN
   in_arg {
     name: "input"
-    description: <<END
-The original input tensor.
-END
+    description: "The original input tensor."
   }
   in_arg {
     name: "filter"
-    description: <<END
-The original filter tensor.
-END
+    description: "The original filter tensor."
   }
   in_arg {
     name: "min_input"
-    description: <<END
-The minimum value of the input tensor
-END
+    description: "The minimum value of the input tensor"
   }
   in_arg {
     name: "max_input"
-    description: <<END
-The maximum value of the input tensor.
-END
+    description: "The maximum value of the input tensor."
   }
   in_arg {
     name: "min_filter"
-    description: <<END
-The minimum value of the filter tensor.
-END
+    description: "The minimum value of the filter tensor."
   }
   in_arg {
     name: "max_filter"
-    description: <<END
-The maximum value of the filter tensor
-END
+    description: "The maximum value of the filter tensor."
   }  
   out_arg {
     name: "output"
-    description: <<END
-Output tensor.
-END
+    description: "The output tensor."
   }
   out_arg {
     name: "min_output"
-    description: <<END
-The minimum value of the final output tensor
-END
+    description: "The minimum value of the final output tensor."
   }
   out_arg {
     name: "max_output"
-    description: <<END
-The maximum value of the final output tensor.
-END
+    description: "The maximum value of the final output tensor."
   }
   attr {
     name: "Tinput"
@@ -75,15 +57,11 @@ END
   }
   attr {
     name: "strides"
-    description: <<END
-list of stride values.
-END
+    description: "list of stride values."
   }
   attr {
     name: "dilations"
-    description: <<END
-list of dilation values.
-END
+    description: "list of dilation values."
   }
   summary: "Computes QuantizedConv2D per channel."
 }

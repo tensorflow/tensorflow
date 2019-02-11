@@ -6384,9 +6384,9 @@ tf_cc_test_mkl(
     name = "mkl_quantized_conv_ops_perchannel_test",
     size = "small",
     srcs = ["mkl_quantized_conv_ops_perchannel_test.cc"],
-    deps = [
-        ":mkl_input_conversion_op",
+    deps = [        
         ":mkl_conv_op",
+        ":mkl_input_conversion_op",
         ":ops_testutil",
         ":ops_util",
         ":quantization_utils",
