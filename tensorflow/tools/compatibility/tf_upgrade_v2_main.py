@@ -22,6 +22,7 @@ import argparse
 
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import tf_upgrade_v2
+from tensorflow.tools.compatibility import ipynb
 
 
 def main():
@@ -31,6 +32,7 @@ def main():
 
 Simple usage:
   tf_upgrade_v2.py --infile foo.py --outfile bar.py
+  tf_upgrade_v2.py --infile foo.ipynb --outfile bar.ipynb
   tf_upgrade_v2.py --intree ~/code/old --outtree ~/code/new
 """)
   parser.add_argument(
@@ -85,7 +87,7 @@ Simple usage:
       raise ValueError(
           "--outfile=<output file> argument is required when converting a "
           "single file.")
-    files_processed, report_text, errors = upgrade.process_file(
+    files_processed, report_text, errors = ipynb.process_file(
         args.input_file, args.output_file)
     errors = {args.input_file: errors}
     files_processed = 1
