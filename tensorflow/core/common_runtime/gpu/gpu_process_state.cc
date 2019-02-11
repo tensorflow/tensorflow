@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstring>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/gpu/cuda_host_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_host_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
@@ -227,7 +227,7 @@ Allocator* GPUProcessState::GetGPUHostAllocator(int numa_node) {
     while (gpu_host_free_visitors_.size() <= numa_node) {
       gpu_host_free_visitors_.push_back({});
     }
-    SubAllocator* sub_allocator = new CUDAHostAllocator(
+    SubAllocator* sub_allocator = new GPUHostAllocator(
         se, numa_node, gpu_host_alloc_visitors_[numa_node],
         gpu_host_free_visitors_[numa_node]);
     // TODO(zheng-xq): evaluate whether 64GB by default is the best choice.
