@@ -28,13 +28,15 @@ class SingleHloMatcher : public HloMatcher {
   SingleHloMatcher(struct CompilerAnnotations& annotations,
                    const std::vector<HloMatcherPattern>& patterns,
                    std::string op_prefix)
-      : HloMatcher(patterns, annotations, false, /* look through max */ 3),
+      : HloMatcher(patterns, annotations, false, true,
+                   /* look through max */ 3),
         op_prefix_(op_prefix){};
 
   ~SingleHloMatcher() override = default;
 
  private:
-  bool HandleMatch(HloMatcherMatched& match) override;
+  bool HandleMatch(HloMatcherMatched& match,
+                   const absl::optional<int64> sharding_device) override;
 
   std::string op_prefix_;
 };

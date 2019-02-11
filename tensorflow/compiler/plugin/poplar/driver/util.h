@@ -18,6 +18,7 @@ namespace xla {
 
 class Shape;
 class Literal;
+class HloSharding;
 
 namespace poplarplugin {
 namespace {
@@ -27,7 +28,7 @@ bool check_convert_ok(const To& to, const From& from) {
   From to_converted = static_cast<From>(to);
   return from_converted == to && from == to_converted;
 }
-}
+}  // namespace
 
 template <typename To, typename From>
 absl::optional<To> convert_array(const From& from) {
@@ -49,26 +50,32 @@ absl::optional<To> convert_scalar(const From& from) {
 
 int64 CountShapes(const Shape& shape);
 
-std::vector<xla::Shape> FlattenedXlaShape(const xla::Shape& shape);
+std::vector<Shape> FlattenedXlaShape(const Shape& shape);
 
 template <typename NativeT>
-StatusOr<NativeT> LiteralScalarToNativeType(const xla::Literal& lit);
+StatusOr<NativeT> LiteralScalarToNativeType(const Literal& lit);
 template <typename NativeT>
-StatusOr<std::vector<NativeT>> LiteralVectorToNativeType(
-    const xla::Literal& lit);
+StatusOr<std::vector<NativeT>> LiteralVectorToNativeType(const Literal& lit);
 template <typename NativeT>
 StatusOr<std::vector<NativeT>> WideConstToNativeType(
-    const xla::HloInstruction* wide_const);
+    const HloInstruction* wide_const);
 
-bool IsPopOpsFusion(const xla::HloComputation*,
-                    const std::string& postfix = "");
-bool IsPopOpsFusion(const xla::HloInstruction*,
-                    const std::string& postfix = "");
-bool IsRepeatCall(const xla::HloComputation*);
-bool IsRepeatCall(const xla::HloInstruction*);
+bool IsPopOpsFusion(const HloComputation*, const std::string& postfix = "");
+bool IsPopOpsFusion(const HloInstruction*, const std::string& postfix = "");
+bool IsRepeatCall(const HloComputation*);
+bool IsRepeatCall(const HloInstruction*);
 // This functions assumes that IsRepeatCall(inst) is true
-xla::HloComputation* GetRepeatBody(xla::HloInstruction* inst);
-const xla::HloComputation* GetRepeatBody(const xla::HloInstruction* inst);
+HloComputation* GetRepeatBody(HloInstruction* inst);
+const HloComputation* GetRepeatBody(const HloInstruction* inst);
+
+bool IsSupportedSharding(const HloSharding&);
+
+bool IsInterIpuCopy(const HloInstruction*);
+// This function returns the operand of inst at index operand_idx and if the
+// operand is an inter ipu copy then it returns the operand which is being
+// copied.
+const HloInstruction* GetOperandLookThroughInterIpuCopy(
+    const HloInstruction* inst, const int64 operand_idx);
 
 // This function returns true if the environment variable has been set. Using
 // synthetic data means that *no data* will be copied to/from the device.

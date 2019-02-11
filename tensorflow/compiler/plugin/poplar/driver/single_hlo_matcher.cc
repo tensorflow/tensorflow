@@ -20,10 +20,11 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-bool SingleHloMatcher::HandleMatch(HloMatcherMatched& match) {
+bool SingleHloMatcher::HandleMatch(
+    HloMatcherMatched& match, const absl::optional<int64> sharding_device) {
   auto& pattern = patterns_[match.pattern_idx];
   std::string name = op_prefix_ + pattern.GetType();
-  OutlineExpressionFromComputation(match, name);
+  OutlineExpressionFromComputation(match, name, sharding_device);
   return true;
 }
 

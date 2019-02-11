@@ -33,7 +33,8 @@ class FuseMaxPool : public HloMatcher {
   absl::string_view name() const override { return "poplar-fuse-max-pool"; }
 
  private:
-  bool HandleMatch(HloMatcherMatched& match) override;
+  bool HandleMatch(HloMatcherMatched& match,
+                   const absl::optional<int64> sharding_device) override;
 
   std::string op_prefix_ = "_pop_op_";
 

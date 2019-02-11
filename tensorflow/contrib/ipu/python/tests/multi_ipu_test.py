@@ -19,6 +19,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -212,6 +213,62 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
             self.assertEqual([int(i.size) for i in s.dim], [1, 32, 32, 8])
 
       self.assertEqual(n_inter_ipu_copies, 2)
+
+  def testConvAndBiasAddDifferentIPUs(self):
+    def my_graph(inp, bias):
+      with ops.device("/device:IPU:0"):
+        with ipu.ops.ipu_shard(0):
+          x = convolutional.conv2d(inp, 8, 3, padding='same', name="conv",
+                                   use_bias=False)
+
+        with ipu.ops.ipu_shard(1):
+          x = nn_ops.bias_add(x, bias, name='biasAdd')
+
+      return x
+
+    with ops.device('cpu'):
+      inp = array_ops.placeholder(np.float32, [1, 32, 32, 4], name="data")
+      bias = array_ops.placeholder(np.float32, [8], name="bias")
+      report = gen_ipu_ops.ipu_event_trace()
+
+    out = xla.compile(my_graph, [inp, bias])
+
+    cfg = ipu.utils.create_ipu_config(profiling=True)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2, True)
+    with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+
+      sess.run(report)
+      sess.run(variables.global_variables_initializer())
+      sess.run(report)
+
+      fd = {inp: np.ones([1, 32, 32, 4]), bias: np.ones([8])}
+      sess.run(out, fd)
+
+      rep = sess.run(report)
+
+      num_compiles = 0
+      gdef = None
+      evts = ipu.utils.extract_all_events(rep)
+      for evt in evts:
+        if evt.type == IpuTraceEvent.COMPILE_BEGIN:
+          gdef = ipu.utils.extract_xla_graph_def_from_compilation_event(evt)
+        if evt.type == IpuTraceEvent.COMPILE_END:
+          num_compiles = num_compiles + 1
+
+      self.assertEqual(num_compiles, 1)
+
+      # There is 1 inter-ipu copy and it copies something 'data' shaped
+      n_inter_ipu_copies = 0
+      for n in gdef.node:
+        if n.op == 'HloCustomCall':
+          a = n.attr.get('custom_call_target')
+          s = n.attr.get('_output_shapes').list.shape[0]
+          if a.s == b'inter_ipu_copy':
+            n_inter_ipu_copies = n_inter_ipu_copies + 1
+            self.assertEqual([int(i.size) for i in s.dim], [1, 32, 32, 8])
+
+      self.assertEqual(n_inter_ipu_copies, 1)
 
 if __name__ == "__main__":
     googletest.main()

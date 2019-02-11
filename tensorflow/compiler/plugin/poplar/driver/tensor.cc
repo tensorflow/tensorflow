@@ -133,8 +133,9 @@ StatusOr<poplar::Type> PoplarDataType(const xla::PrimitiveType& element_type) {
     case U16:
       return poplar::SHORT;
     case S32:
-    case U32:
       return poplar::INT;
+    case U32:
+      return poplar::UNSIGNED_INT;
     case S64:
     case U64:
       return poplar::INT;
@@ -841,8 +842,10 @@ StatusOr<poplar::Tensor> AddConstantTensor(poplar::Graph& graph,
         SetInitialTensorValue<bool>(graph, tensor, literal);
         break;
       case S32:
-      case U32:
         SetInitialTensorValue<int>(graph, tensor, literal);
+        break;
+      case U32:
+        SetInitialTensorValue<unsigned>(graph, tensor, literal);
         break;
       case U64:
       case S64:
@@ -865,8 +868,10 @@ StatusOr<poplar::Tensor> AddConstantTensor(poplar::Graph& graph,
         AddConstantTensor<bool>(graph, literal, shape, type, tensor);
         break;
       case S32:
-      case U32:
         AddConstantTensor<int>(graph, literal, shape, type, tensor);
+        break;
+      case U32:
+        AddConstantTensor<unsigned>(graph, literal, shape, type, tensor);
         break;
       case U64:
       case S64:
@@ -908,9 +913,12 @@ StatusOr<poplar::Tensor> AddIotaTensor(poplar::Graph& graph,
   Literal literal;
 
   switch (shape.element_type()) {
-    case S32:
-    case U32: {
+    case S32: {
       literal = GetIotaLiteral<int>(len);
+      break;
+    }
+    case U32: {
+      literal = GetIotaLiteral<unsigned>(len);
       break;
     }
     case F32: {

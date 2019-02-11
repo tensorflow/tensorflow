@@ -134,7 +134,7 @@ static const std::vector<HloMatcherPattern> patterns = {
 // clang-format on
 
 CastsElimination::CastsElimination(struct CompilerAnnotations& annotations)
-    : HloMatcher(patterns, annotations, false) {}
+    : HloMatcher(patterns, annotations, false, false) {}
 
 namespace {
 
@@ -165,7 +165,10 @@ HloInstruction* ConvertInstruction(HloInstruction* inst,
 
 }  // namespace
 
-bool CastsElimination::HandleMatch(HloMatcherMatched& match) {
+// For casts elimination we ignore the sharding device because we replace
+// instructions with the sharding they had before.
+bool CastsElimination::HandleMatch(HloMatcherMatched& match,
+                                   const absl::optional<int64>) {
   // A map from original instructions to their new counterparts
   absl::flat_hash_map<NodeId, HloInstruction*> outlined;
   // A set of nodes which we have already outlined.

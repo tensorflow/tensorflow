@@ -150,6 +150,22 @@ const xla::HloComputation* GetRepeatBody(const xla::HloInstruction* inst) {
   return inst->to_apply()->root_instruction()->to_apply();
 }
 
+bool IsSupportedSharding(const HloSharding& sharding) {
+  // We currently only support sharding with unique devices.
+  return sharding.HasUniqueDevice();
+}
+
+bool IsInterIpuCopy(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kCustomCall &&
+         inst->custom_call_target() == "inter_ipu_copy";
+}
+
+const HloInstruction* GetOperandLookThroughInterIpuCopy(
+    const HloInstruction* inst, const int64 operand_idx) {
+  const HloInstruction* operand = inst->operand(operand_idx);
+  return IsInterIpuCopy(operand) ? operand->operand(0) : operand;
+}
+
 bool UseSyntheticData() {
   if (const char* env_c = std::getenv("TF_POPLAR_USE_SYNTHETIC_DATA")) {
     std::string env(env_c);

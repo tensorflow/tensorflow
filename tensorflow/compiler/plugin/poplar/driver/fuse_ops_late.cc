@@ -361,7 +361,7 @@ static const std::vector<HloMatcherPattern> patterns = {
       {HloOpcode::kBroadcast, NodeOperands({7})},
       {HloOpcode::kReduce, NodeOperands({6, 4}), IsBiasReduce},
       {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
-      {HloOpcode::kParameter, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
       {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
       {HloOpcode::kConstant, NodeOperands({}), IsScalarConstant},
     })
@@ -379,7 +379,7 @@ static const std::vector<HloMatcherPattern> patterns = {
       {HloOpcode::kBroadcast, NodeOperands({7})},
       {HloOpcode::kReduce, NodeOperands({6, 4}), IsBiasReduce},
       {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
-      {HloOpcode::kParameter, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
       {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
       {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsScalar},
     })

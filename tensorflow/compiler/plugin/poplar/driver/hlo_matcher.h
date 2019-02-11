@@ -183,6 +183,7 @@ class HloMatcher : public HloModulePass {
   // By default never look through associative ops
   HloMatcher(const std::vector<HloMatcherPattern>& patterns,
              struct CompilerAnnotations& annotations, bool root_only,
+             bool requires_unique_sharding = false,
              unsigned look_through_max_level = 0);
 
   ~HloMatcher() override = default;
@@ -197,6 +198,7 @@ class HloMatcher : public HloModulePass {
   HloInstruction* OutlineExpressionFromComputation(
       const HloMatcherMatched& matched,
       const std::string& outlined_computation_name,
+      const absl::optional<int64> sharding_device,
       std::vector<HloInstruction*> forced_parameters = {});
 
   // The list of patterns to try to find in the computations
@@ -206,7 +208,8 @@ class HloMatcher : public HloModulePass {
   struct CompilerAnnotations& annotations_;
 
  private:
-  virtual bool HandleMatch(HloMatcherMatched& match) = 0;
+  virtual bool HandleMatch(HloMatcherMatched& match,
+                           const absl::optional<int64> sharding_device) = 0;
 
   bool MatchPatternStart(HloComputation*);
   bool MatchPattern(HloInstruction* inst, const unsigned pattern_idx);
@@ -221,6 +224,7 @@ class HloMatcher : public HloModulePass {
   std::set<HloInstruction*> ReorderGraph(const HloMatcherMatched& matched);
 
   bool root_computation_only_;
+  bool requires_unique_sharding_;
   unsigned look_through_max_depth_;
 };
 

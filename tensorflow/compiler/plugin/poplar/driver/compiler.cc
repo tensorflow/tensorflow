@@ -342,6 +342,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<InplaceFinder>(resources.annotations);
     pipeline.AddPass<ShardingPass>();
+    pipeline.AddPass<HloDCE>();
     pipeline.AddPass<ExpressionOutliner>(resources.annotations);
     pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);

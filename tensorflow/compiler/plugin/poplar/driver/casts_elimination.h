@@ -33,7 +33,8 @@ class CastsElimination : public HloMatcher {
   absl::string_view name() const override { return "poplar-casts-elimination"; }
 
  private:
-  bool HandleMatch(HloMatcherMatched& match) override;
+  bool HandleMatch(HloMatcherMatched& match,
+                   const absl::optional<int64>) override;
 };
 
 }  // namespace poplarplugin
