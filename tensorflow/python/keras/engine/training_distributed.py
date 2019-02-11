@@ -34,9 +34,9 @@ from tensorflow.python.keras.engine import partial_batch_padding_handler as padd
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import Progbar
+from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
 
 
