@@ -36,6 +36,14 @@ get_os() {
   uname -a
 }
 
+get_gpu() {
+  nvidia-smi
+  if [ $? -eq 127 ]
+  then
+     echo "This machine does not have an NVIDIA CUDA GPU."
+  fi
+}
+
 {
   echo
   echo '== cat /etc/issue ==============================================='
