@@ -34,8 +34,12 @@ Shape::Shape(const ShapeProto& shape_proto) {
   // instead of a constructor.
   if (shape_proto.dimensions_size() !=
       shape_proto.is_dynamic_dimension_size()) {
-    LOG(ERROR) << "Malformed shape proto: number of is_dynamic_dimension "
-                  "fields does not match number of dimension fields";
+    if (shape_proto.is_dynamic_dimension_size() != 0) {
+      LOG(ERROR) << "Malformed shape proto: number of is_dynamic_dimension "
+                    "fields does not match number of dimension fields";
+    } else {
+      LOG(WARNING) << "Malformed shape proto: is_dynamic_dimension is empty";
+    }
   }
   int64 num_dynamic_dimension_fields = std::min(
       shape_proto.dimensions_size(), shape_proto.is_dynamic_dimension_size());
