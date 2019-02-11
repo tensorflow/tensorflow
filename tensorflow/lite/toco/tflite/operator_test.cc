@@ -808,6 +808,10 @@ TEST_F(OperatorTest, VersioningPackTest) {
   SimpleVersioningTest<PackOperator>();
 }
 
+TEST_F(OperatorTest, VersioningStridedSliceTest) {
+  SimpleVersioningTest<StridedSliceOperator>();
+}
+
 TEST_F(OperatorTest, VersioningSelectTest) {
   SelectOperator select_op;
   select_op.inputs = {"input1"};
