@@ -298,7 +298,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.quantized_avg_pool = "QuantizedAvgPool";
     csinfo_.quantized_concatv2 = "QuantizedConcatV2";
     csinfo_.quantized_conv2d = "QuantizedConv2D";
-    csinfo_.quantized_conv2d = "QuantizedConv2DPerChannel";
+    csinfo_.quantized_conv2d_per_channel = "QuantizedConv2DPerChannel";
     csinfo_.quantized_conv2d_with_requantize = "QuantizedConv2DAndRequantize";
     csinfo_.quantized_conv2d_with_bias = "QuantizedConv2DWithBias";
     csinfo_.quantized_conv2d_with_bias_and_requantize =

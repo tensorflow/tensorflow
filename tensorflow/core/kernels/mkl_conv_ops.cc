@@ -1536,13 +1536,6 @@ class MklQuantizedConv2DOp
           context->input(6 + bias_index_offset).flat<float>()(0);
       output_max->flat<float>()(0) =
           context->input(7 + bias_index_offset).flat<float>()(0);
-
-      // This is the case the convolution and requantization are fused.
-      output_min->flat<float>()(0) =
-          context->input(6 + bias_index_offset).flat<float>()(0);
-      output_max->flat<float>()(0) =
-          context->input(7 + bias_index_offset).flat<float>()(0);
-
     } else {
       const Tensor& min_filter = context->input(4 + bias_index_offset);
       const Tensor& max_filter = context->input(5 + bias_index_offset);
