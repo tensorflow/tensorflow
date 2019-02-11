@@ -84,7 +84,7 @@ def word2vec_basic(log_dir):
     dictionary = dict()
     for word, _ in count:
       dictionary[word] = len(dictionary)
-    data = list()
+    data = []
     unk_count = 0
     for word in words:
       index = dictionary.get(word, 0)
