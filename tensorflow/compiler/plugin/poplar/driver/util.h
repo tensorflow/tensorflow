@@ -49,6 +49,11 @@ absl::optional<To> convert_scalar(const From& from) {
 };
 
 int64 CountShapes(const Shape& shape);
+// Find the index when embedding a shape into a tuple. The tuple_index is the
+// index of the shape in the new tuple, and the original_index is the index
+// of the tensor in the original shape.
+int64 InsertIntoTuple(const Shape& tuple, int64 tuple_index,
+                      int64 original_index);
 
 std::vector<Shape> FlattenedXlaShape(const Shape& shape);
 

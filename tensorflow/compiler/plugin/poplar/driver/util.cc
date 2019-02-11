@@ -23,6 +23,17 @@ int64 CountShapes(const Shape& shape) {
   }
 }
 
+int64 InsertIntoTuple(const Shape& tuple, int64 tuple_index,
+                      int64 original_index) {
+  // Count up the base tensors inside all tuple element preceeding the
+  // tuple_index one.
+  int64 tensor_count = 0;
+  for (int64 i = 0; i < tuple_index; i++) {
+    tensor_count += CountShapes(ShapeUtil::GetTupleElementShape(tuple, i));
+  }
+  return tensor_count + original_index;
+}
+
 std::vector<xla::Shape> FlattenedXlaShape(const xla::Shape& shape) {
   std::vector<xla::Shape> out;
   if (shape.IsTuple()) {
