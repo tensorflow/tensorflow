@@ -2908,6 +2908,33 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "rnn_cell_test",
+    size = "medium",
+    srcs = ["rnn_cell_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:rnn",
+        "//tensorflow/python:rnn_cell",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+    ],
+    shard_count = 10,
+)
+
+cuda_py_test(
     name = "scatter_ops_test",
     size = "medium",  # NOTE: This is not run by default.
     srcs = ["scatter_ops_test.py"],
