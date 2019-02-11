@@ -429,3 +429,26 @@ func @dma_mixed_loop_blocks() {
 // CHECK-NEXT:    %3 = load [[BUF]][%c0_0, %c0_0] : memref<256x256xvector<8xf32>, 1>
 // CHECK:         for %i1 = 0 to 256 {
 // CHECK-NEXT:      %4 = load [[BUF]][%i0, %i1] : memref<256x256xvector<8xf32>, 1>
+
+// -----
+
+// CHECK-LABEL: func @relative_loop_bounds
+func @relative_loop_bounds(%arg0: memref<1024xf32>) {
+  for %i0 = 0 to 1024 {
+    for %i2 = (d0) -> (d0)(%i0) to (d0) -> (d0 + 4)(%i0) {
+      %0 = constant 0.0 : f32
+      store %0, %arg0[%i2] : memref<1024xf32>
+    }
+  }
+  return
+}
+// CHECK:      [[BUF:%[0-9]+]] = alloc() : memref<1024xf32, 1>
+// CHECK-NEXT: [[MEM:%[0-9]+]] = alloc() : memref<1xi32>
+// CHECK-NEXT: for %i0 = 0 to 1024 {
+// CHECK-NEXT:    for %i1 = {{#map[0-9]+}}(%i0) to {{#map[0-9]+}}(%i0) {
+// CHECK-NEXT:      %cst = constant 0.000000e+00 : f32
+// CHECK-NEXT:      store %cst, [[BUF]][%i1] : memref<1024xf32, 1>
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// CHECK-NEXT:  dma_start [[BUF]][%c0], %arg0[%c0], %c1024, [[MEM]][%c0] : memref<1024xf32, 1>, memref<1024xf32>, memref<1xi32>
+// CHECK-NEXT:  dma_wait [[MEM]][%c0], %c1024 : memref<1xi32>

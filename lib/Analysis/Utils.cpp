@@ -228,27 +228,30 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
     return false;
   }
 
-  // Eliminate any loop IVs other than the outermost 'loopDepth' IVs, on which
-  // this memref region is symbolic.
-  SmallVector<OpPointer<AffineForOp>, 4> outerIVs;
-  getLoopIVs(*inst, &outerIVs);
-  assert(loopDepth <= outerIVs.size() && "invalid loop depth");
-  outerIVs.resize(loopDepth);
-  for (auto *operand : accessValueMap.getOperands()) {
-    OpPointer<AffineForOp> iv;
-    if ((iv = getForInductionVarOwner(operand)) &&
-        llvm::is_contained(outerIVs, iv) == false) {
-      cst.projectOut(operand);
-    }
-  }
-  // Project out any local variables (these would have been added for any
-  // mod/divs).
-  cst.projectOut(cst.getNumDimAndSymbolIds(), cst.getNumLocalIds());
-
   // Set all identifiers appearing after the first 'rank' identifiers as
   // symbolic identifiers - so that the ones correspoding to the memref
   // dimensions are the dimensional identifiers for the memref region.
   cst.setDimSymbolSeparation(cst.getNumDimAndSymbolIds() - rank);
+
+  // Eliminate any loop IVs other than the outermost 'loopDepth' IVs, on which
+  // this memref region is symbolic.
+  SmallVector<OpPointer<AffineForOp>, 4> enclosingIVs;
+  getLoopIVs(*inst, &enclosingIVs);
+  assert(loopDepth <= enclosingIVs.size() && "invalid loop depth");
+  enclosingIVs.resize(loopDepth);
+  SmallVector<Value *, 4> ids;
+  cst.getIdValues(cst.getNumDimIds(), cst.getNumDimAndSymbolIds(), &ids);
+  for (auto *id : ids) {
+    OpPointer<AffineForOp> iv;
+    if ((iv = getForInductionVarOwner(id)) &&
+        llvm::is_contained(enclosingIVs, iv) == false) {
+      cst.projectOut(id);
+    }
+  }
+
+  // Project out any local variables (these would have been added for any
+  // mod/divs).
+  cst.projectOut(cst.getNumDimAndSymbolIds(), cst.getNumLocalIds());
 
   // Constant fold any symbolic identifiers.
   cst.constantFoldIdRange(/*pos=*/cst.getNumDimIds(),
