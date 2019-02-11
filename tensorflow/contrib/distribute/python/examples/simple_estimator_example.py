@@ -69,9 +69,10 @@ def main(_):
   # Since there are 2 devices and 10 samples, we set steps=5.
   steps = 5
 
-  def train_input_fn():
-    features = tf.data.Dataset.from_tensors([[1.]]).repeat(10)
-    labels = tf.data.Dataset.from_tensors([1.]).repeat(10)
+  def train_input_fn(input_context):
+    batch_size = input_context.get_per_replica_batch_size(2)
+    features = tf.data.Dataset.from_tensors([[1.]]).repeat(10).batch(batch_size)
+    labels = tf.data.Dataset.from_tensors([1.]).repeat(10).batch(batch_size)
     return tf.data.Dataset.zip((features, labels))
 
   estimator = tf.estimator.Estimator(
