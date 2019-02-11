@@ -136,4 +136,4 @@ REGISTER_LOCAL_DEVICE_FACTORY("CPU", GPUCompatibleCPUDeviceFactory, 70);
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA  || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
