@@ -80,7 +80,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
             comparison_values[i * 2] = values[i] + memory_index_lhs;
             comparison_values[i * 2 + 1] = values[i] + memory_index_rhs;
           }
-          char result;
+          char result = 0;  // Overwritten by less_than.
           less_than(&result, run_options, comparison_values.get(), nullptr,
                     prof_counters);
           return result != 0u;
