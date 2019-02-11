@@ -20,9 +20,10 @@ from __future__ import print_function
 
 import os
 
-# pylint: disable=unused-import
-from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
-# pylint: enable=unused-import
+from tensorflow.python.compiler.tensorrt.wrap_conversion import clear_test_values
+from tensorflow.python.compiler.tensorrt.wrap_conversion import enable_test_value
+from tensorflow.python.compiler.tensorrt.wrap_conversion import get_test_value
+from tensorflow.python.compiler.tensorrt.wrap_conversion import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -53,6 +54,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
 
   def testGetTensorrtRewriterConfig(self):
     """Test case for TrtGraphConverter.get_tensorrt_rewriter_config()."""
+    if not is_tensorrt_enabled():
+      return
     rewriter_cfg = trt_convert.TrtGraphConverter.get_tensorrt_rewriter_config(
         rewriter_config_template=None,
         max_batch_size=128,
@@ -172,7 +175,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
 
   def testCreateInferenceGraph_BasicConversion(self):
     """Test case for trt_convert.create_inference_graph()."""
-    if not trt_convert.is_tensorrt_enabled():
+    if not is_tensorrt_enabled():
       return
 
     # Use GraphDef as input.
@@ -187,25 +190,23 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
                                    output_saved_model_dir)
 
   def _TestRun(self, sess, batch_size, expect_engine_is_run):
-    trt_convert.clear_test_values("")
+    clear_test_values("")
     result = sess.run("output:0", feed_dict={"input:0": [[[1.0]]] * batch_size})
     self.assertAllEqual([[[4.0]]] * batch_size, result)
     execute_engine_test_value = ("done" if expect_engine_is_run else "")
     execute_native_segment_test_value = ("" if expect_engine_is_run else "done")
-    self.assertEqual(
-        execute_engine_test_value,
-        trt_convert.get_test_value("TRTEngineOp_0:ExecuteTrtEngine"))
-    self.assertEqual(
-        execute_native_segment_test_value,
-        trt_convert.get_test_value("TRTEngineOp_0:ExecuteNativeSegment"))
+    self.assertEqual(execute_engine_test_value,
+                     get_test_value("TRTEngineOp_0:ExecuteTrtEngine"))
+    self.assertEqual(execute_native_segment_test_value,
+                     get_test_value("TRTEngineOp_0:ExecuteNativeSegment"))
 
   def testCreateInferenceGraph_MinimumSegmentSize(self):
-    if not trt_convert.is_tensorrt_enabled():
+    if not is_tensorrt_enabled():
       return
     output_graph_def = trt_convert.create_inference_graph(
         self._GetGraphDef(), ["output"],
-        minimum_segment_size=5,
         max_workspace_size_bytes=TrtConvertTest._TRT_MAX_WORKSPACE_SIZE_BYTES,
+        minimum_segment_size=5,
         is_dynamic_op=False)
     node_name_to_op = {node.name: node.op for node in output_graph_def.node}
     self.assertEqual({
@@ -218,9 +219,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     }, node_name_to_op)
 
   def testCreateInferenceGraph_DynamicOp(self):
-    if not trt_convert.is_tensorrt_enabled():
+    if not is_tensorrt_enabled():
       return
-    trt_convert.enable_test_value()
+    enable_test_value()
 
     tmp_dir = self.get_temp_dir()
     input_saved_model_dir = os.path.join(tmp_dir, "in_dir2")
@@ -261,9 +262,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         self._TestRun(sess, 3, True)
 
   def testCreateInferenceGraph_StaticOp(self):
-    if not trt_convert.is_tensorrt_enabled():
+    if not is_tensorrt_enabled():
       return
-    trt_convert.enable_test_value()
+    enable_test_value()
 
     tmp_dir = self.get_temp_dir()
     input_saved_model_dir = os.path.join(tmp_dir, "in_dir3")

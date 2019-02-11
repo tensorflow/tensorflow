@@ -19,17 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import six as _six
-# pylint: disable=unused-import,line-too-long
 from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
-from tensorflow.python.compiler.tensorrt.wrap_conversion import add_test_value
-from tensorflow.python.compiler.tensorrt.wrap_conversion import calib_convert
-from tensorflow.python.compiler.tensorrt.wrap_conversion import clear_test_values
-from tensorflow.python.compiler.tensorrt.wrap_conversion import enable_test_value
-from tensorflow.python.compiler.tensorrt.wrap_conversion import get_linked_tensorrt_version
-from tensorflow.python.compiler.tensorrt.wrap_conversion import get_loaded_tensorrt_version
-from tensorflow.python.compiler.tensorrt.wrap_conversion import get_test_value
-from tensorflow.python.compiler.tensorrt.wrap_conversion import is_tensorrt_enabled
-# pylint: enable=unused-import,line-too-long
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -357,6 +347,14 @@ class TrtGraphConverter(GraphConverter):
       TypeError: if any of the parameters are of unexpected type.
       ValueError: if any of the parameters are of unexpected value.
     """
+    # Lazily load the TF-TRT C bindings, so `import tensorflow` doesn't complain
+    # even if it cannot find TensorRT library.
+    trt_ops.load_trt_ops()
+    # pylint: disable=g-import-not-at-top,unused-import,line-too-long,unused-variable
+    # Import a random symbol to trigger loading of TRT library.
+    from tensorflow.python.compiler.tensorrt.wrap_conversion import calib_convert
+    # pylint: enable=g-import-not-at-top,unused-import,line-too-long,unused-variable
+
     if rewriter_config_template is not None and not isinstance(
         rewriter_config_template, rewriter_config_pb2.RewriterConfig):
       raise TypeError(
@@ -456,6 +454,14 @@ class TrtGraphConverter(GraphConverter):
         input_graph_def=input_graph_def,
         nodes_blacklist=nodes_blacklist,
         session_config=session_config)
+
+    # Lazily load the TF-TRT C bindings, so `import tensorflow` doesn't complain
+    # even if it cannot find TensorRT library.
+    trt_ops.load_trt_ops()
+    # pylint: disable=g-import-not-at-top,line-too-long
+    from tensorflow.python.compiler.tensorrt.wrap_conversion import get_linked_tensorrt_version
+    from tensorflow.python.compiler.tensorrt.wrap_conversion import get_loaded_tensorrt_version
+    # pylint: enable=g-import-not-at-top,line-too-long
 
     # Check compatibility of TensorRT version.
     compiled_version = get_linked_tensorrt_version()
@@ -642,6 +648,12 @@ def calib_graph_to_infer_graph(calibration_graph_def, is_dynamic_op=False):
   Raises:
     RuntimeError: if the returned status message is malformed.
   """
+  # Lazily load the TF-TRT C bindings, so `import tensorflow` doesn't complain
+  # even if it cannot find TensorRT library.
+  trt_ops.load_trt_ops()
+  # pylint: disable=g-import-not-at-top,line-too-long
+  from tensorflow.python.compiler.tensorrt.wrap_conversion import calib_convert
+  # pylint: enable=g-import-not-at-top,line-too-long
 
   is_calib_graph = False
   for n in calibration_graph_def.node:

@@ -25,12 +25,13 @@ import warnings
 import numpy as np
 import six
 
-# pylint: disable=unused-import
-from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
-# pylint: enable=unused-import
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
+from tensorflow.python.compiler.tensorrt.wrap_conversion import clear_test_values
+from tensorflow.python.compiler.tensorrt.wrap_conversion import enable_test_value
+from tensorflow.python.compiler.tensorrt.wrap_conversion import get_test_value
+from tensorflow.python.compiler.tensorrt.wrap_conversion import is_tensorrt_enabled
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import importer
@@ -151,7 +152,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def setUpClass(cls):
     """Setup method for the module."""
     super(TfTrtIntegrationTestBase, cls).setUpClass()
-    trt_convert.enable_test_value()
+    enable_test_value()
 
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TfTrtIntegrationTestBase, self).__init__(methodName)
@@ -161,7 +162,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     """Setup method."""
     super(TfTrtIntegrationTestBase, self).setUp()
     warnings.simplefilter("always")
-    trt_convert.clear_test_values("")
+    clear_test_values("")
 
   def GetParams(self):
     """Return a TfTrtIntegrationTestParams for test, implemented by subclass."""
@@ -246,9 +247,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def _PrepareRun(self, graph_state):
     """Set up necessary testing environment before calling sess.run()."""
     # Clear test values added by TRTEngineOp.
-    trt_convert.clear_test_values("TRTEngineOp_.*:ExecuteTrtEngine")
-    trt_convert.clear_test_values("TRTEngineOp_.*:ExecuteCalibration")
-    trt_convert.clear_test_values("TRTEngineOp_.*:ExecuteNativeSegment")
+    clear_test_values("TRTEngineOp_.*:ExecuteTrtEngine")
+    clear_test_values("TRTEngineOp_.*:ExecuteCalibration")
+    clear_test_values("TRTEngineOp_.*:ExecuteNativeSegment")
 
   def _GetGPUOptions(self):
     gpu_options = config_pb2.GPUOptions()
@@ -282,7 +283,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def _ExpectTestValue(self, engine_name, method, expected_value):
     label = "%s:%s" % (engine_name, method)
-    actual_value = trt_convert.get_test_value(label)
+    actual_value = get_test_value(label)
     self.assertEqual(
         expected_value,
         actual_value,
@@ -639,5 +640,5 @@ def _AddTests(test_class):
     setattr(test_class, "testTfTrt_" + test_name, _GetTest(run_params))
 
 
-if trt_convert.is_tensorrt_enabled():
+if is_tensorrt_enabled():
   _AddTests(TfTrtIntegrationTestBase)
