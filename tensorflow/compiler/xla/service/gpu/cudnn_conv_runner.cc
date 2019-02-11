@@ -126,9 +126,11 @@ Status RunCudnnConvImpl(CudnnConvParams params,
   int64 feature_group_count = params.feature_group_count;
   AlgorithmConfig algorithm = params.algorithm;
 
-  VLOG(3) << "Convolution Algorithm: " << algorithm.algorithm()->algo_id();
-  VLOG(3) << "tensor_ops_enabled: "
+  if (algorithm.algorithm().has_value()){
+    VLOG(3) << "Convolution Algorithm: " << algorithm.algorithm()->algo_id();
+    VLOG(3) << "tensor_ops_enabled: "
           << algorithm.algorithm()->tensor_ops_enabled();
+  }
   VLOG(3) << "Convolution kind: " << CudnnConvKindToString(kind);
   VLOG(3) << "input shape: " << ShapeUtil::HumanStringWithLayout(input_shape);
   VLOG(3) << "filter shape: " << ShapeUtil::HumanStringWithLayout(filter_shape);
@@ -334,7 +336,6 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
   params.window = &conv->window();
   params.dnums = &conv->convolution_dimension_numbers();
   params.feature_group_count = conv->feature_group_count();
-<<<<<<< 458b11f32eec953ac7d383dafb517791acf2c538
 
   #if TENSORFLOW_USE_ROCM
     params.algorithm = se::dnn::AlgorithmConfig();
