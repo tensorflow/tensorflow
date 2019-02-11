@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/port.h"
+#define __HIP_DISABLE_CPP_FUNCTIONS__
 #include "rocm/include/hip/hip_runtime.h"
 
 namespace tensorflow {
