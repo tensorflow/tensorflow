@@ -1371,7 +1371,7 @@ class DropoutWrapper(_RNNCellWrapperV1):
       def dropout(i, do_dropout, v):
         if not isinstance(do_dropout, bool) or do_dropout:
           return nn_ops.dropout_v2(
-              v, 1. - keep_prob, seed=self._gen_seed(salt_prefix, i))
+              v, rate=1. - keep_prob, seed=self._gen_seed(salt_prefix, i))
         else:
           return v
       return _enumerated_map_structure_up_to(
