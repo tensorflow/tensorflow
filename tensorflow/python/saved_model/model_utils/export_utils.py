@@ -30,29 +30,26 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model.model_utils import export_output as export_output_lib
-from tensorflow.python.training import mode_keys
+from tensorflow.python.saved_model.model_utils import mode_keys
+from tensorflow.python.saved_model.model_utils.mode_keys import KerasModeKeys as ModeKeys
 from tensorflow.python.util import compat
 
 
 # Mapping of the modes to appropriate MetaGraph tags in the SavedModel.
-EXPORT_TAG_MAP = {
-    mode_keys.ModeKeys.PREDICT: [tag_constants.SERVING],
-    mode_keys.ModeKeys.TRAIN: [tag_constants.TRAINING],
-    mode_keys.ModeKeys.TEST: [tag_constants.EVAL],
-}
+EXPORT_TAG_MAP = mode_keys.ModeKeyMap(**{
+    ModeKeys.PREDICT: [tag_constants.SERVING],
+    ModeKeys.TRAIN: [tag_constants.TRAINING],
+    ModeKeys.TEST: [tag_constants.EVAL]})
 
 # For every exported mode, a SignatureDef map should be created using the
 # functions `export_outputs_for_mode` and `build_all_signature_defs`. By
 # default, this map will contain a single Signature that defines the input
 # tensors and output predictions, losses, and/or metrics (depending on the mode)
 # The default keys used in the SignatureDef map are defined below.
-SIGNATURE_KEY_MAP = {
-    mode_keys.ModeKeys.PREDICT:
-        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
-    mode_keys.ModeKeys.TRAIN:
-        signature_constants.DEFAULT_TRAIN_SIGNATURE_DEF_KEY,
-    mode_keys.ModeKeys.TEST: signature_constants.DEFAULT_EVAL_SIGNATURE_DEF_KEY
-}
+SIGNATURE_KEY_MAP = mode_keys.ModeKeyMap(**{
+    ModeKeys.PREDICT: signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+    ModeKeys.TRAIN: signature_constants.DEFAULT_TRAIN_SIGNATURE_DEF_KEY,
+    ModeKeys.TEST: signature_constants.DEFAULT_EVAL_SIGNATURE_DEF_KEY})
 
 _SINGLE_FEATURE_DEFAULT_NAME = 'feature'
 _SINGLE_RECEIVER_DEFAULT_NAME = 'input'
@@ -281,9 +278,9 @@ def export_outputs_for_mode(
         'this function. Please ensure that you are using the new ModeKeys.'
         .format(mode, SIGNATURE_KEY_MAP.keys()))
   signature_key = SIGNATURE_KEY_MAP[mode]
-  if mode == mode_keys.ModeKeys.PREDICT:
+  if mode_keys.is_predict(mode):
     return get_export_outputs(serving_export_outputs, predictions)
-  elif mode == mode_keys.ModeKeys.TRAIN:
+  elif mode_keys.is_eval(mode):
     return {signature_key: export_output_lib.TrainOutput(
         loss=loss, predictions=predictions, metrics=metrics)}
   else:
