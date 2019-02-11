@@ -241,6 +241,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   }
 
   // Poplar Interface
+  static se::host::HostStream* AsPoplarStream(se::Stream* stream);
 
   std::string GetDeviceTargetName() const;
 
