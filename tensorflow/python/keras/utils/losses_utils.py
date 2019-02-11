@@ -168,8 +168,8 @@ def _num_elements(losses):
     return math_ops.cast(array_ops.size(losses, name=scope), dtype=losses.dtype)
 
 
-def _reduce_weighted_loss(weighted_losses,
-                          reduction=ReductionV2.SUM_OVER_BATCH_SIZE):
+def reduce_weighted_loss(weighted_losses,
+                         reduction=ReductionV2.SUM_OVER_BATCH_SIZE):
   """Reduces the individual weighted loss measurements."""
   if reduction == ReductionV2.NONE:
     loss = weighted_losses
@@ -192,8 +192,8 @@ def compute_weighted_loss(losses,
     losses: `Tensor` of shape `[batch_size, d1, ... dN]`.
     sample_weight: Optional `Tensor` whose rank is either 0, or the same rank as
       `losses`, or be broadcastable to `losses`.
-    reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
-      `SUM_OVER_BATCH_SIZE`.
+    reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
+      Default value is `SUM_OVER_BATCH_SIZE`.
     name: Optional name for the op.
 
   Raises:
@@ -228,7 +228,7 @@ def compute_weighted_loss(losses,
     sample_weight.get_shape().assert_is_compatible_with(losses.get_shape())
     weighted_losses = math_ops.multiply(losses, sample_weight)
     # Apply reduction function to the individual weighted losses.
-    loss = _reduce_weighted_loss(weighted_losses, reduction)
+    loss = reduce_weighted_loss(weighted_losses, reduction)
     # Convert the result back to the input type.
     loss = math_ops.cast(loss, input_dtype)
     return loss

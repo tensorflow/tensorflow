@@ -2147,8 +2147,8 @@ class StructuredFunctionWrapper(object):
         default graph.
       use_legacy_function: (Optional.) A boolean that determines whether the
         function be created using `tensorflow.python.eager.function.defun`
-        (default behavior) or `tensorflow.python.eager.function.Defun` (legacy
-        beheavior).
+        (default behavior) or `tensorflow.python.framework.function.Defun`
+        (legacy beheavior).
       defun_kwargs: (Optional.) A dictionary mapping string argument names to
         values. If supplied, will be passed to `function` as keyword arguments.
 

@@ -12,25 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for rnn module."""
+"""Tests for RNN cells."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import itertools
+import os
 
+from absl.testing import parameterized
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.contrib import rnn as rnn_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops as ops_lib
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import layers as keras_layers
+from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
@@ -38,16 +42,18 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 from tensorflow.python.util import nest
 
 
-class Plus1RNNCell(rnn_lib.RNNCell):
+class Plus1RNNCell(rnn_cell.RNNCell):
   """RNN Cell generating (output, new_state) = (input + 1, state + 1)."""
 
   @property
@@ -62,7 +68,7 @@ class Plus1RNNCell(rnn_lib.RNNCell):
     return (input_ + 1, state + 1)
 
 
-class DummyMultiDimensionalLSTM(rnn_lib.RNNCell):
+class DummyMultiDimensionalLSTM(rnn_cell.RNNCell):
   """LSTM Cell generating (output, new_state) = (input + 1, state + 1).
 
   The input to this cell may have an arbitrary number of dimensions that follow
@@ -97,7 +103,7 @@ class DummyMultiDimensionalLSTM(rnn_lib.RNNCell):
     return (input_ + 1, (h + 1, c + 1))
 
 
-class NestedRNNCell(rnn_lib.RNNCell):
+class NestedRNNCell(rnn_cell.RNNCell):
   """RNN Cell generating (output, new_state) = (input + 1, state + 1).
 
   The input, output and state of this cell is a tuple of two tensors.
@@ -161,18 +167,19 @@ class TestStateSaverWithCounters(TestStateSaver):
   inherits from the TestStateSaver and adds the counters for calls of functions.
   """
 
+  @test_util.run_v1_only("b/124229375")
   def __init__(self, batch_size, state_size):
     super(TestStateSaverWithCounters, self).__init__(batch_size, state_size)
     self._num_state_calls = variables_lib.VariableV1(0)
     self._num_save_state_calls = variables_lib.VariableV1(0)
 
   def state(self, name):
-    with ops_lib.control_dependencies(
+    with ops.control_dependencies(
         [state_ops.assign_add(self._num_state_calls, 1)]):
       return super(TestStateSaverWithCounters, self).state(name)
 
   def save_state(self, name, state):
-    with ops_lib.control_dependencies([state_ops.assign_add(
+    with ops.control_dependencies([state_ops.assign_add(
         self._num_save_state_calls, 1)]):
       return super(TestStateSaverWithCounters, self).save_state(name, state)
 
@@ -191,12 +198,14 @@ class RNNTest(test.TestCase):
     self._seed = 23489
     np.random.seed(self._seed)
 
+  @test_util.run_v1_only("b/124229375")
   def testInvalidSequenceLengthShape(self):
     cell = Plus1RNNCell()
     inputs = [array_ops.placeholder(dtypes.float32, shape=(3, 4))]
     with self.assertRaisesRegexp(ValueError, "must be a vector"):
       rnn.static_rnn(cell, inputs, dtype=dtypes.float32, sequence_length=4)
 
+  @test_util.run_v1_only("b/124229375")
   def testRNN(self):
     cell = Plus1RNNCell()
     batch_size = 2
@@ -224,6 +233,7 @@ class RNNTest(test.TestCase):
                           max_length * np.ones(
                               (batch_size, input_size), dtype=np.float32))
 
+  @test_util.run_v1_only("b/124229375")
   def testDropout(self):
     cell = Plus1RNNCell()
     full_dropout_cell = rnn_cell.DropoutWrapper(
@@ -260,6 +270,7 @@ class RNNTest(test.TestCase):
       for d_v in full_dropout_values[:-1]:  # Add 1.0 to dropped_out (all zeros)
         self.assertAllClose(d_v, np.ones_like(input_value))
 
+  @test_util.run_v1_only("b/124229375")
   def testDynamicCalculation(self):
     cell = Plus1RNNCell()
     sequence_length = array_ops.placeholder(dtypes.int64)
@@ -310,7 +321,7 @@ class RNNTest(test.TestCase):
                                      1.0 * (2 + 1) * np.ones((input_size)))))
 
   def _testScope(self, factory, prefix="prefix", use_outer_scope=True):
-    with self.session(use_gpu=True, graph=ops_lib.Graph()):
+    with self.session(use_gpu=True, graph=ops.Graph()):
       if use_outer_scope:
         with variable_scope.variable_scope(prefix) as scope:
           factory(scope)
@@ -329,6 +340,7 @@ class RNNTest(test.TestCase):
         tf_logging.info(v.name)
       self.assertEqual(len(scope_vars), len(all_vars))
 
+  @test_util.run_v1_only("b/124229375")
   def testScope(self):
 
     def factory(scope):
@@ -358,21 +370,22 @@ class LSTMTest(test.TestCase):
     lstm = rnn_cell.LSTMCell(10)
     input_tensor = array_ops.ones([10, 50])
     lstm.build(input_tensor.get_shape())
-    self.assertEqual(lstm._bias.dtype, dtypes.float32_ref)
+    self.assertEqual(lstm._bias.dtype.base_dtype, dtypes.float32)
 
     # Explicitly pass dtype in constructor
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
       lstm = rnn_cell.LSTMCell(10, dtype=dtype)
       input_tensor = array_ops.ones([10, 50])
       lstm.build(input_tensor.get_shape())
-      self.assertEqual(lstm._bias.dtype, dtype._as_ref)
+      self.assertEqual(lstm._bias.dtype.base_dtype, dtype)
 
+  @test_util.run_v1_only("b/124229375")
   def testNoProjNoSharding(self):
     num_units = 3
     input_size = 5
     batch_size = 2
     max_length = 8
-    with self.session(use_gpu=True, graph=ops_lib.Graph()) as sess:
+    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       cell = rnn_cell.LSTMCell(
@@ -389,12 +402,13 @@ class LSTMTest(test.TestCase):
       input_value = np.random.randn(batch_size, input_size)
       sess.run(outputs, feed_dict={inputs[0]: input_value})
 
+  @test_util.run_v1_only("b/124229375")
   def testCellClipping(self):
     num_units = 3
     input_size = 5
     batch_size = 2
     max_length = 8
-    with self.session(use_gpu=True, graph=ops_lib.Graph()) as sess:
+    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       cell = rnn_cell.LSTMCell(
@@ -419,12 +433,13 @@ class LSTMTest(test.TestCase):
       # if cell c is clipped to 0, tanh(c) = 0 => m==0
       self.assertAllEqual(value, np.zeros((batch_size, num_units)))
 
+  @test_util.run_v1_only("b/124229375")
   def testNoProjNoShardingSimpleStateSaver(self):
     num_units = 3
     input_size = 5
     batch_size = 2
     max_length = 8
-    with self.session(use_gpu=True, graph=ops_lib.Graph()) as sess:
+    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       state_saver = TestStateSaver(batch_size, 2 * num_units)
@@ -452,12 +467,13 @@ class LSTMTest(test.TestCase):
           })
       self.assertAllEqual(last_state_value, saved_state_value)
 
+  @test_util.run_v1_only("b/124229375")
   def testNoProjNoShardingTupleStateSaver(self):
     num_units = 3
     input_size = 5
     batch_size = 2
     max_length = 8
-    with self.session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       state_saver = TestStateSaver(batch_size, num_units)
@@ -486,12 +502,13 @@ class LSTMTest(test.TestCase):
       self.assertEqual(4, len(last_and_saved_states))
       self.assertAllEqual(last_and_saved_states[:2], last_and_saved_states[2:])
 
+  @test_util.run_v1_only("b/124229375")
   def testNoProjNoShardingNestedTupleStateSaver(self):
     num_units = 3
     input_size = 5
     batch_size = 2
     max_length = 8
-    with self.session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       state_saver = TestStateSaver(
@@ -556,13 +573,14 @@ class LSTMTest(test.TestCase):
         self.assertAllEqual(last_states[i],
                             named_saved_states[flat_state_names[i]])
 
+  @test_util.run_v1_only("b/124229375")
   def testProjNoSharding(self):
     num_units = 3
     input_size = 5
     batch_size = 2
     num_proj = 4
     max_length = 8
-    with self.session(use_gpu=True, graph=ops_lib.Graph()) as sess:
+    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       inputs = max_length * [
@@ -588,7 +606,7 @@ class LSTMTest(test.TestCase):
     num_proj = 4
     max_length = 8
     sequence_length = [4, 6]
-    with self.session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       inputs = max_length * [
@@ -630,7 +648,7 @@ class LSTMTest(test.TestCase):
       self.assertEqual(len(outputs_notuple), len(inputs))
       self.assertEqual(len(outputs_tuple), len(inputs))
       self.assertTrue(isinstance(state_tuple, tuple))
-      self.assertTrue(isinstance(state_notuple, ops_lib.Tensor))
+      self.assertTrue(isinstance(state_notuple, ops.Tensor))
 
       variables_lib.global_variables_initializer().run()
       input_value = np.random.randn(batch_size, input_size)
@@ -651,6 +669,7 @@ class LSTMTest(test.TestCase):
       state_tuple_v = sess.run(state_tuple, feed_dict={inputs[0]: input_value})
       self.assertAllEqual(state_notuple_v, np.hstack(state_tuple_v))
 
+  @test_util.run_v1_only("b/124229375")
   def testProjSharding(self):
     num_units = 3
     input_size = 5
@@ -659,7 +678,7 @@ class LSTMTest(test.TestCase):
     num_proj_shards = 3
     num_unit_shards = 2
     max_length = 8
-    with self.session(use_gpu=True, graph=ops_lib.Graph()) as sess:
+    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
 
@@ -684,6 +703,7 @@ class LSTMTest(test.TestCase):
       input_value = np.random.randn(batch_size, input_size)
       sess.run(outputs, feed_dict={inputs[0]: input_value})
 
+  @test_util.run_v1_only("b/124229375")
   def testDoubleInput(self):
     num_units = 3
     input_size = 5
@@ -692,7 +712,7 @@ class LSTMTest(test.TestCase):
     num_proj_shards = 3
     num_unit_shards = 2
     max_length = 8
-    with self.session(use_gpu=True, graph=ops_lib.Graph()) as sess:
+    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(-1, 1, seed=self._seed)
       inputs = max_length * [
           array_ops.placeholder(dtypes.float64, shape=(None, input_size))
@@ -720,6 +740,7 @@ class LSTMTest(test.TestCase):
       values = sess.run(outputs, feed_dict={inputs[0]: input_value})
       self.assertEqual(values[0].dtype, input_value.dtype)
 
+  @test_util.run_v1_only("b/124229375")
   def testShardNoShardEquivalentOutput(self):
     num_units = 3
     input_size = 5
@@ -728,7 +749,7 @@ class LSTMTest(test.TestCase):
     num_proj_shards = 3
     num_unit_shards = 2
     max_length = 8
-    with self.session(use_gpu=True, graph=ops_lib.Graph()) as sess:
+    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
       inputs = max_length * [
           array_ops.placeholder(dtypes.float32, shape=(None, input_size))
       ]
@@ -774,6 +795,7 @@ class LSTMTest(test.TestCase):
       for (s_noshard, s_shard) in zip(state_values_noshard, state_values_shard):
         self.assertAllClose(s_noshard, s_shard, atol=1e-3)
 
+  @test_util.run_v1_only("b/124229375")
   def testDoubleInputWithDropoutAndDynamicCalculation(self):
     """Smoke test for using LSTM with doubles, dropout, dynamic calculation."""
 
@@ -784,7 +806,7 @@ class LSTMTest(test.TestCase):
     num_proj_shards = 3
     num_unit_shards = 2
     max_length = 8
-    with self.session(use_gpu=True, graph=ops_lib.Graph()) as sess:
+    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
       sequence_length = array_ops.placeholder(dtypes.int64)
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
@@ -828,13 +850,14 @@ class LSTMTest(test.TestCase):
       self.assertEqual(values[0].dtype, input_value.dtype)
       self.assertEqual(state_value[0].dtype, input_value.dtype)
 
+  @test_util.run_v1_only("b/124229375")
   def testSharingWeightsWithReuse(self):
     num_units = 3
     input_size = 5
     batch_size = 2
     num_proj = 4
     max_length = 8
-    with self.session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(-1, 1, seed=self._seed)
       initializer_d = init_ops.random_uniform_initializer(
           -1, 1, seed=self._seed + 1)
@@ -878,13 +901,14 @@ class LSTMTest(test.TestCase):
         # Different weights used so outputs should be different.
         self.assertTrue(np.linalg.norm(o1 - o3) > 1e-6)
 
+  @test_util.run_v1_only("b/124229375")
   def testSharingWeightsWithDifferentNamescope(self):
     num_units = 3
     input_size = 5
     batch_size = 2
     num_proj = 4
     max_length = 8
-    with self.session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(-1, 1, seed=self._seed)
       inputs = max_length * [
           array_ops.placeholder(dtypes.float32, shape=(None, input_size))
@@ -896,10 +920,10 @@ class LSTMTest(test.TestCase):
           initializer=initializer,
           state_is_tuple=False)
 
-      with ops_lib.name_scope("scope0"):
+      with ops.name_scope("scope0"):
         with variable_scope.variable_scope("share_scope"):
           outputs0, _ = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
-      with ops_lib.name_scope("scope1"):
+      with ops.name_scope("scope1"):
         with variable_scope.variable_scope("share_scope", reuse=True):
           outputs1, _ = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
 
@@ -915,6 +939,7 @@ class LSTMTest(test.TestCase):
       for out0, out1 in zip(outputs0_values, outputs1_values):
         self.assertAllEqual(out0, out1)
 
+  @test_util.run_v1_only("b/124229375")
   def testDynamicRNNAllowsUnknownTimeDimension(self):
     inputs = array_ops.placeholder(dtypes.float32, shape=[1, None, 20])
     cell = rnn_cell.GRUCell(30)
@@ -930,7 +955,7 @@ class LSTMTest(test.TestCase):
     max_length = 8
     sequence_length = [4, 6]
     in_graph_mode = not context.executing_eagerly()
-    with self.session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       if in_graph_mode:
@@ -1006,7 +1031,7 @@ class LSTMTest(test.TestCase):
     max_length = 8
     sequence_length = [4, 6]
     in_graph_mode = not context.executing_eagerly()
-    with self.session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
       if in_graph_mode:
@@ -1117,7 +1142,7 @@ class LSTMTest(test.TestCase):
           state_is_tuple=False)
 
     ########### Step 1: Run static graph and generate readouts
-    with self.session(use_gpu=True, graph=ops_lib.Graph()) as sess:
+    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
       if in_graph_mode:
         concat_inputs = array_ops.placeholder(
             dtypes.float32, shape=(time_steps, batch_size, input_size))
@@ -1154,8 +1179,8 @@ class LSTMTest(test.TestCase):
             for y in [outputs_static[0], outputs_static[-1], state_static]
         ])
         # Generate gradients of individual variables w.r.t. inputs
-        trainable_variables = ops_lib.get_collection(
-            ops_lib.GraphKeys.TRAINABLE_VARIABLES)
+        trainable_variables = ops.get_collection(
+            ops.GraphKeys.TRAINABLE_VARIABLES)
         assert len(trainable_variables) > 1, (
             "Count of trainable variables: %d" % len(trainable_variables))
         # pylint: disable=bad-builtin
@@ -1177,7 +1202,7 @@ class LSTMTest(test.TestCase):
             static_individual_variable_gradients, feed_dict=feeds)
 
     ########## Step 2: Run dynamic graph and generate readouts
-    with self.session(use_gpu=True, graph=ops_lib.Graph()) as sess:
+    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
       if in_graph_mode:
         concat_inputs = array_ops.placeholder(
             dtypes.float32, shape=(time_steps, batch_size, input_size))
@@ -1225,8 +1250,8 @@ class LSTMTest(test.TestCase):
         ])
 
         # Generate gradients of individual variables w.r.t. inputs
-        trainable_variables = ops_lib.get_collection(
-            ops_lib.GraphKeys.TRAINABLE_VARIABLES)
+        trainable_variables = ops.get_collection(
+            ops.GraphKeys.TRAINABLE_VARIABLES)
         assert len(trainable_variables) > 1, (
             "Count of trainable variables: %d" % len(trainable_variables))
         dynamic_individual_variable_gradients = nest.flatten([
@@ -1337,7 +1362,7 @@ class BidirectionalRNNTest(test.TestCase):
     return input_value, inputs, outputs, state_fw, state_bw, sequence_length
 
   def _testBidirectionalRNN(self, use_shape):
-    with self.session(use_gpu=True, graph=ops_lib.Graph()) as sess:
+    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
       input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
           self._createBidirectionalRNN(use_shape, True))
       variables_lib.global_variables_initializer().run()
@@ -1384,7 +1409,7 @@ class BidirectionalRNNTest(test.TestCase):
       self.assertAllClose(s_fw, s_bw)
 
   def _testBidirectionalRNNWithoutSequenceLength(self, use_shape):
-    with self.session(use_gpu=True, graph=ops_lib.Graph()) as sess:
+    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
       input_value, inputs, outputs, state_fw, state_bw, _ = (
           self._createBidirectionalRNN(use_shape, False))
       variables_lib.global_variables_initializer().run()
@@ -1402,11 +1427,11 @@ class BidirectionalRNNTest(test.TestCase):
       #
       # Both sequences in batch are length=8.  Check that the time=i
       # forward output is equal to time=8-1-i backward output
-      for i in xrange(8):
+      for i in range(8):
         self.assertEqual(out[i][0][0], out[8 - 1 - i][0][3])
         self.assertEqual(out[i][0][1], out[8 - 1 - i][0][4])
         self.assertEqual(out[i][0][2], out[8 - 1 - i][0][5])
-      for i in xrange(8):
+      for i in range(8):
         self.assertEqual(out[i][1][0], out[8 - 1 - i][1][3])
         self.assertEqual(out[i][1][1], out[8 - 1 - i][1][4])
         self.assertEqual(out[i][1][2], out[8 - 1 - i][1][5])
@@ -1414,10 +1439,12 @@ class BidirectionalRNNTest(test.TestCase):
       # exactly the same
       self.assertAllClose(s_fw, s_bw)
 
+  @test_util.run_v1_only("b/124229375")
   def testBidirectionalRNN(self):
     self._testBidirectionalRNN(use_shape=False)
     self._testBidirectionalRNN(use_shape=True)
 
+  @test_util.run_v1_only("b/124229375")
   def testBidirectionalRNNWithoutSequenceLength(self):
     self._testBidirectionalRNNWithoutSequenceLength(use_shape=False)
     self._testBidirectionalRNNWithoutSequenceLength(use_shape=True)
@@ -1472,7 +1499,7 @@ class BidirectionalRNNTest(test.TestCase):
 
   def _testBidirectionalDynamicRNN(self, use_shape, use_state_tuple,
                                    use_time_major, use_sequence_length):
-    with self.session(use_gpu=True, graph=ops_lib.Graph()) as sess:
+    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
       input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
           self._createBidirectionalDynamicRNN(
               use_shape, use_state_tuple, use_time_major, use_sequence_length))
@@ -1534,6 +1561,7 @@ class BidirectionalRNNTest(test.TestCase):
           self.assertAllEqual(out[t, :, 0:3], out[max_length - t - 1, :, 3:6])
         self.assertAllClose(s_fw, s_bw)
 
+  @test_util.run_v1_only("b/124229375")
   def testBidirectionalDynamicRNN(self):
     # Generate 2^5 option values
     # from [True, True, True, True, True] to [False, False, False, False, False]
@@ -1549,7 +1577,7 @@ class BidirectionalRNNTest(test.TestCase):
     # REMARKS: factory(scope) is a function accepting a scope
     #          as an argument, such scope can be None, a string
     #          or a VariableScope instance.
-    with self.session(use_gpu=True, graph=ops_lib.Graph()):
+    with self.session(use_gpu=True, graph=ops.Graph()):
       if use_outer_scope:
         with variable_scope.variable_scope(prefix) as scope:
           factory(scope)
@@ -1568,6 +1596,7 @@ class BidirectionalRNNTest(test.TestCase):
         tf_logging.info(v.name)
       self.assertEqual(len(scope_vars), len(all_vars))
 
+  @test_util.run_v1_only("b/124229375")
   def testBidirectionalRNNScope(self):
 
     def factory(scope):
@@ -1578,6 +1607,7 @@ class BidirectionalRNNTest(test.TestCase):
     self._testScope(factory, use_outer_scope=False)
     self._testScope(factory, prefix=None, use_outer_scope=False)
 
+  @test_util.run_v1_only("b/124229375")
   def testBidirectionalDynamicRNNScope(self):
 
     def get_factory(use_time_major):
@@ -1606,13 +1636,14 @@ class MultiDimensionalLSTMTest(test.TestCase):
     self._seed = 23489
     np.random.seed(self._seed)
 
+  @test_util.run_v1_only("b/124229375")
   def testMultiDimensionalLSTMAllRNNContainers(self):
     feature_dims = (3, 4, 5)
     input_size = feature_dims
     batch_size = 2
     max_length = 8
     sequence_length = [4, 6]
-    with self.session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       inputs = max_length * [
           array_ops.placeholder(dtypes.float32, shape=(None,) + input_size)
       ]
@@ -1717,13 +1748,14 @@ class NestedLSTMTest(test.TestCase):
     self._seed = 23489
     np.random.seed(self._seed)
 
+  @test_util.run_v1_only("b/124229375")
   def testNestedIOLSTMAllRNNContainers(self):
     input_size = 5
     batch_size = 2
     state_size = 6
     max_length = 8
     sequence_length = [4, 6]
-    with self.session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       state_saver = TestStateSaver(batch_size, state_size)
       single_input = (array_ops.placeholder(
           dtypes.float32, shape=(None, input_size)),
@@ -1868,7 +1900,7 @@ class StateSaverRNNTest(test.TestCase):
     batch_size = 2
     state_saver = TestStateSaver(batch_size, 2 * num_units)
 
-    with self.session(use_gpu=True, graph=ops_lib.Graph()):
+    with self.session(use_gpu=True, graph=ops.Graph()):
       if use_outer_scope:
         with variable_scope.variable_scope(prefix) as scope:
           self._factory(scope=scope, state_saver=state_saver)
@@ -1900,6 +1932,7 @@ class StateSaverRNNTest(test.TestCase):
     have influence on number of calls to save_state and state methods of
     state_saver object (the number of calls should be same.)
     """
+    self.skipTest("b/124196246 Breakage for sess.run([out, ...]): 2 != 1")
 
     num_units = 3
     batch_size = 2
@@ -1935,6 +1968,7 @@ class GRUTest(test.TestCase):
     self._seed = 23489
     np.random.seed(self._seed)
 
+  @test_util.run_v1_only("b/124229375")
   def testDynamic(self):
     time_steps = 8
     num_units = 3
@@ -1945,7 +1979,7 @@ class GRUTest(test.TestCase):
 
     sequence_length = np.random.randint(0, time_steps, size=batch_size)
 
-    with self.session(use_gpu=True, graph=ops_lib.Graph()) as sess:
+    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
       concat_inputs = array_ops.placeholder(
           dtypes.float32, shape=(time_steps, batch_size, input_size))
 
@@ -1967,7 +2001,7 @@ class GRUTest(test.TestCase):
       sess.run([outputs_dynamic, state_dynamic], feed_dict=feeds)
 
   def _testScope(self, factory, prefix="prefix", use_outer_scope=True):
-    with self.session(use_gpu=True, graph=ops_lib.Graph()):
+    with self.session(use_gpu=True, graph=ops.Graph()):
       if use_outer_scope:
         with variable_scope.variable_scope(prefix) as scope:
           factory(scope)
@@ -1986,6 +2020,7 @@ class GRUTest(test.TestCase):
         tf_logging.info(v.name)
       self.assertEqual(len(scope_vars), len(all_vars))
 
+  @test_util.run_v1_only("b/124229375")
   def testDynamicScope(self):
     time_steps = 8
     num_units = 3
@@ -2016,8 +2051,9 @@ class RawRNNTest(test.TestCase):
     self._seed = 23489
     np.random.seed(self._seed)
 
+  @test_util.run_v1_only("b/124229375")
   def _testRawRNN(self, max_time):
-    with self.session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       batch_size = 16
       input_depth = 4
       num_units = 3
@@ -2115,6 +2151,7 @@ class RawRNNTest(test.TestCase):
         for i in range(1, len(gradients_val)):
           self.assertAllClose(gradients_dynamic_rnn_val[i], gradients_val[i])
 
+  @test_util.run_v1_only("b/124229375")
   def testRawRNNZeroLength(self):
     # NOTE: Because with 0 time steps, raw_rnn does not have shape
     # information about the input, it is impossible to perform
@@ -2125,8 +2162,9 @@ class RawRNNTest(test.TestCase):
   def testRawRNN(self):
     self._testRawRNN(max_time=10)
 
+  @test_util.run_v1_only("b/124229375")
   def testLoopState(self):
-    with self.session(graph=ops_lib.Graph()):
+    with self.session(graph=ops.Graph()):
       max_time = 10
       batch_size = 16
       input_depth = 4
@@ -2161,8 +2199,9 @@ class RawRNNTest(test.TestCase):
       loop_state = r[-1]
       self.assertEqual([10], loop_state.eval())
 
+  @test_util.run_v1_only("b/124229375")
   def testLoopStateWithTensorArray(self):
-    with self.session(graph=ops_lib.Graph()):
+    with self.session(graph=ops.Graph()):
       max_time = 4
       batch_size = 16
       input_depth = 4
@@ -2204,8 +2243,9 @@ class RawRNNTest(test.TestCase):
       loop_state = loop_state.stack()
       self.assertAllEqual([1, 2, 2 + 2, 4 + 3, 7 + 4], loop_state.eval())
 
+  @test_util.run_v1_only("b/124229375")
   def testEmitDifferentStructureThanCellOutput(self):
-    with self.session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       max_time = 10
       batch_size = 16
       input_depth = 4
@@ -2253,7 +2293,7 @@ class RawRNNTest(test.TestCase):
           np.ones((max_time, batch_size, 1), np.int64), output_vals[1])
 
   def _testScope(self, factory, prefix="prefix", use_outer_scope=True):
-    with self.session(use_gpu=True, graph=ops_lib.Graph()):
+    with self.session(use_gpu=True, graph=ops.Graph()):
       if use_outer_scope:
         with variable_scope.variable_scope(prefix) as scope:
           factory(scope)
@@ -2272,6 +2312,7 @@ class RawRNNTest(test.TestCase):
         tf_logging.info(v.name)
       self.assertEqual(len(scope_vars), len(all_vars))
 
+  @test_util.run_v1_only("b/124229375")
   def testRawRNNScope(self):
     max_time = 10
     batch_size = 16
@@ -2329,7 +2370,7 @@ class DeviceWrapperCell(rnn_cell.RNNCell):
 
   def __call__(self, input_, state, scope=None):
     if self._device is not None:
-      with ops_lib.device(self._device):
+      with ops.device(self._device):
         return self._cell(input_, state, scope=scope)
     else:
       return self._cell(input_, state, scope=scope)
@@ -2353,11 +2394,11 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
     sequence_length = np.random.randint(0, time_steps, size=batch_size)
 
     if input_device is not None:
-      with ops_lib.device(input_device):
+      with ops.device(input_device):
         inputs = constant_op.constant(inputs)
 
     if rnn_device is not None:
-      with ops_lib.device(rnn_device):
+      with ops.device(rnn_device):
         outputs, _ = rnn.dynamic_rnn(
             gpu_cell,
             inputs,
@@ -2441,6 +2482,877 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
 
     # Everything happens on GPU
     _assert_in("TensorArray", gpu_stats, cpu_stats)
+
+
+class RNNCellTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_v1_only("b/124229375")
+  def testBasicRNNCell(self):
+    with self.cached_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 2])
+        m = array_ops.zeros([1, 2])
+        cell = rnn_cell_impl.BasicRNNCell(2)
+        g, _ = cell(x, m)
+        self.assertEqual([
+            "root/basic_rnn_cell/%s:0" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+            "root/basic_rnn_cell/%s:0" % rnn_cell_impl._BIAS_VARIABLE_NAME
+        ], [v.name for v in cell.trainable_variables])
+        self.assertFalse(cell.non_trainable_variables)
+        sess.run([variables_lib.global_variables_initializer()])
+        res = sess.run([g], {
+            x: np.array([[1., 1.]]),
+            m: np.array([[0.1, 0.1]])
+        })
+        self.assertEqual(res[0].shape, (1, 2))
+
+  @test_util.run_v1_only("b/124229375")
+  def testBasicRNNCellNotTrainable(self):
+    with self.cached_session() as sess:
+
+      def not_trainable_getter(getter, *args, **kwargs):
+        kwargs["trainable"] = False
+        return getter(*args, **kwargs)
+
+      with variable_scope.variable_scope(
+          "root",
+          initializer=init_ops.constant_initializer(0.5),
+          custom_getter=not_trainable_getter):
+        x = array_ops.zeros([1, 2])
+        m = array_ops.zeros([1, 2])
+        cell = rnn_cell_impl.BasicRNNCell(2)
+        g, _ = cell(x, m)
+        self.assertFalse(cell.trainable_variables)
+        self.assertEqual([
+            "root/basic_rnn_cell/%s:0" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+            "root/basic_rnn_cell/%s:0" % rnn_cell_impl._BIAS_VARIABLE_NAME
+        ], [v.name for v in cell.non_trainable_variables])
+        sess.run([variables_lib.global_variables_initializer()])
+        res = sess.run([g], {
+            x: np.array([[1., 1.]]),
+            m: np.array([[0.1, 0.1]])
+        })
+        self.assertEqual(res[0].shape, (1, 2))
+
+  @test_util.run_v1_only("b/124229375")
+  def testGRUCell(self):
+    with self.cached_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 2])
+        m = array_ops.zeros([1, 2])
+        g, _ = rnn_cell_impl.GRUCell(2)(x, m)
+        sess.run([variables_lib.global_variables_initializer()])
+        res = sess.run([g], {
+            x: np.array([[1., 1.]]),
+            m: np.array([[0.1, 0.1]])
+        })
+        # Smoke test
+        self.assertAllClose(res[0], [[0.175991, 0.175991]])
+      with variable_scope.variable_scope(
+          "other", initializer=init_ops.constant_initializer(0.5)):
+        # Test GRUCell with input_size != num_units.
+        x = array_ops.zeros([1, 3])
+        m = array_ops.zeros([1, 2])
+        g, _ = rnn_cell_impl.GRUCell(2)(x, m)
+        sess.run([variables_lib.global_variables_initializer()])
+        res = sess.run([g], {
+            x: np.array([[1., 1., 1.]]),
+            m: np.array([[0.1, 0.1]])
+        })
+        # Smoke test
+        self.assertAllClose(res[0], [[0.156736, 0.156736]])
+
+  @test_util.run_v1_only("b/124229375")
+  def testBasicLSTMCell(self):
+    for dtype in [dtypes.float16, dtypes.float32]:
+      np_dtype = dtype.as_numpy_dtype
+      with self.session(graph=ops.Graph()) as sess:
+        with variable_scope.variable_scope(
+            "root", initializer=init_ops.constant_initializer(0.5)):
+          x = array_ops.zeros([1, 2], dtype=dtype)
+          m = array_ops.zeros([1, 8], dtype=dtype)
+          cell = rnn_cell_impl.MultiRNNCell(
+              [
+                  rnn_cell_impl.BasicLSTMCell(2, state_is_tuple=False)
+                  for _ in range(2)
+              ],
+              state_is_tuple=False)
+          self.assertEqual(cell.dtype, None)
+          self.assertEqual("cell-0", cell._checkpoint_dependencies[0].name)
+          self.assertEqual("cell-1", cell._checkpoint_dependencies[1].name)
+          cell.get_config()  # Should not throw an error
+          g, out_m = cell(x, m)
+          # Layer infers the input type.
+          self.assertEqual(cell.dtype, dtype.name)
+          expected_variable_names = [
+              "root/multi_rnn_cell/cell_0/basic_lstm_cell/%s:0" %
+              rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+              "root/multi_rnn_cell/cell_0/basic_lstm_cell/%s:0" %
+              rnn_cell_impl._BIAS_VARIABLE_NAME,
+              "root/multi_rnn_cell/cell_1/basic_lstm_cell/%s:0" %
+              rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+              "root/multi_rnn_cell/cell_1/basic_lstm_cell/%s:0" %
+              rnn_cell_impl._BIAS_VARIABLE_NAME
+          ]
+          self.assertEqual(expected_variable_names,
+                           [v.name for v in cell.trainable_variables])
+          self.assertFalse(cell.non_trainable_variables)
+          sess.run([variables_lib.global_variables_initializer()])
+          res = sess.run([g, out_m], {
+              x: np.array([[1., 1.]]),
+              m: 0.1 * np.ones([1, 8])
+          })
+          self.assertEqual(len(res), 2)
+          variables = variables_lib.global_variables()
+          self.assertEqual(expected_variable_names, [v.name for v in variables])
+          # The numbers in results were not calculated, this is just a
+          # smoke test.
+          self.assertAllClose(res[0], np.array(
+              [[0.240, 0.240]], dtype=np_dtype), 1e-2)
+          expected_mem = np.array(
+              [[0.689, 0.689, 0.448, 0.448, 0.398, 0.398, 0.240, 0.240]],
+              dtype=np_dtype)
+          self.assertAllClose(res[1], expected_mem, 1e-2)
+        with variable_scope.variable_scope(
+            "other", initializer=init_ops.constant_initializer(0.5)):
+          # Test BasicLSTMCell with input_size != num_units.
+          x = array_ops.zeros([1, 3], dtype=dtype)
+          m = array_ops.zeros([1, 4], dtype=dtype)
+          g, out_m = rnn_cell_impl.BasicLSTMCell(2, state_is_tuple=False)(x, m)
+          sess.run([variables_lib.global_variables_initializer()])
+          res = sess.run(
+              [g, out_m], {
+                  x: np.array([[1., 1., 1.]], dtype=np_dtype),
+                  m: 0.1 * np.ones([1, 4], dtype=np_dtype)
+              })
+          self.assertEqual(len(res), 2)
+
+  @test_util.run_v1_only("b/124229375")
+  def testBasicLSTMCellDimension0Error(self):
+    """Tests that dimension 0 in both(x and m) shape must be equal."""
+    with self.cached_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        num_units = 2
+        state_size = num_units * 2
+        batch_size = 3
+        input_size = 4
+        x = array_ops.zeros([batch_size, input_size])
+        m = array_ops.zeros([batch_size - 1, state_size])
+        with self.assertRaises(ValueError):
+          g, out_m = rnn_cell_impl.BasicLSTMCell(
+              num_units, state_is_tuple=False)(x, m)
+          sess.run([variables_lib.global_variables_initializer()])
+          sess.run(
+              [g, out_m], {
+                  x: 1 * np.ones([batch_size, input_size]),
+                  m: 0.1 * np.ones([batch_size - 1, state_size])
+              })
+
+  def testBasicLSTMCellStateSizeError(self):
+    """Tests that state_size must be num_units * 2."""
+    with self.cached_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        num_units = 2
+        state_size = num_units * 3  # state_size must be num_units * 2
+        batch_size = 3
+        input_size = 4
+        x = array_ops.zeros([batch_size, input_size])
+        m = array_ops.zeros([batch_size, state_size])
+        with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+          g, out_m = rnn_cell_impl.BasicLSTMCell(
+              num_units, state_is_tuple=False)(x, m)
+          sess.run([variables_lib.global_variables_initializer()])
+          sess.run(
+              [g, out_m], {
+                  x: 1 * np.ones([batch_size, input_size]),
+                  m: 0.1 * np.ones([batch_size, state_size])
+              })
+
+  @test_util.run_v1_only("b/124229375")
+  def testBasicLSTMCellStateTupleType(self):
+    with self.cached_session():
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 2])
+        m0 = (array_ops.zeros([1, 2]),) * 2
+        m1 = (array_ops.zeros([1, 2]),) * 2
+        cell = rnn_cell_impl.MultiRNNCell(
+            [rnn_cell_impl.BasicLSTMCell(2) for _ in range(2)],
+            state_is_tuple=True)
+        self.assertTrue(isinstance(cell.state_size, tuple))
+        self.assertTrue(
+            isinstance(cell.state_size[0], rnn_cell_impl.LSTMStateTuple))
+        self.assertTrue(
+            isinstance(cell.state_size[1], rnn_cell_impl.LSTMStateTuple))
+
+        # Pass in regular tuples
+        _, (out_m0, out_m1) = cell(x, (m0, m1))
+        self.assertTrue(isinstance(out_m0, rnn_cell_impl.LSTMStateTuple))
+        self.assertTrue(isinstance(out_m1, rnn_cell_impl.LSTMStateTuple))
+
+        # Pass in LSTMStateTuples
+        variable_scope.get_variable_scope().reuse_variables()
+        zero_state = cell.zero_state(1, dtypes.float32)
+        self.assertTrue(isinstance(zero_state, tuple))
+        self.assertTrue(isinstance(zero_state[0], rnn_cell_impl.LSTMStateTuple))
+        self.assertTrue(isinstance(zero_state[1], rnn_cell_impl.LSTMStateTuple))
+        _, (out_m0, out_m1) = cell(x, zero_state)
+        self.assertTrue(isinstance(out_m0, rnn_cell_impl.LSTMStateTuple))
+        self.assertTrue(isinstance(out_m1, rnn_cell_impl.LSTMStateTuple))
+
+  @test_util.run_v1_only("b/124229375")
+  def testBasicLSTMCellWithStateTuple(self):
+    with self.cached_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 2])
+        m0 = array_ops.zeros([1, 4])
+        m1 = array_ops.zeros([1, 4])
+        cell = rnn_cell_impl.MultiRNNCell(
+            [
+                rnn_cell_impl.BasicLSTMCell(2, state_is_tuple=False)
+                for _ in range(2)
+            ],
+            state_is_tuple=True)
+        g, (out_m0, out_m1) = cell(x, (m0, m1))
+        sess.run([variables_lib.global_variables_initializer()])
+        res = sess.run(
+            [g, out_m0, out_m1], {
+                x: np.array([[1., 1.]]),
+                m0: 0.1 * np.ones([1, 4]),
+                m1: 0.1 * np.ones([1, 4])
+            })
+        self.assertEqual(len(res), 3)
+        # The numbers in results were not calculated, this is just a smoke test.
+        # Note, however, these values should match the original
+        # version having state_is_tuple=False.
+        self.assertAllClose(res[0], [[0.24024698, 0.24024698]])
+        expected_mem0 = np.array(
+            [[0.68967271, 0.68967271, 0.44848421, 0.44848421]])
+        expected_mem1 = np.array(
+            [[0.39897051, 0.39897051, 0.24024698, 0.24024698]])
+        self.assertAllClose(res[1], expected_mem0)
+        self.assertAllClose(res[2], expected_mem1)
+
+  @test_util.run_v1_only("b/124229375")
+  def testLSTMCell(self):
+    with self.cached_session() as sess:
+      num_units = 8
+      num_proj = 6
+      state_size = num_units + num_proj
+      batch_size = 3
+      input_size = 2
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([batch_size, input_size])
+        m = array_ops.zeros([batch_size, state_size])
+        cell = rnn_cell_impl.LSTMCell(
+            num_units=num_units,
+            num_proj=num_proj,
+            forget_bias=1.0,
+            state_is_tuple=False)
+        output, state = cell(x, m)
+        sess.run([variables_lib.global_variables_initializer()])
+        res = sess.run(
+            [output, state], {
+                x: np.array([[1., 1.], [2., 2.], [3., 3.]]),
+                m: 0.1 * np.ones((batch_size, state_size))
+            })
+        self.assertEqual(len(res), 2)
+        # The numbers in results were not calculated, this is mostly just a
+        # smoke test.
+        self.assertEqual(res[0].shape, (batch_size, num_proj))
+        self.assertEqual(res[1].shape, (batch_size, state_size))
+        # Different inputs so different outputs and states
+        for i in range(1, batch_size):
+          self.assertTrue(
+              float(np.linalg.norm((res[0][0, :] - res[0][i, :]))) > 1e-6)
+          self.assertTrue(
+              float(np.linalg.norm((res[1][0, :] - res[1][i, :]))) > 1e-6)
+
+  @test_util.run_v1_only("b/124229375")
+  def testLSTMCellVariables(self):
+    with self.cached_session():
+      num_units = 8
+      num_proj = 6
+      state_size = num_units + num_proj
+      batch_size = 3
+      input_size = 2
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([batch_size, input_size])
+        m = array_ops.zeros([batch_size, state_size])
+        cell = rnn_cell_impl.LSTMCell(
+            num_units=num_units,
+            num_proj=num_proj,
+            forget_bias=1.0,
+            state_is_tuple=False)
+        cell(x, m)  # Execute to create variables
+      variables = variables_lib.global_variables()
+      self.assertEquals(variables[0].op.name, "root/lstm_cell/kernel")
+      self.assertEquals(variables[1].op.name, "root/lstm_cell/bias")
+      self.assertEquals(variables[2].op.name,
+                        "root/lstm_cell/projection/kernel")
+
+  @test_util.run_in_graph_and_eager_modes
+  def testWrapperCheckpointing(self):
+    for wrapper_type in [
+        rnn_cell_impl.DropoutWrapper,
+        rnn_cell_impl.ResidualWrapper,
+        lambda cell: rnn_cell_impl.MultiRNNCell([cell])]:
+      cell = rnn_cell_impl.BasicRNNCell(1)
+      wrapper = wrapper_type(cell)
+      wrapper(array_ops.ones([1, 1]),
+              state=wrapper.zero_state(batch_size=1, dtype=dtypes.float32))
+      self.evaluate([v.initializer for v in cell.variables])
+      checkpoint = checkpointable_utils.Checkpoint(wrapper=wrapper)
+      prefix = os.path.join(self.get_temp_dir(), "ckpt")
+      self.evaluate(cell._bias.assign([40.]))
+      save_path = checkpoint.save(prefix)
+      self.evaluate(cell._bias.assign([0.]))
+      checkpoint.restore(save_path).assert_consumed().run_restore_ops()
+      self.assertAllEqual([40.], self.evaluate(cell._bias))
+
+  @parameterized.parameters(
+      [rnn_cell_impl.ResidualWrapper, rnn_cell_impl.ResidualWrapperV2])
+  @test_util.run_in_graph_and_eager_modes
+  def testResidualWrapper(self, wrapper_type):
+    x = ops.convert_to_tensor(np.array([[1., 1., 1.]]))
+    m = ops.convert_to_tensor(np.array([[0.1, 0.1, 0.1]]))
+    base_cell = rnn_cell_impl.GRUCell(
+        3, kernel_initializer=init_ops.constant_initializer(0.5),
+        bias_initializer=init_ops.constant_initializer(0.5))
+    g, m_new = base_cell(x, m)
+    wrapper_object = wrapper_type(base_cell)
+    (name, dep), = wrapper_object._checkpoint_dependencies
+    wrapper_object.get_config()  # Should not throw an error
+    self.assertIs(dep, base_cell)
+    self.assertEqual("cell", name)
+
+    g_res, m_new_res = wrapper_object(x, m)
+    self.evaluate([variables_lib.global_variables_initializer()])
+    res = self.evaluate([g, g_res, m_new, m_new_res])
+    # Residual connections
+    self.assertAllClose(res[1], res[0] + [1., 1., 1.])
+    # States are left untouched
+    self.assertAllClose(res[2], res[3])
+
+  @parameterized.parameters(
+      [rnn_cell_impl.ResidualWrapper, rnn_cell_impl.ResidualWrapperV2])
+  @test_util.run_in_graph_and_eager_modes
+  def testResidualWrapperWithSlice(self, wrapper_type):
+    x = ops.convert_to_tensor(np.array([[1., 1., 1., 1., 1.]]))
+    m = ops.convert_to_tensor(np.array([[0.1, 0.1, 0.1]]))
+    base_cell = rnn_cell_impl.GRUCell(
+        3, kernel_initializer=init_ops.constant_initializer(0.5),
+        bias_initializer=init_ops.constant_initializer(0.5))
+    g, m_new = base_cell(x, m)
+
+    def residual_with_slice_fn(inp, out):
+      inp_sliced = array_ops.slice(inp, [0, 0], [-1, 3])
+      return inp_sliced + out
+
+    g_res, m_new_res = wrapper_type(
+        base_cell, residual_with_slice_fn)(x, m)
+    self.evaluate([variables_lib.global_variables_initializer()])
+    res_g, res_g_res, res_m_new, res_m_new_res = self.evaluate(
+        [g, g_res, m_new, m_new_res])
+    # Residual connections
+    self.assertAllClose(res_g_res, res_g + [1., 1., 1.])
+    # States are left untouched
+    self.assertAllClose(res_m_new, res_m_new_res)
+
+  @test_util.run_v1_only("b/124229375")
+  def testDeviceWrapper(self):
+    with variable_scope.variable_scope(
+        "root", initializer=init_ops.constant_initializer(0.5)):
+      x = array_ops.zeros([1, 3])
+      m = array_ops.zeros([1, 3])
+      wrapped = rnn_cell_impl.GRUCell(3)
+      cell = rnn_cell_impl.DeviceWrapper(wrapped, "/cpu:14159")
+      (name, dep), = cell._checkpoint_dependencies
+      cell.get_config()  # Should not throw an error
+      self.assertIs(dep, wrapped)
+      self.assertEqual("cell", name)
+
+      outputs, _ = cell(x, m)
+      self.assertTrue("cpu:14159" in outputs.device.lower())
+
+  def _retrieve_cpu_gpu_stats(self, run_metadata):
+    cpu_stats = None
+    gpu_stats = None
+    step_stats = run_metadata.step_stats
+    for ds in step_stats.dev_stats:
+      if "cpu:0" in ds.device[-5:].lower():
+        cpu_stats = ds.node_stats
+      if "gpu:0" == ds.device[-5:].lower():
+        gpu_stats = ds.node_stats
+    return cpu_stats, gpu_stats
+
+  def testDeviceWrapperDynamicExecutionNodesAreAllProperlyLocated(self):
+    if not test.is_gpu_available():
+      # Can't perform this test w/o a GPU
+      return
+
+    gpu_dev = test.gpu_device_name()
+    with self.session(use_gpu=True) as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 1, 3])
+        cell = rnn_cell_impl.DeviceWrapper(rnn_cell_impl.GRUCell(3), gpu_dev)
+        with ops.device("/cpu:0"):
+          outputs, _ = rnn.dynamic_rnn(
+              cell=cell, inputs=x, dtype=dtypes.float32)
+        run_metadata = config_pb2.RunMetadata()
+        opts = config_pb2.RunOptions(
+            trace_level=config_pb2.RunOptions.FULL_TRACE)
+
+        sess.run([variables_lib.global_variables_initializer()])
+        _ = sess.run(outputs, options=opts, run_metadata=run_metadata)
+
+      cpu_stats, gpu_stats = self._retrieve_cpu_gpu_stats(run_metadata)
+      self.assertFalse([s for s in cpu_stats if "gru_cell" in s.node_name])
+      self.assertTrue([s for s in gpu_stats if "gru_cell" in s.node_name])
+
+  @test_util.run_v1_only("b/124229375")
+  def testMultiRNNCell(self):
+    with self.cached_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 2])
+        m = array_ops.zeros([1, 4])
+        multi_rnn_cell = rnn_cell_impl.MultiRNNCell(
+            [rnn_cell_impl.GRUCell(2) for _ in range(2)],
+            state_is_tuple=False)
+        _, ml = multi_rnn_cell(x, m)
+        sess.run([variables_lib.global_variables_initializer()])
+        res = sess.run(ml, {
+            x: np.array([[1., 1.]]),
+            m: np.array([[0.1, 0.1, 0.1, 0.1]])
+        })
+        # The numbers in results were not calculated, this is just a smoke test.
+        self.assertAllClose(res, [[0.175991, 0.175991, 0.13248, 0.13248]])
+        self.assertEqual(len(multi_rnn_cell.weights), 2 * 4)
+        self.assertTrue(
+            [x.dtype == dtypes.float32 for x in multi_rnn_cell.weights])
+
+  @test_util.run_v1_only("b/124229375")
+  def testMultiRNNCellWithStateTuple(self):
+    with self.cached_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 2])
+        m_bad = array_ops.zeros([1, 4])
+        m_good = (array_ops.zeros([1, 2]), array_ops.zeros([1, 2]))
+
+        # Test incorrectness of state
+        with self.assertRaisesRegexp(ValueError, "Expected state .* a tuple"):
+          rnn_cell_impl.MultiRNNCell(
+              [rnn_cell_impl.GRUCell(2) for _ in range(2)],
+              state_is_tuple=True)(x, m_bad)
+
+        _, ml = rnn_cell_impl.MultiRNNCell(
+            [rnn_cell_impl.GRUCell(2) for _ in range(2)],
+            state_is_tuple=True)(x, m_good)
+
+        sess.run([variables_lib.global_variables_initializer()])
+        res = sess.run(
+            ml, {
+                x: np.array([[1., 1.]]),
+                m_good[0]: np.array([[0.1, 0.1]]),
+                m_good[1]: np.array([[0.1, 0.1]])
+            })
+
+        # The numbers in results were not calculated, this is just a
+        # smoke test.  However, these numbers should match those of
+        # the test testMultiRNNCell.
+        self.assertAllClose(res[0], [[0.175991, 0.175991]])
+        self.assertAllClose(res[1], [[0.13248, 0.13248]])
+
+  @parameterized.parameters(
+      [[rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2],
+       [rnn_cell_impl.ResidualWrapper, rnn_cell_impl.ResidualWrapperV2]])
+  @test_util.run_in_graph_and_eager_modes
+  def testWrapperKerasStyle(self, wrapper, wrapper_v2):
+    """Tests if wrapper cell is instantiated in keras style scope."""
+    wrapped_cell_v2 = wrapper_v2(rnn_cell_impl.BasicRNNCell(1))
+    self.assertTrue(wrapped_cell_v2._keras_style)
+
+    wrapped_cell = wrapper(rnn_cell_impl.BasicRNNCell(1))
+    self.assertFalse(wrapped_cell._keras_style)
+
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapperV2, rnn_cell_impl.ResidualWrapperV2])
+  @test_util.run_in_graph_and_eager_modes
+  def testWrapperV2VariableNames(self, wrapper):
+    """Tests that variables names do not depend on wrapper in RNN layer."""
+
+    def _rnn_input(apply_wrapper, name):
+      """Creates a RNN layer with/without wrapper and returns built rnn cell."""
+      with base_layer.keras_style_scope():
+        base_cell = rnn_cell_impl.MultiRNNCell(
+            [rnn_cell_impl.BasicRNNCell(1, name="basic_rnn_cell")
+             for _ in range(2)])
+      if apply_wrapper:
+        rnn_cell = wrapper(base_cell)
+      else:
+        rnn_cell = base_cell
+      rnn_layer = keras_layers.RNN(rnn_cell, name=name)
+      inputs = ops.convert_to_tensor([[[1]]], dtype=dtypes.float32)
+      _ = rnn_layer(inputs)
+      return base_cell._cells[0]
+
+    rnn_1 = _rnn_input(True, name="rnn_0")
+    rnn_2 = _rnn_input(False, name="rnn_1")
+
+    for i, cell in enumerate([rnn_1, rnn_2]):
+      var_prefix = "rnn_{}/cell_0/basic_rnn_cell/".format(i)
+      self.assertCountEqual([v.name for v in cell.weights],
+                            (var_prefix + "kernel:0", var_prefix + "bias:0"))
+
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapperV2, rnn_cell_impl.ResidualWrapperV2])
+  @test_util.run_in_graph_and_eager_modes
+  def testWrapperWeights(self, wrapper):
+    """Tests that wrapper weights contain wrapped cells weights."""
+
+    with base_layer.keras_style_scope():
+      base_cell = rnn_cell_impl.BasicRNNCell(1, name="basic_rnn_cell")
+    rnn_cell = wrapper(base_cell)
+    rnn_layer = keras_layers.RNN(rnn_cell)
+    inputs = ops.convert_to_tensor([[[1]]], dtype=dtypes.float32)
+    rnn_layer(inputs)
+
+    expected_weights = ["rnn/" + var for var in ("kernel:0", "bias:0")]
+    self.assertEqual(len(rnn_cell.weights), 2)
+    self.assertCountEqual([v.name for v in rnn_cell.weights], expected_weights)
+    self.assertCountEqual([v.name for v in rnn_cell.trainable_variables],
+                          expected_weights)
+    self.assertCountEqual([v.name for v in rnn_cell.non_trainable_variables],
+                          [])
+    self.assertCountEqual([v.name for v in rnn_cell._cell.weights],
+                          expected_weights)
+
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapperV2, rnn_cell_impl.ResidualWrapperV2])
+  @test_util.run_in_graph_and_eager_modes
+  def testWrapperV2Caller(self, wrapper):
+    """Tests that wrapper V2 is using the LayerRNNCell's caller."""
+
+    with base_layer.keras_style_scope():
+      base_cell = rnn_cell_impl.MultiRNNCell(
+          [rnn_cell_impl.BasicRNNCell(1) for _ in range(2)])
+    rnn_cell = wrapper(base_cell)
+    inputs = ops.convert_to_tensor([[1]], dtype=dtypes.float32)
+    state = ops.convert_to_tensor([[1]], dtype=dtypes.float32)
+    _ = rnn_cell(inputs, [state, state])
+    weights = base_cell._cells[0].weights
+    self.assertLen(weights, expected_len=2)
+    self.assertTrue(all(["_wrapper" in v.name for v in weights]))
+
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapperV2, rnn_cell_impl.ResidualWrapperV2])
+  @test_util.run_in_graph_and_eager_modes
+  def testWrapperV2Build(self, wrapper):
+    cell = rnn_cell_impl.LSTMCell(10)
+    wrapper = wrapper(cell)
+    wrapper.build((1,))
+    self.assertTrue(cell.built)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class DropoutWrapperTest(test.TestCase, parameterized.TestCase):
+
+  def _testDropoutWrapper(self,
+                          batch_size=None,
+                          time_steps=None,
+                          parallel_iterations=None,
+                          wrapper_type=None,
+                          scope="root",
+                          **kwargs):
+    if batch_size is None and time_steps is None:
+      # 2 time steps, batch size 1, depth 3
+      batch_size = 1
+      time_steps = 2
+      x = constant_op.constant(
+          [[[2., 2., 2.]], [[1., 1., 1.]]], dtype=dtypes.float32)
+      m = rnn_cell_impl.LSTMStateTuple(
+          *[constant_op.constant([[0.1, 0.1, 0.1]], dtype=dtypes.float32)] * 2)
+    else:
+      x = constant_op.constant(
+          np.random.randn(time_steps, batch_size, 3).astype(np.float32))
+      m = rnn_cell_impl.LSTMStateTuple(*[
+          constant_op.
+          constant([[0.1, 0.1, 0.1]] * batch_size, dtype=dtypes.float32)] * 2)
+    outputs, final_state = rnn.dynamic_rnn(
+        cell=wrapper_type(
+            rnn_cell_impl.LSTMCell(
+                3, initializer=init_ops.constant_initializer(0.5)),
+            dtype=x.dtype, **kwargs),
+        time_major=True,
+        parallel_iterations=parallel_iterations,
+        inputs=x,
+        initial_state=m,
+        scope=scope)
+    self.evaluate([variables_lib.global_variables_initializer()])
+    res = self.evaluate([outputs, final_state])
+    self.assertEqual(res[0].shape, (time_steps, batch_size, 3))
+    self.assertEqual(res[1].c.shape, (batch_size, 3))
+    self.assertEqual(res[1].h.shape, (batch_size, 3))
+    return res
+
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperProperties(self, wrapper_type):
+    cell = rnn_cell_impl.BasicRNNCell(10)
+    wrapper = wrapper_type(cell)
+    # Github issue 15810
+    self.assertEqual(wrapper.wrapped_cell, cell)
+    self.assertEqual(wrapper.state_size, 10)
+    self.assertEqual(wrapper.output_size, 10)
+
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperZeroState(self, wrapper_type):
+    class _Cell(rnn_cell_impl.BasicRNNCell):
+
+      def zero_state(self, batch_size=None, dtype=None):
+        return "wrapped_cell_zero_state"
+    wrapper = wrapper_type(_Cell(10))
+    self.assertEqual(wrapper.zero_state(10, dtypes.float32),
+                     "wrapped_cell_zero_state")
+
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperKeepAllConstantInput(self, wrapper_type):
+    keep = array_ops.ones([])
+    res = self._testDropoutWrapper(
+        input_keep_prob=keep, output_keep_prob=keep, state_keep_prob=keep,
+        wrapper_type=wrapper_type)
+    true_full_output = np.array(
+        [[[0.751109, 0.751109, 0.751109]], [[0.895509, 0.895509, 0.895509]]],
+        dtype=np.float32)
+    true_full_final_c = np.array(
+        [[1.949385, 1.949385, 1.949385]], dtype=np.float32)
+    self.assertAllClose(true_full_output, res[0])
+    self.assertAllClose(true_full_output[1], res[1].h)
+    self.assertAllClose(true_full_final_c, res[1].c)
+
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperKeepAll(self, wrapper_type):
+    keep = variable_scope.get_variable("all", initializer=1.0)
+    res = self._testDropoutWrapper(
+        input_keep_prob=keep, output_keep_prob=keep, state_keep_prob=keep,
+        wrapper_type=wrapper_type)
+    true_full_output = np.array(
+        [[[0.751109, 0.751109, 0.751109]], [[0.895509, 0.895509, 0.895509]]],
+        dtype=np.float32)
+    true_full_final_c = np.array(
+        [[1.949385, 1.949385, 1.949385]], dtype=np.float32)
+    self.assertAllClose(true_full_output, res[0])
+    self.assertAllClose(true_full_output[1], res[1].h)
+    self.assertAllClose(true_full_final_c, res[1].c)
+
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperWithSeed(self, wrapper_type):
+    keep_some = 0.5
+    random_seed.set_random_seed(2)
+    ## Use parallel_iterations = 1 in both calls to
+    ## _testDropoutWrapper to ensure the (per-time step) dropout is
+    ## consistent across both calls.  Otherwise the seed may not end
+    ## up being munged consistently across both graphs.
+    res_standard_1 = self._testDropoutWrapper(
+        input_keep_prob=keep_some,
+        output_keep_prob=keep_some,
+        state_keep_prob=keep_some,
+        seed=10,
+        parallel_iterations=1,
+        wrapper_type=wrapper_type,
+        scope="root_1")
+    random_seed.set_random_seed(2)
+    res_standard_2 = self._testDropoutWrapper(
+        input_keep_prob=keep_some,
+        output_keep_prob=keep_some,
+        state_keep_prob=keep_some,
+        seed=10,
+        parallel_iterations=1,
+        wrapper_type=wrapper_type,
+        scope="root_2")
+    self.assertAllClose(res_standard_1[0], res_standard_2[0])
+    self.assertAllClose(res_standard_1[1].c, res_standard_2[1].c)
+    self.assertAllClose(res_standard_1[1].h, res_standard_2[1].h)
+
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperKeepNoOutput(self, wrapper_type):
+    keep_all = variable_scope.get_variable("all", initializer=1.0)
+    keep_none = variable_scope.get_variable("none", initializer=1e-6)
+    res = self._testDropoutWrapper(
+        input_keep_prob=keep_all,
+        output_keep_prob=keep_none,
+        state_keep_prob=keep_all,
+        wrapper_type=wrapper_type)
+    true_full_output = np.array(
+        [[[0.751109, 0.751109, 0.751109]], [[0.895509, 0.895509, 0.895509]]],
+        dtype=np.float32)
+    true_full_final_c = np.array(
+        [[1.949385, 1.949385, 1.949385]], dtype=np.float32)
+    self.assertAllClose(np.zeros(res[0].shape), res[0])
+    self.assertAllClose(true_full_output[1], res[1].h)
+    self.assertAllClose(true_full_final_c, res[1].c)
+
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperKeepNoStateExceptLSTMCellMemory(self, wrapper_type):
+    keep_all = variable_scope.get_variable("all", initializer=1.0)
+    keep_none = variable_scope.get_variable("none", initializer=1e-6)
+    # Even though we dropout state, by default DropoutWrapper never
+    # drops out the memory ("c") term of an LSTMStateTuple.
+    res = self._testDropoutWrapper(
+        input_keep_prob=keep_all,
+        output_keep_prob=keep_all,
+        state_keep_prob=keep_none,
+        wrapper_type=wrapper_type)
+    true_c_state = np.array([[1.713925, 1.713925, 1.713925]], dtype=np.float32)
+    true_full_output = np.array(
+        [[[0.751109, 0.751109, 0.751109]], [[0.895509, 0.895509, 0.895509]]],
+        dtype=np.float32)
+    self.assertAllClose(true_full_output[0], res[0][0])
+    # Second output is modified by zero input state
+    self.assertGreater(np.linalg.norm(true_full_output[1] - res[0][1]), 1e-4)
+    # h state has been set to zero
+    self.assertAllClose(np.zeros(res[1].h.shape), res[1].h)
+    # c state of an LSTMStateTuple is NEVER modified.
+    self.assertAllClose(true_c_state, res[1].c)
+
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperKeepNoInput(self, wrapper_type):
+    keep_all = variable_scope.get_variable("all", initializer=1.0)
+    keep_none = variable_scope.get_variable("none", initializer=1e-6)
+    true_full_output = np.array(
+        [[[0.751109, 0.751109, 0.751109]], [[0.895509, 0.895509, 0.895509]]],
+        dtype=np.float32)
+    true_full_final_c = np.array(
+        [[1.949385, 1.949385, 1.949385]], dtype=np.float32)
+    # All outputs are different because inputs are zeroed out
+    res = self._testDropoutWrapper(
+        input_keep_prob=keep_none,
+        output_keep_prob=keep_all,
+        state_keep_prob=keep_all,
+        wrapper_type=wrapper_type)
+    self.assertGreater(np.linalg.norm(res[0] - true_full_output), 1e-4)
+    self.assertGreater(np.linalg.norm(res[1].h - true_full_output[1]), 1e-4)
+    self.assertGreater(np.linalg.norm(res[1].c - true_full_final_c), 1e-4)
+
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperRecurrentOutput(self, wrapper_type):
+    keep_some = 0.8
+    keep_all = variable_scope.get_variable("all", initializer=1.0)
+    res = self._testDropoutWrapper(
+        input_keep_prob=keep_all,
+        output_keep_prob=keep_some,
+        state_keep_prob=keep_all,
+        variational_recurrent=True,
+        wrapper_type=wrapper_type,
+        input_size=3,
+        batch_size=5,
+        time_steps=7)
+    # Ensure the same dropout pattern for all time steps
+    output_mask = np.abs(res[0]) > 1e-6
+    for m in output_mask[1:]:
+      self.assertAllClose(output_mask[0], m)
+
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperRecurrentStateInputAndOutput(self, wrapper_type):
+    keep_some = 0.9
+    res = self._testDropoutWrapper(
+        input_keep_prob=keep_some,
+        output_keep_prob=keep_some,
+        state_keep_prob=keep_some,
+        variational_recurrent=True,
+        wrapper_type=wrapper_type,
+        input_size=3,
+        batch_size=5,
+        time_steps=7)
+
+    # Smoke test for the state/input masks.
+    output_mask = np.abs(res[0]) > 1e-6
+    for time_step in output_mask:
+      # Ensure the same dropout output pattern for all time steps
+      self.assertAllClose(output_mask[0], time_step)
+      for batch_entry in time_step:
+        # Assert all batch entries get the same mask
+        self.assertAllClose(batch_entry, time_step[0])
+
+    # For state, ensure all batch entries have the same mask
+    state_c_mask = np.abs(res[1].c) > 1e-6
+    state_h_mask = np.abs(res[1].h) > 1e-6
+    for batch_entry in state_c_mask:
+      self.assertAllClose(batch_entry, state_c_mask[0])
+    for batch_entry in state_h_mask:
+      self.assertAllClose(batch_entry, state_h_mask[0])
+
+  @parameterized.parameters(
+      [rnn_cell_impl.DropoutWrapper, rnn_cell_impl.DropoutWrapperV2])
+  def testDropoutWrapperRecurrentStateInputAndOutputWithSeed(
+      self, wrapper_type):
+    keep_some = 0.9
+    random_seed.set_random_seed(2347)
+    np.random.seed(23487)
+    res0 = self._testDropoutWrapper(
+        input_keep_prob=keep_some,
+        output_keep_prob=keep_some,
+        state_keep_prob=keep_some,
+        variational_recurrent=True,
+        wrapper_type=wrapper_type,
+        input_size=3,
+        batch_size=5,
+        time_steps=7,
+        seed=-234987,
+        scope="root_0")
+    random_seed.set_random_seed(2347)
+    np.random.seed(23487)
+    res1 = self._testDropoutWrapper(
+        input_keep_prob=keep_some,
+        output_keep_prob=keep_some,
+        state_keep_prob=keep_some,
+        variational_recurrent=True,
+        wrapper_type=wrapper_type,
+        input_size=3,
+        batch_size=5,
+        time_steps=7,
+        seed=-234987,
+        scope="root_1")
+
+    output_mask = np.abs(res0[0]) > 1e-6
+    for time_step in output_mask:
+      # Ensure the same dropout output pattern for all time steps
+      self.assertAllClose(output_mask[0], time_step)
+      for batch_entry in time_step:
+        # Assert all batch entries get the same mask
+        self.assertAllClose(batch_entry, time_step[0])
+
+    # For state, ensure all batch entries have the same mask
+    state_c_mask = np.abs(res0[1].c) > 1e-6
+    state_h_mask = np.abs(res0[1].h) > 1e-6
+    for batch_entry in state_c_mask:
+      self.assertAllClose(batch_entry, state_c_mask[0])
+    for batch_entry in state_h_mask:
+      self.assertAllClose(batch_entry, state_h_mask[0])
+
+    # Ensure seeded calculation is identical.
+    self.assertAllClose(res0[0], res1[0])
+    self.assertAllClose(res0[1].c, res1[1].c)
+    self.assertAllClose(res0[1].h, res1[1].h)
 
 
 if __name__ == "__main__":

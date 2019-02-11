@@ -34,6 +34,7 @@ limitations under the License.
 %rename("%s") TFE_ContextAsyncWait;
 %rename("%s") TFE_ContextAsyncClearError;
 %rename("%s") TFE_NewProfiler;
+%rename("%s") TFE_ProfilerIsOk;
 %rename("%s") TFE_DeleteProfiler;
 %rename("%s") TFE_ProfilerSerializeToString;
 %rename("%s") TFE_NewProfilerServerOptions;

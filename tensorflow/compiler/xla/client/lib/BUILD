@@ -230,6 +230,7 @@ cc_library(
     deps = [
         ":arithmetic",
         ":constants",
+        ":slicing",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
@@ -375,6 +376,7 @@ cc_library(
     srcs = ["sorting.cc"],
     hdrs = ["sorting.h"],
     deps = [
+        ":comparators",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",

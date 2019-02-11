@@ -23,6 +23,7 @@ import copy
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.platform import test
@@ -396,7 +397,6 @@ class BidirectionalTest(test.TestCase):
       model.compile(loss='mse', optimizer='sgd')
       model.fit(x, y, epochs=1, batch_size=1)
 
-  @tf_test_util.run_v1_only('b/120545219')
   def test_Bidirectional_merged_value(self):
     rnn = keras.layers.LSTM
     samples = 2
@@ -424,10 +424,10 @@ class BidirectionalTest(test.TestCase):
             rnn(units, return_sequences=True), merge_mode=merge_mode)
         f_merged = keras.backend.function([inputs], _to_list(layer(inputs)))
         f_forward = keras.backend.function([inputs],
-                                           [layer.forward_layer.call(inputs)])
+                                           [layer.forward_layer(inputs)])
         f_backward = keras.backend.function(
             [inputs],
-            [keras.backend.reverse(layer.backward_layer.call(inputs), 1)])
+            [keras.backend.reverse(layer.backward_layer(inputs), 1)])
 
         y_merged = f_merged(x)
         y_expected = _to_list(merge_func(f_forward(x)[0], f_backward(x)[0]))
@@ -441,9 +441,9 @@ class BidirectionalTest(test.TestCase):
             rnn(units, return_state=True), merge_mode=merge_mode)
         f_merged = keras.backend.function([inputs], layer(inputs))
         f_forward = keras.backend.function([inputs],
-                                           layer.forward_layer.call(inputs))
+                                           layer.forward_layer(inputs))
         f_backward = keras.backend.function([inputs],
-                                            layer.backward_layer.call(inputs))
+                                            layer.backward_layer(inputs))
         n_states = len(layer.layer.states)
 
         y_merged = f_merged(x)
@@ -527,8 +527,10 @@ class BidirectionalTest(test.TestCase):
       layer.trainable = True
       assert len(layer.trainable_weights) == 6
 
-  @tf_test_util.run_v1_only('b/120545219')
   def test_Bidirectional_updates(self):
+    if context.executing_eagerly():
+      self.skipTest('layer.updates is only available in graph mode.')
+
     with self.cached_session():
       x = keras.layers.Input(shape=(3, 2))
       x_reachable_update = x * x

@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.optimizer_v2 import adam
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -88,6 +89,19 @@ def _multiple_uses():
   return inputs, outputs
 
 
+def _op_with_tensor_list():
+  inputs = keras.Input(shape=(10,))
+  x = array_ops.concat([inputs, inputs], axis=1)
+  outputs = keras.layers.Dense(10)(x)
+  return inputs, outputs
+
+
+def _add_n():
+  inputs = keras.Input(shape=(10,))
+  outputs = math_ops.add_n([inputs, inputs, inputs])
+  return inputs, outputs
+
+
 @keras_parameterized.run_all_keras_modes
 class AutoLambdaTest(keras_parameterized.TestCase):
 
@@ -98,7 +112,8 @@ class AutoLambdaTest(keras_parameterized.TestCase):
       ('multiple_ops_in_middle', _multiple_ops_in_middle),
       ('single_standalone_branch', _single_standalone_branch),
       ('single_op_with_attrs', _single_op_with_attrs),
-      ('multiple_uses', _multiple_uses))
+      ('multiple_uses', _multiple_uses),
+      ('op_with_tensor_list', _op_with_tensor_list), ('add_n', _add_n))
   def test_autolambda(self, model_fn):
     inputs, outputs = model_fn()
     model = keras.Model(inputs, outputs)
@@ -110,6 +125,13 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     np_outputs = nest.map_structure(lambda x: np.ones((10, 10), 'float32'),
                                     outputs)
     model.fit(np_inputs, np_outputs, batch_size=2)
+    model(np_inputs)  # Test calling the model directly on inputs.
+
+    new_model = keras.Model.from_config(model.get_config())
+    new_model.compile(
+        adam.Adam(0.001), 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    new_model.fit(np_inputs, np_outputs, batch_size=2)
+    new_model(np_inputs)  # Test calling the new model directly on inputs.
 
   def test_numerical_correctness_simple(self):
     x = ops.convert_to_tensor([[-1., 0., -2., 1.]])
@@ -127,7 +149,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     y = self.evaluate(model(x))
     self.assertAllClose(y, [1.5, 3.])
 
-  def test_serialization(self):
+  def test_numerical_correctness_serialization(self):
     x = ops.convert_to_tensor([-1., 0., -2., 1.])
     inputs = keras.Input(shape=(4,))
     outputs = gen_nn_ops.relu(inputs)

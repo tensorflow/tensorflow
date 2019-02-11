@@ -77,7 +77,6 @@ namespace {
 using llvm_ir::AsStringRef;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
-namespace gtl = tensorflow::gtl;
 }  // namespace
 
 namespace cpu {

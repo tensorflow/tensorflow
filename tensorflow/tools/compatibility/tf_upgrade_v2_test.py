@@ -1157,6 +1157,12 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
+  def test_CriticalSection_upgrade(self):
+    text = "tf.contrib.framework.CriticalSection(shared_name='blah')"
+    expected = "tf.CriticalSection(shared_name='blah')"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
   def test_sample_distorted_bounding_box(self):
     # pylint: disable=line-too-long
     text = "tf.image.sample_distorted_bounding_box(a, b, c, d, e, f, g, h, i, j)"

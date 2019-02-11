@@ -19,7 +19,6 @@ py_test(
         "api_compatibility_test.py",
         "//tensorflow:tf_python_api_gen_v2",
     ],
-    args = ["--only_test_core_api=true"],
     data = [
         "//tensorflow/tools/api/golden:api_golden_v1",
         "//tensorflow/tools/api/golden:api_golden_v2",

@@ -66,6 +66,11 @@ py_test(
         ":use_text_rnn_model",
     ],
     srcs_version = "PY2AND3",
+    tags = [
+        "noasan",  # forge input size exceeded
+        "nomsan",  # forge input size exceeded
+        "notsan",  # forge input size exceeded
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
     ],

@@ -25,6 +25,7 @@ cc_library(
     deps = [
         "//third_party/python_runtime:headers",
         "//tensorflow/core:lib",
+        "//tensorflow/lite/python/interpreter_wrapper:python_utils",
         "//tensorflow/lite/toco:model_flags_proto_cc",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/toco:toco_graphviz_dump_options",

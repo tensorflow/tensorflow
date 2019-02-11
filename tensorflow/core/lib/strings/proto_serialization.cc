@@ -17,11 +17,15 @@ limitations under the License.
 #include <cstring>
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
+namespace {
+static const int kInlinedBufferSize = 256;
+}  // namespace
 
 bool SerializeToStringDeterministic(const protobuf::MessageLite& msg,
                                     string* result) {
@@ -47,28 +51,28 @@ bool AreSerializedProtosEqual(const protobuf::MessageLite& x,
   const size_t size = x.ByteSizeLong();
   if (size != y.ByteSizeLong()) return false;
   if (size == 0) return true;
-  auto x_serialized = absl::make_unique<char[]>(size);
-  bool success_x = SerializeToBufferDeterministic(x, x_serialized.get(), size);
+  gtl::InlinedVector<char, kInlinedBufferSize> x_serialized(size);
+  bool success_x = SerializeToBufferDeterministic(x, x_serialized.data(), size);
   DCHECK(success_x);
-  auto y_serialized = absl::make_unique<char[]>(size);
-  bool success_y = SerializeToBufferDeterministic(y, y_serialized.get(), size);
+  gtl::InlinedVector<char, kInlinedBufferSize> y_serialized(size);
+  bool success_y = SerializeToBufferDeterministic(y, y_serialized.data(), size);
   DCHECK(success_y);
-  return memcmp(x_serialized.get(), y_serialized.get(), size) == 0;
+  return memcmp(x_serialized.data(), y_serialized.data(), size) == 0;
 }
 
 uint64 DeterministicProtoHash64(const protobuf::MessageLite& proto,
                                 uint64 seed) {
   const size_t size = proto.ByteSizeLong();
-  auto serialized = absl::make_unique<char[]>(size);
-  SerializeToBufferDeterministic(proto, serialized.get(), size);
-  return Hash64(serialized.get(), size, seed);
+  gtl::InlinedVector<char, kInlinedBufferSize> serialized(size);
+  SerializeToBufferDeterministic(proto, serialized.data(), size);
+  return Hash64(serialized.data(), size, seed);
 }
 
 uint64 DeterministicProtoHash64(const protobuf::MessageLite& proto) {
   const size_t size = proto.ByteSizeLong();
-  auto serialized = absl::make_unique<char[]>(size);
-  SerializeToBufferDeterministic(proto, serialized.get(), size);
-  return Hash64(serialized.get(), size);
+  gtl::InlinedVector<char, kInlinedBufferSize> serialized(size);
+  SerializeToBufferDeterministic(proto, serialized.data(), size);
+  return Hash64(serialized.data(), size);
 }
 
 }  // namespace tensorflow

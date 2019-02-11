@@ -23,6 +23,7 @@ import sys
 
 import six
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.checkpointable import tracking
@@ -91,7 +92,7 @@ class ModuleMetaclass(type):
     return module
 
 
-def with_name_scope(unbound_method):
+def wrap_with_name_scope(unbound_method):
   """Patches the given method so it enters the modules name scope."""
   def enter_name_scope(self, *args, **kwargs):
     """Decorator that calls the given function in the module name scope.
@@ -118,7 +119,28 @@ def with_name_scope(unbound_method):
       # for a particular method annotate it with `@no_module_name_scope`.
       return unbound_method(self, *args, **kwargs)
 
-  return tf_decorator.make_decorator(unbound_method, enter_name_scope)
+  return enter_name_scope
+
+
+def wrap_with_name_scope_no_exception(unbound_method):
+  """Patches the given method so it enters the modules name scope."""
+  def enter_name_scope(self, *args, **kwargs):
+    with self.name_scope:
+      # tf.Module enters the module name scope for all methods. To disable this
+      # for a particular method annotate it with `@no_module_name_scope`.
+      return unbound_method(self, *args, **kwargs)
+  return enter_name_scope
+
+
+def with_name_scope(unbound_method):
+  """Patches the given method so it enters the modules name scope."""
+  if isinstance(unbound_method, def_function.Function):
+    # Autograph cannot convert functions that have try/catch.
+    unbound_method._decorate(wrap_with_name_scope_no_exception)  # pylint: disable=protected-access
+    return unbound_method
+  else:
+    return tf_decorator.make_decorator(unbound_method,
+                                       wrap_with_name_scope(unbound_method))
 
 
 @tf_export("experimental.Module")

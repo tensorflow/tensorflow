@@ -31,6 +31,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -271,6 +272,19 @@ class DefFunctionTest(test.TestCase):
                      (tensor_spec.TensorSpec(
                          None, dtypes.float32, name='x'),))
 
+  def test_error_inner_capture(self):
+
+    @def_function.function
+    def f(inputs):
+      num_steps, _ = inputs.shape[:2]
+      outputs = []
+      for t in math_ops.range(num_steps):
+        outputs.append(inputs[t])
+      return outputs
+
+    with self.assertRaisesRegexp(ValueError, 'inner'):
+      f(array_ops.zeros(shape=(8, 42, 3)))
+
   def test_serialization_signature_cache(self):
 
     @def_function.function
@@ -429,6 +443,38 @@ class DefFunctionTest(test.TestCase):
     created_variable_read = create_variable()
     self.assertRegexpMatches(created_variable_read.device, "CPU")
 
+  def testDecorate(self):
+    func = def_function.function(lambda: 1)
+    def decorator(f):
+      return lambda: 1 + f()
+
+    func._decorate(decorator)
+    self.assertEqual(func().numpy(), 2)
+
+  def testLiftPlaceholderInitializedVariable(self):
+    with ops.Graph().as_default():
+      var_list = []
+
+      @def_function.function
+      def use_variable():
+        if not var_list:
+          initial_value = array_ops.placeholder(shape=[], dtype=dtypes.float32)
+          v = variables.Variable(initial_value)
+          var_list.append(v)
+        return var_list[0] + 1.
+
+      var_plus_one = use_variable()
+      with self.session() as session:
+        init_op = var_list[0].initializer
+        session.run(init_op, feed_dict={init_op.inputs[1]: 2.})
+        self.assertEqual(3., session.run(var_plus_one))
+
+  def testDecorate_rejectedAfterTrace(self):
+    func = def_function.function(lambda: 1)
+    self.assertEqual(func().numpy(), 1)
+    msg = 'Functions cannot be decorated after they have been traced.'
+    with self.assertRaisesRegexp(ValueError, msg):
+      func._decorate(lambda f: f)
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

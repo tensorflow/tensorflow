@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CriticalSection"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DType"
     mtype: "<type \'type\'>"
   }
@@ -201,7 +205,15 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "losses"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "math"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "metrics"
     mtype: "<type \'module\'>"
   }
   member {
@@ -223,6 +235,10 @@ tf_module {
   member {
     name: "ones_initializer"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "optimizers"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "qint16"

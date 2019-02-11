@@ -94,8 +94,6 @@
 @@smart_constant_value
 @@smart_case
 
-@@CriticalSection
-
 @@BoundedTensorSpec
 @@TensorSpec
 

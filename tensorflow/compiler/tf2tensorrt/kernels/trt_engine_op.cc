@@ -254,6 +254,7 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
   opts.rendezvous = ctx->rendezvous();
   opts.cancellation_manager = ctx->cancellation_manager();
   opts.runner = ctx->runner();
+  inputs.reserve(ctx->num_inputs());
   for (int i = 0; i < ctx->num_inputs(); i++) {
     inputs.push_back(ctx->input(i));
   }
@@ -385,8 +386,9 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   }
   // Get shapes of inputs to engine.
   std::vector<tensorflow::TensorShape> input_shapes;
+  input_shapes.reserve(ctx->num_inputs());
   for (int i = 0; i < ctx->num_inputs(); ++i) {
-    input_shapes.emplace_back(ctx->input(i).shape());
+    input_shapes.push_back(ctx->input(i).shape());
   }
   EngineContext* engine_context = GetEngine(input_shapes, ctx);
   if (!engine_context->cuda_engine) {
@@ -616,11 +618,11 @@ EngineContext* TRTEngineOp::GetEngine(
     LOG(INFO) << "Building a new TensorRT engine for " << name()
               << " input shapes: "
               << TensorShapeUtils::ShapeListString(engine_input_shapes);
+
     // Convert to partial shapes
-    std::vector<PartialTensorShape> partial_shapes;
-    for (int i = 0; i < engine_input_shapes.size(); i++) {
-      partial_shapes.emplace_back(engine_input_shapes[i]);
-    }
+    std::vector<PartialTensorShape> partial_shapes(engine_input_shapes.begin(),
+                                                   engine_input_shapes.end());
+
     // Up to this point, calibrator_ can never be empty, since otherwise it
     // means calibration_mode_ is true and this path won't get executed.
     auto status = convert::ConvertGraphDefToEngine(

@@ -27,6 +27,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.saving import model_from_json
 from tensorflow.python.keras.saving import saving_utils
+from tensorflow.python.keras.utils import mode_keys
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -35,7 +36,6 @@ from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import model_utils
 from tensorflow.python.saved_model import save as save_lib
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
-from tensorflow.python.training import mode_keys
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.checkpointable import graph_view
 from tensorflow.python.util import compat

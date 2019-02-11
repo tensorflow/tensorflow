@@ -482,6 +482,34 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(5., self.evaluate(concrete()))
     self.assertAllEqual(5., self.evaluate(tensor_init()))
 
+  def testFuncGraphCaptureByValue(self):
+    v = variables.Variable(1.0)
+
+    def trivial_function():
+      return v.read_value()
+
+    graph_function = function.Function(
+        trivial_function, 'test', capture_by_value=True)
+
+    self.assertAllEqual(graph_function(), 1.0)
+    v.assign(2.0)
+    self.assertAllEqual(graph_function(), 1.0)
+
+  def testFuncGraphCaptureByValueNested(self):
+    v = variables.Variable(1.0)
+
+    def trivial_function():
+      return control_flow_ops.cond(
+          array_ops.placeholder_with_default(True, ()),
+          v.read_value, v.read_value)
+
+    graph_function = function.Function(
+        trivial_function, 'test', capture_by_value=True)
+
+    self.assertAllEqual(graph_function(), 1.0)
+    v.assign(2.0)
+    self.assertAllEqual(graph_function(), 1.0)
+
   def testDefunShapeInferenceWithCapturedResourceVariable(self):
     v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
 

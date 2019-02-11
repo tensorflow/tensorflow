@@ -141,11 +141,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "d1d2ac19b8ef386ad70b91932a90bfbc3014b801d14723b9c8373239128bd2dd",
-        strip_prefix = "eigen-eigen-1724f8760da8",
+        sha256 = "61f0017318a24cf940db14e57febecc524b24a9faa8ff4fa7f9f91630c4cd09d",
+        strip_prefix = "eigen-eigen-5a4931dafc1c",
         urls = [
-            "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/1724f8760da8.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/1724f8760da8.tar.gz",
+            "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/5a4931dafc1c.tar.gz",
+            "https://bitbucket.org/eigen/eigen/get/5a4931dafc1c.tar.gz",
         ],
     )
 
@@ -478,12 +478,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
     tf_http_archive(
         name = "grpc",
-        sha256 = "1b7178e42f6f766cf56425fab4f1ba5ddf668b209a997ba62ffca232dc43688c",
-        strip_prefix = "grpc-1bd32fb4d582e3d182786b10d63dd048ba11b678",
+        sha256 = "c1960c2d96914431bcaec97179f025868e6d641b7ae9b13d2cf94b161139bd67",
+        strip_prefix = "grpc-c61d3e8308df248a13e94e9eebc674d6481e9ca4",
         system_build_file = clean_dep("//third_party/systemlibs:grpc.BUILD"),
         urls = [
-            "https://mirror.bazel.build/github.com/grpc/grpc/archive/1bd32fb4d582e3d182786b10d63dd048ba11b678.tar.gz",
-            "https://github.com/grpc/grpc/archive/1bd32fb4d582e3d182786b10d63dd048ba11b678.tar.gz",
+            "https://mirror.bazel.build/github.com/grpc/grpc/archive/c61d3e8308df248a13e94e9eebc674d6481e9ca4.tar.gz",
+            "https://github.com/grpc/grpc/archive/c61d3e8308df248a13e94e9eebc674d6481e9ca4.tar.gz",
         ],
     )
 

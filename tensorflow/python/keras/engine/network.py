@@ -170,7 +170,7 @@ class Network(base_layer.Layer):
     self._is_compiled = False
     self._expects_training_arg = False
 
-    # This is True for Sequential networks and graph networks.
+    # This is True for Sequential networks and Functional networks.
     self._compute_output_and_mask_jointly = False
 
     self.supports_masking = False
@@ -723,7 +723,7 @@ class Network(base_layer.Layer):
         A list of `InputSpec` instances (one per input to the model)
             or a single instance if the model has only one input.
     """
-    # If not a graph network, can't assume anything.
+    # If subclassed model, can't assume anything.
     if not self._is_graph_network:
       return None
 
@@ -1298,7 +1298,10 @@ class Network(base_layer.Layer):
     """
     if not self._is_graph_network:
       raise NotImplementedError(
-          'Currently `save` requires model to be a graph network. Consider '
+          'The `save` method requires the model to be a Functional model or a '
+          'Sequential model. It does not work for subclassed models, '
+          'because such models are defined via the body of a Python method, '
+          'which isn\'t safely serializable. Consider '
           'using `save_weights`, in order to save the weights of the model.')
 
     from tensorflow.python.keras.models import save_model  # pylint: disable=g-import-not-at-top

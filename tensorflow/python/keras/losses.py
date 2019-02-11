@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# pylint: disable=unused-import
 """Built-in loss functions.
 """
 from __future__ import absolute_import
@@ -23,7 +22,6 @@ import abc
 
 import six
 
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend as K
@@ -32,7 +30,6 @@ from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_variable
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
@@ -57,8 +54,8 @@ class Loss(object):
   ```
 
   Args:
-    reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
-      `SUM_OVER_BATCH_SIZE`.
+    reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
+      Default value is `SUM_OVER_BATCH_SIZE`.
     name: Optional name for the op.
   """
 
@@ -133,7 +130,7 @@ class LossFunctionWrapper(Loss):
   Args:
     fn: The loss function to wrap, with signature `fn(y_true, y_pred,
       **kwargs)`.
-    reduction: (Optional) Type of `tf.losses.Reduction` to apply to loss.
+    reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
       Default value is `SUM_OVER_BATCH_SIZE`.
     name: (Optional) name for the loss.
     **kwargs: The keyword arguments that are passed on to `fn`.
@@ -186,7 +183,7 @@ class MeanSquaredError(LossFunctionWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss=tf.keras.losses.MeanSquaredError())
   ```
   """
@@ -216,7 +213,7 @@ class MeanAbsoluteError(LossFunctionWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss=tf.keras.losses.MeanAbsoluteError())
   ```
   """
@@ -246,7 +243,7 @@ class MeanAbsolutePercentageError(LossFunctionWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss=tf.keras.losses.MeanAbsolutePercentageError())
   ```
   """
@@ -276,7 +273,7 @@ class MeanSquaredLogarithmicError(LossFunctionWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss=tf.keras.losses.MeanSquaredLogarithmicError())
   ```
   """
@@ -310,7 +307,7 @@ class BinaryCrossentropy(LossFunctionWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss=tf.keras.losses.BinaryCrossentropy())
   ```
 
@@ -318,8 +315,8 @@ class BinaryCrossentropy(LossFunctionWrapper):
     from_logits: Whether `y_pred` is expected to be a logits tensor. By default,
       we assume that `y_pred` encodes a probability distribution.
     label_smoothing: Float in [0, 1]. If > `0` then smooth the labels.
-    reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
-      `SUM_OVER_BATCH_SIZE`.
+    reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
+      Default value is `SUM_OVER_BATCH_SIZE`.
     name: Optional name for the op.
   """
 
@@ -363,7 +360,7 @@ class CategoricalCrossentropy(LossFunctionWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss=tf.keras.losses.CategoricalCrossentropy())
   ```
 
@@ -374,8 +371,8 @@ class CategoricalCrossentropy(LossFunctionWrapper):
       meaning the confidence on label values are relaxed. e.g.
       `label_smoothing=0.2` means that we will use a value of `0.1` for label
       `0` and `0.9` for label `1`"
-    reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
-      `SUM_OVER_BATCH_SIZE`.
+    reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
+      Default value is `SUM_OVER_BATCH_SIZE`.
     name: Optional name for the op.
   """
 
@@ -420,15 +417,15 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss=tf.keras.losses.SparseCategoricalCrossentropy())
   ````
 
   Args:
     from_logits: Whether `y_pred` is expected to be a logits tensor. By default,
       we assume that `y_pred` encodes a probability distribution.
-    reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
-      `SUM_OVER_BATCH_SIZE`.
+    reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
+      Default value is `SUM_OVER_BATCH_SIZE`.
     name: Optional name for the op.
   """
 
@@ -453,7 +450,7 @@ class Hinge(LossFunctionWrapper):
   Usage:
 
   ```python
-  h = tf.losses.Hinge()
+  h = tf.keras.losses.Hinge()
   loss = h([-1., 1., 1.], [0.6, -0.7, -0.5])
 
   # loss = max(0, 1 - y_true * y_pred) = [1.6 + 1.7 + 1.5] / 3
@@ -464,8 +461,8 @@ class Hinge(LossFunctionWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.losses.Hinge())
+  model = tf.keras.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.Hinge())
   ```
   """
 
@@ -485,7 +482,7 @@ class SquaredHinge(LossFunctionWrapper):
   Usage:
 
   ```python
-  sh = tf.losses.SquaredHinge()
+  sh = tf.keras.losses.SquaredHinge()
   loss = sh([-1., 1., 1.], [0.6, -0.7, -0.5])
 
   # loss = (max(0, 1 - y_true * y_pred))^2 = [1.6^2 + 1.7^2 + 1.5^2] / 3
@@ -496,8 +493,8 @@ class SquaredHinge(LossFunctionWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.losses.SquaredHinge())
+  model = tf.keras.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.SquaredHinge())
   ```
   """
 
@@ -515,7 +512,7 @@ class CategoricalHinge(LossFunctionWrapper):
   Usage:
 
   ```python
-  ch = tf.losses.CategoricalHinge()
+  ch = tf.keras.losses.CategoricalHinge()
   loss = ch([0., 1., 1.], [1., 0., 1.])
   print('Loss: ', loss.numpy())  # Loss: 1.0
   ```
@@ -523,8 +520,8 @@ class CategoricalHinge(LossFunctionWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.losses.CategoricalHinge())
+  model = tf.keras.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.CategoricalHinge())
   ```
   """
 
@@ -544,7 +541,7 @@ class LogLoss(LossFunctionWrapper):
   Usage:
 
   ```python
-  l = tf.losses.LogLoss()
+  l = tf.keras.losses.LogLoss()
   loss = l([0., 1., 1.], [1., 0., 1.])
   print('Loss: ', loss.numpy())  # Loss: 10.745
   ```
@@ -552,8 +549,8 @@ class LogLoss(LossFunctionWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.losses.LogLoss())
+  model = tf.keras.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.LogLoss())
   ```
   """
 
@@ -572,7 +569,7 @@ class Poisson(LossFunctionWrapper):
   Usage:
 
   ```python
-  p = tf.losses.Poisson()
+  p = tf.keras.losses.Poisson()
   loss = p([1, 9, 2], [4, 8, 12])
   print('Loss: ', loss.numpy())  # Loss: -4.63
   ```
@@ -580,8 +577,8 @@ class Poisson(LossFunctionWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.losses.Poisson())
+  model = tf.keras.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.Poisson())
   ```
   """
 
@@ -600,7 +597,7 @@ class LogCosh(LossFunctionWrapper):
   Usage:
 
   ```python
-  l = tf.losses.LogCosh()
+  l = tf.keras.losses.LogCosh()
   loss = l([0., 1., 1.], [1., 0., 1.])
   print('Loss: ', loss.numpy())  # Loss: 0.289
   ```
@@ -608,8 +605,8 @@ class LogCosh(LossFunctionWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.losses.LogCosh())
+  model = tf.keras.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.LogCosh())
   ```
   """
 
@@ -628,7 +625,7 @@ class KLDivergence(LossFunctionWrapper):
   Usage:
 
   ```python
-  k = tf.losses.KLDivergence()
+  k = tf.keras.losses.KLDivergence()
   loss = k([.4, .9, .2], [.5, .8, .12])
   print('Loss: ', loss.numpy())  # Loss: -0.043
   ```
@@ -636,8 +633,8 @@ class KLDivergence(LossFunctionWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.losses.KLDivergence())
+  model = tf.keras.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.KLDivergence())
   ```
   """
 
@@ -663,7 +660,7 @@ class Huber(LossFunctionWrapper):
   Usage:
 
   ```python
-  l = tf.losses.Huber()
+  l = tf.keras.losses.Huber()
   loss = l([0., 1., 1.], [1., 0., 1.])
   print('Loss: ', loss.numpy())  # Loss: 0.333
   ```
@@ -671,15 +668,15 @@ class Huber(LossFunctionWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.losses.Huber())
+  model = tf.keras.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.Huber())
   ```
 
   Args:
     delta: A float, the point where the Huber loss function changes from a
       quadratic to linear.
-    reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
-      `SUM_OVER_BATCH_SIZE`.
+    reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
+      Default value is `SUM_OVER_BATCH_SIZE`.
     name: Optional name for the op.
   """
 
@@ -963,7 +960,7 @@ class CosineProximity(Loss):
   Usage:
 
   ```python
-  cosine_loss = tf.losses.CosineProximity()
+  cosine_loss = tf.keras.losses.CosineProximity()
   loss = cosine_loss([0., 1., 1.], [1., 0., 1.])
   print('Loss: ', loss.numpy())  # Loss: -0.5
   ```
@@ -971,14 +968,14 @@ class CosineProximity(Loss):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.losses.CosineProximity())
+  model = tf.keras.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.CosineProximity())
   ```
 
   Args:
     axis: (Optional) Defaults to -1. The dimension along which the cosine
       proximity is computed.
-    reduction: (Optional) Type of `tf.losses.Reduction` to apply to loss.
+    reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
       Default value is `SUM_OVER_BATCH_SIZE`.
     name: Optional name for the op.
   """

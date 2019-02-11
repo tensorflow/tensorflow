@@ -161,6 +161,7 @@ py_library(
         ":engine_utils",
         ":initializers",
         ":losses",
+        ":mode_keys",
         ":optimizers",
         ":regularizers",
         ":saving",
@@ -188,9 +189,9 @@ py_library(
     deps = [
         ":backend",
         ":engine_utils",
+        ":mode_keys",
         ":optimizers",
         "//tensorflow/python:lib",
-        "//tensorflow/python:mode_keys",
         "//tensorflow/python:saver",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model/model_utils",
@@ -218,6 +219,7 @@ py_library(
     deps = [
         ":backend",
         ":engine_utils",
+        ":mode_keys",
     ],
 )
 
@@ -369,6 +371,17 @@ py_library(
     ],
 )
 
+py_library(
+    name = "mode_keys",
+    srcs = [
+        "utils/mode_keys.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/saved_model/model_utils:mode_keys",
+    ],
+)
+
 tf_py_test(
     name = "integration_test",
     size = "medium",
@@ -381,10 +394,7 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 12,
-    tags = [
-        "no_oss",  # b/123899138
-        "notsan",
-    ],
+    tags = ["notsan"],
 )
 
 tf_py_test(
@@ -409,9 +419,6 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
-    ],
-    tags = [
-        "no_oss",  # b/123899138
     ],
 )
 
@@ -835,7 +842,6 @@ tf_py_test(
     ],
     shard_count = 4,
     tags = [
-        "no_oss",  # b/123899138
         "noasan",  # http://b/78599823
         "notsan",
     ],

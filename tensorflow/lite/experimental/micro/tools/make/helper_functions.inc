@@ -78,7 +78,13 @@ $(PRJDIR)$(3)/$(1)/keil_project.uvprojx: tensorflow/lite/experimental/micro/tool
         --input_template=$$< --output_file=$$@ --executable=$(3) \
         --srcs="$(4)" --hdrs="$(5)" --include_paths="$$(PROJECT_INCLUDES)"
 
+$(PRJDIR)$(3)/$(1)/.vscode/tasks.json : tensorflow/lite/experimental/micro/tools/make/templates/tasks.json.$(1).tpl
+	@mkdir -p $$(dir $$@)
+	cp $$< $$@
+
 generate_$(3)_$(1)_project: $(addprefix $(PRJDIR)$(3)/$(1)/, $(4) $(5) $(2))
+
+ALL_PROJECT_TARGETS += generate_$(3)_$(1)_project
 endef
 
 # Specialized version of generate_project for TF Lite Micro test targets that

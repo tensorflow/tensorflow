@@ -18,14 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.framework.python.ops import critical_section_ops
 from tensorflow.python.data.experimental.ops import prefetching_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import critical_section_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -48,7 +49,7 @@ class CriticalSectionTest(test.TestCase):
           return array_ops.identity(c)
 
     num_concurrent = 100
-    r = [cs.execute(fn, 1.0, 2.0) for _ in range(num_concurrent)]
+    r = [cs.execute(lambda: fn(1.0, 2.0)) for _ in range(num_concurrent)]
     self.evaluate(v.initializer)
     r_value = self.evaluate(r)
     self.assertAllClose([2.0 * i for i in range(num_concurrent)],
@@ -74,7 +75,7 @@ class CriticalSectionTest(test.TestCase):
               array_ops.identity(inner_cond), true_fn, lambda: c)
 
         def execute():
-          return cs.execute(fn, 1.0, 2.0)
+          return cs.execute(lambda: fn(1.0, 2.0))
 
         r = [
             control_flow_ops.cond(array_ops.identity(outer_cond),
@@ -92,6 +93,7 @@ class CriticalSectionTest(test.TestCase):
         else:
           self.assertAllClose([0] * num_concurrent, r_value)
 
+  @test_util.run_v1_only("b/123990562 Sees CancelledError on some calls")
   def testCriticalSectionInParallelDoesntDeadlockOnError(self):
     # No eager mode execution of this test because eager does not
     # run fn() in parallel, which is where the deadlock could
@@ -103,12 +105,23 @@ class CriticalSectionTest(test.TestCase):
       error = control_flow_ops.Assert((i % 2) == 1, ["Error"])
       with ops.control_dependencies([error]):
         return v.read_value()
+
     num_concurrent = 2
-    r = [cs.execute(fn, i) for i in range(num_concurrent)]
+
+    @def_function.function(autograph=False)
+    def run_concurrently():
+      return [cs.execute(lambda: fn(i)) for i in range(num_concurrent)]
+
+    if not context.executing_eagerly():
+      run_concurrently = run_concurrently()
+
     self.evaluate(v.initializer)
     for _ in range(100):
       with self.assertRaisesOpError("Error"):
-        self.evaluate(r)
+        if context.executing_eagerly():
+          run_concurrently()
+        else:
+          self.evaluate(run_concurrently)
 
   @test_util.run_in_graph_and_eager_modes
   def testCreateCriticalSectionFnReturnsOp(self):
@@ -123,17 +136,20 @@ class CriticalSectionTest(test.TestCase):
           return control_flow_ops.no_op()
 
     num_concurrent = 100
-    r = [cs.execute(fn_return_op, 1.0, 2.0) for _ in range(num_concurrent)]
+    r = [cs.execute(lambda: fn_return_op(1.0, 2.0))
+         for _ in range(num_concurrent)]
     self.evaluate(v.initializer)
     self.evaluate(r)
     final_v = self.evaluate(v)
     self.assertAllClose(2.0 * num_concurrent, final_v)
 
+  @test_util.run_v1_only("Collections don't exist in TF2")
   def testCollection(self):
     cs = critical_section_ops.CriticalSection(shared_name="cs")
     self.assertIn(
         cs, ops.get_collection(critical_section_ops.CRITICAL_SECTIONS))
-    execute = cs.execute(lambda x: x + 1, 1.0, name="my_execute")
+    add = lambda x: x + 1
+    execute = cs.execute(lambda: add(1.0), name="my_execute")
     execute_op = [
         x for x in execute.graph.get_operations()
         if "my_execute" in x.name and "MutexLock" in x.type
@@ -143,18 +159,21 @@ class CriticalSectionTest(test.TestCase):
         [signature.op for signature in
          ops.get_collection(critical_section_ops.CRITICAL_SECTION_EXECUTIONS)])
 
+  @test_util.run_v1_only("b/123955885 Can't identify deadlocks in eager mode")
   def testRecursiveCriticalSectionAccessIsIllegal(self):
     # This does not work properly in eager mode.  Eager users will
     # just hit a deadlock if they do this.  But at least it'll be easier
     # to debug.
     cs = critical_section_ops.CriticalSection()
+    add = lambda y: y + 1
     def fn(x):
-      return cs.execute(lambda y: y + 1, x)
+      return cs.execute(lambda: add(x))
+
     with self.assertRaisesRegexp(
         ValueError,
         r"attempts to directly access the CriticalSection in which it "
         r"would be running"):
-      cs.execute(fn, 1.0)
+      cs.execute(lambda: fn(1.0))
 
   def testRecursiveCriticalSectionAccessViaCapturedTensorIsProtected(self):
     # This one is subtle; and we're being overly cautious here.  The
@@ -174,24 +193,24 @@ class CriticalSectionTest(test.TestCase):
     # operations are finished before anything runs within the critical section.
     cs = critical_section_ops.CriticalSection(shared_name="cs")
     fn = array_ops.identity
-    to_capture = cs.execute(fn, 1.0)
+    to_capture = cs.execute(lambda: fn(1.0))
     fn_captures = lambda x: x + to_capture
     to_capture_too = array_ops.identity(to_capture)
 
-    ex_0 = cs.execute(fn_captures, 1.0)
+    ex_0 = cs.execute(lambda: fn_captures(1.0))
 
     with ops.control_dependencies([to_capture]):
       # This is OK because to_capture will execute before this next call
-      ex_1 = cs.execute(fn_captures, 1.0)
+      ex_1 = cs.execute(lambda: fn_captures(1.0))
 
     dependency = array_ops.identity(to_capture)
 
     fn_captures_dependency = lambda x: x + dependency
 
-    ex_2 = cs.execute(fn_captures_dependency, 1.0)
+    ex_2 = cs.execute(lambda: fn_captures_dependency(1.0))
 
     with ops.control_dependencies([to_capture_too]):
-      ex_3 = cs.execute(fn_captures_dependency, 1.0)
+      ex_3 = cs.execute(lambda: fn_captures_dependency(1.0))
 
     # Ensure there's no actual deadlock on to_execute.
     self.assertEquals(2.0, self.evaluate(ex_0))
@@ -217,6 +236,8 @@ class CriticalSectionTest(test.TestCase):
         body_implicit_capture,
         [0, 0],
         parallel_iterations=25)
+    # For consistency between eager and graph mode.
+    i_n = array_ops.identity(i_n)
     logging.warn(
         "\n==============\nRunning "
         "'testRecursiveCriticalSectionAccessWithinLoopDoesNotDeadlock "
@@ -242,6 +263,8 @@ class CriticalSectionTest(test.TestCase):
         body_implicit_capture_protected,
         [0, 0],
         parallel_iterations=25)
+    # For consistency between eager and graph mode.
+    i_n = array_ops.identity(i_n)
     logging.warn(
         "\n==============\nRunning "
         "'testRecursiveCriticalSectionAccessWithinLoopDoesNotDeadlock "
@@ -258,13 +281,15 @@ class CriticalSectionTest(test.TestCase):
       # This version is ok because j is an argument to fn and we can
       # ensure there's a control dependency on j.
       fn = lambda x: x + 1
-      return (i + 1, cs.execute(fn, j))
+      return (i + 1, cs.execute(lambda: fn(j)))
 
     (i_n, j_n) = control_flow_ops.while_loop(
         lambda i, _: i < 1000,
         body_args_capture,
         [0, 0],
         parallel_iterations=25)
+    # For consistency between eager and graph mode.
+    i_n = array_ops.identity(i_n)
     logging.warn(
         "\n==============\nRunning "
         "'testRecursiveCriticalSectionAccessWithinLoopDoesNotDeadlock "
@@ -277,20 +302,23 @@ class CriticalSectionTest(test.TestCase):
         "body_args_capture'\n"
         "==============\n")
 
+  @test_util.run_v1_only("b/123955885 Can't identify deadlocks in eager mode")
   def testRecursiveCriticalSectionAccessIsIllegalSameSharedName(self):
     # This does not work properly in eager mode.  Eager users will
     # just hit a deadlock if they do this.  But at least it'll be easier
     # to debug.
     cs = critical_section_ops.CriticalSection(shared_name="cs")
     cs_same = critical_section_ops.CriticalSection(shared_name="cs")
+    add = lambda x: x + 1
     def fn(x):
-      return cs_same.execute(lambda x: x+1, x)
+      return cs_same.execute(lambda: add(x))
     with self.assertRaisesRegexp(
         ValueError,
         r"attempts to directly access the CriticalSection in which it "
         r"would be running"):
-      cs.execute(fn, 1.0)
+      cs.execute(lambda: fn(1.0))
 
+  @test_util.run_v1_only("b/123955885 Can't identify deadlocks in eager mode")
   def testMultipleCSExecutionsRequestSameResource(self):
     cs0 = critical_section_ops.CriticalSection()
     cs1 = critical_section_ops.CriticalSection()
@@ -328,8 +356,11 @@ class CriticalSectionTest(test.TestCase):
     # Note, here v must be a resource variable (or something similar),
     # otherwise it gets hoisted into the while_loop by the time we add
     # control dependencies to the lock_op.
+    def body(i):
+      add_j = lambda j: v + j + 1
+      return cs.execute(lambda: add_j(i))
     out = control_flow_ops.while_loop(
-        lambda i: i < 10, lambda i: cs.execute(lambda j: v + j + 1, i), [0])
+        lambda i: i < 10, body, [0])
     self.evaluate(v.initializer)
     self.assertEqual(10, self.evaluate(out))
 

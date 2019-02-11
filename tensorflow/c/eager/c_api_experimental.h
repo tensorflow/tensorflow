@@ -33,6 +33,7 @@ TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
 typedef struct TFE_Profiler TFE_Profiler;
 
 TF_CAPI_EXPORT extern TFE_Profiler* TFE_NewProfiler(TFE_Context* ctx);
+TF_CAPI_EXPORT extern bool TFE_ProfilerIsOk(TFE_Profiler* profiler);
 TF_CAPI_EXPORT extern void TFE_DeleteProfiler(TFE_Profiler* profiler);
 
 // The output string is a binary string of tensorflow.tpu.Trace. User can write

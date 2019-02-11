@@ -277,7 +277,7 @@ def _create_keras_history_helper(tensors, processed_ops=None):
           # a constant (Variables currently have `Placeholder` op type
           # when originating from an eager context
           # so can't be supported.
-          constants[i] = backend.function([], [op_input])([])
+          constants[i] = backend.function([], op_input)([])
       processed_ops = _create_keras_history_helper(layer_inputs, processed_ops)
       name = op.name
       node_def = op.node_def.SerializeToString()

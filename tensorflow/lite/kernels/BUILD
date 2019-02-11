@@ -225,6 +225,7 @@ cc_library(
         "unidirectional_sequence_rnn.cc",
         "unique.cc",
         "unpack.cc",
+        "while.cc",
         "zeros_like.cc",
     ],
     hdrs = [
@@ -1222,6 +1223,23 @@ tf_cc_test(
         ":test_util",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "while_test",
+    size = "small",
+    srcs = ["while_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        ":kernel_util",
+        ":subgraph_test_util",
+        "//tensorflow/lite:builtin_op_data",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
