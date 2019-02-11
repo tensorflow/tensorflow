@@ -258,7 +258,10 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
       names_to_saveables.update(
           op_list_to_dict(checkpointable_saveables))
     else:
-      if context.executing_eagerly():
+      # Variables (reference and resource) have an _in_graph_mode property
+      # indicating whether they were created in a graph building context. We
+      # also get Tensors when graph building, which do not have this property.
+      if not getattr(var, "_in_graph_mode", True):
         if not isinstance(var, resource_variable_ops.ResourceVariable):
           raise ValueError(
               "Can only save/restore ResourceVariables when eager execution "

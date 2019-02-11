@@ -159,11 +159,20 @@ class AstUtilTest(test.TestCase):
     })
 
   def test_parallel_walk(self):
-    node = parser.parse_str(
-        textwrap.dedent("""
+    src = """
       def f(a):
         return a + 1
-    """))
+    """
+    node = parser.parse_str(textwrap.dedent(src))
+    for child_a, child_b in ast_util.parallel_walk(node, node):
+      self.assertEqual(child_a, child_b)
+
+  def test_parallel_walk_string_leaves(self):
+    src = """
+      def f(a):
+        global g
+    """
+    node = parser.parse_str(textwrap.dedent(src))
     for child_a, child_b in ast_util.parallel_walk(node, node):
       self.assertEqual(child_a, child_b)
 

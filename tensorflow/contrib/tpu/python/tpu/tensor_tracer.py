@@ -114,6 +114,7 @@ _TENSOR_TRACER_STORAGE = 'tensor_tracer_storage'
 _TENSOR_VALUES_CACHE = 'tensor_values_cache'
 _REPLICA_ID_TAG = '#replica-id: '
 
+
 def tensor_tracepoint(tensor, checkpoint_name):
   """Adds a checkpoint with the given checkpoint name for the given tensor.
 
@@ -200,7 +201,6 @@ def _get_tensor_values_cache(graph=None):
 
 def _create_tensor_values_cache(graph, num_tensors):
   """Creates a variable as the cache to store intermediate tensor values."""
-
   graph = graph or ops.get_default_graph()
   # Create in proper graph and base name_scope.
   with graph.as_default() as g, g.name_scope(None):
@@ -213,19 +213,6 @@ def _create_tensor_values_cache(graph, num_tensors):
         trainable=False,
         use_resource=True,
         collections=[_TENSOR_TRACER_STORAGE, ops.GraphKeys.GLOBAL_VARIABLES])
-
-
-def _set_fetches(result_tensor, train_op):
-  """Sets the fetches from the result tensor and training op."""
-
-  fetches = []
-  if result_tensor is not None:
-    fetches.append(result_tensor)
-  if train_op is not None:
-    fetches.append(train_op)
-  if not fetches:
-    return None
-  return fetches
 
 
 class TensorTracer(object):
@@ -629,23 +616,17 @@ class TensorTracer(object):
     self._num_hosts = None
     self._replica_id = None
 
-  def _add_replica_id_to_graph(self, result_tensor):
+  def _add_replica_id_to_graph(self):
     """Adds nodes for computing the replica ID to the graph."""
 
-    if not self._num_replicas:
+    if self._num_replicas:
+      with ops.control_dependencies(None):
+        # Uses None as dependency to run outside of TPU graph rewrites.
+        self._replica_id = tpu_ops.tpu_replicated_input(
+            list(range(self._num_replicas)),
+            name='tt_replica_id')
+    else:
       self._replica_id = 'unknown'
-      return result_tensor
-
-    with ops.control_dependencies(None):
-      # Uses None as dependency to run outside of TPU graph rewrites.
-      self._replica_id = tpu_ops.tpu_replicated_input(
-          list(range(self._num_replicas)),
-          name='tt_replica_id')
-    use_replica_id = array_ops.identity(self._replica_id).op
-    with ops.control_dependencies([use_replica_id]):
-      # Adds a control dependency from the result_tensor to
-      # the replica_id to ensure that replica_id will be added to the graph.
-      return array_ops.identity(result_tensor)
 
   def _set_trace_dir(self):
     found, self._trace_dir = TensorTracer.get_flag_value(_FLAG_NAME_TRACE_DIR)
@@ -955,7 +936,6 @@ class TensorTracer(object):
       with ops.control_dependencies([print_op]):
         return array_ops.identity(tensor).op
 
-
     def _show_part_tensor(tensor):
       """Trace function for printing part of the tensor."""
 
@@ -1104,16 +1084,12 @@ class TensorTracer(object):
           traverse_stack.append(input_op)
     return execution_path_operations
 
-  def _determine_traced_tensors(self, graph, fetches):
+  def _determine_traced_tensors(self, graph, ops_in_exec_path):
     """Determines the tensors that will be traced."""
 
     self._traced_tensorname_to_cache_idx_map = {}
     self._cache_idx_to_tensor_idx = []
     operations = graph.get_operations()
-    # Filter out the operations that won't be executed.
-    # if fetches=None, then ops_in_exec_path = set(operations)
-    ops_in_exec_path = self._filter_execution_path_operations(operations,
-                                                              fetches)
     checkpoint_operations = self._get_checkpoints(graph)
     for op_id, op in enumerate(operations):
       if checkpoint_operations and op.name not in checkpoint_operations:
@@ -1176,14 +1152,18 @@ class TensorTracer(object):
     self._write_config_section()
     self._write_op_list_section(operations)
     self._write_tensor_list_section(tensor_list, opname_idx_map)
-    self._determine_traced_tensors(graph, fetches)
+    # Filter out the operations that won't be executed.
+    # if fetches=None, then ops_in_exec_path = set(operations)
+    ops_in_exec_path = self._filter_execution_path_operations(operations,
+                                                              fetches)
+    self._determine_traced_tensors(graph, ops_in_exec_path)
     self._write_cache_index_map_section()
     # Does the topological sort before adding any nodes to the graph.
     (succeed, sorted_or_cycle) = TensorTracer.topological_sort(graph)
     if self._use_tensor_values_cache():
       _create_tensor_values_cache(graph,
                                   len(self._cache_idx_to_tensor_idx))
-    return (operations, succeed, sorted_or_cycle)
+    return (ops_in_exec_path, succeed, sorted_or_cycle)
 
   def _post_tracing(self, succeed, sorted_or_cycle):
     """Work needs to be done after TPU or CPU tracing."""
@@ -1285,60 +1265,108 @@ class TensorTracer(object):
                                  default=_do_nothing,
                                  exclusive=True).op
 
-  def _flush_tensor_values_cache(self, graph, result_tensor, train_op, on_tpu):
+  def _flush_tensor_values_cache(self, graph, tensor_fetches, op_fetches,
+                                 on_tpu):
     """Flushes the intermediate tensor values in the graph to the cache.
 
     Args:
       graph: the graph of Ops
-      result_tensor: a result tensor of evaluating the graph.
-      train_op: the training op.
+      tensor_fetches: list of tensor results returned by the model_fn.
+      op_fetches: list of ops that are returned by the model_fn, e.g., train_op.
       on_tpu: if the graph is executed on TPU.
 
     Returns:
-      An identical copy of result tensor.
+      An identical copy of tensor_fetches.
     """
-
-    train_op_list = []
-    if train_op is not None:
-      train_op_list.append(train_op)
-    with ops.control_dependencies(train_op_list):
+    # Add a dependency to op and tensor fetches to make sure that all tracing
+    # ops are executed before flushing trace results.
+    with ops.control_dependencies(op_fetches +
+                                  [tensor.op for tensor in tensor_fetches]):
       flush_cache_op_list = []
       for host in range(self._num_hosts):
         start_replica = host * 8
         flush_op = self._generate_flush_cache_op(graph, start_replica, on_tpu)
         flush_cache_op_list.append(flush_op)
-      with ops.control_dependencies(flush_cache_op_list):
-        return array_ops.identity(result_tensor)
+      return control_flow_ops.tuple(tensor_fetches,
+                                    control_inputs=flush_cache_op_list)
 
-  def trace_tpu(self, graph,
-                result_tensor,
-                train_op,
-                num_replicas=None,
-                num_replicas_per_host=None,
-                num_hosts=None):
-    """Traces the tensors generated by TPU Ops in a TF graph.
+  def _process_tensor_fetches(self, tensor_fetches):
+    """Check that tensor_fetches is not empty and have valid tensors."""
+    # If none or empty list.
+    if tensor_fetches is None:
+      raise RuntimeError('tensor_fetches provided to tensor_tracer cannot be '
+                         'None.')
+    if not isinstance(tensor_fetches, (list, tuple)):
+      tensor_fetches = [tensor_fetches]
+    elif not tensor_fetches:
+      raise RuntimeError('tensor_fetches provided to tensor_tracer cannot be '
+                         'empty list.')
+    fetches = []
+    for fetch in tensor_fetches:
+      if isinstance(fetch, ops.Tensor):
+        fetches.append(fetch)
+      else:
+        raise RuntimeError('Given tensor_fetch:%s is not a tensor.' % fetch)
+    return fetches
+
+  def _process_op_fetches(self, op_fetches):
+    """Check that op_fetches have valid ops."""
+    if op_fetches is None:
+      return []
+
+    if not isinstance(op_fetches, (list, tuple)):
+      op_fetches = [op_fetches]
+
+    fetches = []
+    for fetch in op_fetches:
+      if isinstance(fetch, ops.Operation):
+        fetches.append(fetch)
+      else:
+        logging.warning('Ignoring the given op_fetch:%s, which is not an op.' %
+                        fetch)
+    return fetches
+
+  def _convert_fetches_to_input_format(self, input_fetches, current_fetches):
+    """Changes current_fetches' format, so that it matches input_fetches."""
+    if isinstance(input_fetches, ops.Tensor):
+      if len(current_fetches) != 1:
+        raise RuntimeError('Tensor tracer input/output fetches do not match.')
+      return current_fetches[0]
+    else:
+      if len(current_fetches) != len(current_fetches):
+        raise RuntimeError('Tensor tracer input/output fetches do not match.')
+      elif isinstance(input_fetches, tuple):
+        return tuple(current_fetches)
+      else:
+        return current_fetches
+
+  def _trace_execution(self, graph,
+                       tensor_fetches,
+                       op_fetches=None,
+                       on_tpu=True):
+    """Commong tracing function for both CPU and TPUs.
+
+    The caller function should set _device_type, _num_replicas,
+    _num_replicas_per_host, _num_hosts and _replica_id before calling
+    _trace_execution.
+
 
     Args:
       graph: the graph of Ops executed on the TPU.
-      result_tensor: a result tensor of evaluating the graph.
-      train_op: the training op.
-      num_replicas: number of replicas used on the TPU.
-      num_replicas_per_host: number of replicas per TPU host.
-      num_hosts: total number of TPU hosts.
+      tensor_fetches: a (list,tuple,or a single object) of tensor fetches
+        returned by model_fn given to session.run. Function must be provided
+        with as least one tensor to fetch.
+      op_fetches: A list of op fetches returned by model_fn given to
+        session.run. op_fetches and tensor_fetches are used to determine the
+        nodes that will be executed. Can be None.
+      on_tpu: True if executing on TPU.
 
     Returns:
-      A tuple (result_tensor_copy, tracing_ops), where:
-        result_tensor_copy: an exact copy of result_tensor
-        tracing_ops: a list of tracing ops. If this list
-                     is non empty, the caller of this function
-                     should pose control dependencies upon these
-                     Ops so that they will be executed when the
-                     graph is evaluated.
-
+      tensor_fetches: an exact copy of tensor_fetches that has additional
+                      dependencies.
     Raises:
-      RuntimeError: If num_replicas_per_host > 8.
+      RuntimeError: If tensor_fetches is None or empty.
     """
-
     def _cast_unsupported_dtypes(tensor):
       """Casts tensor to a supported type."""
 
@@ -1351,131 +1379,141 @@ class TensorTracer(object):
         return math_ops.cast(tensor, dtypes.float32)
       return tensor
 
+    TensorTracer.check_device_type(self._device_type)
+    # Check in_tensor_fetches, and op_fetches and convert them to lists.
+    processed_t_fetches = self._process_tensor_fetches(tensor_fetches)
+    op_fetches = self._process_op_fetches(op_fetches)
+    all_fetches = op_fetches + [tensor.op for tensor in processed_t_fetches]
+
+    # Filter the set of ops that will be executed, and topological sort.
+    (exec_op_set, succeed, sorted_or_cycle) = self._pre_tracing(graph,
+                                                                all_fetches)
+
+    tensor_fetch_set = set(processed_t_fetches)
+    tracing_ops = []
+    # Trace ops only if they are in the execution path.
+    for op in exec_op_set:
+      for i in range(len(op.outputs)):
+        out_tensor = op.outputs[i]
+        tensor_name = out_tensor.name
+        if tensor_name not in self._traced_tensorname_to_cache_idx_map:
+          continue
+        # Create the list of consumers before calling _preprocess_traced_tensor.
+        # Otherwise, adding control input below, will introduce a cycle in the
+        # graph.
+        consumers = out_tensor.consumers()
+        # Not all consumers may be in the exec path. Filter out the consumers
+        # to keep the graph simpler.
+        consumers = [cop for cop in consumers if cop in exec_op_set]
+
+        # If there is no consumer of the tensor, there is no need to trace it;
+        # unless the tensor itself is one of the fetches.
+        is_a_fetched_tensor = out_tensor in tensor_fetch_set
+        if (not consumers) and (not is_a_fetched_tensor):
+          continue
+        processed_out_tensor = self._preprocess_traced_tensor(out_tensor)
+
+        if on_tpu:
+          processed_out_tensor = _cast_unsupported_dtypes(processed_out_tensor)
+
+        if self._use_tensor_values_cache():
+          cache_idx = self._traced_tensorname_to_cache_idx_map[tensor_name]
+          trace_op = self._save_tensor_value_to_cache_op(graph,
+                                                         cache_idx,
+                                                         processed_out_tensor)
+        elif on_tpu:
+          trace_op = tpu.outside_compilation(
+              self._make_tensor_trace_fun(tensor_name), processed_out_tensor)
+        else:
+          trace_fun = self._make_tensor_trace_fun(tensor_name)
+          traced_tensor = trace_fun(processed_out_tensor)
+          trace_op = traced_tensor.op
+
+        if is_a_fetched_tensor:
+          tracing_ops.append(trace_op)
+          continue
+        # Add it to all consumers, as some consumers may not be executed if they
+        # are in a control flow.
+        for consumer_op in consumers:
+          # pylint: disable=protected-access
+          consumer_op._add_control_input(trace_op)
+          # pylint: enable=protected-access
+    if tracing_ops:
+      # If we are tracing a fetched tensor, their dependency is stored in
+      # tracing_ops.
+      processed_t_fetches = control_flow_ops.tuple(processed_t_fetches,
+                                                   control_inputs=tracing_ops)
+    if self._use_tensor_values_cache():
+      processed_t_fetches = self._flush_tensor_values_cache(graph,
+                                                            processed_t_fetches,
+                                                            op_fetches,
+                                                            on_tpu=True)
+    self._post_tracing(succeed, sorted_or_cycle)
+    # processed_t_fetches is a list at this point. Convert it to the same
+    # format as given in tensor_fetches.
+    return self._convert_fetches_to_input_format(tensor_fetches,
+                                                 processed_t_fetches)
+
+  def trace_tpu(self, graph,
+                tensor_fetches,
+                op_fetches=None,
+                num_replicas=None,
+                num_replicas_per_host=None,
+                num_hosts=None):
+    """Traces the tensors generated by TPU Ops in a TF graph.
+
+    Args:
+      graph: the graph of Ops executed on the TPU.
+      tensor_fetches: a (list,tuple,or a single object) of tensor fetches
+        returned by model_fn given to session.run. Function must be provided
+        with as least one tensor to fetch.
+      op_fetches: A list of op fetches returned by model_fn given to
+        session.run. op_fetches and tensor_fetches are used to determine the
+        nodes that will be executed. Can be None.
+      num_replicas: number of replicas used on the TPU.
+      num_replicas_per_host: number of replicas per TPU host.
+      num_hosts: total number of TPU hosts.
+
+    Returns:
+      tensor_fetches: an exact copy of tensor_fetches that has additional
+                      dependencies.
+    Raises:
+      RuntimeError: If num_replicas_per_host > 8.
+      RuntimeError: If tensor_fetches is None or empty.
+    """
+
     self._device_type = _DEVICE_TYPE_TPU
     self._num_replicas = num_replicas
     self._num_replicas_per_host = num_replicas_per_host
     self._num_hosts = num_hosts
     if self._num_replicas_per_host > 8:
       # Checks for the assumption in _generate_flush_cache_op().
-      raise RuntimeError(
-          'num_replicas_per_host (%d) is '
-          'greater than 8'%self._num_replicas_per_host)
+      raise RuntimeError('num_replicas_per_host (%d) is '
+                         'greater than 8'%self._num_replicas_per_host)
+    self._add_replica_id_to_graph()
+    return self._trace_execution(graph, tensor_fetches, op_fetches, on_tpu=True)
 
-    TensorTracer.check_device_type(self._device_type)
-    result_tensor_copy = self._add_replica_id_to_graph(result_tensor)
-    fetches = _set_fetches(result_tensor, train_op)
-    (operations, succeed, sorted_or_cycle) = self._pre_tracing(graph, fetches)
-
-    tracing_ops = []
-    for op in operations:
-      for i in range(len(op.outputs)):
-        out_tensor = op.outputs[i]
-        tensor_name = out_tensor.name
-        if tensor_name not in self._traced_tensorname_to_cache_idx_map:
-          continue
-        # Create the list of consumers before calling _preprocess_traced_tensor.
-        # Otherwise, adding control input below, will introduce a cycle in the
-        # graph.
-        consumers = out_tensor.consumers()
-        if not consumers:
-          continue
-        processed_out_tensor = self._preprocess_traced_tensor(out_tensor)
-        processed_out_tensor = _cast_unsupported_dtypes(processed_out_tensor)
-        if self._use_tensor_values_cache():
-          cache_idx = self._traced_tensorname_to_cache_idx_map[tensor_name]
-          trace_op = self._save_tensor_value_to_cache_op(graph,
-                                                         cache_idx,
-                                                         processed_out_tensor)
-        else:
-          trace_op = tpu.outside_compilation(
-              self._make_tensor_trace_fun(tensor_name), processed_out_tensor)
-        for consumer_op in consumers:
-          # pylint: disable=protected-access
-          consumer_op._add_control_input(trace_op)
-          # pylint: enable=protected-access
-    if self._use_tensor_values_cache():
-      result_tensor_final = self._flush_tensor_values_cache(graph,
-                                                            result_tensor_copy,
-                                                            train_op,
-                                                            on_tpu=True)
-    else:
-      result_tensor_final = result_tensor_copy
-    self._post_tracing(succeed, sorted_or_cycle)
-    return (result_tensor_final, tracing_ops)
-
-  def _generate_cpu_result(self, result_tensor, train_op, graph):
-    """Generates the final CPU result."""
-
-    if self._use_tensor_values_cache():
-      result_tensor_final = self._flush_tensor_values_cache(graph,
-                                                            result_tensor,
-                                                            train_op,
-                                                            on_tpu=False)
-    else:
-      result_tensor_final = array_ops.identity(result_tensor)
-    return result_tensor_final
-
-  def trace_cpu(self, graph, result_tensor, train_op):
+  def trace_cpu(self, graph, tensor_fetches, op_fetches=None):
     """Traces the tensors generated by CPU Ops in a TF graph.
 
     Args:
       graph: the graph of Ops executed on the CPU.
-      result_tensor: a result tensor of evaluating the graph.
-      train_op: the training op.
+      tensor_fetches: a (list,tuple,or a single object) of tensor fetches
+        returned by model_fn given to session.run. Function must be provided
+        with as least one tensor to fetch.
+      op_fetches: A list of op fetches returned by model_fn given to
+        session.run. op_fetches and tensor_fetches are used to determine the
+        nodes that will be executed. Can be None.
 
     Returns:
-      A pair (final_result_tensor, tracing_calls) where:
-         final_result_tensor: an identical copy of result_tensor.
-         tracing_calls: a map from keys to trace calls.
-                     A key is constructed from an Op's name.
-                     A trace call consists of a function and a tensor (
-                     the function will be invoked with the tensor).
+      tensor_fetches: an exact copy of tensor_fetches that has additional
+                      dependencies.
+    Raises:
+      RuntimeError: If tensor_fetches is None or empty.
     """
-
-    if result_tensor is None:
-      raise ValueError(
-          'The result_tensor passed to trace_cpu should not be None')
-
     self._device_type = _DEVICE_TYPE_CPU
-    TensorTracer.check_device_type(self._device_type)
     self._num_replicas = 1
     self._num_replicas_per_host = 1
     self._num_hosts = 1
     self._replica_id = 0
-    fetches = _set_fetches(result_tensor, train_op)
-    (operations, succeed, sorted_or_cycle) = self._pre_tracing(graph, fetches)
-
-    tracing_calls = {}
-    for op in operations:
-      for i in range(len(op.outputs)):
-        out_tensor = op.outputs[i]
-        tensor_name = out_tensor.name
-        if tensor_name not in self._traced_tensorname_to_cache_idx_map:
-          continue
-        # Create the list of consumers before calling _preprocess_traced_tensor.
-        # Otherwise, adding control input below, will introduce a cycle in the
-        # graph.
-        consumers = out_tensor.consumers()
-        if not consumers:
-          continue
-        processed_out_tensor = self._preprocess_traced_tensor(out_tensor)
-        if self._use_tensor_values_cache():
-          cache_idx = self._traced_tensorname_to_cache_idx_map[tensor_name]
-          trace_op = self._save_tensor_value_to_cache_op(graph,
-                                                         cache_idx,
-                                                         processed_out_tensor)
-          for consumer_op in consumers:
-            # pylint: disable=protected-access
-            consumer_op._add_control_input(trace_op)
-            # pylint: enable=protected-access
-        else:
-          trace_fun = self._make_tensor_trace_fun(tensor_name)
-          trace_call = (trace_fun, [processed_out_tensor])
-          trace_call_key = 'tensor_tracing_cpu-%s:%d'%(op.name, i)
-          tracing_calls[trace_call_key] = trace_call
-
-    self._post_tracing(succeed, sorted_or_cycle)
-    final_result_tensor = self._generate_cpu_result(result_tensor,
-                                                    train_op,
-                                                    graph)
-    return (final_result_tensor, tracing_calls)
+    return self._trace_execution(graph, tensor_fetches, op_fetches, on_tpu=True)

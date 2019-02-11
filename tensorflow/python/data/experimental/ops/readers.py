@@ -24,6 +24,7 @@ import functools
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import parsing_ops
@@ -328,6 +329,7 @@ def make_csv_dataset_v2(
     sloppy=False,
     num_rows_for_inference=100,
     compression_type=None,
+    ignore_errors=False,
 ):
   """Reads CSV files into a dataset.
 
@@ -402,6 +404,10 @@ def make_csv_dataset_v2(
       the files. Defaults to 100.
     compression_type: (Optional.) A `tf.string` scalar evaluating to one of
       `""` (no compression), `"ZLIB"`, or `"GZIP"`. Defaults to no compression.
+    ignore_errors: (Optional.) If `True`, ignores errors with CSV file parsing,
+      such as malformed data or empty lines, and moves on to the next valid
+      CSV record. Otherwise, the dataset raises an error and stops processing
+      when encountering any invalid records. Defaults to `False`.
 
   Returns:
     A dataset, where each element is a (features, labels) tuple that corresponds
@@ -457,7 +463,7 @@ def make_csv_dataset_v2(
     raise ValueError("`label_name` provided must be one of the columns.")
 
   def filename_to_dataset(filename):
-    return CsvDataset(
+    dataset = CsvDataset(
         filename,
         record_defaults=column_defaults,
         field_delim=field_delim,
@@ -465,8 +471,11 @@ def make_csv_dataset_v2(
         na_value=na_value,
         select_cols=select_columns,
         header=header,
-        compression_type=compression_type,
+        compression_type=compression_type
     )
+    if ignore_errors:
+      dataset = dataset.apply(error_ops.ignore_errors())
+    return dataset
 
   def map_fn(*columns):
     """Organizes columns into a features dictionary.
@@ -528,13 +537,14 @@ def make_csv_dataset_v1(
     sloppy=False,
     num_rows_for_inference=100,
     compression_type=None,
+    ignore_errors=False,
 ):  # pylint: disable=missing-docstring
   return dataset_ops.DatasetV1Adapter(make_csv_dataset_v2(
       file_pattern, batch_size, column_names, column_defaults, label_name,
       select_columns, field_delim, use_quote_delim, na_value, header,
       num_epochs, shuffle, shuffle_buffer_size, shuffle_seed,
       prefetch_buffer_size, num_parallel_reads, sloppy, num_rows_for_inference,
-      compression_type))
+      compression_type, ignore_errors))
 make_csv_dataset_v1.__doc__ = make_csv_dataset_v2.__doc__
 
 

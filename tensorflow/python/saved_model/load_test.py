@@ -38,6 +38,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
@@ -126,11 +127,34 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         lambda: root.vocab.asset_path,
         input_signature=[])
     imported = self.cycle(root, cycles)
-    origin_output = root.f().numpy()
+    original_output = root.f().numpy()
     imported_output = imported.f().numpy()
-    self.assertNotEqual(origin_output, imported_output)
+    self.assertNotEqual(original_output, imported_output)
     with open(imported_output, "r") as f:
       self.assertEqual("contents", f.read())
+
+  def test_capture_assets_in_graph(self, cycles):
+    root = tracking.AutoCheckpointable()
+    root.vocab = tracking.TrackableAsset(self._make_asset("contents"))
+    root.f = def_function.function(
+        lambda: root.vocab.asset_path,
+        input_signature=[])
+
+    original_output = root.f().numpy()
+
+    if cycles > 1:
+      root = self.cycle(root, cycles - 1)
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+
+    with ops.Graph().as_default():
+      imported = load.load(path)
+      imported_tensor = imported.f()
+      with monitored_session.MonitoredSession() as sess:
+        imported_output = sess.run(imported_tensor)
+        self.assertNotEqual(original_output, imported_output)
+        with open(imported_output, "r") as f:
+          self.assertEqual("contents", f.read())
 
   def test_dedup_assets(self, cycles):
     vocab = self._make_asset("contents")
@@ -877,6 +901,100 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported = self.cycle(root, cycles)
     self.assertEqual(
         2, imported.table_user(constant_op.constant("gamma")).numpy())
+
+  def test_functions_accessed_once(self, cycles):
+
+    class Exported(tracking.AutoCheckpointable):
+
+      def __init__(self):
+        self._counter = 0
+
+      @property
+      def make_func(self):
+        @def_function.function
+        def f():
+          return constant_op.constant(self._counter)
+        f.get_concrete_function()  # force a trace
+        self._counter += 1
+        return f
+
+    exported = Exported()
+    imported = self.cycle(exported, cycles)
+    self.assertEqual(0, imported.make_func().numpy())
+    self.assertEqual(1, exported.make_func().numpy())
+
+  def test_overwritten_signatures_error(self, cycles):
+    exported = tracking.AutoCheckpointable()
+    exported.f = def_function.function(lambda: constant_op.constant(1.))
+    imported = self.cycle(
+        exported, cycles,
+        signatures={"key": exported.f.get_concrete_function()})
+    self.assertEqual(1., imported.signatures["key"]()["output_0"].numpy())
+    imported.signatures = {"key1": imported.signatures["key"]}
+    with self.assertRaisesRegexp(ValueError, "signatures"):
+      save.save(imported, tempfile.mkdtemp(prefix=self.get_temp_dir()))
+
+  def test_signature_loading(self, cycles):
+
+    class Exported(tracking.AutoCheckpointable):
+
+      def __init__(self):
+        self.v = variables.Variable(3.)
+
+      @def_function.function
+      def do(self, x):
+        return self.v * x
+
+    exported = Exported()
+    imported = self.cycle(
+        exported,
+        signatures=exported.do.get_concrete_function(
+            tensor_spec.TensorSpec(None, dtypes.float32)))
+    for _ in range(cycles - 1):
+      imported = self.cycle(imported, signatures=imported.signatures)
+    self.assertEqual(["serving_default"], list(imported.signatures.keys()))
+    imported_function = imported.signatures["serving_default"]
+    two = constant_op.constant(2.)
+    self.assertEqual(6., imported_function(x=two)["output_0"].numpy())
+    imported.v.assign(4.)
+    self.assertEqual(8., imported_function(x=two)["output_0"].numpy())
+    with self.assertRaisesRegexp(TypeError, "positional"):
+      imported_function(two)
+    with self.assertRaises(TypeError):
+      # The signatures mapping is immutable
+      imported.signatures["random_key"] = 3
+
+
+class SingleCycleTests(test.TestCase, parameterized.TestCase):
+
+  def test_load_with_tags(self):
+    root = tracking.AutoCheckpointable()
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+    with self.assertRaises(ValueError):
+      load.load(path, tags=[tag_constants.EVAL])
+    load.load(path, tags=[tag_constants.SERVING])
+    load.load(path, tags=tag_constants.SERVING)
+
+  def test_docstring_examples(self):
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    exported = util.Checkpoint(v=variables.Variable(3.))
+    exported.f = def_function.function(
+        lambda x: exported.v * x,
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)])
+    save.save(exported, path)
+    imported = load.load(path)
+    self.assertEqual(3., imported.v.numpy())
+    self.assertEqual(6., imported.f(x=constant_op.constant(2.)).numpy())
+
+    save.save(exported, path, exported.f.get_concrete_function())
+    imported = load.load(path)
+    f = imported.signatures["serving_default"]
+    self.assertAllEqual(
+        [[-3.]],
+        f(x=constant_op.constant([[-1.]]))["output_0"].numpy())
+
 
 if __name__ == "__main__":
   test.main()

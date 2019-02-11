@@ -19,6 +19,7 @@ limitations under the License.
 // helper.
 
 #include "tensorflow/core/kernels/transpose_op.h"
+#include "tensorflow/compiler/tf2xla/lib/scatter.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -128,29 +129,46 @@ class InvertPermutationOp : public XlaOpKernel {
                 errors::InvalidArgument("permutation of nonnegative int32s "
                                         "must have <= int32 max elements"));
 
-    std::vector<int64> perm;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(0, &perm));
+    auto e = ctx->InputExpression(0);
+    auto tensor_or_status = e.ResolveConstant(ctx->compiler()->client());
+    OP_REQUIRES_OK(ctx, tensor_or_status.status());
+    // If the input is a constant, we also want the output to be a constant.
+    // Some models rely on the result of InvertPermutation being a constant.
+    // TODO(b/32495713): Remove this when we can check whether Scatter is
+    // constant. Right now, we always assume it is non-constant because we don't
+    // check the embedded computation.
+    if (tensor_or_status.ValueOrDie().has_value()) {
+      std::vector<int64> perm;
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(0, &perm));
 
-    int size = perm.size();
+      int size = perm.size();
 
-    std::vector<int32> output(size);
-    std::fill_n(output.data(), size, -1);
-    for (int i = 0; i < size; ++i) {
-      const int64 d = perm[i];
-      OP_REQUIRES(ctx, FastBoundsCheck(d, size),
-                  errors::InvalidArgument(d, " is not between 0 and ", size));
-      OP_REQUIRES(ctx, output[d] == -1,
-                  errors::InvalidArgument(d, " is duplicated in the input."));
-      output[d] = i;
+      std::vector<int32> output(size);
+      std::fill_n(output.data(), size, -1);
+      for (int i = 0; i < size; ++i) {
+        const int64 d = perm[i];
+        OP_REQUIRES(ctx, FastBoundsCheck(d, size),
+                    errors::InvalidArgument(d, " is not between 0 and ", size));
+        OP_REQUIRES(ctx, output[d] == -1,
+                    errors::InvalidArgument(d, " is duplicated in the input."));
+        output[d] = i;
+      }
+
+      ctx->SetOutput(0, xla::ConstantR1<int32>(ctx->builder(), output));
+    } else {
+      auto indices = ctx->Input(0);
+      int size = ctx->InputShape(0).num_elements();
+      auto iota = xla::Iota(ctx->builder(), xla::S32, size);
+      auto result = XlaScatter(iota, iota, indices,
+                               /*indices_are_vectors=*/false, /*combiner=*/{},
+                               ctx->builder());
+      OP_REQUIRES_OK(ctx, result.status());
+      ctx->SetOutput(0, result.ValueOrDie());
     }
-
-    ctx->SetOutput(0, xla::ConstantR1<int32>(ctx->builder(), output));
   }
 };
 
-REGISTER_XLA_OP(Name("InvertPermutation")
-                    .TypeConstraint("T", DT_INT32)
-                    .CompileTimeConstantInput("x"),
+REGISTER_XLA_OP(Name("InvertPermutation").TypeConstraint("T", DT_INT32),
                 InvertPermutationOp);
 
 }  // namespace

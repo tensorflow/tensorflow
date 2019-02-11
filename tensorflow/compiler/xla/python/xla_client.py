@@ -41,6 +41,18 @@ from tensorflow.compiler.xla.service import hlo_pb2
 # pylint: disable=invalid-name
 
 
+# Version of the XLA Python client.
+#
+# JAX packages the XLA python plugin as a binary pip module (jaxlib) that is
+# packaged separately from the Python code that consumes it (jax).
+#
+# We occasionally need to make backwards-incompatible changes to jaxlib, in
+# which case we need to be able to detect when incompatible versions are
+# installed.
+def version():
+  return (0, 1, 7)
+
+
 _OP_METADATA_FIELDS = [
     'op_type',
     'op_name',
@@ -757,12 +769,13 @@ class LocalComputation(object):
     return [out.to_py() for out in self.ExecutePerReplica(arguments)]
 
   def __del__(self):
-    # Ensure a reference to C-based destructor for use in __del__.
-    if self._is_compiled:
-      self._backend.delete_executable(self._c_computation)
-    else:
-      assert isinstance(self._c_computation, c_api.LocalComputation)
-      c_api.DeleteLocalComputation(self._c_computation)
+    # Python may have freed c_api first.
+    if c_api and self._c_computation:
+      if self._is_compiled:
+        self._backend.delete_executable(self._c_computation)
+      else:
+        assert isinstance(self._c_computation, c_api.LocalComputation)
+        c_api.DeleteLocalComputation(self._c_computation)
 
 
 def _make_replica_group_proto(replica_group):
@@ -1622,8 +1635,14 @@ class ComputationBuilder(object):
                       conjugate_a=False,
                       unit_diagonal=False):
     """Enqueues a triangular-solve operation onto the computation."""
-    return self._client.TriangularSolve(a, b, left_side, lower, transpose_a,
-                                        conjugate_a, unit_diagonal)
+    if not transpose_a:
+      transpose = 1
+      if conjugate_a:
+        a = self.Conj(a)
+    else:
+      transpose = 3 if conjugate_a else 2
+    return self._client.TriangularSolve(a, b, left_side, lower, unit_diagonal,
+                                        transpose)
 
   def Gather(self, a, start_indices, dimension_numbers, slice_sizes):
     """Enqueues a Gather operation onto the computation."""

@@ -131,6 +131,34 @@ class HloFftInstruction : public HloInstruction {
   std::vector<int64> fft_length_;
 };
 
+class HloTriangularSolveInstruction : public HloInstruction {
+ public:
+  explicit HloTriangularSolveInstruction(const Shape& shape, HloInstruction* a,
+                                         HloInstruction* b,
+                                         const TriangularSolveOptions& options);
+  const TriangularSolveOptions& triangular_solve_options() const {
+    return triangular_solve_options_;
+  }
+
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  TriangularSolveOptions triangular_solve_options_;
+};
+
 class HloSendRecvInstruction : public HloInstruction {
  public:
   // Returns the channel id associated with the instruction. The id is
@@ -418,8 +446,8 @@ class HloReduceInstruction : public HloInstruction {
 class HloSortInstruction : public HloInstruction {
  public:
   explicit HloSortInstruction(const Shape& shape, int64 dimension,
-                              HloInstruction* keys,
-                              absl::Span<HloInstruction* const> values = {});
+                              absl::Span<HloInstruction* const> operands,
+                              HloComputation* compare);
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
@@ -903,9 +931,7 @@ class HloOutfeedInstruction : public HloInstruction {
                                  HloInstruction* token_operand,
                                  absl::string_view outfeed_config);
   // Returns the shape for the Outfeed instruction.
-  const Shape& outfeed_shape() const {
-    return outfeed_shape_;
-  }
+  const Shape& outfeed_shape() const { return outfeed_shape_; }
   // Returns the config for the Outfeed instruction.
   const string& outfeed_config() const { return outfeed_config_; }
   // Returns a serialized representation of this instruction.

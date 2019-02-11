@@ -97,6 +97,10 @@ bool InMemoryRunStepRequest::store_errors_in_response_body() const {
   return store_errors_in_response_body_;
 }
 
+int64 InMemoryRunStepRequest::request_id() const {
+  return 0;  // no need to track request id for local version.
+}
+
 void InMemoryRunStepRequest::set_store_errors_in_response_body(
     bool store_errors) {
   store_errors_in_response_body_ = store_errors;
@@ -210,6 +214,10 @@ void MutableProtoRunStepRequest::set_store_errors_in_response_body(
   request_.set_store_errors_in_response_body(store_errors);
 }
 
+int64 MutableProtoRunStepRequest::request_id() const {
+  return request_.request_id();
+}
+
 string MutableProtoRunStepRequest::DebugString() const {
   return request_.DebugString();
 }
@@ -271,6 +279,8 @@ const RunOptions& ProtoRunStepRequest::options() const {
 bool ProtoRunStepRequest::store_errors_in_response_body() const {
   return request_->store_errors_in_response_body();
 }
+
+int64 ProtoRunStepRequest::request_id() const { return request_->request_id(); }
 
 string ProtoRunStepRequest::DebugString() const {
   return request_->DebugString();

@@ -47,6 +47,12 @@ bool IsAnyDiv(const NodeDef& node) {
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
+bool IsAnyMaxPool(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPool" || op == "MaxPoolV2" || op == "MaxPool3D" ||
+         op == "MaxPoolWithArgmax" || op == "FractionalMaxPool";
+}
+
 bool IsApproximateEqual(const NodeDef& node) {
   return node.op() == "ApproximateEqual";
 }
@@ -170,8 +176,7 @@ bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
           "Sign",  "Sinh", "Softsign", "Softplus", "Sqrt",  "Tanh",
       }));
   static const gtl::FlatSet<string>* const kMonotonicNonIncreasingOps =
-      CHECK_NOTNULL((new gtl::FlatSet<string>{"Acos", "Erfc", "Inv", "Neg",
-                                              "Reciprocal", "Rsqrt"}));
+      CHECK_NOTNULL((new gtl::FlatSet<string>{"Acos", "Erfc", "Neg", "Rsqrt"}));
   if (kMonotonicNonDecreasingOps->count(node.op()) > 0) {
     if (is_non_decreasing) {
       *is_non_decreasing = true;

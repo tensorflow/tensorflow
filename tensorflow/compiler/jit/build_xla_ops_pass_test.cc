@@ -68,6 +68,8 @@ Status BuildXlaOps(const Scope& s, std::unique_ptr<Graph>* result) {
     }
   }
 
+  FixupSourceAndSinkEdges(graph.get());
+
   GraphOptimizationPassOptions opt_options;
   opt_options.graph = &graph;
   BuildXlaOpsPass pass(/*enable_lazy_compilation=*/true);
@@ -222,6 +224,24 @@ TEST_F(BuildXlaOpsTest, OnXlaDevice) {
   Node* write_op_new = FindNodeByName(graph.get(), write_op->name());
   ASSERT_NE(write_op_new, nullptr);
   EXPECT_THAT(write_op_new, assign_var);
+}
+
+TEST_F(BuildXlaOpsTest, NoExtraMergeForEdgeToSink) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  FunctionDefLibrary flib_def =
+      CreateFunctionDefLibWithConstFunction("cluster_0");
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(flib_def));
+  Node* call;
+  TF_ASSERT_OK(MakeXlaCompiledKernel(root.graph(), "cluster_0", "C", &call));
+
+  std::unique_ptr<Graph> graph;
+  TF_ASSERT_OK(BuildXlaOps(root, &graph));
+
+  Node* sink_node = graph->sink_node();
+  EXPECT_THAT(sink_node, NodeWith(CtrlDeps(NodeWith(Op("_XlaRun")),
+                                           NodeWith(Op("cluster_0")),
+                                           NodeWith(Op("NoOp")))));
 }
 }  // namespace
 }  // namespace tensorflow

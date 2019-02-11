@@ -57,6 +57,10 @@ tf_module {
     argspec: "args=[\'value\', \'filters\', \'stride\', \'padding\', \'use_cudnn_on_gpu\', \'data_format\', \'name\', \'input\', \'dilations\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "conv1d_transpose"
+    argspec: "args=[\'input\', \'filters\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'SAME\', \'NWC\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "conv2d"
     argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'data_format\', \'dilations\', \'name\', \'filters\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\', \'None\'], "
   }
@@ -70,7 +74,7 @@ tf_module {
   }
   member_method {
     name: "conv2d_transpose"
-    argspec: "args=[\'value\', \'filter\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'name\', \'input\', \'filters\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'SAME\', \'NHWC\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'value\', \'filter\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'name\', \'input\', \'filters\', \'dilations\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'SAME\', \'NHWC\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "conv3d"
@@ -86,7 +90,7 @@ tf_module {
   }
   member_method {
     name: "conv3d_transpose"
-    argspec: "args=[\'value\', \'filter\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'name\', \'input\', \'filters\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'SAME\', \'NDHWC\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'value\', \'filter\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'name\', \'input\', \'filters\', \'dilations\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'SAME\', \'NDHWC\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "convolution"

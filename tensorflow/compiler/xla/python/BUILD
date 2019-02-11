@@ -77,7 +77,6 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:cholesky",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:qr",
-        "//tensorflow/compiler/xla/client/lib:triangular_solve",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",

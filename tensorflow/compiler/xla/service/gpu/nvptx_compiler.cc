@@ -795,14 +795,19 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   std::unique_ptr<HloProfileIndexMap> profile_index_map;
   std::unique_ptr<HloProfilePrinterData> profile_printer;
 
-  if (module->config().hlo_profiling_enabled()) {
+  if (module->config().hlo_profiling_enabled() || VLOG_IS_ON(1)) {
     HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
     cost_analysis.set_bytes_per_second(
         stream_exec->GetDeviceDescription().memory_bandwidth());
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
-    profile_index_map = absl::make_unique<HloProfileIndexMap>(*module);
-    profile_printer = CreateHloProfilePrinterData(
-        *profile_index_map, cost_analysis, entry_computation->name());
+    VLOG(1) << "HLO memory read+written: "
+            << tensorflow::strings::HumanReadableNumBytes(
+                   cost_analysis.bytes_accessed());
+    if (module->config().hlo_profiling_enabled()) {
+      profile_index_map = absl::make_unique<HloProfileIndexMap>(*module);
+      profile_printer = CreateHloProfilePrinterData(
+          *profile_index_map, cost_analysis, entry_computation->name());
+    }
   }
 
   auto* gpu_executable = new GpuExecutable(

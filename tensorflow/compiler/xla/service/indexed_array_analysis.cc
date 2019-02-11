@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
-namespace gtl = ::tensorflow::gtl;
 
 namespace {
 using Analysis = IndexedArrayAnalysis;

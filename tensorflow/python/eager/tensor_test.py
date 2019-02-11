@@ -339,13 +339,30 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testConvertToTensorAllowsOverflow(self):
     _ = ops.convert_to_tensor(123456789, dtype=dtypes.uint8)
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.run_in_graph_and_eager_modes
+  def testConvertToTensorNumpyZeroDim(self):
+    for np_type, dtype in [(np.int32, dtypes.int32),
+                           (np.half, dtypes.half),
+                           (np.float32, dtypes.float32)]:
+      x = ops.convert_to_tensor([np.array(65, dtype=np_type),
+                                 np.array(16, dtype=np_type)])
+      self.assertEqual(x.dtype, dtype)
+      self.assertAllEqual(x, [65, 16])
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.run_in_graph_and_eager_modes
+  def testConvertToTensorNumpyScalar(self):
+    x = ops.convert_to_tensor([np.asscalar(np.array(321, dtype=np.int)),
+                               np.asscalar(np.array(16, dtype=np.int))])
+    self.assertAllEqual(x, [321, 16])
+
   def testEagerTensorError(self):
     with self.assertRaisesRegexp(
         TypeError,
         "Cannot convert provided value to EagerTensor. "
         "Provided value.*Requested dtype.*"):
       _ = ops.convert_to_tensor(1., dtype=dtypes.int32)
-
 
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):

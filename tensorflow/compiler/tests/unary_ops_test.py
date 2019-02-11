@@ -820,6 +820,12 @@ class UnaryOpsTest(xla_test.XLATestCase):
         np.array([1, 2, 0], np.int32),
         expected=np.array([2, 0, 1], dtype=np.int32))
 
+  def testInvertPermutationTwiceIsNoop(self):
+    self._assertOpOutputMatchesExpected(
+        lambda x: array_ops.invert_permutation(array_ops.invert_permutation(x)),
+        np.array([1, 2, 0], np.int32),
+        expected=np.array([1, 2, 0], dtype=np.int32))
+
   def testRank(self):
     rank_op = lambda x: array_ops.rank_internal(x, optimize=False)
     for dtype in self.numeric_types:

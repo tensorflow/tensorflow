@@ -52,7 +52,7 @@ namespace bar {
 //   is guaranteed that no thread may call a non-const method.
 //
 // The logical function signature is:
-//   ((unknown): f32[1,2], (unknown): s64[3,4]) -> (u32[5,6])
+//   ((unknown): f32[1,2], (unknown): s64[3,4], (unknown): f32[1], (unknown): s32[5]) -> (u32[5,6], f32[1], s32[5])
 //
 // Memory stats:
 //   arg bytes total:    104
@@ -214,6 +214,58 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
         result_data(0)))[dim0][dim1];
   }
 
+  // Methods for managing variable buffers. Buffers are in row-major order. The
+  // input and output buffers may or may not be identical.
+  //
+  // void set_var_X_data(T* data)
+  //   Sets the buffer for variable X.
+  //
+  // T* var_X_data()
+  //   Returns the buffer of type T for variable X.
+  //
+  // T& var_X(...dim indices...)
+  //   Returns a reference to the value of type T for variable X,
+  //   with dim indices specifying which value. No bounds checking is performed
+  //   on dim indices.
+
+  void set_var_myvar_input_data(float* data) {
+    set_arg_data(2, data);
+  }
+
+  void set_var_myvar2_input_data(tensorflow::int32* data) {
+    set_arg_data(3, data);
+  }
+
+  float* var_myvar_result_data() {
+    return static_cast<float*>(result_data(1));
+  }
+  float& var_myvar_result() {
+    return (*static_cast<float(*)[1]>(
+        result_data(1)))[0];
+  }
+  const float* var_myvar_result_data() const {
+    return static_cast<const float*>(result_data(1));
+  }
+  const float& var_myvar_result() const {
+    return (*static_cast<const float(*)[1]>(
+        result_data(1)))[0];
+  }
+
+  tensorflow::int32* var_myvar2_result_data() {
+    return static_cast<tensorflow::int32*>(result_data(2));
+  }
+  tensorflow::int32& var_myvar2_result(size_t dim0) {
+    return (*static_cast<tensorflow::int32(*)[5]>(
+        result_data(2)))[dim0];
+  }
+  const tensorflow::int32* var_myvar2_result_data() const {
+    return static_cast<const tensorflow::int32*>(result_data(2));
+  }
+  const tensorflow::int32& var_myvar2_result(size_t dim0) const {
+    return (*static_cast<const tensorflow::int32(*)[5]>(
+        result_data(2)))[dim0];
+  }
+
  private:
   // Number of buffers for the compiled computation.
   static constexpr size_t kNumBuffers = 6;
@@ -257,7 +309,7 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   static const xla::ProgramShapeProto* StaticProgramShape() {
     static const xla::ProgramShapeProto* kShape = []() {
     xla::ProgramShapeProto* proto = new xla::ProgramShapeProto;
-    proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[0], 64);
+    proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[0], 132);
     return proto;
   }();
     return kShape;

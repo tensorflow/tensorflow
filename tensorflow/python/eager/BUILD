@@ -384,6 +384,7 @@ cuda_py_test(
         ":context",
         ":function",
         ":test",
+        ":profiler",
         "//third_party/py/numpy",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
@@ -527,7 +528,10 @@ tf_py_test(
 tf_xla_py_test(
     name = "def_function_xla_test",
     srcs = ["def_function_xla_test.py"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "nomac",
+    ],
     deps = [
         ":def_function",
         "//tensorflow/compiler/tests:xla_test",

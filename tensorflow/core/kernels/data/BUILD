@@ -564,6 +564,7 @@ cc_library(
     srcs = ["graph_rewrite_dataset.cc"],
     hdrs = ["graph_rewrite_dataset.h"],
     deps = [
+        ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",

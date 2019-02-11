@@ -540,6 +540,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.unbatch",
         "tf.contrib.data.unique":
             "tf.data.experimental.unique",
+        "tf.contrib.framework.CriticalSection":
+            "tf.CriticalSection",
         "tf.contrib.framework.is_tensor":
             "tf.is_tensor",
         "tf.contrib.framework.nest.assert_same_structure":
@@ -550,7 +552,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.nest.map_structure",
         "tf.contrib.framework.nest.pack_sequence_as":
             "tf.nest.pack_sequence_as",
-        "tf.contrib.framework.constant_value":
+        "tf.contrib.util.constant_value":
             "tf.get_static_value",
         "tf.contrib.saved_model.load_keras_model":
             "tf.keras.experimental.load_from_saved_model",
@@ -710,6 +712,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             'tf.compat.v1.keras.initializers.ones',
         'tf.keras.initializers.constant':
             'tf.compat.v1.keras.initializers.constant',
+        "tf.data.experimental.map_and_batch_with_legacy_function":
+            "tf.compat.v1.data.experimental.map_and_batch_with_legacy_function",
     }
     # pylint: enable=line-too-long
 

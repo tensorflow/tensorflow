@@ -1424,6 +1424,7 @@ void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     if (e->IsControlEdge()) {
       if (input_control_node == nullptr) {
         input_control_node = AddNoOp(g);
+        input_control_node->set_requested_device(caller->def().device());
       }
       g->AddControlEdge(e->src(), input_control_node);
     } else {
