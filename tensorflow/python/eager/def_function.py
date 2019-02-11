@@ -349,6 +349,32 @@ class Function(object):
     self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
 
+  def _decorate(self, decorator):
+    """Allows the captured Python function to be decorated in place.
+
+    This method is only safe to call when the Function has not been called by a
+    user. It makes sense to use this method to push a decorator into the
+    function rather than wrapping the function in the decorator.
+
+    We use this in tf.Module to allow user annotated `tf.functions` to remain as
+    `Function` objects but still automatically enter the Module name_scope
+    when they are evaluated like all other methods.
+
+    Args:
+      decorator: A callable accepting a single argument which is the function
+        to decorate and returning a callable result.
+
+    Raises:
+      ValueError: If the function has been called a ValueError is raised.
+    """
+    if self._stateful_fn is not None or self._stateless_fn is not None:
+      raise ValueError(
+          "Functions cannot be decorated after they have been traced.")
+
+    self._python_function = decorator(self._python_function)
+    self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
+        self._python_function, self._input_signature)
+
   def __call__(self, *args, **kwds):
     """Calls the graph function."""
     if self._created_variables:
@@ -725,6 +751,9 @@ def function(func=None,
       tf.py_func(lambda i: l.append(i))(i)  # Works
       l.append(i)                           # Caution! Doesn't work.
   ```
+
+  Note that unlike other TensorFlow operations, we don't convert python
+  numerical inputs to tensors.
 
   _Referencing `tf.Variable`s_
 

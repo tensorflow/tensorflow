@@ -457,10 +457,7 @@ cc_library(
     hdrs = ["platform/logger.h"],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
-    deps = [
-        ":lib_proto_parsing",
-        "@protobuf_archive//:protobuf",
-    ],
+    deps = [":lib_proto_parsing"],
 )
 
 filegroup(
@@ -1146,6 +1143,13 @@ tf_gen_op_libs(
 
 tf_gen_op_libs(
     op_lib_names = [
+        "mkl_array_ops",
+    ],
+    deps = [":protos_all_cc"],
+)
+
+tf_gen_op_libs(
+    op_lib_names = [
         "audio_ops",
     ],
     deps = [":lib"],
@@ -1283,7 +1287,10 @@ cc_library(
         ":training_ops_op_lib",
         ":user_ops_op_lib",
         ":word2vec_ops",
-    ] + if_mkl([":mkl_nn_ops_op_lib"]) + tf_additional_cloud_op_deps(),
+    ] + if_mkl([
+        ":mkl_array_ops_op_lib",
+        ":mkl_nn_ops_op_lib",
+    ]) + tf_additional_cloud_op_deps(),
     alwayslink = 1,
 )
 
@@ -2925,6 +2932,7 @@ tf_cuda_library(
 
 CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/allocator_retry.h",
+    "common_runtime/shared_counter.h",
     "common_runtime/base_collective_executor.h",
     "common_runtime/bfc_allocator.h",
     "common_runtime/hierarchical_tree_broadcaster.h",
@@ -2984,6 +2992,8 @@ tf_cuda_library(
         "common_runtime/collective_param_resolver_local.cc",
         "common_runtime/collective_rma_local.cc",
         "common_runtime/collective_util.cc",
+        "common_runtime/colocation_graph.cc",
+        "common_runtime/colocation_graph.h",
         "common_runtime/constant_folding.cc",
         "common_runtime/copy_tensor.cc",
         "common_runtime/costmodel_manager.cc",
@@ -4525,7 +4535,7 @@ tf_cc_test(
         "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:cwise_op",
         "//third_party/eigen3",
-    ],
+    ] + if_mkl([":mkl_array_ops_op_lib"]),
 )
 
 tf_cc_test(
@@ -5082,7 +5092,6 @@ load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 
 genrule(
     name = "emscripten_proto_config_lite_runtime",
-    srcs = if_android(["android_proto_config.asciipb"]),  # Reuse the same file as android.
     outs = ["emscripten_proto_config_lite_runtime.asciipb"],
     cmd = tf_genrule_cmd_append_to_srcs("optimize_mode:LITE_RUNTIME"),
     visibility = ["//visibility:private"],

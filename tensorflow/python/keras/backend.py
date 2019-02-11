@@ -956,10 +956,10 @@ def dtype(x):
       # Keras variable
       >>> kvar = K.variable(np.array([[1, 2], [3, 4]]))
       >>> K.dtype(kvar)
-      'float32_ref'
+      'float32'
       >>> kvar = K.variable(np.array([[1, 2], [3, 4]]), dtype='float32')
       >>> K.dtype(kvar)
-      'float32_ref'
+      'float32'
   ```
   """
   return x.dtype.base_dtype.name
@@ -1590,7 +1590,7 @@ def min(x, axis=None, keepdims=False):
           the reduced dimension is retained with length 1.
 
   Returns:
-      A tensor with miminum values of `x`.
+      A tensor with minimum values of `x`.
   """
   return math_ops.reduce_min(x, axis, keepdims)
 
@@ -4143,8 +4143,8 @@ def conv1d(x,
   x = nn.convolution(
       input=x,
       filter=kernel,
-      dilation_rate=(dilation_rate,),
-      strides=(strides,),
+      dilation_rate=dilation_rate,
+      strides=strides,
       padding=padding,
       data_format=tf_data_format)
   if data_format == 'channels_first' and tf_data_format == 'NWC':
@@ -4365,6 +4365,7 @@ def separable_conv2d(x,
   Raises:
       ValueError: if `data_format` is neither `channels_last` or
       `channels_first`.
+      ValueError: if `strides` is not a tuple of 2 integers.
   """
   if data_format is None:
     data_format = image_data_format()
@@ -4572,6 +4573,8 @@ def pool2d(x,
   Raises:
       ValueError: if `data_format` is neither `"channels_last"` or
       `"channels_first"`.
+      ValueError: if `pool_size` is not a tuple of 2 integers.
+      ValueError: if `strides` is not a tuple of 2 integers.
       ValueError: if `pool_mode` is neither `"max"` or `"avg"`.
   """
   if data_format is None:

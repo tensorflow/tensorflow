@@ -43,6 +43,7 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
+from tensorflow.python.util import compat
 
 
 class _ModelWithOptimizer(util.Checkpoint):
@@ -303,6 +304,14 @@ class SaveTest(test.TestCase):
       self.assertNotIn("T", complex_node.attr)
       self.assertNotIn("Tout", complex_node.attr)
 
+  def test_signature_attribute_reserved(self):
+    root = util.Checkpoint(signatures=variables.Variable(1.))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    with self.assertRaisesRegexp(ValueError, "del obj.signatures"):
+      save.save(root, save_dir)
+    del root.signatures
+    save.save(root, save_dir)
+
 
 class AssetTests(test.TestCase):
 
@@ -311,6 +320,18 @@ class AssetTests(test.TestCase):
     self._vocab_path = os.path.join(self.get_temp_dir(), "vocab.txt")
     with open(self._vocab_path, "w") as f:
       f.write("alpha\nbeta\ngamma\n")
+
+  def test_asset_path_returned(self):
+    root = tracking.AutoCheckpointable()
+    root.path = tracking.TrackableAsset(self._vocab_path)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    root.get_asset = def_function.function(lambda: root.path.asset_path)
+    save.save(root, save_dir, signatures=root.get_asset.get_concrete_function())
+    second_dir = os.path.join(self.get_temp_dir(), "second_dir")
+    file_io.rename(save_dir, second_dir)
+    imported_path = _import_and_infer(second_dir, {})["output_0"]
+    self.assertIn(compat.as_str_any(second_dir),
+                  compat.as_str_any(imported_path))
 
   def test_table(self):
     initializer = lookup_ops.TextFileInitializer(

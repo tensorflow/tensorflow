@@ -20,7 +20,6 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
-from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -101,6 +100,3 @@ keras_export("keras.initializers.TruncatedNormal", v1=[])(
 
 
 keras_export("keras.backend.name_scope")(ops.name_scope)
-
-keras_export("keras.losses.Reduction", v1=[])(
-    losses_impl.ReductionV2)

@@ -114,6 +114,7 @@ tf_cc_test(
         ":bfloat16_normalization",
         ":bfloat16_support",
         ":hlo",
+        ":hlo_creation_utils",
         ":hlo_verifier",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -1460,11 +1461,15 @@ cc_library(
     hdrs = ["hlo_creation_utils.h"],
     deps = [
         ":hlo",
+        ":hlo_module_config",
         ":shape_inference",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:comparators",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1510,6 +1515,20 @@ cc_library(
 )
 
 cc_library(
+    name = "op_expander_pass",
+    srcs = ["op_expander_pass.cc"],
+    hdrs = ["op_expander_pass.h"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_library(
     name = "gather_expander",
     srcs = ["gather_expander.cc"],
     hdrs = ["gather_expander.h"],
@@ -1517,6 +1536,7 @@ cc_library(
         ":hlo",
         ":hlo_creation_utils",
         ":hlo_pass",
+        ":op_expander_pass",
         ":while_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:statusor",
@@ -1537,6 +1557,28 @@ cc_library(
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:statusor",
         "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_library(
+    name = "triangular_solve_expander",
+    srcs = ["triangular_solve_expander.cc"],
+    hdrs = ["triangular_solve_expander.h"],
+    deps = [
+        ":op_expander_pass",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:math",
+        "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/client/lib:slicing",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -1601,7 +1643,7 @@ tf_cc_test(
         ":algebraic_simplifier",
         ":hlo",
         ":hlo_casting_utils",
-        ":hlo_matchers",
+        ":hlo_creation_utils",
         ":hlo_parser",
         ":hlo_pass",
         ":pattern_matcher",
@@ -2305,6 +2347,7 @@ tf_cc_test(
     srcs = ["hlo_dataflow_analysis_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_creation_utils",
         ":hlo_dataflow_analysis",
         ":hlo_graph_dumper",
         ":hlo_matchers",
@@ -2475,6 +2518,7 @@ tf_cc_test(
     srcs = ["tuple_points_to_analysis_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_creation_utils",
         ":hlo_matchers",
         ":instruction_fusion",
         ":tuple_points_to_analysis",

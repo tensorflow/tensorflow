@@ -122,7 +122,12 @@ Status ReplaceArgUsageWithConstNode(
 
   for (const auto& iter : const_input_index_to_node) {
     int arg_index = iter.first;
-    Node* const_node = g->CopyNode(iter.second);
+    NodeDef const_def = iter.second->def();
+    const_def.set_name(g->NewName(const_def.name()));
+    Status s;
+    Node* const_node = g->AddNode(const_def, &s);
+    TF_RETURN_IF_ERROR(s);
+
     Node* arg_node = arg_nodes[arg_index];
 
     // Collect all usages of the _Arg node.

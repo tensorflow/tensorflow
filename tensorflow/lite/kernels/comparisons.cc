@@ -59,11 +59,12 @@ TfLiteStatus ComparisonPrepare(TfLiteContext* context, TfLiteNode* node) {
 
 // TODO(ruic): optimize macros below to using template functions.
 #define TF_LITE_QUANTIZE_COMPARISON(opname)                                    \
+  template <typename input_dtype>                                              \
   void EvalQuantized##opname(TfLiteContext* context, TfLiteNode* node,         \
                              const TfLiteTensor* input1,                       \
                              const TfLiteTensor* input2, TfLiteTensor* output, \
                              bool requires_broadcast) {                        \
-    if (input1->type == kTfLiteUInt8) {                                        \
+    if (input1->type == kTfLiteUInt8 || input1->type == kTfLiteInt8) {         \
       auto input1_offset = -input1->params.zero_point;                         \
       auto input2_offset = -input2->params.zero_point;                         \
       const int left_shift = 8;                                                \
@@ -87,14 +88,16 @@ TfLiteStatus ComparisonPrepare(TfLiteContext* context, TfLiteNode* node) {
       op_params.input2_shift = input2_shift;                                   \
       if (requires_broadcast) {                                                \
         reference_ops::Broadcast4DSlow##opname##WithScaling(                   \
-            op_params, GetTensorShape(input1), GetTensorData<uint8_t>(input1), \
-            GetTensorShape(input2), GetTensorData<uint8_t>(input2),            \
-            GetTensorShape(output), GetTensorData<bool>(output));              \
+            op_params, GetTensorShape(input1),                                 \
+            GetTensorData<input_dtype>(input1), GetTensorShape(input2),        \
+            GetTensorData<input_dtype>(input2), GetTensorShape(output),        \
+            GetTensorData<bool>(output));                                      \
       } else {                                                                 \
         reference_ops::opname##WithScaling(                                    \
-            op_params, GetTensorShape(input1), GetTensorData<uint8_t>(input1), \
-            GetTensorShape(input2), GetTensorData<uint8_t>(input2),            \
-            GetTensorShape(output), GetTensorData<bool>(output));              \
+            op_params, GetTensorShape(input1),                                 \
+            GetTensorData<input_dtype>(input1), GetTensorShape(input2),        \
+            GetTensorData<input_dtype>(input2), GetTensorShape(output),        \
+            GetTensorData<bool>(output));                                      \
       }                                                                        \
     }                                                                          \
   }
@@ -136,8 +139,12 @@ TfLiteStatus EqualEval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_COMPARISON(int64_t, Equal, requires_broadcast);
       break;
     case kTfLiteUInt8:
-      EvalQuantizedEqual(context, node, input1, input2, output,
-                         requires_broadcast);
+      EvalQuantizedEqual<uint8_t>(context, node, input1, input2, output,
+                                  requires_broadcast);
+      break;
+    case kTfLiteInt8:
+      EvalQuantizedEqual<int8_t>(context, node, input1, input2, output,
+                                 requires_broadcast);
       break;
     default:
       context->ReportError(context,
@@ -165,8 +172,12 @@ TfLiteStatus NotEqualEval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_COMPARISON(int64_t, NotEqual, requires_broadcast);
       break;
     case kTfLiteUInt8:
-      EvalQuantizedNotEqual(context, node, input1, input2, output,
-                            requires_broadcast);
+      EvalQuantizedNotEqual<uint8_t>(context, node, input1, input2, output,
+                                     requires_broadcast);
+      break;
+    case kTfLiteInt8:
+      EvalQuantizedNotEqual<int8_t>(context, node, input1, input2, output,
+                                    requires_broadcast);
       break;
     default:
       context->ReportError(context,
@@ -193,8 +204,12 @@ TfLiteStatus GreaterEval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_COMPARISON(int64_t, Greater, requires_broadcast);
       break;
     case kTfLiteUInt8:
-      EvalQuantizedGreater(context, node, input1, input2, output,
-                           requires_broadcast);
+      EvalQuantizedGreater<uint8_t>(context, node, input1, input2, output,
+                                    requires_broadcast);
+      break;
+    case kTfLiteInt8:
+      EvalQuantizedGreater<int8_t>(context, node, input1, input2, output,
+                                   requires_broadcast);
       break;
     default:
       context->ReportError(context,
@@ -221,8 +236,12 @@ TfLiteStatus GreaterEqualEval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_COMPARISON(int64_t, GreaterEqual, requires_broadcast);
       break;
     case kTfLiteUInt8:
-      EvalQuantizedGreaterEqual(context, node, input1, input2, output,
-                                requires_broadcast);
+      EvalQuantizedGreaterEqual<uint8_t>(context, node, input1, input2, output,
+                                         requires_broadcast);
+      break;
+    case kTfLiteInt8:
+      EvalQuantizedGreaterEqual<int8_t>(context, node, input1, input2, output,
+                                        requires_broadcast);
       break;
     default:
       context->ReportError(context,
@@ -249,8 +268,12 @@ TfLiteStatus LessEval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_COMPARISON(int64_t, Less, requires_broadcast);
       break;
     case kTfLiteUInt8:
-      EvalQuantizedLess(context, node, input1, input2, output,
-                        requires_broadcast);
+      EvalQuantizedLess<uint8_t>(context, node, input1, input2, output,
+                                 requires_broadcast);
+      break;
+    case kTfLiteInt8:
+      EvalQuantizedLess<int8_t>(context, node, input1, input2, output,
+                                requires_broadcast);
       break;
     default:
       context->ReportError(context,
@@ -277,8 +300,12 @@ TfLiteStatus LessEqualEval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_COMPARISON(int64_t, LessEqual, requires_broadcast);
       break;
     case kTfLiteUInt8:
-      EvalQuantizedLessEqual(context, node, input1, input2, output,
-                             requires_broadcast);
+      EvalQuantizedLessEqual<uint8_t>(context, node, input1, input2, output,
+                                      requires_broadcast);
+      break;
+    case kTfLiteInt8:
+      EvalQuantizedLessEqual<int8_t>(context, node, input1, input2, output,
+                                     requires_broadcast);
       break;
     default:
       context->ReportError(context,

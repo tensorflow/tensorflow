@@ -26,6 +26,7 @@ import copy
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import device_assignment as device_assignment_lib
+from tensorflow.contrib.tpu.python.tpu import functional as tpu_functional_ops
 from tensorflow.contrib.tpu.python.tpu import topology
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
@@ -41,6 +42,7 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
@@ -52,6 +54,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
 
@@ -69,11 +72,36 @@ def initialize_tpu_system(cluster_resolver=None):
   master = cluster_resolver.master()
 
   logging.info("Initializing the TPU system.")
-  session_config = config_pb2.ConfigProto(allow_soft_placement=True)
 
-  with ops.Graph().as_default():
-    with session_lib.Session(config=session_config, target=master) as sess:
-      serialized_topology = sess.run(tpu.initialize_system())
+  if context.executing_eagerly():
+    # This function looks as it is for the following non-intuitive reasons.
+    # tpu.initialize_system creates a dummy op whose sole purpose is to trigger
+    # DistributedTPURewritePass. This pass actually adds real ops that
+    # initialize the TPU system. Thus, we can't simply run tpu.initialize_system
+    # eagerly. We need to wrap it in defun and trigger the rewrite passes on it.
+    # The easiest way to trigger a rewrite is to run the function with
+    # TPUPartitionedCallOp.
+    @function.defun
+    def _tpu_init_fn():
+      return tpu.initialize_system()
+
+    # We can't call _tpu_init_fn normally (because it contains just a dummy op,
+    # see above) but need to define it to get it added to eager context
+    # and get its assigned name.
+    # pylint: disable=protected-access
+    graph_func = _tpu_init_fn._get_concrete_function_internal()
+    func_name = compat.as_str(graph_func._inference_function.name)
+    # pylint: enable=protected-access
+
+    output = tpu_functional_ops.TPUPartitionedCall(
+        args=[], device_ordinal=0, Tout=[dtypes.string], f=func_name)
+    serialized_topology = output[0].numpy()
+  else:
+    session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+    with ops.Graph().as_default():
+      with session_lib.Session(config=session_config, target=master) as sess:
+        serialized_topology = sess.run(tpu.initialize_system())
+
   logging.info("Finished initializing TPU system.")
   return topology.Topology(serialized=serialized_topology)
 
@@ -133,7 +161,7 @@ def _create_tpu_mirrored_variable(  # pylint: disable=missing-docstring
         strategy, device_map, value_list, aggregation,
         logical_device=logical_device)
 
-  if not context.executing_eagerly():
+  if not (context.executing_eagerly() or ops.inside_function()):
     g = ops.get_default_graph()
     # If "trainable" is True, next_creator() will add the member variables
     # to the TRAINABLE_VARIABLES collection, so we manually remove
@@ -183,8 +211,9 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
   # This implementation runs a single step. It does not use infeed or outfeed.
   def experimental_run(self, fn, input_iterator=None):
     """See base class."""
-    if context.executing_eagerly():
-      raise NotImplementedError("Eager mode not supported in TPUStrategy.")
+    if context.executing_eagerly() and not ops.inside_function():
+      raise NotImplementedError(
+          "Eager mode not supported in TPUStrategy outside TF functions.")
 
     if input_iterator is None:
       inputs = []
@@ -192,13 +221,13 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
       inputs = input_iterator.get_next()
 
     result = [None]
-    def replicated_fn(replica_id, inputs):
+    def replicated_fn(replica_id, replica_input):
       """Wraps user function to provide replica ID and `Tensor` inputs."""
       with _TPUReplicaContext(self, replica_id_in_sync_group=replica_id):
         if input_iterator is None:
           result[0] = fn()
         else:
-          result[0] = fn(inputs)
+          result[0] = fn(replica_input)
       return result[0]
 
     replicate_inputs = []  # By replica.
@@ -507,9 +536,10 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
             # name as the absolute name of the variable.
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
             # Initialize replicas with the same value:
-            if context.executing_eagerly():
-              kwargs["initial_value"] = array_ops.identity(
-                  value_list[0].value())
+            if context.executing_eagerly() or ops.inside_function():
+              with ops.init_scope():
+                kwargs["initial_value"] = array_ops.identity(
+                    value_list[0].value())
             else:
               def initial_value_fn(device=d):
                 with ops.device(device):
@@ -543,19 +573,24 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, self._device_map, value, destinations)
 
-    # Validate that the destination is same as the host device
-    # Note we don't do this when in replicate context as the reduction is
-    # performed on the TPU device itself.
     devices = cross_device_ops_lib.get_devices_from(destinations)
-    if len(devices) == 1:
-      assert device_util.canonicalize(devices[0]) == device_util.canonicalize(
-          self._host_device)
-    else:
+    if len(devices) != 1:
       raise ValueError("Multiple devices are not supported for TPUStrategy")
 
-    output = math_ops.add_n(value)
-    if reduce_op == reduce_util.ReduceOp.MEAN:
-      return output * (1. / len(value))
+    # Always performs the reduction on the TPU host.
+    with ops.device(self._host_device):
+      output = math_ops.add_n(value.values)
+      if reduce_op == reduce_util.ReduceOp.MEAN:
+        output *= (1. / len(value.values))
+
+    # If necessary, copy to requested destination.
+    dest_canonical = device_util.canonicalize(devices[0])
+    host_canonical = device_util.canonicalize(self._host_device)
+
+    if dest_canonical != host_canonical:
+      with ops.device(devices[0]):
+        output = array_ops.identity(output)
+
     return output
 
   def _update(self, var, fn, args, kwargs, group):

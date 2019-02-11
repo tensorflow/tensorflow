@@ -21,32 +21,41 @@
 
 ARG UBUNTU_VERSION=16.04
 
-FROM nvidia/cuda:10.0-base-ubuntu${UBUNTU_VERSION} as base
+ARG ARCH=
+ARG CUDA=10.0
+FROM nvidia/cuda${ARCH:+-$ARCH}:${CUDA}-base-ubuntu${UBUNTU_VERSION} as base
+# ARCH and CUDA are specified again because the FROM directive resets ARGs
+# (but their default value is retained if set previously)
+ARG ARCH
+ARG CUDA
+ARG CUDNN=7.4.1.5-1
 
+# Needed for string substitution 
+SHELL ["/bin/bash", "-c"]
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
-        cuda-command-line-tools-10-0 \
-        cuda-cublas-10-0 \
-        cuda-cufft-10-0 \
-        cuda-curand-10-0 \
-        cuda-cusolver-10-0 \
-        cuda-cusparse-10-0 \
-        libcudnn7=7.4.1.5-1+cuda10.0 \
+        cuda-command-line-tools-${CUDA/./-} \
+        cuda-cublas-${CUDA/./-} \
+        cuda-cufft-${CUDA/./-} \
+        cuda-curand-${CUDA/./-} \
+        cuda-cusolver-${CUDA/./-} \
+        cuda-cusparse-${CUDA/./-} \
+        curl \
+        libcudnn7=${CUDNN}+cuda${CUDA} \
         libfreetype6-dev \
         libhdf5-serial-dev \
-        libpng12-dev \
         libzmq3-dev \
         pkg-config \
         software-properties-common \
         unzip
 
-RUN apt-get update && \
-        apt-get install nvinfer-runtime-trt-repo-ubuntu1604-5.0.2-ga-cuda10.0 \
+RUN [ ${ARCH} = ppc64le ] || (apt-get update && \
+        apt-get install nvinfer-runtime-trt-repo-ubuntu1604-5.0.2-ga-cuda${CUDA} \
         && apt-get update \
-        && apt-get install -y --no-install-recommends libnvinfer5=5.0.2-1+cuda10.0 \
+        && apt-get install -y --no-install-recommends libnvinfer5=5.0.2-1+cuda${CUDA} \
         && apt-get clean \
-        && rm -rf /var/lib/apt/lists/*
+        && rm -rf /var/lib/apt/lists/*)
 
 # For CUDA profiling, TensorFlow requires CUPTI.
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
@@ -75,8 +84,11 @@ RUN ln -s $(which ${PYTHON}) /usr/local/bin/python
 #   tensorflow-gpu
 #   tf-nightly
 #   tf-nightly-gpu
+# Set --build-arg TF_PACKAGE_VERSION=1.11.0rc0 to install a specific version.
+# Installs the latest version by default.
 ARG TF_PACKAGE=tensorflow
-RUN ${PIP} install ${TF_PACKAGE}
+ARG TF_PACKAGE_VERSION=
+RUN ${PIP} install ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc

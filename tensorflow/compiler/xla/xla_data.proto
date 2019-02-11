@@ -545,6 +545,26 @@ enum RandomDistribution {
   // Next: 4
 }
 
+message TriangularSolveOptions {
+  // If true, solves ax = b. If false, solves xa = b.
+  bool left_side = 1;
+
+  // If true, 'a' is lower triangular. If false, 'a' is upper triangular.
+  bool lower = 2;
+
+  // If true, the diagonal elements of 'a' are assumed to be 1 and not accessed.
+  bool unit_diagonal = 3;
+
+  // Should we transpose or use the adjoint of 'a'?
+  enum Transpose {
+    TRANSPOSE_INVALID = 0;
+    NO_TRANSPOSE = 1;  // Don't transpose 'a'.
+    TRANSPOSE = 2;     // Transpose 'a'.
+    ADJOINT = 3;       // Complex conjugate and transpose 'a'.
+  };
+  Transpose transpose_a = 4;
+}
+
 message OpSharding {
   enum Type {
     // This sharding is replicated across all devices (implies maximal,

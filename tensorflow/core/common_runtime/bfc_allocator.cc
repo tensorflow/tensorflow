@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 
 #include "tensorflow/core/common_runtime/allocator_retry.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -152,6 +153,7 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
   c->allocation_id = -1;
   c->prev = kInvalidChunkHandle;
   c->next = kInvalidChunkHandle;
+  c->freed_count = 0;
 
   region_manager_.set_handle(c->ptr, h);
 
@@ -180,29 +182,46 @@ void BFCAllocator::DeallocateChunk(ChunkHandle h) {
   free_chunks_list_ = h;
 }
 
-void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes) {
+void* BFCAllocator::AllocateRawInternalWithRetry(
+    size_t unused_alignment, size_t num_bytes,
+    const AllocationAttributes& allocation_attr) {
   // Fast path: Try once to allocate without getting the retry_helper_ involved
-  void* r = AllocateRawInternal(unused_alignment, num_bytes, false);
+  uint64 freed_by_count = 0;
+  if (allocation_attr.freed_by_func != nullptr) {
+    freed_by_count = allocation_attr.freed_by_func();
+  }
+  void* r =
+      AllocateRawInternal(unused_alignment, num_bytes, false, freed_by_count);
   if (r != nullptr) {
     return r;
   } else {
     static const int64 kMaxMillisToWait = 10000;  // 10 seconds
-    return retry_helper_.AllocateRaw(
-        [this](size_t a, size_t nb, bool v) {
-          return AllocateRawInternal(a, nb, v);
+    r = retry_helper_.AllocateRaw(
+        [this, &allocation_attr](size_t a, size_t nb, bool v) {
+          uint64 freed_by_count = 0;
+          if (allocation_attr.freed_by_func != nullptr) {
+            freed_by_count = allocation_attr.freed_by_func();
+          }
+          return AllocateRawInternal(a, nb, v, freed_by_count);
         },
         kMaxMillisToWait, unused_alignment, num_bytes);
+    return r;
   }
 }
 
 void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
                                 const AllocationAttributes& allocation_attr) {
+  VLOG(1) << "AllocateRaw " << Name() << "  " << num_bytes;
   if (allocation_attr.no_retry_on_failure) {
     // Return immediately upon the first failure if this is for allocating an
     // optional scratch space.
     bool dump_log_on_failure = VLOG_IS_ON(2);
-    void* result =
-        AllocateRawInternal(unused_alignment, num_bytes, dump_log_on_failure);
+    uint64 freed_by_count = 0;
+    if (allocation_attr.freed_by_func != nullptr) {
+      freed_by_count = allocation_attr.freed_by_func();
+    }
+    void* result = AllocateRawInternal(unused_alignment, num_bytes,
+                                       dump_log_on_failure, freed_by_count);
     if (result == nullptr) {
       static std::atomic<int32> log_counter{0};
       int32 counter_value = log_counter.load(std::memory_order_relaxed);
@@ -218,7 +237,8 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
     }
     return result;
   } else {
-    return AllocateRaw(unused_alignment, num_bytes);
+    return AllocateRawInternalWithRetry(unused_alignment, num_bytes,
+                                        allocation_attr);
   }
 }
 
@@ -233,7 +253,8 @@ size_t BFCAllocator::RoundedBytes(size_t bytes) {
 
 void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
                                         size_t num_bytes,
-                                        bool dump_log_on_failure) {
+                                        bool dump_log_on_failure,
+                                        uint64 freed_before) {
   if (num_bytes == 0) {
     LOG(ERROR) << "tried to allocate 0 bytes";
     return nullptr;
@@ -247,14 +268,14 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   BinNum bin_num = BinNumForSize(rounded_bytes);
 
   mutex_lock l(lock_);
-  void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
+  void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
   if (ptr != nullptr) {
     return ptr;
   }
 
   // Try to extend
   if (Extend(unused_alignment, rounded_bytes)) {
-    ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
+    ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
     if (ptr != nullptr) {
       return ptr;
     }
@@ -274,7 +295,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
 }
 
 void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
-                                 size_t num_bytes) {
+                                 size_t num_bytes, uint64 freed_before) {
   // First identify the first bin that could satisfy rounded_bytes.
   for (; bin_num < kNumBins; bin_num++) {
     // Start searching from the first bin for the smallest chunk that fits
@@ -285,6 +306,9 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
       const BFCAllocator::ChunkHandle h = (*citer);
       BFCAllocator::Chunk* chunk = ChunkFromHandle(h);
       DCHECK(!chunk->in_use());
+      if (freed_before > 0 && freed_before < chunk->freed_count) {
+        continue;
+      }
       if (chunk->size >= rounded_bytes) {
         // We found an existing chunk that fits us that wasn't in use, so remove
         // it from the free bin structure prior to using.
@@ -346,6 +370,9 @@ void BFCAllocator::SplitChunk(BFCAllocator::ChunkHandle h, size_t num_bytes) {
 
   // The new chunk is not in use.
   new_chunk->allocation_id = -1;
+
+  // It inherits the freed time.
+  new_chunk->freed_count = c->freed_count;
 
   // Maintain the pointers.
   // c <-> c_neighbor becomes
@@ -415,6 +442,9 @@ void BFCAllocator::Merge(BFCAllocator::ChunkHandle h1,
   // Set the new size
   c1->size += c2->size;
 
+  // Pick latest free time.
+  c1->freed_count = std::max(c1->freed_count, c2->freed_count);
+
   DeleteChunk(h2);
 }
 
@@ -459,6 +489,11 @@ void BFCAllocator::FreeAndMaybeCoalesce(BFCAllocator::ChunkHandle h) {
 
   // Mark the chunk as no longer in use.
   c->allocation_id = -1;
+
+  // Optionally record the free time.
+  if (timing_counter_) {
+    c->freed_count = timing_counter_->next();
+  }
 
   // Updates the stats.
   stats_.bytes_in_use -= c->size;
@@ -630,7 +665,10 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
         in_use_by_size[c->size]++;
       }
       LOG(INFO) << (c->in_use() ? "Chunk" : "Free ") << " at " << c->ptr
-                << " of size " << c->size;
+                << " of size " << c->size
+                << (timing_counter_
+                        ? strings::StrCat(" freed_count ", c->freed_count)
+                        : "");
       h = c->next;
     }
   }

@@ -135,7 +135,7 @@ Status GetGradientAccumulationSupport(OptimizationAlgorithm alg,
 }
 namespace {
 // Make a normal state variable specification. Please refer to
-// //third_party/tensorflow/contrib/tpu/proto/optimization_parameters.proto
+// //tensorflow/core/protobuf/tpu/optimization_parameters.proto
 // (StateVariableSpecification message) for instructions on how to set the
 // padding_initial_value field.
 StateVariableSpecification MakeStandardStateVariableSpecification(

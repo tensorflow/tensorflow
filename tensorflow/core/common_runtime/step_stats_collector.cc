@@ -409,6 +409,21 @@ void StepStatsCollector::Save(const string& device,
   }
 }
 
+void StepStatsCollector::SaveThreadName(const string& device,
+                                        const uint32 thread_id,
+                                        const string& thread_name) {
+  VLOG(1) << "Save dev " << device << " thread id " << thread_id << " name "
+          << thread_name;
+  {
+    mutex_lock l(mu_);
+    if (finalized_) {
+      LOG(WARNING) << "thread_name saved after finalize will not be collected.";
+    }
+    auto& thread_names_map = thread_names_[device];
+    thread_names_map[thread_id] = thread_name;
+  }
+}
+
 NodeExecStatsInterface* StepStatsCollector::CreateNodeExecStats(
     const Node* node) {
   // Only collect statistics for non-transfer nodes.
@@ -529,6 +544,16 @@ void StepStatsCollector::FinalizeInternal() {
     for (auto& stats : dev_stat.second) {
       stats->Finalize();
       stats->stats()->Swap(dss->add_node_stats());
+    }
+  }
+  for (const auto& device_thread : thread_names_) {
+    if (dev_stats_pb.find(device_thread.first) == dev_stats_pb.end()) {
+      // skip device without DeviceStepStats.
+      continue;
+    }
+    DeviceStepStats* dss = dev_stats_pb.at(device_thread.first);
+    for (const auto& thread_name : device_thread.second) {
+      (*dss->mutable_thread_names())[thread_name.first] = thread_name.second;
     }
   }
 }

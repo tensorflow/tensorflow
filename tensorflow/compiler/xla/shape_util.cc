@@ -89,7 +89,8 @@ namespace {
 // its Layout.
 StatusOr<Shape> MakeShapeWithLayoutInternal(
     PrimitiveType element_type, absl::Span<const int64> dimensions,
-    absl::Span<const int64> minor_to_major) {
+    absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
+    int64 element_size_in_bits) {
   if (dimensions.size() != minor_to_major.size()) {
     return InvalidArgument("Dimensions size is %ld, but layout size is %ld.",
                            dimensions.size(), minor_to_major.size());
@@ -100,11 +101,8 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   }
   TF_ASSIGN_OR_RETURN(Shape shape,
                       ShapeUtil::MakeValidatedShape(element_type, dimensions));
-  auto min2maj = shape.mutable_layout()->mutable_minor_to_major();
-  min2maj->clear();
-  for (int64 value : minor_to_major) {
-    min2maj->push_back(value);
-  }
+  *shape.mutable_layout() =
+      LayoutUtil::MakeLayout(minor_to_major, tiles, element_size_in_bits);
   if (!shape.has_layout()) {
     return InvalidArgument("Shape has no layout.");
   }
@@ -189,8 +187,10 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 
 /* static */ Shape ShapeUtil::MakeShapeWithLayout(
     PrimitiveType element_type, absl::Span<const int64> dimensions,
-    absl::Span<const int64> minor_to_major) {
-  return MakeShapeWithLayoutInternal(element_type, dimensions, minor_to_major)
+    absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
+    int64 element_size_in_bits) {
+  return MakeShapeWithLayoutInternal(element_type, dimensions, minor_to_major,
+                                     tiles, element_size_in_bits)
       .ValueOrDie();
 }
 

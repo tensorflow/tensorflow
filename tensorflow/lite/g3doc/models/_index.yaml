@@ -4,7 +4,7 @@ description: <!--no description-->
 landing_page:
   body_class: tfo-hide-page-nav
   custom_css_path: /site-assets/css/style.css
-  show_side_navs: true
+  nav: both
   rows:
 
   # Hero

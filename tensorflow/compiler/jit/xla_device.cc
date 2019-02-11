@@ -428,7 +428,7 @@ void XlaDevice::Sync(const DoneCallback& done) {
   // moment--when ThenEnqueueOnBackgroundThread is called--will have finished.
   // This achieves a device-wide sync.
   stream->ThenEnqueueOnBackgroundThread(
-      [this, stream, done](se::StreamExecutor*) {
+      [stream, done](se::StreamExecutor*) {
         tracing::ScopedActivity activity("XlaDevice::Sync::Callback",
                                          /*is_expensive=*/true);
         done(stream->ok() ? Status::OK()

@@ -135,7 +135,7 @@ void TRTInt8Calibrator::setDone() {
 
 void TRTInt8Calibrator::writeCalibrationCache(const void* ptr,
                                               std::size_t length) {
-  calibration_table_ = string((const char*)ptr, length);
+  calibration_table_ = string(static_cast<const char*>(ptr), length);
   VLOG(1) << "Got calibration data for " << engine_name_ << " @" << ptr
           << " length=" << length;
 }

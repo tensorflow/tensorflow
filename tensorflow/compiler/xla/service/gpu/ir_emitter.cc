@@ -647,7 +647,7 @@ Status IrEmitter::HandleParameter(HloInstruction* parameter) {
 }
 
 Status IrEmitter::HandleReduce(HloInstruction* reduce) {
-  // TODO(b/112040122): Support variadic reduce.
+  // TODO(b/118332391): Support variadic reduce.
   if (!reduce->shape().IsArray()) {
     return Unimplemented("Variadic reduce is not supported on GPU");
   }
