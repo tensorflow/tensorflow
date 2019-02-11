@@ -27,6 +27,7 @@ from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -55,6 +56,7 @@ _SUBMODE_BRIEF = 'brief'
 _SUBMODE_DETAILED = 'detailed'
 _REASON_OUTSIDE_OP_RANGE = 'not-traced-outside-op-range'
 _REASON_UNSAFE_OP = 'not-traced-unsafe-op'
+_REASON_WHILELOOP_OP = 'not-traced-special-whileloop-op'
 _REASON_UNSAFE_SCALAR = 'not-traced-unsafe-scalar'
 _REASON_LESS_INTERESTING_OP = 'not-traced-less-interesting-op'
 _REASON_DEVICE_MISMATCH = 'not-traced-device-mismatch'
@@ -65,6 +67,7 @@ _REASON_USER_INCLUDED = 'traced-user-included'
 _REASON_USER_EXCLUDED = 'not-traced-user-excluded'
 _REASON_NOT_EXECUTED = 'not-traced-not-in-exec-path'
 _REASON_NON_NUMERIC_TENSOR = 'not-traced-non-numeric-tensor'
+_REASON_FEEDS_WHILELOOP_OP = 'not-traced-feeds-special-whileloop-op'
 _MARKER_SECTION_BEGIN = '!!!!!!! section-begin:'
 _MARKER_SECTION_END = '!!!!!!! section-end:'
 _SECTION_NAME_CONFIG = 'configuration'
@@ -102,6 +105,9 @@ _FLAG_NAME_TRACE_DIR = 'trace_dir'
 _FLAG_NAME_REPORT_FILE = 'report_file'
 _FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR = 'use_test_undeclared_outputs_dir'
 _FLAG_NAME_OP_RANGE = 'op_range'
+# Folder to dump the pre (before tensor tracer updates) and post graphs (after
+# tensor tracer updates).
+_FLAG_DUMP_BEFORE_AFTER_GRAPHS = 'dump_graphs'
 _OP_RANGE_PAT = re.compile(r'(\d+):(\d+)')
 _OUTPUT_STREAM_ESCAPE = 'file://'
 _TEST_UNDECLARED_OUTPUTS_DIR_ENV_VAR = 'TEST_UNDECLARED_OUTPUTS_DIR'
@@ -276,7 +282,8 @@ class TensorTracer(object):
                         _FLAG_NAME_REPORT_FILE,
                         _FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR,
                         _FLAG_NAME_INCLUDE_LESS_INTERESTING_OPS,
-                        _FLAG_NAME_OP_RANGE]
+                        _FLAG_NAME_OP_RANGE,
+                        _FLAG_DUMP_BEFORE_AFTER_GRAPHS]
     tensor_tracer_flags = os.environ.get(_FLAGS_ENV_VAR)
     if not tensor_tracer_flags:
       return
@@ -438,6 +445,29 @@ class TensorTracer(object):
       raise ValueError('Invalid submode "%s" given to the Tensor_Tracer.'
                        'Valid submodes are: %s'%(submode,
                                                  valid_submodes))
+
+  @staticmethod
+  def loop_cond_op(op):
+    return op.type in ('LoopCond', 'RefLoopCond')
+
+  @staticmethod
+  def while_loop_op(op):
+    """Returns true if op is one of the special ops of in a while loop.
+
+    Args:
+       op: A tf.Operation.
+
+    Returns:
+       True if the given op is one of [Switch, Merge, Enter, Exit,
+       NextIteration, LoopCond], which are all building blocks for TF while
+       loops.
+    """
+    return  (control_flow_util.IsLoopSwitch(op) or
+             control_flow_util.IsLoopMerge(op) or
+             control_flow_util.IsLoopEnter(op) or
+             control_flow_util.IsLoopExit(op) or
+             TensorTracer.loop_cond_op(op) or
+             op.type in ('RefNextIteration', 'NextIteration'))
 
   @staticmethod
   def unsafe_op(op):
@@ -615,6 +645,8 @@ class TensorTracer(object):
     self._num_replicas_per_host = None
     self._num_hosts = None
     self._replica_id = None
+    _, self._graph_dump_path = TensorTracer.get_flag_value(
+        _FLAG_DUMP_BEFORE_AFTER_GRAPHS)
 
   def _add_replica_id_to_graph(self):
     """Adds nodes for computing the replica ID to the graph."""
@@ -928,13 +960,11 @@ class TensorTracer(object):
         output_stream = _OUTPUT_STREAM_ESCAPE + output_path
       else:
         output_stream = sys.stderr
-      print_op = logging_ops.print_v2(msg, array_ops.shape(output_tensor),
-                                      '@', self._replica_id,
-                                      '\n', output_tensor, '\n',
-                                      summarize=num_elements,
-                                      output_stream=output_stream)
-      with ops.control_dependencies([print_op]):
-        return array_ops.identity(tensor).op
+      return logging_ops.print_v2(msg, array_ops.shape(output_tensor),
+                                  '@', self._replica_id,
+                                  '\n', output_tensor, '\n',
+                                  summarize=num_elements,
+                                  output_stream=output_stream)
 
     def _show_part_tensor(tensor):
       """Trace function for printing part of the tensor."""
@@ -966,21 +996,9 @@ class TensorTracer(object):
                in_exec_path=True):
     """Returns True if we should not trace Op."""
 
-    if user_included:
+    if TensorTracer.while_loop_op(op):
       self._instrument_records[op.name] = TensorTracer.reason(
-          op_id, _REASON_USER_INCLUDED)
-      return False
-    if user_excluded:
-      self._instrument_records[op.name] = TensorTracer.reason(
-          op_id, _REASON_USER_EXCLUDED)
-      return True
-    if not in_exec_path:
-      self._instrument_records[op.name] = TensorTracer.reason(
-          op_id, _REASON_NOT_EXECUTED)
-      return True
-    if not self._inside_op_range(op_id):
-      self._instrument_records[op.name] = TensorTracer.reason(
-          op_id, _REASON_OUTSIDE_OP_RANGE)
+          op_id, _REASON_WHILELOOP_OP)
       return True
     if TensorTracer.unsafe_op(op):
       self._instrument_records[op.name] = TensorTracer.reason(
@@ -990,9 +1008,26 @@ class TensorTracer(object):
       self._instrument_records[op.name] = TensorTracer.reason(
           op_id, _REASON_DEVICE_MISMATCH)
       return True
+    if not in_exec_path:
+      self._instrument_records[op.name] = TensorTracer.reason(
+          op_id, _REASON_NOT_EXECUTED)
+      return True
+
+    if not self._inside_op_range(op_id):
+      self._instrument_records[op.name] = TensorTracer.reason(
+          op_id, _REASON_OUTSIDE_OP_RANGE)
+      return True
     if TensorTracer.less_interesting_op(op):
       self._instrument_records[op.name] = TensorTracer.reason(
           op_id, _REASON_LESS_INTERESTING_OP)
+      return True
+    if user_included:
+      self._instrument_records[op.name] = TensorTracer.reason(
+          op_id, _REASON_USER_INCLUDED)
+      return False
+    if user_excluded:
+      self._instrument_records[op.name] = TensorTracer.reason(
+          op_id, _REASON_USER_EXCLUDED)
       return True
     return False
 
@@ -1010,7 +1045,12 @@ class TensorTracer(object):
       self._instrument_records[out_tensor.name] = TensorTracer.reason(
           op_id, _REASON_NON_NUMERIC_TENSOR)
       return True
-
+    # Skip a tensor if it feeds a special while loop op.
+    if [consumer for consumer in out_tensor.consumers() if
+        TensorTracer.while_loop_op(consumer)]:
+      self._instrument_records[out_tensor.name] = TensorTracer.reason(
+          op_id, _REASON_FEEDS_WHILELOOP_OP)
+      return True
     if user_included:
       self._instrument_records[out_tensor.name] = TensorTracer.reason(
           op_id, _REASON_USER_INCLUDED)
@@ -1080,6 +1120,10 @@ class TensorTracer(object):
 
       for input_op in input_ops:
         if input_op not in execution_path_operations:
+          # Filter out loop condition operations, tracing them causes a cycle.
+          # Trace only the loop-body.
+          if TensorTracer.loop_cond_op(input_op):
+            continue
           execution_path_operations.add(input_op)
           traverse_stack.append(input_op)
     return execution_path_operations
@@ -1217,10 +1261,13 @@ class TensorTracer(object):
             replica_id_str = replica_id
           else:
             replica_id_str = '%d'%replica_id
-          output_path = os.path.join(self._trace_dir,
-                                     _COMPACT_TRACE_FILE_PREFIX) \
-                                     + replica_id_str
-          output_stream = _OUTPUT_STREAM_ESCAPE + output_path
+          if self._trace_dir:
+            output_path = os.path.join(self._trace_dir,
+                                       _COMPACT_TRACE_FILE_PREFIX) \
+                                       + replica_id_str
+            output_stream = _OUTPUT_STREAM_ESCAPE + output_path
+          else:
+            output_stream = sys.stderr
           new_step_line = _REPLICA_ID_TAG + replica_id_str
           print_op = logging_ops.print_v2(
               new_step_line, '\n',
@@ -1340,6 +1387,23 @@ class TensorTracer(object):
       else:
         return current_fetches
 
+  def _get_op_control_flow_context(self, op):
+    """Returns the control flow of the given op.
+
+    Args:
+      op: tf.Operation for which the control flow context is requested.
+    Returns:
+      op_control_flow_context: which the is control flow context of the given
+      op. If the operation type is LoopExit, returns the outer control flow
+      context.
+    """
+    # pylint: disable=protected-access
+    op_control_flow_context = op._control_flow_context
+    # pylint: enable=protected-access
+    if control_flow_util.IsLoopExit(op):
+      op_control_flow_context = op_control_flow_context.outer_context
+    return op_control_flow_context
+
   def _trace_execution(self, graph,
                        tensor_fetches,
                        op_fetches=None,
@@ -1391,6 +1455,11 @@ class TensorTracer(object):
 
     tensor_fetch_set = set(processed_t_fetches)
     tracing_ops = []
+
+    # pylint: disable=protected-access
+    current_control_flow_context = graph._get_control_flow_context()
+    # pylint: enable=protected-access
+
     # Trace ops only if they are in the execution path.
     for op in exec_op_set:
       for i in range(len(op.outputs)):
@@ -1411,6 +1480,11 @@ class TensorTracer(object):
         is_a_fetched_tensor = out_tensor in tensor_fetch_set
         if (not consumers) and (not is_a_fetched_tensor):
           continue
+
+        op_control_flow_context = self._get_op_control_flow_context(op)
+        # pylint: disable=protected-access
+        graph._set_control_flow_context(op_control_flow_context)
+        # pylint: enable=protected-access
         processed_out_tensor = self._preprocess_traced_tensor(out_tensor)
 
         if on_tpu:
@@ -1426,8 +1500,7 @@ class TensorTracer(object):
               self._make_tensor_trace_fun(tensor_name), processed_out_tensor)
         else:
           trace_fun = self._make_tensor_trace_fun(tensor_name)
-          traced_tensor = trace_fun(processed_out_tensor)
-          trace_op = traced_tensor.op
+          trace_op = trace_fun(processed_out_tensor)
 
         if is_a_fetched_tensor:
           tracing_ops.append(trace_op)
@@ -1438,6 +1511,10 @@ class TensorTracer(object):
           # pylint: disable=protected-access
           consumer_op._add_control_input(trace_op)
           # pylint: enable=protected-access
+
+    # pylint: disable=protected-access
+    graph._set_control_flow_context(current_control_flow_context)
+    # pylint: enable=protected-access
     if tracing_ops:
       # If we are tracing a fetched tensor, their dependency is stored in
       # tracing_ops.
@@ -1447,7 +1524,7 @@ class TensorTracer(object):
       processed_t_fetches = self._flush_tensor_values_cache(graph,
                                                             processed_t_fetches,
                                                             op_fetches,
-                                                            on_tpu=True)
+                                                            on_tpu=on_tpu)
     self._post_tracing(succeed, sorted_or_cycle)
     # processed_t_fetches is a list at this point. Convert it to the same
     # format as given in tensor_fetches.
@@ -1486,12 +1563,28 @@ class TensorTracer(object):
     self._num_replicas = num_replicas
     self._num_replicas_per_host = num_replicas_per_host
     self._num_hosts = num_hosts
+    if self._num_replicas is not None:
+      if self._num_replicas_per_host is None:
+        self._num_replicas_per_host = 8
+      if self._num_hosts is None:
+        self._num_hosts = num_replicas // self._num_replicas_per_host + \
+            (num_replicas % self._num_replicas_per_host > 0)
+
     if self._num_replicas_per_host > 8:
       # Checks for the assumption in _generate_flush_cache_op().
       raise RuntimeError('num_replicas_per_host (%d) is '
                          'greater than 8'%self._num_replicas_per_host)
-    self._add_replica_id_to_graph()
-    return self._trace_execution(graph, tensor_fetches, op_fetches, on_tpu=True)
+    if self._graph_dump_path:
+      graph_io.write_graph(graph, self._graph_dump_path,
+                           'graph_before_tt.pbtxt')
+    with graph.as_default():
+      self._add_replica_id_to_graph()
+      tensor_fetches = self._trace_execution(graph, tensor_fetches, op_fetches,
+                                             on_tpu=True)
+    if self._graph_dump_path:
+      graph_io.write_graph(graph, self._graph_dump_path,
+                           'graph_after_tt.pbtxt')
+    return tensor_fetches
 
   def trace_cpu(self, graph, tensor_fetches, op_fetches=None):
     """Traces the tensors generated by CPU Ops in a TF graph.
@@ -1516,4 +1609,15 @@ class TensorTracer(object):
     self._num_replicas_per_host = 1
     self._num_hosts = 1
     self._replica_id = 0
-    return self._trace_execution(graph, tensor_fetches, op_fetches, on_tpu=True)
+    if self._graph_dump_path:
+      graph_io.write_graph(graph, self._graph_dump_path,
+                           'graph_before_tt.pbtxt')
+    with graph.as_default():
+      tensor_fetches = self._trace_execution(graph, tensor_fetches, op_fetches,
+                                             on_tpu=False)
+    if self._graph_dump_path:
+      graph_io.write_graph(graph, self._graph_dump_path,
+                           'graph_after_tt.pbtxt')
+    return tensor_fetches
+
+
