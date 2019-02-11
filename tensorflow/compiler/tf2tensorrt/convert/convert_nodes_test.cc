@@ -2613,7 +2613,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     // Modify batch dim with dynamic batch size, should fail.
     Reset();
     NodeDef node_def = get_strided_slice_nodedef();
-    AddTestTensor("input", {1, 2, 3}, -1);
+    AddTestTensor("input", {1, 2, 3}, /*batch_size=*/-1);
     AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
     AddTestWeights<int32>("end", {4}, {0, 1, 2, 3});
     AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
