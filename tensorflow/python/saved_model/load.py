@@ -122,6 +122,9 @@ class _Loader(object):
         return obj.asset_path
       elif tensor_util.is_tensor(obj):
         return obj
+      elif isinstance(obj, tracking.TrackableResource):
+        # Note: this executes restored functions in the TrackableResource.
+        return obj.resource_handle
       raise ValueError("Can't convert node %s to tensor" % (type(obj)))
 
   def _load_all(self):
@@ -187,6 +190,7 @@ class _Loader(object):
             proto.bare_concrete_function),
         "variable": lambda: self._recreate_variable(proto.variable),
         "constant": lambda: self._recreate_constant(proto.constant),
+        "resource": lambda: self._recreate_resource(proto.resource),
     }
     kind = proto.WhichOneof("kind")
     if kind not in factory:
@@ -231,6 +235,30 @@ class _Loader(object):
     imported_constant = constant_op.constant(
         tensor_util.MakeNdarray(tensor_proto))
     return imported_constant, setattr
+
+  def _recreate_resource(self, proto):
+    del proto
+    return _RestoredResource(), setattr
+
+
+# TODO(b/124205571,b/124092991): Solve destruction of resources.
+class _RestoredResource(tracking.TrackableResource):
+  """Restored SavedResource."""
+
+  def create_resource(self):
+    raise RuntimeError()
+
+  def initialize(self):
+    raise RuntimeError()
+
+  def _list_functions_for_serialization(self):
+    # Overwrite this method to avoid the implementation of
+    # base class to re-wrap the polymorphic functions into
+    # another layer of `tf.function`.
+    return {
+        "create_resource": self.create_resource,
+        "initialize": self.initialize,
+    }
 
 
 def _call_attribute(instance, *args, **kwargs):

@@ -176,6 +176,22 @@ class TrackableResource(base.Checkpointable):
       self._resource_handle = self.create_resource()
     return self._resource_handle
 
+  def _list_functions_for_serialization(self):
+    @def_function.function(input_signature=[], autograph=False)
+    def _creator():
+      resource = self.create_resource()
+      return resource
+
+    @def_function.function(input_signature=[], autograph=False)
+    def _initializer():
+      self.initialize()
+      return 1  # Dummy return
+
+    return {
+        "create_resource": _creator,
+        "initialize": _initializer,
+    }
+
 
 class TrackableAsset(base.Checkpointable):
   """Base class for asset files which need to be tracked."""
