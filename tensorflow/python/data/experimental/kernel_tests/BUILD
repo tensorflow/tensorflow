@@ -603,7 +603,7 @@ py_library(
 
 py_test(
     name = "sql_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["sql_dataset_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],

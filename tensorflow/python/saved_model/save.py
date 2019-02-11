@@ -273,14 +273,12 @@ def _map_captures_to_created_tensors(
   for exterior, interior in original_captures.items():
     mapped_resource = resource_map.get(exterior, None)
     if mapped_resource is None:
-      if exterior.dtype == dtypes.resource:
-        raise AssertionError(
-            ("Tried to export a function which references untracked stateful "
-             "object {}. Stateful TensorFlow objects (e.g. tf.Variable) must "
-             "be tracked by the main object. Objects may be tracked by "
-             "assigning them to an attribute of another tracked object, or to "
-             "an attribute of the main object directly.")
-            .format(interior))
+      raise AssertionError(
+          ("Tried to export a function which references untracked object {}."
+           "TensorFlow objects (e.g. tf.Variable) captured by functions must "
+           "be tracked by assigning them to an attribute of a tracked object "
+           "or assigned to an attribute of the main object directly.")
+          .format(interior))
     export_captures.append(mapped_resource)
   return export_captures
 
@@ -587,6 +585,8 @@ def _write_object_proto(obj, proto, asset_file_def_index):
         function_serialization.serialize_bare_concrete_function(obj))
   elif isinstance(obj, _CapturedConstant):
     proto.constant.operation = obj.graph_tensor.op.name
+  elif isinstance(obj, tracking.TrackableResource):
+    proto.resource.SetInParent()
   else:
     registered_type_proto = revived_types.serialize(obj)
     if registered_type_proto is None:

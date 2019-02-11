@@ -3788,6 +3788,7 @@ tf_kernel_library(
         ":image_resizer_state",
         ":fill_functor",
         ":ops_util",
+        "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

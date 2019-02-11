@@ -882,26 +882,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertIs(f_concrete.captured_inputs[0],
                   g_concrete.captured_inputs[0])
 
-  def test_table(self, cycles):
-    # TODO(b/123408779): Handle generic TrackableResources and enable this test
-    self.skipTest("Need to handle generic TrackableResources")
-    vocab_path = self._make_asset("alpha\nbeta\ngamma\n")
-    initializer = lookup_ops.TextFileInitializer(
-        vocab_path,
-        key_dtype=dtypes.string,
-        key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
-        value_dtype=dtypes.int64,
-        value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
-    root = util.Checkpoint(table=lookup_ops.HashTable(
-        initializer, default_value=-1))
-    root.table_user = def_function.function(
-        root.table.lookup,
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.string)])
-    self.assertEqual(2, root.table_user(constant_op.constant("gamma")).numpy())
-    imported = self.cycle(root, cycles)
-    self.assertEqual(
-        2, imported.table_user(constant_op.constant("gamma")).numpy())
-
   def test_functions_accessed_once(self, cycles):
 
     class Exported(tracking.AutoCheckpointable):
@@ -963,6 +943,54 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(TypeError):
       # The signatures mapping is immutable
       imported.signatures["random_key"] = 3
+
+  def _make_model_with_tables(self):
+    default_val = -1
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table1_initializer = lookup_ops.KeyValueTensorInitializer(keys, values)
+    table1 = lookup_ops.HashTable(table1_initializer, default_val)
+
+    table2_file = self._make_asset("test\nfoo\nbrain\n")
+    table2_initializer = lookup_ops.TextFileIdTableInitializer(table2_file)
+    table2 = lookup_ops.HashTable(table2_initializer, default_val)
+
+    def _make_lookup_function(table):
+      signature = [tensor_spec.TensorSpec(None, dtypes.string)]
+      return def_function.function(input_signature=signature)(
+          lambda x: table.lookup(x))  # pylint: disable=unnecessary-lambda
+
+    root = tracking.AutoCheckpointable()
+    root.table1 = table1
+    root.lookup1 = _make_lookup_function(table1)
+    root.table2 = table2
+    root.lookup2 = _make_lookup_function(table2)
+    return root
+
+  def test_table(self, cycles):
+    root = self._make_model_with_tables()
+    imported = self.cycle(root, cycles, signatures={})
+    keys = constant_op.constant(["brain", "test", "foo", "surgery"])
+    self.assertAllEqual([0, -1, -1, 2], imported.lookup1(keys).numpy())
+    self.assertAllEqual([2, 0, 1, -1], imported.lookup2(keys).numpy())
+
+  def test_table_in_graph(self, cycles):
+    root = self._make_model_with_tables()
+
+    if cycles > 1:
+      root = self.cycle(root, cycles - 1)
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+    imported = self.cycle(root, 1)
+
+    with ops.Graph().as_default():
+      imported = load.load(path)
+      keys = constant_op.constant(["brain", "test", "foo", "surgery"])
+      output1 = imported.lookup1(keys)
+      output2 = imported.lookup2(keys)
+      with monitored_session.MonitoredSession() as sess:
+        self.assertAllEqual([0, -1, -1, 2], sess.run(output1))
+        self.assertAllEqual([2, 0, 1, -1], sess.run(output2))
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
