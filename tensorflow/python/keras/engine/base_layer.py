@@ -1834,6 +1834,10 @@ class TensorFlowOpLayer(Layer):
         inputs.insert(index, constant)
 
       self.node_def.name = graph.unique_name(self.node_def.name)
+      # Check for case where first input should be a list of Tensors.
+      if 'N' in self.node_def.attr:
+        num_tensors = self.node_def.attr['N'].i
+        inputs = [inputs[:num_tensors]] + inputs[num_tensors:]
       c_op = ops._create_c_op(graph, self.node_def, inputs, control_inputs=[])
       op = graph._create_op_from_tf_operation(c_op)
 
