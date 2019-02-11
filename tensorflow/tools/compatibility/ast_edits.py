@@ -568,7 +568,7 @@ class ASTCodeUpgrader(object):
       in_place: Allow the conversion of an entire directory in place.
 
     Returns:
-      A tuple of files processed, the report string ofr all files, and a dict
+      A tuple of files processed, the report string for all files, and a dict
         mapping filenames to errors encountered in that file.
     """
 
