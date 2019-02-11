@@ -126,12 +126,20 @@ third_party/flatbuffers/LICENSE.txt
 
 MAKE_PROJECT_FILES := \
   README_MAKE.md \
-  Makefile
+  Makefile \
+  .vscode/tasks.json
 
 MBED_PROJECT_FILES := \
   README_MBED.md \
   mbed-os.lib \
-  mbed_app.json
+  mbed_app.json \
+  .vscode/tasks.json
+
+KEIL_PROJECT_FILES := \
+  README_KEIL.md \
+  keil_project.uvprojx
+
+ALL_PROJECT_TARGETS :=
 
 KEIL_PROJECT_FILES := \
   README_KEIL.md \
@@ -214,6 +222,8 @@ $(foreach TEST_TARGET,$(MICROLITE_TEST_SRCS),\
 $(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 
 test: $(MICROLITE_TEST_TARGETS)
+
+generate_projects: $(ALL_PROJECT_TARGETS)
 
 # Gets rid of all generated files.
 clean:
