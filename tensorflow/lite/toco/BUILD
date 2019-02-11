@@ -378,6 +378,7 @@ cc_library(
         ":types_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/lite/kernels/internal:types",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
         "@protobuf_archive//:protobuf_headers",
