@@ -156,6 +156,12 @@ def _convert_model(flags):
     converter.default_ranges_stats = (flags.default_ranges_min,
                                       flags.default_ranges_max)
 
+  # Set the max range of UINT8 as the default values of the default range
+  # variables.
+  if (flags.default_ranges_min is None) and (flags.default_ranges_max is None):
+      if converter.inference_type == lite_constants.QUANTIZED_UINT8:
+        converter.default_ranges_stats = (0, 128)
+
   if flags.drop_control_dependency:
     converter.drop_control_dependency = flags.drop_control_dependency
   if flags.reorder_across_fake_quant:
