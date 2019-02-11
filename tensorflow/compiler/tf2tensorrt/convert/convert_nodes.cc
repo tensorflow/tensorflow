@@ -2182,8 +2182,7 @@ tensorflow::Status ConvertStridedSliceHelper(OpConverterParams* params,
     if (end < 0 || end > input_dims[i]) {
       return tensorflow::errors::InvalidArgument(
           "\"begin\" + \"size\" for dimension ", std::to_string(i), " in ",
-          node_def.op(), " is out of range, at ",
-          node_def.name());
+          node_def.op(), " is out of range, at ", node_def.name());
     }
     if (size[i] <= 0) {
       return tensorflow::errors::InvalidArgument(
@@ -2367,8 +2366,7 @@ tensorflow::Status ConvertSlice(OpConverterParams* params) {
   auto size_span = inputs.at(2).weights().GetSpan<int>();
   std::vector<int> begin(begin_span.data(),
                          begin_span.data() + begin_span.size());
-  std::vector<int> size(size_span.data(),
-                        size_span.data() + size_span.size());
+  std::vector<int> size(size_span.data(), size_span.data() + size_span.size());
   // Get input dims.
   nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
@@ -2418,8 +2416,7 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   auto stride_span = inputs.at(3).weights().GetSpan<int>();
   std::vector<int> begin(begin_span.data(),
                          begin_span.data() + begin_span.size());
-  std::vector<int> end(end_span.data(),
-                       end_span.data() + end_span.size());
+  std::vector<int> end(end_span.data(), end_span.data() + end_span.size());
   std::vector<int> stride(stride_span.data(),
                           stride_span.data() + stride_span.size());
   if (!AllLengthsEqual({input_dims, begin, end, stride})) {

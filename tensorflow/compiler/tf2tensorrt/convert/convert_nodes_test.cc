@@ -2658,7 +2658,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     int begin_mask;
     int end_mask;
     std::vector<int> expected_output_dims;
-    std::vector<int> expected_output;
+    std::vector<float> expected_output;
   };
 
   auto get_mask = [](const std::vector<int>& mask) {
@@ -2669,11 +2669,13 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     return result;
   };
 
-  // Ok.
+  // Same input is used for all tests.
+  const std::vector<float> ok_input = {1, 2, 3, 4, 5, 6};
+
 #if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
-  const int kStridedSliceOKCases = 22;
+  const int kStridedSliceOKCases = 23;
 #else
-  const int kStridedSliceOKCases = 18;
+  const int kStridedSliceOKCases = 19;
 #endif
   // Ok.
   TestParams ok_params[kStridedSliceOKCases] = {
@@ -2790,6 +2792,13 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
                /*end_mask=*/get_mask({1, 0, 1}),
                /*expected_output_dims=*/{5, 1},
                /*expected_output=*/{1, 2, 3, 4, 5}},
+    // Clamp out of bounds begin and end.
+    TestParams{/*input_dims=*/{1, 2, 3}, /*begin=*/{0, 0, -9999, -9},
+               /*end=*/{0, 1, 1000, 4}, /*strides=*/{1, 1, 1, 1},
+               /*begin_mask=*/get_mask({0, 0, 0, 0}),
+               /*end_mask=*/get_mask({1, 0, 0, 0}),
+               /*expected_output_dims=*/{1, 2, 3},
+               /*expected_output=*/{1, 2, 3, 4, 5, 6}},
 #if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
     // Strides
     TestParams{/*input_dims=*/{6},
@@ -2836,8 +2845,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
                              output.tensor()->getDimensions());
 
-    const DataVec input_data{
-        {"input", test::AsTensor<float>({1, 2, 3, 4, 5, 6})}};
+    const DataVec input_data{{"input", test::AsTensor<float>(ok_input)}};
     DataVec output_data{
         {"my_strided_slice",
          ConstructTensor<float>(ok_params[i].expected_output.size())}};
@@ -2926,11 +2934,17 @@ TEST_F(OpConverterTest, ConvertSlice) {
   // Ok.
   const int kSliceOKCases = 5;
   TestParams ok_params[kSliceOKCases] = {
-    TestParams{{1, 2, 3}, {0, 0, 0, 0}, {-1, -1, -1, -1},  {1, 2, 3}, {1, 2, 3, 4, 5, 6}},
-    TestParams{{1, 2, 3}, {0, 0, 0, 0}, {1, 1, 2, 3}, {1, 2, 3}, {1, 2, 3, 4, 5, 6}},
-    TestParams{{1, 2, 3}, {0, 0, 0, 0}, {1, -1, 2, 2}, {1, 2, 2}, {1, 2, 4, 5}},
-    TestParams{{6}, {0, 1}, {1, 5}, {5}, {2, 3, 4, 5, 6}},
-    TestParams{{6}, {0, 1}, {-1, 3}, {3}, {2, 3, 4}},
+      TestParams{{1, 2, 3},
+                 {0, 0, 0, 0},
+                 {-1, -1, -1, -1},
+                 {1, 2, 3},
+                 {1, 2, 3, 4, 5, 6}},
+      TestParams{
+          {1, 2, 3}, {0, 0, 0, 0}, {1, 1, 2, 3}, {1, 2, 3}, {1, 2, 3, 4, 5, 6}},
+      TestParams{
+          {1, 2, 3}, {0, 0, 0, 0}, {1, -1, 2, 2}, {1, 2, 2}, {1, 2, 4, 5}},
+      TestParams{{6}, {0, 1}, {1, 5}, {5}, {2, 3, 4, 5, 6}},
+      TestParams{{6}, {0, 1}, {-1, 3}, {3}, {2, 3, 4}},
   };
 
   for (int i = 0; i < kSliceOKCases; i++) {
@@ -2952,9 +2966,8 @@ TEST_F(OpConverterTest, ConvertSlice) {
 
     const DataVec input_data{
         {"input", test::AsTensor<float>({1, 2, 3, 4, 5, 6})}};
-    DataVec output_data{
-        {"my_slice",
-         ConstructTensor<float>(ok_params[i].expected_output.size())}};
+    DataVec output_data{{"my_slice", ConstructTensor<float>(
+                                         ok_params[i].expected_output.size())}};
     BuildAndRun(input_data, &output_data);
     EXPECT_THAT(GetSpanForData<float>(output_data[0]),
                 ElementsAreArray(ok_params[i].expected_output));
