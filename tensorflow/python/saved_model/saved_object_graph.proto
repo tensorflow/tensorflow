@@ -60,6 +60,7 @@ message SavedObject {
     SavedVariable variable = 7;
     SavedBareConcreteFunction bare_concrete_function = 8;
     SavedConstant constant = 9;
+    SavedResource resource = 10;
   }
 }
 
@@ -152,4 +153,10 @@ message FunctionSpec {
   StructuredValue kwargs_to_include = 4;
   // The input signature, if specified.
   StructuredValue input_signature = 5;
+}
+
+// A SavedResource represents a TF object that holds state during its lifetime.
+message SavedResource {
+  // An object of this type can have a reference to a:
+  // create_resource() and an initialize() function.
 }
