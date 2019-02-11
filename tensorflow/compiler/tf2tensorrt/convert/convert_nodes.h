@@ -191,9 +191,8 @@ class TRT_ShapedWeights {
   string DebugString() const;
 
   template <typename T>
-  void ToVector(std::vector<T>* output) const {
-    const T* weights_ptr = static_cast<T*>(const_cast<void*>(GetValues()));
-    *output = std::vector<T>(weights_ptr, weights_ptr + count());
+  absl::Span<const T> GetSpan() const {
+    return absl::Span<const T>(tensor_.flat<T>().data(), count());
   }
 
   // TODO(aaroey): make these private.
