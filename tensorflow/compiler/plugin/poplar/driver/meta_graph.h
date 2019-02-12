@@ -162,13 +162,15 @@ class MetaGraph {
       visited.insert(top);
 
       const auto itr = graph_.find(top);
-      std::for_each(itr->second.begin(), itr->second.end(), [&](T v) {
-        if (!visited.contains(v)) {
-          dist[v] = dist[top] + 1;
-          prev[v] = top;
-          queue.push(v);
-        }
-      });
+      if (itr != graph_.end()) {
+        std::for_each(itr->second.begin(), itr->second.end(), [&](T v) {
+          if (!visited.contains(v)) {
+            dist[v] = dist[top] + 1;
+            prev[v] = top;
+            queue.push(v);
+          }
+        });
+      }
     }
 
     std::vector<T> path = {dst};
