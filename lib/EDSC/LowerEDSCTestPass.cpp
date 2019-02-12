@@ -44,6 +44,55 @@ char LowerEDSCTestPass::passID = 0;
 #include "mlir/EDSC/reference-impl.inc"
 
 PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
+  // Inject a EDSC-constructed `for` loop with bounds coming from function
+  // arguments.
+  if (f->getName().strref() == "dynamic_for_func_args") {
+    assert(!f->getBlocks().empty() && "dynamic_for should not be empty");
+    FuncBuilder builder(&f->getBlocks().front(),
+                        f->getBlocks().front().begin());
+    assert(f->getNumArguments() == 2 && "dynamic_for expected 4 arguments");
+    for (const auto *arg : f->getArguments())
+      assert(arg->getType().isIndex() &&
+             "dynamic_for expected index arguments");
+
+    edsc::ScopedEDSCContext context;
+    edsc::Expr lb, ub, step;
+    auto loop = edsc::For(lb, ub, step, {});
+    edsc::MLIREmitter(&builder, f->getLoc())
+        .bind(edsc::Bindable(lb), f->getArgument(0))
+        .bind(edsc::Bindable(ub), f->getArgument(1))
+        .bindConstant<ConstantIndexOp>(edsc::Bindable(step), 3)
+        .emitStmt(loop);
+    return success();
+  }
+  // Inject a EDSC-constructed `for` loop with non-constant bounds that are
+  // obtained from AffineApplyOp (also constructed using EDSC operator
+  // overloads).
+  if (f->getName().strref() == "dynamic_for") {
+    assert(!f->getBlocks().empty() && "dynamic_for should not be empty");
+    FuncBuilder builder(&f->getBlocks().front(),
+                        f->getBlocks().front().begin());
+    assert(f->getNumArguments() == 4 && "dynamic_for expected 4 arguments");
+    for (const auto *arg : f->getArguments())
+      assert(arg->getType().isIndex() &&
+             "dynamic_for expected index arguments");
+
+    edsc::ScopedEDSCContext context;
+    edsc::Expr lb1, lb2, ub1, ub2, step;
+    auto lb = lb1 - lb2;
+    auto ub = ub1 + ub2;
+    auto loop = edsc::For(lb, ub, step, {});
+    edsc::MLIREmitter(&builder, f->getLoc())
+        .bind(edsc::Bindable(lb1), f->getArgument(0))
+        .bind(edsc::Bindable(lb2), f->getArgument(1))
+        .bind(edsc::Bindable(ub1), f->getArgument(2))
+        .bind(edsc::Bindable(ub2), f->getArgument(3))
+        .bindConstant<ConstantIndexOp>(edsc::Bindable(step), 2)
+        .emitStmt(loop);
+
+    return success();
+  }
+
   f->walk([](Instruction *op) {
     if (op->getName().getStringRef() == "print") {
       auto opName = op->getAttrOfType<StringAttr>("op");

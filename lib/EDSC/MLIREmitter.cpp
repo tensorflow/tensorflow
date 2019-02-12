@@ -304,13 +304,41 @@ Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
         return nullptr;
       }
       assert(exprs.size() == 3 && "Expected 3 exprs");
-      auto lb =
-          exprs[0]->getDefiningInst()->cast<ConstantIndexOp>()->getValue();
-      auto ub =
-          exprs[1]->getDefiningInst()->cast<ConstantIndexOp>()->getValue();
+      auto *lb = exprs[0];
+      auto *ub = exprs[1];
+
+      // There may be no defining instruction if the value is a function
+      // argument.  We accept such values.
+      auto *lbDef = lb->getDefiningInst();
+      (void)lbDef;
+      assert((!lbDef || lbDef->isa<ConstantIndexOp>() ||
+              lbDef->isa<AffineApplyOp>() || lbDef->isa<AffineForOp>()) &&
+             "lower bound expression does not have affine provenance");
+      auto *ubDef = ub->getDefiningInst();
+      (void)ubDef;
+      assert((!ubDef || ubDef->isa<ConstantIndexOp>() ||
+              ubDef->isa<AffineApplyOp>() || ubDef->isa<AffineForOp>()) &&
+             "upper bound expression does not have affine provenance");
+
+      // Step must be a static constant.
       auto step =
           exprs[2]->getDefiningInst()->cast<ConstantIndexOp>()->getValue();
-      auto forOp = builder->create<AffineForOp>(location, lb, ub, step);
+
+      // Special case with more concise emitted code for static bounds.
+      OpPointer<AffineForOp> forOp;
+      if (lbDef && ubDef)
+        if (auto lbConst = lbDef->dyn_cast<ConstantIndexOp>())
+          if (auto ubConst = ubDef->dyn_cast<ConstantIndexOp>())
+            forOp = builder->create<AffineForOp>(location, lbConst->getValue(),
+                                                 ubConst->getValue(), step);
+
+      // General case.
+      if (!forOp) {
+        auto map = builder->getDimIdentityMap();
+        forOp =
+            builder->create<AffineForOp>(location, llvm::makeArrayRef(lb), map,
+                                         llvm::makeArrayRef(ub), map, step);
+      }
       forOp->createBody();
       res = forOp->getInductionVar();
     }
