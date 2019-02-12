@@ -920,7 +920,7 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
   for (size_t i = 0; i < outputs.size(); ++i) {
     TRT_TensorOrWeights& output = outputs[i];
     string output_name = node_def.name();
-    if (i != 0) output_name = StrCat(output_name, ":", i);
+    if (i != 0) absl::StrAppend(&output_name, ":", i);
     // We need to check the name before setting it. If the input is one of the
     // engine input, setting the name here will overwrite engine input
     // bindings which will cause runtime error.
@@ -3328,7 +3328,7 @@ tensorflow::Status ConvertFusedBatchNorm(OpConverterParams* params) {
   TRT_ShapedWeights dummy_power_weights(parameter_type);
   size_t nweight = 0;
   for (int i = 1; i < 5; i++) {
-    nweight = std::max(nweight, (size_t)inputs.at(i).weights().count());
+    nweight = std::max<size_t>(nweight, inputs.at(i).weights().count());
   }
   TRT_ShapedWeights* ptr_shape_weights = nullptr;
   for (int i = 1; i < 5; i++) {
@@ -3898,7 +3898,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
     local_scope = GetCommonNameScope(local_scope, node->name());
     old_to_new_id_map[node->id()] = segment_def->node_size();
     auto snode = segment_def->add_node();
-    snode->CopyFrom(node->def());
+    *snode = node->def();
     VLOG(2) << "Copying " << snode->name() << " to subgraph";
   }
   // Update the inputs of the new input nodes to point to placeholder nodes.
