@@ -490,7 +490,7 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
     if (bound_index < tokens.size()) {
       // This token must be a '/'.
       if (tokens[bound_index] != "/") {
-        std::cerr << "Expect a /, but get a '" << tokens[bound_index] << "'."
+        std::cerr << "Expect a '/', but get a '" << tokens[bound_index] << "'."
                   << std::endl;
         return;
       }
@@ -519,8 +519,8 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
   } else {
     DisplayGraphHandle(opts, hlo_graph_dumper::DumpNeighborhoodAround(
                                  *instr, graph_width,
-                                 /*boundary=*/boundary,
-                                 /*show_backend_config=*/show_backend_config));
+                                 /*show_backend_config=*/show_backend_config,
+                                 /*boundary=*/boundary));
   }
 }
 

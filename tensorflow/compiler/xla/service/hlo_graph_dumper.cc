@@ -1518,8 +1518,8 @@ string DumpGraph(const HloComputation& computation, const string& label,
 
 string DumpNeighborhoodAround(
     const HloInstruction& node, int radius,
-    const absl::flat_hash_set<const HloInstruction*>& boundary,
-    bool show_backend_config) {
+    bool show_backend_config,
+    const absl::flat_hash_set<const HloInstruction*>& boundary) {
   auto debug_options = node.GetModule()->config().debug_options();
   string label =
       StrCat("Neighborhood of ", radius, " nodes around ", node.name());
