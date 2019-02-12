@@ -42,6 +42,7 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
+from tensorflow.python.util import tf_inspect
 
 
 @parameterized.named_parameters(
@@ -991,6 +992,19 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       with monitored_session.MonitoredSession() as sess:
         self.assertAllEqual([0, -1, -1, 2], sess.run(output1))
         self.assertAllEqual([2, 0, 1, -1], sess.run(output2))
+
+  def test_perserve_argspec(self, cycles):
+    def f(a, b, c):  # pylint: disable=unused-argument
+      return None
+
+    original_fullargspec = tf_inspect.getfullargspec(f)
+
+    root = tracking.AutoCheckpointable()
+    root.f = def_function.function(f)
+    imported = self.cycle(root, cycles)
+
+    restored_fullargspec = tf_inspect.getfullargspec(imported.f)
+    self.assertEqual(original_fullargspec, restored_fullargspec)
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
