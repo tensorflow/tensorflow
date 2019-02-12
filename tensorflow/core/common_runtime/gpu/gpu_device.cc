@@ -277,12 +277,6 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
       max_streams_(max_streams) {
   GPUProcessState::singleton()->EnableGPUDevice();
   pending_cap_ = options.config.gpu_options().experimental().pending_cap();
-  if (pending_cap_ == 0) {
-    // Auto-configure.  Testing with benchmark models suggests that the optimal
-    // pending_cap value varies by model but something in the range [2, 16] is
-    // always better than unlimited.
-    pending_cap_ = 8;
-  }
   timestamped_allocator_ =
       options.config.gpu_options().experimental().timestamped_allocator();
   if (timestamped_allocator_ || pending_cap_ > 0) {
