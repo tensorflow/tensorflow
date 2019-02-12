@@ -7017,7 +7017,7 @@ tf_mkl_kernel_library(
             ":quantization_utils",
             ":transpose_functor",
             "//third_party/eigen3",
-            "//third_party/gemmlowp",
+            "@gemmlowp",
             "@mkl_dnn",
             "//tensorflow/core:array_ops_op_lib",
             "//tensorflow/core:core_cpu",
