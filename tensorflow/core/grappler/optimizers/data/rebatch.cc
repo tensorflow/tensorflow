@@ -16,12 +16,16 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/rebatch.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -38,6 +42,7 @@ namespace {
 
 constexpr char kCastOp[] = "Cast";
 constexpr char kRealDivOp[] = "RealDiv";
+constexpr char kConstOp[] = "Const";
 
 constexpr std::array<const char*, 5> kBatchDatasetOps = {
     "BatchDataset",
@@ -137,27 +142,33 @@ Status MutateBatchSize(const NodeDef& node, int64 num_workers,
   // TODO(rohanj): Fix up the output_shapes attribute as well. For this Dataset
   // as well as all the downstream datasets.
   // For all the batching datasets the batch_size is input number 1.
-  // TODO(rohanj): Add an assertion for batch size not being a multiple of
-  // num_workers.
   NodeDef* batch_size_node = graph_utils::GetInputNode(node, *graph, 1);
-  NodeDef tmp_node = *batch_size_node;
-  graph_utils::SetUniqueGraphNodeName(tmp_node.op(), graph->graph(), &tmp_node);
-  NodeDef* copy_batch_size_node = graph->AddNode(std::move(tmp_node));
-  NodeDef* float_copy_batch_size_node =
-      AddCastNode(copy_batch_size_node->name(), DT_INT64, DT_FLOAT, graph);
-  NodeDef* num_worker_node =
-      graph_utils::AddScalarConstNode<int64>(num_workers, graph);
-  NodeDef* float_num_worker_node =
-      AddCastNode(num_worker_node->name(), DT_INT64, DT_FLOAT, graph);
-  NodeDef* divided_batch_size_node = AddFloatDivNode(
-      float_copy_batch_size_node->name(), float_num_worker_node->name(), graph);
-  NodeDef* cast_new_batch_size_node =
-      AddCastNode(divided_batch_size_node->name(), DT_FLOAT, DT_INT64, graph);
+  // By the time this optimization is run, the batch_size is computed and
+  // is a constant.
+  if (batch_size_node->op() != kConstOp) {
+    return errors::Internal("Batch size node should be a Const. Obtained: ",
+                            batch_size_node->op(), " instead.");
+  }
+  Tensor batch_size_tensor;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(*batch_size_node, "value", &batch_size_tensor));
+  if (!TensorShapeUtils::IsScalar(batch_size_tensor.shape())) {
+    return errors::Internal("Batch size node shape should be scalar");
+  }
+  int64 batch_size = batch_size_tensor.scalar<int64>()();
+  if (batch_size % num_workers != 0) {
+    return errors::InvalidArgument(
+        "Batch size: ", batch_size,
+        " is not divisible by num_workers: ", num_workers);
+  }
+  batch_size /= num_workers;
+  NodeDef* new_batch_size_node =
+      graph_utils::AddScalarConstNode<int64>(batch_size, graph);
   // We don't call UpdateFanouts here because CSE elimination might lead to
   // multiple nodes sharing the same batch size constant node. This is also
   // why we don't delete batch_size_node as well.
   TF_RETURN_IF_ERROR(graph->UpdateRegularFaninByPort(
-      node.name(), 1, {cast_new_batch_size_node->name(), 0}));
+      node.name(), 1, {new_batch_size_node->name(), 0}));
   return Status::OK();
 }
 

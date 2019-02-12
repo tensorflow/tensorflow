@@ -554,6 +554,7 @@ cc_library(
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core:lib",
     ] + tf_protos_all(),
     alwayslink = 1,
 )
