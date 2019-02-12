@@ -84,6 +84,7 @@ def _make_coordinated_sloppy_dataset(num_elements, num_parallel_calls):
   return dataset, coordination_events
 
 
+# TODO(jsimsa): Add tests for `map_with_legacy_function`.
 @test_util.run_all_in_graph_and_eager_modes
 class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
