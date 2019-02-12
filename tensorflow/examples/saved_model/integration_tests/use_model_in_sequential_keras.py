@@ -47,7 +47,8 @@ def main(argv):
 
   # Create the sequential keras model.
   model = tf.keras.Sequential()
-  model.add(util.CustomLayer(embed, batch_input_shape=[None], dtype=tf.string))
+  model.add(util.CustomLayer(embed, batch_input_shape=[None],
+                             output_shape=[10], dtype=tf.string))
   model.add(tf.keras.layers.Dense(100, activation="relu"))
   model.add(tf.keras.layers.Dense(50, activation="relu"))
   model.add(tf.keras.layers.Dense(1, activation="sigmoid"))
