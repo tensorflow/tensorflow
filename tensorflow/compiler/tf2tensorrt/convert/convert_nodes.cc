@@ -2250,10 +2250,11 @@ tensorflow::Status ConvertStridedSliceHelper(OpConverterParams* params,
     }
   }
   if (pad_dims.empty()) {
-    // No dimensions are changed. We could create a padding layer anyway with
-    // values of 0.
+    // No dimensions are changed. Create a no-op layer so tests don't break.
     if (params->validation_only) return Status::OK();
-    params->outputs->push_back(inputs.at(0));
+    nvinfer1::IShuffleLayer* layer = params->converter->network()->addShuffle(
+        *const_cast<nvinfer1::ITensor*>(input.tensor()));
+    params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
     return tensorflow::Status::OK();
   } else if (pad_dims.size() == 1) {
     // Only one dim is modified but we have to have 2, mark a second dim which

@@ -2623,7 +2623,21 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         "my_strided_slice");
   }
 // TRT 5.1+ supports strides
-#if NV_TENSORRT_MAJOR < 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR < 1)
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+  {
+    // Negative strides, should fail.
+    Reset();
+    NodeDef node_def = get_strided_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("end", {4}, {1, 1, 2, 3});
+    AddTestWeights<int32>("strides", {4}, {1, 1, 1, -1});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Negative or zero stride values are not "
+                               "supported for StridedSlice, at "
+                               "my_strided_slice");
+  }
+#else
   {
     // Stride is not 1, should fail.
     Reset();
@@ -2633,8 +2647,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     AddTestWeights<int32>("end", {4}, {1, 1, 2, 3});
     AddTestWeights<int32>("strides", {4}, {1, 2, 1, 3});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "StridedSlice is only implemented for stride of "
-                               "1, at my_strided_slice");
+                               "Strides other than 1 are not supported with "
+                               "this version of TRT, at my_strided_slice");
   }
 #endif
   {
