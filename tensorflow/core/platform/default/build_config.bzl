@@ -722,12 +722,6 @@ def tf_additional_gdr_lib_defines():
         "//conditions:default": [],
     })
 
-def tf_additional_numa_lib_defines():
-    return select({
-        "//tensorflow:with_numa_support": ["TENSORFLOW_USE_NUMA"],
-        "//conditions:default": [],
-    })
-
 def tf_py_clif_cc(name, visibility = None, **kwargs):
     pass
 

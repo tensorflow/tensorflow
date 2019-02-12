@@ -386,24 +386,13 @@ cc_library(
         ":platform_port_hdrs",
         ":platform_port_internal_hdrs",
     ],
-    copts = tf_copts() + [
-        "-Ithird_party/hwloc/hwloc-master/include",
-    ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:darwin": [],
-        "//conditions:default": [
-            "-DTENSORFLOW_USE_NUMA",
-        ],
-    }),
+    copts = tf_copts(),
     visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
         ":lib_platform",
         ":platform_base",
         "//tensorflow/core/platform/default/build_config:port",
         "@com_google_absl//absl/base",
-        "@hwloc",
         "@snappy",
     ],
 )
@@ -2312,17 +2301,7 @@ cc_library(
         tf_additional_proto_srcs(),
     ),
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
-    copts = tf_copts() + [
-        "-Ithird_party/hwloc/hwloc-master/include",
-    ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:darwin": [],
-        "//conditions:default": [
-            "-DTENSORFLOW_USE_NUMA",
-        ],
-    }),
+    copts = tf_copts(),
     defines = LIB_INTERNAL_DEFINES,
     deps = tf_additional_lib_deps() + [
         ":lib_hash_crc32c_accelerate_internal",
@@ -2333,7 +2312,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/core/platform/default/build_config:platformlib",
-        "@hwloc//:hwloc",
         "@snappy",
         "@zlib_archive//:zlib",
         "@double_conversion//:double-conversion",
