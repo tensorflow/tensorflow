@@ -2610,17 +2610,28 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         "my_strided_slice");
   }
   {
-    // Modify batch dim with dynamic batch size, should fail.
+    // Dynamic batch size without end_mask, should fail.
     Reset();
     NodeDef node_def = get_strided_slice_nodedef();
     AddTestTensor("input", {1, 2, 3}, /*batch_size=*/-1);
     AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
-    AddTestWeights<int32>("end", {4}, {0, 1, 2, 3});
+    AddTestWeights<int32>("end", {4}, {1, 1, 2, 3});
     AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         "TensorRT does not allow modifications to the batch dimension, at "
         "my_strided_slice");
+  }
+  {
+    // Dynamic batch size but using end_mask, ok.
+    Reset();
+    NodeDef node_def = get_strided_slice_nodedef(/*begin_mask=*/0,
+                                                 /*end_mask=*/1);
+    AddTestTensor("input", {1, 2, 3}, /*batch_size=*/-1);
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("end", {4}, {0, 1, 2, 2});
+    AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
+    RunValidationAndConversion(node_def);
   }
 // TRT 5.1+ supports strides
 #if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
@@ -2925,6 +2936,39 @@ TEST_F(OpConverterTest, ConvertSlice) {
         node_def, error::INVALID_ARGUMENT,
         "\"begin\" + \"size\" for dimension 2 in Slice is out of range, at "
         "my_slice");
+  }
+  {
+    // Modify batch dim, should fail.
+    Reset();
+    NodeDef node_def = get_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("size", {4}, {0, 1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "TensorRT does not allow modifications to the batch dimension, at "
+        "my_slice");
+  }
+  {
+    // Dynamic batch size with size[0] not -1, should fail.
+    Reset();
+    NodeDef node_def = get_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3}, /*batch_size=*/-1);
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("size", {4}, {1, 1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "TensorRT does not allow modifications to the batch dimension, at "
+        "my_slice");
+  }
+  {
+    // Dynamic batch size but using size[0] of -1, ok.
+    Reset();
+    NodeDef node_def = get_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3}, /*batch_size=*/-1);
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("size", {4}, {-1, 1, 2, 2});
+    RunValidationAndConversion(node_def);
   }
 
   struct TestParams {

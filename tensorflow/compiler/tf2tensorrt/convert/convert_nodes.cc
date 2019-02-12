@@ -2363,11 +2363,8 @@ tensorflow::Status ConvertSlice(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(
       *params, {{"input", false}, {"begin", true}, {"size", true}}));
-  auto begin_span = inputs.at(1).weights().GetSpan<int>();
-  auto size_span = inputs.at(2).weights().GetSpan<int>();
-  std::vector<int> begin(begin_span.data(),
-                         begin_span.data() + begin_span.size());
-  std::vector<int> size(size_span.data(), size_span.data() + size_span.size());
+  std::vector<int> begin = inputs.at(1).weights().CopyToVector<int>();
+  std::vector<int> size = inputs.at(2).weights().CopyToVector<int>();
   // Get input dims.
   nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
@@ -2379,12 +2376,16 @@ tensorflow::Status ConvertSlice(OpConverterParams* params) {
         "Slice, at ",
         node_def.name());
   }
-  // Check that batch dimension is unmodified. If the batch size is -1 and the
-  // size is not -1, we do not convert the op since the batch dim could
-  // potentially be modified.
-  if ((size[0] != -1 && (input_dims[0] == -1 ||
-                         (input_dims[0] != -1 && size[0] != input_dims[0]))) ||
-      begin[0] != 0) {
+  // Check that batch dimension is unmodified.
+  const bool begin_is_modified = begin[0] != 0;
+  // If size[0]s is not -1, we can only know if the batch dimension is
+  // unmodified when the batch size is defined. When the batch size is
+  // undefined, we don't convert to be safe.
+  const bool batch_size_is_defined = input_dims[0] > 0;
+  const bool size_is_modified =
+      size[0] != -1 && (!batch_size_is_defined ||
+                        (batch_size_is_defined && size[0] != input_dims[0]));
+  if (begin_is_modified || size_is_modified) {
     return tensorflow::errors::Unimplemented(
         "TensorRT does not allow modifications to the batch dimension, at ",
         node_def.name());
@@ -2412,14 +2413,9 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   // Add batch dimension so that indexes line up properly.
   input_dims.insert(input_dims.begin(), inputs.at(0).batch_size());
   // Get begin and end bounds per axis.
-  auto begin_span = inputs.at(1).weights().GetSpan<int>();
-  auto end_span = inputs.at(2).weights().GetSpan<int>();
-  auto stride_span = inputs.at(3).weights().GetSpan<int>();
-  std::vector<int> begin(begin_span.data(),
-                         begin_span.data() + begin_span.size());
-  std::vector<int> end(end_span.data(), end_span.data() + end_span.size());
-  std::vector<int> stride(stride_span.data(),
-                          stride_span.data() + stride_span.size());
+  std::vector<int> begin = inputs.at(1).weights().CopyToVector<int>();
+  std::vector<int> end = inputs.at(2).weights().CopyToVector<int>();
+  std::vector<int> stride = inputs.at(3).weights().CopyToVector<int>();
   if (!AllLengthsEqual({input_dims, begin, end, stride})) {
     return tensorflow::errors::InvalidArgument(
         "Length of begin, end, and stride arguments must equal rank of input "
@@ -2438,12 +2434,18 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   }
   const int begin_mask = attrs.get<int>("begin_mask");
   const int end_mask = attrs.get<int>("end_mask");
-  // Check that batch dimension is unmodified. If the batch size is -1 and the
-  // end mask is not set, we do not convert the op since the batch dim could
-  // potentially be modified.
-  if ((!(begin_mask & 1) && begin[0] != 0) || stride[0] != 1 ||
-      (!(end_mask & 1) && (input_dims[0] == -1 ||
-                           (input_dims[0] != -1 && end[0] != input_dims[0])))) {
+  // Check that batch dimension is unmodified.
+  const bool begin_is_modified = !(begin_mask & 1) && begin[0] != 0;
+  const bool stride_is_modified = stride[0] != 1;
+  // If the batch size is -1 and the
+  // If end mask is not set, we can only know if the batch dimension is
+  // unmodified when the batch size is defined. When the batch size is
+  // undefined, we don't convert to be safe.
+  const bool batch_size_is_defined = input_dims[0] > 0;
+  const bool end_is_modified =
+      !(end_mask & 1) && (!batch_size_is_defined ||
+                          (batch_size_is_defined && end[0] != input_dims[0]));
+  if (begin_is_modified || stride_is_modified || end_is_modified) {
     return tensorflow::errors::Unimplemented(
         "TensorRT does not allow modifications to the batch dimension, at ",
         node_def.name());
