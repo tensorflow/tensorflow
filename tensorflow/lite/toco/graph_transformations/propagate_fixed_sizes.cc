@@ -2057,6 +2057,7 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
     case OperatorType::kCeil:
     case OperatorType::kExp:
     case OperatorType::kSin:
+    case OperatorType::kCos:
     case OperatorType::kLogicalAnd:
     case OperatorType::kLogicalNot:
     case OperatorType::kLogicalOr:

@@ -45,6 +45,7 @@ enum class OperatorType : uint8 {
   kCeil,
   kConv,
   kConcatenation,
+  kCos,
   kDepthwiseConv,
   kDepthToSpace,
   kSpaceToDepth,
@@ -1164,6 +1165,17 @@ struct TransposeConvOperator : Operator {
 // TensorFlow equivalent: Exp
 struct ExpOperator : Operator {
   ExpOperator() : Operator(OperatorType::kExp) {}
+};
+
+// Given a tensor input, this operation calculates element-wise exponential
+// (y = cos(x)).
+//
+// Inputs:
+//   inputs[0]: required: input tensor
+//
+// TensorFlow equivalent: Cos
+struct CosOperator : Operator {
+  CosOperator() : Operator(OperatorType::kCos) {}
 };
 
 // Given a tensor input, this operation inserts a dimension of 1 at the

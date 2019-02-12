@@ -2343,6 +2343,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       MakeUnique<SimpleOperator<TanhOperator>>("TANH", OperatorType::kTanh));
   ops.push_back(
       MakeUnique<SimpleOperator<ExpOperator>>("EXP", OperatorType::kExp));
+  ops.push_back(
+      MakeUnique<SimpleOperator<CosOperator>>("COS", OperatorType::kCos));
   ops.push_back(MakeUnique<SimpleOperator<LogSoftmaxOperator>>(
       "LOG_SOFTMAX", OperatorType::kLogSoftmax));
   ops.push_back(MakeUnique<Maximum>());  //  Element-wise Maximum
