@@ -110,6 +110,7 @@ GpuExecutor::~GpuExecutor() {
   if (context_ != nullptr) {
     GpuDriver::DestroyContext(context_);
   }
+  CHECK(kernel_to_gpu_binary_.empty()) << "GpuExecutor has live kernels.";
   CHECK(gpu_binary_to_module_.empty()) << "GpuExecutor has loaded modules.";
 }
 bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
@@ -136,7 +137,19 @@ bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
 }
 
 void GpuExecutor::UnloadKernel(const KernelBase* kernel) {
-  LOG(FATAL) << "Feature not supported on ROCM platform (UnloadKernel)";
+  VLOG(3) << "Unloading kernel " << kernel << " : " << kernel->name();
+
+  mutex_lock lock{in_memory_modules_mu_};
+  auto gpu_binary_it = kernel_to_gpu_binary_.find(kernel);
+  if (kernel_to_gpu_binary_.end() == gpu_binary_it) {
+    VLOG(3) << "Kernel " << kernel << " : " << kernel->name()
+            << " has never been loaded.";
+    return;  // We've never seen this kernel.
+  }
+  VLOG(3) << "Kernel " << kernel << " : " << kernel->name()
+          << " has loaded GPU code " << gpu_binary_it->second;
+  UnloadGpuBinary(gpu_binary_it->second);
+  kernel_to_gpu_binary_.erase(gpu_binary_it);
 }
 
 port::Status GpuExecutor::Init(int device_ordinal,
@@ -245,6 +258,7 @@ bool GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
         return false;
       }
     }
+    kernel_to_gpu_binary_[kernel] = hsaco;
   } else {
     LOG(WARNING) << "no method of loading ROCM kernel provided";
     return false;

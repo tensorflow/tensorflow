@@ -152,6 +152,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
     default:
       codegen_opt_level = CodeGenOpt::None;
   }
+  // Disable code object v3 and use v2 for now.
   const std::string FeaturesStr = "-code-object-v3";
   return absl::WrapUnique(target->createTargetMachine(
       triple.str(), llvm_ir::AsStringRef(cpu_name), FeaturesStr, target_options,

@@ -338,6 +338,8 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
   params.feature_group_count = conv->feature_group_count();
 
   #if TENSORFLOW_USE_ROCM
+    // MIOpen has its own logic to find and tune convolution kernels. 
+    // Use default algorithm to force a search
     params.algorithm = se::dnn::AlgorithmConfig();
   #elif 
     params.algorithm = se::dnn::AlgorithmConfig(

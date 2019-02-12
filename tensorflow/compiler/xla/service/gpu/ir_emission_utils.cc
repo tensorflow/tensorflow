@@ -184,9 +184,11 @@ llvm::Value* EmitDeviceFunctionCall(
       false);  // No variadic arguments.
 
   // Declares the callee if it is not declared already.
-  llvm::Function* callee = llvm::cast<llvm::Function>(
+  llvm::Function* callee = llvm::dyn_cast<llvm::Function>(
       ir_builder->GetInsertBlock()->getModule()->getOrInsertFunction(
-          llvm_ir::AsStringRef(callee_name), callee_type));
+          llvm_ir::AsStringRef(callee_name), callee_type).getCallee());
+
+
 
   for (auto attribute : attributes) {
     callee->addFnAttr(attribute);
