@@ -82,7 +82,7 @@ cc_library(
         "driver/matcher_predicates.cc",
         "driver/not_supported_gather_expander.cc",
         "driver/not_supported_scatter_expander.cc",
-        "driver/root_token_replacer.cc"
+        "driver/root_token_replacer.cc",
         "driver/scheduler.cc",
         "driver/sharding_pass.cc",
         "driver/single_hlo_matcher.cc",
@@ -118,7 +118,7 @@ cc_library(
         "driver/meta_graph.h",
         "driver/not_supported_gather_expander.h",
         "driver/not_supported_scatter_expander.h",
-        "driver/root_token_replacer.h"
+        "driver/root_token_replacer.h",
         "driver/scheduler.h",
         "driver/sharding_pass.h",
         "driver/single_hlo_matcher.h",
