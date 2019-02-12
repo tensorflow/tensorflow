@@ -808,6 +808,10 @@ TEST_F(OperatorTest, VersioningPackTest) {
   SimpleVersioningTest<PackOperator>();
 }
 
+TEST_F(OperatorTest, VersioningBatchToSpaceNDTest) {
+  SimpleVersioningTest<BatchToSpaceNDOperator>();
+}
+
 TEST_F(OperatorTest, VersioningStridedSliceTest) {
   SimpleVersioningTest<StridedSliceOperator>();
 }
