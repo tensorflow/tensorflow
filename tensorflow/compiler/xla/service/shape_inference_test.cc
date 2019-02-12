@@ -1572,6 +1572,16 @@ TEST_F(ShapeInferenceTest, Transpose) {
                                     ShapeUtil::MakeShape(F32, {3, 4, 5, 2})));
 }
 
+TEST_F(ShapeInferenceTest, Rank1Transpose) {
+  Shape a_shape = ShapeUtil::MakeShape(F32, {5});
+  auto inferred_shape_and_status =
+      ShapeInference::InferTransposeShape(a_shape, {0});
+  EXPECT_IS_OK(inferred_shape_and_status);
+  Shape inferred_shape = inferred_shape_and_status.ValueOrDie();
+  EXPECT_TRUE(
+      ShapeUtil::Compatible(inferred_shape, ShapeUtil::MakeShape(F32, {5})));
+}
+
 TEST_F(ShapeInferenceTest, Conditional) {
   auto inferred_status0 = ShapeInference::InferConditionalShape(
       pred_, vector_32_, vector_64_,
