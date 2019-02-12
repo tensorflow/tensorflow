@@ -46,15 +46,32 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase,
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
 
-  def dataset_input_fn(self, x, y, batch_size, shuffle):
+  def dataset_input_fn(self,
+                       x, y,
+                       total_batch_size,
+                       shuffle,
+                       num_replicas_in_sync=1,
+                       use_input_context=False):
 
     def input_fn():
+      batch_size = total_batch_size // num_replicas_in_sync
       dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
       if shuffle:
         dataset = dataset.shuffle(batch_size)
       dataset = dataset.repeat(10).batch(batch_size)
       return dataset
 
+    def input_fn_with_context(input_context):
+      batch_size = input_context.get_per_replica_batch_size(
+          total_batch_size)
+      dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+      if shuffle:
+        dataset = dataset.shuffle(batch_size)
+      dataset = dataset.repeat(10).batch(batch_size)
+      return dataset
+
+    if use_input_context:
+      return input_fn_with_context
     return input_fn
 
   @combinations.generate(
@@ -67,8 +84,12 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase,
               combinations.core_mirrored_strategy_with_gpu_and_cpu,
               combinations.core_mirrored_strategy_with_two_gpus
           ],
-          use_train_and_evaluate=[True, False]))
-  def test_complete_flow_with_mode(self, distribution, use_train_and_evaluate):
+          use_train_and_evaluate=[True, False],
+          use_input_context=[True, False]))
+  def test_complete_flow_with_mode(self,
+                                   distribution,
+                                   use_train_and_evaluate,
+                                   use_input_context):
     label_dimension = 2
     input_dimension = label_dimension
     batch_size = 10
@@ -77,13 +98,17 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase,
     train_input_fn = self.dataset_input_fn(
         x={'x': data},
         y=data,
-        batch_size=batch_size // distribution.num_replicas_in_sync,
-        shuffle=True)
+        total_batch_size=batch_size,
+        shuffle=True,
+        num_replicas_in_sync=distribution.num_replicas_in_sync,
+        use_input_context=use_input_context)
     eval_input_fn = self.dataset_input_fn(
         x={'x': data},
         y=data,
-        batch_size=batch_size // distribution.num_replicas_in_sync,
-        shuffle=False)
+        total_batch_size=batch_size,
+        shuffle=False,
+        num_replicas_in_sync=distribution.num_replicas_in_sync,
+        use_input_context=use_input_context)
     predict_input_fn = numpy_io.numpy_input_fn(
         x={'x': data}, batch_size=batch_size, shuffle=False)
 
