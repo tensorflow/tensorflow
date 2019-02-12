@@ -543,10 +543,10 @@ class Model(Network):
           else:
             total_loss = 0.
 
-        # Add regularization penalties
-        # and other layer-specific losses.
-        for loss_tensor in self.losses:
-          total_loss += loss_tensor
+        # Add regularization penalties and other layer-specific losses.
+        if self.losses:
+          total_loss += losses_utils.scale_loss_for_distribution(
+              math_ops.add_n(self.losses))
 
       # Prepare gradient updates and state updates.
       self.total_loss = total_loss
