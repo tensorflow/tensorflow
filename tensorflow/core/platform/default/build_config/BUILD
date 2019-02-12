@@ -34,13 +34,10 @@ cc_library(
 
 tf_gpu_library(
     name = "stream_executor",
-    cuda_deps = if_cuda_is_configured(
-        ["//tensorflow/stream_executor/cuda:cuda_activation"]
-    ) + if_rocm_is_configured(
-        ["//tensorflow/stream_executor/rocm:rocm_activation"]
-        # "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
-        # "//tensorflow/stream_executor/rocm:rocm_platform"]
-    ),
+    cuda_deps = [
+        "//tensorflow/stream_executor/cuda:cuda_activation",
+        "//tensorflow/stream_executor/rocm:rocm_activation",
+    ],
     deps = [
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:dnn",
@@ -115,6 +112,22 @@ cc_library(
 
 cc_library(
     name = "cudnn_plugin",
+    srcs = [],
+)
+
+# Dummy stream executor rocm plugins.
+cc_library(
+    name = "rocblas_plugin",
+    srcs = [],
+)
+
+cc_library(
+    name = "rocfft_plugin",
+    srcs = [],
+)
+
+cc_library(
+    name = "miopen_plugin",
     srcs = [],
 )
 
@@ -305,8 +318,9 @@ cc_library(
     name = "rocm",
     data = [],
     linkopts = select({
-      "//conditions:default": [
-      ],
+        "//conditions:default": [
+            "-Wl,-rpath,../local_config_rocm/rocm/rocm/lib",
+        ],
     }),
     deps = [],
 )
