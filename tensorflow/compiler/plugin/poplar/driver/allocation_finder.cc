@@ -33,6 +33,20 @@ namespace poplarplugin {
 
 namespace {
 
+// Find the index when embedding a shape into a tuple. The tuple_index is the
+// index of the shape in the new tuple, and the original_index is the index
+// of the tensor in the original shape.
+int64 InsertIntoTuple(const Shape& tuple, int64 tuple_index,
+                      int64 original_index) {
+  // Count up the base tensors inside all tuple element preceeding the
+  // tuple_index one.
+  int64 tensor_count = 0;
+  for (int64 i = 0; i < tuple_index; i++) {
+    tensor_count += CountShapes(ShapeUtil::GetTupleElementShape(tuple, i));
+  }
+  return tensor_count + original_index;
+}
+
 // Find the index of a tensor after extracting it (or a tuple containing it)
 // from a tuple. tuple_index is the index of one of the elements of the tuple,
 // and original_index is the tensor position within the original tuple.
