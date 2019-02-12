@@ -876,9 +876,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return None
 
     with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        'Cannot place the graph because a reference or resource edge connects '
-        'colocation groups with incompatible assigned devices'):
+        errors.InvalidArgumentError, 'Could not colocate node with its '
+        'resource and reference inputs.*'):
       if not context.executing_eagerly():
         self.evaluate(variables.global_variables_initializer())
       self.evaluate(resource_apply_adam())
