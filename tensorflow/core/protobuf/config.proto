@@ -164,9 +164,7 @@ message GPUOptions {
     bool timestamped_allocator = 5;
 
     // If > 0 limit the number of pending kernels on any compute
-    // stream to this number.  If == 0 then the runtime will automatically
-    // pick a value.  If == -1 then this feature will be disabled, i.e.
-    // there will be no limit.
+    // stream to this number.
     int32 pending_cap = 6;
   }
 
