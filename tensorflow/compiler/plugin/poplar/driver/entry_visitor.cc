@@ -81,7 +81,13 @@ Status EntryVisitor::HandleParameter(HloInstruction* inst) {
 }  // namespace poplarplugin
 
 Status EntryVisitor::FinishVisit(HloInstruction* root) {
+  VLOG(1) << "Processing FinishVisit";
   HloComputation* comp = root->parent();
+  if (ShapeUtil::IsEmptyTuple(root->shape())) {
+    VLOG(1) << "Root instruction shape is empty tuple";
+    resources_.tensor_maps[comp->name()] = std::move(tensor_map);
+    return Status::OK();
+  }
 
   auto* layout = comp->parent()->mutable_entry_computation_layout();
   std::vector<Shape> shapes = FlattenedXlaShape(layout->result_shape());
@@ -89,9 +95,8 @@ Status EntryVisitor::FinishVisit(HloInstruction* root) {
   const auto& entry_outputs =
       resources_.annotations.input_output_aliasing_map.GetEntryOutputInfos();
 
-  const uint64 num_outputs = root->shape().IsTuple()
-                                 ? ShapeUtil::TupleElementCount(root->shape())
-                                 : 1;
+  const uint64 num_outputs =
+      root->shape().IsTuple() ? ShapeUtil::TupleElementCount(root->shape()) : 1;
 
   CHECK_EQ(num_outputs, entry_outputs.size());
   // Go through all the flat tensor outputs
@@ -108,12 +113,12 @@ Status EntryVisitor::FinishVisit(HloInstruction* root) {
         out_info.IsStreaming() ? sequence : device_to_host;
 
     // Flatten the tuple tensor (if required) and iterate over all of them
-    const auto sub_shape = root->shape().IsTuple()
+    const auto sub_shape =
+        root->shape().IsTuple()
             ? ShapeUtil::GetTupleElementShape(root->shape(), idx)
             : root->shape();
-    to_tensor_index += sub_shape.IsTuple()
-                           ? ShapeUtil::TupleElementCount(sub_shape)
-                           : 1;
+    to_tensor_index +=
+        sub_shape.IsTuple() ? ShapeUtil::TupleElementCount(sub_shape) : 1;
     // all_outputs_flat_tensor_index is the global index into all the flattened
     // output tensors
     // current_output_flat_tensor_index is the local index into all the

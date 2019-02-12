@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/not_supported_scatter_expander.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
+#include "tensorflow/compiler/plugin/poplar/driver/root_token_replacer.h"
 #include "tensorflow/compiler/plugin/poplar/driver/scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/sharding_pass.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
@@ -310,6 +311,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<HloCSE>(false);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
     pipeline.AddPass<SortSimplifier>();
+    pipeline.AddPass<RootTokenReplacer>();
     pipeline.AddPass<ReshapeMover>();
     pipeline.AddPass<MapInliner>();
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);

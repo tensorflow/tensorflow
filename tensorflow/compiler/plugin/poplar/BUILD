@@ -82,6 +82,7 @@ cc_library(
         "driver/matcher_predicates.cc",
         "driver/not_supported_gather_expander.cc",
         "driver/not_supported_scatter_expander.cc",
+        "driver/root_token_replacer.cc"
         "driver/scheduler.cc",
         "driver/sharding_pass.cc",
         "driver/single_hlo_matcher.cc",
@@ -117,6 +118,7 @@ cc_library(
         "driver/meta_graph.h",
         "driver/not_supported_gather_expander.h",
         "driver/not_supported_scatter_expander.h",
+        "driver/root_token_replacer.h"
         "driver/scheduler.h",
         "driver/sharding_pass.h",
         "driver/single_hlo_matcher.h",
@@ -691,6 +693,17 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "root_token_replacer_test",
+    srcs = ["tests/root_token_replacer_test.cc"],
+    size = "small",
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
 py_library(
     name = "test_utils_py",
     srcs = ["tests/test_utils.py"],
@@ -1179,6 +1192,7 @@ test_suite(
         "not_supported_gather_expander_test",
         "not_supported_scatter_expander_test",
         "group_norm_test",
+        "root_token_replacer_test"
     ],
 )
 
