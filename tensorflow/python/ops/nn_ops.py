@@ -2436,13 +2436,21 @@ def bias_add(value, bias, data_format=None, name=None):
     bias: A 1-D `Tensor` with size matching the last dimension of `value`.
       Must be the same type as `value` unless `value` is a quantized type,
       in which case a different quantized type may be used.
-    data_format: A string. 'NHWC' and 'NCHW' are supported.
+    data_format: A string. 'N...C' and 'NC...' are supported.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` with the same type as `value`.
   """
   with ops.name_scope(name, "BiasAdd", [value, bias]) as name:
+    if data_format is not None:
+      if data_format.startswith("NC"):
+        data_format = "NCHW"
+      elif data_format.startswith("N") and data_format.endswith("C"):
+        data_format = "NHWC"
+      else:
+        raise ValueError("data_format must be of the form `N...C` or `NC...`")
+
     if not context.executing_eagerly():
       value = ops.convert_to_tensor(value, name="input")
       bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
