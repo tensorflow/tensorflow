@@ -18120,6 +18120,30 @@ op {
   }
 }
 op {
+  name: "DatasetToSingleElement"
+  input_arg {
+    name: "dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "components"
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "DebugGradientIdentity"
   input_arg {
     name: "input"
@@ -22517,6 +22541,22 @@ op {
     name: "compression_type"
     type: DT_STRING
   }
+}
+op {
+  name: "ExperimentalDatasetToTFRecord"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "compression_type"
+    type: DT_STRING
+  }
+  is_stateful: true
 }
 op {
   name: "ExperimentalDenseToSparseBatchDataset"
@@ -49644,6 +49684,60 @@ op {
       b: true
     }
   }
+}
+op {
+  name: "ReduceDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "initial_state"
+    type_list_attr: "Tstate"
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  output_arg {
+    name: "components"
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Tstate"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "use_inter_op_parallelism"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_stateful: true
 }
 op {
   name: "ReduceJoin"
@@ -80664,6 +80758,33 @@ op {
       list {
         type: DT_INT32
         type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "TridiagonalSolve"
+  input_arg {
+    name: "diagonals"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }

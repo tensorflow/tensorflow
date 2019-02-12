@@ -8324,6 +8324,7 @@ op {
     has_minimum: true
     minimum: 1
   }
+  is_stateful: true
 }
 op {
   name: "DebugGradientIdentity"
@@ -10586,6 +10587,7 @@ op {
     name: "compression_type"
     type: DT_STRING
   }
+  is_stateful: true
 }
 op {
   name: "ExperimentalDenseToSparseBatchDataset"
@@ -26029,6 +26031,7 @@ op {
       b: true
     }
   }
+  is_stateful: true
 }
 op {
   name: "ReduceJoin"
@@ -39486,6 +39489,33 @@ op {
       list {
         type: DT_INT32
         type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "TridiagonalSolve"
+  input_arg {
+    name: "diagonals"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
