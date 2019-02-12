@@ -232,3 +232,12 @@ def compute_weighted_loss(losses,
     # Convert the result back to the input type.
     loss = math_ops.cast(loss, input_dtype)
     return loss
+
+
+def scale_loss_for_distribution(loss_value):
+  """Scales and returns the given loss value by the number of replicas."""
+  num_replicas = (
+      distribution_strategy_context.get_strategy().num_replicas_in_sync)
+  if num_replicas > 1:
+    loss_value *= (1. / num_replicas)
+  return loss_value
