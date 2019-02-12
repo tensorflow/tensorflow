@@ -1,4 +1,4 @@
-# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for `tf.data.Dataset.filter()`."""
+"""Tests for `tf.data.Dataset.filter_with_legacy_function()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,11 +22,11 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class FilterTest(filter_test_base.FilterTestBase):
+@test_util.run_v1_only
+class FilterWithLegacyFunctionTest(filter_test_base.FilterTestBase):
 
   def apply_filter(self, input_dataset, predicate):
-    return input_dataset.filter(predicate)
+    return input_dataset.filter_with_legacy_function(predicate)
 
 
 if __name__ == "__main__":
