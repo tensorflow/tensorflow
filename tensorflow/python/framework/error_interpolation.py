@@ -222,16 +222,25 @@ def compute_useful_stack(op):
 
   Returns:
     A list of line name and lineno pairs. Below is an example of returned list:
-    [("tool_utils.py", "124"), ("tool_utils.py", "21"), ....]
+    [("tool_utils.py", "124", "func1", "a={}"), ("tool_utils.py", "21", "func2",
+    "for i in range(10):"), ....]
   """
   defining_frame_index = _find_index_of_defining_frame_for_op(op)
   stack_trace = []
-  # the stack trace is collected from the defining (included) to the outermost.
-  for index in reversed(range(defining_frame_index + 1)):
+  # The stack trace is collected from the defining (included) to the outermost.
+  # Include `frame_num` frames at most.
+  # Two lines from the TensorFlow library are included to show the node
+  # definition.
+  frame_num = 10
+  innermost_excluded = min(defining_frame_index + 2 + 1, len(op.traceback))
+  outermost_included = max(innermost_excluded - frame_num, 0)
+  for index in reversed(range(outermost_included, innermost_excluded)):
     frame = op.traceback[index]
     filename = frame[tf_stack.TB_FILENAME]
     lineno = frame[tf_stack.TB_LINENO]
-    stack_trace.append((filename, lineno))
+    func = frame[tf_stack.TB_FUNCNAME]
+    code = frame[tf_stack.TB_CODEDICT]
+    stack_trace.append((filename, lineno, func, code))
   return stack_trace
 
 
