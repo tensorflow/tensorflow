@@ -761,9 +761,9 @@ Status Conditional::BuildIfNode(Graph* graph,
   }
   builder.Device(predicate_.node->assigned_device_name());
   // Conditional should be the first input ...
-  builder.Input(NodeDefBuilder::NodeOut(predicate_.node->name(),
-                                        predicate_.index,
-                                        predicate_.node->output_type(0)));
+  builder.Input(
+      NodeDefBuilder::NodeOut(predicate_.node->name(), predicate_.index,
+                              predicate_.node->output_type(predicate_.index)));
   // ... followed by the other inputs.
   builder.Input(inputs);
 
