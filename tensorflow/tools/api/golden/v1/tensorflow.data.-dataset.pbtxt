@@ -40,6 +40,10 @@ tf_class {
     argspec: "args=[\'self\', \'predicate\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "filter_with_legacy_function"
+    argspec: "args=[\'self\', \'predicate\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "flat_map"
     argspec: "args=[\'self\', \'map_func\'], varargs=None, keywords=None, defaults=None"
   }

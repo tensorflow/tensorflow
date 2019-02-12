@@ -161,6 +161,7 @@ py_library(
         ":engine_utils",
         ":initializers",
         ":losses",
+        ":mode_keys",
         ":optimizers",
         ":regularizers",
         ":saving",
@@ -188,9 +189,9 @@ py_library(
     deps = [
         ":backend",
         ":engine_utils",
+        ":mode_keys",
         ":optimizers",
         "//tensorflow/python:lib",
-        "//tensorflow/python:mode_keys",
         "//tensorflow/python:saver",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model/model_utils",
@@ -218,6 +219,7 @@ py_library(
     deps = [
         ":backend",
         ":engine_utils",
+        ":mode_keys",
     ],
 )
 
@@ -366,6 +368,17 @@ py_library(
     deps = [
         "//tensorflow/python:util",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "mode_keys",
+    srcs = [
+        "utils/mode_keys.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/saved_model/model_utils:mode_keys",
     ],
 )
 

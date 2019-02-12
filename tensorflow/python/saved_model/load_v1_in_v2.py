@@ -86,12 +86,6 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
   def load(self, tags):
     """Creates an object from the MetaGraph identified by `tags`."""
     meta_graph_def = self.get_meta_graph_def_from_tags(tags)
-    for node in meta_graph_def.graph_def.node:
-      if node.op == "VariableV2":
-        raise NotImplementedError(
-            "Importing a SavedModel which contains RefVariables. This is not "
-            "currently supported. Running tf.enable_resource_variables() "
-            "before creating exported variables will fix this.")
     load_graph_returns = [None]
     wrapped = wrap_function.wrap_function(
         functools.partial(self.load_graph, load_graph_returns, meta_graph_def),

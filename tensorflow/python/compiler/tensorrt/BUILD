@@ -32,8 +32,6 @@ py_library(
     deps = [
         ":tf_trt_integration_test_base",
         ":trt_convert_py",
-        ":trt_ops_py",
-        "//tensorflow/python:errors",
     ],
 )
 
@@ -51,6 +49,7 @@ py_library(
     srcs = ["trt_convert.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":trt_ops_py",
         ":wrap_conversion",
         "//tensorflow/python:graph_util",
         "//tensorflow/python:session",
@@ -83,7 +82,6 @@ py_library(
     srcs = ["test/tf_trt_integration_test_base.py"],
     deps = [
         ":trt_convert_py",
-        ":trt_ops_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],

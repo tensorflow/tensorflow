@@ -44,9 +44,16 @@ class LoadTest(test.TestCase):
       start = array_ops.placeholder(
           shape=[None], dtype=dtypes.float32, name="start")
       if use_resource:
-        v = resource_variable_ops.ResourceVariable(3.)
+        distractor = variables.RefVariable(-1., name="distractor")
+        v = resource_variable_ops.ResourceVariable(3., name="v")
       else:
-        v = variables.RefVariable(3.)
+        # "distractor" gets saved in the checkpoint and so used in the restore
+        # function, but not in the pruned function for the signature. This tests
+        # node naming: it needs to be consistent (and ideally always the same as
+        # the node in the original GraphDef) for the resource manager to find
+        # the right variable.
+        distractor = variables.RefVariable(-1., name="distractor")
+        v = variables.RefVariable(3., name="v")
       local_variable = variables.VariableV1(
           1.,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -54,7 +61,8 @@ class LoadTest(test.TestCase):
           use_resource=True)
       output = array_ops.identity(start * v * local_variable, name="output")
       with session_lib.Session() as session:
-        session.run([v.initializer, local_variable.initializer])
+        session.run([v.initializer, distractor.initializer,
+                     local_variable.initializer])
         path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
         simple_save.simple_save(
             session,
@@ -87,13 +95,10 @@ class LoadTest(test.TestCase):
     self.assertEqual(8., tape.gradient(output, imported.variables[0]).numpy())
 
   def test_ref_variable_import(self):
-    with self.assertRaises(NotImplementedError):
-      imported = load.load(self._v1_single_metagraph_saved_model(
-          use_resource=False))
-    # TODO(allenl): Support ref variables
-    self.skipTest("Ref variables aren't working yet")
+    saved = self._v1_single_metagraph_saved_model(use_resource=False)
+    imported = load.load(saved)
     fn = imported.signatures["serving_default"]
-    self.assertEqual(6., fn(start=constant_op.constant(2.)))
+    self.assertEqual(6., fn(start=constant_op.constant(2.))["output"].numpy())
 
   def _v1_multi_metagraph_saved_model(self):
     export_graph = ops.Graph()

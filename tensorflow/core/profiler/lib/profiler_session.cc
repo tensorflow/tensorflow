@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -27,6 +28,12 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+// Track whether there's an active ProfilerSession.
+// Prevents another ProfilerSession from creating ProfilerInterface(s), as they
+// use singletons that do not allow concurrent profiling request (e.g.,
+// DeviceTracer).
+std::atomic<bool> session_active = ATOMIC_VAR_INIT(false);
 
 void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
                                     tpu::Trace* trace,
@@ -58,6 +65,9 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
     // Emit events.
     for (auto node :
          run_metadata->step_stats().dev_stats(device_id).node_stats()) {
+      if (node.all_start_micros() < profile_start_time_micros) {
+        continue;
+      }
       auto* event = trace->add_trace_events();
       auto* args = event->mutable_args();
       event->set_device_id(device_id);
@@ -102,6 +112,12 @@ Status ProfilerSession::SerializeToString(string* content) {
     profiler->CollectData(&run_metadata).IgnoreError();
   }
 
+  if (active_) {
+    // Allow another session to start.
+    session_active.store(false);
+    active_ = false;
+  }
+
   tpu::Trace trace;
 
   ConvertRunMetadataToTraceEvent(&run_metadata, &trace, start_time_micros_);
@@ -111,7 +127,14 @@ Status ProfilerSession::SerializeToString(string* content) {
 }
 
 ProfilerSession::ProfilerSession(ProfilerContext* const context)
-    : start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
+    : active_(!session_active.exchange(true)),
+      start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
+  if (!active_) {
+    status_ = tensorflow::Status(tensorflow::error::Code::UNAVAILABLE,
+                                 "Another profiling session is active.");
+    return;
+  }
+
   LOG(INFO) << "Profile Session started.";
 
   if (context->eager_context != nullptr) {
@@ -130,6 +153,11 @@ ProfilerSession::ProfilerSession(ProfilerContext* const context)
 ProfilerSession::~ProfilerSession() {
   for (auto& profiler : profilers_) {
     profiler->Stop().IgnoreError();
+  }
+
+  if (active_) {
+    // Allow another session to start.
+    session_active.store(false);
   }
 }
 

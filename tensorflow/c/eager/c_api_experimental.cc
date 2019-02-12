@@ -25,8 +25,12 @@ void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
   op->operation.ConsumeInput(h->handle);
 }
 
-TFE_Profiler* TFE_NewProfiler(TFE_Context* ctx) {
+TFE_Profiler* TFE_NewProfiler(TFE_ProfilerContext* ctx) {
   return new TFE_Profiler(ctx);
+}
+
+bool TFE_ProfilerIsOk(TFE_Profiler* profiler) {
+  return profiler->profiler->Status().ok();
 }
 
 void TFE_DeleteProfiler(TFE_Profiler* profiler) { delete profiler; }
@@ -46,17 +50,21 @@ void TFE_ProfilerSerializeToString(TFE_Context* ctx, TFE_Profiler* profiler,
   };
 }
 
-TFE_ProfilerServerOptions* TFE_NewProfilerServerOptions() {
-  return new TFE_ProfilerServerOptions;
+TFE_ProfilerContext* TFE_NewProfilerContext() {
+  return new TFE_ProfilerContext;
 }
 
-void TFE_ProfilerServerOptionsSetEagerContext(
-    TFE_ProfilerServerOptions* options, TFE_Context* ctx) {
-  options->profiler_context.eager_context = &ctx->context;
+void TFE_ProfilerContextSetEagerContext(TFE_ProfilerContext* profiler_context,
+                                        TFE_Context* eager_context) {
+  profiler_context->profiler_context.eager_context = &eager_context->context;
 }
 
-void TFE_StartProfilerServer(TFE_ProfilerServerOptions* options, int port) {
+void TFE_DeleteProfilerContext(TFE_ProfilerContext* profiler_context) {
+  delete profiler_context;
+}
+
+void TFE_StartProfilerServer(TFE_ProfilerContext* context, int port) {
   // Release child thread intentionally. The child thread can be terminate by
   // terminating the main thread.
-  tensorflow::StartProfilerServer(&options->profiler_context, port).release();
+  tensorflow::StartProfilerServer(&context->profiler_context, port).release();
 }

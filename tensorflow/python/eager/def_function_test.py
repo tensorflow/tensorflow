@@ -451,6 +451,24 @@ class DefFunctionTest(test.TestCase):
     func._decorate(decorator)
     self.assertEqual(func().numpy(), 2)
 
+  def testLiftPlaceholderInitializedVariable(self):
+    with ops.Graph().as_default():
+      var_list = []
+
+      @def_function.function
+      def use_variable():
+        if not var_list:
+          initial_value = array_ops.placeholder(shape=[], dtype=dtypes.float32)
+          v = variables.Variable(initial_value)
+          var_list.append(v)
+        return var_list[0] + 1.
+
+      var_plus_one = use_variable()
+      with self.session() as session:
+        init_op = var_list[0].initializer
+        session.run(init_op, feed_dict={init_op.inputs[1]: 2.})
+        self.assertEqual(3., session.run(var_plus_one))
+
   def testDecorate_rejectedAfterTrace(self):
     func = def_function.function(lambda: 1)
     self.assertEqual(func().numpy(), 1)

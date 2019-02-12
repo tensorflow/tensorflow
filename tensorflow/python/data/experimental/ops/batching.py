@@ -717,9 +717,8 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
       """Recalculates the output_shapes after dividing it by num_workers."""
       if len(output_shapes) < 1:
         raise ValueError("Input shape should have at least one dimension.")
-      if not output_shapes.dims[0].value:
-        raise ValueError("Cannot rebatch unknown batch size datasets.")
-      if output_shapes.dims[0].value % num_workers != 0:
+      if (output_shapes.dims[0].value and
+          output_shapes.dims[0].value % num_workers != 0):
         raise ValueError(
             "First dim of input shape: %d is not divisible by num_workers: %d" %
             (output_shapes[0], num_workers))

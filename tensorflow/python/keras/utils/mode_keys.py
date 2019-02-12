@@ -12,22 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Model modeKeys for TensorFlow and Estimator."""
+"""Keras model mode constants."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
-class ModeKeys(object):
-  """Standard names for model modes.
-
-  The following standard keys are defined:
-
-  * `TRAIN`: training/fitting mode.
-  * `TEST`: testing/evaluation mode.
-  * `PREDICT`: prediction/inference mode.
-  """
-
-  TRAIN = 'train'
-  TEST = 'test'
-  PREDICT = 'predict'
+# pylint: disable=unused-import
+from tensorflow.python.saved_model.model_utils.mode_keys import KerasModeKeys as ModeKeys
+# pylint: enable=unused-import

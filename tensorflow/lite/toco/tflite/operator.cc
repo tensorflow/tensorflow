@@ -239,6 +239,12 @@ class SpaceToBatchND
                    TocoOperator* op) const override {}
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1394,6 +1400,12 @@ class StridedSlice
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1563,6 +1575,12 @@ class Pack : public BuiltinOperator<PackOperator, ::tflite::PackOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1585,6 +1603,20 @@ class Shape
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
+  }
+};
+
+class Slice : public SimpleOperator<SliceOperator> {
+ public:
+  explicit Slice() : SimpleOperator("SLICE", OperatorType::kSlice) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -2312,8 +2344,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(
       MakeUnique<SimpleOperator<NegOperator>>("NEG", OperatorType::kNeg));
   ops.push_back(MakeUnique<Select>());
-  ops.push_back(
-      MakeUnique<SimpleOperator<SliceOperator>>("SLICE", OperatorType::kSlice));
+  ops.push_back(MakeUnique<Slice>());
   ops.push_back(
       MakeUnique<SimpleOperator<PowOperator>>("POW", OperatorType::kPow));
   ops.push_back(MakeUnique<SimpleOperator<LogicalOrOperator>>(

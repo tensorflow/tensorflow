@@ -33,12 +33,12 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.saving import saved_model as keras_saved_model
+from tensorflow.python.keras.utils import mode_keys
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import model_utils
-from tensorflow.python.training import mode_keys
 from tensorflow.python.training import training as training_module
 
 

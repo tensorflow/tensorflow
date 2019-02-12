@@ -1652,7 +1652,7 @@ class DatasetV1(DatasetV2):
 
     NOTE: This is an escape hatch for existing uses of `map` that do not work
     with V2 functions. New uses are strongly discouraged and existing uses
-    should migrate to `map` as this method will not be removed in V2.
+    should migrate to `map` as this method will be removed in V2.
 
     Args:
       map_func: A function mapping a nested structure of tensors (having shapes
@@ -1699,6 +1699,25 @@ class DatasetV1(DatasetV2):
   @functools.wraps(DatasetV2.filter)
   def filter(self, predicate):
     return DatasetV1Adapter(super(DatasetV1, self).filter(predicate))
+
+  @deprecation.deprecated(None, "Use `tf.data.Dataset.filter()")
+  def filter_with_legacy_function(self, predicate):
+    """Filters this dataset according to `predicate`.
+
+    NOTE: This is an escape hatch for existing uses of `filter` that do not work
+    with V2 functions. New uses are strongly discouraged and existing uses
+    should migrate to `filter` as this method will be removed in V2.
+
+    Args:
+      predicate: A function mapping a nested structure of tensors (having shapes
+        and types defined by `self.output_shapes` and `self.output_types`) to a
+        scalar `tf.bool` tensor.
+
+    Returns:
+      Dataset: The `Dataset` containing the elements of this dataset for which
+          `predicate` is `True`.
+    """
+    return FilterDataset(self, predicate, use_legacy_function=True)
 
   @functools.wraps(DatasetV2.apply)
   def apply(self, transformation_func):
@@ -3043,11 +3062,14 @@ class ParallelInterleaveDataset(UnaryDataset):
 class FilterDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that filters its input according to a predicate function."""
 
-  def __init__(self, input_dataset, predicate):
+  def __init__(self, input_dataset, predicate, use_legacy_function=False):
     """See `Dataset.filter()` for details."""
     self._input_dataset = input_dataset
     wrapped_func = StructuredFunctionWrapper(
-        predicate, self._transformation_name(), dataset=input_dataset)
+        predicate,
+        self._transformation_name(),
+        dataset=input_dataset,
+        use_legacy_function=use_legacy_function)
     if not wrapped_func.output_structure.is_compatible_with(
         structure_lib.TensorStructure(dtypes.bool, [])):
       raise ValueError("`predicate` must return a scalar boolean tensor.")

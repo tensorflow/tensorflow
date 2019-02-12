@@ -212,7 +212,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_CONCATENATION, Register_CONCATENATION());
   AddBuiltin(BuiltinOperator_ADD, Register_ADD());
-  AddBuiltin(BuiltinOperator_SPACE_TO_BATCH_ND, Register_SPACE_TO_BATCH_ND());
+  AddBuiltin(BuiltinOperator_SPACE_TO_BATCH_ND, Register_SPACE_TO_BATCH_ND(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_BATCH_TO_SPACE_ND, Register_BATCH_TO_SPACE_ND());
   AddBuiltin(BuiltinOperator_MUL, Register_MUL());
   AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2_NORMALIZATION());
@@ -251,7 +253,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 3);
   AddBuiltin(BuiltinOperator_SPLIT_V, Register_SPLIT_V());
   AddBuiltin(BuiltinOperator_SQUEEZE, Register_SQUEEZE());
-  AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE());
+  AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_EXP, Register_EXP());
   AddBuiltin(BuiltinOperator_TOPK_V2, Register_TOPK_V2(),
              /* min_version */ 1,
@@ -293,7 +297,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SELECT, Register_SELECT(),
              /* min_version */ 1,
              /* max_version */ 2);
-  AddBuiltin(BuiltinOperator_SLICE, Register_SLICE());
+  AddBuiltin(BuiltinOperator_SLICE, Register_SLICE(), /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SIN, Register_SIN());
   AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSE_CONV());
   AddBuiltin(BuiltinOperator_TILE, Register_TILE());
@@ -319,7 +324,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE());
   AddBuiltin(BuiltinOperator_POW, Register_POW());
   AddBuiltin(BuiltinOperator_FAKE_QUANT, Register_FAKE_QUANT(), 1, 2);
-  AddBuiltin(BuiltinOperator_PACK, Register_PACK());
+  AddBuiltin(BuiltinOperator_PACK, Register_PACK(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_ONE_HOT, Register_ONE_HOT());
   AddBuiltin(BuiltinOperator_LOGICAL_OR, Register_LOGICAL_OR());
   AddBuiltin(BuiltinOperator_LOGICAL_AND, Register_LOGICAL_AND());

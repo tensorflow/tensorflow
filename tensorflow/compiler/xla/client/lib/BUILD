@@ -230,6 +230,7 @@ cc_library(
     deps = [
         ":arithmetic",
         ":constants",
+        ":slicing",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
