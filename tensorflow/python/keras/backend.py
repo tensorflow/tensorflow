@@ -389,16 +389,26 @@ def eager_learning_phase_scope(value):
     _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
 
 
-def _get_session():
+def _current_graph(op_input_list):
+  """Return the graph members of `op_input_list`, or the current graph."""
+  return ops._get_graph_from_inputs(op_input_list)
+
+
+def _get_session(op_input_list=()):
   """Returns the session object for the current thread."""
   global _SESSION
   default_session = ops.get_default_session()
   if default_session is not None:
     session = default_session
   else:
-    if getattr(_SESSION, 'session', None) is None:
-      # We are creating the Session inside a Distribution
-      # Strategy scope.
+    if ops.inside_function():
+      raise RuntimeError('Cannot get session inside Tensorflow graph function.')
+    # If we don't have a session, or that session does not match the current
+    # graph, create and cache a new session.
+    if (getattr(_SESSION, 'session', None) is None or
+        _SESSION.session.graph is not _current_graph(op_input_list)):
+      # If we are creating the Session inside a tf.distribute.Strategy scope,
+      # we ask the strategy for the right session options to use.
       if distribution_strategy_context.has_strategy():
         configure_and_create_distributed_session(
             distribution_strategy_context.get_strategy())
@@ -410,12 +420,13 @@ def _get_session():
 
 
 @keras_export(v1=['keras.backend.get_session'])
-def get_session():
+def get_session(op_input_list=()):
   """Returns the TF session to be used by the backend.
 
   If a default TensorFlow session is available, we will return it.
 
-  Else, we will return the global Keras session.
+  Else, we will return the global Keras session assuming it matches
+  the current graph.
 
   If no global Keras session exists at this point:
   we will create a new global session.
@@ -423,10 +434,15 @@ def get_session():
   Note that you can manually set the global session
   via `K.set_session(sess)`.
 
+  Arguments:
+      op_input_list: An option sequence of tensors or ops, which will be used
+        to determine the current graph. Otherwise the default graph will be
+        used.
+
   Returns:
       A TensorFlow session.
   """
-  session = _get_session()
+  session = _get_session(op_input_list)
   if not _MANUAL_VAR_INIT:
     with session.graph.as_default():
       _initialize_variables(session)
@@ -2753,7 +2769,7 @@ def get_value(x):
       return x.numpy()
   elif ops.inside_function():
     raise RuntimeError('Cannot get value inside Tensorflow graph function.')
-  return x.eval(session=get_session())
+  return x.eval(session=get_session((x,)))
 
 
 @keras_export('keras.backend.batch_get_value')
@@ -2774,7 +2790,7 @@ def batch_get_value(tensors):
   elif ops.inside_function():  # pylint: disable=protected-access
     raise RuntimeError('Cannot get value inside Tensorflow graph function.')
   if tensors:
-    return get_session().run(tensors)
+    return get_session(tensors).run(tensors)
   else:
     return []
 
@@ -2992,7 +3008,7 @@ class GraphExecutionFunction(object):
   def __call__(self, inputs):
     inputs = nest.flatten(inputs)
 
-    session = get_session()
+    session = get_session(inputs)
     feed_arrays = []
     array_vals = []
     feed_symbols = []
