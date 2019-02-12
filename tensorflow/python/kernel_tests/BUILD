@@ -1150,6 +1150,19 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "tridiagonal_solve_op_test",
+    size = "medium",
+    srcs = ["tridiagonal_solve_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+    ],
+    shard_count = 5,
+)
+
+tf_py_test(
     name = "unicode_script_op_test",
     size = "small",
     srcs = ["unicode_script_op_test.py"],
