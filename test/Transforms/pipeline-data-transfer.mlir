@@ -59,6 +59,8 @@ func @loop_nest_dma() {
 // CHECK-NEXT:  for %i2 = 0 to 128 {
 // CHECK-NEXT:    "do_more_compute"(%12, %i2) : (index, index) -> ()
 // CHECK-NEXT:  }
+// CHECK-NEXT:  dealloc %2 : memref<2x1xf32>
+// CHECK-NEXT:  dealloc %1 : memref<2x32xf32, 1>
 // CHECK-NEXT:  return
 // CHECK-NEXT:}
 
@@ -95,7 +97,7 @@ func @loop_step(%arg0: memref<512xf32>,
 // CHECK-NEXT:   %10 = affine.apply [[FLOOR_MOD_2]]([[SHIFTED]])
 // CHECK:        dma_wait [[TAG]][%10, %c0_0], %c4 : memref<2x1xi32>
 // CHECK-NEXT:   "compute"(%9) : (index) -> ()
-// CHECK-NEXT:   return
+// CHECK:        return
 // CHECK-NEXT: }
 
 #map0 = (d0, d1) -> (d0, d1)
@@ -112,7 +114,8 @@ func @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>, #map0>, %arg1: memref<
   %4 = alloc() : memref<2xi32>
   %5 = alloc() : memref<2xi32>
   // Prologue for DMA overlap on arg2.
-  // CHECK:[[TAG_ARG2:%[0-9]+]] = alloc() : memref<2x2xi32>
+  // CHECK-DAG: [[BUF_ARG2:%[0-9]+]] = alloc() : memref<2x64x4xvector<8xf32>, 2>
+  // CHECK-DAG: [[TAG_ARG2:%[0-9]+]] = alloc() : memref<2x2xi32>
   // CHECK: dma_start %arg2[
   // CHECK: for %i0 = 1 to 8 {
   for %i0 = 0 to 8 {
@@ -123,6 +126,8 @@ func @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>, #map0>, %arg1: memref<
     // CHECK: dma_start %arg2[
     // CHECK: dma_wait [[TAG_ARG2]]
     // Prologue for DMA overlap on arg0, arg1 nested within i0
+    // CHECK: [[BUF_ARG0:%[0-9]+]] = alloc() : memref<2x64x4xvector<8xf32>, 2>
+    // CHECK: [[BUF_ARG1:%[0-9]+]] = alloc() : memref<2x64x4xvector<8xf32>, 2>
     // CHECK: [[TAG_ARG0:%[0-9]+]] = alloc() : memref<2x2xi32>
     // CHECK: [[TAG_ARG1:%[0-9]+]] = alloc() : memref<2x2xi32>
     // CHECK: dma_start %arg0[
@@ -148,9 +153,15 @@ func @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>, #map0>, %arg1: memref<
     // epilogue for arg0, arg1
     // CHECK: dma_wait [[TAG_ARG0]]
     // CHECK: dma_wait [[TAG_ARG1]]
+    // CHECK-DAG:    dealloc [[TAG_ARG1]] : memref<2x2xi32>
+    // CHECK-DAG:    dealloc [[TAG_ARG0]] : memref<2x2xi32>
+    // CHECK-DAG:    dealloc [[BUF_ARG1]] : memref<2x64x4xvector<8xf32>, 2>
+    // CHECK-DAG:    dealloc [[BUF_ARG0]] : memref<2x64x4xvector<8xf32>, 2>
   // epilogue for DMA overlap on %arg2
   // CHECK:  dma_wait [[TAG_ARG2]]
   // Within the epilogue for arg2's DMA, we have the DMAs on %arg1, %arg2 nested.
+  // CHECK: [[BUF_ARG0_NESTED:%[0-9]+]] = alloc() : memref<2x64x4xvector<8xf32>, 2>
+  // CHECK: [[BUF_ARG1_NESTED:%[0-9]+]] = alloc() : memref<2x64x4xvector<8xf32>, 2>
   // CHECK: [[TAG_ARG0_NESTED:%[0-9]+]] = alloc() : memref<2x2xi32>
   // CHECK: [[TAG_ARG1_NESTED:%[0-9]+]] = alloc() : memref<2x2xi32>
   // CHECK:  dma_start %arg0[
@@ -168,7 +179,13 @@ func @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>, #map0>, %arg1: memref<
   }
   return
 // CHECK: }
-// CHECK-NEXT: return
+// CHECK-DAG: dealloc [[TAG_ARG1_NESTED]] : memref<2x2xi32>
+// CHECK-DAG: dealloc [[TAG_ARG0_NESTED]] : memref<2x2xi32>
+// CHECK-DAG: dealloc [[BUF_ARG1_NESTED]] : memref<2x64x4xvector<8xf32>, 2>
+// CHECK-DAG: dealloc [[BUF_ARG0_NESTED]] : memref<2x64x4xvector<8xf32>, 2>
+// CHECK-DAG: dealloc [[TAG_ARG2]] : memref<2x2xi32>
+// CHECK-DAG: dealloc [[BUF_ARG2]] : memref<2x64x4xvector<8xf32>, 2>
+// CHECK:     return
 }
 
 // CHECK: func @loop_dma_dependent
@@ -194,7 +211,7 @@ func @loop_dma_dependent(%arg2: memref<512x32xvector<8xf32>>) {
     dma_start %2[%c0, %c0], %arg2[%6, %c0], %num_elts, %5[%c0] : memref<64x4xvector<8xf32>, 2>, memref<512x32xvector<8xf32>>, memref<2xi32>
     dma_wait %5[%c0], %num_elts : memref<2xi32>
   } // CHECK: }
-  return // CHECK-NEXT: return
+  return // CHECK: return
 }
 
 // CHECK-LABEL: func @escaping_use
@@ -218,7 +235,7 @@ func @escaping_use(%arg0: memref<512 x 32 x f32>) {
   return
 // CHECK:        "foo"(%{{[0-9]+}}) : (memref<32x32xf32, 2>) -> ()
 // CHECK:      }
-// CHECK-NEXT: return
+// CHECK:      return
 }
 
 // CHECK-LABEL: func @live_out_use
@@ -241,7 +258,7 @@ func @live_out_use(%arg0: memref<512 x 32 x f32>) -> f32 {
   %v = load %Av[%zero, %zero] : memref<32 x 32 x f32, 2>
   return %v : f32
 // CHECK:      %{{[0-9]+}} = load %{{[0-9]+}}[%c0, %c0] : memref<32x32xf32, 2>
-// CHECK-NEXT: return
+// CHECK:      return
 }
 
 // CHECK-LABEL: func @dynamic_shape_dma_buffer
@@ -275,5 +292,5 @@ func @dynamic_shape_dma_buffer(%arg0: memref<512 x 32 x f32>) {
 // CHECK:         dma_wait %4[%10, %c0_0], %c512 : memref<2x1xi32>
 // CHECK:       }
 // CHECK:       dma_wait %4[%13, %c0_0], %c512 : memref<2x1xi32>
-// CHECK-NEXT:  return
+// CHECK:       return
 }

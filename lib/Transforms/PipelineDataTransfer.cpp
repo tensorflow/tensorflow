@@ -97,9 +97,10 @@ static bool doubleBuffer(Value *oldMemRef, OpPointer<AffineForOp> forOp) {
   auto oldMemRefType = oldMemRef->getType().cast<MemRefType>();
   auto newMemRefType = doubleShape(oldMemRefType);
 
-  // Put together alloc operands for the dynamic dimensions of the memref.
+  // The double buffer is allocated right before 'forInst'.
   auto *forInst = forOp->getInstruction();
   FuncBuilder bOuter(forInst);
+  // Put together alloc operands for any dynamic dimensions of the memref.
   SmallVector<Value *, 4> allocOperands;
   unsigned dynamicDimCount = 0;
   for (auto dimSize : oldMemRefType.getShape()) {
@@ -125,13 +126,20 @@ static bool doubleBuffer(Value *oldMemRef, OpPointer<AffineForOp> forOp) {
   // replaceAllMemRefUsesWith will always succeed unless the forOp body has
   // non-deferencing uses of the memref.
   if (!replaceAllMemRefUsesWith(
-          oldMemRef, newMemRef, {ivModTwoOp}, AffineMap(), {},
+          oldMemRef, newMemRef, /*extraIndices=*/{ivModTwoOp},
+          /*indexRemap=*/AffineMap(),
+          /*extraOperands=*/{},
           /*domInstFilter=*/&*forOp->getBody()->begin())) {
     LLVM_DEBUG(llvm::dbgs()
                    << "memref replacement for double buffering failed\n";);
     ivModTwoOp->getInstruction()->erase();
     return false;
   }
+  // Insert the dealloc op right after the for loop.
+  bOuter.setInsertionPoint(forInst->getBlock(),
+                           std::next(Block::iterator(forInst)));
+  bOuter.create<DeallocOp>(forInst->getLoc(), newMemRef);
+
   return true;
 }
 
@@ -220,6 +228,9 @@ static void findMatchingStartFinishInsts(
     auto *memref = dmaStartOp->getOperand(dmaStartOp->getFasterMemPos());
     bool escapingUses = false;
     for (const auto &use : memref->getUses()) {
+      // We can double buffer regardless of dealloc's outside the loop.
+      if (use.getOwner()->isa<DeallocOp>())
+        continue;
       if (!forOp->getBody()->findAncestorInstInBlock(*use.getOwner())) {
         LLVM_DEBUG(llvm::dbgs()
                        << "can't pipeline: buffer is live out of loop\n";);
