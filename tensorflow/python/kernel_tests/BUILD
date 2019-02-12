@@ -2202,12 +2202,12 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
+    shard_count = 3,
     tags = [
         "manual",
         "no_gpu",
         "nogpu",
         "noguitar",
-        "notap",
     ],
     xla_enable_strict_auto_jit = True,
 )
