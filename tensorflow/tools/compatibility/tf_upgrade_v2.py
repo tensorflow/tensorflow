@@ -440,6 +440,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.io.gfile.exists",
         "tf.gfile.Glob":
             "tf.io.gfile.glob",
+        "tf.gfile.GFile":
+            "tf.io.gfile.GFile",
         "tf.gfile.IsDirectory":
             "tf.io.gfile.isdir",
         "tf.gfile.ListDirectory":
@@ -448,6 +450,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.io.gfile.makedirs",
         "tf.gfile.MkDir":
             "tf.io.gfile.mkdir",
+        "tf.gfile.Open":
+            "tf.io.gfile.GFile",
         "tf.gfile.Remove":
             "tf.io.gfile.remove",
         "tf.gfile.Rename":
