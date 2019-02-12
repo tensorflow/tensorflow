@@ -216,8 +216,8 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
                  context->GetAttr("use_calibration", &use_calibration_));
   calibration_mode_ =
       (use_calibration_ && precision_mode_ == TrtPrecisionMode::INT8 &&
-       calibration_data.size() == 0);
-  if (calibration_data.size()) {
+       calibration_data.empty());
+  if (!calibration_data.empty()) {
     calibrator_.reset(new TRTInt8Calibrator(calibration_data));
     calibration_data.resize(0);
   }
@@ -435,7 +435,8 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
     auto dtype = cuda_engine->getBindingDataType(binding_index);
     switch (dtype) {
       case nvinfer1::DataType::kFLOAT:
-        buffers[binding_index] = (void*)(input_tensor.flat<float>().data());
+        buffers[binding_index] =
+            const_cast<float*>(input_tensor.flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
         LOG(ERROR) << "FP16 inputs are not supported yet!";
@@ -444,10 +445,11 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
         LOG(ERROR) << "INT8 inputs are not supported yet!";
         return kRetry;
       case nvinfer1::DataType::kINT32:
-        buffers[binding_index] = (void*)(input_tensor.flat<int32>().data());
+        buffers[binding_index] =
+            const_cast<int32*>(input_tensor.flat<int32>().data());
         break;
       default:
-        LOG(ERROR) << "Unknown TRT data type: " << int(dtype);
+        LOG(ERROR) << "Unknown TRT data type: " << static_cast<int>(dtype);
         return kRetry;
     }
   }
@@ -486,7 +488,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
     switch (dtype) {
       case nvinfer1::DataType::kFLOAT:
         buffers[binding_index] =
-            reinterpret_cast<void*>(output_tensor->flat<float>().data());
+            const_cast<float*>(output_tensor->flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
         LOG(WARNING) << "half size is not supported yet!";
@@ -496,7 +498,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
         return kRetry;
       case nvinfer1::DataType::kINT32:
         buffers[binding_index] =
-            reinterpret_cast<void*>(output_tensor->flat<int32>().data());
+            const_cast<int32*>(output_tensor->flat<int32>().data());
         break;
       default:
         LOG(WARNING) << "Unknown TRT data type: " << static_cast<int>(dtype);

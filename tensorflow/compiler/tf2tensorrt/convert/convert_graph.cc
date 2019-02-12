@@ -195,7 +195,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
     const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* infer_graph,
     bool is_dyn_op) {
   LOG(INFO) << "Starting Calib Conversion";
-  infer_graph->CopyFrom(graph_def);
+  *infer_graph = graph_def;
   auto trt_rm = TRTResourceManager::instance();
   auto calib_rm = trt_rm->getManager("TRTCalibration");
   int num_nodes = infer_graph->node_size();
