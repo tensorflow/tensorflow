@@ -1282,8 +1282,9 @@ namespace {
 
 // Gets a NodeFilter that includes roughly all instructions whose distance from
 // root is <= radius.
-NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
-                                      int64 radius) {
+NodeFilter MakeNodeRadiusAroundFilter(
+    const HloInstruction* root, int64 radius,
+    const absl::flat_hash_set<const HloInstruction*>& boundary) {
   // First, find the neighborhood of nodes with distance from root <= radius.
   // These nodes are our initial set of "normal" nodes.
   absl::flat_hash_map<const HloInstruction*, NodeFilterResult> nodes;
@@ -1297,6 +1298,9 @@ NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
 
     nodes[instr] = kNormalNode;
     if (depth == radius) {
+      continue;
+    }
+    if (boundary.contains(instr)) {
       continue;
     }
 
@@ -1513,12 +1517,13 @@ string DumpGraph(const HloComputation& computation, const string& label,
   return graph_url;
 }
 
-string DumpNeighborhoodAround(const HloInstruction& node, int radius,
-                              bool show_backend_config) {
+string DumpNeighborhoodAround(
+    const HloInstruction& node, int radius, bool show_backend_config,
+    const absl::flat_hash_set<const HloInstruction*>& boundary) {
   auto debug_options = node.GetModule()->config().debug_options();
   string label =
       StrCat("Neighborhood of ", radius, " nodes around ", node.name());
-  NodeFilter filter = MakeNodeRadiusAroundFilter(&node, radius);
+  NodeFilter filter = MakeNodeRadiusAroundFilter(&node, radius, boundary);
   string graph =
       HloDotDumper(node.parent(), label, debug_options, show_backend_config,
                    /*profile=*/nullptr, filter)
