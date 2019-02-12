@@ -48,6 +48,15 @@ py_binary(
     name = "use_model_in_sequential_keras",
     srcs = ["use_model_in_sequential_keras.py"],
     deps = [
+        ":util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "util",
+    srcs = ["util.py"],
+    deps = [
         "//tensorflow:tensorflow_py",
     ],
 )
