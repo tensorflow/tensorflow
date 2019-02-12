@@ -533,6 +533,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'filename\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "Case"
+    argspec: "args=[\'branch_index\', \'input\', \'Tout\', \'branches\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "Cast"
     argspec: "args=[\'x\', \'DstT\', \'Truncate\'], varargs=None, keywords=None, defaults=None"
   }
