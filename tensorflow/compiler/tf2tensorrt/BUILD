@@ -352,6 +352,7 @@ cc_library(
         "segment/segment.h",
         "segment/union_find.h",
     ],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:graph",
         "//tensorflow/core:lib_proto_parsing",
