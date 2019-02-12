@@ -816,6 +816,10 @@ TEST_F(OperatorTest, VersioningStridedSliceTest) {
   SimpleVersioningTest<StridedSliceOperator>();
 }
 
+TEST_F(OperatorTest, VersioningSpaceToDepthTest) {
+  SimpleVersioningTest<SpaceToDepthOperator>();
+}
+
 TEST_F(OperatorTest, VersioningSliceTest) {
   SimpleVersioningTest<SliceOperator>();
 }
