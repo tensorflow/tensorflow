@@ -145,3 +145,18 @@ func @memref_cast(%static : memref<10x42xf32>, %dynamic : memref<?x?xf32>,
   %6 = memref_cast %mixed : memref<42x?xf32> to memref<?x1xf32>
   return
 }
+
+// CHECK-LABEL: func @memref_dim(%arg0: !llvm<"{ float*, i64, i64, i64 }">)
+func @memref_dim(%mixed : memref<42x?x?x13x?xf32>) {
+// CHECK-NEXT: %0 = "llvm.constant"() {value: 42 : index} : () -> !llvm<"i64">
+  %0 = dim %mixed, 0 : memref<42x?x?x13x?xf32>
+// CHECK-NEXT: %1 = "llvm.extractvalue"(%arg0) {position: [1]} : (!llvm<"{ float*, i64, i64, i64 }">) -> !llvm<"i64">
+  %1 = dim %mixed, 1 : memref<42x?x?x13x?xf32>
+// CHECK-NEXT: %2 = "llvm.extractvalue"(%arg0) {position: [2]} : (!llvm<"{ float*, i64, i64, i64 }">) -> !llvm<"i64">
+  %2 = dim %mixed, 2 : memref<42x?x?x13x?xf32>
+// CHECK-NEXT: %3 = "llvm.constant"() {value: 13 : index} : () -> !llvm<"i64">
+  %3 = dim %mixed, 3 : memref<42x?x?x13x?xf32>
+// CHECK-NEXT: %4 = "llvm.extractvalue"(%arg0) {position: [3]} : (!llvm<"{ float*, i64, i64, i64 }">) -> !llvm<"i64">
+  %4 = dim %mixed, 4 : memref<42x?x?x13x?xf32>
+  return
+}
