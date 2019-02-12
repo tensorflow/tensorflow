@@ -106,7 +106,7 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
       "ExpandDims",
       "FusedBatchNorm",
       "FusedBatchNormV2",
-      "GatherV2"
+      "GatherV2",
       "Identity",
       "LeakyRelu",
       "Log",
