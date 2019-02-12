@@ -24,11 +24,34 @@ import tensorflow as tf
 # TODO(vbardiovsky): We should just reuse Keras's Lambda layer, when that
 # enables to get trainable variables.
 class CustomLayer(tf.keras.layers.Layer):
-  """Wraps callable object as a `Layer` object."""
+  """Wraps callable object as a `Layer` object.
 
-  def __init__(self, func, **kwargs):
+  Args:
+    func: The callable object to wrap.
+    output_shape: A tuple with the (possibly partial) output shape of `func`
+      *without* leading batch size (by analogy to Dense(..., input_shape=...)).
+    trainable: Boolean controlling whether the trainable variables of `func`
+      are reported as trainable variables of this layer.
+  """
+
+  def __init__(self, func, output_shape, trainable=False, **kwargs):
+    # Set self._{non,}_trainable_weights before calling Layer.__init__.
+    if hasattr(func, 'trainable_variables'):
+      self._trainable_weights = [v for v in func.trainable_variables]
+      trainable_variables_set = set(func.trainable_variables)
+    else:
+      self._trainable_weights = []
+      trainable_variables_set = set()
+    if hasattr(func, 'variables'):
+      self._non_trainable_weights = [v for v in func.variables
+                                     if v not in trainable_variables_set]
+    else:
+      self._non_trainable_weights = []  # TODO(arnoegw): Infer from `func`.
+    super(CustomLayer, self).__init__(trainable=trainable, **kwargs)
     self._func = func
-    super(CustomLayer, self).__init__(**kwargs)
+    # TODO(vbardiovsky): We should be able to get the embedding dimension from
+    # the restored model.
+    self._output_shape = tuple(output_shape)
 
   def call(self, x):
     result = self._func(x)
@@ -37,7 +60,4 @@ class CustomLayer(tf.keras.layers.Layer):
     return result
 
   def compute_output_shape(self, input_shape):
-    # TODO(vbardiovsky): We should be able to get the embedding dimension from
-    # the restored model.
-    return (input_shape[0], 10)
-
+    return (input_shape[0],) + self._output_shape
