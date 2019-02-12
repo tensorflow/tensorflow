@@ -29,8 +29,12 @@ class AffineMap;
 class IntegerSet;
 class Type;
 
+using DialectConstantDecodeHook =
+    std::function<bool(const OpaqueElementsAttr, ElementsAttr &)>;
 using DialectConstantFoldHook = std::function<bool(
     const Instruction *, ArrayRef<Attribute>, SmallVectorImpl<Attribute> &)>;
+using DialectExtractElementHook =
+    std::function<Attribute(const OpaqueElementsAttr, ArrayRef<uint64_t>)>;
 using DialectTypeParserHook =
     std::function<Type(StringRef, Location, MLIRContext *)>;
 using DialectTypePrinterHook = std::function<void(Type, raw_ostream &)>;
@@ -58,6 +62,23 @@ public:
   DialectConstantFoldHook constantFoldHook =
       [](const Instruction *op, ArrayRef<Attribute> operands,
          SmallVectorImpl<Attribute> &results) { return true; };
+
+  /// Registered hook to decode opaque constants associated with this
+  /// dialect. The hook function attempts to decode an opaque constant tensor
+  /// into a tensor with non-opaque content. If decoding is successful, this
+  /// method returns false and sets 'output' attribute. If not, it returns true
+  /// and leaves 'output' unspecified. The default hook fails to decode.
+  DialectConstantDecodeHook decodeHook =
+      [](const OpaqueElementsAttr input, ElementsAttr &output) { return true; };
+
+  /// Registered hook to extract an element from an opaque constant associated
+  /// with this dialect. If element has been successfully extracted, this
+  /// method returns that element. If not, it returns an empty attribute.
+  /// The default hook fails to extract an element.
+  DialectExtractElementHook extractElementHook =
+      [](const OpaqueElementsAttr input, ArrayRef<uint64_t> index) {
+        return Attribute();
+      };
 
   /// Registered parsing/printing hooks for types registered to the dialect.
   DialectTypeParserHook typeParseHook = nullptr;

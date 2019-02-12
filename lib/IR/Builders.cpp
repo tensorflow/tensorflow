@@ -183,9 +183,10 @@ ElementsAttr Builder::getSparseElementsAttr(VectorOrTensorType type,
   return SparseElementsAttr::get(type, indices, values);
 }
 
-ElementsAttr Builder::getOpaqueElementsAttr(VectorOrTensorType type,
+ElementsAttr Builder::getOpaqueElementsAttr(Dialect *dialect,
+                                            VectorOrTensorType type,
                                             StringRef bytes) {
-  return OpaqueElementsAttr::get(type, bytes);
+  return OpaqueElementsAttr::get(dialect, type, bytes);
 }
 
 Attribute Builder::getZeroAttr(Type type) {

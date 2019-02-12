@@ -606,6 +606,7 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
   case Attribute::Kind::OpaqueElements: {
     auto eltsAttr = attr.cast<OpaqueElementsAttr>();
     os << "opaque<";
+    os << '"' << eltsAttr.getDialect()->getNamespace() << "\", ";
     printType(eltsAttr.getType());
     os << ", " << '"' << "0x" << llvm::toHex(eltsAttr.getValue()) << '"' << '>';
     break;

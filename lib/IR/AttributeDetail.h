@@ -138,6 +138,7 @@ struct DenseElementsAttributeStorage : public ElementsAttributeStorage {
 /// An attribute representing a reference to a tensor constant with opaque
 /// content.
 struct OpaqueElementsAttributeStorage : public ElementsAttributeStorage {
+  Dialect *dialect;
   StringRef bytes;
 };
 

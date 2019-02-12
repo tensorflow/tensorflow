@@ -681,14 +681,28 @@ func @elementsattr_toolarge2() -> () {
 
 func @elementsattr_malformed_opaque() -> () {
 ^bb0:
-  "foo"(){bar: opaque<tensor<1xi8>, "0xQZz123">} : () -> () // expected-error {{opaque string only contains hex digits}}
+  "foo"(){bar: opaque<tensor<1xi8>, "0xQZz123">} : () -> () // expected-error {{expected dialect namespace}}
 }
 
 // -----
 
 func @elementsattr_malformed_opaque1() -> () {
 ^bb0:
-  "foo"(){bar: opaque<tensor<1xi8>, "00abc">} : () -> () // expected-error {{opaque string should start with '0x'}}
+  "foo"(){bar: opaque<"", tensor<1xi8>, "0xQZz123">} : () -> () // expected-error {{opaque string only contains hex digits}}
+}
+
+// -----
+
+func @elementsattr_malformed_opaque2() -> () {
+^bb0:
+  "foo"(){bar: opaque<"", tensor<1xi8>, "00abc">} : () -> () // expected-error {{opaque string should start with '0x'}}
+}
+
+// -----
+
+func @elementsattr_malformed_opaque3() -> () {
+^bb0:
+  "foo"(){bar: opaque<"t", tensor<1xi8>, "0xabc">} : () -> () // expected-error {{no registered dialect with namespace 't'}}
 }
 
 // -----
@@ -783,7 +797,7 @@ func @type_alias_unknown(!unknown_alias) -> () { // expected-error {{undefined t
 func @complex_loops() {
   for %i1 = 1 to 100 {
   // expected-error @+1 {{expected '"' in string literal}}
-  "opaqueIntTensor"(){bar: opaque<tensor<2x1x4xi32>, "0x686]>} : () -> ()
+  "opaqueIntTensor"(){bar: opaque<"", tensor<2x1x4xi32>, "0x686]>} : () -> ()
 
 // -----
 

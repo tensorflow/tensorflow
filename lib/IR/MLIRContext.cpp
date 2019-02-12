@@ -207,23 +207,26 @@ struct DenseElementsAttrInfo : DenseMapInfo<DenseElementsAttributeStorage *> {
 };
 
 struct OpaqueElementsAttrInfo : DenseMapInfo<OpaqueElementsAttributeStorage *> {
-  using KeyTy = std::pair<VectorOrTensorType, StringRef>;
+  // Opaque element attributes are uniqued based on their dialect, type and
+  // value.
+  using KeyTy = std::tuple<Dialect *, VectorOrTensorType, StringRef>;
   using DenseMapInfo<OpaqueElementsAttributeStorage *>::isEqual;
 
   static unsigned getHashValue(OpaqueElementsAttributeStorage *key) {
-    return getHashValue(KeyTy(key->type, key->bytes));
+    return getHashValue(KeyTy(key->dialect, key->type, key->bytes));
   }
 
   static unsigned getHashValue(KeyTy key) {
-    return hash_combine(
-        key.first, hash_combine_range(key.second.begin(), key.second.end()));
+    auto bytes = std::get<2>(key);
+    return hash_combine(std::get<0>(key), std::get<1>(key),
+                        hash_combine_range(bytes.begin(), bytes.end()));
   }
 
   static bool isEqual(const KeyTy &lhs,
                       const OpaqueElementsAttributeStorage *rhs) {
     if (rhs == getEmptyKey() || rhs == getTombstoneKey())
       return false;
-    return lhs == std::make_pair(rhs->type, rhs->bytes);
+    return lhs == std::make_tuple(rhs->dialect, rhs->type, rhs->bytes);
   }
 };
 
@@ -1139,7 +1142,8 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
   return get(type, data);
 }
 
-OpaqueElementsAttr OpaqueElementsAttr::get(VectorOrTensorType type,
+OpaqueElementsAttr OpaqueElementsAttr::get(Dialect *dialect,
+                                           VectorOrTensorType type,
                                            StringRef bytes) {
   assert(TensorType::isValidElementType(type.getElementType()) &&
          "Input element type should be a valid tensor element type");
@@ -1147,7 +1151,7 @@ OpaqueElementsAttr OpaqueElementsAttr::get(VectorOrTensorType type,
   auto &impl = type.getContext()->getImpl();
 
   // Look to see if this constant is already defined.
-  OpaqueElementsAttrInfo::KeyTy key({type, bytes});
+  OpaqueElementsAttrInfo::KeyTy key(dialect, type, bytes);
   auto existing = impl.opaqueElementsAttrs.insert_as(nullptr, key);
 
   // If we already have it, return that value.
@@ -1156,9 +1160,13 @@ OpaqueElementsAttr OpaqueElementsAttr::get(VectorOrTensorType type,
 
   // Otherwise, allocate a new one, unique it and return it.
   auto *result = impl.allocator.Allocate<OpaqueElementsAttributeStorage>();
+
+  // TODO: Provide a way to avoid copying content of large opaque tensors
+  // This will likely require a new reference attribute kind.
   bytes = bytes.copy(impl.allocator);
   new (result) OpaqueElementsAttributeStorage{
       {{Attribute::Kind::OpaqueElements, /*isOrContainsFunction=*/false}, type},
+      dialect,
       bytes};
   return *existing.first = result;
 }

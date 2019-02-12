@@ -18,6 +18,7 @@
 #include "mlir/IR/Attributes.h"
 #include "AttributeDetail.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Dialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Types.h"
@@ -339,6 +340,16 @@ void DenseFPElementsAttr::getValues(SmallVectorImpl<APFloat> &values) const {
 
 StringRef OpaqueElementsAttr::getValue() const {
   return static_cast<ImplType *>(attr)->bytes;
+}
+
+Dialect *OpaqueElementsAttr::getDialect() const {
+  return static_cast<ImplType *>(attr)->dialect;
+}
+
+bool OpaqueElementsAttr::decode(ElementsAttr &result) {
+  if (auto *d = getDialect())
+    return d->decodeHook(*this, result);
+  return true;
 }
 
 /// SparseElementsAttr

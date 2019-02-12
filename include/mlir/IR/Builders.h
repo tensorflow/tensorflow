@@ -113,7 +113,8 @@ public:
   ElementsAttr getSparseElementsAttr(VectorOrTensorType type,
                                      DenseIntElementsAttr indices,
                                      DenseElementsAttr values);
-  ElementsAttr getOpaqueElementsAttr(VectorOrTensorType type, StringRef bytes);
+  ElementsAttr getOpaqueElementsAttr(Dialect *dialect, VectorOrTensorType type,
+                                     StringRef bytes);
   // Returns a 0-valued attribute of the given `type`. This function only
   // supports boolean, integer, and 32-/64-bit float types, and vector or ranked
   // tensor of them. Returns null attribute otherwise.

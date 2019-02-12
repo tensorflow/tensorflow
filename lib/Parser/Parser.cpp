@@ -1047,9 +1047,26 @@ Attribute Parser::parseAttribute(Type type) {
     consumeToken(Token::kw_opaque);
     if (parseToken(Token::less, "expected '<' after 'opaque'"))
       return nullptr;
+
+    if (getToken().getKind() != Token::string)
+      return (emitError("expected dialect namespace"), nullptr);
+    auto name = getToken().getStringValue();
+    auto *dialect = builder.getContext()->getRegisteredDialect(name);
+    // TODO(shpeisman): Allow for having an unknown dialect on an opaque
+    // attribute. Otherwise, it can't be roundtripped without having the dialect
+    // registered.
+    if (!dialect)
+      return (emitError("no registered dialect with namespace '" + name + "'"),
+              nullptr);
+
+    consumeToken(Token::string);
+    if (parseToken(Token::comma, "expected ','"))
+      return nullptr;
+
     auto type = parseVectorOrTensorType();
     if (!type)
       return nullptr;
+
     if (getToken().getKind() != Token::string)
       return (emitError("opaque string should start with '0x'"), nullptr);
     auto val = getToken().getStringValue();
@@ -1063,7 +1080,7 @@ Attribute Parser::parseAttribute(Type type) {
     consumeToken(Token::string);
     if (parseToken(Token::greater, "expected '>'"))
       return nullptr;
-    return builder.getOpaqueElementsAttr(type, llvm::fromHex(val));
+    return builder.getOpaqueElementsAttr(dialect, type, llvm::fromHex(val));
   }
   case Token::kw_splat: {
     consumeToken(Token::kw_splat);

@@ -24,6 +24,7 @@
 
 namespace mlir {
 class AffineMap;
+class Dialect;
 class Function;
 class FunctionAttr;
 class FunctionType;
@@ -425,16 +426,27 @@ public:
 
 /// An attribute represents a reference to a tensor constant with opaque
 /// content. This respresentation is for tensor constants which the compiler
-/// doesn't need to interpret.
+/// may not need to interpret. This attribute is always associated with
+/// a particular dialect, which provides a method to convert tensor
+/// representation to a non-opaque format.
 class OpaqueElementsAttr : public ElementsAttr {
 public:
   using ElementsAttr::ElementsAttr;
   using ImplType = detail::OpaqueElementsAttributeStorage;
   using ValueType = StringRef;
 
-  static OpaqueElementsAttr get(VectorOrTensorType type, StringRef bytes);
+  static OpaqueElementsAttr get(Dialect *dialect, VectorOrTensorType type,
+                                StringRef bytes);
 
   StringRef getValue() const;
+
+  /// Decodes the attribute value using dialect-specific decoding hook.
+  /// Returns false if decoding is successful. If not, returns true and leaves
+  /// 'result' argument unspecified.
+  bool decode(ElementsAttr &result);
+
+  /// Returns dialect associated with this opaque constant.
+  Dialect *getDialect() const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::OpaqueElements; }
