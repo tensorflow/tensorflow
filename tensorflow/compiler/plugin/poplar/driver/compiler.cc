@@ -161,6 +161,19 @@ bool GetConstantOutput(const HloInstruction* root, const Shape& layout,
   return false;
 }
 
+bool AnyComputationHasSideEffects(const HloModule* module) {
+  for (const auto& comp : module->computations()) {
+    if (IsRepeatCall(comp) || IsPopOpsFusion(comp)) {
+      continue;
+    }
+
+    if (comp->HasSideEffect()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool AreAllOutputsParameters(
     HloInstruction* root,
     const std::set<const HloInstruction*>& non_standard_parameter_layout,
@@ -380,8 +393,13 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
                        poplarExecutor->AlwaysRearrangeCopiesOnTheHost());
 
   std::vector<std::vector<Literal>> constant_output;
-  const auto is_constant_graph = GetConstantOutput(
+  const bool is_constant_output = GetConstantOutput(
       entry->root_instruction(), comp_layout->shape(), constant_output);
+
+  const bool any_computation_has_side_effects =
+      AnyComputationHasSideEffects(module.get());
+  const auto is_constant_graph =
+      is_constant_output && !any_computation_has_side_effects;
 
   std::string map_json;
   std::vector<uint64> remaped_output;
@@ -411,9 +429,12 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       resources.main_graph.outputVertexGraph(stream, progs);
     }
 
-    is_remap_graph = AreAllOutputsParameters(
+    const bool all_outputs_are_parameters = AreAllOutputsParameters(
         entry->root_instruction(), visitor.GetNonStandardParameterLayout(),
         remaped_output);
+
+    is_remap_graph =
+        all_outputs_are_parameters && !any_computation_has_side_effects;
     if (is_remap_graph) {
       VLOG(1) << "Skip engine compilation - all outputs are inputs";
     } else {
