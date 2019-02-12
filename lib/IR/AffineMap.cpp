@@ -19,7 +19,7 @@
 #include "AffineMapDetail.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/Types.h"
+#include "mlir/IR/StandardTypes.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/StringRef.h"
@@ -57,7 +57,7 @@ public:
       return constantFoldBinExpr(
           expr, [](int64_t lhs, uint64_t rhs) { return ceilDiv(lhs, rhs); });
     case AffineExprKind::Constant:
-      return IntegerAttr::get(Type::getIndex(expr.getContext()),
+      return IntegerAttr::get(IndexType::get(expr.getContext()),
                               expr.cast<AffineConstantExpr>().getValue());
     case AffineExprKind::DimId:
       return operandConsts[expr.cast<AffineDimExpr>().getPosition()]

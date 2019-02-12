@@ -824,7 +824,7 @@ Attribute DimOp::constantFold(ArrayRef<Attribute> operands,
   }
 
   if (indexSize >= 0)
-    return IntegerAttr::get(Type::getIndex(context), indexSize);
+    return IntegerAttr::get(IndexType::get(context), indexSize);
 
   return nullptr;
 }

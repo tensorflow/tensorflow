@@ -70,5 +70,4 @@ StringRef UnknownType::getTypeData() const {
 
 // Define type identifiers.
 char FunctionType::typeID = 0;
-char IndexType::typeID = 0;
 char UnknownType::typeID = 0;

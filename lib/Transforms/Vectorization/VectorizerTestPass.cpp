@@ -107,12 +107,13 @@ void VectorizerTestPass::testVectorShapeRatio(Function *f) {
   using matcher::Op;
   SmallVector<int64_t, 8> shape(clTestVectorShapeRatio.begin(),
                                 clTestVectorShapeRatio.end());
-  auto subVectorType = VectorType::get(shape, Type::getF32(f->getContext()));
+  auto subVectorType =
+      VectorType::get(shape, FloatType::getF32(f->getContext()));
   // Only filter instructions that operate on a strict super-vector and have one
   // return. This makes testing easier.
   auto filter = [subVectorType](const Instruction &inst) {
     assert(subVectorType.getElementType() ==
-               Type::getF32(subVectorType.getContext()) &&
+               FloatType::getF32(subVectorType.getContext()) &&
            "Only f32 supported for now");
     if (!matcher::operatesOnSuperVectors(inst, subVectorType)) {
       return false;

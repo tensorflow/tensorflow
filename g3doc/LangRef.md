@@ -572,6 +572,8 @@ called with the [`call_indirect` instruction](#'call_indirect'-operation).
 Function types are also used to indicate the arguments and results of
 [operations](#operations).
 
+### Standard Types {#standard-types}
+
 #### Index Type {#index-type}
 
 Syntax:
@@ -589,10 +591,6 @@ used as an element of vector, tensor or memref type
 
 **Rationale:** integers of platform-specific bit widths are practical to express
 sizes, dimensionalities and subscripts.
-
-TODO (Index type should not be a builtin).
-
-### Standard Types {#standard-types}
 
 #### Integer Type {#integer-type}
 

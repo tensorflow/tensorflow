@@ -369,6 +369,7 @@ unsigned MemRefType::getNumDynamicDims() const {
 
 // Define type identifiers.
 char FloatType::typeID = 0;
+char IndexType::typeID = 0;
 char IntegerType::typeID = 0;
 char VectorType::typeID = 0;
 char RankedTensorType::typeID = 0;

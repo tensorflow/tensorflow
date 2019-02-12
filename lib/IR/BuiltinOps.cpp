@@ -38,7 +38,7 @@ using namespace mlir;
 BuiltinDialect::BuiltinDialect(MLIRContext *context)
     : Dialect(/*namePrefix=*/"", context) {
   addOperations<BranchOp, CondBranchOp, ConstantOp, ReturnOp>();
-  addTypes<FunctionType, IndexType, UnknownType, FloatType, IntegerType,
+  addTypes<FunctionType, UnknownType, FloatType, IndexType, IntegerType,
            VectorType, RankedTensorType, UnrankedTensorType, MemRefType>();
 }
 

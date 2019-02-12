@@ -55,6 +55,9 @@ enum Kind {
   FIRST_FLOATING_POINT_TYPE = BF16,
   LAST_FLOATING_POINT_TYPE = F64,
 
+  // Target pointer sized integer, used (e.g.) in affine mappings.
+  Index,
+
   // Derived types.
   Integer,
   Vector,
@@ -69,6 +72,26 @@ inline bool Type::isBF16() const { return getKind() == StandardTypes::BF16; }
 inline bool Type::isF16() const { return getKind() == StandardTypes::F16; }
 inline bool Type::isF32() const { return getKind() == StandardTypes::F32; }
 inline bool Type::isF64() const { return getKind() == StandardTypes::F64; }
+
+inline bool Type::isIndex() const { return getKind() == StandardTypes::Index; }
+
+/// Index is a special integer-like type with unknown platform-dependent bit
+/// width.
+class IndexType : public Type::TypeBase<IndexType, Type> {
+public:
+  using Base::Base;
+
+  /// Crete an IndexType instance, unique in the given context.
+  static IndexType get(MLIRContext *context) {
+    return Base::get(context, StandardTypes::Index);
+  }
+
+  /// Support method to enable LLVM-style type casting.
+  static bool kindof(unsigned kind) { return kind == StandardTypes::Index; }
+
+  /// Unique identifier for this type class.
+  static char typeID;
+};
 
 /// Integer types can have arbitrary bitwidth up to a large fixed limit.
 class IntegerType
@@ -105,10 +128,6 @@ public:
   static constexpr unsigned kMaxWidth = 4096;
 };
 
-inline IntegerType Type::getInteger(unsigned width, MLIRContext *ctx) {
-  return IntegerType::get(width, ctx);
-}
-
 /// Return true if this is an integer type with the specified width.
 inline bool Type::isInteger(unsigned width) const {
   if (auto intTy = dyn_cast<IntegerType>())
@@ -137,6 +156,20 @@ public:
     return Base::get(context, kind);
   }
 
+  // Convenience factories.
+  static FloatType getBF16(MLIRContext *ctx) {
+    return get(StandardTypes::BF16, ctx);
+  }
+  static FloatType getF16(MLIRContext *ctx) {
+    return get(StandardTypes::F16, ctx);
+  }
+  static FloatType getF32(MLIRContext *ctx) {
+    return get(StandardTypes::F32, ctx);
+  }
+  static FloatType getF64(MLIRContext *ctx) {
+    return get(StandardTypes::F64, ctx);
+  }
+
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) {
     return kind >= StandardTypes::FIRST_FLOATING_POINT_TYPE &&
@@ -152,19 +185,6 @@ public:
   /// Unique identifier for this type class.
   static char typeID;
 };
-
-inline FloatType Type::getBF16(MLIRContext *ctx) {
-  return FloatType::get(StandardTypes::BF16, ctx);
-}
-inline FloatType Type::getF16(MLIRContext *ctx) {
-  return FloatType::get(StandardTypes::F16, ctx);
-}
-inline FloatType Type::getF32(MLIRContext *ctx) {
-  return FloatType::get(StandardTypes::F32, ctx);
-}
-inline FloatType Type::getF64(MLIRContext *ctx) {
-  return FloatType::get(StandardTypes::F64, ctx);
-}
 
 /// This is a common base class between Vector, UnrankedTensor, and RankedTensor
 /// types, because many operations work on values of these aggregate types.

@@ -720,7 +720,7 @@ void ModulePrinter::printType(Type type) {
        << unknownTy.getTypeData() << "\">";
     return;
   }
-  case Type::Kind::Index:
+  case StandardTypes::Index:
     os << "index";
     return;
   case StandardTypes::BF16:

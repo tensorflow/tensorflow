@@ -103,11 +103,7 @@ public:
     // Builtin types.
     Function,
     Unknown,
-
-    // TODO(riverriddle) Index shouldn't really be a builtin.
-    // Target pointer sized integer, used (e.g.) in affine mappings.
-    Index,
-    LAST_BUILTIN_TYPE = Index,
+    LAST_BUILTIN_TYPE = Unknown,
 
   // Reserve type kinds for dialect specific type system extensions.
 #define DEFINE_TYPE_KIND_RANGE(Dialect)                                        \
@@ -225,14 +221,6 @@ public:
   /// Return true of this is an integer or a float type.
   bool isIntOrFloat() const;
 
-  // Convenience factories.
-  static IndexType getIndex(MLIRContext *ctx);
-  static IntegerType getInteger(unsigned width, MLIRContext *ctx);
-  static FloatType getBF16(MLIRContext *ctx);
-  static FloatType getF16(MLIRContext *ctx);
-  static FloatType getF32(MLIRContext *ctx);
-  static FloatType getF64(MLIRContext *ctx);
-
   /// Print the current type.
   void print(raw_ostream &os) const;
   void dump() const;
@@ -289,26 +277,6 @@ public:
   static char typeID;
 };
 
-inline bool Type::isIndex() const { return getKind() == Kind::Index; }
-
-/// Index is special integer-like type with unknown platform-dependent bit width
-/// used in subscripts and loop induction variables.
-class IndexType : public Type::TypeBase<IndexType, Type> {
-public:
-  using Base::Base;
-
-  /// Crete an IndexType instance, unique in the given context.
-  static IndexType get(MLIRContext *context) {
-    return Base::get(context, Kind::Index);
-  }
-
-  /// Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) { return kind == Kind::Index; }
-
-  /// Unique identifier for this type class.
-  static char typeID;
-};
-
 /// Unknown types represent types of non-registered dialects. These are types
 /// represented in their raw string form, and can only usefully be tested for
 /// type equality.
@@ -332,10 +300,6 @@ public:
   /// Unique identifier for this type class.
   static char typeID;
 };
-
-inline IndexType Type::getIndex(MLIRContext *ctx) {
-  return IndexType::get(ctx);
-}
 
 // Make Type hashable.
 inline ::llvm::hash_code hash_value(Type arg) {

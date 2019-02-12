@@ -56,20 +56,20 @@ Location Builder::getFusedLoc(ArrayRef<Location> locs, Attribute metadata) {
 // Types.
 //===----------------------------------------------------------------------===//
 
-FloatType Builder::getBF16Type() { return Type::getBF16(context); }
+FloatType Builder::getBF16Type() { return FloatType::getBF16(context); }
 
-FloatType Builder::getF16Type() { return Type::getF16(context); }
+FloatType Builder::getF16Type() { return FloatType::getF16(context); }
 
-FloatType Builder::getF32Type() { return Type::getF32(context); }
+FloatType Builder::getF32Type() { return FloatType::getF32(context); }
 
-FloatType Builder::getF64Type() { return Type::getF64(context); }
+FloatType Builder::getF64Type() { return FloatType::getF64(context); }
 
-IndexType Builder::getIndexType() { return Type::getIndex(context); }
+IndexType Builder::getIndexType() { return IndexType::get(context); }
 
-IntegerType Builder::getI1Type() { return Type::getInteger(1, context); }
+IntegerType Builder::getI1Type() { return IntegerType::get(1, context); }
 
 IntegerType Builder::getIntegerType(unsigned width) {
-  return Type::getInteger(width, context);
+  return IntegerType::get(width, context);
 }
 
 FunctionType Builder::getFunctionType(ArrayRef<Type> inputs,

@@ -721,7 +721,7 @@ static bool materialize(Function *f,
     // Set scoped super-vector and corresponding hw vector types.
     state->superVectorType = terminator->getVectorType();
     assert((state->superVectorType.getElementType() ==
-            Type::getF32(term->getContext())) &&
+            FloatType::getF32(term->getContext())) &&
            "Only f32 supported for now");
     state->hwVectorType = VectorType::get(
         state->hwVectorSize, state->superVectorType.getElementType());
@@ -751,7 +751,7 @@ PassResult MaterializeVectorsPass::runOnFunction(Function *f) {
   // Get the hardware vector type.
   // TODO(ntv): get elemental type from super-vector type rather than force f32.
   auto subVectorType =
-      VectorType::get(state.hwVectorSize, Type::getF32(f->getContext()));
+      VectorType::get(state.hwVectorSize, FloatType::getF32(f->getContext()));
 
   // Capture terminators; i.e. vector_transfer_write ops involving a strict
   // super-vector of subVectorType.

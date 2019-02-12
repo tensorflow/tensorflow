@@ -434,13 +434,14 @@ PYBIND11_MODULE(pybind, m) {
           },
           py::arg("type"), py::arg("bitwidth") = 0,
           "Returns a scalar mlir::Type using the following convention:\n"
-          "  - makeScalarType(c, \"bf16\") return an `mlir::Type::getBF16`\n"
-          "  - makeScalarType(c, \"f16\") return an `mlir::Type::getF16`\n"
-          "  - makeScalarType(c, \"f32\") return an `mlir::Type::getF32`\n"
-          "  - makeScalarType(c, \"f64\") return an `mlir::Type::getF64`\n"
-          "  - makeScalarType(c, \"index\") return an `mlir::Type::getIndex`\n"
+          "  - makeScalarType(c, \"bf16\") return an "
+          "`mlir::FloatType::getBF16`\n"
+          "  - makeScalarType(c, \"f16\") return an `mlir::FloatType::getF16`\n"
+          "  - makeScalarType(c, \"f32\") return an `mlir::FloatType::getF32`\n"
+          "  - makeScalarType(c, \"f64\") return an `mlir::FloatType::getF64`\n"
+          "  - makeScalarType(c, \"index\") return an `mlir::IndexType::get`\n"
           "  - makeScalarType(c, \"i\", bitwidth) return an "
-          "`mlir::Type::getInteger(bitwidth)`\n\n"
+          "`mlir::IntegerType::get(bitwidth)`\n\n"
           " No other combinations are currently supported.")
       .def("make_memref_type", &PythonMLIRModule::makeMemRefType,
            "Returns an mlir::MemRefType of an elemental scalar. -1 is used to "

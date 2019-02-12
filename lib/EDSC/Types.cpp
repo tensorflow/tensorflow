@@ -599,15 +599,18 @@ mlir_type_t makeScalarType(mlir_context_t context, const char *name,
   mlir_type_t res =
       llvm::StringSwitch<mlir_type_t>(name)
           .Case("bf16",
-                mlir_type_t{mlir::Type::getBF16(c).getAsOpaquePointer()})
-          .Case("f16", mlir_type_t{mlir::Type::getF16(c).getAsOpaquePointer()})
-          .Case("f32", mlir_type_t{mlir::Type::getF32(c).getAsOpaquePointer()})
-          .Case("f64", mlir_type_t{mlir::Type::getF64(c).getAsOpaquePointer()})
+                mlir_type_t{mlir::FloatType::getBF16(c).getAsOpaquePointer()})
+          .Case("f16",
+                mlir_type_t{mlir::FloatType::getF16(c).getAsOpaquePointer()})
+          .Case("f32",
+                mlir_type_t{mlir::FloatType::getF32(c).getAsOpaquePointer()})
+          .Case("f64",
+                mlir_type_t{mlir::FloatType::getF64(c).getAsOpaquePointer()})
           .Case("index",
-                mlir_type_t{mlir::Type::getIndex(c).getAsOpaquePointer()})
+                mlir_type_t{mlir::IndexType::get(c).getAsOpaquePointer()})
           .Case("i",
                 mlir_type_t{
-                    mlir::Type::getInteger(bitwidth, c).getAsOpaquePointer()})
+                    mlir::IntegerType::get(bitwidth, c).getAsOpaquePointer()})
           .Default(mlir_type_t{nullptr});
   if (!res) {
     llvm_unreachable("Invalid type specifier");
