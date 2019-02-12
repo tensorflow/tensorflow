@@ -315,7 +315,7 @@ public:
   static void dropFunctionReference(Function *value);
 };
 
-/// A base attribute represents a reference to a vector or tensor constant.
+/// A base attribute that represents a reference to a vector or tensor constant.
 class ElementsAttr : public NumericAttr {
 public:
   using NumericAttr::NumericAttr;
@@ -330,8 +330,8 @@ public:
   }
 };
 
-/// An attribute represents a reference to a splat vecctor or tensor constant,
-/// meaning all of the elements have the same value.
+/// An attribute that represents a reference to a splat vecctor or tensor
+/// constant, meaning all of the elements have the same value.
 class SplatElementsAttr : public ElementsAttr {
 public:
   using ElementsAttr::ElementsAttr;
@@ -345,10 +345,8 @@ public:
   static bool kindof(Kind kind) { return kind == Kind::SplatElements; }
 };
 
-/// An attribute represents a reference to a dense vector or tensor object.
+/// An attribute that represents a reference to a dense vector or tensor object.
 ///
-/// This class is designed to store elements with any bit widths equal or less
-/// than 64.
 class DenseElementsAttr : public ElementsAttr {
 public:
   using ElementsAttr::ElementsAttr;
@@ -390,7 +388,7 @@ protected:
   void getRawValues(SmallVectorImpl<APInt> &values) const;
 };
 
-/// An attribute represents a reference to a dense integer vector or tensor
+/// An attribute that represents a reference to a dense integer vector or tensor
 /// object.
 class DenseIntElementsAttr : public DenseElementsAttr {
 public:
@@ -407,7 +405,7 @@ public:
   static bool kindof(Kind kind) { return kind == Kind::DenseIntElements; }
 };
 
-/// An attribute represents a reference to a dense float vector or tensor
+/// An attribute that represents a reference to a dense float vector or tensor
 /// object. Each element is stored as a double.
 class DenseFPElementsAttr : public DenseElementsAttr {
 public:
@@ -424,11 +422,11 @@ public:
   static bool kindof(Kind kind) { return kind == Kind::DenseFPElements; }
 };
 
-/// An attribute represents a reference to a tensor constant with opaque
-/// content. This respresentation is for tensor constants which the compiler
-/// may not need to interpret. This attribute is always associated with
-/// a particular dialect, which provides a method to convert tensor
-/// representation to a non-opaque format.
+/// An opaque attribute that represents a reference to a vector or tensor
+/// constant with opaque content. This respresentation is for tensor constants
+/// which the compiler may not need to interpret. This attribute is always
+/// associated with a particular dialect, which provides a method to convert
+/// tensor representation to a non-opaque format.
 class OpaqueElementsAttr : public ElementsAttr {
 public:
   using ElementsAttr::ElementsAttr;
@@ -452,7 +450,8 @@ public:
   static bool kindof(Kind kind) { return kind == Kind::OpaqueElements; }
 };
 
-/// An attribute represents a reference to a sparse vector or tensor object.
+/// An attribute that represents a reference to a sparse vector or tensor
+/// object.
 ///
 /// This class uses COO (coordinate list) encoding to represent the sparse
 /// elements in an element attribute. Specifically, the sparse vector/tensor

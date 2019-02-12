@@ -875,16 +875,18 @@ Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
 /// Attribute parsing.
 ///
 ///  attribute-value ::= bool-literal
-///                    | integer-literal (`:` integer-type)
-///                    | float-literal (`:` float-type)
+///                    | integer-literal (`:` (index-type | integer-type))?
+///                    | float-literal (`:` float-type)?
 ///                    | string-literal
 ///                    | type
 ///                    | `[` (attribute-value (`,` attribute-value)*)? `]`
 ///                    | function-id `:` function-type
-///                    | (`splat<` | `dense<`) (tensor-type | vector-type)`,`
-///                          attribute-value `>`
-///                    | `sparse<` (tensor-type | vector-type)`,`
-///                          attribute-value`, ` attribute-value `>`
+///                    | (`splat` | `dense`) `<` (tensor-type | vector-type) `,`
+///                      attribute-value `>`
+///                    | `sparse` `<` (tensor-type | vector-type)`,`
+///                          attribute-value `,` attribute-value `>`
+///                    | `opaque` `<` dialect-namespace  `,`
+///                      (tensor-type | vector-type) `,` hex-string-literal `>`
 ///
 Attribute Parser::parseAttribute(Type type) {
   switch (getToken().getKind()) {

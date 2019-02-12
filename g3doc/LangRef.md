@@ -877,19 +877,204 @@ where a variable is never allowed - e.g. the index of a
 Attributes have a name, and their values are represented by the following forms:
 
 ``` {.ebnf}
-attribute-value ::= bool-literal
-                  | integer-literal ( `:` (index-type | integer-type) )?
-                  | float-literal ( `:` float-type )?
-                  | string-literal
-                  | affine-map
-                  | type
-                  | `[` (attribute-value (`,` attribute-value)*)? `]`
-                  | function-id `:` function-type
+attribute-value ::= affine-map-attribute
+                  | array-attribute
+                  | bool-attribute
+                  | elements-attribute
+                  | integer-attribute
+                  | integer-set-attribute
+                  | float-attribute
+                  | function-attribute
+                  | string-attribute
+                  | type-attribute
 ```
 
 It is possible to attach attributes to instructions and functions, and the set
 of expected attributes, their structure, and the definition of that meaning is
 contextually dependent on the operation they are attached to.
+
+### AffineMap Attribute {#affine-map-attribute}
+
+Syntax:
+
+``` {.ebnf}
+affine-map-attribute ::= affine-map
+```
+
+An affine-map attribute is an attribute that represents a affine-map object.
+
+### Array Attribute {#array-attribute}
+
+Syntax:
+
+``` {.ebnf}
+array-attribute ::= `[` (attribute-value (`,` attribute-value)*)? `]`
+```
+
+An array attribute is an attribute that represents a collection of attribute
+values.
+
+### Boolean Attribute {#bool-attribute}
+
+Syntax:
+
+``` {.ebnf}
+bool-attribute ::= bool-literal
+```
+
+A boolean attribute is a literal attribute that represents a one-bit boolean
+value, true or false.
+
+### Elements Attributes {#elements-attributes}
+
+Syntax:
+
+``` {.ebnf}
+elements-attribute ::= dense-elements-attribute
+                     | opaque-elements-attribute
+                     | sparse-elements-attribute
+                     | splat-elements-attribute
+```
+
+An elements attribute is a literal attribute that represents a constant
+[vector](#vector-type) or [tensor](#tensor-type) value.
+
+#### Dense Elements Attribute {#dense-elements-attribute}
+
+Syntax:
+
+``` {.ebnf}
+dense-elements-attribute ::= `dense` `<` ( tensor-type | vector-type )
+                             `,` attribute-value `>`
+```
+
+A dense elements attribute is an elements attribute where the storage for the
+constant vector or tensor value has been packed to the element bitwidth. The
+element type of the vector or tensor constant must be of integer, index, or
+floating point type.
+
+#### Opaque Elements Attribute {#opaque-elements-attribute}
+
+Syntax:
+
+``` {.ebnf}
+opaque-elements-attribute ::= `opaque` `<` dialect-namespace  `,`
+                              ( tensor-type | vector-type ) `,`
+                              hex-string-literal `>`
+```
+
+An opaque elements attribute is an elements attribute where the content of the
+value is opaque. The representation of the constant stored by this elements
+attribute is only understood, and thus decodable, by the dialect that created
+it.
+
+Note: The parsed string literal must be in hexadecimal form.
+
+#### Sparse Elements Attribute {#sparse-elements-attribute}
+
+Syntax:
+
+``` {.ebnf}
+sparse-elements-attribute ::= `sparse` `<` ( tensor-type | vector-type ) `,`
+                              attribute-value `,` attribute-value `>`
+```
+
+A sparse elements attribute is an elements attribute that represents a sparse
+vector or tensor object. This is where very few of the elements are non-zero.
+
+The attribute uses COO (coordinate list) encoding to represent the sparse
+elements of the elements attribute. The indices are stored via a 2-D tensor of
+64-bit integer elements with shape [N, ndims], which specifies the indices of
+the elements in the sparse tensor that contains non-zero values. The element
+values are stored via a 1-D tensor with shape [N], that supplies the
+corresponding values for the indices.
+
+Example:
+
+```mlir {.mlir}
+  sparse<tensor<3x4xi32>, [[0, 0], [1, 2]], [1, 5]>
+
+// This represents the following tensor:
+///  [[1, 0, 0, 0],
+///   [0, 0, 5, 0],
+///   [0, 0, 0, 0]]
+```
+
+#### Splat Elements Attribute {#splat-elements-attribute}
+
+Syntax:
+
+``` {.ebnf}
+splat-elements-attribute ::= `splat` `<` ( tensor-type | vector-type ) `,`
+                              attribute-value `>`
+```
+
+A splat elements attribute is an elements attribute that represents a tensor or
+vector constant where all elements have the same value.
+
+### Integer Attribute {#integer-attribute}
+
+Syntax:
+
+``` {.ebnf}
+integer-attribute ::= integer-literal ( `:` (index-type | integer-type) )?
+```
+
+An integer attribute is a literal attribute that represents an integral value of
+the specified integer or index type. The default type for this attribute, if one
+is not specified, is a 64-bit integer.
+
+### Integer Set Attribute {#integer-set-attribute}
+
+Syntax:
+
+``` {.ebnf}
+integer-set-attribute ::= affine-map
+```
+
+An integer-set attribute is an attribute that represents a integer-set object.
+
+### Float Attribute {#float-attribute}
+
+Syntax:
+
+``` {.ebnf}
+float-attribute ::= float-literal (`:` float-type)?
+```
+
+A float attribute is a literal attribute that represents a floating point value
+of the specified [float type](#floating-point-types).
+
+### Function Attribute {#function-attribute}
+
+Syntax:
+
+``` {.ebnf}
+function-attribute ::= function-id `:` function-type
+```
+
+A function attribute is a literal attribute that represents a reference to the
+given function object.
+
+### String Attribute {#string-attribute}
+
+Syntax:
+
+``` {.ebnf}
+string-attribute ::= string-literal
+```
+
+A string attribute is an attribute that represents a string literal value.
+
+### Type Attribute {#type-attribute}
+
+Syntax:
+
+``` {.ebnf}
+type-attribute ::= type
+```
+
+A type attribute is an attribute that represents a [type object](#type-system).
 
 ## Module {#module}
 
