@@ -49,6 +49,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import init_ops
@@ -527,6 +528,30 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(var_handle.shape, tensor_shape.scalar())
     var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
     self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
+
+  def testFuncListAttr(self):
+
+    @function.defun
+    def test_function(val):
+
+      def fn1():
+        return array_ops.ones([10])
+
+      fn2 = lambda: array_ops.ones([10]) * 2
+
+      def fn3(x=2):
+        return array_ops.ones([10]) * x
+      fn3 = functools.partial(fn3, x=3)
+
+      return gen_functional_ops.case(val, [], [dtypes.float32],
+                                     [function.defun(f).get_concrete_function()
+                                      for f in (fn1, fn2, fn3)])
+
+    ones = array_ops.ones([10])
+    self.assertAllEqual([ones], test_function(0))
+    self.assertAllEqual([ones * 2], test_function(1))
+    self.assertAllEqual([ones * 3], test_function(2))
+    self.assertAllEqual([ones * 3], test_function(22))  # default branch
 
   @test_util.enable_control_flow_v2
   def testVariableInLoopInFunction(self):
