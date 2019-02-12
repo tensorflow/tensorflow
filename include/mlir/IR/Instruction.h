@@ -378,7 +378,7 @@ public:
 
   // Support result type iteration.
   using result_type_iterator =
-      ResultTypeIterator<const Instruction, const Value>;
+      ResultTypeIterator<const Instruction, const Type>;
   result_type_iterator result_type_begin() const;
 
   result_type_iterator result_type_end() const;
