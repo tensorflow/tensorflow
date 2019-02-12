@@ -40,6 +40,10 @@ func @loop_nest_1d() {
       // Already in faster memory space.
       // CHECK:     %11 = load %2[%i0] : memref<256xf32, 1>
   // CHECK-NEXT: }
+  // CHECK-NEXT: dealloc %6 : memref<1xi32>
+  // CHECK-NEXT: dealloc %5 : memref<256xf32, 1>
+  // CHECK-NEXT: dealloc %4 : memref<1xi32>
+  // CHECK-NEXT: dealloc %3 : memref<256xf32, 1>
   // CHECK-NEXT: return
   for %i = 0 to 256 {
     load %A[%i] : memref<256 x f32>
@@ -95,6 +99,13 @@ func @loop_nest_1d() {
 // OUTGOING DMA for C.
 // CHECK-NEXT:  dma_start [[BUFC]][%c0, %c0], %arg2[%c0, %c0], %c16384, [[TAGC_W]][%c0] : memref<512x32xf32, 1>, memref<512x32xf32>, memref<1xi32>
 // CHECK-NEXT:  dma_wait [[TAGC_W]][%c0], %c16384 : memref<1xi32>
+// CHECK-NEXT:  dealloc [[TAGC_W]] : memref<1xi32>
+// CHECK-NEXT:  dealloc [[TAGC]] : memref<1xi32>
+// CHECK-NEXT:  dealloc [[BUFC]] : memref<512x32xf32, 1>
+// CHECK-NEXT:  dealloc [[TAGA]] : memref<1xi32>
+// CHECK-NEXT:  dealloc [[BUFA]] : memref<512x32xf32, 1>
+// CHECK-NEXT:  dealloc [[TAGB]] : memref<1xi32>
+// CHECK-NEXT:  dealloc [[BUFB]] : memref<512x32xf32, 1>
 // CHECK-NEXT:  return
 // CHECK-NEXT:}
 func @loop_nest_high_d(%A: memref<512 x 32 x f32>,
@@ -144,6 +155,8 @@ func @loop_nest_high_d(%A: memref<512 x 32 x f32>,
 //                    ...
 //                    ...
 // CHECK:           }
+// CHECK-NEXT:      dealloc %3 : memref<1xi32>
+// CHECK-NEXT:      dealloc %2 : memref<1x2xf32, 1>
 // CHECK-NEXT:    }
 // CHECK-NEXT:    return
 func @loop_nest_modulo() {
@@ -183,7 +196,6 @@ func @loop_nest_tiled() -> memref<256x1024xf32> {
       }
     }
   }
-  // CHECK: return %0 : memref<256x1024xf32>
   return %0 : memref<256x1024xf32>
 }
 
@@ -229,7 +241,7 @@ func @dma_with_symbolic_accesses(%A : memref<100x100xf32>, %M : index) {
 // CHECK-NEXT:      %6 = load %1[%4, %5] : memref<100x100xf32, 1>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  return
+// CHECK:       return
 }
 
 // CHECK-LABEL: func @dma_with_symbolic_loop_bounds
@@ -357,6 +369,9 @@ func @multi_load_store_union() {
 // CHECK-NEXT:  }
 // CHECK-NEXT:  dma_start %1[%c0, %c0], %0[%c2, %c2_0], %c170372, %3[%c0], %c512, %c446 : memref<382x446xf32, 1>, memref<512x512xf32>, memref<1xi32>
 // CHECK-NEXT:  dma_wait %3[%c0], %c170372 : memref<1xi32>
+// CHECK-NEXT:  dealloc %3 : memref<1xi32>
+// CHECK-NEXT:  dealloc %2 : memref<1xi32>
+// CHECK-NEXT:  dealloc %1 : memref<382x446xf32, 1>
 // CHECK-NEXT:  return
 // CHECK-NEXT:}
 
@@ -385,6 +400,8 @@ func @dma_loop_straightline_interspersed() {
 // CHECK-NEXT:  dma_start %0[%c0], %1[%c0], %c1_1, %2[%c0] : memref<256xf32>, memref<1xf32, 1>, memref<1xi32>
 // CHECK-NEXT:  dma_wait %2[%c0], %c1_1 : memref<1xi32>
 // CHECK-NEXT:  %3 = load %1[%c0_2] : memref<1xf32, 1>
+// CHECK-NEXT:  dealloc %2 : memref<1xi32>
+// CHECK-NEXT:  dealloc %1 : memref<1xf32, 1>
 // CHECK-NEXT:  %4 = alloc() : memref<254xf32, 1>
 // CHECK-NEXT:  %5 = alloc() : memref<1xi32>
 // CHECK-NEXT:  dma_start %0[%c1_0], %4[%c0], %c254, %5[%c0] : memref<256xf32>, memref<254xf32, 1>, memref<1xi32>
@@ -393,6 +410,8 @@ func @dma_loop_straightline_interspersed() {
 // CHECK-NEXT:    %6 = affine.apply [[MAP_MINUS_ONE]](%i0)
 // CHECK-NEXT:    %7 = load %4[%6] : memref<254xf32, 1>
 // CHECK-NEXT:  }
+// CHECK-NEXT:  dealloc %5 : memref<1xi32>
+// CHECK-NEXT:  dealloc %4 : memref<254xf32, 1>
 // CHECK-NEXT:  %8 = alloc() : memref<256xf32, 1>
 // CHECK-NEXT:  %9 = alloc() : memref<1xi32>
 // CHECK-NEXT:  dma_start %0[%c0], %8[%c0], %c256, %9[%c0] : memref<256xf32>, memref<256xf32, 1>, memref<1xi32>
@@ -402,6 +421,9 @@ func @dma_loop_straightline_interspersed() {
 // CHECK-NEXT:  store %11, %8[%c0_2] : memref<256xf32, 1>
 // CHECK-NEXT:  dma_start %8[%c0], %0[%c0], %c1, %10[%c0] : memref<256xf32, 1>, memref<256xf32>, memref<1xi32>
 // CHECK-NEXT:  dma_wait %10[%c0], %c1 : memref<1xi32>
+// CHECK-NEXT:  dealloc %10 : memref<1xi32>
+// CHECK-NEXT:  dealloc %9 : memref<1xi32>
+// CHECK-NEXT:  dealloc %8 : memref<256xf32, 1>
 // CHECK-NEXT:  return
 
 // -----

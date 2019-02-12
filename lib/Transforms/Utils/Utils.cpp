@@ -91,6 +91,11 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
         !postDomInfo->postDominates(postDomInstFilter, opInst))
       continue;
 
+    // Skip dealloc's - no replacement is necessary, and a replacement doesn't
+    // hurt dealloc's.
+    if (opInst->isa<DeallocOp>())
+      continue;
+
     // Check if the memref was used in a non-deferencing context. It is fine for
     // the memref to be used in a non-deferencing way outside of the region
     // where this replacement is happening.

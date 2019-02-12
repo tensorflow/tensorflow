@@ -124,8 +124,9 @@ static bool doubleBuffer(Value *oldMemRef, OpPointer<AffineForOp> forOp) {
 
   // replaceAllMemRefUsesWith will always succeed unless the forOp body has
   // non-deferencing uses of the memref.
-  if (!replaceAllMemRefUsesWith(oldMemRef, newMemRef, {ivModTwoOp}, AffineMap(),
-                                {}, &*forOp->getBody()->begin())) {
+  if (!replaceAllMemRefUsesWith(
+          oldMemRef, newMemRef, {ivModTwoOp}, AffineMap(), {},
+          /*domInstFilter=*/&*forOp->getBody()->begin())) {
     LLVM_DEBUG(llvm::dbgs()
                    << "memref replacement for double buffering failed\n";);
     ivModTwoOp->getInstruction()->erase();
@@ -284,10 +285,20 @@ PipelineDataTransfer::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
     // If the old memref has no more uses, remove its 'dead' alloc if it was
     // alloc'ed. (note: DMA buffers are rarely function live-in; but a 'dim'
     // operation could have been used on it if it was dynamically shaped in
-    // order to create the double buffer above)
-    if (oldMemRef->use_empty())
-      if (auto *allocInst = oldMemRef->getDefiningInst())
+    // order to create the double buffer above.)
+    // '-canonicalize' does this in a more general way, but we'll anyway do the
+    // simple/common case so that the output / test cases looks clear.
+    if (auto *allocInst = oldMemRef->getDefiningInst()) {
+      if (oldMemRef->use_empty()) {
         allocInst->erase();
+      } else if (oldMemRef->hasOneUse()) {
+        auto *singleUse = oldMemRef->use_begin()->getOwner();
+        if (singleUse->isa<DeallocOp>()) {
+          singleUse->erase();
+          oldMemRef->getDefiningInst()->erase();
+        }
+      }
+    }
   }
 
   // Double the buffers for tag memrefs.

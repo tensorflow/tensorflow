@@ -59,8 +59,6 @@ namespace {
 /// by the latter. Only load op's handled for now.
 // TODO(bondhugula): We currently can't generate DMAs correctly when stores are
 // strided. Check for strided stores.
-// TODO(mlir-team): we don't insert dealloc's for the DMA buffers; this is thus
-// natural only for scoped allocations.
 struct DmaGeneration : public FunctionPass {
   explicit DmaGeneration(
       unsigned slowMemorySpace = 0, unsigned fastMemorySpace = 1,
@@ -331,10 +329,8 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
   Value *fastMemRef;
 
   // Check if a buffer was already created.
-  // TODO(bondhugula): union across all memory op's per buffer. For now assuming
-  // that multiple memory op's on the same memref have the *same* memory
-  // footprint.
-  if (fastBufferMap.count(memref) == 0) {
+  bool existingBuf = fastBufferMap.count(memref) > 0;
+  if (!existingBuf) {
     auto fastMemRefType = top.getMemRefType(
         fastBufferShape, memRefType.getElementType(), {}, fastMemorySpace);
 
@@ -358,6 +354,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
   // Create a tag (single element 1-d memref) for the DMA.
   auto tagMemRefType = top.getMemRefType({1}, top.getIntegerType(32));
   auto tagMemRef = prologue.create<AllocOp>(loc, tagMemRefType);
+
   auto numElementsSSA =
       top.create<ConstantIndexOp>(loc, numElements.getValue());
 
@@ -397,12 +394,22 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
                                     zeroIndex, stride, numEltPerStride);
     // Since new ops are being appended (for outgoing DMAs), adjust the end to
     // mark end of range of the original.
-    if (*nEnd == end)
-      *nEnd = Block::iterator(op->getInstruction());
+    *nEnd = Block::iterator(op->getInstruction());
   }
 
   // Matching DMA wait to block on completion; tag always has a 0 index.
   b->create<DmaWaitOp>(loc, tagMemRef, zeroIndex, numElementsSSA);
+
+  // Generate dealloc for the tag.
+  auto tagDeallocOp = epilogue.create<DeallocOp>(loc, tagMemRef);
+  if (*nEnd == end)
+    // Since new ops are being appended (for outgoing DMAs), adjust the end to
+    // mark end of range of the original.
+    *nEnd = Block::iterator(tagDeallocOp->getInstruction());
+
+  // Generate dealloc for the DMA buffer.
+  if (!existingBuf)
+    epilogue.create<DeallocOp>(loc, fastMemRef);
 
   // Replace all uses of the old memref with the faster one while remapping
   // access indices (subtracting out lower bound offsets for each dimension).

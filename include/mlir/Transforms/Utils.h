@@ -40,10 +40,10 @@ class Module;
 
 class Function;
 
-/// Replaces all uses of oldMemRef with newMemRef while optionally remapping the
-/// old memref's indices using the supplied affine map, 'indexRemap'. The new
-/// memref could be of a different shape or rank. 'extraIndices' provides
-/// additional access indices to be added to the start.
+/// Replaces all "deferencing" uses of oldMemRef with newMemRef while optionally
+/// remapping the old memref's indices using the supplied affine map,
+/// 'indexRemap'. The new memref could be of a different shape or rank.
+/// 'extraIndices' provides additional access indices to be added to the start.
 ///
 /// 'indexRemap' remaps indices of the old memref access to a new set of indices
 /// that are used to index the memref. Additional input operands to indexRemap
@@ -57,9 +57,10 @@ class Function;
 /// operations that are dominated by the former; similarly, `postDomInstFilter`
 /// restricts replacement to only those operations that are postdominated by it.
 ///
-/// Returns true on success and false if the replacement is not possible
-/// (whenever a memref is used as an operand in a non-deferencing scenario). See
-/// comments at function definition for an example.
+/// Returns true on success and false if the replacement is not possible,
+/// whenever a memref is used as an operand in a non-deferencing context, except
+/// for dealloc's on the memref which are left untouched. See comments at
+/// function definition for an example.
 //
 //  Ex: to replace load %A[%i, %j] with load %Abuf[%t mod 2, %ii - %i, %j]:
 //  The SSA value corresponding to '%t mod 2' should be in 'extraIndices', and
