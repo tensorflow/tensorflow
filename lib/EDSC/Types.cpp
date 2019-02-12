@@ -108,42 +108,42 @@ unsigned &mlir::edsc::Expr::newId() {
   return ++id;
 }
 
-Expr mlir::edsc::Expr::operator+(Expr other) const {
-  return BinaryExpr(ExprKind::Add, *this, other);
+Expr mlir::edsc::op::operator+(Expr lhs, Expr rhs) {
+  return BinaryExpr(ExprKind::Add, lhs, rhs);
 }
-Expr mlir::edsc::Expr::operator-(Expr other) const {
-  return BinaryExpr(ExprKind::Sub, *this, other);
+Expr mlir::edsc::op::operator-(Expr lhs, Expr rhs) {
+  return BinaryExpr(ExprKind::Sub, lhs, rhs);
 }
-Expr mlir::edsc::Expr::operator*(Expr other) const {
-  return BinaryExpr(ExprKind::Mul, *this, other);
+Expr mlir::edsc::op::operator*(Expr lhs, Expr rhs) {
+  return BinaryExpr(ExprKind::Mul, lhs, rhs);
 }
 
-Expr mlir::edsc::Expr::operator==(Expr other) const {
-  return BinaryExpr(ExprKind::EQ, *this, other);
+Expr mlir::edsc::op::operator==(Expr lhs, Expr rhs) {
+  return BinaryExpr(ExprKind::EQ, lhs, rhs);
 }
-Expr mlir::edsc::Expr::operator!=(Expr other) const {
-  return BinaryExpr(ExprKind::NE, *this, other);
+Expr mlir::edsc::op::operator!=(Expr lhs, Expr rhs) {
+  return BinaryExpr(ExprKind::NE, lhs, rhs);
 }
-Expr mlir::edsc::Expr::operator<(Expr other) const {
-  return BinaryExpr(ExprKind::LT, *this, other);
+Expr mlir::edsc::op::operator<(Expr lhs, Expr rhs) {
+  return BinaryExpr(ExprKind::LT, lhs, rhs);
 }
-Expr mlir::edsc::Expr::operator<=(Expr other) const {
-  return BinaryExpr(ExprKind::LE, *this, other);
+Expr mlir::edsc::op::operator<=(Expr lhs, Expr rhs) {
+  return BinaryExpr(ExprKind::LE, lhs, rhs);
 }
-Expr mlir::edsc::Expr::operator>(Expr other) const {
-  return BinaryExpr(ExprKind::GT, *this, other);
+Expr mlir::edsc::op::operator>(Expr lhs, Expr rhs) {
+  return BinaryExpr(ExprKind::GT, lhs, rhs);
 }
-Expr mlir::edsc::Expr::operator>=(Expr other) const {
-  return BinaryExpr(ExprKind::GE, *this, other);
+Expr mlir::edsc::op::operator>=(Expr lhs, Expr rhs) {
+  return BinaryExpr(ExprKind::GE, lhs, rhs);
 }
-Expr mlir::edsc::Expr::operator&&(Expr other) const {
-  return BinaryExpr(ExprKind::And, *this, other);
+Expr mlir::edsc::op::operator&&(Expr lhs, Expr rhs) {
+  return BinaryExpr(ExprKind::And, lhs, rhs);
 }
-Expr mlir::edsc::Expr::operator||(Expr other) const {
-  return BinaryExpr(ExprKind::Or, *this, other);
+Expr mlir::edsc::op::operator||(Expr lhs, Expr rhs) {
+  return BinaryExpr(ExprKind::Or, lhs, rhs);
 }
-Expr mlir::edsc::Expr::operator!() const {
-  return UnaryExpr(ExprKind::Negate, *this);
+Expr mlir::edsc::op::operator!(Expr expr) {
+  return UnaryExpr(ExprKind::Negate, expr);
 }
 
 llvm::SmallVector<Expr, 8> mlir::edsc::makeNewExprs(unsigned n) {

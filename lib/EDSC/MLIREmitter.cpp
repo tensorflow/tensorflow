@@ -207,6 +207,8 @@ Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
       assert(a->getType().isInteger(1) && "Logical Or expects i1 LHS");
       assert(b->getType().isInteger(1) && "Logical Or expects i1 RHS");
       // a || b = not (not a && not b)
+      using edsc::op::operator!;
+      using edsc::op::operator&&;
       res = emitExpr(!(!lhs && !rhs));
     } // TODO(ntv): signed vs unsiged ??
       // TODO(ntv): integer vs not ??
@@ -653,6 +655,7 @@ void bindMemRefView(edsc_mlir_emitter_t emitter, edsc_expr_t boundMemRef,
 
 #define DEFINE_EDSL_BINARY_OP(FUN_NAME, OP_SYMBOL)                             \
   edsc_expr_t FUN_NAME(edsc_expr_t e1, edsc_expr_t e2) {                       \
+    using edsc::op::operator OP_SYMBOL;                                        \
     return Expr(e1) OP_SYMBOL Expr(e2);                                        \
   }
 
@@ -672,7 +675,10 @@ DEFINE_EDSL_BINARY_OP(Or, ||);
 #undef DEFINE_EDSL_BINARY_OP
 
 #define DEFINE_EDSL_UNARY_OP(FUN_NAME, OP_SYMBOL)                              \
-  edsc_expr_t FUN_NAME(edsc_expr_t e) { return (OP_SYMBOL(Expr(e))); }
+  edsc_expr_t FUN_NAME(edsc_expr_t e) {                                        \
+    using edsc::op::operator OP_SYMBOL;                                        \
+    return (OP_SYMBOL(Expr(e)));                                               \
+  }
 
 DEFINE_EDSL_UNARY_OP(Negate, !);
 

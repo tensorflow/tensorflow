@@ -163,6 +163,7 @@ template <typename VectorTransferOpTy>
 VectorTransferAccessInfo
 VectorTransferRewriter<VectorTransferOpTy>::makeVectorTransferAccessInfo() {
   using namespace mlir::edsc;
+  using namespace edsc::op;
 
   // Create new Exprs for ivs, they will be bound at `For` Stmt
   // construction.

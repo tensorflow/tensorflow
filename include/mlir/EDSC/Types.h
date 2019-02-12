@@ -192,22 +192,6 @@ public:
   void dump() const;
   std::string str() const;
 
-  /// Creates the BinaryExpr corresponding to the operator.
-  Expr operator+(Expr other) const;
-  Expr operator-(Expr other) const;
-  Expr operator*(Expr other) const;
-  /// In particular operator==, operator!= return a new Expr and *not* a bool.
-  Expr operator==(Expr other) const;
-  Expr operator!=(Expr other) const;
-  Expr operator<(Expr other) const;
-  Expr operator<=(Expr other) const;
-  Expr operator>(Expr other) const;
-  Expr operator>=(Expr other) const;
-  /// NB: Unlike boolean && and || these do not short-circuit.
-  Expr operator&&(Expr other) const;
-  Expr operator||(Expr other) const;
-  Expr operator!() const;
-
   /// For debugging purposes.
   const void *getStoragePtr() const { return storage; }
 
@@ -371,21 +355,70 @@ struct Stmt {
   Expr getRHS() const;
   llvm::ArrayRef<Stmt> getEnclosedStmts() const;
 
-  Expr operator+(Stmt other) const { return getLHS() + other.getLHS(); }
-  Expr operator-(Stmt other) const { return getLHS() - other.getLHS(); }
-  Expr operator*(Stmt other) const { return getLHS() * other.getLHS(); }
-
-  Expr operator<(Stmt other) const { return getLHS() < other.getLHS(); }
-  Expr operator<=(Stmt other) const { return getLHS() <= other.getLHS(); }
-  Expr operator>(Stmt other) const { return getLHS() > other.getLHS(); }
-  Expr operator>=(Stmt other) const { return getLHS() >= other.getLHS(); }
-  Expr operator&&(Stmt other) const { return getLHS() && other.getLHS(); }
-  Expr operator||(Stmt other) const { return getLHS() || other.getLHS(); }
-  Expr operator!() const { return !getLHS(); }
-
 protected:
   ImplType *storage;
 };
+
+/// These operator build new expressions from the given expressions. Some of
+/// them are unconventional, which mandated extracting them to a separate
+/// namespace.  The indended use is as follows.
+///
+///    using namespace edsc;
+///    Expr e1, e2, condition
+///    {
+///      using namespace edsc::op;
+///      condition = !(e1 && e2);  // this is a negation expression
+///    }
+///    if (!condition)             // this is a nullity check
+///      reportError();
+///
+namespace op {
+/// Creates the BinaryExpr corresponding to the operator.
+Expr operator+(Expr lhs, Expr rhs);
+Expr operator-(Expr lhs, Expr rhs);
+Expr operator*(Expr lhs, Expr rhs);
+/// In particular operator==, operator!= return a new Expr and *not* a bool.
+Expr operator==(Expr lhs, Expr rhs);
+Expr operator!=(Expr lhs, Expr rhs);
+Expr operator<(Expr lhs, Expr rhs);
+Expr operator<=(Expr lhs, Expr rhs);
+Expr operator>(Expr lhs, Expr rhs);
+Expr operator>=(Expr lhs, Expr rhs);
+/// NB: Unlike boolean && and || these do not short-circuit.
+Expr operator&&(Expr lhs, Expr rhs);
+Expr operator||(Expr lhs, Expr rhs);
+Expr operator!(Expr expr);
+
+inline Expr operator+(Stmt lhs, Stmt rhs) {
+  return lhs.getLHS() + rhs.getLHS();
+}
+inline Expr operator-(Stmt lhs, Stmt rhs) {
+  return lhs.getLHS() - rhs.getLHS();
+}
+inline Expr operator*(Stmt lhs, Stmt rhs) {
+  return lhs.getLHS() * rhs.getLHS();
+}
+
+inline Expr operator<(Stmt lhs, Stmt rhs) {
+  return lhs.getLHS() < rhs.getLHS();
+}
+inline Expr operator<=(Stmt lhs, Stmt rhs) {
+  return lhs.getLHS() <= rhs.getLHS();
+}
+inline Expr operator>(Stmt lhs, Stmt rhs) {
+  return lhs.getLHS() > rhs.getLHS();
+}
+inline Expr operator>=(Stmt lhs, Stmt rhs) {
+  return lhs.getLHS() >= rhs.getLHS();
+}
+inline Expr operator&&(Stmt lhs, Stmt rhs) {
+  return lhs.getLHS() && rhs.getLHS();
+}
+inline Expr operator||(Stmt lhs, Stmt rhs) {
+  return lhs.getLHS() || rhs.getLHS();
+}
+inline Expr operator!(Stmt stmt) { return !stmt.getLHS(); }
+} // end namespace op
 
 template <typename U> bool Expr::isa() const {
   auto kind = getKind();
@@ -530,9 +563,18 @@ struct Indexed {
   operator Expr() { return load(base, indices); }
 
   /// Operator overloadings.
-  Expr operator+(Expr e) { return load(base, indices) + e; }
-  Expr operator-(Expr e) { return load(base, indices) - e; }
-  Expr operator*(Expr e) { return load(base, indices) * e; }
+  Expr operator+(Expr e) {
+    using op::operator+;
+    return load(base, indices) + e;
+  }
+  Expr operator-(Expr e) {
+    using op::operator-;
+    return load(base, indices) - e;
+  }
+  Expr operator*(Expr e) {
+    using op::operator*;
+    return load(base, indices) * e;
+  }
 
 private:
   Expr base;

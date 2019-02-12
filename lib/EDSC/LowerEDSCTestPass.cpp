@@ -79,6 +79,7 @@ PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
 
     edsc::ScopedEDSCContext context;
     edsc::Expr lb1, lb2, ub1, ub2, step;
+    using namespace edsc::op;
     auto lb = lb1 - lb2;
     auto ub = ub1 + ub2;
     auto loop = edsc::For(lb, ub, step, {});
