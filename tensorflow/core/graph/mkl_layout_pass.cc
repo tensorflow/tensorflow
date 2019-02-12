@@ -291,10 +291,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.pad = "Pad";
     csinfo_.pad_with_conv2d = "__MklDummyPadWithConv2D";
     csinfo_.pad_with_fused_conv2d = "__MklDummyPadWithFusedConv2D";
-// Temporarily don't convert quantized operators into MKL versions for now.
-// TODO(Intel-tf) Once all the relevant PRs have been merged then remove
-// the ifdef.
-#ifdef INTEL_MKL_QUANTIZED
     csinfo_.quantized_avg_pool = "QuantizedAvgPool";
     csinfo_.quantized_concatv2 = "QuantizedConcatV2";
     csinfo_.quantized_conv2d = "QuantizedConv2D";
@@ -316,14 +312,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         "QuantizedConv2DWithBiasSumAndReluAndRequantize";
     csinfo_.quant_conv2d_with_bias_signed_sum_and_relu_and_requantize =
         "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize";
-#endif
     csinfo_.relu = "Relu";
     csinfo_.relu_grad = "ReluGrad";
     csinfo_.relu6 = "Relu6";
     csinfo_.relu6_grad = "Relu6Grad";
-#ifdef INTEL_MKL_QUANTIZED
     csinfo_.requantize = "Requantize";
-#endif
     csinfo_.tanh = "Tanh";
     csinfo_.tanh_grad = "TanhGrad";
     csinfo_.reshape = "Reshape";
@@ -443,7 +436,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.pad_with_fused_conv2d,
                       csinfo_.mkl_pad_with_fused_conv2d,
                       CopyAttrsPadWithFusedConv2D, AlwaysRewrite});
-#ifdef INTEL_MKL_QUANTIZED
     rinfo_.push_back({csinfo_.quantized_avg_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_avg_pool),
                       CopyAttrsQuantizedPooling, AlwaysRewrite});
@@ -499,7 +491,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          mkl_op_registry::GetMklOpName(
              csinfo_.quant_conv2d_with_bias_signed_sum_and_relu_and_requantize),
          CopyAttrsQuantizedConv2D, AlwaysRewrite});
-#endif
     rinfo_.push_back({csinfo_.relu, mkl_op_registry::GetMklOpName(csinfo_.relu),
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.relu_grad,
@@ -511,11 +502,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.relu6_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.relu6_grad),
                       CopyAttrsDataType, AlwaysRewrite});
-#ifdef INTEL_MKL_QUANTIZED
     rinfo_.push_back({csinfo_.requantize,
                       mkl_op_registry::GetMklOpName(csinfo_.requantize),
                       CopyAttrsRequantize, AlwaysRewrite});
-#endif
     /*
     rinfo_.push_back({csinfo_.tanh,
                       mkl_op_registry::GetMklOpName(csinfo_.tanh),
@@ -3187,9 +3176,7 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
   // Set the Mkl layer label for this op.
   if (DataTypeIsQuantized(orig_node->input_type(0)) ||
       DataTypeIsQuantized(orig_node->output_type(0))) {
-#ifdef INTEL_MKL_QUANTIZED
     nb.Attr("_kernel", mkl_op_registry::kMklQuantizedOpLabel);
-#endif
   } else {
     nb.Attr("_kernel", mkl_op_registry::kMklOpLabel);
   }
@@ -3243,7 +3230,6 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
 // Current implementation reflects only QuantizedConv2D and its fused Ops.
 const MklLayoutRewritePass::RewriteInfo*
 MklLayoutRewritePass::CheckForQuantizedNodeRewrite(const Node* n) const {
-#ifdef INTEL_MKL_QUANTIZED
   DataType Tinput, Tfilter;
   if (!(GetNodeAttr(n->def(), "Tinput", &Tinput).ok() &&
         GetNodeAttr(n->def(), "Tfilter", &Tfilter).ok())) {
@@ -3257,7 +3243,6 @@ MklLayoutRewritePass::CheckForQuantizedNodeRewrite(const Node* n) const {
       }
     }
   }
-#endif
   return nullptr;
 }
 
