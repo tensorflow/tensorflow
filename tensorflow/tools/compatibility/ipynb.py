@@ -23,50 +23,34 @@ import json
 import shutil
 import tempfile
 
-
-from tensorflow.tools.compatibility import ast_edits
-from tensorflow.tools.compatibility import tf_upgrade_v2
-
-
 CodeLine = collections.namedtuple('CodeLine', ['cell_number', 'code'])
 
 
-def process_file(in_filename, out_filename):
+def process_file(in_filename, out_filename, upgrader):
   """The function where we inject the support for ipynb upgrade."""
-  upgrader = ast_edits.ASTCodeUpgrader(tf_upgrade_v2.TFAPIChangeSpec())
+  print("Extracting code lines from original notebook")
+  raw_code, notebook = _get_code(in_filename)
+  raw_lines = [cl.code for cl in raw_code]
 
-  if in_filename.endswith('.py'):
-    files_processed, report_text, errors = \
-      upgrader.process_file(in_filename, out_filename)
+  # The function follows the original flow from `upgrader.process_fil`
+  with tempfile.NamedTemporaryFile("w", delete=False) as temp_file:
 
-  elif in_filename.endswith('.ipynb'):
-    print("Extracting code lines from original notebook")
-    raw_code, notebook = _get_code(in_filename)
-    raw_lines = [cl.code for cl in raw_code]
+    processed_file, new_file_content, log, process_errors = (
+      upgrader.update_string_pasta("\n".join(raw_lines), in_filename))
 
-    # The function follows the original flow from `upgrader.process_fil`
-    with tempfile.NamedTemporaryFile("w", delete=False) as temp_file:
+    if temp_file and processed_file:
+      new_notebook = _update_notebook(
+        notebook, raw_code, new_file_content.split("\n"))
+      json.dump(new_notebook, temp_file)
+    else:
+      raise SyntaxError(
+        "Was not able to process the file: \n%s\n" % ''.join(log))
 
-      processed_file, new_file_content, log, process_errors = (
-        upgrader.update_string_pasta("\n".join(raw_lines), in_filename))
+    files_processed = processed_file
+    report_text = upgrader._format_log(log, in_filename, out_filename)
+    errors = process_errors
 
-      if temp_file and processed_file:
-        new_notebook = _update_notebook(
-          notebook, raw_code, new_file_content.split("\n"))
-        json.dump(new_notebook, temp_file)
-      else:
-        raise SyntaxError(
-          "Was not able to process the file: \n%s\n" % ''.join(log))
-
-      files_processed = processed_file
-      report_text = upgrader._format_log(log, in_filename, out_filename)
-      errors = process_errors
-
-    shutil.move(temp_file.name, out_filename)
-
-  else:
-    raise NotImplementedError(
-      "Currently converter only supports python or ipynb")
+  shutil.move(temp_file.name, out_filename)
 
   return files_processed, report_text, errors
 
