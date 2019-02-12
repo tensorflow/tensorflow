@@ -4330,6 +4330,7 @@ def conv1d_transpose(
 
     input = array_ops.expand_dims(input, spatial_start_dim)
     filters = array_ops.expand_dims(filters, 0)  # pylint: disable=redefined-builtin
+    output_shape = list(output_shape)
     output_shape = output_shape[: spatial_start_dim] + [1] + \
                    output_shape[spatial_start_dim:]
 
