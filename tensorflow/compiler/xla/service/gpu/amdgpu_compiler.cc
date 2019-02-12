@@ -76,6 +76,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
@@ -179,12 +180,9 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       // elimination has to come after that pass.
       pipeline.AddPass<ZeroSizedHloElimination>();
 
-      //pipeline.AddPass<ScatterExpander>();
-      AlgebraicSimplifierOptions options(
-          [](const Shape&, const Shape&) { return false; });
-      options.set_enable_permutation_sort_replacement(true);
+      AlgebraicSimplifierOptions options;
       pass.AddPass<AlgebraicSimplifier>(options);
-
+      pass.AddPass<SortSimplifier>();
       pass.AddPass<TupleSimplifier>();
       pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<WhileLoopSimplifier>();
@@ -192,6 +190,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       pass.AddPass<ReshapeMover>();
       pass.AddPass<HloConstantFolding>();
       pass.AddPass<ConditionalSimplifier>();
+
     }
 
     pipeline.AddPass<TransposeFolding>(
@@ -214,14 +213,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
                                               /*allow_mixed_precision=*/false);
     pipeline.AddPass<CudnnConvRewriter>();
     pipeline.AddPass<CudnnFusedConvRewriter>();
-    pipeline.AddPass<CudnnConvPaddingLegalization>();
-    pipeline.AddPass<CudnnConvPadForTensorCores>();
-    // CudnnConvPadForTensorCores leaves behind unnecessary
-    // tuple/get-tuple-element pairs that TupleSimplifier fixes.
-    pipeline.AddPass<TupleSimplifier>();
-    // CudnnConvRewriter, CudnnConvPaddingLegalization and
-    // CudnnConvPadForTensorCores may add instructions which can be simplified
-    // by constant folding.
 
     pipeline.AddPass<HloConstantFolding>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
@@ -251,12 +242,8 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
 
      // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-    AlgebraicSimplifierOptions options(
-        /*valid_bitcast_callback=*/[](const Shape&, const Shape&) {
-          return true;
-        });
+    AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
-    options.set_enable_permutation_sort_replacement(true);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
 
