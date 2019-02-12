@@ -4222,8 +4222,10 @@ TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
   std::tie(m, k, n, element_type) = GetParam();
 
   Shape dot_shape = ShapeUtil::MakeShape(element_type, {1, 3, 5, m, n});
-  Shape lhs_shape = ShapeUtil::MakeShape(element_type, {1, 3, 5, m, k});
-  Shape rhs_shape = ShapeUtil::MakeShape(element_type, {1, 3, 5, k, n});
+  Shape lhs_shape = k > 0 ? ShapeUtil::MakeShape(element_type, {1, 3, 5, m, k})
+                          : ShapeUtil::MakeShape(element_type, {1, 3, 5, m});
+  Shape rhs_shape = k > 0 ? ShapeUtil::MakeShape(element_type, {1, 3, 5, k, n})
+                          : ShapeUtil::MakeShape(element_type, {1, 3, 5, n});
   HloComputation::Builder builder(TestName());
 
   auto lhs = builder.AddInstruction(
@@ -4237,14 +4239,16 @@ TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
   dot_dnums.add_rhs_batch_dimensions(0);
   dot_dnums.add_rhs_batch_dimensions(1);
   dot_dnums.add_rhs_batch_dimensions(2);
-  dot_dnums.add_lhs_contracting_dimensions(4);
-  dot_dnums.add_rhs_contracting_dimensions(3);
+  if (k > 0) {
+    dot_dnums.add_lhs_contracting_dimensions(4);
+    dot_dnums.add_rhs_contracting_dimensions(3);
+  }
   builder.AddInstruction(HloInstruction::CreateDot(
       dot_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
   auto computation = module->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(module.get()));
-  const bool dot_should_be_transformed = m == 1 || k == 1 || n == 1;
+  const bool dot_should_be_transformed = m == 1 || k == 1 || n == 1 || k == -1;
   const bool computation_should_be_modified = dot_should_be_transformed;
   EXPECT_EQ(changed, computation_should_be_modified);
   bool has_no_dot = true;
@@ -4259,7 +4263,7 @@ TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
 
 INSTANTIATE_TEST_SUITE_P(
     BatchDotStrengthReductionTestInstantiation, BatchDotStrengthReductionTest,
-    ::testing::Combine(::testing::Values(1, 2), ::testing::Values(1, 2),
+    ::testing::Combine(::testing::Values(1, 2), ::testing::Values(-1, 1, 2),
                        ::testing::Values(1, 2), ::testing::Values(F32, BF16)));
 
 class DotStrengthReductionTest
