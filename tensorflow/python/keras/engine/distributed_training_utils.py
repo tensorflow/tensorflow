@@ -67,7 +67,7 @@ def set_weights(distribution_strategy, dist_model, weights):
     weights = weights[num_param:]
 
   if not ops.executing_eagerly_outside_functions():
-    K.get_session().run(assign_ops)
+    K.get_session(assign_ops).run(assign_ops)
 
 
 def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
@@ -522,7 +522,7 @@ def initialize_iterator(iterator, distribution_strategy):
   with distribution_strategy.scope():
     init_op = control_flow_ops.group(iterator.initialize())
     if not context.executing_eagerly():
-      K.get_session().run(init_op)
+      K.get_session((init_op,)).run(init_op)
 
 
 def _get_input_from_iterator(iterator, model):

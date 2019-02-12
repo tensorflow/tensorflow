@@ -2318,13 +2318,15 @@ class Model(Network):
       if shuffle:
         training_utils.verify_dataset_shuffled(x)
 
-    if ops.executing_eagerly_outside_functions():
-      session = None
-    else:
-      session = K.get_session()
-
     strategy = self._distribution_strategy
     with strategy.scope():
+      # We should be sure to call get_session() inside the strategy.scope()
+      # so the strategy can affect the session options.
+      if ops.executing_eagerly_outside_functions():
+        session = None
+      else:
+        session = K.get_session()
+
       first_x_value = nest.flatten(x)[0]
       if isinstance(first_x_value, np.ndarray):
         x = distributed_training_utils.list_to_tuple(x)
