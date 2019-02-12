@@ -88,8 +88,8 @@ DEPENDENCY_BLACKLIST = [
     "//tensorflow/python/feature_column:vocabulary_testdata",
     "//tensorflow/python:framework/test_file_system.so",
     # lite
-    "//tensorflow/lite/experimental/examples/lstm:tflite_lstm",
-    "//tensorflow/lite/experimental/examples/lstm:tflite_lstm.py",
+    "//tensorflow/lite/experimental/examples/lstm:rnn_cell",
+    "//tensorflow/lite/experimental/examples/lstm:rnn_cell.py",
     "//tensorflow/lite/experimental/examples/lstm:unidirectional_sequence_lstm_test",  # pylint:disable=line-too-long
     "//tensorflow/lite/experimental/examples/lstm:unidirectional_sequence_lstm_test.py",  # pylint:disable=line-too-long
     "//tensorflow/lite/python:interpreter",
