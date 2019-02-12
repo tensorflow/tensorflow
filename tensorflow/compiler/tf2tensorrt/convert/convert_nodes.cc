@@ -2473,7 +2473,7 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
       return tensorflow::errors::Unimplemented(
           "Negative or zero stride values are not supported for StridedSlice, "
           "at ",
-          node_def.op());
+          node_def.name());
     }
   }
   // TRT Slice layer uses (begin, size) instead of (begin, end)
