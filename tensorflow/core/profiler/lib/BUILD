@@ -53,7 +53,6 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/internal:traceme_recorder",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
     ],
 )

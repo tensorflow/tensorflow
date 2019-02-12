@@ -363,7 +363,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--only_test_core_api',
       type=bool,
-      default=False,
+      default=True,  # only_test_core_api default value
       help=_ONLY_TEST_CORE_API_HELP)
   parser.add_argument(
       '--verbose_diffs', type=bool, default=True, help=_VERBOSE_DIFFS_HELP)

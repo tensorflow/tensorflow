@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
-#include "tensorflow/compiler/xla/client/lib/triangular_solve.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -194,12 +193,12 @@ XlaOp Cholesky(XlaOp a, int64 block_size,
         // l[i+k:, i:i+k] =
         //     trsm_right_transpose(l[i:i+k, i:i+k], a[i+k:, i:i+k])
         auto panel = SliceInMinorDims(a, {i + k, i}, {n, i + k});
-        auto update = TriangularSolve(factorized, panel,
-                                      /*left_side=*/false,
-                                      /*lower=*/true,
-                                      /*transpose_a=*/true,
-                                      /*conjugate_a=*/false,
-                                      /*block_size=*/block_size);
+        auto update =
+            TriangularSolve(factorized, panel,
+                            /*left_side=*/false,
+                            /*lower=*/true,
+                            /*unit_diagonal=*/false,
+                            /*transpose_a=*/TriangularSolveOptions::TRANSPOSE);
         l = UpdateSliceInMinorDims(l, update, {i + k, i});
       }
     }

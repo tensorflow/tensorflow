@@ -77,7 +77,6 @@ namespace {
 using llvm_ir::AsStringRef;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
-namespace gtl = tensorflow::gtl;
 }  // namespace
 
 namespace cpu {
@@ -517,6 +516,7 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
     case U8:
     case S16:
     case U16:
+    case BF16:
     case F16:
     case S32:
     case U32:
@@ -577,72 +577,14 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
     lower_dimensions *= normalized_keys_shape.dimensions(i);
   }
 
-  llvm::FunctionType* less_than_type = llvm::FunctionType::get(
-      b_.getInt1Ty(), {b_.getInt8PtrTy(), b_.getInt8PtrTy()},
-      /*isVarArg=*/false);
-  auto less_than_function = llvm_ir::CreateFunction(
-      less_than_type, llvm::GlobalValue::InternalLinkage,
-      /*enable_fast_math=*/false,
-      /*optimize_for_size=*/true, absl::StrCat(IrName(sort), "_comparator"),
-      module_);
-  // Emit the code for the less_than function.
-  {
-    llvm::IRBuilder<>::InsertPointGuard guard(b_);
-
-    auto* entry_bb =
-        llvm::BasicBlock::Create(b_.getContext(), "entry", less_than_function);
-
-    b_.SetInsertPoint(entry_bb);
-    auto keys_ir_type = llvm_ir::PrimitiveTypeToIrType(keys_type, module_);
-    CHECK_EQ(less_than_function->arg_size(), 2);
-    llvm::Value* keys_lhs_ptr = less_than_function->arg_begin();
-    keys_lhs_ptr = PointerCast(keys_lhs_ptr, keys_ir_type->getPointerTo());
-    llvm::Value* keys_rhs_ptr = less_than_function->arg_begin() + 1;
-    keys_rhs_ptr = PointerCast(keys_rhs_ptr, keys_ir_type->getPointerTo());
-
-    // TODO(b/122298745): Replace the custom compare logic with a call to the
-    // computation specified for the Sort op.
-    llvm::Value* keys_lhs = Load(keys_ir_type, keys_lhs_ptr);
-    llvm::Value* keys_rhs = Load(keys_ir_type, keys_rhs_ptr);
-    bool is_signed_comparison = true;
-    if (primitive_util::IsFloatingPointType(keys_type)) {
-      // We would like a total order of floating point numbers so that the
-      // sort has a predictable behavior in the presence of NaNs. Rather
-      // than using floating point comparison, we use the following trick:
-      // If f is a float, and
-      // x = bit_cast<int32>(f);
-      // y = x < 0 ? 0x7FFFFFFF - x : x;
-      // then y is ordered as an int32 such that finite values have the
-      // obvious order, -0 is ordered before 0, and -NaN and NaN appear at
-      // the beginning and end of the ordering.
-      auto k = b_.getInt(llvm::APInt::getSignedMaxValue(
-          keys_lhs->getType()->getPrimitiveSizeInBits()));
-      auto comparison_type = k->getType();
-      auto zero = llvm::ConstantInt::get(comparison_type, 0);
-      auto maybe_flip = [&](llvm::Value* v) {
-        return b_.CreateSelect(b_.CreateICmp(llvm::ICmpInst::ICMP_SLT, v, zero),
-                               b_.CreateSub(k, v), v);
-      };
-      keys_lhs = b_.CreateBitCast(keys_lhs, comparison_type);
-      keys_rhs = b_.CreateBitCast(keys_rhs, comparison_type);
-      keys_lhs = maybe_flip(keys_lhs);
-      keys_rhs = maybe_flip(keys_rhs);
-    } else if (!primitive_util::IsSignedIntegralType(keys_type)) {
-      is_signed_comparison = false;
-    }
-    llvm::Value* result =
-        b_.CreateICmp(is_signed_comparison ? llvm::ICmpInst::ICMP_SLT
-                                           : llvm::ICmpInst::ICMP_ULT,
-                      keys_lhs, keys_rhs);
-    llvm::ReturnInst::Create(b_.getContext(),
-                             /*retVal=*/result, entry_bb);
-  }
-
+  auto less_than_function = FindOrDie(emitted_functions_, sort->to_apply());
+  CHECK(absl::c_binary_search(thread_local_computations_, sort->to_apply()));
   llvm::FunctionType* key_value_sort_type = llvm::FunctionType::get(
       b_.getVoidTy(),
       {b_.getInt64Ty(), b_.getInt64Ty(), b_.getInt64Ty(),
        b_.getInt8PtrTy()->getPointerTo(), b_.getInt32Ty(),
-       b_.getInt32Ty()->getPointerTo(), less_than_function->getType()},
+       b_.getInt32Ty()->getPointerTo(), b_.getInt8PtrTy(),
+       b_.getInt64Ty()->getPointerTo(), less_than_function->getType()},
       /*isVarArg=*/false);
   auto* key_value_sort_func = llvm::dyn_cast<llvm::Function>(
       module_
@@ -673,7 +615,9 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
   Call(key_value_sort_func,
        {b_.getInt64(higher_dimensions), b_.getInt64(sort_dimension_elements),
         b_.getInt64(lower_dimensions), values,
-        b_.getInt32(sort->operand_count()), sizes, less_than_function});
+        b_.getInt32(sort->operand_count()), sizes,
+        GetExecutableRunOptionsArgument(), GetProfileCountersArgument(),
+        less_than_function});
 
   if (sort->values_count() > 0) {
     llvm_ir::EmitTuple(GetIrArrayFor(sort), destination_addresses, &b_,
@@ -1914,7 +1858,7 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduce(
 }
 
 Status IrEmitter::HandleReduce(HloInstruction* reduce) {
-  // TODO(b/112040122): Support variadic reduce.
+  // TODO(b/118333695): Support variadic reduce.
   if (!reduce->shape().IsArray()) {
     return Unimplemented("Variadic reduce is not supported on CPU");
   }

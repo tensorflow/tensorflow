@@ -1011,6 +1011,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
     case HloOpcode::kFft:
+    case HloOpcode::kTriangularSolve:
       return kDarkBlue;
     case HloOpcode::kReducePrecision:
       return kRed;
@@ -1517,8 +1518,7 @@ string DumpGraph(const HloComputation& computation, const string& label,
 }
 
 string DumpNeighborhoodAround(
-    const HloInstruction& node, int radius,
-    bool show_backend_config,
+    const HloInstruction& node, int radius, bool show_backend_config,
     const absl::flat_hash_set<const HloInstruction*>& boundary) {
   auto debug_options = node.GetModule()->config().debug_options();
   string label =

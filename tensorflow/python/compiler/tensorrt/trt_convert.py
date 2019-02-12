@@ -19,27 +19,19 @@ from __future__ import division
 from __future__ import print_function
 
 import six as _six
-# pylint: disable=unused-import,line-too-long
 from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
-from tensorflow.python.compiler.tensorrt.wrap_conversion import add_test_value
-from tensorflow.python.compiler.tensorrt.wrap_conversion import calib_convert
-from tensorflow.python.compiler.tensorrt.wrap_conversion import clear_test_values
-from tensorflow.python.compiler.tensorrt.wrap_conversion import enable_test_value
-from tensorflow.python.compiler.tensorrt.wrap_conversion import get_linked_tensorrt_version
-from tensorflow.python.compiler.tensorrt.wrap_conversion import get_loaded_tensorrt_version
-from tensorflow.python.compiler.tensorrt.wrap_conversion import get_test_value
-from tensorflow.python.compiler.tensorrt.wrap_conversion import is_tensorrt_enabled
-# pylint: enable=unused-import,line-too-long
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl as _impl
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.grappler import tf_optimizer
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import loader
@@ -86,7 +78,20 @@ class GraphConverter(object):
   my_converter.save(output_saved_model_dir)  # Optional
   ```
 
-  TODO(laigd): add calibration support.
+  To run the conversion with quantization calibration:
+
+  ```python
+  my_converter = MyGraphConverter(input_saved_model_dir="my_dir")
+  my_converter.convert()
+
+  # Run calibration 10 times.
+  converted_graph_def = my_converter.calibrate(
+      fetch_names=['output:0'],
+      num_runs=10,
+      feed_dict_fn=lambda: {'input:0': my_next_data()})
+
+  my_converter.save(output_saved_model_dir)  # Optional
+  ```
   """
 
   def __init__(self,
@@ -129,6 +134,11 @@ class GraphConverter(object):
     self._input_saved_model_tags = (
         input_saved_model_tags or [tag_constants.SERVING])
     self._session_config = session_config or config_pb2.ConfigProto()
+
+    # For calibration usage.
+    self._calibration_graph = None
+    self._calibration_sess = None
+    self._calibration_data_collected = False
 
   def get_rewriter_config(self, rewriter_config_template=None):
     """Returns a RewriterConfig proto for TRT transformation.
@@ -249,6 +259,63 @@ class GraphConverter(object):
       self._convert_saved_model()
     return self._converted_graph_def
 
+  def calibrate(self,
+                fetch_names,
+                num_runs,
+                feed_dict_fn=None,
+                input_map_fn=None):
+    """Run the calibration and return the calibrated GraphDef.
+
+    Args:
+      fetch_names: a list of output tensor name to fetch during calibration.
+      num_runs: number of runs of the graph during calibration.
+      feed_dict_fn: a function that returns a dictionary mapping input names (as
+        strings) in the GraphDef to be calibrated to values (e.g. Python list,
+        numpy arrays, etc). One and only one of `feed_dict_fn` and
+        `input_map_fn` should be specified.
+      input_map_fn: a function that returns a dictionary mapping input names (as
+        strings) in the GraphDef to be calibrated to Tensor objects. The values
+        of the named input tensors in the GraphDef to be calibrated will be
+        re-mapped to the respective `Tensor` values during calibration. One and
+        only one of `feed_dict_fn` and `input_map_fn` should be specified.
+
+    Raises:
+      ValueError: if the input combination is invalid.
+
+    Returns:
+      The GraphDef after the calibration.
+    """
+    assert self._converted
+    assert not self._calibration_sess
+    if (feed_dict_fn and input_map_fn) or (not feed_dict_fn and
+                                           not input_map_fn):
+      raise ValueError(
+          "Should specify one and only one of feed_dict_fn and input_map_fn.")
+
+    self._calibration_graph = ops.Graph()
+    with self._calibration_graph.as_default():
+      fetches = importer.import_graph_def(
+          self._converted_graph_def,
+          input_map=input_map_fn() if input_map_fn else None,
+          return_elements=fetch_names,
+          name="")
+    self._calibration_sess = session.Session(
+        graph=self._calibration_graph, config=self._session_config)
+
+    for _ in range(num_runs):
+      self._calibration_sess.run(
+          fetches, feed_dict=feed_dict_fn() if feed_dict_fn else None)
+
+    self.finalize_calibration()
+    return self._converted_graph_def
+
+  def finalize_calibration(self):
+    """Clean up calibration resources and finalize the calibration.
+
+    Implementations need to close self._calibration_sess before returning.
+    """
+    raise NotImplementedError("finalize_calibration")
+
   def save(self, output_saved_model_dir):
     """Save the converted graph as a SavedModel.
 
@@ -323,8 +390,7 @@ class TrtGraphConverter(GraphConverter):
       max_batch_size: max size for the input batch
       max_workspace_size_bytes: the maximum GPU temporary memory which the TRT
         engine can use at execution time. This corresponds to the
-        'workspaceSize'
-        parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
+        'workspaceSize' parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
       precision_mode: one of TrtPrecisionMode.supported_precision_modes().
       minimum_segment_size: the minimum number of nodes required for a subgraph
         to be replaced by TRTEngineOp.
@@ -357,6 +423,14 @@ class TrtGraphConverter(GraphConverter):
       TypeError: if any of the parameters are of unexpected type.
       ValueError: if any of the parameters are of unexpected value.
     """
+    # Lazily load the TF-TRT C bindings, so `import tensorflow` doesn't complain
+    # even if it cannot find TensorRT library.
+    trt_ops.load_trt_ops()
+    # pylint: disable=g-import-not-at-top,unused-import,line-too-long,unused-variable
+    # Import a random symbol to trigger loading of TRT library.
+    from tensorflow.python.compiler.tensorrt.wrap_conversion import calib_convert
+    # pylint: enable=g-import-not-at-top,unused-import,line-too-long,unused-variable
+
     if rewriter_config_template is not None and not isinstance(
         rewriter_config_template, rewriter_config_pb2.RewriterConfig):
       raise TypeError(
@@ -419,8 +493,7 @@ class TrtGraphConverter(GraphConverter):
       max_batch_size: max size for the input batch.
       max_workspace_size_bytes: the maximum GPU temporary memory which the TRT
         engine can use at execution time. This corresponds to the
-        'workspaceSize'
-        parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
+        'workspaceSize' parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
       precision_mode: one of TrtPrecisionMode.supported_precision_modes().
       minimum_segment_size: the minimum number of nodes required for a subgraph
         to be replaced by TRTEngineOp.
@@ -457,6 +530,14 @@ class TrtGraphConverter(GraphConverter):
         nodes_blacklist=nodes_blacklist,
         session_config=session_config)
 
+    # Lazily load the TF-TRT C bindings, so `import tensorflow` doesn't complain
+    # even if it cannot find TensorRT library.
+    trt_ops.load_trt_ops()
+    # pylint: disable=g-import-not-at-top,line-too-long
+    from tensorflow.python.compiler.tensorrt.wrap_conversion import get_linked_tensorrt_version
+    from tensorflow.python.compiler.tensorrt.wrap_conversion import get_loaded_tensorrt_version
+    # pylint: enable=g-import-not-at-top,line-too-long
+
     # Check compatibility of TensorRT version.
     compiled_version = get_linked_tensorrt_version()
     loaded_version = get_loaded_tensorrt_version()
@@ -479,12 +560,11 @@ class TrtGraphConverter(GraphConverter):
         version_mismatch = True
         break
     if not version_mismatch:
-      tf_logging.info("Running against TensorRT version %s" % ".".join(
-          [str(x) for x in loaded_version]))
+      tf_logging.info("Running against TensorRT version %s" %
+                      ".".join([str(x) for x in loaded_version]))
 
     # Check input arguments.
-    if precision_mode.upper() not in TrtPrecisionMode.supported_precision_modes(
-    ):
+    if precision_mode not in TrtPrecisionMode.supported_precision_modes():
       raise ValueError(("precision mode '{}' is not supported."
                         "It should be one of {}").format(
                             precision_mode,
@@ -496,6 +576,9 @@ class TrtGraphConverter(GraphConverter):
       if len(cached_engine_batches) > maximum_cached_engines:
         raise ValueError("cached_engine_batches should not contain more than "
                          "maximum_cached_engines items.")
+
+    self._need_calibration = (
+        precision_mode == TrtPrecisionMode.INT8 and use_calibration)
 
     # TODO(laigd):
     # - Get rid of is_dynamic_op option, it should always be True, and it should
@@ -510,7 +593,6 @@ class TrtGraphConverter(GraphConverter):
     self._is_dynamic_op = is_dynamic_op
     self._maximum_cached_engines = maximum_cached_engines
     self._cached_engine_batches = cached_engine_batches
-    self._use_calibration = use_calibration
 
   def get_rewriter_config(self, rewriter_config_template=None):
     return TrtGraphConverter.get_tensorrt_rewriter_config(
@@ -522,7 +604,65 @@ class TrtGraphConverter(GraphConverter):
         is_dynamic_op=self._is_dynamic_op,
         maximum_cached_engines=self._maximum_cached_engines,
         cached_engine_batches=self._cached_engine_batches,
-        use_calibration=self._use_calibration)
+        use_calibration=self._need_calibration)
+
+  def finalize_calibration(self):
+    assert self._need_calibration
+    assert self._converted
+    assert not self._calibration_data_collected
+
+    # Lazily load the op, since it's not available in cpu-only builds. Importing
+    # this at top will cause tests that imports TF-TRT fail when they're built
+    # and run without CUDA/GPU.
+    # pylint: disable=g-import-not-at-top,line-too-long
+    from tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops import get_serialized_resource_op
+    # pylint: enable=g-import-not-at-top,line-too-long
+
+    # TODO(laigd): a better way would be to use self._calibration_sess to list
+    # all the devices, add one get_serialized_resource_op for each device, and
+    # fetch each such op for every resource until its found. This can work
+    # even when the device of the TRTEngineOp is empty or not fully specified.
+
+    # Maps device name to the corresponding get_serialized_resource_op.
+    device_to_get_resource_op_map = {}
+
+    with self._calibration_graph.as_default():
+      container_input = array_ops.placeholder(dtypes.string)
+      resource_name_input = array_ops.placeholder(dtypes.string)
+
+      for node in self._converted_graph_def.node:
+        if node.op == "TRTEngineOp":
+          # Adds the get_serialized_resource_op for the device if not done
+          # before. We only add one such op for each device.
+          # TODO(laigd): What if the device is empty?????
+          if node.device not in device_to_get_resource_op_map:
+            with self._calibration_graph.device(node.device):
+              serialized_resources_output = (
+                  get_serialized_resource_op(container_input,
+                                             resource_name_input))
+            device_to_get_resource_op_map[node.device] = (
+                serialized_resources_output)
+
+          # Get the calibration resource.
+          calibration_result = self._calibration_sess.run(
+              device_to_get_resource_op_map[node.device],
+              feed_dict={
+                  container_input:
+                      TrtGraphConverter
+                      ._TRT_CALIBRATION_RESOURCE_CONTAINER_NAME,
+                  resource_name_input:
+                      node.name
+              })
+          node.attr["calibration_data"].s = calibration_result
+
+    self._calibration_data_collected = True
+    self._calibration_sess.close()
+
+  def save(self, output_saved_model_dir):
+    """Save the converted graph as a SavedModel."""
+    if self._need_calibration:
+      assert self._calibration_data_collected
+    super(TrtGraphConverter, self).save(output_saved_model_dir)
 
 
 def create_inference_graph(
@@ -642,6 +782,12 @@ def calib_graph_to_infer_graph(calibration_graph_def, is_dynamic_op=False):
   Raises:
     RuntimeError: if the returned status message is malformed.
   """
+  # Lazily load the TF-TRT C bindings, so `import tensorflow` doesn't complain
+  # even if it cannot find TensorRT library.
+  trt_ops.load_trt_ops()
+  # pylint: disable=g-import-not-at-top,line-too-long
+  from tensorflow.python.compiler.tensorrt.wrap_conversion import calib_convert
+  # pylint: enable=g-import-not-at-top,line-too-long
 
   is_calib_graph = False
   for n in calibration_graph_def.node:

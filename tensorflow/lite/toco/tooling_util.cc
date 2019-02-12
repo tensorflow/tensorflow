@@ -66,29 +66,29 @@ string LogName(const Operator& op) {
 string ArrayDataTypeName(ArrayDataType data_type) {
   switch (data_type) {
     case ArrayDataType::kFloat:
-      return "Float";
+      return "float";
     case ArrayDataType::kInt8:
-      return "Int8";
+      return "int8";
     case ArrayDataType::kUint8:
-      return "Uint8";
+      return "uint8";
     case ArrayDataType::kInt16:
-      return "Int16";
+      return "int16";
     case ArrayDataType::kUint16:
-      return "Uint16";
+      return "uint16";
     case ArrayDataType::kInt32:
-      return "Int32";
+      return "int32";
     case ArrayDataType::kUint32:
-      return "Uint32";
+      return "uint32";
     case ArrayDataType::kInt64:
-      return "Int64";
+      return "int64";
     case ArrayDataType::kUint64:
-      return "Uint64";
+      return "uint64";
     case ArrayDataType::kString:
-      return "String";
+      return "string";
     case ArrayDataType::kBool:
-      return "Bool";
+      return "bool";
     case ArrayDataType::kComplex64:
-      return "Complex64";
+      return "complex64";
     case ArrayDataType::kNone:
       return "None";
     default:
@@ -422,6 +422,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Unique)
     HANDLE_OPERATORTYPENAME_CASE(UnidirectionalSequenceRnn)
     HANDLE_OPERATORTYPENAME_CASE(ReverseV2)
+    HANDLE_OPERATORTYPENAME_CASE(Cos)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -538,7 +539,8 @@ void DumpGraphvizVideoFrame(const Model& model) {
   static int dump_id = 0;
   static std::unordered_set<std::size_t> dump_hashes;
   string graphviz_dump;
-  DumpGraphviz(model, &graphviz_dump);
+  DumpGraphviz(model, &graphviz_dump,
+               toco::port::StringF("VIDEO frame:%05d", dump_id));
   std::size_t hash = std::hash<string>{}(graphviz_dump);
   if (!dump_hashes.count(hash)) {
     LOG(INFO) << "DUMPING GRAPHVIZ VIDEO FRAME: " << dump_id;
@@ -561,7 +563,7 @@ void LogDump(int log_level, const string& message, const Model& model) {
   if (!dump_options.dump_graphviz.empty()) {
     string graphviz_dump;
 
-    DumpGraphviz(model, &graphviz_dump);
+    DumpGraphviz(model, &graphviz_dump, message);
     const auto result = port::file::SetContents(
         port::file::JoinPath(
             dump_options.dump_graphviz,
@@ -1863,117 +1865,138 @@ string CreateInt32Array(Model* model, const string& param_name,
   return param_array_name;
 }
 
+bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
+                                int64* result) {
+  switch (op.type) {
+    case OperatorType::kFullyConnected:
+    case OperatorType::kConv:
+    case OperatorType::kDepthwiseConv: {
+      const auto& output_array = model.GetArray(op.outputs[0]);
+      const auto& weights_array = model.GetArray(op.inputs[1]);
+      if (!output_array.has_shape() || !weights_array.has_shape()) {
+        return false;
+      }
+      int64 cols = 1;
+      for (int i = 0; i < output_array.shape().dimensions_count() - 1; i++) {
+        cols *= output_array.shape().dims(i);
+      }
+      const int64 cost_per_col =
+          2 * RequiredBufferSizeForShape(weights_array.shape());
+      *result = cost_per_col * cols;
+      if (op.inputs.size() > 2) {
+        // There is a bias vector. One more op per output value.
+        *result += RequiredBufferSizeForShape(output_array.shape());
+      }
+      break;
+    }
+    case OperatorType::kAdd:
+    case OperatorType::kSub:
+    case OperatorType::kMul: {
+      const auto& output_array = model.GetArray(op.outputs[0]);
+      if (!output_array.has_shape()) {
+        return false;
+      }
+      *result = RequiredBufferSizeForShape(output_array.shape());
+      break;
+    }
+    case OperatorType::kAddN: {
+      const auto& output_array = model.GetArray(op.outputs[0]);
+      if (!output_array.has_shape()) {
+        return false;
+      }
+      // AddN cost is roughly the same cost as N-1 Adds.
+      const int64 num_adds = op.inputs.size() - 1;
+      *result = num_adds * RequiredBufferSizeForShape(output_array.shape());
+      break;
+    }
+    case OperatorType::kLogistic:
+    case OperatorType::kSoftmax:
+    case OperatorType::kLogSoftmax:
+    case OperatorType::kTanh: {
+      const auto& output_array = model.GetArray(op.outputs[0]);
+      if (!output_array.has_shape()) {
+        return false;
+      }
+      // As a very rough ballpark, the cost of evaluating a math function
+      // such as tanh or logistic is about 32 multiplications, and about as
+      // many additions/subtractions. (Just a power-of-two order-of-magnitude
+      // from looking at actual implementations that we use in runtime/ code).
+      *result = 64 * RequiredBufferSizeForShape(output_array.shape());
+      break;
+    }
+    case OperatorType::kMaxPool: {
+      const auto& maxpool = *static_cast<const MaxPoolOperator*>(&op);
+      const auto& output_array = model.GetArray(op.outputs[0]);
+      if (!output_array.has_shape()) {
+        return false;
+      }
+      *result = RequiredBufferSizeForShape(output_array.shape()) *
+                maxpool.kheight * maxpool.kwidth;
+      break;
+    }
+    case OperatorType::kAveragePool: {
+      const auto& avgpool = *static_cast<const AveragePoolOperator*>(&op);
+      const auto& output_array = model.GetArray(op.outputs[0]);
+      if (!output_array.has_shape()) {
+        return false;
+      }
+      *result = RequiredBufferSizeForShape(output_array.shape()) *
+                avgpool.kheight * avgpool.kwidth;
+      break;
+    }
+    case OperatorType::kL2Pool: {
+      const auto* maxpool = static_cast<const MaxPoolOperator*>(&op);
+      const auto& output_array = model.GetArray(op.outputs[0]);
+      if (!output_array.has_shape()) {
+        return false;
+      }
+      // The sum of squares requires (kheight*kwidth) multiply-adds,
+      // and then there is the sqrt which we ballpark at 32 ops.
+      const int64 cost_per_val = 2 * maxpool->kheight * maxpool->kwidth + 32;
+      *result = RequiredBufferSizeForShape(output_array.shape()) * cost_per_val;
+      break;
+    }
+    case OperatorType::kL2Normalization: {
+      const auto& output_array = model.GetArray(op.outputs[0]);
+      if (!output_array.has_shape()) {
+        return false;
+      }
+      // Computing the squared L2 norm is N multiply-adds so 2N ops,
+      // then the single inverse-sqrt is negligible, then we multiply each
+      // value by the resulting multiplier, so an extra N ops. count 3N ops.
+      *result = 3 * RequiredBufferSizeForShape(output_array.shape());
+      break;
+    }
+    default:
+      *result = 0;
+      break;
+  }
+  return true;
+}
+
 bool EstimateArithmeticOpsCount(const Model& model, int64* result) {
   int64 total = 0;
   for (const auto& op : model.operators) {
-    switch (op->type) {
-      case OperatorType::kFullyConnected:
-      case OperatorType::kConv:
-      case OperatorType::kDepthwiseConv: {
-        const auto& output_array = model.GetArray(op->outputs[0]);
-        const auto& weights_array = model.GetArray(op->inputs[1]);
-        if (!output_array.has_shape() || !weights_array.has_shape()) {
-          return false;
-        }
-        int cols = 1;
-        for (int i = 0; i < output_array.shape().dimensions_count() - 1; i++) {
-          cols *= output_array.shape().dims(i);
-        }
-        const int64 cost_per_col =
-            2 * RequiredBufferSizeForShape(weights_array.shape());
-        total += cost_per_col * cols;
-        if (op->inputs.size() > 2) {
-          // There is a bias vector. One more op per output value.
-          total += RequiredBufferSizeForShape(output_array.shape());
-        }
-        break;
-      }
-      case OperatorType::kAdd:
-      case OperatorType::kSub:
-      case OperatorType::kMul: {
-        const auto& output_array = model.GetArray(op->outputs[0]);
-        if (!output_array.has_shape()) {
-          return false;
-        }
-        total += RequiredBufferSizeForShape(output_array.shape());
-        break;
-      }
-      case OperatorType::kAddN: {
-        const auto& output_array = model.GetArray(op->outputs[0]);
-        if (!output_array.has_shape()) {
-          return false;
-        }
-        // AddN cost is roughly the same cost as N-1 Adds.
-        const int num_adds = op->inputs.size() - 1;
-        total += num_adds * RequiredBufferSizeForShape(output_array.shape());
-        break;
-      }
-      case OperatorType::kLogistic:
-      case OperatorType::kSoftmax:
-      case OperatorType::kLogSoftmax:
-      case OperatorType::kTanh: {
-        const auto& output_array = model.GetArray(op->outputs[0]);
-        if (!output_array.has_shape()) {
-          return false;
-        }
-        // As a very rough ballpark, the cost of evaluating a math function
-        // such as tanh or logistic is about 32 multiplications, and about as
-        // many additions/subtractions. (Just a power-of-two order-of-magnitude
-        // from looking at actual implementations that we use in runtime/ code).
-        total += 64 * RequiredBufferSizeForShape(output_array.shape());
-        break;
-      }
-      case OperatorType::kMaxPool: {
-        const auto& maxpool = *static_cast<const MaxPoolOperator*>(op.get());
-        const auto& output_array = model.GetArray(op->outputs[0]);
-        if (!output_array.has_shape()) {
-          return false;
-        }
-        total += RequiredBufferSizeForShape(output_array.shape()) *
-                 maxpool.kheight * maxpool.kwidth;
-        break;
-      }
-      case OperatorType::kAveragePool: {
-        const auto& avgpool =
-            *static_cast<const AveragePoolOperator*>(op.get());
-        const auto& output_array = model.GetArray(op->outputs[0]);
-        if (!output_array.has_shape()) {
-          return false;
-        }
-        total += RequiredBufferSizeForShape(output_array.shape()) *
-                 avgpool.kheight * avgpool.kwidth;
-        break;
-      }
-      case OperatorType::kL2Pool: {
-        const auto* maxpool = static_cast<const MaxPoolOperator*>(op.get());
-        const auto& output_array = model.GetArray(op->outputs[0]);
-        if (!output_array.has_shape()) {
-          return false;
-        }
-        // The sum of squares requires (kheight*kwidth) multiply-adds,
-        // and then there is the sqrt which we ballpark at 32 ops.
-        const int64 cost_per_val = 2 * maxpool->kheight * maxpool->kwidth + 32;
-        total +=
-            RequiredBufferSizeForShape(output_array.shape()) * cost_per_val;
-        break;
-      }
-      case OperatorType::kL2Normalization: {
-        const auto& output_array = model.GetArray(op->outputs[0]);
-        if (!output_array.has_shape()) {
-          return false;
-        }
-        // Computing the squared L2 norm is N multiply-adds so 2N ops,
-        // then the single inverse-sqrt is negligible, then we multiply each
-        // value by the resulting multiplier, so an extra N ops. Total 3N ops.
-        total += 3 * RequiredBufferSizeForShape(output_array.shape());
-        break;
-      }
-      default:
-        break;
+    int64 num_ops;
+    if (!EstimateArithmeticOpsCount(model, *op, &num_ops)) {
+      return false;
     }
+    total += num_ops;
   }
   *result = total;
   return true;
+}
+
+string FormattedNumber(int64 x) {
+  const int64 million = 1000000;
+  const int64 billion = 1000000000;
+  if (x < 10000) {
+    return toco::port::StringF("%d ", x);
+  } else if (x < billion) {
+    return toco::port::StringF("%.3f M", static_cast<double>(x) / million);
+  } else {
+    return toco::port::StringF("%.3f G", static_cast<double>(x) / billion);
+  }
 }
 
 void GetShuffleShape(AxesOrder input_axes_order, AxesOrder output_axes_order,

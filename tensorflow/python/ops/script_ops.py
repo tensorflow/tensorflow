@@ -391,12 +391,16 @@ def eager_py_func(func, inp, Tout, name=None):
 
 @deprecation.deprecated(
     date=None,
-    instructions="""tf.py_func is deprecated in TF V2. Instead, use
-    tf.py_function, which takes a python function which manipulates tf eager
+    instructions="""tf.py_func is deprecated in TF V2. Instead, there are two
+    options available in V2.
+    - tf.py_function takes a python function which manipulates tf eager
     tensors instead of numpy arrays. It's easy to convert a tf eager tensor to
     an ndarray (just call tensor.numpy()) but having access to eager tensors
     means `tf.py_function`s can use accelerators such as GPUs as well as
     being differentiable using a gradient tape.
+    - tf.numpy_function maintains the semantics of the deprecated tf.py_func
+    (it is not differentiable, and manipulates numpy arrays). It drops the
+    stateful argument making all functions stateful.
     """)
 @tf_export(v1=["py_func"])
 def py_func(func, inp, Tout, stateful=True, name=None):
@@ -466,6 +470,13 @@ def py_func(func, inp, Tout, stateful=True, name=None):
 
   return _internal_py_func(
       func=func, inp=inp, Tout=Tout, stateful=stateful, eager=False, name=name)
+
+@tf_export("numpy_function", v1=[])
+def numpy_function(func, inp, Tout, name=None):
+  return py_func(func, inp, Tout, stateful=True, name=name)
+
+numpy_function.__doc__ = py_func.__doc__.replace(
+    "py_func", "numpy_function")
 
 
 ops.NotDifferentiable("PyFunc")

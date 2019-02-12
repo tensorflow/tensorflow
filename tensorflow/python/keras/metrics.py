@@ -203,8 +203,7 @@ class Metric(Layer):
     This function is called between epochs/steps,
     when a metric is evaluated during training.
     """
-    for v in self.variables:
-      K.set_value(v, 0)
+    K.batch_set_value([(v, 0) for v in self.variables])
 
   @abc.abstractmethod
   def update_state(self, *args, **kwargs):
@@ -374,7 +373,7 @@ class Sum(Reduce):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.add_metric(tf.keras.metrics.Sum(name='sum_1')(outputs))
   model.compile('sgd', loss='mse')
   ```
@@ -416,7 +415,7 @@ class Mean(Reduce):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.add_metric(tf.keras.metrics.Mean(name='mean_1')(outputs))
   model.compile('sgd', loss='mse')
   ```
@@ -460,7 +459,7 @@ class MeanRelativeError(Mean):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile(
     'sgd',
     loss='mse',
@@ -590,7 +589,7 @@ class Accuracy(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.Accuracy()])
   ```
   """
@@ -626,7 +625,7 @@ class BinaryAccuracy(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.BinaryAccuracy()])
   ```
   """
@@ -676,7 +675,7 @@ class CategoricalAccuracy(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile(
     'sgd',
     loss='mse',
@@ -724,7 +723,7 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile(
       'sgd',
       loss='mse',
@@ -752,7 +751,7 @@ class TopKCategoricalAccuracy(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', metrics=[tf.keras.metrics.TopKCategoricalAccuracy()])
   ```
   """
@@ -785,7 +784,7 @@ class SparseTopKCategoricalAccuracy(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile(
     'sgd',
     metrics=[tf.keras.metrics.SparseTopKCategoricalAccuracy()])
@@ -864,8 +863,8 @@ class _ConfusionMatrixConditionCount(Metric):
 
   def reset_states(self):
     num_thresholds = len(to_list(self.thresholds))
-    for v in self.variables:
-      K.set_value(v, np.zeros((num_thresholds,)))
+    K.batch_set_value(
+        [(v, np.zeros((num_thresholds,))) for v in self.variables])
 
   def get_config(self):
     config = {'thresholds': self.init_thresholds}
@@ -899,7 +898,7 @@ class FalsePositives(_ConfusionMatrixConditionCount):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.FalsePositives()])
   ```
   """
@@ -949,7 +948,7 @@ class FalseNegatives(_ConfusionMatrixConditionCount):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.FalseNegatives()])
   ```
   """
@@ -999,7 +998,7 @@ class TrueNegatives(_ConfusionMatrixConditionCount):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.TrueNegatives()])
   ```
   """
@@ -1049,7 +1048,7 @@ class TruePositives(_ConfusionMatrixConditionCount):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.TruePositives()])
   ```
   """
@@ -1109,7 +1108,7 @@ class Precision(Metric):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.Precision()])
   ```
   """
@@ -1187,8 +1186,8 @@ class Precision(Metric):
 
   def reset_states(self):
     num_thresholds = len(to_list(self.thresholds))
-    for v in self.variables:
-      K.set_value(v, np.zeros((num_thresholds,)))
+    K.batch_set_value(
+        [(v, np.zeros((num_thresholds,))) for v in self.variables])
 
   def get_config(self):
     config = {
@@ -1235,7 +1234,7 @@ class Recall(Metric):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.Recall()])
   ```
   """
@@ -1313,8 +1312,8 @@ class Recall(Metric):
 
   def reset_states(self):
     num_thresholds = len(to_list(self.thresholds))
-    for v in self.variables:
-      K.set_value(v, np.zeros((num_thresholds,)))
+    K.batch_set_value(
+        [(v, np.zeros((num_thresholds,))) for v in self.variables])
 
   def get_config(self):
     config = {
@@ -1391,8 +1390,8 @@ class SensitivitySpecificityBase(Metric):
 
   def reset_states(self):
     num_thresholds = len(self.thresholds)
-    for v in self.variables:
-      K.set_value(v, np.zeros((num_thresholds,)))
+    K.batch_set_value(
+        [(v, np.zeros((num_thresholds,))) for v in self.variables])
 
 
 @keras_export('keras.metrics.SensitivityAtSpecificity')
@@ -1426,7 +1425,7 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile(
       'sgd',
       loss='mse',
@@ -1507,7 +1506,7 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile(
       'sgd',
       loss='mse',
@@ -1602,7 +1601,7 @@ class AUC(Metric):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', loss='mse', metrics=[tf.keras.metrics.AUC()])
   ```
   """
@@ -1809,8 +1808,8 @@ class AUC(Metric):
 
   def reset_states(self):
     num_thresholds = len(self.thresholds)
-    for v in self.variables:
-      K.set_value(v, np.zeros((num_thresholds,)))
+    K.batch_set_value(
+        [(v, np.zeros((num_thresholds,))) for v in self.variables])
 
   def get_config(self):
     config = {
@@ -1834,7 +1833,7 @@ class CosineProximity(MeanMetricWrapper):
 
   Usage:
   ```python
-  m = tf.metrics.CosineProximity()
+  m = tf.keras.metrics.CosineProximity()
   m.update_state([0, 1, 1], [1, 0, 1])
   print('Final result: ', m.result().numpy())  # Final result: -0.5
   ```
@@ -1842,11 +1841,11 @@ class CosineProximity(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile(
       'sgd',
       loss='mse',
-      metrics=[tf.metrics.CosineProximity()])
+      metrics=[tf.keras.metrics.CosineProximity()])
   ```
   """
 
@@ -1871,7 +1870,7 @@ class MeanAbsoluteError(MeanMetricWrapper):
 
   Usage:
   ```python
-  m = tf.metrics.MeanAbsoluteError()
+  m = tf.keras.metrics.MeanAbsoluteError()
   m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
   print('Final result: ', m.result().numpy())  # Final result: 0.75
   ```
@@ -1879,7 +1878,7 @@ class MeanAbsoluteError(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', metrics=[tf.keras.metrics.MeanAbsoluteError()])
   ```
   """
@@ -1907,7 +1906,7 @@ class MeanAbsolutePercentageError(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', metrics=[tf.keras.metrics.MeanAbsolutePercentageError()])
   ```
   """
@@ -1935,7 +1934,7 @@ class MeanSquaredError(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', metrics=[tf.keras.metrics.MeanSquaredError()])
   ```
   """
@@ -1963,7 +1962,7 @@ class MeanSquaredLogarithmicError(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', metrics=[tf.keras.metrics.MeanSquaredLogarithmicError()])
   ```
   """
@@ -1997,7 +1996,7 @@ class Hinge(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', metrics=[tf.keras.metrics.Hinge()])
   ```
   """
@@ -2030,7 +2029,7 @@ class SquaredHinge(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', metrics=[tf.keras.metrics.SquaredHinge()])
   ```
   """
@@ -2057,7 +2056,7 @@ class CategoricalHinge(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', metrics=[tf.keras.metrics.CategoricalHinge()])
   ```
   """
@@ -2081,7 +2080,7 @@ class RootMeanSquaredError(Mean):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', metrics=[tf.keras.metrics.RootMeanSquaredError()])
   ```
   """
@@ -2131,7 +2130,7 @@ class LogCoshError(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', metrics=[tf.keras.metrics.LogCoshError()])
   ```
   """
@@ -2157,7 +2156,7 @@ class Poisson(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', metrics=[tf.keras.metrics.Poisson()])
   ```
   """
@@ -2183,7 +2182,7 @@ class KLDivergence(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile('sgd', metrics=[tf.keras.metrics.KLDivergence()])
   ```
   """
@@ -2224,7 +2223,7 @@ class MeanIoU(Metric):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile(
     'sgd',
     loss='mse',
@@ -2330,7 +2329,7 @@ class MeanTensor(Metric):
   Usage:
 
   ```python
-  m = tf.metrics.MeanTensor()
+  m = tf.keras.metrics.MeanTensor()
   m.update_state([0, 1, 2, 3])
   m.update_state([4, 5, 6, 7])
   print('Result: ', m.result().numpy())  # Result: [2, 3, 4, 5]
@@ -2425,8 +2424,8 @@ class MeanTensor(Metric):
 
   def reset_states(self):
     if self._built:
-      for v in self.variables:
-        K.set_value(v, np.zeros(self._shape.as_list()))
+      K.batch_set_value(
+          [(v, np.zeros(self._shape.as_list())) for v in self.variables])
 
 
 @keras_export('keras.metrics.BinaryCrossentropy')
@@ -2458,7 +2457,7 @@ class BinaryCrossentropy(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile(
       'sgd',
       loss='mse',
@@ -2524,7 +2523,7 @@ class CategoricalCrossentropy(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile(
     'sgd',
     loss='mse',
@@ -2598,7 +2597,7 @@ class SparseCategoricalCrossentropy(MeanMetricWrapper):
   Usage with tf.keras API:
 
   ```python
-  model = keras.models.Model(inputs, outputs)
+  model = tf.keras.Model(inputs, outputs)
   model.compile(
     'sgd',
     loss='mse',

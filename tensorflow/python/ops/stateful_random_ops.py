@@ -51,6 +51,7 @@ SEED_SIZE = 16  # in units of SEED_TYPE
 
 
 STATE_TYPE = SEED_TYPE
+ALGORITHM_TYPE = STATE_TYPE
 RNG_ALG_PHILOX = 1
 DEFAULT_ALGORITHM = RNG_ALG_PHILOX
 
@@ -119,26 +120,18 @@ def _make_state_from_seed(seed, algorithm):
     raise ValueError("Unsupported algorithm id: %s" % algorithm)
 
 
-def create_rng_state(seed, algorithm=None):
+@tf_export("random.create_rng_state")
+def create_rng_state(seed, algorithm):
   """Creates a RNG state.
 
   Args:
     seed: an integer or 1-D tensor.
-    algorithm: (optional) an integer representing the RNG algorithm. If None, an
-      algorithm will be auto-selected.
+    algorithm: an integer representing the RNG algorithm.
 
   Returns:
-    a 1-D tensor "rng_state" with:
-    * rng_state[0] is a value that identifies the RNG algorithm;
-    * rng_state[1:] holds the RNG state itself (size dependent on the
-        algorithm).
+    a 1-D tensor whose size depends on the algorithm.
   """
-  if algorithm is None:
-    # TODO(wangpeng): more sophisticated algorithm selection
-    algorithm = DEFAULT_ALGORITHM
-  state = _make_state_from_seed(seed, algorithm)
-  return np.concatenate((np.array([algorithm], dtype=STATE_TYPE), state),
-                        axis=None)
+  return _make_state_from_seed(seed, algorithm)
 
 
 def _shape_tensor(shape):
@@ -158,17 +151,41 @@ class Generator(tracking.AutoCheckpointable):
   """
 
   def __init__(self, copy_from=None, seed=None, algorithm=None):
+    """Creates a generator.
+
+    Args:
+      copy_from: (optional) a generator to be copied from.
+      seed: (optional) the seed for the RNG. If None, it will be chosen
+            nondeterministically
+      algorithm: (optional) the RNG algorithm. If None, it will be
+                 auto-selected.
+    """
     if copy_from is None:
       if seed is None:
         seed = non_deterministic_seed()
+      if algorithm is None:
+        # TODO(wangpeng): more sophisticated algorithm selection
+        algorithm = DEFAULT_ALGORITHM
       state = create_rng_state(seed, algorithm)
       self._state_var = variables.Variable(state, dtype=STATE_TYPE)
+      self._alg_var = variables.Variable(initial_value=algorithm,
+                                         dtype=ALGORITHM_TYPE)
     else:
       assert seed is None
-      state = copy_from.state
-      self._state_var = variables.Variable(state, dtype=STATE_TYPE)
+      self._state_var = variables.Variable(copy_from.state, dtype=STATE_TYPE)
+      self._alg_var = variables.Variable(initial_value=copy_from.algorithm,
+                                         dtype=ALGORITHM_TYPE)
 
   def reset(self, seed):
+    """Resets the generator.
+
+    This function is not thread-safe: if it is run concurrently with a call to
+    sampling, the latter might see the new algorithm but the old state or vice
+    versa.
+
+    Args:
+      seed: the seed to reset the RNG to.
+    """
     algorithm = int(self.algorithm)
     state = create_rng_state(seed, algorithm)
     self._state_var.assign(state)
@@ -179,13 +196,14 @@ class Generator(tracking.AutoCheckpointable):
 
   @property
   def algorithm(self):
-    return self._state_var[0]
+    return self._alg_var
 
   # The following functions return a tensor and as a side effect update
   # self._state_var.
   def standard_normal(self, shape, dtype=dtypes.float32):
-    return gen_stateful_random_ops.stateful_standard_normal(
-        self.state.handle, shape, dtype)
+    output = gen_stateful_random_ops.stateful_standard_normal_v2(
+        self.state.handle, self.algorithm, shape, dtype)
+    return output
 
   def normal(self, shape, mean=0.0, stddev=1.0, dtype=dtypes.float32,
              name=None):
@@ -237,5 +255,6 @@ def set_global_generator(generator):
 def reset_global_generator(seed, algorithm=None):
   global global_generator
   if algorithm is None:
-    algorithm = int(global_generator.algorithm)  # preserve the old algorithm
+    # preserve the old algorithm
+    algorithm = int(get_global_generator().algorithm)
   global_generator = Generator(seed=seed, algorithm=algorithm)

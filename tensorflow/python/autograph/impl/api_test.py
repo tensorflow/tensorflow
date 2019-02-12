@@ -41,6 +41,9 @@ from tensorflow.python.util import tf_inspect
 tf = utils.fake_tf()
 
 
+testing_global_numeric = 2
+
+
 class TestResource(str):
   pass
 
@@ -192,18 +195,17 @@ class ApiTest(test.TestCase):
       def test_method(self, x, s, a):
         while tf.reduce_sum(x) > s:
           x //= api.converted_call(self.called_member, None,
-                                   converter.ConversionOptions(), self, a)
+                                   converter.ConversionOptions(), (self, a), {})
         return x
 
     tc = TestClass()
-    with self.cached_session() as sess:
-      x = tc.test_method(
-          constant_op.constant([2, 4]), constant_op.constant(1),
-          constant_op.constant(-2))
-      self.assertListEqual([0, 1], self.evaluate(x).tolist())
+    x = tc.test_method(
+        constant_op.constant([2, 4]), constant_op.constant(1),
+        constant_op.constant(-2))
+    self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
   def test_converted_call_builtin(self):
-    x = api.converted_call(range, None, converter.ConversionOptions(), 3)
+    x = api.converted_call(range, None, converter.ConversionOptions(), (3,), {})
     self.assertEqual((0, 1, 2), tuple(x))
 
   def test_converted_call_function(self):
@@ -213,10 +215,9 @@ class ApiTest(test.TestCase):
         return -x
       return x
 
-    with self.cached_session() as sess:
-      x = api.converted_call(test_fn, None, converter.ConversionOptions(),
-                             constant_op.constant(-1))
-      self.assertEqual(1, self.evaluate(x))
+    x = api.converted_call(test_fn, None, converter.ConversionOptions(),
+                           (constant_op.constant(-1),), {})
+    self.assertEqual(1, self.evaluate(x))
 
   @test_util.run_v1_only('b/120545219')
   def test_converted_call_functools_partial(self):
@@ -227,16 +228,14 @@ class ApiTest(test.TestCase):
       return x, y, z
 
     x = api.converted_call(
-        functools.partial(test_fn, constant_op.constant(-1), z=-3),
-        None, converter.ConversionOptions(),
-        constant_op.constant(-2))
+        functools.partial(test_fn, constant_op.constant(-1), z=-3), None,
+        converter.ConversionOptions(), (constant_op.constant(-2),), {})
     self.assertEqual((1, 2, 3), self.evaluate(x))
 
     x = api.converted_call(
         functools.partial(
-            functools.partial(test_fn, constant_op.constant(-1)), z=-3),
-        None, converter.ConversionOptions(),
-        constant_op.constant(-2))
+            functools.partial(test_fn, constant_op.constant(-1)), z=-3), None,
+        converter.ConversionOptions(), (constant_op.constant(-2),), {})
     self.assertEqual((1, 2, 3), self.evaluate(x))
 
   def test_converted_call_method_explicit_owner(self):
@@ -259,11 +258,10 @@ class ApiTest(test.TestCase):
           return -self.x
         return self.x
 
-    with self.cached_session() as sess:
-      tc = TestClass(constant_op.constant(-1))
-      x = api.converted_call(tc.test_method, None,
-                             converter.ConversionOptions(), tc)
-      self.assertEqual(1, self.evaluate(x))
+    tc = TestClass(constant_op.constant(-1))
+    x = api.converted_call(tc.test_method, None, converter.ConversionOptions(),
+                           (tc,), {})
+    self.assertEqual(1, self.evaluate(x))
 
   def test_converted_call_method_converts_recursively(self):
 
@@ -282,7 +280,8 @@ class ApiTest(test.TestCase):
 
     tc = TestClass(constant_op.constant(-1))
     x = api.converted_call(tc.test_method, None,
-                           converter.ConversionOptions(recursive=True), tc)
+                           converter.ConversionOptions(recursive=True), (tc,),
+                           {})
     self.assertEqual(1, self.evaluate(x))
 
   def test_converted_call_method_by_class(self):
@@ -297,11 +296,10 @@ class ApiTest(test.TestCase):
           return -self.x
         return self.x
 
-    with self.cached_session() as sess:
-      tc = TestClass(constant_op.constant(-1))
-      x = api.converted_call(TestClass.test_method, None,
-                             converter.ConversionOptions(), tc)
-      self.assertEqual(1, self.evaluate(x))
+    tc = TestClass(constant_op.constant(-1))
+    x = api.converted_call(TestClass.test_method, None,
+                           converter.ConversionOptions(), (tc,), {})
+    self.assertEqual(1, self.evaluate(x))
 
   def test_converted_call_callable_object(self):
 
@@ -315,11 +313,11 @@ class ApiTest(test.TestCase):
           return -self.x
         return self.x
 
-    with self.cached_session() as sess:
-      tc = TestClass(constant_op.constant(-1))
-      x = api.converted_call(tc, None, converter.ConversionOptions())
-      self.assertEqual(1, self.evaluate(x))
+    tc = TestClass(constant_op.constant(-1))
+    x = api.converted_call(tc, None, converter.ConversionOptions(), (), {})
+    self.assertEqual(1, self.evaluate(x))
 
+  @test_util.run_deprecated_v1
   def test_converted_call_constructor(self):
 
     class TestClass(object):
@@ -332,27 +330,28 @@ class ApiTest(test.TestCase):
           return -self.x
         return self.x
 
-    with self.cached_session() as sess:
-      tc = api.converted_call(TestClass, None, converter.ConversionOptions(),
-                              constant_op.constant(-1))
-      # tc is now a converted object.
-      x = tc.test_method()
-      self.assertEqual(1, self.evaluate(x))
+    tc = api.converted_call(TestClass, None, converter.ConversionOptions(),
+                            (constant_op.constant(-1),), {})
+    # tc is still a TestClass - constructors are whitelisted.
+    # TODO(b/124016764): Support this use case.
+    # The error below is specific to the `if` statement not being converted.
+    with self.assertRaisesRegex(
+        TypeError, 'Using a `tf.Tensor` as a Python `bool`'):
+      tc.test_method()
 
   def test_converted_call_already_converted(self):
 
     def f(x):
       return x == 0
 
-    with self.cached_session() as sess:
-      x = api.converted_call(f, None, converter.ConversionOptions(),
-                             constant_op.constant(0))
-      self.assertTrue(self.evaluate(x))
+    x = api.converted_call(f, None, converter.ConversionOptions(),
+                           (constant_op.constant(0),), {})
+    self.assertTrue(self.evaluate(x))
 
-      converted_f = api.to_graph(f)
-      x = api.converted_call(converted_f, None, converter.ConversionOptions(),
-                             constant_op.constant(0))
-      self.assertTrue(self.evaluate(x))
+    converted_f = api.to_graph(f)
+    x = api.converted_call(converted_f, None, converter.ConversionOptions(),
+                           (constant_op.constant(0),), {})
+    self.assertTrue(self.evaluate(x))
 
   def test_converted_call_then_already_converted_dynamic(self):
 
@@ -367,7 +366,7 @@ class ApiTest(test.TestCase):
       return g(x)
 
     x = api.converted_call(f, None, converter.ConversionOptions(),
-                           g, constant_op.constant(1))
+                           (g, constant_op.constant(1)), {})
     self.assertEqual(self.evaluate(x), 1)
 
   @test_util.run_deprecated_v1
@@ -381,10 +380,10 @@ class ApiTest(test.TestCase):
     # f should not be converted, causing len to error out.
     with self.assertRaisesRegexp(Exception,
                                  'object of type \'Tensor\' has no len()'):
-      api.converted_call(f, None, opts, constant_op.constant([0]))
+      api.converted_call(f, None, opts, (constant_op.constant([0]),), {})
 
     # len on the other hand should work fine.
-    x = api.converted_call(len, None, opts, constant_op.constant([0]))
+    x = api.converted_call(len, None, opts, (constant_op.constant([0]),), {})
     # The constant has static shape so the result is a primitive not a Tensor.
     self.assertEqual(x, 1)
 
@@ -397,11 +396,10 @@ class ApiTest(test.TestCase):
     ])
 
     x = api.converted_call(model.call, None, opts,
-                           constant_op.constant([[0.0]]), training=True)
+                           (constant_op.constant([[0.0]]),), {'training': True})
 
-    with self.cached_session() as sess:
-      self.evaluate(variables.global_variables_initializer())
-      self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
 
   def test_converted_call_whitelisted_method_extra_self(self):
 
@@ -412,11 +410,11 @@ class ApiTest(test.TestCase):
     ])
 
     x = api.converted_call(model.call, None, opts,
-                           model, constant_op.constant([[0.0]]), training=True)
+                           (model, constant_op.constant([[0.0]])),
+                           {'training': True})
 
-    with self.cached_session() as sess:
-      self.evaluate(variables.global_variables_initializer())
-      self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
 
   def test_converted_call_whitelisted_method_via_owner(self):
 
@@ -427,18 +425,17 @@ class ApiTest(test.TestCase):
     ])
 
     x = api.converted_call('call', model, opts,
-                           constant_op.constant([[0.0]]), training=True)
+                           (constant_op.constant([[0.0]]),), {'training': True})
 
-    with self.cached_session() as sess:
-      self.evaluate(variables.global_variables_initializer())
-      self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
 
   def test_converted_call_namedtuple(self):
 
     opts = converter.ConversionOptions()
 
     x = api.converted_call(collections.namedtuple, None, opts,
-                           'TestNamedtuple', ('a', 'b'))
+                           ('TestNamedtuple', ('a', 'b')), {})
 
     self.assertTrue(inspect_utils.isnamedtuple(x))
 
@@ -446,8 +443,8 @@ class ApiTest(test.TestCase):
 
     opts = converter.ConversionOptions()
 
-    x = api.converted_call('namedtuple', collections, opts,
-                           'TestNamedtuple', ('a', 'b'))
+    x = api.converted_call('namedtuple', collections, opts, ('TestNamedtuple',
+                                                             ('a', 'b')), {})
 
     self.assertTrue(inspect_utils.isnamedtuple(x))
 
@@ -457,11 +454,10 @@ class ApiTest(test.TestCase):
 
     l = lambda x: x == 0
 
-    x = api.converted_call(l, None, opts, constant_op.constant(0))
+    x = api.converted_call(l, None, opts, (constant_op.constant(0),), {})
 
-    with self.cached_session() as sess:
-      self.evaluate(variables.global_variables_initializer())
-      self.assertAllEqual(True, self.evaluate(x))
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(True, self.evaluate(x))
 
   @test_util.run_deprecated_v1
   def test_to_graph_basic(self):
@@ -492,6 +488,33 @@ class ApiTest(test.TestCase):
     with self.cached_session() as sess:
       x = compiled_fn(constant_op.constant([4, 8]))
       self.assertListEqual([1, 2], self.evaluate(x).tolist())
+
+  def test_to_graph_with_globals(self):
+
+    def test_fn(x):
+      global testing_global_numeric
+      testing_global_numeric = x + testing_global_numeric
+      return testing_global_numeric
+
+    compiled_fn = api.to_graph(test_fn)
+
+    x = compiled_fn(constant_op.constant(3))
+    self.assertEqual(5, self.evaluate(x))
+    # TODO(b/122368197): This should be the constant 5!
+    self.assertEqual(2, testing_global_numeric)
+
+  def test_to_graph_with_kwargs_clashing_converted_call(self):
+
+    def called_fn(**kwargs):
+      return kwargs['f'] + kwargs['owner']
+
+    def test_fn():
+      # These arg names intentionally match converted_call's
+      return called_fn(f=1, owner=2)
+
+    compiled_fn = api.to_graph(test_fn)
+
+    self.assertEqual(compiled_fn(), 3)
 
   def test_to_code_basic(self):
 

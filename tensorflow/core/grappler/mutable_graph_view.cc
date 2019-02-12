@@ -106,6 +106,146 @@ bool HasRegularFaninNode(const MutableGraphView& graph, const NodeDef& node,
   return false;
 }
 
+using FanoutsMap =
+    absl::flat_hash_map<MutableGraphView::OutputPort,
+                        absl::flat_hash_set<MutableGraphView::InputPort>>;
+
+void SwapControlledFanoutInputs(const MutableGraphView& graph,
+                                const FanoutsMap::iterator& control_fanouts,
+                                absl::string_view to_node_name) {
+  absl::string_view from_node_name(control_fanouts->first.node->name());
+  string control = TensorIdToString({to_node_name, Graph::kControlSlot});
+  for (const auto& control_fanout : control_fanouts->second) {
+    const int start = graph.NumFanins(*control_fanout.node,
+                                      /*include_controlling_nodes=*/false);
+    for (int i = start; i < control_fanout.node->input_size(); ++i) {
+      TensorId tensor_id = ParseTensorName(control_fanout.node->input(i));
+      if (tensor_id.node() == from_node_name) {
+        control_fanout.node->set_input(i, control);
+        break;
+      }
+    }
+  }
+}
+
+void SwapRegularFanoutInputs(FanoutsMap* fanouts, NodeDef* from_node,
+                             absl::string_view to_node_name, int max_port) {
+  MutableGraphView::OutputPort port;
+  port.node = from_node;
+  for (int i = 0; i <= max_port; ++i) {
+    port.port_id = i;
+    auto it = fanouts->find(port);
+    if (it == fanouts->end()) {
+      continue;
+    }
+    string input = TensorIdToString({to_node_name, i});
+    for (const auto& fanout : it->second) {
+      fanout.node->set_input(fanout.port_id, input);
+    }
+  }
+}
+
+using MaxOutputPortsMap = absl::flat_hash_map<const NodeDef*, int>;
+
+void SwapFanoutInputs(const MutableGraphView& graph, FanoutsMap* fanouts,
+                      MaxOutputPortsMap* max_output_ports, NodeDef* from_node,
+                      NodeDef* to_node) {
+  auto from_control_fanouts = fanouts->find({from_node, Graph::kControlSlot});
+  if (from_control_fanouts != fanouts->end()) {
+    SwapControlledFanoutInputs(graph, from_control_fanouts, to_node->name());
+  }
+  auto to_control_fanouts = fanouts->find({to_node, Graph::kControlSlot});
+  if (to_control_fanouts != fanouts->end()) {
+    SwapControlledFanoutInputs(graph, to_control_fanouts, from_node->name());
+  }
+  auto from_max_port = max_output_ports->find(from_node);
+  if (from_max_port != max_output_ports->end()) {
+    SwapRegularFanoutInputs(fanouts, from_node, to_node->name(),
+                            from_max_port->second);
+  }
+  auto to_max_port = max_output_ports->find(to_node);
+  if (to_max_port != max_output_ports->end()) {
+    SwapRegularFanoutInputs(fanouts, to_node, from_node->name(),
+                            to_max_port->second);
+  }
+}
+
+void SwapFanoutsMapValues(FanoutsMap* fanouts,
+                          const MutableGraphView::OutputPort& from_port,
+                          const FanoutsMap::iterator& from_fanouts,
+                          const MutableGraphView::OutputPort& to_port,
+                          const FanoutsMap::iterator& to_fanouts) {
+  const bool from_exists = from_fanouts != fanouts->end();
+  const bool to_exists = to_fanouts != fanouts->end();
+
+  if (from_exists && to_exists) {
+    std::swap(from_fanouts->second, to_fanouts->second);
+  } else if (from_exists) {
+    fanouts->emplace(to_port, std::move(from_fanouts->second));
+    fanouts->erase(from_port);
+  } else if (to_exists) {
+    fanouts->emplace(from_port, std::move(to_fanouts->second));
+    fanouts->erase(to_port);
+  }
+}
+
+void SwapRegularFanoutsAndMaxPortValues(FanoutsMap* fanouts,
+                                        MaxOutputPortsMap* max_output_ports,
+                                        NodeDef* from_node, NodeDef* to_node) {
+  auto from_max_port = max_output_ports->find(from_node);
+  auto to_max_port = max_output_ports->find(to_node);
+  bool from_exists = from_max_port != max_output_ports->end();
+  bool to_exists = to_max_port != max_output_ports->end();
+
+  auto forward_fanouts = [fanouts](NodeDef* from, NodeDef* to, int start,
+                                   int end) {
+    for (int i = start; i <= end; ++i) {
+      MutableGraphView::OutputPort from_port(from, i);
+      auto from_fanouts = fanouts->find(from_port);
+      if (from_fanouts != fanouts->end()) {
+        MutableGraphView::OutputPort to_port(to, i);
+        fanouts->emplace(to_port, std::move(from_fanouts->second));
+        fanouts->erase(from_port);
+      }
+    }
+  };
+
+  if (from_exists && to_exists) {
+    const int from = from_max_port->second;
+    const int to = to_max_port->second;
+    const int shared = std::min(from, to);
+    for (int i = 0; i <= shared; ++i) {
+      MutableGraphView::OutputPort from_port(from_node, i);
+      auto from_fanouts = fanouts->find(from_port);
+      MutableGraphView::OutputPort to_port(to_node, i);
+      auto to_fanouts = fanouts->find(to_port);
+      SwapFanoutsMapValues(fanouts, from_port, from_fanouts, to_port,
+                           to_fanouts);
+    }
+    if (to > from) {
+      forward_fanouts(to_node, from_node, shared + 1, to);
+    } else if (from > to) {
+      forward_fanouts(from_node, to_node, shared + 1, from);
+    }
+
+    std::swap(from_max_port->second, to_max_port->second);
+  } else if (from_exists) {
+    forward_fanouts(from_node, to_node, 0, from_max_port->second);
+
+    max_output_ports->emplace(to_node, from_max_port->second);
+    max_output_ports->erase(from_node);
+  } else if (to_exists) {
+    forward_fanouts(to_node, from_node, 0, to_max_port->second);
+
+    max_output_ports->emplace(from_node, to_max_port->second);
+    max_output_ports->erase(to_node);
+  }
+}
+
+bool HasFanoutValue(const FanoutsMap& fanouts, const FanoutsMap::iterator& it) {
+  return it != fanouts.end() && !it->second.empty();
+}
+
 Status MutationError(absl::string_view function_name, absl::string_view params,
                      absl::string_view msg) {
   return errors::InvalidArgument(absl::Substitute(
@@ -178,6 +318,12 @@ Status CheckPortRange(int port, int min, int max, ErrorHandler handler) {
         absl::Substitute("port must be in range [$0, $1]", min, max));
   }
   return Status::OK();
+}
+
+string SwapNodeNamesSwitchControlErrorMsg(absl::string_view node_name) {
+  return absl::Substitute(
+      "can't swap node name '$0' as it will become a Switch control dependency",
+      node_name);
 }
 
 string GeneratedNameForIdentityConsumingSwitch(
@@ -392,6 +538,182 @@ Status MutableGraphView::UpdateNode(
       if (HasRegularFaninNode(*this, *control_fanout.node, node->name())) {
         RemoveControllingFaninInternal(control_fanout.node, node);
       }
+    }
+  }
+
+  return Status::OK();
+}
+
+Status MutableGraphView::UpdateNodeName(absl::string_view from_node_name,
+                                        absl::string_view to_node_name,
+                                        bool update_fanouts) {
+  auto error_status = [from_node_name, to_node_name,
+                       update_fanouts](absl::string_view msg) {
+    string params = absl::Substitute(
+        "from_node_name='$0', to_node_name='$1', update_fanouts=$2",
+        from_node_name, to_node_name, update_fanouts);
+    return MutationError("UpdateNodeName", params, msg);
+  };
+
+  NodeDef* node = GetNode(from_node_name);
+  TF_RETURN_IF_ERROR(CheckNodeExists(from_node_name, node, error_status));
+
+  if (node->name() == to_node_name) {
+    return Status::OK();
+  }
+  if (HasNode(to_node_name)) {
+    return error_status(
+        "can't update node name because new node name is in use");
+  }
+  auto max_output_port = max_regular_output_port().find(node);
+  const bool has_max_output_port =
+      max_output_port != max_regular_output_port().end();
+  auto control_fanouts = fanouts().find({node, Graph::kControlSlot});
+
+  if (update_fanouts) {
+    SwapControlledFanoutInputs(*this, control_fanouts, to_node_name);
+    if (has_max_output_port) {
+      SwapRegularFanoutInputs(&fanouts(), node, to_node_name,
+                              max_output_port->second);
+    }
+  } else if (has_max_output_port ||
+             HasFanoutValue(fanouts(), control_fanouts)) {
+    return error_status("can't update node name because node has fanouts");
+  }
+
+  nodes().erase(node->name());
+  node->set_name(string(to_node_name));
+  nodes().emplace(node->name(), node);
+  return Status::OK();
+}
+
+Status MutableGraphView::SwapNodeNames(absl::string_view from_node_name,
+                                       absl::string_view to_node_name,
+                                       bool update_fanouts) {
+  auto error_status = [from_node_name, to_node_name,
+                       update_fanouts](absl::string_view msg) {
+    string params = absl::Substitute(
+        "from_node_name='$0', to_node_name='$1', update_fanouts=$2",
+        from_node_name, to_node_name, update_fanouts);
+    return MutationError("SwapNodeNames", params, msg);
+  };
+
+  NodeDef* from_node = GetNode(from_node_name);
+  TF_RETURN_IF_ERROR(CheckNodeExists(from_node_name, from_node, error_status));
+  if (from_node_name == to_node_name) {
+    return Status::OK();
+  }
+  NodeDef* to_node = GetNode(to_node_name);
+  TF_RETURN_IF_ERROR(CheckNodeExists(to_node_name, to_node, error_status));
+
+  auto swap_names = [this, from_node, to_node]() {
+    nodes().erase(from_node->name());
+    nodes().erase(to_node->name());
+    std::swap(*from_node->mutable_name(), *to_node->mutable_name());
+    nodes().emplace(from_node->name(), from_node);
+    nodes().emplace(to_node->name(), to_node);
+  };
+
+  if (update_fanouts) {
+    SwapFanoutInputs(*this, &fanouts(), &max_regular_output_port(), from_node,
+                     to_node);
+    swap_names();
+    return Status::OK();
+  }
+
+  bool from_is_switch = IsSwitch(*from_node);
+  MutableGraphView::OutputPort to_control(to_node, Graph::kControlSlot);
+  auto to_control_fanouts = fanouts().find(to_control);
+  if (from_is_switch && HasFanoutValue(fanouts(), to_control_fanouts)) {
+    return error_status(SwapNodeNamesSwitchControlErrorMsg(from_node_name));
+  }
+
+  bool to_is_switch = IsSwitch(*to_node);
+  MutableGraphView::OutputPort from_control(from_node, Graph::kControlSlot);
+  auto from_control_fanouts = fanouts().find(from_control);
+  if (to_is_switch && HasFanoutValue(fanouts(), from_control_fanouts)) {
+    return error_status(SwapNodeNamesSwitchControlErrorMsg(to_node_name));
+  }
+
+  // Swap node names.
+  swap_names();
+
+  // Swap controlling fanouts.
+  SwapFanoutsMapValues(&fanouts(), from_control, from_control_fanouts,
+                       to_control, to_control_fanouts);
+
+  // Swap regular fanouts.
+  SwapRegularFanoutsAndMaxPortValues(&fanouts(), &max_regular_output_port(),
+                                     from_node, to_node);
+
+  // Update fanins to remove self loops.
+  auto update_fanins = [this](NodeDef* node, absl::string_view old_node_name) {
+    for (int i = 0; i < node->input_size(); ++i) {
+      TensorId tensor_id = ParseTensorName(node->input(i));
+      if (tensor_id.node() == node->name()) {
+        const int idx = tensor_id.index();
+        const int node_idx =
+            IsTensorIdControlling(tensor_id) ? Graph::kControlSlot : i;
+
+        MutableGraphView::OutputPort from_fanin(node, idx);
+        absl::flat_hash_set<InputPort>* from_fanouts = &fanouts()[from_fanin];
+        from_fanouts->erase({node, node_idx});
+        UpdateMaxRegularOutputPortForRemovedFanin(from_fanin, *from_fanouts);
+
+        MutableGraphView::OutputPort to_fanin(nodes().at(old_node_name), idx);
+        fanouts()[to_fanin].insert({node, node_idx});
+        UpdateMaxRegularOutputPortForAddedFanin(to_fanin);
+        node->set_input(i, TensorIdToString({old_node_name, idx}));
+      }
+    }
+  };
+  update_fanins(from_node, to_node->name());
+  update_fanins(to_node, from_node->name());
+
+  // Dedup control dependencies.
+  auto dedup_control_fanouts =
+      [this](NodeDef* node, const FanoutsMap::iterator& control_fanouts) {
+        if (CanDedupControlWithRegularInput(*this, *node) &&
+            control_fanouts != fanouts().end()) {
+          for (const auto& control_fanout : control_fanouts->second) {
+            if (HasRegularFaninNode(*this, *control_fanout.node,
+                                    node->name())) {
+              RemoveControllingFaninInternal(control_fanout.node, node);
+            }
+          }
+        }
+      };
+  auto dedup_switch_control = [this, dedup_control_fanouts](NodeDef* node) {
+    OutputPort port;
+    port.node = node;
+    const int max_port =
+        gtl::FindWithDefault(max_regular_output_port(), node, -1);
+    for (int i = 0; i <= max_port; ++i) {
+      port.port_id = i;
+      auto it = fanouts().find(port);
+      if (it == fanouts().end()) {
+        continue;
+      }
+      for (const auto& fanout : it->second) {
+        auto fanout_controls =
+            fanouts().find({fanout.node, Graph::kControlSlot});
+        dedup_control_fanouts(fanout.node, fanout_controls);
+      }
+    }
+  };
+
+  if (!from_is_switch) {
+    if (to_is_switch) {
+      dedup_switch_control(from_node);
+    } else {
+      dedup_control_fanouts(from_node, from_control_fanouts);
+    }
+  }
+  if (!to_is_switch) {
+    if (from_is_switch) {
+      dedup_switch_control(to_node);
+    } else {
+      dedup_control_fanouts(to_node, to_control_fanouts);
     }
   }
 
@@ -625,9 +947,9 @@ NodeDef* MutableGraphView::GetControllingFaninToAdd(absl::string_view node_name,
   if (!IsSwitch(*fanin.node)) {
     return fanin.node;
   } else {
-    TensorId tensor_id(fanin.node->name(), fanin.port_id);
     if (IsOutputPortControlling(fanin)) {
       // Can't add a Switch node control dependency.
+      TensorId tensor_id(fanin.node->name(), fanin.port_id);
       *error_msg = absl::Substitute(
           "can't add fanin '$0' as it will become a Switch control dependency",
           tensor_id.ToString());
@@ -639,18 +961,15 @@ NodeDef* MutableGraphView::GetControllingFaninToAdd(absl::string_view node_name,
     // dependency is only triggered when the corresponding output is triggered.
     // We start by looking for an identity node connected to the output of the
     // switch node, and use it to anchor the control dependency.
-    auto fanouts = GetFanouts(*fanin.node, /*include_controlled_nodes=*/false);
-    for (auto fanout : fanouts) {
+    for (const auto& fanout : GetFanout(fanin)) {
       if (IsIdentity(*fanout.node) || IsIdentityNSingleInput(*fanout.node)) {
-        if (ParseTensorName(fanout.node->input(0)) == tensor_id) {
-          if (fanout.node->name() == node_name) {
-            *error_msg =
-                absl::Substitute("can't add found fanin '$0' to self",
-                                 AsControlDependency(fanout.node->name()));
-            return nullptr;
-          }
-          return fanout.node;
+        if (fanout.node->name() == node_name) {
+          *error_msg =
+              absl::Substitute("can't add found fanin '$0' to self",
+                               AsControlDependency(fanout.node->name()));
+          return nullptr;
         }
+        return fanout.node;
       }
     }
 

@@ -146,7 +146,7 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
           opcode == HloOpcode::kMap || opcode == HloOpcode::kReduce ||
           opcode == HloOpcode::kReduceWindow || opcode == HloOpcode::kScatter ||
           opcode == HloOpcode::kSelectAndScatter ||
-          opcode == HloOpcode::kConditional) {
+          opcode == HloOpcode::kSort || opcode == HloOpcode::kConditional) {
         continue;
       }
       TF_RET_CHECK(hlo->called_computations().empty()) << hlo->ToString();

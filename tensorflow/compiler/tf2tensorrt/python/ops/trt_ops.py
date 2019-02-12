@@ -18,17 +18,45 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
+
 import platform
+from tensorflow.python.framework import errors
 
-if platform.system() != "Windows":
-  # pylint: disable=wildcard-import,unused-import,g-import-not-at-top
-  from tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops import *
+_trt_ops_so = None
+_module_lock = threading.Lock()
 
-  from tensorflow.python.framework import load_library
-  from tensorflow.python.platform import resource_loader
-  # pylint: enable=wildcard-import,unused-import,g-import-not-at-top
 
-  _trt_ops = load_library.load_op_library(
-      resource_loader.get_path_to_datafile("_trt_ops.so"))
-else:
-  raise RuntimeError("Windows platforms are not supported")
+def load_trt_ops():
+  """Load TF-TRT op libraries so if it hasn't been loaded already."""
+  global _trt_ops_so
+
+  if platform.system() == "Windows":
+    raise RuntimeError("Windows platforms are not supported")
+
+  with _module_lock:
+    if _trt_ops_so:
+      return
+
+    # TODO(laigd): we should load TF-TRT kernels here as well after removing the
+    # swig binding.
+    try:
+      # TODO(lagid): It is not known why these unused imports were introduced.
+      # Investigate and get rid of these, if not required.
+      # pylint: disable=unused-import,g-import-not-at-top,unused-variable
+      from tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops import trt_engine_op
+      from tensorflow.python.framework import load_library
+      from tensorflow.python.platform import resource_loader
+      # pylint: enable=unused-import,g-import-not-at-top,unused-variable
+
+      _trt_ops_so = load_library.load_op_library(
+          resource_loader.get_path_to_datafile("_trt_ops.so"))
+    except errors.NotFoundError as e:
+      no_trt_message = (
+          "**** Failed to initialize TensorRT. This is either because the "
+          "TensorRT installation path is not in LD_LIBRARY_PATH, or because "
+          "you do not have it installed. If not installed, please go to "
+          "https://developer.nvidia.com/tensorrt to download and install "
+          "TensorRT ****")
+      print(no_trt_message)
+      raise e

@@ -7936,39 +7936,6 @@ func MatrixInverse(scope *Scope, input tf.Output, optional ...MatrixInverseAttr)
 	return op.Output(0)
 }
 
-// Returns x + y element-wise.
-//
-// *NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
-// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-func Add(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Add",
-		Input: []tf.Input{
-			x, y,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the derivative of a Gamma random sample w.r.t. `alpha`.
-func RandomGammaGrad(scope *Scope, alpha tf.Output, sample tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "RandomGammaGrad",
-		Input: []tf.Input{
-			alpha, sample,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Computes square of x element-wise.
 //
 // I.e., \\(y = x * x = x^2\\).
@@ -12943,6 +12910,48 @@ func StatefulStandardNormal(scope *Scope, resource tf.Output, shape tf.Output, o
 	return op.Output(0)
 }
 
+// StatefulStandardNormalV2Attr is an optional argument to StatefulStandardNormalV2.
+type StatefulStandardNormalV2Attr func(optionalAttr)
+
+// StatefulStandardNormalV2Dtype sets the optional dtype attribute to value.
+//
+// value: The type of the output.
+// If not specified, defaults to DT_FLOAT
+func StatefulStandardNormalV2Dtype(value tf.DataType) StatefulStandardNormalV2Attr {
+	return func(m optionalAttr) {
+		m["dtype"] = value
+	}
+}
+
+// Outputs random values from a normal distribution.
+//
+// The generated values will have mean 0 and standard deviation 1.
+//
+// Arguments:
+//	resource: The handle of the resource variable that stores the state of the RNG.
+//	algorithm: The RNG algorithm.
+//	shape: The shape of the output tensor.
+//
+// Returns A tensor of the specified shape filled with random normal values.
+func StatefulStandardNormalV2(scope *Scope, resource tf.Output, algorithm tf.Output, shape tf.Output, optional ...StatefulStandardNormalV2Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StatefulStandardNormalV2",
+		Input: []tf.Input{
+			resource, algorithm, shape,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Locks a mutex resource.  The output is the lock.  So long as the lock tensor
 //
 // is alive, any other request to use `MutexLock` with this mutex will wait.
@@ -13743,6 +13752,53 @@ func SparseReshape(scope *Scope, input_indices tf.Output, input_shape tf.Output,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Computes the product along segments of a tensor.
+//
+// Read
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+// for an explanation of segments.
+//
+// Computes a tensor such that
+// \\(output_i = \prod_j data_j\\) where the product is over `j` such
+// that `segment_ids[j] == i`.
+//
+// If the product is empty for a given segment ID `i`, `output[i] = 1`.
+//
+// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentProd.png" alt>
+// </div>
+//
+// For example:
+//
+// ```
+// c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+// tf.segment_prod(c, tf.constant([0, 0, 1]))
+// # ==> [[4, 6, 6, 4],
+// #      [5, 6, 7, 8]]
+// ```
+//
+//
+// Arguments:
+//
+//	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
+// first dimension.  Values should be sorted and can be repeated.
+//
+// Returns Has same shape as data, except for dimension 0 which
+// has size `k`, the number of segments.
+func SegmentProd(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SegmentProd",
+		Input: []tf.Input{
+			data, segment_ids,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Bucketizes 'input' based on 'boundaries'.
@@ -15188,6 +15244,39 @@ func Neg(scope *Scope, x tf.Output) (y tf.Output) {
 		Type: "Neg",
 		Input: []tf.Input{
 			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns x + y element-wise.
+//
+// *NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+func Add(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Add",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the derivative of a Gamma random sample w.r.t. `alpha`.
+func RandomGammaGrad(scope *Scope, alpha tf.Output, sample tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RandomGammaGrad",
+		Input: []tf.Input{
+			alpha, sample,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -17502,6 +17591,48 @@ func TruncateDiv(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// RequantizePerChannelAttr is an optional argument to RequantizePerChannel.
+type RequantizePerChannelAttr func(optionalAttr)
+
+// RequantizePerChannelOutType sets the optional out_type attribute to value.
+//
+// value: The quantized type of output tensor that needs to be converted.
+// If not specified, defaults to DT_QUINT8
+func RequantizePerChannelOutType(value tf.DataType) RequantizePerChannelAttr {
+	return func(m optionalAttr) {
+		m["out_type"] = value
+	}
+}
+
+// Requantizes input with min and max values known per channel.
+//
+// Arguments:
+//	input: The original input tensor.
+//	input_min: The minimum value of the input tensor
+//	input_max: The maximum value of the input tensor.
+//	requested_output_min: The minimum value of the output tensor requested.
+//	requested_output_max: The maximum value of the output tensor requested.
+//
+// Returns Output tensor.The minimum value of the final output tensorThe maximum value of the final output tensor.
+func RequantizePerChannel(scope *Scope, input tf.Output, input_min tf.Output, input_max tf.Output, requested_output_min tf.Output, requested_output_max tf.Output, optional ...RequantizePerChannelAttr) (output tf.Output, output_min tf.Output, output_max tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RequantizePerChannel",
+		Input: []tf.Input{
+			input, input_min, input_max, requested_output_min, requested_output_max,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // Restores tensors from a V2 checkpoint.
 //
 // For backward compatibility with the V1 format, this Op currently allows
@@ -18208,6 +18339,78 @@ func MaxPoolV2(scope *Scope, input tf.Output, ksize tf.Output, strides tf.Output
 		Type: "MaxPoolV2",
 		Input: []tf.Input{
 			input, ksize, strides,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Does nothing. Serves as a control trigger for scheduling.
+//
+// Only useful as a placeholder for control edges.
+//
+// Returns the created operation.
+func ControlTrigger(scope *Scope) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ControlTrigger",
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Deprecated. Use TensorArrayReadV3
+//
+// DEPRECATED at GraphDef version 26: Use TensorArrayReadV3
+func TensorArrayReadV2(scope *Scope, handle tf.Output, index tf.Output, flow_in tf.Output, dtype tf.DataType) (value tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtype": dtype}
+	opspec := tf.OpSpec{
+		Type: "TensorArrayReadV2",
+		Input: []tf.Input{
+			handle, index, flow_in,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Batch normalization.
+//
+// DEPRECATED at GraphDef version 9: Use tf.nn.batch_normalization()
+//
+// This op is deprecated. Prefer `tf.nn.batch_normalization`.
+//
+// Arguments:
+//	t: A 4D input Tensor.
+//	m: A 1D mean Tensor with size matching the last dimension of t.
+// This is the first output from tf.nn.moments,
+// or a saved moving average thereof.
+//	v: A 1D variance Tensor with size matching the last dimension of t.
+// This is the second output from tf.nn.moments,
+// or a saved moving average thereof.
+//	beta: A 1D beta Tensor with size matching the last dimension of t.
+// An offset to be added to the normalized tensor.
+//	gamma: A 1D gamma Tensor with size matching the last dimension of t.
+// If "scale_after_normalization" is true, this tensor will be multiplied
+// with the normalized tensor.
+//	variance_epsilon: A small float number to avoid dividing by 0.
+//	scale_after_normalization: A bool indicating whether the resulted tensor
+// needs to be multiplied with gamma.
+func BatchNormWithGlobalNormalization(scope *Scope, t tf.Output, m tf.Output, v tf.Output, beta tf.Output, gamma tf.Output, variance_epsilon float32, scale_after_normalization bool) (result tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"variance_epsilon": variance_epsilon, "scale_after_normalization": scale_after_normalization}
+	opspec := tf.OpSpec{
+		Type: "BatchNormWithGlobalNormalization",
+		Input: []tf.Input{
+			t, m, v, beta, gamma,
 		},
 		Attrs: attrs,
 	}
@@ -27649,78 +27852,6 @@ func QuantizedMatMul(scope *Scope, a tf.Output, b tf.Output, min_a tf.Output, ma
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// Does nothing. Serves as a control trigger for scheduling.
-//
-// Only useful as a placeholder for control edges.
-//
-// Returns the created operation.
-func ControlTrigger(scope *Scope) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ControlTrigger",
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Batch normalization.
-//
-// DEPRECATED at GraphDef version 9: Use tf.nn.batch_normalization()
-//
-// This op is deprecated. Prefer `tf.nn.batch_normalization`.
-//
-// Arguments:
-//	t: A 4D input Tensor.
-//	m: A 1D mean Tensor with size matching the last dimension of t.
-// This is the first output from tf.nn.moments,
-// or a saved moving average thereof.
-//	v: A 1D variance Tensor with size matching the last dimension of t.
-// This is the second output from tf.nn.moments,
-// or a saved moving average thereof.
-//	beta: A 1D beta Tensor with size matching the last dimension of t.
-// An offset to be added to the normalized tensor.
-//	gamma: A 1D gamma Tensor with size matching the last dimension of t.
-// If "scale_after_normalization" is true, this tensor will be multiplied
-// with the normalized tensor.
-//	variance_epsilon: A small float number to avoid dividing by 0.
-//	scale_after_normalization: A bool indicating whether the resulted tensor
-// needs to be multiplied with gamma.
-func BatchNormWithGlobalNormalization(scope *Scope, t tf.Output, m tf.Output, v tf.Output, beta tf.Output, gamma tf.Output, variance_epsilon float32, scale_after_normalization bool) (result tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"variance_epsilon": variance_epsilon, "scale_after_normalization": scale_after_normalization}
-	opspec := tf.OpSpec{
-		Type: "BatchNormWithGlobalNormalization",
-		Input: []tf.Input{
-			t, m, v, beta, gamma,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Deprecated. Use TensorArrayReadV3
-//
-// DEPRECATED at GraphDef version 26: Use TensorArrayReadV3
-func TensorArrayReadV2(scope *Scope, handle tf.Output, index tf.Output, flow_in tf.Output, dtype tf.DataType) (value tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtype": dtype}
-	opspec := tf.OpSpec{
-		Type: "TensorArrayReadV2",
-		Input: []tf.Input{
-			handle, index, flow_in,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // QuantizedMulAttr is an optional argument to QuantizedMul.
 type QuantizedMulAttr func(optionalAttr)
 
@@ -30179,53 +30310,6 @@ func Svd(scope *Scope, input tf.Output, optional ...SvdAttr) (s tf.Output, u tf.
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// Computes the product along segments of a tensor.
-//
-// Read
-// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
-// for an explanation of segments.
-//
-// Computes a tensor such that
-// \\(output_i = \prod_j data_j\\) where the product is over `j` such
-// that `segment_ids[j] == i`.
-//
-// If the product is empty for a given segment ID `i`, `output[i] = 1`.
-//
-// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentProd.png" alt>
-// </div>
-//
-// For example:
-//
-// ```
-// c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-// tf.segment_prod(c, tf.constant([0, 0, 1]))
-// # ==> [[4, 6, 6, 4],
-// #      [5, 6, 7, 8]]
-// ```
-//
-//
-// Arguments:
-//
-//	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
-// first dimension.  Values should be sorted and can be repeated.
-//
-// Returns Has same shape as data, except for dimension 0 which
-// has size `k`, the number of segments.
-func SegmentProd(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SegmentProd",
-		Input: []tf.Input{
-			data, segment_ids,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Converts one or more images from RGB to HSV.
 //
 // Outputs a tensor of the same shape as the `images` tensor, containing the HSV
@@ -32015,6 +32099,32 @@ func SampleDistortedBoundingBoxV2(scope *Scope, image_size tf.Output, bounding_b
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Computes requantization range per channel.
+//
+// Arguments:
+//	input: The original input tensor.
+//	input_min: The minimum value of the input tensor
+//	input_max: The maximum value of the input tensor.
+//	clip_value_max: The maximum value of the output that needs to be clipped.
+// Example: set this to 6 for Relu6.
+//
+// Returns The minimum value of the final output tensorThe maximum value of the final output tensor.
+func RequantizationRangePerChannel(scope *Scope, input tf.Output, input_min tf.Output, input_max tf.Output, clip_value_max float32) (output_min tf.Output, output_max tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"clip_value_max": clip_value_max}
+	opspec := tf.OpSpec{
+		Type: "RequantizationRangePerChannel",
+		Input: []tf.Input{
+			input, input_min, input_max,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // ExtractGlimpseAttr is an optional argument to ExtractGlimpse.

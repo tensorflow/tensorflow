@@ -144,7 +144,6 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:qr",
         "//tensorflow/compiler/xla/client/lib:quantize",
         "//tensorflow/compiler/xla/client/lib:sorting",
-        "//tensorflow/compiler/xla/client/lib:triangular_solve",
         "//tensorflow/core:bitwise_ops_op_lib",
         "//tensorflow/core:control_flow_ops_op_lib",
         "//tensorflow/core:data_flow_ops_op_lib",

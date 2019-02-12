@@ -38,9 +38,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
+from tensorflow.python.util import tf_inspect
 
 
 @parameterized.named_parameters(
@@ -126,11 +128,34 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         lambda: root.vocab.asset_path,
         input_signature=[])
     imported = self.cycle(root, cycles)
-    origin_output = root.f().numpy()
+    original_output = root.f().numpy()
     imported_output = imported.f().numpy()
-    self.assertNotEqual(origin_output, imported_output)
+    self.assertNotEqual(original_output, imported_output)
     with open(imported_output, "r") as f:
       self.assertEqual("contents", f.read())
+
+  def test_capture_assets_in_graph(self, cycles):
+    root = tracking.AutoCheckpointable()
+    root.vocab = tracking.TrackableAsset(self._make_asset("contents"))
+    root.f = def_function.function(
+        lambda: root.vocab.asset_path,
+        input_signature=[])
+
+    original_output = root.f().numpy()
+
+    if cycles > 1:
+      root = self.cycle(root, cycles - 1)
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+
+    with ops.Graph().as_default():
+      imported = load.load(path)
+      imported_tensor = imported.f()
+      with monitored_session.MonitoredSession() as sess:
+        imported_output = sess.run(imported_tensor)
+        self.assertNotEqual(original_output, imported_output)
+        with open(imported_output, "r") as f:
+          self.assertEqual("contents", f.read())
 
   def test_dedup_assets(self, cycles):
     vocab = self._make_asset("contents")
@@ -858,25 +883,160 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertIs(f_concrete.captured_inputs[0],
                   g_concrete.captured_inputs[0])
 
+  def test_functions_accessed_once(self, cycles):
+
+    class Exported(tracking.AutoCheckpointable):
+
+      def __init__(self):
+        self._counter = 0
+
+      @property
+      def make_func(self):
+        @def_function.function
+        def f():
+          return constant_op.constant(self._counter)
+        f.get_concrete_function()  # force a trace
+        self._counter += 1
+        return f
+
+    exported = Exported()
+    imported = self.cycle(exported, cycles)
+    self.assertEqual(0, imported.make_func().numpy())
+    self.assertEqual(1, exported.make_func().numpy())
+
+  def test_overwritten_signatures_error(self, cycles):
+    exported = tracking.AutoCheckpointable()
+    exported.f = def_function.function(lambda: constant_op.constant(1.))
+    imported = self.cycle(
+        exported, cycles,
+        signatures={"key": exported.f.get_concrete_function()})
+    self.assertEqual(1., imported.signatures["key"]()["output_0"].numpy())
+    imported.signatures = {"key1": imported.signatures["key"]}
+    with self.assertRaisesRegexp(ValueError, "signatures"):
+      save.save(imported, tempfile.mkdtemp(prefix=self.get_temp_dir()))
+
+  def test_signature_loading(self, cycles):
+
+    class Exported(tracking.AutoCheckpointable):
+
+      def __init__(self):
+        self.v = variables.Variable(3.)
+
+      @def_function.function
+      def do(self, x):
+        return self.v * x
+
+    exported = Exported()
+    imported = self.cycle(
+        exported,
+        signatures=exported.do.get_concrete_function(
+            tensor_spec.TensorSpec(None, dtypes.float32)))
+    for _ in range(cycles - 1):
+      imported = self.cycle(imported, signatures=imported.signatures)
+    self.assertEqual(["serving_default"], list(imported.signatures.keys()))
+    imported_function = imported.signatures["serving_default"]
+    two = constant_op.constant(2.)
+    self.assertEqual(6., imported_function(x=two)["output_0"].numpy())
+    imported.v.assign(4.)
+    self.assertEqual(8., imported_function(x=two)["output_0"].numpy())
+    with self.assertRaisesRegexp(TypeError, "positional"):
+      imported_function(two)
+    with self.assertRaises(TypeError):
+      # The signatures mapping is immutable
+      imported.signatures["random_key"] = 3
+
+  def _make_model_with_tables(self):
+    default_val = -1
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table1_initializer = lookup_ops.KeyValueTensorInitializer(keys, values)
+    table1 = lookup_ops.HashTable(table1_initializer, default_val)
+
+    table2_file = self._make_asset("test\nfoo\nbrain\n")
+    table2_initializer = lookup_ops.TextFileIdTableInitializer(table2_file)
+    table2 = lookup_ops.HashTable(table2_initializer, default_val)
+
+    def _make_lookup_function(table):
+      signature = [tensor_spec.TensorSpec(None, dtypes.string)]
+      return def_function.function(input_signature=signature)(
+          lambda x: table.lookup(x))  # pylint: disable=unnecessary-lambda
+
+    root = tracking.AutoCheckpointable()
+    root.table1 = table1
+    root.lookup1 = _make_lookup_function(table1)
+    root.table2 = table2
+    root.lookup2 = _make_lookup_function(table2)
+    return root
+
   def test_table(self, cycles):
-    # TODO(b/123408779): Handle generic TrackableResources and enable this test
-    self.skipTest("Need to handle generic TrackableResources")
-    vocab_path = self._make_asset("alpha\nbeta\ngamma\n")
-    initializer = lookup_ops.TextFileInitializer(
-        vocab_path,
-        key_dtype=dtypes.string,
-        key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
-        value_dtype=dtypes.int64,
-        value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
-    root = util.Checkpoint(table=lookup_ops.HashTable(
-        initializer, default_value=-1))
-    root.table_user = def_function.function(
-        root.table.lookup,
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.string)])
-    self.assertEqual(2, root.table_user(constant_op.constant("gamma")).numpy())
+    root = self._make_model_with_tables()
+    imported = self.cycle(root, cycles, signatures={})
+    keys = constant_op.constant(["brain", "test", "foo", "surgery"])
+    self.assertAllEqual([0, -1, -1, 2], imported.lookup1(keys).numpy())
+    self.assertAllEqual([2, 0, 1, -1], imported.lookup2(keys).numpy())
+
+  def test_table_in_graph(self, cycles):
+    root = self._make_model_with_tables()
+
+    if cycles > 1:
+      root = self.cycle(root, cycles - 1)
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+    imported = self.cycle(root, 1)
+
+    with ops.Graph().as_default():
+      imported = load.load(path)
+      keys = constant_op.constant(["brain", "test", "foo", "surgery"])
+      output1 = imported.lookup1(keys)
+      output2 = imported.lookup2(keys)
+      with monitored_session.MonitoredSession() as sess:
+        self.assertAllEqual([0, -1, -1, 2], sess.run(output1))
+        self.assertAllEqual([2, 0, 1, -1], sess.run(output2))
+
+  def test_perserve_argspec(self, cycles):
+    def f(a, b, c):  # pylint: disable=unused-argument
+      return None
+
+    original_fullargspec = tf_inspect.getfullargspec(f)
+
+    root = tracking.AutoCheckpointable()
+    root.f = def_function.function(f)
     imported = self.cycle(root, cycles)
-    self.assertEqual(
-        2, imported.table_user(constant_op.constant("gamma")).numpy())
+
+    restored_fullargspec = tf_inspect.getfullargspec(imported.f)
+    self.assertEqual(original_fullargspec, restored_fullargspec)
+
+
+class SingleCycleTests(test.TestCase, parameterized.TestCase):
+
+  def test_load_with_tags(self):
+    root = tracking.AutoCheckpointable()
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+    with self.assertRaises(ValueError):
+      load.load(path, tags=[tag_constants.EVAL])
+    load.load(path, tags=[tag_constants.SERVING])
+    load.load(path, tags=tag_constants.SERVING)
+
+  def test_docstring_examples(self):
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    exported = util.Checkpoint(v=variables.Variable(3.))
+    exported.f = def_function.function(
+        lambda x: exported.v * x,
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)])
+    save.save(exported, path)
+    imported = load.load(path)
+    self.assertEqual(3., imported.v.numpy())
+    self.assertEqual(6., imported.f(x=constant_op.constant(2.)).numpy())
+
+    save.save(exported, path, exported.f.get_concrete_function())
+    imported = load.load(path)
+    f = imported.signatures["serving_default"]
+    self.assertAllEqual(
+        [[-3.]],
+        f(x=constant_op.constant([[-1.]]))["output_0"].numpy())
+
 
 if __name__ == "__main__":
   test.main()

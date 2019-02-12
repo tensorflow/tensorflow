@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -2356,14 +2357,16 @@ TEST_F(CanShareOperandBufferWithUserTest, ScatterCanShare) {
 
 TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {
   auto builder = HloComputation::Builder(TestName());
+  module_ = CreateNewVerifiedModule();
 
   Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
   auto keys = builder.AddInstruction(
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
-  auto sort =
-      builder.AddInstruction(HloInstruction::CreateSort(keys_shape, 0, keys));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* sort, MakeSortHlo(keys_shape, {keys}, -1, &builder, module_.get()));
 
-  BuildModuleAndRunAnalysis(builder.Build());
+  computation_ = module_->AddEntryComputation(builder.Build());
+  RunAnalysis();
 
   EXPECT_TRUE(
       dataflow_analysis_->CanShareOperandBufferWithUser(keys, {}, sort, {}));
@@ -2371,6 +2374,7 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {
 
 TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
   auto builder = HloComputation::Builder(TestName());
+  module_ = CreateNewVerifiedModule();
 
   Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
   Shape values_shape = ShapeUtil::MakeShape(F32, {8});
@@ -2378,11 +2382,13 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
   auto values = builder.AddInstruction(
       HloInstruction::CreateParameter(1, values_shape, "values"));
-  auto sort = builder.AddInstruction(HloInstruction::CreateSort(
-      ShapeUtil::MakeTupleShape({keys_shape, values_shape}), 0, keys,
-      {values}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* sort,
+      MakeSortHlo(ShapeUtil::MakeTupleShape({keys_shape, values_shape}),
+                  {keys, values}, 0, &builder, module_.get()));
 
-  BuildModuleAndRunAnalysis(builder.Build());
+  computation_ = module_->AddEntryComputation(builder.Build());
+  RunAnalysis();
 
   // The buffer for the keys can be shared with the first tuple entry.
   EXPECT_TRUE(

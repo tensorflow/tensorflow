@@ -160,6 +160,7 @@ tf_custom_op_py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
         "//tensorflow/python:resources",
@@ -351,6 +352,7 @@ cc_library(
         "segment/segment.h",
         "segment/union_find.h",
     ],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:graph",
         "//tensorflow/core:lib_proto_parsing",

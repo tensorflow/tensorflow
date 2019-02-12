@@ -3278,8 +3278,8 @@ def gather(params,
            batch_dims=0):
   r"""Gather slices from params axis axis according to indices.
 
-  Gather slices from params axis axis according to indices.  `indices` must be
-  an integer tensor of any dimension (usually 0-D or 1-D).
+  Gather slices from params axis `axis` according to `indices`.  `indices` must
+  be an integer tensor of any dimension (usually 0-D or 1-D).
 
   For 0-D (scalar) `indices`:
 
@@ -3336,17 +3336,17 @@ def gather(params,
       to `batch_dims`.  Defaults to the first non-batch dimension. Supports
       negative indexes.
     batch_dims: An `integer`.  The number of batch dimensions.  Must be less
-      than `ndims(inices)`.
+      than `rank(indices)`.
 
   Returns:
     A `Tensor`. Has the same type as `params`.
   """
   del validate_indices
-  if axis is None:
-    axis = batch_dims
   if batch_dims != 0:
     with ops.name_scope(name, "Gather", [params, indices, axis]):
       return _batch_gather(params, indices, batch_dims, axis)
+  if axis is None:
+    axis = batch_dims
   if axis != 0:
     # Note that we do a sparse_read here to avoid snapshotting the entire
     # resource variable and doing a gather, which can be inefficient and lead to
@@ -3393,15 +3393,15 @@ def _batch_gather(params, indices, batch_dims, axis=None):
   This operation assumes that the leading `batch_dims` dimensions of `indices`
   and `params` are batch dimensions; and performs a `tf.gather` operation within
   each batch. (If `batch_dims` is not specified, then it defaults to
-  `ndims(indices) - 1`.)  In the case in which `batch_dims==0`, this operation
+  `rank(indices)-1`.)  In the case in which `batch_dims==0`, this operation
   is equivalent to `tf.gather`.
 
   Args:
     params: A Tensor. The tensor from which to gather values.
     indices: A Tensor. Must be one of the following types: int32, int64. Index
       tensor. Must be in range `[0, params.shape[batch_dims]]`.
-    batch_dims: An integer.  The number of batch dimensions.  Must be less than
-      ndims(inices).  Defaults to `ndims(indices) - 1` if not specified.
+    batch_dims: An integer or none.  The number of batch dimensions.  Must be
+      less than `rank(indices)`.  Defaults to `rank(indices) - 1` if None.
     axis: A `Tensor`. Must be one of the following types: `int32`, `int64`. The
       `axis` in `params` to gather `indices` from. Must be greater than or equal
       to `batch_dims`.  Defaults to the first non-batch dimension. Supports
@@ -3427,10 +3427,10 @@ def _batch_gather(params, indices, batch_dims, axis=None):
   if batch_dims < 0:
     batch_dims += indices_ndims
   if batch_dims < 0 or batch_dims >= indices_ndims:
-    raise ValueError("batch_dims = %d must be less than ndims(indices) = %d" %
+    raise ValueError("batch_dims = %d must be less than rank(indices) = %d" %
                      (batch_dims, indices_ndims))
   if params.shape.ndims is not None and batch_dims >= params.shape.ndims:
-    raise ValueError("batch_dims = %d must be less than ndims(params) = %d" %
+    raise ValueError("batch_dims = %d must be less than rank(params) = %d" %
                      (batch_dims, params.shape.ndims))
 
   # Handle axis by transposing the axis dimension to be the first non-batch

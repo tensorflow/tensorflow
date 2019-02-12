@@ -27,6 +27,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.saving import model_from_json
 from tensorflow.python.keras.saving import saving_utils
+from tensorflow.python.keras.utils import mode_keys
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -35,7 +36,6 @@ from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import model_utils
 from tensorflow.python.saved_model import save as save_lib
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
-from tensorflow.python.training import mode_keys
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.checkpointable import graph_view
 from tensorflow.python.util import compat
@@ -368,7 +368,7 @@ def _assert_same_non_optimizer_objects(model, model_graph, clone, clone_graph): 
 
 
 @keras_export('keras.experimental.load_from_saved_model')
-def load_from_saved_model(saved_model_path):
+def load_from_saved_model(saved_model_path, custom_objects=None):
   """Loads a keras.Model from a SavedModel created by keras export().
 
   This function reinstantiates model state by:
@@ -397,6 +397,9 @@ def load_from_saved_model(saved_model_path):
 
   Args:
     saved_model_path: a string specifying the path to an existing SavedModel.
+    custom_objects: Optional dictionary mapping names
+        (strings) to custom classes or functions to be
+        considered during deserialization.
 
   Returns:
     a keras.Model instance.
@@ -407,7 +410,7 @@ def load_from_saved_model(saved_model_path):
       compat.as_bytes(constants.ASSETS_DIRECTORY),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_JSON))
   model_json = file_io.read_file_to_string(model_json_filepath)
-  model = model_from_json(model_json)
+  model = model_from_json(model_json, custom_objects=custom_objects)
 
   # restore model weights
   checkpoint_prefix = os.path.join(

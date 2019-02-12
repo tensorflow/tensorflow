@@ -22,7 +22,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import batching
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.framework import constant_op
@@ -35,9 +34,9 @@ from tensorflow.python.keras.engine import partial_batch_padding_handler as padd
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import Progbar
+from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
 
 
@@ -73,18 +72,11 @@ def fit_distributed(model,
             batch_size, mode=ModeKeys.TRAIN))
   batch_size = model._validate_or_infer_batch_size(
       batch_size, steps_per_epoch, x)
-  steps_name = 'steps_per_epoch'
-  if isinstance(x, dataset_ops.DatasetV2):
-    steps_per_epoch = training_utils.infer_steps_for_dataset(
-        x, steps_per_epoch, steps_name=steps_name)
   dataset = model._distribution_standardize_user_data(
       x, y,
       sample_weight=sample_weight,
       class_weight=class_weight,
       batch_size=batch_size,
-      check_steps=True,
-      steps_name=steps_name,
-      steps=steps_per_epoch,
       validation_split=validation_split,
       shuffle=shuffle)
 
@@ -99,18 +91,11 @@ def fit_distributed(model,
       validation_steps, _ = distributed_training_utils.get_input_params(
           model._distribution_strategy, first_valx_value, validation_steps,
           batch_size)
-    steps_name = 'validation_steps'
-    if isinstance(val_x, dataset_ops.DatasetV2):
-      validation_steps = training_utils.infer_steps_for_dataset(
-          val_x, validation_steps, steps_name=steps_name)
     val_dataset = model._distribution_standardize_user_data(
         val_x, val_y,
         sample_weight=val_sample_weights,
         class_weight=None,
         batch_size=batch_size,
-        check_steps=True,
-        steps_name=steps_name,
-        steps=validation_steps,
         validation_split=validation_split,
         shuffle=shuffle)
   elif validation_split:
@@ -128,7 +113,7 @@ def fit_distributed(model,
         initial_epoch=initial_epoch,
         steps_per_epoch=steps_per_epoch,
         validation_steps=validation_steps,
-        validation_freq=1)
+        validation_freq=validation_freq)
   else:
     return training_arrays.fit_loop(
         model,
@@ -142,7 +127,8 @@ def fit_distributed(model,
         initial_epoch=initial_epoch,
         steps_per_epoch=steps_per_epoch,
         validation_steps=validation_steps,
-        validation_freq=validation_freq)
+        validation_freq=validation_freq,
+        steps_name='steps_per_epoch')
 
 
 def evaluate_distributed(model,
@@ -160,18 +146,10 @@ def evaluate_distributed(model,
     steps, batch_size = distributed_training_utils.get_input_params(
         model._distribution_strategy, first_x_value, steps, batch_size)
   batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
-  steps_name = 'steps'
-
-  if isinstance(x, dataset_ops.DatasetV2):
-    steps = training_utils.infer_steps_for_dataset(x, steps,
-                                                   steps_name=steps_name)
   dataset = model._distribution_standardize_user_data(
       x, y,
       sample_weight=sample_weight,
-      batch_size=batch_size,
-      check_steps=True,
-      steps_name=steps_name,
-      steps=steps)
+      batch_size=batch_size)
 
   if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
     return experimental_tpu_test_loop(
@@ -201,16 +179,9 @@ def predict_distributed(model,
         model._distribution_strategy, first_x_value, steps,
         batch_size, mode=ModeKeys.PREDICT)
   batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
-  steps_name = 'steps'
-  if isinstance(x, dataset_ops.DatasetV2):
-    steps = training_utils.infer_steps_for_dataset(x, steps,
-                                                   steps_name=steps_name)
   dataset = model._distribution_standardize_user_data(
       x,
       batch_size=batch_size,
-      check_steps=True,
-      steps_name=steps_name,
-      steps=steps,
       repeat=False,
       allow_partial_batch=True)
   if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
@@ -271,6 +242,13 @@ def experimental_tpu_fit_loop(model,
   # TODO(fchollet): add support for `steps_per_epoch=None` in TPU loops.
   current_strategy = model._distribution_strategy
   iterator = distributed_training_utils.get_iterator(dataset, current_strategy)
+  steps_per_epoch = training_utils.infer_steps_for_dataset(
+      dataset, steps_per_epoch, epochs, steps_name='steps_per_epoch')
+  if (current_strategy.extended.steps_per_run != 1 and
+      steps_per_epoch is None):
+    raise ValueError('`steps_per_epoch` should be specified when calling '
+                     '`fit` on the model with TPUStrategy when '
+                     '`steps_per_run` != 1 .')
 
   scope = distributed_training_utils.distributed_scope(
       strategy=current_strategy, learning_phase=1)
@@ -330,18 +308,20 @@ def experimental_tpu_fit_loop(model,
     tensor = model._all_stateful_metrics_tensors[name]
     initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
 
-  if steps_per_epoch is None:
-    raise ValueError('`steps_per_epoch` should be specified when calling '
-                     '`fit` on the model.')
+  use_steps = steps_per_epoch is not None
+  if use_steps:
+    iteration_value = min(steps_per_epoch,
+                          current_strategy.extended.steps_per_run)
+  else:
+    iteration_value = current_strategy.extended.steps_per_run
+
   steps_per_run = K.variable(
-      value=min(steps_per_epoch, current_strategy.extended.steps_per_run),
+      value=iteration_value,
       dtype='int32',
       name='steps_per_run')
-
   ctx = current_strategy.extended.experimental_run_steps_on_iterator(
       step_fn, iterator, iterations=steps_per_run,
       initial_loop_values=initial_loop_values)
-
   train_op = ctx.run_op
   output_tensors = ctx.last_step_outputs
 
@@ -361,11 +341,16 @@ def experimental_tpu_fit_loop(model,
       mode=mode)
 
   # Calculate the steps each time on the device.
-  steps_to_run = [current_strategy.extended.steps_per_run] * (
-      steps_per_epoch // current_strategy.extended.steps_per_run)
-  if steps_per_epoch % current_strategy.extended.steps_per_run:
-    steps_to_run.append(
-        steps_per_epoch % current_strategy.extended.steps_per_run)
+  if use_steps:
+    steps_to_run = ([current_strategy.extended.steps_per_run] *
+                    (steps_per_epoch //
+                     current_strategy.extended.steps_per_run))
+    if steps_per_epoch % current_strategy.extended.steps_per_run:
+      steps_to_run.append(
+          steps_per_epoch % current_strategy.extended.steps_per_run)
+    target_steps = len(steps_to_run)
+  else:
+    target_steps = np.inf
 
   callbacks._call_begin_hook(mode)
   for epoch in range(initial_epoch, epochs):
@@ -374,25 +359,36 @@ def experimental_tpu_fit_loop(model,
     epoch_logs = {}
     step_index = 0
     prev_step_count = None
-    for step_count in steps_to_run:
+    current_step = 0
+    while current_step < target_steps:
+      step_count = steps_to_run[current_step] if use_steps else 1
       batch_logs = {'batch': step_index, 'size': 1, 'num_steps': step_count}
       callbacks._call_batch_hook(mode, 'begin', step_index, batch_logs)
       if prev_step_count is None or step_count != prev_step_count:
         steps_per_run.load(step_count, K.get_session())
         prev_step_count = step_count
       try:
-        _, outputs = K.get_session().run([train_op, output_tensors])
+        _, outputs = K.batch_get_value([train_op, output_tensors])
       except errors.OutOfRangeError:
-        logging.warning('Your dataset iterator ran out of data; '
-                        'interrupting training. Make sure that your dataset '
-                        'can generate at least `steps_per_epoch * epochs` '
-                        'batches (in this case, %d batches).' %
-                        steps_per_epoch * epochs)
+        if use_steps:
+          logging.warning('Your dataset iterator ran out of data; '
+                          'interrupting training. Make sure that your dataset '
+                          'can generate at least `steps_per_epoch * epochs` '
+                          'batches (in this case, %d batches).' %
+                          steps_per_epoch * epochs)
+        else:
+          target_steps = current_step
+          logging.info('Dataset iterator ran out of data. Inferring the '
+                       'value of `steps_per_epoch` as %s  .' % target_steps)
+          distributed_training_utils.initialize_iterator(iterator,
+                                                         current_strategy)
         break
 
       batch_logs.update(outputs)
       callbacks._call_batch_hook(mode, 'end', step_index, batch_logs)
       step_index = step_index + step_count
+      current_step += 1
+
       if callbacks.model.stop_training:
         break
 
@@ -455,7 +451,11 @@ def experimental_tpu_test_loop(model,
   """
   mode = ModeKeys.TEST
   current_strategy = model._distribution_strategy
-  iterator = distributed_training_utils.get_iterator(dataset, current_strategy)
+  iterator = distributed_training_utils.get_iterator(dataset,
+                                                     current_strategy)
+  steps = training_utils.infer_steps_for_dataset(dataset, steps,
+                                                 steps_name='steps')
+
   scope = distributed_training_utils.distributed_scope(
       strategy=current_strategy, learning_phase=0)
   scope.__enter__()
@@ -539,12 +539,29 @@ def experimental_tpu_test_loop(model,
       mode=ModeKeys.TEST)
   callbacks._call_begin_hook(mode)
 
-  assert steps is not None
   outs = [0.] * len(model.metrics_names)
-  for step in range(steps):
-    batch_logs = {'batch': step, 'size': 1}
-    callbacks._call_batch_hook(mode, 'begin', step, batch_logs)
-    _, batch_outs = K.get_session().run([test_op, output_tensors])
+  if steps is not None:
+    target_steps = steps
+  else:
+    target_steps = np.inf
+
+  current_step = 0
+  while current_step < target_steps:
+    batch_logs = {'batch': current_step, 'size': 1}
+    callbacks._call_batch_hook(mode, 'begin', current_step, batch_logs)
+    try:
+      _, batch_outs = K.batch_get_value([test_op, output_tensors])
+    except errors.OutOfRangeError:
+      if steps is not None:
+        warning_msg = 'Make sure that your dataset can generate at least '
+        '`steps` batches (in this case, {} batches).'.format(steps)
+      else:
+        warning_msg = 'Number of steps ran: {} steps'.format(current_step)
+
+      logging.warning('Your dataset iterator ran out of data; '
+                      'interrupting evaluation. ' + warning_msg)
+      target_steps = current_step
+      break
     for i, label in enumerate(model.metrics_names):
       if i == 0:
         # Loss is stateless metrics.
@@ -554,15 +571,16 @@ def experimental_tpu_test_loop(model,
         outs[i] = batch_outs[label]
 
     batch_logs = cbks.make_logs(model, batch_logs, outs, mode)
-    callbacks._call_batch_hook(mode, 'end', step, batch_logs)
+    callbacks._call_batch_hook(mode, 'end', current_step, batch_logs)
     if verbose >= 1:
-      progbar.update(step + 1)
+      progbar.update(current_step + 1)
+    current_step += 1
 
   callbacks._call_end_hook(mode)
 
   scope.__exit__(None, None, None)
   if len(outs) >= 0:
-    outs[0] /= (steps)
+    outs[0] /= (target_steps)
 
   if len(outs) == 1:
     return outs[0]
@@ -591,6 +609,8 @@ def experimental_tpu_predict_loop(model,
       (if the model has multiple outputs).
   """
   mode = ModeKeys.PREDICT
+  steps = training_utils.infer_steps_for_dataset(dataset, steps,
+                                                 steps_name='steps')
   dataset_fully_shaped = (distributed_training_utils.
                           is_dataset_shape_fully_defined(dataset))
   padding_handler = None
@@ -697,22 +717,40 @@ def experimental_tpu_predict_loop(model,
       mode=mode)
   callbacks._call_begin_hook(mode)
 
-  assert steps is not None
   # Since we do not know how many samples we will see, we cannot pre-allocate
   # the returned Numpy arrays. Instead, we store one array per batch seen
   # and concatenate them upon returning.
   unconcatenated_outs = [[] for _ in model.outputs]
-  for step in range(steps):
-    batch_logs = {'batch': step, 'size': 1}
-    callbacks._call_batch_hook(mode, 'begin', step, batch_logs)
-    _, batch_outs = K.get_session().run([predict_op, output_tensors])
+  if steps is not None:
+    target_steps = steps
+  else:
+    target_steps = np.inf
+
+  current_step = 0
+  while current_step < target_steps:
+    batch_logs = {'batch': current_step, 'size': 1}
+    callbacks._call_batch_hook(mode, 'begin', current_step, batch_logs)
+    try:
+      _, batch_outs = K.batch_get_value([predict_op, output_tensors])
+    except errors.OutOfRangeError:
+      if steps is not None:
+        warning_msg = 'Make sure that your dataset can generate at least '
+        '`steps` batches (in this case, {} batches).'.format(steps)
+      else:
+        warning_msg = 'Number of steps ran: {} steps'.format(current_step)
+
+      logging.warning('Your dataset iterator ran out of data; '
+                      'interrupting evaluation. ' + warning_msg)
+      break
+
     # TODO(priyag): maybe need to unwrap the outputs first for MirroredStrategy.
     for i, label in enumerate(model.output_names):
       unconcatenated_outs[i].extend(batch_outs[label])
     batch_logs = cbks.make_logs(model, batch_logs, batch_outs, mode)
-    callbacks._call_batch_hook(mode, 'end', step, batch_logs)
+    callbacks._call_batch_hook(mode, 'end', current_step, batch_logs)
     if verbose >= 1:
-      progbar.update(step + 1)
+      progbar.update(current_step + 1)
+    current_step += 1
 
   callbacks._call_end_hook(mode)
 

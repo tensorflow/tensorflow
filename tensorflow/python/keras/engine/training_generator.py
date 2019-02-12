@@ -33,8 +33,8 @@ from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
 
 

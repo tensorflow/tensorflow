@@ -23,6 +23,7 @@ import collections
 from absl.testing import parameterized
 
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.module import module
 from tensorflow.python.ops import variables
@@ -200,6 +201,28 @@ class CommonErrorsTest(test.TestCase):
         CallsMethodBeforeSuperConstructorModule(allowed_method=True))
 
 
+class ForwardMethodsTest(test.TestCase):
+
+  def testFunctionType(self):
+    mod = ModuleWithFunctionAnnotatedCall()
+    self.assertTrue(isinstance(mod.forward, def_function.Function))
+    self.assertTrue(isinstance(mod.forward_ag, def_function.Function))
+
+  def testEntersNameScope_call(self):
+    mod = ModuleWithFunctionAnnotatedCall()
+    self.assertEqual(mod.forward().numpy(),
+                     b"module_with_function_annotated_call/")
+    self.assertEqual(mod.forward_ag().numpy(),
+                     b"module_with_function_annotated_call/")
+
+  def testEntersNameScope_concreteFunction(self):
+    mod = ModuleWithFunctionAnnotatedCall()
+    self.assertEqual(mod.forward.get_concrete_function()().numpy(),
+                     b"module_with_function_annotated_call/")
+    self.assertEqual(mod.forward_ag.get_concrete_function()().numpy(),
+                     b"module_with_function_annotated_call/")
+
+
 def get_name_scope():
   with ops.name_scope("x") as ns:
     return ns[:-2]
@@ -295,14 +318,26 @@ class CallsMethodBeforeSuperConstructorModule(module.Module):
   def with_name_scope(self):
     pass
 
+
+class ModuleWithFunctionAnnotatedCall(module.Module):
+
+  @def_function.function(autograph=False)
+  def forward(self):
+    return get_name_scope()
+
+  @def_function.function(autograph=True)
+  def forward_ag(self):
+    return get_name_scope()
+
+
 NamedPair = collections.namedtuple("NamedPair", ("first", "second"))
 mk_index_dict = lambda v: dict(enumerate(v))
 
 
-class WalkTest(parameterized.TestCase, test.TestCase):
+class FlattenTest(parameterized.TestCase, test.TestCase):
 
   @parameterized.parameters(lambda v: NamedPair(*v), list, tuple, mk_index_dict)
-  def test_walk(self, container_type):
+  def test_flatten(self, container_type):
     parent = SimpleModule(container_type=container_type)
     child = parent.c
 
@@ -319,6 +354,23 @@ class WalkTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(
         mod.variables,
         mod._trainable_variables + mod._non_trainable_variables + [mod._bonus])
+
+  def test_with_path(self):
+    mod = module.Module()
+    mod.w = variables.Variable(1.)
+    mod.encoder = module.Module()
+    mod.encoder.w = [({"k": mod.w}, {"k": mod.w})]
+    mod.decoder = mod.encoder
+
+    state_dict = dict(
+        mod._flatten(with_path=True, predicate=module._IS_VARIABLE))
+
+    self.assertEqual(state_dict,
+                     {("w",): mod.w,
+                      ("encoder", "w", 0, 0, "k"): mod.encoder.w[0][0]["k"],
+                      ("encoder", "w", 0, 1, "k"): mod.encoder.w[0][1]["k"],
+                      ("decoder", "w", 0, 0, "k"): mod.decoder.w[0][0]["k"],
+                      ("decoder", "w", 0, 1, "k"): mod.decoder.w[0][1]["k"]},)
 
 
 class LayerModule(module.Module):

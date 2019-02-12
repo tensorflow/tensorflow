@@ -2937,6 +2937,7 @@ cc_library(
         ":self_adjoint_eig_op",
         ":self_adjoint_eig_v2_op",
         ":svd_op",
+        ":tridiagonal_solve_op",
     ],
 )
 
@@ -3053,6 +3054,12 @@ tf_kernel_library(
     deps = LINALG_DEPS + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
     ]),
+)
+
+tf_kernel_library(
+    name = "tridiagonal_solve_op",
+    srcs = ["tridiagonal_solve_op.cc"],
+    deps = LINALG_DEPS,
 )
 
 tf_kernel_library(
@@ -3788,6 +3795,7 @@ tf_kernel_library(
         ":image_resizer_state",
         ":fill_functor",
         ":ops_util",
+        "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -6561,6 +6569,30 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test_mkl(
+    name = "mkl_quantized_concat_op_test",
+    size = "small",
+    srcs = ["mkl_quantized_concat_op_test.cc"],
+    deps = [
+        ":mkl_concat_op",
+        ":ops_testutil",
+        ":ops_util",
+        ":quantization_utils",
+        ":quantized_ops",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:mkl_array_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cc_test(
     name = "quantized_batch_norm_op_test",
     size = "small",
@@ -6809,6 +6841,7 @@ tf_cc_test_mkl(
     name = "mkl_conv_ops_test",
     size = "small",
     srcs = ["mkl_conv_ops_test.cc"],
+    tags = ["no_mac"],
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -6959,6 +6992,68 @@ tf_mkl_kernel_library(
     ],
     prefix = "mkl_cwise_ops_common",
     deps = NN_DEPS + mkl_deps() + [":cwise_op"],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_requantize_ops",
+    srcs = [
+        "mkl_requantization_range_per_channel_op.cc",
+        "mkl_requantize_per_channel_op.cc",
+    ],
+    hdrs = [
+        "meta_support.h",
+        "no_op.h",
+        "reference_gemm.h",
+    ],
+    deps = if_mkl(
+        [
+            ":concat_lib_hdrs",
+            ":conv_ops",
+            ":cwise_op",
+            ":eigen_helpers",
+            ":image_resizer_state",
+            ":ops_util",
+            ":pooling_ops",
+            ":quantization_utils",
+            ":transpose_functor",
+            "//third_party/eigen3",
+            "@gemmlowp",
+            "@mkl_dnn",
+            "//tensorflow/core:array_ops_op_lib",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:math_ops_op_lib",
+            "//tensorflow/core:nn_ops_op_lib",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
+tf_cc_test_mkl(
+    name = "mkl_requantize_ops_test",
+    size = "small",
+    srcs = ["mkl_requantize_ops_test.cc"],
+    tags = ["no_mac"],  #TODO(penporn): Re-enable the test on MacOS.
+    deps = [
+        ":mkl_requantize_ops",
+        ":ops_testutil",
+        ":ops_util",
+        ":quantization_utils",
+        ":quantized_ops",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_cc_test_mkl(
@@ -7145,5 +7240,14 @@ cc_header_only_library(
     name = "cwise_lib_hdrs",
     deps = [
         ":cwise_lib",
+    ],
+)
+
+# Library to link with when compiling the quantize and dequantize kernels directly,
+# e.g. for selective registration.
+cc_header_only_library(
+    name = "quantize_and_dequantize_op_hdrs",
+    deps = [
+        ":quantize_and_dequantize_op",
     ],
 )

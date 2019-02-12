@@ -448,6 +448,7 @@ cc_library(
     hdrs = [
         "dump_graph.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:framework",

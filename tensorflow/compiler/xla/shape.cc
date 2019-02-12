@@ -34,8 +34,12 @@ Shape::Shape(const ShapeProto& shape_proto) {
   // instead of a constructor.
   if (shape_proto.dimensions_size() !=
       shape_proto.is_dynamic_dimension_size()) {
-    LOG(ERROR) << "Malformed shape proto: number of is_dynamic_dimension "
-                  "fields does not match number of dimension fields";
+    if (shape_proto.is_dynamic_dimension_size() != 0) {
+      LOG(ERROR) << "Malformed shape proto: number of is_dynamic_dimension "
+                    "fields does not match number of dimension fields";
+    } else {
+      LOG(WARNING) << "Malformed shape proto: is_dynamic_dimension is empty";
+    }
   }
   int64 num_dynamic_dimension_fields = std::min(
       shape_proto.dimensions_size(), shape_proto.is_dynamic_dimension_size());
@@ -143,26 +147,8 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
       return false;
     }
     if (LayoutUtil::IsDenseArray(lhs)) {
-      if (!absl::c_equal(LayoutUtil::MinorToMajor(lhs),
-                         LayoutUtil::MinorToMajor(rhs))) {
+      if (lhs.layout() != rhs.layout()) {
         VLOG(3) << "CompareShapes: lhs layout != rhs layout";
-        return false;
-      }
-
-      const auto& lhs_tiles = lhs.layout().tiles();
-      const auto& rhs_tiles = rhs.layout().tiles();
-      if (lhs_tiles.size() != rhs_tiles.size()) {
-        return false;
-      }
-      for (int64 i = 0; i < lhs_tiles.size(); i++) {
-        if (!absl::c_equal(lhs_tiles[i].dimensions(),
-                           rhs_tiles[i].dimensions())) {
-          return false;
-        }
-      }
-
-      if (lhs.layout().element_size_in_bits() !=
-          rhs.layout().element_size_in_bits()) {
         return false;
       }
     }

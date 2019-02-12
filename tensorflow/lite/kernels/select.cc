@@ -89,6 +89,9 @@ TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteUInt8:                                                         \
       TF_LITE_SELECT(uint8_t, op);                                             \
       break;                                                                   \
+    case kTfLiteInt8:                                                          \
+      TF_LITE_SELECT(int8_t, op);                                              \
+      break;                                                                   \
     case kTfLiteInt16:                                                         \
       TF_LITE_SELECT(int16_t, op);                                             \
       break;                                                                   \

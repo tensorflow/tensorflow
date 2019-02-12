@@ -136,6 +136,27 @@ class SquareLinearOperatorBlockDiagTest(
     self.assertTrue(operator.is_non_singular)
     self.assertFalse(operator.is_self_adjoint)
 
+  def test_block_diag_adjoint_type(self):
+    matrix = [[1., 0.], [0., 1.]]
+    operator = block_diag.LinearOperatorBlockDiag(
+        [
+            linalg.LinearOperatorFullMatrix(
+                matrix,
+                is_non_singular=True,
+            ),
+            linalg.LinearOperatorFullMatrix(
+                matrix,
+                is_non_singular=True,
+            ),
+        ],
+        is_non_singular=True,
+    )
+    adjoint = operator.adjoint()
+    self.assertIsInstance(
+        adjoint,
+        block_diag.LinearOperatorBlockDiag)
+    self.assertEqual(2, len(adjoint.operators))
+
   def test_block_diag_cholesky_type(self):
     matrix = [[1., 0.], [0., 1.]]
     operator = block_diag.LinearOperatorBlockDiag(

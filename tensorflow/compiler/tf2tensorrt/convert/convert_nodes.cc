@@ -94,7 +94,6 @@ bool IsEngineOutput(absl::string_view name) {
 namespace convert {
 using absl::StrAppend;
 using absl::StrCat;
-using ::tensorflow::str_util::Split;
 
 inline tensorflow::Status ConvertDType(tensorflow::DataType tf_dtype,
                                        nvinfer1::DataType* trt_dtype) {
@@ -297,8 +296,8 @@ Status Converter::GetTrtBroadcastShape(
 
   const int max_nb_dims = nvinfer1::Dims::MAX_DIMS + 1;
   auto compute_output_dims =
-      [max_nb_dims](const TRT_TensorOrWeights& input, int broadcast_num_dims,
-                    int* output_dims_array, nvinfer1::Dims* output_dims) {
+      [](const TRT_TensorOrWeights& input, int broadcast_num_dims,
+         int* output_dims_array, nvinfer1::Dims* output_dims) {
         const nvinfer1::Dims input_dims = input.GetTrtDims();
         std::fill(output_dims_array, output_dims_array + max_nb_dims, 1);
         std::copy(input_dims.d, input_dims.d + input_dims.nbDims,
@@ -921,7 +920,7 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
   for (size_t i = 0; i < outputs.size(); ++i) {
     TRT_TensorOrWeights& output = outputs[i];
     string output_name = node_def.name();
-    if (i != 0) output_name = StrCat(output_name, ":", i);
+    if (i != 0) absl::StrAppend(&output_name, ":", i);
     // We need to check the name before setting it. If the input is one of the
     // engine input, setting the name here will overwrite engine input
     // bindings which will cause runtime error.
@@ -2107,7 +2106,7 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
   // Mark axes to remove by setting them to 0.
   TFAttrs attrs(node_def);
   auto squeeze_dims = attrs.get<std::vector<int>>("squeeze_dims");
-  if (squeeze_dims.size() == 0) {
+  if (squeeze_dims.empty()) {
     return tensorflow::errors::Unimplemented(
         "Squeeze is only implemented for explicit dims, at ", node_def.name());
   }
@@ -2275,7 +2274,7 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
       pad_dims.push_back(i);
     }
   }
-  if (pad_dims.size() == 0) {
+  if (pad_dims.empty()) {
     // No dimensions are changed. We could create a padding layer anyway with
     // values of 0.
     if (params->validation_only) return Status::OK();
@@ -3139,7 +3138,7 @@ tensorflow::Status ConvertPad(OpConverterParams* params) {
   }
 
   // No padding at all, we should exit
-  if (pad_index.size() == 0) {
+  if (pad_index.empty()) {
     params->outputs->push_back(inputs.at(0));
     return tensorflow::Status::OK();
   }
@@ -3329,7 +3328,7 @@ tensorflow::Status ConvertFusedBatchNorm(OpConverterParams* params) {
   TRT_ShapedWeights dummy_power_weights(parameter_type);
   size_t nweight = 0;
   for (int i = 1; i < 5; i++) {
-    nweight = std::max(nweight, (size_t)inputs.at(i).weights().count());
+    nweight = std::max<size_t>(nweight, inputs.at(i).weights().count());
   }
   TRT_ShapedWeights* ptr_shape_weights = nullptr;
   for (int i = 1; i < 5; i++) {
@@ -3899,7 +3898,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
     local_scope = GetCommonNameScope(local_scope, node->name());
     old_to_new_id_map[node->id()] = segment_def->node_size();
     auto snode = segment_def->add_node();
-    snode->CopyFrom(node->def());
+    *snode = node->def();
     VLOG(2) << "Copying " << snode->name() << " to subgraph";
   }
   // Update the inputs of the new input nodes to point to placeholder nodes.

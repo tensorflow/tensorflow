@@ -123,6 +123,15 @@ StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
                                         HloInstruction* on_true,
                                         HloInstruction* on_false);
 
+// Creates a Sort HLO instruction and adds it to the computation containing the
+// operands. All operands must be in the same computation. Also creates a
+// default compare sub-computation which sorts the first operand into ascending
+// order.
+StatusOr<HloInstruction*> MakeSortHlo(
+    const Shape& sort_shape, absl::Span<HloInstruction* const> operands,
+    int64 dimension_to_sort, HloComputation::Builder* builder,
+    HloModule* module);
+
 // Creates an R1 Constant HLO instruction of the given PrimitiveType with the
 // given values and adds it to the given computation.
 template <typename NativeT>

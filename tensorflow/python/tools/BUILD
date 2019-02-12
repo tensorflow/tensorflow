@@ -13,21 +13,26 @@ load("//tensorflow:tensorflow.bzl", "py_binary")
 # Transitive dependencies of this target will be included in the pip package.
 py_library(
     name = "tools_pip",
+    data = [
+        ":freeze_graph",
+        ":import_pb_to_tensorboard",
+        ":inspect_checkpoint",
+        ":optimize_for_inference",
+        ":print_selective_registration_header",
+        ":saved_model_cli",
+        ":strip_unused",
+        # Include the TF upgrade script to users can run it directly after install TF
+        "//tensorflow/tools/compatibility:tf_upgrade_v2",
+    ],
     deps = [
-        ":freeze_graph_lib",
-        ":import_pb_to_tensorboard_lib",
-        ":inspect_checkpoint_lib",
-        ":optimize_for_inference_lib",
-        ":print_selective_registration_header_lib",
-        ":saved_model_cli_lib",
         ":saved_model_utils",
-        ":strip_unused_lib",
         # The following py_library are needed because
         # py_binary may not depend on them when --define=no_tensorflow_py_deps=true
         # is specified. See https://github.com/tensorflow/tensorflow/issues/22390
+        ":freeze_graph_lib",
+        ":optimize_for_inference_lib",
         ":selective_registration_header_lib",
-        # Include the TF upgrade script to users can run it directly after install TF
-        "//tensorflow/tools/compatibility:tf_upgrade_v2_lib",
+        ":strip_unused_lib",
     ],
 )
 

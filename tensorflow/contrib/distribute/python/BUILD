@@ -131,6 +131,16 @@ py_library(
     ],
 )
 
+cuda_py_test(
+    name = "one_device_strategy_test",
+    srcs = ["one_device_strategy_test.py"],
+    additional_deps = [
+        ":strategy_test_lib",
+        ":combinations",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
 py_library(
     name = "collective_all_reduce_strategy",
     srcs = ["collective_all_reduce_strategy.py"],
@@ -188,18 +198,6 @@ py_test(
     srcs = ["combinations_test.py"],
     deps = [
         ":combinations",
-        "//tensorflow/python/eager:test",
-    ],
-)
-
-py_test(
-    name = "one_device_strategy_test",
-    srcs = ["one_device_strategy_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":strategy_test_lib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/eager:test",
     ],
 )
@@ -540,6 +538,7 @@ py_library(
     srcs = [
         "keras_backward_compat_test.py",
         "keras_test.py",
+        "keras_utils_test.py",
     ],
     deps = [
         ":combinations",
@@ -568,6 +567,24 @@ distribute_py_test(
         "notsan",
     ],
     deps = [
+        ":keras_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_utils_test",
+    srcs = ["keras_utils_test.py"],
+    full_precision = True,
+    main = "keras_utils_test.py",
+    shard_count = 32,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_test",
         ":keras_test_lib",
     ],
 )
