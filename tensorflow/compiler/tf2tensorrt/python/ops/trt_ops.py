@@ -41,9 +41,9 @@ def load_trt_ops():
     # TODO(laigd): we should load TF-TRT kernels here as well after removing the
     # swig binding.
     try:
-      # TODO(lagid): consider getting rid of these unused imports.
+      # TODO(lagid): It is not known why these unused imports were introduced.
+      # Investigate and get rid of these, if not required.
       # pylint: disable=unused-import,g-import-not-at-top,unused-variable
-      from tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops import get_serialized_resource_op
       from tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops import trt_engine_op
       from tensorflow.python.framework import load_library
       from tensorflow.python.platform import resource_loader
