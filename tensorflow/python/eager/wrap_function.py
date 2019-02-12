@@ -27,7 +27,6 @@ from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
@@ -155,7 +154,7 @@ class WrappedFunction(function.ConcreteFunction):
           sink_tensor = identity_fetches[0]
         else:
           identity_fetches = []
-          sink_tensor = control_flow_ops.no_op()
+          sink_tensor = array_ops.zeros([])
     lift_map = lift_to_graph.lift_to_graph(
         sink_tensor, pruned_graph,
         sources=flat_feeds + internal_captures)
@@ -164,6 +163,8 @@ class WrappedFunction(function.ConcreteFunction):
       lift_map[original_fetch] = lift_map[identity_fetch]
     pruned_graph.outputs.extend(
         lift_map[x] for x in flat_fetches if isinstance(x, ops.Tensor))
+    if not tensor_fetches:
+      pruned_graph.outputs.append(lift_map[sink_tensor])
     for external_capture, internal_capture in self.graph.captures.items():
       pruned_graph.captures[external_capture] = lift_map[internal_capture]
     pruned_graph.inputs.extend(lift_map[x] for x in flat_feeds)
