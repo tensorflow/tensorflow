@@ -50,7 +50,7 @@ bool IsCpuGpuCompile(const Graph* graph) {
       continue;
     // Early return for any node with a device that is not a CPU or GPU.
     DeviceNameUtils::ParsedName parsed;
-    if (DeviceNameUtils::ParseFullName(n->def().device(), &parsed)) {
+    if (DeviceNameUtils::ParseFullName(n->requested_device(), &parsed)) {
       if (parsed.type != DEVICE_CPU && parsed.type != DEVICE_GPU) {
         return false;
       }
