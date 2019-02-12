@@ -450,6 +450,10 @@ struct MulFOpLowering : public OneToOneLLVMOpLowering<MulFOp, LLVM::FMulOp> {
 struct CmpIOpLowering : public OneToOneLLVMOpLowering<CmpIOp, LLVM::ICmpOp> {
   using Super::Super;
 };
+struct SelectOpLowering
+    : public OneToOneLLVMOpLowering<SelectOp, LLVM::SelectOp> {
+  using Super::Super;
+};
 
 // Refine the matcher for call operations that return one result or more.
 // Since tablegen'ed MLIR Ops cannot have variadic results, we separate calls
@@ -938,7 +942,7 @@ protected:
         ConstLLVMOpLowering, DeallocOpLowering, DivISOpLowering,
         DivIUOpLowering, LoadOpLowering, MemRefCastOpLowering, MulFOpLowering,
         MulIOpLowering, RemISOpLowering, RemIUOpLowering, ReturnOpLowering,
-        StoreOpLowering, SubFOpLowering,
+        SelectOpLowering, StoreOpLowering, SubFOpLowering,
         SubIOpLowering>::build(&converterStorage, *llvmDialect);
   }
 

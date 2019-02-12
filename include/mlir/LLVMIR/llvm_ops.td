@@ -158,6 +158,10 @@ def LLVM_ExtractValueOp : LLVM_OneResultOp<"extractvalue", [NoSideEffect]>,
 def LLVM_InsertValueOp : LLVM_OneResultOp<"insertvalue", [NoSideEffect]>,
                          Arguments<(ins LLVM_Type, LLVM_Type)>;
 
+// Misc instructions.
+def LLVM_SelectOp : LLVM_OneResultOp<"select", [NoSideEffect]>,
+                    Arguments<(ins LLVM_Type, LLVM_Type, LLVM_Type)>;
+
 // Terminators.
 def LLVM_BrOp : LLVM_TerminatorOp<"br", [NoSideEffect]>;
 def LLVM_CondBrOp : LLVM_TerminatorOp<"cond_br", [NoSideEffect]>;

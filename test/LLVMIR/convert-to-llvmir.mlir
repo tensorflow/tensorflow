@@ -391,6 +391,8 @@ func @ops(f32, f32, i32, i32) -> (f32, i32) {
   %6 = remis %arg2, %arg3 : i32
 // CHECK-NEXT:   {{.*}} = "llvm.urem"(%arg2, %arg3) : (!llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
   %7 = remiu %arg2, %arg3 : i32
+// CHECK-NEXT:   {{.*}} = "llvm.select"({{.*}}, %arg2, %arg3) : (!llvm<"i1">, !llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
+  %8 = select %2, %arg2, %arg3 : i32
 
   return %0, %4 : f32, i32
 }

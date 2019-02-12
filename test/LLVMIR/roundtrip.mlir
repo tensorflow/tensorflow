@@ -69,9 +69,13 @@ func @ops(%arg0 : !llvm<"i32">, %arg1 : !llvm<"float">) {
 ^bb2:
 // CHECK:       %20 = "llvm.pseudo.undef"() : () -> !llvm<"{ i32, double, i32 }">
 // CHECK-NEXT:  %21 = "llvm.pseudo.constant"() {value: 42} : () -> !llvm<"i47">
-// CHECK-NEXT:  "llvm.return"() : () -> ()
   %20 = "llvm.pseudo.undef"() : () -> !llvm<"{ i32, double, i32 }">
   %21 = "llvm.pseudo.constant"() {value: 42} : () -> !llvm<"i47">
+
+// Misc instructions.
+// CHECK:       %22 = "llvm.select"(%7, %0, %1) : (!llvm<"i1">, !llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
+// CHECK-NEXT:  "llvm.return"() : () -> ()
+  %22 = "llvm.select"(%7, %0, %1) : (!llvm<"i1">, !llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
   "llvm.return"() : () -> ()
 }
 
