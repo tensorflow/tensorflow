@@ -252,20 +252,21 @@ void RunInference(Settings* s) {
 }
 
 void display_usage() {
-  LOG(INFO) << "label_image\n"
-            << "--accelerated, -a: [0|1], use Android NNAPI or not\n"
-            << "--allow_fp16, -f: [0|1], allow running fp32 models with fp16 not\n"
-            << "--count, -c: loop interpreter->Invoke() for certain times\n"
-            << "--input_mean, -b: input mean\n"
-            << "--input_std, -s: input standard deviation\n"
-            << "--image, -i: image_name.bmp\n"
-            << "--labels, -l: labels for the model\n"
-            << "--tflite_model, -m: model_name.tflite\n"
-            << "--profiling, -p: [0|1], profiling or not\n"
-            << "--num_results, -r: number of results to show\n"
-            << "--threads, -t: number of threads\n"
-            << "--verbose, -v: [0|1] print more information\n"
-            << "\n";
+  LOG(INFO)
+      << "label_image\n"
+      << "--accelerated, -a: [0|1], use Android NNAPI or not\n"
+      << "--allow_fp16, -f: [0|1], allow running fp32 models with fp16 not\n"
+      << "--count, -c: loop interpreter->Invoke() for certain times\n"
+      << "--input_mean, -b: input mean\n"
+      << "--input_std, -s: input standard deviation\n"
+      << "--image, -i: image_name.bmp\n"
+      << "--labels, -l: labels for the model\n"
+      << "--tflite_model, -m: model_name.tflite\n"
+      << "--profiling, -p: [0|1], profiling or not\n"
+      << "--num_results, -r: number of results to show\n"
+      << "--threads, -t: number of threads\n"
+      << "--verbose, -v: [0|1] print more information\n"
+      << "\n";
 }
 
 int Main(int argc, char** argv) {
@@ -309,7 +310,8 @@ int Main(int argc, char** argv) {
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'f':
-        s.allow_fp16 = strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
+        s.allow_fp16 =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'i':
         s.input_bmp_name = optarg;
