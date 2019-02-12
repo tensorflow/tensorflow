@@ -610,6 +610,7 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_SPLIT:
       case tflite::BuiltinOperator_STRIDED_SLICE:
       case tflite::BuiltinOperator_EXP:
+      case tflite::BuiltinOperator_COS:
       case tflite::BuiltinOperator_LOG_SOFTMAX:
       case tflite::BuiltinOperator_DEQUANTIZE:
       case tflite::BuiltinOperator_DELEGATE:

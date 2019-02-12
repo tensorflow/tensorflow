@@ -221,6 +221,7 @@ enum BuiltinOperator : byte {
   REVERSE_V2 = 105,
   ADD_N = 106,
   GATHER_ND = 107,
+  COS = 108,
 }
 
 // Options for the builtin operators.
@@ -308,6 +309,7 @@ union BuiltinOptions {
   ReverseV2Options,
   AddNOptions,
   GatherNdOptions,
+  CosOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -549,6 +551,9 @@ table TransposeOptions {
 }
 
 table ExpOptions {
+}
+
+table CosOptions {
 }
 
 table ReducerOptions {
