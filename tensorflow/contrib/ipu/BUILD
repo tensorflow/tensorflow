@@ -12,6 +12,7 @@ py_library(
     name = "ipu",
     srcs = [
       "__init__.py",
+      "python/autoshard.py",
       "python/ipu_infeed_queue.py",
       "python/loops.py",
       "python/ops.py",
@@ -196,6 +197,19 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "autoshard_test",
+    size = "medium",
+    srcs = ["python/tests/autoshard_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+    ],
+)
+
+tf_py_test(
     name = "popnn_normalization_test",
     size = "small",
     srcs = ["python/tests/popnn_normalization_test.py"],
@@ -210,6 +224,7 @@ tf_py_test(
 test_suite(
     name = "all_tests",
     tests = [
+        "autoshard_test",
         "ops_test",
         "while_loop_perf_test",
         "conditional_test",
