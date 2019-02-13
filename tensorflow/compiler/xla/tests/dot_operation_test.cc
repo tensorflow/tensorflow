@@ -1265,5 +1265,26 @@ ENTRY %test {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
+XLA_TEST_F(DotOperationTextTest, CachingBug) {
+  // Tests for a caching bug in the XLA CPU backend.
+  absl::string_view hlo_string =
+      R"(
+HloModule CachingBug
+
+ENTRY main {
+  lhs = f32[20,40] parameter(0)
+  rhs_0 = f32[40,1] parameter(2)
+  rhs_1 = f32[1,40] parameter(1)
+
+  dot_0 = f32[20,1] dot(lhs, rhs_0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_1 = f32[20,1] dot(lhs, rhs_1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+
+  ROOT result = f32[20,1] divide(dot_0, dot_1)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
 }  // namespace
 }  // namespace xla
