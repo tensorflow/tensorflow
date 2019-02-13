@@ -834,6 +834,8 @@ TEST_F(OperatorTest, VersioningSliceTest) {
 
 TEST_F(OperatorTest, VersioningAddTest) { SimpleVersioningTest<AddOperator>(); }
 
+TEST_F(OperatorTest, VersioningSubTest) { SimpleVersioningTest<SubOperator>(); }
+
 TEST_F(OperatorTest, VersioningSelectTest) {
   SelectOperator select_op;
   select_op.inputs = {"input1"};
