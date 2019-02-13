@@ -28,6 +28,7 @@ limitations under the License.
 //  std::vector<Literal>               <-  sequence of (nested tuple of) ndarray
 //  Shape                               -> pair holding (dtype, dimensions)
 //                                     <-  object duck-typed as xla_client.Shape
+//  ProgramShape                       ->  pair of ([arg_shapes], ret_shape)
 //  std::vector<Shape>                 <-  sequence of xla_client.Shape objects
 //  PrimitiveType                      <-  int
 //  Span<pair<int64, in64>>            <-  sequence of int pairs
@@ -519,17 +520,29 @@ tensorflow::ImportNumpy();
 // Shape
 
 %typemap(out) const Shape& {
-  $result = numpy::PyShapeInfoFromXlaShape(*$1);
+  $result = numpy::PyShapeInfoFromXlaShape(*$1).release();
 }
 
 %typemap(out) StatusOr<Shape> {
   if ($1.ok()) {
-    $result = numpy::PyShapeInfoFromXlaShape($1.ConsumeValueOrDie());
+    $result = numpy::PyShapeInfoFromXlaShape($1.ConsumeValueOrDie()).release();
   } else {
     PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
     SWIG_fail;
   }
 }
+
+
+%typemap(out) StatusOr<ProgramShape> {
+  if ($1.ok()) {
+    $result = numpy::PyProgramShapeInfoFromXlaProgramShape(
+        $1.ConsumeValueOrDie()).release();
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    SWIG_fail;
+  }
+}
+
 
 %typemap(in) const Shape& (Shape temp) {
   StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape($input);
@@ -558,7 +571,7 @@ tensorflow::ImportNumpy();
 }
 
 %typemap(out) std::unique_ptr<Shape> {
-  $result = numpy::PyShapeInfoFromXlaShape(*$1);
+  $result = numpy::PyShapeInfoFromXlaShape(*$1).release();
 }
 
 %typemap(in) const std::vector<Shape>& (std::vector<Shape> temps) {
@@ -995,6 +1008,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputation;
 %unignore xla::swig::LocalComputation::Compile;
 %unignore xla::swig::LocalComputation::CompileForXrt;
+%unignore xla::swig::LocalComputation::GetProgramShape;
 %unignore xla::swig::LocalComputation::GetReturnValueShape;
 %unignore xla::swig::LocalComputation::GetSerializedProto;
 %unignore xla::swig::LocalOp;

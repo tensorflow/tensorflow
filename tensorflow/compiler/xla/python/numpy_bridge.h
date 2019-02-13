@@ -64,7 +64,13 @@ bool NumpyTypeIsValid(int np_type);
 // providing the array dimensions.
 //
 // The return value is a new reference.
-PyObject* PyShapeInfoFromXlaShape(const Shape& shape);
+Safe_PyObjectPtr PyShapeInfoFromXlaShape(const Shape& shape);
+
+// Returns a pair of (arg_shapes, result_shape), where arg_shapes is a tuple
+// of argument shapes and result_shape is the result shape. Each shape is as
+// described in in PyShapeInfoFromXlaShape's comment.
+Safe_PyObjectPtr PyProgramShapeInfoFromXlaProgramShape(
+    const ProgramShape& shape);
 
 // Converts a Python object with a method interface mathing that of
 // xla_client.Shape into an XLA Shape object.

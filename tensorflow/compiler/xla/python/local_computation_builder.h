@@ -243,6 +243,9 @@ class LocalComputation {
   // string on failure.
   string GetSerializedProto() const;
 
+  // Returns the program shape for this computation.
+  StatusOr<ProgramShape> GetProgramShape() const;
+
   // Returns the return-value shape for this computation.
   StatusOr<Shape> GetReturnValueShape() const;
 
