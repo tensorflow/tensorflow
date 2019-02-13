@@ -19,6 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Support/STLExtras.h"
 #include "mlir/TableGen/Attribute.h"
 #include "mlir/TableGen/GenInfo.h"
 #include "mlir/TableGen/Operator.h"
@@ -133,6 +134,10 @@ void PatternEmitter::emitConstantAttr(tblgen::ConstantAttr constAttr) {
                 constAttr.getConstantValue());
 }
 
+static Twine resultName(const StringRef &name) { return Twine("res_") + name; }
+
+static Twine boundArgName(const StringRef &name) { return Twine("s.") + name; }
+
 // Helper function to match patterns.
 void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
   Operator &op = tree.getDialectOp(opMap);
@@ -151,6 +156,11 @@ void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
                                  op.getOperationName(), tree.getNumArgs(),
                                  op.getNumArgs()));
   }
+
+  // If the operand's name is set, set to that variable.
+  auto name = tree.getOpName();
+  if (!name.empty())
+    os.indent(indent) << formatv("{0} = op{1};\n", resultName(name), depth);
 
   for (int i = 0, e = tree.getNumArgs(); i != e; ++i) {
     auto opArg = op.getArg(i);
@@ -252,7 +262,45 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
     auto ctx = op0->getContext(); (void)ctx;
     auto state = std::make_unique<MatchedState>();)"
      << "\n";
+
+  for (auto &res : pattern.getSourcePatternBoundResults())
+    os.indent(4) << formatv("mlir::Instruction* {0}; (void){0};\n",
+                            resultName(res.first()));
+
   emitOpMatch(tree, 0);
+
+  auto deduceName = [&](const std::string &name) -> std::string {
+    if (pattern.isArgBoundInSourcePattern(name)) {
+      return boundArgName(name).str();
+    }
+    if (pattern.isResultBoundInSourcePattern(name)) {
+      return resultName(name).str();
+    }
+    PrintFatalError(loc, formatv("referencing unbound variable '{0}'", name));
+  };
+
+  for (auto constraint : pattern.getConstraints()) {
+    if (constraint.isTypeConstraint()) {
+      auto cmd = "if (!{0}) return matchFailure();\n";
+      // TODO(jpienaar): Use the op definition here to simplify this.
+      auto condition = constraint.getAsTypeConstraint().getConditionTemplate();
+      // TODO(jpienaar): Verify op only has one result.
+      os.indent(4) << formatv(
+          cmd, formatv(condition.c_str(),
+                       "(*" + deduceName(*constraint.name_begin()) +
+                           "->result_type_begin())"));
+    } else if (constraint.isNativeConstraint()) {
+      os.indent(4) << "if (!" << constraint.getNativeConstraintFunction()
+                   << "(";
+      interleave(constraint.name_begin(), constraint.name_end(),
+                 [&](const std::string &name) { os << deduceName(name); },
+                 [&]() { os << ", "; });
+      os << ")) return matchFailure();\n";
+    } else {
+      llvm_unreachable(
+          "Pattern constraints have to be either a type or native constraint");
+    }
+  }
   os.indent(4) << "return matchSuccess(std::move(state));\n  }\n";
 }
 
@@ -346,7 +394,7 @@ std::string PatternEmitter::handleReplaceWithValue(DagNode tree) {
 
   // We are referencing some bound value in the source pattern. Those values are
   // grouped into a transient struct named as `s`.
-  return std::string("s.") + name.str();
+  return boundArgName(name).str();
 }
 
 std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
@@ -395,7 +443,7 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
     auto name = tree.getArgName(index);
     if (this->pattern.isArgBoundInSourcePattern(name)) {
       // Bound in source pattern, explicitly named
-      return std::string("s.") + name.str();
+      return boundArgName(name).str();
     }
 
     // Bound in result pattern, explicitly named
@@ -449,7 +497,7 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
       os << formatv("/*{0}=*/s.{1}", opArgName, patArgName);
     } else if (leaf.isAttrTransformer()) {
       pattern.ensureArgBoundInSourcePattern(patArgName);
-      std::string result = std::string("s.") + patArgName.str();
+      std::string result = boundArgName(patArgName).str();
       result = formatv(leaf.getTransformationTemplate().c_str(), result);
       os << formatv("/*{0}=*/{1}", opArgName, result);
     } else if (leaf.isConstantAttr()) {
@@ -491,7 +539,7 @@ std::string PatternEmitter::emitReplaceWithNativeBuilder(DagNode resultTree) {
     }
     if (!first)
       os << ",";
-    os << "s." << name;
+    os << boundArgName(name);
     first = false;
   }
   if (!printingAttr)

@@ -17,7 +17,9 @@ def Y_AddOp : Op<"y.add"> {
 }
 
 // Define rewrite pattern.
-def : Pat<(X_AddOp $lhs, $rhs), (Y_AddOp $lhs, U:$rhs, T_Const_Attr:$x)>;
+def : Pat<(X_AddOp:$res $lhs, $rhs), (Y_AddOp $lhs, U:$rhs, T_Const_Attr:$x)>;
+def : Pat<(X_AddOp (X_AddOp $lhs, $rhs):$res, $rrhs), (Y_AddOp $lhs, U:$rhs, T_Const_Attr:$x)>;
+def : Pat<(X_AddOp (X_AddOp:$res $lhs, $rhs), $rrhs), (Y_AddOp $lhs, U:$rhs, T_Const_Attr:$x)>;
 
 // CHECK: struct GeneratedConvert0 : public RewritePattern
 // CHECK: RewritePattern("x.add", 1, context)

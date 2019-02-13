@@ -476,14 +476,15 @@ class Results<dag rets> {
 
 // Base class for op+ -> op+ rewrite patterns. These allow declaratively
 // specifying rewrite patterns.
-// TODO(jpienaar): Add the constraint list along with the Pattern.
-class Pattern<dag patternToMatch, list<dag> resultOps> {
-  dag PatternToMatch = patternToMatch;
-  list<dag> ResultOps = resultOps;
+class Pattern<dag source, list<dag> results, list<dag> preds> {
+  dag patternToMatch = source;
+  list<dag> resultOps = results;
+  list<dag> constraints = preds;
 }
 
 // Form of a pattern which produces a single result.
-class Pat<dag pattern, dag result> : Pattern<pattern, [result]>;
+class Pat<dag pattern, dag result, list<dag> preds = []> :
+  Pattern<pattern, [result], preds>;
 
 // Attribute matcher. This is the base class to specify a predicate
 // that has to match. Used on the input attributes of a rewrite rule.
@@ -519,6 +520,16 @@ class cOp<string f> {
   // Function to invoke with the given arguments to construct a new op. The
   // operands will be passed to the function first followed by the attributes
   // (as in the function signature above and required by Op arguments).
+  string function = f;
+}
+
+// Pattern matching predicate specification to constrain when a pattern may be
+// used. For example,
+//   def : Pat<(... $l, (... $r)), (...), [(mPat<"foo"> $l, $r)];
+// will result in this pattern being considered only if `foo(l, r)` holds where
+// `foo` is a C++ function and `l` and `r` are the C++ bound variables of
+// $l and $r.
+class mPat<string f> {
   string function = f;
 }
 

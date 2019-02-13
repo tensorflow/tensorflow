@@ -28,6 +28,7 @@
 #include "mlir/TableGen/Operator.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/TableGen/Error.h"
 
 namespace llvm {
@@ -121,6 +122,9 @@ public:
   // DagNode.
   operator bool() const { return node != nullptr; }
 
+  // Returns the operation referenced by this DAG node.
+  llvm::StringRef getOpName() const;
+
   // Returns the operator wrapper object corresponding to the dialect op matched
   // by this DAG. The operator wrapper will be queried from the given `mapper`
   // and created in it if not existing.
@@ -166,6 +170,33 @@ private:
   const llvm::DagInit *node; // nullptr means null DagNode
 };
 
+class PatternConstraint {
+public:
+  explicit PatternConstraint(const llvm::DagInit *node) : node(node) {}
+
+  // Returns whether this is a type constraint.
+  bool isTypeConstraint() const;
+
+  // Returns this DAG leaf as a type constraint. Asserts if fails.
+  TypeConstraint getAsTypeConstraint() const;
+
+  // Returns whether this is a native pattern constraint.
+  bool isNativeConstraint() const;
+
+  // Returns the C++ function invoked as part of native constraint.
+  StringRef getNativeConstraintFunction() const;
+
+  // Argument names.
+  using const_name_iterator =
+      llvm::mapped_iterator<SmallVectorImpl<llvm::StringInit *>::const_iterator,
+                            std::string (*)(const llvm::StringInit *)>;
+  const_name_iterator name_begin() const;
+  const_name_iterator name_end() const;
+
+private:
+  const llvm::DagInit *node;
+};
+
 // Wrapper class providing helper methods for accessing MLIR Pattern defined
 // in TableGen. This class should closely reflect what is defined as class
 // `Pattern` in TableGen. This class contains maps so it is not intended to be
@@ -187,12 +218,19 @@ public:
   // pattern.
   bool isArgBoundInSourcePattern(llvm::StringRef name) const;
 
+  // Returns true if an argument with the given `name` is bound as result of
+  // op in pattern.
+  bool isResultBoundInSourcePattern(llvm::StringRef name) const;
+
   // Checks whether an argument with the given `name` is bound in source
   // pattern. Prints fatal error if not; does nothing otherwise.
   void ensureArgBoundInSourcePattern(llvm::StringRef name) const;
 
   // Returns a reference to all the bound arguments in the source pattern.
   llvm::StringMap<Argument> &getSourcePatternBoundArgs();
+
+  // Returns a reference to all the bound results in the source pattern.
+  llvm::StringSet<> &getSourcePatternBoundResults();
 
   // Returns the op that the root node of the source pattern matches.
   const Operator &getSourceRootOp();
@@ -201,14 +239,21 @@ public:
   // operator.
   Operator &getDialectOp(DagNode node);
 
+  // Returns the constraints.
+  std::vector<PatternConstraint> getConstraints() const;
+
 private:
   // The TableGen definition of this pattern.
   const llvm::Record &def;
 
-  // All operators
+  // All operators.
   RecordOperatorMap *recordOpMap;
-  // All bound arguments
+
+  // All bound arguments.
   llvm::StringMap<Argument> boundArguments;
+
+  // All bound results.
+  llvm::StringSet<> boundResults;
 };
 
 } // end namespace tblgen
