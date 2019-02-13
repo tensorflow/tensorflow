@@ -3,7 +3,6 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_cc")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
 
 tf_proto_library(
@@ -45,15 +44,10 @@ tf_cc_binary(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":dump_tpu_profile",
-        ":tpu_profiler_analysis_proto_cc",
-        ":tpu_profiler_proto_cc",
         ":version",
-        "//tensorflow:grpc++",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
-        "//tensorflow/core/platform/cloud:gcs_file_system",
+        "//tensorflow/core/profiler/rpc/client:capture_profile",
     ],
 )
 
