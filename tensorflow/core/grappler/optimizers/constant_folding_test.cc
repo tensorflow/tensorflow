@@ -3683,6 +3683,39 @@ TEST_F(ConstantFoldingTest, MaterializeConstantValuedNode) {
   }
 }
 
+TEST_F(ConstantFoldingTest, BitcastDenormalFloats) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Tensor x_t(DT_INT64, TensorShape({2, 2}));
+  x_t.flat<int64>()(0) = 9223372036854775807L;
+  x_t.flat<int64>()(1) = 1L;
+  x_t.flat<int64>()(2) = 9223372036854775807L;
+  x_t.flat<int64>()(3) = 1L;
+  Output x = ops::Const(scope.WithOpName("x"), x_t);
+  Output y = ops::Bitcast(scope.WithOpName("y"), x, DT_FLOAT);
+  Output z = ops::Bitcast(scope.WithOpName("z"), y, DT_INT64);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch = {"z"};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {});
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  ASSERT_EQ(output.node_size(), 1);
+  const NodeDef& node = output.node(0);
+  EXPECT_EQ(node.name(), "z");
+  EXPECT_EQ(node.op(), "Const");
+
+  auto tensors = EvaluateNodes(output, item.fetch, {});
+  ASSERT_EQ(tensors.size(), 1);
+  ASSERT_EQ(tensors_expected.size(), 1);
+  test::ExpectTensorEqual<int64>(tensors[0], tensors_expected[0]);
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
