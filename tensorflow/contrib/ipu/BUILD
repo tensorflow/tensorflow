@@ -13,6 +13,7 @@ py_library(
     srcs = [
       "__init__.py",
       "python/autoshard.py",
+      "python/autoshard_cnn.py",
       "python/ipu_infeed_queue.py",
       "python/loops.py",
       "python/ops.py",
@@ -197,9 +198,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "autoshard_test",
+    name = "autoshard_cnn_test",
     size = "medium",
-    srcs = ["python/tests/autoshard_test.py"],
+    srcs = ["python/tests/autoshard_cnn_test.py"],
     additional_deps = [
         ":ipu",
         "//tensorflow:tensorflow_py",
@@ -224,7 +225,7 @@ tf_py_test(
 test_suite(
     name = "all_tests",
     tests = [
-        "autoshard_test",
+        "autoshard_cnn_test",
         "ops_test",
         "while_loop_perf_test",
         "conditional_test",
