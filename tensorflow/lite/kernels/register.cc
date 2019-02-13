@@ -213,7 +213,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version */ 1,
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_CONCATENATION, Register_CONCATENATION());
-  AddBuiltin(BuiltinOperator_ADD, Register_ADD());
+  AddBuiltin(BuiltinOperator_ADD, Register_ADD(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SPACE_TO_BATCH_ND, Register_SPACE_TO_BATCH_ND(),
              /* min_version */ 1,
              /* max_version */ 2);
