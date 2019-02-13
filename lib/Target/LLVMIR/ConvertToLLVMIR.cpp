@@ -15,475 +15,135 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file implements a pass that converts MLIR functions to LLVM IR.
+// This file implements a translation between the MLIR LLVM dialect and LLVM IR.
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/Instruction.h"
-#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Module.h"
+#include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/StandardOps/StandardOps.h"
-#include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/FileUtilities.h"
-#include "mlir/Support/Functional.h"
-#include "mlir/Target/LLVMIR.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Translation.h"
-#include "llvm/ADT/APFloat.h"
-#include "llvm/ADT/APInt.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/IR/Constant.h"
+
+#include "llvm/ADT/SetVector.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/Type.h"
-#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 
 using namespace mlir;
 
 namespace {
-class ModuleLowerer {
+// Implementation class for module translation.  Holds a reference to the module
+// being translated, and the mappings between the original and the translated
+// functions, basic blocks and values.  It is practically easier to hold these
+// mappings in one class since the conversion of control flow instructions
+// needs to look up block and function mappins.
+class ModuleTranslation {
 public:
-  explicit ModuleLowerer(llvm::LLVMContext &llvmContext)
-      : llvmContext(llvmContext), builder(llvmContext) {}
-
-  bool runOnModule(Module &m, llvm::Module &llvmModule);
+  // Translate the given MLIR module expressed in MLIR LLVM IR dialect into an
+  // LLVM IR module.  The MLIR LLVM IR dialect holds a pointer to an
+  // LLVMContext, the LLVM IR module will be created in that context.
+  static std::unique_ptr<llvm::Module> translateModule(const Module &m);
 
 private:
-  bool convertBlock(const Block &bb, bool ignoreArguments = false);
-  bool convertFunction(const Function &func, llvm::Function &llvmFunc);
-  bool convertFunctions(const Module &mlirModule, llvm::Module &llvmModule);
-  bool convertInstruction(const Instruction &inst);
+  explicit ModuleTranslation(const Module &module) : mlirModule(module) {}
 
+  bool convertFunctions();
+  bool convertOneFunction(const Function &func);
   void connectPHINodes(const Function &func);
+  bool convertBlock(const Block &bb, bool ignoreArguments);
+  bool convertInstruction(const Instruction &inst, llvm::IRBuilder<> &builder);
 
-  /// Type conversion functions.  If any conversion fails, report errors to the
-  /// context of the MLIR type and return nullptr.
-  /// \{
-  llvm::FunctionType *convertFunctionType(FunctionType type);
-  llvm::IntegerType *convertIndexType(IndexType type);
-  llvm::IntegerType *convertIntegerType(IntegerType type);
-  llvm::Type *convertFloatType(FloatType type);
-  llvm::Type *convertType(Type type);
-  /// Convert a MemRefType `type` into an LLVM aggregate structure type.  Each
-  /// structure type starts with a pointer to the elemental type of the MemRef
-  /// and continues with as many lowered to LLVM index types as MemRef has
-  /// dynamic dimensions.  An instance of this type is called a MemRef decriptor
-  /// and replaces the MemRef everywhere it is used so that any instruction has
-  /// access to its dynamic sizes.
-  /// For example, given that `index` is converted to `i64`, `memref<?x?xf32>`
-  /// is converted to `{float*, i64, i64}` (two dynamic sizes, in order);
-  /// `memref<42x?x42xi32>` is converted to `{i32*, i64}` (only one size is
-  /// dynamic); `memref<2x3x4xf64>` is converted to `{double*}`.
-  llvm::StructType *convertMemRefType(MemRefType type);
+  // Original and translated module.
+  const Module &mlirModule;
+  std::unique_ptr<llvm::Module> llvmModule;
 
-  /// Convert a 1D vector type to an LLVM vector type.
-  llvm::VectorType *convertVectorType(VectorType type);
-  /// \}
-
-  /// Convert a list of types to an LLVM type suitable for being returned from a
-  /// function.  If the list is empty, return VoidTy.  If it
-  /// contains one element, return the converted element. Otherwise, create an
-  /// LLVM StructType containing all the given types in order.
-  llvm::Type *getPackedResultType(ArrayRef<Type> types);
-
-  /// Get an a constant value of `indexType`.
-  inline llvm::Constant *getIndexConstant(int64_t value);
-
-  /// Given subscript indices and array sizes in row-major order,
-  ///   i_n, i_{n-1}, ..., i_1
-  ///   s_n, s_{n-1}, ..., s_1
-  /// obtain a value that corresponds to the linearized subscript
-  ///   i_n * s_{n-1} * s_{n-2} * ... * s_1 +
-  ///   + i_{n-1} * s_{n-2} * s_{n_3} * ... * s_1 +
-  ///   + ... +
-  ///   + i_2 * s_1 +
-  ///   + i_1.
-  llvm::Value *linearizeSubscripts(ArrayRef<llvm::Value *> indices,
-                                   ArrayRef<llvm::Value *> allocSizes);
-
-  /// Emit LLVM IR instructions necessary to obtain a pointer to the element of
-  /// `memRef` accessed by `op` with indices `opIndices`. In particular, extract
-  /// any dynamic allocation sizes from the MemRef descriptor, linearize the
-  /// access subscript given the sizes, extract the data pointer from the MemRef
-  /// descriptor and get the pointer to the element indexed by the linearized
-  /// subscript.  Return nullptr on errors.
-  llvm::Value *emitMemRefElementAccess(
-      const Value *memRef, const Instruction &op,
-      llvm::iterator_range<Instruction::const_operand_iterator> opIndices);
-
-  /// Emit LLVM IR corresponding to the given Alloc `op`.  In particular, create
-  /// a Value for the MemRef descriptor, store any dynamic sizes passed to
-  /// the alloc operation in the descriptor, allocate the buffer for the data
-  /// using `allocFunc` and also store it in the descriptor.  Return the MemRef
-  /// descriptor.  This function returns `nullptr` in case of errors.
-  llvm::Value *emitMemRefAlloc(ConstOpPointer<AllocOp> allocOp);
-
-  /// Emit LLVM IR corresponding to the given Dealloc `op`.  In particular,
-  /// use `freeFunc` to free the memory allocated for the MemRef's buffer.  The
-  /// MemRef descriptor allocated on stack will cease to exist when the current
-  /// function returns without any extra action.  Returns an LLVM Value (call
-  /// instruction) on success and nullptr on error.
-  llvm::Value *emitMemRefDealloc(ConstOpPointer<DeallocOp> deallocOp);
-
-  /// Emit a constant splat operation, i.e. an operation that broadcasts a
-  /// single value to a vector.  The `op` must have an attribute `value` of
-  /// SplatElementsAttr type.  Return an LLVM SSA value of the constant vector;
-  /// return `nullptr` in case of errors.
-  llvm::Value *emitConstantSplat(const ConstantOp &op);
-
-  /// Create a single LLVM value of struct type that includes the list of
-  /// given MLIR values.  The `values` list must contain at least 2 elements.
-  llvm::Value *packValues(ArrayRef<const Value *> values);
-  /// Extract a list of `num` LLVM values from a `value` of struct type.
-  SmallVector<llvm::Value *, 4> unpackValues(llvm::Value *value, unsigned num);
-
+  // Mappings between original and translated values, used for lookups.
   llvm::DenseMap<const Function *, llvm::Function *> functionMapping;
   llvm::DenseMap<const Value *, llvm::Value *> valueMapping;
   llvm::DenseMap<const Block *, llvm::BasicBlock *> blockMapping;
-  llvm::LLVMContext &llvmContext;
-  llvm::IRBuilder<llvm::ConstantFolder, llvm::IRBuilderDefaultInserter> builder;
-  llvm::IntegerType *indexType;
-
-  /// Allocation function : (index) -> i8*, declaration only.
-  llvm::FunctionCallee allocFunc;
-  /// Deallocation function : (i8*) -> void, declaration only.
-  llvm::FunctionCallee freeFunc;
 };
+} // end anonymous namespace
 
-llvm::IntegerType *ModuleLowerer::convertIndexType(IndexType type) {
-  return indexType;
-}
+// Convert an MLIR function type to LLVM IR.  Arguments of the function must of
+// MLIR LLVM IR dialect types.  Use `loc` as a location when reporting errors.
+// Return nullptr on errors.
+static llvm::FunctionType *convertFunctionType(llvm::LLVMContext &llvmContext,
+                                               FunctionType type,
+                                               Location loc) {
+  assert(type && "expected non-null type");
 
-llvm::IntegerType *ModuleLowerer::convertIntegerType(IntegerType type) {
-  return builder.getIntNTy(type.getWidth());
-}
-
-llvm::Type *ModuleLowerer::convertFloatType(FloatType type) {
-  MLIRContext *context = type.getContext();
-  switch (type.getKind()) {
-  case StandardTypes::F32:
-    return builder.getFloatTy();
-  case StandardTypes::F64:
-    return builder.getDoubleTy();
-  case StandardTypes::F16:
-    return builder.getHalfTy();
-  case StandardTypes::BF16:
-    return context->emitError(UnknownLoc::get(context),
-                              "unsupported type: BF16"),
+  auto context = type.getContext();
+  if (type.getNumResults() > 1)
+    return context->emitError(loc,
+                              "LLVM functions can only have 0 or 1 result"),
            nullptr;
-  default:
-    llvm_unreachable("non-float type in convertFloatType");
-  }
-}
 
-// Helper function for lambdas below.
-static bool isTypeNull(llvm::Type *type) { return type == nullptr; }
-
-// If `types` has more than one type, pack them into an LLVM StructType,
-// otherwise just convert the type.
-llvm::Type *ModuleLowerer::getPackedResultType(ArrayRef<Type> types) {
-  // Convert result types one by one and check for errors.
-  auto resultTypes =
-      functional::map([this](Type t) { return convertType(t); }, types);
-  if (llvm::any_of(resultTypes, isTypeNull))
-    return nullptr;
-
-  // LLVM does not support tuple returns.  If there are more than 2 results,
-  // pack them into an LLVM struct type.
-  if (resultTypes.empty())
-    return llvm::Type::getVoidTy(llvmContext);
-  if (resultTypes.size() == 1)
-    return resultTypes.front();
-  return llvm::StructType::get(llvmContext, resultTypes);
-}
-
-// Function types are converted to LLVM Function types by recursively converting
-// argument and result types.  If MLIR Function has zero results, the LLVM
-// Function has one VoidType result.  If MLIR Function has more than one result,
-// they are into an LLVM StructType in their order of appearance.
-llvm::FunctionType *ModuleLowerer::convertFunctionType(FunctionType type) {
-  llvm::Type *resultType = getPackedResultType(type.getResults());
-  if (!resultType)
-    return nullptr;
-
-  // Convert argument types one by one and check for errors.
-  auto argTypes = functional::map([this](Type t) { return convertType(t); },
-                                  type.getInputs());
-  if (llvm::any_of(argTypes, isTypeNull))
-    return nullptr;
-
-  return llvm::FunctionType::get(resultType, argTypes, /*isVarArg=*/false);
-}
-
-// MemRefs are converted into LLVM structure types to accomodate dynamic sizes.
-// The first element of a structure is a pointer to the elemental type of the
-// MemRef.  The following N elements are values of the Index type, one for each
-// of N dynamic dimensions of the MemRef.
-llvm::StructType *ModuleLowerer::convertMemRefType(MemRefType type) {
-  llvm::Type *elementType = convertType(type.getElementType());
-  if (!elementType)
-    return nullptr;
-  elementType = elementType->getPointerTo();
-
-  // Extra value for the memory space.
-  unsigned numDynamicSizes = type.getNumDynamicDims();
-  SmallVector<llvm::Type *, 8> types(numDynamicSizes + 1, indexType);
-  types.front() = elementType;
-
-  return llvm::StructType::get(llvmContext, types);
-}
-
-// Convert a 1D vector type to an LLVM vector type.
-llvm::VectorType *ModuleLowerer::convertVectorType(VectorType type) {
-  if (type.getRank() != 1) {
-    MLIRContext *context = type.getContext();
-    context->emitError(UnknownLoc::get(context),
-                       "only 1D vectors are supported");
-    return nullptr;
+  SmallVector<llvm::Type *, 8> argTypes;
+  argTypes.reserve(type.getNumInputs());
+  for (auto t : type.getInputs()) {
+    auto wrappedLLVMType = t.dyn_cast<LLVM::LLVMType>();
+    if (!wrappedLLVMType)
+      return context->emitError(loc, "non-LLVM function argument type"),
+             nullptr;
+    argTypes.push_back(wrappedLLVMType.getUnderlyingType());
   }
 
-  llvm::Type *elementType = convertType(type.getElementType());
-  if (!elementType) {
-    return nullptr;
-  }
+  if (type.getNumResults() == 0)
+    return llvm::FunctionType::get(llvm::Type::getVoidTy(llvmContext), argTypes,
+                                   /*isVarArg=*/false);
 
-  return llvm::VectorType::get(elementType, type.getShape().front());
+  auto wrappedResultType = type.getResult(0).dyn_cast<LLVM::LLVMType>();
+  if (!wrappedResultType)
+    return context->emitError(loc, "non-LLVM function result"), nullptr;
+
+  return llvm::FunctionType::get(wrappedResultType.getUnderlyingType(),
+                                 argTypes, /*isVarArg=*/false);
 }
 
-llvm::Type *ModuleLowerer::convertType(Type type) {
-  if (auto funcType = type.dyn_cast<FunctionType>())
-    return convertFunctionType(funcType);
-  if (auto intType = type.dyn_cast<IntegerType>())
-    return convertIntegerType(intType);
-  if (auto floatType = type.dyn_cast<FloatType>())
-    return convertFloatType(floatType);
-  if (auto indexType = type.dyn_cast<IndexType>())
-    return convertIndexType(indexType);
-  if (auto memRefType = type.dyn_cast<MemRefType>())
-    return convertMemRefType(memRefType);
-  if (auto vectorType = type.dyn_cast<VectorType>())
-    return convertVectorType(vectorType);
-
-  MLIRContext *context = type.getContext();
-  context->emitError(UnknownLoc::get(context),
-                     llvm::formatv("unsupported type: {0}", type));
+// Create an LLVM IR constant of `llvmType` from the MLIR attribute `attr`.
+// This currently supports integer, floating point, splat and dense element
+// attributes and combinations thereof.  In case of error, report it to `loc`
+// and return nullptr.
+static llvm::Constant *getLLVMConstant(llvm::Type *llvmType, Attribute attr,
+                                       MLIRContext &context, Location loc) {
+  if (auto intAttr = attr.dyn_cast<IntegerAttr>())
+    return llvm::ConstantInt::get(llvmType, intAttr.getValue());
+  if (auto floatAttr = attr.dyn_cast<FloatAttr>())
+    return llvm::ConstantFP::get(llvmType, floatAttr.getValue());
+  if (auto splatAttr = attr.dyn_cast<SplatElementsAttr>()) {
+    auto *vectorType = cast<llvm::VectorType>(llvmType);
+    auto *child = getLLVMConstant(vectorType->getElementType(),
+                                  splatAttr.getValue(), context, loc);
+    return llvm::ConstantVector::getSplat(vectorType->getNumElements(), child);
+  }
+  if (auto denseAttr = attr.dyn_cast<DenseElementsAttr>()) {
+    auto *vectorType = cast<llvm::VectorType>(llvmType);
+    SmallVector<llvm::Constant *, 8> constants;
+    uint64_t numElements = vectorType->getNumElements();
+    constants.reserve(numElements);
+    SmallVector<Attribute, 8> nested;
+    denseAttr.getValues(nested);
+    for (auto n : nested) {
+      constants.push_back(
+          getLLVMConstant(vectorType->getElementType(), n, context, loc));
+      if (!constants.back())
+        return nullptr;
+    }
+    return llvm::ConstantVector::get(constants);
+  }
+  context.emitError(loc, "unsupported constant value");
   return nullptr;
 }
 
-llvm::Constant *ModuleLowerer::getIndexConstant(int64_t value) {
-  return llvm::Constant::getIntegerValue(
-      indexType, llvm::APInt(indexType->getBitWidth(), value));
-}
-
-// Given subscript indices and array sizes in row-major order,
-//   i_n, i_{n-1}, ..., i_1
-//   s_n, s_{n-1}, ..., s_1
-// obtain a value that corresponds to the linearized subscript
-//   \sum_k i_k * \prod_{j=1}^{k-1} s_j
-// by accumulating the running linearized value.
-llvm::Value *
-ModuleLowerer::linearizeSubscripts(ArrayRef<llvm::Value *> indices,
-                                   ArrayRef<llvm::Value *> allocSizes) {
-  assert(indices.size() == allocSizes.size() &&
-         "mismatching number of indices and allocation sizes");
-  assert(!indices.empty() && "cannot linearize a 0-dimensional access");
-
-  llvm::Value *linearized = indices.front();
-  for (unsigned i = 1, nSizes = allocSizes.size(); i < nSizes; ++i) {
-    linearized = builder.CreateMul(linearized, allocSizes[i]);
-    linearized = builder.CreateAdd(linearized, indices[i]);
-  }
-
-  return linearized;
-}
-
-// Check if the MemRefType `type` is supported by the lowering.  Emit errors at
-// the location of `op` and return true.  Return false if the type is supported.
-// TODO(zinenko): this function should disappear when the conversion fully
-// supports MemRefs.
-static bool checkSupportedMemRefType(MemRefType type, const Instruction &op) {
-  if (!type.getAffineMaps().empty())
-    return op.emitError("NYI: memrefs with affine maps");
-  if (type.getMemorySpace() != 0)
-    return op.emitError("NYI: non-default memory space");
-  return false;
-}
-
-llvm::Value *ModuleLowerer::emitMemRefElementAccess(
-    const Value *memRef, const Instruction &op,
-    llvm::iterator_range<Instruction::const_operand_iterator> opIndices) {
-  auto type = memRef->getType().dyn_cast<MemRefType>();
-  assert(type && "expected memRef value to have a MemRef type");
-  if (checkSupportedMemRefType(type, op))
-    return nullptr;
-
-  // A MemRef-typed value is remapped to its descriptor.
-  llvm::Value *memRefDescriptor = valueMapping.lookup(memRef);
-
-  // Get the list of MemRef sizes.  Static sizes are defined as values.  Dynamic
-  // sizes are extracted from the MemRef descriptor.
-  llvm::SmallVector<llvm::Value *, 4> sizes;
-  unsigned dynanmicSizeIdx = 0;
-  for (int64_t s : type.getShape()) {
-    llvm::Value *size = (s == -1) ? builder.CreateExtractValue(
-                                        memRefDescriptor, 1 + dynanmicSizeIdx++)
-                                  : getIndexConstant(s);
-    sizes.push_back(size);
-  }
-
-  // Obtain the list of access subscripts as values and linearize it given the
-  // list of sizes.
-  auto indices = functional::map(
-      [this](const Value *value) { return valueMapping.lookup(value); },
-      opIndices);
-  auto subscript = linearizeSubscripts(indices, sizes);
-
-  // Extract the pointer to the data buffer and use LLVM's getelementptr to
-  // repoint it to the element indexed by the subscript.
-  llvm::Value *data = builder.CreateExtractValue(memRefDescriptor, 0);
-  return builder.CreateGEP(data, subscript);
-}
-
-llvm::Value *ModuleLowerer::emitMemRefAlloc(ConstOpPointer<AllocOp> allocOp) {
-  MemRefType type = allocOp->getType();
-  if (checkSupportedMemRefType(type, *allocOp->getInstruction()))
-    return nullptr;
-
-  // Get actual sizes of the memref as values: static sizes are constant
-  // values and dynamic sizes are passed to 'alloc' as operands.
-  SmallVector<llvm::Value *, 4> sizes;
-  sizes.reserve(allocOp->getNumOperands());
-  unsigned i = 0;
-  for (int64_t s : type.getShape()) {
-    llvm::Value *value = (s == -1)
-                             ? valueMapping.lookup(allocOp->getOperand(i++))
-                             : getIndexConstant(s);
-    sizes.push_back(value);
-  }
-  assert(!sizes.empty() && "zero-dimensional allocation");
-
-  // Compute the total numer of memref elements as Value.
-  llvm::Value *cumulativeSize = sizes.front();
-  for (unsigned i = 1, e = sizes.size(); i < e; ++i) {
-    cumulativeSize = builder.CreateMul(cumulativeSize, sizes[i]);
-  }
-
-  // Allocate the MemRef descriptor on stack and load it.
-  llvm::StructType *structType = convertMemRefType(type);
-  llvm::Type *elementType = convertType(type.getElementType());
-  if (!structType || !elementType)
-    return nullptr;
-  llvm::Value *memRefDescriptor = llvm::UndefValue::get(structType);
-
-  // Take into account the size of the elemental type before allocation.
-  // Elemental types can be scalars or vectors only.
-  unsigned byteWidth = elementType->getScalarSizeInBits() / 8;
-  assert(byteWidth > 0 && "could not determine size of a MemRef element");
-  if (elementType->isVectorTy()) {
-    byteWidth *= elementType->getVectorNumElements();
-  }
-  llvm::Value *byteWidthValue = getIndexConstant(byteWidth);
-  cumulativeSize = builder.CreateMul(cumulativeSize, byteWidthValue);
-
-  // Allocate the buffer for theMemRef and store a pointer to it in the MemRef
-  // descriptor.
-  llvm::Value *allocated = builder.CreateCall(allocFunc, cumulativeSize);
-  allocated = builder.CreateBitCast(allocated, elementType->getPointerTo());
-  memRefDescriptor = builder.CreateInsertValue(memRefDescriptor, allocated, 0);
-
-  // Store dynamically allocated sizes in the descriptor.
-  i = 0;
-  for (auto indexedSize : llvm::enumerate(sizes)) {
-    if (type.getShape()[indexedSize.index()] != -1)
-      continue;
-    memRefDescriptor = builder.CreateInsertValue(memRefDescriptor,
-                                                 indexedSize.value(), 1 + i++);
-  }
-
-  // Return the final value of the descriptor (each insert returns a new,
-  // updated value, the old is still accessible but has old data).
-  return memRefDescriptor;
-}
-
-llvm::Value *
-ModuleLowerer::emitMemRefDealloc(ConstOpPointer<DeallocOp> deallocOp) {
-  // Extract the pointer to the MemRef buffer from its descriptor and call
-  // `freeFunc` on it.
-  llvm::Value *memRefDescriptor = valueMapping.lookup(deallocOp->getMemRef());
-  llvm::Value *data = builder.CreateExtractValue(memRefDescriptor, 0);
-  data = builder.CreateBitCast(data, builder.getInt8PtrTy());
-  return builder.CreateCall(freeFunc, data);
-}
-
-// Return an LLVM constant of the `float` type for the given APvalue.
-// This forcibly recreates the APFloat with IEEESingle semantics to make sure
-// LLVM constructs a `float` constant.
-static llvm::ConstantFP *getFloatConstant(APFloat APvalue,
-                                          const Instruction &inst,
-                                          llvm::LLVMContext *context) {
-  bool unused;
-  APFloat::opStatus status = APvalue.convert(
-      llvm::APFloat::IEEEsingle(), llvm::APFloat::rmTowardZero, &unused);
-  if (status == APFloat::opInexact) {
-    inst.emitWarning("lossy conversion of a float constant to the float type");
-    // No return intended.
-  }
-  if (status != APFloat::opOK)
-    return inst.emitError("failed to convert a floating point constant"),
-           nullptr;
-  auto value = APvalue.convertToFloat();
-  return llvm::ConstantFP::get(*context, APFloat(value));
-}
-
-llvm::Value *ModuleLowerer::emitConstantSplat(const ConstantOp &op) {
-  auto splatAttr = op.getValue().dyn_cast<SplatElementsAttr>();
-  assert(splatAttr && "expected a splat constant");
-
-  auto floatAttr = splatAttr.getValue().dyn_cast<FloatAttr>();
-  if (!floatAttr)
-    return op.emitError("NYI: only float splats are currently supported"),
-           nullptr;
-
-  llvm::Constant *cst = getFloatConstant(floatAttr.getValue(),
-                                         *op.getInstruction(), &llvmContext);
-  if (!cst)
-    return nullptr;
-
-  auto nElements = op.getType().cast<VectorType>().getShape()[0];
-  return llvm::ConstantVector::getSplat(nElements, cst);
-}
-
-// Create an undef struct value and insert individual values into it.
-llvm::Value *ModuleLowerer::packValues(ArrayRef<const Value *> values) {
-  assert(values.size() > 1 && "cannot pack less than 2 values");
-
-  auto types =
-      functional::map([](const Value *v) { return v->getType(); }, values);
-  llvm::Type *packedType = getPackedResultType(types);
-
-  llvm::Value *packed = llvm::UndefValue::get(packedType);
-  for (auto indexedValue : llvm::enumerate(values)) {
-    packed = builder.CreateInsertValue(
-        packed, valueMapping.lookup(indexedValue.value()),
-        indexedValue.index());
-  }
-  return packed;
-}
-
-// Emit extract value instructions to unpack the struct.
-SmallVector<llvm::Value *, 4> ModuleLowerer::unpackValues(llvm::Value *value,
-                                                          unsigned num) {
-  SmallVector<llvm::Value *, 4> unpacked;
-  unpacked.reserve(num);
-  for (unsigned i = 0; i < num; ++i)
-    unpacked.push_back(builder.CreateExtractValue(value, i));
-  return unpacked;
-}
-
+// Convert MLIR integer comparison predicate to LLVM IR comparison predicate.
 static llvm::CmpInst::Predicate getLLVMCmpPredicate(CmpIPredicate p) {
   switch (p) {
   case CmpIPredicate::EQ:
@@ -511,261 +171,174 @@ static llvm::CmpInst::Predicate getLLVMCmpPredicate(CmpIPredicate p) {
   }
 }
 
-// Convert specific operation instruction types LLVM instructions.
-// FIXME(zinenko): this should eventually become a separate MLIR pass that
-// converts MLIR standard operations into LLVM IR dialect; the translation in
-// that case would become a simple 1:1 instruction and value remapping.
-bool ModuleLowerer::convertInstruction(const Instruction &inst) {
-  if (auto op = inst.dyn_cast<AddIOp>())
-    return valueMapping[op->getResult()] =
-               builder.CreateAdd(valueMapping[op->getOperand(0)],
-                                 valueMapping[op->getOperand(1)]),
-           false;
-  if (auto op = inst.dyn_cast<DivISOp>())
-    return valueMapping[op->getResult()] = builder.CreateSDiv(
-               valueMapping[op->lhs()], valueMapping[op->rhs()]),
-           false;
-  if (auto op = inst.dyn_cast<DivIUOp>())
-    return valueMapping[op->getResult()] = builder.CreateUDiv(
-               valueMapping[op->lhs()], valueMapping[op->rhs()]),
-           false;
-  if (auto op = inst.dyn_cast<SubIOp>())
-    return valueMapping[op->getResult()] =
-               builder.CreateSub(valueMapping[op->getOperand(0)],
-                                 valueMapping[op->getOperand(1)]),
-           false;
-  if (auto op = inst.dyn_cast<MulIOp>())
-    return valueMapping[op->getResult()] =
-               builder.CreateMul(valueMapping[op->getOperand(0)],
-                                 valueMapping[op->getOperand(1)]),
-           false;
-  if (auto op = inst.dyn_cast<RemISOp>())
-    return valueMapping[op->getResult()] = builder.CreateSRem(
-               valueMapping[op->lhs()], valueMapping[op->rhs()]),
-           false;
-  if (auto op = inst.dyn_cast<RemIUOp>())
-    return valueMapping[op->getResult()] = builder.CreateURem(
-               valueMapping[op->lhs()], valueMapping[op->rhs()]),
-           false;
-  if (auto op = inst.dyn_cast<CmpIOp>())
-    return valueMapping[op->getResult()] =
-               builder.CreateICmp(getLLVMCmpPredicate(op->getPredicate()),
-                                  valueMapping[op->getOperand(0)],
-                                  valueMapping[op->getOperand(1)]),
-           false;
-
-  if (auto op = inst.dyn_cast<AddFOp>())
-    return valueMapping[op->getResult()] =
-               builder.CreateFAdd(valueMapping.lookup(op->getOperand(0)),
-                                  valueMapping.lookup(op->getOperand(1))),
-           false;
-  if (auto op = inst.dyn_cast<SubFOp>())
-    return valueMapping[op->getResult()] =
-               builder.CreateFSub(valueMapping.lookup(op->getOperand(0)),
-                                  valueMapping.lookup(op->getOperand(1))),
-           false;
-  if (auto op = inst.dyn_cast<MulFOp>())
-    return valueMapping[op->getResult()] =
-               builder.CreateFMul(valueMapping.lookup(op->getOperand(0)),
-                                  valueMapping.lookup(op->getOperand(1))),
-           false;
-
-  if (auto constantOp = inst.dyn_cast<ConstantIndexOp>()) {
-    auto attr = constantOp->getValue();
-    valueMapping[constantOp->getResult()] = getIndexConstant(attr);
-    return false;
+// Given a single MLIR instruction, create the corresponding LLVM IR instruction
+// using the `builder`.  LLVM IR Builder does not have a generic interface so
+// this has to be a long chain of `if`s calling different functions with a
+// different number of arguments.
+// TODO(zinenko): the conversion is largely mechanical and should be tablegen'ed
+bool ModuleTranslation::convertInstruction(const Instruction &inst,
+                                           llvm::IRBuilder<> &builder) {
+#define CONV_BINARY_OP(CLASS, FUNC)                                            \
+  if (auto op = inst.dyn_cast<CLASS>()) {                                      \
+    valueMapping[op->getResult()] = builder.FUNC(                              \
+        valueMapping.lookup(op->lhs()), valueMapping.lookup(op->rhs()));       \
+    return false;                                                              \
   }
-  if (auto constantOp = inst.dyn_cast<ConstantFloatOp>()) {
-    llvm::Type *type = convertType(constantOp->getType());
-    if (!type)
-      return true;
-    // TODO(somebody): float attributes have "double" semantics whatever the
-    // type of the constant.  This should be fixed at the parser level.
-    if (!type->isFloatTy())
-      return inst.emitError("NYI: only floats are currently supported");
 
-    auto APvalue = constantOp->getValue();
-    auto llvmValue = getFloatConstant(APvalue, inst, &type->getContext());
-    if (!llvmValue)
-      return true;
+  CONV_BINARY_OP(LLVM::AddOp, CreateAdd);
+  CONV_BINARY_OP(LLVM::SubOp, CreateSub);
+  CONV_BINARY_OP(LLVM::MulOp, CreateMul);
+  CONV_BINARY_OP(LLVM::SDivOp, CreateSDiv);
+  CONV_BINARY_OP(LLVM::UDivOp, CreateUDiv);
+  CONV_BINARY_OP(LLVM::SRemOp, CreateSRem);
+  CONV_BINARY_OP(LLVM::URemOp, CreateURem);
+  CONV_BINARY_OP(LLVM::FAddOp, CreateFAdd);
+  CONV_BINARY_OP(LLVM::FSubOp, CreateFSub);
+  CONV_BINARY_OP(LLVM::FMulOp, CreateFMul);
+  CONV_BINARY_OP(LLVM::FDivOp, CreateFDiv);
+  CONV_BINARY_OP(LLVM::FRemOp, CreateFRem);
 
-    valueMapping[constantOp->getResult()] = llvmValue;
-    return false;
-  }
-  if (auto constantOp = inst.dyn_cast<ConstantIntOp>()) {
-    llvm::Type *type = convertType(constantOp->getType());
-    if (!type)
-      return true;
+#undef CONV_BINARY_OP
 
-    // Create a new APInt even if we can extract one from the attribute, because
-    // attributes are currently hardcoded to be 64-bit APInts and LLVM will
-    // create an i64 constant from those.
-    auto value = constantOp->getValue();
-    valueMapping[constantOp->getResult()] = llvm::Constant::getIntegerValue(
-        type, APInt(type->getIntegerBitWidth(), value));
-    return false;
-  }
-  if (auto constantOp = inst.dyn_cast<ConstantOp>()) {
-    llvm::Type *type = convertType(constantOp->getType());
-    if (!type)
-      return true;
-    if (!isa<llvm::VectorType>(type))
-      return inst.emitError("unsupported constant type");
+  if (auto op = inst.dyn_cast<LLVM::ICmpOp>()) {
+    auto attr = op->getAttrOfType<IntegerAttr>("predicate");
+    auto predicate = static_cast<CmpIPredicate>(attr.getValue().getSExtValue());
 
-    auto constantValue = constantOp->getValue();
-    if (!constantValue.isa<SplatElementsAttr>())
-      return inst.emitError("NYI: non-splat vector constants");
-
-    llvm::Value *llvmValue = emitConstantSplat(*constantOp);
-    if (!llvmValue)
-      return true;
-    valueMapping[constantOp->getResult()] = llvmValue;
+    valueMapping[op->getResult()] = builder.CreateICmp(
+        getLLVMCmpPredicate(predicate), valueMapping.lookup(op->lhs()),
+        valueMapping.lookup(op->rhs()));
     return false;
   }
 
-  if (auto allocOp = inst.dyn_cast<AllocOp>()) {
-    llvm::Value *memRefDescriptor = emitMemRefAlloc(allocOp);
-    if (!memRefDescriptor)
-      return true;
-
-    valueMapping[allocOp->getResult()] = memRefDescriptor;
-    return false;
-  }
-  if (auto deallocOp = inst.dyn_cast<DeallocOp>()) {
-    return !emitMemRefDealloc(deallocOp);
-  }
-
-  if (auto loadOp = inst.dyn_cast<LoadOp>()) {
-    llvm::Value *element = emitMemRefElementAccess(
-        loadOp->getMemRef(), *loadOp->getInstruction(), loadOp->getIndices());
-    if (!element)
-      return true;
-
-    valueMapping[loadOp->getResult()] = builder.CreateLoad(element);
-    return false;
-  }
-  if (auto storeOp = inst.dyn_cast<StoreOp>()) {
-    llvm::Value *element = emitMemRefElementAccess(storeOp->getMemRef(),
-                                                   *storeOp->getInstruction(),
-                                                   storeOp->getIndices());
-    if (!element)
-      return true;
-
-    builder.CreateStore(valueMapping.lookup(storeOp->getValueToStore()),
-                        element);
-    return false;
-  }
-  if (auto dimOp = inst.dyn_cast<DimOp>()) {
-    const Value *container = dimOp->getOperand();
-    MemRefType type = container->getType().dyn_cast<MemRefType>();
-    if (!type)
-      return dimOp->emitError("only memref types are supported");
-
-    auto shape = type.getShape();
-    auto index = dimOp->getIndex();
-    assert(index < shape.size() && "out-of-bounds 'dim' operation");
-
-    // If the size is a constant, just define that constant.
-    if (shape[index] != -1) {
-      valueMapping[dimOp->getResult()] = getIndexConstant(shape[index]);
-      return false;
-    }
-
-    // Otherwise, compute the position of the requested index in the list of
-    // dynamic sizes stored in the MemRef descriptor and extract it from there.
-    unsigned numLeadingDynamicSizes = 0;
-    for (unsigned i = 0; i < index; ++i) {
-      if (shape[i] == -1)
-        ++numLeadingDynamicSizes;
-    }
-    llvm::Value *memRefDescriptor = valueMapping.lookup(container);
-    llvm::Value *dynamicSize = builder.CreateExtractValue(
-        memRefDescriptor, 1 + numLeadingDynamicSizes);
-    valueMapping[dimOp->getResult()] = dynamicSize;
+  // Pseudo-ops.  These do not exist as LLVM operations but produce (constant)
+  // values.
+  if (auto op = inst.dyn_cast<LLVM::UndefOp>()) {
+    auto wrappedType = op->getResult()->getType().dyn_cast<LLVM::LLVMType>();
+    valueMapping[op->getResult()] =
+        llvm::UndefValue::get(wrappedType.getUnderlyingType());
     return false;
   }
 
-  if (auto callOp = inst.dyn_cast<CallOp>()) {
-    auto operands = functional::map(
-        [this](const Value *value) { return valueMapping.lookup(value); },
-        callOp->getOperands());
-    auto numResults = callOp->getNumResults();
-    llvm::Value *result =
-        builder.CreateCall(functionMapping[callOp->getCallee()], operands);
-    if (numResults == 1) {
-      valueMapping[callOp->getResult(0)] = result;
-    } else if (numResults > 1) {
-      auto unpacked = unpackValues(result, numResults);
-      for (auto indexedValue : llvm::enumerate(unpacked)) {
-        valueMapping[callOp->getResult(indexedValue.index())] =
-            indexedValue.value();
-      }
-    }
+  if (auto op = inst.dyn_cast<LLVM::ConstantOp>()) {
+    Attribute attr = op->getAttr("value");
+    auto type = op->getResult()->getType().cast<LLVM::LLVMType>();
+    valueMapping[op->getResult()] = getLLVMConstant(
+        type.getUnderlyingType(), attr, *inst.getContext(), inst.getLoc());
     return false;
   }
 
-  // TODO(zinenko): LLVM IR lowering should not be aware of all the other
-  // dialects.  Instead, we should have separate definitions for conversions in
-  // a global lowering framework.  However, this requires LLVM dialect to be
-  // implemented, which is currently blocked by the absence of user-defined
-  // types.
-  if (auto vectorTypeCastOp = inst.dyn_cast<VectorTypeCastOp>()) {
-    auto targetMemRefType = vectorTypeCastOp->getType().dyn_cast<MemRefType>();
+  // A helper to look up remapped operands in the value remapping table.
+  auto lookupValues =
+      [this](const llvm::iterator_range<Instruction::const_operand_iterator>
+                 &values) {
+        SmallVector<llvm::Value *, 8> remapped;
+        remapped.reserve(llvm::size(values));
+        for (const Value *v : values) {
+          remapped.push_back(valueMapping.lookup(v));
+        }
+        return remapped;
+      };
 
-    llvm::Value *oldDescriptor =
-        valueMapping.lookup(vectorTypeCastOp->getOperand());
-    llvm::StructType *llvmTargetMemrefStructType =
-        convertMemRefType(targetMemRefType);
-    llvm::Value *newDescriptor =
-        llvm::UndefValue::get(llvmTargetMemrefStructType);
-    llvm::Value *dataPtr = builder.CreateExtractValue(oldDescriptor, 0);
-    dataPtr = builder.CreateBitCast(
-        dataPtr, llvmTargetMemrefStructType->getElementType(0));
-    newDescriptor = builder.CreateInsertValue(newDescriptor, dataPtr, 0);
-    valueMapping[vectorTypeCastOp->getResult()] = newDescriptor;
+  // Emit function calls.  In addition to operands, we also need to look up the
+  // remapped function itself.
+  if (auto op = inst.dyn_cast<LLVM::CallOp>()) {
+    auto attr = op->getAttrOfType<FunctionAttr>("callee");
+    valueMapping[op->getResult()] =
+        builder.CreateCall(functionMapping.lookup(attr.getValue()),
+                           lookupValues(op->getOperands()));
+    return false;
+  }
+  if (auto op = inst.dyn_cast<LLVM::Call0Op>()) {
+    auto attr = op->getAttrOfType<FunctionAttr>("callee");
+    builder.CreateCall(functionMapping.lookup(attr.getValue()),
+                       lookupValues(op->getOperands()));
     return false;
   }
 
-  if (auto selectOp = inst.dyn_cast<SelectOp>()) {
-    valueMapping[selectOp->getResult()] =
-        builder.CreateSelect(valueMapping.lookup(selectOp->getCondition()),
-                             valueMapping.lookup(selectOp->getTrueValue()),
-                             valueMapping.lookup(selectOp->getFalseValue()));
+  // Emit branches.  We need to look up the remapped blocks and ignore the block
+  // arguments that were transformed into PHI nodes.
+  if (auto op = inst.dyn_cast<LLVM::BrOp>()) {
+    builder.CreateBr(blockMapping[op->getSuccessor(0)]);
+    return false;
+  }
+  if (auto op = inst.dyn_cast<LLVM::CondBrOp>()) {
+    builder.CreateCondBr(valueMapping.lookup(op->getOperand(0)),
+                         blockMapping[op->getSuccessor(0)],
+                         blockMapping[op->getSuccessor(1)]);
     return false;
   }
 
-  // Terminators.
-  if (auto returnInst = inst.dyn_cast<ReturnOp>()) {
-    unsigned numOperands = returnInst->getNumOperands();
-    if (numOperands == 0) {
+  if (auto op = inst.dyn_cast<LLVM::ReturnOp>()) {
+    if (op->getNumOperands() == 0)
       builder.CreateRetVoid();
-    } else if (numOperands == 1) {
-      builder.CreateRet(valueMapping[returnInst->getOperand(0)]);
-    } else {
-      llvm::Value *packed =
-          packValues(llvm::to_vector<4>(returnInst->getOperands()));
-      if (!packed)
-        return true;
-      builder.CreateRet(packed);
-    }
+    else
+      builder.CreateRet(valueMapping.lookup(op->getOperand(0)));
+    return false;
+  }
 
+  auto extractPosition = [](ArrayAttr attr) {
+    SmallVector<unsigned, 4> position;
+    position.reserve(attr.size());
+    for (Attribute v : attr)
+      position.push_back(v.cast<IntegerAttr>().getValue().getZExtValue());
+    return position;
+  };
+
+  if (auto op = inst.dyn_cast<LLVM::ExtractValueOp>()) {
+    auto attr = op->getAttrOfType<ArrayAttr>("position");
+    valueMapping[op->getResult()] = builder.CreateExtractValue(
+        valueMapping.lookup(op->getOperand()), extractPosition(attr));
     return false;
   }
-  if (auto branchInst = inst.dyn_cast<BranchOp>()) {
-    builder.CreateBr(blockMapping[branchInst->getDest()]);
+  if (auto op = inst.dyn_cast<LLVM::InsertValueOp>()) {
+    auto attr = op->getAttrOfType<ArrayAttr>("position");
+    valueMapping[op->getResult()] = builder.CreateInsertValue(
+        valueMapping.lookup(op->getOperand(0)),
+        valueMapping.lookup(op->getOperand(1)), extractPosition(attr));
     return false;
   }
-  if (auto condBranchInst = inst.dyn_cast<CondBranchOp>()) {
-    builder.CreateCondBr(valueMapping[condBranchInst->getCondition()],
-                         blockMapping[condBranchInst->getTrueDest()],
-                         blockMapping[condBranchInst->getFalseDest()]);
+  if (auto op = inst.dyn_cast<LLVM::BitcastOp>()) {
+    valueMapping[op->getResult()] = builder.CreateBitCast(
+        valueMapping.lookup(op->getOperand()),
+        op->getType().cast<LLVM::LLVMType>().getUnderlyingType());
     return false;
   }
-  return inst.emitError("unsupported operation");
+
+  if (auto op = inst.dyn_cast<LLVM::GEPOp>()) {
+    auto mappedOperands = lookupValues(op->getOperands());
+    valueMapping[op->getResult()] =
+        builder.CreateGEP(mappedOperands.front(),
+                          llvm::makeArrayRef(mappedOperands).drop_front());
+    return false;
+  }
+  if (auto op = inst.dyn_cast<LLVM::LoadOp>()) {
+    valueMapping[op->getResult()] =
+        builder.CreateLoad(valueMapping.lookup(op->getOperand()));
+    return false;
+  }
+  if (auto op = inst.dyn_cast<LLVM::StoreOp>()) {
+    builder.CreateStore(valueMapping.lookup(op->getOperand(0)),
+                        valueMapping.lookup(op->getOperand(1)));
+    return false;
+  }
+  if (auto op = inst.dyn_cast<LLVM::SelectOp>()) {
+    valueMapping[op->getResult()] =
+        builder.CreateSelect(valueMapping.lookup(op->getOperand(0)),
+                             valueMapping.lookup(op->getOperand(1)),
+                             valueMapping.lookup(op->getOperand(2)));
+    return false;
+  }
+
+  inst.emitError("unsupported or non-LLVM operation: " +
+                 inst.getName().getStringRef());
+  return true;
 }
 
-bool ModuleLowerer::convertBlock(const Block &bb, bool ignoreArguments) {
-  builder.SetInsertPoint(blockMapping[&bb]);
+// Convert block to LLVM IR.  Unless `ignoreArguments` is set, emit PHI nodes
+// to define values corresponding to the MLIR block arguments.  These nodes
+// are not connected to the source basic blocks, which may not exist yet.
+bool ModuleTranslation::convertBlock(const Block &bb, bool ignoreArguments) {
+  llvm::IRBuilder<> builder(blockMapping[&bb]);
 
   // Before traversing instructions, make block arguments available through
   // value remapping and PHI nodes, but do not add incoming edges for the PHI
@@ -778,9 +351,13 @@ bool ModuleLowerer::convertBlock(const Block &bb, bool ignoreArguments) {
     unsigned numPredecessors =
         std::distance(predecessors.begin(), predecessors.end());
     for (const auto *arg : bb.getArguments()) {
-      llvm::Type *type = convertType(arg->getType());
-      if (!type)
+      auto wrappedType = arg->getType().dyn_cast<LLVM::LLVMType>();
+      if (!wrappedType) {
+        arg->getType().getContext()->emitError(
+            bb.front().getLoc(), "block argument does not have an LLVM type");
         return true;
+      }
+      llvm::Type *type = wrappedType.getUnderlyingType();
       llvm::PHINode *phi = builder.CreatePHI(type, numPredecessors);
       valueMapping[arg] = phi;
     }
@@ -788,10 +365,7 @@ bool ModuleLowerer::convertBlock(const Block &bb, bool ignoreArguments) {
 
   // Traverse instructions.
   for (const auto &inst : bb) {
-    if (inst.getNumBlockLists() != 0)
-      return inst.emitError("unsupported region operation");
-
-    if (convertInstruction(inst))
+    if (convertInstruction(inst, builder))
       return true;
   }
 
@@ -803,13 +377,13 @@ bool ModuleLowerer::convertBlock(const Block &bb, bool ignoreArguments) {
 static const Value *getPHISourceValue(const Block *current, const Block *pred,
                                       unsigned numArguments, unsigned index) {
   auto &terminator = *pred->getTerminator();
-  if (terminator.isa<BranchOp>()) {
+  if (terminator.isa<LLVM::BrOp>()) {
     return terminator.getOperand(index);
   }
 
   // For conditional branches, we need to check if the current block is reached
   // through the "true" or the "false" branch and take the relevant operands.
-  auto condBranchOp = terminator.dyn_cast<CondBranchOp>();
+  auto condBranchOp = terminator.dyn_cast<LLVM::CondBrOp>();
   assert(condBranchOp &&
          "only branch instructions can be terminators of a block that "
          "has successors");
@@ -818,12 +392,12 @@ static const Value *getPHISourceValue(const Block *current, const Block *pred,
   return nullptr;
 }
 
-void ModuleLowerer::connectPHINodes(const Function &func) {
+void ModuleTranslation::connectPHINodes(const Function &func) {
   // Skip the first block, it cannot be branched to and its arguments correspond
   // to the arguments of the LLVM function.
   for (auto it = std::next(func.begin()), eit = func.end(); it != eit; ++it) {
     const Block *bb = &*it;
-    llvm::BasicBlock *llvmBB = blockMapping[bb];
+    llvm::BasicBlock *llvmBB = blockMapping.lookup(bb);
     auto phis = llvmBB->phis();
     auto numArguments = bb->getNumArguments();
     assert(numArguments == std::distance(phis.begin(), phis.end()));
@@ -831,31 +405,64 @@ void ModuleLowerer::connectPHINodes(const Function &func) {
       auto &phiNode = numberedPhiNode.value();
       unsigned index = numberedPhiNode.index();
       for (const auto *pred : bb->getPredecessors()) {
-        phiNode.addIncoming(
-            valueMapping[getPHISourceValue(bb, pred, numArguments, index)],
-            blockMapping[pred]);
+        phiNode.addIncoming(valueMapping.lookup(getPHISourceValue(
+                                bb, pred, numArguments, index)),
+                            blockMapping.lookup(pred));
       }
     }
   }
 }
 
-bool ModuleLowerer::convertFunction(const Function &func,
-                                    llvm::Function &llvmFunc) {
-  // Clear the block mapping.  Blocks belong to a function, no need to keep
-  // blocks from the previous functions around.  Furthermore, we use this
-  // mapping to connect PHI nodes inside the function later.
+// TODO(mlir-team): implement an iterative version
+static void topologicalSortImpl(llvm::SetVector<const Block *> &blocks,
+                                const Block *b) {
+  blocks.insert(b);
+  for (const Block *bb : b->getSuccessors()) {
+    if (blocks.count(bb) == 0)
+      topologicalSortImpl(blocks, bb);
+  }
+}
+
+// Sort function blocks topologically.
+static llvm::SetVector<const Block *> topologicalSort(const Function &f) {
+  // For each blocks that has not been visited yet (i.e. that has no
+  // predecessors), add it to the list and traverse its successors in DFS
+  // preorder.
+  llvm::SetVector<const Block *> blocks;
+  for (const Block &b : f.getBlocks()) {
+    if (blocks.count(&b) == 0)
+      topologicalSortImpl(blocks, &b);
+  }
+  assert(blocks.size() == f.getBlocks().size() && "some blocks are not sorted");
+
+  return blocks;
+}
+
+bool ModuleTranslation::convertOneFunction(const Function &func) {
+  // Clear the block and value mappings, they are only relevant within one
+  // function.
   blockMapping.clear();
+  valueMapping.clear();
+  llvm::Function *llvmFunc = functionMapping.lookup(&func);
+  // Add function arguments to the value remapping table.
+  for (const auto &kvp : llvm::zip(func.getArguments(), llvmFunc->args())) {
+    valueMapping[std::get<0>(kvp)] = &std::get<1>(kvp);
+  }
+
   // First, create all blocks so we can jump to them.
+  llvm::LLVMContext &llvmContext = llvmFunc->getContext();
   for (const auto &bb : func) {
     auto *llvmBB = llvm::BasicBlock::Create(llvmContext);
-    llvmBB->insertInto(&llvmFunc);
+    llvmBB->insertInto(llvmFunc);
     blockMapping[&bb] = llvmBB;
   }
 
-  // Then, convert blocks one by one.
-  for (auto indexedBB : llvm::enumerate(func)) {
-    const auto &bb = indexedBB.value();
-    if (convertBlock(bb, /*ignoreArguments=*/indexedBB.index() == 0))
+  // Then, convert blocks one by one in topological order to ensure defs are
+  // converted before uses.
+  auto blocks = topologicalSort(func);
+  for (auto indexedBB : llvm::enumerate(blocks)) {
+    const auto *bb = indexedBB.value();
+    if (convertBlock(*bb, /*ignoreArguments=*/indexedBB.index() == 0))
       return true;
   }
 
@@ -865,14 +472,17 @@ bool ModuleLowerer::convertFunction(const Function &func,
   return false;
 }
 
-bool ModuleLowerer::convertFunctions(const Module &mlirModule,
-                                     llvm::Module &llvmModule) {
+bool ModuleTranslation::convertFunctions() {
   // Declare all functions first because there may be function calls that form a
   // call graph with cycles.
   for (const Function &function : mlirModule) {
     const Function *functionPtr = &function;
-    llvm::FunctionCallee llvmFuncCst = llvmModule.getOrInsertFunction(
-        function.getName(), convertFunctionType(function.getType()));
+    llvm::FunctionType *functionType = convertFunctionType(
+        llvmModule->getContext(), function.getType(), function.getLoc());
+    if (!functionType)
+      return true;
+    llvm::FunctionCallee llvmFuncCst =
+        llvmModule->getOrInsertFunction(function.getName(), functionType);
     assert(isa<llvm::Function>(llvmFuncCst.getCallee()));
     functionMapping[functionPtr] =
         cast<llvm::Function>(llvmFuncCst.getCallee());
@@ -884,54 +494,52 @@ bool ModuleLowerer::convertFunctions(const Module &mlirModule,
     if (function.empty())
       continue;
 
-    llvm::Function *llvmFunc = functionMapping[&function];
-
-    // Add function arguments to the value remapping table.  In Function,
-    // arguments of the first block are those of the function.
-    const Block &firstBlock = *function.begin();
-    for (auto arg : llvm::enumerate(llvmFunc->args())) {
-      valueMapping[firstBlock.getArgument(arg.index())] = &arg.value();
-    }
-
-    if (convertFunction(function, *functionMapping[&function]))
+    if (convertOneFunction(function))
       return true;
   }
+
   return false;
 }
 
-bool ModuleLowerer::runOnModule(Module &m, llvm::Module &llvmModule) {
-  // Create index type once for the entire module, it needs module info that is
-  // not available in the convert*Type calls.
-  indexType =
-      builder.getIntNTy(llvmModule.getDataLayout().getPointerSizeInBits());
-
-  // Declare or obtain (de)allocation functions.
-  allocFunc = llvmModule.getOrInsertFunction("__mlir_alloc",
-                                             builder.getInt8PtrTy(), indexType);
-  freeFunc = llvmModule.getOrInsertFunction("__mlir_free", builder.getVoidTy(),
-                                            builder.getInt8PtrTy());
-
-  return convertFunctions(m, llvmModule);
-}
-} // namespace
-
-// Entry point for the lowering procedure.
 std::unique_ptr<llvm::Module>
-mlir::convertModuleToLLVMIR(Module &module, llvm::LLVMContext &llvmContext) {
-  auto llvmModule = llvm::make_unique<llvm::Module>("FIXME_name", llvmContext);
-  if (ModuleLowerer(llvmContext).runOnModule(module, *llvmModule))
+ModuleTranslation::translateModule(const Module &m) {
+
+  Dialect *dialect = m.getContext()->getRegisteredDialect("llvm");
+  assert(dialect && "LLVM dialect must be registered");
+  auto *llvmDialect = static_cast<LLVM::LLVMDialect *>(dialect);
+
+  auto llvmModule = llvm::CloneModule(llvmDialect->getLLVMModule());
+  if (!llvmModule)
     return nullptr;
-  return llvmModule;
+
+  llvm::LLVMContext &llvmContext = llvmModule->getContext();
+  llvm::IRBuilder<> builder(llvmContext);
+
+  // Inject declarations for `malloc` and `free` functions that can be used in
+  // memref allocation/deallocation coming from standard ops lowering.
+  llvmModule->getOrInsertFunction("malloc", builder.getInt8PtrTy(),
+                                  builder.getInt64Ty());
+  llvmModule->getOrInsertFunction("free", builder.getVoidTy(),
+                                  builder.getInt8PtrTy());
+
+  ModuleTranslation translator(m);
+  translator.llvmModule = std::move(llvmModule);
+  if (translator.convertFunctions())
+    return nullptr;
+
+  return std::move(translator.llvmModule);
 }
 
-// MLIR to LLVM IR translation registration.
-static TranslateFromMLIRRegistration MLIRToLLVMIRTranslate(
+std::unique_ptr<llvm::Module> translateModuleToLLVMIR(const Module &m) {
+  return ModuleTranslation::translateModule(m);
+}
+
+static TranslateFromMLIRRegistration registration(
     "mlir-to-llvmir", [](Module *module, llvm::StringRef outputFilename) {
       if (!module)
         return true;
 
-      llvm::LLVMContext llvmContext;
-      auto llvmModule = convertModuleToLLVMIR(*module, llvmContext);
+      auto llvmModule = ModuleTranslation::translateModule(*module);
       if (!llvmModule)
         return true;
 

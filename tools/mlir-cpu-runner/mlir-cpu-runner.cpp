@@ -90,16 +90,18 @@ static void printOneMemRef(Type t, void *val) {
   llvm::outs() << '\n';
 }
 
-static void printMemRefArguments(const Function *func, ArrayRef<void *> args) {
-  auto properArgs = args.take_front(func->getNumArguments());
-  for (const auto &kvp : llvm::zip(func->getArguments(), properArgs)) {
-    auto arg = std::get<0>(kvp);
+static void printMemRefArguments(ArrayRef<Type> argTypes,
+                                 ArrayRef<Type> resTypes,
+                                 ArrayRef<void *> args) {
+  auto properArgs = args.take_front(argTypes.size());
+  for (const auto &kvp : llvm::zip(argTypes, properArgs)) {
+    auto type = std::get<0>(kvp);
     auto val = std::get<1>(kvp);
-    printOneMemRef(arg->getType(), val);
+    printOneMemRef(type, val);
   }
 
-  auto results = args.drop_front(func->getNumArguments());
-  for (const auto &kvp : llvm::zip(func->getType().getResults(), results)) {
+  auto results = args.drop_front(argTypes.size());
+  for (const auto &kvp : llvm::zip(resTypes, results)) {
     auto type = std::get<0>(kvp);
     auto val = std::get<1>(kvp);
     printOneMemRef(type, val);
@@ -111,6 +113,14 @@ static Error compileAndExecute(Module *module, StringRef entryPoint) {
   if (!mainFunction || mainFunction->getBlocks().empty()) {
     return make_string_error("entry point not found");
   }
+
+  // Store argument and result types of the original function necessary to
+  // pretty print the results, because the function itself will be rewritten
+  // to use the LLVM dialect.
+  SmallVector<Type, 8> argTypes =
+      llvm::to_vector<8>(mainFunction->getType().getInputs());
+  SmallVector<Type, 8> resTypes =
+      llvm::to_vector<8>(mainFunction->getType().getResults());
 
   float init = std::stof(initValue.getValue());
 
@@ -128,7 +138,7 @@ static Error compileAndExecute(Module *module, StringRef entryPoint) {
     return expectedFPtr.takeError();
   void (*fptr)(void **) = *expectedFPtr;
   (*fptr)(expectedArguments->data());
-  printMemRefArguments(mainFunction, *expectedArguments);
+  printMemRefArguments(argTypes, resTypes, *expectedArguments);
   freeMemRefArguments(*expectedArguments);
 
   return Error::success();

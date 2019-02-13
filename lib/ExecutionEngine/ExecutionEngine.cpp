@@ -181,6 +181,7 @@ getDefaultPasses(const std::vector<const mlir::PassInfo *> &mlirPassInfoList) {
   passList.emplace_back(mlir::createCSEPass());
   passList.emplace_back(mlir::createCanonicalizerPass());
   passList.emplace_back(mlir::createLowerAffinePass());
+  passList.emplace_back(mlir::createConvertToLLVMIRPass());
   return passList;
 }
 
@@ -285,6 +286,8 @@ void packFunctionArguments(llvm::Module *module) {
 // Out of line for PIMPL unique_ptr.
 ExecutionEngine::~ExecutionEngine() = default;
 
+std::unique_ptr<llvm::Module> translateModuleToLLVMIR(const Module &m);
+
 Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
     Module *m, std::function<llvm::Error(llvm::Module *)> transformer) {
   auto engine = llvm::make_unique<ExecutionEngine>();
@@ -295,7 +298,7 @@ Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
   if (runPasses(getDefaultPasses({}), m))
     return make_string_error("passes failed");
 
-  auto llvmModule = convertModuleToLLVMIR(*m, engine->llvmContext);
+  auto llvmModule = translateModuleToLLVMIR(*m);
   if (!llvmModule)
     return make_string_error("could not convert to LLVM IR");
   // FIXME: the triple should be passed to the translation or dialect conversion

@@ -4,8 +4,9 @@
 // Declarations of the allocation functions to be linked against.
 //
 
-// CHECK: declare i8* @__mlir_alloc(i64)
-// CHECK: declare void @__mlir_free(i8*)
+// CHECK: declare i8* @malloc(i64)
+func @malloc(!llvm<"i64">) -> !llvm<"i8*">
+// CHECK: declare void @free(i8*)
 
 
 //
@@ -17,50 +18,48 @@
 // CHECK-NEXT:    ret void
 // CHECK-NEXT:  }
 func @empty() {
-^bb0:
-  return
+  "llvm.return"() : () -> ()
 }
 
 // CHECK-LABEL: declare void @body(i64)
-func @body(index)
+func @body(!llvm<"i64">)
 
 
 // CHECK-LABEL: define void @simple_loop() {
 func @simple_loop() {
-^bb0:
 // CHECK: br label %[[SIMPLE_bb1:[0-9]+]]
-  br ^bb1
+  "llvm.br"()[^bb1] : () -> ()
 
 // Constants are inlined in LLVM rather than a separate instruction.
 // CHECK: <label>:[[SIMPLE_bb1]]:
 // CHECK-NEXT: br label %[[SIMPLE_bb2:[0-9]+]]
-^bb1:	// pred: ^bb0
-  %c1 = constant 1 : index
-  %c42 = constant 42 : index
-  br ^bb2(%c1 : index)
+^bb1:   // pred: ^bb0
+  %0 = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
+  %1 = "llvm.constant"() {value: 42 : index} : () -> !llvm<"i64">
+  "llvm.br"()[^bb2(%0 : !llvm<"i64">)] : () -> ()
 
 // CHECK: <label>:[[SIMPLE_bb2]]:
 // CHECK-NEXT:   %{{[0-9]+}} = phi i64 [ %{{[0-9]+}}, %[[SIMPLE_bb3:[0-9]+]] ], [ 1, %[[SIMPLE_bb1]] ]
 // CHECK-NEXT:   %{{[0-9]+}} = icmp slt i64 %{{[0-9]+}}, 42
 // CHECK-NEXT:   br i1 %{{[0-9]+}}, label %[[SIMPLE_bb3]], label %[[SIMPLE_bb4:[0-9]+]]
-^bb2(%0: index):	// 2 preds: ^bb1, ^bb3
-  %1 = cmpi "slt", %0, %c42 : index
-  cond_br %1, ^bb3, ^bb4
+^bb2(%2: !llvm<"i64">): // 2 preds: ^bb1, ^bb3
+  %3 = "llvm.icmp"(%2, %1) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
+  "llvm.cond_br"(%3)[^bb3, ^bb4] : (!llvm<"i1">) -> ()
 
 // CHECK: ; <label>:[[SIMPLE_bb3]]:
 // CHECK-NEXT:   call void @body(i64 %{{[0-9]+}})
 // CHECK-NEXT:   %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
 // CHECK-NEXT:   br label %[[SIMPLE_bb2]]
-^bb3:	// pred: ^bb2
-  call @body(%0) : (index) -> ()
-  %c1_0 = constant 1 : index
-  %2 = addi %0, %c1_0 : index
-  br ^bb2(%2 : index)
+^bb3:   // pred: ^bb2
+  "llvm.call0"(%2) {callee: @body : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+  %4 = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
+  %5 = "llvm.add"(%2, %4) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  "llvm.br"()[^bb2(%5 : !llvm<"i64">)] : () -> ()
 
 // CHECK: ; <label>:[[SIMPLE_bb4]]:
 // CHECK-NEXT:    ret void
-^bb4:	// pred: ^bb2
-  return
+^bb4:   // pred: ^bb2
+  "llvm.return"() : () -> ()
 }
 
 // CHECK-LABEL: define void @simple_caller() {
@@ -68,9 +67,8 @@ func @simple_loop() {
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 func @simple_caller() {
-^bb0:
-  call @simple_loop() : () -> ()
-  return
+  "llvm.call0"() {callee: @simple_loop : () -> ()} : () -> ()
+  "llvm.return"() : () -> ()
 }
 
 //func @simple_indirect_caller() {
@@ -86,38 +84,36 @@ func @simple_caller() {
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 func @ml_caller() {
-^bb0:
-  call @simple_loop() : () -> ()
-  call @more_imperfectly_nested_loops() : () -> ()
-  return
+  "llvm.call0"() {callee: @simple_loop : () -> ()} : () -> ()
+  "llvm.call0"() {callee: @more_imperfectly_nested_loops : () -> ()} : () -> ()
+  "llvm.return"() : () -> ()
 }
 
 // CHECK-LABEL: declare i64 @body_args(i64)
-func @body_args(index) -> index
+func @body_args(!llvm<"i64">) -> !llvm<"i64">
 // CHECK-LABEL: declare i32 @other(i64, i32)
-func @other(index, i32) -> i32
+func @other(!llvm<"i64">, !llvm<"i32">) -> !llvm<"i32">
 
 // CHECK-LABEL: define i32 @func_args(i32, i32) {
 // CHECK-NEXT: br label %[[ARGS_bb1:[0-9]+]]
-func @func_args(i32, i32) -> i32 {
-^bb0(%arg0: i32, %arg1: i32):
-  %c0_i32 = constant 0 : i32
-  br ^bb1
+func @func_args(%arg0: !llvm<"i32">, %arg1: !llvm<"i32">) -> !llvm<"i32"> {
+  %0 = "llvm.constant"() {value: 0 : i32} : () -> !llvm<"i32">
+  "llvm.br"()[^bb1] : () -> ()
 
 // CHECK: <label>:[[ARGS_bb1]]:
 // CHECK-NEXT: br label %[[ARGS_bb2:[0-9]+]]
-^bb1:	// pred: ^bb0
-  %c0 = constant 0 : index
-  %c42 = constant 42 : index
-  br ^bb2(%c0 : index)
+^bb1:   // pred: ^bb0
+  %1 = "llvm.constant"() {value: 0 : index} : () -> !llvm<"i64">
+  %2 = "llvm.constant"() {value: 42 : index} : () -> !llvm<"i64">
+  "llvm.br"()[^bb2(%1 : !llvm<"i64">)] : () -> ()
 
 // CHECK: <label>:[[ARGS_bb2]]:
 // CHECK-NEXT:   %5 = phi i64 [ %12, %[[ARGS_bb3:[0-9]+]] ], [ 0, %[[ARGS_bb1]] ]
 // CHECK-NEXT:   %6 = icmp slt i64 %5, 42
 // CHECK-NEXT:   br i1 %6, label %[[ARGS_bb3]], label %[[ARGS_bb4:[0-9]+]]
-^bb2(%0: index):	// 2 preds: ^bb1, ^bb3
-  %1 = cmpi "slt", %0, %c42 : index
-  cond_br %1, ^bb3, ^bb4
+^bb2(%3: !llvm<"i64">): // 2 preds: ^bb1, ^bb3
+  %4 = "llvm.icmp"(%3, %2) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
+  "llvm.cond_br"(%4)[^bb3, ^bb4] : (!llvm<"i1">) -> ()
 
 // CHECK: <label>:[[ARGS_bb3]]:
 // CHECK-NEXT:   %8 = call i64 @body_args(i64 %5)
@@ -126,107 +122,106 @@ func @func_args(i32, i32) -> i32 {
 // CHECK-NEXT:   %11 = call i32 @other(i64 %8, i32 %1)
 // CHECK-NEXT:   %12 = add i64 %5, 1
 // CHECK-NEXT:   br label %[[ARGS_bb2]]
-^bb3:	// pred: ^bb2
-  %2 = call @body_args(%0) : (index) -> index
-  %3 = call @other(%2, %arg0) : (index, i32) -> i32
-  %4 = call @other(%2, %3) : (index, i32) -> i32
-  %5 = call @other(%2, %arg1) : (index, i32) -> i32
-  %c1 = constant 1 : index
-  %6 = addi %0, %c1 : index
-  br ^bb2(%6 : index)
+^bb3:   // pred: ^bb2
+  %5 = "llvm.call"(%3) {callee: @body_args : (!llvm<"i64">) -> !llvm<"i64">} : (!llvm<"i64">) -> !llvm<"i64">
+  %6 = "llvm.call"(%5, %arg0) {callee: @other : (!llvm<"i64">, !llvm<"i32">) -> !llvm<"i32">} : (!llvm<"i64">, !llvm<"i32">) -> !llvm<"i32">
+  %7 = "llvm.call"(%5, %6) {callee: @other : (!llvm<"i64">, !llvm<"i32">) -> !llvm<"i32">} : (!llvm<"i64">, !llvm<"i32">) -> !llvm<"i32">
+  %8 = "llvm.call"(%5, %arg1) {callee: @other : (!llvm<"i64">, !llvm<"i32">) -> !llvm<"i32">} : (!llvm<"i64">, !llvm<"i32">) -> !llvm<"i32">
+  %9 = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
+  %10 = "llvm.add"(%3, %9) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  "llvm.br"()[^bb2(%10 : !llvm<"i64">)] : () -> ()
 
 // CHECK: <label>:[[ARGS_bb4]]:
 // CHECK-NEXT:   %14 = call i32 @other(i64 0, i32 0)
 // CHECK-NEXT:   ret i32 %14
-^bb4:	// pred: ^bb2
-  %c0_0 = constant 0 : index
-  %7 = call @other(%c0_0, %c0_i32) : (index, i32) -> i32
-  return %7 : i32
+^bb4:   // pred: ^bb2
+  %11 = "llvm.constant"() {value: 0 : index} : () -> !llvm<"i64">
+  %12 = "llvm.call"(%11, %0) {callee: @other : (!llvm<"i64">, !llvm<"i32">) -> !llvm<"i32">} : (!llvm<"i64">, !llvm<"i32">) -> !llvm<"i32">
+  "llvm.return"(%12) : (!llvm<"i32">) -> ()
 }
 
 // CHECK: declare void @pre(i64)
-func @pre(index)
+func @pre(!llvm<"i64">)
 
 // CHECK: declare void @body2(i64, i64)
-func @body2(index, index)
+func @body2(!llvm<"i64">, !llvm<"i64">)
 
 // CHECK: declare void @post(i64)
-func @post(index)
+func @post(!llvm<"i64">)
 
 // CHECK-LABEL: define void @imperfectly_nested_loops() {
 // CHECK-NEXT:   br label %[[IMPER_bb1:[0-9]+]]
 func @imperfectly_nested_loops() {
-^bb0:
-  br ^bb1
+  "llvm.br"()[^bb1] : () -> ()
 
 // CHECK: <label>:[[IMPER_bb1]]:
 // CHECK-NEXT:   br label %[[IMPER_bb2:[0-9]+]]
-^bb1:	// pred: ^bb0
-  %c0 = constant 0 : index
-  %c42 = constant 42 : index
-  br ^bb2(%c0 : index)
+^bb1:   // pred: ^bb0
+  %0 = "llvm.constant"() {value: 0 : index} : () -> !llvm<"i64">
+  %1 = "llvm.constant"() {value: 42 : index} : () -> !llvm<"i64">
+  "llvm.br"()[^bb2(%0 : !llvm<"i64">)] : () -> ()
 
 // CHECK: <label>:[[IMPER_bb2]]:
 // CHECK-NEXT:   %3 = phi i64 [ %13, %[[IMPER_bb7:[0-9]+]] ], [ 0, %[[IMPER_bb1]] ]
 // CHECK-NEXT:   %4 = icmp slt i64 %3, 42
 // CHECK-NEXT:   br i1 %4, label %[[IMPER_bb3:[0-9]+]], label %[[IMPER_bb8:[0-9]+]]
-^bb2(%0: index):	// 2 preds: ^bb1, ^bb7
-  %1 = cmpi "slt", %0, %c42 : index
-  cond_br %1, ^bb3, ^bb8
+^bb2(%2: !llvm<"i64">): // 2 preds: ^bb1, ^bb7
+  %3 = "llvm.icmp"(%2, %1) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
+  "llvm.cond_br"(%3)[^bb3, ^bb8] : (!llvm<"i1">) -> ()
 
 // CHECK: <label>:[[IMPER_bb3]]:
 // CHECK-NEXT:   call void @pre(i64 %3)
 // CHECK-NEXT:   br label %[[IMPER_bb4:[0-9]+]]
-^bb3:	// pred: ^bb2
-  call @pre(%0) : (index) -> ()
-  br ^bb4
+^bb3:   // pred: ^bb2
+  "llvm.call0"(%2) {callee: @pre : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+  "llvm.br"()[^bb4] : () -> ()
 
 // CHECK: <label>:[[IMPER_bb4]]:
 // CHECK-NEXT:   br label %[[IMPER_bb5:[0-9]+]]
-^bb4:	// pred: ^bb3
-  %c7 = constant 7 : index
-  %c56 = constant 56 : index
-  br ^bb5(%c7 : index)
+^bb4:   // pred: ^bb3
+  %4 = "llvm.constant"() {value: 7 : index} : () -> !llvm<"i64">
+  %5 = "llvm.constant"() {value: 56 : index} : () -> !llvm<"i64">
+  "llvm.br"()[^bb5(%4 : !llvm<"i64">)] : () -> ()
 
 // CHECK: <label>:[[IMPER_bb5]]:
 // CHECK-NEXT:   %8 = phi i64 [ %11, %[[IMPER_bb6:[0-9]+]] ], [ 7, %[[IMPER_bb4]] ]
 // CHECK-NEXT:   %9 = icmp slt i64 %8, 56
 // CHECK-NEXT:   br i1 %9, label %[[IMPER_bb6]], label %[[IMPER_bb7]]
-^bb5(%2: index):	// 2 preds: ^bb4, ^bb6
-  %3 = cmpi "slt", %2, %c56 : index
-  cond_br %3, ^bb6, ^bb7
+^bb5(%6: !llvm<"i64">): // 2 preds: ^bb4, ^bb6
+  %7 = "llvm.icmp"(%6, %5) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
+  "llvm.cond_br"(%7)[^bb6, ^bb7] : (!llvm<"i1">) -> ()
 
 // CHECK: <label>:[[IMPER_bb6]]:
 // CHECK-NEXT:   call void @body2(i64 %3, i64 %8)
 // CHECK-NEXT:   %11 = add i64 %8, 2
 // CHECK-NEXT:   br label %[[IMPER_bb5]]
-^bb6:	// pred: ^bb5
-  call @body2(%0, %2) : (index, index) -> ()
-  %c2 = constant 2 : index
-  %4 = addi %2, %c2 : index
-  br ^bb5(%4 : index)
+^bb6:   // pred: ^bb5
+  "llvm.call0"(%2, %6) {callee: @body2 : (!llvm<"i64">, !llvm<"i64">) -> ()} : (!llvm<"i64">, !llvm<"i64">) -> ()
+  %8 = "llvm.constant"() {value: 2 : index} : () -> !llvm<"i64">
+  %9 = "llvm.add"(%6, %8) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  "llvm.br"()[^bb5(%9 : !llvm<"i64">)] : () -> ()
 
 // CHECK: <label>:[[IMPER_bb7]]:
 // CHECK-NEXT:   call void @post(i64 %3)
 // CHECK-NEXT:   %13 = add i64 %3, 1
 // CHECK-NEXT:   br label %[[IMPER_bb2]]
-^bb7:	// pred: ^bb5
-  call @post(%0) : (index) -> ()
-  %c1 = constant 1 : index
-  %5 = addi %0, %c1 : index
-  br ^bb2(%5 : index)
+^bb7:   // pred: ^bb5
+  "llvm.call0"(%2) {callee: @post : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+  %10 = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
+  %11 = "llvm.add"(%2, %10) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  "llvm.br"()[^bb2(%11 : !llvm<"i64">)] : () -> ()
 
 // CHECK: <label>:[[IMPER_bb8]]:
 // CHECK-NEXT:   ret void
-^bb8:	// pred: ^bb2
-  return
+^bb8:   // pred: ^bb2
+  "llvm.return"() : () -> ()
 }
 
 // CHECK: declare void @mid(i64)
-func @mid(index)
+func @mid(!llvm<"i64">)
 
 // CHECK: declare void @body3(i64, i64)
-func @body3(index, index)
+func @body3(!llvm<"i64">, !llvm<"i64">)
 
 // A complete function transformation check.
 // CHECK-LABEL: define void @more_imperfectly_nested_loops() {
@@ -271,52 +266,51 @@ func @body3(index, index)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 func @more_imperfectly_nested_loops() {
-^bb0:
-  br ^bb1
-^bb1:	// pred: ^bb0
-  %c0 = constant 0 : index
-  %c42 = constant 42 : index
-  br ^bb2(%c0 : index)
-^bb2(%0: index):	// 2 preds: ^bb1, ^bb11
-  %1 = cmpi "slt", %0, %c42 : index
-  cond_br %1, ^bb3, ^bb12
-^bb3:	// pred: ^bb2
-  call @pre(%0) : (index) -> ()
-  br ^bb4
-^bb4:	// pred: ^bb3
-  %c7 = constant 7 : index
-  %c56 = constant 56 : index
-  br ^bb5(%c7 : index)
-^bb5(%2: index):	// 2 preds: ^bb4, ^bb6
-  %3 = cmpi "slt", %2, %c56 : index
-  cond_br %3, ^bb6, ^bb7
-^bb6:	// pred: ^bb5
-  call @body2(%0, %2) : (index, index) -> ()
-  %c2 = constant 2 : index
-  %4 = addi %2, %c2 : index
-  br ^bb5(%4 : index)
-^bb7:	// pred: ^bb5
-  call @mid(%0) : (index) -> ()
-  br ^bb8
-^bb8:	// pred: ^bb7
-  %c18 = constant 18 : index
-  %c37 = constant 37 : index
-  br ^bb9(%c18 : index)
-^bb9(%5: index):	// 2 preds: ^bb8, ^bb10
-  %6 = cmpi "slt", %5, %c37 : index
-  cond_br %6, ^bb10, ^bb11
-^bb10:	// pred: ^bb9
-  call @body3(%0, %5) : (index, index) -> ()
-  %c3 = constant 3 : index
-  %7 = addi %5, %c3 : index
-  br ^bb9(%7 : index)
-^bb11:	// pred: ^bb9
-  call @post(%0) : (index) -> ()
-  %c1 = constant 1 : index
-  %8 = addi %0, %c1 : index
-  br ^bb2(%8 : index)
-^bb12:	// pred: ^bb2
-  return
+  "llvm.br"()[^bb1] : () -> ()
+^bb1:   // pred: ^bb0
+  %0 = "llvm.constant"() {value: 0 : index} : () -> !llvm<"i64">
+  %1 = "llvm.constant"() {value: 42 : index} : () -> !llvm<"i64">
+  "llvm.br"()[^bb2(%0 : !llvm<"i64">)] : () -> ()
+^bb2(%2: !llvm<"i64">): // 2 preds: ^bb1, ^bb11
+  %3 = "llvm.icmp"(%2, %1) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
+  "llvm.cond_br"(%3)[^bb3, ^bb12] : (!llvm<"i1">) -> ()
+^bb3:   // pred: ^bb2
+  "llvm.call0"(%2) {callee: @pre : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+  "llvm.br"()[^bb4] : () -> ()
+^bb4:   // pred: ^bb3
+  %4 = "llvm.constant"() {value: 7 : index} : () -> !llvm<"i64">
+  %5 = "llvm.constant"() {value: 56 : index} : () -> !llvm<"i64">
+  "llvm.br"()[^bb5(%4 : !llvm<"i64">)] : () -> ()
+^bb5(%6: !llvm<"i64">): // 2 preds: ^bb4, ^bb6
+  %7 = "llvm.icmp"(%6, %5) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
+  "llvm.cond_br"(%7)[^bb6, ^bb7] : (!llvm<"i1">) -> ()
+^bb6:   // pred: ^bb5
+  "llvm.call0"(%2, %6) {callee: @body2 : (!llvm<"i64">, !llvm<"i64">) -> ()} : (!llvm<"i64">, !llvm<"i64">) -> ()
+  %8 = "llvm.constant"() {value: 2 : index} : () -> !llvm<"i64">
+  %9 = "llvm.add"(%6, %8) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  "llvm.br"()[^bb5(%9 : !llvm<"i64">)] : () -> ()
+^bb7:   // pred: ^bb5
+  "llvm.call0"(%2) {callee: @mid : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+  "llvm.br"()[^bb8] : () -> ()
+^bb8:   // pred: ^bb7
+  %10 = "llvm.constant"() {value: 18 : index} : () -> !llvm<"i64">
+  %11 = "llvm.constant"() {value: 37 : index} : () -> !llvm<"i64">
+  "llvm.br"()[^bb9(%10 : !llvm<"i64">)] : () -> ()
+^bb9(%12: !llvm<"i64">):        // 2 preds: ^bb8, ^bb10
+  %13 = "llvm.icmp"(%12, %11) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
+  "llvm.cond_br"(%13)[^bb10, ^bb11] : (!llvm<"i1">) -> ()
+^bb10:  // pred: ^bb9
+  "llvm.call0"(%2, %12) {callee: @body3 : (!llvm<"i64">, !llvm<"i64">) -> ()} : (!llvm<"i64">, !llvm<"i64">) -> ()
+  %14 = "llvm.constant"() {value: 3 : index} : () -> !llvm<"i64">
+  %15 = "llvm.add"(%12, %14) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  "llvm.br"()[^bb9(%15 : !llvm<"i64">)] : () -> ()
+^bb11:  // pred: ^bb9
+  "llvm.call0"(%2) {callee: @post : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+  %16 = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
+  %17 = "llvm.add"(%2, %16) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  "llvm.br"()[^bb2(%17 : !llvm<"i64">)] : () -> ()
+^bb12:  // pred: ^bb2
+  "llvm.return"() : () -> ()
 }
 
 //
@@ -325,155 +319,197 @@ func @more_imperfectly_nested_loops() {
 
 // CHECK-LABEL: define void @memref_alloc()
 func @memref_alloc() {
-^bb0:
-// CHECK-NEXT: %{{[0-9]+}} = call i8* @__mlir_alloc(i64 400)
+// CHECK-NEXT: %{{[0-9]+}} = call i8* @malloc(i64 400)
 // CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
 // CHECK-NEXT: %{{[0-9]+}} = insertvalue { float* } undef, float* %{{[0-9]+}}, 0
-  %0 = alloc() : memref<10x10xf32>
+  %0 = "llvm.constant"() {value: 10 : index} : () -> !llvm<"i64">
+  %1 = "llvm.constant"() {value: 10 : index} : () -> !llvm<"i64">
+  %2 = "llvm.mul"(%0, %1) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %3 = "llvm.undef"() : () -> !llvm<"{ float* }">
+  %4 = "llvm.constant"() {value: 4 : index} : () -> !llvm<"i64">
+  %5 = "llvm.mul"(%2, %4) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %6 = "llvm.call"(%5) {callee: @malloc : (!llvm<"i64">) -> !llvm<"i8*">} : (!llvm<"i64">) -> !llvm<"i8*">
+  %7 = "llvm.bitcast"(%6) : (!llvm<"i8*">) -> !llvm<"float*">
+  %8 = "llvm.insertvalue"(%3, %7) {position: [0]} : (!llvm<"{ float* }">, !llvm<"float*">) -> !llvm<"{ float* }">
 // CHECK-NEXT: ret void
-  return
+  "llvm.return"() : () -> ()
 }
 
 // CHECK-LABEL: declare i64 @get_index()
-func @get_index() -> index
+func @get_index() -> !llvm<"i64">
 
 // CHECK-LABEL: define void @store_load_static()
 func @store_load_static() {
 ^bb0:
-// CHECK-NEXT: %{{[0-9]+}} = call i8* @__mlir_alloc(i64 40)
+// CHECK-NEXT: %{{[0-9]+}} = call i8* @malloc(i64 40)
 // CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
 // CHECK-NEXT: %{{[0-9]+}} = insertvalue { float* } undef, float* %{{[0-9]+}}, 0
-  %0 = alloc() : memref<10xf32>
-  %cst = constant 1.000000e+00 : f32
-  br ^bb1
-^bb1:	// pred: ^bb0
-  %c0 = constant 0 : index
-  %c10 = constant 10 : index
-  br ^bb2(%c0 : index)
+  %0 = "llvm.constant"() {value: 10 : index} : () -> !llvm<"i64">
+  %1 = "llvm.undef"() : () -> !llvm<"{ float* }">
+  %2 = "llvm.constant"() {value: 4 : index} : () -> !llvm<"i64">
+  %3 = "llvm.mul"(%0, %2) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %4 = "llvm.call"(%3) {callee: @malloc : (!llvm<"i64">) -> !llvm<"i8*">} : (!llvm<"i64">) -> !llvm<"i8*">
+  %5 = "llvm.bitcast"(%4) : (!llvm<"i8*">) -> !llvm<"float*">
+  %6 = "llvm.insertvalue"(%1, %5) {position: [0]} : (!llvm<"{ float* }">, !llvm<"float*">) -> !llvm<"{ float* }">
+  %7 = "llvm.constant"() {value: 1.000000e+00 : f32} : () -> !llvm<"float">
+  "llvm.br"()[^bb1] : () -> ()
+^bb1:   // pred: ^bb0
+  %8 = "llvm.constant"() {value: 0 : index} : () -> !llvm<"i64">
+  %9 = "llvm.constant"() {value: 10 : index} : () -> !llvm<"i64">
+  "llvm.br"()[^bb2(%8 : !llvm<"i64">)] : () -> ()
 // CHECK: %{{[0-9]+}} = phi i64 [ %{{[0-9]+}}, %{{[0-9]+}} ], [ 0, %{{[0-9]+}} ]
-^bb2(%1: index):	// 2 preds: ^bb1, ^bb3
+^bb2(%10: !llvm<"i64">):        // 2 preds: ^bb1, ^bb3
 // CHECK-NEXT: %{{[0-9]+}} = icmp slt i64 %{{[0-9]+}}, 10
-  %2 = cmpi "slt", %1, %c10 : index
+  %11 = "llvm.icmp"(%10, %9) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
 // CHECK-NEXT: br i1 %{{[0-9]+}}, label %{{[0-9]+}}, label %{{[0-9]+}}
-  cond_br %2, ^bb3, ^bb4
-^bb3:	// pred: ^bb2
+  "llvm.cond_br"(%11)[^bb3, ^bb4] : (!llvm<"i1">) -> ()
+^bb3:   // pred: ^bb2
 // CHECK: %{{[0-9]+}} = extractvalue { float* } %{{[0-9]+}}, 0
 // CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
 // CHECK-NEXT: store float 1.000000e+00, float* %{{[0-9]+}}
-  store %cst, %0[%1] : memref<10xf32>
-  %c1 = constant 1 : index
+  %12 = "llvm.constant"() {value: 10 : index} : () -> !llvm<"i64">
+  %13 = "llvm.extractvalue"(%6) {position: [0]} : (!llvm<"{ float* }">) -> !llvm<"float*">
+  %14 = "llvm.getelementptr"(%13, %10) : (!llvm<"float*">, !llvm<"i64">) -> !llvm<"float*">
+  "llvm.store"(%7, %14) : (!llvm<"float">, !llvm<"float*">) -> ()
+  %15 = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
 // CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
-  %3 = addi %1, %c1 : index
+  %16 = "llvm.add"(%10, %15) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
 // CHECK-NEXT: br label %{{[0-9]+}}
-  br ^bb2(%3 : index)
-^bb4:	// pred: ^bb2
-  br ^bb5
-^bb5:	// pred: ^bb4
-  %c0_0 = constant 0 : index
-  %c10_1 = constant 10 : index
-  br ^bb6(%c0_0 : index)
+  "llvm.br"()[^bb2(%16 : !llvm<"i64">)] : () -> ()
+^bb4:   // pred: ^bb2
+  "llvm.br"()[^bb5] : () -> ()
+^bb5:   // pred: ^bb4
+  %17 = "llvm.constant"() {value: 0 : index} : () -> !llvm<"i64">
+  %18 = "llvm.constant"() {value: 10 : index} : () -> !llvm<"i64">
+  "llvm.br"()[^bb6(%17 : !llvm<"i64">)] : () -> ()
 // CHECK: %{{[0-9]+}} = phi i64 [ %{{[0-9]+}}, %{{[0-9]+}} ], [ 0, %{{[0-9]+}} ]
-^bb6(%4: index):	// 2 preds: ^bb5, ^bb7
+^bb6(%19: !llvm<"i64">):        // 2 preds: ^bb5, ^bb7
 // CHECK-NEXT: %{{[0-9]+}} = icmp slt i64 %{{[0-9]+}}, 10
-  %5 = cmpi "slt", %4, %c10_1 : index
+  %20 = "llvm.icmp"(%19, %18) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
 // CHECK-NEXT: br i1 %{{[0-9]+}}, label %{{[0-9]+}}, label %{{[0-9]+}}
-  cond_br %5, ^bb7, ^bb8
-^bb7:	// pred: ^bb6
+  "llvm.cond_br"(%20)[^bb7, ^bb8] : (!llvm<"i1">) -> ()
+^bb7:   // pred: ^bb6
 // CHECK:      %{{[0-9]+}} = extractvalue { float* } %{{[0-9]+}}, 0
 // CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
 // CHECK-NEXT: %{{[0-9]+}} = load float, float* %{{[0-9]+}}
-  %6 = load %0[%4] : memref<10xf32>
-  %c1_2 = constant 1 : index
+  %21 = "llvm.constant"() {value: 10 : index} : () -> !llvm<"i64">
+  %22 = "llvm.extractvalue"(%6) {position: [0]} : (!llvm<"{ float* }">) -> !llvm<"float*">
+  %23 = "llvm.getelementptr"(%22, %19) : (!llvm<"float*">, !llvm<"i64">) -> !llvm<"float*">
+  %24 = "llvm.load"(%23) : (!llvm<"float*">) -> !llvm<"float">
+  %25 = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
 // CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
-  %7 = addi %4, %c1_2 : index
+  %26 = "llvm.add"(%19, %25) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
 // CHECK-NEXT: br label %{{[0-9]+}}
-  br ^bb6(%7 : index)
-^bb8:	// pred: ^bb6
+  "llvm.br"()[^bb6(%26 : !llvm<"i64">)] : () -> ()
+^bb8:   // pred: ^bb6
 // CHECK: ret void
-  return
+  "llvm.return"() : () -> ()
 }
 
 // CHECK-LABEL: define void @store_load_dynamic(i64)
-func @store_load_dynamic(index) {
-^bb0(%arg0: index):
+func @store_load_dynamic(%arg0: !llvm<"i64">) {
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 4
-// CHECK-NEXT: %{{[0-9]+}} = call i8* @__mlir_alloc(i64 %{{[0-9]+}})
+// CHECK-NEXT: %{{[0-9]+}} = call i8* @malloc(i64 %{{[0-9]+}})
 // CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
 // CHECK-NEXT: %{{[0-9]+}} = insertvalue { float*, i64 } undef, float* %{{[0-9]+}}, 0
 // CHECK-NEXT: %{{[0-9]+}} = insertvalue { float*, i64 } %{{[0-9]+}}, i64 %{{[0-9]+}}, 1
-  %0 = alloc(%arg0) : memref<?xf32>
-  %cst = constant 1.000000e+00 : f32
+  %0 = "llvm.undef"() : () -> !llvm<"{ float*, i64 }">
+  %1 = "llvm.constant"() {value: 4 : index} : () -> !llvm<"i64">
+  %2 = "llvm.mul"(%arg0, %1) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %3 = "llvm.call"(%2) {callee: @malloc : (!llvm<"i64">) -> !llvm<"i8*">} : (!llvm<"i64">) -> !llvm<"i8*">
+  %4 = "llvm.bitcast"(%3) : (!llvm<"i8*">) -> !llvm<"float*">
+  %5 = "llvm.insertvalue"(%0, %4) {position: [0]} : (!llvm<"{ float*, i64 }">, !llvm<"float*">) -> !llvm<"{ float*, i64 }">
+  %6 = "llvm.insertvalue"(%5, %arg0) {position: [1]} : (!llvm<"{ float*, i64 }">, !llvm<"i64">) -> !llvm<"{ float*, i64 }">
+  %7 = "llvm.constant"() {value: 1.000000e+00 : f32} : () -> !llvm<"float">
 // CHECK-NEXT: br label %{{[0-9]+}}
-  br ^bb1
-^bb1:	// pred: ^bb0
-  %c0 = constant 0 : index
-  br ^bb2(%c0 : index)
+  "llvm.br"()[^bb1] : () -> ()
+^bb1:   // pred: ^bb0
+  %8 = "llvm.constant"() {value: 0 : index} : () -> !llvm<"i64">
+  "llvm.br"()[^bb2(%8 : !llvm<"i64">)] : () -> ()
 // CHECK: %{{[0-9]+}} = phi i64 [ %{{[0-9]+}}, %{{[0-9]+}} ], [ 0, %{{[0-9]+}} ]
-^bb2(%1: index):	// 2 preds: ^bb1, ^bb3
+^bb2(%9: !llvm<"i64">): // 2 preds: ^bb1, ^bb3
 // CHECK-NEXT: %{{[0-9]+}} = icmp slt i64 %{{[0-9]+}}, %{{[0-9]+}}
-  %2 = cmpi "slt", %1, %arg0 : index
+  %10 = "llvm.icmp"(%9, %arg0) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
 // CHECK-NEXT: br i1 %{{[0-9]+}}, label %{{[0-9]+}}, label %{{[0-9]+}}
-  cond_br %2, ^bb3, ^bb4
-^bb3:	// pred: ^bb2
+  "llvm.cond_br"(%10)[^bb3, ^bb4] : (!llvm<"i1">) -> ()
+^bb3:   // pred: ^bb2
 // CHECK:      %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 1
 // CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 0
 // CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
 // CHECK-NEXT: store float 1.000000e+00, float* %{{[0-9]+}}
-  store %cst, %0[%1] : memref<?xf32>
-  %c1 = constant 1 : index
+  %11 = "llvm.extractvalue"(%6) {position: [1]} : (!llvm<"{ float*, i64 }">) -> !llvm<"i64">
+  %12 = "llvm.extractvalue"(%6) {position: [0]} : (!llvm<"{ float*, i64 }">) -> !llvm<"float*">
+  %13 = "llvm.getelementptr"(%12, %9) : (!llvm<"float*">, !llvm<"i64">) -> !llvm<"float*">
+  "llvm.store"(%7, %13) : (!llvm<"float">, !llvm<"float*">) -> ()
+  %14 = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
 // CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
-  %3 = addi %1, %c1 : index
+  %15 = "llvm.add"(%9, %14) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
 // CHECK-NEXT: br label %{{[0-9]+}}
-  br ^bb2(%3 : index)
-^bb4:	// pred: ^bb3
-  br ^bb5
-^bb5:	// pred: ^bb4
-  %c0_0 = constant 0 : index
-  br ^bb6(%c0_0 : index)
+  "llvm.br"()[^bb2(%15 : !llvm<"i64">)] : () -> ()
+^bb4:   // pred: ^bb3
+  "llvm.br"()[^bb5] : () -> ()
+^bb5:   // pred: ^bb4
+  %16 = "llvm.constant"() {value: 0 : index} : () -> !llvm<"i64">
+  "llvm.br"()[^bb6(%16 : !llvm<"i64">)] : () -> ()
 // CHECK: %{{[0-9]+}} = phi i64 [ %{{[0-9]+}}, %{{[0-9]+}} ], [ 0, %{{[0-9]+}} ]
-^bb6(%4: index):	// 2 preds: ^bb5, ^bb7
+^bb6(%17: !llvm<"i64">):        // 2 preds: ^bb5, ^bb7
 // CHECK-NEXT: %{{[0-9]+}} = icmp slt i64 %{{[0-9]+}}, %{{[0-9]+}}
-  %5 = cmpi "slt", %4, %arg0 : index
+  %18 = "llvm.icmp"(%17, %arg0) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
 // CHECK-NEXT: br i1 %{{[0-9]+}}, label %{{[0-9]+}}, label %{{[0-9]+}}
-  cond_br %5, ^bb7, ^bb8
-^bb7:	// pred: ^bb6
+  "llvm.cond_br"(%18)[^bb7, ^bb8] : (!llvm<"i1">) -> ()
+^bb7:   // pred: ^bb6
 // CHECK:      %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 1
 // CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 0
 // CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
 // CHECK-NEXT: %{{[0-9]+}} = load float, float* %{{[0-9]+}}
-  %6 = load %0[%4] : memref<?xf32>
-  %c1_1 = constant 1 : index
+  %19 = "llvm.extractvalue"(%6) {position: [1]} : (!llvm<"{ float*, i64 }">) -> !llvm<"i64">
+  %20 = "llvm.extractvalue"(%6) {position: [0]} : (!llvm<"{ float*, i64 }">) -> !llvm<"float*">
+  %21 = "llvm.getelementptr"(%20, %17) : (!llvm<"float*">, !llvm<"i64">) -> !llvm<"float*">
+  %22 = "llvm.load"(%21) : (!llvm<"float*">) -> !llvm<"float">
+  %23 = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
 // CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
-  %7 = addi %4, %c1_1 : index
+  %24 = "llvm.add"(%17, %23) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
 // CHECK-NEXT: br label %{{[0-9]+}}
-  br ^bb6(%7 : index)
-^bb8:	// pred: ^bb6
+  "llvm.br"()[^bb6(%24 : !llvm<"i64">)] : () -> ()
+^bb8:   // pred: ^bb6
 // CHECK: ret void
-  return
+  "llvm.return"() : () -> ()
 }
 
 // CHECK-LABEL: define void @store_load_mixed(i64)
-func @store_load_mixed(index) {
-^bb0(%arg0: index):
-  %c10 = constant 10 : index
+func @store_load_mixed(%arg0: !llvm<"i64">) {
+  %0 = "llvm.constant"() {value: 10 : index} : () -> !llvm<"i64">
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 2, %{{[0-9]+}}
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 4
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 10
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 4
-// CHECK-NEXT: %{{[0-9]+}} = call i8* @__mlir_alloc(i64 %{{[0-9]+}})
+// CHECK-NEXT: %{{[0-9]+}} = call i8* @malloc(i64 %{{[0-9]+}})
 // CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
 // CHECK-NEXT: %{{[0-9]+}} = insertvalue { float*, i64, i64 } undef, float* %{{[0-9]+}}, 0
 // CHECK-NEXT: %{{[0-9]+}} = insertvalue { float*, i64, i64 } %{{[0-9]+}}, i64 %{{[0-9]+}}, 1
 // CHECK-NEXT: %{{[0-9]+}} = insertvalue { float*, i64, i64 } %{{[0-9]+}}, i64 10, 2
-  %0 = alloc(%arg0, %c10) : memref<2x?x4x?xf32>
-  %c1 = constant 1 : index
-  %c2 = constant 2 : index
+  %1 = "llvm.constant"() {value: 2 : index} : () -> !llvm<"i64">
+  %2 = "llvm.constant"() {value: 4 : index} : () -> !llvm<"i64">
+  %3 = "llvm.mul"(%1, %arg0) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %4 = "llvm.mul"(%3, %2) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %5 = "llvm.mul"(%4, %0) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %6 = "llvm.undef"() : () -> !llvm<"{ float*, i64, i64 }">
+  %7 = "llvm.constant"() {value: 4 : index} : () -> !llvm<"i64">
+  %8 = "llvm.mul"(%5, %7) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %9 = "llvm.call"(%8) {callee: @malloc : (!llvm<"i64">) -> !llvm<"i8*">} : (!llvm<"i64">) -> !llvm<"i8*">
+  %10 = "llvm.bitcast"(%9) : (!llvm<"i8*">) -> !llvm<"float*">
+  %11 = "llvm.insertvalue"(%6, %10) {position: [0]} : (!llvm<"{ float*, i64, i64 }">, !llvm<"float*">) -> !llvm<"{ float*, i64, i64 }">
+  %12 = "llvm.insertvalue"(%11, %arg0) {position: [1]} : (!llvm<"{ float*, i64, i64 }">, !llvm<"i64">) -> !llvm<"{ float*, i64, i64 }">
+  %13 = "llvm.insertvalue"(%12, %0) {position: [2]} : (!llvm<"{ float*, i64, i64 }">, !llvm<"i64">) -> !llvm<"{ float*, i64, i64 }">
 
 // CHECK-NEXT: %{{[0-9]+}} = call i64 @get_index()
 // CHECK-NEXT: %{{[0-9]+}} = call i64 @get_index()
-  %1 = call @get_index() : () -> index
-  %2 = call @get_index() : () -> index
-  %cst = constant 4.200000e+01 : f32
+  %14 = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
+  %15 = "llvm.constant"() {value: 2 : index} : () -> !llvm<"i64">
+  %16 = "llvm.call"() {callee: @get_index : () -> !llvm<"i64">} : () -> !llvm<"i64">
+  %17 = "llvm.call"() {callee: @get_index : () -> !llvm<"i64">} : () -> !llvm<"i64">
+  %18 = "llvm.constant"() {value: 4.200000e+01 : f32} : () -> !llvm<"float">
+  %19 = "llvm.constant"() {value: 2 : index} : () -> !llvm<"i64">
 // CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64, i64 } %{{[0-9]+}}, 1
 // CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64, i64 } %{{[0-9]+}}, 2
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 1, %{{[0-9]+}}
@@ -485,7 +521,18 @@ func @store_load_mixed(index) {
 // CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64, i64 } %{{[0-9]+}}, 0
 // CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
 // CHECK-NEXT: store float 4.200000e+01, float* %{{[0-9]+}}
-  store %cst, %0[%c1, %c2, %1, %2] : memref<2x?x4x?xf32>
+  %20 = "llvm.extractvalue"(%13) {position: [1]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"i64">
+  %21 = "llvm.constant"() {value: 4 : index} : () -> !llvm<"i64">
+  %22 = "llvm.extractvalue"(%13) {position: [2]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"i64">
+  %23 = "llvm.mul"(%14, %20) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %24 = "llvm.add"(%23, %15) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %25 = "llvm.mul"(%24, %21) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %26 = "llvm.add"(%25, %16) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %27 = "llvm.mul"(%26, %22) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %28 = "llvm.add"(%27, %17) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %29 = "llvm.extractvalue"(%13) {position: [0]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"float*">
+  %30 = "llvm.getelementptr"(%29, %28) : (!llvm<"float*">, !llvm<"i64">) -> !llvm<"float*">
+  "llvm.store"(%18, %30) : (!llvm<"float">, !llvm<"float*">) -> ()
 // CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64, i64 } %{{[0-9]+}}, 1
 // CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64, i64 } %{{[0-9]+}}, 2
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, %{{[0-9]+}}
@@ -497,146 +544,194 @@ func @store_load_mixed(index) {
 // CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64, i64 } %{{[0-9]+}}, 0
 // CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
 // CHECK-NEXT: %{{[0-9]+}} = load float, float* %{{[0-9]+}}
-  %3 = load %0[%2, %1, %c2, %c1] : memref<2x?x4x?xf32>
+  %31 = "llvm.constant"() {value: 2 : index} : () -> !llvm<"i64">
+  %32 = "llvm.extractvalue"(%13) {position: [1]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"i64">
+  %33 = "llvm.constant"() {value: 4 : index} : () -> !llvm<"i64">
+  %34 = "llvm.extractvalue"(%13) {position: [2]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"i64">
+  %35 = "llvm.mul"(%17, %32) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %36 = "llvm.add"(%35, %16) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %37 = "llvm.mul"(%36, %33) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %38 = "llvm.add"(%37, %15) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %39 = "llvm.mul"(%38, %34) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %40 = "llvm.add"(%39, %14) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %41 = "llvm.extractvalue"(%13) {position: [0]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"float*">
+  %42 = "llvm.getelementptr"(%41, %40) : (!llvm<"float*">, !llvm<"i64">) -> !llvm<"float*">
+  %43 = "llvm.load"(%42) : (!llvm<"float*">) -> !llvm<"float">
 // CHECK-NEXT: ret void
-  return
+  "llvm.return"() : () -> ()
 }
 
 // CHECK-LABEL: define { float*, i64 } @memref_args_rets({ float* }, { float*, i64 }, { float*, i64 }) {
-func @memref_args_rets(memref<10xf32>, memref<?xf32>, memref<10x?xf32>) -> memref<10x?xf32> {
-^bb0(%arg0: memref<10xf32>, %arg1: memref<?xf32>, %arg2: memref<10x?xf32>):
-  %c7 = constant 7 : index
+func @memref_args_rets(%arg0: !llvm<"{ float* }">, %arg1: !llvm<"{ float*, i64 }">, %arg2: !llvm<"{ float*, i64 }">) -> !llvm<"{ float*, i64 }"> {
+  %0 = "llvm.constant"() {value: 7 : index} : () -> !llvm<"i64">
 // CHECK-NEXT: %{{[0-9]+}} = call i64 @get_index()
-  %0 = call @get_index() : () -> index
-  %cst = constant 4.200000e+01 : f32
+  %1 = "llvm.call"() {callee: @get_index : () -> !llvm<"i64">} : () -> !llvm<"i64">
+  %2 = "llvm.constant"() {value: 4.200000e+01 : f32} : () -> !llvm<"float">
 // CHECK-NEXT: %{{[0-9]+}} = extractvalue { float* } %{{[0-9]+}}, 0
 // CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 7
 // CHECK-NEXT: store float 4.200000e+01, float* %{{[0-9]+}}
-  store %cst, %arg0[%c7] : memref<10xf32>
+  %3 = "llvm.constant"() {value: 10 : index} : () -> !llvm<"i64">
+  %4 = "llvm.extractvalue"(%arg0) {position: [0]} : (!llvm<"{ float* }">) -> !llvm<"float*">
+  %5 = "llvm.getelementptr"(%4, %0) : (!llvm<"float*">, !llvm<"i64">) -> !llvm<"float*">
+  "llvm.store"(%2, %5) : (!llvm<"float">, !llvm<"float*">) -> ()
 // CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 1
 // CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 0
 // CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 7
 // CHECK-NEXT: store float 4.200000e+01, float* %{{[0-9]+}}
-  store %cst, %arg1[%c7] : memref<?xf32>
+  %6 = "llvm.extractvalue"(%arg1) {position: [1]} : (!llvm<"{ float*, i64 }">) -> !llvm<"i64">
+  %7 = "llvm.extractvalue"(%arg1) {position: [0]} : (!llvm<"{ float*, i64 }">) -> !llvm<"float*">
+  %8 = "llvm.getelementptr"(%7, %0) : (!llvm<"float*">, !llvm<"i64">) -> !llvm<"float*">
+  "llvm.store"(%2, %8) : (!llvm<"float">, !llvm<"float*">) -> ()
 // CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 1
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 7, %{{[0-9]+}}
 // CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, %{{[0-9]+}}
 // CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 0
 // CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
 // CHECK-NEXT: store float 4.200000e+01, float* %{{[0-9]+}}
-  store %cst, %arg2[%c7, %0] : memref<10x?xf32>
+  %9 = "llvm.constant"() {value: 10 : index} : () -> !llvm<"i64">
+  %10 = "llvm.extractvalue"(%arg2) {position: [1]} : (!llvm<"{ float*, i64 }">) -> !llvm<"i64">
+  %11 = "llvm.mul"(%0, %10) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %12 = "llvm.add"(%11, %1) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %13 = "llvm.extractvalue"(%arg2) {position: [0]} : (!llvm<"{ float*, i64 }">) -> !llvm<"float*">
+  %14 = "llvm.getelementptr"(%13, %12) : (!llvm<"float*">, !llvm<"i64">) -> !llvm<"float*">
+  "llvm.store"(%2, %14) : (!llvm<"float">, !llvm<"float*">) -> ()
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 10, %{{[0-9]+}}
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 4
-// CHECK-NEXT: %{{[0-9]+}} = call i8* @__mlir_alloc(i64 %{{[0-9]+}})
+// CHECK-NEXT: %{{[0-9]+}} = call i8* @malloc(i64 %{{[0-9]+}})
 // CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
 // CHECK-NEXT: %{{[0-9]+}} = insertvalue { float*, i64 } undef, float* %{{[0-9]+}}, 0
 // CHECK-NEXT: %{{[0-9]+}} = insertvalue { float*, i64 } %{{[0-9]+}}, i64 %{{[0-9]+}}, 1
-  %3 = alloc(%0) : memref<10x?xf32>
+  %15 = "llvm.constant"() {value: 10 : index} : () -> !llvm<"i64">
+  %16 = "llvm.mul"(%15, %1) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %17 = "llvm.undef"() : () -> !llvm<"{ float*, i64 }">
+  %18 = "llvm.constant"() {value: 4 : index} : () -> !llvm<"i64">
+  %19 = "llvm.mul"(%16, %18) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %20 = "llvm.call"(%19) {callee: @malloc : (!llvm<"i64">) -> !llvm<"i8*">} : (!llvm<"i64">) -> !llvm<"i8*">
+  %21 = "llvm.bitcast"(%20) : (!llvm<"i8*">) -> !llvm<"float*">
+  %22 = "llvm.insertvalue"(%17, %21) {position: [0]} : (!llvm<"{ float*, i64 }">, !llvm<"float*">) -> !llvm<"{ float*, i64 }">
+  %23 = "llvm.insertvalue"(%22, %1) {position: [1]} : (!llvm<"{ float*, i64 }">, !llvm<"i64">) -> !llvm<"{ float*, i64 }">
 // CHECK-NEXT: ret { float*, i64 } %{{[0-9]+}}
-  return %3 : memref<10x?xf32>
+  "llvm.return"(%23) : (!llvm<"{ float*, i64 }">) -> ()
 }
 
 
 // CHECK-LABEL: define i64 @memref_dim({ float*, i64, i64 })
-func @memref_dim(memref<42x?x10x?xf32>) -> index {
-^bb0(%arg0: memref<42x?x10x?xf32>):
+func @memref_dim(%arg0: !llvm<"{ float*, i64, i64 }">) -> !llvm<"i64"> {
 // Expecting this to create an LLVM constant.
-  %d0 = dim %arg0, 0 : memref<42x?x10x?xf32>
+  %0 = "llvm.constant"() {value: 42 : index} : () -> !llvm<"i64">
 // CHECK-NEXT: %2 = extractvalue { float*, i64, i64 } %0, 1
-  %d1 = dim %arg0, 1 : memref<42x?x10x?xf32>
+  %1 = "llvm.extractvalue"(%arg0) {position: [1]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"i64">
 // Expecting this to create an LLVM constant.
-  %d2 = dim %arg0, 2 : memref<42x?x10x?xf32>
+  %2 = "llvm.constant"() {value: 10 : index} : () -> !llvm<"i64">
 // CHECK-NEXT: %3 = extractvalue { float*, i64, i64 } %0, 2
-  %d3 = dim %arg0, 3 : memref<42x?x10x?xf32>
+  %3 = "llvm.extractvalue"(%arg0) {position: [2]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"i64">
 // Checking that the constant for d0 has been created.
 // CHECK-NEXT: %4 = add i64 42, %2
-  %d01 = addi %d0, %d1 : index
+  %4 = "llvm.add"(%0, %1) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
 // Checking that the constant for d2 has been created.
 // CHECK-NEXT: %5 = add i64 10, %3
-  %d23 = addi %d2, %d3 : index
+  %5 = "llvm.add"(%2, %3) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
 // CHECK-NEXT: %6 = add i64 %4, %5
-  %d0123 = addi %d01, %d23 : index
+  %6 = "llvm.add"(%4, %5) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
 // CHECK-NEXT: ret i64 %6
-  return %d0123 : index
+  "llvm.return"(%6) : (!llvm<"i64">) -> ()
 }
 
-func @get_i64() -> (i64)
-func @get_f32() -> (f32)
-func @get_memref() -> (memref<42x?x10x?xf32>)
+func @get_i64() -> !llvm<"i64">
+func @get_f32() -> !llvm<"float">
+func @get_memref() -> !llvm<"{ float*, i64, i64 }">
 
 // CHECK-LABEL: define { i64, float, { float*, i64, i64 } } @multireturn() {
-func @multireturn() -> (i64, f32, memref<42x?x10x?xf32>) {
-^bb0:
-  %0 = call @get_i64() : () -> (i64)
-  %1 = call @get_f32() : () -> (f32)
-  %2 = call @get_memref() : () -> (memref<42x?x10x?xf32>)
+func @multireturn() -> !llvm<"{ i64, float, { float*, i64, i64 } }"> {
+  %0 = "llvm.call"() {callee: @get_i64 : () -> !llvm<"i64">} : () -> !llvm<"i64">
+  %1 = "llvm.call"() {callee: @get_f32 : () -> !llvm<"float">} : () -> !llvm<"float">
+  %2 = "llvm.call"() {callee: @get_memref : () -> !llvm<"{ float*, i64, i64 }">} : () -> !llvm<"{ float*, i64, i64 }">
 // CHECK:        %{{[0-9]+}} = insertvalue { i64, float, { float*, i64, i64 } } undef, i64 %{{[0-9]+}}, 0
 // CHECK-NEXT:   %{{[0-9]+}} = insertvalue { i64, float, { float*, i64, i64 } } %{{[0-9]+}}, float %{{[0-9]+}}, 1
 // CHECK-NEXT:   %{{[0-9]+}} = insertvalue { i64, float, { float*, i64, i64 } } %{{[0-9]+}}, { float*, i64, i64 } %{{[0-9]+}}, 2
 // CHECK-NEXT:   ret { i64, float, { float*, i64, i64 } } %{{[0-9]+}}
-  return %0, %1, %2 : i64, f32, memref<42x?x10x?xf32>
+  %3 = "llvm.undef"() : () -> !llvm<"{ i64, float, { float*, i64, i64 } }">
+  %4 = "llvm.insertvalue"(%3, %0) {position: [0]} : (!llvm<"{ i64, float, { float*, i64, i64 } }">, !llvm<"i64">) -> !llvm<"{ i64, float, { float*, i64, i64 } }">
+  %5 = "llvm.insertvalue"(%4, %1) {position: [1]} : (!llvm<"{ i64, float, { float*, i64, i64 } }">, !llvm<"float">) -> !llvm<"{ i64, float, { float*, i64, i64 } }">
+  %6 = "llvm.insertvalue"(%5, %2) {position: [2]} : (!llvm<"{ i64, float, { float*, i64, i64 } }">, !llvm<"{ float*, i64, i64 }">) -> !llvm<"{ i64, float, { float*, i64, i64 } }">
+  "llvm.return"(%6) : (!llvm<"{ i64, float, { float*, i64, i64 } }">) -> ()
 }
 
 
 // CHECK-LABEL: define void @multireturn_caller() {
 func @multireturn_caller() {
-^bb0:
 // CHECK-NEXT:   %1 = call { i64, float, { float*, i64, i64 } } @multireturn()
 // CHECK-NEXT:   [[ret0:%[0-9]+]] = extractvalue { i64, float, { float*, i64, i64 } } %1, 0
 // CHECK-NEXT:   [[ret1:%[0-9]+]] = extractvalue { i64, float, { float*, i64, i64 } } %1, 1
 // CHECK-NEXT:   [[ret2:%[0-9]+]] = extractvalue { i64, float, { float*, i64, i64 } } %1, 2
-  %0 = call @multireturn() : () -> (i64, f32, memref<42x?x10x?xf32>)
-  %1 = constant 42 : i64
+  %0 = "llvm.call"() {callee: @multireturn : () -> !llvm<"{ i64, float, { float*, i64, i64 } }">} : () -> !llvm<"{ i64, float, { float*, i64, i64 } }">
+  %1 = "llvm.extractvalue"(%0) {position: [0]} : (!llvm<"{ i64, float, { float*, i64, i64 } }">) -> !llvm<"i64">
+  %2 = "llvm.extractvalue"(%0) {position: [1]} : (!llvm<"{ i64, float, { float*, i64, i64 } }">) -> !llvm<"float">
+  %3 = "llvm.extractvalue"(%0) {position: [2]} : (!llvm<"{ i64, float, { float*, i64, i64 } }">) -> !llvm<"{ float*, i64, i64 }">
+  %4 = "llvm.constant"() {value: 42} : () -> !llvm<"i64">
 // CHECK:   add i64 [[ret0]], 42
-  %2 = addi %0#0, %1 : i64
-  %3 = constant 42.0 : f32
+  %5 = "llvm.add"(%1, %4) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %6 = "llvm.constant"() {value: 4.200000e+01 : f32} : () -> !llvm<"float">
 // CHECK:   fadd float [[ret1]], 4.200000e+01
-  %4 = addf %0#1, %3 : f32
-  %5 = constant 0 : index
+  %7 = "llvm.fadd"(%2, %6) : (!llvm<"float">, !llvm<"float">) -> !llvm<"float">
+  %8 = "llvm.constant"() {value: 0 : index} : () -> !llvm<"i64">
+  %9 = "llvm.constant"() {value: 42 : index} : () -> !llvm<"i64">
 // CHECK:   extractvalue { float*, i64, i64 } [[ret2]], 0
-  %6 = load %0#2 [%5, %5, %5, %5] : memref<42x?x10x?xf32>
-  return
+  %10 = "llvm.extractvalue"(%3) {position: [1]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"i64">
+  %11 = "llvm.constant"() {value: 10 : index} : () -> !llvm<"i64">
+  %12 = "llvm.extractvalue"(%3) {position: [2]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"i64">
+  %13 = "llvm.mul"(%8, %10) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %14 = "llvm.add"(%13, %8) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %15 = "llvm.mul"(%14, %11) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %16 = "llvm.add"(%15, %8) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %17 = "llvm.mul"(%16, %12) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %18 = "llvm.add"(%17, %8) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+  %19 = "llvm.extractvalue"(%3) {position: [0]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"float*">
+  %20 = "llvm.getelementptr"(%19, %18) : (!llvm<"float*">, !llvm<"i64">) -> !llvm<"float*">
+  %21 = "llvm.load"(%20) : (!llvm<"float*">) -> !llvm<"float">
+  "llvm.return"() : () -> ()
 }
 
 // CHECK-LABEL: define <4 x float> @vector_ops(<4 x float>, <4 x i1>, <4 x i64>) {
-func @vector_ops(vector<4xf32>, vector<4xi1>, vector<4xi64>) -> vector<4xf32> {
-^bb0(%arg0: vector<4xf32>, %arg1: vector<4xi1>, %arg2: vector<4xi64>):
-  %0 = constant splat<vector<4xf32>, 42.> : vector<4xf32>
+func @vector_ops(%arg0: !llvm<"<4 x float>">, %arg1: !llvm<"<4 x i1>">, %arg2: !llvm<"<4 x i64>">) -> !llvm<"<4 x float>"> {
+  %0 = "llvm.constant"() {value: splat<vector<4xf32>, 4.200000e+01>} : () -> !llvm<"<4 x float>">
 // CHECK-NEXT: %4 = fadd <4 x float> %0, <float 4.200000e+01, float 4.200000e+01, float 4.200000e+01, float 4.200000e+01>
-  %1 = addf %arg0, %0 : vector<4xf32>
+  %1 = "llvm.fadd"(%arg0, %0) : (!llvm<"<4 x float>">, !llvm<"<4 x float>">) -> !llvm<"<4 x float>">
 // CHECK-NEXT: %5 = select <4 x i1> %1, <4 x float> %4, <4 x float> %0
-  %2 = select %arg1, %1, %arg0 : vector<4xf32>
+  %2 = "llvm.select"(%arg1, %1, %arg0) : (!llvm<"<4 x i1>">, !llvm<"<4 x float>">, !llvm<"<4 x float>">) -> !llvm<"<4 x float>">
 // CHECK-NEXT: %6 = sdiv <4 x i64> %2, %2
-  %3 = divis %arg2, %arg2 : vector<4xi64>
+  %3 = "llvm.sdiv"(%arg2, %arg2) : (!llvm<"<4 x i64>">, !llvm<"<4 x i64>">) -> !llvm<"<4 x i64>">
 // CHECK-NEXT: %7 = udiv <4 x i64> %2, %2
-  %4 = diviu %arg2, %arg2 : vector<4xi64>
+  %4 = "llvm.udiv"(%arg2, %arg2) : (!llvm<"<4 x i64>">, !llvm<"<4 x i64>">) -> !llvm<"<4 x i64>">
 // CHECK-NEXT: %8 = srem <4 x i64> %2, %2
-  %5 = remis %arg2, %arg2 : vector<4xi64>
+  %5 = "llvm.srem"(%arg2, %arg2) : (!llvm<"<4 x i64>">, !llvm<"<4 x i64>">) -> !llvm<"<4 x i64>">
 // CHECK-NEXT: %9 = urem <4 x i64> %2, %2
-  %6 = remiu %arg2, %arg2 : vector<4xi64>
+  %6 = "llvm.urem"(%arg2, %arg2) : (!llvm<"<4 x i64>">, !llvm<"<4 x i64>">) -> !llvm<"<4 x i64>">
 // CHECK-NEXT:    ret <4 x float> %4
-  return %1 : vector<4xf32>
+  "llvm.return"(%1) : (!llvm<"<4 x float>">) -> ()
 }
 
 // CHECK-LABEL: @ops
-func @ops(f32, f32, i32, i32) -> (f32, i32) {
-^bb0(%arg0: f32, %arg1: f32, %arg2: i32, %arg3: i32):
+func @ops(%arg0: !llvm<"float">, %arg1: !llvm<"float">, %arg2: !llvm<"i32">, %arg3: !llvm<"i32">) -> !llvm<"{ float, i32 }"> {
 // CHECK-NEXT: fsub float %0, %1
-  %0 = subf %arg0, %arg1: f32
+  %0 = "llvm.fsub"(%arg0, %arg1) : (!llvm<"float">, !llvm<"float">) -> !llvm<"float">
 // CHECK-NEXT: %6 = sub i32 %2, %3
-  %1 = subi %arg2, %arg3: i32
+  %1 = "llvm.sub"(%arg2, %arg3) : (!llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
 // CHECK-NEXT: %7 = icmp slt i32 %2, %6
-  %2 = cmpi "slt", %arg2, %1 : i32
+  %2 = "llvm.icmp"(%arg2, %1) {predicate: 2} : (!llvm<"i32">, !llvm<"i32">) -> !llvm<"i1">
 // CHECK-NEXT: %8 = select i1 %7, i32 %2, i32 %6
-  %3 = select %2, %arg2, %1 : i32
+  %3 = "llvm.select"(%2, %arg2, %1) : (!llvm<"i1">, !llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
 // CHECK-NEXT: %9 = sdiv i32 %2, %3
-  %4 = divis %arg2, %arg3 : i32
+  %4 = "llvm.sdiv"(%arg2, %arg3) : (!llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
 // CHECK-NEXT: %10 = udiv i32 %2, %3
-  %5 = diviu %arg2, %arg3 : i32
+  %5 = "llvm.udiv"(%arg2, %arg3) : (!llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
 // CHECK-NEXT: %11 = srem i32 %2, %3
-  %6 = remis %arg2, %arg3 : i32
+  %6 = "llvm.srem"(%arg2, %arg3) : (!llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
 // CHECK-NEXT: %12 = urem i32 %2, %3
-  %7 = remiu %arg2, %arg3 : i32
+  %7 = "llvm.urem"(%arg2, %arg3) : (!llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
 
-  return %0, %3 : f32, i32
+  %8 = "llvm.undef"() : () -> !llvm<"{ float, i32 }">
+  %9 = "llvm.insertvalue"(%8, %0) {position: [0]} : (!llvm<"{ float, i32 }">, !llvm<"float">) -> !llvm<"{ float, i32 }">
+  %10 = "llvm.insertvalue"(%9, %3) {position: [1]} : (!llvm<"{ float, i32 }">, !llvm<"i32">) -> !llvm<"{ float, i32 }">
+  "llvm.return"(%10) : (!llvm<"{ float, i32 }">) -> ()
 }
