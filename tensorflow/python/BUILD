@@ -5797,6 +5797,8 @@ cuda_py_test(
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
     ],
+    # This test will not run on XLA because it primarily tests the TF Classic flow.
+    xla_enable_strict_auto_jit = False,
 )
 
 py_library(
@@ -5937,6 +5939,8 @@ cuda_py_test(
     tags = [
         "grappler",
     ],
+    # This test will not run on XLA because it primarily tests the TF Classic flow.
+    xla_enable_strict_auto_jit = False,
 )
 
 py_library(
