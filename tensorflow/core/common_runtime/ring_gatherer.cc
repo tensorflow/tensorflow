@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/common_runtime/ring_reducer.h"
+#include "tensorflow/core/common_runtime/ring_gatherer.h"
 
 #include <stdlib.h>
 #include <atomic>
@@ -40,24 +40,32 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
-RingReducer::~RingReducer() { group_size_tensor_ready_.WaitForNotification(); }
-
-Status RingReducer::InitializeCollectiveParams(CollectiveParams* col_params) {
-  // TODO(b/113171733): change CHECKs to return errors.
-  CHECK_EQ(col_params->instance.type, REDUCTION_COLLECTIVE);
-  CHECK_EQ(col_params->instance.impl_details.collective_name, "RingReduce");
+Status RingGatherer::InitializeCollectiveParams(CollectiveParams* col_params) {
+  DCHECK_EQ(col_params->instance.type, GATHER_COLLECTIVE);
+  DCHECK_EQ(col_params->instance.impl_details.collective_name, "RingGather");
+  // TODO(tucker): Maybe add subdiv support.  It's only useful with
+  // multiple NICS, and maybe gather performance isn't important enough.
+  // For now, there must always be only a single subdiv at offset 0.
+  if (!col_params->instance.impl_details.subdiv_offsets.empty() &&
+      (col_params->instance.impl_details.subdiv_offsets.size() > 1 ||
+       col_params->instance.impl_details.subdiv_offsets[0] != 0)) {
+    return errors::InvalidArgument(
+        "RingGather cannot take any subdiv offset other than 0.");
+  }
+  if (col_params->instance.impl_details.subdiv_offsets.empty()) {
+    col_params->instance.impl_details.subdiv_offsets.push_back(0);
+  }
   return RingAlg::InitializeCollectiveParams(col_params);
 }
 
-void RingReducer::Run(StatusCallback done) {
-  CHECK(col_ctx_);
-  CHECK(col_params_);
+void RingGatherer::Run(StatusCallback done) {
+  DCHECK(col_ctx_);
+  DCHECK(col_params_);
   done_ = std::move(done);
   group_size_ = col_params_->group.group_size;
   num_subdivs_ = static_cast<int>(
       col_params_->instance.impl_details.subdiv_permutations.size());
-  CHECK_GT(num_subdivs_, 0);
+  DCHECK_GT(num_subdivs_, 0);
 
   if (VLOG_IS_ON(1)) {
     string buf;
@@ -74,86 +82,42 @@ void RingReducer::Run(StatusCallback done) {
         strings::StrAppend(&buf, x, ", ");
       }
     }
-    VLOG(1) << "RingReducer::Run for device " << col_ctx_->device_name
+    VLOG(1) << "RingGatherer::Run for device " << col_ctx_->device_name
             << " default_rank " << col_params_->default_rank << "\n"
             << buf;
   }
 
-  // Start by copying input to output if they're not already the same, i.e. if
-  // we're not computing in-place on the input tensor.
-  if ((col_ctx_->input != col_ctx_->output) &&
-      (DMAHelper::base(col_ctx_->input) != DMAHelper::base(col_ctx_->output))) {
-    // We are running in a blockable thread and the callback can't block so
-    // just wait here on the copy.
-    Notification note;
-    Status status;
-    CollectiveRemoteAccessLocal::MemCpyAsync(
-        col_ctx_->op_ctx->input_device_context(0),
-        col_ctx_->op_ctx->op_device_context(), col_ctx_->device,
-        col_ctx_->device, col_ctx_->op_ctx->input_alloc_attr(0),
-        col_ctx_->op_ctx->output_alloc_attr(0), col_ctx_->input,
-        col_ctx_->output, 0 /*dev_to_dev_stream_index*/,
-        [&note, &status](const Status& s) {
-          status.Update(s);
-          note.Notify();
-        });
-    note.WaitForNotification();
-    if (!status.ok()) {
-      done_(status);
-      return;
-    }
-  }
-  ContinueAfterInputCopy();
-}
-
-// Note that this function is blocking and must not run in any thread
-// which cannot be blocked.
-void RingReducer::ContinueAfterInputCopy() {
+  // Prepare to alias fields within the output.
   AllocatorAttributes attr = col_ctx_->op_ctx->output_alloc_attr(0);
   ca_.reset(MakeCollectiveAdapter(col_ctx_->output, group_size_ * num_subdivs_,
-                                  col_ctx_->device->GetAllocator(attr)));
+                                  col_ctx_->device->GetAllocator(attr),
+                                  false /*align_chunks*/));
 
-  if (col_params_->final_op) {
-    // Create an on-device scalar value from group_size_ that may be needed
-    // later.
-    // TODO(tucker): Cache and reuse across invocations? Or maybe the scalar
-    // can be provided to the kernel in host memory?
-    Tensor group_size_val = ca_->Scalar(group_size_);
-    if (col_params_->group.device_type != "CPU") {
-      group_size_tensor_ = ca_->Scalar(col_ctx_->device->GetAllocator(
-          col_ctx_->op_ctx->input_alloc_attr(0)));
-      DeviceContext* op_dev_ctx = col_ctx_->op_ctx->op_device_context();
-      op_dev_ctx->CopyCPUTensorToDevice(&group_size_val, col_ctx_->device,
-                                        &group_size_tensor_,
-                                        [this](const Status& s) {
-                                          if (!s.ok()) {
-                                            StartAbort(s);
-                                          }
-                                          group_size_tensor_ready_.Notify();
-                                        });
-    } else {
-      group_size_tensor_ = group_size_val;
-      group_size_tensor_ready_.Notify();
-    }
-  } else {
-    // Value won't be used, so no need to initialize.
-    group_size_tensor_ready_.Notify();
+  // Start by copying input to the rank-specific offset of output.
+  // We are running in a blockable thread and the callback can't block so
+  // just wait here on the copy.
+  Notification note;
+  Status status;
+  Tensor alias_chunk(ca_->ChunkAlias(col_params_->subdiv_rank[0]));
+  CollectiveRemoteAccessLocal::MemCpyAsync(
+      col_ctx_->op_ctx->input_device_context(0),
+      col_ctx_->op_ctx->op_device_context(), col_ctx_->device, col_ctx_->device,
+      col_ctx_->op_ctx->input_alloc_attr(0),
+      col_ctx_->op_ctx->output_alloc_attr(0), col_ctx_->input, &alias_chunk,
+      0 /*dev_to_dev_stream_index*/, [&note, &status](const Status& s) {
+        status.Update(s);
+        note.Notify();
+      });
+  note.WaitForNotification();
+  if (!status.ok()) {
+    done_(status);
+    return;
   }
   Finish(RunAsyncParts());
 }
 
-void RingReducer::InitRingField(RingField* rf, int chunk_idx, int subdiv_idx,
-                                int field_idx) {
-  RingAlg::InitRingField(rf, chunk_idx, subdiv_idx, field_idx);
-  if (rf->do_recv) {
-    rf->tmp_chunk = ca_->TempChunk(rf->sc_idx);
-  }
-}
-
-// At the beginning of the algorithm initialize a RingField struct for
-// every independent field of the tensor.
-bool RingReducer::RunAsyncParts() {
-  // This function orchestrates RingReduce actions on behalf of a
+bool RingGatherer::RunAsyncParts() {
+  // This function orchestrates RingGatherer actions on behalf of a
   // single device. It is entered by a blockable thread that
   // loops within it until all actions assigned to that device
   // complete. Hence function local variables are accessible only by that
@@ -183,7 +147,7 @@ bool RingReducer::RunAsyncParts() {
     } else {
       mutex_lock l(status_mu_);
       status_ =
-          errors::Internal("Failed to dispatch ThenExecute in RingReducer");
+          errors::Internal("Failed to dispatch ThenExecute in RingGatherer");
       return false;
     }
   }
@@ -227,39 +191,16 @@ bool RingReducer::RunAsyncParts() {
           }
           break;
         case RF_RECV:
-          CHECK_GT(recv_pending_count, 0);
+          DCHECK_GT(recv_pending_count, 0);
           --recv_pending_count;
-          if (!rf->second_pass) {
-            rf->action = RF_REDUCE;
-            Status s = collective_util::ComputeBinOp(
-                col_ctx_->op_ctx, col_ctx_->op_params, col_ctx_->device,
-                col_params_->merge_op.get(), &rf->chunk, &rf->tmp_chunk);
-            if (!s.ok()) {
-              aborted = true;
-              StartAbort(s);
-            }
-          } else {
-            rf->action = RF_SEND_READY;
-          }
+          rf->action = RF_SEND_READY;
           break;
         case RF_REDUCE:
-          if (!rf->second_pass && col_params_->final_op.get() && rf->is_final) {
-            rf->action = RF_FINALIZE;
-            group_size_tensor_ready_.WaitForNotification();
-            Status s = collective_util::ComputeBinOp(
-                col_ctx_->op_ctx, col_ctx_->op_params, col_ctx_->device,
-                col_params_->final_op.get(), &rf->chunk, &group_size_tensor_);
-            if (!s.ok()) {
-              aborted = true;
-              StartAbort(s);
-            }
-          } else {
-            rf->action = RF_SEND_READY;
-          }
-          break;
+          // Never used for Gather, so just fall through.
+          TF_FALLTHROUGH_INTENDED;
         case RF_FINALIZE:
-          rf->action = RF_DONE;
-          break;
+          // Never used for Gather, so just fall through.
+          TF_FALLTHROUGH_INTENDED;
         case RF_SEND_READY:
           if (rf->do_send) {
             rf->action = RF_SEND;
@@ -278,7 +219,7 @@ bool RingReducer::RunAsyncParts() {
           }
           break;
         case RF_SEND:
-          CHECK_GT(send_pending_count, 0);
+          DCHECK_GT(send_pending_count, 0);
           --send_pending_count;
           rf->action = RF_DONE;
           break;
@@ -286,12 +227,9 @@ bool RingReducer::RunAsyncParts() {
           break;
       }
       if (rf->action == RF_DONE) {
-        if (rf->second_pass) {
-          ++field_done_count;
-          break;  // from do while(!dispatched)
-        } else {
-          AdvanceToSecondPass(rf);
-        }
+        // There's only one pass.
+        ++field_done_count;
+        break;  // from do while(!dispatched)
       }
     } while (!dispatched);
     if (aborted) break;
@@ -315,14 +253,14 @@ bool RingReducer::RunAsyncParts() {
     }
   }
 
-  CHECK_EQ(send_pending_count, 0);
-  CHECK_EQ(recv_pending_count, 0);
+  DCHECK_EQ(send_pending_count, 0);
+  DCHECK_EQ(recv_pending_count, 0);
 
   VLOG(2) << this << " device=" << col_ctx_->device_name << " finish;"
           << " final value " << TensorDebugString(ca_->Value());
   return !aborted;
 }
 
-REGISTER_COLLECTIVE(RingReduce, RingReducer);
+REGISTER_COLLECTIVE(RingGather, RingGatherer);
 
 }  // namespace tensorflow

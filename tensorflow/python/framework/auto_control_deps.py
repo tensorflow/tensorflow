@@ -32,6 +32,7 @@ from tensorflow.python.util import tf_decorator
 # Op types that should not run in program order, e.g. because they need to run
 # asynchronously to avoid deadlock.
 ASYNC_STATEFUL_OPS = [
+    "CollectiveGather",
     "CollectiveReduce",
     "CollectiveBcastSend",
     "CollectiveBcastRecv",

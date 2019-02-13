@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_RING_REDUCER_H_
-#define TENSORFLOW_CORE_COMMON_RUNTIME_RING_REDUCER_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_RING_GATHERER_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_RING_GATHERER_H_
 
 #include <deque>
 #include <memory>
@@ -27,33 +27,25 @@ limitations under the License.
 namespace tensorflow {
 class Device;
 
-// Ring-algorithm implementation of collective all-reduce.
-class RingReducer : public RingAlg {
+// Ring-algorithm implementation of collective all-gather.
+class RingGatherer : public RingAlg {
  public:
-  RingReducer() : RingAlg(REDUCTION_COLLECTIVE, "Reduce") {}
-  ~RingReducer() override;
+  RingGatherer() : RingAlg(GATHER_COLLECTIVE, "Gather") {}
+  ~RingGatherer() override {}
 
-  // Begins async execution of the ring reduce algorithm.
+  Status InitializeCollectiveParams(CollectiveParams* col_params) override;
+
+  // Begins async execution of the ring gather algorithm.
   // Must be called in a blockable thread.
   // TODO(b/80529858): remove the previous warning when we have a dedicated
   // collective threadpool.
   void Run(StatusCallback done) override;
 
-  Status InitializeCollectiveParams(CollectiveParams* col_params) override;
-
- protected:
-  void InitRingField(RingField* rf, int chunk_idx, int subdiv_idx,
-                     int field_idx) override;
-
  private:
-  void ContinueAfterInputCopy();
   bool RunAsyncParts();
 
-  Tensor group_size_tensor_;
-  Notification group_size_tensor_ready_;
-
-  friend class RingReducerTest;
+  friend class RingGathererTest;
 };
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_RING_REDUCER_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_RING_GATHERER_H_
