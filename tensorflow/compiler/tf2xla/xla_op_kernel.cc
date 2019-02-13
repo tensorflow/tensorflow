@@ -513,6 +513,7 @@ Status AssignVariableTensor(const Tensor& tensor, DataType type,
     handle = xla::Reshape(handle,
                           xla::AsInt64Slice(representation_shape.dimensions()));
   }
+  variable->SetRepresentationShape(representation_shape);
   return variable->SetValue(handle);
 }
 
