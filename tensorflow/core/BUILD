@@ -2814,7 +2814,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/platform/default/build_config:stream_executor_no_cuda",
-        "//tensorflow/stream_executor:rocm_platform"
     ],
 )
 

@@ -29,6 +29,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+
+// Miopen has its own logic to tune and find convolution kernels
 // Modifies CustomCalls to miopen convolutions, choosing the best algorithm for
 // each and adding explicit scratch space to the CustomCalls.
 class MiopenConvAlgorithmPicker : public HloModulePass {

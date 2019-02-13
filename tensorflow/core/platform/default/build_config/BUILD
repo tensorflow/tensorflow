@@ -88,6 +88,7 @@ cc_library(
         "//tensorflow/stream_executor:multi_platform_manager",
         "//tensorflow/stream_executor:scratch_allocator",
         "//tensorflow/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/stream_executor:rocm_platform",
         "//tensorflow/stream_executor/host:host_platform",
         "//tensorflow/stream_executor/host:host_platform_id",
         "//tensorflow/stream_executor/platform:dso_loader",
