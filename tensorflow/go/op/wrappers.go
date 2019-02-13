@@ -4526,6 +4526,23 @@ func CollectiveBcastSend(scope *Scope, input tf.Output, group_size int64, group_
 	return op.Output(0)
 }
 
+// Mutually accumulates multiple tensors of identical type and shape.
+func CollectiveGather(scope *Scope, input tf.Output, group_size int64, group_key int64, instance_key int64, shape tf.Shape) (data tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"group_size": group_size, "group_key": group_key, "instance_key": instance_key, "shape": shape}
+	opspec := tf.OpSpec{
+		Type: "CollectiveGather",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // CollectiveReduceAttr is an optional argument to CollectiveReduce.
 type CollectiveReduceAttr func(optionalAttr)
 
