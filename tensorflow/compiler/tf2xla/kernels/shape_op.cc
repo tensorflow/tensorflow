@@ -104,7 +104,7 @@ class SizeOp : public XlaOpKernel {
     for (int64 i = 0; i < rank; ++i) {
       size = xla::Mul(size, xla::GetDimensionSize(ctx->Input(0), i));
     }
-    size = xla::ConvertElementType(size, xla::S32);
+    size = xla::ConvertElementType(size, ctx->output_xla_type(0));
     ctx->SetOutput(0, size);
   }
 };
