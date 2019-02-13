@@ -1181,6 +1181,23 @@ py_test(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "forward_allocation_test",
+    size = "medium",
+    srcs = ["tests/forward_allocation_test.py"],
+    deps = [
+        ":test_utils_py",
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -1235,6 +1252,7 @@ test_suite(
         "root_token_replacer_test",
         "deferred_allocation_visitor_test",
         "ipu_outfeed_test",
+        "forward_allocation_test",
     ],
 )
 

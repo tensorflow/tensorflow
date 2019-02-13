@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/custom_ops/popops_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/custom_ops/poprand_ops.h"
 
+#include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
@@ -86,18 +87,15 @@ StatusOr<const CustomPoplibOpInfo> GetCustomPoplibOpInfo(
 
 StatusOr<poplar::Tensor> AllocatePoplibsOpTensor(
     poplar::Graph& graph, CompilerResources& res, const std::string& name,
-    const HloInstruction* inst, const int64 target_idx,
-    absl::optional<const HloInstruction*> optional_layout,
-    absl::optional<int64> optional_layout_output_idx, const xla::Shape& shape,
+    const TensorTarget& tensor_target, const xla::Shape& shape,
     const TensorMap& tensor_map) {
+  const HloInstruction* inst = tensor_target.tgt;
   TF_ASSIGN_OR_RETURN(auto op_info, GetCustomPoplibOpInfo(inst));
   auto allocator_function = op_info.first;
   auto attribute_map = IPUCustomKernelsUtil::AttributeMap(inst);
-  TF_ASSIGN_OR_RETURN(
-      poplar::Tensor out,
-      allocator_function(graph, res, name, inst, target_idx, optional_layout,
-                         optional_layout_output_idx, attribute_map,
-                         tensor_map));
+  TF_ASSIGN_OR_RETURN(poplar::Tensor out,
+                      allocator_function(graph, res, name, tensor_target,
+                                         attribute_map, tensor_map));
   return out;
 }
 

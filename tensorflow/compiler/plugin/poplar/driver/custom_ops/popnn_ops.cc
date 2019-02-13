@@ -130,16 +130,17 @@ const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopnnOpInfoMap() {
 
 StatusOr<poplar::Tensor> AllocateLstmLayerFwdOp(
     poplar::Graph& graph, CompilerResources& res, const std::string& name,
-    const HloInstruction* inst, const int64 target_idx,
-    absl::optional<const HloInstruction*> optional_layout,
-    absl::optional<int64> optional_layout_output_idx,
+    const TensorTarget& tensor_target,
     const IPUCustomKernelsUtil::AttributeMap& attribute_map,
     const TensorMap& tensor_map) {
+  const HloInstruction* inst = tensor_target.tgt;
+  const int64 input_index = tensor_target.input_index;
+
   TF_ASSIGN_OR_RETURN(popnn::lstm::LstmParams lstm_params,
                       GetLstmParameters(inst, attribute_map));
   TF_ASSIGN_OR_RETURN(poplar::OptionFlags lstm_opts,
                       GetLstmOpts(attribute_map));
-  switch (target_idx) {
+  switch (input_index) {
     case 0: {
       // Allocate LSTM input tensor
       return popnn::lstm::createInput(graph, lstm_params, name, lstm_opts,
@@ -173,16 +174,14 @@ StatusOr<poplar::Tensor> AllocateLstmLayerFwdOp(
       return xla::FailedPrecondition(
           "Trying to allocate LstmLayerFwdOp tensor for an index out of range "
           "%d.",
-          target_idx);
+          input_index);
     }
   }
 }
 
 StatusOr<poplar::Tensor> AllocateLstmLayerBwdOp(
     poplar::Graph& graph, CompilerResources& res, const std::string& name,
-    const HloInstruction* inst, const int64 target_idx,
-    absl::optional<const HloInstruction*> optional_layout,
-    absl::optional<int64> optional_layout_output_idx,
+    const TensorTarget& tensor_target,
     const IPUCustomKernelsUtil::AttributeMap& attribute_map,
     const TensorMap& tensor_map) {
   return xla::FailedPrecondition("LstmLayerBwdOp should not be allocating.");
@@ -190,11 +189,15 @@ StatusOr<poplar::Tensor> AllocateLstmLayerBwdOp(
 
 StatusOr<poplar::Tensor> AllocateNormInferenceAndTrainingOp(
     poplar::Graph& graph, CompilerResources& res, const std::string& name,
-    const HloInstruction* inst, const int64 target_idx,
-    absl::optional<const HloInstruction*> optional_layout,
-    absl::optional<int64> optional_layout_output_idx,
+    const TensorTarget& tensor_target,
     const IPUCustomKernelsUtil::AttributeMap& attribute_map,
     const TensorMap& tensor_map) {
+  const HloInstruction* inst = tensor_target.tgt;
+  const int64 input_index = tensor_target.input_index;
+  std::vector<const HloInstruction*> forward_path = tensor_target.forward_path;
+  absl::optional<const HloInstruction*> layout = tensor_target.layout;
+  absl::optional<int64> layout_output_idx = tensor_target.layout_output_idx;
+
   TF_ASSIGN_OR_RETURN(int32 feature_index_int32,
                       attribute_map.GetAttributeAsInt("feature_index"));
   auto optional_feature_index = convert_scalar<uint32>(feature_index_int32);
@@ -203,31 +206,27 @@ StatusOr<poplar::Tensor> AllocateNormInferenceAndTrainingOp(
   }
   const auto feature_index = *optional_feature_index;
 
-  switch (target_idx) {
+  switch (input_index) {
     case 1: {
-      return AddNormScaleTensor(graph, name, *optional_layout,
-                                *optional_layout_output_idx, feature_index,
-                                tensor_map);
+      return AddNormScaleTensor(graph, name, *layout, *layout_output_idx,
+                                feature_index, forward_path, tensor_map);
     }
     case 2: {
-      return AddNormOffsetTensor(graph, name, *optional_layout,
-                                 *optional_layout_output_idx, feature_index,
-                                 tensor_map);
+      return AddNormOffsetTensor(graph, name, *layout, *layout_output_idx,
+                                 feature_index, forward_path, tensor_map);
     }
     default: {
       return xla::FailedPrecondition(
           "NormInferenceTraining op %s should not be allocating on index "
           "%lld.",
-          inst->name().c_str(), target_idx);
+          inst->name().c_str(), input_index);
     }
   }
 }
 
 StatusOr<poplar::Tensor> AllocateNormGradOp(
     poplar::Graph& graph, CompilerResources& res, const std::string& name,
-    const HloInstruction* inst, const int64 target_idx,
-    absl::optional<const HloInstruction*> optional_layout,
-    absl::optional<int64> optional_layout_output_idx,
+    const TensorTarget& tensor_target,
     const IPUCustomKernelsUtil::AttributeMap& attribute_map,
     const TensorMap& tensor_map) {
   return xla::FailedPrecondition(
@@ -236,9 +235,7 @@ StatusOr<poplar::Tensor> AllocateNormGradOp(
 
 StatusOr<poplar::Tensor> AllocateNormStatisticsOp(
     poplar::Graph& graph, CompilerResources& res, const std::string& name,
-    const HloInstruction* inst, const int64 target_idx,
-    absl::optional<const HloInstruction*> optional_layout,
-    absl::optional<int64> optional_layout_output_idx,
+    const TensorTarget& tensor_target,
     const IPUCustomKernelsUtil::AttributeMap& attribute_map,
     const TensorMap& tensor_map) {
   return xla::FailedPrecondition(
