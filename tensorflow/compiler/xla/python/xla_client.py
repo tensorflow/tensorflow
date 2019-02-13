@@ -36,7 +36,7 @@ from tensorflow.compiler.xla.service import hlo_pb2
 
 
 # Most functions are snake_case for consistency with other modules, whereas
-# method names of ComputationBuilder and LocalComputation are CamelCase for
+# method names of ComputationBuilder and Computation are CamelCase for
 # consistency with XLA.
 # pylint: disable=invalid-name
 
@@ -112,8 +112,8 @@ class XlaLocalBackend(Backend):
     return c_computation.Compile(argument_shapes, compile_options)
 
   def delete_executable(self, executable):
-    assert isinstance(executable, c_api.CompiledLocalComputation)
-    c_api.DeleteCompiledLocalComputation(executable)
+    assert isinstance(executable, c_api.LocalExecutable)
+    c_api.DeleteLocalExecutable(executable)
 
   def execute(self, executable, args):
     return executable.Execute(args)
@@ -150,8 +150,8 @@ class XrtBackend(Backend):
                                        _maybe_encode_string(self.target))
 
   def delete_executable(self, executable):
-    assert isinstance(executable, c_api.CompiledXrtComputation)
-    c_api.DeleteCompiledXrtComputation(executable)
+    assert isinstance(executable, c_api.XrtExecutable)
+    c_api.DeleteXrtExecutable(executable)
 
   def execute(self, executable, args):
     return executable.Execute(args)
@@ -629,28 +629,24 @@ def transfer_from_outfeed(shape, replica_number=None):
   return c_api.TransferFromOutfeedLocalReplica(shape, replica_number or 0)
 
 
-class LocalComputation(object):
+class Computation(object):
   """Python wrapper for a local XLA Computation.
 
-  A LocalComputation can be executed if it is compiled. Otherwise, it
+  A Computation can be compiled to form an Executable. Otherwise, it
   can still be used as a Computation where required by the
   ComputationBuilder methods.
   """
 
-  def __init__(self, c_computation, is_compiled, backend=XLA_LOCAL_BACKEND):
+  def __init__(self, c_computation, backend=XLA_LOCAL_BACKEND):
     self._c_computation = c_computation
     self._backend = backend
-    self._is_compiled = is_compiled
 
   @property
   def computation(self):
-    if self._is_compiled:
-      raise ValueError(
-          'Attempt to read the XLA computation of a compiled LocalComputation.')
     return self._c_computation
 
   def GetProto(self):
-    """Get the HloModuleProto proto object in this local computation.
+    """Get the HloModuleProto proto object in this computation.
 
     Returns:
        An HloModuleProto proto object that has the whole-graph information.
@@ -660,29 +656,21 @@ class LocalComputation(object):
     return proto
 
   def Compile(self, argument_shapes=(), compile_options=None, layout_fn=None):
-    """Compiles an un-compiled local computation.
+    """Compiles a computation.
 
-    Local computations are the result of a "LocalComputationBuild'ing" process
-    -- they start in uncompiled form, and via a call to Compile() turn into a
-    compiled local computation.
-
-    Raises:
-      ValueError: if this is already a compiled local computation.
+    Computations are the result of a "ComputationBuild'ing" process.
 
     Arguments:
       argument_shapes: parameter shapes -- they are first laid out by layout_fn
         if layout_fn is provided. Otherwise, the default layout for those shapes
         will be used.
-      compile_options: options to use for compilation, includes an optional
-        laid out result shape for the computation.
+      compile_options: options to use for compilation, includes an optional laid
+        out result shape for the computation.
       layout_fn: lambda that is used to lay out the argument/result shapes.
 
     Returns:
-      A newly *compiled* local computation instance.
+      A Executable instance.
     """
-    if self._is_compiled:
-      raise ValueError('Attempt to compile a compiled local XLA computation.')
-
     result_shape = _wrap_shape(self.computation.GetReturnValueShape())
 
     if layout_fn:
@@ -697,7 +685,7 @@ class LocalComputation(object):
     compile_options.result_shape = result_shape
     c = self._backend.compile(self.computation, argument_shapes,
                               compile_options)
-    return LocalComputation(c, is_compiled=True, backend=self._backend)
+    return Executable(c, backend=self._backend)
 
   def CompileWithExampleArguments(self,
                                   arguments=(),
@@ -716,12 +704,26 @@ class LocalComputation(object):
   def GetReturnValueShape(self):
     return _wrap_shape(self._c_computation.GetReturnValueShape())
 
+  def __del__(self):
+    # Python may have freed c_api first.
+    if c_api and self._c_computation:
+      assert isinstance(self._c_computation, c_api.Computation)
+      c_api.DeleteComputation(self._c_computation)
+
+
+class Executable(object):
+  """Python wrapper for an XLA Executable."""
+
+  def __init__(self, c_executable, backend=XLA_LOCAL_BACKEND):
+    self._c_executable = c_executable
+    self._backend = backend
+
   def Execute(self, arguments=(), check_for_deleted_args=True):
     """Execute on one replica with LocalBuffer arguments and return value."""
     if check_for_deleted_args and any(arg.is_deleted() for arg in arguments):
       raise ValueError('Executing with deleted local buffer argument')
     raw_args = [arg.c_buffer for arg in arguments]
-    output_buffer = self._backend.execute(self._c_computation, raw_args)
+    output_buffer = self._backend.execute(self._c_executable, raw_args)
     return LocalBuffer(output_buffer, backend=self._backend, replica=0)
 
   def ExecutePerReplica(self, arguments=None):
@@ -736,8 +738,6 @@ class LocalComputation(object):
       a shallow sequence of arguments was passed in for `arguments`, then the
       sole, zero'th replica's output is returned instead, as a LocalBuffer.
     """
-    if not self._is_compiled:
-      raise ValueError('Cannot execute an uncompiled local XLA computation.')
     if arguments is None:
       arguments = ((),) * get_replica_count()
     else:
@@ -759,8 +759,8 @@ class LocalComputation(object):
     ]
 
     # Execute
-    output_buffers = self._backend.execute_replicated(
-        self._c_computation, stripped_args)
+    output_buffers = self._backend.execute_replicated(self._c_executable,
+                                                      stripped_args)
 
     # Wrap output handles in LocalBuffer instances
     return tuple(
@@ -789,12 +789,8 @@ class LocalComputation(object):
 
   def __del__(self):
     # Python may have freed c_api first.
-    if c_api and self._c_computation:
-      if self._is_compiled:
-        self._backend.delete_executable(self._c_computation)
-      else:
-        assert isinstance(self._c_computation, c_api.LocalComputation)
-        c_api.DeleteLocalComputation(self._c_computation)
+    if c_api and self._c_executable:
+      self._backend.delete_executable(self._c_executable)
 
 
 def _make_replica_group_proto(replica_group):
@@ -807,8 +803,8 @@ class ComputationBuilder(object):
   """XLA computation builder.
 
   Enqueues XLA ops in sequence and in order to build a
-  LocalComputation, which in turn can be compiled into a
-  CompiledLocalComputation, which in turn can be locally executed.
+  Computation, which in turn can be compiled into a
+  LocalExecutable, which in turn can be locally executed.
   """
 
   # The methods of this class map 1-to-1 onto the XLA C++
@@ -819,16 +815,14 @@ class ComputationBuilder(object):
   # pylint: disable=g-doc-args
 
   def __init__(self, name):
-    self._client = c_api.LocalComputationBuilder(name.encode('utf8'))
+    self._client = c_api.ComputationBuilder(name.encode('utf8'))
     self._parameter_numbering = itertools.count()
 
   def Build(self, root=None, backend=XLA_LOCAL_BACKEND):
     if root is not None:
-      return LocalComputation(
-          self._client.BuildWithRoot(root), is_compiled=False, backend=backend)
+      return Computation(self._client.BuildWithRoot(root), backend=backend)
     else:
-      return LocalComputation(
-          self._client.Build(), is_compiled=False, backend=backend)
+      return Computation(self._client.Build(), backend=backend)
 
   def SetOpMetadata(self, op_metadata):
     """Set metadata for operations that are about to be enqueued."""
@@ -1480,7 +1474,7 @@ class ComputationBuilder(object):
 
     Args:
       operand: a LocalOp to test.
-    Returns: a LocalComputation that is rooted on the given `operand` which is a
+    Returns: a Computation that is rooted on the given `operand` which is a
       compile-time constant.
     """
     return self._client.BuildConstantSubGraph(operand)
@@ -1681,7 +1675,7 @@ def _forward_methods_to_local_builder():
 
   Set up methods, corresponding to unary and binary XLA operations,
   whose calls are forwarded in a boilerplate manner to the underlying
-  LocalComputationBuilder C-extension API.
+  ComputationBuilder C-extension API.
   """
 
   def forward_to_local_builder_with_handles(target_method, is_binop=False):
@@ -1701,13 +1695,13 @@ def _forward_methods_to_local_builder():
 
   for method_name in _UNARY_OPS:
     forward = forward_to_local_builder_with_handles(
-        getattr(c_api.LocalComputationBuilder, method_name))
+        getattr(c_api.ComputationBuilder, method_name))
     forward.__name__ = method_name
     setattr(ComputationBuilder, method_name, forward)
 
   for method_name in _BINARY_OPS:
     forward = forward_to_local_builder_with_handles(
-        getattr(c_api.LocalComputationBuilder, method_name), is_binop=True)
+        getattr(c_api.ComputationBuilder, method_name), is_binop=True)
     forward.__name__ = method_name
     setattr(ComputationBuilder, method_name, forward)
 
