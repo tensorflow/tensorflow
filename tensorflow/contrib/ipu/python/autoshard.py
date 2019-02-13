@@ -13,7 +13,6 @@
 # limitations under the License.
 # =============================================================================
 
-from tensorflow.contrib.ipu.python import autoshard_cnn
 from tensorflow.python.framework import ops
 
 def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
@@ -30,7 +29,7 @@ def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
                         edge is a tuple with the name of the source op, and the
                         name of the destination op.
   """
-
+  from tensorflow.contrib.ipu.python import autoshard_cnn
   autoshard_cnn.automatic_sharding(num_shards, input_ts, loss_ts, train_ops,
                                    edge_filter)
 
