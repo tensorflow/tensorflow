@@ -77,6 +77,7 @@ cuda_py_tests(
         "//tensorflow/python/ops/signal",
         "//tensorflow/python:spectral_ops_test_util",
     ],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
