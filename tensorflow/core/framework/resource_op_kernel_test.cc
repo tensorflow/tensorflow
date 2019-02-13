@@ -46,7 +46,7 @@ class StubDevice : public DeviceBase {
 // Stub resource for testing resource op kernel.
 class StubResource : public ResourceBase {
  public:
-  string DebugString() override { return ""; }
+  string DebugString() const override { return ""; }
   int code;
 };
 

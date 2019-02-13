@@ -341,6 +341,44 @@ TEST_F(GraphPropertiesTest, VarHandles) {
   EXPECT_EQ(7, prop.shape().dim(1).size());
 }
 
+TEST_F(GraphPropertiesTest, WhileLoopWithVarHandleOpInput) {
+  // Test graph is first generated in python using:
+  /*
+    i0 = tf.constant(0)
+    v = tf.get_variable(initializer=i0, name='loop_var', use_resource=True)
+    def cond(i, x):
+      return i < 3
+    def body(i, x):
+      return i + 1, x + x
+    v, y = tf.while_loop(cond, body, loop_vars=[v, tf.constant(1)])
+  */
+  // and then modified by hand such that the ReadVariableOp is inside the loop
+  // body instead of outside the while loop (which is the case when constructed
+  // using the python API), such that we have the following pattern: VarHandleOp
+  // -> Enter -> Switch -> ReadVariableOp -> other parts of loop body. Note
+  // DT_RESOURCE is passed all the way until ReadVariableOp.
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "while_loop_var_handle_op.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+
+  std::vector<string> resource_nodes{
+      "loop_var",       "while/Enter",         "while/Merge", "while/Switch",
+      "while/Identity", "while/NextIteration", "while/Exit"};
+  for (const string& node : resource_nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    EXPECT_GE(props.size(), 1);  // Merge has 2 outputs.
+    EXPECT_EQ("resource: []", PropToString(props[0]));
+  }
+
+  // After ReadVariableOp, the shape should be recovered.
+  const auto props = properties.GetOutputProperties("while/ReadVariableOp");
+  EXPECT_EQ(1, props.size());
+  EXPECT_EQ("int32: []", PropToString(props[0]));
+}
+
 TEST_F(GraphPropertiesTest, QueueWithOnlyDequeue_NoShapeAttr) {
   tensorflow::Scope root = tensorflow::Scope::NewRootScope();
   auto q1 = ops::FIFOQueue(root.WithOpName("Queue1"), {DataType::DT_FLOAT});
@@ -935,6 +973,52 @@ TEST_F(GraphPropertiesTest, IdentityPassingShape) {
   const auto out_props = properties.GetOutputProperties("fill");
   const OpInfo::TensorProperties out_prop0 = out_props[0];
   EXPECT_EQ("float: [5,5]", PropToString(out_prop0));
+}
+
+TEST_F(GraphPropertiesTest, SkippingValueInferenceForLargeTensors) {
+  // When using aggressive_shape_inference, we run EvaluateNode() for
+  // whitelisted ops and small input / output tensors. For instance, Fill op is
+  // evaluated and produces output tensor value if output tensor size is smal
+  // (currently, fewer than 17 elements); otherwise we don't run EvalauteNode().
+  // This is to avoid wasting time and memory for producing huge tensors (e.g.,
+  // initializing a large table using Fill.
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output a = ops::Const(s.WithOpName("a"), 4, {2});  // 4x4
+    Output b = ops::Const(s.WithOpName("const"), 0.1f, {});
+    // Shape described by a is small; expect output values of Fill op.
+    Output c = ops::Fill(s.WithOpName("fill"), a, b);
+
+    GrapplerItem item;
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    GraphProperties properties(item);
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/false,
+        /*aggressive_shape_inference=*/true));
+    const auto out_props = properties.GetOutputProperties("fill");
+    const OpInfo::TensorProperties out_prop0 = out_props[0];
+    EXPECT_EQ("float: [4,4]", PropToString(out_prop0));
+    EXPECT_TRUE(out_prop0.has_value());
+  }
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output a = ops::Const(s.WithOpName("a"), 1000, {4});  // 1000x1000x1000x1000
+    Output b = ops::Const(s.WithOpName("const"), 0.1f, {});
+    // Shape described by a is huge; in that case we skip value inference.
+    // Otherwise, it'd be too much overhead.
+    Output c = ops::Fill(s.WithOpName("fill"), a, b);
+
+    GrapplerItem item;
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    GraphProperties properties(item);
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/false,
+        /*aggressive_shape_inference=*/true));
+    const auto out_props = properties.GetOutputProperties("fill");
+    const OpInfo::TensorProperties out_prop0 = out_props[0];
+    EXPECT_EQ("float: [1000,1000,1000,1000]", PropToString(out_prop0));
+    EXPECT_FALSE(out_prop0.has_value());
+  }
 }
 
 TEST_F(GraphPropertiesTest, PackWithConstInput) {

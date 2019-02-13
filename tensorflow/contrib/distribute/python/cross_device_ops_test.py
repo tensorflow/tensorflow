@@ -204,15 +204,15 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
   reduction_to_one_combinations = combinations.combine(
       cross_device_ops=[
           combinations.NamedObject(
-              "DefaultReductionToOneDeviceCrossDeviceOps",
-              cross_device_ops_lib.ReductionToOneDeviceCrossDeviceOps()),
+              "DefaultReductionToOneDevice",
+              cross_device_ops_lib.ReductionToOneDevice()),
           combinations.NamedObject(
               "ReductionToCPUDeviceCrossDeviceOps",
-              cross_device_ops_lib.ReductionToOneDeviceCrossDeviceOps(
+              cross_device_ops_lib.ReductionToOneDevice(
                   reduce_to_device=_cpu_device)),
           combinations.NamedObject(
               "AccumulateNCrossDeviceOp",
-              cross_device_ops_lib.ReductionToOneDeviceCrossDeviceOps(
+              cross_device_ops_lib.ReductionToOneDevice(
                   accumulation_fn=math_ops.accumulate_n)),
       ],
       distribution=[
@@ -229,19 +229,22 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
               "AllReduce",
               cross_device_ops_lib.AllReduceCrossDeviceOps("nccl", 1, 0, 0)),
           combinations.NamedObject(
-              "HierarchicalCopy",
-              cross_device_ops_lib.AllReduceCrossDeviceOps(
-                  "hierarchical_copy", 8, 0, 0)),
-          combinations.NamedObject(
               "AllReduceNoGradientRepacking",
               cross_device_ops_lib.AllReduceCrossDeviceOps("nccl", 0, 0, 0)),
+          combinations.NamedObject("NcclAllReduce",
+                                   cross_device_ops_lib.NcclAllReduce()),
+          combinations.NamedObject(
+              "HierarchicalCopy",
+              cross_device_ops_lib.HierarchicalCopyAllReduce(8)),
           combinations.NamedObject(
               "HierarchicalCopyAggregateSmallTensors",
               cross_device_ops_lib.AllReduceCrossDeviceOps(
                   "hierarchical_copy", 0, 100, 10))
       ],
-      distribution=[combinations.mirrored_strategy_with_two_gpus,
-                    combinations.core_mirrored_strategy_with_two_gpus],
+      distribution=[
+          combinations.mirrored_strategy_with_two_gpus,
+          combinations.core_mirrored_strategy_with_two_gpus
+      ],
       mode=["graph", "eager"])
 
   @combinations.generate(reduction_to_one_combinations + allreduce_combinations)
@@ -306,8 +309,8 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
       combinations.combine(
           cross_device_ops_instance=[
               combinations.NamedObject(
-                  "ReductionToOneDeviceCrossDeviceOps",
-                  cross_device_ops_lib.ReductionToOneDeviceCrossDeviceOps()),
+                  "ReductionToOneDevice",
+                  cross_device_ops_lib.ReductionToOneDevice()),
               combinations.NamedObject(
                   "AllReduceCrossDeviceOps",
                   cross_device_ops_lib.AllReduceCrossDeviceOps())

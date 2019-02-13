@@ -308,9 +308,11 @@ llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
       false);  // No variadic arguments.
 
   // Declares the callee if it is not declared already.
-  llvm::Function* callee = llvm::cast<llvm::Function>(
-      b_->GetInsertBlock()->getModule()->getOrInsertFunction(
-          llvm_ir::AsStringRef(callee_name), callee_type));
+  llvm::Function* callee = llvm::dyn_cast<llvm::Function>(
+      b_->GetInsertBlock()
+          ->getModule()
+          ->getOrInsertFunction(llvm_ir::AsStringRef(callee_name), callee_type)
+          .getCallee());
 
   for (auto attribute : attributes) {
     callee->addFnAttr(attribute);
@@ -446,7 +448,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         return Load(accum_ptr);
       };
     case HloOpcode::kReduce:
-      // TODO(b/112040122): This should be supported.
+      // TODO(b/118332391): This should be supported.
       CHECK_EQ(hlo->operand_count(), 2) << "Did not expect variadic reduce";
       return [=, &operand_to_generator](
                  const IrArray::Index& output_index) -> StatusOr<llvm::Value*> {

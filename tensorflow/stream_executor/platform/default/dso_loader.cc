@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/path.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
-#include "tensorflow/stream_executor/platform/dso_loader.h"
+#include "tensorflow/stream_executor/platform/default/dso_loader.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
@@ -115,6 +115,13 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
                                   GetCudaCuptiLibraryPath()),
                       dso_handle);
 #endif
+}
+
+/* static */ port::Status DsoLoader::GetLibcudartDsoHandle(void** dso_handle) {
+  return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
+                                      "cudart", GetCudaVersion()),
+                                  GetCudaLibraryDirPath()),
+                      dso_handle);
 }
 
 static mutex& GetRpathMutex() {
@@ -279,6 +286,12 @@ static std::vector<string>* CreatePrimordialRpaths() {
 /* static */ port::StatusOr<void*> CachedDsoLoader::GetLibcuptiDsoHandle() {
   static port::StatusOr<void*> result =
       FetchHandleResult(DsoLoader::GetLibcuptiDsoHandle);
+  return result;
+}
+
+/* static */ port::StatusOr<void*> CachedDsoLoader::GetLibcudartDsoHandle() {
+  static port::StatusOr<void*> result =
+      FetchHandleResult(DsoLoader::GetLibcudartDsoHandle);
   return result;
 }
 

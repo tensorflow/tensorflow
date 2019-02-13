@@ -52,6 +52,7 @@ from tensorflow.python.autograph.operators.logical import eq
 from tensorflow.python.autograph.operators.logical import gt
 from tensorflow.python.autograph.operators.logical import gt_e
 from tensorflow.python.autograph.operators.logical import in_
+from tensorflow.python.autograph.operators.logical import invert
 from tensorflow.python.autograph.operators.logical import is_
 from tensorflow.python.autograph.operators.logical import is_not
 from tensorflow.python.autograph.operators.logical import lt
@@ -60,6 +61,7 @@ from tensorflow.python.autograph.operators.logical import not_
 from tensorflow.python.autograph.operators.logical import not_eq
 from tensorflow.python.autograph.operators.logical import not_in
 from tensorflow.python.autograph.operators.logical import or_
+from tensorflow.python.autograph.operators.logical import u_add
 from tensorflow.python.autograph.operators.logical import u_sub
 from tensorflow.python.autograph.operators.py_builtins import float_
 from tensorflow.python.autograph.operators.py_builtins import int_
@@ -69,3 +71,4 @@ from tensorflow.python.autograph.operators.py_builtins import range_
 from tensorflow.python.autograph.operators.slices import get_item
 from tensorflow.python.autograph.operators.slices import GetItemOpts
 from tensorflow.python.autograph.operators.slices import set_item
+from tensorflow.python.autograph.operators.special_values import UNDEFINED

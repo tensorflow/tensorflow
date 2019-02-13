@@ -35,6 +35,7 @@ ASYNC_STATEFUL_OPS = [
     "CollectiveReduce",
     "CollectiveBcastSend",
     "CollectiveBcastRecv",
+    "NcclAllReduce",
 ]
 
 
@@ -248,23 +249,28 @@ class AutomaticControlDependencies(object):
         ops_which_must_run = set([op])
         continue
       found_resource = False
-      for inp in op.inputs:
-        if inp.dtype == dtypes_module.resource:
-          found_resource = True
-          # Deal with switches, finally.
-          if inp.op.type == "Switch":
-            self._process_switch(inp.op, ops_which_must_run,
-                                 last_op_using_resource_tensor,
-                                 merge_for_resource)
-          # Ensure uses of resources are serialized
-          if inp in last_op_using_resource_tensor:
-            if (last_op_using_resource_tensor[inp]._control_flow_context  # pylint: disable=protected-access
-                is op._control_flow_context):  # pylint: disable=protected-access
-              control_inputs.add(last_op_using_resource_tensor[inp])
-          # Ensure merges happen after the closing of a cond block
-          if inp in merge_for_resource:
-            merge_for_resource[inp]._add_control_input(op)  # pylint: disable=protected-access
-          last_op_using_resource_tensor[inp] = op
+      # Check for any resource inputs. If we find any, we update control_inputs
+      # and last_op_using_resource_tensor. Note that we dedup op.inputs in case
+      # op receives the same resource tensor twice as input, which would result
+      # in op getting a control dependency on itself.
+      for inp in set(op.inputs):
+        if inp.dtype != dtypes_module.resource:
+          continue
+        found_resource = True
+        # Deal with switches, finally.
+        if inp.op.type == "Switch":
+          self._process_switch(inp.op, ops_which_must_run,
+                               last_op_using_resource_tensor,
+                               merge_for_resource)
+        # Ensure uses of resources are serialized
+        if inp in last_op_using_resource_tensor:
+          if (last_op_using_resource_tensor[inp]._control_flow_context  # pylint: disable=protected-access
+              is op._control_flow_context):  # pylint: disable=protected-access
+            control_inputs.add(last_op_using_resource_tensor[inp])
+        # Ensure merges happen after the closing of a cond block
+        if inp in merge_for_resource:
+          merge_for_resource[inp]._add_control_input(op)  # pylint: disable=protected-access
+        last_op_using_resource_tensor[inp] = op
       if (op.op_def.is_stateful and op.type not in ASYNC_STATEFUL_OPS
           and not found_resource and op._control_flow_context is None):  # pylint: disable=protected-access
         if None in last_op_using_resource_tensor:

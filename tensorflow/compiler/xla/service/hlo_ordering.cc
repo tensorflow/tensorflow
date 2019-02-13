@@ -367,7 +367,7 @@ bool SequentialHloOrdering::ExecutesBeforeInSameComputation(
     const HloInstruction* a, const HloInstruction* b) const {
   CHECK_EQ(a->parent(), b->parent());
   // If either instruction is not in the order, then 'a' and 'b' are unordered.
-  if (order_position_.count(a) == 0 || order_position_.count(b) == 0) {
+  if (!order_position_.contains(a) || !order_position_.contains(b)) {
     return false;
   }
   return order_position_.at(a) < order_position_.at(b);

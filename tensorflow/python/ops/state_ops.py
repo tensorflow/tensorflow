@@ -464,9 +464,8 @@ def scatter_nd_add(ref, indices, updates, use_locking=False, name=None):
     updates: A `Tensor`. Must have the same type as `ref`.
       A tensor of updated values to add to ref.
     use_locking: An optional `bool`. Defaults to `False`.
-      An optional bool. Defaults to True. If True, the assignment will
-      be protected by a lock; otherwise the behavior is undefined,
-      but may exhibit less contention.
+      If True, the assignment will be protected by a lock;
+      otherwise the behavior is undefined, but may exhibit less contention.
     name: A name for the operation (optional).
 
   Returns:

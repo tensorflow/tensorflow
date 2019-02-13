@@ -103,8 +103,9 @@ def InvokeNvcc(argv, log=False):
     The return value of calling os.system('nvcc ' + args)
   """
 
-  src_files = [f for f in argv if
-               re.search('\.cpp$|\.cc$|\.c$|\.cxx$|\.C$', f)]
+  src_files = [
+      f for f in argv if re.search(r'\.cpp$|\.cc$|\.c$|\.cxx$|\.C$', f)
+  ]
   if len(src_files) == 0:
     raise Error('No source files found for cuda compilation.')
 

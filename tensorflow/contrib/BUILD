@@ -63,7 +63,6 @@ py_library(
         "//tensorflow/contrib/libsvm",
         "//tensorflow/contrib/linear_optimizer:sdca_estimator_py",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
-        "//tensorflow/contrib/lite/python:lite",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/losses:metric_learning_py",
@@ -197,7 +196,7 @@ cc_library(
             "//tensorflow/contrib/kinesis:dataset_kernels",
         ],
     }) + if_not_windows([
-        "//tensorflow/contrib/tensorrt:trt_engine_op_kernel",
+        "//tensorflow/contrib/tensorrt:trt_op_kernels",
     ]),
 )
 
@@ -239,7 +238,7 @@ cc_library(
             "//tensorflow/contrib/kinesis:dataset_ops_op_lib",
         ],
     }) + if_not_windows([
-        "//tensorflow/contrib/tensorrt:trt_engine_op_op_lib",
+        "//tensorflow/compiler/tf2tensorrt:trt_op_libs",
     ]) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],

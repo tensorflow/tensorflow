@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -175,7 +176,8 @@ class Backend {
   tensorflow::mutex mu_;
 
   // Mapping from stream executor to stream pools, used by `BorrowStream` above.
-  std::map<se::StreamExecutor*, StreamPool> stream_pools_ GUARDED_BY(mu_);
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamPool>>
+      stream_pools_ GUARDED_BY(mu_);
 
   // The default memory allocator to use.
   std::unique_ptr<StreamExecutorMemoryAllocator> memory_allocator_;

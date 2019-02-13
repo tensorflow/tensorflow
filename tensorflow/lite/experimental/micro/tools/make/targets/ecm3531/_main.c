@@ -51,12 +51,6 @@ void EtaPrintExecutionTime(uint64_t);
 //*****************************************************************************
 extern int main(int argc, char** argv);
 
-void DebugLog(const char* s) { EtaCspIoPrintf("%s", s); }
-void DebugLogInt32(int32_t i) { EtaCspIoPrintf("%d", i); }
-void DebugLogUInt32(uint32_t i) { EtaCspIoPrintf("%d", i); }
-void DebugLogHex(uint32_t i) { EtaCspIoPrintf("0x%8x", i); }
-void DebugLogFloat(float i) { EtaCspIoPrintf("%f", i); }
-
 int _main(void) {
   uint64_t time_ms;
 
@@ -85,7 +79,7 @@ void EtaPrintExecutionTime(uint64_t time_ms) {
       time_ms = time_ms / 10;
       time_string[k1] = (char)(0x30 + c);
     }
-    for (k1 = 4; k1 > 0; k1--) {  // print out 1 char at a time
+    for (k1 = 4; k1 >= 0; k1--) {  // print out 1 char at a time
       EtaCspUartPutc(&g_sUart1, time_string[k1]);
     }
   } else {

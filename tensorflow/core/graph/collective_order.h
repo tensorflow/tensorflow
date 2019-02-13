@@ -19,11 +19,17 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Introduces control edges between potentially concurrent CollectiveOps to make
-// their execution order deterministic. This may be used to execute collectives
-// in the same order across all workers in a distributed execution, if all
-// workers are executing the same graph.
-Status OrderCollectives(Graph* graph);
+enum class GraphCollectiveOrder { kNone, kEdges, kAttrs };
+
+// Introduces a deterministic execution order between potentially concurrent
+// CollectiveOps.  This may be used to execute collectives in the same order
+// across all workers in a distributed execution, if all workers are executing
+// the same graph.
+// If `order_type` is `kEdges`, introduce the ordering in the form of explicit
+// control edges between collective graph nodes.  If `order_type` is `kAttrs`,
+// add an attribute to the node which may be used by collective executor to
+// ensure the required ordering.
+Status OrderCollectives(Graph* graph, GraphCollectiveOrder order_type);
 
 }  // namespace tensorflow
 

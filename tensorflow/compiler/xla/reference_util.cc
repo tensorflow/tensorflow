@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -605,24 +606,26 @@ ReferenceUtil::ReduceToRowArray2D(
     const std::function<float(float, float)>& reduce_function) {
   std::vector<float> result;
   CHECK_EQ(dims.size(), 3);
-  const std::set<int64> dim_set(dims.begin(), dims.end());
+  const absl::flat_hash_set<int64> dim_set(dims.begin(), dims.end());
   CHECK_EQ(dim_set.size(), 3);
-  for (int64 a0 = 0; a0 == 0 || (!dim_set.count(0) && a0 < array.n1()); ++a0) {
-    for (int64 a1 = 0; a1 == 0 || (!dim_set.count(1) && a1 < array.n2());
+  for (int64 a0 = 0; a0 == 0 || (!dim_set.contains(0) && a0 < array.n1());
+       ++a0) {
+    for (int64 a1 = 0; a1 == 0 || (!dim_set.contains(1) && a1 < array.n2());
          ++a1) {
-      for (int64 a2 = 0; a2 == 0 || (!dim_set.count(2) && a2 < array.n3());
+      for (int64 a2 = 0; a2 == 0 || (!dim_set.contains(2) && a2 < array.n3());
            ++a2) {
-        for (int64 a3 = 0; a3 == 0 || (!dim_set.count(3) && a3 < array.n4());
+        for (int64 a3 = 0; a3 == 0 || (!dim_set.contains(3) && a3 < array.n4());
              ++a3) {
           float accumulator = init;
-          for (int64 i0 = 0; i0 == 0 || (dim_set.count(0) && i0 < array.n1());
-               ++i0) {
-            for (int64 i1 = 0; i1 == 0 || (dim_set.count(1) && i1 < array.n2());
-                 ++i1) {
+          for (int64 i0 = 0;
+               i0 == 0 || (dim_set.contains(0) && i0 < array.n1()); ++i0) {
+            for (int64 i1 = 0;
+                 i1 == 0 || (dim_set.contains(1) && i1 < array.n2()); ++i1) {
               for (int64 i2 = 0;
-                   i2 == 0 || (dim_set.count(2) && i2 < array.n3()); ++i2) {
+                   i2 == 0 || (dim_set.contains(2) && i2 < array.n3()); ++i2) {
                 for (int64 i3 = 0;
-                     i3 == 0 || (dim_set.count(3) && i3 < array.n4()); ++i3) {
+                     i3 == 0 || (dim_set.contains(3) && i3 < array.n4());
+                     ++i3) {
                   // Handle zero-sized arrays.
                   if (array.n1() > 0 && array.n2() > 0 && array.n3() > 0 &&
                       array.n4() > 0) {

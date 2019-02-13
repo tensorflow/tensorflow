@@ -616,7 +616,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
         auto* dev_info = device_->tensorflow_gpu_device_info();
         CHECK(dev_info);
         dev_info->default_context->CopyCPUTensorToDevice(
-            &cpu_tensor, device_, &tensor_, [this, &notification](Status s) {
+            &cpu_tensor, device_, &tensor_, [&notification](Status s) {
               TF_CHECK_OK(s);
               notification.Notify();
             });

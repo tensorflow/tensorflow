@@ -118,7 +118,7 @@ class HloTrivialScheduler : public HloModulePass {
 };
 
 // A trivial pass which clears the schedule currently set on the
-// HloModule. After this pass runs HloModudle::has_schedule will return false.
+// HloModule. After this pass runs HloModule::has_schedule will return false.
 class HloDescheduler : public HloModulePass {
  public:
   HloDescheduler() = default;

@@ -67,11 +67,22 @@ class QuantizedSubOpModel : public BaseSubOpModel {
     return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
                                GetScale(output_), GetZeroPoint(output_));
   }
+
+  std::vector<float> GetDequantizedOutputInt16() {
+    return Dequantize<int16_t>(ExtractVector<int16_t>(output_),
+                               GetScale(output_), GetZeroPoint(output_));
+  }
 };
 
 // for quantized Sub, the error shouldn't exceed 2*step
 float GetTolerance(int min, int max) {
   float kQuantizedStep = (max - min) / 255.0;
+  float kQuantizedTolerance = 2.0 * kQuantizedStep;
+  return kQuantizedTolerance;
+}
+
+float GetToleranceInt16(float min, float max) {
+  float kQuantizedStep = (max - min) / std::numeric_limits<int16_t>::max();
   float kQuantizedTolerance = 2.0 * kQuantizedStep;
   return kQuantizedTolerance;
 }
@@ -262,6 +273,106 @@ TEST(QuantizedSubOpModel, QuantizedWithBroadcast) {
     EXPECT_THAT(m.GetDequantizedOutput(),
                 ElementsAreArray(ArrayFloatNear(
                     {-2.7, -0.5, 0.0, 0.1, 0.4, 1.3}, kQuantizedTolerance)))
+        << "With shape number " << i;
+  }
+}
+
+TEST(QuantizedSubOpModel, QuantizedTestsNoActivationInt16) {
+  const float kMin = -1.f;
+  const float kMax =
+      static_cast<float>(std::numeric_limits<int16_t>::max() - 1) /
+      std::numeric_limits<int16_t>::max();
+  float kQuantizedTolerance = GetToleranceInt16(kMin, kMax);
+  std::vector<std::vector<float>> inputs1 = {
+      {0.7, 0.6, 0.6, 0.5}, {-0.2, 0.6, 0.9, -0.1}, {-0.2, 0.6, -0.3, 0.8}};
+  std::vector<std::vector<float>> inputs2 = {
+      {0.6, 0.4, 0.3, 0.1}, {0.6, 0.4, 0.5, -0.8}, {0.6, 0.4, 0.8, 0.5}};
+  std::vector<std::vector<float>> results = {
+      {0.1, 0.2, 0.3, 0.4}, {-0.8, 0.2, 0.4, 0.7}, {-0.8, 0.2, -1.0, 0.3}};
+  for (int i = 0; i < inputs1.size(); ++i) {
+    QuantizedSubOpModel m({TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
+                          {TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
+                          {TensorType_INT16, {}, kMin, kMax},
+                          ActivationFunctionType_NONE);
+    m.QuantizeAndPopulate<int16_t>(m.input1(), inputs1[i]);
+    m.QuantizeAndPopulate<int16_t>(m.input2(), inputs2[i]);
+    m.Invoke();
+    EXPECT_THAT(
+        m.GetDequantizedOutputInt16(),
+        ElementsAreArray(ArrayFloatNear(results[i], kQuantizedTolerance)))
+        << "With test number " << i;
+  }
+}
+
+TEST(QuantizedSubOpModel, QuantizedTestsReluActivationInt16) {
+  const float kMin = -2.f;
+  const float kMax = 2.0 * (std::numeric_limits<int16_t>::max() - 1) /
+                     std::numeric_limits<int16_t>::max();
+  float kQuantizedTolerance = GetToleranceInt16(kMin, kMax);
+  std::vector<std::vector<float>> inputs1 = {{-0.8, 0.2, 0.9, 0.7},
+                                             {-0.8, 0.2, 0.7, 0.5}};
+  std::vector<std::vector<float>> inputs2 = {{0.6, 0.4, 0.9, -0.8},
+                                             {0.6, 0.4, -0.8, 0.3}};
+  std::vector<std::vector<float>> results = {{-1.0, -0.2, 0.0, 1.0},
+                                             {-1.0, -0.2, 1.0, 0.2}};
+  for (int i = 0; i < inputs1.size(); ++i) {
+    QuantizedSubOpModel m({TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
+                          {TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
+                          {TensorType_INT16, {}, kMin, kMax},
+                          ActivationFunctionType_RELU_N1_TO_1);
+    m.QuantizeAndPopulate<int16_t>(m.input1(), inputs1[i]);
+    m.QuantizeAndPopulate<int16_t>(m.input2(), inputs2[i]);
+    m.Invoke();
+    EXPECT_THAT(
+        m.GetDequantizedOutputInt16(),
+        ElementsAreArray(ArrayFloatNear(results[i], kQuantizedTolerance)))
+        << "With test number " << i;
+  }
+}
+
+TEST(QuantizedSubOpModel, QuantizedTestsNoActivationBroadcastInt16) {
+  const float kMin = -1.f;
+  const float kMax =
+      static_cast<float>(std::numeric_limits<int16_t>::max() - 1) /
+      std::numeric_limits<int16_t>::max();
+  float kQuantizedTolerance = GetToleranceInt16(kMin, kMax);
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    QuantizedSubOpModel m({TensorType_INT16, test_shapes[i], kMin, kMax},
+                          {TensorType_INT16, {}, kMin, kMax},
+                          {TensorType_INT16, {}, kMin, kMax},
+                          ActivationFunctionType_NONE);
+    m.QuantizeAndPopulate<int16_t>(m.input1(),
+                                   {-0.9, -0.7, -0.3, 0.0, 0.3, 0.5});
+    m.QuantizeAndPopulate<int16_t>(m.input2(), {0.2});
+    m.Invoke();
+    EXPECT_THAT(m.GetDequantizedOutputInt16(),
+                ElementsAreArray(ArrayFloatNear(
+                    {-1.0, -0.9, -0.5, -0.2, 0.1, 0.3}, kQuantizedTolerance)))
+        << "With shape number " << i;
+  }
+}
+
+TEST(QuantizedSubOpModel, QuantizedTestsReluActivationBroadcastInt16) {
+  const float kMin = -2.f;
+  const float kMax = 2.0 * (std::numeric_limits<int16_t>::max() - 1) /
+                     std::numeric_limits<int16_t>::max();
+  float kQuantizedTolerance = GetToleranceInt16(kMin, kMax);
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    QuantizedSubOpModel m({TensorType_INT16, test_shapes[i], kMin, kMax},
+                          {TensorType_INT16, {}, kMin, kMax},
+                          {TensorType_INT16, {}, kMin, kMax},
+                          ActivationFunctionType_RELU_N1_TO_1);
+    m.QuantizeAndPopulate<int16_t>(m.input1(),
+                                   {-0.9, -0.7, -0.3, 0.0, 0.3, 0.5});
+    m.QuantizeAndPopulate<int16_t>(m.input2(), {0.2});
+    m.Invoke();
+    EXPECT_THAT(m.GetDequantizedOutputInt16(),
+                ElementsAreArray(ArrayFloatNear(
+                    {-1.0, -0.9, -0.5, -0.2, 0.1, 0.3}, kQuantizedTolerance)))
         << "With shape number " << i;
   }
 }

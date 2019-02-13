@@ -22,12 +22,10 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
 @keras_parameterized.run_all_keras_modes
@@ -52,7 +50,7 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
     layer = keras.layers.SimpleRNN(units, input_shape=(None, embedding_dim))
     model = keras.models.Sequential()
     model.add(layer)
-    model.compile(RMSPropOptimizer(0.01), 'mse')
+    model.compile('rmsprop', 'mse')
     x = np.random.random((num_samples, timesteps, embedding_dim))
     y = np.random.random((num_samples, units))
     model.train_on_batch(x, y)
@@ -108,8 +106,7 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
     model = keras.models.Sequential()
     model.add(keras.layers.Masking(input_shape=(3, 4)))
     model.add(layer_class(units=5, return_sequences=True, unroll=False))
-    model.compile(loss='categorical_crossentropy',
-                  optimizer=RMSPropOptimizer(0.01))
+    model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
   def test_from_config_SimpleRNN(self):
@@ -141,11 +138,6 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
-
-class SimpleRNNLayerV1OnlyTest(test.TestCase):
-
-  @test_util.run_v1_only('b/120941292')
-  @test_util.run_in_graph_and_eager_modes
   def test_statefulness_SimpleRNN(self):
     num_samples = 2
     timesteps = 3
@@ -164,7 +156,7 @@ class SimpleRNNLayerV1OnlyTest(test.TestCase):
         units, return_sequences=False, stateful=True, weights=None)
     model.add(layer)
     model.compile(optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                  loss='mse')
+                  loss='mse', run_eagerly=testing_utils.should_run_eagerly())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 

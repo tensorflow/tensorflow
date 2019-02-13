@@ -24,11 +24,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+// IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/logging.h"
-// IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -70,6 +68,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
@@ -77,7 +77,6 @@ namespace {
 using llvm_ir::AsStringRef;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
-namespace gtl = tensorflow::gtl;
 }  // namespace
 
 namespace cpu {
@@ -239,10 +238,12 @@ Status IrEmitter::HandleCopy(HloInstruction* copy) {
 int IrEmitter::MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type) {
   int64 byte_size = ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
   DCHECK_GE(byte_size, 0);
-  // Largest scalar is a complex64 so we don't need to worry about the
+  // Largest scalar is a complex128 so we don't need to worry about the
   // int64->int truncation here.
-  DCHECK_LE(byte_size, 8);
-  return byte_size;
+  DCHECK_LE(byte_size, 16);
+
+  // Allocations may be 8-byte aligned if part of a small block.
+  return std::min(8LL, byte_size);
 }
 
 int64 IrEmitter::ByteSizeOf(const Shape& shape) const {
@@ -410,11 +411,18 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
 
   llvm::Function* acquire_func;
   if (kind == XfeedKind::kInfeed) {
-    acquire_func = llvm::cast<llvm::Function>(module_->getOrInsertFunction(
-        runtime::kAcquireInfeedBufferForDequeueSymbolName, acquire_type));
+    acquire_func = llvm::dyn_cast<llvm::Function>(
+        module_
+            ->getOrInsertFunction(
+                runtime::kAcquireInfeedBufferForDequeueSymbolName, acquire_type)
+            .getCallee());
   } else {
-    acquire_func = llvm::cast<llvm::Function>(module_->getOrInsertFunction(
-        runtime::kAcquireOutfeedBufferForPopulationSymbolName, acquire_type));
+    acquire_func = llvm::dyn_cast<llvm::Function>(
+        module_
+            ->getOrInsertFunction(
+                runtime::kAcquireOutfeedBufferForPopulationSymbolName,
+                acquire_type)
+            .getCallee());
   }
   acquire_func->setCallingConv(llvm::CallingConv::C);
 
@@ -427,11 +435,19 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
 
   llvm::Function* release_func;
   if (kind == XfeedKind::kInfeed) {
-    release_func = llvm::cast<llvm::Function>(module_->getOrInsertFunction(
-        runtime::kReleaseInfeedBufferAfterDequeueSymbolName, release_type));
+    release_func = llvm::dyn_cast<llvm::Function>(
+        module_
+            ->getOrInsertFunction(
+                runtime::kReleaseInfeedBufferAfterDequeueSymbolName,
+                release_type)
+            .getCallee());
   } else {
-    release_func = llvm::cast<llvm::Function>(module_->getOrInsertFunction(
-        runtime::kReleaseOutfeedBufferAfterPopulationSymbolName, release_type));
+    release_func = llvm::dyn_cast<llvm::Function>(
+        module_
+            ->getOrInsertFunction(
+                runtime::kReleaseOutfeedBufferAfterPopulationSymbolName,
+                release_type)
+            .getCallee());
   }
   release_func->setCallingConv(llvm::CallingConv::C);
 
@@ -493,6 +509,27 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
   const HloSortInstruction* sort = Cast<HloSortInstruction>(hlo);
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(sort));
   Shape keys_shape = sort->keys()->shape();
+  PrimitiveType keys_type = keys_shape.element_type();
+  switch (keys_type) {
+    case PRED:
+    case S8:
+    case U8:
+    case S16:
+    case U16:
+    case BF16:
+    case F16:
+    case S32:
+    case U32:
+    case F32:
+    case S64:
+    case U64:
+    case F64:
+      break;
+    default:
+      return Unimplemented(
+          "Element type %s not supported in the Sort op on CPU.",
+          PrimitiveType_Name(keys_type));
+  }
   std::vector<llvm::Value*> destination_addresses(sort->operand_count());
   for (int64 i = 0; i < sort->operand_count(); ++i) {
     ShapeIndex shape_index =
@@ -540,105 +577,47 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
     lower_dimensions *= normalized_keys_shape.dimensions(i);
   }
 
-  PrimitiveType keys_type = keys_shape.element_type();
-  const char* fn_name = nullptr;
-  llvm::Type* keys_native_type = nullptr;
-  switch (keys_type) {
-    case PRED:
-      fn_name = runtime::kKeyValueSortPREDSymbolName;
-      keys_native_type = b_.getInt8PtrTy();
-      break;
-    case S8:
-      fn_name = runtime::kKeyValueSortS8SymbolName;
-      keys_native_type = b_.getInt8PtrTy();
-      break;
-    case U8:
-      fn_name = runtime::kKeyValueSortU8SymbolName;
-      keys_native_type = b_.getInt8PtrTy();
-      break;
-    case S16:
-      fn_name = runtime::kKeyValueSortS16SymbolName;
-      keys_native_type = b_.getInt16Ty()->getPointerTo();
-      break;
-    case U16:
-      fn_name = runtime::kKeyValueSortU16SymbolName;
-      keys_native_type = b_.getInt16Ty()->getPointerTo();
-      break;
-    case F16:
-      fn_name = runtime::kKeyValueSortF16SymbolName;
-      keys_native_type = b_.getHalfTy()->getPointerTo();
-      break;
-    case S32:
-      fn_name = runtime::kKeyValueSortS32SymbolName;
-      keys_native_type = b_.getInt32Ty()->getPointerTo();
-      break;
-    case U32:
-      fn_name = runtime::kKeyValueSortU32SymbolName;
-      keys_native_type = b_.getInt32Ty()->getPointerTo();
-      break;
-    case F32:
-      fn_name = runtime::kKeyValueSortF32SymbolName;
-      keys_native_type = b_.getFloatTy()->getPointerTo();
-      break;
-    case S64:
-      fn_name = runtime::kKeyValueSortS64SymbolName;
-      keys_native_type = b_.getInt64Ty()->getPointerTo();
-      break;
-    case U64:
-      fn_name = runtime::kKeyValueSortU64SymbolName;
-      keys_native_type = b_.getInt64Ty()->getPointerTo();
-      break;
-    case F64:
-      fn_name = runtime::kKeyValueSortF64SymbolName;
-      keys_native_type = b_.getDoubleTy()->getPointerTo();
-      break;
-    default:
-      return Unimplemented(
-          "Element type %s not supported in the Sort op on CPU.",
-          PrimitiveType_Name(keys_type));
-  }
-
+  auto less_than_function = FindOrDie(emitted_functions_, sort->to_apply());
+  CHECK(absl::c_binary_search(thread_local_computations_, sort->to_apply()));
   llvm::FunctionType* key_value_sort_type = llvm::FunctionType::get(
       b_.getVoidTy(),
-      {keys_native_type, b_.getInt64Ty(), b_.getInt64Ty(), b_.getInt64Ty(),
+      {b_.getInt64Ty(), b_.getInt64Ty(), b_.getInt64Ty(),
        b_.getInt8PtrTy()->getPointerTo(), b_.getInt32Ty(),
-       b_.getInt32Ty()->getPointerTo()},
+       b_.getInt32Ty()->getPointerTo(), b_.getInt8PtrTy(),
+       b_.getInt64Ty()->getPointerTo(), less_than_function->getType()},
       /*isVarArg=*/false);
-  auto* key_value_sort_func = llvm::cast<llvm::Function>(
-      module_->getOrInsertFunction(fn_name, key_value_sort_type));
+  auto* key_value_sort_func = llvm::dyn_cast<llvm::Function>(
+      module_
+          ->getOrInsertFunction(runtime::kKeyValueSortSymbolName,
+                                key_value_sort_type)
+          .getCallee());
   key_value_sort_func->setCallingConv(llvm::CallingConv::C);
   key_value_sort_func->setDoesNotThrow();
-  llvm::Value* values;
-  llvm::Value* sizes;
-  if (sort->values_count() == 0) {
-    values = llvm::Constant::getNullValue(b_.getInt8PtrTy()->getPointerTo());
-    sizes = llvm::Constant::getNullValue(b_.getInt32Ty()->getPointerTo());
-  } else {
-    values = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-        b_.getInt8PtrTy(), b_.getInt32(sort->values_count()),
-        "cc_values_alloca", &b_);
-    sizes = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-        b_.getInt32Ty(), b_.getInt32(sort->values_count()), "cc_sizes_alloca",
-        &b_);
-    for (int64 i = 0; i < sort->values_count(); ++i) {
-      llvm::Value* value_as_i8ptr =
-          PointerCast(destination_addresses[i + 1], b_.getInt8PtrTy());
-      llvm::Value* slot_in_values_alloca =
-          ConstInBoundsGEP1_32(b_.getInt8PtrTy(), values, i);
-      Store(value_as_i8ptr, slot_in_values_alloca);
-      llvm::Value* slot_in_sizes_alloca =
-          ConstInBoundsGEP1_32(b_.getInt32Ty(), sizes, i);
-      llvm::Value* size = b_.getInt32(ShapeUtil::ByteSizeOfPrimitiveType(
-          sort->operand(i + 1)->shape().element_type()));
-      Store(size, slot_in_sizes_alloca);
-    }
+  llvm::Value* values = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
+      b_.getInt8PtrTy(), b_.getInt32(sort->operand_count()), "cc_values_alloca",
+      &b_);
+  llvm::Value* sizes = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
+      b_.getInt32Ty(), b_.getInt32(sort->operand_count()), "cc_sizes_alloca",
+      &b_);
+  for (int64 i = 0; i < sort->operand_count(); ++i) {
+    llvm::Value* value_as_i8ptr =
+        PointerCast(destination_addresses[i], b_.getInt8PtrTy());
+    llvm::Value* slot_in_values_alloca =
+        ConstInBoundsGEP1_32(b_.getInt8PtrTy(), values, i);
+    Store(value_as_i8ptr, slot_in_values_alloca);
+    llvm::Value* slot_in_sizes_alloca =
+        ConstInBoundsGEP1_32(b_.getInt32Ty(), sizes, i);
+    llvm::Value* size = b_.getInt32(ShapeUtil::ByteSizeOfPrimitiveType(
+        sort->operand(i)->shape().element_type()));
+    Store(size, slot_in_sizes_alloca);
   }
 
   Call(key_value_sort_func,
-       {PointerCast(destination_addresses[0], keys_native_type),
-        b_.getInt64(higher_dimensions), b_.getInt64(sort_dimension_elements),
+       {b_.getInt64(higher_dimensions), b_.getInt64(sort_dimension_elements),
         b_.getInt64(lower_dimensions), values,
-        b_.getInt32(sort->values_count()), sizes});
+        b_.getInt32(sort->operand_count()), sizes,
+        GetExecutableRunOptionsArgument(), GetProfileCountersArgument(),
+        less_than_function});
 
   if (sort->values_count() > 0) {
     llvm_ir::EmitTuple(GetIrArrayFor(sort), destination_addresses, &b_,
@@ -747,11 +726,6 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduceWindow(
 }
 
 Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
-  TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
-      /*instruction=*/*reduce_window,
-      /*operands=*/{reduce_window->operand(0)},
-      /*supported_types=*/{F32, BF16, S32, F16}));
-
   // Pseudo code for reduce window:
   //
   //   for (coordinates O in the output)
@@ -942,12 +916,8 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   auto rhs = dot->operand(1);
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*dot, /*operands=*/{lhs, rhs},
-      /*supported_types=*/{F16, F32, F64, C64}));
+      /*supported_types=*/{F16, F32, F64, C64, C128}));
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
-  if (dnums.lhs_batch_dimensions_size() > 0 ||
-      dnums.rhs_batch_dimensions_size() > 0) {
-    return Unimplemented("Dot with batch dimensions not implemented.");
-  }
 
   if (dnums.lhs_contracting_dimensions_size() != 1) {
     // This is disallowed by ShapeInference today.
@@ -970,10 +940,10 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
           << llvm_ir::DumpToString(*target_array.GetBasePointer());
 
   // Dot operation is complicated so we delegate to a helper class.
-  return DotOpEmitter::EmitDotOperation(
-      *dot, target_array, lhs_array, rhs_array, /*addend_array=*/nullptr,
-      GetExecutableRunOptionsArgument(), &b_, hlo_module_config_,
-      target_machine_features_);
+  return EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
+                          /*addend_array=*/nullptr,
+                          GetExecutableRunOptionsArgument(), &b_,
+                          hlo_module_config_, target_machine_features_);
 }
 
 StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForConvolution(
@@ -1118,7 +1088,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   auto rhs = convolution->operand(1);
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*convolution, /*operands=*/{lhs, rhs},
-      /*supported_types=*/{F16, F32, C64}));
+      /*supported_types=*/{F16, F32, C64, C128}));
 
   // TODO(tonywy): Add PotentiallyImplementedAsMKLCovolution to support
   // different data layouts.
@@ -1231,8 +1201,8 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
         LOG(WARNING) << "Using Eigen instead of MKL-DNN for single-threaded "
                         "conv2d function.";
       }
-      llvm::Function* conv_func = llvm::cast<llvm::Function>(
-          module_->getOrInsertFunction(fn_name, conv_type));
+      llvm::Function* conv_func = llvm::dyn_cast<llvm::Function>(
+          module_->getOrInsertFunction(fn_name, conv_type).getCallee());
       conv_func->setCallingConv(llvm::CallingConv::C);
       conv_func->setDoesNotThrow();
       conv_func->setOnlyAccessesArgMemory();
@@ -1315,8 +1285,8 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
                             ? runtime::kEigenFftSymbolName
                             : runtime::kEigenSingleThreadedFftSymbolName;
 
-  llvm::Function* fft_func = llvm::cast<llvm::Function>(
-      module_->getOrInsertFunction(fn_name, fft_type));
+  llvm::Function* fft_func = llvm::dyn_cast<llvm::Function>(
+      module_->getOrInsertFunction(fn_name, fft_type).getCallee());
   fft_func->setCallingConv(llvm::CallingConv::C);
   fft_func->setDoesNotThrow();
   fft_func->setOnlyAccessesInaccessibleMemOrArgMem();
@@ -1399,7 +1369,7 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
 
   int64 delta = 0;
   for (int64 i = 0; i < operand_shape.dimensions_size(); i++) {
-    if (reduced_dims.count(i)) {
+    if (reduced_dims.contains(i)) {
       delta++;
     } else {
       InsertOrDie(&unreduced_dim_map, i, i - delta);
@@ -1412,7 +1382,7 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
   for (int64 operand_dim_idx = 0;
        operand_dim_idx < operand_shape.dimensions_size(); operand_dim_idx++) {
     int64 operand_dim = operand_shape.layout().minor_to_major(operand_dim_idx);
-    if (!reduced_dims.count(operand_dim)) {
+    if (!reduced_dims.contains(operand_dim)) {
       if (FindOrDie(unreduced_dim_map, operand_dim) !=
           result_shape.layout().minor_to_major(result_dim_idx++)) {
         return false;
@@ -1709,10 +1679,8 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
       vectorization_factor_in_bytes /
       ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type());
 
-  bool is_reduction_over_minor_dimension =
-      std::find(dimensions.begin(), dimensions.end(),
-                LayoutUtil::Minor(arg->shape().layout(), 0)) !=
-      dimensions.end();
+  bool is_reduction_over_minor_dimension = absl::c_linear_search(
+      dimensions, LayoutUtil::Minor(arg->shape().layout(), 0));
 
   unsigned element_alignment = tensorflow::MathUtil::GCD<unsigned>(
       ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type()),
@@ -1890,7 +1858,7 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduce(
 }
 
 Status IrEmitter::HandleReduce(HloInstruction* reduce) {
-  // TODO(b/112040122): Support variadic reduce.
+  // TODO(b/118333695): Support variadic reduce.
   if (!reduce->shape().IsArray()) {
     return Unimplemented("Variadic reduce is not supported on CPU");
   }
@@ -1990,7 +1958,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   // The memcpy will copy elements that are logically this shape (allowed to be
   // scalar).
   const Shape logical_element_shape = ShapeUtil::FilterDimensions(
-      [&inner_dims](int64 dim) -> bool { return inner_dims.count(dim); },
+      [&inner_dims](int64 dim) { return inner_dims.contains(dim); },
       operand->shape());
 
   const int64 primitive_elements_per_logical_element =
@@ -2205,10 +2173,10 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     llvm_ir::IrArray addend_array(
         GetIrArrayFor(fusion->operand(addend_param_number)));
 
-    TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
-        *dot, target_array, lhs_array, rhs_array, &addend_array,
-        GetExecutableRunOptionsArgument(), &b_, hlo_module_config_,
-        target_machine_features_));
+    TF_RETURN_IF_ERROR(
+        EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
+                         &addend_array, GetExecutableRunOptionsArgument(), &b_,
+                         hlo_module_config_, target_machine_features_));
     return Status::OK();
   } else {
     return Unimplemented("Fusion kind not implemented on CPU");
@@ -2257,13 +2225,15 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
         InBoundsGEP(operands_alloca, {b_.getInt64(i)});
     Store(operand_as_i8ptr, slot_in_operands_alloca);
   }
-  auto* custom_call_ir_function =
-      llvm::cast<llvm::Function>(module_->getOrInsertFunction(
-          AsStringRef(custom_call_target),
-          llvm::FunctionType::get(
-              /*Result=*/b_.getVoidTy(),
-              /*Params=*/{i8_ptr_type, operands_alloca->getType()},
-              /*isVarArg=*/false)));
+  auto* custom_call_ir_function = llvm::dyn_cast<llvm::Function>(
+      module_
+          ->getOrInsertFunction(
+              AsStringRef(custom_call_target),
+              llvm::FunctionType::get(
+                  /*Result=*/b_.getVoidTy(),
+                  /*Params=*/{i8_ptr_type, operands_alloca->getType()},
+                  /*isVarArg=*/false))
+          .getCallee());
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
   // Write the tuple table if the output is a tuple.
@@ -2401,8 +2371,7 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   int64 concat_dim = concatenate->dimensions(0);
   const Layout& output_layout = output_shape.layout();
   auto output_min2maj = LayoutUtil::MinorToMajor(output_layout);
-  auto concat_dim_layout_itr =
-      std::find(output_min2maj.begin(), output_min2maj.end(), concat_dim);
+  auto concat_dim_layout_itr = absl::c_find(output_min2maj, concat_dim);
 
   std::vector<int64> inner_dims(output_min2maj.begin(), concat_dim_layout_itr);
   std::vector<int64> outer_dims(std::next(concat_dim_layout_itr),
@@ -2956,8 +2925,7 @@ Status IrEmitter::ElementTypesSameAndSupported(
 
   TF_RET_CHECK(!operands.empty());
   PrimitiveType primitive_type = operands[0]->shape().element_type();
-  if (std::find(supported_types.begin(), supported_types.end(),
-                primitive_type) == supported_types.end()) {
+  if (!absl::c_linear_search(supported_types, primitive_type)) {
     return Unimplemented("unsupported operand type %s in op %s",
                          PrimitiveType_Name(primitive_type),
                          HloOpcodeString(instruction.opcode()));

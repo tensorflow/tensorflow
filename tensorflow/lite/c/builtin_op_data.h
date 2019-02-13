@@ -25,6 +25,11 @@ extern "C" {
 
 // TODO(aselle): Consider using "if this then that" for testing.
 
+// Useful placeholder to put in otherwise empty structs to avoid size warnings.
+typedef struct {
+  char dummy;
+} EmptyStructPlaceholder;
+
 // IMPORTANT: All new members of structs must be added at the end to ensure
 // backwards compatibility.
 
@@ -152,9 +157,11 @@ typedef struct {
 } TfLiteAddParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLiteSpaceToBatchNDParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLiteBatchToSpaceNDParams;
 
 typedef struct {
@@ -230,9 +237,11 @@ typedef struct {
 } TfLiteResizeNearestNeighborParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLitePadParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLitePadV2Params;
 
 typedef struct {
@@ -272,6 +281,7 @@ typedef struct {
 } TfLiteGatherParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLiteTransposeParams;
 
 typedef struct {

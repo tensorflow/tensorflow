@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
@@ -45,10 +46,10 @@ void HloToIrBindings::EmitBasePointersForHlos(
 
   // An HLO can have duplicated operands. This data structure remembers which
   // operand HLOs are already bound to avoid rebinding the same HLO.
-  std::set<const HloInstruction*> already_bound_for_this_function;
+  absl::flat_hash_set<const HloInstruction*> already_bound_for_this_function;
   auto arg_iter = function->arg_begin();
   for (const HloInstruction* io_hlo : io_hlos) {
-    if (!already_bound_for_this_function.count(io_hlo)) {
+    if (!already_bound_for_this_function.contains(io_hlo)) {
       if (!is_nested_ && io_hlo->opcode() == HloOpcode::kGetTupleElement) {
         BindHloToIrValue(*io_hlo, EmitGetTupleElement(io_hlo, &*arg_iter));
       } else {
@@ -63,7 +64,7 @@ void HloToIrBindings::EmitBasePointersForHlos(
   temp_buffer_base_->setName("temp_buffer");
 
   for (const HloInstruction* non_io_hlo : non_io_hlos) {
-    if (already_bound_for_this_function.count(non_io_hlo)) {
+    if (already_bound_for_this_function.contains(non_io_hlo)) {
       continue;
     }
     already_bound_for_this_function.insert(non_io_hlo);

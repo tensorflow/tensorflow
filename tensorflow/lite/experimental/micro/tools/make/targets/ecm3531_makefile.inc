@@ -14,6 +14,7 @@ ifeq ($(TARGET), ecm3531)
   endif
 
   PLATFORM_FLAGS = \
+    -DARM_MATH_CM3 \
     -DFIRMWARE_BUILD \
     -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
     -DTF_LITE_STATIC_MEMORY \
@@ -59,13 +60,12 @@ ifeq ($(TARGET), ecm3531)
     -fno-exceptions \
     -nostdlib --specs=nano.specs -t -lstdc++ -lc -lnosys -lm \
     -Wl,-T,$(MAKEFILE_DIR)/targets/ecm3531/ecm3531.lds \
-    -Wl,-Map=$(MAKEFILE_DIR)/gen/$(TARGET).map,--cref
+    -Wl,-Map=$(MAKEFILE_DIR)/targets/ecm3531/ecm3531.map,--cref
   BUILD_TYPE := micro
   MICROLITE_LIBS := \
     $(GCC_ARM)/lib/gcc/arm-none-eabi/7.3.1/thumb/v7e-m/fpv4-sp/softfp/crtbegin.o \
     -lm
-  INCLUDES += \
-    -isystem$(MAKEFILE_DIR)/downloads/cmsis/CMSIS/Core/Include/ \
+  ECM3531_INCLUDES := \
     -I$(GCC_ARM)/arm-none-eabi/include/ \
     -I$(ETA_SDK)/ecm3531/boards/eta_evb/projects/m3/common/inc/ \
     -I$(ETA_SDK)/ecm3531/m3/reg/inc/ \
@@ -75,6 +75,9 @@ ifeq ($(TARGET), ecm3531)
     -I$(ETA_SDK)/../utils/inc/  \
     -I$(ETA_SDK)/ecm3531/boards/eta_evb/eta_bsp/inc
 
+  INCLUDES += $(ECM3531_INCLUDES)
+  GENERATED_PROJECT_INCLUDES += $(ECM3531_INCLUDES)
+
   # _main.c contains application and target specific initialization, like
   # setting clock speed, default uart setups, etc. and an implementation
   # of the DebugLog interfaces.
@@ -83,7 +86,13 @@ ifeq ($(TARGET), ecm3531)
     $(MAKEFILE_DIR)/targets/ecm3531/_main.c \
     $(wildcard $(ETA_SDK)/ecm3531/boards/eta_evb/projects/m3/common/src/*.c) \
     $(wildcard $(ETA_SDK)/ecm3531/m3/csp/src/*.c) \
-    $(wildcard $(ETA_SDK)/ecm3531/m3/csp/src/*.s) \
+    $(wildcard $(ETA_SDK)/ecm3531/m3/csp/src/*.s)
+
+  # The linker script isn't a header, but it needs to get copied to the gen/
+  # directory for generated projects.  This is similar to the behavior needed
+  # for headers.
+  MICROLITE_CC_HDRS += \
+    $(MAKEFILE_DIR)/targets/ecm3531/ecm3531.lds
 
   TEST_SCRIPT := tensorflow/lite/experimental/micro/testing/test_ecm3531_binary.sh
   # These are tests that don't currently work on the blue pill.

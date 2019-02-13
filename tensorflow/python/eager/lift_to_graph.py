@@ -35,8 +35,29 @@ def _as_operation(op_or_tensor):
   return op_or_tensor
 
 
-def lift_to_graph(init_tensor, graph, sources=None):
-  """Copies the tensor and all its inputs recursively to the outer graph."""
+class UnliftableError(Exception):
+  """Raised if a Tensor cannot be lifted from the graph."""
+  pass
+
+
+def lift_to_graph(init_tensor, graph, sources=None,
+                  disallowed_placeholders=None):
+  """Copies the tensor and all its inputs recursively to the outer graph.
+
+  Args:
+    init_tensor: The Tensor to lift.
+    graph: The graph to lift to.
+    sources: Optional sequence of nodes to start from. If omitted the whole
+      subgraph which feeds into `init_tensor` is lifted.
+    disallowed_placeholders: An optional set of ops which may not appear in the
+      lifted graph. Defaults to all placeholders.
+
+  Returns:
+    A mapping from ops in the current default graph to ops in `graph`.
+
+  Raises:
+    UnliftableError: If a placeholder blocks lifting.
+  """
   # Check that the initializer does not depend on any placeholders.
   if sources is None:
     sources = set([])
@@ -48,11 +69,9 @@ def lift_to_graph(init_tensor, graph, sources=None):
     if op in visited_ops:
       continue
     visited_ops.add(op)
-    # TODO(apassos) distinguish arg placeholders, capture placeholders,
-    # and placeholders the user might directly use to initialize
-    # variables.
-    if op.type == "Placeholder":
-      raise ValueError(
+    if ((disallowed_placeholders is not None and op in disallowed_placeholders)
+        or (disallowed_placeholders is None and op.type == "Placeholder")):
+      raise UnliftableError(
           "Unable to lift tensor", init_tensor,
           "because it depends transitively on placeholder ", op)
     for inp in _graph_inputs(op):
@@ -81,7 +100,8 @@ def lift_to_graph(init_tensor, graph, sources=None):
     source_ops = set()
     for s in sources:
       source_ops.add(s.op)
-      op_map[s] = array_ops.placeholder(dtype=s.dtype, shape=s.shape)
+      op_map[s] = array_ops.placeholder(dtype=s.dtype, shape=s.shape,
+                                        name=s.op.name)
     for op in reversed(ops_to_copy):
       if op in source_ops:
         continue
@@ -90,7 +110,7 @@ def lift_to_graph(init_tensor, graph, sources=None):
       with ops.control_dependencies(copied_control_inputs):
         copied_op = graph.create_op(
             op.type, copied_inputs, [x.dtype for x in op.outputs],
-            attrs=op.node_def.attr)
+            attrs=op.node_def.attr, name=op.name)
       op_map[op] = copied_op
       for i, o in enumerate(op.outputs):
         op_map[o] = copied_op.outputs[i]

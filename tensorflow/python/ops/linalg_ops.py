@@ -24,9 +24,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops_impl
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_linalg_ops import *
@@ -595,14 +595,14 @@ def norm(tensor,
     if ord in ['fro', 'euclidean', 2, 2.0]:
       if is_matrix_norm and ord in [2, 2.0]:
         rank = array_ops.rank(tensor)
-        positive_axis = functional_ops.map_fn(
+        positive_axis = map_fn.map_fn(
             lambda i: control_flow_ops.cond(i >= 0, lambda: i, lambda: i + rank),
             ops.convert_to_tensor(axis))
         axes = math_ops.range(rank)
         perm_before = array_ops.concat(
             [array_ops.setdiff1d(axes, positive_axis)[0], positive_axis],
             axis=0)
-        perm_after = functional_ops.map_fn(
+        perm_after = map_fn.map_fn(
             lambda i: math_ops.cast(
                 array_ops.squeeze(
                     array_ops.where(math_ops.equal(perm_before, i))),

@@ -282,22 +282,7 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
 bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
                                                      int64 operand_index) {
-  const HloInstruction* producer = consumer->operand(operand_index);
-  // The IR emitter has limited support for non-loop fusions with multi output
-  // at present.
-  // TODO(tjoerg): Relax this constraint to allow for arbitraty kinds of fusion.
-  if (consumer->opcode() == HloOpcode::kFusion &&
-      consumer->fusion_kind() != HloInstruction::FusionKind::kLoop) {
-    return false;
-  }
-  // Multi-output fusion requires instructions with compatible shapes.
-  if (!ShapeUtil::Compatible(producer->shape(), consumer->shape())) {
-    return false;
-  }
-  // TODO(tjoerg): Stop calling `ShouldFuse` to relax the criteria for
-  // multi-output fusion. In particular, do not check whether an instruction is
-  // expensive to duplicate, since this doesn't matter here.
-  return GpuInstructionFusion::ShouldFuse(consumer, operand_index);
+  return false;
 }
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(

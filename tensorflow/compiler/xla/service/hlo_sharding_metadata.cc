@@ -99,7 +99,7 @@ std::vector<PassThrough> LocatePassThroughDomainLinks(
         << "Instruction is not a kDomain: " << instruction->ToString();
     for (HloInstruction* user : instruction->users()) {
       if (user->opcode() == HloOpcode::kDomain &&
-          domain.exit_domains.count(user) != 0) {
+          domain.exit_domains.contains(user)) {
         pass_through.emplace_back(user, instruction);
         VLOG(2) << "Found passthrough domain link:";
         VLOG(2) << "  " << user->ToString();
@@ -253,7 +253,7 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
       instruction->shape(), HloSharding::AssignDevice(kUnassignedDevice));
   for (HloInstruction* user : instruction->users()) {
     if (user->opcode() == HloOpcode::kDomain &&
-        domain.exit_domains.count(user) > 0) {
+        domain.exit_domains.contains(user)) {
       // If a user is a domain and it is registered in the domain exits, then
       // the instruction sharding is taken directly from the domain, and no
       // further users need to be visited.

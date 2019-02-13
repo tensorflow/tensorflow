@@ -22,9 +22,11 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
+#include "tensorflow/core/grappler/verifiers/graph_verifier.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/protobuf/verifier_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -62,6 +64,12 @@ class MetaOptimizer : public GraphOptimizer {
   // Returns the config for a custom graph optimizer. Null if none was found.
   const RewriterConfig::CustomGraphOptimizer* GetCustomGraphOptimizerConfig(
       const string& name) const;
+
+  // Initialiaze active verifiers from the RewriterConfig toggles.
+  void InitializeVerifiers(
+      std::vector<std::unique_ptr<GraphVerifier>>* inter_optimizer_verifiers,
+      std::vector<std::unique_ptr<GraphVerifier>>* post_optimization_verifiers)
+      const;
 
   // Run optimization pass over a single GrapplerItem. Meta optimizer might run
   // multiple such passes: 1) for the main graph 2) for the function library
@@ -112,16 +120,20 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
 // `device_set`: the set of devices that graph can refer to.
 // `cpu_device`: the CPU device.
 // `config_proto`: Grapper configuration.
+// `grappler_item_id': Grappler item id (e.g. optimized function name).
+// `optimization_options`: Grappler optimization constraints that are known only
+//    at runtime.
 //
 // **g is a graph constructed based on the runtime library 'lib'.
 // OptimizeGraph mutates **g extensively and replaces '*g' with a
 // complete copy. Therefore, the caller should not keep any references
 // to nodes *g.
-Status OptimizeGraph(std::vector<string> ret_node_names,
-                     FunctionLibraryDefinition* lib,
-                     const DeviceSet& device_set, Device* cpu_device,
-                     const ConfigProto& config_proto,
-                     std::unique_ptr<tensorflow::Graph>* g);
+Status OptimizeGraph(
+    std::vector<string> ret_node_names, FunctionLibraryDefinition* lib,
+    const DeviceSet& device_set, Device* cpu_device,
+    const ConfigProto& config_proto, const string& grappler_item_id,
+    const GrapplerItem::OptimizationOptions& optimization_options,
+    std::unique_ptr<tensorflow::Graph>* g);
 
 }  // namespace grappler
 }  // namespace tensorflow

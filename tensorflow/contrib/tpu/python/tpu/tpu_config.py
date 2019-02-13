@@ -223,7 +223,8 @@ class RunConfig(run_config_lib.RunConfig):
 
       # Merge the cluster_def into the ConfigProto.
       if self._session_config is None:  # pylint: disable=access-member-before-definition
-        self._session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+        self._session_config = config_pb2.ConfigProto(
+            allow_soft_placement=True, isolate_session_state=True)
       if self._session_config.HasField('cluster_def'):
         raise ValueError(
             'You cannot provide a ClusterResolver and '

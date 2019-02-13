@@ -842,8 +842,11 @@ class _VariableStore(object):
         if isinstance(var, resource_variable_ops.ResourceVariable):
           raise ValueError(err_msg)
         tb = var.op.traceback[::-1]
-        # Throw away internal tf entries and only take a few lines.
-        tb = [x for x in tb if "tensorflow/python" not in x[0]][:3]
+        # Throw away internal tf entries and only take a few lines. In some
+        # cases the traceback can be longer (e.g. if someone uses factory
+        # functions to create variables) so we take more than needed in the
+        # default case.
+        tb = [x for x in tb if "tensorflow/python" not in x[0]][:5]
         raise ValueError("%s Originally defined at:\n\n%s" % (err_msg, "".join(
             traceback.format_list(tb))))
       found_var = self._vars[name]

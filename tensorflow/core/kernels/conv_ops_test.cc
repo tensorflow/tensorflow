@@ -952,8 +952,8 @@ class FusedConv2DWithBiasOpTest : public FusedConv2DOpTest<T> {};
 template <typename T>
 class FusedConv2DWithBatchNormOpTest : public FusedConv2DOpTest<T> {};
 
-TYPED_TEST_CASE_P(FusedConv2DWithBiasOpTest);
-TYPED_TEST_CASE_P(FusedConv2DWithBatchNormOpTest);
+TYPED_TEST_SUITE_P(FusedConv2DWithBiasOpTest);
+TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest);
 
 // -------------------------------------------------------------------------- //
 // Conv2D + BiasAdd + {Relu}                                                  //
@@ -1035,29 +1035,29 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, SpatialConvolutionAndRelu) {
   this->VerifyConv2DWithBatchNormAndRelu(filter_size, filter_count);
 }
 
-REGISTER_TYPED_TEST_CASE_P(FusedConv2DWithBiasOpTest,    //
-                           OneByOneConvolution,          //
-                           ImageSizeConvolution,         //
-                           SpatialConvolution,           //
-                           OneByOneConvolutionAndRelu,   //
-                           ImageSizeConvolutionAndRelu,  //
-                           SpatialConvolutionAndRelu);
+REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBiasOpTest,    //
+                            OneByOneConvolution,          //
+                            ImageSizeConvolution,         //
+                            SpatialConvolution,           //
+                            OneByOneConvolutionAndRelu,   //
+                            ImageSizeConvolutionAndRelu,  //
+                            SpatialConvolutionAndRelu);
 
-REGISTER_TYPED_TEST_CASE_P(FusedConv2DWithBatchNormOpTest,  //
-                           OneByOneConvolution,             //
-                           ImageSizeConvolution,            //
-                           SpatialConvolution,              //
-                           OneByOneConvolutionAndRelu,      //
-                           ImageSizeConvolutionAndRelu,     //
-                           SpatialConvolutionAndRelu);
+REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest,  //
+                            OneByOneConvolution,             //
+                            ImageSizeConvolution,            //
+                            SpatialConvolution,              //
+                            OneByOneConvolutionAndRelu,      //
+                            ImageSizeConvolutionAndRelu,     //
+                            SpatialConvolutionAndRelu);
 
 using FusedBiasAddDataTypes = ::testing::Types<float, double>;
-INSTANTIATE_TYPED_TEST_CASE_P(Test, FusedConv2DWithBiasOpTest,
-                              FusedBiasAddDataTypes);
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBiasOpTest,
+                               FusedBiasAddDataTypes);
 
 using FusedBatchNormDataTypes = ::testing::Types<float>;
-INSTANTIATE_TYPED_TEST_CASE_P(Test, FusedConv2DWithBatchNormOpTest,
-                              FusedBatchNormDataTypes);
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBatchNormOpTest,
+                               FusedBatchNormDataTypes);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Performance benchmarks for the FusedConv2DWithBiasOp.                      //
@@ -1497,6 +1497,26 @@ BM_FusedConv2DWithBatchNormAndRelu(32, 32, 32, 128, 3, 3, 1024, cpu,
                                    "3x3 /b 32");
 
 #if GOOGLE_CUDA
+// -------------------------------------------------------------------------- //
+// 1x1 Convolution
+// -------------------------------------------------------------------------- //
+
+BM_Conv2D(8, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 8");
+BM_Conv2D(16, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 16");
+BM_Conv2D(32, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 32");
+
+BM_Conv2DWithBiasAndRelu(8, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 8");
+BM_Conv2DWithBiasAndRelu(16, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 16");
+BM_Conv2DWithBiasAndRelu(32, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 32");
+
+BM_FusedConv2DWithBiasAndRelu(8, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 8");
+BM_FusedConv2DWithBiasAndRelu(16, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 16");
+BM_FusedConv2DWithBiasAndRelu(32, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 32");
+
+// -------------------------------------------------------------------------- //
+// 3x3 Convolution
+// -------------------------------------------------------------------------- //
+
 BM_Conv2D(8, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 8");
 BM_Conv2D(16, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 16");
 BM_Conv2D(32, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 32");

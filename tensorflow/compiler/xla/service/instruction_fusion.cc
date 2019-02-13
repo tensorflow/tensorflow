@@ -95,6 +95,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kPad:
     case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
+    case HloOpcode::kReplicaId:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
@@ -157,6 +158,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kSort:
     case HloOpcode::kTanh:
     case HloOpcode::kTrace:
+    case HloOpcode::kTriangularSolve:
     case HloOpcode::kWhile:
     case HloOpcode::kGetDimensionSize:
       return true;
@@ -178,19 +180,18 @@ bool InstructionFusion::EffectivelyAtMostUnary(HloInstruction* hlo) {
           output_rank = std::max(output_rank, ShapeUtil::TrueRank(subshape));
         }
       });
-  return std::count_if(hlo->operands().begin(), hlo->operands().end(),
-                       [output_rank](HloInstruction* operand) {
-                         if (operand->opcode() == HloOpcode::kBroadcast ||
-                             operand->opcode() == HloOpcode::kIota) {
-                           return false;
-                         }
-                         if (operand->opcode() == HloOpcode::kConstant &&
-                             ShapeUtil::IsEffectiveScalar(operand->shape())) {
-                           return false;
-                         }
-                         return ShapeUtil::TrueRank(operand->shape()) >=
-                                output_rank;
-                       }) <= 1;
+  return absl::c_count_if(
+             hlo->operands(), [output_rank](HloInstruction* operand) {
+               if (operand->opcode() == HloOpcode::kBroadcast ||
+                   operand->opcode() == HloOpcode::kIota) {
+                 return false;
+               }
+               if (operand->opcode() == HloOpcode::kConstant &&
+                   ShapeUtil::IsEffectiveScalar(operand->shape())) {
+                 return false;
+               }
+               return ShapeUtil::TrueRank(operand->shape()) >= output_rank;
+             }) <= 1;
 }
 
 bool InstructionFusion::CanFuseOnAllPaths(
@@ -409,9 +410,8 @@ class ReversePostOrderFusionQueue : public FusionQueue {
       }
       sorted_operand_numbers.push_back(i);
     }
-    std::sort(
-        sorted_operand_numbers.begin(), sorted_operand_numbers.end(),
-        [&](int64 i, int64 j) {
+    absl::c_sort(
+        sorted_operand_numbers, [&](int64 i, int64 j) {
           // Instructions with higher priority in the queue come first.
           return (
               FindOrDie(post_order_index_, instruction->mutable_operand(i)) >

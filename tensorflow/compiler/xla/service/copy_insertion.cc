@@ -349,11 +349,12 @@ Status AddCopiesForAliasedInputOutputs(HloModule* module) {
     ShapeTree<bool> param_indices_to_copy(param->shape());
 
     module->input_output_alias_config().ForEachAlias(
-        [&](const ShapeIndex& output_index, int64 param_number,
-            const ShapeIndex& param_index) {
-          if (param_number == param->parameter_number()) {
+        [&](const ShapeIndex& output_index,
+            const HloInputOutputAliasConfig::Alias& alias) {
+          if (alias.parameter_number == param->parameter_number()) {
             param_has_alias = true;
-            *(param_indices_to_copy.mutable_element(param_index)) = true;
+            *(param_indices_to_copy.mutable_element(alias.parameter_index)) =
+                true;
             *(output_indices_to_copy.mutable_element(output_index)) = true;
           }
         });
@@ -395,13 +396,14 @@ Status AddCopiesForAliasedInputOutputs(HloModule* module) {
 
   // Add control dependencies between the input/output copies.
   TF_RETURN_IF_ERROR(module->input_output_alias_config().ForEachAliasWithStatus(
-      [&](const ShapeIndex& output_index, int64 param_number,
-          const ShapeIndex& input_index) -> Status {
-        if (!copied_parameters[param_number]) {
+      [&](const ShapeIndex& output_index,
+          const HloInputOutputAliasConfig::Alias& alias) -> Status {
+        if (!copied_parameters[alias.parameter_number]) {
           return Status::OK();
         }
         HloInstruction* from =
-            copied_parameters[param_number]->element(input_index);
+            copied_parameters[alias.parameter_number]->element(
+                alias.parameter_index);
         HloInstruction* to = output_copy_tree.element(output_index);
 
         TF_RET_CHECK(from != nullptr);
@@ -539,10 +541,9 @@ class CopyRemover {
         }
 
         std::vector<const HloValue*> values = buffer.values();
-        std::sort(values.begin(), values.end(),
-                  [this](const HloValue* a, const HloValue* b) {
-                    return ordering_.IsDefinedBefore(*a, *b);
-                  });
+        absl::c_sort(values, [this](const HloValue* a, const HloValue* b) {
+          return ordering_.IsDefinedBefore(*a, *b);
+        });
 
         // Create a list containing all of the values in the buffer.
         AddValueList(values, &value_to_node);
@@ -842,12 +843,11 @@ class CopyRemover {
       copy_value_node->next->prev = operand_node;
 
       // Patch up uses. Remove use of copy from operand_node uses.
-      auto it =
-          std::find_if(operand_node->uses.begin(), operand_node->uses.end(),
-                       [copy_value_node](const HloUse* use) {
-                         return use->instruction ==
-                                copy_value_node->value->defining_instruction();
-                       });
+      auto it = absl::c_find_if(
+          operand_node->uses, [copy_value_node](const HloUse* use) {
+            return use->instruction ==
+                   copy_value_node->value->defining_instruction();
+          });
       CHECK(it != operand_node->uses.end());
       operand_node->uses.erase(it);
 

@@ -567,7 +567,8 @@ def _mean_squared_loss(labels, logits, weights=None):
     if len(logits.get_shape()) == 1:
       logits = array_ops.expand_dims(logits, axis=1)
     logits.get_shape().assert_is_compatible_with(labels.get_shape())
-    loss = math_ops.square(logits - math_ops.to_float(labels), name=name)
+    loss = math_ops.squared_difference(
+        logits, math_ops.to_float(labels), name=name)
     return _compute_weighted_loss(loss, weights)
 
 

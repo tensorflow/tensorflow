@@ -118,6 +118,9 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto c64_lit = LiteralUtil::CreateR0<complex64>({3.14f, 2.78f});
   EXPECT_EQ("c64[] (3.14, 2.78)", c64_lit.ToString());
 
+  auto c128_lit = LiteralUtil::CreateR0<complex128>({3.14f, 2.78f});
+  EXPECT_EQ("c128[] (3.14, 2.78)", c128_lit.ToString());
+
   auto bf16_lit = LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(0.5f));
   EXPECT_EQ("bf16[] 0.5", bf16_lit.ToString());
 
@@ -469,6 +472,21 @@ TEST_F(LiteralUtilTest, C64Equality) {
   EXPECT_NE(vector, vector_reversed);
 }
 
+TEST_F(LiteralUtilTest, C128Equality) {
+  // Test equality with tuples.
+  auto vector = LiteralUtil::CreateR1<complex128>({{1.0, 2.0}, {3.0, 4.0}});
+
+  // Tuple with the same elements. One element is shared with the original
+  // tuple, the other is a clone of the element in the original tuple.
+  auto vector_clone =
+      LiteralUtil::CreateR1<complex128>({{1.0, 2.0}, {3.0, 4.0}});
+  EXPECT_EQ(vector, vector_clone);
+
+  auto vector_reversed =
+      LiteralUtil::CreateR1<complex128>({{3.0, 4.0}, {1.0, 2.0}});
+  EXPECT_NE(vector, vector_reversed);
+}
+
 TEST_F(LiteralUtilTest, IsAllTuple) {
   auto element1 = LiteralUtil::CreateR0<float>(0.0);
   auto element2 = LiteralUtil::CreateR2<float>({{0.0, 0.0}, {0.0, 0.0}});
@@ -623,7 +641,7 @@ template <typename T>
 class LiteralUtilTestTemplated : public ::testing::Test {};
 
 using TestedTypes = ::testing::Types<float, int32, uint32, complex64>;
-TYPED_TEST_CASE(LiteralUtilTestTemplated, TestedTypes);
+TYPED_TEST_SUITE(LiteralUtilTestTemplated, TestedTypes);
 
 TYPED_TEST(LiteralUtilTestTemplated, Relayout2x2) {
   // Make a non-integer for floating point types.
@@ -836,6 +854,13 @@ TEST_F(LiteralUtilTest, PopulateR1C64) {
   EXPECT_EQ(output, expected);
 }
 
+TEST_F(LiteralUtilTest, PopulateR1C128) {
+  Literal output(ShapeUtil::MakeShape(C128, {1}));
+  output.PopulateR1<complex128>({{77, 88}});
+  auto expected = LiteralUtil::CreateR1<complex128>({{77, 88}});
+  EXPECT_EQ(output, expected);
+}
+
 TEST_F(LiteralUtilTest, PopulateR2C64) {
   Literal output(ShapeUtil::MakeShape(C64, {2, 2}));
   output.PopulateR2<complex64>({{{7, 8}, {9, 10}}, {{1, 2}, {3, 4}}});
@@ -894,6 +919,14 @@ TEST_F(LiteralUtilTest, PopulateWithValueR2C64) {
   output.PopulateWithValue<complex64>({4, 2});
   auto expected =
       LiteralUtil::CreateR2<complex64>({{{4, 2}, {4, 2}}, {{4, 2}, {4, 2}}});
+  EXPECT_EQ(output, expected);
+}
+
+TEST_F(LiteralUtilTest, PopulateWithValueR2C128) {
+  Literal output(ShapeUtil::MakeShape(C128, {2, 2}));
+  output.PopulateWithValue<complex128>({4, 2});
+  auto expected =
+      LiteralUtil::CreateR2<complex128>({{{4, 2}, {4, 2}}, {{4, 2}, {4, 2}}});
   EXPECT_EQ(output, expected);
 }
 
@@ -1237,7 +1270,17 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
     {{0, 19, 0, 21}, {22, 0, 24, 0}},
     {{26, 0, 28, 0}, {0, 31, 0, 33}},
   }}, layout_r4_dim0major_);
+  auto s16 = LiteralUtil::CreateR4WithLayout<int16>({{
+    {{10, 0, 12, 0}, {0, 15, 0, 17}},
+    {{0, 19, 0, 21}, {22, 0, 24, 0}},
+    {{26, 0, 28, 0}, {0, 31, 0, 33}},
+  }}, layout_r4_dim0major_);
   auto s32 = LiteralUtil::CreateR4WithLayout<int32>({{
+    {{10, 0, 12, 0}, {0, 15, 0, 17}},
+    {{0, 19, 0, 21}, {22, 0, 24, 0}},
+    {{26, 0, 28, 0}, {0, 31, 0, 33}},
+  }}, layout_r4_dim0major_);
+  auto u16 = LiteralUtil::CreateR4WithLayout<uint16>({{
     {{10, 0, 12, 0}, {0, 15, 0, 17}},
     {{0, 19, 0, 21}, {22, 0, 24, 0}},
     {{26, 0, 28, 0}, {0, 31, 0, 33}},
@@ -1298,8 +1341,18 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
     {{0.0f, 19.0f, 0.0f, 21.0f}, {22.0f, 0.0f, 24.0f, 0.0f}},
     {{26.0f, 0.0f, 28.0f, 0.0f}, {0.0f, 31.0f, 0.0f, 33.0f}},
   }}, layout_r4_dim0major_);
-  // clang-format on
+  auto c128 = LiteralUtil::CreateR4WithLayout<complex128>({{
+    {{10.0, 0.0, 12.0, 0.0}, {0.0, 15.0, 0.0, 17.0}},
+    {{0.0, 19.0, 0.0, 21.0}, {22.0, 0.0, 24.0, 0.0}},
+    {{26.0, 0.0, 28.0, 0.0}, {0.0, 31.0, 0.0, 33.0}},
+  }}, layout_r4_dim0major_);  // clang-format on
   Literal conv;
+
+  conv = s8.Convert(U16).ConsumeValueOrDie();
+  EXPECT_EQ(conv, u16);
+
+  conv = s8.Convert(S16).ConsumeValueOrDie();
+  EXPECT_EQ(conv, s16);
 
   conv = s8.Convert(U32).ConsumeValueOrDie();
   EXPECT_EQ(conv, u32);
@@ -1352,12 +1405,26 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
   conv = f16.Convert(C64).ConsumeValueOrDie();
   EXPECT_EQ(conv, c64);
 
+  conv = s32.Convert(S16).ConsumeValueOrDie();
+  EXPECT_EQ(conv, s16);
+
+  conv = s32.Convert(U16).ConsumeValueOrDie();
+  EXPECT_EQ(conv, u16);
+
+  conv = s32.Convert(C128).ConsumeValueOrDie();
+  EXPECT_EQ(conv, c128);
+
+  conv = f16.Convert(C128).ConsumeValueOrDie();
+  EXPECT_EQ(conv, c128);
+
   EXPECT_EQ(s32.Convert(TUPLE).status().code(),
             tensorflow::error::UNIMPLEMENTED);
-  EXPECT_EQ(s32.Convert(S16).status().code(), tensorflow::error::UNIMPLEMENTED);
-  EXPECT_EQ(s32.Convert(U16).status().code(), tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(c64.Convert(F32).status().code(), tensorflow::error::UNIMPLEMENTED);
   EXPECT_EQ(c64.Convert(S32).status().code(), tensorflow::error::UNIMPLEMENTED);
+  EXPECT_EQ(c128.Convert(F32).status().code(),
+            tensorflow::error::UNIMPLEMENTED);
+  EXPECT_EQ(c128.Convert(S32).status().code(),
+            tensorflow::error::UNIMPLEMENTED);
 }
 
 TEST_F(LiteralUtilTest, BitcastConvert) {
@@ -1719,7 +1786,8 @@ TEST_F(LiteralUtilTest, CreateFromShapeZeroInitialized) {
 
   Literal tuple = Literal::CreateFromShape(ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShape(F64, {}), ShapeUtil::MakeShape(PRED, {2}),
-       ShapeUtil::MakeShape(U64, {2, 1}), ShapeUtil::MakeShape(C64, {})}));
+       ShapeUtil::MakeShape(U64, {2, 1}), ShapeUtil::MakeShape(C64, {}),
+       ShapeUtil::MakeShape(C128, {})}));
 
   EXPECT_EQ(tuple.Get<double>({}, {0}), 0.0);
   EXPECT_EQ(tuple.Get<bool>({0}, {1}), false);
@@ -1727,6 +1795,7 @@ TEST_F(LiteralUtilTest, CreateFromShapeZeroInitialized) {
   EXPECT_EQ(tuple.Get<uint64>({0, 0}, {2}), 0);
   EXPECT_EQ(tuple.Get<uint64>({1, 0}, {2}), 0);
   EXPECT_EQ(tuple.Get<complex64>({}, {3}), complex64(0.0f, 0.0f));
+  EXPECT_EQ(tuple.Get<complex128>({}, {4}), complex128(0.0, 0.0));
 }
 
 TEST_F(LiteralUtilTest, ProtoRoundTrip) {
@@ -1736,6 +1805,8 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
   auto vector_int8 = LiteralUtil::CreateR1<int8>({-128, 0, 2, 4, 7, 56, 127});
   auto vector_uint8 = LiteralUtil::CreateR1<uint8>({128, 0, 2, 56, 127, 255});
   auto vector_c64 = LiteralUtil::CreateR1<complex64>({{1.0, 2.0}, {3.0, 4.0}});
+  auto vector_c128 =
+      LiteralUtil::CreateR1<complex128>({{1.0, 2.0}, {3.0, 4.0}});
   auto vector_bfloat16 = LiteralUtil::CreateR1<bfloat16>(
       {bfloat16{-1.0}, bfloat16{2.0}, bfloat16{-3.0}});
   auto vector_half =
@@ -1756,6 +1827,7 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
   EXPECT_EQ(vector_int8, to_from_proto(vector_int8));
   EXPECT_EQ(vector_uint8, to_from_proto(vector_uint8));
   EXPECT_EQ(vector_c64, to_from_proto(vector_c64));
+  EXPECT_EQ(vector_c128, to_from_proto(vector_c128));
   EXPECT_EQ(vector_bfloat16, to_from_proto(vector_bfloat16));
   EXPECT_EQ(matrix_pred, to_from_proto(matrix_pred));
   EXPECT_EQ(tuple, to_from_proto(tuple));

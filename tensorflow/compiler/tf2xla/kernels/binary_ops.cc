@@ -20,7 +20,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -165,12 +167,8 @@ XLA_MAKE_BINARY(
     xla::Div(xla::Mul(rhs, XlaHelpers::FloatLiteral(b, input_type(0), 0.5)),
              lhs, extend_dimensions));
 
-static xla::XlaOp Square(xla::XlaBuilder* builder, const xla::XlaOp& x) {
-  return xla::Mul(x, x);
-}
-
 XLA_MAKE_BINARY(SquaredDifference,
-                Square(b, xla::Sub(lhs, rhs, extend_dimensions)));
+                xla::Square(xla::Sub(lhs, rhs, extend_dimensions)));
 
 XLA_MAKE_BINARY(TruncateDiv, xla::Div(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(TruncateMod, xla::Rem(lhs, rhs, extend_dimensions));
@@ -195,14 +193,16 @@ XLA_MAKE_BINARY(SoftplusGrad,
 // softsigngrad(gradients, features) = gradients / (1 + abs(features)) ** 2
 XLA_MAKE_BINARY(SoftsignGrad,
                 xla::Div(lhs,
-                         Square(b, xla::Add(XlaHelpers::One(b, input_type(0)),
-                                            xla::Abs(rhs)))));
+                         xla::Square(xla::Add(XlaHelpers::One(b, input_type(0)),
+                                              xla::Abs(rhs)))));
 
 XLA_MAKE_BINARY(TanhGrad,
                 xla::Mul(rhs, xla::Sub(XlaHelpers::One(b, input_type(0)),
                                        xla::Mul(lhs, lhs))));
 
 XLA_MAKE_BINARY(Pow, xla::Pow(lhs, rhs, extend_dimensions));
+
+XLA_MAKE_BINARY(NextAfter, xla::NextAfter(lhs, rhs));
 
 #undef XLA_MAKE_BINARY
 

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -309,7 +310,7 @@ class BufferAssignmentTest : public HloTestBase {
 static bool BuffersDistinct(const std::vector<const HloInstruction*>& a,
                             const std::vector<const HloInstruction*>& b,
                             const BufferAssignment& assignment) {
-  std::set<BufferAllocation::Slice> a_slices;
+  absl::flat_hash_set<BufferAllocation::Slice> a_slices;
   for (const HloInstruction* instruction : a) {
     if (assignment.HasTopLevelAllocation(instruction)) {
       a_slices.insert(
@@ -319,8 +320,8 @@ static bool BuffersDistinct(const std::vector<const HloInstruction*>& a,
 
   for (const HloInstruction* instruction : b) {
     if (assignment.HasTopLevelAllocation(instruction)) {
-      if (a_slices.count(assignment.GetUniqueTopLevelSlice(instruction)
-                             .ConsumeValueOrDie())) {
+      if (a_slices.contains(assignment.GetUniqueTopLevelSlice(instruction)
+                                .ConsumeValueOrDie())) {
         return false;
       }
     }
@@ -462,6 +463,40 @@ TEST_F(BufferAssignmentTest, Basic) {
 
   // The sub node has a valid output buffer assigned.
   GetAssignedOutputAllocation(*buffers, sub);
+}
+
+TEST_F(BufferAssignmentTest, AliasedParamCanBeReused) {
+  // If an input buffer and output buffer aliases, the input buffer can be
+  // reused for other intermediate results.
+  //
+  // param0[100] ----- (neg1) -- (neg2)
+  //    |                           |
+  //    + -------- Aliased ---------+
+
+  auto builder = HloComputation::Builder(TestName());
+
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec100_, "p0"));
+  auto neg_1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param));
+  auto neg_2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, neg_1));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias(
+      {}, 0, {}, HloInputOutputAliasConfig::kUserAlias));
+
+  auto buffers = RunBufferAssignment(module.get());
+
+  BufferAllocation param_buffer = GetAssignedInputAllocation(*buffers, param);
+  BufferAllocation neg_1_buffer = GetAllocation(*buffers, neg_1, {});
+  BufferAllocation neg_2_buffer = GetAllocation(*buffers, neg_2, {});
+
+  // Everything use one buffer.
+  EXPECT_EQ(param_buffer.index(), neg_1_buffer.index());
+  EXPECT_EQ(neg_2_buffer.index(), neg_1_buffer.index());
 }
 
 TEST_F(BufferAssignmentTest, AddCannotReuse) {
@@ -2485,9 +2520,9 @@ while_body {
   get-tuple-element.3 = s32[] get-tuple-element(state), index=0
   constant.2 = s32[] constant(128)
   add.5 = s32[] add(get-tuple-element.3, constant.2)
-  constant.3 = s32[3]{0} constant({0, 0, 0})
-  dynamic-update-slice.5 = f32[1280,1,128]{2,1,0} dynamic-update-slice(get-tuple-element.4, broadcast.6, constant.3)
-  dynamic-update-slice.9 = f32[1280,1,128]{2,1,0} dynamic-update-slice(dynamic-update-slice.5, broadcast.6, constant.3)
+  constant.3 = s32[] constant(0)
+  dynamic-update-slice.5 = f32[1280,1,128]{2,1,0} dynamic-update-slice(get-tuple-element.4, broadcast.6, constant.3, constant.3, constant.3)
+  dynamic-update-slice.9 = f32[1280,1,128]{2,1,0} dynamic-update-slice(dynamic-update-slice.5, broadcast.6, constant.3, constant.3, constant.3)
   ROOT tuple.85 = (s32[], s32[], s32[2]{0}, f32[1280,1,128]{2,1,0}) tuple(add.5, dynamic-update-slice.9)
 }
 

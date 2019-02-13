@@ -3,11 +3,19 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cuda_cc_test",
-    "tf_cc_test",
     "tf_copts",
-    "tfe_xla_copts",
+    "tf_cuda_cc_test",
     "tf_cuda_library",
+    "tfe_xla_copts",
+)
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_additional_device_tracer_test_flags",
+    "tf_kernel_tests_linkstatic",
+)
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
 )
 
 tf_cuda_library(
@@ -62,6 +70,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:remote_device",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core:gpu_runtime",
     ],
 )
@@ -101,6 +110,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
+        "//tensorflow/core/profiler/lib:profiler_session",
     ],
 )
 
@@ -200,7 +210,33 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:remote_device",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/profiler/rpc:profiler_server",
         "//tensorflow/core:gpu_runtime",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "c_api_experimental_test",
+    size = "small",
+    srcs = [
+        "c_api_experimental_test.cc",
+    ],
+    args =
+        ["--heap_check=local"] + tf_additional_device_tracer_test_flags(),
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["nomac"],
+    deps = [
+        ":c_api_experimental",
+        ":c_api_test_util",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/contrib/tpu/profiler:trace_events_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 

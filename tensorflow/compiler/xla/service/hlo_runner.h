@@ -124,6 +124,14 @@ class HloRunner {
                             bool run_hlo_passes = true,
                             ExecutionProfile* profile = nullptr);
 
+  StatusOr<Literal> Execute(std::unique_ptr<Executable> executable,
+                            const absl::Span<const Literal* const> arguments,
+                            ExecutionProfile* profile = nullptr);
+
+  StatusOr<Literal> Execute(std::unique_ptr<Executable> executable,
+                            const absl::Span<const Literal> arguments,
+                            ExecutionProfile* profile = nullptr);
+
   // As Execute(), but accepts and returns device buffers instead of host
   // buffers.
   StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(

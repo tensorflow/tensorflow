@@ -137,9 +137,11 @@ namespace xla {
   V(kTanh, "tanh")                                           \
   V(kTrace, "trace")                                         \
   V(kTranspose, "transpose")                                 \
+  V(kTriangularSolve, "triangular-solve")                    \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                   \
   V(kTupleSelect, "tuple-select")                            \
-  V(kWhile, "while")
+  V(kWhile, "while")                                         \
+  V(kReplicaId, "replica-id")
 
 enum class HloOpcode {
 #define DECLARE_ENUM(enum_name, opcode_name, ...) enum_name,

@@ -206,8 +206,12 @@ class TimeDistributed(Wrapper):
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    assert len(input_shape) >= 3
-    self.input_spec = InputSpec(shape=input_shape)
+    if len(input_shape) < 3:
+      raise ValueError(
+          '`TimeDistributed` Layer should be passed an `input_shape ` '
+          'with at least 3 dimensions, received: ' + str(input_shape))
+    # Don't enforce the batch or time dimension.
+    self.input_spec = InputSpec(shape=[None, None] + input_shape[2:])
     child_input_shape = [input_shape[0]] + input_shape[2:]
     if not self.layer.built:
       # The base layer class calls a conversion function on the input shape to

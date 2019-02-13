@@ -209,7 +209,7 @@ std::ostream& operator<<(std::ostream& out, const HloValue& value) {
 }
 
 void HloValueSet::SortAndUniquifyValues() {
-  std::sort(values_.begin(), values_.end(), HloValue::IdLessThan);
+  absl::c_sort(values_, HloValue::IdLessThan);
   values_.erase(std::unique(values_.begin(), values_.end(), HloValue::IdEqual),
                 values_.end());
 }

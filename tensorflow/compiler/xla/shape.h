@@ -72,6 +72,10 @@ class Shape {
     dynamic_dimensions_[dimension] = is_dynamic;
   }
 
+  const std::vector<bool>& dynamic_dimensions() const {
+    return dynamic_dimensions_;
+  }
+
   // Add dimension_upper_bound().
 
   // Removes the given dimension form the shape. Layout, if it exists, is
@@ -137,6 +141,49 @@ class Shape {
   string SerializeAsString() const { return ToProto().SerializeAsString(); }
   string ShortDebugString() const { return ToProto().ShortDebugString(); }
   string DebugString() const { return ToProto().DebugString(); }
+
+  // Equal is a configurable functor to check the equality of two shapes.
+  //
+  // Examples:
+  //
+  // - Comparing two shapes ignoring they layout difference:
+  //   Equal().IgnoreLayout()(shape1, shape2);
+  //
+  // - Comparing two shapes ignoring they layout and element type difference:
+  //   Equal().IgnoreLayout().IgnoreElementType()(shape1, shape2);
+  class Equal {
+   public:
+    Equal() = default;
+
+    bool operator()(const Shape& lhs, const Shape& rhs);
+
+    Equal& IgnoreLayout() {
+      ignore_layout_ = true;
+      return *this;
+    }
+    Equal& IgnoreElementType() {
+      ignore_element_type_ = true;
+      return *this;
+    }
+    Equal& IgnoreFpPrecision() {
+      ignore_fp_precision_ = true;
+      return *this;
+    }
+    Equal& IgnoreDynamicDimension() {
+      ignore_dynamic_dimension_ = true;
+      return *this;
+    }
+
+   public:
+    bool ignore_layout_ = false;
+    bool ignore_element_type_ = false;
+    bool ignore_fp_precision_ = false;
+    bool ignore_dynamic_dimension_ = false;
+  };
+
+  // Test that all fields of the shape are the same, equivalent to Equal().
+  bool operator==(const Shape& other) const { return Equal()(*this, other); }
+  bool operator!=(const Shape& other) const { return !(*this == other); }
 
  private:
   // The element type of this shape (tuple, array, etc).

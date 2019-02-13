@@ -5,7 +5,7 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'reduction\', \'name\'], varargs=None, keywords=None, defaults=[\'sum_over_batch_size\', \'None\'], "
+    argspec: "args=[\'self\', \'axis\', \'reduction\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'sum_over_batch_size\', \'None\'], "
   }
   member_method {
     name: "call"

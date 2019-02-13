@@ -116,6 +116,10 @@ class ShapeInference {
   static StatusOr<Shape> InferFftShape(const Shape& in, FftType fft_type,
                                        absl::Span<const int64> fft_length);
 
+  // Infers the shape produced by the given triangular solve operation.
+  static StatusOr<Shape> InferTriangularSolveShape(
+      const Shape& a, const Shape& b, const TriangularSolveOptions& options);
+
   // Infers the shape produced by a cross replica sum with the given operand
   // shapes.
   static StatusOr<Shape> InferAllReduceShape(
@@ -177,14 +181,14 @@ class ShapeInference {
   // in 'slice_sizes', with dynamic start indices shape 'start_indices_shape'.
   static StatusOr<Shape> InferDynamicSliceShape(
       const Shape& operand_shape, absl::Span<const Shape> start_index_shapes,
-      absl::Span<const int64> slice_sizes, bool allow_scalar_indices = false);
+      absl::Span<const int64> slice_sizes, bool allow_scalar_indices = true);
 
   // Infers the shape produced by a dynamic update slice operation based
   // on the shape of operand and update.
   static StatusOr<Shape> InferDynamicUpdateSliceShape(
       const Shape& operand_shape, const Shape& update_shape,
       absl::Span<const Shape> start_index_shapes,
-      bool allow_scalar_indices = false);
+      bool allow_scalar_indices = true);
 
   // Infers the shape produced by doing a compile-time-constant indexing into
   // the given input shape. This is essential for operations on tuples, because

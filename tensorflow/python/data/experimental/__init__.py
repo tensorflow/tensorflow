@@ -58,6 +58,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@make_csv_dataset
 @@make_saveable_from_iterator
 @@map_and_batch
+@@map_and_batch_with_legacy_function
 @@parallel_interleave
 @@parse_example_dataset
 @@prefetch_to_device
@@ -65,6 +66,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@sample_from_datasets
 @@scan
 @@shuffle_and_repeat
+@@take_while
 @@unbatch
 @@unique
 
@@ -81,6 +83,7 @@ from __future__ import print_function
 
 from tensorflow.python.data.experimental.ops.batching import dense_to_sparse_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch
+from tensorflow.python.data.experimental.ops.batching import map_and_batch_with_legacy_function
 from tensorflow.python.data.experimental.ops.batching import unbatch
 from tensorflow.python.data.experimental.ops.cardinality import cardinality
 from tensorflow.python.data.experimental.ops.cardinality import INFINITE as INFINITE_CARDINALITY
@@ -115,6 +118,7 @@ from tensorflow.python.data.experimental.ops.shuffle_ops import shuffle_and_repe
 from tensorflow.python.data.experimental.ops.stats_aggregator import StatsAggregator
 from tensorflow.python.data.experimental.ops.stats_ops import latency_stats
 from tensorflow.python.data.experimental.ops.stats_options import StatsOptions
+from tensorflow.python.data.experimental.ops.take_while_ops import take_while
 from tensorflow.python.data.experimental.ops.threading_options import ThreadingOptions
 from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter

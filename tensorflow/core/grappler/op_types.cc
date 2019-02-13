@@ -47,6 +47,12 @@ bool IsAnyDiv(const NodeDef& node) {
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
+bool IsAnyMaxPool(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPool" || op == "MaxPoolV2" || op == "MaxPool3D" ||
+         op == "MaxPoolWithArgmax" || op == "FractionalMaxPool";
+}
+
 bool IsApproximateEqual(const NodeDef& node) {
   return node.op() == "ApproximateEqual";
 }
@@ -164,18 +170,13 @@ bool IsDiv(const NodeDef& node) { return node.op() == "Div"; }
 bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
   static const gtl::FlatSet<string>* const kMonotonicNonDecreasingOps =
       CHECK_NOTNULL((new gtl::FlatSet<string>{
-          "Asinh", "Atanh",   "Ceil",  "Elu",  "Erf",  "Exp",   "Expm1",
-          "Floor", "Log",     "Log1p", "Relu", "Relu", "Relu6", "Rint",
-          "Selu",  "Sigmoid", "Sign",  "Sinh", "Sqrt", "Tanh",
+          "Acosh", "Asin", "Asinh",    "Atan",     "Atanh", "Ceil",
+          "Elu",   "Erf",  "Exp",      "Expm1",    "Floor", "Log",
+          "Log1p", "Relu", "Relu6",    "Rint",     "Selu",  "Sigmoid",
+          "Sign",  "Sinh", "Softsign", "Softplus", "Sqrt",  "Tanh",
       }));
   static const gtl::FlatSet<string>* const kMonotonicNonIncreasingOps =
-      CHECK_NOTNULL((new gtl::FlatSet<string>{
-          "Inv",
-          "Reciprocal",
-          "Erfc",
-          "Rsqrt",
-          "Neg",
-      }));
+      CHECK_NOTNULL((new gtl::FlatSet<string>{"Acos", "Erfc", "Neg", "Rsqrt"}));
   if (kMonotonicNonDecreasingOps->count(node.op()) > 0) {
     if (is_non_decreasing) {
       *is_non_decreasing = true;
@@ -320,6 +321,8 @@ bool IsNextIteration(const NodeDef& node) {
   return op == "NextIteration" || op == "RefNextIteration";
 }
 
+bool IsOnesLike(const NodeDef& node) { return node.op() == "OnesLike"; }
+
 bool IsPack(const NodeDef& node) { return node.op() == "Pack"; }
 
 bool IsPad(const NodeDef& node) {
@@ -341,7 +344,9 @@ bool IsPolygamma(const NodeDef& node) { return node.op() == "Polygamma"; }
 
 bool IsPow(const NodeDef& node) { return node.op() == "Pow"; }
 
-bool IsPrint(const NodeDef& node) { return node.op() == "Print"; }
+bool IsPrint(const NodeDef& node) {
+  return node.op() == "Print" || node.op() == "PrintV2";
+}
 
 bool IsProd(const NodeDef& node) { return node.op() == "Prod"; }
 
@@ -354,6 +359,10 @@ bool IsRandomShuffle(const NodeDef& node) {
 }
 
 bool IsRank(const NodeDef& node) { return node.op() == "Rank"; }
+
+bool IsReadVariableOp(const NodeDef& node) {
+  return node.op() == "ReadVariableOp";
+}
 
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }
 
@@ -534,6 +543,8 @@ bool IsWhile(const NodeDef& node) {
   return op == "While" || op == "StatelessWhile";
 }
 
+bool IsZerosLike(const NodeDef& node) { return node.op() == "ZerosLike"; }
+
 bool IsZeta(const NodeDef& node) { return node.op() == "Zeta"; }
 
 namespace {
@@ -559,6 +570,29 @@ bool MaybeHasRefInput(const NodeDef& node) {
     }
   }
   return false;
+}
+
+bool IsDataset(const NodeDef& node) {
+  const string& op = node.op();
+  // See `GetNodeClassForOp` in core/graph/graph.cc.
+  return op == "IteratorGetNext" || op == "IteratorGetNextSync" ||
+         op == "DatasetToSingleElement" || op == "ReduceDataset";
+}
+
+bool IsStateful(const NodeDef node, const OpRegistryInterface* op_registry) {
+  const OpDef* op_def = nullptr;
+  const string& op_name = node.op();
+  Status status = op_registry->LookUpOpDef(op_name, &op_def);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to lookup OpDef for " << op_name
+                 << ". Error: " << status.error_message();
+    return false;
+  }
+  return op_def->is_stateful();
+}
+
+bool IsStateful(const NodeDef node) {
+  return IsStateful(node, OpRegistry::Global());
 }
 
 bool IsFreeOfSideEffect(const NodeDef& node,
@@ -706,7 +740,6 @@ bool IsUnaryElementWise(const NodeDef& node) {
           "Asin",
           "Asinh",
           "Atan",
-          "Atan2",
           "Atanh",
           "Ceil",
           "ComplexAbs",

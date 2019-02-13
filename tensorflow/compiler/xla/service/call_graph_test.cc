@@ -384,7 +384,7 @@ TEST_F(CallGraphTest, ComplexGraph) {
 
   // Verify visitation order of some computations in the graph.
   auto index_of = [&visited](const HloComputation* comp) {
-    auto it = std::find(visited.begin(), visited.end(), comp);
+    auto it = absl::c_find(visited, comp);
     EXPECT_NE(it, visited.end());
     return std::distance(visited.begin(), it);
   };

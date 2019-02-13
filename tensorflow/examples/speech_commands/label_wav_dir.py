@@ -46,7 +46,7 @@ FLAGS = None
 
 def load_graph(filename):
   """Unpersists graph from file as default graph."""
-  with tf.gfile.FastGFile(filename, 'rb') as f:
+  with tf.gfile.GFile(filename, 'rb') as f:
     graph_def = tf.GraphDef()
     graph_def.ParseFromString(f.read())
     tf.import_graph_def(graph_def, name='')

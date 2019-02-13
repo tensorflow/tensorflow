@@ -199,7 +199,7 @@ bool HloModuleGroupMetadata::IsChannelInstruction(
 }
 
 bool HloModuleGroupMetadata::IsCompanionInstruction(HloInstruction* hlo) const {
-  return companion_set_index_.count(hlo) > 0;
+  return companion_set_index_.contains(hlo);
 }
 
 bool HloModuleGroupMetadata::InstructionCommunicates(
@@ -389,9 +389,10 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
                instruction1->opcode() == HloOpcode::kCall);
   VLOG(2) << "adding as companions:" << instruction1->ToString() << " and "
           << instruction2->ToString();
-
-  if (!ContainsKey(companion_set_index_, instruction1) &&
-      !ContainsKey(companion_set_index_, instruction2)) {
+  if (instruction1 == instruction2) {
+    return Status::OK();
+  } else if (!ContainsKey(companion_set_index_, instruction1) &&
+             !ContainsKey(companion_set_index_, instruction2)) {
     companion_sets_.push_back(
         absl::make_unique<std::vector<HloInstruction*>>());
     auto companion_set = companion_sets_.back().get();
@@ -419,7 +420,10 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
     for (HloInstruction* hlo : Companions(instruction2)) {
       companion_set_index_[hlo] = companion_set_index_[instruction1];
     }
-    companion_sets_.erase(companion_sets_.begin() + index_to_remove);
+    // We can't remove the set from the vector because companion_set_index_
+    // references sets by their index in this vector, so we reset to nullptr
+    // instead.
+    companion_sets_[index_to_remove].reset(nullptr);
   }
   return Status::OK();
 }
@@ -510,7 +514,7 @@ Status HloModuleGroupMetadata::CheckCommunicatingInstruction(
   HloComputation* computation = instruction->parent();
   const HloModule* module = computation->parent();
   if (module->entry_computation() == computation ||
-      tracked_instructions_.count(computation) > 0) {
+      tracked_instructions_.contains(computation)) {
     return Status::OK();
   }
   return FailedPrecondition("channel is used in disallowed computation");

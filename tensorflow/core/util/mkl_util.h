@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
 #ifdef INTEL_MKL
 
+#include <list>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -34,8 +35,7 @@ limitations under the License.
 #endif
 
 #ifdef INTEL_MKL_ML_ONLY
-#error \
-    "Compiling for INTEL MKL ML only is no longer supported.Please use MKL DNN (the default option for --config=mkl)"
+#error "Please use INTEL MKL DNN (the default option for --config=mkl)."
 #endif
 
 #ifdef INTEL_MKL_ML_ONLY
@@ -86,7 +86,7 @@ namespace tensorflow {
 // For use with MKL ML, has been deprecated
 typedef enum { W = 0, H = 1, C = 2, N = 3 } MklDims;
 
-// The dimensions order that MKL DNN internally uses for 2D activations
+// The dimensions order that MKL-DNN internally uses for 2D activations
 // [Batch, Channel, Height, Width] and
 // for 2D filters [Out_Channel, In_Channel, Height, Width].
 typedef enum {
@@ -98,7 +98,7 @@ typedef enum {
   Dim_I = 1
 } MklDnnDims;
 
-// The dimensions order that MKL DNN internally uses for 3D activations
+// The dimensions order that MKL-DNN internally uses for 3D activations
 // [Batch, Channel, Depth, Height, Width] and
 // for 3D filters [Out_Channel, In_Channel, Depth, Height, Width].
 typedef enum {
@@ -130,7 +130,7 @@ typedef enum {
   TF_3DFILTER_DIM_O = 4
 } TFFilterDims3d;
 
-// The dimensions order that MKL DNN requires for the filter in a grouped
+// The dimensions order that MKL-DNN requires for the filter in a grouped
 // convolution (2D only)
 typedef enum {
   MKL_GROUP_FILTER_DIM_G = 0,
@@ -837,7 +837,6 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
       return mkl_tensor;  // return input since it is already TF tensor
 
     TensorShape output_shape = mkl_shape.GetTfShape();
-    ;
 
     // Allocate output tensor.
     context->allocate_temp(DataTypeToEnum<T>::v(), output_shape,
@@ -1766,6 +1765,7 @@ class MklDnnData {
   inline void SetUsrMem(const memory::primitive_desc& pd,
                         void* data_buffer = nullptr) {
     CHECK_NOTNULL(cpu_engine_);
+    if (user_memory_) delete user_memory_;
     // TODO(nhasabni): can we remove dynamic memory allocation?
     if (data_buffer) {
       user_memory_ = new memory(pd, data_buffer);
@@ -2060,6 +2060,111 @@ class MklPrimitive {
 
 const mkldnn::memory::dims NONE_DIMS = {};
 
+//
+// LRUCache is a class which implements LRU (Least Recently Used) cache.
+// The implementation is similar to that of
+//    tensorflow/core/platform/cloud/expiring_lru_cache.h
+// without its thread-safe part because the cache is supposed to be
+// used as thread local (for instance, MklPrimitive caching).
+//
+// The LRU list maintains objects in chronological order based on
+// creation time, with the least recently accessed object at the
+// tail of LRU list, while the most recently accessed object
+// at the head of LRU list.
+//
+// This class is used to maintain an upper bound on the total number of
+// cached items. When the cache reaches its capacity, the LRU item will
+// be removed and replaced by a new one from SetOp call.
+//
+template <typename T>
+class LRUCache {
+ public:
+  explicit LRUCache(size_t capacity) {
+    capacity_ = capacity;
+    Clear();
+  }
+
+  T* GetOp(const string& key) {
+    auto it = cache_.find(key);
+    if (it == cache_.end()) {
+      return nullptr;
+    }
+
+    // Move to the front of LRU list as the most recently accessed.
+    lru_list_.erase(it->second.lru_iterator);
+    lru_list_.push_front(it->first);
+    it->second.lru_iterator = lru_list_.begin();
+    return it->second.op;
+  }
+
+  void SetOp(const string& key, T* op) {
+    if (lru_list_.size() >= capacity_) {
+      Delete();
+    }
+
+    // Insert an entry to the front of the LRU list
+    lru_list_.push_front(key);
+    Entry entry(op, lru_list_.begin());
+    cache_.emplace(std::make_pair(key, std::move(entry)));
+  }
+
+  void Clear() {
+    if (lru_list_.empty()) return;
+
+    // Clean up the cache
+    cache_.clear();
+    lru_list_.clear();
+  }
+
+ private:
+  struct Entry {
+    // The entry's value.
+    T* op;
+
+    // A list iterator pointing to the entry's position in the LRU list.
+    std::list<string>::iterator lru_iterator;
+
+    // Constructor
+    Entry(T* op, std::list<string>::iterator it) {
+      this->op = op;
+      this->lru_iterator = it;
+    }
+
+    // Move construcctor
+    Entry(Entry&& source) noexcept
+        : lru_iterator(std::move(source.lru_iterator)) {
+      op = std::move(source.op);
+      source.op = std::forward<T*>(nullptr);
+    }
+
+    // Destructor
+    ~Entry() {
+      if (op != nullptr) delete op;
+    }
+  };
+
+  // Remove the least recently accessed entry from LRU list, which
+  // is the tail of lru_list_. Update cache_ correspondingly.
+  bool Delete() {
+    if (lru_list_.empty()) return false;
+    string key = lru_list_.back();
+    lru_list_.pop_back();
+    cache_.erase(key);
+    return true;
+  }
+
+  // Cache capacity
+  size_t capacity_;
+
+  // The cache, a map from string key to a LRU entry.
+  std::unordered_map<string, Entry> cache_;
+
+  // The LRU list of entries.
+  // The front of the list contains the key of the most recently accessed
+  // entry, while the back of the list is the least recently accessed entry.
+  std::list<string> lru_list_;
+};
+
 template <typename T>
 class MklPrimitiveFactory {
  public:
@@ -2068,23 +2173,13 @@ class MklPrimitiveFactory {
   ~MklPrimitiveFactory() {}
 
   MklPrimitive* GetOp(const string& key) {
-    auto& map = MklPrimitiveFactory<T>::GetHashMap();
-    auto stream_iter = map.find(key);
-    if (stream_iter == map.end()) {
-      return nullptr;
-    } else {
-      CHECK(stream_iter->second != nullptr) << "nullptr present in map";
-      return stream_iter->second;
-    }
+    auto& lru_cache = MklPrimitiveFactory<T>::GetLRUCache();
+    return lru_cache.GetOp(key);
   }
 
   void SetOp(const string& key, MklPrimitive* op) {
-    auto& map = MklPrimitiveFactory<T>::GetHashMap();
-    auto stream_iter = map.find(key);
-
-    CHECK(stream_iter == map.end());
-
-    map[key] = op;
+    auto& lru_cache = MklPrimitiveFactory<T>::GetLRUCache();
+    lru_cache.SetOp(key, op);
   }
 
   /// Function to decide whether HW has AVX512 or AVX2
@@ -2104,9 +2199,10 @@ class MklPrimitiveFactory {
   }
 
  private:
-  static inline std::unordered_map<string, MklPrimitive*>& GetHashMap() {
-    static thread_local std::unordered_map<string, MklPrimitive*> map_;
-    return map_;
+  static inline LRUCache<MklPrimitive>& GetLRUCache() {
+    static const int kCapacity = 1024;  // cache capacity
+    static thread_local LRUCache<MklPrimitive> lru_cache_(kCapacity);
+    return lru_cache_;
   }
 };
 

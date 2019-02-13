@@ -510,30 +510,28 @@ class NestTest(parameterized.TestCase, test.TestCase):
   def testAssertShallowStructure(self):
     inp_ab = ["a", "b"]
     inp_abc = ["a", "b", "c"]
-    expected_message = (
-        "The two structures don't have the same sequence length. Input "
-        "structure has length 2, while shallow structure has length 3.")
-    with self.assertRaisesRegexp(ValueError, expected_message):
-      nest.assert_shallow_structure(inp_abc, inp_ab)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        nest._INPUT_TREE_SMALLER_THAN_SHALLOW_TREE.format(
+            shallow_size=len(inp_abc),
+            input_size=len(inp_ab))):
+      nest.assert_shallow_structure(shallow_tree=inp_abc, input_tree=inp_ab)
 
     inp_ab1 = [(1, 1), (2, 2)]
     inp_ab2 = [[1, 1], [2, 2]]
-    expected_message = (
-        "The two structures don't have the same sequence type. Input structure "
-        "has type <(type|class) 'tuple'>, while shallow structure has type "
-        "<(type|class) 'list'>.")
-    with self.assertRaisesRegexp(TypeError, expected_message):
+    with self.assertRaisesWithLiteralMatch(
+        TypeError,
+        nest._STRUCTURES_HAVE_MISMATCHING_TYPES.format(
+            shallow_type=type(inp_ab2[0]),
+            input_type=type(inp_ab1[0]))):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
     nest.assert_shallow_structure(inp_ab2, inp_ab1, check_types=False)
 
     inp_ab1 = {"a": (1, 1), "b": {"c": (2, 2)}}
     inp_ab2 = {"a": (1, 1), "b": {"d": (2, 2)}}
-    expected_message = (
-        r"The two structures don't have the same keys. Input "
-        r"structure has keys \['c'\], while shallow structure has "
-        r"keys \['d'\].")
-
-    with self.assertRaisesRegexp(ValueError, expected_message):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        nest._SHALLOW_TREE_HAS_INVALID_KEYS.format(["d"])):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
 
     inp_ab = collections.OrderedDict([("a", 1), ("b", (2, 3))])
@@ -688,6 +686,244 @@ class NestTest(parameterized.TestCase, test.TestCase):
     flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)
     self.assertEqual(flattened_shallow_tree, shallow_tree)
 
+  def testFlattenWithTuplePathsUpTo(self):
+    def get_paths_and_values(shallow_tree, input_tree):
+      path_value_pairs = nest.flatten_with_tuple_paths_up_to(shallow_tree,
+                                                             input_tree)
+      paths = [p for p, _ in path_value_pairs]
+      values = [v for _, v in path_value_pairs]
+      return paths, values
+
+    # Shallow tree ends at scalar.
+    input_tree = [[[2, 2], [3, 3]], [[4, 9], [5, 5]]]
+    shallow_tree = [[True, True], [False, True]]
+    (flattened_input_tree_paths,
+     flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
+    (flattened_shallow_tree_paths,
+     flattened_shallow_tree) = get_paths_and_values(shallow_tree, shallow_tree)
+    self.assertEqual(flattened_input_tree_paths,
+                     [(0, 0), (0, 1), (1, 0), (1, 1)])
+    self.assertEqual(flattened_input_tree, [[2, 2], [3, 3], [4, 9], [5, 5]])
+    self.assertEqual(flattened_shallow_tree_paths,
+                     [(0, 0), (0, 1), (1, 0), (1, 1)])
+    self.assertEqual(flattened_shallow_tree, [True, True, False, True])
+
+    # Shallow tree ends at string.
+    input_tree = [[("a", 1), [("b", 2), [("c", 3), [("d", 4)]]]]]
+    shallow_tree = [["level_1", ["level_2", ["level_3", ["level_4"]]]]]
+    (input_tree_flattened_as_shallow_tree_paths,
+     input_tree_flattened_as_shallow_tree) = get_paths_and_values(shallow_tree,
+                                                                  input_tree)
+    input_tree_flattened_paths = [p for p, _ in
+                                  nest.flatten_with_tuple_paths(input_tree)]
+    input_tree_flattened = nest.flatten(input_tree)
+    self.assertEqual(input_tree_flattened_as_shallow_tree_paths,
+                     [(0, 0), (0, 1, 0), (0, 1, 1, 0), (0, 1, 1, 1, 0)])
+    self.assertEqual(input_tree_flattened_as_shallow_tree,
+                     [("a", 1), ("b", 2), ("c", 3), ("d", 4)])
+
+    self.assertEqual(input_tree_flattened_paths,
+                     [(0, 0, 0), (0, 0, 1),
+                      (0, 1, 0, 0), (0, 1, 0, 1),
+                      (0, 1, 1, 0, 0), (0, 1, 1, 0, 1),
+                      (0, 1, 1, 1, 0, 0), (0, 1, 1, 1, 0, 1)])
+    self.assertEqual(input_tree_flattened, ["a", 1, "b", 2, "c", 3, "d", 4])
+
+    # Make sure dicts are correctly flattened, yielding values, not keys.
+    input_tree = {"a": 1, "b": {"c": 2}, "d": [3, (4, 5)]}
+    shallow_tree = {"a": 0, "b": 0, "d": [0, 0]}
+    (input_tree_flattened_as_shallow_tree_paths,
+     input_tree_flattened_as_shallow_tree) = get_paths_and_values(shallow_tree,
+                                                                  input_tree)
+    self.assertEqual(input_tree_flattened_as_shallow_tree_paths,
+                     [("a",), ("b",), ("d", 0), ("d", 1)])
+    self.assertEqual(input_tree_flattened_as_shallow_tree,
+                     [1, {"c": 2}, 3, (4, 5)])
+
+    # Namedtuples.
+    ab_tuple = collections.namedtuple("ab_tuple", "a, b")
+    input_tree = ab_tuple(a=[0, 1], b=2)
+    shallow_tree = ab_tuple(a=0, b=1)
+    (input_tree_flattened_as_shallow_tree_paths,
+     input_tree_flattened_as_shallow_tree) = get_paths_and_values(shallow_tree,
+                                                                  input_tree)
+    self.assertEqual(input_tree_flattened_as_shallow_tree_paths,
+                     [("a",), ("b",)])
+    self.assertEqual(input_tree_flattened_as_shallow_tree,
+                     [[0, 1], 2])
+
+    # Nested dicts, OrderedDicts and namedtuples.
+    input_tree = collections.OrderedDict(
+        [("a", ab_tuple(a=[0, {"b": 1}], b=2)),
+         ("c", {"d": 3, "e": collections.OrderedDict([("f", 4)])})])
+    shallow_tree = input_tree
+    (input_tree_flattened_as_shallow_tree_paths,
+     input_tree_flattened_as_shallow_tree) = get_paths_and_values(shallow_tree,
+                                                                  input_tree)
+    self.assertEqual(input_tree_flattened_as_shallow_tree_paths,
+                     [("a", "a", 0),
+                      ("a", "a", 1, "b"),
+                      ("a", "b"),
+                      ("c", "d"),
+                      ("c", "e", "f")])
+    self.assertEqual(input_tree_flattened_as_shallow_tree, [0, 1, 2, 3, 4])
+    shallow_tree = collections.OrderedDict([("a", 0), ("c", {"d": 3, "e": 1})])
+    (input_tree_flattened_as_shallow_tree_paths,
+     input_tree_flattened_as_shallow_tree) = get_paths_and_values(shallow_tree,
+                                                                  input_tree)
+    self.assertEqual(input_tree_flattened_as_shallow_tree_paths,
+                     [("a",),
+                      ("c", "d"),
+                      ("c", "e")])
+    self.assertEqual(input_tree_flattened_as_shallow_tree,
+                     [ab_tuple(a=[0, {"b": 1}], b=2),
+                      3,
+                      collections.OrderedDict([("f", 4)])])
+    shallow_tree = collections.OrderedDict([("a", 0), ("c", 0)])
+    (input_tree_flattened_as_shallow_tree_paths,
+     input_tree_flattened_as_shallow_tree) = get_paths_and_values(shallow_tree,
+                                                                  input_tree)
+    self.assertEqual(input_tree_flattened_as_shallow_tree_paths,
+                     [("a",), ("c",)])
+    self.assertEqual(input_tree_flattened_as_shallow_tree,
+                     [ab_tuple(a=[0, {"b": 1}], b=2),
+                      {"d": 3, "e": collections.OrderedDict([("f", 4)])}])
+
+    ## Shallow non-list edge-case.
+    # Using iterable elements.
+    input_tree = ["input_tree"]
+    shallow_tree = "shallow_tree"
+    (flattened_input_tree_paths,
+     flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
+    (flattened_shallow_tree_paths,
+     flattened_shallow_tree) = get_paths_and_values(shallow_tree, shallow_tree)
+    self.assertEqual(flattened_input_tree_paths, [()])
+    self.assertEqual(flattened_input_tree, [input_tree])
+    self.assertEqual(flattened_shallow_tree_paths, [()])
+    self.assertEqual(flattened_shallow_tree, [shallow_tree])
+
+    input_tree = ["input_tree_0", "input_tree_1"]
+    shallow_tree = "shallow_tree"
+    (flattened_input_tree_paths,
+     flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
+    (flattened_shallow_tree_paths,
+     flattened_shallow_tree) = get_paths_and_values(shallow_tree, shallow_tree)
+    self.assertEqual(flattened_input_tree_paths, [()])
+    self.assertEqual(flattened_input_tree, [input_tree])
+    self.assertEqual(flattened_shallow_tree_paths, [()])
+    self.assertEqual(flattened_shallow_tree, [shallow_tree])
+
+    # Test case where len(shallow_tree) < len(input_tree)
+    input_tree = {"a": "A", "b": "B", "c": "C"}
+    shallow_tree = {"a": 1, "c": 2}
+    (flattened_input_tree_paths,
+     flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
+    (flattened_shallow_tree_paths,
+     flattened_shallow_tree) = get_paths_and_values(shallow_tree, shallow_tree)
+    self.assertEqual(flattened_input_tree_paths, [("a",), ("c",)])
+    self.assertEqual(flattened_input_tree, ["A", "C"])
+    self.assertEqual(flattened_shallow_tree_paths, [("a",), ("c",)])
+    self.assertEqual(flattened_shallow_tree, [1, 2])
+
+    # Using non-iterable elements.
+    input_tree = [0]
+    shallow_tree = 9
+    (flattened_input_tree_paths,
+     flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
+    (flattened_shallow_tree_paths,
+     flattened_shallow_tree) = get_paths_and_values(shallow_tree, shallow_tree)
+    self.assertEqual(flattened_input_tree_paths, [()])
+    self.assertEqual(flattened_input_tree, [input_tree])
+    self.assertEqual(flattened_shallow_tree_paths, [()])
+    self.assertEqual(flattened_shallow_tree, [shallow_tree])
+
+    input_tree = [0, 1]
+    shallow_tree = 9
+    (flattened_input_tree_paths,
+     flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
+    (flattened_shallow_tree_paths,
+     flattened_shallow_tree) = get_paths_and_values(shallow_tree, shallow_tree)
+    self.assertEqual(flattened_input_tree_paths, [()])
+    self.assertEqual(flattened_input_tree, [input_tree])
+    self.assertEqual(flattened_shallow_tree_paths, [()])
+    self.assertEqual(flattened_shallow_tree, [shallow_tree])
+
+    ## Both non-list edge-case.
+    # Using iterable elements.
+    input_tree = "input_tree"
+    shallow_tree = "shallow_tree"
+    (flattened_input_tree_paths,
+     flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
+    (flattened_shallow_tree_paths,
+     flattened_shallow_tree) = get_paths_and_values(shallow_tree, shallow_tree)
+    self.assertEqual(flattened_input_tree_paths, [()])
+    self.assertEqual(flattened_input_tree, [input_tree])
+    self.assertEqual(flattened_shallow_tree_paths, [()])
+    self.assertEqual(flattened_shallow_tree, [shallow_tree])
+
+    # Using non-iterable elements.
+    input_tree = 0
+    shallow_tree = 0
+    (flattened_input_tree_paths,
+     flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
+    (flattened_shallow_tree_paths,
+     flattened_shallow_tree) = get_paths_and_values(shallow_tree, shallow_tree)
+    self.assertEqual(flattened_input_tree_paths, [()])
+    self.assertEqual(flattened_input_tree, [input_tree])
+    self.assertEqual(flattened_shallow_tree_paths, [()])
+    self.assertEqual(flattened_shallow_tree, [shallow_tree])
+
+    ## Input non-list edge-case.
+    # Using iterable elements.
+    input_tree = "input_tree"
+    shallow_tree = ["shallow_tree"]
+    with self.assertRaisesWithLiteralMatch(
+        TypeError,
+        nest._IF_SHALLOW_IS_SEQ_INPUT_MUST_BE_SEQ.format(type(input_tree))):
+      (flattened_input_tree_paths,
+       flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
+    (flattened_shallow_tree_paths,
+     flattened_shallow_tree) = get_paths_and_values(shallow_tree, shallow_tree)
+    self.assertEqual(flattened_shallow_tree_paths, [(0,)])
+    self.assertEqual(flattened_shallow_tree, shallow_tree)
+
+    input_tree = "input_tree"
+    shallow_tree = ["shallow_tree_9", "shallow_tree_8"]
+    with self.assertRaisesWithLiteralMatch(
+        TypeError,
+        nest._IF_SHALLOW_IS_SEQ_INPUT_MUST_BE_SEQ.format(type(input_tree))):
+      (flattened_input_tree_paths,
+       flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
+    (flattened_shallow_tree_paths,
+     flattened_shallow_tree) = get_paths_and_values(shallow_tree, shallow_tree)
+    self.assertEqual(flattened_shallow_tree_paths, [(0,), (1,)])
+    self.assertEqual(flattened_shallow_tree, shallow_tree)
+
+    # Using non-iterable elements.
+    input_tree = 0
+    shallow_tree = [9]
+    with self.assertRaisesWithLiteralMatch(
+        TypeError,
+        nest._IF_SHALLOW_IS_SEQ_INPUT_MUST_BE_SEQ.format(type(input_tree))):
+      (flattened_input_tree_paths,
+       flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
+    (flattened_shallow_tree_paths,
+     flattened_shallow_tree) = get_paths_and_values(shallow_tree, shallow_tree)
+    self.assertEqual(flattened_shallow_tree_paths, [(0,)])
+    self.assertEqual(flattened_shallow_tree, shallow_tree)
+
+    input_tree = 0
+    shallow_tree = [9, 8]
+    with self.assertRaisesWithLiteralMatch(
+        TypeError,
+        nest._IF_SHALLOW_IS_SEQ_INPUT_MUST_BE_SEQ.format(type(input_tree))):
+      (flattened_input_tree_paths,
+       flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
+    (flattened_shallow_tree_paths,
+     flattened_shallow_tree) = get_paths_and_values(shallow_tree, shallow_tree)
+    self.assertEqual(flattened_shallow_tree_paths, [(0,), (1,)])
+    self.assertEqual(flattened_shallow_tree, shallow_tree)
+
   def testMapStructureUpTo(self):
     # Named tuples.
     ab_tuple = collections.namedtuple("ab_tuple", "a, b")
@@ -719,7 +955,9 @@ class NestTest(parameterized.TestCase, test.TestCase):
     # Non-equal dicts.
     inp_val = dict(a=2, b=3)
     inp_ops = dict(a=dict(add=1, mul=2), c=dict(add=2, mul=3))
-    with self.assertRaisesRegexp(ValueError, "same keys"):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        nest._SHALLOW_TREE_HAS_INVALID_KEYS.format(["b"])):
       nest.map_structure_up_to(
           inp_val,
           lambda val, ops: (val + ops["add"]) * ops["mul"], inp_val, inp_ops)
@@ -736,7 +974,9 @@ class NestTest(parameterized.TestCase, test.TestCase):
     # Non-equal dict/mapping.
     inp_val = dict(a=2, b=3)
     inp_ops = _CustomMapping(a=dict(add=1, mul=2), c=dict(add=2, mul=3))
-    with self.assertRaisesRegexp(ValueError, "same keys"):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        nest._SHALLOW_TREE_HAS_INVALID_KEYS.format(["b"])):
       nest.map_structure_up_to(
           inp_val,
           lambda val, ops: (val + ops["add"]) * ops["mul"], inp_val, inp_ops)
@@ -849,12 +1089,12 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(expected, result)
 
   @parameterized.named_parameters(
-      ("tuples", (1, 2), (3, 4, 5), ValueError),
+      ("tuples", (1, 2, 3), (4, 5), ValueError),
       ("dicts", {"a": 1}, {"b": 2}, ValueError),
       ("mixed", (1, 2), [3, 4], TypeError),
       ("nested",
-       {"a": [2, 3], "b": [1, 3]},
-       {"b": [5, 6, 7], "a": [8, 9]},
+       {"a": [2, 3, 4], "b": [1, 3]},
+       {"b": [5, 6], "a": [8, 9]},
        ValueError
       ))
   def testMapWithPathsIncompatibleStructures(self, s1, s2, error_type):
@@ -884,13 +1124,14 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(expected, result)
 
   @parameterized.named_parameters([
-      dict(testcase_name="Tuples", s1=(1, 2), s2=(3, 4, 5),
+      dict(testcase_name="Tuples", s1=(1, 2, 3), s2=(4, 5),
            error_type=ValueError),
       dict(testcase_name="Dicts", s1={"a": 1}, s2={"b": 2},
            error_type=ValueError),
       dict(testcase_name="Mixed", s1=(1, 2), s2=[3, 4], error_type=TypeError),
       dict(testcase_name="Nested",
-           s1={"a": [2, 3], "b": [1, 3]}, s2={"b": [5, 6, 7], "a": [8, 9]},
+           s1={"a": [2, 3, 4], "b": [1, 3]},
+           s2={"b": [5, 6], "a": [8, 9]},
            error_type=ValueError)
   ])
   def testMapWithTuplePathsIncompatibleStructures(self, s1, s2, error_type):

@@ -27,6 +27,7 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import activations
@@ -81,6 +82,7 @@ class Masking(Layer):
     super(Masking, self).__init__(**kwargs)
     self.supports_masking = True
     self.mask_value = mask_value
+    self._compute_output_and_mask_jointly = True
 
   def compute_mask(self, inputs, mask=None):
     return K.any(math_ops.not_equal(inputs, self.mask_value), axis=-1)
@@ -88,7 +90,10 @@ class Masking(Layer):
   def call(self, inputs):
     boolean_mask = K.any(
         math_ops.not_equal(inputs, self.mask_value), axis=-1, keepdims=True)
-    return inputs * math_ops.cast(boolean_mask, inputs.dtype)
+    outputs = inputs * math_ops.cast(boolean_mask, inputs.dtype)
+    # Compute the mask and outputs simultaneously.
+    outputs._keras_mask = array_ops.squeeze(boolean_mask, axis=-1)  # pylint: disable=protected-access
+    return outputs
 
   def compute_output_shape(self, input_shape):
     return input_shape
@@ -138,9 +143,12 @@ class Dropout(Layer):
       training = K.learning_phase()
 
     def dropped_inputs():
-      return nn.dropout(inputs, 1  - self.rate,
-                        noise_shape=self._get_noise_shape(inputs),
-                        seed=self.seed)
+      return nn.dropout(
+          inputs,
+          noise_shape=self._get_noise_shape(inputs),
+          seed=self.seed,
+          rate=self.rate)
+
     output = tf_utils.smart_cond(training,
                                  dropped_inputs,
                                  lambda: array_ops.identity(inputs))
@@ -932,6 +940,10 @@ class Dense(Layer):
     self.input_spec = InputSpec(min_ndim=2)
 
   def build(self, input_shape):
+    dtype = dtypes.as_dtype(self.dtype or K.floatx())
+    if not (dtype.is_floating or dtype.is_complex):
+      raise TypeError('Unable to build `Dense` layer with non-floating point '
+                      'dtype %s' % (dtype,))
     input_shape = tensor_shape.TensorShape(input_shape)
     if tensor_shape.dimension_value(input_shape[-1]) is None:
       raise ValueError('The last dimension of the inputs to `Dense` '
@@ -972,6 +984,7 @@ class Dense(Layer):
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:
+      inputs = math_ops.cast(inputs, self.dtype)
       outputs = gen_math_ops.mat_mul(inputs, self.kernel)
     if self.use_bias:
       outputs = nn.bias_add(outputs, self.bias)

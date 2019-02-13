@@ -470,9 +470,8 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
           labels_placeholder: label_values,
           predictions_placeholder: prediction_values
       }
-      with self.assertRaisesRegexp(
-          errors_impl.InvalidArgumentError,
-          "Can not squeeze dim\[2\]"):
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   r"Can not squeeze dim\[2\]"):
         dynamic_labels.eval(feed_dict=feed_dict)
       self.assertAllEqual(
           prediction_values, dynamic_predictions.eval(feed_dict=feed_dict))
@@ -498,9 +497,8 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
       }
       self.assertAllEqual(
           label_values, dynamic_labels.eval(feed_dict=feed_dict))
-      with self.assertRaisesRegexp(
-          errors_impl.InvalidArgumentError,
-          "Can not squeeze dim\[2\]"):
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   r"Can not squeeze dim\[2\]"):
         dynamic_predictions.eval(feed_dict=feed_dict)
 
 

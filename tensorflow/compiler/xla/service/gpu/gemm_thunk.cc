@@ -206,6 +206,8 @@ auto GetGemmFn(PrimitiveType type) -> decltype(&DoGemm<float>) {
       return &DoGemm<double>;
     case C64:
       return &DoGemm<std::complex<float>>;
+    case C128:
+      return &DoGemm<std::complex<double>>;
     default:
       LOG(FATAL) << "Unsupported type.";
   }
@@ -221,6 +223,8 @@ auto GetGemmWithAlgorithmFn(PrimitiveType type)
       return &DoGemmWithAlgorithm<double>;
     case C64:
       return &DoGemmWithAlgorithm<std::complex<float>>;
+    case C128:
+      return &DoGemmWithAlgorithm<std::complex<double>>;
     default:
       LOG(FATAL) << "Unsupported type.";
   }
@@ -235,6 +239,8 @@ auto GetGemmAutotuneFn(PrimitiveType type) -> decltype(&DoGemmAutotune<float>) {
       return &DoGemmAutotune<double>;
     case C64:
       return &DoGemmAutotune<std::complex<float>>;
+    case C128:
+      return &DoGemmAutotune<std::complex<double>>;
     default:
       LOG(FATAL) << "Unsupported type.";
   }
@@ -255,6 +261,8 @@ se::blas::ComputationType GetBlasComputationType(PrimitiveType type) {
       return se::blas::ComputationType::kF64;
     case C64:
       return se::blas::ComputationType::kComplexF32;
+    case C128:
+      return se::blas::ComputationType::kComplexF64;
     default:
       LOG(FATAL) << "Unsupported type.";
   }

@@ -435,15 +435,16 @@ class TFLiteConverter(object):
     if self._has_valid_tensors():
       for tensor in self._input_tensors:
         shape = tensor.get_shape()
-        if not shape or not shape.as_list():
+        if not shape:
           raise ValueError("Provide an input shape for input array "
                            "'{0}'.".format(_tensor_name(tensor)))
+        # Note that shape_list might be empty for scalar shapes.
         shape_list = shape.as_list()
         if None in shape_list[1:]:
           raise ValueError(
               "None is only supported in the 1st dimension. Tensor '{0}' has "
               "invalid shape '{1}'.".format(_tensor_name(tensor), shape_list))
-        elif shape_list[0] is None:
+        elif shape_list and shape_list[0] is None:
           self._set_batch_size(batch_size=1)
 
     # Get quantization stats. Ensures there is one stat per name if the stats

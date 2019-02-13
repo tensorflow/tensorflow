@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+import traceback
 from absl.testing import parameterized
 import numpy as np
 
@@ -26,6 +28,8 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import array_ops
@@ -71,7 +75,7 @@ class InvalidLayer(base_layer.Layer):
     raise ValueError('You did something wrong!')
 
 
-class BaseLayerTest(test.TestCase, parameterized.TestCase):
+class BaseLayerTest(keras_parameterized.TestCase):
 
   @parameterized.parameters(DynamicLayer1, DynamicLayer2)
   def test_dynamic_layer_in_functional_model_in_graph_mode(self, layer_class):
@@ -210,6 +214,71 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, 'You did something wrong!'):
       _ = InvalidLayer()(inputs)
 
+  @keras_parameterized.run_with_all_model_types
+  @test_util.run_in_graph_and_eager_modes
+  def test_build_with_numpy_data(self):
+    model_layers = [
+        keras.layers.Dense(3, activation='relu', kernel_initializer='ones'),
+        keras.layers.Dense(1, activation='sigmoid', kernel_initializer='ones')
+    ]
+    model = testing_utils.get_model_from_layers(model_layers, input_shape=(4,))
+    model(np.zeros((2, 4), dtype='float32'))
+    self.assertTrue(model.built)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_default_add_weight(self):
+
+    class TestLayer(keras.layers.Layer):
+
+      def __init__(self):
+        super(TestLayer, self).__init__()
+        self.default_weight = self.add_weight()
+        self.weight_without_name = self.add_weight(shape=(3, 4))
+        self.regularized_weight_without_name = self.add_weight(
+            shape=(3, 4), regularizer='l2')
+
+    layer = TestLayer()
+    self.assertEqual(layer.default_weight.shape.as_list(), [])
+    self.assertEqual(layer.weight_without_name.shape.as_list(), [3, 4])
+    self.assertEqual(layer.default_weight.dtype.name, 'float32')
+    self.assertEqual(layer.weight_without_name.dtype.name, 'float32')
+    self.assertEqual(len(layer.losses), 1)
+    if not context.executing_eagerly():
+      # Cannot access tensor.name in eager execution.
+      self.assertTrue('Variable_2/Regularizer' in layer.losses[0].name)
+
+  def test_learning_phase_freezing_for_layers(self):
+    # This test is only meant to run in graph functions mode (ambient eager).
+    # In forced eager, `model.predict` ignores the global learning phase
+    # and just uses training=False. TODO(fchollet): consider unifying the
+    # behaviors.
+
+    class LearningPhaseLayer(keras.layers.Layer):
+
+      def call(self, inputs):
+        return keras.backend.in_train_phase(
+            lambda: array_ops.ones_like(inputs),
+            lambda: array_ops.zeros_like(inputs))
+
+    def get_learning_phase_value():
+      model = keras.models.Sequential([LearningPhaseLayer(input_shape=(1,))])
+      return np.sum(model.predict(np.ones((1, 1))))
+
+    self.assertEqual(get_learning_phase_value(), 0)
+
+    # Test scope.
+    with keras.backend.learning_phase_scope(1):
+      self.assertEqual(get_learning_phase_value(), 1)
+
+    # The effects of the scope end after exiting it.
+    self.assertEqual(get_learning_phase_value(), 0)
+
+    # Test setting.
+    keras.backend.set_learning_phase(1)
+    self.assertEqual(get_learning_phase_value(), 1)
+    keras.backend.set_learning_phase(0)
+    self.assertEqual(get_learning_phase_value(), 0)
+
   def test_using_symbolic_tensors_with_tf_ops(self):
     # Single-input.
     x = keras.Input((3,))
@@ -239,18 +308,14 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
       x1 = array_ops.ones((3, 3))
     x2 = array_ops.ones((3, 3))
     self.assertIsInstance(x2, ops.EagerTensor)
-    with self.assertRaisesRegexp(TypeError,
-                                 'provided list of inputs contains '
-                                 'objects other than \'EagerTensor\''):
+    with self.assertRaisesRegexp(TypeError, 'Graph tensors'):
       math_ops.matmul(x1, x2)
 
   def test_mixing_numpy_arrays_and_graph_tensors(self):
     with ops.Graph().as_default():
       x1 = array_ops.ones((3, 3))
     x2 = np.ones((3, 3), dtype='float32')
-    with self.assertRaisesRegexp(TypeError,
-                                 'provided list of inputs contains '
-                                 'objects other than \'EagerTensor\''):
+    with self.assertRaisesRegexp(TypeError, 'Graph tensors'):
       math_ops.matmul(x1, x2)
 
   @test_util.run_in_graph_and_eager_modes
@@ -278,6 +343,52 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(fn([x_val])[0],
                         np.matmul(x_val, y_val),
                         atol=1e-5)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_reraising_exception(self):
+    # When layer is not dynamic, we have some pattern matching during exception
+    # handling to detect when the user is trying to use python control flow.
+    # When an exception is thrown but the pattern doesn't match, we want to
+    # preserve the originating stack trace. An early implementation of this
+    # logic lost the stack trace. We test the correct behavior here.
+
+    class TypeErrorLayer(base_layer.Layer):
+
+      def call(self, inputs):
+        def easily_identifiable_name():
+          raise TypeError('Non-matching TypeError message.')
+        easily_identifiable_name()
+
+    inputs = keras.Input((3,))
+
+    try:
+      _ = TypeErrorLayer()(inputs)
+    except TypeError:
+      tb = traceback.extract_tb(sys.exc_info()[2])
+      last_entry = tb[-1]
+      function_name = last_entry[2]
+      self.assertEqual(function_name, 'easily_identifiable_name')
+
+  # Cannot be enabled with `run_eagerly=True`, see b/123904578
+  @test_util.run_all_in_graph_and_eager_modes
+  def test_layer_can_return_variable(self):
+
+    class ComputeSum(keras.layers.Layer):
+
+      def __init__(self):
+        super(ComputeSum, self).__init__()
+        self.total = variables.Variable(
+            initial_value=array_ops.zeros((1, 1)), trainable=False)
+        if not context.executing_eagerly():
+          keras.backend.get_session().run(self.total.initializer)
+
+      def call(self, inputs):
+        self.total.assign_add(inputs)
+        return self.total
+
+    inputs = keras.Input(shape=(1,))
+    model = keras.Model(inputs, ComputeSum()(inputs))
+    model.predict(np.ones((1, 1)))
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -364,6 +475,34 @@ class NestedTrackingTest(test.TestCase):
       _ = layer(inputs)
       self.assertEqual(len(layer.losses), 3)
       self.assertEqual(len(layer.updates), 3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class NameScopingTest(keras_parameterized.TestCase):
+
+  def test_name_scope_layer(self):
+    x = keras.backend.placeholder(shape=(10, 10))
+    layer = keras.layers.Dense(10, name='MyName')
+    layer(x)
+    self.assertEqual(layer.bias.name, 'MyName/bias:0')
+    self.assertEqual(layer.kernel.name, 'MyName/kernel:0')
+
+  def test_name_scope_sublayer(self):
+    x = keras.backend.placeholder(shape=(10, 10))
+    layer = keras.layers.Dense(
+        10, activation=keras.layers.ReLU(name='MyAct'), name='MyName2')
+    y = layer(x)
+    self.assertEqual(layer.bias.name, 'MyName2/bias:0')
+    self.assertEqual(layer.kernel.name, 'MyName2/kernel:0')
+    self.assertEqual(y.name, 'MyName2/MyAct/Relu:0')
+
+  def test_name_scope_tf_tensor(self):
+    x = ops.convert_to_tensor(np.ones((10, 10)))
+    layer = keras.layers.Dense(
+        10, activation=keras.layers.ReLU(name='MyAct'), name='MyName3')
+    layer(x)
+    self.assertEqual(layer.bias.name, 'MyName3/bias:0')
+    self.assertEqual(layer.kernel.name, 'MyName3/kernel:0')
 
 
 if __name__ == '__main__':

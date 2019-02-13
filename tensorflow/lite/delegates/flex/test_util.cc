@@ -90,6 +90,8 @@ void FlexModelTest::AddTensors(int num_tensors, const std::vector<int>& inputs,
 
 void FlexModelTest::AddTfLiteMulOp(const std::vector<int>& inputs,
                                    const std::vector<int>& outputs) {
+  ++next_op_index_;
+
   static TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
   reg.builtin_code = BuiltinOperator_MUL;
   reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
@@ -114,6 +116,9 @@ void FlexModelTest::AddTfLiteMulOp(const std::vector<int>& inputs,
 
 void FlexModelTest::AddTfOp(TfOpType op, const std::vector<int>& inputs,
                             const std::vector<int>& outputs) {
+  tf_ops_.push_back(next_op_index_);
+  ++next_op_index_;
+
   auto attr = [](const string& key, const string& value) {
     return " attr{ key: '" + key + "' value {" + value + "}}";
   };

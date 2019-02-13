@@ -173,12 +173,13 @@ class HloModuleGroupMetadata {
   // Returns the number of modules for devices (excluding the host module).
   int64 GetDeviceModulesCount() const;
 
-  // Returns the companion instructions for the given instruction.
+  // Returns the companion set for the given instruction, including the
+  // instruction itself.
   //
   // Precondition: IsCompanionWhile(instruction) is true.
   const std::vector<HloInstruction*>& Companions(
       const HloInstruction* instruction) const {
-    CHECK_EQ(companion_set_index_.count(instruction), 1);
+    CHECK(companion_set_index_.contains(instruction));
     return companion_set(companion_set_index_.at(instruction));
   }
 

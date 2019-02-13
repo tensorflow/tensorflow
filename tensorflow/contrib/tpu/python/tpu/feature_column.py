@@ -408,19 +408,25 @@ def _record_variable_scope_and_name(embedding_var_name,
 
   var_def_dict = collection[0]
 
-  captured_scope = None
+  captured_scope = variable_scope.get_variable_scope()
+  captured_scope_name = captured_scope.name
 
-  if is_shared_embedding and (embedding_var_name in var_def_dict):
+  if embedding_var_name in var_def_dict:
+    if (var_def_dict[embedding_var_name][0] != captured_scope_name
+        and not is_shared_embedding):
+      raise ValueError(
+          'For embedding var name {}, the variable scope name is different, '
+          'got {}; expected {}'.format(embedding_var_name,
+                                       captured_scope_name,
+                                       var_def_dict[embedding_var_name][0]))
     if var_def_dict[embedding_var_name][1] != embedding_var_name_in_fc:
       raise ValueError(
-          'For embedding var name {}, the shared embedding name is different, '
+          'For embedding var name {}, the embedding name is different, '
           'got {}; expected {}'.format(embedding_var_name,
                                        embedding_var_name_in_fc,
                                        var_def_dict[embedding_var_name][1]))
   else:
-    # scope contains var_scope_name.
-    captured_scope = variable_scope.get_variable_scope()
-    var_def_dict[embedding_var_name] = (captured_scope,
+    var_def_dict[embedding_var_name] = (captured_scope_name,
                                         embedding_var_name_in_fc)
 
 

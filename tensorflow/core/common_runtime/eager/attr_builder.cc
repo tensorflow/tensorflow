@@ -42,7 +42,7 @@ const uint32 kIsList = 1U << 31;
 AttrTypeMap* DefaultFunctionAttrTypeMap() {
   AttrTypeMap* map = new AttrTypeMap();
   (*map)["executor_type"] = TF_ATTR_STRING;
-  (*map)["config"] = TF_ATTR_STRING;
+  (*map)["config_proto"] = TF_ATTR_STRING;
   return map;
 }
 
@@ -125,6 +125,7 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
   template <>                                                                \
   AttrBuilder& AttrBuilder::Set(StringPiece attr_name, value_type&& value) { \
     value_field.push_back(std::make_pair(string(attr_name), value));         \
+    cached_cache_key_ = absl::nullopt;                                       \
     return *this;                                                            \
   }
 
@@ -231,7 +232,17 @@ inline tensorflow::Fprint128 CacheKeyHelper(StringPiece s, uint64 b) {
 
 }  // namespace
 
-tensorflow::Fprint128 AttrBuilder::CacheKey(const string& device) const {
+tensorflow::Fprint128 AttrBuilder::CacheKey(const string& device) {
+  if (!cached_cache_key_ || device != device_for_cached_cache_key_) {
+    cached_cache_key_ = BuildCacheKeyForDevice(device);
+    device_for_cached_cache_key_ = device;
+  }
+
+  return *cached_cache_key_;
+}
+
+tensorflow::Fprint128 AttrBuilder::BuildCacheKeyForDevice(
+    const string& device) const {
   tensorflow::Fprint128 f = tensorflow::Fingerprint128(op_name_);
   f = tensorflow::FingerprintCat128(f, tensorflow::Fingerprint128(device));
   if (node_def_ != nullptr) {
