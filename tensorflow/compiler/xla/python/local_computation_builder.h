@@ -176,9 +176,9 @@ StatusOr<XrtAllocationTuple*> DestructureXrtAllocationTuple(
 
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. Specifically, wraps an XLA LocalExecutable.
-class CompiledLocalComputation {
+class LocalExecutable {
  public:
-  CompiledLocalComputation(std::unique_ptr<LocalExecutable> executable);
+  LocalExecutable(std::unique_ptr<xla::LocalExecutable> executable);
 
   int num_replicas() const {
     return executable_->build_options().num_replicas();
@@ -194,18 +194,18 @@ class CompiledLocalComputation {
       absl::Span<const std::vector<LocalShapedBuffer*> > argument_handles);
 
  private:
-  std::unique_ptr<LocalExecutable> executable_;
+  std::unique_ptr<xla::LocalExecutable> executable_;
 };
 
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. Specifically, wraps an XRT computation handle.
-class CompiledXrtComputation {
+class XrtExecutable {
  public:
   // Accepts a `session_target` argument, used in constructing the
   // `tensorflow::ClientSession` instance in which the execution graph is run.
-  CompiledXrtComputation(const ProgramShape& program_shape, int64 handle,
-                         const string& session_target);
-  ~CompiledXrtComputation();
+  XrtExecutable(const ProgramShape& program_shape, int64 handle,
+                const string& session_target);
+  ~XrtExecutable();
 
   StatusOr<XrtAllocation*> Execute(
       absl::Span<XrtAllocation* const> argument_handles);
@@ -219,21 +219,21 @@ class CompiledXrtComputation {
   const string session_target_;
 };
 
-// Wraps a XlaComputation produced by a LocalComputationBuilder. The
+// Wraps a XlaComputation produced by a ComputationBuilder. The
 // Compile method compiles the computation to a (local) executable via
 // the client library's local client. This class is intended to be
 // made available to Python via SWIG.
-class LocalComputation {
+class Computation {
  public:
-  LocalComputation(XlaComputation computation);
+  Computation(XlaComputation computation);
 
-  StatusOr<CompiledLocalComputation*> Compile(
+  StatusOr<LocalExecutable*> Compile(
       const std::vector<Shape>& argument_shapes,
       const ExecutableBuildOptions* build_options);
 
   // Accepts a `session_target` argument, used in constructing the
   // `tensorflow::ClientSession` instance in which the compilation graph is run.
-  StatusOr<CompiledXrtComputation*> CompileForXrt(
+  StatusOr<XrtExecutable*> CompileForXrt(
       const std::vector<Shape>& argument_shapes, const string& session_target);
 
   const XlaComputation& computation() const;
@@ -253,7 +253,7 @@ class LocalComputation {
   XlaComputation computation_;
 };
 
-// Wraps a XlaOp produced by a LocalComputationBuilder. This class is intended
+// Wraps a XlaOp produced by a ComputationBuilder. This class is intended
 // to be made available to Python via SWIG.
 class LocalOp {
  public:
@@ -270,20 +270,20 @@ class LocalOp {
 //   Python.
 // - Set up the underlying builder to use the client library's
 //   LocalClient.
-// - Wrap Computations in LocalComputations for Python access.
-// - Correspondingly unwrap incoming LocalComputations.
-class LocalComputationBuilder {
+// - Wrap Computations in Computations for Python access.
+// - Correspondingly unwrap incoming Computations.
+class ComputationBuilder {
  public:
-  LocalComputationBuilder(const string& computation_name);
+  ComputationBuilder(const string& computation_name);
 
   void SetOpMetadata(const OpMetadata& metadata);
   void ClearOpMetadata();
 
-  // Returns an owned LocalComputation to the caller on success.
-  StatusOr<LocalComputation*> Build();
+  // Returns an owned Computation to the caller on success.
+  StatusOr<Computation*> Build();
 
-  // Returns an owned LocalComputation to the caller on success with given root.
-  StatusOr<LocalComputation*> BuildWithRoot(const LocalOp& root);
+  // Returns an owned Computation to the caller on success with given root.
+  StatusOr<Computation*> BuildWithRoot(const LocalOp& root);
 
   LocalOp Parameter(int64 parameter_number, const Shape& shape,
                     const string& name);
@@ -342,11 +342,11 @@ class LocalComputationBuilder {
   LocalOp ConcatInDim(absl::Span<const LocalOp> operands, int64 dimension);
 
   LocalOp SelectAndScatterWithGeneralPadding(
-      const LocalOp& operand, const LocalComputation& select,
+      const LocalOp& operand, const Computation& select,
       absl::Span<const int64> window_dimensions,
       absl::Span<const int64> window_strides,
       absl::Span<const std::pair<int64, int64> > padding, const LocalOp& source,
-      const LocalOp& init_value, const LocalComputation& scatter);
+      const LocalOp& init_value, const Computation& scatter);
 
   LocalOp Tuple(absl::Span<const LocalOp> elements);
 
@@ -372,7 +372,7 @@ class LocalComputationBuilder {
   LocalOp BitcastConvertType(const LocalOp& operand,
                              PrimitiveType new_element_type);
 
-  LocalOp Call(const LocalComputation& local_computation,
+  LocalOp Call(const Computation& local_computation,
                absl::Span<const LocalOp> operands);
 
   LocalOp CustomCall(const string& call_target_name,
@@ -387,16 +387,16 @@ class LocalComputationBuilder {
   LocalOp Rev(const LocalOp& operand, absl::Span<const int64> dimensions);
 
   LocalOp Map(absl::Span<const LocalOp> operands,
-              const LocalComputation& local_computation,
+              const Computation& local_computation,
               absl::Span<const int64> dimensions);
 
   LocalOp Reduce(const LocalOp& operand, const LocalOp& init_value,
-                 const LocalComputation& local_computation,
+                 const Computation& local_computation,
                  absl::Span<const int64> dimensions_to_reduce);
 
   LocalOp ReduceWindowWithGeneralPadding(
       const LocalOp& operand, const LocalOp& init_value,
-      const LocalComputation& local_computation,
+      const Computation& local_computation,
       absl::Span<const int64> window_dimensions,
       absl::Span<const int64> window_strides,
       absl::Span<const int64> base_dilations,
@@ -408,13 +408,13 @@ class LocalComputationBuilder {
 
   LocalOp RngUniform(const LocalOp& a, const LocalOp& b, const Shape& shape);
 
-  LocalOp While(const LocalComputation& condition, const LocalComputation& body,
+  LocalOp While(const Computation& condition, const Computation& body,
                 const LocalOp& init);
 
   LocalOp Conditional(const LocalOp& predicate, const LocalOp& true_operand,
-                      const LocalComputation& true_computation,
+                      const Computation& true_computation,
                       const LocalOp& false_operand,
-                      const LocalComputation& false_computation);
+                      const Computation& false_computation);
 
   StatusOr<bool> IsConstant(const LocalOp& operand);
 
@@ -438,11 +438,10 @@ class LocalComputationBuilder {
                  absl::Span<const int64> slice_sizes);
 
   LocalOp Scatter(const LocalOp& input, const LocalOp& scatter_indices,
-                  const LocalOp& updates,
-                  const LocalComputation& update_computation,
+                  const LocalOp& updates, const Computation& update_computation,
                   const ScatterDimensionNumbers& dimension_numbers);
 
-  StatusOr<LocalComputation*> BuildConstantSubGraph(const LocalOp& operand);
+  StatusOr<Computation*> BuildConstantSubGraph(const LocalOp& operand);
 
 #define _FORWARD(method_name, return_sig, args_sig) \
   return_sig method_name args_sig;
@@ -532,9 +531,9 @@ class LocalComputationBuilder {
 // Functions for freeing resources from the Python side.
 void DeleteLocalShapedBuffer(LocalShapedBuffer* local_shaped_buffer);
 void DeleteXrtAllocation(XrtAllocation* allocation);
-void DeleteCompiledLocalComputation(CompiledLocalComputation* computation);
-void DeleteCompiledXrtComputation(CompiledXrtComputation* computation);
-void DeleteLocalComputation(LocalComputation* computation);
+void DeleteLocalExecutable(LocalExecutable* computation);
+void DeleteXrtExecutable(XrtExecutable* computation);
+void DeleteComputation(Computation* computation);
 
 }  // namespace swig
 }  // namespace xla

@@ -332,11 +332,11 @@ StatusOr<XrtAllocation*> XrtAllocationTuple::Release(int i) {
 
 int64 XrtAllocationTuple::size() const { return elements_.size(); }
 
-CompiledLocalComputation::CompiledLocalComputation(
-    std::unique_ptr<LocalExecutable> executable)
+LocalExecutable::LocalExecutable(
+    std::unique_ptr<xla::LocalExecutable> executable)
     : executable_(std::move(executable)) {}
 
-StatusOr<LocalShapedBuffer*> CompiledLocalComputation::Execute(
+StatusOr<LocalShapedBuffer*> LocalExecutable::Execute(
     absl::Span<LocalShapedBuffer* const> argument_handles) {
   if (num_replicas() != 1) {
     return InvalidArgument(
@@ -376,7 +376,7 @@ StatusOr<LocalShapedBuffer*> CompiledLocalComputation::Execute(
   return new LocalShapedBuffer(std::move(result_buffer_status).ValueOrDie());
 }
 
-StatusOr<LocalShapedBufferTuple*> CompiledLocalComputation::ExecutePerReplica(
+StatusOr<LocalShapedBufferTuple*> LocalExecutable::ExecutePerReplica(
     absl::Span<const std::vector<LocalShapedBuffer*>> argument_handles) {
   TF_ASSIGN_OR_RETURN(LocalClient * client, GetOrCreateLocalClient());
   const int num_devices = client->device_count();
@@ -454,14 +454,13 @@ StatusOr<LocalShapedBufferTuple*> CompiledLocalComputation::ExecutePerReplica(
   return new LocalShapedBufferTuple(std::move(wrapped_results));
 }
 
-CompiledXrtComputation::CompiledXrtComputation(
-    const ProgramShape& program_shape, int64 handle,
-    const string& session_target)
+XrtExecutable::XrtExecutable(const ProgramShape& program_shape, int64 handle,
+                             const string& session_target)
     : program_shape_(program_shape),
       handle_(handle),
       session_target_(session_target) {}
 
-CompiledXrtComputation::~CompiledXrtComputation() {
+XrtExecutable::~XrtExecutable() {
   tensorflow::Scope root = tensorflow::Scope::NewRootScope();
   auto computation_handle =
       tensorflow::ops::Placeholder(root, tensorflow::DT_INT64);
@@ -483,7 +482,7 @@ CompiledXrtComputation::~CompiledXrtComputation() {
   }
 }
 
-StatusOr<XrtAllocation*> CompiledXrtComputation::Execute(
+StatusOr<XrtAllocation*> XrtExecutable::Execute(
     absl::Span<XrtAllocation* const> argument_handles) {
   const int num_expected_arguments = program_shape().parameters().size();
 
@@ -522,16 +521,16 @@ StatusOr<XrtAllocation*> CompiledXrtComputation::Execute(
   return new XrtAllocation(output, program_shape().result(), session_target_);
 }
 
-const ProgramShape& CompiledXrtComputation::program_shape() const {
+const ProgramShape& XrtExecutable::program_shape() const {
   return program_shape_;
 }
 
-int64 CompiledXrtComputation::handle() const { return handle_; }
+int64 XrtExecutable::handle() const { return handle_; }
 
-LocalComputation::LocalComputation(XlaComputation computation)
+Computation::Computation(XlaComputation computation)
     : computation_(std::move(computation)) {}
 
-StatusOr<CompiledLocalComputation*> LocalComputation::Compile(
+StatusOr<LocalExecutable*> Computation::Compile(
     const std::vector<Shape>& argument_shapes,
     const ExecutableBuildOptions* build_options) {
   std::vector<const Shape*> argument_shape_pointers;
@@ -548,10 +547,10 @@ StatusOr<CompiledLocalComputation*> LocalComputation::Compile(
   TF_ASSIGN_OR_RETURN(
       auto local_executable,
       client->Compile(computation_, argument_shape_pointers, options));
-  return new CompiledLocalComputation(std::move(local_executable));
+  return new LocalExecutable(std::move(local_executable));
 }
 
-StatusOr<CompiledXrtComputation*> LocalComputation::CompileForXrt(
+StatusOr<XrtExecutable*> Computation::CompileForXrt(
     const std::vector<Shape>& argument_shapes, const string& session_target) {
   tensorflow::Scope root = tensorflow::Scope::NewRootScope();
   auto program = tensorflow::ops::Placeholder(root, tensorflow::DT_STRING);
@@ -579,14 +578,12 @@ StatusOr<CompiledXrtComputation*> LocalComputation::CompileForXrt(
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
                       computation().GetProgramShape());
   int64 handle = outputs[0].scalar<int64>()();
-  return new CompiledXrtComputation(program_shape, handle, session_target);
+  return new XrtExecutable(program_shape, handle, session_target);
 }
 
-const XlaComputation& LocalComputation::computation() const {
-  return computation_;
-}
+const XlaComputation& Computation::computation() const { return computation_; }
 
-string LocalComputation::GetSerializedProto() const {
+string Computation::GetSerializedProto() const {
   string result;
   if (!computation_.proto().SerializeToString(&result)) {
     LOG(ERROR) << "Failed to serialize the HloModuleProto.";
@@ -595,11 +592,11 @@ string LocalComputation::GetSerializedProto() const {
   return result;
 }
 
-StatusOr<ProgramShape> LocalComputation::GetProgramShape() const {
+StatusOr<ProgramShape> Computation::GetProgramShape() const {
   return computation_.GetProgramShape();
 }
 
-StatusOr<Shape> LocalComputation::GetReturnValueShape() const {
+StatusOr<Shape> Computation::GetReturnValueShape() const {
   TF_ASSIGN_OR_RETURN(ProgramShape shape, computation_.GetProgramShape());
   return std::move(*shape.mutable_result());
 }
@@ -608,93 +605,90 @@ LocalOp::LocalOp(const XlaOp& op) : op_(op) {}
 
 const XlaOp& LocalOp::op() const { return op_; }
 
-LocalComputationBuilder::LocalComputationBuilder(const string& computation_name)
+ComputationBuilder::ComputationBuilder(const string& computation_name)
     : builder_(computation_name) {}
 
-void LocalComputationBuilder::SetOpMetadata(const OpMetadata& metadata) {
+void ComputationBuilder::SetOpMetadata(const OpMetadata& metadata) {
   builder_.SetOpMetadata(metadata);
 }
 
-void LocalComputationBuilder::ClearOpMetadata() { builder_.ClearOpMetadata(); }
+void ComputationBuilder::ClearOpMetadata() { builder_.ClearOpMetadata(); }
 
-StatusOr<LocalComputation*> LocalComputationBuilder::Build() {
+StatusOr<Computation*> ComputationBuilder::Build() {
   TF_ASSIGN_OR_RETURN(XlaComputation computation, builder_.Build());
-  return new LocalComputation(std::move(computation));
+  return new Computation(std::move(computation));
 }
 
-LocalOp LocalComputationBuilder::Parameter(int64 parameter_number,
-                                           const Shape& shape,
-                                           const string& name) {
+LocalOp ComputationBuilder::Parameter(int64 parameter_number,
+                                      const Shape& shape, const string& name) {
   return xla::Parameter(&builder_, parameter_number, shape, name);
 }
 
-StatusOr<LocalComputation*> LocalComputationBuilder::BuildWithRoot(
-    const LocalOp& root) {
+StatusOr<Computation*> ComputationBuilder::BuildWithRoot(const LocalOp& root) {
   TF_ASSIGN_OR_RETURN(XlaComputation computation, builder_.Build(root.op()));
-  return new LocalComputation(std::move(computation));
+  return new Computation(std::move(computation));
 }
 
-StatusOr<Shape> LocalComputationBuilder::GetShape(const LocalOp& operand) {
+StatusOr<Shape> ComputationBuilder::GetShape(const LocalOp& operand) {
   return builder_.GetShape(operand.op());
 }
 
-StatusOr<Shape> LocalComputationBuilder::GetReturnValueShape() {
+StatusOr<Shape> ComputationBuilder::GetReturnValueShape() {
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape, builder_.GetProgramShape());
   return program_shape.result();
 }
 
-LocalOp LocalComputationBuilder::Infeed(const Shape& shape) {
+LocalOp ComputationBuilder::Infeed(const Shape& shape) {
   return xla::Infeed(&builder_, shape);
 }
 
-void LocalComputationBuilder::Outfeed(const LocalOp& operand,
-                                      const Shape& shape,
-                                      const string& outfeed_config) {
+void ComputationBuilder::Outfeed(const LocalOp& operand, const Shape& shape,
+                                 const string& outfeed_config) {
   xla::Outfeed(operand.op(), shape, outfeed_config);
 }
 
-LocalOp LocalComputationBuilder::ConstantLiteral(const Literal& literal) {
+LocalOp ComputationBuilder::ConstantLiteral(const Literal& literal) {
   return xla::ConstantLiteral(&builder_, literal);
 }
 
-LocalOp LocalComputationBuilder::Iota(PrimitiveType element_type, int64 size) {
+LocalOp ComputationBuilder::Iota(PrimitiveType element_type, int64 size) {
   return xla::Iota(&builder_, element_type, size);
 }
 
-LocalOp LocalComputationBuilder::BroadcastedIota(const Shape& shape,
-                                                 int64 dimension) {
+LocalOp ComputationBuilder::BroadcastedIota(const Shape& shape,
+                                            int64 dimension) {
   return xla::Iota(&builder_, shape, dimension);
 }
 
-LocalOp LocalComputationBuilder::Broadcast(
-    const LocalOp& operand, absl::Span<const int64> broadcast_sizes) {
+LocalOp ComputationBuilder::Broadcast(const LocalOp& operand,
+                                      absl::Span<const int64> broadcast_sizes) {
   return xla::Broadcast(operand.op(), broadcast_sizes);
 }
 
-LocalOp LocalComputationBuilder::BroadcastInDim(
+LocalOp ComputationBuilder::BroadcastInDim(
     const LocalOp& operand, absl::Span<const int64> out_dim_sizes,
     absl::Span<const int64> broadcast_dimensions) {
   return xla::BroadcastInDim(operand.op(), out_dim_sizes, broadcast_dimensions);
 }
 
-LocalOp LocalComputationBuilder::Pad(const LocalOp& operand,
-                                     const LocalOp& padding_value,
-                                     const PaddingConfig& padding_config) {
+LocalOp ComputationBuilder::Pad(const LocalOp& operand,
+                                const LocalOp& padding_value,
+                                const PaddingConfig& padding_config) {
   return xla::Pad(operand.op(), padding_value.op(), padding_config);
 }
 
-LocalOp LocalComputationBuilder::Reshape(const LocalOp& operand,
-                                         absl::Span<const int64> dimensions,
-                                         absl::Span<const int64> new_sizes) {
+LocalOp ComputationBuilder::Reshape(const LocalOp& operand,
+                                    absl::Span<const int64> dimensions,
+                                    absl::Span<const int64> new_sizes) {
   return xla::Reshape(operand.op(), dimensions, new_sizes);
 }
 
-LocalOp LocalComputationBuilder::Collapse(const LocalOp& operand,
-                                          absl::Span<const int64> dimensions) {
+LocalOp ComputationBuilder::Collapse(const LocalOp& operand,
+                                     absl::Span<const int64> dimensions) {
   return xla::Collapse(operand.op(), dimensions);
 }
 
-LocalOp LocalComputationBuilder::AllToAll(
+LocalOp ComputationBuilder::AllToAll(
     const LocalOp& operand, int64 split_dimension, int64 concat_dimension,
     int64 split_count, absl::Span<const ReplicaGroup> replica_groups) {
   std::vector<ReplicaGroup> rg(replica_groups.size());
@@ -705,39 +699,38 @@ LocalOp LocalComputationBuilder::AllToAll(
                        split_count, rg);
 }
 
-LocalOp LocalComputationBuilder::CrossReplicaSum(
+LocalOp ComputationBuilder::CrossReplicaSum(
     const LocalOp& operand, absl::Span<const ReplicaGroup> replica_groups) {
   return xla::CrossReplicaSum(operand.op(), replica_groups);
 }
 
-LocalOp LocalComputationBuilder::Slice(const LocalOp& operand,
-                                       absl::Span<const int64> start_indices,
-                                       absl::Span<const int64> limit_indices,
-                                       absl::Span<const int64> strides) {
+LocalOp ComputationBuilder::Slice(const LocalOp& operand,
+                                  absl::Span<const int64> start_indices,
+                                  absl::Span<const int64> limit_indices,
+                                  absl::Span<const int64> strides) {
   return xla::Slice(operand.op(), start_indices, limit_indices, strides);
 }
 
-LocalOp LocalComputationBuilder::SliceInDim(const LocalOp& operand,
-                                            int64 start_index,
-                                            int64 limit_index, int64 stride,
-                                            int64 dimno) {
+LocalOp ComputationBuilder::SliceInDim(const LocalOp& operand,
+                                       int64 start_index, int64 limit_index,
+                                       int64 stride, int64 dimno) {
   return xla::SliceInDim(operand.op(), start_index, limit_index, stride, dimno);
 }
 
-LocalOp LocalComputationBuilder::DynamicSlice(
-    const LocalOp& operand, const LocalOp& start_indices,
-    absl::Span<const int64> slice_sizes) {
+LocalOp ComputationBuilder::DynamicSlice(const LocalOp& operand,
+                                         const LocalOp& start_indices,
+                                         absl::Span<const int64> slice_sizes) {
   return xla::DynamicSlice(operand.op(), start_indices.op(), slice_sizes);
 }
 
-LocalOp LocalComputationBuilder::DynamicUpdateSlice(
-    const LocalOp& operand, const LocalOp& update,
-    const LocalOp& start_indices) {
+LocalOp ComputationBuilder::DynamicUpdateSlice(const LocalOp& operand,
+                                               const LocalOp& update,
+                                               const LocalOp& start_indices) {
   return xla::DynamicUpdateSlice(operand.op(), update.op(), start_indices.op());
 }
 
-LocalOp LocalComputationBuilder::ConcatInDim(absl::Span<const LocalOp> operands,
-                                             int64 dimension) {
+LocalOp ComputationBuilder::ConcatInDim(absl::Span<const LocalOp> operands,
+                                        int64 dimension) {
   std::vector<XlaOp> xla_ops;
   xla_ops.reserve(operands.size());
   for (const auto& op : operands) {
@@ -746,18 +739,18 @@ LocalOp LocalComputationBuilder::ConcatInDim(absl::Span<const LocalOp> operands,
   return xla::ConcatInDim(&builder_, xla_ops, dimension);
 }
 
-LocalOp LocalComputationBuilder::SelectAndScatterWithGeneralPadding(
-    const LocalOp& operand, const LocalComputation& select,
+LocalOp ComputationBuilder::SelectAndScatterWithGeneralPadding(
+    const LocalOp& operand, const Computation& select,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
     absl::Span<const std::pair<int64, int64>> padding, const LocalOp& source,
-    const LocalOp& init_value, const LocalComputation& scatter) {
+    const LocalOp& init_value, const Computation& scatter) {
   return xla::SelectAndScatterWithGeneralPadding(
       operand.op(), select.computation(), window_dimensions, window_strides,
       padding, source.op(), init_value.op(), scatter.computation());
 }
 
-LocalOp LocalComputationBuilder::Tuple(absl::Span<const LocalOp> elements) {
+LocalOp ComputationBuilder::Tuple(absl::Span<const LocalOp> elements) {
   std::vector<XlaOp> xla_ops;
   xla_ops.reserve(elements.size());
   for (const auto& op : elements) {
@@ -767,22 +760,22 @@ LocalOp LocalComputationBuilder::Tuple(absl::Span<const LocalOp> elements) {
   return xla::Tuple(&builder_, xla_ops);
 }
 
-LocalOp LocalComputationBuilder::GetTupleElement(const LocalOp& tuple_data,
-                                                 int64 index) {
+LocalOp ComputationBuilder::GetTupleElement(const LocalOp& tuple_data,
+                                            int64 index) {
   return xla::GetTupleElement(tuple_data.op(), index);
 }
 
-LocalOp LocalComputationBuilder::Dot(const LocalOp& lhs, const LocalOp& rhs) {
+LocalOp ComputationBuilder::Dot(const LocalOp& lhs, const LocalOp& rhs) {
   return xla::Dot(lhs.op(), rhs.op());
 }
 
-LocalOp LocalComputationBuilder::DotGeneral(
+LocalOp ComputationBuilder::DotGeneral(
     const LocalOp& lhs, const LocalOp& rhs,
     const DotDimensionNumbers& dimension_numbers) {
   return xla::DotGeneral(lhs.op(), rhs.op(), dimension_numbers);
 }
 
-LocalOp LocalComputationBuilder::ConvGeneralDilated(
+LocalOp ComputationBuilder::ConvGeneralDilated(
     const LocalOp& lhs, const LocalOp& rhs,
     absl::Span<const int64> window_strides,
     absl::Span<const std::pair<int64, int64>> padding,
@@ -794,18 +787,18 @@ LocalOp LocalComputationBuilder::ConvGeneralDilated(
                                  feature_group_count);
 }
 
-LocalOp LocalComputationBuilder::ConvertElementType(
-    const LocalOp& operand, PrimitiveType new_element_type) {
+LocalOp ComputationBuilder::ConvertElementType(const LocalOp& operand,
+                                               PrimitiveType new_element_type) {
   return xla::ConvertElementType(operand.op(), new_element_type);
 }
 
-LocalOp LocalComputationBuilder::BitcastConvertType(
-    const LocalOp& operand, PrimitiveType new_element_type) {
+LocalOp ComputationBuilder::BitcastConvertType(const LocalOp& operand,
+                                               PrimitiveType new_element_type) {
   return xla::BitcastConvertType(operand.op(), new_element_type);
 }
 
-LocalOp LocalComputationBuilder::Call(const LocalComputation& local_computation,
-                                      absl::Span<const LocalOp> operands) {
+LocalOp ComputationBuilder::Call(const Computation& local_computation,
+                                 absl::Span<const LocalOp> operands) {
   std::vector<XlaOp> xla_ops;
   xla_ops.reserve(operands.size());
   for (const auto& op : operands) {
@@ -814,7 +807,7 @@ LocalOp LocalComputationBuilder::Call(const LocalComputation& local_computation,
   return xla::Call(&builder_, local_computation.computation(), xla_ops);
 }
 
-LocalOp LocalComputationBuilder::CustomCall(
+LocalOp ComputationBuilder::CustomCall(
     const string& call_target_name, absl::Span<const LocalOp> operands,
     const Shape& shape_with_layout,
     const std::vector<Shape>& operand_shapes_with_layout,
@@ -829,19 +822,19 @@ LocalOp LocalComputationBuilder::CustomCall(
                                    operand_shapes_with_layout, opaque);
 }
 
-LocalOp LocalComputationBuilder::Transpose(
-    const LocalOp& operand, absl::Span<const int64> permutation) {
+LocalOp ComputationBuilder::Transpose(const LocalOp& operand,
+                                      absl::Span<const int64> permutation) {
   return xla::Transpose(operand.op(), permutation);
 }
 
-LocalOp LocalComputationBuilder::Rev(const LocalOp& operand,
-                                     absl::Span<const int64> dimensions) {
+LocalOp ComputationBuilder::Rev(const LocalOp& operand,
+                                absl::Span<const int64> dimensions) {
   return xla::Rev(operand.op(), dimensions);
 }
 
-LocalOp LocalComputationBuilder::Map(absl::Span<const LocalOp> operands,
-                                     const LocalComputation& local_computation,
-                                     absl::Span<const int64> dimensions) {
+LocalOp ComputationBuilder::Map(absl::Span<const LocalOp> operands,
+                                const Computation& local_computation,
+                                absl::Span<const int64> dimensions) {
   std::vector<XlaOp> xla_ops;
   xla_ops.reserve(operands.size());
   for (const auto& op : operands) {
@@ -852,17 +845,17 @@ LocalOp LocalComputationBuilder::Map(absl::Span<const LocalOp> operands,
                   dimensions);
 }
 
-LocalOp LocalComputationBuilder::Reduce(
+LocalOp ComputationBuilder::Reduce(
     const LocalOp& operand, const LocalOp& init_value,
-    const LocalComputation& local_computation,
+    const Computation& local_computation,
     absl::Span<const int64> dimensions_to_reduce) {
   return xla::Reduce(operand.op(), init_value.op(),
                      local_computation.computation(), dimensions_to_reduce);
 }
 
-LocalOp LocalComputationBuilder::ReduceWindowWithGeneralPadding(
+LocalOp ComputationBuilder::ReduceWindowWithGeneralPadding(
     const LocalOp& operand, const LocalOp& init_value,
-    const LocalComputation& local_computation,
+    const Computation& local_computation,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
     absl::Span<const int64> base_dilations,
@@ -874,51 +867,50 @@ LocalOp LocalComputationBuilder::ReduceWindowWithGeneralPadding(
       padding);
 }
 
-LocalOp LocalComputationBuilder::RngNormal(const LocalOp& mu,
-                                           const LocalOp& sigma,
-                                           const Shape& shape) {
+LocalOp ComputationBuilder::RngNormal(const LocalOp& mu, const LocalOp& sigma,
+                                      const Shape& shape) {
   return xla::RngNormal(mu.op(), sigma.op(), shape);
 }
 
-LocalOp LocalComputationBuilder::RngUniform(const LocalOp& a, const LocalOp& b,
-                                            const Shape& shape) {
+LocalOp ComputationBuilder::RngUniform(const LocalOp& a, const LocalOp& b,
+                                       const Shape& shape) {
   return xla::RngUniform(a.op(), b.op(), shape);
 }
 
-LocalOp LocalComputationBuilder::While(const LocalComputation& condition,
-                                       const LocalComputation& body,
-                                       const LocalOp& init) {
+LocalOp ComputationBuilder::While(const Computation& condition,
+                                  const Computation& body,
+                                  const LocalOp& init) {
   return xla::While(condition.computation(), body.computation(), init.op());
 }
 
-LocalOp LocalComputationBuilder::Conditional(
-    const LocalOp& predicate, const LocalOp& true_operand,
-    const LocalComputation& true_computation, const LocalOp& false_operand,
-    const LocalComputation& false_computation) {
+LocalOp ComputationBuilder::Conditional(const LocalOp& predicate,
+                                        const LocalOp& true_operand,
+                                        const Computation& true_computation,
+                                        const LocalOp& false_operand,
+                                        const Computation& false_computation) {
   return xla::Conditional(predicate.op(), true_operand.op(),
                           true_computation.computation(), false_operand.op(),
                           false_computation.computation());
 }
 
-StatusOr<bool> LocalComputationBuilder::IsConstant(const LocalOp& operand) {
+StatusOr<bool> ComputationBuilder::IsConstant(const LocalOp& operand) {
   return builder_.IsConstant(operand.op());
 }
 
-LocalOp LocalComputationBuilder::Sort(const LocalOp& operand, int64 dimension) {
+LocalOp ComputationBuilder::Sort(const LocalOp& operand, int64 dimension) {
   return xla::Sort(operand.op(), {}, dimension);
 }
 
-LocalOp LocalComputationBuilder::SortKeyVal(const LocalOp& keys,
-                                            const LocalOp& values,
-                                            int64 dimension) {
+LocalOp ComputationBuilder::SortKeyVal(const LocalOp& keys,
+                                       const LocalOp& values, int64 dimension) {
   return xla::Sort(keys.op(), {values.op()}, dimension);
 }
 
-LocalOp LocalComputationBuilder::Cholesky(const LocalOp& a) {
+LocalOp ComputationBuilder::Cholesky(const LocalOp& a) {
   return xla::Cholesky(a.op());
 }
 
-LocalOp LocalComputationBuilder::QR(const LocalOp& a, bool full_matrices) {
+LocalOp ComputationBuilder::QR(const LocalOp& a, bool full_matrices) {
   XlaBuilder* builder = a.op().builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto qr, xla::QRDecomposition(a.op(), full_matrices));
@@ -926,17 +918,16 @@ LocalOp LocalComputationBuilder::QR(const LocalOp& a, bool full_matrices) {
   });
 }
 
-LocalOp LocalComputationBuilder::TriangularSolve(const LocalOp& a,
-                                                 const LocalOp& b,
-                                                 bool left_side, bool lower,
-                                                 bool unit_diagonal,
-                                                 int transpose_a) {
+LocalOp ComputationBuilder::TriangularSolve(const LocalOp& a, const LocalOp& b,
+                                            bool left_side, bool lower,
+                                            bool unit_diagonal,
+                                            int transpose_a) {
   return xla::TriangularSolve(
       a.op(), b.op(), left_side, lower, unit_diagonal,
       xla::TriangularSolveOptions::Transpose(transpose_a));
 }
 
-LocalOp LocalComputationBuilder::Gather(
+LocalOp ComputationBuilder::Gather(
     const LocalOp& input, const LocalOp& start_indices,
     const GatherDimensionNumbers& dimension_numbers,
     absl::Span<const int64> slice_sizes) {
@@ -944,24 +935,24 @@ LocalOp LocalComputationBuilder::Gather(
                      slice_sizes);
 }
 
-LocalOp LocalComputationBuilder::Scatter(
+LocalOp ComputationBuilder::Scatter(
     const LocalOp& input, const LocalOp& scatter_indices,
-    const LocalOp& updates, const LocalComputation& update_computation,
+    const LocalOp& updates, const Computation& update_computation,
     const ScatterDimensionNumbers& dimension_numbers) {
   return xla::Scatter(input.op(), scatter_indices.op(), updates.op(),
                       update_computation.computation(), dimension_numbers);
 }
 
-StatusOr<LocalComputation*> LocalComputationBuilder::BuildConstantSubGraph(
+StatusOr<Computation*> ComputationBuilder::BuildConstantSubGraph(
     const LocalOp& operand) {
   TF_ASSIGN_OR_RETURN(XlaComputation computation,
                       builder_.BuildConstantSubGraph(operand.op()));
-  return new LocalComputation(std::move(computation));
+  return new Computation(std::move(computation));
 }
 
-#define _FORWARD(method_name, return_sig, args_sig, args)    \
-  return_sig LocalComputationBuilder::method_name args_sig { \
-    return xla::method_name args;                            \
+#define _FORWARD(method_name, return_sig, args_sig, args) \
+  return_sig ComputationBuilder::method_name args_sig {   \
+    return xla::method_name args;                         \
   }
 
 #define _FORWARD_UNOP(method_name) \
@@ -1050,17 +1041,11 @@ void DeleteLocalShapedBuffer(LocalShapedBuffer* local_shaped_buffer) {
 
 void DeleteXrtAllocation(XrtAllocation* allocation) { delete allocation; }
 
-void DeleteCompiledLocalComputation(CompiledLocalComputation* computation) {
-  delete computation;
-}
+void DeleteLocalExecutable(LocalExecutable* computation) { delete computation; }
 
-void DeleteCompiledXrtComputation(CompiledXrtComputation* computation) {
-  delete computation;
-}
+void DeleteXrtExecutable(XrtExecutable* computation) { delete computation; }
 
-void DeleteLocalComputation(LocalComputation* computation) {
-  delete computation;
-}
+void DeleteComputation(Computation* computation) { delete computation; }
 
 StatusOr<LocalShapedBufferTuple*> DestructureLocalShapedBufferTuple(
     LocalShapedBuffer* local_shaped_buffer) {
