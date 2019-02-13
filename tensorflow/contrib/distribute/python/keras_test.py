@@ -34,6 +34,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.summary.writer import writer_cache
@@ -1182,6 +1183,54 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           model_with_ds_strategy.predict(dataset_with_partial_batch, steps=12),
           cpu_model.predict(dataset_with_partial_batch, steps=12),
           atol=1e-4, rtol=1e-4)
+
+
+class TestRegularizerLoss(test.TestCase, parameterized.TestCase):
+  class IdentityRegularizer(keras.regularizers.Regularizer):
+
+    def __call__(self, x):
+      return array_ops.identity(x)
+
+  class AddLayer(keras.layers.Layer):
+
+    def build(self, _):
+      self.v = self.add_weight(
+          'v', (), initializer='ones',
+          regularizer=TestRegularizerLoss.IdentityRegularizer())
+
+    def call(self, inputs):
+      return inputs + self.v
+
+  @staticmethod
+  def loss_fn(_, y_pred):
+    return y_pred
+
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_regularizer_loss(self, distribution):
+    batch_size = 2
+    if not distributed_training_utils.global_batch_size_supported(distribution):
+      batch_size //= distribution.num_replicas_in_sync
+
+      # Given an input x, which is always 1, and variable v, this model computes
+      # Loss=x+v+regularizer_loss, where regularizer_loss=v and the variable is
+      # initialized to 1. Therefore, this model computes Loss=1+2v, and so the
+      # gradient dLoss/dv = 2. This gradient of 2 is averaged over all examples
+      # in a batch and then multiplied by the learning rate of 1. As a result,
+      # the model update for one batch should subtract 2 from v, resulting in v
+      # being -1. If the regularizer loss is not scaled correctly by number of
+      # replicas, the variable value will be incorrect when number of replicas
+      # >1. For e.g. it will be -2 if num replicas = 2.
+    with distribution.scope():
+      x = keras.layers.Input(shape=(), batch_size=batch_size)
+      y = TestRegularizerLoss.AddLayer()(x)
+      model = keras.models.Model(inputs=x, outputs=y)
+      opt = gradient_descent_keras.SGD(1.)
+      model.compile(opt, loss=TestRegularizerLoss.loss_fn)
+      model.fit(x=np.array([1., 1.], dtype=np.float32),
+                y=np.array([1., 1.], dtype=np.float32),
+                batch_size=batch_size)
+      v = model.get_weights()[0]
+      self.assertEqual(-1.0, v)
 
 
 if __name__ == '__main__':
