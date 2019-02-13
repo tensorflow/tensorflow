@@ -32,6 +32,9 @@ namespace xla {
 class HloInfeedInstruction;
 namespace poplarplugin {
 
+using OutfeedInfo = const HloInstruction*;
+using OutfeedInfos = absl::flat_hash_set<OutfeedInfo>;
+
 // The only info we currently store for infeeds is the instruction.
 using InfeedInfo = const HloInfeedInstruction*;
 using InfeedInfos = absl::flat_hash_set<InfeedInfo>;
@@ -52,6 +55,7 @@ struct CompilerAnnotations {
   InplaceUtil::InplaceInstructions inplace_instructions;
 
   InfeedInfos infeed_infos;
+  OutfeedInfos outfeed_infos;
 };
 
 }  // namespace poplarplugin

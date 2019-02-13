@@ -492,7 +492,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       std::move(profile_index_map), std::move(engine),
       std::move(resources.annotations.input_output_aliasing_map),
       is_constant_graph, std::move(constant_output), is_remap_graph,
-      std::move(remaped_output), std::move(resources.annotations.infeed_infos));
+      std::move(remaped_output), std::move(resources.annotations.infeed_infos),
+      std::move(resources.annotations.outfeed_infos));
+
   executable.reset(poplar_executable);
 
   if (poplarExecutor->HaveExecutableCache()) {

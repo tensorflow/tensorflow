@@ -603,6 +603,24 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "ipu_outfeed_test",
+    srcs = ["tests/ipu_outfeed_test.cc"],
+    size = "small",
+    extra_copts = [
+        "-fexceptions",
+    ],
+    deps = [
+        ":poplar_lib",
+        ":test_utils",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:local_client_test_base",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+    ],
+)
+
 xla_test(
     name = "fused_batch_norm_test",
     srcs = ["tests/fused_batch_norm_test.cc"],
@@ -1216,6 +1234,7 @@ test_suite(
         "group_norm_test",
         "root_token_replacer_test",
         "deferred_allocation_visitor_test",
+        "ipu_outfeed_test",
     ],
 )
 

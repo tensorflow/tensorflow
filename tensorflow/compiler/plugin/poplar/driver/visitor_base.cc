@@ -453,7 +453,51 @@ Status BaseVisitor::HandleInfeed(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleOutfeed(HloInstruction* inst) {
-  return Unimplemented(inst);
+  VLOG(1) << "Processing " << inst->name();
+
+  if (resources_.annotations.outfeed_infos.size() > 1) {
+    return InvalidArgument("Only one outfeed supported per graph");
+  }
+
+  HloOutfeedInstruction* outfeed = Cast<HloOutfeedInstruction>(inst);
+  poplar::Graph& graph = GetGraph(resources_, inst);
+  poplar::program::Sequence& seq = sequence;
+
+  // operand 1 is the input
+  // operand 2 is the token
+  if (outfeed->operand_count() != 2) {
+    return InvalidArgument("Expected operand_count() == 2 for outfeed ops");
+  }
+
+  HloInstruction* operand = outfeed->operands()[0];
+  const Shape& shape = operand->shape();
+  if (ShapeUtil::IsNestedTuple(shape)) {
+    return InvalidArgument("Nested tuple shapes are not supported for outfeed");
+  }
+
+  ArgVector input_tensors;
+  const bool expand_constants = true;
+  if (shape.IsTuple()) {
+    input_tensors = FindInstructionInputs(tensor_map, resources_, inst, 0, seq,
+                                          expand_constants);
+  } else {
+    poplar::Tensor in;
+    TF_ASSIGN_OR_RETURN(
+        in, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
+    input_tensors.emplace_back(in);
+  }
+
+  for (unsigned i = 0; i < input_tensors.size(); ++i) {
+    poplar::Tensor& in = input_tensors[i];
+    auto fifo = graph.addDeviceToHostFIFO(GetOutfeedCopyHandle(inst->name(), i),
+                                          in.elementType(), in.numElements());
+
+    seq.add(poplar::program::Copy(in, fifo, false));
+  }
+
+  resources_.annotations.outfeed_infos.insert(inst);
+
+  return Status::OK();
 }
 
 Status BaseVisitor::HandleSend(HloInstruction* inst) {
