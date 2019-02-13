@@ -508,6 +508,26 @@ class Gather : public BuiltinOperator<GatherOperator, ::tflite::GatherOptions,
   }
 };
 
+class GatherNd
+    : public BuiltinOperator<GatherNdOperator, ::tflite::GatherNdOptions,
+                             ::tflite::BuiltinOptions_GatherNdOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateGatherNdOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
+  }
+};
+
 class Svdf : public BuiltinOperator<SvdfOperator, ::tflite::SVDFOptions,
                                     ::tflite::BuiltinOptions_SVDFOptions> {
  public:
@@ -2210,6 +2230,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                  OperatorType::kFullyConnected));
   ops.push_back(MakeUnique<Gather>(::tflite::BuiltinOperator_GATHER,
                                    OperatorType::kGather));
+  ops.push_back(MakeUnique<GatherNd>(::tflite::BuiltinOperator_GATHER_ND,
+                                     OperatorType::kGatherNd));
   ops.push_back(
       MakeUnique<L2Normalization>(::tflite::BuiltinOperator_L2_NORMALIZATION,
                                   OperatorType::kL2Normalization));

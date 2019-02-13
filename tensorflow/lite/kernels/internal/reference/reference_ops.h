@@ -3234,6 +3234,43 @@ inline void Gather(const tflite::GatherParams& op_params,
   }
 }
 
+template <typename ParamsT, typename IndicesT = int32>
+inline void GatherNd(const RuntimeShape& params_shape,
+                     const ParamsT* params_data,
+                     const RuntimeShape& indices_shape,
+                     const IndicesT* indices_data,
+                     const RuntimeShape& output_shape, ParamsT* output_data) {
+  gemmlowp::ScopedProfilingLabel label("GatherNd");
+
+  int n_slices = 1;
+  int slice_size = 1;
+  const int indices_dims = indices_shape.DimensionsCount();
+  const int indices_nd = indices_shape.Dims(indices_dims - 1);
+  const int params_dims = params_shape.DimensionsCount();
+  for (int i = 0; i < indices_dims - 1; ++i) {
+    n_slices *= indices_shape.Dims(i);
+  }
+  for (int i = indices_nd; i < params_dims; ++i) {
+    slice_size *= params_shape.Dims(i);
+  }
+
+  int remain_flat_size = params_shape.FlatSize();
+  std::vector<int> dims_to_count(indices_nd, 0);
+  for (int i = 0; i < indices_nd; ++i) {
+    dims_to_count[i] = remain_flat_size / params_shape.Dims(i);
+    remain_flat_size = dims_to_count[i];
+  }
+
+  for (int i = 0; i < n_slices; ++i) {
+    int from_pos = 0;
+    for (int j = 0; j < indices_nd; ++j) {
+      from_pos += indices_data[i * indices_nd + j] * dims_to_count[j];
+    }
+    std::memcpy(output_data + i * slice_size, params_data + from_pos,
+                sizeof(ParamsT) * slice_size);
+  }
+}
+
 template <typename T>
 inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const RuntimeShape& unextended_input_shape,
