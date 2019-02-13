@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/client/lib/self_adjoint_eigen.h"
+#include "tensorflow/compiler/xla/client/lib/self_adjoint_eig.h"
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
@@ -32,7 +32,7 @@ limitations under the License.
 
 namespace xla {
 
-class SelfAdjointEigenTest : public ClientLibraryTestBase {
+class SelfAdjointEigTest : public ClientLibraryTestBase {
  protected:
   void SetUp() override {
     ClientLibraryTestBase::SetUp();
@@ -71,7 +71,7 @@ class SelfAdjointEigenTest : public ClientLibraryTestBase {
   }
   void TearDown() override { ClientLibraryTestBase::TearDown(); }
 
-  Array3D<float> get_unit_matrix_3d(const Array3D<float>& matrix) {
+  Array3D<float> GetUnitMatrix3D(const Array3D<float>& matrix) {
     Array3D<float> result(matrix.n1(), matrix.n2(), matrix.n3(), 0.0);
     for (int i = 0; i < matrix.n1(); ++i) {
       for (int j = 0; j < matrix.n2(); ++j) {
@@ -100,7 +100,7 @@ class SelfAdjointEigenTest : public ClientLibraryTestBase {
     return result;
   }
 
-  XlaOp ComputeMatmulVWVt(SelfAdjointEigenResult result, XlaBuilder* builder) {
+  XlaOp ComputeMatmulVWVt(SelfAdjointEigResult result, XlaBuilder* builder) {
     Shape shape = builder->GetShape(result.v).ValueOrDie();
     std::vector<int64> out_dims = shape.dimensions();
     std::vector<int64> broadcast_dims(shape.rank() - 1);
@@ -140,69 +140,69 @@ class SelfAdjointEigenTest : public ClientLibraryTestBase {
   Array2D<int> wrong_type_4x4_;
 };
 
-XLA_TEST_F(SelfAdjointEigenTest, Test_VWVt_EQ_A_2x4x4) {
+XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_2x4x4) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
   auto a_data = CreateR3Parameter<float>(batch_3d_4x4_, 0, "a", &builder, &a);
-  auto result = SelfAdjointEigen(a);
+  auto result = SelfAdjointEig(a);
   ComputeMatmulVWVt(result, &builder);
 
   ComputeAndCompareR3<float>(&builder, batch_3d_4x4_, {a_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigenTest, Test_VWVt_EQ_A_Lower_2x4x4) {
+XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Lower_2x4x4) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
   auto a_data = CreateR3Parameter<float>(
       ExtractTriangularMatrix(batch_3d_4x4_, true), 0, "a", &builder, &a);
-  auto result = SelfAdjointEigen(a);
+  auto result = SelfAdjointEig(a);
   ComputeMatmulVWVt(result, &builder);
 
   ComputeAndCompareR3<float>(&builder, batch_3d_4x4_, {a_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigenTest, Test_VWVt_EQ_A_Upper_2x4x4) {
+XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Upper_2x4x4) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
   auto a_data = CreateR3Parameter<float>(
       ExtractTriangularMatrix(batch_3d_4x4_, false), 0, "a", &builder, &a);
-  auto result = SelfAdjointEigen(a, false);
+  auto result = SelfAdjointEig(a, false);
   ComputeMatmulVWVt(result, &builder);
 
   ComputeAndCompareR3<float>(&builder, batch_3d_4x4_, {a_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigenTest, Test_Orthogonality_2x4x4) {
+XLA_TEST_F(SelfAdjointEigTest, Test_Orthogonality_2x4x4) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
   auto a_data = CreateR3Parameter<float>(batch_3d_4x4_, 0, "a", &builder, &a);
-  auto result = SelfAdjointEigen(a);
+  auto result = SelfAdjointEig(a);
   BatchDot(result.v, TransposeInMinorDims(result.v), PrecisionConfig::HIGHEST);
 
-  ComputeAndCompareR3<float>(&builder, get_unit_matrix_3d(batch_3d_4x4_),
+  ComputeAndCompareR3<float>(&builder, GetUnitMatrix3D(batch_3d_4x4_),
                              {a_data.get()}, ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigenTest, Test_VtWV_EQ_A_Rank_Deficient_4x4) {
+XLA_TEST_F(SelfAdjointEigTest, Test_VtWV_EQ_A_Rank_Deficient_4x4) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(low_rank_4x4_, 0, "a", &builder, &a);
-  auto result = SelfAdjointEigen(a);
+  auto result = SelfAdjointEig(a);
   ComputeMatmulVWVt(result, &builder);
 
   ComputeAndCompareR2<float>(&builder, low_rank_4x4_, {a_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigenTest, Test_Eigen_8x8) {
+XLA_TEST_F(SelfAdjointEigTest, Test_Eigen_8x8) {
   XlaBuilder builder(TestName());
 
   // This is computed by numpy.linalg.eigh with float32.
@@ -211,21 +211,21 @@ XLA_TEST_F(SelfAdjointEigenTest, Test_Eigen_8x8) {
 
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(matrix2d_8x8_, 0, "a", &builder, &a);
-  auto result = SelfAdjointEigen(a);
-  Sort(result.w);
+  auto result = SelfAdjointEig(a);
+  Add(result.w, ZerosLike(result.w));
 
   ComputeAndCompareR1<float>(&builder, expected, {a_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigenTest, Test_Orthogonality_8x8) {
+XLA_TEST_F(SelfAdjointEigTest, Test_Orthogonality_8x8) {
   XlaBuilder builder(TestName());
 
   float expected_vals = 1e-3;
 
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(matrix2d_8x8_, 0, "a", &builder, &a);
-  auto result = SelfAdjointEigen(a);
+  auto result = SelfAdjointEig(a);
   // np.sum(norm(eye(n) - matmul(conj(T(v)), v)) / n**2
   GetAverageAbsoluteError(IdentityMatrix(&builder, F32, 8, 8),
                           BatchDot(TransposeInMinorDims(result.v), result.v),
@@ -235,75 +235,75 @@ XLA_TEST_F(SelfAdjointEigenTest, Test_Orthogonality_8x8) {
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigenTest, Wrong_Type_Int) {
+XLA_TEST_F(SelfAdjointEigTest, Wrong_Type_Int) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
   auto a_data = CreateR2Parameter<int>(wrong_type_4x4_, 0, "a", &builder, &a);
-  auto result = SelfAdjointEigen(a);
+  auto result = SelfAdjointEig(a);
   EXPECT_FALSE(result.v.valid());
   EXPECT_FALSE(result.w.valid());
 }
 
-XLA_TEST_F(SelfAdjointEigenTest, Various_Size_Random_Matrix_8x8) {
+XLA_TEST_F(SelfAdjointEigTest, Various_Size_Random_Matrix_8x8) {
   XlaBuilder builder(TestName());
   int size = 8;
   Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
-  auto result = SelfAdjointEigen(a);
+  auto result = SelfAdjointEig(a);
   GetAverageAbsoluteError(ComputeMatmulVWVt(result, &builder), a, &builder);
 
   ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigenTest, Various_Size_Random_Matrix_16x16) {
+XLA_TEST_F(SelfAdjointEigTest, Various_Size_Random_Matrix_16x16) {
   XlaBuilder builder(TestName());
   int size = 16;
   Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
-  auto result = SelfAdjointEigen(a);
+  auto result = SelfAdjointEig(a);
   GetAverageAbsoluteError(ComputeMatmulVWVt(result, &builder), a, &builder);
 
   ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigenTest, Various_Size_Random_Matrix_32x32) {
+XLA_TEST_F(SelfAdjointEigTest, Various_Size_Random_Matrix_32x32) {
   XlaBuilder builder(TestName());
   int size = 32;
   Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
-  auto result = SelfAdjointEigen(a);
+  auto result = SelfAdjointEig(a);
   GetAverageAbsoluteError(ComputeMatmulVWVt(result, &builder), a, &builder);
 
   ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigenTest, Various_Size_Random_Matrix_256x256) {
+XLA_TEST_F(SelfAdjointEigTest, Various_Size_Random_Matrix_256x256) {
   XlaBuilder builder(TestName());
   int size = 256;
   Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
-  auto result = SelfAdjointEigen(a);
+  auto result = SelfAdjointEig(a);
   GetAverageAbsoluteError(ComputeMatmulVWVt(result, &builder), a, &builder);
 
   ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigenTest, Various_Size_Random_Matrix_512x512) {
+XLA_TEST_F(SelfAdjointEigTest, Various_Size_Random_Matrix_512x512) {
   XlaBuilder builder(TestName());
   int size = 512;
   Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
-  auto result = SelfAdjointEigen(a);
+  auto result = SelfAdjointEig(a);
   GetAverageAbsoluteError(ComputeMatmulVWVt(result, &builder), a, &builder);
 
   ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
