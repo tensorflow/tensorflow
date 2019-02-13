@@ -196,7 +196,7 @@ class TRT_ShapedWeights {
   }
 
   template <typename T>
-  std::vector<T> CopyToVector() const {
+  std::vector<T> ToVector() const {
     auto span = GetSpan<T>();
     return std::vector<T>(span.data(), span.data() + span.size());
   }
