@@ -29816,6 +29816,35 @@ func SelfAdjointEig(scope *Scope, input tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
+// Solves tridiagonal systems of equations.
+//
+// `diagonals` is a tensor of shape `[..., 3, M]` whose inner-most 2 dimensions
+// represent matrices with three rows being the superdiagonal, diagonals, and
+// subdiagonals, in order. The last element of the superdiagonal and the first
+// element of the subdiagonal is ignored.
+// `rhs` is a tensor of shape `[..., M, K]`, representing K right-hand sides per
+// each left-hand side.
+// The output is a tensor of shape `[..., M, K]` containing the solutions.
+//
+// Arguments:
+//	diagonals: Shape is `[..., 3, M]`.
+//	rhs: Shape is `[..., M, K]`.
+//
+// Returns Shape is `[..., M, K]`.
+func TridiagonalSolve(scope *Scope, diagonals tf.Output, rhs tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TridiagonalSolve",
+		Input: []tf.Input{
+			diagonals, rhs,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes softplus gradients for a softplus operation.
 //
 // Arguments:
