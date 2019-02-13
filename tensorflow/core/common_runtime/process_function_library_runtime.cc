@@ -526,6 +526,13 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(GetGraphAndRets(function_name, attrs, fdef, lib_def,
                                      &graph, &ret_node_names));
 
+  if (options.graph_collector != nullptr) {
+    GraphDef def;
+    graph->ToGraphDef(&def);
+    *def.mutable_library() = lib_def->ReachableDefinitions(def).ToProto();
+    options.graph_collector->CollectRawGraph(def);
+  }
+
   DeviceSet device_set;
   for (auto d : device_mgr_->ListDevices()) {
     device_set.AddDevice(d);
@@ -592,6 +599,13 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
   DumpGraph("After all optimization passes", graph.get());
 
+  if (options.graph_collector != nullptr) {
+    GraphDef def;
+    graph->ToGraphDef(&def);
+    *def.mutable_library() = lib_def->ReachableDefinitions(def).ToProto();
+    options.graph_collector->CollectOptimizedGraph(def);
+  }
+
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
   TF_RETURN_IF_ERROR(
       PartitionFunctionGraph(device_set, std::move(graph), &subgraphs));
@@ -600,7 +614,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     for (const auto& pair : subgraphs) {
       GraphDef def;
       pair.second->ToGraphDef(&def);
-      options.graph_collector->CollectGraph(def);
+      *def.mutable_library() = lib_def->ReachableDefinitions(def).ToProto();
+      options.graph_collector->CollectPartitionedGraph(def);
     }
   }
 
