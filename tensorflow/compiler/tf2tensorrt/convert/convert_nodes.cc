@@ -2250,7 +2250,12 @@ tensorflow::Status ConvertStridedSliceHelper(OpConverterParams* params,
     }
   }
   if (pad_dims.empty()) {
-    // No dimensions are changed. Create a no-op layer so tests don't break.
+    // No dimensions are changed, so this is a no-op. We could just return the
+    // input without creating a new layer. TRT will crash if an empty engine
+    // with no layers is attempted to be created, so we add a no-op shuffle to
+    // prevent our unit tests from breaking.
+    // TODO(tmorris): Allow empty engines in the unit tests and return the input
+    // as output here.
     if (params->validation_only) return Status::OK();
     nvinfer1::IShuffleLayer* layer = params->converter->network()->addShuffle(
         *const_cast<nvinfer1::ITensor*>(input.tensor()));
