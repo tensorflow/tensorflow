@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package tensorflow.tpu.op_profile;
+package tensorflow.profiler.op_profile;
 
 // Profile is the top-level data that summarizes a program.
 message Profile {
