@@ -111,6 +111,9 @@ tf_cc_test(
     name = "constant_folding_test",
     srcs = ["constant_folding_test.cc"],
     shard_count = 5,
+    # Running cuda on cpu will trigger tests guarded by GOOGLE_CUDA but NCHW
+    # won't be available, which result in test failures. So disable that.
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":constant_folding",
         ":dependency_optimizer",
