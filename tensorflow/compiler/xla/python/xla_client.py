@@ -50,7 +50,7 @@ from tensorflow.compiler.xla.service import hlo_pb2
 # which case we need to be able to detect when incompatible versions are
 # installed.
 def version():
-  return (0, 1, 7)
+  return (0, 1, 8)
 
 
 _OP_METADATA_FIELDS = [
@@ -630,15 +630,15 @@ def transfer_from_outfeed(shape, replica_number=None):
 
 
 class Computation(object):
-  """Python wrapper for a local XLA Computation.
+  """Python wrapper for an XLA Computation.
 
-  A Computation can be compiled to form an Executable. Otherwise, it
-  can still be used as a Computation where required by the
-  ComputationBuilder methods.
+  A Computation can be compiled to form an Executable, or used as a
+  subcomputation in ComputationBuilder methods.
   """
 
-  def __init__(self, c_computation, backend=XLA_LOCAL_BACKEND):
+  def __init__(self, c_computation, backend=None):
     self._c_computation = c_computation
+    # The backend argument is deprecated. Pass a backend to Compile() instead.
     self._backend = backend
 
   @property
@@ -655,7 +655,8 @@ class Computation(object):
     proto = hlo_pb2.HloModuleProto.FromString(serialized)
     return proto
 
-  def Compile(self, argument_shapes=(), compile_options=None, layout_fn=None):
+  def Compile(self, argument_shapes=(), compile_options=None, layout_fn=None,
+              backend=None):
     """Compiles a computation.
 
     Computations are the result of a "ComputationBuild'ing" process.
@@ -667,10 +668,12 @@ class Computation(object):
       compile_options: options to use for compilation, includes an optional laid
         out result shape for the computation.
       layout_fn: lambda that is used to lay out the argument/result shapes.
+      backend: a `Backend` for which an executable should be generated.
 
     Returns:
       A Executable instance.
     """
+    backend = backend or self._backend or XLA_LOCAL_BACKEND
     result_shape = _wrap_shape(self.computation.GetReturnValueShape())
 
     if layout_fn:
@@ -683,18 +686,19 @@ class Computation(object):
 
     compile_options = compile_options or CompileOptions()
     compile_options.result_shape = result_shape
-    c = self._backend.compile(self.computation, argument_shapes,
-                              compile_options)
-    return Executable(c, backend=self._backend)
+    c = backend.compile(self.computation, argument_shapes, compile_options)
+    return Executable(c, backend=backend)
 
   def CompileWithExampleArguments(self,
                                   arguments=(),
                                   compile_options=None,
-                                  layout_fn=None):
+                                  layout_fn=None,
+                                  backend=None):
     return self.Compile(
         argument_shapes=[Shape.from_pyval(arg) for arg in arguments],
         compile_options=compile_options,
-        layout_fn=layout_fn)
+        layout_fn=layout_fn,
+        backend=backend)
 
   def GetProgramShape(self):
     (arg_shapes, result_shape) = self._c_computation.GetProgramShape()
@@ -714,7 +718,7 @@ class Computation(object):
 class Executable(object):
   """Python wrapper for an XLA Executable."""
 
-  def __init__(self, c_executable, backend=XLA_LOCAL_BACKEND):
+  def __init__(self, c_executable, backend=None):
     self._c_executable = c_executable
     self._backend = backend
 
@@ -818,7 +822,16 @@ class ComputationBuilder(object):
     self._client = c_api.ComputationBuilder(name.encode('utf8'))
     self._parameter_numbering = itertools.count()
 
-  def Build(self, root=None, backend=XLA_LOCAL_BACKEND):
+  def Build(self, root=None, backend=None):
+    """Builds a `Computation` from the contents of the builder.
+
+    Args:
+      root: if not None, the operator containing the return value of the
+        computation.
+      backend: deprecated. Pass a `backend` to `Computation.Compile` instead.
+    Returns:
+      A `Computation`.
+    """
     if root is not None:
       return Computation(self._client.BuildWithRoot(root), backend=backend)
     else:
