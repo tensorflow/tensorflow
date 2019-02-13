@@ -362,11 +362,12 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "segment_test",
     size = "small",
     srcs = ["segment/segment_test.cc"],
     tags = [
+        "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
     ],
