@@ -454,12 +454,6 @@ StatusOr<LocalShapedBufferTuple*> CompiledLocalComputation::ExecutePerReplica(
   return new LocalShapedBufferTuple(std::move(wrapped_results));
 }
 
-static StatusOr<Shape> GetReturnValueShape(const XlaComputation& computation) {
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                      computation.GetProgramShape());
-  return std::move(*program_shape.mutable_result());
-}
-
 CompiledXrtComputation::CompiledXrtComputation(
     const ProgramShape& program_shape, int64 handle,
     const string& session_target)
@@ -601,8 +595,13 @@ string LocalComputation::GetSerializedProto() const {
   return result;
 }
 
+StatusOr<ProgramShape> LocalComputation::GetProgramShape() const {
+  return computation_.GetProgramShape();
+}
+
 StatusOr<Shape> LocalComputation::GetReturnValueShape() const {
-  return swig::GetReturnValueShape(computation_);
+  TF_ASSIGN_OR_RETURN(ProgramShape shape, computation_.GetProgramShape());
+  return std::move(*shape.mutable_result());
 }
 
 LocalOp::LocalOp(const XlaOp& op) : op_(op) {}

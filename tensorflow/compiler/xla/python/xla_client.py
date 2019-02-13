@@ -533,6 +533,16 @@ class Shape(object):
     updated._check_minor_to_major()  # pylint: disable=protected-access
     return updated
 
+  def with_major_to_minor_layout_if_absent(self):
+    """Returns a copy of a shape with missing layouts set to major-to-minor."""
+
+    def f(a):
+      if a.minor_to_major():
+        return None
+      return a.update_minor_to_major(tuple(xrange(a.rank() - 1, -1, -1)))
+
+    return self.map_leaves(f)
+
   def serialize(self, proto):
     """Serializes 'shape' into proto."""
     if self.is_tuple():
@@ -546,6 +556,10 @@ class Shape(object):
       if self.minor_to_major():
         proto.layout.format = xla_data_pb2.DENSE
         proto.layout.minor_to_major.extend(self.minor_to_major())
+
+
+ProgramShape = collections.namedtuple('ProgramShape',
+                                      ('parameter_shapes', 'result_shape'))
 
 
 def _wrap_shape(shape_info):
@@ -693,6 +707,11 @@ class LocalComputation(object):
         argument_shapes=[Shape.from_pyval(arg) for arg in arguments],
         compile_options=compile_options,
         layout_fn=layout_fn)
+
+  def GetProgramShape(self):
+    (arg_shapes, result_shape) = self._c_computation.GetProgramShape()
+    return ProgramShape([_wrap_shape(arg) for arg in arg_shapes],
+                        _wrap_shape(result_shape))
 
   def GetReturnValueShape(self):
     return _wrap_shape(self._c_computation.GetReturnValueShape())
