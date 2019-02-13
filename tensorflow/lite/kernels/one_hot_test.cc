@@ -37,6 +37,27 @@ class OneHotOpModel : public SingleOpModel {
     int on = AddInput(dtype);
     int off = AddInput(dtype);
     output_ = AddOutput(dtype);
+
+    SetBuiltinOp(BuiltinOperator_ONE_HOT, BuiltinOptions_OneHotOptions,
+                 CreateOneHotOptions(builder_, axis).Union());
+    BuildInterpreter({input_shape});
+
+    PopulateTensor<int>(depth, {depth_value});
+    PopulateTensor<T>(on, {on_value});
+    PopulateTensor<T>(off, {off_value});
+  }
+
+  OneHotOpModel(std::initializer_list<int> input_shape, int depth_value,
+                TensorType dtype, TensorType indtype, int axis = -1,
+                T on_value = 1, T off_value = 0,
+                TensorType indices_type = TensorType_INT32) {
+    indices_ = AddInput(indices_type);
+    int depth = AddInput(TensorType_INT32);
+
+    T on = AddInput(indtype);
+    T off = AddInput(indtype);
+    output_ = AddOutput(dtype);
+
     SetBuiltinOp(BuiltinOperator_ONE_HOT, BuiltinOptions_OneHotOptions,
                  CreateOneHotOptions(builder_, axis).Union());
     BuildInterpreter({input_shape});
@@ -55,6 +76,9 @@ class OneHotOpModel : public SingleOpModel {
 
   int32_t GetOutputSize() { return GetTensorSize(output_); }
   std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
+  std::vector<uint8_t> GetQuantizedOutput() {
+    return ExtractVector<uint8_t>(output_);
+  }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
  private:
@@ -170,6 +194,74 @@ TEST(OneHotOpTest, Int64Indices) {
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 3}));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0, 0, 0, 1, 0, 0, 0, 1}));
+}
+
+const float kQuantizedTolerance = 2 * (1. / 256);
+TEST(OneHotOpTest, QIntOnOffValues) {
+  const int depth = 3;
+  const int axis = -1;
+  const int on = 5;
+  const int off = 0;
+  OneHotOpModel<int> model({4}, depth, TensorType_UINT8, TensorType_INT32, axis,
+                           on, off);
+  model.SetIndices({0, 2, -1, 1});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({4, 3}));
+  EXPECT_THAT(
+      model.GetQuantizedOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {255, 0, 0, 0, 0, 255, 0, 0, 0, 0, 255, 0}, kQuantizedTolerance)));
+}
+TEST(OneHotOpTest, QFloatOnOffValues) {
+  const int depth = 3;
+  const int axis = -1;
+  const float on = 5;
+  const float off = 0;
+  OneHotOpModel<float> model({4}, depth, TensorType_UINT8, TensorType_FLOAT32,
+                             axis, on, off);
+  model.SetIndices({0, 2, -1, 1});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({4, 3}));
+  EXPECT_THAT(
+      model.GetQuantizedOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {255, 0, 0, 0, 0, 255, 0, 0, 0, 0, 255, 0}, kQuantizedTolerance)));
+}
+
+TEST(OneHotOpTest, QInt64OnOffValues) {
+  const int depth = 3;
+  const int axis = -1;
+  const int64_t on = 5;
+  const int64_t off = 0;
+  OneHotOpModel<int64_t> model({4}, depth, TensorType_UINT8, TensorType_INT64,
+                               axis, on, off);
+  model.SetIndices({0, 2, -1, 1});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({4, 3}));
+  EXPECT_THAT(
+      model.GetQuantizedOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {255, 0, 0, 0, 0, 255, 0, 0, 0, 0, 255, 0}, kQuantizedTolerance)));
+}
+
+TEST(OneHotOpTest, QUint8OnOffValues) {
+  const int depth = 3;
+  const int axis = -1;
+  const uint8_t on = 5;
+  const uint8_t off = 0;
+  OneHotOpModel<uint8_t> model({4}, depth, TensorType_UINT8, TensorType_UINT8,
+                               axis, on, off);
+  model.SetIndices({0, 2, -1, 1});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({4, 3}));
+  EXPECT_THAT(
+      model.GetQuantizedOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {255, 0, 0, 0, 0, 255, 0, 0, 0, 0, 255, 0}, kQuantizedTolerance)));
 }
 
 }  // namespace

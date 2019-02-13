@@ -45,7 +45,7 @@ struct OneHotContext {
     const int indices_dims = indices->dims->size;
     axis = (params->axis == -1) ? indices_dims : params->axis;
     output_dims = indices_dims + 1;
-    dtype = on_value->type;
+    dtype = output->type;
   }
 
   const TfLiteTensor* indices;
@@ -117,19 +117,65 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   return context->ResizeTensor(context, op_context.output, output_size);
 }
 
+template <typename T>
+uint8_t QuantizeScalar(T value, T max, T min) {
+  float scale = (max - min) * 1.0 / std::numeric_limits<uint8_t>::max();
+
+  float zero_point =
+      (-std::numeric_limits<uint8_t>::max() * min) * 1.0 / (max - min);
+  uint8_t outval = static_cast<uint8_t>(std::max<float>(
+      std::numeric_limits<T>::min(),
+      std::min<float>(std::numeric_limits<T>::max(),
+                      std::round(zero_point + (value / scale)))));
+  return outval;
+}
+
+template <typename TI, typename TO>
+void QuntizeOneHotComputeImpl(const OneHotContext& op_context, uint8_t on_val,
+                              uint8_t off_val) {
+  // prefix_dim_size == # of elements before the axis
+  // depth == # of elements per axis
+  // suffix_dim_size == # of elements after the axis
+  int prefix_dim_size = 1;
+  for (int i = 0; i < op_context.axis; ++i) {
+    prefix_dim_size *= op_context.indices->dims->data[i];
+  }
+  const int suffix_dim_size = NumElements(op_context.indices) / prefix_dim_size;
+  const int depth = *op_context.depth->data.i32;
+
+  // View the indices as a matrix of size:
+  //     prefix_dim_size x suffix_dim_size
+  // View the output as a matrix of size:
+  //     prefix_dim_size x depth x suffix_dim_size
+  // Then the output is:
+  //     output(i, j, k) == (indices(i, k) == j) ? on : off
+  TO* output = GetTensorData<TO>(op_context.output);
+  const TI* indices = GetTensorData<TI>(op_context.indices);
+  for (int i = 0; i < prefix_dim_size; ++i) {
+    for (int j = 0; j < depth; ++j) {
+      for (int k = 0; k < suffix_dim_size; ++k, ++output) {
+        *output = static_cast<int>(indices[i * suffix_dim_size + k]) == j
+                      ? on_val
+                      : off_val;
+      }
+    }
+  }
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 4);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   OneHotContext op_context{context, node};
   switch (op_context.dtype) {
-    // TODO(b/111744875): Support uint8 and quantization.
     case kTfLiteFloat32:
     case kTfLiteInt16:
     case kTfLiteInt32:
     case kTfLiteInt64:
     case kTfLiteBool:
       op_context.output->type = op_context.dtype;
+      break;
+    case kTfLiteUInt8:
       break;
     default:
       context->ReportError(context, "Unknown output data type: %d",
@@ -144,8 +190,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumElements(op_context.depth), 1);
   TF_LITE_ENSURE_EQ(context, NumElements(op_context.on_value), 1);
   TF_LITE_ENSURE_EQ(context, NumElements(op_context.off_value), 1);
-  TF_LITE_ENSURE_EQ(context, op_context.on_value->type, op_context.dtype);
-  TF_LITE_ENSURE_EQ(context, op_context.off_value->type, op_context.dtype);
+  if (op_context.dtype != kTfLiteUInt8) {
+    TF_LITE_ENSURE_EQ(context, op_context.on_value->type, op_context.dtype);
+    TF_LITE_ENSURE_EQ(context, op_context.off_value->type, op_context.dtype);
+  } else {
+    TF_LITE_ENSURE_EQ(context, op_context.on_value->type,
+                      op_context.off_value->type);
+  }
 
   if (!IsConstantTensor(op_context.depth)) {
     SetTensorToDynamic(op_context.output);
@@ -175,6 +226,84 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteBool:
       OneHotCompute<bool>(op_context);
       break;
+    case kTfLiteUInt8: {
+      int8_t q_on_val = 0;
+      uint8_t q_off_val = 0;
+      const TfLiteTensor* on_value = GetInput(context, node, kOnValueTensor);
+      if (on_value->type == kTfLiteFloat32) {
+        q_on_val = QuantizeScalar<float>(
+            *GetTensorData<float>(op_context.on_value),
+            std::max<float>(*GetTensorData<float>(op_context.on_value),
+                            *GetTensorData<float>(op_context.off_value)),
+            std::min<float>(*GetTensorData<float>(op_context.on_value),
+                            *GetTensorData<float>(op_context.off_value)));
+        q_off_val = QuantizeScalar<float>(
+            *GetTensorData<float>(op_context.off_value),
+            std::max<float>(*GetTensorData<float>(op_context.on_value),
+                            *GetTensorData<float>(op_context.off_value)),
+            std::min<float>(*GetTensorData<float>(op_context.on_value),
+                            *GetTensorData<float>(op_context.off_value)));
+      } else if (on_value->type == kTfLiteInt32) {
+        q_on_val = QuantizeScalar<int>(
+            *GetTensorData<int>(op_context.on_value),
+            std::max<int>(*GetTensorData<int>(op_context.on_value),
+                          *GetTensorData<int>(op_context.off_value)),
+            std::min<int>(*GetTensorData<int>(op_context.on_value),
+                          *GetTensorData<int>(op_context.off_value)));
+        q_off_val = QuantizeScalar<int>(
+            *GetTensorData<int>(op_context.off_value),
+            std::max<int>(*GetTensorData<int>(op_context.on_value),
+                          *GetTensorData<int>(op_context.off_value)),
+            std::min<int>(*GetTensorData<int>(op_context.on_value),
+                          *GetTensorData<int>(op_context.off_value)));
+      } else if (on_value->type == kTfLiteInt64) {
+        q_on_val = QuantizeScalar<int64_t>(
+            *GetTensorData<int64_t>(op_context.on_value),
+            std::max<int64_t>(*GetTensorData<int64_t>(op_context.on_value),
+                              *GetTensorData<int64_t>(op_context.off_value)),
+            std::min<int64_t>(*GetTensorData<int64_t>(op_context.on_value),
+                              *GetTensorData<int64_t>(op_context.off_value)));
+        q_off_val = QuantizeScalar<int>(
+            *GetTensorData<int>(op_context.off_value),
+            std::max<int>(*GetTensorData<int>(op_context.on_value),
+                          *GetTensorData<int>(op_context.off_value)),
+            std::min<int>(*GetTensorData<int>(op_context.on_value),
+                          *GetTensorData<int>(op_context.off_value)));
+      } else if (on_value->type == kTfLiteBool) {
+        q_on_val = QuantizeScalar<bool>(
+            *GetTensorData<bool>(op_context.on_value),
+            std::max<bool>(*GetTensorData<bool>(op_context.on_value),
+                           *GetTensorData<bool>(op_context.off_value)),
+            std::min<bool>(*GetTensorData<bool>(op_context.on_value),
+                           *GetTensorData<bool>(op_context.off_value)));
+        q_off_val = QuantizeScalar<int>(
+            *GetTensorData<int>(op_context.off_value),
+            std::max<int>(*GetTensorData<int>(op_context.on_value),
+                          *GetTensorData<int>(op_context.off_value)),
+            std::min<int>(*GetTensorData<int>(op_context.on_value),
+                          *GetTensorData<int>(op_context.off_value)));
+      } else if (on_value->type == kTfLiteUInt8) {
+        q_on_val = QuantizeScalar<uint8_t>(
+            *GetTensorData<uint8_t>(op_context.on_value),
+            std::max<uint8_t>(*GetTensorData<uint8_t>(op_context.on_value),
+                              *GetTensorData<uint8_t>(op_context.off_value)),
+            std::min<uint8_t>(*GetTensorData<uint8_t>(op_context.on_value),
+                              *GetTensorData<uint8_t>(op_context.off_value)));
+        q_off_val = QuantizeScalar<int>(
+            *GetTensorData<int>(op_context.off_value),
+            std::max<int>(*GetTensorData<int>(op_context.on_value),
+                          *GetTensorData<int>(op_context.off_value)),
+            std::min<int>(*GetTensorData<int>(op_context.on_value),
+                          *GetTensorData<int>(op_context.off_value)));
+      }
+      if (op_context.indices->type == kTfLiteInt64) {
+        QuntizeOneHotComputeImpl<int64_t, int8_t>(op_context, q_on_val,
+                                                  q_off_val);
+      } else {
+        QuntizeOneHotComputeImpl<int, uint8_t>(op_context, q_on_val, q_off_val);
+      }
+
+    } break;
     default:
       return kTfLiteError;
   }
