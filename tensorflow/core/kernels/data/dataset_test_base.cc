@@ -36,12 +36,12 @@ Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
 }
 
 Status DatasetOpsTestBase::CreateTensorSliceDatasetKernel(
-    StringPiece node_name, DataTypeVector dtypes,
-    std::vector<PartialTensorShape> shapes,
+    const StringPiece& node_name, const DataTypeVector& dtypes,
+    const std::vector<PartialTensorShape>& shapes,
     std::unique_ptr<OpKernel>* tensor_dataset_kernel) {
   std::vector<string> components;
   components.reserve(dtypes.size());
-  for (int i = 0; i < dtypes.size(); i++) {
+  for (int i = 0; i < dtypes.size(); ++i) {
     components.emplace_back(strings::StrCat("component_", i));
   }
   NodeDef node_def = test::function::NDef(
@@ -52,12 +52,12 @@ Status DatasetOpsTestBase::CreateTensorSliceDatasetKernel(
 }
 
 Status DatasetOpsTestBase::CreateTensorSliceDataset(
-    StringPiece node_name, std::vector<Tensor> components,
+    const StringPiece& node_name, std::vector<Tensor>& components,
     DatasetBase** tensor_slice_data) {
   std::unique_ptr<OpKernel> tensor_slice_dataset_kernel;
   DataTypeVector dtypes;
   std::vector<PartialTensorShape> shapes;
-  for (auto& t : components) {
+  for (const auto& t : components) {
     dtypes.push_back(t.dtype());
     gtl::InlinedVector<int64, 4> partial_dim_sizes;
     for (int i = 1; i < t.dims(); ++i) {
