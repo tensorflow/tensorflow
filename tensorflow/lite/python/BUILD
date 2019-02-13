@@ -63,6 +63,7 @@ py_library(
         ":interpreter",
         ":lite_constants",
         ":op_hint",
+        "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
         "//tensorflow/python:tf_optimizer",
         "//tensorflow/python/keras",
