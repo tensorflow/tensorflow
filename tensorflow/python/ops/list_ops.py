@@ -89,11 +89,15 @@ def tensor_list_pop_back(input_handle, element_dtype, name=None):
       name=name)
 
 
-def tensor_list_gather(input_handle, indices, element_dtype, name=None):
+def tensor_list_gather(input_handle,
+                       indices,
+                       element_dtype,
+                       element_shape=None,
+                       name=None):
   return gen_list_ops.tensor_list_gather(
       input_handle=input_handle,
       indices=indices,
-      element_shape=-1,
+      element_shape=_build_element_shape(element_shape),
       element_dtype=element_dtype,
       name=name)
 
@@ -107,10 +111,14 @@ def tensor_list_scatter(tensor, indices, element_shape, name=None):
       name=name)
 
 
-def tensor_list_stack(input_handle, element_dtype, num_elements=-1, name=None):
+def tensor_list_stack(input_handle,
+                      element_dtype,
+                      num_elements=-1,
+                      element_shape=None,
+                      name=None):
   return gen_list_ops.tensor_list_stack(
       input_handle=input_handle,
-      element_shape=-1,
+      element_shape=_build_element_shape(element_shape),
       element_dtype=element_dtype,
       num_elements=num_elements,
       name=name)
