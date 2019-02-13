@@ -638,10 +638,10 @@ class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
     }
     // Create a DynamicUpdateSlice instruction of tuple element 1 with 'update'.
     auto starts = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
     auto dynamic_update_slice =
         builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-            data_shape, gte1, update, starts));
+            data_shape, gte1, update, {starts}));
     // Create output tuple.
     builder.AddInstruction(
         HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
@@ -794,10 +794,10 @@ class DynamicUpdateSliceLivenessTest : public BufferLivenessTest {
     }
     // Create a DynamicUpdateSlice instruction of tuple element 1 with 'update'.
     auto starts = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
     auto dynamic_update_slice =
         builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-            data_shape, gte1, update, starts));
+            data_shape, gte1, update, {starts}));
     // Create output tuple.
     auto tuple_root = builder.AddInstruction(
         HloInstruction::CreateTuple({gte0, dynamic_update_slice}));

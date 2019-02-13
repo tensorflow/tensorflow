@@ -106,15 +106,19 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testOptimizationStatefulFunction(self):
     dataset = dataset_ops.Dataset.range(
         10).map(lambda _: random_ops.random_uniform([])).batch(10)
-    dataset = dataset_ops._OptimizeDataset(dataset, [])
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
     get_next = self.getNext(dataset)
     self.evaluate(get_next())
 
-  # TODO(b/117581999): Add eager coverage for the following tests.
+  @test_util.run_v1_only("b/123902160")
   def testSkipEagerOptimizationLargeInputFromTensor(self):
     input_t = array_ops.placeholder(dtypes.int32, (None, None, None))
     dataset = dataset_ops.Dataset.from_tensors(input_t)
-    dataset = dataset_ops._OptimizeDataset(dataset, [])
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
     iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -123,11 +127,13 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.run(init_op, {input_t: np.ones([512, 1024, 1025], np.int32)})
       self.evaluate(get_next)
 
-  # TODO(b/117581999): Add eager coverage for the following tests.
+  @test_util.run_v1_only("b/123902160")
   def testSkipEagerOptimizationLargeInputFromTensorSlices(self):
     input_t = array_ops.placeholder(dtypes.int32, (None, None, None, None))
     dataset = dataset_ops.Dataset.from_tensor_slices(input_t)
-    dataset = dataset_ops._OptimizeDataset(dataset, [])
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
     iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -147,7 +153,10 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.range(1)
     dataset = dataset.flat_map(flat_map_fn)
-    dataset = dataset_ops._OptimizeDataset(dataset, ["noop_elimination"])
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.noop_elimination = True
+    dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[0])
 
   def testOptimizationNestedDatasetWithModifiedRetval(self):
@@ -163,10 +172,8 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(1)
     dataset = dataset.flat_map(flat_map_fn)
 
-    # TODO(b/120558523): We use Options instead of _OptimizeDataset directly
-    # here because of a bug with chaining _OptimizeDatasets when there are
-    # nested dataset functions
     options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_and_batch_fusion = True
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[[0]])
@@ -179,7 +186,9 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         threadpool.PrivateThreadPool(
             2, display_name="private_thread_pool_%d" % 2))
 
-    dataset = dataset_ops._OptimizeDataset(dataset, [])
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
     self.assertDatasetProduces(
         dataset,
         expected_output=[list(range(10))],
@@ -193,18 +202,24 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.apply(optimization.assert_next(["MemoryCacheImpl"]))
     dataset = dataset.skip(0)  # Should be removed by noop elimination
     dataset = dataset.cache()
-    dataset = dataset_ops._OptimizeDataset(dataset, ["noop_elimination"])
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.noop_elimination = True
+    dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[0])
 
   def testOptimizationNonSerializableAsDirectInput(self):
     """Tests that non-serializable dataset can be OptimizeDataset's input."""
     dataset = dataset_ops.Dataset.from_tensors(0)
     dataset = dataset.apply(optimization.non_serializable())
-    dataset = dataset_ops._OptimizeDataset(dataset, ["noop_elimination"])
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.noop_elimination = True
+    dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[0])
 
   @parameterized.named_parameters(_generate_captured_refvar_test_cases())
-  # Skip eager because RefVariables are not supported in eager mode.
+  @test_util.run_v1_only("RefVariables are not supported in eager mode.")
   def testSkipEagerOptimizationWithCapturedRefVar(self, dataset_fn):
     """Tests that default optimizations are disabled with ref variables."""
     variable = variable_scope.get_variable(
@@ -217,10 +232,11 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       unoptimized_dataset = dataset_fn(variable)
 
       options = dataset_ops.Options()
+      options.experimental_optimization.apply_default_optimizations = False
       options.experimental_optimization.noop_elimination = True
       options.experimental_optimization.map_and_batch_fusion = True
       optimized_dataset = unoptimized_dataset.with_options(options)
-      optimized_it = optimized_dataset.make_initializable_iterator()
+      optimized_it = dataset_ops.make_initializable_iterator(optimized_dataset)
 
     self.assertGreaterEqual(len(w), 1)
     expected = ("tf.data static optimizations are not compatible with "
@@ -232,7 +248,8 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     # Check that outputs are the same in the optimized and unoptimized cases,
     # when the variable value is changing.
-    unoptimized_it = unoptimized_dataset.make_initializable_iterator()
+    unoptimized_it = dataset_ops.make_initializable_iterator(
+        unoptimized_dataset)
     with ops.control_dependencies([assign_op]):
       unoptimized_output = unoptimized_it.get_next()
       optimized_output = optimized_it.get_next()
@@ -265,10 +282,15 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     only explicitly enabled optimizations will be applied.
     """
     options = dataset_ops.Options()
-    options.experimental_optimization.hoist_random_uniform = True
     options.experimental_optimization.apply_default_optimizations = False
-    expected_optimizations = ["hoist_random_uniform"]
-    self.assertEqual(options._static_optimizations(), expected_optimizations)
+    options.experimental_optimization.hoist_random_uniform = True
+    options.experimental_optimization.noop_elimination = True
+    expected_optimizations = [
+        "hoist_random_uniform",
+        "noop_elimination",
+    ]
+    self.assertEqual(
+        set(options._static_optimizations()), set(expected_optimizations))
 
 
 if __name__ == "__main__":

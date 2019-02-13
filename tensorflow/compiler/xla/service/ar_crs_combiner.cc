@@ -26,9 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -36,19 +36,34 @@ namespace {
 
 namespace m = match;
 
-// Returns true iff the argument instruction is an AllReduce, followed by a
-// certain sequence of instructions and then a CRS. It must be possible to move
-// the AR past each instruction in the sequence.
-bool MatchesArCrsPattern(HloInstruction* instruction) {
+// Checks if the argument instruction is an AllReduce, followed by a certain
+// sequence of instructions and then a CRS. It must be possible to move
+// the AR past each instruction in the sequence. Returns the CRS, which is the
+// last instruction in the sequence.
+absl::optional<HloInstruction*> MatchesArCrsPattern(
+    HloInstruction* instruction) {
   auto can_ar_move_past_instruction = [](HloInstruction* instruction) -> bool {
     if (instruction->user_count() != 1) {
       return false;
     }
-    auto opcode = instruction->opcode();
-    return opcode == HloOpcode::kBitcast || opcode == HloOpcode::kTranspose ||
-           opcode == HloOpcode::kReshape || opcode == HloOpcode::kConvert ||
-           opcode == HloOpcode::kAdd || opcode == HloOpcode::kSubtract ||
-           opcode == HloOpcode::kMultiply;
+    switch (instruction->opcode()) {
+      case HloOpcode::kBitcast:
+      case HloOpcode::kTranspose:
+      case HloOpcode::kReshape:
+        return true;
+      case HloOpcode::kConvert:
+        // Can be moved across if both input and output is either float or
+        // integer (e.g. S32<->U32 or F32<->BF16)
+        return ShapeUtil::ElementIsFloating(instruction->shape()) ==
+               ShapeUtil::ElementIsFloating(instruction->operand(0)->shape());
+      case HloOpcode::kAdd:
+      case HloOpcode::kSubtract:
+      case HloOpcode::kMultiply:
+        // Only supported for floating point operands.
+        return ShapeUtil::ElementIsFloating(instruction->shape());
+      default:
+        return false;
+    }
   };
 
   auto computation_is_addition = [](HloComputation* c) {
@@ -59,17 +74,22 @@ bool MatchesArCrsPattern(HloInstruction* instruction) {
   if (!instruction->IsCrossModuleAllReduce() ||
       !computation_is_addition(instruction->called_computations()[0]) ||
       instruction->user_count() != 1) {
-    return false;
+    return absl::nullopt;
   }
   auto next = instruction->users()[0];
   while (!next->IsCrossReplicaAllReduce()) {
     if (can_ar_move_past_instruction(next)) {
       next = next->users()[0];
     } else {
-      return false;
+      return absl::nullopt;
     }
   }
-  return computation_is_addition(next->called_computations()[0]);
+  if (!Cast<HloAllReduceInstruction>(next)->IsNoop() &&
+      computation_is_addition(next->called_computations()[0])) {
+    return absl::optional<HloInstruction*>(next);
+  } else {
+    return absl::nullopt;
+  }
 }
 
 }  // namespace
@@ -85,7 +105,7 @@ absl::optional<HloInstruction*> ArCrsCombiner::WhileFromBodyParameter(
       return caller_instruction;
     }
   }
-  return absl::optional<HloInstruction*>();
+  return absl::nullopt;
 }
 
 std::vector<HloInstruction*> ArCrsCombiner::GetAllTuples(
@@ -176,6 +196,15 @@ bool ArCrsCombiner::InstructionsComputeSameValue(
   if (opcode1 != i2->opcode() || operands1.size() != i2->operands().size()) {
     return false;
   }
+  auto eq_computations = [](const HloComputation* a, const HloComputation* b) {
+    return *a == *b;
+  };
+  if (i1->IsCrossModuleAllReduce()) {
+    return i1->Identical(*i2,
+                         /*eq_operands=*/std::equal_to<const HloInstruction*>(),
+                         eq_computations,
+                         /*layout_sensitive=*/false);
+  }
   visited_pairs->emplace(min_uid, max_uid);
   for (int i = 0; i < operands1.size(); ++i) {
     auto operand1 = operands1[i];
@@ -201,9 +230,6 @@ bool ArCrsCombiner::InstructionsComputeSameValue(
   // InstructionsComputeSameValue earlier.
   auto eq_instructions = [](const HloInstruction* i1,
                             const HloInstruction* i2) -> bool { return true; };
-  auto eq_computations = [](const HloComputation* a, const HloComputation* b) {
-    return *a == *b;
-  };
   return i1->Identical(*i2, eq_instructions, eq_computations,
                        /*layout_sensitive=*/false);
 }
@@ -211,8 +237,14 @@ bool ArCrsCombiner::InstructionsComputeSameValue(
 void ArCrsCombiner::GroupAllReducesById(HloModule* module) {
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (MatchesArCrsPattern(instruction)) {
-        all_reduce_map_[*(instruction->all_reduce_id())].push_back(instruction);
+      auto maybe_crs = MatchesArCrsPattern(instruction);
+      if (maybe_crs) {
+        auto crs = *maybe_crs;
+        int64 ar_id = *(instruction->all_reduce_id());
+        if (crs_reserved_map_.find(crs) == crs_reserved_map_.end()) {
+          all_reduce_map_[ar_id].push_back(instruction);
+          crs_reserved_map_[crs] = ar_id;
+        }
       }
     }
   }
@@ -229,14 +261,17 @@ void ArCrsCombiner::KeepProvablyEqualInstructionGroups() {
       auto next_0 = instr_0->users()[0];
       auto next_i = instr_i->users()[0];
       absl::flat_hash_map<int64, int64> visited_pairs;
-      do {
+      while (true) {
         if (!InstructionsComputeSameValue(next_0, next_i, &visited_pairs)) {
           all_reduce_map_.erase(all_reduce_id);
           break;
         }
+        if (next_0->IsCrossReplicaAllReduce()) {
+          break;
+        }
         next_0 = next_0->users()[0];
         next_i = next_i->users()[0];
-      } while (!next_0->IsCrossReplicaAllReduce());
+      }
     }
   }
 }

@@ -56,7 +56,7 @@ TEST_F(DeviceResolverLocalTest, GetDeviceLocalitiesKnown) {
   Notification note;
   Status status;
   drl_->GetDeviceLocalitiesAsync(cp.instance, &localities,
-                                 [this, &note, &status](const Status& s) {
+                                 [&note, &status](const Status& s) {
                                    status = s;
                                    note.Notify();
                                  });
@@ -74,7 +74,7 @@ TEST_F(DeviceResolverLocalTest, GetDeviceLocalitiesUnknown) {
   Notification note;
   Status status;
   drl_->GetDeviceLocalitiesAsync(cp.instance, &localities,
-                                 [this, &note, &status](const Status& s) {
+                                 [&note, &status](const Status& s) {
                                    status = s;
                                    note.Notify();
                                  });

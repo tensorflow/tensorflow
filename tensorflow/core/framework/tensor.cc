@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -650,14 +651,21 @@ void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
   }
 }
 
-void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
-                                    const TensorShape& shape) {
+Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
+                           const TensorShape& shape) {
   int in_size = DataTypeSize(other.dtype());
   int out_size = DataTypeSize(dtype);
-  CHECK_NE(in_size, 0);
-  CHECK_NE(out_size, 0);
-  CHECK_EQ(shape.num_elements() * out_size,
-           other.shape().num_elements() * in_size);
+  if (in_size == 0) {
+    return errors::InvalidArgument("other tensor has zero-sized data type");
+  }
+  if (out_size == 0) {
+    return errors::InvalidArgument("specified output type is zero-sized");
+  }
+  if (shape.num_elements() * out_size !=
+      other.shape().num_elements() * in_size) {
+    return errors::InvalidArgument(
+        "input and output shapes/data type sizes are not compatible");
+  }
   shape_ = shape;
   shape_.set_data_type(dtype);
   if (buf_ != other.buf_) {
@@ -665,6 +673,7 @@ void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
     buf_ = other.buf_;
     RefIfNonNull(buf_);
   }
+  return Status::OK();
 }
 
 // Notice that buf_ either points to a regular TensorBuffer or a SubBuffer.
@@ -1174,10 +1183,15 @@ bool Tensor::SharesBufferWith(const Tensor& b) const {
          buf_->root_buffer() == b.buf_->root_buffer();
 }
 
-string Tensor::DebugString() const {
+string Tensor::DebugString(int num_values) const {
   return strings::StrCat("Tensor<type: ", DataTypeString(dtype()),
                          " shape: ", shape().DebugString(),
-                         " values: ", SummarizeValue(3), ">");
+                         " values: ", SummarizeValue(num_values), ">");
+}
+
+string Tensor::DeviceSafeDebugString() const {
+  return strings::StrCat("Tensor<type: ", DataTypeString(dtype()),
+                         " shape: ", shape().DebugString(), ">");
 }
 
 void Tensor::FillDescription(TensorDescription* description) const {

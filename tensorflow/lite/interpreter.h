@@ -160,6 +160,12 @@ class Interpreter {
   // This variant assumes an external buffer has been allocated of size
   // bytes. The lifetime of buffer must be ensured to be greater or equal
   // to Interpreter.
+  TfLiteStatus SetTensorParametersReadOnly(
+      int tensor_index, TfLiteType type, const char* name,
+      const std::vector<int>& dims, TfLiteQuantization quantization,
+      const char* buffer, size_t bytes, const Allocation* allocation = nullptr);
+
+  // Legacy. Deprecated in favor of above.
   inline TfLiteStatus SetTensorParametersReadOnly(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantizationParams quantization,
@@ -179,6 +185,13 @@ class Interpreter {
   // This variant assumes an external buffer has been allocated of size
   // bytes. The lifetime of buffer must be ensured to be greater or equal
   // to Interpreter.
+  TfLiteStatus SetTensorParametersReadWrite(int tensor_index, TfLiteType type,
+                                            const char* name,
+                                            const std::vector<int>& dims,
+                                            TfLiteQuantization quantization,
+                                            bool is_variable = false);
+
+  // Legacy. Deprecated in favor of above.
   inline TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantizationParams quantization,

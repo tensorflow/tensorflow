@@ -2775,7 +2775,7 @@ class ScopedGraphTest(test.TestCase):
       self.assertEqual(2.0, self.evaluate(var_dict2["variable2:0"]))
 
 
-class _OwnsAVariableSimple(checkpointable_base.CheckpointableBase):
+class _OwnsAVariableSimple(checkpointable_base.Checkpointable):
   """A Checkpointable object which can be saved using a tf.train.Saver."""
 
   def __init__(self):
@@ -2808,7 +2808,7 @@ class _MirroringSaveable(
         self._mirrored_variable.assign(tensor))
 
 
-class _OwnsMirroredVariables(checkpointable_base.CheckpointableBase):
+class _OwnsMirroredVariables(checkpointable_base.Checkpointable):
   """A Checkpointable object which returns a more complex SaveableObject."""
 
   def __init__(self):
@@ -2831,7 +2831,7 @@ class _OwnsMirroredVariables(checkpointable_base.CheckpointableBase):
     return self.non_dep_variable.name
 
 
-class NonLayerCheckpointable(checkpointable_tracking.Checkpointable):
+class NonLayerCheckpointable(checkpointable_tracking.AutoCheckpointable):
 
   def __init__(self):
     super(NonLayerCheckpointable, self).__init__()
@@ -3012,13 +3012,13 @@ class CheckpointableCompatibilityTests(test.TestCase):
     save_graph = ops_lib.Graph()
     with save_graph.as_default(), self.session(graph=save_graph) as sess:
       root = self._initialized_model()
-      object_saver = checkpointable_utils.CheckpointableSaver(root)
+      object_saver = checkpointable_utils.Checkpoint(root=root)
       save_path = object_saver.save(file_prefix=checkpoint_prefix)
 
       # An incompatible object-based checkpoint to check error messages
       var = resource_variable_ops.ResourceVariable(1., name="a")
       self.evaluate(var.initializer)
-      second_saver = checkpointable_utils.CheckpointableSaver(var)
+      second_saver = checkpointable_utils.Checkpoint(v=var)
       second_path = second_saver.save(file_prefix=os.path.join(
           checkpoint_directory, "second"))
 
@@ -3046,7 +3046,7 @@ class CheckpointableCompatibilityTests(test.TestCase):
     save_graph = ops_lib.Graph()
     with save_graph.as_default(), self.session(graph=save_graph):
       root = self._initialized_model()
-      object_saver = checkpointable_utils.CheckpointableSaver(root)
+      object_saver = checkpointable_utils.Checkpoint(root=root)
       save_path = object_saver.save(file_prefix=checkpoint_prefix)
 
     with context.eager_mode():

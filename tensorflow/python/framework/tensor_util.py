@@ -22,6 +22,7 @@ import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
@@ -42,7 +43,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 def ExtractBitsFromFloat16(x):
-  return np.asscalar(np.asarray(x, dtype=np.float16).view(np.uint16))
+  return np.asarray(x, dtype=np.float16).view(np.uint16).item()
 
 
 def SlowAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
@@ -58,8 +59,8 @@ def _MediumAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
 
 
 def ExtractBitsFromBFloat16(x):
-  return np.asscalar(
-      np.asarray(x, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16))
+  return np.asarray(
+      x, dtype=dtypes.bfloat16.as_numpy_dtype).view(np.uint16).item()
 
 
 def SlowAppendBFloat16ArrayToTensorProto(tensor_proto, proto_values):
@@ -122,39 +123,39 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
 else:
 
   def SlowAppendFloat32ArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.float_val.extend([np.asscalar(x) for x in proto_values])
+    tensor_proto.float_val.extend([x.item() for x in proto_values])
 
   def SlowAppendFloat64ArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.double_val.extend([np.asscalar(x) for x in proto_values])
+    tensor_proto.double_val.extend([x.item() for x in proto_values])
 
   def SlowAppendIntArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.int_val.extend([np.asscalar(x) for x in proto_values])
+    tensor_proto.int_val.extend([x.item() for x in proto_values])
 
   def SlowAppendInt64ArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.int64_val.extend([np.asscalar(x) for x in proto_values])
+    tensor_proto.int64_val.extend([x.item() for x in proto_values])
 
   def SlowAppendQIntArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.int_val.extend([np.asscalar(x[0]) for x in proto_values])
+    tensor_proto.int_val.extend([x.item(0) for x in proto_values])
 
   def SlowAppendUInt32ArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.uint32_val.extend([np.asscalar(x) for x in proto_values])
+    tensor_proto.uint32_val.extend([x.item() for x in proto_values])
 
   def SlowAppendUInt64ArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.uint64_val.extend([np.asscalar(x) for x in proto_values])
+    tensor_proto.uint64_val.extend([x.item() for x in proto_values])
 
   def SlowAppendComplex64ArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.scomplex_val.extend(
-        [np.asscalar(v) for x in proto_values for v in [x.real, x.imag]])
+        [v.item() for x in proto_values for v in [x.real, x.imag]])
 
   def SlowAppendComplex128ArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.dcomplex_val.extend(
-        [np.asscalar(v) for x in proto_values for v in [x.real, x.imag]])
+        [v.item() for x in proto_values for v in [x.real, x.imag]])
 
   def SlowAppendObjectArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.string_val.extend([compat.as_bytes(x) for x in proto_values])
 
   def SlowAppendBoolArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.bool_val.extend([np.asscalar(x) for x in proto_values])
+    tensor_proto.bool_val.extend([x.item() for x in proto_values])
 
   _NP_TO_APPEND_FN = {
       dtypes.bfloat16.as_numpy_dtype: SlowAppendBFloat16ArrayToTensorProto,
@@ -598,87 +599,52 @@ def MakeNdarray(tensor):
   dtype = tensor_dtype.as_numpy_dtype
 
   if tensor.tensor_content:
-    return (np.frombuffer(tensor.tensor_content, dtype=dtype).copy()
-            .reshape(shape))
-  elif tensor_dtype == dtypes.float16 or tensor_dtype == dtypes.bfloat16:
+    return (np.frombuffer(tensor.tensor_content,
+                          dtype=dtype).copy().reshape(shape))
+
+  if tensor_dtype == dtypes.string:
+    # np.pad throws on these arrays of type np.object.
+    values = list(tensor.string_val)
+    padding = num_elements - len(values)
+    if padding > 0:
+      last = values[-1] if values else ""
+      values.extend([last] * padding)
+    return np.array(values, dtype=dtype).reshape(shape)
+
+  if tensor_dtype == dtypes.float16 or tensor_dtype == dtypes.bfloat16:
     # the half_val field of the TensorProto stores the binary representation
     # of the fp16: we need to reinterpret this as a proper float16
-    if len(tensor.half_val) == 1:
-      tmp = np.array(tensor.half_val[0], dtype=np.uint16)
-      tmp.dtype = tensor_dtype.as_numpy_dtype
-      return np.repeat(tmp, num_elements).reshape(shape)
-    else:
-      tmp = np.fromiter(tensor.half_val, dtype=np.uint16)
-      tmp.dtype = tensor_dtype.as_numpy_dtype
-      return tmp.reshape(shape)
+    values = np.fromiter(tensor.half_val, dtype=np.uint16)
+    values.dtype = tensor_dtype.as_numpy_dtype
   elif tensor_dtype == dtypes.float32:
-    if len(tensor.float_val) == 1:
-      return np.repeat(
-          np.array(tensor.float_val[0], dtype=dtype),
-          num_elements).reshape(shape)
-    else:
-      return np.fromiter(tensor.float_val, dtype=dtype).reshape(shape)
+    values = np.fromiter(tensor.float_val, dtype=dtype)
   elif tensor_dtype == dtypes.float64:
-    if len(tensor.double_val) == 1:
-      return np.repeat(
-          np.array(tensor.double_val[0], dtype=dtype),
-          num_elements).reshape(shape)
-    else:
-      return np.fromiter(tensor.double_val, dtype=dtype).reshape(shape)
+    values = np.fromiter(tensor.double_val, dtype=dtype)
   elif tensor_dtype in [
       dtypes.int32, dtypes.uint8, dtypes.uint16, dtypes.int16, dtypes.int8,
       dtypes.qint32, dtypes.quint8, dtypes.qint8, dtypes.qint16, dtypes.quint16
   ]:
-    if len(tensor.int_val) == 1:
-      return np.repeat(np.array(tensor.int_val[0], dtype=dtype),
-                       num_elements).reshape(shape)
-    else:
-      return np.fromiter(tensor.int_val, dtype=dtype).reshape(shape)
+    values = np.fromiter(tensor.int_val, dtype=dtype)
   elif tensor_dtype == dtypes.int64:
-    if len(tensor.int64_val) == 1:
-      return np.repeat(
-          np.array(tensor.int64_val[0], dtype=dtype),
-          num_elements).reshape(shape)
-    else:
-      return np.fromiter(tensor.int64_val, dtype=dtype).reshape(shape)
-  elif tensor_dtype == dtypes.string:
-    if len(tensor.string_val) == 1:
-      return np.repeat(
-          np.array(tensor.string_val[0], dtype=dtype),
-          num_elements).reshape(shape)
-    else:
-      return np.array(
-          [x for x in tensor.string_val], dtype=dtype).reshape(shape)
+    values = np.fromiter(tensor.int64_val, dtype=dtype)
   elif tensor_dtype == dtypes.complex64:
     it = iter(tensor.scomplex_val)
-    if len(tensor.scomplex_val) == 2:
-      return np.repeat(
-          np.array(
-              complex(tensor.scomplex_val[0], tensor.scomplex_val[1]),
-              dtype=dtype), num_elements).reshape(shape)
-    else:
-      return np.array(
-          [complex(x[0], x[1]) for x in zip(it, it)],
-          dtype=dtype).reshape(shape)
+    values = np.array([complex(x[0], x[1]) for x in zip(it, it)], dtype=dtype)
   elif tensor_dtype == dtypes.complex128:
     it = iter(tensor.dcomplex_val)
-    if len(tensor.dcomplex_val) == 2:
-      return np.repeat(
-          np.array(
-              complex(tensor.dcomplex_val[0], tensor.dcomplex_val[1]),
-              dtype=dtype), num_elements).reshape(shape)
-    else:
-      return np.array(
-          [complex(x[0], x[1]) for x in zip(it, it)],
-          dtype=dtype).reshape(shape)
+    values = np.array([complex(x[0], x[1]) for x in zip(it, it)], dtype=dtype)
   elif tensor_dtype == dtypes.bool:
-    if len(tensor.bool_val) == 1:
-      return np.repeat(np.array(tensor.bool_val[0], dtype=dtype),
-                       num_elements).reshape(shape)
-    else:
-      return np.fromiter(tensor.bool_val, dtype=dtype).reshape(shape)
+    values = np.fromiter(tensor.bool_val, dtype=dtype)
   else:
     raise TypeError("Unsupported tensor type: %s" % tensor.dtype)
+
+  if values.size == 0:
+    return np.zeros(shape, dtype)
+
+  if values.size != num_elements:
+    values = np.pad(values, (0, num_elements - values.size), "edge")
+
+  return values.reshape(shape)
 
 
 def ShapeEquals(tensor_proto, shape):
@@ -816,19 +782,16 @@ def _ConstantValue(tensor, partial):
     return None
 
 
+@tf_export('get_static_value')
 def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   """Returns the constant value of the given tensor, if efficiently calculable.
 
   This function attempts to partially evaluate the given tensor, and
   returns its value as a numpy ndarray if this succeeds.
 
-  TODO(mrry): Consider whether this function should use a registration
-  mechanism like gradients and ShapeFunctions, so that it is easily
-  extensible.
-
-  NOTE: If `constant_value(tensor)` returns a non-`None` result, it will no
-  longer be possible to feed a different value for `tensor`. This allows the
-  result of this function to influence the graph that is constructed, and
+  Compatibility(V1): If `constant_value(tensor)` returns a non-`None` result, it
+  will no longer be possible to feed a different value for `tensor`. This allows
+  the result of this function to influence the graph that is constructed, and
   permits static shape optimizations.
 
   Args:
@@ -970,13 +933,15 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   return ret
 
 
+@tf_export("is_tensor")
 def is_tensor(x):  # pylint: disable=invalid-name
   """Check whether `x` is of tensor type.
 
-  Check whether an object is a tensor. This check is equivalent to calling
-  `isinstance(x, (tf.Tensor, tf.SparseTensor, tf.Variable))` and also checks
-  if all the component variables of a MirroredVariable or a ReplicaLocalVariable
-  are tensors.
+  Check whether an object is a tensor or a composite tensor. This check is
+  equivalent to calling
+  `isinstance(x, (tf.Tensor, tf.SparseTensor, tf.RaggedTensor, tf.Variable))`
+  and also checks if all the component variables of a MirroredVariable or a
+  ReplicaLocalVariable are tensors.
 
   Args:
     x: A python object to check.
@@ -985,4 +950,5 @@ def is_tensor(x):  # pylint: disable=invalid-name
     `True` if `x` is a tensor, `False` if not.
   """
   return (isinstance(x, ops._TensorLike) or ops.is_dense_tensor_like(x) or  # pylint: disable=protected-access
+          isinstance(x, composite_tensor.CompositeTensor) or
           (hasattr(x, "is_tensor_like") and x.is_tensor_like))

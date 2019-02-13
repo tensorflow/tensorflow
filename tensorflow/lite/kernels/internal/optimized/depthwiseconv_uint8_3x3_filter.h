@@ -18,6 +18,7 @@ limitations under the License.
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -27,33 +28,33 @@ namespace optimized_ops {
 enum class DotProduct3x3KernelType {
   kNone = 0,  // Parameter combination is not supported for dot product kernels.
   kPlain,
-  kWithDepthMultiplication,
-  kWithPad0Stride2,
-  kWithPad1Stride1,
+  kWithDepthMultiplicationStride1,
+  kWithDepthMultiplicationStride2,
+  kStride2,
 };
 
 inline DotProduct3x3KernelType CategorizeDotProductKernel(
     const DepthwiseParams& params) {
-  const int padding = params.padding_values.width;
+  const int padding =
+      std::max(params.padding_values.width, params.padding_values.height);
   const int stride = params.stride_width;
-  if (padding != params.padding_values.height ||
-      stride != params.stride_height) {
+  if (stride != params.stride_height || padding > 1) {
     return DotProduct3x3KernelType::kNone;
   }
 
   if (params.depth_multiplier == 1) {
-    if (padding == 0 && stride == 1) {
+    if (stride == 1) {
       return DotProduct3x3KernelType::kPlain;
-    } else if (padding == 0 && stride == 2) {
-      return DotProduct3x3KernelType::kWithPad0Stride2;
-    } else if (padding == 1 && stride == 1) {
-      return DotProduct3x3KernelType::kWithPad1Stride1;
+    } else if (stride == 2) {
+      return DotProduct3x3KernelType::kStride2;
     } else {
       return DotProduct3x3KernelType::kNone;
     }
   } else {
-    if (padding == 0 && stride == 1) {
-      return DotProduct3x3KernelType::kWithDepthMultiplication;
+    if (stride == 1) {
+      return DotProduct3x3KernelType::kWithDepthMultiplicationStride1;
+    } else if (stride == 2) {
+      return DotProduct3x3KernelType::kWithDepthMultiplicationStride2;
     } else {
       return DotProduct3x3KernelType::kNone;
     }

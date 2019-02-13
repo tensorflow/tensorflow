@@ -165,6 +165,17 @@ Options {
 }
 ```
 
+**ADD_N**
+
+```
+Inputs {
+  0-N: any number of tensors (must have same size and shape)
+}
+Outputs {
+  0: elementwise sum of the input tensors
+}
+```
+
 **ARG_MAX**
 
 ```
@@ -185,7 +196,7 @@ Inputs {
   1: a tensor
 }
 Outputs {
-  0: A tensor of indices of minium values.
+  0: A tensor of indices of minimum values.
 }
 ```
 
@@ -359,6 +370,17 @@ Inputs {
 }
 Outputs {
   0: result of computing element-wise floor of `tensor 0` modulo `tensor 1`.
+}
+```
+
+**CEIL**
+
+```
+inputs {
+  0: tensor
+}
+outputs: {
+  0: result of computing element-wise ceil of the input tensor
 }
 ```
 

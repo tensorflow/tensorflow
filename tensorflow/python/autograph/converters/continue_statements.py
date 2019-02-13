@@ -78,7 +78,7 @@ class ContinueCanonicalizationTransformer(converter.Base):
       else:
         self.state[_Continue].guard_created = True
         template = """
-          if not var_name:
+          if ag__.not_(var_name):
             original_node
         """
         cond, = templates.replace(
@@ -119,6 +119,28 @@ class ContinueCanonicalizationTransformer(converter.Base):
     node.body = self._visit_loop_body(node, node.body)
     # A continue in the else clause applies to the containing scope.
     node.orelse = self.visit_block(node.orelse)
+    return node
+
+  def visit_With(self, node):
+    node.items = self.visit_block(node.items)
+    node.body = self.visit_block(node.body,
+                                 after_visit=self._postprocess_statement)
+    return node
+
+  def visit_Try(self, node):
+    node.body = self.visit_block(node.body,
+                                 after_visit=self._postprocess_statement)
+    node.orelse = self.visit_block(node.orelse,
+                                   after_visit=self._postprocess_statement)
+    # In Python 3.8 and later continue is allowed in finally blocks
+    node.finalbody = self.visit_block(node.finalbody,
+                                      after_visit=self._postprocess_statement)
+    node.handlers = self.visit_block(node.handlers)
+    return node
+
+  def visit_ExceptHandler(self, node):
+    node.body = self.visit_block(node.body,
+                                 after_visit=self._postprocess_statement)
     return node
 
 

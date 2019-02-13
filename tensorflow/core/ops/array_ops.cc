@@ -347,6 +347,16 @@ REGISTER_OP("Pack")
       while (index < rank) dims.push_back(c->Dim(cur, index++));
 
       c->set_output(0, c->MakeShape(dims));
+      for (int i = 0; i < c->num_inputs(); ++i) {
+        auto* shape_and_type = c->input_handle_shapes_and_types(i);
+        if (shape_and_type) {
+          if (!c->RelaxOutputHandleShapesAndMergeTypes(0, *shape_and_type)) {
+            c->set_output_handle_shapes_and_types(
+                0, std::vector<shape_inference::ShapeAndType>({}));
+            break;
+          }
+        }
+      }
       return Status::OK();
     });
 
@@ -1034,6 +1044,12 @@ REGISTER_OP("Fill")
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
       c->set_output(0, out);
+
+      auto* shape_and_type = c->input_handle_shapes_and_types(1);
+      if (shape_and_type) {
+        c->set_output_handle_shapes_and_types(0, *shape_and_type);
+      }
+
       return Status::OK();
     });
 
@@ -1206,27 +1222,13 @@ REGISTER_OP("Identity")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->input(0));
-      auto* handle_data = c->input_handle_shapes_and_types(0);
-      if (handle_data != nullptr) {
-        c->set_output_handle_shapes_and_types(0, *handle_data);
-      }
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("Snapshot")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->input(0));
-      auto* handle_data = c->input_handle_shapes_and_types(0);
-      if (handle_data != nullptr) {
-        c->set_output_handle_shapes_and_types(0, *handle_data);
-      }
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 #ifdef INTEL_MKL
 REGISTER_OP("_MklIdentity")
@@ -1235,14 +1237,7 @@ REGISTER_OP("_MklIdentity")
     .Output("output: T")
     .Output("mkl_output: uint8")
     .Attr("T: type")
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->input(0));
-      auto* handle_data = c->input_handle_shapes_and_types(0);
-      if (handle_data != nullptr) {
-        c->set_output_handle_shapes_and_types(0, *handle_data);
-      }
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"Doc( Mkl implementation of IdentityOp
 )Doc");
 #endif
@@ -1625,6 +1620,11 @@ REGISTER_OP("StridedSlice")
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(final_shape, &out));
       c->set_output(0, out);
+
+      auto* shape_and_type = c->input_handle_shapes_and_types(0);
+      if (shape_and_type) {
+        c->set_output_handle_shapes_and_types(0, *shape_and_type);
+      }
 
       return Status::OK();
     });

@@ -50,11 +50,11 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       if (count_ == 0) {
-        return std::unique_ptr<IteratorBase>(
-            new EmptyIterator({this, strings::StrCat(prefix, "::EmptyTake")}));
+        return absl::make_unique<EmptyIterator>(EmptyIterator::Params{
+            this, strings::StrCat(prefix, "::EmptyTake")});
       } else {
-        return std::unique_ptr<IteratorBase>(new FiniteIterator(
-            {this, strings::StrCat(prefix, "::FiniteTake")}));
+        return absl::make_unique<FiniteIterator>(FiniteIterator::Params{
+            this, strings::StrCat(prefix, "::FiniteTake")});
       }
     }
 

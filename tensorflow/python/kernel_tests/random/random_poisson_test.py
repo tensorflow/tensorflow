@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.kernel_tests.random import util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
@@ -49,14 +50,13 @@ class RandomPoissonTest(test.TestCase):
 
     return func
 
-  # TODO(srvasude): Factor this out along with the corresponding moment testing
-  # method in random_gamma_test into a single library.
   def testMoments(self):
     try:
       from scipy import stats  # pylint: disable=g-import-not-at-top
     except ImportError as e:
       tf_logging.warn("Cannot test moments: %s", e)
       return
+
     # The moments test is a z-value test.  This is the largest z-value
     # we want to tolerate. Since the z-test approximates a unit normal
     # distribution, it should almost definitely never exceed 6.
@@ -67,41 +67,13 @@ class RandomPoissonTest(test.TestCase):
         for lam in (3., 20):
           max_moment = 5
           sampler = self._Sampler(10000, lam, dt, use_gpu=False, seed=12345)
-          moments = [0] * (max_moment + 1)
-          moments_sample_count = [0] * (max_moment + 1)
-          x = np.array(sampler().flat)  # sampler does 10x samples
-          for k in range(len(x)):
-            moment = 1.
-            for i in range(max_moment + 1):
-              index = k + i * stride
-              if index >= len(x):
-                break
-              moments[i] += moment
-              moments_sample_count[i] += 1
-              moment *= x[index]
-          for i in range(max_moment + 1):
-            moments[i] /= moments_sample_count[i]
-          for i in range(1, max_moment + 1):
-            g = stats.poisson(lam)
-            if stride == 0:
-              moments_i_mean = g.moment(i)
-              moments_i_squared = g.moment(2 * i)
-            else:
-              moments_i_mean = pow(g.moment(1), i)
-              moments_i_squared = pow(g.moment(2), i)
-            moments_i_var = (
-                moments_i_squared - moments_i_mean * moments_i_mean)
-            # Assume every operation has a small numerical error.
-            # It takes i multiplications to calculate one i-th moment.
-            error_per_moment = i * 1e-6
-            total_variance = (
-                moments_i_var / moments_sample_count[i] + error_per_moment)
-            if not total_variance:
-              total_variance = 1e-10
-            # z_test is approximately a unit normal distribution.
-            z_test = abs(
-                (moments[i] - moments_i_mean) / np.sqrt(total_variance))
-            self.assertLess(z_test, z_limit)
+          z_scores = util.test_moment_matching(
+              sampler(),
+              max_moment,
+              stats.poisson(lam),
+              stride=stride,
+          )
+          self.assertAllLess(z_scores, z_limit)
 
   # Checks that the CPU and GPU implementation returns the same results,
   # given the same random seed

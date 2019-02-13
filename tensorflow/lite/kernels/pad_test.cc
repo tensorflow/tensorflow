@@ -175,6 +175,7 @@ class PadOpDynamicModel : public PadOpModel<float> {
   }
 };
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST(PadOpTest, TooManyDimensions) {
   EXPECT_DEATH(
       PadOpConstModel({TensorType_FLOAT32, {1, 2, 3, 4, 5, 6, 7, 8, 9}}, {9, 2},
@@ -195,6 +196,7 @@ TEST(PadOpTest, InvalidPadValue) {
                       {0, 0, 1, -1, 2, -1, 0, 0}, {TensorType_FLOAT32}),
       "Pad value has to be greater than equal to 0.");
 }
+#endif
 
 TEST(PadOpTest, SimpleConstTest) {
   // Padding is represented as four 2-D lists representing above padding and
@@ -306,6 +308,7 @@ class QuantizedPadOpTest : public ::testing::Test {
   }
 };
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST_F(QuantizedPadOpTest, ZeroNotInQuantizationRange) {
   // The test_util and actual quantization code currently ensure that the range
   // must include zero, but if that ever changes, this test will catch it.
@@ -314,6 +317,7 @@ TEST_F(QuantizedPadOpTest, ZeroNotInQuantizationRange) {
                                  {TensorType_UINT8, {}, 1.0, 2.0}),
                ".*Check failed: f_min <= 0.*");
 }
+#endif
 
 TEST_F(QuantizedPadOpTest, SimpleConstTest) {
   // Padding is represented as four 2-D lists representing above padding and
@@ -371,6 +375,7 @@ TEST_F(QuantizedPadOpTest, AdvancedDynamicTest) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 7, 1}));
 }
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST(PadV2OpTest, TooManyDimensions) {
   EXPECT_DEATH(PadV2OpConstModel<float>(
                    {TensorType_FLOAT32, {1, 2, 3, 4, 5, 6, 7, 8, 9}}, {9, 2},
@@ -392,6 +397,7 @@ TEST(PadV2OpTest, InvalidPadValue) {
                                         {TensorType_FLOAT32}),
                "Pad value has to be greater than equal to 0.");
 }
+#endif
 
 TEST(PadV2OpTest, SimpleConstTest) {
   // Padding is represented as four 2-D lists representing above padding and
@@ -495,6 +501,7 @@ class QuantizedPadV2OpTest : public ::testing::Test {
   }
 };
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST_F(QuantizedPadV2OpTest, ZeroNotInQuantizationRange) {
   // The test_util and actual quantization code currently ensure that the range
   // must include zero, but if that ever changes, this test will catch it.
@@ -504,6 +511,7 @@ TEST_F(QuantizedPadV2OpTest, ZeroNotInQuantizationRange) {
                                  {TensorType_UINT8, {}, 1.0, 2.0}),
       ".*Check failed: f_min <= 0.*");
 }
+#endif
 
 TEST_F(QuantizedPadV2OpTest, SimpleConstTest) {
   // Padding is represented as four 2-D lists representing above padding and

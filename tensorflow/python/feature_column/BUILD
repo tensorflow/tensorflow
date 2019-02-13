@@ -29,6 +29,7 @@ py_library(
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers_base",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",

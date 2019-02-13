@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Adam rewrite to use global step for computing beta1 & beta2 accumulation."""
 from __future__ import absolute_import
 from __future__ import division
@@ -38,10 +37,15 @@ class AdamGSOptimizer(optimizer.Optimizer):
   ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
   """
 
-  def __init__(self, global_step=0, learning_rate=0.001,
-               beta1=0.9, beta2=0.999, epsilon=1e-8,
-               use_locking=False, name="Adam"):
-    """Construct a new Adam optimizer.
+  def __init__(self,
+               global_step=0,
+               learning_rate=0.001,
+               beta1=0.9,
+               beta2=0.999,
+               epsilon=1e-8,
+               use_locking=False,
+               name="Adam"):
+    r"""Construct a new Adam optimizer.
 
     Branched from tf.train.AdamOptimizer. The only difference is to pass
     global step for computing beta1 and beta2 accumulators, instead of having
@@ -83,23 +87,20 @@ class AdamGSOptimizer(optimizer.Optimizer):
     Args:
       global_step: tensorflow variable indicating the step.
       learning_rate: A Tensor or a floating point value.  The learning rate.
-      beta1: A float value or a constant float tensor.
-        The exponential decay rate for the 1st moment estimates.
-      beta2: A float value or a constant float tensor.
-        The exponential decay rate for the 2nd moment estimates.
+      beta1: A float value or a constant float tensor. The exponential decay
+        rate for the 1st moment estimates.
+      beta2: A float value or a constant float tensor. The exponential decay
+        rate for the 2nd moment estimates.
       epsilon: A small constant for numerical stability. This epsilon is
         "epsilon hat" in the Kingma and Ba paper (in the formula just before
         Section 2.1), not the epsilon in Algorithm 1 of the paper.
       use_locking: If True use locks for update operations.
       name: Optional name for the operations created when applying gradients.
-        Defaults to "Adam".
-
-    @compatibility(eager)
-    When eager execution is enabled, `learning_rate`, `beta1`, `beta2`, and
-    `epsilon` can each be a callable that takes no arguments and returns the
-    actual value to use. This can be useful for changing these values across
-    different invocations of optimizer functions.
-    @end_compatibility
+        Defaults to "Adam".  @compatibility(eager) When eager execution is
+        enabled, `learning_rate`, `beta1`, `beta2`, and `epsilon` can each be a
+        callable that takes no arguments and returns the actual value to use.
+        This can be useful for changing these values across different
+        invocations of optimizer functions. @end_compatibility
     """
     super(AdamGSOptimizer, self).__init__(use_locking, name)
     self._lr = learning_rate
@@ -114,9 +115,6 @@ class AdamGSOptimizer(optimizer.Optimizer):
     self._beta1_t = None
     self._beta2_t = None
     self._epsilon_t = None
-
-    # Created in SparseApply if needed.
-    self._updated_lr = None
 
   def _get_beta_accumulators(self):
     return (math_ops.pow(self._beta1_t, self._global_step_on_worker),
@@ -149,28 +147,34 @@ class AdamGSOptimizer(optimizer.Optimizer):
     v = self.get_slot(var, "v")
     beta1_power, beta2_power = self._get_beta_accumulators()
     return training_ops.apply_adam(
-        var, m, v,
+        var,
+        m,
+        v,
         math_ops.cast(beta1_power, var.dtype.base_dtype),
         math_ops.cast(beta2_power, var.dtype.base_dtype),
         math_ops.cast(self._lr_t, var.dtype.base_dtype),
         math_ops.cast(self._beta1_t, var.dtype.base_dtype),
         math_ops.cast(self._beta2_t, var.dtype.base_dtype),
         math_ops.cast(self._epsilon_t, var.dtype.base_dtype),
-        grad, use_locking=self._use_locking).op
+        grad,
+        use_locking=self._use_locking).op
 
   def _resource_apply_dense(self, grad, var):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
     beta1_power, beta2_power = self._get_beta_accumulators()
     return training_ops.resource_apply_adam(
-        var.handle, m.handle, v.handle,
+        var.handle,
+        m.handle,
+        v.handle,
         math_ops.cast(beta1_power, grad.dtype.base_dtype),
         math_ops.cast(beta2_power, grad.dtype.base_dtype),
         math_ops.cast(self._lr_t, grad.dtype.base_dtype),
         math_ops.cast(self._beta1_t, grad.dtype.base_dtype),
         math_ops.cast(self._beta2_t, grad.dtype.base_dtype),
         math_ops.cast(self._epsilon_t, grad.dtype.base_dtype),
-        grad, use_locking=self._use_locking)
+        grad,
+        use_locking=self._use_locking)
 
   def _apply_sparse_shared(self, grad, var, indices, scatter_add):
     beta1_power, beta2_power = self._get_beta_accumulators()
@@ -184,8 +188,7 @@ class AdamGSOptimizer(optimizer.Optimizer):
     # m_t = beta1 * m + (1 - beta1) * g_t
     m = self.get_slot(var, "m")
     m_scaled_g_values = grad * (1 - beta1_t)
-    m_t = state_ops.assign(m, m * beta1_t,
-                           use_locking=self._use_locking)
+    m_t = state_ops.assign(m, m * beta1_t, use_locking=self._use_locking)
     with ops.control_dependencies([m_t]):
       m_t = scatter_add(m, indices, m_scaled_g_values)
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
@@ -195,23 +198,26 @@ class AdamGSOptimizer(optimizer.Optimizer):
     with ops.control_dependencies([v_t]):
       v_t = scatter_add(v, indices, v_scaled_g_values)
     v_sqrt = math_ops.sqrt(v_t)
-    var_update = state_ops.assign_sub(var,
-                                      lr * m_t / (v_sqrt + epsilon_t),
-                                      use_locking=self._use_locking)
+    var_update = state_ops.assign_sub(
+        var, lr * m_t / (v_sqrt + epsilon_t), use_locking=self._use_locking)
     return control_flow_ops.group(*[var_update, m_t, v_t])
 
   def _apply_sparse(self, grad, var):
     return self._apply_sparse_shared(
-        grad.values, var, grad.indices,
+        grad.values,
+        var,
+        grad.indices,
         lambda x, i, v: state_ops.scatter_add(  # pylint: disable=g-long-lambda
-            x, i, v, use_locking=self._use_locking))
+            x,
+            i,
+            v,
+            use_locking=self._use_locking))
 
   def _resource_scatter_add(self, x, i, v):
     with ops.control_dependencies(
-        [resource_variable_ops.resource_scatter_add(
-            x.handle, i, v)]):
+        [resource_variable_ops.resource_scatter_add(x.handle, i, v)]):
       return x.value()
 
   def _resource_apply_sparse(self, grad, var, indices):
-    return self._apply_sparse_shared(
-        grad, var, indices, self._resource_scatter_add)
+    return self._apply_sparse_shared(grad, var, indices,
+                                     self._resource_scatter_add)

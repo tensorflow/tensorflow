@@ -33,6 +33,7 @@ enum class TraversalDirection { kFollowInputs, kFollowOutputs };
 // corresponding back edges. Moreover, the pre and post order will assume that
 // these back edges will be cut.
 struct DfsCallbacks {
+  DfsCallbacks() = default;
   DfsCallbacks(std::function<void(const NodeDef*)> pre,
                std::function<void(const NodeDef*)> post,
                std::function<void(const NodeDef*, const NodeDef*)> back_edge)
@@ -53,16 +54,40 @@ struct DfsCallbacks {
   std::function<void(const NodeDef*, const NodeDef*)> on_back_edge;
 };
 
+// Encapsulate DFS predicates for traversing the graph.
+//
+// The `enter` predicate decides if traversal should enter the node, and the
+// `advance` predicate decides if the traversal should follow inputs/outputs
+// from the node.
+//
+// If predicates are empty (default initialized), it's assumed that we can enter
+// into any node and advance from any node respectively.
+struct DfsPredicates {
+  DfsPredicates() = default;
+  DfsPredicates(std::function<bool(const NodeDef*)> enter,
+                std::function<bool(const NodeDef*)> advance)
+      : enter(std::move(enter)), advance(std::move(advance)) {}
+
+  static DfsPredicates Enter(std::function<bool(const NodeDef*)> enter) {
+    return DfsPredicates(std::move(enter), nullptr);
+  }
+
+  static DfsPredicates Advance(std::function<bool(const NodeDef*)> advance) {
+    return DfsPredicates(nullptr, std::move(advance));
+  }
+
+  std::function<bool(const NodeDef*)> enter;
+  std::function<bool(const NodeDef*)> advance;
+};
+
 // Traverse the graph in DFS order in the given direction, starting from the
-// list of nodes specified in the `from` argument. Use `should_visit` to decide
-// if the node should be visited. This predicate also applied to the `from`
-// nodes. Call corresponding callbacks for each visited node. If `should_visit`
-// is empty (default initialized) it's assumed that traversal can visit all the
-// nodes.
+// list of nodes specified in the `from` argument. Use `predicates` to decide if
+// traversal should enter/advance to/from the graph node. These predicates also
+// applied to the `from` nodes. Call corresponding callbacks for each visited
+// node.
 void DfsTraversal(const GraphTopologyView& graph_view,
                   absl::Span<const NodeDef* const> from,
-                  TraversalDirection direction,
-                  const std::function<bool(const NodeDef*)>& should_visit,
+                  TraversalDirection direction, const DfsPredicates& predicates,
                   const DfsCallbacks& callbacks);
 
 // Traverse the graph in DFS order in the given direction, starting from the

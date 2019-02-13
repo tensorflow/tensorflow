@@ -41,6 +41,7 @@ from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as training_saver
 from tensorflow.python.training import session_manager as sm
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.training.checkpointable import graph_view
 from tensorflow.python.training.checkpointable import util as checkpointable_util
 from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
@@ -229,8 +230,8 @@ class Scaffold(object):
     # pylint: enable=g-long-lambda
     if isinstance(self._saver, checkpointable_util.Checkpoint):
       self._saver = training_saver.Saver(
-          var_list=checkpointable_util.CheckpointableSaver(
-              self._saver).gather_objects(),
+          var_list=graph_view.ObjectGraphView(
+              self._saver).frozen_saveable_objects(),
           sharded=True)
     else:
       self._saver.build()

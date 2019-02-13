@@ -157,10 +157,10 @@ XLA_TEST_P(RandomCholeskyTest, Random) {
                              xla::ErrorSpec(1e-4, 1e-4));
 }
 
-INSTANTIATE_TEST_CASE_P(RandomCholeskyTestInstance, RandomCholeskyTest,
-                        ::testing::Values(CholeskyTestCase{1, 1},
-                                          CholeskyTestCase{1, 2},
-                                          CholeskyTestCase{10, 5},
-                                          CholeskyTestCase{2, 20}));
+INSTANTIATE_TEST_SUITE_P(RandomCholeskyTestInstance, RandomCholeskyTest,
+                         ::testing::Values(CholeskyTestCase{1, 1},
+                                           CholeskyTestCase{1, 2},
+                                           CholeskyTestCase{10, 5},
+                                           CholeskyTestCase{2, 20}));
 
 }  // namespace

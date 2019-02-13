@@ -176,8 +176,8 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
       cudnn_model.fit(x_train, y_train)
       y_4 = cudnn_model.predict(x_train)
 
-      self.assertAllClose(y_1, y_3, rtol=1e-5, atol=1e-5)
-      self.assertAllClose(y_2, y_4, rtol=1e-5, atol=1e-5)
+      self.assertAllClose(y_1, y_3, rtol=2e-5, atol=2e-5)
+      self.assertAllClose(y_2, y_4, rtol=2e-5, atol=2e-5)
 
   @parameterized.named_parameters(
       # test_name, use_bias, bias_initializer, activation
@@ -402,39 +402,6 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
-
-class GRULayerGradientTapeTest(test.TestCase):
-
-  @test_util.run_in_graph_and_eager_modes(config=_config)
-  def test_in_tape(self):
-    if not context.executing_eagerly():
-      self.skipTest('bloo')
-    time_steps = 10
-    embedding_size = 11
-    gru_unit_size = 12
-
-    gru = keras.layers.UnifiedGRU(gru_unit_size,
-                                  return_sequences=True,
-                                  return_state=True,
-                                  recurrent_activation='sigmoid',
-                                  recurrent_initializer='glorot_uniform')
-
-    x = random_ops.random_uniform([1, time_steps, embedding_size])
-    y = random_ops.random_uniform([1, gru_unit_size])
-
-    with backprop.GradientTape() as tape:
-      hidden_state = array_ops.zeros([1, gru_unit_size], dtype=dtypes.float32)
-      _, state = gru(x, initial_state=hidden_state)
-
-      loss = math_ops.reduce_mean(math_ops.square(state - y))
-
-    tape.gradient(loss, gru.variables)
-
-
-class GRULayerV1OnlyTest(test.TestCase, parameterized.TestCase):
-
-  @test_util.run_v1_only('b/120941292')
-  @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_statefulness_GRU(self):
     num_samples = 2
     timesteps = 3
@@ -452,7 +419,8 @@ class GRULayerV1OnlyTest(test.TestCase, parameterized.TestCase):
     layer = layer_class(
         units, return_sequences=False, stateful=True, weights=None)
     model.add(layer)
-    model.compile(optimizer='sgd', loss='mse')
+    model.compile(optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+                  loss='mse', run_eagerly=testing_utils.should_run_eagerly())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 
@@ -495,6 +463,57 @@ class GRULayerV1OnlyTest(test.TestCase, parameterized.TestCase):
     out7 = model.predict(right_padded_input)
 
     np.testing.assert_allclose(out7, out6, atol=1e-5)
+
+  def test_stateful_GRU_training(self):
+    # See b/123587692 for more context.
+    vocab_size = 20
+    embedding_dim = 10
+    batch_size = 8
+    timestep = 12
+    units = 5
+    x = np.random.randint(0, vocab_size, size=(batch_size, timestep))
+    y = np.random.randint(0, vocab_size, size=(batch_size, timestep))
+
+    model = keras.Sequential([
+        keras.layers.Embedding(vocab_size, embedding_dim,
+                               batch_input_shape=[batch_size, timestep]),
+        keras.layers.UnifiedGRU(units,
+                                return_sequences=True,
+                                stateful=True),
+        keras.layers.Dense(vocab_size)
+    ])
+    model.compile(optimizer='adam',
+                  loss='sparse_categorical_crossentropy',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x, y, epochs=1, shuffle=False)
+
+
+class GRULayerGradientTapeTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_in_tape(self):
+    if not context.executing_eagerly():
+      self.skipTest('bloo')
+    time_steps = 10
+    embedding_size = 11
+    gru_unit_size = 12
+
+    gru = keras.layers.UnifiedGRU(gru_unit_size,
+                                  return_sequences=True,
+                                  return_state=True,
+                                  recurrent_activation='sigmoid',
+                                  recurrent_initializer='glorot_uniform')
+
+    x = random_ops.random_uniform([1, time_steps, embedding_size])
+    y = random_ops.random_uniform([1, gru_unit_size])
+
+    with backprop.GradientTape() as tape:
+      hidden_state = array_ops.zeros([1, gru_unit_size], dtype=dtypes.float32)
+      _, state = gru(x, initial_state=hidden_state)
+
+      loss = math_ops.reduce_mean(math_ops.square(state - y))
+
+    tape.gradient(loss, gru.variables)
 
 
 class GRULayerGraphOnlyTest(test.TestCase):

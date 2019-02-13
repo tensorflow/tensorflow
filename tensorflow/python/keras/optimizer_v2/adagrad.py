@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -30,7 +31,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.optimizers.Adagrad', v1=[])
+@keras_export('keras.optimizers.Adagrad')
 class Adagrad(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the Adagrad algorithm.
 
@@ -89,6 +90,8 @@ class Adagrad(optimizer_v2.OptimizerV2):
     if initial_accumulator_value < 0.0:
       raise ValueError('initial_accumulator_value must be non-negative: %s' %
                        initial_accumulator_value)
+    if epsilon is None:
+      epsilon = backend_config.epsilon()
     if epsilon < 1e-7:
       raise ValueError('epsilon must be larger than 1e-7: %s' % epsilon)
     super(Adagrad, self).__init__(name, **kwargs)

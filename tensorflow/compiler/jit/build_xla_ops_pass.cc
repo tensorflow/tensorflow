@@ -115,6 +115,13 @@ void MergeOutgoingControlEdges(const Scope& s, Node* old_node, Node* new_node) {
     return;
   }
 
+  if (ctrl_edges.size() == 1 && ctrl_edges.front()->dst()->IsSink()) {
+    // Avoid creating a Merge node if we can just add an edge to _SINK
+    // instead.
+    s.graph()->AddControlEdge(new_node, s.graph()->sink_node());
+    return;
+  }
+
   // We can't merge control edges directly so we instead first "convert" them to
   // normal values that can be merged, merge the values and then "convert" the
   // merged value back into control.

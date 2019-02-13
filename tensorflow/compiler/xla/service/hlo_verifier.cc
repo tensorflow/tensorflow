@@ -50,6 +50,7 @@ bool IsCallerInstruction(HloInstruction* hlo) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kSort:
     case HloOpcode::kFusion:
       return true;
     default:
@@ -167,6 +168,15 @@ Status ShapeVerifier::HandleFft(HloInstruction* fft) {
   return CheckShape(fft, expected);
 }
 
+Status ShapeVerifier::HandleTriangularSolve(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(CheckOperandCount(hlo, 2));
+  TF_ASSIGN_OR_RETURN(const Shape expected,
+                      ShapeInference::InferTriangularSolveShape(
+                          hlo->operand(0)->shape(), hlo->operand(1)->shape(),
+                          hlo->triangular_solve_options()));
+  return CheckShape(hlo, expected);
+}
+
 Status ShapeVerifier::HandleAllReduce(HloInstruction* crs) {
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : crs->operands()) {
@@ -182,6 +192,10 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
   }
   return CheckShape(hlo,
                     ShapeInference::InferAllToAllTupleShape(operand_shapes));
+}
+
+Status ShapeVerifier::HandleReplicaId(HloInstruction* hlo) {
+  return CheckShape(hlo, ShapeUtil::MakeShape(U32, {}));
 }
 
 Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
@@ -323,13 +337,48 @@ Status ShapeVerifier::HandleSort(HloInstruction* sort) {
     return InternalError("Expected at least 1 operand for %s instruction: %s",
                          HloOpcodeString(sort->opcode()), sort->ToString());
   }
+  HloComputation* compare = sort->to_apply();
+
+  // Check that the 'compare' computation returns a PRED.
+  Shape compare_shape = compare->root_instruction()->shape();
+  if (!ShapesSame(compare_shape, ShapeUtil::MakeShape(PRED, {}))) {
+    return InternalError(
+        "The Sort compare computation shape does not lead to a scalar "
+        "predicate shape: %s",
+        StringifyShape(compare_shape));
+  }
+
+  // Check that the number of parameters of the 'compare' computation is
+  // correct.
+  TF_RETURN_IF_ERROR(
+      CheckParameterCount(sort, compare, sort->operand_count() * 2));
+
+  // Verify that the operands of the compare computation have the correct scalar
+  // shapes.
+  for (int64 parameter_idx = 0; parameter_idx < compare->num_parameters();
+       ++parameter_idx) {
+    int64 operand_idx = parameter_idx / 2;
+    Shape expected_scalar_shape = ShapeUtil::MakeShape(
+        sort->operand(operand_idx)->shape().element_type(), {});
+    Shape actual_parameter_shape =
+        compare->parameter_instruction(parameter_idx)->shape();
+    if (!ShapeUtil::CompatibleIgnoringFpPrecision(expected_scalar_shape,
+                                                  actual_parameter_shape)) {
+      return InternalError(
+          "Expected the %lld-th parameter of the compare computation of sort "
+          "to have shape %s, but got %s",
+          parameter_idx, StringifyShape(expected_scalar_shape),
+          StringifyShape(actual_parameter_shape));
+    }
+  }
+
+  // Verify that all operand shapes have the same dimensions.
   for (int64 operand = 1; operand < sort->operand_count(); ++operand) {
     if (!ShapeUtil::SameDimensions(sort->operand(0)->shape(),
                                    sort->operand(operand)->shape())) {
       return InternalError(
-          "Expected sort to have to have the same dimensions for the keys "
-          "and the values. Keys shape is: %s\n, Values shape (operand index "
-          "%lld) is: %s",
+          "Expected sort to have to have the same dimensions for all operands. "
+          "First operand shape is: %s\n, shape (operand index %lld) is: %s",
           StringifyShape(sort->operand(0)->shape()), operand,
           StringifyShape(sort->operand(operand)->shape()));
     }
@@ -349,6 +398,9 @@ Status ShapeVerifier::HandleConstant(HloInstruction* constant) {
 Status ShapeVerifier::HandleIota(HloInstruction* instruction) {
   TF_RETURN_IF_ERROR(CheckOperandCount(instruction, 0));
   auto* iota = Cast<HloIotaInstruction>(instruction);
+  if (!iota->shape().IsArray()) {
+    return InternalError("Iota does not support non-array result.");
+  }
   const int64 rank = iota->shape().rank();
   if (rank == 0) {
     return InternalError("Iota does not support scalars.");
@@ -369,6 +421,24 @@ Status ShapeVerifier::HandleGetTupleElement(HloInstruction* get_tuple_element) {
                         get_tuple_element->tuple_index()));
 }
 
+namespace {
+Status SameElementTypesForOperandsAndToApplyParameters(
+    const HloInstruction& instruction, int64 num_operands_to_check) {
+  const ProgramShape& to_apply = instruction.to_apply()->ComputeProgramShape();
+  for (int i = 0; i < num_operands_to_check; ++i) {
+    const Shape& parameter_shape = to_apply.parameters(i);
+    const Shape& operand_shape = instruction.operands()[i]->shape();
+    if (!ShapeUtil::SameElementType(parameter_shape, operand_shape)) {
+      return InvalidArgument(
+          "Shape mismatch between to_apply computation"
+          " parameter and operand %d in %s.",
+          i, instruction.ToString().c_str());
+    }
+  }
+  return Status::OK();
+}
+}  // namespace
+
 Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
   if (reduce->operand_count() % 2 != 0) {
     return InternalError(
@@ -380,13 +450,27 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
   for (const HloInstruction* operand : reduce->operands()) {
     operand_shapes.push_back(&operand->shape());
   }
-  return CheckShape(reduce, ShapeInference::InferReduceShape(
-                                operand_shapes, reduce->dimensions(),
-                                reduce->to_apply()->ComputeProgramShape()));
+  TF_RETURN_IF_ERROR(
+      CheckShape(reduce, ShapeInference::InferReduceShape(
+                             operand_shapes, reduce->dimensions(),
+                             reduce->to_apply()->ComputeProgramShape())));
+
+  return allow_mixed_precision_
+             ? Status::OK()
+             : SameElementTypesForOperandsAndToApplyParameters(
+                   *reduce, reduce->operands().size() - 1);
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
   TF_RETURN_IF_ERROR(CheckOperandCount(bitcast, 1));
+  // Bitcasts are not allowed to change the element type.
+  if (bitcast->operand(0)->shape().element_type() !=
+      bitcast->shape().element_type()) {
+    return InternalError(
+        "Bitcast can not change the element type from %s to %s",
+        PrimitiveType_Name(bitcast->operand(0)->shape().element_type()),
+        PrimitiveType_Name(bitcast->shape().element_type()));
+  }
   return Status::OK();
 }
 
@@ -496,38 +580,23 @@ Status ShapeVerifier::HandleSlice(HloInstruction* slice) {
 }
 
 Status ShapeVerifier::HandleDynamicSlice(HloInstruction* dynamic_slice) {
-  const DebugOptions& debug_options =
-      dynamic_slice->GetModule()->config().debug_options();
-  const bool allow_scalar_indices =
-      debug_options.xla_allow_scalar_index_dynamic_ops();
-  if (!allow_scalar_indices) {
-    TF_RETURN_IF_ERROR(CheckOperandCount(dynamic_slice, 2));
-  }
   return CheckShape(
       dynamic_slice,
       ShapeInference::InferDynamicSliceShape(
           dynamic_slice->operand(0)->shape(),
           Cast<HloDynamicSliceInstruction>(dynamic_slice)->index_shapes(),
-          dynamic_slice->dynamic_slice_sizes(), allow_scalar_indices));
+          dynamic_slice->dynamic_slice_sizes()));
 }
 
 Status ShapeVerifier::HandleDynamicUpdateSlice(
     HloInstruction* dynamic_update_slice) {
-  const DebugOptions& debug_options =
-      dynamic_update_slice->GetModule()->config().debug_options();
-  const bool allow_scalar_indices =
-      debug_options.xla_allow_scalar_index_dynamic_ops();
-  if (!allow_scalar_indices) {
-    TF_RETURN_IF_ERROR(CheckOperandCount(dynamic_update_slice, 3));
-  }
   return CheckShape(
       dynamic_update_slice,
       ShapeInference::InferDynamicUpdateSliceShape(
           dynamic_update_slice->operand(0)->shape(),
           dynamic_update_slice->operand(1)->shape(),
           Cast<HloDynamicUpdateSliceInstruction>(dynamic_update_slice)
-              ->index_shapes(),
-          allow_scalar_indices));
+              ->index_shapes()));
 }
 
 Status ShapeVerifier::HandleTuple(HloInstruction* tuple) {
@@ -545,19 +614,31 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
   // arbitrary map dimensions.
   std::vector<int64> map_dims(max_operand_rank);
   std::iota(map_dims.begin(), map_dims.end(), 0);
-  return CheckShape(map, ShapeInference::InferMapShape(
-                             operand_shapes,
-                             map->to_apply()->ComputeProgramShape(), map_dims));
+
+  TF_RETURN_IF_ERROR(CheckShape(
+      map,
+      ShapeInference::InferMapShape(
+          operand_shapes, map->to_apply()->ComputeProgramShape(), map_dims)));
+
+  return allow_mixed_precision_
+             ? Status::OK()
+             : SameElementTypesForOperandsAndToApplyParameters(
+                   *map, map->operands().size());
 }
 
 Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
   TF_RETURN_IF_ERROR(CheckOperandCount(reduce_window, 2));
-  return CheckShape(
+  TF_RETURN_IF_ERROR(CheckShape(
       reduce_window,
       ShapeInference::InferReduceWindowShape(
           reduce_window->operand(0)->shape(),
           reduce_window->operand(1)->shape(), reduce_window->window(),
-          reduce_window->to_apply()->ComputeProgramShape()));
+          reduce_window->to_apply()->ComputeProgramShape())));
+
+  return allow_mixed_precision_
+             ? Status::OK()
+             : SameElementTypesForOperandsAndToApplyParameters(*reduce_window,
+                                                               1);
 }
 
 Status ShapeVerifier::HandleSelectAndScatter(HloInstruction* instruction) {
@@ -709,7 +790,6 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kReducePrecision:
-    case HloOpcode::kSelect:
     case HloOpcode::kTupleSelect:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:

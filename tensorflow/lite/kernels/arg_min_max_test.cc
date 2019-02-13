@@ -83,7 +83,29 @@ TEST(ArgMaxOpTest, GetMaxArgFloat) {
   model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1}));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 1}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
+}
+
+TEST(ArgMaxOpTest, GetMaxArgUInt8) {
+  ArgMaxOpModel<int32_t> model({1, 1, 1, 4}, TensorType_UINT8, TensorType_INT32,
+                               TensorType_INT32);
+  model.PopulateTensor<uint8_t>(model.input(), {1, 9, 7, 3});
+  model.PopulateTensor<int>(model.axis(), {3});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
+}
+
+TEST(ArgMaxOpTest, GetMaxArgInt8) {
+  ArgMaxOpModel<int32_t> model({1, 1, 1, 4}, TensorType_INT8, TensorType_INT32,
+                               TensorType_INT32);
+  model.PopulateTensor<int8_t>(model.input(), {-1, -9, 7, 3});
+  model.PopulateTensor<int>(model.axis(), {3});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({2}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
 }
 
 TEST(ArgMaxOpTest, GetMaxArgInt) {
@@ -94,7 +116,7 @@ TEST(ArgMaxOpTest, GetMaxArgInt) {
   model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1}));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 1}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
 }
 
 TEST(ArgMaxOpTest, GetMaxArgMulDimensions) {
@@ -105,7 +127,7 @@ TEST(ArgMaxOpTest, GetMaxArgMulDimensions) {
   model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({3, 1}));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2, 1}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2}));
 }
 
 TEST(ArgMaxOpTest, GetMaxArgNegativeAxis) {
@@ -116,7 +138,7 @@ TEST(ArgMaxOpTest, GetMaxArgNegativeAxis) {
   model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({0, 1, 0, 0}));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 4}));
 }
 
 TEST(ArgMaxOpTest, GetMaxArgOutput64) {
@@ -127,7 +149,7 @@ TEST(ArgMaxOpTest, GetMaxArgOutput64) {
   model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({0, 1}));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2, 1}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2}));
 }
 
 TEST(ArgMinOpTest, GetMinArgFloat) {
@@ -138,7 +160,7 @@ TEST(ArgMinOpTest, GetMinArgFloat) {
   model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({0}));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 1}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
 }
 
 TEST(ArgMinOpTest, GetMinArgInt) {
@@ -149,7 +171,7 @@ TEST(ArgMinOpTest, GetMinArgInt) {
   model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({0}));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 1}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
 }
 
 TEST(ArgMinOpTest, GetMinArgMulDimensions) {
@@ -160,7 +182,7 @@ TEST(ArgMinOpTest, GetMinArgMulDimensions) {
   model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({0, 0}));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2, 1}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2}));
 }
 
 TEST(ArgMinOpTest, GetMinArgNegativeAxis) {
@@ -171,7 +193,7 @@ TEST(ArgMinOpTest, GetMinArgNegativeAxis) {
   model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({0, 0, 0, 1}));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 4}));
 }
 
 TEST(ArgMinOpTest, GetMinArgOutput64) {
@@ -182,7 +204,7 @@ TEST(ArgMinOpTest, GetMinArgOutput64) {
   model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0}));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2, 1}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2}));
 }
 
 }  // namespace

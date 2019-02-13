@@ -34,63 +34,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
-
-xla::XlaOp ArgMinMax(xla::XlaOp input, xla::PrimitiveType output_type, int axis,
-                     bool is_min) {
-  xla::XlaBuilder* builder = input.builder();
-  return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
-    TF_ASSIGN_OR_RETURN(xla::Shape input_shape, builder->GetShape(input));
-    xla::XlaOp init_value;
-    xla::XlaComputation reducer;
-    if (is_min) {
-      init_value = xla::MaxValue(builder, input_shape.element_type());
-      reducer =
-          xla::CreateScalarMinComputation(input_shape.element_type(), builder);
-    } else {
-      init_value = xla::MinValue(builder, input_shape.element_type());
-      reducer =
-          xla::CreateScalarMaxComputation(input_shape.element_type(), builder);
-    }
-
-    xla::XlaOp input_max = xla::Reduce(input, init_value, reducer,
-                                       /*dimensions_to_reduce=*/{axis});
-    std::vector<int64> broadcast_dims(input_shape.rank() - 1);
-    std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
-    std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
-    // Compute a mask that has 1s for elements equal to the maximum.
-    xla::XlaOp partial_mask = xla::ConvertElementType(
-        xla::Eq(input, input_max, broadcast_dims), output_type);
-
-    // In order to make identity elements for a bitwise And, we:
-    //   Left shift the 1 to the leftmost bit, yielding 0x10...0
-    //   Arithmetic right shift the 1 back to the rightmost bit, yielding
-    //   0xFF...F
-    int32 bits_in_type =
-        xla::ShapeUtil::ByteSizeOfPrimitiveType(output_type) * 8 - 1;
-    xla::XlaOp shift_amount =
-        xla::ConstantR0WithType(builder, output_type, bits_in_type);
-    xla::XlaOp full_mask = xla::ShiftRightArithmetic(
-        xla::ShiftLeft(partial_mask, shift_amount), shift_amount);
-
-    // And with the vector [0, 1, 2, ...] to convert each 0xFF...F into its
-    // index.
-
-    const int64 axis_size = xla::ShapeUtil::GetDimension(input_shape, axis);
-    xla::XlaOp iota = xla::Iota(builder, output_type, axis_size);
-    xla::XlaOp product =
-        xla::And(full_mask, iota, /*broadcast_dimensions=*/{axis});
-
-    // If there are multiple maximum elements, choose the one with the highest
-    // index.
-    return xla::Reduce(product, xla::MinValue(builder, output_type),
-                       xla::CreateScalarMaxComputation(output_type, builder),
-                       /*dimensions_to_reduce=*/{axis});
-  });
-}
-
-}  // namespace
-
 xla::XlaOp XlaHelpers::Zero(xla::XlaBuilder* b, DataType data_type) {
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
@@ -146,16 +89,6 @@ static Tensor MakeLinspaceTensor(const TensorShape& shape, int64 depth) {
     linspace_flat(i) = i;
   }
   return linspace;
-}
-
-xla::XlaOp XlaHelpers::ArgMax(xla::XlaOp input, xla::PrimitiveType output_type,
-                              int axis) {
-  return ArgMinMax(input, output_type, axis, /*is_min=*/false);
-}
-
-xla::XlaOp XlaHelpers::ArgMin(xla::XlaOp input, xla::PrimitiveType output_type,
-                              int axis) {
-  return ArgMinMax(input, output_type, axis, /*is_min=*/true);
 }
 
 Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64 depth, int axis,

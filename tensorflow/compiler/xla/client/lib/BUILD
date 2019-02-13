@@ -34,6 +34,21 @@ cc_library(
     ],
 )
 
+xla_test(
+    name = "arithmetic_test",
+    srcs = ["arithmetic_test.cc"],
+    deps = [
+        ":arithmetic",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 cc_library(
     name = "cholesky",
     srcs = ["cholesky.cc"],
@@ -50,7 +65,6 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/client/lib:slicing",
-        "//tensorflow/compiler/xla/client/lib:triangular_solve",
         "//tensorflow/core:lib",
     ],
 )
@@ -77,6 +91,39 @@ xla_test(
 )
 
 cc_library(
+    name = "comparators",
+    srcs = ["comparators.cc"],
+    hdrs = ["comparators.h"],
+    deps = [
+        ":constants",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_test(
+    name = "comparators_test",
+    srcs = ["comparators_test.cc"],
+    deps = [
+        ":comparators",
+        ":constants",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/container:inlined_vector",
+    ],
+)
+
+cc_library(
     name = "constants",
     srcs = ["constants.cc"],
     hdrs = ["constants.h"],
@@ -93,7 +140,6 @@ cc_library(
 xla_test(
     name = "constants_test",
     srcs = ["constants_test.cc"],
-    tags = ["enable_for_xla_interpreter"],
     deps = [
         ":constants",
         "//tensorflow/compiler/xla:test",
@@ -137,6 +183,7 @@ cc_library(
     srcs = ["math.cc"],
     hdrs = ["math.h"],
     deps = [
+        ":arithmetic",
         ":constants",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -147,7 +194,23 @@ cc_library(
 xla_test(
     name = "math_test",
     srcs = ["math_test.cc"],
-    tags = ["enable_for_xla_interpreter"],
+    deps = [
+        ":math",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+xla_test(
+    name = "math_exhaustive_test",
+    srcs = ["math_exhaustive_test.cc"],
+    shard_count = 16,
     deps = [
         ":math",
         "//tensorflow/compiler/xla:literal_util",
@@ -167,13 +230,18 @@ cc_library(
     deps = [
         ":arithmetic",
         ":constants",
+        ":slicing",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -181,16 +249,19 @@ cc_library(
 xla_test(
     name = "matrix_test",
     srcs = ["matrix_test.cc"],
-    tags = ["enable_for_xla_interpreter"],
     deps = [
         ":matrix",
         ":slicing",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -229,7 +300,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
     ],
 )
@@ -281,12 +351,7 @@ cc_library(
     srcs = ["slicing.cc"],
     hdrs = ["slicing.h"],
     deps = [
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "@com_google_absl//absl/types:span",
     ],
@@ -295,13 +360,11 @@ cc_library(
 xla_test(
     name = "slicing_test",
     srcs = ["slicing_test.cc"],
-    tags = ["enable_for_xla_interpreter"],
     deps = [
         ":slicing",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -313,6 +376,7 @@ cc_library(
     srcs = ["sorting.cc"],
     hdrs = ["sorting.h"],
     deps = [
+        ":comparators",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -324,12 +388,10 @@ cc_library(
 xla_test(
     name = "sorting_test",
     srcs = ["sorting_test.cc"],
-    tags = ["enable_for_xla_interpreter"],
     deps = [
         ":sorting",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -354,7 +416,6 @@ xla_test(
     srcs = ["quantize_test.cc"],
     # TODO(b/122119490): re-enable TAP after fixing.
     tags = [
-        "enable_for_xla_interpreter",
         "notap",
     ],
     deps = [
@@ -391,51 +452,48 @@ cc_library(
 )
 
 cc_library(
-    name = "triangular_solve",
-    srcs = ["triangular_solve.cc"],
-    hdrs = ["triangular_solve.h"],
+    name = "self_adjoint_eigen",
+    srcs = ["self_adjoint_eigen.cc"],
+    hdrs = ["self_adjoint_eigen.h"],
     deps = [
-        "//tensorflow/compiler/xla:literal",
+        ":arithmetic",
+        ":constants",
+        ":loops",
+        ":math",
+        ":matrix",
+        ":slicing",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/client/lib:constants",
-        "//tensorflow/compiler/xla/client/lib:math",
-        "//tensorflow/compiler/xla/client/lib:matrix",
-        "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/core:lib",
     ],
 )
 
 xla_test(
-    name = "triangular_solve_test",
-    srcs = ["triangular_solve_test.cc"],
-    tags = [
-        "enable_for_xla_interpreter",
-        "noasan",  # sometimes times out, http://b/78650012
-    ],
+    name = "self_adjoint_eigen_test",
+    size = "medium",
+    srcs = ["self_adjoint_eigen_test.cc"],
+    real_hardware_only = True,
+    shard_count = 10,
+    tags = ["optonly"],
     deps = [
-        ":math",
+        ":arithmetic",
+        ":constants",
         ":matrix",
-        ":triangular_solve",
+        ":self_adjoint_eigen",
         "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client:global_data",
-        "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
 )

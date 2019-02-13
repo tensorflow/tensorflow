@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged_array_ops.batch_gather."""
+"""Tests for ragged_batch_gather_ops.batch_gather."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,11 +21,13 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops.ragged import ragged_array_ops
+from tensorflow.python.ops.ragged import ragged_batch_gather_ops
+from tensorflow.python.ops.ragged import ragged_batch_gather_with_default_op
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_test_util
@@ -146,8 +148,326 @@ class RaggedBatchGatherOpTest(ragged_test_util.RaggedTensorTestCase,
               [[[[b'c', b'a'], [b'd', b'd']], [[b'f', b'e']]]], ragged_rank=2)),
   ])
   def testRaggedBatchGather(self, descr, params, indices, expected):
-    result = ragged_array_ops.batch_gather(params, indices)
+    result = ragged_batch_gather_ops.batch_gather(params, indices)
     self.assertRaggedEqual(result, expected)
+
+  @parameterized.parameters([
+      # Docstring example:
+      dict(
+          descr='Docstring example',
+          params=[['a', 'b', 'c'], ['d'], [], ['e']],
+          indices=[[1, 2, -1], [], [], [0, 10]],
+          expected=[['b', 'c', 'FOO'], [], [], ['e', 'FOO']],
+          default_value='FOO',
+      ),
+      # Dimensions:
+      # indices: [4]
+      # params: [2, (d1), (d2)]
+      dict(
+          descr='params: [2, (d1), (d2), indices: [4]',
+          indices=[1, 100, 0, -1],
+          params=[[['The', 'deal', 'came', 'about', '18', 'months', 'after',
+                    'Yahoo', '!', 'rejected', 'a', '47.5', '-', 'billion', '-',
+                    'dollar', 'takeover', 'offer', 'from', 'Microsoft', '.'],
+                   ['Trumpty', 'Dumpty', 'sat', 'on', 'a', 'wall']],
+                  [["It's", 'always', 'darkest', 'before', 'the', 'dawn']]],
+          expected=[[["It's", 'always', 'darkest', 'before', 'the', 'dawn']],
+                    [['$NONE^']],
+                    [['The', 'deal', 'came', 'about', '18', 'months', 'after',
+                      'Yahoo', '!', 'rejected', 'a', '47.5', '-', 'billion',
+                      '-', 'dollar', 'takeover', 'offer', 'from', 'Microsoft',
+                      '.'],
+                     ['Trumpty', 'Dumpty', 'sat', 'on', 'a', 'wall']],
+                    [['$NONE^']]],
+      ),
+      # Dimensions:
+      # params: [1, (d1)]
+      # indices: [3]
+      dict(
+          descr='params: rank 2, indices: rank 1',
+          params=[
+              ['Bruce', 'Wayne'],
+          ],
+          indices=[-1, 0, 1000],
+          expected=[['$NONE^'], ['Bruce', 'Wayne'], ['$NONE^']]
+      ),
+      # Dimensions:
+      # params: [1, (d1)]
+      # indices: [1, (d2)]
+      dict(
+          descr='Test underbound indices of shape [1, (d2)]',
+          params=[
+              ['The', 'deal', 'came', 'about', '18', 'months', 'after', 'Yahoo',
+               '!', 'rejected', 'a', '47.5', '-', 'billion', '-', 'dollar',
+               'takeover', 'offer', 'from', 'Microsoft', '.'],
+          ],
+          indices=[[8, -1]],
+          expected=[['!', '$NONE^']],
+      ),
+      dict(
+          descr='Test underbound indices of shape [2, (d2)]',
+          params=[
+              ['The', 'deal', 'came', 'about', '18', 'months', 'after', 'Yahoo',
+               '!', 'rejected', 'a', '47.5', '-', 'billion', '-', 'dollar',
+               'takeover', 'offer', 'from', 'Microsoft', '.'],
+              ['Who', 'let', 'the', 'dogs', 'out', '?'],
+          ],
+          indices=[[8, -1], [1, 100]],
+          expected=[['!', '$NONE^'], ['let', '$NONE^']],
+      ),
+      # Dimensions:
+      # params: [2, (d1)]
+      # indices: [2, (d2)]
+      dict(
+          descr='Test underbound indices of rank 2',
+          params=[
+              ['The', 'deal', 'came', 'about', '18', 'months', 'after', 'Yahoo',
+               '!', 'rejected', 'a', '47.5', '-', 'billion', '-', 'dollar',
+               'takeover', 'offer', 'from', 'Microsoft', '.'],
+              ['He', 'left', 'us', '.', 'Little', 'boys', 'crowded', 'together',
+               'on', 'long', 'wooden', 'benches', ',', 'and', 'in', 'the',
+               'center', 'of', 'the', 'room', 'sat', 'the', 'teacher', '.',
+               'His', 'black', 'beard', 'dripped', 'down', 'over', 'the',
+               'front', 'of', 'his', 'coat', '.', 'One', 'white', 'hand',
+               'poised', 'a', 'stick', 'above', 'his', 'desk', '.', 'He',
+               'turned', 'his', 'surly', ',', 'half', '-', 'closed', 'eyes',
+               'toward', 'us', ',', 'stared', 'for', 'a', 'second', ',', 'then',
+               'shouted', 'in', 'Yiddish', ',', '``', 'One', ',', 'two', ',',
+               'three', "''", '!', '!', 'Rapping', 'the', 'stick', 'against',
+               'the', 'desk', '.', 'The', 'little', 'boys', 'shrilled', 'out',
+               'a', 'Yiddish', 'translation', 'or', 'interpretation', 'of',
+               'the', 'Five', 'Books', 'of', 'Moses', ',', 'which', 'they',
+               'had', 'previously', 'chanted', 'in', 'Hebrew', '.']],
+          indices=[[8, -1], [3, 23, 35, 45, 75, 83, -121]],
+          expected=[['!', '$NONE^'], ['.', '.', '.', '.', '!', '.', '$NONE^']],
+      ),
+      dict(
+          descr='Test overbound indices of rank 2',
+          params=[
+              ['The', 'deal', 'came', 'about', '18', 'months', 'after', 'Yahoo',
+               '!', 'rejected', 'a', '47.5', '-', 'billion', '-', 'dollar',
+               'takeover', 'offer', 'from', 'Microsoft', '.'],
+              ['He', 'left', 'us', '.', 'Little', 'boys', 'crowded', 'together',
+               'on', 'long', 'wooden', 'benches', ',', 'and', 'in', 'the',
+               'center', 'of', 'the', 'room', 'sat', 'the', 'teacher', '.',
+               'His', 'black', 'beard', 'dripped', 'down', 'over', 'the',
+               'front', 'of', 'his', 'coat', '.', 'One', 'white', 'hand',
+               'poised', 'a', 'stick', 'above', 'his', 'desk', '.', 'He',
+               'turned', 'his', 'surly', ',', 'half', '-', 'closed', 'eyes',
+               'toward', 'us', ',', 'stared', 'for', 'a', 'second', ',', 'then',
+               'shouted', 'in', 'Yiddish', ',', '``', 'One', ',', 'two', ',',
+               'three', "''", '!', '!', 'Rapping', 'the', 'stick', 'against',
+               'the', 'desk', '.', 'The', 'little', 'boys', 'shrilled', 'out',
+               'a', 'Yiddish', 'translation', 'or', 'interpretation', 'of',
+               'the', 'Five', 'Books', 'of', 'Moses', ',', 'which', 'they',
+               'had', 'previously', 'chanted', 'in', 'Hebrew', '.']],
+          indices=[[8, 8823], [3, 23, 35, 45, 75, 83, 1234]],
+          expected=[['!', '$NONE^'], ['.', '.', '.', '.', '!', '.', '$NONE^']],
+      ),
+      # Dimensions:
+      # params: [2, (d1), 2]
+      # indices: [2, (d2)]
+      dict(
+          descr='params: rank 3, indices: rank 2',
+          params=[
+              [['The', 'deal'], ['takeover', 'offer'], ['from', 'Microsoft']],
+              [['Who', 'let'], ['the', 'dogs'], ['out', '?']],
+          ],
+          ragged_rank=1,
+          indices=[[1, -1, 2, 30], [1, 100]],
+          indices_ragged_rank=1,
+          expected=[[['takeover', 'offer'],
+                     ['$NONE^', '$NONE^'],
+                     ['from', 'Microsoft'],
+                     ['$NONE^', '$NONE^']],
+                    [['the', 'dogs'],
+                     ['$NONE^', '$NONE^']]],
+          expected_ragged_rank=1,
+          default_value=['$NONE^', '$NONE^'],
+      ),
+      # Dimensions:
+      # params: [2, (d1), (d2)]
+      # indices: [2, (d3)]
+      dict(
+          descr='params: [2, (d1), (d2)], indices: [2, (d3)]',
+          params=[
+              [['The', 'deal', 'came', 'about', '18', 'months', 'after',
+                'Yahoo', '!', 'rejected', 'a', '47.5', '-', 'billion', '-',
+                'dollar', 'takeover', 'offer', 'from', 'Microsoft', '.'],
+               ['Trumpty', 'Dumpty', 'sat', 'on', 'a', 'wall'],
+              ],
+              [['It\'s', 'always', 'darkest', 'before', 'the', 'dawn']]
+          ],
+          indices=[[1, 100], [0, -1]],
+          expected=[[['Trumpty', 'Dumpty', 'sat', 'on', 'a', 'wall'],
+                     ['$NONE^']],
+                    [["It's", 'always', 'darkest', 'before', 'the', 'dawn'],
+                     ['$NONE^']]]
+      ),
+      # Dimensions:
+      # params: [2, (d1), (d2)]
+      # indices: [2, (d1), (d3)]
+      dict(
+          descr='Test overbound indices of rank 3',
+          params=[
+              [['The', 'deal', 'came', 'about', '18', 'months', 'after',
+                'Yahoo', '!', 'rejected', 'a', '47.5', '-', 'billion', '-',
+                'dollar', 'takeover', 'offer', 'from', 'Microsoft', '.'],
+               ['Foo', 'bar', 'mar']],
+              [['He', 'left', 'us', '.', 'Little', 'boys', 'crowded',
+                'together', 'on', 'long', 'wooden', 'benches', ',', 'and', 'in',
+                'the', 'center', 'of', 'the', 'room', 'sat', 'the', 'teacher',
+                '.', 'His', 'black', 'beard', 'dripped', 'down', 'over', 'the',
+                'front', 'of', 'his', 'coat', '.', 'One', 'white', 'hand',
+                'poised', 'a', 'stick', 'above', 'his', 'desk', '.', 'He',
+                'turned', 'his', 'surly', ',', 'half', '-', 'closed', 'eyes',
+                'toward', 'us', ',', 'stared', 'for', 'a', 'second', ',',
+                'then', 'shouted', 'in', 'Yiddish', ',', '``', 'One', ',',
+                'two', ',',
+                'three', "''", '!', '!', 'Rapping', 'the', 'stick', 'against',
+                'the', 'desk', '.', 'The', 'little', 'boys', 'shrilled', 'out',
+                'a', 'Yiddish', 'translation', 'or', 'interpretation', 'of',
+                'the', 'Five', 'Books', 'of', 'Moses', ',', 'which', 'they',
+                'had', 'previously', 'chanted', 'in', 'Hebrew', '.'],
+               ['I', 'too', 'was', 'hustled', 'scammed', 'bamboozled', 'hood',
+                'winked', 'lead', 'astray']]
+          ],
+          indices=[[[8, 8823], [0, 100]], [[3, 23, 35, 45, 75, 83, 1234], [5]]],
+          expected=[[['!', '$NONE^'], ['Foo', '$NONE^']],
+                    [['.', '.', '.', '.', '!', '.', '$NONE^'],
+                     ['bamboozled']]],
+      ),
+      # params.shape = [2, (d1), 8]
+      # indices.shape = [2, (d1), 3]
+      dict(
+          descr='params = [2, (2, 1), 8], indices = [2, (2, 1), 3]',
+          params=[[['h'] * 8, ['w'] * 8], [['b'] * 8]],
+          ragged_rank=1,
+          indices=[[[0, 100, 1], [0, 1, 0]], [[1, 0, 0]]],
+          indices_ragged_rank=1,
+          expected=[[['h', '$NONE^', 'h'], ['w', 'w', 'w']], [['b', 'b', 'b']]],
+          expected_ragged_rank=1,
+      ),
+  ])
+  def testRaggedBatchGatherWithDefault(
+      self, descr, params, indices, expected, indices_ragged_rank=None,
+      expected_ragged_rank=None, ragged_rank=None, default_value='$NONE^'):
+    params = ragged_factory_ops.constant(params, ragged_rank=ragged_rank)
+    indices = ragged_factory_ops.constant(
+        indices, ragged_rank=indices_ragged_rank or ragged_rank)
+    expected = ragged_factory_ops.constant(
+        expected, ragged_rank=expected_ragged_rank or ragged_rank)
+    result = ragged_batch_gather_with_default_op.batch_gather_with_default(
+        params, indices, default_value)
+    self.assertRaggedEqual(result, expected)
+
+  @parameterized.parameters([
+      # Dimensions:
+      #  params: dims [2, 5], indices: [2, 2]
+      dict(
+          descr='params: dims [2, 5], indices: [2, 2]',
+          params=[
+              ['The', 'deal', 'came', 'about', '18'],
+              ['He', 'left', 'us', '.', 'Little']],
+          indices=[[0, -1], [3, 121]],
+          expected=[['The', '$NONE^'], ['.', '$NONE^']],
+          default_value='$NONE^',
+      ),
+      # Dimensions:
+      #  params: dims [2, 2, 5], indices: [2, 2]
+      dict(
+          descr='params: dims [2, 2, 5], indices: [2, 2]',
+          params=[
+              [['The', 'deal', 'came', 'about', '18'],
+               ['The', 'deal', 'came', 'about', '19'],
+              ],
+              [['He', 'left', 'us', '.', 'Little'],
+               ['The', 'deal', 'came', 'about', '20'],
+              ]
+          ],
+          indices=[[0, -1], [0, 121]],
+          expected=[[['The', 'deal', 'came', 'about', '18'],
+                     ['$NONE^', '$NONE^', '$NONE^', '$NONE^', '$NONE^']],
+                    [['He', 'left', 'us', '.', 'Little'],
+                     ['$NONE^', '$NONE^', '$NONE^', '$NONE^', '$NONE^']]],
+          default_value='$NONE^',
+      ),
+      # Test default_value with shape [5]
+      dict(
+          descr='params: dims [2, 2, 5], indices: [2, 2]',
+          params=[
+              [['The', 'deal', 'came', 'about', '18'],
+               ['The', 'deal', 'came', 'about', '19'],
+              ],
+              [['He', 'left', 'us', '.', 'Little'],
+               ['The', 'deal', 'came', 'about', '20'],
+              ]
+          ],
+          indices=[[0, -1], [0, 121]],
+          expected=[[['The', 'deal', 'came', 'about', '18'],
+                     [':FOO:', ':FOO:', ':FOO:', ':FOO:', ':FOO:']],
+                    [['He', 'left', 'us', '.', 'Little'],
+                     [':FOO:', ':FOO:', ':FOO:', ':FOO:', ':FOO:']]],
+          default_value=[':FOO:', ':FOO:', ':FOO:', ':FOO:', ':FOO:'],
+      ),
+  ])
+  def testRaggedBatchGatherWithDefaultOnTensors(
+      self, descr, params, indices, expected, default_value):
+    params = constant_op.constant(params)
+    indices = constant_op.constant(indices)
+    expected = constant_op.constant(expected)
+    result = ragged_batch_gather_with_default_op.batch_gather_with_default(
+        params, indices, default_value)
+    self.assertAllEqual(expected, result)
+
+  @parameterized.parameters([
+      dict(
+          params=[['The', 'deal', 'came', 'about', '18', 'months', 'after',
+                   'Yahoo', '!', 'rejected', 'a', '47.5', '-', 'billion', '-',
+                   'dollar', 'takeover', 'offer', 'from', 'Microsoft', '.']],
+          indices=[[[8, -1]]],
+          # Exception here because different errors are thrown in eager vs
+          # graph mode.
+          error=Exception,
+          default_value='$NONE^',
+      ),
+  ])
+  def testRankMismatch(
+      self, params, indices, default_value, error):
+    params = ragged_factory_ops.constant(params)
+    indices = ragged_factory_ops.constant(indices)
+    with self.assertRaises(error):
+      _ = ragged_batch_gather_with_default_op.batch_gather_with_default(
+          params, indices, default_value)
+
+  @parameterized.parameters([
+      # Dimensions:
+      # params: [2, (d1), 2]
+      # indices: [2, (d2)]
+      # default_value: []
+      dict(
+          descr='params: rank 3, indices: rank 2, default: rank = [], but'
+          ' should be [2]',
+          params=[
+              [['The', 'deal'], ['takeover', 'offer'], ['from', 'Microsoft']],
+              [['Who', 'let'], ['the', 'dogs'], ['out', '?']],
+          ],
+          ragged_rank=1,
+          indices=[[1, -1, 2, 30], [1, 100]],
+          indices_ragged_rank=1,
+          default_value='$NONE^',
+          error=Exception,
+      )
+  ])
+  def testInvalidDefaultValueRank(
+      self, descr, params, indices, default_value, error, ragged_rank=None,
+      indices_ragged_rank=None):
+    params = ragged_factory_ops.constant(params, ragged_rank=ragged_rank)
+    indices = ragged_factory_ops.constant(
+        indices, ragged_rank=indices_ragged_rank)
+    with self.assertRaises(error):
+      _ = ragged_batch_gather_with_default_op.batch_gather_with_default(
+          params, indices, default_value)
 
   def testRaggedBatchGatherUnknownRankError(self):
     if context.executing_eagerly():
@@ -159,11 +479,11 @@ class RaggedBatchGatherOpTest(ragged_test_util.RaggedTensorTestCase,
 
     with self.assertRaisesRegexp(
         ValueError, 'batch_gather does not allow indices with unknown shape.'):
-      ragged_array_ops.batch_gather(params, indices)
+      ragged_batch_gather_ops.batch_gather(params, indices)
 
     with self.assertRaisesRegexp(
         ValueError, 'batch_gather does not allow indices with unknown shape.'):
-      ragged_array_ops.batch_gather(params, ragged_indices)
+      ragged_batch_gather_ops.batch_gather(params, ragged_indices)
 
   @parameterized.parameters(
       [
@@ -208,7 +528,7 @@ class RaggedBatchGatherOpTest(ragged_test_util.RaggedTensorTestCase,
                                        message=None,
                                        error=ValueError):
     with self.assertRaisesRegexp(error, message):
-      ragged_array_ops.batch_gather(params, indices)
+      ragged_batch_gather_ops.batch_gather(params, indices)
 
 
 if __name__ == '__main__':

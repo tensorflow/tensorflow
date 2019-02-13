@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
 #include "tensorflow/compiler/xla/service/bfloat16_support.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -282,8 +283,10 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSort) {
   HloInstruction* value = builder.AddInstruction(
       HloInstruction::CreateParameter(1, s32_shape, "value"));
 
-  HloInstruction* sort = builder.AddInstruction(HloInstruction::CreateSort(
-      ShapeUtil::MakeTupleShape({bf16_shape, s32_shape}), 0, key, {value}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* sort,
+      MakeSortHlo(ShapeUtil::MakeTupleShape({bf16_shape, s32_shape}),
+                  {key, value}, 0, &builder, module.get()));
   HloInstruction* gte = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(bf16_shape, sort, 0));
 
@@ -308,8 +311,10 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSortRoot) {
   HloInstruction* value = builder.AddInstruction(
       HloInstruction::CreateParameter(1, bf16_shape, "value"));
 
-  HloInstruction* sort = builder.AddInstruction(HloInstruction::CreateSort(
-      ShapeUtil::MakeTupleShape({bf16_shape, bf16_shape}), 0, key, {value}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* sort,
+      MakeSortHlo(ShapeUtil::MakeTupleShape({bf16_shape, f32_shape}),
+                  {key, value}, 0, &builder, module.get()));
 
   auto computation = module->AddEntryComputation(builder.Build());
 

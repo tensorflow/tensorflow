@@ -39,6 +39,8 @@ typedef unsigned int uint;
 
 namespace tensorflow {
 
+static bool mkl_small_allocator_collect_stats = false;
+
 class MklSubAllocator : public BasicCPUAllocator {
  public:
   MklSubAllocator() : BasicCPUAllocator(port::kNUMANoAffinity, {}, {}) {}
@@ -62,15 +64,8 @@ class MklSmallSizeAllocator : public Allocator {
   inline string Name() override { return name_; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    void* ptr = sub_allocator_->Alloc(alignment, num_bytes);
-    if (ptr != nullptr) {
-      std::pair<void*, size_t> map_val(ptr, num_bytes);
-      mutex_lock l(mutex_);
-      // Check that insertion in the hash map was successful.
-      CHECK(map_.insert(map_val).second);
-      // Increment statistics for small-size allocations.
-      IncrementStats(num_bytes);
-    }
+    void* ptr = port::AlignedMalloc(num_bytes, alignment);
+    if (mkl_small_allocator_collect_stats) IncrementStats(num_bytes);
     return ptr;
   }
 
@@ -80,23 +75,11 @@ class MklSmallSizeAllocator : public Allocator {
       return;
     }
 
-    mutex_lock l(mutex_);
-    auto map_iter = map_.find(ptr);
-    if (map_iter != map_.end()) {
-      // Call free visitors.
-      size_t dealloc_bytes = map_iter->second;
-      sub_allocator_->Free(ptr, dealloc_bytes);
-      DecrementStats(dealloc_bytes);
-      map_.erase(map_iter);
-    } else {
-      LOG(ERROR) << "tried to deallocate invalid pointer";
-      return;
+    if (mkl_small_allocator_collect_stats) {
+      const size_t alloc_size = port::MallocExtension_GetAllocatedSize(ptr);
+      DecrementStats(alloc_size);
     }
-  }
-
-  inline bool IsSmallSizeAllocation(const void* ptr) const {
-    mutex_lock l(mutex_);
-    return map_.find(ptr) != map_.end();
+    port::AlignedFree(ptr);
   }
 
   void GetStats(AllocatorStats* stats) override {
@@ -111,8 +94,8 @@ class MklSmallSizeAllocator : public Allocator {
 
  private:
   // Increment statistics for the allocator handling small allocations.
-  inline void IncrementStats(size_t alloc_size)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+  inline void IncrementStats(size_t alloc_size) LOCKS_EXCLUDED(mutex_) {
+    mutex_lock l(mutex_);
     ++stats_.num_allocs;
     stats_.bytes_in_use += alloc_size;
     stats_.max_bytes_in_use =
@@ -122,8 +105,8 @@ class MklSmallSizeAllocator : public Allocator {
   }
 
   // Decrement statistics for the allocator handling small allocations.
-  inline void DecrementStats(size_t dealloc_size)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+  inline void DecrementStats(size_t dealloc_size) LOCKS_EXCLUDED(mutex_) {
+    mutex_lock l(mutex_);
     stats_.bytes_in_use -= dealloc_size;
   }
 
@@ -134,10 +117,6 @@ class MklSmallSizeAllocator : public Allocator {
 
   // Allocator name
   string name_;
-
-  // Hash map to keep track of "small" allocations
-  // We do not use BFC allocator for small allocations.
-  std::unordered_map<const void*, size_t> map_ GUARDED_BY(mutex_);
 
   // Allocator stats for small allocs
   AllocatorStats stats_ GUARDED_BY(mutex_);
@@ -215,23 +194,52 @@ class MklCPUAllocator : public Allocator {
   }
 
   inline string Name() override { return kName; }
+  inline bool IsSmallSizeAllocation(const void* ptr) const
+      LOCKS_EXCLUDED(mutex_) {
+    mutex_lock l(mutex_);
+    return large_allocations_map_.find(ptr) == large_allocations_map_.end();
+  }
+  // AddLargeAllocMap and RemoveLargeAllocMap are always called with a lock held
+  inline void AddLargeAllocMap(void* ptr, size_t num_bytes)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+    if (ptr != nullptr) {
+      std::pair<void*, size_t> map_val(ptr, num_bytes);
+      large_allocations_map_.insert(map_val);
+    }
+  }
+  inline void RemoveLargeAllocMap(void* ptr) EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+    auto map_iter = large_allocations_map_.find(ptr);
+    if (map_iter != large_allocations_map_.end()) {
+      large_allocations_map_.erase(map_iter);
+    } else {
+      LOG(ERROR) << "tried to deallocate invalid pointer";
+    }
+    return;
+  }
 
   inline void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     // If the allocation size is less than threshold, call small allocator,
     // otherwise call large-size allocator (BFC). We found that BFC allocator
     // does not deliver good performance for small allocations when
     // inter_op_parallelism_threads is high.
-    return (num_bytes < kSmallAllocationsThreshold)
-               ? small_size_allocator_->AllocateRaw(alignment, num_bytes)
-               : large_size_allocator_->AllocateRaw(alignment, num_bytes);
+    if (num_bytes < kSmallAllocationsThreshold) {
+      return small_size_allocator_->AllocateRaw(alignment, num_bytes);
+    } else {
+      mutex_lock l(mutex_);
+      void* ptr = large_size_allocator_->AllocateRaw(alignment, num_bytes);
+      AddLargeAllocMap(ptr, num_bytes);
+      return ptr;
+    }
   }
 
   inline void DeallocateRaw(void* ptr) override {
     // Check if ptr is for "small" allocation. If it is, then call Free
     // directly. Otherwise, call BFC to handle free.
-    if (small_size_allocator_->IsSmallSizeAllocation(ptr)) {
+    if (IsSmallSizeAllocation(ptr)) {
       small_size_allocator_->DeallocateRaw(ptr);
     } else {
+      mutex_lock l(mutex_);
+      RemoveLargeAllocMap(ptr);
       large_size_allocator_->DeallocateRaw(ptr);
     }
   }
@@ -299,6 +307,12 @@ class MklCPUAllocator : public Allocator {
   MklSmallSizeAllocator* small_size_allocator_;  // owned by this class.
 
   SubAllocator* sub_allocator_;  // not owned by this class
+  mutable mutex mutex_;
+
+  // Hash map to keep track of "BFC" allocations
+  // We do not use BFC allocator for small allocations.
+  std::unordered_map<const void*, size_t> large_allocations_map_
+      GUARDED_BY(mutex_);
 
   // Size in bytes that defines the upper-bound for "small" allocations.
   // Any allocation below this threshold is "small" allocation.

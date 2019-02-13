@@ -62,11 +62,15 @@ if '__all__' in vars():
   vars()['__all__'].append('contrib')
 
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
+# The 'app' module will be imported as part of the placeholder section above.
 app.flags = flags  # pylint: disable=undefined-variable
+
+# Also use 'app' module (choice is arbitrary) to derive the API directory below.
+_API_MODULE = app  # pylint: disable=undefined-variable
 
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.
-_tf_api_dir = _os.path.dirname(_os.path.dirname(app.__file__))  # pylint: disable=undefined-variable
+_tf_api_dir = _os.path.dirname(_os.path.dirname(_API_MODULE.__file__))  # pylint: disable=undefined-variable
 if not hasattr(_current_module, '__path__'):
   __path__ = [_tf_api_dir]
 elif _tf_api_dir not in __path__:

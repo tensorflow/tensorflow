@@ -435,6 +435,10 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand, FftType fft_type,
       absl::Span<const int64> fft_length);
 
+  static std::unique_ptr<HloInstruction> CreateTriangularSolve(
+      const Shape& shape, HloInstruction* a, HloInstruction* b,
+      const TriangularSolveOptions& options);
+
   // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
   // dimensions specified in 'dimension_numbers'.
   static std::unique_ptr<HloInstruction> CreateDot(
@@ -493,6 +497,9 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCollectivePermute(
       const Shape& shape, HloInstruction* operand,
       const std::vector<std::pair<int64, int64>>& source_target_pairs);
+
+  // Creates an instruction that returns a U32 replica ID.
+  static std::unique_ptr<HloInstruction> CreateReplicaId();
 
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
@@ -558,19 +565,11 @@ class HloInstruction {
   // 'slice_sizes'.
   static std::unique_ptr<HloInstruction> CreateDynamicSlice(
       const Shape& shape, HloInstruction* operand,
-      HloInstruction* start_indices, absl::Span<const int64> slice_sizes);
-  // Same as above, but expects a span of scalar start indices.
-  static std::unique_ptr<HloInstruction> CreateDynamicSlice(
-      const Shape& shape, HloInstruction* operand,
       absl::Span<HloInstruction* const> start_indices,
       absl::Span<const int64> slice_sizes);
 
   // Creates a dynamic update slice instruction, which updates a slice
   // of 'operand' with 'update' and 'start_indices'.
-  static std::unique_ptr<HloInstruction> CreateDynamicUpdateSlice(
-      const Shape& shape, HloInstruction* operand, HloInstruction* update,
-      HloInstruction* start_indices);
-  // Same as above, but expects a span of scalar start indices.
   static std::unique_ptr<HloInstruction> CreateDynamicUpdateSlice(
       const Shape& shape, HloInstruction* operand, HloInstruction* update,
       absl::Span<HloInstruction* const> start_indices);
@@ -603,7 +602,6 @@ class HloInstruction {
   // f_2 = f(f_1.tuple_element(0), ..., f_1.tuple_element(N), input0.value1,
   // ..., inputN.value1)
   // ...
-  // TODO(b/112040122): Add support to this in HLO passes and in backends.
   static std::unique_ptr<HloInstruction> CreateReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<HloInstruction* const> init_values,
@@ -676,10 +674,14 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       absl::Span<const int64> dimensions);
 
-  // Creates a sort op, with a keys operand, and optional values operands.
+  // Creates a n-ary sort op with a 'compare' computation which is used for
+  // comparisons in the sorting algorithm. 'compare' gets 2 * n parameters,
+  // where parameters 2 * i and 2 * i + 1 are the values of the i-th operand at
+  // specific index positions which should be compared, and should return a
+  // PRED.
   static std::unique_ptr<HloInstruction> CreateSort(
-      const Shape& shape, int64 dimension, HloInstruction* keys,
-      absl::Span<HloInstruction* const> values = {});
+      const Shape& shape, int64 dimension,
+      absl::Span<HloInstruction* const> operands, HloComputation* compare);
 
   // Creates a while instruction, given a condition computation, a body
   // computation, and the initial value for the input of the computations. For
@@ -1247,6 +1249,10 @@ class HloInstruction {
   // on the instruction's existing name.
   void UniquifyName(NameUniquer* name_uniquer);
 
+  // Clear the unique ID of the instruction so that it can be re-assigned, such
+  // as for the purpose of compacting the instruction unique IDs.
+  void ClearUniqueIdInternal() { unique_id_ = -1; }
+
   // Set the unique id for this instruction to "id"
   void SetUniqueId(int id) {
     CHECK_EQ(unique_id_, -1);  // Should not be assigned already
@@ -1558,6 +1564,9 @@ class HloInstruction {
 
   // Delegates to HloDomainInstruction::user_side_metadata().
   const DomainMetadata& user_side_metadata() const;
+
+  // Delegates to HloTriangularSolveInstruction::triangular_solve_options().
+  const TriangularSolveOptions& triangular_solve_options() const;
 
   // Old methods kept for smooth subclassing transition END.
 

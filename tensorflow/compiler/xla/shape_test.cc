@@ -85,6 +85,24 @@ TEST_F(ShapeTest, DynamicShapeToString) {
   EXPECT_EQ("f32[<=23,44,55]", array_shape.ToString());
 }
 
+TEST_F(ShapeTest, EqualityTest) {
+  // Different layouts.
+  EXPECT_NE(ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}),
+            ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {0, 1}));
+
+  // Different dims.
+  EXPECT_NE(ShapeUtil::MakeShapeWithLayout(F32, {44, 23}, {1, 0}),
+            ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}));
+
+  // Different elements.
+  EXPECT_NE(ShapeUtil::MakeShapeWithLayout(S32, {44, 23}, {1, 0}),
+            ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}));
+
+  // Equal shapes.
+  EXPECT_EQ(ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}),
+            ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}));
+}
+
 TEST_F(ShapeTest, IsStatic) {
   EXPECT_TRUE(opaque_.is_static());
   EXPECT_TRUE(token_.is_static());

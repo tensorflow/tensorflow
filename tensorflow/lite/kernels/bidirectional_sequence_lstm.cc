@@ -105,7 +105,10 @@ constexpr int kBwInputActivationStateTensor = 37;
 // Cell state tensors of size {n_batch, n_cell}
 constexpr int kBwInputCellStateTensor = 38;
 
-// Auxiliary input and weights when stacking.
+// Used as auxiliary input and weights when stacking for
+// tf.contrib.rnn.stack_bidirectional_rnn case (with cross links); Used as input
+// to the backward cell when stacking for tf.nn.static_bidirectional_rnn case
+// (without cross links).
 constexpr int kAuxInputTensor = 39;  // Optional
 // Forward weights.
 constexpr int kFwAuxInputToInputWeightsTensor = 40;   // Optional
@@ -459,8 +462,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* bw_aux_input_to_output_weights =
       GetOptionalInputTensor(context, node, kBwAuxInputToOutputWeightsTensor);
 
-  const bool aux_inputs_all_or_none =
-      ((aux_input != nullptr) && (fw_aux_input_to_cell_weights != nullptr) &&
+  const bool aux_inputs_weights_all_or_none =
+      ((fw_aux_input_to_cell_weights != nullptr) &&
        (fw_aux_input_to_forget_weights != nullptr) &&
        (fw_aux_input_to_output_weights != nullptr) &&
        (bw_aux_input_to_cell_weights != nullptr) &&
@@ -472,8 +475,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
        (bw_aux_input_to_cell_weights == nullptr) &&
        (bw_aux_input_to_forget_weights == nullptr) &&
        (bw_aux_input_to_output_weights == nullptr));
-  TF_LITE_ENSURE(context, aux_inputs_all_or_none);
-  const bool has_aux_input = (aux_input != nullptr);
+  TF_LITE_ENSURE(context, aux_inputs_weights_all_or_none);
+
+  const bool has_aux_input = (fw_aux_input_to_forget_weights != nullptr);
 
   if (has_aux_input) {
     // Check that aux_input has the same dimensions (except last) as the input.
@@ -870,6 +874,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* bw_aux_input_to_output_weights =
       GetOptionalInputTensor(context, node, kBwAuxInputToOutputWeightsTensor);
 
+  const bool has_previous_bw_output = (aux_input != nullptr);
+  const bool use_aux_input = (fw_aux_input_to_forget_weights != nullptr);
+
   // Populate a TfLiteLSTMParams struct for the evaluation functions.
   TfLiteLSTMParams lstm_params = {params->activation, params->cell_clip,
                                   params->proj_clip, kTfLiteLSTMFullKernel};
@@ -879,6 +886,26 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const auto actual_bw_output = params->merge_outputs ? fw_output : bw_output;
 
   const bool time_major = params->time_major;
+
+  // We want to cover the following cases:
+  //
+  // If not stacking (not connected after other bidi lstms):
+  //   both fw & bw will just use `input`; aux_input will be null.
+  //
+  // If stacking with cross_links, TensorFlow equivalent
+  // (tf.contrib.rnn.stack_bidirectional_rnn):
+  //   both fw & bw will use `input`, but aux_input will be none null.
+  //   Note, this time, whether connected after other bidi lstms both works.
+  //
+  // If stacking without cross_links, but connected after other bidi lstms,
+  // TensorFlow equivalent (tf.nn.static_bidirectional_rnn):
+  //   fw will use `input`, bw will use aux_input, and the `real aux_input`
+  //   will be null.
+
+  const bool non_stacking_mode = !use_aux_input && has_previous_bw_output;
+  const TfLiteTensor* bw_input = non_stacking_mode ? aux_input : input;
+  const TfLiteTensor* real_aux_input = non_stacking_mode ? nullptr : aux_input;
+
   switch (fw_input_to_output_weights->type) {
     case kTfLiteFloat32: {
       TfLiteStatus fw_pass_status = lstm_eval::EvalFloat(
@@ -891,7 +918,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*input_layer_norm_coefficients=*/nullptr,
           /*forget_layer_norm_coefficients=*/nullptr,
           /*cell_layer_norm_coefficients=*/nullptr,
-          /*output_layer_norm_coefficients=*/nullptr, aux_input,
+          /*output_layer_norm_coefficients=*/nullptr, real_aux_input,
           fw_aux_input_to_input_weights, fw_aux_input_to_forget_weights,
           fw_aux_input_to_cell_weights, fw_aux_input_to_output_weights,
           fw_input_gate_bias, fw_forget_gate_bias, fw_cell_bias,
@@ -902,7 +929,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(context, fw_pass_status);
 
       TfLiteStatus bw_pass_status = lstm_eval::EvalFloat(
-          input, bw_input_to_input_weights, bw_input_to_forget_weights,
+          bw_input, bw_input_to_input_weights, bw_input_to_forget_weights,
           bw_input_to_cell_weights, bw_input_to_output_weights,
           bw_recurrent_to_input_weights, bw_recurrent_to_forget_weights,
           bw_recurrent_to_cell_weights, bw_recurrent_to_output_weights,
@@ -911,7 +938,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*input_layer_norm_coefficients=*/nullptr,
           /*forget_layer_norm_coefficients=*/nullptr,
           /*cell_layer_norm_coefficients=*/nullptr,
-          /*output_layer_norm_coefficients=*/nullptr, aux_input,
+          /*output_layer_norm_coefficients=*/nullptr, real_aux_input,
           bw_aux_input_to_input_weights, bw_aux_input_to_forget_weights,
           bw_aux_input_to_cell_weights, bw_aux_input_to_output_weights,
           bw_input_gate_bias, bw_forget_gate_bias, bw_cell_bias,
@@ -942,9 +969,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TfLiteTensor* recovered_cell_weights =
           GetTemporary(context, node, kRecoveredCellWeights);
       TfLiteTensor* aux_input_quantized =
-          (aux_input == nullptr)
-              ? nullptr
-              : GetTemporary(context, node, kAuxInputQuantized);
+          use_aux_input ? GetTemporary(context, node, kAuxInputQuantized)
+                        : nullptr;
 
       TfLiteStatus fw_pass_status = lstm_eval::EvalHybrid(
           input, fw_input_to_input_weights, fw_input_to_forget_weights,
@@ -956,7 +982,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*input_layer_norm_coefficients=*/nullptr,
           /*forget_layer_norm_coefficients=*/nullptr,
           /*cell_layer_norm_coefficients=*/nullptr,
-          /*output_layer_norm_coefficients=*/nullptr, aux_input,
+          /*output_layer_norm_coefficients=*/nullptr, real_aux_input,
           fw_aux_input_to_input_weights, fw_aux_input_to_forget_weights,
           fw_aux_input_to_cell_weights, fw_aux_input_to_output_weights,
           fw_input_gate_bias, fw_forget_gate_bias, fw_cell_bias,
@@ -970,7 +996,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(context, fw_pass_status);
 
       TfLiteStatus bw_pass_status = lstm_eval::EvalHybrid(
-          input, bw_input_to_input_weights, bw_input_to_forget_weights,
+          bw_input, bw_input_to_input_weights, bw_input_to_forget_weights,
           bw_input_to_cell_weights, bw_input_to_output_weights,
           bw_recurrent_to_input_weights, bw_recurrent_to_forget_weights,
           bw_recurrent_to_cell_weights, bw_recurrent_to_output_weights,
@@ -979,7 +1005,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*input_layer_norm_coefficients=*/nullptr,
           /*forget_layer_norm_coefficients=*/nullptr,
           /*cell_layer_norm_coefficients=*/nullptr,
-          /*output_layer_norm_coefficients=*/nullptr, aux_input,
+          /*output_layer_norm_coefficients=*/nullptr, real_aux_input,
           bw_aux_input_to_input_weights, bw_aux_input_to_forget_weights,
           bw_aux_input_to_cell_weights, bw_aux_input_to_output_weights,
           bw_input_gate_bias, bw_forget_gate_bias, bw_cell_bias,

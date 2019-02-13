@@ -631,7 +631,8 @@ class TFETest(test_util.TensorFlowTestCase):
     for t in tensors:
       self.assertIsInstance(t, ops.EagerTensor)
 
-  def testSmallIntegerOpsForcedToCPU(self):
+  # TODO(b/123637108): re-enable
+  def disabled_testSmallIntegerOpsForcedToCPU(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
 

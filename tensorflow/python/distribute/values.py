@@ -411,11 +411,11 @@ def _assign_on_device(device, variable, tensor):
 
 
 def _assert_strategy(strategy):
-  if not distribution_strategy_context.has_distribution_strategy():
+  if not distribution_strategy_context.has_strategy():
     raise RuntimeError(
         'Need to be inside "with strategy.scope()" for %s' %
         (strategy,))
-  current_strategy = distribution_strategy_context.get_distribution_strategy()
+  current_strategy = distribution_strategy_context.get_strategy()
   if current_strategy is not strategy:
     raise RuntimeError(
         "Mixing different tf.distribute.Strategy objects: %s is not %s" %
@@ -562,6 +562,9 @@ class DistributedVariable(DistributedDelegate):
   def read_value(self):
     return self._distribute_strategy.extended.read_var(self)
 
+  def value(self):
+    return self._get_closest().value()
+
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass
@@ -571,11 +574,12 @@ ops.register_dense_tensor_like_type(DistributedVariable)
 
 
 def _validate_colocate_extended(v, extended):
-  if v.distribute_strategy.extended is not extended:
+  variable_strategy = v._distribute_strategy  # pylint: disable=protected-access
+  if variable_strategy.extended is not extended:
     raise ValueError(
         "`colocate_vars_with` must only be passed a variable created in this "
         "tf.distribute.Strategy.scope(), not %s created in scope: %s" %
-        (v, v.distribute_strategy,))
+        (v, variable_strategy))
 
 
 def validate_colocate_distributed_variable(v, extended):
@@ -595,7 +599,7 @@ def validate_colocate_tpu_variable(v, extended):
 
 
 def validate_colocate(v, extended):
-  if not hasattr(v, "distribute_strategy"):
+  if not hasattr(v, "_distribute_strategy"):
     raise ValueError(
         "`colocate_vars_with` must only be passed a variable created in this "
         "tf.distribute.Strategy.scope(), not: %r" % (v,))
@@ -604,8 +608,8 @@ def validate_colocate(v, extended):
 
 def _apply_aggregation(strategy, value, aggregation, destinations):
   if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
-    return strategy.broadcast(strategy.unwrap(value)[0],
-                              destinations=destinations)
+    return strategy.extended.broadcast_to(strategy.unwrap(value)[0],
+                                          destinations=destinations)
   reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
   return strategy.extended.reduce_to(reduce_op, value, destinations)
 
@@ -626,7 +630,7 @@ class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
 
 
 class MirroredVariable(DistributedVariable, Mirrored,
-                       checkpointable.CheckpointableBase):
+                       checkpointable.Checkpointable):
   """Holds a map from device to variables whose values are kept in sync."""
 
   def __init__(
@@ -653,8 +657,9 @@ class MirroredVariable(DistributedVariable, Mirrored,
         return f(v, *args, **kwargs)
 
       # We are calling assign on the mirrored variable in cross replica context,
-      # use `strategy.update()` to update the variable.
-      return self._distribute_strategy.update(self, f, *args, **kwargs)
+      # use `strategy.extended.update()` to update the variable.
+      return self._distribute_strategy.extended.update(
+          self, f, args=args, kwargs=kwargs)
     else:
       _assert_replica_context(self._distribute_strategy)
       # We are calling an assign function on the mirrored variable in replica
@@ -669,7 +674,8 @@ class MirroredVariable(DistributedVariable, Mirrored,
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
         v = _apply_aggregation(strategy, value, self._aggregation, self)
-        return strategy.update(self, f, v, *other_args, **other_kwargs)
+        return strategy.extended.update(
+            self, f, args=(v,) + other_args, kwargs=other_kwargs)
 
       return distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, args=args, kwargs=kwargs)
@@ -721,7 +727,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
 # allowing instances of the class to be used as tensors.
 def _tensor_conversion_mirrored(var, dtype=None, name=None, as_ref=False):
   # Try to avoid assignments to and other mutations of MirroredVariable
-  # state except through a DistributionStrategy.update() call.
+  # state except through a DistributionStrategy.extended.update() call.
   assert not as_ref
   return ops.internal_convert_to_tensor(
       var.get(), dtype=dtype, name=name, as_ref=as_ref)
@@ -746,7 +752,7 @@ def _enclosing_tpu_context():
 # tpu.replicate() because it assumes that you're in a device context where you
 # can operate on a single version of the variable, but a tpu.replicate()
 # operates on all variables and is replicated during a rewrite pass.
-class TPUMirroredVariable(checkpointable.CheckpointableBase):
+class TPUMirroredVariable(checkpointable.Checkpointable):
   """Holds a map from device to TPU variables whose values are kept in sync."""
 
   def __init__(
@@ -914,7 +920,8 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
     f = kwargs.pop("f")
     if distribution_strategy_context.in_cross_replica_context():
       if _enclosing_tpu_context() is not None:
-        return self._distribute_strategy.update(self, f, *args, **kwargs)
+        return self._distribute_strategy.extended.update(
+            self, f, args=args, kwargs=kwargs)
 
       update_device = distribute_lib.get_update_device()
       # We are calling update on the mirrored variable in cross replica context.
@@ -924,7 +931,8 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
         v = self._get(device=update_device)
         return f(v, *args, **kwargs)
 
-      return self._distribute_strategy.update(self, f, *args, **kwargs)
+      return self._distribute_strategy.extended.update(
+          self, f, args=args, kwargs=kwargs)
     else:
       _assert_replica_context(self._distribute_strategy)
       # We are calling an assign function on the mirrored variable in replica
@@ -939,7 +947,8 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
         v = _apply_aggregation(strategy, value, self._aggregation, self)
-        return strategy.update(self, f, v, *other_args, **other_kwargs)
+        return strategy.extended.update(
+            self, f, args=(v,) + other_args, kwargs=other_kwargs)
 
       return distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, args=args, kwargs=kwargs)
@@ -1169,7 +1178,7 @@ class _ReplicaLocalSaveable(saver.BaseSaverBuilder.SaveableObject):
     # We use a callable so that we don't have to evaluate this expression
     # in the case where we are trying to restore instead of save.
     def tensor():
-      strategy = replica_local_variable.distribute_strategy
+      strategy = replica_local_variable._distribute_strategy  # pylint: disable=protected-access
       return strategy.extended.read_var(replica_local_variable)
 
     spec = saver.BaseSaverBuilder.SaveSpec(
@@ -1196,7 +1205,7 @@ def _assert_replica_context(strategy):
 
 
 class ReplicaLocalVariable(DistributedVariable, PerReplica,
-                           checkpointable.CheckpointableBase):
+                           checkpointable.Checkpointable):
   """Holds a map from device to variables whose values are reduced on save."""
 
   def __init__(
@@ -1427,7 +1436,7 @@ def value_container(val):
 
 
 # TODO(josh11b): Descend from Variable.
-class AggregatingVariable(checkpointable.CheckpointableBase):
+class AggregatingVariable(checkpointable.Checkpointable):
   """A wrapper around a variable that aggregates updates across replicas."""
 
   def __init__(self, strategy, v, aggregation):
@@ -1459,7 +1468,8 @@ class AggregatingVariable(checkpointable.CheckpointableBase):
 
       # We are calling an assign function in cross replica context, wrap it in
       # an update call.
-      return self._distribute_strategy.update(self, f, *args, **kwargs)
+      return self._distribute_strategy.extended.update(
+          self, f, args=args, kwargs=kwargs)
     else:
       replica_context = distribution_strategy_context.get_replica_context()
       assert replica_context
@@ -1473,7 +1483,8 @@ class AggregatingVariable(checkpointable.CheckpointableBase):
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
         v = _apply_aggregation(strategy, value, self._aggregation, self)
-        return strategy.update(self, f, v, *other_args, **other_kwargs)
+        return strategy.extended.update(
+            self, f, args=(v,) + other_args, kwargs=other_kwargs)
 
       return replica_context.merge_call(merge_fn, args=args, kwargs=kwargs)
 

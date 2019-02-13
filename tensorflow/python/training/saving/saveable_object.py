@@ -67,6 +67,11 @@ class SaveableObject(object):
     self._device = None
 
   @property
+  def optional_restore(self):
+    """A hint to restore assertions that this object is optional."""
+    return False  # Default to required
+
+  @property
   def device(self):
     """The device for SaveSpec Tensors."""
     # Note that SaveSpec.tensor runs Tensor-gathering ops when executing

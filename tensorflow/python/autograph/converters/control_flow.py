@@ -173,14 +173,12 @@ class ControlFlowTransformer(converter.Base):
         s for s in created_in_body if not s.is_composite())
     basic_created_in_orelse = tuple(
         s for s in created_in_orelse if not s.is_composite())
-    if basic_created_in_body != basic_created_in_orelse:
-      raise ValueError(
-          'if statement may not initialize all variables: the true branch'
-          ' creates %s, while the false branch creates %s. Make sure all'
-          ' these variables are initialized either in both'
-          ' branches or before the if statement.' %
-          (self._fmt_symbols(basic_created_in_body),
-           self._fmt_symbols(basic_created_in_orelse)))
+
+    # These variables are defined only in a single branch. This is fine in
+    # Python so we pass them through. Another backend, e.g. Tensorflow, may need
+    # to handle these cases specially or throw an Error.
+    possibly_undefined = (set(basic_created_in_body) ^
+                          set(basic_created_in_orelse))
 
     # Alias the closure variables inside the conditional functions, to allow
     # the functions access to the respective variables.
@@ -247,10 +245,25 @@ class ControlFlowTransformer(converter.Base):
         aliased_new_names=aliased_orelse_new_names,
         body=node_orelse,
         returns=returned_from_orelse)
+    undefined_assigns = self._create_undefined_assigns(possibly_undefined)
+
     cond_expr = self._create_cond_expr(cond_results, cond_var_name, body_name,
                                        orelse_name)
 
-    return cond_assign + body_def + orelse_def + cond_expr
+    return (undefined_assigns
+            + cond_assign
+            + body_def
+            + orelse_def
+            + cond_expr)
+
+  def _create_undefined_assigns(self, undefined_symbols):
+    assignments = []
+    for s in undefined_symbols:
+      template = '''
+        var = ag__.UNDEFINED
+      '''
+      assignments += templates.replace(template, var=s)
+    return assignments
 
   def _get_loop_state(self, node):
     body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
@@ -265,26 +278,15 @@ class ControlFlowTransformer(converter.Base):
     # the loop state, regardless of whether they are later used or not.
     loop_state = body_scope.modified & live_in
 
-    undefined_lives = loop_state - defined_in
+    # Variable that are used or defined inside the loop, but not defined
+    # before entering the loop
+    undefined_lives = ((loop_state - defined_in)
+                       | ((body_scope.modified - live_in) & live_out))
     # Only simple variables must be defined. The composite ones will be
     # implicitly checked at runtime.
     undefined_simple_lives = {v for v in undefined_lives if v.is_simple()}
-    if undefined_simple_lives:
-      raise NameError(
-          'cannot convert loop: it includes symbols that are undefined'
-          ' when entering the loop: {}'.format(
-              self._fmt_symbols(undefined_simple_lives)))
 
-    live_defs_in_loop = (body_scope.modified - live_in) & live_out
-    if live_defs_in_loop:
-      # TODO(mdan): Include reference to explanation why.
-      raise NotImplementedError(
-          'cannot convert loop: it includes symbols that are defined'
-          ' inside the loop, but used later: {}. To fix, initialize'
-          ' these symbols before the loop'.format(
-              self._fmt_symbols(live_defs_in_loop)))
-
-    return loop_state, reserved_symbols
+    return loop_state, reserved_symbols, undefined_simple_lives
 
   def _state_constructs(self, loop_state, reserved_symbols):
     loop_state = list(loop_state)
@@ -297,19 +299,18 @@ class ControlFlowTransformer(converter.Base):
         if str(name) != ssf
     }
 
+    state_ast_tuple = gast.Tuple([n.ast() for n in loop_state], None)
+
     if len(loop_state) == 1:
       loop_state = loop_state[0]
       state_ssf = state_ssf[0]
-      state_ast_tuple = loop_state
-    else:
-      state_ast_tuple = gast.Tuple([n.ast() for n in loop_state], None)
 
     return loop_state, state_ssf, state_ast_tuple, ssf_map
 
   def visit_While(self, node):
     self.generic_visit(node)
 
-    loop_state, reserved_symbols = self._get_loop_state(node)
+    loop_state, reserved_symbols, possibly_undef = self._get_loop_state(node)
 
     # Note: one might expect we can dispatch based on the loop condition.
     # But because that is dependent on the state, it cannot be evaluated ahead
@@ -327,8 +328,7 @@ class ControlFlowTransformer(converter.Base):
     cond_scope = anno.getanno(node, annos.NodeAnno.COND_SCOPE)
     cond_closure = set()
     for s in cond_scope.read:
-      cond_closure.update(s.support_set)
-    cond_closure -= loop_state
+      cond_closure |= s.support_set
 
     loop_state, state_ssf, state_ast_tuple, ssf_map = self._state_constructs(
         loop_state, reserved_symbols)
@@ -374,12 +374,13 @@ class ControlFlowTransformer(converter.Base):
           extra_deps=tuple(s.ast() for s in cond_closure),
       )
 
-    return node
+    undefined_assigns = self._create_undefined_assigns(possibly_undef)
+    return undefined_assigns + node
 
   def visit_For(self, node):
     self.generic_visit(node)
 
-    loop_state, reserved_symbols = self._get_loop_state(node)
+    loop_state, reserved_symbols, possibly_undef = self._get_loop_state(node)
     loop_state, state_ssf, state_ast_tuple, ssf_map = self._state_constructs(
         loop_state, reserved_symbols)
     node_body = ast_util.rename_symbols(node.body, ssf_map)
@@ -434,7 +435,8 @@ class ControlFlowTransformer(converter.Base):
           body_name=self.ctx.namer.new_symbol('loop_body', reserved_symbols),
           body=node_body)
 
-    return node
+    undefined_assigns = self._create_undefined_assigns(possibly_undef)
+    return undefined_assigns + node
 
 
 def transform(node, ctx):

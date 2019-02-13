@@ -228,6 +228,8 @@ void RecordMutation(TF_Graph* graph, const TF_Operation& op,
 bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status)
     LOCKS_EXCLUDED(session->graph->mu, session->mu);
 
+std::string getTF_OutputDebugString(TF_Output node);
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_C_C_API_INTERNAL_H_

@@ -566,9 +566,10 @@ class GradientBoostedDecisionTreeModel(object):
     # Determine if ensemble is colocated with the inputs.
     if self._ensemble_handle.device != input_deps[0].device:
       # Create a local ensemble and get its local stamp.
-      with ops.name_scope("local_ensemble", "TreeEnsembleVariable") as name:
+      with ops.name_scope("local_ensemble", "TreeEnsembleVariable"):
         local_ensemble_handle = (
-            gen_model_ops.decision_tree_ensemble_resource_handle_op(name=name))
+            gen_model_ops.decision_tree_ensemble_resource_handle_op(
+                self._ensemble_handle.op.name + "/local_ensemble"))
         create_op = gen_model_ops.create_tree_ensemble_variable(
             local_ensemble_handle, stamp_token=-1, tree_ensemble_config="")
         with ops.control_dependencies([create_op]):

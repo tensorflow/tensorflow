@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_with_profiling.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfsplits.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tftop_k.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable.h"
 #include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -471,6 +472,28 @@ TEST(TFCompileTest, TopK) {
   EXPECT_EQ(expected_values[1], fn.result0(1));
   EXPECT_EQ(expected_indices[0], fn.result1(0));
   EXPECT_EQ(expected_indices[1], fn.result1(1));
+}
+
+TEST(TFCompileTest, Variable) {
+  Eigen::ThreadPool tp(1);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  VariableComp fn;
+  float x = 23;
+  fn.set_var_x_input_data(&x);
+
+  fn.set_thread_pool(&device);
+  fn.Run();
+  EXPECT_EQ(fn.result0(0, 0), 23);
+  EXPECT_EQ(fn.result0(1, 0), 65);
+  EXPECT_EQ(fn.var_x_result(), 65);
+
+  EXPECT_EQ(x, 23);
+  x = fn.var_x_result();
+  fn.Run();
+  EXPECT_EQ(fn.result0(0, 0), 65);
+  EXPECT_EQ(fn.result0(1, 0), 107);
+  EXPECT_EQ(fn.var_x_result(), 107);
 }
 
 TEST(TFCompileTest, AssertEqAndReturnDiff) {

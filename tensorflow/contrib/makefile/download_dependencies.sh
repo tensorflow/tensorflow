@@ -142,5 +142,6 @@ replace_by_sed 's#static uint64x2_t p2ul_CONJ_XOR = vld1q_u64( p2ul_conj_XOR_DAT
 # TODO(satok): Remove this once protobuf/autogen.sh is fixed.
 replace_by_sed 's#https://googlemock.googlecode.com/files/gmock-1.7.0.zip#http://download.tensorflow.org/deps/gmock-1.7.0.zip#' \
   "${DOWNLOADS_DIR}/protobuf/autogen.sh"
+cat "third_party/eigen3/gebp_neon.patch" | patch "${DOWNLOADS_DIR}/eigen/Eigen/src/Core/products/GeneralBlockPanelKernel.h"
 
 echo "download_dependencies.sh completed successfully." >&2

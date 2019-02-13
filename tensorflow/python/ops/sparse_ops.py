@@ -197,7 +197,8 @@ def sparse_concat(axis,
                   sp_inputs,
                   name=None,
                   expand_nonconcat_dim=False,
-                  concat_dim=None):
+                  concat_dim=None,
+                  expand_nonconcat_dims=None):
   """Concatenates a list of `SparseTensor` along the specified dimension.
 
   Concatenation is with respect to the dense versions of each sparse input.
@@ -286,6 +287,7 @@ def sparse_concat(axis,
     expand_nonconcat_dim: Whether to allow the expansion in the non-concat
       dimensions. Defaulted to False.
     concat_dim: The old (deprecated) name for axis.
+    expand_nonconcat_dims: alias for expand_nonconcat_dim
 
   Returns:
     A `SparseTensor` with the concatenated output.
@@ -293,6 +295,11 @@ def sparse_concat(axis,
   Raises:
     TypeError: If `sp_inputs` is not a list of `SparseTensor`.
   """
+  expand_nonconcat_dim = deprecation.deprecated_argument_lookup(
+      "expand_nonconcat_dims", expand_nonconcat_dims,
+      "expand_nonconcat_dim", expand_nonconcat_dim)
+  if expand_nonconcat_dims is not None:
+    expand_nonconcat_dim = expand_nonconcat_dims
   axis = deprecation.deprecated_argument_lookup("axis", axis, "concat_dim",
                                                 concat_dim)
   return sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dim, name)

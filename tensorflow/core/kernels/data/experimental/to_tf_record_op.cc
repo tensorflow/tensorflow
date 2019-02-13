@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -59,18 +58,18 @@ class ToTFRecordOp : public AsyncOpKernel {
       std::unique_ptr<WritableFile> file;
       OP_REQUIRES_OK_ASYNC(ctx, ctx->env()->NewWritableFile(filename, &file),
                            done);
-      std::unique_ptr<io::RecordWriter> writer;
-      writer.reset(new io::RecordWriter(
-          file.get(), io::RecordWriterOptions::CreateRecordWriterOptions(
-                          compression_type)));
+      std::unique_ptr<io::RecordWriter> writer =
+          absl::make_unique<io::RecordWriter>(
+              file.get(), io::RecordWriterOptions::CreateRecordWriterOptions(
+                              compression_type));
 
       DatasetBase* dataset;
       OP_REQUIRES_OK_ASYNC(
           ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
       std::unique_ptr<IteratorBase> iterator;
       IteratorContext::Params params(ctx);
-      std::unique_ptr<FunctionHandleCache> function_handle_cache(
-          new FunctionHandleCache(params.lib));
+      std::unique_ptr<FunctionHandleCache> function_handle_cache =
+          absl::make_unique<FunctionHandleCache>(params.lib);
       params.function_handle_cache = function_handle_cache.get();
       IteratorContext iter_ctx(std::move(params));
 

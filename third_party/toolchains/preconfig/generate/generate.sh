@@ -37,8 +37,16 @@ TENSORRT_VERSION="${PLATFORM[5]}"
 
 # TODO(klimek): Put this into the name.
 
-if [[ "${COMPILER}" == "gcc" ]]; then
-  COMPILER="gcc-nvcc-${CUDA_VERSION}"
+if [[ -n "${CUDA_VERSION}" ]]; then
+  if [[ "${COMPILER}" == gcc* ]]; then
+    COMPILER="${COMPILER}-nvcc-${CUDA_VERSION}"
+  fi
+  # Currently we create a special toolchain for clang when compiling with
+  # cuda enabled. We can get rid of this once the default toolchain bazel
+  # provides supports cuda.
+  if [[ "${COMPILER}" == "clang" ]]; then
+    COMPILER="cuda-clang"
+  fi
 fi
 
 echo "OS: ${OS}"
@@ -52,6 +60,8 @@ bazel build --define=mount_project="${PWD}" "${PKG}/generate:${TARGET}"
 cd "${TEMPDIR}"
 tar xvf "${ROOT}/bazel-bin/${PKG}/generate/${TARGET}_outputs.tar"
 
+# TODO(klimek): The skylark config rules should copy the files instead of
+# creating aliases.
 # Other than in @local_config_tensorrt, the header files in the remote config
 # repo are not relative to the repository root. Add a dummy include_prefix to
 # make them available as virtual includes.
@@ -74,14 +84,19 @@ mkdir "${OS}"
 # Python:
 mv local_config_python "${OS}/${PY_VERSION}"
 
-# Compiler:
-mv local_config_cuda/crosstool "${OS}/${COMPILER}"
+if [[ -n "${CUDA_VERSION}" ]]; then
+  # Compiler:
+  mv local_config_cuda/crosstool "${OS}/${COMPILER}"
 
-# CUDA:
-mv local_config_cuda "${OS}/${CUDA_VERSION}-${CUDNN_VERSION}"
+  # CUDA:
+  mv local_config_cuda "${OS}/${CUDA_VERSION}-${CUDNN_VERSION}"
 
-# TensorRT:
-mv local_config_tensorrt "${OS}/${TENSORRT_VERSION}"
+  # TensorRT:
+  mv local_config_tensorrt "${OS}/${TENSORRT_VERSION}"
+else
+  # Compiler:
+  mv local_config_cc "${OS}/${COMPILER}"
+fi
 
 # Cleanup for copybara.
 find "${OS}" -name 'BUILD' -o -name '*.bzl' |xargs buildifier

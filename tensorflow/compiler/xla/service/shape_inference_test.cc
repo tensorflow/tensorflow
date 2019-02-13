@@ -35,6 +35,7 @@ class ShapeInferenceTest : public ::testing::Test {
  protected:
   // Some handy scalar shapes.
   const Shape s32_ = ShapeUtil::MakeShape(S32, {});
+  const Shape f16_ = ShapeUtil::MakeShape(F16, {});
   const Shape f32_ = ShapeUtil::MakeShape(F32, {});
   const Shape f64_ = ShapeUtil::MakeShape(F64, {});
   const Shape pred_ = ShapeUtil::MakeShape(PRED, {});
@@ -251,7 +252,7 @@ TEST_F(ShapeInferenceTest, ClampBadShapes) {
 
 TEST_F(ShapeInferenceTest, Complex) {
   auto complex_shape = [&](const Shape& lhs, const Shape& rhs,
-                           const absl::Span<const int64>& bcast) {
+                           absl::Span<const int64> bcast) {
     return ShapeInference::InferBinaryOpShape(HloOpcode::kComplex, lhs, rhs,
                                               bcast);
   };
@@ -260,8 +261,8 @@ TEST_F(ShapeInferenceTest, Complex) {
   ASSERT_FALSE(complex_shape(pred_, pred_, {}).ok());
   // Component types must match.
   ASSERT_FALSE(complex_shape(f32_, f64_, {}).ok());
-  // Only F32->C64 supported.
-  ASSERT_FALSE(complex_shape(f64_, f64_, {}).ok());
+  // Only F32->C64 and F64->C128 supported.
+  ASSERT_FALSE(complex_shape(f16_, f16_, {}).ok());
   // Validate correct uses.
   Shape c64_32 = ShapeUtil::MakeShape(C64, {32});
   TF_ASSERT_OK_AND_ASSIGN(Shape result, complex_shape(f32_, f32_, {}));
@@ -285,6 +286,9 @@ TEST_F(ShapeInferenceTest, Complex) {
   ASSERT_TRUE(ShapeUtil::Equal(result, c64_32_64));
   TF_ASSERT_OK_AND_ASSIGN(result, complex_shape(matrix_32_64_, f32_, {}));
   ASSERT_TRUE(ShapeUtil::Equal(result, c64_32_64));
+
+  TF_ASSERT_OK_AND_ASSIGN(result, complex_shape(f64_, f64_, {}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, ShapeUtil::MakeShape(C128, {})));
 }
 
 TEST_F(ShapeInferenceTest, VariadicOpTuplify) {
@@ -892,6 +896,20 @@ TEST_F(ShapeInferenceTest, InferConstIndexShape) {
   ASSERT_TRUE(ShapeUtil::Equal(s32_, inferred1_status.ValueOrDie()));
 }
 
+TEST_F(ShapeInferenceTest, InferTupleElementShapeOutOfBound) {
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({f32_, s32_});
+  auto inferredNegative_status =
+      ShapeInference::InferGetTupleElementShape(tuple_shape, -1);
+  auto inferred2_status =
+      ShapeInference::InferGetTupleElementShape(tuple_shape, 2);
+  ASSERT_FALSE(inferredNegative_status.ok());
+  ASSERT_FALSE(inferred2_status.ok());
+  EXPECT_THAT(inferredNegative_status.status().error_message(),
+              HasSubstr("attempt to index out of tuple bounds"));
+  EXPECT_THAT(inferred2_status.status().error_message(),
+              HasSubstr("attempt to index out of tuple bounds"));
+}
+
 TEST_F(ShapeInferenceTest, InferPowShape) {
   auto ten_floats = ShapeUtil::MakeShape(F32, {10});
   auto inferred_status = ShapeInference::InferBinaryOpShape(
@@ -1463,6 +1481,14 @@ TEST_F(ShapeInferenceTest, Pad) {
   Shape inferred_shape = inferred_status.ValueOrDie();
   ASSERT_TRUE(
       ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {39, 31}), inferred_shape));
+
+  dimension1->set_edge_padding_low(-20);
+  dimension1->set_edge_padding_high(-10);
+  auto negative_dimension_size = ShapeInference::InferPadShape(
+      input_shape, padding_value_shape, padding_config);
+  ASSERT_FALSE(negative_dimension_size.ok());
+  ASSERT_THAT(negative_dimension_size.status().error_message(),
+              HasSubstr("negative size for dimension 1"));
 }
 
 TEST_F(ShapeInferenceTest, Reverse) {
@@ -1544,6 +1570,16 @@ TEST_F(ShapeInferenceTest, Transpose) {
   Shape inferred_shape = inferred_shape_and_status.ValueOrDie();
   EXPECT_TRUE(ShapeUtil::Compatible(inferred_shape,
                                     ShapeUtil::MakeShape(F32, {3, 4, 5, 2})));
+}
+
+TEST_F(ShapeInferenceTest, Rank1Transpose) {
+  Shape a_shape = ShapeUtil::MakeShape(F32, {5});
+  auto inferred_shape_and_status =
+      ShapeInference::InferTransposeShape(a_shape, {0});
+  EXPECT_IS_OK(inferred_shape_and_status);
+  Shape inferred_shape = inferred_shape_and_status.ValueOrDie();
+  EXPECT_TRUE(
+      ShapeUtil::Compatible(inferred_shape, ShapeUtil::MakeShape(F32, {5})));
 }
 
 TEST_F(ShapeInferenceTest, Conditional) {

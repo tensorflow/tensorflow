@@ -205,14 +205,6 @@ bool DependencyOptimizer::BypassingNodeIsBeneficial(
     num_cross_out += static_cast<int>(output_node->device() != node_dev);
   }
 
-  if ((is_identity || is_multi_input_identity_n) && num_cross_in > 0 &&
-      num_cross_out > 0) {
-    // This identity node follows a device crossing, so it might be
-    // following a _Recv node after partioning. Do not remove such nodes,
-    // unless they only have consumers on the same device as themselves.
-    return false;
-  }
-
   // Make sure we do not increase the number of device crossings.
   const int num_cross_before = num_cross_in + num_cross_out;
   int num_cross_after = 0;
@@ -225,6 +217,15 @@ bool DependencyOptimizer::BypassingNodeIsBeneficial(
   if (num_cross_after > num_cross_before) {
     return false;
   }
+
+  if ((is_identity || is_multi_input_identity_n) && num_cross_in > 0 &&
+      num_cross_out > 0 && num_cross_after > 0) {
+    // This identity node follows a device crossing, so it might be
+    // following a _Recv node after partioning. Do not remove such nodes,
+    // unless they only have consumers on the same device as themselves.
+    return false;
+  }
+
   return true;
 }
 

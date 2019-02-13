@@ -88,6 +88,12 @@ def NumpyArrayBool(*args, **kwargs):
 class ComputationsWithConstantsTest(LocalComputationTest):
   """Tests focusing on Constant ops."""
 
+  def testConstantScalarSumS8(self):
+    c = self._NewComputation()
+    root = c.Add(c.Constant(np.int8(1)), c.Constant(np.int8(2)))
+    self.assertEqual(c.GetShape(root), c.GetReturnValueShape())
+    self._ExecuteAndCompareExact(c, expected=np.int8(3))
+
   def testConstantScalarSumF32(self):
     c = self._NewComputation()
     root = c.Add(c.ConstantF32Scalar(1.11), c.ConstantF32Scalar(3.14))
@@ -553,6 +559,18 @@ class SingleOpTest(LocalComputationTest):
       for src_dtype, dst_dtype in itertools.product(xla_types, xla_types):
         _ConvertAndTest(x, src_dtype, dst_dtype, xla_types[dst_dtype])
 
+  # TODO(b/123523486): re-enable when shape check is resolved
+  def DISABLED_testAllToAllOneReplica(self):
+    samples = [
+        NumpyArrayF32([97.0]),
+        NumpyArrayF32([64.0, 117.0]),
+        NumpyArrayF32([[2.0, 3.0], [4.0, 5.0]]),
+    ]
+    for lhs in samples[:1]:
+      c = self._NewComputation()
+      c.AllToAll(c.Constant(lhs), 0, 0)
+      self._ExecuteAndCompareExact(c, expected=lhs)
+
   def testCrossReplicaSumOneReplica(self):
     samples = [
         NumpyArrayF32(42.0),
@@ -563,6 +581,18 @@ class SingleOpTest(LocalComputationTest):
     for lhs in samples:
       c = self._NewComputation()
       c.CrossReplicaSum(c.Constant(lhs))
+      self._ExecuteAndCompareExact(c, expected=lhs)
+
+  def testCrossReplicaSumOneReplicaWithSingletonGroup(self):
+    samples = [
+        NumpyArrayF32(42.0),
+        NumpyArrayF32([97.0]),
+        NumpyArrayF32([64.0, 117.0]),
+        NumpyArrayF32([[2.0, 3.0], [4.0, 5.0]]),
+    ]
+    for lhs in samples:
+      c = self._NewComputation()
+      c.CrossReplicaSum(c.Constant(lhs), [[0]])
       self._ExecuteAndCompareExact(c, expected=lhs)
 
   def testDotMatrixVectorF32(self):
@@ -1129,6 +1159,21 @@ class SingleOpTest(LocalComputationTest):
     self.assertFalse(c.IsConstant(non_const_expr))
     # self.assertTrue(c.IsConstant(c.Sub(c.Add(x, a), x)))  # TODO(b/77245564)
 
+  def testGather(self):
+    a = np.arange(9).astype(np.int32).reshape((3, 3))
+    indices = np.array([[[0, 2], [2, 1]], [[1, 2], [2, 0]]], dtype=np.int32)
+    dnums = xla_client.xla_data_pb2.GatherDimensionNumbers()
+    dnums.offset_dims.append(1)
+    dnums.offset_dims.append(2)
+    dnums.start_index_map.append(0)
+    dnums.start_index_map.append(1)
+    dnums.index_vector_dim = 2
+    c = self._NewComputation()
+    c.Gather(c.Constant(a), c.Constant(indices), dnums, slice_sizes=[1, 1])
+    g = self._Execute(c, ())
+    expected = np.array([[[[2, 7]]], [[[5, 6]]]], dtype=np.int32)
+    np.testing.assert_allclose(g, expected, rtol=1e-4)
+
 
 class EmbeddedComputationsTest(LocalComputationTest):
   """Tests for XLA graphs with embedded computations (such as maps)."""
@@ -1184,6 +1229,14 @@ class EmbeddedComputationsTest(LocalComputationTest):
     """Computation (f64) -> f64 that multiplies its parameter by 2."""
     c = self._NewComputation("mul_f64_by2")
     c.Mul(c.ParameterFromNumpy(NumpyArrayF64(0)), c.ConstantF64Scalar(2.0))
+    return c.Build()
+
+  def _CreateBinaryAddS32Computation(self):
+    """Computation (s32, s32) -> s32 that adds its two parameters."""
+    c = self._NewComputation("add_param0_by_param1")
+    c.Add(
+        c.ParameterFromNumpy(NumpyArrayS32(0)),
+        c.ParameterFromNumpy(NumpyArrayS32(0)))
     return c.Build()
 
   def _CreateBinaryAddF32Computation(self):
@@ -1567,6 +1620,23 @@ class EmbeddedComputationsTest(LocalComputationTest):
           xla_client.Shape.from_pyval(to_round_trip[0]))
       execution.join()
       self.assertEqual(want, got)
+
+  def testScatter(self):
+    a = np.arange(9).astype(np.int32).reshape((3, 3))
+    scatter_indices = np.array([0, 2], dtype=np.int32)
+    updates = np.array([[10, 20, 30], [70, 80, 90]], dtype=np.int32)
+
+    dnums = xla_client.xla_data_pb2.ScatterDimensionNumbers()
+    dnums.update_window_dims.append(1)
+    dnums.inserted_window_dims.append(0)
+    dnums.scatter_dims_to_operand_dims.append(0)
+    dnums.index_vector_dim = 1
+
+    c = self._NewComputation()
+    c.Scatter(c.Constant(a), c.Constant(scatter_indices), c.Constant(updates),
+              self._CreateBinaryAddS32Computation(), dnums)
+    expected = np.array([[10, 21, 32], [3, 4, 5], [76, 87, 98]], dtype=np.int32)
+    self._ExecuteAndCompareClose(c, expected=expected)
 
 
 class ErrorTest(LocalComputationTest):

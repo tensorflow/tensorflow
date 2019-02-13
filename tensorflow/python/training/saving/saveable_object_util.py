@@ -165,7 +165,7 @@ def saveable_objects_for_op(op, name):
         yield ResourceVariableSaveable(
             variable, variable._save_slice_info.spec, name)
     # pylint: enable=protected-access
-  elif isinstance(op, checkpointable.CheckpointableBase) and not isinstance(
+  elif isinstance(op, checkpointable.Checkpointable) and not isinstance(
       op, variables.Variable):
     # pylint: disable=protected-access
     for attr, factory in op._gather_saveables_for_checkpoint().items():
@@ -250,7 +250,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
         names_to_saveables[name].append(var)
       else:
         names_to_saveables[name] = [var]
-    elif (isinstance(var, checkpointable.CheckpointableBase)
+    elif (isinstance(var, checkpointable.Checkpointable)
           and not isinstance(var, variables.Variable)):
       checkpointable_saveables = [
           (factory() if callable(factory) else factory)
@@ -258,7 +258,10 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
       names_to_saveables.update(
           op_list_to_dict(checkpointable_saveables))
     else:
-      if context.executing_eagerly():
+      # Variables (reference and resource) have an _in_graph_mode property
+      # indicating whether they were created in a graph building context. We
+      # also get Tensors when graph building, which do not have this property.
+      if not getattr(var, "_in_graph_mode", True):
         if not isinstance(var, resource_variable_ops.ResourceVariable):
           raise ValueError(
               "Can only save/restore ResourceVariables when eager execution "

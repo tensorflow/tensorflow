@@ -49,8 +49,7 @@ partially supported by TensorFlow Lite, and one would like to avoid those
 limitations.
 
 The following example shows how to use `target_ops` in the
-[`TFLiteConverter`](https://www.tensorflow.org/lite/convert/python_api) Python
-API.
+[`TFLiteConverter`](./convert/python_api) Python API.
 
 ```
 import tensorflow as tf
@@ -130,7 +129,7 @@ allprojects {
 }
 
 dependencies {
-    compile 'org.tensorflow:tensorflow-lite-with-select-tf-ops:0.1.100'
+    implementation 'org.tensorflow:tensorflow-lite-with-select-tf-ops:0.1.100'
 }
 ```
 

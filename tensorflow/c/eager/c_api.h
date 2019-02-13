@@ -393,6 +393,10 @@ TF_CAPI_EXPORT extern void TFE_ContextAddFunction(TFE_Context* ctx,
                                                   TF_Function* function,
                                                   TF_Status* status);
 
+// Checks whether a function is registered under `name`.
+TF_CAPI_EXPORT unsigned char TFE_ContextHasFunction(TFE_Context* ctx,
+                                                    const char* name);
+
 // Enables tracing of RunMetadata on the ops executed from this context.
 TF_CAPI_EXPORT extern void TFE_ContextEnableRunMetadata(TFE_Context* ctx);
 

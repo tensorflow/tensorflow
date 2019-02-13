@@ -183,8 +183,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      std::unique_ptr<ParallelMapFunctor> parse_example_functor(
-          new ParseExampleFunctor(this));
+      std::unique_ptr<ParallelMapFunctor> parse_example_functor =
+          absl::make_unique<ParseExampleFunctor>(this);
       return NewParallelMapIterator(
           {this, strings::StrCat(prefix, "::ParseExample")}, input_,
           std::move(parse_example_functor), num_parallel_calls_, sloppy_,

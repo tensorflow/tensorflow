@@ -246,6 +246,15 @@ class DeviceBase {
     return errors::Internal("Device does not implement MakeTensorFromProto()");
   }
 
+  // Some devices (i.e. GPUs) may free device memory prior to its actual use
+  // being completed on the assumption that subsequent allocations can only be
+  // used serially with respect to pending uses.  If this function returns a
+  // non-zero value it is the value of a device-specific counter such that any
+  // device memory tagged with an earlier freed-at count is really unencumbered
+  // by pending uses.  For this to be useful the device memory allocator must
+  // be tagging deallocated memory chunks using the same counter.
+  virtual uint64 SafeAllocFrontier() { return 0; }
+
  protected:
   // Does not take ownership.
   void set_tensorflow_device_thread_pool(thread::ThreadPool* thread_pool) {

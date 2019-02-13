@@ -33,9 +33,27 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.util import tf_decorator
+
+NEG_INF = -1e10
+
+
+class Reduction(Enum):
+  """Types of metrics reduction.
+
+  Contains the following values:
+
+  * `SUM`: Scalar sum of weighted values.
+  * `SUM_OVER_BATCH_SIZE`: Scalar sum of weighted values divided by
+        number of elements.
+  * `WEIGHTED_MEAN`: Scalar sum of weighted values divided by sum of weights.
+  """
+  SUM = 'sum'
+  SUM_OVER_BATCH_SIZE = 'sum_over_batch_size'
+  WEIGHTED_MEAN = 'weighted_mean'
 
 
 def update_state_wrapper(update_state_fn):
@@ -120,16 +138,18 @@ def weakmethod(method):
 
 
 def assert_thresholds_range(thresholds):
-  invalid_thresholds = [t for t in thresholds if t is None or t < 0 or t > 1]
-  if invalid_thresholds:
-    raise ValueError(
-        'Threshold values must be in [0, 1]. Invalid values: {}'.format(
-            invalid_thresholds))
+  if thresholds is not None:
+    invalid_thresholds = [t for t in thresholds if t is None or t < 0 or t > 1]
+    if invalid_thresholds:
+      raise ValueError(
+          'Threshold values must be in [0, 1]. Invalid values: {}'.format(
+              invalid_thresholds))
 
 
 def parse_init_thresholds(thresholds, default_threshold=0.5):
+  if thresholds is not None:
+    assert_thresholds_range(to_list(thresholds))
   thresholds = to_list(default_threshold if thresholds is None else thresholds)
-  assert_thresholds_range(thresholds)
   return thresholds
 
 
@@ -140,10 +160,57 @@ class ConfusionMatrix(Enum):
   FALSE_NEGATIVES = 'fn'
 
 
+class AUCCurve(Enum):
+  """Type of AUC Curve (ROC or PR)."""
+  ROC = 'ROC'
+  PR = 'PR'
+
+  @staticmethod
+  def from_str(key):
+    if key in ('pr', 'PR'):
+      return AUCCurve.PR
+    elif key in ('roc', 'ROC'):
+      return AUCCurve.ROC
+    else:
+      raise ValueError('Invalid AUC curve value "%s".' % key)
+
+
+class AUCSummationMethod(Enum):
+  """Type of AUC summation method.
+
+  https://en.wikipedia.org/wiki/Riemann_sum)
+
+  Contains the following values:
+  * 'interpolation': Applies mid-point summation scheme for `ROC` curve. For
+    `PR` curve, interpolates (true/false) positives but not the ratio that is
+    precision (see Davis & Goadrich 2006 for details).
+  * 'minoring': Applies left summation for increasing intervals and right
+    summation for decreasing intervals.
+  * 'majoring': Applies right summation for increasing intervals and left
+    summation for decreasing intervals.
+  """
+  INTERPOLATION = 'interpolation'
+  MAJORING = 'majoring'
+  MINORING = 'minoring'
+
+  @staticmethod
+  def from_str(key):
+    if key in ('interpolation', 'Interpolation'):
+      return AUCSummationMethod.INTERPOLATION
+    elif key in ('majoring', 'Majoring'):
+      return AUCSummationMethod.MAJORING
+    elif key in ('minoring', 'Minoring'):
+      return AUCSummationMethod.MINORING
+    else:
+      raise ValueError('Invalid AUC summation method value "%s".' % key)
+
+
 def update_confusion_matrix_variables(variables_to_update,
                                       y_true,
                                       y_pred,
                                       thresholds,
+                                      top_k=None,
+                                      class_id=None,
                                       sample_weight=None):
   """Returns op to update the given confusion matrix variables.
 
@@ -170,7 +237,11 @@ def update_confusion_matrix_variables(variables_to_update,
     y_pred: A floating point `Tensor` of arbitrary shape and whose values are in
       the range `[0, 1]`.
     thresholds: A float value or a python list or tuple of float thresholds in
-      `[0, 1]`.
+      `[0, 1]`, or NEG_INF (used when top_k is set).
+    top_k: Optional int, indicates that the positive labels should be limited to
+      the top k predictions.
+    class_id: Optional int, limits the prediction and labels to the class
+      specified by this argument.
     sample_weight: Optional `Tensor` whose rank is either 0, or the same rank as
       `y_true`, and must be broadcastable to `y_true` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `y_true` dimension).
@@ -218,6 +289,12 @@ def update_confusion_matrix_variables(variables_to_update,
     y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
         math_ops.cast(y_pred, dtype=dtypes.float32),
         math_ops.cast(y_true, dtype=dtypes.bool), sample_weight)
+
+  if top_k is not None:
+    y_pred = _filter_top_k(y_pred, top_k)
+  if class_id is not None:
+    y_true = y_true[..., class_id]
+    y_pred = y_pred[..., class_id]
 
   thresholds = to_list(thresholds)
   num_thresholds = len(thresholds)
@@ -282,3 +359,22 @@ def update_confusion_matrix_variables(variables_to_update,
           weighted_assign_add(label, pred, weights_tiled,
                               variables_to_update[matrix_cond]))
   return control_flow_ops.group(update_ops)
+
+
+def _filter_top_k(x, k):
+  """Filters top-k values in the last dim of x and set the rest to NEG_INF.
+
+  Used for computing top-k prediction values in dense labels (which has the same
+  shape as predictions) for recall and precision top-k metrics.
+
+  Args:
+    x: tensor with any dimensions.
+    k: the number of values to keep.
+
+  Returns:
+    tensor with same shape and dtype as x.
+  """
+  _, top_k_idx = nn_ops.top_k(x, k, sorted=False)
+  top_k_mask = math_ops.reduce_sum(
+      array_ops.one_hot(top_k_idx, x.shape[-1], axis=-1), axis=-2)
+  return x * top_k_mask + NEG_INF * (1 - top_k_mask)

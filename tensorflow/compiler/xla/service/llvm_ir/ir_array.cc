@@ -104,8 +104,8 @@ IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
   CHECK(LayoutUtil::HasLayout(shape));
 }
 
-IrArray::IrArray(llvm::Value* base_ptr, const Shape& shape)
-    : base_ptr_(base_ptr), shape_(&shape) {
+IrArray::IrArray(llvm::Value* base_ptr, Shape shape)
+    : base_ptr_(base_ptr), shape_(std::move(shape)) {
   TF_CHECK_OK(ShapeUtil::ValidateShape(shape));
   CHECK(base_ptr_->getType()->isPointerTy());
   int depth = 0;

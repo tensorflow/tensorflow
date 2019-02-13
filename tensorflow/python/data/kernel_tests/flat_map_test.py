@@ -65,11 +65,11 @@ class FlatMapTest(test_base.DatasetTestBase):
     repeats = [[1, 2], [3, 4], [5, 0], [1, 7]]
     components = np.array(repeats, dtype=np.int64)
     iterator = (
-        dataset_ops.Dataset.from_tensor_slices(components)
-        .flat_map(lambda x: dataset_ops.Dataset.from_tensor_slices(x)
-                  .flat_map(lambda y: dataset_ops.Dataset.from_tensors(y)
-                            .repeat(y))).make_initializable_iterator(
-                                shared_name="shared_flat_map_iterator"))
+        dataset_ops.make_initializable_iterator(
+            dataset_ops.Dataset.from_tensor_slices(components).flat_map(
+                lambda x: dataset_ops.Dataset.from_tensor_slices(x).flat_map(
+                    lambda y: dataset_ops.Dataset.from_tensors(y).repeat(y))),
+            shared_name="shared_flat_map_iterator"))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
