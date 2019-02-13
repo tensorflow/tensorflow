@@ -60,6 +60,26 @@ TEST(ExpOpTest, FloatTest) {
                   {2.71828, 1, 0.367879, 2.71828, 2.71828, 0.367879})));
 }
 
+TEST(ExpOpTest, Complex64Test) {
+  std::initializer_list<std::complex<float>> data = {
+      std::complex<float>(1.0f, 0.0f),  std::complex<float>(0.0f, 0.0f),
+      std::complex<float>(-1.0f, 0.0f), std::complex<float>(1.0f, 0.0f),
+      std::complex<float>(1.0f, 0.0f),  std::complex<float>(-1.0f, 0.0f)};
+
+  ExpOpModel m({TensorType_COMPLEX64, {3, 1, 2}}, TensorType_COMPLEX64);
+  m.SetInput<std::complex<float>>(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1, 2}));
+  EXPECT_THAT(
+      m.GetOutput<std::complex<float>>(),
+      ElementsAreArray(ArrayComplex64Near(
+          {std::complex<float>(2.71828f, 0.0f), std::complex<float>(1.0f, 0.0f),
+           std::complex<float>(0.367879f, 0.0f),
+           std::complex<float>(2.71828f, 0.0f),
+           std::complex<float>(2.71828f, 0.0f),
+           std::complex<float>(0.367879f, 0.0f)})));
+}
+
 }  // namespace
 }  // namespace tflite
 

@@ -59,11 +59,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                               NumElements(op_context.input),              \
                               GetTensorData<data_type>(op_context.output))
 
-  // TODO(kanlig): supports half, bfloat16, float64, complex64, and complex128.
+  // TODO(kanlig): supports half, bfloat16, float64, and complex128.
   if (kernel_type == kReference) {
     switch (op_context.input->type) {
       case kTfLiteFloat32:
         TF_LITE_EXP(reference_ops, float);
+        break;
+      case kTfLiteComplex64:
+        TF_LITE_EXP(reference_ops, std::complex<float>);
         break;
       default:
         context->ReportError(context,
