@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/not_supported_scatter_expander.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
+#include "tensorflow/compiler/plugin/poplar/driver/root_token_replacer.h"
 #include "tensorflow/compiler/plugin/poplar/driver/scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/sharding_pass.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
@@ -156,6 +157,19 @@ bool GetConstantOutput(const HloInstruction* root, const Shape& layout,
       result.emplace_back(std::move(sub_result));
     }
     return true;
+  }
+  return false;
+}
+
+bool AnyComputationHasSideEffects(const HloModule* module) {
+  for (const auto& comp : module->computations()) {
+    if (IsRepeatCall(comp) || IsPopOpsFusion(comp)) {
+      continue;
+    }
+
+    if (comp->HasSideEffect()) {
+      return true;
+    }
   }
   return false;
 }
@@ -310,6 +324,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<HloCSE>(false);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
     pipeline.AddPass<SortSimplifier>();
+    pipeline.AddPass<RootTokenReplacer>();
     pipeline.AddPass<ReshapeMover>();
     pipeline.AddPass<MapInliner>();
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
@@ -378,8 +393,13 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
                        poplarExecutor->AlwaysRearrangeCopiesOnTheHost());
 
   std::vector<std::vector<Literal>> constant_output;
-  const auto is_constant_graph = GetConstantOutput(
+  const bool is_constant_output = GetConstantOutput(
       entry->root_instruction(), comp_layout->shape(), constant_output);
+
+  const bool any_computation_has_side_effects =
+      AnyComputationHasSideEffects(module.get());
+  const auto is_constant_graph =
+      is_constant_output && !any_computation_has_side_effects;
 
   std::string map_json;
   std::vector<uint64> remaped_output;
@@ -409,9 +429,12 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       resources.main_graph.outputVertexGraph(stream, progs);
     }
 
-    is_remap_graph = AreAllOutputsParameters(
+    const bool all_outputs_are_parameters = AreAllOutputsParameters(
         entry->root_instruction(), visitor.GetNonStandardParameterLayout(),
         remaped_output);
+
+    is_remap_graph =
+        all_outputs_are_parameters && !any_computation_has_side_effects;
     if (is_remap_graph) {
       VLOG(1) << "Skip engine compilation - all outputs are inputs";
     } else {
