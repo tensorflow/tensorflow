@@ -1310,8 +1310,8 @@ py_library(
     ],
 )
 
-cuda_py_tests(
-    name = "framework_function_test",
+cuda_py_test(
+    name = "function_test",
     size = "medium",
     srcs = ["framework/function_test.py"],
     additional_deps = [
@@ -1341,6 +1341,7 @@ cuda_py_tests(
         "noasan",
         "optonly",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
