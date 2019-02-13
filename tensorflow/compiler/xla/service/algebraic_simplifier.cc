@@ -1605,29 +1605,50 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     return Status::OK();
   }
 
-  // If a dot only contains batch dimensions, then tranpose the rhs and lhs
-  // acording to the batch dimension numbers and do a simple multiply.
-  if (lhs->shape().rank() ==
-          dot->dot_dimension_numbers().lhs_batch_dimensions_size() &&
-      rhs->shape().rank() ==
-          dot->dot_dimension_numbers().rhs_batch_dimensions_size()) {
-    HloInstruction* new_rhs = rhs;
-    HloInstruction* new_lhs = lhs;
-    if (lhs->shape().rank() > 1) {
-      TF_ASSIGN_OR_RETURN(
-          new_rhs,
-          MakeTransposeHlo(
-              rhs, AsInt64Slice(
-                       dot->dot_dimension_numbers().rhs_batch_dimensions())));
-      TF_ASSIGN_OR_RETURN(
-          new_lhs,
-          MakeTransposeHlo(
-              lhs, AsInt64Slice(
-                       dot->dot_dimension_numbers().lhs_batch_dimensions())));
+  // If there are no contracting dimensions, a dot can be rewritten as
+  // mul(broadcast(transpose(x)),broadcast(transpose(y)))
+  if (dot->dot_dimension_numbers().lhs_contracting_dimensions_size() == 0) {
+    std::vector<int64> lhs_transpose(
+        dot->dot_dimension_numbers().lhs_batch_dimensions().begin(),
+        dot->dot_dimension_numbers().lhs_batch_dimensions().end());
+    for (int64 i = 0; i < lhs->shape().rank(); ++i) {
+      if (!absl::c_linear_search(
+              dot->dot_dimension_numbers().lhs_batch_dimensions(), i)) {
+        lhs_transpose.push_back(i);
+      }
     }
-    TF_ASSIGN_OR_RETURN(auto new_dot,
-                        MakeBinaryHlo(HloOpcode::kMultiply, new_lhs, new_rhs));
-    return ReplaceInstruction(dot, new_dot);
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
+                        MakeTransposeHlo(lhs, lhs_transpose));
+    if (dot->shape().rank() != lhs->shape().rank()) {
+      std::vector<int64> lhs_broadcast_dims(lhs->shape().rank());
+      absl::c_iota(lhs_broadcast_dims, 0);
+      new_lhs = computation_->AddInstruction(HloInstruction::CreateBroadcast(
+          dot->shape(), new_lhs, lhs_broadcast_dims));
+    }
+    std::vector<int64> rhs_transpose(
+        dot->dot_dimension_numbers().rhs_batch_dimensions().begin(),
+        dot->dot_dimension_numbers().rhs_batch_dimensions().end());
+    for (int64 i = 0; i < rhs->shape().rank(); ++i) {
+      if (!absl::c_linear_search(
+              dot->dot_dimension_numbers().rhs_batch_dimensions(), i)) {
+        rhs_transpose.push_back(i);
+      }
+    }
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_rhs,
+                        MakeTransposeHlo(rhs, rhs_transpose));
+    if (dot->shape().rank() != rhs->shape().rank()) {
+      std::vector<int64> rhs_broadcast_dims(
+          dot->dot_dimension_numbers().lhs_batch_dimensions_size());
+      absl::c_iota(rhs_broadcast_dims, 0);
+      for (int64 i = lhs->shape().rank(); i < dot->shape().rank(); ++i) {
+        rhs_broadcast_dims.push_back(i);
+      }
+      new_rhs = computation_->AddInstruction(HloInstruction::CreateBroadcast(
+          dot->shape(), new_rhs, rhs_broadcast_dims));
+    }
+    return ReplaceWithNewInstruction(
+        dot, HloInstruction::CreateBinary(dot->shape(), HloOpcode::kMultiply,
+                                          new_lhs, new_rhs));
   }
 
   if (lhs->shape().rank() > 2 || rhs->shape().rank() > 2 ||

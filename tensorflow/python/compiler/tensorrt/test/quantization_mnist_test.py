@@ -138,9 +138,9 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
     if use_trt:
       logging.info('Number of nodes before TF-TRT conversion: %d',
                    len(graph_def.node))
-      graph_def = trt_convert.create_inference_graph(
-          graph_def,
-          outputs=[OUTPUT_NODE_NAME],
+      converter = trt_convert.TrtGraphConverter(
+          input_graph_def=graph_def,
+          nodes_blacklist=[OUTPUT_NODE_NAME],
           max_batch_size=max_batch_size,
           precision_mode='INT8',
           # There is a 2GB GPU memory limit for each test, so we set
@@ -150,6 +150,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
           minimum_segment_size=2,
           use_calibration=False,
       )
+      graph_def = converter.convert()
       logging.info('Number of nodes after TF-TRT conversion: %d',
                    len(graph_def.node))
       num_engines = len(
@@ -273,7 +274,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
         num_epochs=None,
         model_dir=model_dir)['accuracy']
     logging.info('accuracy_tf_native: %f', accuracy_tf_native)
-    self.assertAllClose(0.9662, accuracy_tf_native, rtol=1e-3, atol=1e-3)
+    self.assertAllClose(0.9662, accuracy_tf_native, rtol=3e-3, atol=3e-3)
 
     if get_linked_tensorrt_version()[0] < 5:
       return

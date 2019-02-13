@@ -2937,6 +2937,7 @@ cc_library(
         ":self_adjoint_eig_op",
         ":self_adjoint_eig_v2_op",
         ":svd_op",
+        ":tridiagonal_solve_op",
     ],
 )
 
@@ -3053,6 +3054,12 @@ tf_kernel_library(
     deps = LINALG_DEPS + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
     ]),
+)
+
+tf_kernel_library(
+    name = "tridiagonal_solve_op",
+    srcs = ["tridiagonal_solve_op.cc"],
+    deps = LINALG_DEPS,
 )
 
 tf_kernel_library(
@@ -7010,7 +7017,7 @@ tf_mkl_kernel_library(
             ":quantization_utils",
             ":transpose_functor",
             "//third_party/eigen3",
-            "//third_party/gemmlowp",
+            "@gemmlowp",
             "@mkl_dnn",
             "//tensorflow/core:array_ops_op_lib",
             "//tensorflow/core:core_cpu",

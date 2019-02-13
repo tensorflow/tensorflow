@@ -39,9 +39,15 @@ cc_library(
     hdrs = ["table_op_utils.h"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:tensor_flag_utils",
+        "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/meta:type_traits",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

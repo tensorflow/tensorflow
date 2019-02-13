@@ -83,6 +83,10 @@ TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
   return EvalNumeric(context, node, std::sin);
 }
 
+TfLiteStatus CosEval(TfLiteContext* context, TfLiteNode* node) {
+  return EvalNumeric(context, node, std::cos);
+}
+
 TfLiteStatus LogEval(TfLiteContext* context, TfLiteNode* node) {
   return EvalNumeric(context, node, std::log);
 }
@@ -119,6 +123,14 @@ TfLiteRegistration* Register_SIN() {
       /*init=*/nullptr, /*free=*/nullptr,
       elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
       elementwise::SinEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_COS() {
+  static TfLiteRegistration r = {
+      /*init=*/nullptr, /*free=*/nullptr,
+      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
+      elementwise::CosEval};
   return &r;
 }
 

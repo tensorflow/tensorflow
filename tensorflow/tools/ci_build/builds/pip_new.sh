@@ -51,7 +51,7 @@
 #                        overwritten to 'tf_nightly'. For gpu builds, '_gpu'
 #                        will be appended.
 #                          e.g. TF_PROJECT_NAME="tensorflow"
-# 			                   e.g. TF_PROJECT_NAME="tf_nightly_gpu"
+#                          e.g. TF_PROJECT_NAME="tf_nightly_gpu"
 #   TF_PIP_TEST_ROOT:    Root directory for building and testing pip pkgs.
 #                          e.g. TF_PIP_TEST_ROOT="pip_test"
 #
@@ -140,8 +140,6 @@ update_bazel_flags() {
 
 update_test_filter_tags() {
   # Add test filter tags
-  # This script is for PIP version of the installation. Add pip related tags.
-  add_test_filter_tag -no_pip -nopip
   # MacOS filter tags
   if [[ ${OS_TYPE} == "macos" ]]; then
     remove_test_filter_tag nomac no_mac
@@ -151,9 +149,6 @@ update_test_filter_tags() {
   if [[ "${CONTAINER_TYPE}" == "gpu" ]]; then
     remove_test_filter_tag no_gpu -requires-gpu
     add_test_filter_tag requires-gpu
-  else
-    remove_test_filter_tag -no_gpu requires-gpu
-    add_test_filter_tag no_gpu -requires-gpu
   fi
   echo "Final test filter tags: ${BAZEL_TEST_FILTER_TAGS}"
 }

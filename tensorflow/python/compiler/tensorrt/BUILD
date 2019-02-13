@@ -110,6 +110,7 @@ cuda_py_test(
         "no_windows",
         "nomac",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -147,6 +148,7 @@ cuda_py_tests(
         "no_windows",
         "nomac",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -171,4 +173,5 @@ cuda_py_test(
         "no_windows",
         "nomac",
     ],
+    xla_enable_strict_auto_jit = True,
 )

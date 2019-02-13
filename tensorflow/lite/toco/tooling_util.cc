@@ -422,6 +422,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Unique)
     HANDLE_OPERATORTYPENAME_CASE(UnidirectionalSequenceRnn)
     HANDLE_OPERATORTYPENAME_CASE(ReverseV2)
+    HANDLE_OPERATORTYPENAME_CASE(Cos)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE

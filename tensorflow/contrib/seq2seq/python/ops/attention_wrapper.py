@@ -310,9 +310,8 @@ class _BaseAttentionMechanismV2(AttentionMechanism, layers.Layer):
         inputs = memory
       else:
         inputs = [memory, memory_sequence_length]
-      # The returned tensor is ignored here since we already record it as an
-      # attribute.
-      super(_BaseAttentionMechanismV2, self).__call__(
+
+      self.values = super(_BaseAttentionMechanismV2, self).__call__(
           inputs, setup_memory=True)
 
   def build(self, input_shape):
@@ -405,8 +404,8 @@ class _BaseAttentionMechanismV2(AttentionMechanism, layers.Layer):
       # but the real query/state has not been call() yet. The layer should be
       # build and call again.
       self.built = False
-      # We have to return something here since layers are required to have some
-      # output. Use self.value here since it is the processed memory.
+      # Return the processed memory in order to create the Keras connectivity
+      # data for it.
       return self.values
     else:
       if not self._memory_initialized:
