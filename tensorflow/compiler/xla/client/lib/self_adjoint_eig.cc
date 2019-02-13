@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/client/lib/self_adjoint_eigen.h"
+#include "tensorflow/compiler/xla/client/lib/self_adjoint_eig.h"
 
 #include <memory>
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
@@ -341,6 +342,27 @@ StatusOr<std::vector<XlaOp>> WhileLoopFn(
   return values;
 }
 
+StatusOr<SelfAdjointEigResult> SortByEigenvalues(SelfAdjointEigResult result) {
+  XlaBuilder* builder = result.v.builder();
+  TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(result.v));
+  const int64 num_dims = shape.rank();
+  auto dimensions = shape.dimensions();
+
+  std::vector<int64> broadcast_dims(num_dims - 1);
+  std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
+  broadcast_dims[num_dims - 2] = num_dims - 1;
+  result.w = BroadcastInDim(result.w, dimensions, broadcast_dims);
+
+  XlaOp sort_result =
+      Sort({result.w, result.v},
+           CreateScalarLtComputation(
+               {shape.element_type(), shape.element_type()}, builder),
+           num_dims - 1);
+  result.w = GetMatrixDiagonal(GetTupleElement(sort_result, 0));
+  result.v = GetTupleElement(sort_result, 1);
+  return result;
+}
+
 }  // namespace
 
 // This is the cyclic Jacobi iteration. Please note that the eigenvalues are
@@ -373,11 +395,11 @@ StatusOr<std::vector<XlaOp>> WhileLoopFn(
 //
 // TODO(kuny): Implement parallel order Jacobi.
 //
-SelfAdjointEigenResult SelfAdjointEigen(XlaOp a, bool lower, int64 max_iter,
-                                        float epsilon) {
+SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64 max_iter,
+                                    float epsilon) {
   XlaBuilder* builder = a.builder();
   auto return_error = [&](const Status& status) {
-    SelfAdjointEigenResult result;
+    SelfAdjointEigResult result;
     result.v = builder->ReportError(status);
     result.w = builder->ReportError(status);
     return result;
@@ -439,11 +461,11 @@ SelfAdjointEigenResult SelfAdjointEigen(XlaOp a, bool lower, int64 max_iter,
 
   auto output = output_with_status.ValueOrDie();
 
-  SelfAdjointEigenResult result;
+  SelfAdjointEigResult result;
   result.v = output[1];
   result.w = GetMatrixDiagonal(output[2]);
 
-  return result;
+  return SortByEigenvalues(result).ValueOrDie();
 }
 
 }  // namespace xla

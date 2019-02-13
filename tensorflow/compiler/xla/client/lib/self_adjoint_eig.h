@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_SELF_ADJOINT_EIGEN_H_
-#define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_SELF_ADJOINT_EIGEN_H_
+#ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_SELF_ADJOINT_EIG_H_
+#define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_SELF_ADJOINT_EIG_H_
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -23,20 +23,18 @@ namespace xla {
 
 // The eigenvalue decomposition of a symmetric matrix, the original matrix is
 // recovered by v * w * v_t.
-struct SelfAdjointEigenResult {
+struct SelfAdjointEigResult {
   // The i-th column is the normalized eigenvector corresponding to the
   // eigenvalue w[i]. Will return a matrix object if a is a matrix object.
   XlaOp v;
-  // TODO(kuny): Sort the eigenvalues.
   // The eigenvalues in ascending order, each repeated according to its
   // multiplicity.
   XlaOp w;
 };
 
-SelfAdjointEigenResult SelfAdjointEigen(XlaOp a, bool lower = true,
-                                        int64 max_iter = 100,
-                                        float epsilon = 1e-6);
+SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower = true,
+                                    int64 max_iter = 100, float epsilon = 1e-6);
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_SELF_ADJOINT_EIGEN_H_
+#endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_SELF_ADJOINT_EIG_H_
