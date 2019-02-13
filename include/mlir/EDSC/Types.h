@@ -41,11 +41,6 @@ namespace edsc {
 namespace detail {
 
 struct ExprStorage;
-struct UnaryExprStorage;
-struct BinaryExprStorage;
-struct TernaryExprStorage;
-struct VariadicExprStorage;
-
 struct StmtStorage;
 
 } // namespace detail
@@ -182,8 +177,6 @@ public:
   template <typename U> U dyn_cast() const;
   template <typename U> U cast() const;
 
-  MLIRContext *getContext() const;
-
   /// Returns the classification for this type.
   ExprKind getKind() const;
   unsigned getId() const;
@@ -221,7 +214,6 @@ private:
 };
 
 struct UnaryExpr : public Expr {
-  using ImplType = detail::UnaryExprStorage;
   friend class Expr;
 
   UnaryExpr(ExprKind kind, Expr expr);
@@ -234,7 +226,6 @@ protected:
 };
 
 struct BinaryExpr : public Expr {
-  using ImplType = detail::BinaryExprStorage;
   friend class Expr;
   BinaryExpr(ExprKind kind, Expr lhs, Expr rhs);
   Expr getLHS() const;
@@ -247,7 +238,6 @@ protected:
 };
 
 struct TernaryExpr : public Expr {
-  using ImplType = detail::TernaryExprStorage;
   friend class Expr;
   TernaryExpr(ExprKind kind, Expr cond, Expr lhs, Expr rhs);
   Expr getCond() const;
@@ -261,7 +251,6 @@ protected:
 };
 
 struct VariadicExpr : public Expr {
-  using ImplType = detail::VariadicExprStorage;
   friend class Expr;
   VariadicExpr(ExprKind kind, llvm::ArrayRef<Expr> exprs,
                llvm::ArrayRef<Type> types = {});
@@ -275,7 +264,6 @@ protected:
 };
 
 struct StmtBlockLikeExpr : public Expr {
-  using ImplType = detail::VariadicExprStorage; // same storage as variadic
   friend class Expr;
   StmtBlockLikeExpr(ExprKind kind, llvm::ArrayRef<Expr> exprs,
                     llvm::ArrayRef<Type> types = {});

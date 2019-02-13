@@ -39,35 +39,45 @@ namespace edsc {
 namespace detail {
 
 struct ExprStorage {
-  ExprStorage(ExprKind kind, unsigned id = Expr::newId())
-      : kind(kind), id(id) {}
+  // Note: this structure is similar to OperationState, but stores lists in a
+  // EDSC bump allocator.
   ExprKind kind;
   unsigned id;
-};
 
-struct UnaryExprStorage : public ExprStorage {
-  UnaryExprStorage(ExprKind k, Expr expr) : ExprStorage(k), expr(expr) {}
-  Expr expr;
-};
+  ArrayRef<Expr> operands;
+  ArrayRef<Type> resultTypes;
+  ArrayRef<NamedAttribute> attributes;
 
-struct BinaryExprStorage : public ExprStorage {
-  BinaryExprStorage(ExprKind k, Expr lhs, Expr rhs)
-      : ExprStorage(k), lhs(lhs), rhs(rhs) {}
-  Expr lhs, rhs;
-};
+  ExprStorage(ExprKind kind, ArrayRef<Type> results, ArrayRef<Expr> children,
+              ArrayRef<NamedAttribute> attrs, unsigned exprId = Expr::newId())
+      : kind(kind), id(exprId) {
+    if (!children.empty()) {
+      auto exprStorage =
+          Expr::globalAllocator()->Allocate<Expr>(children.size());
+      std::uninitialized_copy(children.begin(), children.end(), exprStorage);
+      operands = llvm::makeArrayRef(exprStorage, children.size());
+    } else {
+      operands = ArrayRef<Expr>();
+    }
 
-struct TernaryExprStorage : public ExprStorage {
-  TernaryExprStorage(ExprKind k, Expr cond, Expr lhs, Expr rhs)
-      : ExprStorage(k), cond(cond), lhs(lhs), rhs(rhs) {}
-  Expr cond, lhs, rhs;
-};
+    if (!results.empty()) {
+      auto typeStorage =
+          Expr::globalAllocator()->Allocate<Type>(results.size());
+      std::uninitialized_copy(results.begin(), results.end(), typeStorage);
+      resultTypes = llvm::makeArrayRef(typeStorage, results.size());
+    } else {
+      resultTypes = ArrayRef<Type>();
+    }
 
-struct VariadicExprStorage : public ExprStorage {
-  VariadicExprStorage(ExprKind k, ArrayRef<Expr> exprs, ArrayRef<Type> types)
-      : ExprStorage(k), exprs(exprs.begin(), exprs.end()),
-        types(types.begin(), types.end()) {}
-  ArrayRef<Expr> exprs;
-  ArrayRef<Type> types;
+    if (!attrs.empty()) {
+      auto attrStorage =
+          Expr::globalAllocator()->Allocate<NamedAttribute>(attrs.size());
+      std::uninitialized_copy(attrs.begin(), attrs.end(), attrStorage);
+      attributes = llvm::makeArrayRef(attrStorage, attrs.size());
+    } else {
+      attributes = ArrayRef<NamedAttribute>();
+    }
+  }
 };
 
 struct StmtStorage {
@@ -94,7 +104,7 @@ mlir::edsc::ScopedEDSCContext::~ScopedEDSCContext() {
 mlir::edsc::Expr::Expr() {
   // Initialize with placement new.
   storage = Expr::globalAllocator()->Allocate<detail::ExprStorage>();
-  new (storage) detail::ExprStorage(ExprKind::Unbound);
+  new (storage) detail::ExprStorage(ExprKind::Unbound, {}, {}, {});
 }
 
 ExprKind mlir::edsc::Expr::getKind() const { return storage->kind; }
@@ -409,76 +419,64 @@ llvm::raw_ostream &mlir::edsc::operator<<(llvm::raw_ostream &os,
 edsc_expr_t makeBindable() { return Bindable(Expr()); }
 
 mlir::edsc::UnaryExpr::UnaryExpr(ExprKind kind, Expr expr)
-    : Expr(Expr::globalAllocator()->Allocate<detail::UnaryExprStorage>()) {
+    : Expr(Expr::globalAllocator()->Allocate<detail::ExprStorage>()) {
   // Initialize with placement new.
-  new (storage) detail::UnaryExprStorage{kind, expr};
+  new (storage) detail::ExprStorage(kind, {}, {expr}, {});
 }
 Expr mlir::edsc::UnaryExpr::getExpr() const {
-  return static_cast<ImplType *>(storage)->expr;
+  return static_cast<ImplType *>(storage)->operands.front();
 }
 
 mlir::edsc::BinaryExpr::BinaryExpr(ExprKind kind, Expr lhs, Expr rhs)
-    : Expr(Expr::globalAllocator()->Allocate<detail::BinaryExprStorage>()) {
+    : Expr(Expr::globalAllocator()->Allocate<detail::ExprStorage>()) {
   // Initialize with placement new.
-  new (storage) detail::BinaryExprStorage{kind, lhs, rhs};
+  new (storage) detail::ExprStorage(kind, {}, {lhs, rhs}, {});
 }
 Expr mlir::edsc::BinaryExpr::getLHS() const {
-  return static_cast<ImplType *>(storage)->lhs;
+  return static_cast<ImplType *>(storage)->operands.front();
 }
 Expr mlir::edsc::BinaryExpr::getRHS() const {
-  return static_cast<ImplType *>(storage)->rhs;
+  return static_cast<ImplType *>(storage)->operands.back();
 }
 
 mlir::edsc::TernaryExpr::TernaryExpr(ExprKind kind, Expr cond, Expr lhs,
                                      Expr rhs)
-    : Expr(Expr::globalAllocator()->Allocate<detail::TernaryExprStorage>()) {
+    : Expr(Expr::globalAllocator()->Allocate<detail::ExprStorage>()) {
   // Initialize with placement new.
-  new (storage) detail::TernaryExprStorage{kind, cond, lhs, rhs};
+  new (storage) detail::ExprStorage(kind, {}, {cond, lhs, rhs}, {});
 }
 Expr mlir::edsc::TernaryExpr::getCond() const {
-  return static_cast<ImplType *>(storage)->cond;
+  return static_cast<ImplType *>(storage)->operands[0];
 }
 Expr mlir::edsc::TernaryExpr::getLHS() const {
-  return static_cast<ImplType *>(storage)->lhs;
+  return static_cast<ImplType *>(storage)->operands[1];
 }
 Expr mlir::edsc::TernaryExpr::getRHS() const {
-  return static_cast<ImplType *>(storage)->rhs;
+  return static_cast<ImplType *>(storage)->operands[2];
 }
 
 mlir::edsc::VariadicExpr::VariadicExpr(ExprKind kind, ArrayRef<Expr> exprs,
                                        ArrayRef<Type> types)
-    : Expr(Expr::globalAllocator()->Allocate<detail::VariadicExprStorage>()) {
+    : Expr(Expr::globalAllocator()->Allocate<detail::ExprStorage>()) {
   // Initialize with placement new.
-  auto exprStorage = Expr::globalAllocator()->Allocate<Expr>(exprs.size());
-  std::uninitialized_copy(exprs.begin(), exprs.end(), exprStorage);
-  auto typeStorage = Expr::globalAllocator()->Allocate<Type>(types.size());
-  std::uninitialized_copy(types.begin(), types.end(), typeStorage);
-  new (storage) detail::VariadicExprStorage{
-      kind, ArrayRef<Expr>(exprStorage, exprs.size()),
-      ArrayRef<Type>(typeStorage, types.size())};
+  new (storage) detail::ExprStorage(kind, types, exprs, {});
 }
 ArrayRef<Expr> mlir::edsc::VariadicExpr::getExprs() const {
-  return static_cast<ImplType *>(storage)->exprs;
+  return static_cast<ImplType *>(storage)->operands;
 }
 ArrayRef<Type> mlir::edsc::VariadicExpr::getTypes() const {
-  return static_cast<ImplType *>(storage)->types;
+  return static_cast<ImplType *>(storage)->resultTypes;
 }
 
 mlir::edsc::StmtBlockLikeExpr::StmtBlockLikeExpr(ExprKind kind,
                                                  ArrayRef<Expr> exprs,
                                                  ArrayRef<Type> types)
-    : Expr(Expr::globalAllocator()->Allocate<detail::VariadicExprStorage>()) {
+    : Expr(Expr::globalAllocator()->Allocate<detail::ExprStorage>()) {
   // Initialize with placement new.
-  auto exprStorage = Expr::globalAllocator()->Allocate<Expr>(exprs.size());
-  std::uninitialized_copy(exprs.begin(), exprs.end(), exprStorage);
-  auto typeStorage = Expr::globalAllocator()->Allocate<Type>(types.size());
-  std::uninitialized_copy(types.begin(), types.end(), typeStorage);
-  new (storage) detail::VariadicExprStorage{
-      kind, ArrayRef<Expr>(exprStorage, exprs.size()),
-      ArrayRef<Type>(typeStorage, types.size())};
+  new (storage) detail::ExprStorage(kind, types, exprs, {});
 }
 ArrayRef<Expr> mlir::edsc::StmtBlockLikeExpr::getExprs() const {
-  return static_cast<ImplType *>(storage)->exprs;
+  return static_cast<ImplType *>(storage)->operands;
 }
 
 mlir::edsc::Stmt::Stmt(const Bindable &lhs, const Expr &rhs,
