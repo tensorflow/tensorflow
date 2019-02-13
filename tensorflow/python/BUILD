@@ -3403,6 +3403,7 @@ cuda_py_test(
         ":framework_test_lib",
     ],
     tags = ["no_windows"],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
