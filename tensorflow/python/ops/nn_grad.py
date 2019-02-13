@@ -309,7 +309,6 @@ def _BiasAddGradGrad(op, received_grad):
     data_format = None
 
   shape = array_ops.shape(op.inputs[0])
-  rank = array_ops.rank(op.inputs[0])
   bias_shape = array_ops.shape(received_grad)
 
   if data_format == b"NCHW":
