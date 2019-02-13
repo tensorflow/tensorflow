@@ -255,7 +255,7 @@ XLA_TEST_F(SelfAdjointEigenTest, Various_Size_Random_Matrix_8x8) {
   GetAverageAbsoluteError(ComputeMatmulVWVt(result, &builder), a, &builder);
 
   ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(1e-3, 1e-3));
 }
 
 XLA_TEST_F(SelfAdjointEigenTest, Various_Size_Random_Matrix_16x16) {
@@ -268,7 +268,7 @@ XLA_TEST_F(SelfAdjointEigenTest, Various_Size_Random_Matrix_16x16) {
   GetAverageAbsoluteError(ComputeMatmulVWVt(result, &builder), a, &builder);
 
   ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(1e-3, 1e-3));
 }
 
 XLA_TEST_F(SelfAdjointEigenTest, Various_Size_Random_Matrix_32x32) {
@@ -281,12 +281,12 @@ XLA_TEST_F(SelfAdjointEigenTest, Various_Size_Random_Matrix_32x32) {
   GetAverageAbsoluteError(ComputeMatmulVWVt(result, &builder), a, &builder);
 
   ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigenTest, Various_Size_Random_Matrix_64x64) {
+XLA_TEST_F(SelfAdjointEigenTest, Various_Size_Random_Matrix_256x256) {
   XlaBuilder builder(TestName());
-  int size = 64;
+  int size = 256;
   Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
@@ -294,7 +294,20 @@ XLA_TEST_F(SelfAdjointEigenTest, Various_Size_Random_Matrix_64x64) {
   GetAverageAbsoluteError(ComputeMatmulVWVt(result, &builder), a, &builder);
 
   ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
-                             ErrorSpec(1e-2, 1e-2));
+                             ErrorSpec(1e-3, 1e-3));
+}
+
+XLA_TEST_F(SelfAdjointEigenTest, Various_Size_Random_Matrix_512x512) {
+  XlaBuilder builder(TestName());
+  int size = 512;
+  Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);
+  XlaOp a;
+  auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
+  auto result = SelfAdjointEigen(a);
+  GetAverageAbsoluteError(ComputeMatmulVWVt(result, &builder), a, &builder);
+
+  ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
+                             ErrorSpec(1e-3, 1e-3));
 }
 
 }  // namespace xla

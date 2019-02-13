@@ -474,8 +474,11 @@ cc_library(
 
 xla_test(
     name = "self_adjoint_eigen_test",
-    size = "medium",
     srcs = ["self_adjoint_eigen_test.cc"],
+    blacklisted_backends = [
+        "cpu",
+        "gpu",
+    ],
     real_hardware_only = True,
     shard_count = 10,
     tags = ["optonly"],

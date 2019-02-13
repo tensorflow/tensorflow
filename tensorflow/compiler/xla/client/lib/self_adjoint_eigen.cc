@@ -42,7 +42,6 @@ namespace {
 struct SymmetricSchurDecomposition {
   XlaOp c;          // cosine.
   XlaOp s;          // sine.
-  XlaOp reduction;  // Reduction in the off diagonal after applying G.
 };
 
 // JacobiUpdate holds the intermediate orthogonal matrix, Jacobi-rotated matrix
@@ -51,7 +50,11 @@ struct SymmetricSchurDecomposition {
 struct JacobiUpdate {
   XlaOp v;
   XlaOp w;
+};
+
+struct FrobeniusNorms {
   XlaOp off_diagonal_norm;
+  XlaOp total_norm;
 };
 
 // Given an n-by-n symmetric A and integers p and q that satisfy 0 <= p < q < n,
@@ -78,10 +81,6 @@ StatusOr<SymmetricSchurDecomposition> SymmetricShurDecomposition2x2(XlaOp a,
                                                                     XlaOp tol) {
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-
-  PrimitiveType type = a_shape.element_type();
-
-  const int64 num_dims = a_shape.rank();
 
   auto zero = ScalarLike(a, 0.0);
   auto one = ScalarLike(a, 1.0);
@@ -110,9 +109,7 @@ StatusOr<SymmetricSchurDecomposition> SymmetricShurDecomposition2x2(XlaOp a,
 
   schur.c = c * rnorm;
   schur.s = s * rnorm;
-  schur.reduction =
-      Reduce(two * Square(pqs), zero, CreateScalarAddComputation(type, builder),
-             {num_dims - 2, num_dims - 1});
+
   return schur;
 }
 
@@ -196,10 +193,30 @@ StatusOr<JacobiUpdate> Update(JacobiUpdate jacobi_update, XlaOp p, XlaOp q,
   jacobi_update.v =
       DynamicUpdateSliceInMinorDims(jacobi_update.v, slice_q_new, {zero, q});
 
-  jacobi_update.off_diagonal_norm = Sqrt(
-      Max(Square(jacobi_update.off_diagonal_norm) - schur.reduction, pq_zero));
-
   return jacobi_update;
+}
+
+StatusOr<FrobeniusNorms> ComputeFrobeniusNorms(XlaOp w) {
+  XlaBuilder* builder = w.builder();
+  TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w));
+  const int64 num_dims = shape.rank();
+  auto frobenius_norm =
+      Sqrt(Reduce(Square(w), ScalarLike(w, 0.0),
+                  CreateScalarAddComputation(shape.element_type(), builder),
+                  {num_dims - 2, num_dims - 1}));
+  auto diag = GetMatrixDiagonal(w);
+  auto diag_square =
+      Reduce(Square(diag), ScalarLike(w, 0.0),
+             CreateScalarAddComputation(shape.element_type(), builder),
+             {num_dims - 2});
+
+  FrobeniusNorms frobenius_norms;
+
+  frobenius_norms.off_diagonal_norm =
+      Sqrt(Max(Square(frobenius_norm) - diag_square, ScalarLike(w, 0.0)));
+  frobenius_norms.total_norm = frobenius_norm;
+
+  return frobenius_norms;
 }
 
 StatusOr<std::vector<XlaOp>> WhileLoopFn(
@@ -212,62 +229,108 @@ StatusOr<std::vector<XlaOp>> WhileLoopFn(
   auto while_cond_fn = [&](absl::Span<const XlaOp> values,
                            XlaBuilder* cond_builder) -> StatusOr<XlaOp> {
     auto k = values[0];
-    auto off_diagonal_norm = values[5];
-    // tol = frobenius_norm * epsilon.
-    auto tol = values[6] * values[7];
-
     auto max_sweeps = ScalarLike(k, max_sweep_updates);
-
     auto sweep_update_cond = Gt(max_sweeps, k);
 
-    auto tol_cond = ReduceAll(Lt(tol, off_diagonal_norm),
+    auto norms = ComputeFrobeniusNorms(values[2]).ValueOrDie();
+    auto tol = norms.total_norm * values[3];
+    auto tol_cond = ReduceAll(Lt(tol, norms.off_diagonal_norm),
                               xla::ConstantR0<bool>(cond_builder, false),
                               CreateScalarOrComputation(PRED, cond_builder));
-    return And(tol_cond, sweep_update_cond);
+
+    return And(sweep_update_cond, tol_cond);
   };
 
   auto while_body_fn =
       [&](absl::Span<const XlaOp> values,
           XlaBuilder* body_builder) -> StatusOr<std::vector<XlaOp>> {
-    auto zero = Zero(body_builder, index_type);
-    auto one = One(body_builder, index_type);
-    auto end_index = ScalarLike(one, matrix_dimension);
+    auto while_cond_fn_inner =
+        [&](absl::Span<const XlaOp> values_inner,
+            XlaBuilder* inner_cond_builder) -> StatusOr<XlaOp> {
+      auto p = values_inner[0];
+      return Lt(p, ScalarLike(p, matrix_dimension - 1));
+    };
 
+    auto while_body_fn_inner =
+        [&](absl::Span<const XlaOp> values_inner,
+            XlaBuilder* inner_body_builder) -> StatusOr<std::vector<XlaOp>> {
+      auto while_cond_fn_innermost =
+          [&](absl::Span<const XlaOp> values_innermost,
+              XlaBuilder* innermost_cond_builder) -> StatusOr<XlaOp> {
+        auto q = values_innermost[1];
+        return Lt(q, ScalarLike(q, matrix_dimension));
+      };
+      auto while_body_fn_innermost =
+          [&](absl::Span<const XlaOp> values_innermost,
+              XlaBuilder* innermost_body_builder)
+          -> StatusOr<std::vector<XlaOp>> {
+        auto p = values_innermost[0];
+        auto q = values_innermost[1];
+
+        JacobiUpdate jacobi_update;
+        jacobi_update.v = values_innermost[2];
+        jacobi_update.w = values_innermost[3];
+
+        auto tol = values_innermost[4];
+
+        TF_ASSIGN_OR_RETURN(jacobi_update,
+                            Update(jacobi_update, p, q, tol, matrix_dimension));
+
+        std::vector<XlaOp> updated_values_innermost;
+        updated_values_innermost.reserve(values_innermost.size());
+
+        updated_values_innermost.push_back(p);
+        updated_values_innermost.push_back(q + ScalarLike(q, 1));
+        updated_values_innermost.push_back(jacobi_update.v);
+        updated_values_innermost.push_back(jacobi_update.w);
+        updated_values_innermost.push_back(tol);
+
+        return updated_values_innermost;
+      };
+
+      std::vector<XlaOp> values_innermost(5);
+      auto p = values_inner[0];
+      auto q = p + ScalarLike(p, 1);
+      values_innermost[0] = p;                // index p.
+      values_innermost[1] = q;                // index q.
+      values_innermost[2] = values_inner[1];  // v.
+      values_innermost[3] = values_inner[2];  // w.
+      values_innermost[4] = values_inner[3];  // tol.
+      TF_ASSIGN_OR_RETURN(
+          values_innermost,
+          WhileLoopHelper(while_cond_fn_innermost, while_body_fn_innermost,
+                          values_innermost, absl::StrCat(name, "-Innermost"),
+                          inner_body_builder));
+
+      std::vector<XlaOp> updated_values_inner;
+      updated_values_inner.reserve(values_inner.size());
+
+      updated_values_inner.push_back(p + ScalarLike(p, 1));
+      updated_values_inner.push_back(values_innermost[2]);
+      updated_values_inner.push_back(values_innermost[3]);
+      updated_values_inner.push_back(values_innermost[4]);
+      return updated_values_inner;
+    };
     // Indexes.
     XlaOp k = values[0];
-    XlaOp p = values[1];
-    XlaOp q = values[2];
 
-    JacobiUpdate jacobi_update;
-    jacobi_update.v = values[3];
-    jacobi_update.w = values[4];
-    jacobi_update.off_diagonal_norm = values[5];
-
-    XlaOp frobenius_norm = values[6];
-    XlaOp tol = values[7];
-
-    TF_ASSIGN_OR_RETURN(jacobi_update,
-                        Update(jacobi_update, p, q, tol, matrix_dimension));
+    std::vector<XlaOp> values_inner(4);
+    values_inner[0] = ScalarLike(k, 0);  // index p.
+    values_inner[1] = values[1];         // v.
+    values_inner[2] = values[2];         // w.
+    values_inner[3] = values[3];         // tol.
+    TF_ASSIGN_OR_RETURN(
+        values_inner,
+        WhileLoopHelper(while_cond_fn_inner, while_body_fn_inner, values_inner,
+                        absl::StrCat(name, "-Inner"), body_builder));
 
     std::vector<XlaOp> updated_values;
-    updated_values.reserve(values.size());
+    updated_values.reserve(values_inner.size());
 
-    q = q + one;
-    p = Select(Eq(q, end_index), p + one, p);
-    k = Select(Eq(p, end_index - one), k + one, k);
-    p = Select(Eq(p, end_index - one), zero, p);
-    q = Select(Eq(q, end_index), p + one, q);
-
-    updated_values.push_back(k);
-    updated_values.push_back(p);
-    updated_values.push_back(q);
-
-    updated_values.push_back(jacobi_update.v);
-    updated_values.push_back(jacobi_update.w);
-    updated_values.push_back(jacobi_update.off_diagonal_norm);
-
-    updated_values.push_back(frobenius_norm);
-    updated_values.push_back(tol);
+    updated_values.push_back(k + ScalarLike(k, 1));
+    updated_values.push_back(values_inner[1]);
+    updated_values.push_back(values_inner[2]);
+    updated_values.push_back(values_inner[3]);
 
     return updated_values;
   };
@@ -286,21 +349,25 @@ StatusOr<std::vector<XlaOp>> WhileLoopFn(
 //  def jacobi(A):
 //      n, _ = A.shape
 //      V = np.eye(n)
-//      nfrob = np.sum(A ** 2)
-//      ndiag = np.sum(np.diag(A) ** 2)
-//      off = nfrob - ndiag
-//      while off > 1e-6 * nfrob:
+//      frobenius_norm = np.linalg.norm(A)
+//      diag_norm = np.linalg.norm(np.diag(A))
+//      off_diag_norm = np.sqrt(
+//          frobenius_norm - diag_norm) * np.sqrt(frobenius_norm + diag_norm)
+//      while off_diag_norm > 1e-6 * frobenius_norm:
 //          for p in range(n - 1):
 //              for q in range(p + 1, n):
-//                  if off > 1e-6 * nfrob:
-//                      c, s = sym_schur2x2(A, p, q)
-//                      off = off - 2 * A[p, q] ** 2
-//                      A[[p, q], :] = np.matmul(np.array([[c, -s], [s, c]]),
-//                                               A[[p, q], :])
-//                      A[:, [p, q]] = np.matmul(A[:, [p, q]],
+//                  c, s = sym_schur2x2(A, p, q)
+//                  A[[p, q], :] = np.matmul(np.array([[c, -s], [s, c]]),
+//                                           A[[p, q], :])
+//                  A[:, [p, q]] = np.matmul(A[:, [p, q]],
+//                                           np.array([[c, s], [-s, c]]))
+//                  V[:, [p, q]] = np.matmul(V[:, [p, q]],
 //                                               np.array([[c, s], [-s, c]]))
-//                      V[:, [p, q]] = np.matmul(V[:, [p, q]],
-//                                               np.array([[c, s], [-s, c]]))
+//          frobenius_norm_sq = np.linalg.norm(A)
+//          diag_square_sum = np.linalg.norm(np.diag(A))
+//          off_diag_norm = np.sqrt(
+//              frobenius_norm - diag_norm) * np.sqrt(
+//                  frobenius_norm + diag_norm)
 //
 //      return A, V
 //
@@ -348,33 +415,17 @@ SelfAdjointEigenResult SelfAdjointEigen(XlaOp a, bool lower, int64 max_iter,
     batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
   }
 
-  auto zero = ScalarLike(a, 0.0);
   auto tol = ScalarLike(a, epsilon);
 
   auto v_init = Broadcast(IdentityMatrix(builder, type, m, m), batch_dims);
   auto w_init = Triangle(a, lower);
   w_init = w_init + TransposeInMinorDims(w_init) - w_init * v_init;
 
-  auto frobenius_norm = Sqrt(Reduce(Square(w_init), zero,
-                                    CreateScalarAddComputation(type, builder),
-                                    {num_dims - 2, num_dims - 1}));
-  auto diag = GetMatrixDiagonal(w_init);
-  auto diag_square =
-      Reduce(Square(diag), zero, CreateScalarAddComputation(type, builder),
-             {num_dims - 2});
-
-  auto off_diagonal_init =
-      Sqrt(Max(Square(frobenius_norm) - diag_square, zero));
-
   auto output_with_status = WhileLoopFn(
       {
           Zero(builder, S32),  // k
-          Zero(builder, S32),  // p
-          One(builder, S32),   // q
-          v_init,              //
-          w_init,              //
-          off_diagonal_init,   //
-          frobenius_norm,      //
+          v_init,              // v
+          w_init,              // w
           tol,                 //
       },                       //
       n,                       //
@@ -389,8 +440,8 @@ SelfAdjointEigenResult SelfAdjointEigen(XlaOp a, bool lower, int64 max_iter,
   auto output = output_with_status.ValueOrDie();
 
   SelfAdjointEigenResult result;
-  result.v = output[3];
-  result.w = GetMatrixDiagonal(output[4]);
+  result.v = output[1];
+  result.w = GetMatrixDiagonal(output[2]);
 
   return result;
 }
