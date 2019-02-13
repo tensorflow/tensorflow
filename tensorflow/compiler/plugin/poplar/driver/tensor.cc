@@ -67,10 +67,16 @@ bool InstructionSharded(const HloInstruction* a) {
   return false;
 }
 
-TensorVector GetAllTensorsInMap(const TensorMap& map,
-                                const HloInstruction* inst) {
-  auto lower = std::make_pair(inst->name(), 0);
-  auto upper = std::make_pair(inst->name(), std::numeric_limits<int64>::max());
+TensorVector GetTensorsInMap(
+    const TensorMap& map, const HloInstruction* inst,
+    absl::optional<int64> opt_tensors_start = absl::nullopt,
+    absl::optional<int64> opt_tensors_end = absl::nullopt) {
+  int64 lower_tensor_idx = opt_tensors_start ? *opt_tensors_start : 0;
+  int64 upper_tensor_idx =
+      opt_tensors_end ? *opt_tensors_end : std::numeric_limits<int64>::max();
+
+  auto lower = std::make_pair(inst->name(), lower_tensor_idx);
+  auto upper = std::make_pair(inst->name(), upper_tensor_idx - 1);
   TensorVector outputs;
   for (auto it = map.lower_bound(lower); it != map.upper_bound(upper); it++) {
     outputs.push_back(*it);
@@ -83,14 +89,13 @@ ArgVector GetTensorsMaybeExpand(
     poplar::program::Sequence& seq, const bool expand_constants,
     absl::optional<int64> opt_tensors_start = absl::nullopt,
     absl::optional<int64> opt_tensors_end = absl::nullopt) {
-  TensorVector tensor_vector = GetAllTensorsInMap(map, inst);
-  int64 tensors_start = opt_tensors_start ? *opt_tensors_start : 0;
-  int64 tensors_end = opt_tensors_end ? *opt_tensors_end : tensor_vector.size();
+  TensorVector tensor_vector =
+      GetTensorsInMap(map, inst, opt_tensors_start, opt_tensors_end);
   auto& graph = GetGraph(res, inst);
   ArgVector outputs;
-  for (int64 i = tensors_start; i < tensors_end; i++) {
-    const auto key = tensor_vector[i].first;
-    poplar::Tensor tensor = tensor_vector[i].second;
+  for (auto pair : tensor_vector) {
+    const auto key = pair.first;
+    poplar::Tensor tensor = pair.second;
     // Check if we need to expand the constant tensor.
     if (tensor.containsConstant() && expand_constants) {
       const auto& mapping = graph.getTileMapping(tensor);
@@ -1088,6 +1093,16 @@ ArgVector FindTupleInInstructionInput(TensorMap& map, CompilerResources& res,
   return inputs;
 }
 
+ArgVector FindInstructionInputsInRange(TensorMap& map, CompilerResources& res,
+                                       const HloInstruction* inst, int64 input,
+                                       std::pair<int64, int64> range,
+                                       poplar::program::Sequence& seq,
+                                       const bool expand_constants) {
+  const HloInstruction* operand = inst->operand(input);
+  return GetTensorsMaybeExpand(map, res, operand, seq, expand_constants,
+                               range.first, range.second);
+}
+
 StatusOr<poplar::Tensor> FindInstructionInput(
     TensorMap& map, CompilerResources& res, const HloInstruction* inst,
     int64 input, poplar::program::Sequence& seq, const bool expand_constants) {
@@ -1113,7 +1128,7 @@ ArgVector FindInstructionInputs(TensorMap& map, CompilerResources& res,
 
 OutVector FindInstructionOutputs(const TensorMap& map,
                                  const HloInstruction* inst) {
-  TensorVector tensor_vector = GetAllTensorsInMap(map, inst);
+  TensorVector tensor_vector = GetTensorsInMap(map, inst);
   OutVector outputs;
   std::transform(tensor_vector.begin(), tensor_vector.end(),
                  std::back_inserter(outputs),

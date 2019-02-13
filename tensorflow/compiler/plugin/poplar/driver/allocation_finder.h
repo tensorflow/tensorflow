@@ -31,6 +31,10 @@ namespace poplarplugin {
 
 struct CompilerAnnotations;
 
+using TensorSource = std::pair<const HloInstruction*, int64>;
+using DeferredAllocations = absl::flat_hash_set<TensorSource>;
+using DeferredAllocationsPath = std::vector<TensorSource>;
+
 struct TensorTarget {
   // The node in the graph which consumes the tensor
   const HloInstruction* tgt;
@@ -58,16 +62,22 @@ struct TensorTarget {
   // at the target site.
   std::vector<const HloInstruction*> backward_path;
 
+  // A path of deferred allocations from the target operation to the
+  // Parameter/Infeed input to the graph.
+  DeferredAllocationsPath deferred_allocations_path;
+
   TensorTarget(const HloInstruction* tgt, int64 input_index,
                const HloInstruction* layout, const int64 layout_output_idx,
                const std::vector<const HloInstruction*>& forward_path,
-               const std::vector<const HloInstruction*>& backward_path)
+               const std::vector<const HloInstruction*>& backward_path,
+               const DeferredAllocationsPath& deferred_allocations_path)
       : tgt(tgt),
         input_index(input_index),
         layout(layout),
         layout_output_idx(layout_output_idx),
         forward_path(forward_path),
-        backward_path(backward_path) {}
+        backward_path(backward_path),
+        deferred_allocations_path(deferred_allocations_path) {}
 
   TensorTarget(const HloInstruction* tgt, int64 input_index,
                const std::vector<const HloInstruction*>& backward_path)
@@ -81,7 +91,6 @@ struct TensorTarget {
   TensorTarget() = default;
 };
 
-using TensorSource = std::pair<const HloInstruction*, int64>;
 using TensorAllocationMap = std::map<TensorSource, TensorTarget>;
 
 /**

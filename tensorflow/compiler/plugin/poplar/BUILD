@@ -159,6 +159,7 @@ cc_library(
         "driver/compiler.cc",
         "driver/conversions.cc",
         "driver/conv_op.cc",
+        "driver/deferred_allocation_visitor.cc",
         "driver/entry_visitor.cc",
         "driver/executable.cc",
         "driver/executor.cc",
@@ -192,6 +193,7 @@ cc_library(
         "driver/compiler.h",
         "driver/compiler_resources.h",
         "driver/conversions.h",
+        "driver/deferred_allocation_visitor.h",
         "driver/entry_visitor.h",
         "driver/executable.h",
         "driver/executor.h",
@@ -704,6 +706,26 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "deferred_allocation_visitor_test",
+    srcs = ["tests/deferred_allocation_visitor_test.cc"],
+    extra_copts = [
+        "-fexceptions",
+    ],
+    deps = [
+        ":poplar_lib",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
 py_library(
     name = "test_utils_py",
     srcs = ["tests/test_utils.py"],
@@ -1192,7 +1214,8 @@ test_suite(
         "not_supported_gather_expander_test",
         "not_supported_scatter_expander_test",
         "group_norm_test",
-        "root_token_replacer_test"
+        "root_token_replacer_test",
+        "deferred_allocation_visitor_test",
     ],
 )
 

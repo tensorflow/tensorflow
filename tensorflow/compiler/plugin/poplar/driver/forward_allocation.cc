@@ -252,13 +252,118 @@ static absl::optional<int64> IsLayoutSensitiveOperand(
   return absl::nullopt;
 }
 
+// Depth First Tree traversal from source to non-tuple outputs, traversing
+// through GetTupleElement.
+void ForwardAllocation::FlattenInputs(
+    HloInstruction* inst, std::vector<const HloInstruction*> path,
+    absl::flat_hash_map<HloInstruction*, DeferredAllocationsPath>&
+        input_to_deferred_allocation_path) {
+  const Shape& shape = inst->shape();
+  if (shape.IsTuple()) {
+    // We can only defer allocation of tuples iff all the users of the inst are
+    // unique GTEs with compatible sharding.
+    absl::flat_hash_set<int64> tuple_indexes;
+    for (HloInstruction* user : inst->users()) {
+      if (user->opcode() == HloOpcode::kGetTupleElement) {
+        auto tuple_index = user->tuple_index();
+        if (tuple_indexes.contains(tuple_index)) {
+          // We can't defer allocation here - we require GTEs to be unique.
+          return;
+        } else if (!user->has_compatible_sharding(inst)) {
+          // We can't defer allocation here - we require compatible sharding -
+          // otherwise a copy would have to take place which requires the tensor
+          // to be allocated.
+          return;
+        } else {
+          tuple_indexes.insert(tuple_index);
+        }
+      } else {
+        // We can't defer allocation here - we can only look through GTEs.
+        return;
+      }
+    }
+    for (HloInstruction* user : inst->users()) {
+      // We have guaranteed that we are only looking through GTEs.
+      CHECK_EQ(user->opcode(), HloOpcode::kGetTupleElement);
+      // We can only look through if it's inplace.
+      if (inplace_instructions.contains(user)) {
+        std::vector<const HloInstruction*> new_path(path);
+        new_path.push_back(user);
+        FlattenInputs(user, new_path, input_to_deferred_allocation_path);
+      }
+    }
+  } else {
+    // The back of the path is the current op so remove it.
+    path.pop_back();
+    // We need to traverse back and complete the information about which
+    // sub-tensors we are deferring the allocation of.
+    DeferredAllocationsPath deferred_allocation_path;
+    const HloInstruction* last_gte = inst;
+    int64 flat_tuple_index = 0;
+    for (auto it = path.rbegin(); it != path.rend(); ++it) {
+      // We guarantee that all the deferred allocations depend on GTEs only.
+      CHECK_EQ(last_gte->opcode(), HloOpcode::kGetTupleElement);
+      const HloInstruction* inst = *it;
+      flat_tuple_index = InsertIntoTuple(inst->shape(), last_gte->tuple_index(),
+                                         flat_tuple_index);
+      deferred_allocation_path.push_back(
+          std::make_pair(inst, flat_tuple_index));
+      last_gte = inst;
+    }
+    input_to_deferred_allocation_path[inst] = deferred_allocation_path;
+  }
+}
+
+// Inputs to the graph are non-tuple tensors which originate from parameters or
+// infeeds. To find such tensors we traverse through GetTupleElement
+// instructions, keeping track of this path. For example, given following HLO
+// computation:
+// clang-format off
+//%comp (arg0: (f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2])) -> f32[1,4,4,2] {
+// %arg0 = (f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) parameter(0)
+// %gte0 = f32[1,4,4,2] get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=0
+// %gte1 = f32[1,1,2,2] get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=1
+// %convolution.36.29 = f32[1,4,4,2] convolution(%gte0, %gte1), window={size=1x1}, dim_labels=b01f_01io->b01f
+// %gte2 = (f32[1,2], f32[1,2]) get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=2
+// %gte2.0 = f32[1,2] get-tuple-element((f32[1,2], f32[1,2]) %gte2), index=0
+// %gte2.0_r = f32[2] reshape(%gte2.0)
+// %gte2.1 = f32[1,2] get-tuple-element((f32[1,2], f32[1,2]) %gte2), index=1
+// %gte2.1_r = f32[2] reshape(%gte2.1)
+// %gte3 = f32[2] get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=3
+// %gte4 = f32[2] get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=4
+// ROOT %batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(%convolution.36.29, %gte2.0_r, %gte2.1_r, %gte3, %gte4), epsilon=0.001, feature_index=3
+//}
+// clang-format on
+// In this graph %arg0 is the input, but we traverse the graph and find that
+// %gte0, %gte1, %gte2.0, %gte2.1, %gte3, %gte4 are the non tuple inputs and we
+// find the forward allocations for those.
+absl::flat_hash_map<HloInstruction*, DeferredAllocationsPath>
+ForwardAllocation::FindInputs(HloComputation* comp) {
+  absl::flat_hash_map<HloInstruction*, DeferredAllocationsPath>
+      input_to_deferred_allocation_path;
+  for (HloInstruction* inst : comp->MakeInstructionPostOrder()) {
+    if (inst->opcode() == HloOpcode::kParameter ||
+        inst->opcode() == HloOpcode::kInfeed) {
+      FlattenInputs(inst, {inst}, input_to_deferred_allocation_path);
+    }
+  }
+  return input_to_deferred_allocation_path;
+}
+
 StatusOr<bool> ForwardAllocation::Run(
     HloComputation* comp, std::set<const HloInstruction*>& ops_with_layout) {
   bool found_target = false;
-  const auto is_param_no_layout_pred = [this](HloInstruction* inst) {
-    return inst->opcode() == HloOpcode::kParameter &&
-           tensor_allocation_map.find(std::make_pair(inst, 0)) ==
-               tensor_allocation_map.end();
+
+  auto input_to_deferred_allocations = FindInputs(comp);
+
+  const auto is_input = [&input_to_deferred_allocations,
+                         this](HloInstruction* inst) {
+    auto itr = input_to_deferred_allocations.find(inst);
+    if (itr != input_to_deferred_allocations.end()) {
+      return tensor_allocation_map.find(std::make_pair(inst, 0)) ==
+             tensor_allocation_map.end();
+    }
+    return false;
   };
 
   const auto is_layout_producer = [&ops_with_layout](HloInstruction* inst) {
@@ -286,7 +391,7 @@ StatusOr<bool> ForwardAllocation::Run(
                                                        get_consumers);
 
   const auto alloc_dependencies = layout_op_consumers.Transpose();
-  const auto source_ops = g.FindVertices(is_param_no_layout_pred);
+  const auto source_ops = g.FindVertices(is_input);
 
   // Get everything that depends on a source op
   const auto get_source_consumers = [is_layout_producer, layout_producing_ops,
@@ -357,6 +462,8 @@ StatusOr<bool> ForwardAllocation::Run(
             if (!source_consumers[source].contains(layout_producer)) {
               auto layout_output_idx = *suffix_path_ok;
               auto src = std::make_pair(source, 0);
+              auto deferred_allocations_path =
+                  input_to_deferred_allocations[source];
               std::vector<const HloInstruction*> csuffix(suffix.begin(),
                                                          suffix.end());
               std::vector<const HloInstruction*> cprefix(prefix.begin(),
@@ -400,9 +507,11 @@ StatusOr<bool> ForwardAllocation::Run(
                 }
                 continue;
               }
-              tensor_allocation_map[src] =
-                  TensorTarget(target, op_idx, layout_producer,
-                               layout_output_idx, csuffix, cprefix);
+              tensor_allocation_map[src] = TensorTarget(
+                  target, op_idx, layout_producer, layout_output_idx, csuffix,
+                  cprefix, deferred_allocations_path);
+              deferred_allocations.insert(deferred_allocations_path.begin(),
+                                          deferred_allocations_path.end());
               found_target = true;
               break;
             }
@@ -415,21 +524,27 @@ StatusOr<bool> ForwardAllocation::Run(
 }
 
 ForwardAllocation::ForwardAllocation(CompilerAnnotations& annotations)
-    : annotations(annotations),
-      tensor_allocation_map(annotations.tensor_allocation_map) {}
+    : tensor_allocation_map(annotations.tensor_allocation_map),
+      deferred_allocations(annotations.deferred_allocations),
+      inplace_instructions(annotations.inplace_instructions) {}
 
 StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
   bool found_target = false;
 
-  // An op with a layout is an op that has been identified by the Allocation
-  // Finder to have a layout, a Tensor allocation target or any op that is in
-  // the path between the two.
+  // An op with a layout is a non-tuple op that has been identified by the
+  // Allocation Finder to have a layout, a Tensor allocation target or any op
+  // that is in the path between the two.
   std::set<const HloInstruction*> ops_with_layout;
   for (auto& ta : tensor_allocation_map) {
-    ops_with_layout.insert(ta.first.first);
+    auto source = ta.first.first;
+    if (!source->shape().IsTuple()) {
+      ops_with_layout.insert(source);
+    }
     ops_with_layout.insert(ta.second.tgt);
     for (auto& inst : ta.second.forward_path) {
-      ops_with_layout.insert(inst);
+      if (!inst->shape().IsTuple()) {
+        ops_with_layout.insert(inst);
+      }
     }
   }
 
