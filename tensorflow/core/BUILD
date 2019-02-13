@@ -1551,6 +1551,7 @@ cc_library(
         ":framework_internal",
         ":lib",
         ":lib_internal",
+        ":ops",
         ":protos_all_cc",
         ":shape_inference_testutil",
         ":tensor_testutil",
@@ -3940,7 +3941,6 @@ tf_cc_test(
         "ops/cudnn_rnn_ops_test.cc",
     ],
     deps = [
-        ":cudnn_rnn_ops",
         "//tensorflow/core",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
