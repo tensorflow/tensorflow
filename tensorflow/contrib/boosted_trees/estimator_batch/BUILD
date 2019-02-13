@@ -200,6 +200,7 @@ py_test(
     tags = [
         "no_gpu",
         "no_pip_gpu",
+        "notap",  # b/124385673
         "notsan",
     ],
     deps = [
