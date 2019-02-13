@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/common_runtime/ring_reducer.h"
+#include "tensorflow/core/common_runtime/ring_gatherer.h"
 
 #include <algorithm>
 #include "absl/memory/memory.h"
@@ -107,33 +107,11 @@ std::unique_ptr<OpKernel> GetKernel(const NodeDef& node,
   return k;
 }
 
-std::unique_ptr<OpKernel> GetAdd(DataType dtype, const DeviceType& device_type,
-                                 DeviceBase* device) {
-  NodeDef node_def;
-  NodeDefBuilder builder("add_node", "Add");
-  TF_CHECK_OK(builder.Attr("T", dtype)
-                  .Input(FakeInput(dtype))
-                  .Input(FakeInput(dtype))
-                  .Finalize(&node_def));
-  return GetKernel(node_def, device_type, device);
-}
-
-std::unique_ptr<OpKernel> GetDiv(DataType dtype, const DeviceType& device_type,
-                                 DeviceBase* device) {
-  NodeDef node_def;
-  NodeDefBuilder builder("add_node", "Div");
-  TF_CHECK_OK(builder.Attr("T", dtype)
-                  .Input(FakeInput(dtype))
-                  .Input(FakeInput(dtype))
-                  .Finalize(&node_def));
-  return GetKernel(node_def, device_type, device);
-}
-
 static int64 kStepId = 123;
 
-class RingReducerTest : public ::testing::Test {
+class RingGathererTest : public ::testing::Test {
  protected:
-  RingReducerTest() : device_type_(DEVICE_CPU) {}
+  RingGathererTest() : device_type_(DEVICE_CPU) {}
 
 #ifdef GOOGLE_CUDA
   void InitGPUDevices() {
@@ -146,7 +124,7 @@ class RingReducerTest : public ::testing::Test {
   }
 #endif
 
-  ~RingReducerTest() override {
+  ~RingGathererTest() override {
     stop_ = true;
     for (auto i : instances_) delete i;
     if (col_exec_) col_exec_->Unref();
@@ -202,8 +180,8 @@ class RingReducerTest : public ::testing::Test {
     static const int kInstanceKey = 17;
     col_params_.instance.instance_key = kInstanceKey;
     col_params_.instance.impl_details.subdiv_offsets.clear();
-    col_params_.instance.type = REDUCTION_COLLECTIVE;
-    col_params_.instance.impl_details.collective_name = "RingReduce";
+    col_params_.instance.type = GATHER_COLLECTIVE;
+    col_params_.instance.impl_details.collective_name = "RingGather";
     col_params_.instance.data_type = dtype;
     col_params_.instance.impl_details.subdiv_permutations.resize(num_subdivs);
     col_params_.subdiv_rank.resize(num_subdivs);
@@ -262,11 +240,11 @@ class RingReducerTest : public ::testing::Test {
     }
   }
 
-  void Reduce(int fail_after) {
+  void Gather(int fail_after) {
     std::atomic<int> done(0);
     for (auto di : instances_) {
       SchedClosure([di, &done] {
-        di->DoReduce();
+        di->DoGather();
         ++done;
       });
       if (fail_after > 0) {
@@ -285,24 +263,28 @@ class RingReducerTest : public ::testing::Test {
                int num_devices, int num_subdivs, int tensor_len,
                int fail_after) {
     Init(num_workers, num_devices, dtype, device_type, num_subdivs, fail_after);
-    std::vector<T> expected(tensor_len, 0.0);
+    int32 output_len = tensor_len * num_workers * num_devices;
+    std::vector<T> expected(output_len, 0.0);
     for (int di = 0; di < static_cast<int>(instances_.size()); ++di) {
       DeviceInstance* instance = instances_[di];
-      instance->InitTensor(
-          dtype, TensorShape({tensor_len}), [&expected, dtype, di](Tensor* t) {
-            for (size_t i = 0; i < t->NumElements(); ++i) {
-              // The cast is necessary to prevent clang-tidy from insisting
-              // that a faster non-open source function be substituted.
-              float value = pow(10, static_cast<double>(di)) * i;
-              if (dtype == DT_INT32 || dtype == DT_INT64) {
-                value = di * 10 + i;
-              }
-              t->flat<T>()(i) = static_cast<T>(value);
-              expected[i] += value;
-            }
-          });
+      int32 instance_offset = di * tensor_len;
+      instance->InitTensor(dtype, TensorShape({tensor_len}),
+                           [instance_offset, &expected, dtype, di](Tensor* t) {
+                             for (size_t i = 0; i < t->NumElements(); ++i) {
+                               // The cast is necessary to prevent clang-tidy
+                               // from insisting that a faster non-open source
+                               // function be substituted.
+                               float value =
+                                   pow(10, static_cast<double>(di)) * i;
+                               if (dtype == DT_INT32 || dtype == DT_INT64) {
+                                 value = di * 10 + i;
+                               }
+                               t->flat<T>()(i) = static_cast<T>(value);
+                               expected[instance_offset + i] = value;
+                             }
+                           });
     }
-    Reduce(fail_after);
+    Gather(fail_after);
     if (fail_after > 0) {
       // Confirm that every device terminated with the expected error status.
       for (int di = 0; di < static_cast<int>(instances_.size()); ++di) {
@@ -310,15 +292,13 @@ class RingReducerTest : public ::testing::Test {
                   instances_[di]->status_.error_message());
       }
     } else {
-      // Confirm that every device computed the same correct reduction value.
-      for (int i = 0; i < tensor_len; ++i) {
-        expected[i] /= (num_workers * num_devices);
-      }
+      // Confirm that every device accumulated the same set of correct
+      // values.
       for (int di = 0; di < static_cast<int>(instances_.size()); ++di) {
         TF_EXPECT_OK(instances_[di]->status_);
-        Tensor* inst = &instances_[di]->tensor_;
+        Tensor* inst = &instances_[di]->output_tensor_;
         CHECK(inst);
-        Tensor actual(dtype, TensorShape({tensor_len}));
+        Tensor actual(dtype, TensorShape({output_len}));
         if (device_type_ == DEVICE_CPU) {
           CHECK(actual.CopyFrom(*inst, inst->shape()));
           VLOG(1) << "actual " << actual.SummarizeValue(100);
@@ -336,7 +316,7 @@ class RingReducerTest : public ::testing::Test {
         }
 
         auto alias = actual.template unaligned_flat<T>();
-        for (int i = 0; i < tensor_len; ++i) {
+        for (int i = 0; i < output_len; ++i) {
           switch (dtype) {
             case DT_FLOAT:
               EXPECT_FLOAT_EQ(expected[i], alias(i))
@@ -359,25 +339,22 @@ class RingReducerTest : public ::testing::Test {
     }
   }
 
-  std::unique_ptr<OpKernel> GetCollectiveReduce(const CollectiveParams& params,
+  std::unique_ptr<OpKernel> GetCollectiveGather(const CollectiveParams& params,
                                                 Tensor* input,
                                                 const DeviceType& device_type,
                                                 DeviceBase* device) {
     mutex_lock l(mu_);
     NodeDef node_def;
     NodeDefBuilder builder(
-        strings::StrCat("collective_reduce_", reduce_counter_++),
-        "CollectiveReduce");
-    TF_CHECK_OK(
-        builder.Attr("T", params.instance.data_type)
-            .Attr("merge_op", "Add")
-            .Attr("final_op", "Id")
-            .Attr("group_size", params.group.group_size)
-            .Attr("group_key", params.group.group_key)
-            .Attr("instance_key", params.instance.instance_key)
-            .Attr("subdiv_offsets", params.instance.impl_details.subdiv_offsets)
-            .Input(FakeInput(params.instance.data_type))
-            .Finalize(&node_def));
+        strings::StrCat("collective_gather_", gather_counter_++),
+        "CollectiveGather");
+    TF_CHECK_OK(builder.Attr("T", params.instance.data_type)
+                    .Attr("group_size", params.group.group_size)
+                    .Attr("group_key", params.group.group_key)
+                    .Attr("instance_key", params.instance.instance_key)
+                    .Attr("shape", params.instance.shape)
+                    .Input(FakeInput(params.instance.data_type))
+                    .Finalize(&node_def));
     return GetKernel(node_def, device_type, device);
   }
 
@@ -388,19 +365,18 @@ class RingReducerTest : public ::testing::Test {
     col_exec_ = nullptr;
     cp->instance.impl_details.subdiv_permutations.clear();
     cp->subdiv_rank.clear();
-    // Create a stub ring reducer only for testing param initialization.
-    RingReducer reducer;
-    TF_CHECK_OK(reducer.InitializeCollectiveParams(cp));
+    // Create a stub ring gatherer only for testing param initialization.
+    RingGatherer gatherer;
+    TF_CHECK_OK(gatherer.InitializeCollectiveParams(cp));
     EXPECT_EQ(expected_subdiv_perms,
               cp->instance.impl_details.subdiv_permutations);
     EXPECT_EQ(expected_subdiv_rank, cp->subdiv_rank);
-    reducer.group_size_tensor_ready_.Notify();  // To unblock destructor.
   }
 
   class DeviceInstance {
    public:
     DeviceInstance(int rank, const string& dev_name,
-                   const DeviceType& device_type, RingReducerTest* parent)
+                   const DeviceType& device_type, RingGathererTest* parent)
         : parent_(parent),
           dev_name_(dev_name),
           device_type_(device_type),
@@ -441,10 +417,10 @@ class RingReducerTest : public ::testing::Test {
 
     void InitTensor(DataType dtype, const TensorShape& shape,
                     const std::function<void(Tensor*)>& init_f) {
-      tensor_ =
+      input_tensor_ =
           Tensor(device_->GetAllocator(AllocatorAttributes()), dtype, shape);
       if (device_type_ == DEVICE_CPU) {
-        init_f(&tensor_);
+        init_f(&input_tensor_);
       } else if (device_type_ == DEVICE_GPU) {
         Tensor cpu_tensor(dtype, shape);
         init_f(&cpu_tensor);
@@ -452,7 +428,7 @@ class RingReducerTest : public ::testing::Test {
         CHECK(dev_info);
         Notification note;
         dev_info->default_context->CopyCPUTensorToDevice(
-            &cpu_tensor, device_, &tensor_, [&note](const Status& s) {
+            &cpu_tensor, device_, &input_tensor_, [&note](const Status& s) {
               CHECK(s.ok());
               note.Notify();
             });
@@ -462,18 +438,13 @@ class RingReducerTest : public ::testing::Test {
       }
     }
 
-    void DoReduce() {
-      col_params_.merge_op =
-          GetAdd(col_params_.instance.data_type, device_type_, device_);
-      col_params_.final_op =
-          GetDiv(col_params_.instance.data_type, device_type_, device_);
-
+    void DoGather() {
       // Prepare an OpKernelContext.
       OpKernelContext::Params op_params;
       op_params.step_id = kStepId;
       op_params.device = device_;
       gtl::InlinedVector<TensorValue, 4> inputs;
-      inputs.push_back(TensorValue(&tensor_));
+      inputs.push_back(TensorValue(&input_tensor_));
       op_params.inputs = &inputs;
       gtl::InlinedVector<AllocatorAttributes, 4> input_aa(
           {AllocatorAttributes()});
@@ -490,47 +461,49 @@ class RingReducerTest : public ::testing::Test {
       input_dc.push_back(dev_ctx);
       op_params.input_device_contexts = &input_dc;
       op_params.op_device_context = dev_ctx;
-      int forward_from = 0;
-      op_params.forward_from_array = &forward_from;
       AllocatorAttributes generic_alloc_attr;
       op_params.output_attr_array = &generic_alloc_attr;
-      std::unique_ptr<OpKernel> op = parent_->GetCollectiveReduce(
-          col_params_, &tensor_, DEVICE_CPU, device_);
+      std::unique_ptr<OpKernel> op = parent_->GetCollectiveGather(
+          col_params_, &input_tensor_, DEVICE_CPU, device_);
       op_params.op_kernel = op.get();
       OpKernelContext ctx(&op_params, 1);
 
       // We never actually execute the kernel, so we need to do the output
       // allocation it would do, ourselves.
       Tensor* output_tensor_ptr = nullptr;
-      TF_CHECK_OK(ctx.forward_input_or_allocate_output({0}, 0, tensor_.shape(),
+      TensorShape output_shape({static_cast<int64>(
+          parent_->instances_.size() * input_tensor_.shape().num_elements())});
+      TF_CHECK_OK(ctx.forward_input_or_allocate_output({0}, 0, output_shape,
                                                        &output_tensor_ptr));
       CHECK_EQ(output_tensor_ptr, ctx.mutable_output(0));
-
-      // Prepare a RingReducer instance.
+      // Prepare a RingGatherer instance.
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
-      RingReducer reducer;
+      RingGatherer gatherer;
       CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
                                 &ctx, &op_params, col_params_, exec_key,
-                                kStepId, &tensor_, &tensor_);
-      TF_CHECK_OK(reducer.InitializeCollectiveContext(&col_ctx));
+                                kStepId, &input_tensor_, output_tensor_ptr);
+      TF_CHECK_OK(gatherer.InitializeCollectiveContext(&col_ctx));
 
-      // Run the all-reduce.
-      reducer.Run([this](Status s) { status_ = s; });
+      // Run the all-gather.
+      gatherer.Run([this](Status s) { status_ = s; });
       if (status_.ok()) {
-        CHECK(tensor_.CopyFrom(*ctx.mutable_output(0), tensor_.shape()));
+        CHECK(output_tensor_.CopyFrom(*ctx.mutable_output(0),
+                                      ctx.mutable_output(0)->shape()));
       }
 
       dev_ctx->Unref();
     }
 
-    const Tensor& tensor() { return tensor_; }
+    const Tensor& input_tensor() { return input_tensor_; }
+    const Tensor& output_tensor() { return output_tensor_; }
 
-    RingReducerTest* parent_;
+    RingGathererTest* parent_;
     string dev_name_;
     DeviceType device_type_;
     int rank_;
-    Tensor tensor_;
+    Tensor input_tensor_;
+    Tensor output_tensor_;
     Device* device_;
     CollectiveParams col_params_;
     std::unique_ptr<CollectiveAdapter> ca_;
@@ -550,7 +523,7 @@ class RingReducerTest : public ::testing::Test {
   std::unique_ptr<tensorflow::DeviceMgr> dev_mgr_;
   std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
-  int32 reduce_counter_ GUARDED_BY(mu_) = 0;
+  int32 gather_counter_ GUARDED_BY(mu_) = 0;
 };
 
 CollectiveParams SetUpCollectiveParams(const int num_devs_per_task,
@@ -562,10 +535,10 @@ CollectiveParams SetUpCollectiveParams(const int num_devs_per_task,
   cp.group.device_type = DeviceType("GPU");
   cp.group.num_tasks = num_tasks;
   cp.instance.instance_key = 3;
-  cp.instance.type = REDUCTION_COLLECTIVE;
+  cp.instance.type = GATHER_COLLECTIVE;
   cp.instance.data_type = DataType(DT_FLOAT);
-  cp.instance.shape = TensorShape({kNumDevs});
-  cp.instance.impl_details.collective_name = "RingReduce";
+  cp.instance.shape = TensorShape({kNumDevs * kNumDevs});
+  cp.instance.impl_details.collective_name = "RingGather";
   cp.instance.impl_details.subdiv_offsets.push_back(0);
   cp.is_source = false;
   for (int i = 0; i < kNumDevs; ++i) {
@@ -579,84 +552,32 @@ CollectiveParams SetUpCollectiveParams(const int num_devs_per_task,
   return cp;
 }
 
-TEST_F(RingReducerTest, InitializeParams) {
+TEST_F(RingGathererTest, InitializeParams) {
   const int kNumDevsPerTask = 8;
   const int kNumTasks = 3;
   CollectiveParams cp = SetUpCollectiveParams(kNumDevsPerTask, kNumTasks);
 
   cp.default_rank = 0;
-  cp.instance.impl_details.subdiv_offsets = {0, 4};
-  RunSubdivPermsTest(&cp,
-                     {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-                       12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
-                      {4, 5, 6,  7,  0,  1,  2,  3,  12, 13, 14, 15,
-                       8, 9, 10, 11, 20, 21, 22, 23, 16, 17, 18, 19}},
-                     {0, 4});
-
-  cp.instance.impl_details.subdiv_offsets = {0, -4};
-  RunSubdivPermsTest(&cp,
-                     {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-                       12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
-                      {3,  2,  1,  0,  7,  6,  5,  4,  11, 10, 9,  8,
-                       15, 14, 13, 12, 19, 18, 17, 16, 23, 22, 21, 20}},
-                     {0, 3});
-
-  cp.default_rank = 3;
-  cp.instance.impl_details.subdiv_offsets = {3, -3};
-  RunSubdivPermsTest(&cp,
-                     {{3,  4, 5, 6,  7,  0,  1,  2,  11, 12, 13, 14,
-                       15, 8, 9, 10, 19, 20, 21, 22, 23, 16, 17, 18},
-                      {4, 3,  2,  1,  0,  7,  6,  5,  12, 11, 10, 9,
-                       8, 15, 14, 13, 20, 19, 18, 17, 16, 23, 22, 21}},
-                     {0, 1});
-}
-
-TEST_F(RingReducerTest, AutomaticSubdivs) {
-  const int kNumDevsPerTask = 8;
-  const int kNumTasks = 3;
-  const int kNumDevs = kNumDevsPerTask * kNumTasks;
-  CollectiveParams cp = SetUpCollectiveParams(kNumDevsPerTask, kNumTasks);
-
-  // Test automatic generation of subdiv offsets.
-  cp.default_rank = 0;
-  cp.instance.impl_details.subdiv_offsets.clear();
+  cp.instance.impl_details.subdiv_offsets = {};
   RunSubdivPermsTest(&cp, {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
                             12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}},
                      {0});
 
-  // Set shape so that with 2 subdivs chunk_size is 3 MiB.  This should cause 2
-  // offsets, {0, -4}, to be generated.
-  {
-    int num_subdivs = 2;
-    int num_chunks = kNumDevs * num_subdivs;
-    size_t chunk_size = 3 * 1048576;  // 3 MB
-    size_t tensor_size = chunk_size * num_chunks;
-    cp.instance.shape =
-        TensorShape({static_cast<int64>(tensor_size / DataTypeSize(DT_FLOAT))});
-  }
-  cp.instance.impl_details.subdiv_offsets.clear();
-  RunSubdivPermsTest(&cp,
-                     {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-                       12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
-                      {3,  2,  1,  0,  7,  6,  5,  4,  11, 10, 9,  8,
-                       15, 14, 13, 12, 19, 18, 17, 16, 23, 22, 21, 20}},
-                     {0, 3});
-}
+  cp.instance.impl_details.subdiv_offsets = {0};
+  RunSubdivPermsTest(&cp, {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                            12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}},
+                     {0});
 
-TEST_F(RingReducerTest, AutomaticSubdivUpperBound) {
-  const int kNumDevsPerTask = 1;
-  const int kNumTasks = 4;
-  CollectiveParams cp = SetUpCollectiveParams(kNumDevsPerTask, kNumTasks);
-
-  cp.default_rank = 0;
-  cp.instance.impl_details.subdiv_offsets.clear();
-  cp.instance.shape = TensorShape({104857600 / DataTypeSize(DT_FLOAT)});
-  RunSubdivPermsTest(&cp, {{0, 1, 2, 3}, {0, 1, 2, 3}}, {0, 0});
+  cp.default_rank = 3;
+  cp.instance.impl_details.subdiv_offsets = {};
+  RunSubdivPermsTest(&cp, {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                            12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}},
+                     {3});
 }
 
 // TODO(b/113171733): change to use TEST_P.
 #define DEF_TEST(B, T, W, D, S, L, A)                                         \
-  TEST_F(RingReducerTest,                                                     \
+  TEST_F(RingGathererTest,                                                    \
          DaTy##B##_DevTy##T##_Wkr##W##_Dev##D##_Sdiv##S##_Len##L##_Abrt##A) { \
     DataType dtype = DT_##B;                                                  \
     switch (dtype) {                                                          \
@@ -688,26 +609,24 @@ DEF_TEST(FLOAT, CPU, 2, 4, 1, 128, 0)
 DEF_TEST(FLOAT, CPU, 2, 8, 1, 1001, 0)
 DEF_TEST(FLOAT, CPU, 2, 8, 1, 4096, 0)
 DEF_TEST(FLOAT, CPU, 2, 8, 1, 9408, 0)
-DEF_TEST(FLOAT, CPU, 2, 8, 3, 4095, 0)
-DEF_TEST(FLOAT, CPU, 2, 8, 3, 1045991, 0)
-DEF_TEST(FLOAT, CPU, 4, 4, 4, 1045991, 0)
+DEF_TEST(FLOAT, CPU, 4, 4, 1, 32768, 0)
 DEF_TEST(DOUBLE, CPU, 1, 2, 1, 1001, 0)
-DEF_TEST(DOUBLE, CPU, 2, 8, 3, 4095, 0)
+DEF_TEST(DOUBLE, CPU, 2, 8, 1, 4095, 0)
 DEF_TEST(INT32, CPU, 1, 2, 1, 1001, 0)
-DEF_TEST(INT32, CPU, 2, 8, 3, 4095, 0)
+DEF_TEST(INT32, CPU, 2, 8, 1, 4095, 0)
 DEF_TEST(INT64, CPU, 1, 2, 1, 1001, 0)
-DEF_TEST(INT64, CPU, 2, 8, 3, 4095, 0)
+DEF_TEST(INT64, CPU, 2, 8, 1, 4095, 0)
 
 // Failure tests
 DEF_TEST(FLOAT, CPU, 2, 8, 1, 9408, 1)
 DEF_TEST(FLOAT, CPU, 2, 8, 1, 9408, 7)
-DEF_TEST(FLOAT, CPU, 2, 8, 2, 9408, 11)
+DEF_TEST(FLOAT, CPU, 2, 8, 1, 9408, 11)
 #endif
 
 #ifdef GOOGLE_CUDA
 // GPU tests.  So long as the device names are all in a single tasks we
 // bypass inter-worker routing code and can fake multiple GPUs with a single
-// GPU, from the perspective of the RingReducer logic.  So these tests
+// GPU, from the perspective of the RingGatherer logic.  So these tests
 // are all single-worker.
 DEF_TEST(FLOAT, GPU, 1, 2, 1, 1, 0)
 DEF_TEST(FLOAT, GPU, 1, 2, 1, 2, 0)
@@ -716,17 +635,17 @@ DEF_TEST(FLOAT, GPU, 1, 2, 1, 16, 0)
 DEF_TEST(FLOAT, GPU, 1, 2, 1, 1001, 0)
 DEF_TEST(FLOAT, GPU, 1, 8, 1, 1001, 0)
 DEF_TEST(FLOAT, GPU, 1, 8, 1, 4096, 0)
-DEF_TEST(FLOAT, GPU, 1, 8, 3, 4095, 0)
-DEF_TEST(FLOAT, GPU, 1, 8, 3, 1045991, 0)
-DEF_TEST(FLOAT, GPU, 1, 4, 4, 1045991, 0)
+DEF_TEST(FLOAT, GPU, 1, 8, 1, 4095, 0)
+DEF_TEST(FLOAT, GPU, 1, 8, 1, 32768, 0)
+DEF_TEST(FLOAT, GPU, 1, 4, 1, 32768, 0)
 DEF_TEST(DOUBLE, GPU, 1, 2, 1, 1001, 0)
 // INT32 values are never on the GPU.
-// DEF_TEST(INT32, GPU, 1, 2, 1, 1001, 0)
+// DEF_TEST(INT32, GPU, 1, 1, 1, 1001, 0)
 DEF_TEST(INT64, GPU, 1, 2, 1, 1001, 0)
 
 // Failure tests
 DEF_TEST(FLOAT, GPU, 1, 8, 1, 9408, 2)
-DEF_TEST(FLOAT, GPU, 1, 8, 2, 9408, 5)
+DEF_TEST(FLOAT, GPU, 1, 8, 1, 9408, 5)
 #endif
 
 }  // namespace tensorflow
