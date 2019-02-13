@@ -23,7 +23,6 @@ import functools
 import sys
 
 import pasta
-import six
 
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import renames_v2
@@ -1570,11 +1569,18 @@ def _softmax_cross_entropy_with_logits_transformer(
   """Wrap labels argument with stop_gradients."""
   def _wrap_label(parent, old_value):
     """Wrap labels with tf.stop_gradient."""
-    if six.PY3:
+    already_stop_grad = (isinstance(old_value, ast.Call) and
+                         isinstance(old_value.func, ast.Attribute) and
+                         old_value.func.attr == "stop_gradient" and
+                         isinstance(old_value.func.value, ast.Name) and
+                         old_value.func.value.id == "tf")
+    if already_stop_grad:
+      return False
+    try:
       new_value = ast.Call(
           ast.Name(id="tf.stop_gradient", ctx=ast.Load()),
           [old_value], [])
-    else:
+    except TypeError:
       new_value = ast.Call(
           ast.Name(id="tf.stop_gradient", ctx=ast.Load()),
           [old_value], [], None, None)
@@ -1582,16 +1588,17 @@ def _softmax_cross_entropy_with_logits_transformer(
     # This copies the prefix and suffix on old_value to new_value.
     pasta.ast_utils.replace_child(parent, old_value, new_value)
     ast.copy_location(new_value, old_value)
+    return True
 
   # Check if we have a labels keyword arg
   for karg in node.keywords:
     if karg.arg == "labels":
-      logs.append((ast_edits.INFO, node.lineno, node.col_offset,
-                   "Changing labels arg of "
-                   "tf.nn.softmax_cross_entropy_with_logits to "
-                   "tf.stop_gradient(labels). Please check this "
-                   "transformation.\n"))
-      _wrap_label(karg, karg.value)
+      if _wrap_label(karg, karg.value):
+        logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                     "Changing labels arg of "
+                     "tf.nn.softmax_cross_entropy_with_logits to "
+                     "tf.stop_gradient(labels). Please check this "
+                     "transformation.\n"))
       return node
   return node
 
