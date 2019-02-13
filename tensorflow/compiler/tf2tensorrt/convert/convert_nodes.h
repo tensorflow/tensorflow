@@ -507,6 +507,10 @@ class Converter {
   nvinfer1::ITensor* CreateConstantLayer(const TRT_ShapedWeights& weights,
                                          const nvinfer1::Dims& dims);
 
+  // If the input is a tensor, returns the tensor. If the input is a weight,
+  // create a tensor using CreateConstantLayer.
+  nvinfer1::ITensor* GetAsTensor(const TRT_TensorOrWeights& input);
+
  private:
   // Verify the provided batch_size is consistent with batch_size_ and update it
   // if necessary.
