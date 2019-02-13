@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 
+#include <cmath>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -166,6 +168,21 @@ bool HasTPUAttributes(const NodeDef& node) {
     }
   }
   return false;
+}
+
+template <typename T>
+bool IsDenormal(T x) {
+  return false;
+}
+
+template <>
+bool IsDenormal(float x) {
+  return !std::isnormal(x);
+}
+
+template <>
+bool IsDenormal(double x) {
+  return !std::isnormal(x);
 }
 
 }  // namespace
@@ -1018,7 +1035,7 @@ Status ConstantFolding::CreateNodeDef(const string& name,
     int64 last_index = 0;                                                 \
     for (int64 i = 0; i < tensor->NumElements(); ++i) {                   \
       TYPE cur = *val_ptr++;                                              \
-      if (cur != last) {                                                  \
+      if (cur != last || IsDenormal<TYPE>(cur)) {                         \
         last = cur;                                                       \
         last_index = i;                                                   \
       }                                                                   \
