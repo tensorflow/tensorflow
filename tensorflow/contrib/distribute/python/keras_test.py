@@ -69,6 +69,20 @@ def simple_functional_model():
   return model
 
 
+def simple_subclassed_model(num_labels=_NUM_CLASS):
+
+  class _SimpleMLP(keras.Model):
+
+    def __init__(self, num_labels):
+      super(_SimpleMLP, self).__init__()
+      self.dense = keras.layers.Dense(num_labels)
+
+    def call(self, inputs):
+      return self.dense(inputs)
+
+  return _SimpleMLP(num_labels)
+
+
 def simple_multi_inputs_multi_outputs_model():
   input_a = keras.layers.Input(shape=(16,), name='input_a')
   input_b = keras.layers.Input(shape=(16,), name='input_b')
@@ -1231,6 +1245,62 @@ class TestRegularizerLoss(test.TestCase, parameterized.TestCase):
                 batch_size=batch_size)
       v = model.get_weights()[0]
       self.assertEqual(-1.0, v)
+
+
+class TestDistributionStrategyWithKerasModels(test.TestCase,
+                                              parameterized.TestCase):
+
+  @combinations.generate(all_strategy_combinations())
+  def test_distribution_strategy_on_sequential_model(self, distribution):
+    with distribution.scope():
+      model = simple_sequential_model()
+      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      model.compile(optimizer, loss)
+
+      inputs = np.zeros((20, 10), np.float32)
+      targets = np.zeros((20, 2), np.float32)
+
+    model.fit(inputs, targets, epochs=1, steps_per_epoch=2)
+    model.predict(inputs, steps=1)
+    model.evaluate(inputs, targets, steps=1)
+
+  @combinations.generate(all_strategy_combinations())
+  def test_distribution_strategy_on_functional_model(self, distribution):
+    with distribution.scope():
+      model = get_model()
+      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      model.compile(optimizer, loss)
+
+      inputs = np.zeros((64, 3), dtype=np.float32)
+      targets = np.zeros((64, 4), dtype=np.float32)
+
+    model.fit(inputs, targets, epochs=1, steps_per_epoch=2)
+    model.predict(inputs, steps=1)
+    model.evaluate(inputs, targets, steps=1)
+
+  # TODO(b/124377929): Remove error assertions once subclassed models
+  # are supported in DistributedStrategy.
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_distribution_strategy_on_subclassed_model(self, distribution):
+    with distribution.scope():
+      model = simple_subclassed_model()
+      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      model.compile(optimizer, loss)
+
+      inputs = np.zeros((64, 3), dtype=np.float32)
+      targets = np.zeros((64, 2), dtype=np.float32)
+
+    with self.assertRaisesRegexp(AttributeError, 'has no attribute'):
+      model.fit(inputs, targets, epochs=1, steps_per_epoch=2)
+
+    with self.assertRaisesRegexp(AttributeError, 'has no attribute'):
+      model.predict(inputs, steps=1)
+
+    with self.assertRaisesRegexp(AttributeError, 'has no attribute'):
+      model.evaluate(inputs, targets, steps=1)
 
 
 if __name__ == '__main__':
