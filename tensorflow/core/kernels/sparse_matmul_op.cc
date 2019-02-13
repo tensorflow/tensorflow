@@ -53,8 +53,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-using Eigen::operator==;
-
 template <typename T>
 using BasicMatrix = Eigen::Tensor<T, 2, Eigen::RowMajor>;
 
