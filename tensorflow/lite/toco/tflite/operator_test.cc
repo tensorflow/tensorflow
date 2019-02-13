@@ -240,6 +240,13 @@ TEST_F(OperatorTest, BuiltinGather) {
   ASSERT_NE(nullptr, output_toco_op.get());
 }
 
+TEST_F(OperatorTest, BuiltinGatherNd) {
+  GatherNdOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("GATHER_ND", OperatorType::kGatherNd), op);
+  ASSERT_NE(output_toco_op.get(), nullptr);
+}
+
 TEST_F(OperatorTest, BuiltinL2Pool) {
   L2PoolOperator op;
   op.stride_width = 123;
