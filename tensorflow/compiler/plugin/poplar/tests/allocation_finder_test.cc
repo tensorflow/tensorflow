@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/forward_allocation.h"
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/while_loop_to_repeat_simplify.h"
 
@@ -2605,13 +2606,270 @@ ENTRY %top () -> f32[] {
   EXPECT_EQ(t.input_index, 1);
 }
 
+TEST_F(AllocationFinderTest, InputTupleBiasAdd) {
+  std::string hlo = R"(
+HloModule top
+
+ %_pop_op_matmul_biasadd (arg_0: f32[2,2], arg_1: f32[2]) -> f32[2,2] {
+   %arg_1 = f32[2] parameter(1)
+   %broadcast.12.7.clone = f32[2,2]{1,0} broadcast(%arg_1), dimensions={1}
+   %arg_0 = f32[2,2]{1,0} parameter(0)
+   ROOT %add.12.8.clone = f32[2,2]{1,0} add(f32[2,2]{1,0} %arg_0, f32[2,2]{1,0} %broadcast.12.7.clone)
+ }
+
+ ENTRY %c (arg0.12.0: (f32[2,2], f32[2,2], f32[2])) -> f32[2,2] {
+   %arg0 = (f32[2,2]{1,0}, f32[2,2]{1,0}, f32[2]) parameter(0)
+   %gte0 = f32[2,2]{1,0} get-tuple-element((f32[2,2]{1,0}, f32[2,2]{1,0}, f32[2]) %arg0), index=0
+   %gte1 = f32[2,2]{1,0} get-tuple-element((f32[2,2]{1,0}, f32[2,2]{1,0}, f32[2]) %arg0), index=1
+   %dot.12.6 = f32[2,2]{1,0} dot(f32[2,2]{1,0} %gte0, f32[2,2]{1,0} %gte1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+   %gte2 = f32[2] get-tuple-element((f32[2,2]{1,0}, f32[2,2]{1,0}, f32[2]) %arg0), index=2
+   ROOT %call = f32[2,2]{1,0} fusion(f32[2,2]{1,0} %dot.12.6, %gte2), kind=kCustom, calls=%_pop_op_matmul_biasadd
+ }
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  const auto* root = module0->entry_computation()->root_instruction();
+  const auto* call = root;
+  const auto* dot = call->operand(0);
+  const auto* gte0 = dot->operand(0);
+  const auto* gte1 = dot->operand(1);
+  const auto* gte2 = call->operand(1);
+  const auto* ip_tuple = gte0->operand(0);
+  EXPECT_EQ(ip_tuple, gte1->operand(0));
+  EXPECT_EQ(ip_tuple, gte2->operand(0));
+
+  CompilerAnnotations annotations(module0);
+
+  InplaceFinder inplace_finder(annotations);
+  EXPECT_TRUE(inplace_finder.Run(module0).ValueOrDie());
+
+  AllocationFinder finder(annotations);
+  EXPECT_TRUE(finder.Run(module0).ValueOrDie());
+
+  // Will have both of the dot parameters
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
+
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(ip_tuple, 0));
+  EXPECT_EQ(t.tgt, dot);
+  EXPECT_EQ(t.input_index, 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip_tuple, 1));
+  EXPECT_EQ(t.tgt, dot);
+  EXPECT_EQ(t.input_index, 1);
+
+  ForwardAllocation fwd_finder(annotations);
+  EXPECT_TRUE(fwd_finder.Run(module0).ValueOrDie());
+
+  // We have added one new entry for the bias add
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 3);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(gte2, 0));
+  EXPECT_EQ(t.tgt, call);
+  EXPECT_EQ(t.input_index, 1);
+  EXPECT_EQ(t.layout, dot);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 0);
+  EXPECT_EQ(t.deferred_allocations_path.size(), 1);
+  DeferredAllocationsPath expected_deferred_allocations_path = {
+      std::make_pair(ip_tuple, 2)};
+  EXPECT_EQ(t.deferred_allocations_path, expected_deferred_allocations_path);
+  DeferredAllocations expected_deferred_allocations(
+      expected_deferred_allocations_path.begin(),
+      expected_deferred_allocations_path.end());
+  EXPECT_EQ(annotations.deferred_allocations, expected_deferred_allocations);
+}
+
+TEST_F(AllocationFinderTest, InputTupleInfeedBiasAdd) {
+  std::string hlo = R"(
+HloModule top
+
+ %_pop_op_matmul_biasadd (arg_0: f32[2,2], arg_1: f32[2]) -> f32[2,2] {
+   %arg_1 = f32[2] parameter(1)
+   %broadcast.12.7.clone = f32[2,2]{1,0} broadcast(%arg_1), dimensions={1}
+   %arg_0 = f32[2,2]{1,0} parameter(0)
+   ROOT %add.12.8.clone = f32[2,2]{1,0} add(f32[2,2]{1,0} %arg_0, f32[2,2]{1,0} %broadcast.12.7.clone)
+ }
+
+ ENTRY %c () -> f32[2,2] {
+   %after-all = token[] after-all()
+   %infeed = ((f32[2,2]{1,0}, f32[2,2]{1,0}, f32[2]), token[]) infeed(token[] %after-all), infeed_config="140227418928528"
+   %arg0 = (f32[2,2]{1,0}, f32[2,2]{1,0}, f32[2]) get-tuple-element(((f32[2,2]{1,0}, f32[2,2]{1,0}, f32[2]), token[]) %infeed), index=0
+   %gte0 = f32[2,2]{1,0} get-tuple-element((f32[2,2]{1,0}, f32[2,2]{1,0}, f32[2]) %arg0), index=0
+   %gte1 = f32[2,2]{1,0} get-tuple-element((f32[2,2]{1,0}, f32[2,2]{1,0}, f32[2]) %arg0), index=1
+   %dot.12.6 = f32[2,2]{1,0} dot(f32[2,2]{1,0} %gte0, f32[2,2]{1,0} %gte1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+   %gte2 = f32[2] get-tuple-element((f32[2,2]{1,0}, f32[2,2]{1,0}, f32[2]) %arg0), index=2
+   ROOT %call = f32[2,2]{1,0} fusion(f32[2,2]{1,0} %dot.12.6, %gte2), kind=kCustom, calls=%_pop_op_matmul_biasadd
+ }
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  const auto* root = module0->entry_computation()->root_instruction();
+  const auto* call = root;
+  const auto* dot = call->operand(0);
+  const auto* gte0 = dot->operand(0);
+  const auto* gte1 = dot->operand(1);
+  const auto* gte2 = call->operand(1);
+  const auto* ip_tuple = gte0->operand(0);
+  EXPECT_EQ(ip_tuple, gte1->operand(0));
+  EXPECT_EQ(ip_tuple, gte2->operand(0));
+  const auto* infeed = ip_tuple->operand(0);
+
+  CompilerAnnotations annotations(module0);
+
+  InplaceFinder inplace_finder(annotations);
+  EXPECT_TRUE(inplace_finder.Run(module0).ValueOrDie());
+
+  AllocationFinder finder(annotations);
+  EXPECT_TRUE(finder.Run(module0).ValueOrDie());
+
+  // Will have both of the dot parameters
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(infeed, 0));
+  EXPECT_EQ(t.tgt, dot);
+  EXPECT_EQ(t.input_index, 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(infeed, 1));
+  EXPECT_EQ(t.tgt, dot);
+  EXPECT_EQ(t.input_index, 1);
+
+  ForwardAllocation fwd_finder(annotations);
+  EXPECT_TRUE(fwd_finder.Run(module0).ValueOrDie());
+
+  // We have added one new entry for the bias add
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 3);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(gte2, 0));
+  EXPECT_EQ(t.tgt, call);
+  EXPECT_EQ(t.input_index, 1);
+  EXPECT_EQ(t.layout, dot);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 0);
+  EXPECT_EQ(t.deferred_allocations_path.size(), 2);
+  DeferredAllocationsPath expected_deferred_allocations_path = {
+      std::make_pair(ip_tuple, 2), std::make_pair(infeed, 2)};
+  EXPECT_EQ(t.deferred_allocations_path, expected_deferred_allocations_path);
+  DeferredAllocations expected_deferred_allocations(
+      expected_deferred_allocations_path.begin(),
+      expected_deferred_allocations_path.end());
+  EXPECT_EQ(annotations.deferred_allocations, expected_deferred_allocations);
+}
+
+TEST_F(AllocationFinderTest, NestedInputTupleBatchNormInfParamsWithPath) {
+  std::string hlo = R"(
+HloModule top
+
+ENTRY %top (arg0: (f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2])) -> f32[1,4,4,2] {
+ %arg0 = (f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) parameter(0)
+ %gte0 = f32[1,4,4,2] get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=0
+ %gte1 = f32[1,1,2,2] get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=1
+ %convolution.36.29 = f32[1,4,4,2] convolution(%gte0, %gte1), window={size=1x1}, dim_labels=b01f_01io->b01f
+ %gte2 = (f32[1,2], f32[1,2]) get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=2
+ %gte2.0 = f32[1,2] get-tuple-element((f32[1,2], f32[1,2]) %gte2), index=0
+ %gte2.0_r = f32[2] reshape(%gte2.0)
+ %gte2.1 = f32[1,2] get-tuple-element((f32[1,2], f32[1,2]) %gte2), index=1
+ %gte2.1_r = f32[2] reshape(%gte2.1)
+ %gte3 = f32[2] get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=3
+ %gte4 = f32[2] get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=4
+ ROOT %batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(%convolution.36.29, %gte2.0_r, %gte2.1_r, %gte3, %gte4), epsilon=0.001, feature_index=3
+}
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  const auto* root = module0->entry_computation()->root_instruction();
+  const auto* bn = root;
+  const auto* conv = bn->operand(0);
+  const auto* ip0 = conv->operand(0);
+  const auto* ip1 = conv->operand(1);
+  const auto* reshape1 = bn->operand(1);
+  const auto* reshape2 = bn->operand(2);
+  const auto* ip2_0 = reshape1->operand(0);
+  const auto* ip2_1 = reshape2->operand(0);
+  const auto* nested_tuple = ip2_0->operand(0);
+  CHECK_EQ(nested_tuple, ip2_1->operand(0));
+  const auto* arg_tuple = ip0->operand(0);
+  CHECK_EQ(arg_tuple, ip1->operand(0));
+  CHECK_EQ(arg_tuple, nested_tuple->operand(0));
+
+  CompilerAnnotations annotations(module0);
+
+  InplaceFinder inplace_finder(annotations);
+  EXPECT_TRUE(inplace_finder.Run(module0).ValueOrDie());
+
+  AllocationFinder finder(annotations);
+  EXPECT_TRUE(finder.Run(module0).ValueOrDie());
+
+  // Will have both of the convolution parameters
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
+
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(arg_tuple, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(arg_tuple, 1));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 1);
+
+  ForwardAllocation fwd_finder(annotations);
+  EXPECT_TRUE(fwd_finder.Run(module0).ValueOrDie());
+
+  // We have added one new entry for the bias add
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 4);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip2_0, 0));
+  EXPECT_EQ(t.tgt, bn);
+  EXPECT_EQ(t.input_index, 1);
+  EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 1);
+  EXPECT_EQ(t.backward_path[0], reshape1);
+  EXPECT_EQ(t.deferred_allocations_path.size(), 2);
+  DeferredAllocationsPath expected_deferred_allocations_path0 = {
+      std::make_pair(nested_tuple, 0), std::make_pair(arg_tuple, 2)};
+  EXPECT_EQ(t.deferred_allocations_path, expected_deferred_allocations_path0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip2_1, 0));
+  EXPECT_EQ(t.tgt, bn);
+  EXPECT_EQ(t.input_index, 2);
+  EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 1);
+  EXPECT_EQ(t.backward_path[0], reshape2);
+  EXPECT_EQ(t.deferred_allocations_path.size(), 2);
+  DeferredAllocationsPath expected_deferred_allocations_path1 = {
+      std::make_pair(nested_tuple, 1), std::make_pair(arg_tuple, 3)};
+  EXPECT_EQ(t.deferred_allocations_path, expected_deferred_allocations_path1);
+
+  DeferredAllocations expected_deferred_allocations(
+      expected_deferred_allocations_path0.begin(),
+      expected_deferred_allocations_path0.end());
+  expected_deferred_allocations.insert(
+      expected_deferred_allocations_path1.begin(),
+      expected_deferred_allocations_path1.end());
+  EXPECT_EQ(annotations.deferred_allocations, expected_deferred_allocations);
+}
+
 // TODO:
-// - can forward path traverse TUPLEs
 // - can forward path traverse in-place ops
-// - can forward path traverse elementwise ops
 // - is forward path rejected when going through non-layout preserving inputs
-// - can forward and backward paths start on TUPLE Parameters
-// - can forward and backward paths start on TUPLE and non-TUPLE InFeeds
 
 }  // namespace
 }  // namespace poplarplugin

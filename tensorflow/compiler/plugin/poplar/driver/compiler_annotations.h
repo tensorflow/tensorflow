@@ -45,6 +45,8 @@ struct CompilerAnnotations {
 
   TensorAllocationMap tensor_allocation_map;
 
+  DeferredAllocations deferred_allocations;
+
   ConvClassification classification_map;
 
   InplaceUtil::InplaceInstructions inplace_instructions;

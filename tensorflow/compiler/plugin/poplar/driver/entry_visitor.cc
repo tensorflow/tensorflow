@@ -26,59 +26,66 @@ namespace poplarplugin {
 
 Status EntryVisitor::HandleParameter(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
+  // Go through all the shapes for inst, don't allocate any tensors which are
+  // marked as deferred.
+  std::vector<Shape> shapes = FlattenedXlaShape(inst->shape());
+  for (int64 i = 0; i < shapes.size(); i++) {
+    if (!DeferAllocation(inst, i)) {
+      TF_RETURN_IF_ERROR(AllocateInput(inst, i, shapes[i]));
+    } else {
+      VLOG(1) << "Deferring allocation of " << inst->name() << " sub tensor "
+              << i << ".";
+    }
+  }
+  return Status::OK();
+}
 
+StatusOr<poplar::Tensor> EntryVisitor::PostProcessParameterAllocation(
+    const HloInstruction* inst, int64 flat_tuple_index, poplar::Tensor tensor) {
   poplar::Graph& graph = GetGraph(resources_, inst);
 
   const auto& in_info = resources_.annotations.input_output_aliasing_map
                             .GetEntryInputInfos()[inst->parameter_number()];
 
-  std::vector<Shape> shapes = FlattenedXlaShape(inst->shape());
   std::vector<Shape> module_shapes;
 
-  HloModule* module = inst->parent()->parent();
-  ComputationLayout* layout = module->mutable_entry_computation_layout();
-  if (layout->parameter_count() > inst->parameter_number()) {
-    const Shape& mod_shape = layout->parameter_shape(inst->parameter_number());
+  const HloModule* module = inst->GetModule();
+  const ComputationLayout layout = module->entry_computation_layout();
+  if (layout.parameter_count() > inst->parameter_number()) {
+    const Shape& mod_shape = layout.parameter_shape(inst->parameter_number());
     module_shapes = FlattenedXlaShape(mod_shape);
   }
 
-  for (unsigned i = 0; i < shapes.size(); i++) {
-    poplar::program::Sequence& seq =
-        in_info.IsStreaming() ? sequence : host_to_device;
+  poplar::program::Sequence& seq =
+      in_info.IsStreaming() ? sequence : host_to_device;
 
-    poplar::Tensor out;
-    TF_ASSIGN_OR_RETURN(out, AddTensor(graph, std::make_pair(inst, i),
-                                       shapes[i], resources_, tensor_map));
-
-    if (!UseSyntheticData()) {
-      auto fifo = graph.addHostToDeviceFIFO(
-          GetInputCopyHandle(inst->parameter_number(), i), out.elementType(),
-          out.numElements());
-      seq.add(poplar::program::Copy(
-          fifo, out,
-          !in_info.IsStreaming() || always_rearrange_copies_on_the_host));
-    }
-
-    if (!LayoutUtil::IsMonotonicWithDim0Major(module_shapes[i].layout())) {
-      // Host tensor needs to be host layout
-      non_standard_parameter_layout.insert(inst);
-      out = ConvertToDeviceLayout(module_shapes[i], out);
-    }
-
-    // If a the input to the graph is a resource variable which does not change
-    // a value, then add a clone/copy to make sure it does not get overwritten
-    // between runs
-    if (in_info.IsResourceNotModified()) {
-      poplar::Tensor non_modified_out = out;
-      out = graph.clone(non_modified_out,
-                        GetDebugName(inst) + ".resource_not_modified_clone");
-      sequence.add(poplar::program::Copy(non_modified_out, out));
-    }
-
-    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, out));
+  if (!UseSyntheticData()) {
+    auto fifo = graph.addHostToDeviceFIFO(
+        GetInputCopyHandle(inst->parameter_number(), flat_tuple_index),
+        tensor.elementType(), tensor.numElements());
+    seq.add(poplar::program::Copy(
+        fifo, tensor,
+        !in_info.IsStreaming() || always_rearrange_copies_on_the_host));
   }
-  return Status::OK();
-}  // namespace poplarplugin
+
+  if (!LayoutUtil::IsMonotonicWithDim0Major(
+          module_shapes[flat_tuple_index].layout())) {
+    // Host tensor needs to be host layout
+    non_standard_parameter_layout.insert(inst);
+    tensor = ConvertToDeviceLayout(module_shapes[flat_tuple_index], tensor);
+  }
+
+  // If a the input to the graph is a resource variable which does not change
+  // a value, then add a clone/copy to make sure it does not get overwritten
+  // between runs
+  if (in_info.IsResourceNotModified()) {
+    poplar::Tensor non_modified_tensor = tensor;
+    tensor = graph.clone(non_modified_tensor,
+                         GetDebugName(inst) + ".resource_not_modified_clone");
+    sequence.add(poplar::program::Copy(non_modified_tensor, tensor));
+  }
+  return tensor;
+}
 
 Status EntryVisitor::FinishVisit(HloInstruction* root) {
   VLOG(1) << "Processing FinishVisit";

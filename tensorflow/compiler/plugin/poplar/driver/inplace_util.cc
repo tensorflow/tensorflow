@@ -240,6 +240,8 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
     case HloOpcode::kIota:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kOutfeed:
     case HloOpcode::kReduce:
     case HloOpcode::kParameter:
     case HloOpcode::kDynamicSlice:
@@ -255,8 +257,6 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
     case HloOpcode::kFft:
     case HloOpcode::kGather:
     case HloOpcode::kAfterAll:
-    case HloOpcode::kInfeed:
-    case HloOpcode::kOutfeed:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kScatter:

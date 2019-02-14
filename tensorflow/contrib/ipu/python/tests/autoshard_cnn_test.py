@@ -106,6 +106,43 @@ class AutoshardTest(test_util.TensorFlowTestCase):
           self.assertTrue(o.get_attr('_XlaSharding') is not None)
 
 
+    def testSimpleTrainingWithEdgeFilter(self):
+
+      def my_model(x, y):
+        x = convolutional.conv2d(x, 8, 3, padding='same', name="conv1",
+                                 use_bias=False)
+        x = convolutional.conv2d(x, 8, 3, padding='same', name="conv2",
+                                 use_bias=False)
+        x = convolutional.conv2d(x, 8, 3, padding='same', name="conv3",
+                                 use_bias=False)
+        x = math_ops.reduce_max(x,  axis=[1, 2])
+
+        cross_entropy = nn.softmax_cross_entropy_with_logits(logits=x, labels=y)
+        loss = math_ops.reduce_mean(cross_entropy)
+        optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
+        train = optim.minimize(cross_entropy)
+        return [loss, train]
+
+      with ops.device("cpu"):
+        inp = array_ops.placeholder(np.float32, [1, 12, 12, 4], name="data")
+        lab = array_ops.placeholder(np.float32, [1, 8], name="labl")
+
+      with ops.device("/device:IPU:0"):
+        l, t = my_model(inp, lab)
+
+      filt = lambda e : not (e[0] != 'conv2/Conv2D' and e[1] != 'conv3/Conv2D')
+
+      autoshard.automatic_sharding(2, inp, l, [t], edge_filter=filt)
+
+      op_set = autoshard.dependencies([l, t])
+
+      for o in op_set:
+        if o.device == '/device:IPU:0' and o.type not in ['NoOp', 'Identity']:
+          self.assertTrue(o.get_attr('_XlaSharding') is not None)
+
+
+
+
 
 if __name__ == "__main__":
     googletest.main()

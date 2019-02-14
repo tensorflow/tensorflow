@@ -126,6 +126,15 @@ ArgVector FindTupleInInstructionInput(TensorMap& map, CompilerResources& res,
                                       int64 n, poplar::program::Sequence& seq,
                                       const bool expand_constants = true);
 
+/* This returns a vector of all poplar tensors which are outputs of the inst
+ * operand index `input` in range [range.first, range.second).
+ */
+ArgVector FindInstructionInputsInRange(TensorMap& map, CompilerResources& res,
+                                       const HloInstruction* inst, int64 input,
+                                       std::pair<int64, int64> range,
+                                       poplar::program::Sequence& seq,
+                                       const bool expand_constants = true);
+
 /* This returns the single poplar tensor which is the non-tuple input to the
  * input to the instruction
  */

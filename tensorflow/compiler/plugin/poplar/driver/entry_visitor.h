@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_ENTRY_VISITOR_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_ENTRY_VISITOR_H_
 
+#include "tensorflow/compiler/plugin/poplar/driver/deferred_allocation_visitor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
-#include "tensorflow/compiler/plugin/poplar/driver/visitor_full.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -27,11 +27,11 @@ struct CompilerResources;
 /*
  * This visitor handles inputs and outputs of the entry computation in a module.
  */
-class EntryVisitor : public FullVisitor {
+class EntryVisitor : public DeferredAllocationVisitor {
  public:
   EntryVisitor(CompilerResources& resources,
                const bool always_rearrange_copies_on_the_host)
-      : FullVisitor(resources),
+      : DeferredAllocationVisitor(resources),
         always_rearrange_copies_on_the_host(
             always_rearrange_copies_on_the_host) {}
 
@@ -42,6 +42,11 @@ class EntryVisitor : public FullVisitor {
 
   const poplar::program::Sequence& GetHostToDevice() const;
   const poplar::program::Sequence& GetDeviceToHost() const;
+
+ protected:
+  StatusOr<poplar::Tensor> PostProcessParameterAllocation(
+      const HloInstruction* inst, int64 flat_tuple_index,
+      poplar::Tensor tensor) override;
 
  private:
   Status StreamOutputs(HloInstruction* inst, uint64 start_idx,
