@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import shutil
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
@@ -26,11 +27,14 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import simple_save
 from tensorflow.python.saved_model import utils_impl
@@ -44,9 +48,16 @@ class LoadTest(test.TestCase):
       start = array_ops.placeholder(
           shape=[None], dtype=dtypes.float32, name="start")
       if use_resource:
-        v = resource_variable_ops.ResourceVariable(3.)
+        distractor = variables.RefVariable(-1., name="distractor")
+        v = resource_variable_ops.ResourceVariable(3., name="v")
       else:
-        v = variables.RefVariable(3.)
+        # "distractor" gets saved in the checkpoint and so used in the restore
+        # function, but not in the pruned function for the signature. This tests
+        # node naming: it needs to be consistent (and ideally always the same as
+        # the node in the original GraphDef) for the resource manager to find
+        # the right variable.
+        distractor = variables.RefVariable(-1., name="distractor")
+        v = variables.RefVariable(3., name="v")
       local_variable = variables.VariableV1(
           1.,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -54,7 +65,8 @@ class LoadTest(test.TestCase):
           use_resource=True)
       output = array_ops.identity(start * v * local_variable, name="output")
       with session_lib.Session() as session:
-        session.run([v.initializer, local_variable.initializer])
+        session.run([v.initializer, distractor.initializer,
+                     local_variable.initializer])
         path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
         simple_save.simple_save(
             session,
@@ -87,13 +99,10 @@ class LoadTest(test.TestCase):
     self.assertEqual(8., tape.gradient(output, imported.variables[0]).numpy())
 
   def test_ref_variable_import(self):
-    with self.assertRaises(NotImplementedError):
-      imported = load.load(self._v1_single_metagraph_saved_model(
-          use_resource=False))
-    # TODO(allenl): Support ref variables
-    self.skipTest("Ref variables aren't working yet")
+    saved = self._v1_single_metagraph_saved_model(use_resource=False)
+    imported = load.load(saved)
     fn = imported.signatures["serving_default"]
-    self.assertEqual(6., fn(start=constant_op.constant(2.)))
+    self.assertEqual(6., fn(start=constant_op.constant(2.))["output"].numpy())
 
   def _v1_multi_metagraph_saved_model(self):
     export_graph = ops.Graph()
@@ -143,6 +152,53 @@ class LoadTest(test.TestCase):
     self.assertEqual({"second_output": 21.},
                      self.evaluate(second_imported.signatures["second_key"](
                          second_start=constant_op.constant(2.))))
+
+  def _v1_asset_saved_model(self):
+    export_graph = ops.Graph()
+    vocab_path = os.path.join(self.get_temp_dir(), "vocab.txt")
+    with open(vocab_path, "w") as f:
+      f.write("alpha\nbeta\ngamma\n")
+    with export_graph.as_default():
+      initializer = lookup_ops.TextFileInitializer(
+          vocab_path,
+          key_dtype=dtypes.string,
+          key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
+          value_dtype=dtypes.int64,
+          value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
+      table = lookup_ops.HashTable(
+          initializer, default_value=-1)
+      start = array_ops.placeholder(
+          shape=None, dtype=dtypes.string, name="in")
+      output = table.lookup(start, name="out")
+      with session_lib.Session() as session:
+        session.run([table.initializer])
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(
+            session,
+            path,
+            inputs={"start": start},
+            outputs={"output": output},
+            legacy_init_op=table.initializer)
+    file_io.delete_file(vocab_path)
+    return path
+
+  def test_asset_loading(self):
+    first_path = self._v1_asset_saved_model()
+    imported = load.load(first_path)
+    fn = imported.signatures["serving_default"]
+    self.assertAllClose({"output": [2, 0]},
+                        fn(start=constant_op.constant(["gamma", "alpha"])))
+    second_path = os.path.join(self.get_temp_dir(), "saved_model",
+                               str(ops.uid()))
+    save.save(imported, second_path, signatures=imported.signatures)
+    shutil.rmtree(first_path)
+    self.skipTest(
+        "TODO(b/124321570): save TrackableAssets and make re-saving initialize "
+        "correctly")
+    second_import = load.load(second_path)
+    fn = second_import.signatures["serving_default"]
+    self.assertAllClose({"output": [2, 0]},
+                        fn(start=constant_op.constant(["gamma", "alpha"])))
 
 
 if __name__ == "__main__":

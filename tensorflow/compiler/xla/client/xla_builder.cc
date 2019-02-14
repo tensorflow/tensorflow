@@ -1663,14 +1663,16 @@ XlaOp XlaBuilder::Sort(const XlaOp& keys, absl::Span<const XlaOp> values,
     Lt(first_lhs_param, first_rhs_param);
 
     TF_ASSIGN_OR_RETURN(auto comparator, b->Build());
-    return Sort(operands, comparator, dimension);
+    return Sort(operands, comparator, dimension, /*is_stable=*/false);
   });
 }
 
 XlaOp XlaBuilder::Sort(absl::Span<const XlaOp> operands,
-                       const XlaComputation& comparator, int64 dimension) {
+                       const XlaComputation& comparator, int64 dimension,
+                       bool is_stable) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
+    instr.set_is_stable(is_stable);
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(std::vector<Shape> operand_shapes,
                         GetOperandShapes(operands));
@@ -3320,8 +3322,9 @@ XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values, int64 dimension) {
 }
 
 XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
-           int64 dimension) {
-  return operands[0].builder()->Sort(operands, comparator, dimension);
+           int64 dimension, bool is_stable) {
+  return operands[0].builder()->Sort(operands, comparator, dimension,
+                                     is_stable);
 }
 
 XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max) {

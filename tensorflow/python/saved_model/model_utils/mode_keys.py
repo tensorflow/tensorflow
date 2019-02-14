@@ -37,21 +37,6 @@ class KerasModeKeys(object):
   PREDICT = 'predict'
 
 
-class ModeKeys(object):
-  """Standard names for model modes.
-
-  The following standard keys are defined:
-
-  * `TRAIN`: training/fitting mode.
-  * `TEST`: testing/evaluation mode.
-  * `PREDICT`: prediction/inference mode.
-  """
-
-  TRAIN = 'train'
-  TEST = 'test'
-  PREDICT = 'predict'
-
-
 # TODO(kathywu): Remove copy in Estimator after nightlies
 class EstimatorModeKeys(object):
   """Standard names for Estimator model modes.

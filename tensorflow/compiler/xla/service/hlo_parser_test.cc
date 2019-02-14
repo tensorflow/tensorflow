@@ -1147,6 +1147,24 @@ ENTRY Sort {
 
 )"
 },
+// Sort (Key) is_stable=true
+{
+"SortKeyStable",
+R"(HloModule sort
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
+ENTRY Sort {
+  x = f32[1024]{0} parameter(0)
+  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}, is_stable=true, to_apply=compare
+}
+
+)"
+},
 // Conditional
 {
 "Conditional",

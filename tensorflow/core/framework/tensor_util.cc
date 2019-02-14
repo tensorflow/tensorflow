@@ -37,10 +37,10 @@ Tensor DeepCopy(const Tensor& other) {
              other_data.size());
     }
   } else if (other.dtype() == DT_STRING) {
-    tmp.flat<string>() = other.flat<string>();
+    tmp.unaligned_flat<string>() = other.unaligned_flat<string>();
   } else {
     CHECK_EQ(DT_VARIANT, other.dtype());
-    tmp.flat<Variant>() = other.flat<Variant>();
+    tmp.unaligned_flat<Variant>() = other.unaligned_flat<Variant>();
   }
   return tmp;
 }

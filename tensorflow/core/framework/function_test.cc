@@ -1320,7 +1320,7 @@ TEST(FunctionLibraryDefinitionTest, ReachableDefinitions) {
 
     if (!interface_name.empty()) {
       auto* attr = func_def.mutable_attr();
-      (*attr)["experimental_api_implements"].set_s(interface_name);
+      (*attr)["api_implements"].set_s(interface_name);
     }
     return func_def;
   };

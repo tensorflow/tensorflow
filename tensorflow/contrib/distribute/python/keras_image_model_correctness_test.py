@@ -23,7 +23,7 @@ from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import keras_correctness_test_base
 from tensorflow.python import keras
 from tensorflow.python.eager import test
-from tensorflow.python.training import gradient_descent
+from tensorflow.python.keras.optimizer_v2 import gradient_descent
 
 
 class DistributionStrategyCnnCorrectnessTest(
@@ -33,7 +33,8 @@ class DistributionStrategyCnnCorrectnessTest(
     with keras_correctness_test_base.MaybeDistributionScope(distribution):
       image = keras.layers.Input(shape=(28, 28, 3), name='image')
       c1 = keras.layers.Conv2D(
-          name='conv1', filters=16, kernel_size=(3, 3), strides=(4, 4))(
+          name='conv1', filters=16, kernel_size=(3, 3), strides=(4, 4),
+          kernel_regularizer=keras.regularizers.l2(1e-4))(
               image)
       if self.with_batch_norm:
         c1 = keras.layers.BatchNormalization(name='bn1')(c1)
@@ -47,7 +48,7 @@ class DistributionStrategyCnnCorrectnessTest(
         model.set_weights(initial_weights)
 
       model.compile(
-          optimizer=gradient_descent.GradientDescentOptimizer(
+          optimizer=gradient_descent.SGD(
               learning_rate=0.1),
           loss='sparse_categorical_crossentropy',
           metrics=['sparse_categorical_accuracy'])

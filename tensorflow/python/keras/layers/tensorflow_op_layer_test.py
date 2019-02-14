@@ -41,6 +41,14 @@ def _single_op_at_end():
   return inputs, outputs
 
 
+def _single_identity_op_at_end():
+  inputs = keras.Input(shape=(10,))
+  x = keras.layers.Dense(10)(inputs)
+  outputs = array_ops.identity(x)
+  assert 'Identity' in outputs.name
+  return inputs, outputs
+
+
 def _multiple_ops_at_end():
   inputs = keras.Input(shape=(10,))
   x = keras.layers.Dense(10)(inputs)
@@ -102,18 +110,49 @@ def _add_n():
   return inputs, outputs
 
 
+def _reuse_op():
+  inputs = keras.Input(shape=(10,))
+  # This op needs to be checked multiple times.
+  x = gen_nn_ops.relu(inputs)
+  y = keras.layers.Dense(10)(x)
+  x2 = x * 2
+  y2 = keras.layers.Dense(10)(x2)
+  outputs = y + y2
+  return inputs, outputs
+
+
+class LayerWithLayer(keras.layers.Layer):
+
+  def build(self, input_shape):
+    self.bias = self.add_weight(name='bias', dtype='float32')
+    self.layer = keras.layers.Dense(10)
+
+  def call(self, inputs):
+    inputs = inputs * self.bias
+    # Would throw an error if Keras History was created here.
+    return self.layer(inputs)
+
+
+def _inner_layer():
+  inputs = keras.Input(shape=(10,))
+  outputs = LayerWithLayer()(inputs)
+  return inputs, outputs
+
+
 @keras_parameterized.run_all_keras_modes
 class AutoLambdaTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(
       ('single_op_at_end', _single_op_at_end),
+      ('single_identity_op_at_end', _single_identity_op_at_end),
       ('multiple_ops_at_end', _multiple_ops_at_end),
       ('single_op_in_middle', _single_op_in_middle),
       ('multiple_ops_in_middle', _multiple_ops_in_middle),
       ('single_standalone_branch', _single_standalone_branch),
       ('single_op_with_attrs', _single_op_with_attrs),
       ('multiple_uses', _multiple_uses),
-      ('op_with_tensor_list', _op_with_tensor_list), ('add_n', _add_n))
+      ('op_with_tensor_list', _op_with_tensor_list), ('add_n', _add_n),
+      ('_reuse_op', _reuse_op), ('_inner_layer', _inner_layer))
   def test_autolambda(self, model_fn):
     inputs, outputs = model_fn()
     model = keras.Model(inputs, outputs)
@@ -127,7 +166,8 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     model.fit(np_inputs, np_outputs, batch_size=2)
     model(np_inputs)  # Test calling the model directly on inputs.
 
-    new_model = keras.Model.from_config(model.get_config())
+    new_model = keras.Model.from_config(
+        model.get_config(), custom_objects={'LayerWithLayer': LayerWithLayer})
     new_model.compile(
         adam.Adam(0.001), 'mse', run_eagerly=testing_utils.should_run_eagerly())
     new_model.fit(np_inputs, np_outputs, batch_size=2)

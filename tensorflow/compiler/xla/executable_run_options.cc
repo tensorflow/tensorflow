@@ -77,7 +77,7 @@ ExecutionProfile* ExecutableRunOptions::execution_profile() const {
 }
 
 ExecutableRunOptions& ExecutableRunOptions::set_device_assignment(
-    DeviceAssignment* device_assignment) {
+    const DeviceAssignment* device_assignment) {
   device_assignment_ = device_assignment;
   return *this;
 }

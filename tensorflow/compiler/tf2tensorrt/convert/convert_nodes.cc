@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resource_manager.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -376,6 +375,32 @@ tensorflow::Status CreateBroadcastableScalarConstant(
   TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, params->node_def.name());
   params->converter->ProvideQuantizationRange(
       const_cast<nvinfer1::ITensor*>(*tensor), value, value);
+  return Status::OK();
+}
+
+// Convert an axis from TF format to TRT format while validating. TF format
+// includes the batch dimension, while TRT does not. TF can also use negative
+// indices.
+// TODO(tmorris): Use this method in more ops.
+tensorflow::Status ConvertAxis(int tf_axis, int trt_nb_dims,
+                               absl::string_view node_name, int* trt_axis) {
+  const int tf_nb_dims = trt_nb_dims + 1;
+  // Check bounds.
+  if (tf_axis < -tf_nb_dims || tf_axis >= tf_nb_dims) {
+    return tensorflow::errors::InvalidArgument(
+        "Axis value of ", tf_axis, " is out of bounds, must be in range [",
+        -tf_nb_dims, ", ", tf_nb_dims, "), at ", node_name);
+  }
+  // Make negative axis positive.
+  if (tf_axis < 0) tf_axis += tf_nb_dims;
+  // Don't allow axis to be the batch dimension.
+  if (tf_axis == 0) {
+    return tensorflow::errors::Unimplemented(
+        "TensorRT does not allow manipulation of the batch dimension, at ",
+        node_name);
+  }
+  // Remove batch dimension.
+  *trt_axis = tf_axis - 1;
   return Status::OK();
 }
 
@@ -929,7 +954,7 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
   for (size_t i = 0; i < outputs.size(); ++i) {
     TRT_TensorOrWeights& output = outputs[i];
     string output_name = node_def.name();
-    if (i != 0) output_name = StrCat(output_name, ":", i);
+    if (i != 0) absl::StrAppend(&output_name, ":", i);
     // We need to check the name before setting it. If the input is one of the
     // engine input, setting the name here will overwrite engine input
     // bindings which will cause runtime error.
@@ -3440,7 +3465,7 @@ tensorflow::Status ConvertFusedBatchNorm(OpConverterParams* params) {
   TRT_ShapedWeights dummy_power_weights(parameter_type);
   size_t nweight = 0;
   for (int i = 1; i < 5; i++) {
-    nweight = std::max(nweight, (size_t)inputs.at(i).weights().count());
+    nweight = std::max<size_t>(nweight, inputs.at(i).weights().count());
   }
   TRT_ShapedWeights* ptr_shape_weights = nullptr;
   for (int i = 1; i < 5; i++) {
@@ -3523,6 +3548,29 @@ tensorflow::Status ConvertFusedBatchNorm(OpConverterParams* params) {
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertGather(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(
+      *params, {{"params", false}, {"indices", false}, {"axis", true}}));
+  absl::Span<const int> axis = inputs.at(2).weights().GetSpan<int>();
+  if (axis.size() != 1) {
+    return tensorflow::errors::InvalidArgument(
+        "Axis for GatherV2 must be a scalar, at ", node_def.name());
+  }
+  int trt_axis = 0;
+  TF_RETURN_IF_ERROR(ConvertAxis(axis[0], inputs.at(0).GetTrtDims().nbDims,
+                                 node_def.name(), &trt_axis));
+  if (params->validation_only) return Status::OK();
+
+  nvinfer1::IGatherLayer* layer = params->converter->network()->addGather(
+      *const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor()),
+      *const_cast<nvinfer1::ITensor*>(inputs.at(1).tensor()), trt_axis);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+  return Status::OK();
 }
 
 tensorflow::Status ConvertMatMulHelper(OpConverterParams* params,
@@ -3755,6 +3803,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["Conv2DBackpropInput"] = ConvertConv2DBackpropInput;
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   (*registration)["ExpandDims"] = ConvertExpandDims;
+  (*registration)["GatherV2"] = ConvertGather;
   (*registration)["LeakyRelu"] = ConvertLeakyRelu;
   (*registration)["MatMul"] = ConvertMatMul;
   (*registration)["Pad"] = ConvertPad;
@@ -4011,7 +4060,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
     local_scope = GetCommonNameScope(local_scope, node->name());
     old_to_new_id_map[node->id()] = segment_def->node_size();
     auto snode = segment_def->add_node();
-    snode->CopyFrom(node->def());
+    *snode = node->def();
     VLOG(2) << "Copying " << snode->name() << " to subgraph";
   }
   // Update the inputs of the new input nodes to point to placeholder nodes.

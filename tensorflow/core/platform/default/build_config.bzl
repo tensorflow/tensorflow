@@ -551,6 +551,10 @@ def tf_additional_human_readable_json_deps():
 def tf_additional_all_protos():
     return ["//tensorflow/core:protos_all"]
 
+# TODO(fishx): Remove it after moving profiler proto out from contrib.
+def tf_profiler_all_protos():
+    return ["//tensorflow/core/profiler:protos_all"]
+
 def tf_protos_all_impl():
     return ["//tensorflow/core:protos_all_cc_impl"]
 
@@ -719,12 +723,6 @@ def tf_additional_mpi_lib_defines():
 def tf_additional_gdr_lib_defines():
     return select({
         "//tensorflow:with_gdr_support": ["TENSORFLOW_USE_GDR"],
-        "//conditions:default": [],
-    })
-
-def tf_additional_numa_lib_defines():
-    return select({
-        "//tensorflow:with_numa_support": ["TENSORFLOW_USE_NUMA"],
         "//conditions:default": [],
     })
 

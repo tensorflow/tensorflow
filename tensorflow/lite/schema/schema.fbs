@@ -221,6 +221,8 @@ enum BuiltinOperator : byte {
   REVERSE_V2 = 105,
   ADD_N = 106,
   GATHER_ND = 107,
+  COS = 108,
+  WHERE = 109,
 }
 
 // Options for the builtin operators.
@@ -308,6 +310,8 @@ union BuiltinOptions {
   ReverseV2Options,
   AddNOptions,
   GatherNdOptions,
+  CosOptions,
+  WhereOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -551,6 +555,9 @@ table TransposeOptions {
 table ExpOptions {
 }
 
+table CosOptions {
+}
+
 table ReducerOptions {
   keep_dims: bool;
 }
@@ -732,6 +739,9 @@ table AddNOptions {
 }
 
 table GatherNdOptions {
+}
+
+table WhereOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

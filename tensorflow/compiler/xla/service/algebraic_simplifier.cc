@@ -280,15 +280,51 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
         hlo));
   }
 
-  // Helper method to perform and add reduction in a single dimension.
-  HloInstruction* AddReduce(HloInstruction* hlo, int64 dim) {
+  // Converts to primitive type if the input hlo is not that type, otherwise
+  // returns the original hlo.
+  HloInstruction* AsType(HloInstruction* hlo,
+                         const PrimitiveType element_type) {
+    if (hlo->shape().element_type() == element_type) {
+      return hlo;
+    }
+    return computation_->AddInstruction(HloInstruction::CreateConvert(
+        ShapeUtil::ChangeElementType(hlo->shape(), element_type), hlo));
+  }
+
+  // Transposes a dot operand such that the batch dimensions are the msot major,
+  // and the contracting dimensions are most minor.
+  StatusOr<HloInstruction*> NormalizeDotOperandToBatchMajorAndContractingMinor(
+      HloInstruction* dot_operand, absl::Span<const int64> batch_dimensions,
+      absl::Span<const int64> contracting_dimensions) {
+    std::vector<int64> transpose_dimensions(batch_dimensions.begin(),
+                                            batch_dimensions.end());
+    for (int64 i = 0; i < dot_operand->shape().rank(); ++i) {
+      if (!(absl::c_linear_search(batch_dimensions, i) ||
+            absl::c_linear_search(contracting_dimensions, i))) {
+        transpose_dimensions.push_back(i);
+      }
+    }
+    transpose_dimensions.insert(transpose_dimensions.end(),
+                                contracting_dimensions.begin(),
+                                contracting_dimensions.end());
+    return MakeTransposeHlo(dot_operand, transpose_dimensions);
+  }
+
+  // Helper method to perform and add reduction on a list of dimensions.
+  HloInstruction* AddReduce(HloInstruction* hlo, absl::Span<const int64> dims) {
     HloInstruction* zero =
         computation_->AddInstruction(HloInstruction::CreateConstant(
             LiteralUtil::Zero(hlo->shape().element_type()).Clone()));
     HloComputation* AddReduce_computation = GetOrCreateScalarAddComputation();
-    Shape shape = ShapeUtil::DeleteDimension(dim, hlo->shape());
+    Shape shape = ShapeUtil::FilterDimensions(
+        [&](int64 dim) { return !absl::c_linear_search(dims, dim); },
+        hlo->shape());
     return computation_->AddInstruction(HloInstruction::CreateReduce(
-        shape, hlo, zero, {dim}, AddReduce_computation));
+        shape, hlo, zero, dims, AddReduce_computation));
+  }
+
+  HloInstruction* AddReduce(HloInstruction* hlo, int64 dim) {
+    return AddReduce(hlo, std::vector<int64>{dim});
   }
 
   // Convenience method for replacing an instruction with a bitcast. If operand
@@ -1120,16 +1156,8 @@ StatusOr<bool> AlgebraicSimplifierVisitor::HandleDotStrengthReduction(
     std::swap(rhs_collapsing_dim, rhs_kept_dim);
   }
 
-  auto as_type = [&](HloInstruction* hlo, const PrimitiveType element_type) {
-    if (hlo->shape().element_type() == element_type) {
-      return hlo;
-    }
-    return computation_->AddInstruction(HloInstruction::CreateConvert(
-        ShapeUtil::ChangeElementType(hlo->shape(), element_type), hlo));
-  };
-
   auto reshape_if_necessary = [&](HloInstruction* hlo) {
-    hlo = as_type(hlo, dot->shape().element_type());
+    hlo = AsType(hlo, dot->shape().element_type());
     if (!ShapeUtil::SameDimensions(hlo->shape(), dot->shape())) {
       hlo = computation_->AddInstruction(
           HloInstruction::CreateReshape(dot->shape(), hlo));
@@ -1138,7 +1166,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::HandleDotStrengthReduction(
   };
 
   auto add_reduce_in_f32 = [&](HloInstruction* hlo, const int64 dim) {
-    return AddReduce(as_type(hlo, F32), dim);
+    return AddReduce(AsType(hlo, F32), dim);
   };
 
   auto broadcast = [&](HloInstruction* hlo, const Shape& shape,
@@ -1247,8 +1275,8 @@ StatusOr<bool> AlgebraicSimplifierVisitor::HandleDotStrengthReduction(
     return dims;
   };
 
-  // If the contracting dimension is 1, remove the degnerate dimnesions from the
-  // lhs and rhs, broadcast each to the result shape and multiply.
+  // If the contracting dimension is 1, remove the degnerate dimnensions from
+  // the lhs and rhs, broadcast each to the result shape and multiply.
   if (lhs->shape().dimensions(lhs_collapsing_dim) == 1 &&
       (rhs_kept_dim == rhs_rank - 1 ||
        (rhs_collapsing_dim == rhs_rank - 1 && rhs_kept_dim == rhs_rank - 2))) {
@@ -1605,28 +1633,113 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     return Status::OK();
   }
 
-  // If a dot only contains batch dimensions, then tranpose the rhs and lhs
-  // acording to the batch dimension numbers and do a simple multiply.
-  if (lhs->shape().rank() ==
-          dot->dot_dimension_numbers().lhs_batch_dimensions_size() &&
-      rhs->shape().rank() ==
-          dot->dot_dimension_numbers().rhs_batch_dimensions_size()) {
-    HloInstruction* new_rhs = rhs;
-    HloInstruction* new_lhs = lhs;
-    if (lhs->shape().rank() > 1) {
-      TF_ASSIGN_OR_RETURN(
-          new_rhs,
-          MakeTransposeHlo(
-              rhs, AsInt64Slice(
-                       dot->dot_dimension_numbers().rhs_batch_dimensions())));
-      TF_ASSIGN_OR_RETURN(
-          new_lhs,
-          MakeTransposeHlo(
-              lhs, AsInt64Slice(
-                       dot->dot_dimension_numbers().lhs_batch_dimensions())));
+  // If there are no contracting dimensions, a dot can be rewritten as
+  // mul(broadcast(transpose(x)),broadcast(transpose(y)))
+  if (dot->dot_dimension_numbers().lhs_contracting_dimensions_size() == 0) {
+    TF_ASSIGN_OR_RETURN(
+        HloInstruction * new_lhs,
+        NormalizeDotOperandToBatchMajorAndContractingMinor(
+            lhs,
+            AsInt64Slice(dot->dot_dimension_numbers().lhs_batch_dimensions()),
+            AsInt64Slice(
+                dot->dot_dimension_numbers().lhs_contracting_dimensions())));
+    if (dot->shape().rank() != lhs->shape().rank()) {
+      std::vector<int64> lhs_broadcast_dims(lhs->shape().rank());
+      absl::c_iota(lhs_broadcast_dims, 0);
+      new_lhs = computation_->AddInstruction(HloInstruction::CreateBroadcast(
+          dot->shape(), new_lhs, lhs_broadcast_dims));
     }
-    TF_ASSIGN_OR_RETURN(auto new_dot,
+    TF_ASSIGN_OR_RETURN(
+        HloInstruction * new_rhs,
+        NormalizeDotOperandToBatchMajorAndContractingMinor(
+            rhs,
+            AsInt64Slice(dot->dot_dimension_numbers().rhs_batch_dimensions()),
+            AsInt64Slice(
+                dot->dot_dimension_numbers().rhs_contracting_dimensions())));
+    if (dot->shape().rank() != rhs->shape().rank()) {
+      std::vector<int64> rhs_broadcast_dims(
+          dot->dot_dimension_numbers().lhs_batch_dimensions_size());
+      absl::c_iota(rhs_broadcast_dims, 0);
+      for (int64 i = lhs->shape().rank(); i < dot->shape().rank(); ++i) {
+        rhs_broadcast_dims.push_back(i);
+      }
+      new_rhs = computation_->AddInstruction(HloInstruction::CreateBroadcast(
+          dot->shape(), new_rhs, rhs_broadcast_dims));
+    }
+    return ReplaceWithNewInstruction(
+        dot, HloInstruction::CreateBinary(dot->shape(), HloOpcode::kMultiply,
+                                          new_lhs, new_rhs));
+  }
+
+  // If the lhs or rhs have only batch and contracting dimensions, a dot can be
+  // rewritten as reduce(mul(broadcast(transpose(x)),broadcast(transpose(y))))
+  if ((dot->dot_dimension_numbers().lhs_batch_dimensions_size() +
+           dot->dot_dimension_numbers().lhs_contracting_dimensions_size() ==
+       lhs->shape().rank()) ||
+      (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() +
+           dot->dot_dimension_numbers().rhs_batch_dimensions_size() ==
+       rhs->shape().rank())) {
+    TF_ASSIGN_OR_RETURN(
+        HloInstruction * new_lhs,
+        NormalizeDotOperandToBatchMajorAndContractingMinor(
+            lhs,
+            AsInt64Slice(dot->dot_dimension_numbers().lhs_batch_dimensions()),
+            AsInt64Slice(
+                dot->dot_dimension_numbers().lhs_contracting_dimensions())));
+    TF_ASSIGN_OR_RETURN(
+        HloInstruction * new_rhs,
+        NormalizeDotOperandToBatchMajorAndContractingMinor(
+            rhs,
+            AsInt64Slice(dot->dot_dimension_numbers().rhs_batch_dimensions()),
+            AsInt64Slice(
+                dot->dot_dimension_numbers().rhs_contracting_dimensions())));
+
+    int64 lhs_outer_dims =
+        lhs->shape().rank() -
+        (dot->dot_dimension_numbers().lhs_batch_dimensions_size() +
+         dot->dot_dimension_numbers().lhs_contracting_dimensions_size());
+    int64 rhs_outer_dims =
+        rhs->shape().rank() -
+        (dot->dot_dimension_numbers().rhs_batch_dimensions_size() +
+         dot->dot_dimension_numbers().rhs_contracting_dimensions_size());
+    CHECK(lhs_outer_dims == 0 || rhs_outer_dims == 0);
+    if (rhs_outer_dims > 0) {
+      std::vector<int64> lhs_broadcast_dims(
+          dot->dot_dimension_numbers().lhs_batch_dimensions_size());
+      absl::c_iota(lhs_broadcast_dims, 0);
+      lhs_broadcast_dims.resize(lhs->shape().rank());
+      std::iota(lhs_broadcast_dims.begin() +
+                    dot->dot_dimension_numbers().lhs_batch_dimensions_size(),
+                lhs_broadcast_dims.end(),
+                dot->dot_dimension_numbers().lhs_batch_dimensions_size() +
+                    rhs_outer_dims);
+      new_lhs = computation_->AddInstruction(HloInstruction::CreateBroadcast(
+          new_rhs->shape(), new_lhs, lhs_broadcast_dims));
+    } else if (lhs_outer_dims > 0) {
+      std::vector<int64> rhs_broadcast_dims(
+          dot->dot_dimension_numbers().rhs_batch_dimensions_size());
+      absl::c_iota(rhs_broadcast_dims, 0);
+      rhs_broadcast_dims.resize(rhs->shape().rank());
+      std::iota(rhs_broadcast_dims.begin() +
+                    dot->dot_dimension_numbers().rhs_batch_dimensions_size(),
+                rhs_broadcast_dims.end(),
+                dot->dot_dimension_numbers().rhs_batch_dimensions_size() +
+                    lhs_outer_dims);
+      new_rhs = computation_->AddInstruction(HloInstruction::CreateBroadcast(
+          new_lhs->shape(), new_rhs, rhs_broadcast_dims));
+    }
+
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
                         MakeBinaryHlo(HloOpcode::kMultiply, new_lhs, new_rhs));
+    std::vector<int64> reduce_dims(
+        dot->dot_dimension_numbers().lhs_contracting_dimensions_size());
+    new_dot = AsType(new_dot, F32);
+    const int64 outer_dims = std::max(rhs_outer_dims, lhs_outer_dims);
+    absl::c_iota(
+        reduce_dims,
+        outer_dims + dot->dot_dimension_numbers().lhs_batch_dimensions_size());
+    new_dot = AddReduce(new_dot, reduce_dims);
+    new_dot = AsType(new_dot, dot->shape().element_type());
     return ReplaceInstruction(dot, new_dot);
   }
 

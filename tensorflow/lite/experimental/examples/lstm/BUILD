@@ -5,8 +5,8 @@ package(default_visibility = ["//tensorflow:internal"])
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
-    name = "tflite_lstm",
-    srcs = ["tflite_lstm.py"],
+    name = "rnn",
+    srcs = ["rnn.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
@@ -18,8 +18,8 @@ py_library(
 )
 
 py_library(
-    name = "tflite_rnn",
-    srcs = ["tflite_rnn.py"],
+    name = "rnn_cell",
+    srcs = ["rnn_cell.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
@@ -40,7 +40,8 @@ py_test(
         "no_pip",
     ],
     deps = [
-        ":tflite_lstm",
+        ":rnn",
+        ":rnn_cell",
         "//tensorflow:tensorflow_py",
         "//tensorflow/examples/tutorials/mnist:input_data",
         "//tensorflow/lite/python:lite",
@@ -62,7 +63,8 @@ py_test(
         "no_pip",
     ],
     deps = [
-        ":tflite_rnn",
+        ":rnn",
+        ":rnn_cell",
         "//tensorflow:tensorflow_py",
         "//tensorflow/examples/tutorials/mnist:input_data",
         "//tensorflow/lite/python:lite",
@@ -84,7 +86,7 @@ py_test(
         "no_pip",
     ],
     deps = [
-        ":tflite_lstm",
+        ":rnn_cell",
         "//tensorflow:tensorflow_py",
         "//tensorflow/examples/tutorials/mnist:input_data",
         "//tensorflow/lite/python:lite",
@@ -106,7 +108,7 @@ py_test(
         "no_pip",
     ],
     deps = [
-        ":tflite_rnn",
+        ":rnn_cell",
         "//tensorflow:tensorflow_py",
         "//tensorflow/examples/tutorials/mnist:input_data",
         "//tensorflow/lite/python:lite",

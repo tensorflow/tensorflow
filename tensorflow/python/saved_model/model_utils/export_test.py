@@ -24,7 +24,6 @@ import time
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -32,21 +31,6 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model.model_utils import export_output
 from tensorflow.python.saved_model.model_utils import export_utils
-
-
-class LabeledTensorMock(object):
-  """Mock class emulating LabeledTensor."""
-
-  def __init__(self):
-    self.tensor = constant_op.constant([1])
-
-
-def _convert_labeled_tensor_mock_to_tensor(value, *args, **kwargs):
-  return ops.internal_convert_to_tensor(value.tensor, *args, **kwargs)
-
-
-ops.register_tensor_conversion_function(LabeledTensorMock,
-                                        _convert_labeled_tensor_mock_to_tensor)
 
 
 class ExportTest(test_util.TensorFlowTestCase):

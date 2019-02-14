@@ -384,6 +384,14 @@ class HloInstruction {
 
   // Creates a random number generation instruction that fills a shape with
   // random numbers from a given distribution.
+  //
+  // The parameters to the instruction are interpreted as follows:
+  //
+  //  - If `distribution` is RNG_UNIFORM, generates a number in range
+  //    [param0, param1).
+  //
+  //  - If `distribution` is RNG_NORMAL, generates a normally-distributed value
+  //    with mean `param0` and standard deviation `param1`.
   static std::unique_ptr<HloInstruction> CreateRng(
       const Shape& shape, RandomDistribution distribution,
       absl::Span<HloInstruction* const> parameters);
@@ -678,10 +686,11 @@ class HloInstruction {
   // comparisons in the sorting algorithm. 'compare' gets 2 * n parameters,
   // where parameters 2 * i and 2 * i + 1 are the values of the i-th operand at
   // specific index positions which should be compared, and should return a
-  // PRED.
+  // PRED. 'is_stable' specifies whether stable sorting is required.
   static std::unique_ptr<HloInstruction> CreateSort(
       const Shape& shape, int64 dimension,
-      absl::Span<HloInstruction* const> operands, HloComputation* compare);
+      absl::Span<HloInstruction* const> operands, HloComputation* compare,
+      bool is_stable);
 
   // Creates a while instruction, given a condition computation, a body
   // computation, and the initial value for the input of the computations. For
@@ -1286,6 +1295,9 @@ class HloInstruction {
     backend_config_ = std::move(config_str);
   }
 
+  bool is_default_config() const { return is_default_config_; }
+  void set_default_config() { is_default_config_ = true; }
+
   // Returns a string representation of a proto in the format used by
   // raw_backend_config_string.
   //
@@ -1733,6 +1745,10 @@ class HloInstruction {
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
   string backend_config_;
+
+  // This field is assigned to true when backend_config_ is assigned to
+  // a default configuration.
+  bool is_default_config_ = false;
 
   // String identifier for instruction.
   string name_;

@@ -603,7 +603,7 @@ def func_graph_from_py_func(name,
                   strip_decorators=(def_function.function,),
                   optional_features=autograph_options,
                   force_conversion=True,
-              ), *args, **kwargs)
+              ), args, kwargs)
 
         # Wrapping around a decorator allows checks like tf_inspect.getargspec
         # to be accurate.

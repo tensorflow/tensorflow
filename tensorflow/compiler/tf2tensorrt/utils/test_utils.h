@@ -16,8 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TEST_UTILS_H_
 #define TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TEST_UTILS_H_
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace tensorrt {

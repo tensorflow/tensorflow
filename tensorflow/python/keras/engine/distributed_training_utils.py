@@ -67,7 +67,7 @@ def set_weights(distribution_strategy, dist_model, weights):
     weights = weights[num_param:]
 
   if not ops.executing_eagerly_outside_functions():
-    K.get_session().run(assign_ops)
+    K.get_session(assign_ops).run(assign_ops)
 
 
 def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
@@ -522,7 +522,7 @@ def initialize_iterator(iterator, distribution_strategy):
   with distribution_strategy.scope():
     init_op = control_flow_ops.group(iterator.initialize())
     if not context.executing_eagerly():
-      K.get_session().run(init_op)
+      K.get_session((init_op,)).run(init_op)
 
 
 def _get_input_from_iterator(iterator, model):
@@ -805,22 +805,31 @@ def _make_eager_execution_function(model, mode):
   # NOTE(priyag): Try creating a new FuncGraph within DS scope instead of using
   # the global one.
   strategy = model._distribution_strategy
-  with K.get_graph().as_default(), strategy.scope():
-    # Create train ops on each of the devices when we call
-    # `_per_device_fit_function`.
-    (grouped_inputs, grouped_outputs) = strategy.extended.call_for_each_replica(
-        _per_device_function, args=(get_distributed_model(model, mode),))
+  global_graph = K.get_graph()
 
-    # Unwrap all the per device values returned from `call_for_each_replica`.
-    # Unwrapping per device values gives you a list of values that can be
-    # used to construct a new train function that is composed of inptus/outputs
-    # on all the devices over which the model is distributed.
-    (all_inputs, all_outputs, _, _) = unwrap_values(
-        strategy,
-        grouped_inputs,
-        grouped_outputs,
-        with_loss_tensor=(mode != ModeKeys.PREDICT))
+  with global_graph.as_default(), strategy.scope():
+    # First we gather the relevant portions of the model across all replicas.
+    # `K._scratch_graph(global_graph)` signals to Keras that it should not
+    # lift to a separate graph when creating the per-replica functions.
+    with K._scratch_graph(global_graph):
+      # Create train ops on each of the devices when we call
+      # `_per_device_fit_function`.
+      grouped = strategy.extended.call_for_each_replica(
+          _per_device_function, args=(get_distributed_model(model, mode),))
+      grouped_inputs, grouped_outputs = grouped
 
+      # Unwrap all the per device values returned from `call_for_each_replica`.
+      # Unwrapping per device values gives you a list of values that can be
+      # used to construct a new train function that is composed of
+      # inputs/outputs on all the devices over which the model is distributed.
+      (all_inputs, all_outputs, _, _) = unwrap_values(
+          strategy,
+          grouped_inputs,
+          grouped_outputs,
+          with_loss_tensor=(mode != ModeKeys.PREDICT))
+
+    # Finally, a joint Keras function is created; this one will be created in
+    # a separate FuncGraph.
     return K.function(
         all_inputs,
         all_outputs,

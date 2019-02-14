@@ -55,11 +55,13 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
       batching._RebatchDataset(dataset, num_workers=4)
 
   def testNotDivisibleError(self, drop_remainder):
-    # TODO(rohanj): This should fail even with drop_remainder=False, by adding
-    # an assertion in the mutated graph.
-    dataset = dataset_ops.Dataset.range(1024).batch(32, drop_remainder=True)
-    with self.assertRaisesRegexp(ValueError, "not divisible by"):
-      batching._RebatchDataset(dataset, num_workers=5)
+    dataset = dataset_ops.Dataset.range(1024).batch(
+        32, drop_remainder=drop_remainder)
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "not divisible by"):
+      rebatched_dataset = batching._RebatchDataset(dataset, num_workers=5)
+      next_element = self.getNext(rebatched_dataset)
+      self.evaluate(next_element())
 
   def testTupleOutput(self, drop_remainder):
     dataset = (

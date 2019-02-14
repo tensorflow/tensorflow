@@ -54,7 +54,7 @@ const uint32_t kMaxNumString = UINT_MAX / sizeof(int32_t) - 2;
 
 // Verifies string tensor has legit buffer contents that follow the schema
 // defined in lite/string_util.h
-bool VerifyStringTensorBuffer(const Buffer& buffer,
+bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
                               ErrorReporter* error_reporter) {
   uint32_t buffer_size = buffer.data()->size();
   const char* buffer_ptr = reinterpret_cast<const char*>(buffer.data()->data());
@@ -62,7 +62,8 @@ bool VerifyStringTensorBuffer(const Buffer& buffer,
   uint32_t num_strings = *GetIntPtr(buffer_ptr);
   if (num_strings > kMaxNumString) {
     ReportError(error_reporter,
-                "String tensor has invalid num of string set: %d", num_strings);
+                "String tensor %s has invalid num of string set: %d",
+                tensor.name()->c_str(), num_strings);
     return false;
   }
   uint32_t header_offsets =
@@ -70,9 +71,9 @@ bool VerifyStringTensorBuffer(const Buffer& buffer,
 
   if (buffer_size < header_offsets) {
     ReportError(error_reporter,
-                "String tensor buffer requires at least %d bytes, but is "
+                "String tensor %s buffer requires at least %d bytes, but is "
                 "allocated with %d bytes",
-                header_offsets, buffer_size);
+                tensor.name()->c_str(), header_offsets, buffer_size);
     return false;
   }
 
@@ -81,22 +82,24 @@ bool VerifyStringTensorBuffer(const Buffer& buffer,
 
   if (*GetIntPtr(buffer_ptr + offset) != header_offsets) {
     ReportError(error_reporter,
-                "String tensor buffer initial offset must be: %d",
-                header_offsets);
+                "String tensor %s buffer initial offset must be: %d",
+                tensor.name()->c_str(), header_offsets);
     return false;
   }
   offset += sizeof(int32_t);
   for (int i = 1; i <= num_strings; i++, offset += sizeof(int32_t)) {
     int string_offset = *GetIntPtr(buffer_ptr + offset);
     if (string_offset < prev_ptr || string_offset > buffer_size) {
-      ReportError(error_reporter, "String tensor buffer is invalid: index %d",
-                  i);
+      ReportError(error_reporter,
+                  "String tensor %s buffer is invalid: index %d",
+                  tensor.name()->c_str(), i);
       return false;
     }
   }
   if (*GetIntPtr(buffer_ptr + offset - sizeof(int32_t)) != buffer_size) {
-    ReportError(error_reporter, "String tensor buffer last offset must be %d",
-                buffer_size);
+    ReportError(error_reporter,
+                "String tensor %s buffer last offset must be %d",
+                tensor.name()->c_str(), buffer_size);
     return false;
   }
   return true;
@@ -107,13 +110,15 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
                                ErrorReporter* error_reporter) {
   uint64_t bytes_required = 1;
   if (!tensor.shape()) {
-    ReportError(error_reporter, "Tensor shape is empty");
+    ReportError(error_reporter, "Tensor %s shape is empty",
+                tensor.name()->c_str());
     return false;
   }
   for (int dim : *tensor.shape()) {
     bytes_required *= dim;
     if (bytes_required > UINT_MAX) {
-      ReportError(error_reporter, "Tensor dimension overflow");
+      ReportError(error_reporter, "Tensor %s dimension overflow",
+                  tensor.name()->c_str());
       return false;
     }
   }
@@ -121,11 +126,14 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     case TensorType_FLOAT32:
       bytes_required *= sizeof(float);
       break;
-    case TensorType_INT32:
-      bytes_required *= sizeof(int32_t);
+    case TensorType_INT8:
+      bytes_required *= sizeof(int8_t);
       break;
     case TensorType_UINT8:
       bytes_required *= sizeof(uint8_t);
+      break;
+    case TensorType_INT32:
+      bytes_required *= sizeof(int32_t);
       break;
     case TensorType_INT64:
       bytes_required *= sizeof(int64_t);
@@ -133,19 +141,21 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     case TensorType_FLOAT16:
       // FALLTHROUGH_INTENDED;
     default:
-      ReportError(error_reporter, "Invalid tensor type: %d", tensor.type());
+      ReportError(error_reporter, "Tensor %s invalid type: %d",
+                  tensor.name()->c_str(), tensor.type());
       return false;
   }
   if (bytes_required > UINT_MAX) {
-    ReportError(error_reporter, "Tensor dimension overflow");
+    ReportError(error_reporter, "Tensor %s dimension overflow",
+                tensor.name()->c_str());
     return false;
   }
 
   if (bytes_required != buffer.data()->size()) {
     ReportError(
         error_reporter,
-        "Tensor requires %d bytes, but is allocated with %d bytes buffer",
-        bytes_required, buffer.data()->size());
+        "Tensor %s requires %d bytes, but is allocated with %d bytes buffer",
+        tensor.name()->c_str(), bytes_required, buffer.data()->size());
     return false;
   }
   return true;
@@ -299,14 +309,14 @@ bool VerifyTensors(const Model& model, ErrorReporter* error_reporter) {
         continue;
       }
       if (tensor->buffer() >= model.buffers()->size()) {
-        ReportError(error_reporter, "Invalid tensor buffer index: %d",
-                    tensor->buffer());
+        ReportError(error_reporter, "Tensor %s invalid buffer index: %d",
+                    tensor->name(), tensor->buffer());
         return false;
       }
       auto* buffer = model.buffers()->Get(tensor->buffer());
       if (!buffer) {
-        ReportError(error_reporter, "Tensor buffer %d not set",
-                    tensor->buffer());
+        ReportError(error_reporter, "Tensor %s buffer %d not set",
+                    tensor->name(), tensor->buffer());
         return false;
       }
 
@@ -314,7 +324,7 @@ bool VerifyTensors(const Model& model, ErrorReporter* error_reporter) {
       // buffers will be allocated by the interpreter at run-time.
       if (buffer->data()) {
         if (tensor->type() == TensorType_STRING) {
-          if (!VerifyStringTensorBuffer(*buffer, error_reporter)) {
+          if (!VerifyStringTensorBuffer(*tensor, *buffer, error_reporter)) {
             return false;
           }
         } else {

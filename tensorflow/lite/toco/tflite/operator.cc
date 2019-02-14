@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
+
 // TODO(ycling): Consider refactoring to extract the LSTM definition out of
 // graph_transformation module.
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -199,6 +200,12 @@ class Add : public BuiltinOperator<AddOperator, ::tflite::AddOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -269,6 +276,12 @@ class Sub : public BuiltinOperator<SubOperator, ::tflite::SubOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -314,6 +327,12 @@ class BatchToSpaceND
                    TocoOperator* op) const override {}
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -498,6 +517,26 @@ class Gather : public BuiltinOperator<GatherOperator, ::tflite::GatherOptions,
     if (input_array.data_type == ArrayDataType::kInt8) {
       return 2;
     }
+    return 1;
+  }
+};
+
+class GatherNd
+    : public BuiltinOperator<GatherNdOperator, ::tflite::GatherNdOptions,
+                             ::tflite::BuiltinOptions_GatherNdOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateGatherNdOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
     return 1;
   }
 };
@@ -725,6 +764,12 @@ class Pad : public BuiltinOperator<PadOperator, ::tflite::PadOptions,
                    TocoOperator* op) const override {}
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -762,6 +807,12 @@ class PadV2 : public BuiltinOperator<PadV2Operator, ::tflite::PadV2Options,
                    TocoOperator* op) const override {}
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -835,6 +886,12 @@ class SpaceToDepth
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1607,6 +1664,20 @@ class Shape
   }
 };
 
+class Slice : public SimpleOperator<SliceOperator> {
+ public:
+  explicit Slice() : SimpleOperator("SLICE", OperatorType::kSlice) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
 class OneHot : public BuiltinOperator<OneHotOperator, ::tflite::OneHotOptions,
                                       ::tflite::BuiltinOptions_OneHotOptions> {
  public:
@@ -2184,6 +2255,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                  OperatorType::kFullyConnected));
   ops.push_back(MakeUnique<Gather>(::tflite::BuiltinOperator_GATHER,
                                    OperatorType::kGather));
+  ops.push_back(MakeUnique<GatherNd>(::tflite::BuiltinOperator_GATHER_ND,
+                                     OperatorType::kGatherNd));
   ops.push_back(
       MakeUnique<L2Normalization>(::tflite::BuiltinOperator_L2_NORMALIZATION,
                                   OperatorType::kL2Normalization));
@@ -2317,6 +2390,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       MakeUnique<SimpleOperator<TanhOperator>>("TANH", OperatorType::kTanh));
   ops.push_back(
       MakeUnique<SimpleOperator<ExpOperator>>("EXP", OperatorType::kExp));
+  ops.push_back(
+      MakeUnique<SimpleOperator<CosOperator>>("COS", OperatorType::kCos));
   ops.push_back(MakeUnique<SimpleOperator<LogSoftmaxOperator>>(
       "LOG_SOFTMAX", OperatorType::kLogSoftmax));
   ops.push_back(MakeUnique<Maximum>());  //  Element-wise Maximum
@@ -2330,8 +2405,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(
       MakeUnique<SimpleOperator<NegOperator>>("NEG", OperatorType::kNeg));
   ops.push_back(MakeUnique<Select>());
-  ops.push_back(
-      MakeUnique<SimpleOperator<SliceOperator>>("SLICE", OperatorType::kSlice));
+  ops.push_back(MakeUnique<Slice>());
   ops.push_back(
       MakeUnique<SimpleOperator<PowOperator>>("POW", OperatorType::kPow));
   ops.push_back(MakeUnique<SimpleOperator<LogicalOrOperator>>(
