@@ -23,7 +23,9 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
-template <typename input_type = float,
+template <typename index_type = int32_t,
+          TensorType tensor_index_type = TensorType_INT32,
+          typename input_type = float,
           TensorType tensor_input_type = TensorType_FLOAT32>
 class StridedSliceOpModel : public SingleOpModel {
  public:
@@ -34,9 +36,9 @@ class StridedSliceOpModel : public SingleOpModel {
                       int end_mask, int ellipsis_mask, int new_axis_mask,
                       int shrink_axis_mask) {
     input_ = AddInput(tensor_input_type);
-    begin_ = AddInput(TensorType_INT32);
-    end_ = AddInput(TensorType_INT32);
-    strides_ = AddInput(TensorType_INT32);
+    begin_ = AddInput(tensor_index_type);
+    end_ = AddInput(tensor_index_type);
+    strides_ = AddInput(tensor_index_type);
     output_ = AddOutput(tensor_input_type);
     SetBuiltinOp(
         BuiltinOperator_STRIDED_SLICE, BuiltinOptions_StridedSliceOptions,
@@ -49,14 +51,14 @@ class StridedSliceOpModel : public SingleOpModel {
   void SetInput(std::initializer_list<input_type> data) {
     PopulateTensor<input_type>(input_, data);
   }
-  void SetBegin(std::initializer_list<int32_t> data) {
-    PopulateTensor<int32_t>(begin_, data);
+  void SetBegin(std::initializer_list<index_type> data) {
+    PopulateTensor<index_type>(begin_, data);
   }
-  void SetEnd(std::initializer_list<int32_t> data) {
-    PopulateTensor<int32_t>(end_, data);
+  void SetEnd(std::initializer_list<index_type> data) {
+    PopulateTensor<index_type>(end_, data);
   }
-  void SetStrides(std::initializer_list<int32_t> data) {
-    PopulateTensor<int32_t>(strides_, data);
+  void SetStrides(std::initializer_list<index_type> data) {
+    PopulateTensor<index_type>(strides_, data);
   }
 
   std::vector<input_type> GetOutput() {
@@ -98,6 +100,18 @@ TEST(StridedSliceOpTest, In1D) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3}));
 }
 
+TEST(StridedSliceOpTest, In1D_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({4}, {1}, {1}, {1}, 0, 0, 0,
+                                                   0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.SetBegin({1LL});
+  m.SetEnd({3LL});
+  m.SetStrides({1LL});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3}));
+}
+
 TEST(StridedSliceOpTest, In1D_EmptyOutput) {
   StridedSliceOpModel<> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
   m.SetInput({1, 2, 3, 4});
@@ -108,12 +122,35 @@ TEST(StridedSliceOpTest, In1D_EmptyOutput) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0}));
 }
 
+TEST(StridedSliceOpTest, In1D_EmptyOutput_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({4}, {1}, {1}, {1}, 0, 0, 0,
+                                                   0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.SetBegin({10LL});
+  m.SetEnd({3LL});
+  m.SetStrides({1LL});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0}));
+}
+
 TEST(StridedSliceOpTest, In1D_NegativeBegin) {
   StridedSliceOpModel<> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
   m.SetInput({1, 2, 3, 4});
   m.SetBegin({-3});
   m.SetEnd({3});
   m.SetStrides({1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3}));
+}
+
+TEST(StridedSliceOpTest, In1D_NegativeBegin_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({4}, {1}, {1}, {1}, 0, 0, 0,
+                                                   0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.SetBegin({-3LL});
+  m.SetEnd({3LL});
+  m.SetStrides({1LL});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3}));
@@ -130,6 +167,18 @@ TEST(StridedSliceOpTest, In1D_OutOfRangeBegin) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3}));
 }
 
+TEST(StridedSliceOpTest, In1D_OutOfRangeBegin_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({4}, {1}, {1}, {1}, 0, 0, 0,
+                                                   0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.SetBegin({-5LL});
+  m.SetEnd({3LL});
+  m.SetStrides({1LL});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3}));
+}
+
 TEST(StridedSliceOpTest, In1D_NegativeEnd) {
   StridedSliceOpModel<> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
   m.SetInput({1, 2, 3, 4});
@@ -141,12 +190,36 @@ TEST(StridedSliceOpTest, In1D_NegativeEnd) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2}));
 }
 
+TEST(StridedSliceOpTest, In1D_NegativeEnd_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({4}, {1}, {1}, {1}, 0, 0, 0,
+                                                   0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.SetBegin({1LL});
+  m.SetEnd({-2LL});
+  m.SetStrides({1LL});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2}));
+}
+
 TEST(StridedSliceOpTest, In1D_OutOfRangeEnd) {
   StridedSliceOpModel<> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
   m.SetInput({1, 2, 3, 4});
   m.SetBegin({-3});
   m.SetEnd({5});
   m.SetStrides({1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3, 4}));
+}
+
+TEST(StridedSliceOpTest, In1D_OutOfRangeEnd_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({4}, {1}, {1}, {1}, 0, 0, 0,
+                                                   0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.SetBegin({-3LL});
+  m.SetEnd({5LL});
+  m.SetStrides({1LL});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3, 4}));
@@ -174,12 +247,36 @@ TEST(StridedSliceOpTest, In1D_NegativeBeginNegativeStride) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
 }
 
+TEST(StridedSliceOpTest, In1D_NegativeBeginNegativeStride_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({4}, {1}, {1}, {1}, 0, 0, 0,
+                                                   0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.SetBegin({-2LL});
+  m.SetEnd({-3LL});
+  m.SetStrides({-1LL});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
+}
+
 TEST(StridedSliceOpTest, In1D_OutOfRangeBeginNegativeStride) {
   StridedSliceOpModel<> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
   m.SetInput({1, 2, 3, 4});
   m.SetBegin({5});
   m.SetEnd({2});
   m.SetStrides({-1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4}));
+}
+
+TEST(StridedSliceOpTest, In1D_OutOfRangeBeginNegativeStride_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({4}, {1}, {1}, {1}, 0, 0, 0,
+                                                   0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.SetBegin({5LL});
+  m.SetEnd({2LL});
+  m.SetStrides({-1LL});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({4}));
@@ -196,12 +293,36 @@ TEST(StridedSliceOpTest, In1D_NegativeEndNegativeStride) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 2}));
 }
 
+TEST(StridedSliceOpTest, In1D_NegativeEndNegativeStride_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({4}, {1}, {1}, {1}, 0, 0, 0,
+                                                   0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.SetBegin({2LL});
+  m.SetEnd({-4LL});
+  m.SetStrides({-1LL});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 2}));
+}
+
 TEST(StridedSliceOpTest, In1D_OutOfRangeEndNegativeStride) {
   StridedSliceOpModel<> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
   m.SetInput({1, 2, 3, 4});
   m.SetBegin({-3});
   m.SetEnd({-5});
   m.SetStrides({-1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 1}));
+}
+
+TEST(StridedSliceOpTest, In1D_OutOfRangeEndNegativeStride_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({4}, {1}, {1}, {1}, 0, 0, 0,
+                                                   0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.SetBegin({-3LL});
+  m.SetEnd({-5LL});
+  m.SetStrides({-1LL});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 1}));
@@ -218,12 +339,36 @@ TEST(StridedSliceOpTest, In1D_EndMask) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3, 4}));
 }
 
+TEST(StridedSliceOpTest, In1D_EndMask_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({4}, {1}, {1}, {1}, 0, 1, 0,
+                                                   0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.SetBegin({1LL});
+  m.SetEnd({3LL});
+  m.SetStrides({1LL});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3, 4}));
+}
+
 TEST(StridedSliceOpTest, In1D_NegStride) {
   StridedSliceOpModel<> m({3}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
   m.SetInput({1, 2, 3});
   m.SetBegin({-1});
   m.SetEnd({-4});
   m.SetStrides({-1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 2, 1}));
+}
+
+TEST(StridedSliceOpTest, In1D_NegStride_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({3}, {1}, {1}, {1}, 0, 0, 0,
+                                                   0, 0);
+  m.SetInput({1, 2, 3});
+  m.SetBegin({-1LL});
+  m.SetEnd({-4LL});
+  m.SetStrides({-1LL});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 2, 1}));
@@ -240,12 +385,36 @@ TEST(StridedSliceOpTest, In1D_EvenLenStride2) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1}));
 }
 
+TEST(StridedSliceOpTest, In1D_EvenLenStride2_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({2}, {1}, {1}, {1}, 0, 0, 0,
+                                                   0, 0);
+  m.SetInput({1, 2});
+  m.SetBegin({0LL});
+  m.SetEnd({2LL});
+  m.SetStrides({2LL});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1}));
+}
+
 TEST(StridedSliceOpTest, In1D_OddLenStride2) {
   StridedSliceOpModel<> m({3}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
   m.SetInput({1, 2, 3});
   m.SetBegin({0});
   m.SetEnd({3});
   m.SetStrides({2});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3}));
+}
+
+TEST(StridedSliceOpTest, In1D_OddLenStride2_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({3}, {1}, {1}, {1}, 0, 0, 0,
+                                                   0, 0);
+  m.SetInput({1, 2, 3});
+  m.SetBegin({0LL});
+  m.SetEnd({3LL});
+  m.SetStrides({2LL});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3}));
@@ -262,6 +431,18 @@ TEST(StridedSliceOpTest, In2D_Identity) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
 
+TEST(StridedSliceOpTest, In2D_Identity_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({2, 3}, {2}, {2}, {2}, 0, 0,
+                                                   0, 0, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6});
+  m.SetBegin({0LL, 0LL});
+  m.SetEnd({2LL, 3LL});
+  m.SetStrides({1LL, 1LL});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+}
+
 TEST(StridedSliceOpTest, In2D) {
   StridedSliceOpModel<> m({2, 3}, {2}, {2}, {2}, 0, 0, 0, 0, 0);
   m.SetInput({1, 2, 3, 4, 5, 6});
@@ -273,12 +454,36 @@ TEST(StridedSliceOpTest, In2D) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 5}));
 }
 
+TEST(StridedSliceOpTest, In2D_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({2, 3}, {2}, {2}, {2}, 0, 0,
+                                                   0, 0, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6});
+  m.SetBegin({1LL, 0LL});
+  m.SetEnd({2LL, 2LL});
+  m.SetStrides({1LL, 1LL});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 5}));
+}
+
 TEST(StridedSliceOpTest, In2D_Stride2) {
   StridedSliceOpModel<> m({2, 3}, {2}, {2}, {2}, 0, 0, 0, 0, 0);
   m.SetInput({1, 2, 3, 4, 5, 6});
   m.SetBegin({0, 0});
   m.SetEnd({2, 3});
   m.SetStrides({2, 2});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3}));
+}
+
+TEST(StridedSliceOpTest, In2D_Stride2_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({2, 3}, {2}, {2}, {2}, 0, 0,
+                                                   0, 0, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6});
+  m.SetBegin({0LL, 0LL});
+  m.SetEnd({2LL, 3LL});
+  m.SetStrides({2LL, 2LL});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3}));
@@ -328,6 +533,18 @@ TEST(StridedSliceOpTest, In2D_NegStrideBeginMask) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({6, 5, 4}));
 }
 
+TEST(StridedSliceOpTest, In2D_NegStride_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({2, 3}, {2}, {2}, {2}, 0, 0,
+                                                   0, 0, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6});
+  m.SetBegin({1LL, -1LL});
+  m.SetEnd({2LL, -4LL});
+  m.SetStrides({2LL, -1LL});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({6, 5, 4}));
+}
+
 TEST(StridedSliceOpTest, In2D_NegStrideEndMask) {
   StridedSliceOpModel<> m({2, 3}, {2}, {2}, {2}, 0, 2, 0, 0, 0);
   m.SetInput({1, 2, 3, 4, 5, 6});
@@ -339,12 +556,37 @@ TEST(StridedSliceOpTest, In2D_NegStrideEndMask) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 4}));
 }
 
+TEST(StridedSliceOpTest, In2D_NegStrideEndMask_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({2, 3}, {2}, {2}, {2}, 0, 2,
+                                                   0, 0, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6});
+  m.SetBegin({1LL, -2LL});
+  m.SetEnd({2LL, -3LL});
+  m.SetStrides({1LL, -1LL});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 4}));
+}
+
 TEST(StridedSliceOpTest, In3D_Identity) {
   StridedSliceOpModel<> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 0, 0, 0);
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
   m.SetBegin({0, 0, 0});
   m.SetEnd({2, 3, 2});
   m.SetStrides({1, 1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 2}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
+}
+
+TEST(StridedSliceOpTest, In3D_Identity_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({2, 3, 2}, {3}, {3}, {3}, 0,
+                                                   0, 0, 0, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.SetBegin({0LL, 0LL, 0LL});
+  m.SetEnd({2LL, 3LL, 2LL});
+  m.SetStrides({1LL, 1LL, 1LL});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 2}));
   EXPECT_THAT(m.GetOutput(),
@@ -363,12 +605,37 @@ TEST(StridedSliceOpTest, In3D_NegStride) {
               ElementsAreArray({12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1}));
 }
 
+TEST(StridedSliceOpTest, In3D_NegStride_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({2, 3, 2}, {3}, {3}, {3}, 0,
+                                                   0, 0, 0, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.SetBegin({-1LL, -1LL, -1LL});
+  m.SetEnd({-3LL, -4LL, -3LL});
+  m.SetStrides({-1LL, -1LL, -1LL});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 2}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1}));
+}
+
 TEST(StridedSliceOpTest, In3D_Strided2) {
   StridedSliceOpModel<> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 0, 0, 0);
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
   m.SetBegin({0, 0, 0});
   m.SetEnd({2, 3, 2});
   m.SetStrides({2, 2, 2});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 5}));
+}
+
+TEST(StridedSliceOpTest, In3D_Strided2_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({2, 3, 2}, {3}, {3}, {3}, 0,
+                                                   0, 0, 0, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.SetBegin({0LL, 0LL, 0LL});
+  m.SetEnd({2LL, 3LL, 2LL});
+  m.SetStrides({2LL, 2LL, 2LL});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 5}));
@@ -566,9 +833,31 @@ TEST(StridedSliceOpTest, RunTwice) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 4, 5}));
 }
 
+// This tests catches a very subtle bug that was fixed by cl/188403234.
+TEST(StridedSliceOpTest, RunTwice_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64> m({2, 3}, {2}, {2}, {2}, 1, 0,
+                                                   0, 0, 0);
+
+  auto setup_inputs = [&m]() {
+    m.SetInput({1, 2, 3, 4, 5, 6});
+    m.SetBegin({1LL, 0LL});
+    m.SetEnd({2LL, 2LL});
+    m.SetStrides({1LL, 1LL});
+  };
+
+  setup_inputs();
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 4, 5}));
+
+  setup_inputs();
+  m.Invoke();
+  // Prior to cl/188403234 this was {4, 5}.
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 4, 5}));
+}
+
 TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1Uint8) {
-  StridedSliceOpModel<uint8_t, TensorType_UINT8> m({2, 3, 2}, {3}, {3}, {3}, 0, 0,
-                                                 0, 0, 1);
+  StridedSliceOpModel<int32_t, TensorType_INT32, uint8_t, TensorType_UINT8> m(
+      {2, 3, 2}, {3}, {3}, {3}, 0, 0, 0, 0, 1);
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
   m.SetBegin({0, 0, 0});
   m.SetEnd({1, 3, 2});
@@ -578,13 +867,37 @@ TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1Uint8) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
 
+TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1Uint8_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64, uint8_t, TensorType_UINT8> m(
+      {2, 3, 2}, {3}, {3}, {3}, 0, 0, 0, 0, 1);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.SetBegin({0LL, 0LL, 0LL});
+  m.SetEnd({1LL, 3LL, 2LL});
+  m.SetStrides({1LL, 1LL, 1LL});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+}
+
 TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1int8) {
-  StridedSliceOpModel<int8_t, TensorType_INT8> m({2, 3, 2}, {3}, {3}, {3}, 0, 0,
-                                                 0, 0, 1);
+  StridedSliceOpModel<int32_t, TensorType_INT32, int8_t, TensorType_INT8> m(
+      {2, 3, 2}, {3}, {3}, {3}, 0, 0, 0, 0, 1);
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
   m.SetBegin({0, 0, 0});
   m.SetEnd({1, 3, 2});
   m.SetStrides({1, 1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+}
+
+TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1int8_Int64) {
+  StridedSliceOpModel<int64_t, TensorType_INT64, int8_t, TensorType_INT8> m(
+      {2, 3, 2}, {3}, {3}, {3}, 0, 0, 0, 0, 1);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.SetBegin({0LL, 0LL, 0LL});
+  m.SetEnd({1LL, 3LL, 2LL});
+  m.SetStrides({1LL, 1LL, 1LL});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));

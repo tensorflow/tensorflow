@@ -166,10 +166,12 @@ inline bool LoopCondition(int index, int stop, int stride) {
   return stride > 0 ? index >= stop : index <= stop;
 }
 
+template <typename IndexingT>
 inline tflite::StridedSliceParams BuildStridedSliceParams(
     int begin_mask, int end_mask, int shrink_axis_mask,
-    const std::vector<int>& start_indices, const std::vector<int>& stop_indices,
-    const std::vector<int>& strides) {
+    const std::vector<IndexingT>& start_indices,
+    const std::vector<IndexingT>& stop_indices,
+    const std::vector<IndexingT>& strides) {
   tflite::StridedSliceParams op_params;
   const int dims_count = start_indices.size();
 
