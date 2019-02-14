@@ -28,6 +28,12 @@ import sys as _sys
 from tensorflow.python.tools import component_api_helper as _component_api_helper
 _component_api_helper.package_hook(
     parent_package_str=__name__,
+    child_package_str=('tensorboard.summary._tf.summary'),
+    error_msg=(
+        "Limited tf.compat.v2.summary API due to missing TensorBoard "
+        "installation"))
+_component_api_helper.package_hook(
+    parent_package_str=__name__,
     child_package_str=(
         'tensorflow_estimator.python.estimator.api._v2.estimator'))
 _component_api_helper.package_hook(
