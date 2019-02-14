@@ -573,5 +573,29 @@ TEST(FormatNodeForErrorTest, NodeDef) {
   EXPECT_EQ("{{node enter}}", FormatNodeDefForError(node_def));
 }
 
+TEST(AttachDef, AllowMultipleFormattedNode) {
+  NodeDef a;
+  a.set_name("a");
+  NodeDef b;
+  b.set_name("b");
+  Status s = Status(error::CANCELLED, "Error");
+  Status s2 = AttachDef(s, a, true);
+  EXPECT_EQ("Error\n\t [[{{node a}}]]", s2.error_message());
+  Status s3 = AttachDef(s2, b, true);
+  EXPECT_EQ("Error\n\t [[{{node a}}]]\n\t [[{{node b}}]]", s3.error_message());
+}
+
+TEST(AttachDef, DisallowMultipleFormattedNode) {
+  NodeDef a;
+  a.set_name("a");
+  NodeDef b;
+  b.set_name("b");
+  Status s = Status(error::CANCELLED, "Error");
+  Status s2 = AttachDef(s, a, false);
+  EXPECT_EQ("Error\n\t [[{{node a}}]]", s2.error_message());
+  Status s3 = AttachDef(s2, b, false);
+  EXPECT_EQ("Error\n\t [[{{node a}}]]\n\t [[b]]", s3.error_message());
+}
+
 }  // namespace
 }  // namespace tensorflow

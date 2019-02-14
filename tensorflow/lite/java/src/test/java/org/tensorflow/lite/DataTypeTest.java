@@ -30,6 +30,7 @@ public final class DataTypeTest {
     assertThat(DataType.INT32.byteSize()).isEqualTo(4);
     assertThat(DataType.UINT8.byteSize()).isEqualTo(1);
     assertThat(DataType.INT64.byteSize()).isEqualTo(8);
+    assertThat(DataType.STRING.byteSize()).isEqualTo(-1);
   }
 
   @Test

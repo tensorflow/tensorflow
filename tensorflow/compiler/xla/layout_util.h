@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -34,7 +36,9 @@ class LayoutUtil {
  public:
   // Creates a layout with the given minor-to-major dimension order. (This is a
   // convenience function for protobuf construction.)
-  static Layout MakeLayout(absl::Span<const int64> minor_to_major);
+  static Layout MakeLayout(absl::Span<const int64> minor_to_major,
+                           absl::Span<const Tile> tiles = {},
+                           int64 element_size_in_bits = 0);
 
   // Similar to MakeLayout, but take indices in reverse order.
   static Layout MakeLayoutFromMajorToMinor(
@@ -193,8 +197,6 @@ class LayoutUtil {
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(LayoutUtil);
 };
-
-std::ostream& operator<<(std::ostream& out, const Layout& layout);
 
 }  // namespace xla
 

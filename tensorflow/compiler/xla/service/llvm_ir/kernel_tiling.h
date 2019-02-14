@@ -90,15 +90,16 @@ class KernelMappingScheme {
   enum { DimZ = 0, DimY, DimX, DimTot };
 
  public:
+  KernelMappingScheme() {}
   // dims_in_elems: the normalized tensor dimensions.
   // req_block_sizes: the requested block size in number of tiles for each
   //   dimension. The actual block size is set to min(req_block_size,
   //   dims_in_number_of_blocks).
-  explicit KernelMappingScheme(absl::Span<const int64> dims_in_elems,
-                               int64 tile_size_y, int64 tile_size_x,
-                               absl::Span<const int64> req_block_sizes,
-                               int64 num_threads_y, int64 num_threads_x,
-                               llvm::IRBuilder<>* b);
+  KernelMappingScheme(absl::Span<const int64> dims_in_elems, int64 tile_size_y,
+                      int64 tile_size_x,
+                      absl::Span<const int64> req_block_sizes,
+                      int64 num_threads_y, int64 num_threads_x,
+                      llvm::IRBuilder<>* b);
 
   absl::Span<const int64> GetDimensionsInElements() const {
     return dims_in_elems_;
@@ -116,7 +117,10 @@ class KernelMappingScheme {
   int64 GetNumberOfTilesInOneBlock() const {
     return absl::c_accumulate(block_sizes_, 1, std::multiplies<int64>());
   }
-
+  int64 GetNumberOfTilesInOneBlockForDimension(int d) const {
+    DCHECK(d >= DimZ && d <= DimX);
+    return block_sizes_[d];
+  }
   int64 GetNumberOfBlocks() const {
     return absl::c_accumulate(dims_in_blocks_, 1, std::multiplies<int64>());
   }
@@ -133,13 +137,27 @@ class KernelMappingScheme {
   }
 
   absl::Span<const int64> GetBlockSizes() const { return block_sizes_; }
+  int64 GetTileBlockSizeForDimension(int d) const {
+    DCHECK(d >= DimZ && d <= DimX);
+    return dims_in_blocks_[d];
+  }
 
   int64 GetNumberOfThreadsForDimensionX() const { return num_threads_x_; }
   int64 GetNumberOfThreadsForDimensionY() const { return num_threads_y_; }
 
-  int64 GetThreadsPerTile() const {
+  int64 GetThreadsPerBlock() const {
     return GetNumberOfThreadsForDimensionX() *
            GetNumberOfThreadsForDimensionY();
+  }
+
+  bool DilatedX() const { return dilated_x_; }
+  void SetDilatedX(bool v) {
+    dilated_x_ = v;
+    if (!dilated_x_) {
+      // dilated_x_=false is for the purpose of vectorization, which requires
+      // GetTileSizeForDimension(DimX) to be a multiplier of num_threads_x_.
+      CHECK_EQ(GetTileSizeForDimension(DimX) % num_threads_x_, 0);
+    }
   }
 
   IrArray::Index EmitBlockIndex(llvm::Type* index_ty);
@@ -163,7 +181,7 @@ class KernelMappingScheme {
  private:
   llvm::IRBuilder<>* b_;
   // The number of elements in each dimension.
-  absl::Span<const int64> dims_in_elems_;
+  std::vector<int64> dims_in_elems_;
 
   // The number of elements for each dimension of a tile.
   std::vector<int64> tile_sizes_;
@@ -181,6 +199,13 @@ class KernelMappingScheme {
   int64 num_threads_x_;
   // Number of threads used to process elements in the Y direction of a tile.
   int64 num_threads_y_;
+
+  // When num_threads_x threads process a total of tile_size_x elements in the
+  // X dimension of a tile, each threads process n=tile_size_x/num_threads_x
+  // elements. When dilated_x=false, the n elements processed by a thread are
+  // contiguous. On the other hand, when dilated_x=true the n elements are
+  // dilated by a factor of num_threads_x.
+  bool dilated_x_;
 };
 
 // A class to represent information for tiled parameters to support IR emission

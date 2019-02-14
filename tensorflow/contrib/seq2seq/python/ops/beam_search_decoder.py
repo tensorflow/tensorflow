@@ -921,6 +921,7 @@ def _get_scores(log_probs, sequence_lengths, length_penalty_weight,
   """
   length_penalty_ = _length_penalty(
       sequence_lengths=sequence_lengths, penalty_factor=length_penalty_weight)
+  length_penalty_ = math_ops.cast(length_penalty_, dtype=log_probs.dtype)
   scores = log_probs / length_penalty_
 
   coverage_penalty_weight = ops.convert_to_tensor(

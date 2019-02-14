@@ -759,7 +759,7 @@ class TensorPoolAdjusteModelTest(test.TestCase):
           # For [pool_size, ?), the pool is full, tensor2 must be equal to some
           # historical values of tensor1 (which is previously stored in the
           # pool).
-          self.assertTrue(any([(v == t2).all() for v in history_values]))
+          self.assertTrue(any((v == t2).all() for v in history_values))
 
   def _make_new_model_and_check(self, model, pool_size):
     pool_fn = lambda x: random_tensor_pool.tensor_pool(x, pool_size=pool_size)
@@ -835,6 +835,9 @@ class GANTrainOpsTest(test.TestCase, parameterized.TestCase):
         colocate_gradients_with_ops=True)
 
     self.assertIsInstance(train_ops, namedtuples.GANTrainOps)
+
+    # Make sure there are no training hooks populated accidentally.
+    self.assertEmpty(train_ops.train_hooks)
 
   # TODO(joelshor): Add a test to check that custom update op is run.
   @parameterized.named_parameters(
@@ -925,6 +928,14 @@ class GANTrainOpsTest(test.TestCase, parameterized.TestCase):
     # No new trainable variables should have been added.
     self.assertLen(variables_lib.get_trainable_variables(), num_trainable_vars)
 
+    # Sync hooks should be populated in the GANTrainOps.
+    self.assertLen(train_ops.train_hooks, 2)
+    for hook in train_ops.train_hooks:
+      self.assertIsInstance(
+          hook, sync_replicas_optimizer._SyncReplicasOptimizerHook)
+    sync_opts = [hook._sync_optimizer for hook in train_ops.train_hooks]
+    self.assertSetEqual(frozenset(sync_opts), frozenset((g_opt, d_opt)))
+
     g_sync_init_op = g_opt.get_init_tokens_op(num_tokens=1)
     d_sync_init_op = d_opt.get_init_tokens_op(num_tokens=1)
 
@@ -957,6 +968,32 @@ class GANTrainOpsTest(test.TestCase, parameterized.TestCase):
 
       coord.request_stop()
       coord.join(g_threads + d_threads)
+
+  @parameterized.named_parameters(
+      ('is_chief', True),
+      ('is_not_chief', False),
+  )
+  def test_is_chief_in_train_hooks(self, is_chief):
+    """Make sure is_chief is propagated correctly to sync hooks."""
+    model = create_gan_model()
+    loss = train.gan_loss(model)
+    g_opt = get_sync_optimizer()
+    d_opt = get_sync_optimizer()
+    train_ops = train.gan_train_ops(
+        model,
+        loss,
+        g_opt,
+        d_opt,
+        is_chief=is_chief,
+        summarize_gradients=True,
+        colocate_gradients_with_ops=True)
+
+    self.assertLen(train_ops.train_hooks, 2)
+    for hook in train_ops.train_hooks:
+      self.assertIsInstance(
+          hook, sync_replicas_optimizer._SyncReplicasOptimizerHook)
+    is_chief_list = [hook._is_chief for hook in train_ops.train_hooks]
+    self.assertListEqual(is_chief_list, [is_chief, is_chief])
 
 
 class GANTrainTest(test.TestCase, parameterized.TestCase):
@@ -1034,6 +1071,44 @@ class GANTrainTest(test.TestCase, parameterized.TestCase):
         train_step_fn=train.get_sequential_train_steps(train_steps))
     self.assertTrue(np.isscalar(final_loss))
     self.assertEqual(17.0, final_loss)
+
+  @parameterized.named_parameters(
+      ('gan', create_gan_model),
+      ('callable_gan', create_callable_gan_model),
+      ('infogan', create_infogan_model),
+      ('callable_infogan', create_callable_infogan_model),
+      ('acgan', create_acgan_model),
+      ('callable_acgan', create_callable_acgan_model),
+  )
+  def test_train_hooks_exist_in_get_hooks_fn(self, create_gan_model_fn):
+    model = create_gan_model_fn()
+    loss = train.gan_loss(model)
+
+    g_opt = get_sync_optimizer()
+    d_opt = get_sync_optimizer()
+    train_ops = train.gan_train_ops(
+        model,
+        loss,
+        g_opt,
+        d_opt,
+        summarize_gradients=True,
+        colocate_gradients_with_ops=True)
+
+    sequential_train_hooks = train.get_sequential_train_hooks()(train_ops)
+    self.assertLen(sequential_train_hooks, 4)
+    sync_opts = [
+        hook._sync_optimizer for hook in sequential_train_hooks if
+        isinstance(hook, sync_replicas_optimizer._SyncReplicasOptimizerHook)]
+    self.assertLen(sync_opts, 2)
+    self.assertSetEqual(frozenset(sync_opts), frozenset((g_opt, d_opt)))
+
+    joint_train_hooks = train.get_joint_train_hooks()(train_ops)
+    self.assertLen(joint_train_hooks, 5)
+    sync_opts = [
+        hook._sync_optimizer for hook in joint_train_hooks if
+        isinstance(hook, sync_replicas_optimizer._SyncReplicasOptimizerHook)]
+    self.assertLen(sync_opts, 2)
+    self.assertSetEqual(frozenset(sync_opts), frozenset((g_opt, d_opt)))
 
 
 class PatchGANTest(test.TestCase, parameterized.TestCase):

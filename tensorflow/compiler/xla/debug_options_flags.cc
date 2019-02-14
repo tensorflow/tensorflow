@@ -22,49 +22,49 @@ limitations under the License.
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
 
 namespace xla {
-namespace {
 
-DebugOptions* flag_values;
-std::vector<tensorflow::Flag>* flag_objects;
-std::once_flag flags_init;
-
-void SetDebugOptionsDefaults(DebugOptions* flags) {
-  flags->set_xla_llvm_enable_alias_scope_metadata(true);
-  flags->set_xla_llvm_enable_noalias_metadata(true);
-  flags->set_xla_llvm_enable_invariant_load_metadata(true);
-  flags->set_xla_llvm_disable_expensive_passes(false);
-  flags->set_xla_backend_optimization_level(3);
-  flags->set_xla_cpu_multi_thread_eigen(true);
-  flags->set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
-  flags->set_xla_eliminate_hlo_implicit_broadcast(true);
+DebugOptions DefaultDebugOptionsIgnoringFlags() {
+  DebugOptions opts;
+  opts.set_xla_llvm_enable_alias_scope_metadata(true);
+  opts.set_xla_llvm_enable_noalias_metadata(true);
+  opts.set_xla_llvm_enable_invariant_load_metadata(true);
+  opts.set_xla_llvm_disable_expensive_passes(false);
+  opts.set_xla_backend_optimization_level(3);
+  opts.set_xla_cpu_multi_thread_eigen(true);
+  opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
+  opts.set_xla_eliminate_hlo_implicit_broadcast(true);
+  opts.set_xla_hlo_dump_as_html(false);
 #ifdef INTEL_MKL
-  flags->set_xla_cpu_use_mkl_dnn(true);
+  opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // INTEL_MKL
-  flags->set_xla_gpu_max_kernel_unroll_factor(4);
+  opts.set_xla_gpu_max_kernel_unroll_factor(4);
   // Set cudnn batchnorm off by default; it does not provide a performance win
   // on average.
-  flags->set_xla_gpu_use_cudnn_batchnorm(false);
+  opts.set_xla_gpu_use_cudnn_batchnorm(false);
 
   // Run all GPU work on one stream by default.  Using multiple streams
   // increases memory usage and we lack strong motivating benchmarks for tuning
   // the heuristics needed to decide when to run on multiple streams.  See
   // b/77879207.
-  flags->set_xla_gpu_disable_multi_streaming(true);
+  opts.set_xla_gpu_disable_multi_streaming(true);
 
   // TODO(jlebar): Disable fastmath once doing so is not a performance
   // regression.
-  flags->set_xla_cpu_enable_fast_math(true);
-  flags->set_xla_gpu_enable_fast_math(true);
+  opts.set_xla_cpu_enable_fast_math(true);
+  opts.set_xla_gpu_enable_fast_min_max(true);
 
-  flags->set_xla_force_host_platform_device_count(1);
+  opts.set_xla_force_host_platform_device_count(1);
+  return opts;
 }
+
+static DebugOptions* flag_values;
+static std::vector<tensorflow::Flag>* flag_objects;
+static std::once_flag flags_init;
 
 // Allocates flag_values and flag_objects; this function must not be called more
 // than once - its call done via call_once.
-void AllocateFlags() {
-  flag_values = new DebugOptions;
-
-  SetDebugOptionsDefaults(flag_values);
+static void AllocateFlags() {
+  flag_values = new DebugOptions(DefaultDebugOptionsIgnoringFlags());
 
   // Returns a lambda that calls "member_setter" on "flag_values" with the
   // argument passed in to the lambda.
@@ -133,6 +133,11 @@ void AllocateFlags() {
           bool_setter_for(&DebugOptions::set_xla_hlo_dump_as_graphdef),
           flag_values->xla_hlo_dump_as_graphdef(),
           "Dump HLO graphs as TensorFlow GraphDefs."),
+      tensorflow::Flag("xla_hlo_dump_as_html",
+                       bool_setter_for(&DebugOptions::set_xla_hlo_dump_as_html),
+                       flag_values->xla_hlo_dump_as_html(),
+                       "Dump HLO graphs as an HTML (DOT rendered into SVG "
+                       "inlined in HTML)."),
       tensorflow::Flag(
           "xla_hlo_graph_sharding_color",
           bool_setter_for(&DebugOptions::set_xla_hlo_graph_sharding_color),
@@ -160,11 +165,11 @@ void AllocateFlags() {
           "Enable unsafe fast-math optimizations in the CPU compiler; "
           "this may produce faster code at the expense of some accuracy."),
       tensorflow::Flag(
-          "xla_gpu_enable_fast_math",
-          bool_setter_for(&DebugOptions::set_xla_cpu_enable_fast_math),
-          flag_values->xla_cpu_enable_fast_math(),
-          "Enable unsafe fast-math optimizations in the GPU compiler; "
-          "this may produce faster code at the expense of some accuracy."),
+          "xla_gpu_enable_fast_min_max",
+          bool_setter_for(&DebugOptions::set_xla_gpu_enable_fast_min_max),
+          flag_values->xla_gpu_enable_fast_min_max(),
+          "Enable fast floating point min/max lowering that does not propagate "
+          "NaNs."),
       tensorflow::Flag(
           "xla_llvm_enable_alias_scope_metadata",
           bool_setter_for(
@@ -202,6 +207,16 @@ void AllocateFlags() {
           "Comma-separated list of hlo passes to be disabled. These names "
           "must exactly match the passes' names; no whitespace around "
           "commas."),
+      tensorflow::Flag(
+          "xla_disable_all_hlo_passes",
+          bool_setter_for(&DebugOptions::set_xla_disable_all_hlo_passes), false,
+          "Disables all HLO passes.  Notes that some passes are necessary for "
+          "correctness and the invariants that must be satisfied by 'fully "
+          "optimized' HLO are different for different devices and may change "
+          "over time.  The only 'guarantee', such as it is, is that if you "
+          "compile XLA and dump the optimized HLO for some graph, you should "
+          "be able to run it again on the same device with the same build of "
+          "XLA."),
       tensorflow::Flag(
           "xla_embed_ir_in_executable",
           bool_setter_for(&DebugOptions::set_xla_embed_ir_in_executable),
@@ -334,11 +349,15 @@ void AllocateFlags() {
           "overhead from context switching but we let the user override this "
           "behavior to help run tests on the host that run models in parallel "
           "across multiple devices."),
+      tensorflow::Flag(
+          "xla_gpu_disable_ptxas_optimizations",
+          bool_setter_for(
+              &DebugOptions::set_xla_gpu_disable_ptxas_optimizations),
+          flag_values->xla_gpu_disable_ptxas_optimizations(),
+          "In XLA:GPU run ptxas in -O0 (default is -O3)."),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }
-
-}  // namespace
 
 void AppendDebugOptionsFlags(std::vector<tensorflow::Flag>* flag_list) {
   std::call_once(flags_init, &AllocateFlags);

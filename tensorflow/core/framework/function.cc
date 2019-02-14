@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb_text.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
@@ -507,6 +509,16 @@ string Print(const NodeDef& n) {
       entries.push_back(strings::StrCat(a.first, "=", Print(a.second)));
     }
     std::sort(entries.begin(), entries.end());
+    // Add a short device string at the end of all attributes.
+    if (!n.device().empty()) {
+      DeviceNameUtils::ParsedName parsed;
+      if (DeviceNameUtils::ParseFullName(n.device(), &parsed)) {
+        entries.push_back(
+            strings::StrCat("device=", parsed.type, ":", parsed.id));
+      } else {
+        entries.push_back("device=<FAILED_TO_PARSE>");
+      }
+    }
     strings::StrAppend(&out, "[", str_util::Join(entries, ", "), "]");
   }
   strings::StrAppend(&out, "(");
@@ -590,10 +602,20 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   std::sort(ret.begin(), ret.end(), comp);
   string out;
   strings::StrAppend(&out, "\n(");
-  auto get_type = [](const NodeDef& n) {
+  auto get_type_and_device = [](const NodeDef& n) {
     DataType dt;
     if (!GetNodeAttr(n, "T", &dt).ok()) {
       dt = DT_INVALID;
+    }
+    if (!n.device().empty()) {
+      DeviceNameUtils::ParsedName parsed;
+      if (DeviceNameUtils::ParseFullName(n.device(), &parsed)) {
+        return strings::StrCat(DataTypeString(dt), "@", parsed.type, ":",
+                               parsed.id);
+      } else {
+        return strings::StrCat(DataTypeString(dt), "@",
+                               "<FAILED_TO_PARSE_DEVICE>");
+      }
     }
     return DataTypeString(dt);
   };
@@ -601,15 +623,29 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
     const NodeDef* n = arg[i];
     if (i > 0) strings::StrAppend(&out, ", ");
     CHECK_GE(n->attr_size(), 2);
-    strings::StrAppend(&out, n->name(), ":", get_type(*n));
+    strings::StrAppend(&out, n->name(), ":", get_type_and_device(*n));
   }
   strings::StrAppend(&out, ") -> (");
   for (size_t i = 0; i < ret.size(); ++i) {
     const NodeDef* n = ret[i];
     if (i > 0) strings::StrAppend(&out, ", ");
     CHECK_LE(2, n->attr_size());
-    CHECK_EQ(1, n->input_size());
-    strings::StrAppend(&out, n->input(0), ":", get_type(*n));
+
+    // The _RetVal op should have a unique non-control input. We assert that
+    // here and add it to the output.
+    bool found_non_control_input = false;
+    for (const string& input : n->input()) {
+      if (!input.empty() && input[0] != '^') {
+        DCHECK_EQ(found_non_control_input, false)
+            << "RetVal node has more than one non-control input: "
+            << absl::StrJoin(n->input(), ", ");
+        strings::StrAppend(&out, n->input(0), ":", get_type_and_device(*n));
+        found_non_control_input = true;
+      }
+    }
+    DCHECK_EQ(found_non_control_input, true)
+        << "RetVal did not have any non-control inputs: "
+        << absl::StrJoin(n->input(), ", ");
   }
   strings::StrAppend(&out, ") {\n");
   for (size_t i = 0; i < body.size(); ++i) {
@@ -637,6 +673,7 @@ Status AddDefaultAttrs(const string& op,
 
 }  // end namespace
 
+// TODO(shikharagarwal): Transmit original node names correctly in file.
 Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
                            GetFunctionSignature get_function,
                            InstantiationResult* result) {
@@ -645,8 +682,9 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
   const OpDef& sig = fdef.signature();
   TF_RETURN_IF_ERROR(ValidateSignatureWithAttrs(sig, attr_values));
 
-  bool ints_on_device = fdef.attr().count("experimental_ints_on_device") != 0 &&
-                        fdef.attr().at("experimental_ints_on_device").b();
+  bool ints_on_device =
+      fdef.attr().count(FunctionLibraryDefinition::kIntsOnDeviceAttr) != 0 &&
+      fdef.attr().at(FunctionLibraryDefinition::kIntsOnDeviceAttr).b();
 
   FunctionInstantiationHelper helper(get_function, result);
   Status s;
@@ -831,7 +869,8 @@ string FunctionLibraryRuntime::ExecutorType(const InstantiateOptions& options,
 string Canonicalize(const string& funcname, AttrSlice attrs,
                     const FunctionLibraryRuntime::InstantiateOptions& options) {
   std::vector<string> entries;
-  entries.reserve(options.target.empty() ? attrs.size() : (attrs.size() + 1));
+  entries.reserve(attrs.size() + static_cast<int>(options.target.empty()) +
+                  options.input_devices.size());
   for (auto p : attrs) {
     if (p.first != kExecutorAttr) {
       entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
@@ -840,6 +879,14 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   if (!options.target.empty()) {
     entries.push_back(
         strings::StrCat("_target", "=", str_util::CEscape(options.target)));
+  }
+  for (int i = 0; i < options.input_devices.size(); ++i) {
+    entries.push_back(strings::StrCat(
+        "_input_dev", i, "=", str_util::CEscape(options.input_devices[i])));
+  }
+  for (int i = 0; i < options.output_devices.size(); ++i) {
+    entries.push_back(strings::StrCat(
+        "_output_dev", i, "=", str_util::CEscape(options.output_devices[i])));
   }
   if (options.overlay_lib) {
     entries.push_back(strings::StrCat(
@@ -1241,6 +1288,16 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
   }
 }
 
+std::vector<string> FunctionLibraryDefinition::ListFunctionNames() const {
+  std::vector<string> function_names;
+  tf_shared_lock l(mu_);
+  function_names.reserve(function_defs_.size());
+  for (const auto& it : function_defs_) {
+    function_names.emplace_back(it.first);
+  }
+  return function_names;
+}
+
 FunctionDefLibrary FunctionLibraryDefinition::ToProto() const {
   FunctionDefLibrary lib;
   tf_shared_lock l(mu_);
@@ -1357,12 +1414,12 @@ absl::flat_hash_set<string> ReachableFunctions(
     if (!grad_func_name.empty()) add_to_func_queue(grad_func_name);
   }
 
-  const FunctionDefLibrary library_proto = flib.ToProto();
-  for (const auto& it : library_proto.function()) {
-    const auto attr_it = it.attr().find(kExperimentalApiImplements);
-    if (attr_it != it.attr().end()) {
+  for (const auto& func_name : flib.ListFunctionNames()) {
+    const auto& func_def = flib.Find(func_name);
+    const auto attr_it = func_def->attr().find(kExperimentalApiImplements);
+    if (attr_it != func_def->attr().end()) {
       if (reachable_api_interface.contains(attr_it->second.s())) {
-        reachable_funcs.insert(it.signature().name());
+        reachable_funcs.insert(func_name);
       }
     }
   }
@@ -1444,6 +1501,9 @@ NodeDef FunctionDefHelper::Node::ToNodeDef() const {
   for (const string& d : this->dep) {
     n.add_input(strings::StrCat("^", d));
   }
+  if (!this->device.empty()) {
+    n.set_device(this->device);
+  }
   return n;
 }
 
@@ -1486,6 +1546,7 @@ FunctionDef FunctionDefHelper::Create(
       fdef.mutable_signature()->set_is_stateful(true);
     }
   }
+
   return fdef;
 }
 
@@ -1593,4 +1654,4 @@ Status GetOpGradientCreator(const string& op, Creator* creator) {
 
 }  // end namespace gradient
 
-}  // end namespace tensorflow
+}  // namespace tensorflow

@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -34,7 +35,7 @@ class PoolAllocator;
 
 // Singleton that manages per-process state, e.g. allocation of
 // shared resources.
-class ProcessState {
+class ProcessState : public ProcessStateInterface {
  public:
   static ProcessState* singleton();
 

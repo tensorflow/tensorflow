@@ -132,6 +132,14 @@ class HloModule {
     return config_.entry_computation_layout();
   }
 
+  // Generates a hash value of an HLO module. Hash considers
+  // information on opcode, shape, operands, and typically a root instruction.
+  // This function returns the same hash value for equivalent HLO modules,
+  // with respect to HloInstruction::Identical() method.
+  uint64 Hash() const {
+    return entry_computation()->root_instruction()->Hash();
+  }
+
   // Gets the computations in this module.
   //
   // Returns a view of HloComputation*s, so you can iterate over this in the
@@ -179,6 +187,7 @@ class HloModule {
   std::vector<HloComputation*> MakeNonfusionComputations() const;
 
   const HloModuleConfig& config() const { return config_; }
+  void set_config(HloModuleConfig& config) { config_ = config; }
 
   // Return a string representation of the module.
   //
@@ -255,6 +264,18 @@ class HloModule {
   // Returns the schedue of the module. CHECK fails if no schedule is set.
   const HloSchedule& schedule() const { return *schedule_; }
   HloSchedule& schedule() { return *schedule_; }
+
+  HloComputation* AddComputationAndUnifyNamesAndIds(
+      std::unique_ptr<HloComputation> computation, bool is_entry) {
+    computation->ClearUniqueIdInternal();
+    for (auto* instruction : computation->instructions()) {
+      instruction->ClearUniqueIdInternal();
+    }
+    return AddComputationInternal(std::move(computation), is_entry,
+                                  /*uniquify_identifiers=*/true);
+  }
+
+  Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
 
  private:
   HloComputation* AddComputationInternal(

@@ -69,6 +69,7 @@ class ReplicatedVariable(object):
   def __init__(self, name, variables):
     self._name = name
     self._primary_var = variables[0]
+    self._common_name = self._primary_var.name.split(":")[0]
     self._vars = variables
     self._cached_value = None
     self._dtype = variables[0].dtype
@@ -216,6 +217,10 @@ class ReplicatedVariable(object):
 
   def get(self):
     return self._primary_var
+
+  @property
+  def _in_graph_mode(self):
+    return self._primary_var._in_graph_mode   # pylint: disable=protected-access
 
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""

@@ -156,7 +156,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
           return math.exp(-(x**2) / 2.) / math.sqrt(2 * math.pi)
 
         def probit(x, sess=sess):
-          return sess.run(special_math.ndtri(x))
+          return self.evaluate(special_math.ndtri(x))
 
         a = -2.
         b = 2.

@@ -56,4 +56,7 @@ message TraceEvent {
   // The duration of the event in picoseconds if applicable.
   // Events without duration are called instant events.
   uint64 duration_ps = 10;
+
+  // Extra arguments that will be displayed in trace view.
+  map<string, string> args = 11;
 }

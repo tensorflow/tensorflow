@@ -75,16 +75,16 @@ class GpuFtzDisabledTest : public GpuFtzTest {
 // Check that we emit mul.ftz.f32 when in ftz mode, and plain mul.f32 otherwise.
 TEST_F(GpuFtzEnabledTest, MultiplyFtz) {
   CompileAndVerifyPtx(CreateBinaryOpModule(HloOpcode::kMultiply), R"(
-    CHECK-NOT: mul.f32
-    CHECK: mul.ftz.f32
-    CHECK-NOT: mul.f32
+    CHECK-NOT: mul.rn.f32
+    CHECK: mul.rn.ftz.f32
+    CHECK-NOT: mul.rn.f32
   )");
 }
 TEST_F(GpuFtzDisabledTest, MultiplyFtz) {
   CompileAndVerifyPtx(CreateBinaryOpModule(HloOpcode::kMultiply), R"(
-    CHECK-NOT: mul.ftz.f32
-    CHECK: mul.f32
-    CHECK-NOT: mul.ftz.f32
+    CHECK-NOT: mul.rn.ftz.f32
+    CHECK: mul.rn.f32
+    CHECK-NOT: mul.rn.ftz.f32
   )");
 }
 

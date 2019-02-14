@@ -77,7 +77,7 @@ namespace tensorflow {
 class ResourceBase : public core::RefCounted {
  public:
   // Returns a debug string for *this.
-  virtual string DebugString() = 0;
+  virtual string DebugString() const = 0;
 
   // Returns memory used by this resource.
   virtual int64 MemoryUsed() const { return 0; }
@@ -89,9 +89,17 @@ class ScopedStepContainer {
   // step_id: the unique ID of this step. Doesn't have to be sequential, just
   // has to be unique.
   // cleanup: callback to delete a container of this name.
+  // prefix: optional string prefix to disambiguate step containers.
   ScopedStepContainer(const int64 step_id,
                       std::function<void(const string&)> cleanup)
       : name_(strings::StrCat("__per_step_", step_id)), cleanup_(cleanup) {}
+
+  ScopedStepContainer(const int64 step_id,
+                      std::function<void(const string&)> cleanup,
+                      const string& prefix)
+      : name_(strings::StrCat("__", prefix, "_per_step_", step_id)),
+        cleanup_(cleanup) {}
+
   ~ScopedStepContainer() { cleanup_(name_); }
 
   const string& name() const { return name_; }
@@ -619,20 +627,31 @@ ResourceHandleOp<T>::ResourceHandleOp(OpKernelConstruction* context)
 
 template <typename T>
 void ResourceHandleOp<T>::Compute(OpKernelContext* ctx) {
-  if (!initialized_.load()) {
-    mutex_lock ml(mutex_);
-    // Checking again to see if another thread has initialized the resource.
+  if (name_ == ResourceHandle::ANONYMOUS_NAME) {
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    Tensor handle;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
+    handle.scalar<ResourceHandle>()() =
+        MakeResourceHandle<T>(ctx, container_, name_);
+    ctx->set_output(0, handle);
+  } else {
     if (!initialized_.load()) {
-      AllocatorAttributes attr;
-      attr.set_on_host(true);
-      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
-                                             &resource_, attr));
-      resource_.scalar<ResourceHandle>()() =
-          MakeResourceHandle<T>(ctx, container_, name_);
-      initialized_.store(true);
+      mutex_lock ml(mutex_);
+      // Checking again to see if another thread has initialized the resource.
+      if (!initialized_.load()) {
+        AllocatorAttributes attr;
+        attr.set_on_host(true);
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
+                                               &resource_, attr));
+        resource_.scalar<ResourceHandle>()() =
+            MakeResourceHandle<T>(ctx, container_, name_);
+        initialized_.store(true);
+      }
     }
+    ctx->set_output(0, resource_);
   }
-  ctx->set_output(0, resource_);
 }
 
 template <typename T>

@@ -168,7 +168,7 @@ class SoftmaxCentered(bijector.Bijector):
     #   log_normalization = 1 + reduce_sum(exp(logits))
     #   -log_normalization + reduce_sum(logits - log_normalization)
     log_normalization = nn_ops.softplus(
-        math_ops.reduce_logsumexp(x, axis=-1, keep_dims=True))
+        math_ops.reduce_logsumexp(x, axis=-1, keepdims=True))
     return array_ops.squeeze(
         (-log_normalization + math_ops.reduce_sum(
             x - log_normalization, axis=-1, keepdims=True)), axis=-1)

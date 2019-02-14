@@ -51,7 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
-#include "tensorflow/compiler/xla/service/convolution_feature_group_converter.h"
+#include "tensorflow/compiler/xla/service/convolution_group_converter.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
+#include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -92,7 +93,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
+#include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
+#include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 #include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
@@ -244,21 +247,32 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   HloPassPipeline pipeline("HLO passes through layout assignment");
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
+  pipeline.AddPass<DynamicIndexSplitter>();
   pipeline.AddPass<CpuHloSupportChecker>();
 
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
       ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
-  pipeline.AddPass<HloGetDimensionSizeRewriter>();
   pipeline.AddPass<MapInliner>();
+
+  pipeline.AddPass<TriangularSolveExpander>();
 
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
   // pass.
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<BatchDotSimplification>();
-  pipeline.AddPass<DotDecomposer>();
-  pipeline.AddPass<ConvolutionFeatureGroupConverter>();
+  pipeline.AddPass<DotDecomposer>(/*decompose_batch_dot=*/false);
+  auto cost_model = [](HloInstruction* conv) {
+    // We need a cost model for CPUs. Currently, do nothing.
+    return false;
+  };
+  pipeline.AddPass<ConvolutionGroupConverter>(
+      cost_model,
+      /*convert_batch_groups_only=*/true);
+  pipeline.AddPass<ConvolutionGroupConverter>(
+      cost_model,
+      /*convert_batch_groups_only=*/false);
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
   {
     auto& pass =
@@ -270,10 +284,11 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true);
-    AlgebraicSimplifierOptions options(
-        [](const Shape&, const Shape&) { return false; });
+    pipeline.AddPass<HloGetDimensionSizeRewriter>();
+    AlgebraicSimplifierOptions options;
     options.set_enable_dot_strength_reduction(false);
     pass.AddPass<AlgebraicSimplifier>(options);
+    pass.AddPass<SortSimplifier>();
     pass.AddPass<HloDCE>();
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
@@ -293,7 +308,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<TransposeFolding>(
       [&](const HloInstruction& dot,
           const TransposeFolding::OperandIndices& candidate_operands) {
-        return PotentiallyImplementedAsEigenDot(dot, *target_machine_features)
+        return DotImplementationCanHandleTranspose(dot,
+                                                   *target_machine_features)
                    ? candidate_operands
                    : TransposeFolding::OperandIndices{};
       },
@@ -336,8 +352,7 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pass.AddInvariantChecker<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false);
-    AlgebraicSimplifierOptions options(
-        [](const Shape&, const Shape&) { return true; });
+    AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_dot_strength_reduction(false);
     pass.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
@@ -497,7 +512,7 @@ Status CreateHloProfilingArtifacts(
 
   auto shape_size_bytes = [](const Shape& shape) {
     // On the cpu, opaques are pointers.
-    if (ShapeUtil::IsOpaque(shape)) {
+    if (shape.IsOpaque()) {
       return static_cast<int64>(sizeof(void*));
     }
     return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
@@ -635,18 +650,17 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
             .EmitComputation(
                 embedded_computation, embedded_computation->name(),
                 /*is_top_level_computation=*/false,
-                &schedule.sequence(embedded_computation).instructions())
+                schedule.sequence(embedded_computation).instructions())
             .status());
   }
   string function_name_prefix = entry_computation->name().empty()
                                     ? "__compute"
                                     : entry_computation->name();
-  TF_ASSIGN_OR_RETURN(
-      llvm::Function * entry_function,
-      ir_emitter.EmitComputation(
-          entry_computation, function_name_prefix,
-          /*is_top_level_computation=*/true,
-          &schedule.sequence(entry_computation).instructions()));
+  TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
+                      ir_emitter.EmitComputation(
+                          entry_computation, function_name_prefix,
+                          /*is_top_level_computation=*/true,
+                          schedule.sequence(entry_computation).instructions()));
 
   string function_name = [&]() {
     llvm::SmallVector<char, 40> function_name_vector;
@@ -659,9 +673,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   if (embed_ir_in_executable) {
     ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
   }
-  TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
 
   XLA_VLOG_LINES(2, "LLVM IR:\n" + llvm_ir::DumpModuleToString(*llvm_module));
+  TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
 
   // JIT compile the LLVM IR module to in-memory machine code.
   jit->AddModule(std::move(llvm_module));
@@ -835,7 +849,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
               .EmitComputation(
                   embedded_computation, embedded_computation->name(),
                   /*is_top_level_computation=*/false,
-                  &schedule.sequence(embedded_computation).instructions())
+                  schedule.sequence(embedded_computation).instructions())
               .status());
     }
     const string& entry_point_name = options.entry_point_name();
@@ -843,7 +857,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                         ir_emitter.EmitComputation(
                             computation, entry_point_name,
                             /*is_top_level_computation=*/true,
-                            &schedule.sequence(computation).instructions()));
+                            schedule.sequence(computation).instructions()));
 
     CHECK(entry_function->getName() == llvm_ir::AsStringRef(entry_point_name));
 

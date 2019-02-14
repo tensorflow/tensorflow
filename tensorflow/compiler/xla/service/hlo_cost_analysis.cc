@@ -237,24 +237,17 @@ Status HloCostAnalysis::HandleDomain(const HloInstruction* domain) {
 
 Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   const Shape& lhs_shape = dot->operand(0)->shape();
-  const Shape& rhs_shape = dot->operand(1)->shape();
+  const Shape& dot_shape = dot->shape();
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   // Count of elements along the reduction dimension (last dimension for the
   // rhs).
-  int64 reduction_width =
-      lhs_shape.dimensions(dnums.lhs_contracting_dimensions(0));
-  // First divide by reduction width before multiplying by rhs elements to avoid
-  // overflow.
-  int64 fma_count;
-  if (reduction_width == 0) {
-    fma_count = 0;
-  } else {
-    fma_count = (ShapeUtil::ElementsIn(lhs_shape) / reduction_width) *
-                ShapeUtil::ElementsIn(rhs_shape);
+  int64 reduction_width = 1;
+  for (auto dim : dnums.lhs_contracting_dimensions()) {
+    reduction_width *= lhs_shape.dimensions(dim);
   }
-
-  // We count an FMA operation as 2 floating point operations.
-  current_properties_[kFlopsKey] = kFmaFlops * fma_count;
+  // Each output elment requires reduction_width FMA operations.
+  current_properties_[kFlopsKey] =
+      kFmaFlops * ShapeUtil::ElementsIn(dot_shape) * reduction_width;
   return Status::OK();
 }
 
@@ -292,7 +285,7 @@ Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
   // does not need to be multiplied by the number of input tensors - that's
   // already "priced in" by the sub-computation doing more work.
   auto arg = reduce->operand(0);
-  auto output_shape = ShapeUtil::IsArray(reduce->shape())
+  auto output_shape = reduce->shape().IsArray()
                           ? reduce->shape()
                           : reduce->shape().tuple_shapes(0);
   int64 reduction_count =
@@ -419,6 +412,21 @@ Status HloCostAnalysis::HandleTranspose(const HloInstruction*) {
 }
 
 Status HloCostAnalysis::HandleAfterAll(const HloInstruction*) {
+  // This instruction is used to enforce ordering at compile time. No code is
+  // emitted.
+  current_should_compute_bottleneck_time_ = false;
+  current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleAddDependency(
+    const HloInstruction* add_dependency) {
+  // This instruction is used to enforce ordering at compile time. No code is
+  // emitted.
+  current_should_compute_bottleneck_time_ = false;
+  current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
   return Status::OK();
 }
 
@@ -516,7 +524,8 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
   }
 
   const int64 fma_count = (input_feature / convolution->feature_group_count()) *
-                          output_feature * batch *
+                          output_feature *
+                          (batch / convolution->batch_group_count()) *
                           Product(valid_position_counts);
   current_properties_[kFlopsKey] = fma_count * kFmaFlops;
   return Status::OK();
@@ -524,7 +533,7 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
 
 Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
   auto real_shape =
-      ShapeUtil::IsTuple(fft->operand(0)->shape())
+      fft->operand(0)->shape().IsTuple()
           ? ShapeUtil::GetTupleElementShape(fft->operand(0)->shape(), 0)
           : fft->operand(0)->shape();
   constexpr int kFmaPerComplexMul = 4;
@@ -537,7 +546,22 @@ Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
+Status HloCostAnalysis::HandleTriangularSolve(const HloInstruction* hlo) {
+  float bytes_accessed = GetShapeSize(hlo->operand(0)->shape()) / 2.0f;
+  bytes_accessed += GetShapeSize(hlo->operand(1)->shape());
+  current_properties_[kBytesAccessedKey] = bytes_accessed;
+
+  const Shape& a_shape = hlo->operand(0)->shape();
+  const Shape& b_shape = hlo->operand(1)->shape();
+  // Estimate as batch * mn^2 / 2 flops.
+  int64 elems = a_shape.dimensions(a_shape.dimensions_size() - 1);
+  elems *= ShapeUtil::ElementsIn(b_shape);
+  // Each output elment requires reduction_widht FMA operations.
+  current_properties_[kFlopsKey] = kFmaFlops * elems;
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleAllReduce(const HloInstruction* crs) {
   // We assume 2 replicas, so that each output element is the sum of two input
   // elements.
   //
@@ -546,7 +570,7 @@ Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
   double flops = 0.0;
   ShapeUtil::ForEachSubshape(crs->shape(),
                              [&](const Shape& subshape, const ShapeIndex&) {
-                               if (ShapeUtil::IsArray(subshape)) {
+                               if (subshape.IsArray()) {
                                  flops += ShapeUtil::ElementsIn(subshape);
                                }
                              });
@@ -559,6 +583,10 @@ Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
 }
 
 Status HloCostAnalysis::HandleCollectivePermute(const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleReplicaId(const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
 

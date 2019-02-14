@@ -162,7 +162,7 @@ struct TransformFilter {
     merged_dims[1] = in.dimension(NDIMS - 2);  // input filters
     merged_dims[2] = in.dimension(NDIMS - 1);  // output filters
 
-    CHECK(dst_filter_format == FORMAT_OIHW)
+    DCHECK(dst_filter_format == FORMAT_OIHW)
         << "Unsupported destination filter format: "
         << ToString(dst_filter_format);
     // Source filter format is FORMAT_HWIO and spatial dimensions HW are merged

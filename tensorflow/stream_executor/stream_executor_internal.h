@@ -237,9 +237,9 @@ class StreamExecutorInterface {
   virtual bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *gpu_dst,
                                     const DeviceMemoryBase &gpu_src,
                                     uint64 size) = 0;
-  virtual bool HostCallback(Stream *stream, std::function<void()> callback) = 0;
+  virtual bool HostCallback(Stream *stream, std::function<void()> callback);
   virtual bool HostCallback(Stream *stream,
-                            std::function<port::Status()> callback);
+                            std::function<port::Status()> callback) = 0;
   virtual port::Status AllocateEvent(Event *event) = 0;
   virtual port::Status DeallocateEvent(Event *event) = 0;
   virtual port::Status RecordEvent(Stream *stream, Event *event) = 0;
@@ -253,6 +253,10 @@ class StreamExecutorInterface {
   virtual bool StartTimer(Stream *stream, Timer *timer) = 0;
   virtual bool StopTimer(Stream *stream, Timer *timer) = 0;
   virtual port::Status BlockHostUntilDone(Stream *stream) = 0;
+  virtual port::Status GetStatus(Stream *stream) {
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "GetStatus is not supported on this executor.");
+  }
   virtual int PlatformDeviceCount() = 0;
   virtual port::Status EnablePeerAccessTo(StreamExecutorInterface *other) = 0;
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface *other) = 0;
@@ -374,9 +378,11 @@ using StreamFactory = std::function<StreamInterface *(StreamExecutor *)>;
 using TimerFactory = std::function<TimerInterface *(StreamExecutor *)>;
 using KernelFactory = std::function<KernelInterface*()>;
 
-StreamExecutorFactory* MakeCUDAExecutorImplementation();
+StreamExecutorFactory *MakeCUDAExecutorImplementation();
 
-StreamExecutorFactory* MakeOpenCLExecutorImplementation();
+StreamExecutorFactory *MakeROCMExecutorImplementation();
+
+StreamExecutorFactory *MakeOpenCLExecutorImplementation();
 
 extern StreamExecutorFactory MakeHostExecutorImplementation;
 

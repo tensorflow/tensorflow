@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -45,6 +46,10 @@ struct AllocationAttributes {
   // which Op is performing the allocation, and sets this flag to
   // true.
   bool allocation_will_be_logged = false;
+  // EXPERIMENTAL: If provided, then evaluates to a timing count such that only
+  // a memory chunk whose last-freed count is at this value or earlier may be
+  // returned.
+  std::function<uint64()> freed_by_func = nullptr;
 };
 
 // Runtime statistics collected by an allocator.
@@ -375,10 +380,16 @@ struct AllocatorAttributes {
 };
 
 // Returns a trivial implementation of Allocator, which is a process singleton.
-// Access through this function is only intended for use in tests and auxiliary
-// processing.  Performance sensitive uses should always obtain allocators from
-// ProcessState.
-Allocator* cpu_allocator();
+// Access through this function is only intended for use by restricted parts
+// of the infrastructure.
+Allocator* cpu_allocator_base();
+
+// If available, calls ProcessState::GetCPUAllocator(numa_node).
+// If not, falls back to cpu_allocator_base().
+// Intended for use in contexts where ProcessState is not visible at
+// compile time. Where ProcessState is visible, it's preferable to
+// call it directly.
+Allocator* cpu_allocator(int numa_node = port::kNUMANoAffinity);
 
 // If 'enable' is true, the default CPU allocator implementation will collect
 // AllocatorStats. By default, it's disabled.

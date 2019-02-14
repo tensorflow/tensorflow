@@ -82,7 +82,7 @@ namespace {
 // compiled kernels.
 class DummyResourceForTest : public ResourceBase {
  public:
-  string DebugString() override { return "dummy"; }
+  string DebugString() const override { return "dummy"; }
   void Increment() { ++value_; }
   int Get() { return value_; }
 
@@ -650,7 +650,7 @@ TEST_F(XlaCompilerTest, CanPassTensorArraysToAndFromComputation) {
   args[0].initialized = true;
   args[0].type = DT_INT32;
   args[0].shape = TensorShape({});
-  args[0].tensor_array_size = 2;
+  args[0].max_array_size = 2;
   args[0].tensor_array_gradients = {"grad2"};
 
   // Compiles the graph.
@@ -709,7 +709,7 @@ TEST_F(XlaCompilerTest, UnwrittenTensorArrayGradientsAreNotComputationOutputs) {
   args[0].initialized = true;
   args[0].type = DT_INT32;
   args[0].shape = TensorShape({});
-  args[0].tensor_array_size = 2;
+  args[0].max_array_size = 2;
   args[0].tensor_array_gradients = {"grad1"};
 
   // Compiles the graph.
@@ -741,7 +741,7 @@ TEST_F(XlaCompilerTest, NewTensorArrayGradientsAreComputationOutputs) {
   args[0].initialized = true;
   args[0].type = DT_INT32;
   args[0].shape = TensorShape({});
-  args[0].tensor_array_size = 2;
+  args[0].max_array_size = 2;
   args[0].tensor_array_gradients = {"grad1"};
 
   // Compiles the graph.
@@ -1362,7 +1362,7 @@ TEST_F(XlaCompilerTest, TokenInputAndOutput) {
     TF_ASSERT_OK(compiler.CompileGraph(options, "NoOp", std::move(graph_copy),
                                        args, &result));
     EXPECT_EQ(result.xla_input_shapes.size(), 1);
-    EXPECT_TRUE(xla::ShapeUtil::IsTuple(result.xla_output_shape));
+    EXPECT_TRUE(result.xla_output_shape.IsTuple());
     EXPECT_EQ(xla::ShapeUtil::TupleElementCount(result.xla_output_shape), 1);
   }
   {
@@ -1380,11 +1380,11 @@ TEST_F(XlaCompilerTest, TokenInputAndOutput) {
     TF_ASSERT_OK(compiler.CompileGraph(options, "NoOp", std::move(graph_copy),
                                        args, &result));
     EXPECT_EQ(result.xla_input_shapes.size(), 2);
-    EXPECT_TRUE(xla::ShapeUtil::IsToken(result.xla_input_shapes[1]));
-    EXPECT_TRUE(xla::ShapeUtil::IsTuple(result.xla_output_shape));
+    EXPECT_TRUE(result.xla_input_shapes[1].IsToken());
+    EXPECT_TRUE(result.xla_output_shape.IsTuple());
     EXPECT_EQ(xla::ShapeUtil::TupleElementCount(result.xla_output_shape), 2);
-    EXPECT_TRUE(xla::ShapeUtil::IsToken(
-        xla::ShapeUtil::GetTupleElementShape(result.xla_output_shape, 1)));
+    EXPECT_TRUE(xla::ShapeUtil::GetTupleElementShape(result.xla_output_shape, 1)
+                    .IsToken());
   }
 }
 

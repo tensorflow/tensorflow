@@ -123,14 +123,20 @@ void ProfileSummarizer::ProcessProfiles(
   int64_t base_start_us = events[0]->begin_timestamp_us;
   int node_num = 0;
   int64_t curr_total_us = 0;
+  auto tag_string = [](const string& s, const string& t) {
+    return t == "OpInvoke" ? s : s + "/" + t;
+  };
   for (auto event : events) {
     auto op_details = GetOperatorDetails(interpreter, event->event_metadata);
     auto node_name = ToString(op_details.outputs);
     int64_t start_us = event->begin_timestamp_us - base_start_us;
     int64_t node_exec_time =
         event->end_timestamp_us - event->begin_timestamp_us;
-    stats_calculator_->AddNodeStats(node_name, op_details.name, node_num,
-                                    start_us, node_exec_time, 0 /*memory */);
+    stats_calculator_->AddNodeStats(tag_string(node_name, event->tag),
+                                    tag_string(op_details.name, event->tag),
+                                    node_num, start_us, node_exec_time,
+                                    0 /*memory */);
+
     curr_total_us += node_exec_time;
     ++node_num;
   }

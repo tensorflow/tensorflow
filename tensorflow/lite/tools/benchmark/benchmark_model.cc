@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
-#include <time.h>
-
 #include <iostream>
 #include <sstream>
 
@@ -28,18 +26,11 @@ void SleepForSeconds(double sleep_seconds) {
   if (sleep_seconds <= 0.0) {
     return;
   }
-  // Convert the run_delay string into a timespec.
-  timespec req;
-  req.tv_sec = static_cast<time_t>(sleep_seconds);
-  req.tv_nsec = (sleep_seconds - req.tv_sec) * 1000000000;
   // If requested, sleep between runs for an arbitrary amount of time.
   // This can be helpful to determine the effect of mobile processor
   // scaling and thermal throttling.
-#ifdef PLATFORM_WINDOWS
-  Sleep(sleep_seconds * 1000);
-#else
-  nanosleep(&req, nullptr);
-#endif
+  return tflite::profiling::time::SleepForMicros(
+      static_cast<uint64_t>(sleep_seconds * 1e6));
 }
 
 }  // namespace
@@ -51,11 +42,13 @@ using tensorflow::Stat;
 BenchmarkParams BenchmarkModel::DefaultParams() {
   BenchmarkParams params;
   params.AddParam("num_runs", BenchmarkParam::Create<int32_t>(50));
+  params.AddParam("min_secs", BenchmarkParam::Create<float>(1.0f));
   params.AddParam("run_delay", BenchmarkParam::Create<float>(-1.0f));
   params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(1));
   params.AddParam("benchmark_name", BenchmarkParam::Create<std::string>(""));
   params.AddParam("output_prefix", BenchmarkParam::Create<std::string>(""));
   params.AddParam("warmup_runs", BenchmarkParam::Create<int32_t>(1));
+  params.AddParam("warmup_min_secs", BenchmarkParam::Create<float>(0.5f));
   return params;
 }
 
@@ -73,19 +66,34 @@ void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults &results) {
 
 std::vector<Flag> BenchmarkModel::GetFlags() {
   return {
-      CreateFlag<int32_t>("num_runs", &params_, "number of runs"),
+      CreateFlag<int32_t>("num_runs", &params_,
+                          "minimum number of runs, see also min_secs"),
+      CreateFlag<float>(
+          "min_secs", &params_,
+          "minimum number of seconds to rerun for, potentially making the "
+          "actual number of runs to be greater than num_runs"),
       CreateFlag<float>("run_delay", &params_, "delay between runs in seconds"),
       CreateFlag<int32_t>("num_threads", &params_, "number of threads"),
       CreateFlag<std::string>("benchmark_name", &params_, "benchmark name"),
       CreateFlag<std::string>("output_prefix", &params_,
                               "benchmark output prefix"),
-      CreateFlag<int32_t>("warmup_runs", &params_,
-                          "how many runs to initialize model"),
+      CreateFlag<int32_t>(
+          "warmup_runs", &params_,
+          "minimum number of runs performed on initialization, to "
+          "allow performance characteristics to settle, see also "
+          "warmup_min_secs"),
+      CreateFlag<float>(
+          "warmup_min_secs", &params_,
+          "minimum number of seconds to rerun for, potentially making the "
+          "actual number of warm-up runs to be greater than warmup_runs"),
   };
 }
 
 void BenchmarkModel::LogParams() {
-  TFLITE_LOG(INFO) << "Num runs: [" << params_.Get<int32_t>("num_runs") << "]";
+  TFLITE_LOG(INFO) << "Min num runs: [" << params_.Get<int32_t>("num_runs")
+                   << "]";
+  TFLITE_LOG(INFO) << "Min runs duration (seconds): ["
+                   << params_.Get<float>("min_secs") << "]";
   TFLITE_LOG(INFO) << "Inter-run delay (seconds): ["
                    << params_.Get<float>("run_delay") << "]";
   TFLITE_LOG(INFO) << "Num threads: [" << params_.Get<int32_t>("num_threads")
@@ -94,16 +102,24 @@ void BenchmarkModel::LogParams() {
                    << params_.Get<std::string>("benchmark_name") << "]";
   TFLITE_LOG(INFO) << "Output prefix: ["
                    << params_.Get<std::string>("output_prefix") << "]";
-  TFLITE_LOG(INFO) << "Warmup runs: [" << params_.Get<int32_t>("warmup_runs")
-                   << "]";
+  TFLITE_LOG(INFO) << "Min warmup runs: ["
+                   << params_.Get<int32_t>("warmup_runs") << "]";
+  TFLITE_LOG(INFO) << "Min warmup runs duration (seconds): ["
+                   << params_.Get<float>("warmup_min_secs") << "]";
 }
 
 void BenchmarkModel::PrepareInputsAndOutputs() {}
 
-Stat<int64_t> BenchmarkModel::Run(int num_times, RunType run_type) {
+Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
+                                  RunType run_type) {
   Stat<int64_t> run_stats;
-  TFLITE_LOG(INFO) << "Running benchmark for " << num_times << " iterations ";
-  for (int run = 0; run < num_times; run++) {
+  TFLITE_LOG(INFO) << "Running benchmark for at least " << min_num_times
+                   << " iterations and at least " << min_secs << " seconds";
+  int64_t min_finish_us =
+      profiling::time::NowMicros() + static_cast<int64_t>(min_secs * 1.e6f);
+  for (int run = 0;
+       run < min_num_times || profiling::time::NowMicros() < min_finish_us;
+       run++) {
     PrepareInputsAndOutputs();
     listeners_.OnSingleRunStart(run_type);
     int64_t start_us = profiling::time::NowMicros();
@@ -145,9 +161,11 @@ void BenchmarkModel::Run() {
 
   uint64_t input_bytes = ComputeInputBytes();
   Stat<int64_t> warmup_time_us =
-      Run(params_.Get<int32_t>("warmup_runs"), WARMUP);
+      Run(params_.Get<int32_t>("warmup_runs"),
+          params_.Get<float>("warmup_min_secs"), WARMUP);
   Stat<int64_t> inference_time_us =
-      Run(params_.Get<int32_t>("num_runs"), REGULAR);
+      Run(params_.Get<int32_t>("num_runs"), params_.Get<float>("min_secs"),
+          REGULAR);
   listeners_.OnBenchmarkEnd(
       {startup_latency_us, input_bytes, warmup_time_us, inference_time_us});
 }

@@ -45,7 +45,7 @@ def _get_modules(package, attr_name, constants_attr_name):
       API constant names.
 
   Returns:
-    Set of TensorFow API modules.
+    Set of TensorFlow API modules.
   """
   modules = set()
   # TODO(annarev): split up the logic in create_python_api.py so that

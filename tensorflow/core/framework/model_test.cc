@@ -57,33 +57,36 @@ TEST_P(AsyncInterleaveManyTest, Model) {
   });
   std::vector<int64> input_times(1, input_time);
   async_interleave_many->add_processing_time(100);
-  EXPECT_EQ(100, async_interleave_many->processing_time());
-  EXPECT_EQ(0, async_interleave_many->ProcessingTime());
-  EXPECT_EQ(0, async_interleave_many->OutputTime(&input_times));
+  EXPECT_EQ(async_interleave_many->processing_time(), 100);
+  EXPECT_EQ(async_interleave_many->ProcessingTime(), 0);
+  EXPECT_EQ(async_interleave_many->OutputTime(&input_times), 0);
   async_interleave_many->record_element();
-  EXPECT_EQ(1, async_interleave_many->num_elements());
-  EXPECT_EQ(100, async_interleave_many->ProcessingTime());
-  EXPECT_EQ(std::max(0LL, 100 - input_time),
-            async_interleave_many->OutputTime(&input_times));
+  EXPECT_EQ(async_interleave_many->num_elements(), 1);
+  EXPECT_EQ(async_interleave_many->ProcessingTime(), 100);
+  EXPECT_LE(async_interleave_many->OutputTime(&input_times), 100);
+  EXPECT_GE(async_interleave_many->OutputTime(&input_times), 0);
   source1->add_processing_time(200);
   source2->add_processing_time(300);
-  EXPECT_EQ(100, async_interleave_many->ProcessingTime());
-  EXPECT_EQ(std::max(0LL, 100 - input_time),
-            async_interleave_many->OutputTime(&input_times));
+  EXPECT_EQ(async_interleave_many->ProcessingTime(), 100);
+  EXPECT_LE(async_interleave_many->OutputTime(&input_times), 100);
+  EXPECT_GE(async_interleave_many->OutputTime(&input_times), 0);
   source1->record_element();
   source2->record_element();
-  EXPECT_EQ(100 + 250, async_interleave_many->ProcessingTime());
-  EXPECT_EQ(std::max(0LL, 100 + 250 / parallelism - input_time),
-            async_interleave_many->OutputTime(&input_times));
+  EXPECT_EQ(async_interleave_many->ProcessingTime(), 100 + 250);
+  EXPECT_LE(async_interleave_many->OutputTime(&input_times),
+            100 + 250 / parallelism);
+  EXPECT_GE(async_interleave_many->OutputTime(&input_times), 0);
   async_interleave_many->record_element();
-  EXPECT_EQ(50 + 250, async_interleave_many->ProcessingTime());
-  EXPECT_EQ(std::max(0LL, 50 + 250 / parallelism - input_time),
-            async_interleave_many->OutputTime(&input_times));
+  EXPECT_EQ(async_interleave_many->ProcessingTime(), 50 + 250);
+  EXPECT_LE(async_interleave_many->OutputTime(&input_times),
+            50 + 250 / parallelism);
+  EXPECT_GE(async_interleave_many->OutputTime(&input_times), 0);
 }
 
-INSTANTIATE_TEST_CASE_P(Test, AsyncInterleaveManyTest,
-                        ::testing::Combine(::testing::Values(1, 2),
-                                           ::testing::Values(0, 50, 100, 200)));
+INSTANTIATE_TEST_SUITE_P(Test, AsyncInterleaveManyTest,
+                         ::testing::Combine(::testing::Values(1, 2),
+                                            ::testing::Values(0, 50, 100,
+                                                              200)));
 
 class AsyncKnownRatioTest
     : public ::testing::TestWithParam<std::tuple<int64, int64, int64>> {};
@@ -106,53 +109,58 @@ TEST_P(AsyncKnownRatioTest, Model) {
   async_known_many->add_input(source2);
   std::vector<int64> input_times(1, input_time);
   source1->add_processing_time(100);
-  EXPECT_EQ(0, async_known_many->ProcessingTime());
-  EXPECT_EQ(0, async_known_many->OutputTime(&input_times));
+  EXPECT_EQ(async_known_many->ProcessingTime(), 0);
+  EXPECT_EQ(async_known_many->OutputTime(&input_times), 0);
   source2->add_processing_time(200);
-  EXPECT_EQ(0, async_known_many->ProcessingTime());
-  EXPECT_EQ(0, async_known_many->OutputTime(&input_times));
+  EXPECT_EQ(async_known_many->ProcessingTime(), 0);
+  EXPECT_EQ(async_known_many->OutputTime(&input_times), 0);
   source1->record_element();
-  EXPECT_EQ(num_inputs_per_output * 100, async_known_many->ProcessingTime());
-  EXPECT_EQ(std::max(0LL, num_inputs_per_output * 100 - input_time),
-            async_known_many->OutputTime(&input_times));
+  EXPECT_EQ(async_known_many->ProcessingTime(), num_inputs_per_output * 100);
+  EXPECT_LE(async_known_many->OutputTime(&input_times),
+            num_inputs_per_output * 100);
+  EXPECT_GE(async_known_many->OutputTime(&input_times), 0);
   source2->record_element();
-  EXPECT_EQ(num_inputs_per_output * (100 + 200),
-            async_known_many->ProcessingTime());
-  EXPECT_EQ(std::max(0LL, num_inputs_per_output * (100 + 200) - input_time),
-            async_known_many->OutputTime(&input_times));
+  EXPECT_EQ(async_known_many->ProcessingTime(),
+            num_inputs_per_output * (100 + 200));
+  EXPECT_LE(async_known_many->OutputTime(&input_times),
+            num_inputs_per_output * (100 + 200));
+  EXPECT_GE(async_known_many->OutputTime(&input_times), 0);
   source1->record_element();
-  EXPECT_EQ(num_inputs_per_output * (50 + 200),
-            async_known_many->ProcessingTime());
-  EXPECT_EQ(std::max(0LL, num_inputs_per_output * (50 + 200) - input_time),
-            async_known_many->OutputTime(&input_times));
+  EXPECT_EQ(async_known_many->ProcessingTime(),
+            num_inputs_per_output * (50 + 200));
+  EXPECT_LE(async_known_many->OutputTime(&input_times),
+            num_inputs_per_output * (50 + 200));
+  EXPECT_GE(async_known_many->OutputTime(&input_times), 0);
   source2->record_element();
-  EXPECT_EQ(num_inputs_per_output * (50 + 100),
-            async_known_many->ProcessingTime());
-  EXPECT_EQ(std::max(0LL, num_inputs_per_output * (50 + 100) - input_time),
-            async_known_many->OutputTime(&input_times));
+  EXPECT_EQ(async_known_many->ProcessingTime(),
+            num_inputs_per_output * (50 + 100));
+  EXPECT_LE(async_known_many->OutputTime(&input_times),
+            num_inputs_per_output * (50 + 100));
+  EXPECT_GE(async_known_many->OutputTime(&input_times), 0);
   async_known_many->add_processing_time(128);
-  EXPECT_EQ(num_inputs_per_output * (50 + 100),
-            async_known_many->ProcessingTime());
-  EXPECT_EQ(std::max(0LL, num_inputs_per_output * (50 + 100) - input_time),
-            async_known_many->OutputTime(&input_times));
+  EXPECT_EQ(async_known_many->ProcessingTime(),
+            num_inputs_per_output * (50 + 100));
+  EXPECT_LE(async_known_many->OutputTime(&input_times),
+            num_inputs_per_output * (50 + 100));
+  EXPECT_GE(async_known_many->OutputTime(&input_times), 0);
   async_known_many->record_element();
-  EXPECT_EQ(num_inputs_per_output * (50 + 100) + 128,
-            async_known_many->ProcessingTime());
-  EXPECT_EQ(std::max(0LL, num_inputs_per_output * (50 + 100) +
-                              128 / parallelism - input_time),
-            async_known_many->OutputTime(&input_times));
+  EXPECT_EQ(async_known_many->ProcessingTime(),
+            num_inputs_per_output * (50 + 100) + 128);
+  EXPECT_LE(async_known_many->OutputTime(&input_times),
+            num_inputs_per_output * (50 + 100) + 128 / parallelism);
+  EXPECT_GE(async_known_many->OutputTime(&input_times), 0);
   async_known_many->record_element();
-  EXPECT_EQ(num_inputs_per_output * (50 + 100) + 64,
-            async_known_many->ProcessingTime());
-  EXPECT_EQ(std::max(0LL, num_inputs_per_output * (50 + 100) +
-                              64 / parallelism - input_time),
-            async_known_many->OutputTime(&input_times));
+  EXPECT_EQ(async_known_many->ProcessingTime(),
+            num_inputs_per_output * (50 + 100) + 64);
+  EXPECT_LE(async_known_many->OutputTime(&input_times),
+            num_inputs_per_output * (50 + 100) + 64 / parallelism);
+  EXPECT_GE(async_known_many->OutputTime(&input_times), 0);
 }
 
-INSTANTIATE_TEST_CASE_P(Test, AsyncKnownRatioTest,
-                        ::testing::Combine(::testing::Values(1, 2, 4, 8),
-                                           ::testing::Values(0, 50, 100, 200),
-                                           ::testing::Values(0, 1, 2, 4)));
+INSTANTIATE_TEST_SUITE_P(Test, AsyncKnownRatioTest,
+                         ::testing::Combine(::testing::Values(1, 2, 4, 8),
+                                            ::testing::Values(0, 50, 100, 200),
+                                            ::testing::Values(0, 1, 2, 4)));
 
 TEST(InterleaveManyTest, Model) {
   std::shared_ptr<Node> interleave_many =
@@ -168,24 +176,24 @@ TEST(InterleaveManyTest, Model) {
   interleave_many->add_input(source2);
   std::vector<int64> input_times(1, 0);
   interleave_many->add_processing_time(100);
-  EXPECT_EQ(100, interleave_many->processing_time());
-  EXPECT_EQ(0, interleave_many->ProcessingTime());
-  EXPECT_EQ(0, interleave_many->OutputTime(&input_times));
+  EXPECT_EQ(interleave_many->processing_time(), 100);
+  EXPECT_EQ(interleave_many->ProcessingTime(), 0);
+  EXPECT_EQ(interleave_many->OutputTime(&input_times), 0);
   interleave_many->record_element();
-  EXPECT_EQ(1, interleave_many->num_elements());
-  EXPECT_EQ(100, interleave_many->ProcessingTime());
-  EXPECT_EQ(100, interleave_many->OutputTime(&input_times));
+  EXPECT_EQ(interleave_many->num_elements(), 1);
+  EXPECT_EQ(interleave_many->ProcessingTime(), 100);
+  EXPECT_EQ(interleave_many->OutputTime(&input_times), 100);
   source1->add_processing_time(200);
   source2->add_processing_time(300);
-  EXPECT_EQ(100, interleave_many->ProcessingTime());
-  EXPECT_EQ(100, interleave_many->OutputTime(&input_times));
+  EXPECT_EQ(interleave_many->ProcessingTime(), 100);
+  EXPECT_EQ(interleave_many->OutputTime(&input_times), 100);
   source1->record_element();
   source2->record_element();
-  EXPECT_EQ(350, interleave_many->ProcessingTime());
-  EXPECT_EQ(350, interleave_many->OutputTime(&input_times));
+  EXPECT_EQ(interleave_many->ProcessingTime(), 350);
+  EXPECT_EQ(interleave_many->OutputTime(&input_times), 350);
   interleave_many->record_element();
-  EXPECT_EQ(300, interleave_many->ProcessingTime());
-  EXPECT_EQ(300, interleave_many->OutputTime(&input_times));
+  EXPECT_EQ(interleave_many->ProcessingTime(), 300);
+  EXPECT_EQ(interleave_many->OutputTime(&input_times), 300);
 }
 
 class KnownRatioTest : public ::testing::TestWithParam<int64> {};
@@ -202,59 +210,59 @@ TEST_P(KnownRatioTest, Model) {
   known_many->add_input(source2);
   std::vector<int64> input_times(1, 0);
   source1->add_processing_time(100);
-  EXPECT_EQ(0, known_many->ProcessingTime());
-  EXPECT_EQ(0, known_many->OutputTime(&input_times));
+  EXPECT_EQ(known_many->ProcessingTime(), 0);
+  EXPECT_EQ(known_many->OutputTime(&input_times), 0);
   source2->add_processing_time(200);
-  EXPECT_EQ(0, known_many->ProcessingTime());
-  EXPECT_EQ(0, known_many->OutputTime(&input_times));
+  EXPECT_EQ(known_many->ProcessingTime(), 0);
+  EXPECT_EQ(known_many->OutputTime(&input_times), 0);
   source1->record_element();
-  EXPECT_EQ(num_inputs_per_output * 100, known_many->ProcessingTime());
-  EXPECT_EQ(num_inputs_per_output * 100, known_many->OutputTime(&input_times));
+  EXPECT_EQ(known_many->ProcessingTime(), num_inputs_per_output * 100);
+  EXPECT_EQ(known_many->OutputTime(&input_times), num_inputs_per_output * 100);
   source2->record_element();
-  EXPECT_EQ(num_inputs_per_output * (100 + 200), known_many->ProcessingTime());
-  EXPECT_EQ(num_inputs_per_output * (100 + 200),
-            known_many->OutputTime(&input_times));
+  EXPECT_EQ(known_many->ProcessingTime(), num_inputs_per_output * (100 + 200));
+  EXPECT_EQ(known_many->OutputTime(&input_times),
+            num_inputs_per_output * (100 + 200));
   source1->record_element();
-  EXPECT_EQ(num_inputs_per_output * (50 + 200), known_many->ProcessingTime());
-  EXPECT_EQ(num_inputs_per_output * (50 + 200),
-            known_many->OutputTime(&input_times));
+  EXPECT_EQ(known_many->ProcessingTime(), num_inputs_per_output * (50 + 200));
+  EXPECT_EQ(known_many->OutputTime(&input_times),
+            num_inputs_per_output * (50 + 200));
   source2->record_element();
-  EXPECT_EQ(num_inputs_per_output * (50 + 100), known_many->ProcessingTime());
-  EXPECT_EQ(num_inputs_per_output * (50 + 100),
-            known_many->OutputTime(&input_times));
+  EXPECT_EQ(known_many->ProcessingTime(), num_inputs_per_output * (50 + 100));
+  EXPECT_EQ(known_many->OutputTime(&input_times),
+            num_inputs_per_output * (50 + 100));
   known_many->add_processing_time(128);
-  EXPECT_EQ(num_inputs_per_output * (50 + 100), known_many->ProcessingTime());
-  EXPECT_EQ(num_inputs_per_output * (50 + 100),
-            known_many->OutputTime(&input_times));
+  EXPECT_EQ(known_many->ProcessingTime(), num_inputs_per_output * (50 + 100));
+  EXPECT_EQ(known_many->OutputTime(&input_times),
+            num_inputs_per_output * (50 + 100));
   known_many->record_element();
-  EXPECT_EQ(num_inputs_per_output * (50 + 100) + 128,
-            known_many->ProcessingTime());
-  EXPECT_EQ(num_inputs_per_output * (50 + 100) + 128,
-            known_many->OutputTime(&input_times));
+  EXPECT_EQ(known_many->ProcessingTime(),
+            num_inputs_per_output * (50 + 100) + 128);
+  EXPECT_EQ(known_many->OutputTime(&input_times),
+            num_inputs_per_output * (50 + 100) + 128);
   known_many->record_element();
-  EXPECT_EQ(num_inputs_per_output * (50 + 100) + 64,
-            known_many->ProcessingTime());
-  EXPECT_EQ(num_inputs_per_output * (50 + 100) + 64,
-            known_many->OutputTime(&input_times));
+  EXPECT_EQ(known_many->ProcessingTime(),
+            num_inputs_per_output * (50 + 100) + 64);
+  EXPECT_EQ(known_many->OutputTime(&input_times),
+            num_inputs_per_output * (50 + 100) + 64);
 }
 
-INSTANTIATE_TEST_CASE_P(Test, KnownRatioTest, ::testing::Values(0, 1, 2, 4));
+INSTANTIATE_TEST_SUITE_P(Test, KnownRatioTest, ::testing::Values(0, 1, 2, 4));
 
 TEST(SourceTest, Model) {
   std::shared_ptr<Node> source = model::MakeSourceNode({0, "source", nullptr});
   std::vector<int64> input_times(1, 0);
   source->add_processing_time(100);
-  EXPECT_EQ(100, source->processing_time());
-  EXPECT_EQ(0, source->ProcessingTime());
-  EXPECT_EQ(0, source->OutputTime(&input_times));
+  EXPECT_EQ(source->processing_time(), 100);
+  EXPECT_EQ(source->ProcessingTime(), 0);
+  EXPECT_EQ(source->OutputTime(&input_times), 0);
   source->record_element();
-  EXPECT_EQ(1, source->num_elements());
-  EXPECT_EQ(100, source->ProcessingTime());
-  EXPECT_EQ(100, source->OutputTime(&input_times));
+  EXPECT_EQ(source->num_elements(), 1);
+  EXPECT_EQ(source->ProcessingTime(), 100);
+  EXPECT_EQ(source->OutputTime(&input_times), 100);
   source->record_element();
-  EXPECT_EQ(2, source->num_elements());
-  EXPECT_EQ(50, source->ProcessingTime());
-  EXPECT_EQ(50, source->OutputTime(&input_times));
+  EXPECT_EQ(source->num_elements(), 2);
+  EXPECT_EQ(source->ProcessingTime(), 50);
+  EXPECT_EQ(source->OutputTime(&input_times), 50);
 }
 
 TEST(UnknownRatioTest, Model) {
@@ -268,24 +276,24 @@ TEST(UnknownRatioTest, Model) {
   unknown_many->add_input(source2);
   std::vector<int64> input_times(1, 0);
   unknown_many->add_processing_time(100);
-  EXPECT_EQ(100, unknown_many->processing_time());
-  EXPECT_EQ(0, unknown_many->ProcessingTime());
-  EXPECT_EQ(0, unknown_many->OutputTime(&input_times));
+  EXPECT_EQ(unknown_many->processing_time(), 100);
+  EXPECT_EQ(unknown_many->ProcessingTime(), 0);
+  EXPECT_EQ(unknown_many->OutputTime(&input_times), 0);
   unknown_many->record_element();
-  EXPECT_EQ(1, unknown_many->num_elements());
-  EXPECT_EQ(100, unknown_many->ProcessingTime());
-  EXPECT_EQ(100, unknown_many->OutputTime(&input_times));
+  EXPECT_EQ(unknown_many->num_elements(), 1);
+  EXPECT_EQ(unknown_many->ProcessingTime(), 100);
+  EXPECT_EQ(unknown_many->OutputTime(&input_times), 100);
   source1->add_processing_time(100);
   source2->add_processing_time(200);
-  EXPECT_EQ(100, unknown_many->ProcessingTime());
-  EXPECT_EQ(100, unknown_many->OutputTime(&input_times));
+  EXPECT_EQ(unknown_many->ProcessingTime(), 100);
+  EXPECT_EQ(unknown_many->OutputTime(&input_times), 100);
   source1->record_element();
   source2->record_element();
-  EXPECT_EQ(400, unknown_many->ProcessingTime());
-  EXPECT_EQ(400, unknown_many->OutputTime(&input_times));
+  EXPECT_EQ(unknown_many->ProcessingTime(), 400);
+  EXPECT_EQ(unknown_many->OutputTime(&input_times), 400);
   unknown_many->record_element();
-  EXPECT_EQ(200, unknown_many->ProcessingTime());
-  EXPECT_EQ(200, unknown_many->OutputTime(&input_times));
+  EXPECT_EQ(unknown_many->ProcessingTime(), 200);
+  EXPECT_EQ(unknown_many->OutputTime(&input_times), 200);
 }
 
 TEST(UnknownTest, Model) {
@@ -299,35 +307,91 @@ TEST(UnknownTest, Model) {
   unknown->add_input(source2);
   std::vector<int64> input_times(1, 0);
   source1->add_processing_time(100);
-  EXPECT_EQ(0, unknown->ProcessingTime());
-  EXPECT_EQ(0, unknown->OutputTime(&input_times));
+  EXPECT_EQ(unknown->ProcessingTime(), 0);
+  EXPECT_EQ(unknown->OutputTime(&input_times), 0);
   source2->add_processing_time(100);
-  EXPECT_EQ(0, unknown->ProcessingTime());
-  EXPECT_EQ(0, unknown->OutputTime(&input_times));
+  EXPECT_EQ(unknown->ProcessingTime(), 0);
+  EXPECT_EQ(unknown->OutputTime(&input_times), 0);
   source1->record_element();
-  EXPECT_EQ(100, unknown->ProcessingTime());
-  EXPECT_EQ(100, unknown->OutputTime(&input_times));
+  EXPECT_EQ(unknown->ProcessingTime(), 100);
+  EXPECT_EQ(unknown->OutputTime(&input_times), 100);
   source2->record_element();
-  EXPECT_EQ(200, unknown->ProcessingTime());
-  EXPECT_EQ(200, unknown->OutputTime(&input_times));
+  EXPECT_EQ(unknown->ProcessingTime(), 200);
+  EXPECT_EQ(unknown->OutputTime(&input_times), 200);
   source1->record_element();
-  EXPECT_EQ(150, unknown->ProcessingTime());
-  EXPECT_EQ(150, unknown->OutputTime(&input_times));
+  EXPECT_EQ(unknown->ProcessingTime(), 150);
+  EXPECT_EQ(unknown->OutputTime(&input_times), 150);
   source2->record_element();
-  EXPECT_EQ(100, unknown->ProcessingTime());
-  EXPECT_EQ(100, unknown->OutputTime(&input_times));
+  EXPECT_EQ(unknown->ProcessingTime(), 100);
+  EXPECT_EQ(unknown->OutputTime(&input_times), 100);
   // Unknown node processing time should not affect its ProcessingTime() or
   // OutputTime().
   unknown->add_processing_time(100);
-  EXPECT_EQ(100, unknown->processing_time());
-  EXPECT_EQ(100, unknown->ProcessingTime());
-  EXPECT_EQ(100, unknown->OutputTime(&input_times));
+  EXPECT_EQ(unknown->processing_time(), 100);
+  EXPECT_EQ(unknown->ProcessingTime(), 100);
+  EXPECT_EQ(unknown->OutputTime(&input_times), 100);
   // Unknown node number of elements should not affect its ProcessingTime() or
   // OutputTime().
   unknown->record_element();
-  EXPECT_EQ(1, unknown->num_elements());
-  EXPECT_EQ(100, unknown->ProcessingTime());
-  EXPECT_EQ(100, unknown->OutputTime(&input_times));
+  EXPECT_EQ(unknown->num_elements(), 1);
+  EXPECT_EQ(unknown->ProcessingTime(), 100);
+  EXPECT_EQ(unknown->OutputTime(&input_times), 100);
+}
+
+class TestNode : public model::Node {
+ public:
+  using model::Node::Node;
+
+  virtual ~TestNode() {}
+
+ protected:
+  std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
+      SHARED_LOCKS_REQUIRED(mu_) {
+    return nullptr;
+  }
+
+  int64 OutputTimeLocked(std::vector<int64>* input_times) const override
+      SHARED_LOCKS_REQUIRED(mu_) {
+    return 0;
+  }
+
+  int64 ProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
+    return 0;
+  }
+};
+
+TEST(SetterGetterTest, Node) {
+  std::shared_ptr<TestNode> node =
+      std::make_shared<TestNode>(model::Node::Args{-1, "TestNode", nullptr});
+  EXPECT_EQ(node->id(), -1);
+  EXPECT_EQ(node->name(), "TestNode");
+  EXPECT_EQ(node->output(), nullptr);
+
+  EXPECT_EQ(node->buffered_bytes(), 0);
+  node->add_buffered_bytes(42);
+  EXPECT_EQ(node->buffered_bytes(), 42);
+
+  EXPECT_EQ(node->processing_time(), 0);
+  node->record_start(1);
+  EXPECT_EQ(node->processing_time(), 0);
+  node->record_stop(41);
+  EXPECT_EQ(node->processing_time(), 40);
+  node->add_processing_time(2);
+  EXPECT_EQ(node->processing_time(), 42);
+
+  std::shared_ptr<TestNode> input =
+      std::make_shared<TestNode>(model::Node::Args{-1, "TestInput", node});
+  EXPECT_EQ(input->output(), node.get());
+  EXPECT_EQ(node->inputs().size(), 0);
+  node->add_input(input);
+  EXPECT_EQ(node->inputs().size(), 1);
+  EXPECT_EQ(node->inputs().front(), input);
+  node->remove_input(input);
+  EXPECT_EQ(node->inputs().size(), 0);
+
+  EXPECT_EQ(node->num_elements(), 0);
+  node->record_element();
+  EXPECT_EQ(node->num_elements(), 1);
 }
 
 }  // namespace

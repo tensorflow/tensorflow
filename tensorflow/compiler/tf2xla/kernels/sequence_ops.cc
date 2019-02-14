@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/numeric.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -157,9 +157,11 @@ class LinSpaceOp : public XlaOpKernel {
           flat(0) = start;
         } else {
           const float step = (stop - start) / (num - 1);
-          for (int64 i = 0; i < num; ++i) {
+          for (int64 i = 0; i < num - 1; ++i) {
             flat(i) = start + step * i;
           }
+          // The last value in the sequence must be equal to stop.
+          flat(num - 1) = stop;
         }
         break;
       }
@@ -171,9 +173,11 @@ class LinSpaceOp : public XlaOpKernel {
           flat(0) = start;
         } else {
           const double step = (stop - start) / (num - 1);
-          for (int64 i = 0; i < num; ++i) {
+          for (int64 i = 0; i < num - 1; ++i) {
             flat(i) = start + step * i;
           }
+          // The last value in the sequence must be equal to stop.
+          flat(num - 1) = stop;
         }
         break;
       }

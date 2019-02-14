@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional as conv_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -59,6 +60,7 @@ class ConvTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'kernel_size'):
       conv_layers.conv2d(images, 32, None)
 
+  @test_util.run_deprecated_v1
   def testCreateConv2D(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 4))
@@ -87,6 +89,7 @@ class ConvTest(test.TestCase):
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 3, 4, 32])
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
+  @test_util.run_deprecated_v1
   def testCreateConv2DChannelsFirst(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, 4, height, width))
@@ -97,6 +100,7 @@ class ConvTest(test.TestCase):
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 3, 4, 32])
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
+  @test_util.run_deprecated_v1
   def testUnknownInputChannels(self):
     images = array_ops.placeholder(dtypes.float32, (5, 7, 9, None))
     layer = conv_layers.Conv2D(32, [3, 3], activation=nn_ops.relu)
@@ -140,6 +144,7 @@ class ConvTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(),
                          [5, height / 2, width, 32])
 
+  @test_util.run_deprecated_v1
   def testCreateConv1D(self):
     width = 7
     data = random_ops.random_uniform((5, width, 4))
@@ -156,6 +161,7 @@ class ConvTest(test.TestCase):
     output = conv_layers.conv1d(data, 32, 3, activation=nn_ops.relu)
     self.assertListEqual(output.get_shape().as_list(), [5, width - 2, 32])
 
+  @test_util.run_deprecated_v1
   def testCreateConv1DChannelsFirst(self):
     width = 7
     data = random_ops.random_uniform((5, 4, width))
@@ -165,6 +171,7 @@ class ConvTest(test.TestCase):
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 4, 32])
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
+  @test_util.run_deprecated_v1
   def testUnknownInputChannelsConv1D(self):
     data = array_ops.placeholder(dtypes.float32, (5, 4, None))
     layer = conv_layers.Conv1D(32, 3, activation=nn_ops.relu)
@@ -180,6 +187,7 @@ class ConvTest(test.TestCase):
                                  'should be defined. Found `None`.'):
       _ = layer.apply(data)
 
+  @test_util.run_deprecated_v1
   def testCreateConv3D(self):
     depth, height, width = 6, 7, 9
     volumes = random_ops.random_uniform((5, depth, height, width, 4))
@@ -191,6 +199,7 @@ class ConvTest(test.TestCase):
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 3, 3, 4, 32])
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
+  @test_util.run_deprecated_v1
   def testUnknownInputChannelsConv3D(self):
     volumes = array_ops.placeholder(dtypes.float32, (5, 6, 7, 9, None))
     layer = conv_layers.Conv3D(32, [3, 3, 3], activation=nn_ops.relu)
@@ -199,6 +208,7 @@ class ConvTest(test.TestCase):
                                  'should be defined. Found `None`.'):
       _ = layer.apply(volumes)
 
+  @test_util.run_deprecated_v1
   def testConv2DKernelRegularizer(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 4))
@@ -210,6 +220,7 @@ class ConvTest(test.TestCase):
     self.evaluate([v.initializer for v in layer.variables])
     self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
+  @test_util.run_deprecated_v1
   def testConv2DBiasRegularizer(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 4))
@@ -221,6 +232,7 @@ class ConvTest(test.TestCase):
     self.evaluate([v.initializer for v in layer.variables])
     self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
+  @test_util.run_deprecated_v1
   def testConv2DNoBias(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 4))
@@ -247,6 +259,7 @@ class ConvTest(test.TestCase):
     output = layer.apply(images)
     self.assertListEqual(output.get_shape().as_list(), [5, height - 2, 3, 32])
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv2DReuse(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
@@ -255,6 +268,7 @@ class ConvTest(test.TestCase):
     conv_layers.conv2d(images, 32, [3, 3], name='conv1', reuse=True)
     self.assertEqual(len(variables.trainable_variables()), 2)
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv2DReuseFromScope(self):
     with variable_scope.variable_scope('scope'):
       height, width = 7, 9
@@ -265,6 +279,7 @@ class ConvTest(test.TestCase):
       conv_layers.conv2d(images, 32, [3, 3], name='conv1')
       self.assertEqual(len(variables.trainable_variables()), 2)
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv2DInitializerFromScope(self):
     with self.cached_session() as sess:
       with variable_scope.variable_scope(
@@ -283,6 +298,7 @@ class ConvTest(test.TestCase):
         # Check that the bias still got initialized to zeros.
         self.assertAllClose(weights[1], np.zeros((32)))
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv2DNoReuse(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
@@ -325,6 +341,7 @@ class ConvTest(test.TestCase):
     self.assertEqual(conv3d.kernel_constraint, k_constraint)
     self.assertEqual(conv3d.bias_constraint, b_constraint)
 
+  @test_util.run_deprecated_v1
   def testConv3DChannelsFirst(self):
     # Test case for GitHub issue 15655
     images = array_ops.placeholder(
@@ -358,6 +375,7 @@ class SeparableConv1DTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'kernel_size'):
       conv_layers.separable_conv1d(data, 32, None)
 
+  @test_util.run_deprecated_v1
   def testCreateSeparableConv1D(self):
     length = 9
     data = random_ops.random_uniform((5, length, 4))
@@ -379,6 +397,7 @@ class SeparableConv1DTest(test.TestCase):
     self.assertEqual(layer.pointwise_kernel.get_shape().as_list(), [1, 8, 32])
     self.assertEqual(layer.bias.get_shape().as_list(), [32])
 
+  @test_util.run_deprecated_v1
   def testCreateSeparableConv1DChannelsFirst(self):
     length = 9
     data = random_ops.random_uniform((5, 4, length))
@@ -404,6 +423,7 @@ class SeparableConv1DTest(test.TestCase):
     output = layer.apply(data)
     self.assertEqual(output.get_shape().as_list(), [5, length // 2, 32])
 
+  @test_util.run_deprecated_v1
   def testCreateSeparableConv1DWithStridesChannelsFirst(self):
     data_format = 'channels_first'
     length = 10
@@ -413,6 +433,7 @@ class SeparableConv1DTest(test.TestCase):
     output = layer.apply(data)
     self.assertEqual(output.get_shape().as_list(), [5, 32, length // 2])
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv1DReuse(self):
     length = 10
     data = random_ops.random_uniform((5, length, 3), seed=1)
@@ -421,6 +442,7 @@ class SeparableConv1DTest(test.TestCase):
     conv_layers.separable_conv1d(data, 32, 3, name='sepconv1', reuse=True)
     self.assertEqual(len(variables.trainable_variables()), 3)
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv1DReuseFromScope(self):
     with variable_scope.variable_scope('scope'):
       length = 10
@@ -431,6 +453,7 @@ class SeparableConv1DTest(test.TestCase):
       conv_layers.separable_conv1d(data, 32, 3, name='sepconv1')
       self.assertEqual(len(variables.trainable_variables()), 3)
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv1DNoReuse(self):
     length = 10
     data = random_ops.random_uniform((5, length, 3), seed=1)
@@ -439,6 +462,7 @@ class SeparableConv1DTest(test.TestCase):
     conv_layers.separable_conv1d(data, 32, 3)
     self.assertEqual(len(variables.trainable_variables()), 6)
 
+  @test_util.run_deprecated_v1
   def testSeparableConv1DDepthwiseRegularizer(self):
     length = 9
     data = random_ops.random_uniform((5, length, 4))
@@ -450,6 +474,7 @@ class SeparableConv1DTest(test.TestCase):
     self.evaluate([v.initializer for v in layer.variables])
     self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
+  @test_util.run_deprecated_v1
   def testSeparableConv1DPointwiseRegularizer(self):
     length = 9
     data = random_ops.random_uniform((5, length, 4))
@@ -461,6 +486,7 @@ class SeparableConv1DTest(test.TestCase):
     self.evaluate([v.initializer for v in layer.variables])
     self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
+  @test_util.run_deprecated_v1
   def testSeparableConv1DBiasRegularizer(self):
     length = 9
     data = random_ops.random_uniform((5, length, 4))
@@ -472,6 +498,7 @@ class SeparableConv1DTest(test.TestCase):
     self.evaluate([v.initializer for v in layer.variables])
     self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
+  @test_util.run_deprecated_v1
   def testSeparableConv1DNoBias(self):
     length = 9
     data = random_ops.random_uniform((5, length, 4))
@@ -522,6 +549,7 @@ class SeparableConv2DTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'kernel_size'):
       conv_layers.separable_conv2d(images, 32, None)
 
+  @test_util.run_deprecated_v1
   def testCreateSeparableConv2D(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 4))
@@ -562,6 +590,7 @@ class SeparableConv2DTest(test.TestCase):
                          [1, 1, 4, 32])
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
+  @test_util.run_deprecated_v1
   def testCreateSeparableConv2DChannelsFirst(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, 4, height, width))
@@ -584,6 +613,7 @@ class SeparableConv2DTest(test.TestCase):
     output = layer.apply(images)
     self.assertListEqual(output.get_shape().as_list(), [5, height, width, 64])
 
+  @test_util.run_deprecated_v1
   def testCreateSeparableConvWithStrides(self):
     height, width = 6, 8
     # Test strides tuple
@@ -607,6 +637,7 @@ class SeparableConv2DTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(),
                          [5, height / 2, width, 32])
 
+  @test_util.run_deprecated_v1
   def testCreateSeparableConvWithStridesChannelsFirst(self):
     data_format = 'channels_first'
     height, width = 6, 8
@@ -632,6 +663,7 @@ class SeparableConv2DTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(),
                          [5, 32, height / 2, width])
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv2DReuse(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
@@ -641,6 +673,7 @@ class SeparableConv2DTest(test.TestCase):
         images, 32, [3, 3], name='sepconv1', reuse=True)
     self.assertEqual(len(variables.trainable_variables()), 3)
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv2DReuseFromScope(self):
     with variable_scope.variable_scope('scope'):
       height, width = 7, 9
@@ -651,6 +684,7 @@ class SeparableConv2DTest(test.TestCase):
       conv_layers.separable_conv2d(images, 32, [3, 3], name='sepconv1')
       self.assertEqual(len(variables.trainable_variables()), 3)
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv2DInitializerFromScope(self):
     with self.cached_session() as sess:
       with variable_scope.variable_scope(
@@ -671,6 +705,7 @@ class SeparableConv2DTest(test.TestCase):
         # Check that the bias still got initialized to zeros.
         self.assertAllClose(weights[2], np.zeros((32)))
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv2DNoReuse(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
@@ -679,6 +714,7 @@ class SeparableConv2DTest(test.TestCase):
     conv_layers.separable_conv2d(images, 32, [3, 3])
     self.assertEqual(len(variables.trainable_variables()), 6)
 
+  @test_util.run_deprecated_v1
   def testSeparableConv2DDepthwiseRegularizer(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 4))
@@ -690,6 +726,7 @@ class SeparableConv2DTest(test.TestCase):
     self.evaluate([v.initializer for v in layer.variables])
     self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
+  @test_util.run_deprecated_v1
   def testSeparableConv2DPointwiseRegularizer(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 4))
@@ -701,6 +738,7 @@ class SeparableConv2DTest(test.TestCase):
     self.evaluate([v.initializer for v in layer.variables])
     self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
+  @test_util.run_deprecated_v1
   def testSeparableConv2DBiasRegularizer(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 4))
@@ -712,6 +750,7 @@ class SeparableConv2DTest(test.TestCase):
     self.evaluate([v.initializer for v in layer.variables])
     self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
+  @test_util.run_deprecated_v1
   def testSeparableConv2DNoBias(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 4))
@@ -768,6 +807,7 @@ class Conv2DTransposeTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'kernel_size'):
       conv_layers.conv2d_transpose(images, 32, None)
 
+  @test_util.run_deprecated_v1
   def testCreateConv2DTranspose(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 4))
@@ -839,6 +879,7 @@ class Conv2DTransposeTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(),
                          [5, height * 2, width, 32])
 
+  @test_util.run_deprecated_v1
   def testConv2DTransposeKernelRegularizer(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 4))
@@ -850,6 +891,7 @@ class Conv2DTransposeTest(test.TestCase):
     self.evaluate([v.initializer for v in layer.variables])
     self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
+  @test_util.run_deprecated_v1
   def testConv2DTransposeBiasRegularizer(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 4))
@@ -861,6 +903,7 @@ class Conv2DTransposeTest(test.TestCase):
     self.evaluate([v.initializer for v in layer.variables])
     self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
+  @test_util.run_deprecated_v1
   def testConv2DTransposeNoBias(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 4))
@@ -873,6 +916,7 @@ class Conv2DTransposeTest(test.TestCase):
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 3, 32, 4])
     self.assertEqual(layer.bias, None)
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv2DTransposeReuse(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
@@ -881,6 +925,7 @@ class Conv2DTransposeTest(test.TestCase):
     conv_layers.conv2d_transpose(images, 32, [3, 3], name='deconv1', reuse=True)
     self.assertEqual(len(variables.trainable_variables()), 2)
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv2DTransposeReuseFromScope(self):
     with variable_scope.variable_scope('scope'):
       height, width = 7, 9
@@ -891,6 +936,7 @@ class Conv2DTransposeTest(test.TestCase):
       conv_layers.conv2d_transpose(images, 32, [3, 3], name='deconv1')
       self.assertEqual(len(variables.trainable_variables()), 2)
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv2DTransposeInitializerFromScope(self):
     with self.cached_session() as sess:
       with variable_scope.variable_scope(
@@ -909,6 +955,7 @@ class Conv2DTransposeTest(test.TestCase):
         # Check that the bias still got initialized to zeros.
         self.assertAllClose(weights[1], np.zeros((32)))
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv2DTransposeNoReuse(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
@@ -955,6 +1002,7 @@ class Conv3DTransposeTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'kernel_size'):
       conv_layers.conv3d_transpose(volumes, 4, None)
 
+  @test_util.run_deprecated_v1
   def testCreateConv3DTranspose(self):
     depth, height, width = 5, 7, 9
     volumes = random_ops.random_uniform((5, depth, height, width, 32))
@@ -976,6 +1024,7 @@ class Conv3DTransposeTest(test.TestCase):
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 3, 3, 4, 32])
     self.assertListEqual(layer.bias.get_shape().as_list(), [4])
 
+  @test_util.run_deprecated_v1
   def testCreateConv3DTransposeChannelsFirst(self):
     depth, height, width = 5, 7, 9
     volumes = random_ops.random_uniform((5, 32, depth, height, width))
@@ -1019,6 +1068,7 @@ class Conv3DTransposeTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(),
                          [5, depth * 2, height, width, 4])
 
+  @test_util.run_deprecated_v1
   def testConv3DTransposeKernelRegularizer(self):
     depth, height, width = 5, 7, 9
     volumes = random_ops.random_uniform((5, depth, height, width, 32))
@@ -1030,6 +1080,7 @@ class Conv3DTransposeTest(test.TestCase):
     self.evaluate([v.initializer for v in layer.variables])
     self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
+  @test_util.run_deprecated_v1
   def testConv3DTransposeBiasRegularizer(self):
     depth, height, width = 5, 7, 9
     volumes = random_ops.random_uniform((5, depth, height, width, 32))
@@ -1041,6 +1092,7 @@ class Conv3DTransposeTest(test.TestCase):
     self.evaluate([v.initializer for v in layer.variables])
     self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
+  @test_util.run_deprecated_v1
   def testConv3DTransposeNoBias(self):
     depth, height, width = 5, 7, 9
     volumes = random_ops.random_uniform((5, depth, height, width, 32))
@@ -1053,6 +1105,7 @@ class Conv3DTransposeTest(test.TestCase):
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 3, 3, 4, 32])
     self.assertEqual(layer.bias, None)
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv3DTransposeReuse(self):
     depth, height, width = 5, 7, 9
     volumes = random_ops.random_uniform((5, depth, height, width, 32), seed=1)
@@ -1062,6 +1115,7 @@ class Conv3DTransposeTest(test.TestCase):
         volumes, 4, [3, 3, 3], name='deconv1', reuse=True)
     self.assertEqual(len(variables.trainable_variables()), 2)
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv3DTransposeReuseFromScope(self):
     with variable_scope.variable_scope('scope'):
       depth, height, width = 5, 7, 9
@@ -1072,6 +1126,7 @@ class Conv3DTransposeTest(test.TestCase):
       conv_layers.conv3d_transpose(volumes, 4, [3, 3, 3], name='deconv1')
       self.assertEqual(len(variables.trainable_variables()), 2)
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv3DTransposeInitializerFromScope(self):
     with self.cached_session() as sess:
       with variable_scope.variable_scope(
@@ -1091,6 +1146,7 @@ class Conv3DTransposeTest(test.TestCase):
         # Check that the bias still got initialized to zeros.
         self.assertAllClose(weights[1], np.zeros((4)))
 
+  @test_util.run_deprecated_v1
   def testFunctionalConv3DTransposeNoReuse(self):
     depth, height, width = 5, 7, 9
     volumes = random_ops.random_uniform((5, depth, height, width, 32), seed=1)

@@ -38,6 +38,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import momentum as momentum_lib
 
 
+@test_util.run_deprecated_v1
 class AbsoluteDifferenceLossTest(test.TestCase):
 
   def setUp(self):
@@ -123,6 +124,7 @@ class SoftmaxCrossEntropyLossTest(test.TestCase):
       with self.assertRaises(ValueError):
         losses.softmax_cross_entropy(labels, logits, weights=None)
 
+  @test_util.run_deprecated_v1
   def testAllCorrect(self):
     with self.cached_session():
       logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
@@ -132,6 +134,7 @@ class SoftmaxCrossEntropyLossTest(test.TestCase):
       self.assertEquals('softmax_cross_entropy_loss/value', loss.op.name)
       self.assertAlmostEqual(loss.eval(), 0.0, 3)
 
+  @test_util.run_deprecated_v1
   def testAllWrong(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
@@ -142,6 +145,7 @@ class SoftmaxCrossEntropyLossTest(test.TestCase):
       self.assertEquals(loss.op.name, 'softmax_cross_entropy_loss/value')
       self.assertAlmostEqual(loss.eval(), 10.0, 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLossWithPythonScalarWeight(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
@@ -151,6 +155,7 @@ class SoftmaxCrossEntropyLossTest(test.TestCase):
       loss = losses.softmax_cross_entropy(labels, logits, weights)
       self.assertAlmostEqual(weights * 10.0, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLossWithScalarTensorWeight(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
@@ -200,6 +205,7 @@ class SoftmaxCrossEntropyLossTest(test.TestCase):
       with self.assertRaises(ValueError):
         losses.softmax_cross_entropy(labels, logits, weights=weights).eval()
 
+  @test_util.run_deprecated_v1
   def testSoftmaxLabelSmoothing(self):
     with self.cached_session():
       # Softmax Cross Entropy Loss is:
@@ -232,6 +238,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       with self.assertRaises(ValueError):
         losses.sparse_softmax_cross_entropy(labels, logits, weights=None)
 
+  @test_util.run_deprecated_v1
   def testAllCorrectInt32Labels(self):
     with self.cached_session():
       logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
@@ -248,6 +255,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
     labels = constant_op.constant([[0], [1], [2]], dtype=dtypes.int32)
     losses.sparse_softmax_cross_entropy(labels, logits)
 
+  @test_util.run_deprecated_v1
   def testAllCorrectInt64Labels(self):
     with self.cached_session():
       logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
@@ -257,6 +265,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
       self.assertAlmostEqual(loss.eval(), 0.0, 3)
 
+  @test_util.run_deprecated_v1
   def testAllCorrectNonColumnLabels(self):
     with self.cached_session():
       logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
@@ -266,6 +275,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
       self.assertAlmostEqual(loss.eval(), 0.0, 3)
 
+  @test_util.run_deprecated_v1
   def testAllWrongInt32Labels(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
@@ -276,6 +286,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
       self.assertAlmostEqual(loss.eval(), 10.0, 3)
 
+  @test_util.run_deprecated_v1
   def testAllWrongInt64Labels(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
@@ -286,6 +297,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
       self.assertAlmostEqual(loss.eval(), 10.0, 3)
 
+  @test_util.run_deprecated_v1
   def testAllWrongNonColumnLabels(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
@@ -296,6 +308,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
       self.assertAlmostEqual(loss.eval(), 10.0, 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLossWithPythonScalarWeight(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
@@ -305,6 +318,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
       self.assertAlmostEqual(weights * 10.0, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLossWithScalarTensorWeight(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
@@ -325,6 +339,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
           labels, logits, constant_op.constant((weights,)))
       self.assertAlmostEqual(weights * 10.0, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLossWithPlaceholderForWeights(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0],
                                    [0.0, 10.0, 0.0],
@@ -337,6 +352,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
                           feed_dict={weights: ((1.2,), (3.4,), (5.6,))})
       self.assertAlmostEqual((1.2 + 3.4 + 5.6) * 10.0 / 3.0, loss_val, 3)
 
+  @test_util.run_deprecated_v1
   def testUnknownShapePlaceholderForLogitsLabelsButScalarWeights(self):
     logits = array_ops.placeholder(dtypes.float32)
     labels = array_ops.placeholder(dtypes.int32)
@@ -352,6 +368,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
                           })
       self.assertAlmostEqual((1.0 + 1.0 + 1.0) * 10.0 / 3.0, loss_val, 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLossWithPlaceholderForLogitsLabelsAndWeights(self):
     logits = array_ops.placeholder(dtypes.float32, shape=(None, 3))
     labels = array_ops.placeholder(dtypes.int32, shape=(None, 1))
@@ -406,6 +423,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
       self.assertAlmostEqual(12.0, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testMeasurementSpecificWeightsRaisesException(self):
     with self.cached_session():
       logits = constant_op.constant([[100.0, -100.0, -100.0],
@@ -444,6 +462,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
         losses.sparse_softmax_cross_entropy(
             labels, logits, weights=weights).eval()
 
+  @test_util.run_deprecated_v1
   def testInconsistentWeightShapeRaisesException(self):
     """The weight tensor has incorrect shape."""
     with self.cached_session():
@@ -458,6 +477,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
         losses.sparse_softmax_cross_entropy(
             labels, logits, weights=weights).eval()
 
+  @test_util.run_deprecated_v1
   def testInconsistentLabelShapeRaisesException(self):
     """The label tensor has incorrect shape."""
     with self.cached_session():
@@ -475,6 +495,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
 
 class SigmoidCrossEntropyLossTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testAllCorrectSigmoid(self):
     with self.cached_session():
       logits = constant_op.constant([[100.0, -100.0, -100.0],
@@ -486,6 +507,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
       self.assertEquals('sigmoid_cross_entropy_loss/value', loss.op.name)
       self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testLossWithSingleDimPlaceholderForLogitsAndWeights1(self):
     logits = array_ops.placeholder(dtypes.float32, shape=(None, 1))
     labels = array_ops.placeholder(dtypes.float32, shape=(None, 1))
@@ -502,6 +524,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
                       })
       self.assertAlmostEqual(0.313, loss, 3)
 
+  @test_util.run_deprecated_v1
   def testLossWithSingleDimPlaceholderForLogitsAndWeights2(self):
     logits = array_ops.placeholder(dtypes.float32, shape=(None, 2))
     labels = array_ops.placeholder(dtypes.float32, shape=(None, 2))
@@ -518,6 +541,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
                       })
       self.assertAlmostEqual(0.313, loss, 3)
 
+  @test_util.run_deprecated_v1
   def testAllWrongSigmoid(self):
     with self.cached_session():
       logits = constant_op.constant([[100.0, -100.0, -100.0],
@@ -529,6 +553,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
       self.assertEquals('sigmoid_cross_entropy_loss/value', loss.op.name)
       self.assertAlmostEqual(loss.eval(), 600.0 / 9.0, 3)
 
+  @test_util.run_deprecated_v1
   def testAllWrongSigmoidWithMeasurementSpecificWeights(self):
     with self.cached_session():
       logits = constant_op.constant([[100.0, -100.0, -100.0],
@@ -541,6 +566,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
       self.assertEquals('sigmoid_cross_entropy_loss/value', loss.op.name)
       self.assertAlmostEqual(1700.0 / 7.0, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testMultiCorrectSigmoid(self):
     logits = constant_op.constant([[100.0, -100.0, 100.0],
                                    [100.0, 100.0, -100.0],
@@ -582,6 +608,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
       self.assertAllClose(((0., 0., 0.), (0., 100., 100.), (100., 0., 100.)),
                           self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testSigmoidLabelSmoothingCorrect(self):
     with self.cached_session():
       logits = constant_op.constant([[100.0, -100.0, -100.0]])
@@ -605,6 +632,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
       expected_value = (100.0 + 50.0 * label_smoothing) / 3.0
       self.assertAlmostEqual(loss.eval(), expected_value, 3)
 
+  @test_util.run_deprecated_v1
   def testSigmoidLabelSmoothingEqualsSoftmaxTwoLabel(self):
     with self.cached_session():
       label_smoothing = 0.1
@@ -623,6 +651,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
                              3)
 
 
+@test_util.run_deprecated_v1
 class LogLossTest(test.TestCase):
 
   def setUp(self):
@@ -805,6 +834,7 @@ class HingeLossTest(test.TestCase):
       with self.assertRaises(ValueError):
         _ = losses.hinge_loss(labels, logits).eval()
 
+  @test_util.run_deprecated_v1
   def testAllOutsideMargin(self):
     with self.cached_session():
       logits = constant_op.constant([1.2, -1.4, -1.0, 2.1])
@@ -812,6 +842,7 @@ class HingeLossTest(test.TestCase):
       loss = losses.hinge_loss(labels, logits)
       self.assertAllClose(loss.eval(), 0.0, atol=1e-3)
 
+  @test_util.run_deprecated_v1
   def testSomeInsideMargin(self):
     with self.cached_session():
       logits = constant_op.constant([[-0.7], [-1.4], [1.4], [0.6]])
@@ -821,6 +852,7 @@ class HingeLossTest(test.TestCase):
       # the margin so they incur some (small) loss.
       self.assertAllClose(loss.eval(), 0.175, atol=1e-3)
 
+  @test_util.run_deprecated_v1
   def testSomeMisclassified(self):
     with self.cached_session():
       logits = constant_op.constant([[[1.2], [0.4], [-1.0], [-1.1]]])
@@ -840,6 +872,7 @@ class HuberLossTest(test.TestCase):
       with self.assertRaises(ValueError):
         _ = losses.huber_loss(labels, predictions).eval()
 
+  @test_util.run_deprecated_v1
   def testAllQuadratic(self):
     with self.cached_session():
       predictions = constant_op.constant([1.5, -1.4, -1.0, 0.0])
@@ -848,6 +881,7 @@ class HuberLossTest(test.TestCase):
       self.assertAllClose(loss.eval(),
                           0.5 * (0.25 + 0.16 + 1.0 + 0.25) / 4., atol=1e-5)
 
+  @test_util.run_deprecated_v1
   def testAllLinear(self):
     with self.cached_session():
       predictions = constant_op.constant([1.5, -1.4, -1.0, 0.0])
@@ -856,6 +890,7 @@ class HuberLossTest(test.TestCase):
       self.assertAllClose(loss.eval(),
                           (1.5 + 2.4 + 1.0 + 1.5) / 4. - 0.5, atol=1e-5)
 
+  @test_util.run_deprecated_v1
   def testMixedQuadraticLinear(self):
     with self.cached_session():
       predictions = constant_op.constant([[1.5, -1.4, -1.0, 0.0],
@@ -888,6 +923,7 @@ class HuberLossTest(test.TestCase):
       self.assertAllClose(expected, self.evaluate(loss), atol=1e-5)
 
 
+@test_util.run_deprecated_v1
 class MeanSquaredErrorTest(test.TestCase):
 
   def setUp(self):
@@ -901,6 +937,7 @@ class MeanSquaredErrorTest(test.TestCase):
         losses.mean_squared_error(
             self._predictions, self._predictions, weights=None)
 
+  @test_util.run_deprecated_v1
   def testScalar(self):
     with self.cached_session():
       self.assertEqual(
@@ -908,22 +945,26 @@ class MeanSquaredErrorTest(test.TestCase):
           losses.mean_squared_error(predictions=constant_op.constant(0),
                                     labels=constant_op.constant(0)).eval())
 
+  @test_util.run_deprecated_v1
   def testAllCorrectNoLossWeight(self):
     loss = losses.mean_squared_error(self._predictions, self._predictions)
     with self.cached_session():
       self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLoss(self):
     loss = losses.mean_squared_error(self._labels, self._predictions)
     with self.cached_session():
       self.assertAlmostEqual(49.5, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLossWithPythonScalarWeight(self):
     weights = 2.3
     loss = losses.mean_squared_error(self._labels, self._predictions, weights)
     with self.cached_session():
       self.assertAlmostEqual(49.5 * weights, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLossWithScalarTensorWeight(self):
     weights = 2.3
     loss = losses.mean_squared_error(self._labels, self._predictions,
@@ -962,6 +1003,7 @@ class MeanSquaredErrorTest(test.TestCase):
       self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
 
 
+@test_util.run_deprecated_v1
 class MeanPairwiseSquaredErrorTest(test.TestCase):
 
   def setUp(self):
@@ -1190,6 +1232,7 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
         self.assertAlmostEqual(loss0 + loss1, loss0_1, 5)
 
 
+@test_util.run_deprecated_v1
 class CosineDistanceLossTest(test.TestCase):
 
   def setUp(self):

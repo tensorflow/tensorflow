@@ -264,7 +264,8 @@ bool ParseTypeValue(const string& key, PyObject* py_value, TF_Status* status,
 }
 
 bool SetOpAttrList(
-    TFE_Op* op, const char* key, PyObject* py_list, TF_AttrType type,
+    TFE_Context* ctx, TFE_Op* op, const char* key, PyObject* py_list,
+    TF_AttrType type,
     tensorflow::gtl::FlatMap<string, tensorflow::int64>* attr_list_sizes,
     TF_Status* status) {
   if (!PySequence_Check(py_list)) {
@@ -368,6 +369,40 @@ bool SetOpAttrList(
     }
     TFE_OpSetAttrShapeList(op, key, dims.get(), num_dims.get(), num_values,
                            status);
+    if (TF_GetCode(status) != TF_OK) return false;
+  } else if (type == TF_ATTR_FUNC) {
+    std::unique_ptr<const TFE_Op*[]> funcs(new const TFE_Op*[num_values]);
+    for (int i = 0; i < num_values; ++i) {
+      tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));
+      // Allow:
+      // (1) String function name, OR
+      // (2) A Python object with a .name attribute
+      //     (A crude test for being a
+      //     tensorflow.python.framework.function._DefinedFunction)
+      //     (which is what the various "defun" or "Defun" decorators do).
+      // And in the future also allow an object that can encapsulate
+      // the function name and its attribute values.
+      tensorflow::StringPiece func_name;
+      if (!ParseStringValue(key, py_value.get(), status, &func_name)) {
+        PyObject* name_attr = PyObject_GetAttrString(py_value.get(), "name");
+        if (name_attr == nullptr ||
+            !ParseStringValue(key, name_attr, status, &func_name)) {
+          TF_SetStatus(
+              status, TF_INVALID_ARGUMENT,
+              tensorflow::strings::StrCat(
+                  "unable to set function value attribute from a ",
+                  py_value.get()->ob_type->tp_name,
+                  " object. If you think this is an error, please file an "
+                  "issue at "
+                  "https://github.com/tensorflow/tensorflow/issues/new")
+                  .c_str());
+          return false;
+        }
+      }
+      funcs[i] = TFE_NewOp(ctx, func_name.data(), status);
+      if (TF_GetCode(status) != TF_OK) return false;
+    }
+    TFE_OpSetAttrFunctionList(op, key, funcs.get(), num_values);
     if (TF_GetCode(status) != TF_OK) return false;
   } else {
     TF_SetStatus(status, TF_UNIMPLEMENTED,
@@ -619,7 +654,8 @@ void SetOpAttrs(TFE_Context* ctx, TFE_Op* op, PyObject* attrs, int start_index,
     const TF_AttrType type = TFE_OpGetAttrType(op, key, &is_list, out_status);
     if (TF_GetCode(out_status) != TF_OK) return;
     if (is_list != 0) {
-      if (!SetOpAttrList(op, key, py_value, type, nullptr, out_status)) return;
+      if (!SetOpAttrList(ctx, op, key, py_value, type, nullptr, out_status))
+        return;
     } else {
       if (!SetOpAttrScalar(ctx, op, key, py_value, type, nullptr, out_status))
         return;
@@ -649,7 +685,8 @@ void SetOpAttrWithDefaults(
     }
   } else {
     if (is_list != 0) {
-      SetOpAttrList(op, attr_name, attr_value, type, attr_list_sizes, status);
+      SetOpAttrList(ctx, op, attr_name, attr_value, type, attr_list_sizes,
+                    status);
     } else {
       SetOpAttrScalar(ctx, op, attr_name, attr_value, type, attr_list_sizes,
                       status);
@@ -835,15 +872,15 @@ int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
 }
 
 const char* TFE_GetPythonString(PyObject* o) {
+#if PY_MAJOR_VERSION >= 3
   if (PyBytes_Check(o)) {
     return PyBytes_AsString(o);
-  }
-#if PY_MAJOR_VERSION >= 3
-  if (PyUnicode_Check(o)) {
+  } else {
     return PyUnicode_AsUTF8(o);
   }
+#else
+  return PyBytes_AsString(o);
 #endif
-  return nullptr;
 }
 
 int64_t get_uid() {
@@ -2303,8 +2340,10 @@ bool ConvertToTensor(
       PyErr_SetString(
           PyExc_TypeError,
           tensorflow::strings::StrCat(
-              "Cannot convert value ", TFE_GetPythonString(input_str.get()),
-              " to EagerTensor with requested dtype: ", desired_dtype)
+              "Cannot convert provided value to EagerTensor. Provided value: ",
+              TFE_GetPythonString(input_str.get()), " Requested dtype: ",
+              tensorflow::DataTypeString(
+                  static_cast<tensorflow::DataType>(desired_dtype)))
               .c_str());
       return false;
     }
@@ -2674,9 +2713,10 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
       for (Py_ssize_t j = 0; j < len; j++) {
         PyObject* py_input = PySequence_Fast_GET_ITEM(input, j);
         tensorflow::Safe_PyObjectPtr py_eager_tensor;
-        if (!ConvertToTensor(op_exec_info, py_input, &py_eager_tensor,
-                             []() { Py_RETURN_NONE; },
-                             [](const TF_DataType& dtype) {}, status)) {
+        if (!ConvertToTensor(
+                op_exec_info, py_input, &py_eager_tensor,
+                []() { Py_RETURN_NONE; }, [](const TF_DataType& dtype) {},
+                status)) {
           return nullptr;
         }
 
@@ -2821,10 +2861,13 @@ namespace {
 const char kTensor[] = "T";
 const char kIndexedSlices[] = "I";
 const char kList[] = "L";
+const char kListEnd[] = "l";
 const char kTuple[] = "U";
+const char kTupleEnd[] = "u";
 const char kDict[] = "D";
 const char kRaw[] = "R";
 const char kShape[] = "s";
+const char kShapeDelim[] = "-";
 const char kDType[] = "d";
 const char kNone[] = "n";
 
@@ -2864,7 +2907,7 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg, EncodeResult* result) {
 
     absl::StrAppend(&result->str, kShape);
     for (tensorflow::int64 dim_size : tensor_shape.dim_sizes()) {
-      absl::StrAppend(&result->str, dim_size);
+      absl::StrAppend(&result->str, dim_size, kShapeDelim);
     }
 
     return tensorflow::Status::OK();
@@ -2926,6 +2969,7 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result);
 
 // This function doesn't set the type of sequence before
 tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
+                                         const char* end_type,
                                          EncodeResult* result) {
   tensorflow::Safe_PyObjectPtr arg_seq(
       PySequence_Fast(arg, "unable to create seq from list/tuple"));
@@ -2940,6 +2984,7 @@ tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
       TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(item, result));
     }
   }
+  absl::StrAppend(&result->str, end_type);
 
   return tensorflow::Status::OK();
 }
@@ -2978,9 +3023,9 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result) {
       TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(dense_shape.get(), result));
     }
   } else if (PyList_Check(arg)) {
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kList, result));
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kList, kListEnd, result));
   } else if (PyTuple_Check(arg)) {
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kTuple, result));
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kTuple, kTupleEnd, result));
   } else if (PyDict_Check(arg)) {
     tensorflow::Safe_PyObjectPtr keys(PyDict_Keys(arg));
     if (PyList_Sort(keys.get()) == -1) {
@@ -3030,4 +3075,37 @@ PyObject* TFE_Py_EncodeArg(PyObject* arg) {
   }
 
   return result.ToPyTuple();
+}
+
+// A method prints incoming messages directly to Python's
+// stdout using Python's C API. This is necessary in Jupyter notebooks
+// and colabs where messages to the C stdout don't go to the notebook
+// cell outputs, but calls to Python's stdout do.
+void PrintToPythonStdout(const char* msg) {
+  if (Py_IsInitialized()) {
+    PyGILState_STATE py_threadstate;
+    py_threadstate = PyGILState_Ensure();
+
+    string string_msg = msg;
+    // PySys_WriteStdout truncates strings over 1000 bytes, so
+    // we write the message in chunks small enough to not be truncated.
+    int CHUNK_SIZE = 900;
+    auto len = string_msg.length();
+    for (int i = 0; i < len; i += CHUNK_SIZE) {
+      PySys_WriteStdout("%s", string_msg.substr(i, CHUNK_SIZE).c_str());
+    }
+    PySys_WriteStdout("\n");
+
+    PyGILState_Release(py_threadstate);
+  }
+}
+
+// Register PrintToPythonStdout as a log listener, to allow
+// printing in colabs and jupyter notebooks to work.
+void TFE_Py_EnableInteractivePythonLogging() {
+  static bool enabled_interactive_logging = false;
+  if (!enabled_interactive_logging) {
+    enabled_interactive_logging = true;
+    TF_RegisterLogListener(PrintToPythonStdout);
+  }
 }

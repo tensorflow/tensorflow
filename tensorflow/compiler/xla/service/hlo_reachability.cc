@@ -49,7 +49,7 @@ void HloReachabilityMap::SetReachabilityToUnionHelper(
     absl::Span<const HloInstruction* const> inputs,
     const HloInstruction* instruction, BitVector* bit_vector) {
   // If instruction is part of inputs, don't reset the bit_vector.
-  if (std::find(inputs.begin(), inputs.end(), instruction) == inputs.end()) {
+  if (!absl::c_linear_search(inputs, instruction)) {
     bit_vector->SetToZero();
   }
   bit_vector->Set(GetIndex(instruction));
@@ -93,7 +93,7 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
         }
         break;
       }
-      case HloOpcode::kCrossReplicaSum: {
+      case HloOpcode::kAllReduce: {
         auto all_reduce_id = hlo->all_reduce_id();
         if (all_reduce_id) {
           auto it = channel_dependency_map.find(all_reduce_id.value());

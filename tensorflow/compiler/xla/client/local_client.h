@@ -114,7 +114,7 @@ class LocalClient : public Client {
   // Build and return a LocalExecutable object. The executable is compiled using
   // the given XlaComputation, argument layouts and options.
   //
-  // The given ExecutableBuildOptions override any values from TF_XLA_FLAGS
+  // The given ExecutableBuildOptions overrides any values from XLA_FLAGS
   // environment variable.
   StatusOr<std::unique_ptr<LocalExecutable>> Compile(
       const XlaComputation& computation,

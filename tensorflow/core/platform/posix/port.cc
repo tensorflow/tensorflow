@@ -25,7 +25,14 @@ limitations under the License.
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <sched.h>
 #include <sys/sysinfo.h>
+#else
+#include <sys/syscall.h>
 #endif
+
+#if (__x86_64__ || __i386__)
+#include <cpuid.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -69,6 +76,38 @@ int NumSchedulableCPUs() {
   return kDefaultCores;
 }
 
+int NumTotalCPUs() {
+  int count = absl::base_internal::NumCPUs();
+  return (count <= 0) ? kUnknownCPU : count;
+}
+
+int GetCurrentCPU() {
+#if defined(__linux__) && !defined(__ANDROID__)
+  return sched_getcpu();
+  // Attempt to use cpuid on all other platforms.  If that fails, perform a
+  // syscall.
+#elif defined(__cpuid) && !defined(__APPLE__)
+  // TODO(b/120919972): __cpuid returns invalid APIC ids on OS X.
+  uint32_t eax = 0;
+  uint32_t ebx = 0;
+  uint32_t ecx = 0;
+  uint32_t edx = 0;
+  __cpuid(/*level=*/1, eax, ebx, ecx, edx);
+  if ((edx & /*bit_APIC=*/(1 << 9)) != 0) {
+    // EBX bits 24-31 are APIC ID
+    return (ebx & 0xFF) >> 24;
+  }
+#elif defined(__NR_getcpu)
+  unsigned int cpu;
+  if (syscall(__NR_getcpu, &cpu, NULL, NULL) < 0) {
+    return kUnknownCPU;
+  } else {
+    return static_cast<int>(cpu);
+  }
+#endif
+  return kUnknownCPU;
+}
+
 int NumHyperthreadsPerCore() {
   static const int ht_per_core = tensorflow::port::CPUIDNumSMT();
   return (ht_per_core > 0) ? ht_per_core : 1;
@@ -83,9 +122,7 @@ int NUMANumNodes() { return 1; }
 
 void NUMASetThreadNodeAffinity(int node) {}
 
-int NUMAGetThreadNodeAffinity() {
-  return kNUMANoAffinity;
-}
+int NUMAGetThreadNodeAffinity() { return kNUMANoAffinity; }
 
 void* AlignedMalloc(size_t size, int minimum_alignment) {
 #if defined(__ANDROID__)

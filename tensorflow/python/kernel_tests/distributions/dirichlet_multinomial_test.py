@@ -22,6 +22,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import dirichlet_multinomial
@@ -36,6 +37,7 @@ class DirichletMultinomialTest(test.TestCase):
   def setUp(self):
     self._rng = np.random.RandomState(42)
 
+  @test_util.run_deprecated_v1
   def testSimpleShapes(self):
     with self.cached_session():
       alpha = np.random.rand(3)
@@ -45,6 +47,7 @@ class DirichletMultinomialTest(test.TestCase):
       self.assertEqual(tensor_shape.TensorShape([3]), dist.event_shape)
       self.assertEqual(tensor_shape.TensorShape([]), dist.batch_shape)
 
+  @test_util.run_deprecated_v1
   def testComplexShapes(self):
     with self.cached_session():
       alpha = np.random.rand(3, 2, 2)
@@ -55,6 +58,7 @@ class DirichletMultinomialTest(test.TestCase):
       self.assertEqual(tensor_shape.TensorShape([2]), dist.event_shape)
       self.assertEqual(tensor_shape.TensorShape([3, 2]), dist.batch_shape)
 
+  @test_util.run_deprecated_v1
   def testNproperty(self):
     alpha = [[1., 2, 3]]
     n = [[5.]]
@@ -63,6 +67,7 @@ class DirichletMultinomialTest(test.TestCase):
       self.assertEqual([1, 1], dist.total_count.get_shape())
       self.assertAllClose(n, dist.total_count.eval())
 
+  @test_util.run_deprecated_v1
   def testAlphaProperty(self):
     alpha = [[1., 2, 3]]
     with self.cached_session():
@@ -70,6 +75,7 @@ class DirichletMultinomialTest(test.TestCase):
       self.assertEqual([1, 3], dist.concentration.get_shape())
       self.assertAllClose(alpha, dist.concentration.eval())
 
+  @test_util.run_deprecated_v1
   def testPmfNandCountsAgree(self):
     alpha = [[1., 2, 3]]
     n = [[5.]]
@@ -83,6 +89,7 @@ class DirichletMultinomialTest(test.TestCase):
           "last-dimension must sum to `self.total_count`"):
         dist.prob([3., 3, 0]).eval()
 
+  @test_util.run_deprecated_v1
   def testPmfNonIntegerCounts(self):
     alpha = [[1., 2, 3]]
     n = [[5.]]
@@ -178,6 +185,7 @@ class DirichletMultinomialTest(test.TestCase):
       self.assertAllClose([1 / 3., 2 / 5.], self.evaluate(pmf))
       self.assertAllEqual([2], pmf.get_shape())
 
+  @test_util.run_deprecated_v1
   def testPmfForOneVoteIsTheMeanWithOneRecordInput(self):
     # The probabilities of one vote falling into class k is the mean for class
     # k.
@@ -194,6 +202,7 @@ class DirichletMultinomialTest(test.TestCase):
         self.assertAllEqual([3], mean.shape)
         self.assertAllEqual([], pmf.shape)
 
+  @test_util.run_deprecated_v1
   def testMeanDoubleTwoVotes(self):
     # The probabilities of two votes falling into class k for
     # DirichletMultinomial(2, alpha) is twice as much as the probability of one
@@ -215,6 +224,7 @@ class DirichletMultinomialTest(test.TestCase):
         self.assertAllClose(mean2[class_num], 2 * mean1[class_num])
         self.assertAllEqual([3], mean1.shape)
 
+  @test_util.run_deprecated_v1
   def testCovarianceFromSampling(self):
     # We will test mean, cov, var, stddev on a DirichletMultinomial constructed
     # via broadcast between alpha, n.
@@ -412,6 +422,7 @@ class DirichletMultinomialTest(test.TestCase):
       self.assertLess(5 * self.evaluate(pmf_different), self.evaluate(pmf_same))
       self.assertEqual((), pmf_same.get_shape())
 
+  @test_util.run_deprecated_v1
   def testNonStrictTurnsOffAllChecks(self):
     # Make totally invalid input.
     with self.cached_session():
@@ -421,6 +432,7 @@ class DirichletMultinomialTest(test.TestCase):
       dist = ds.DirichletMultinomial(n, alpha, validate_args=False)
       dist.prob(counts).eval()  # Should not raise.
 
+  @test_util.run_deprecated_v1
   def testSampleUnbiasedNonScalarBatch(self):
     with self.cached_session() as sess:
       dist = ds.DirichletMultinomial(
@@ -450,6 +462,7 @@ class DirichletMultinomialTest(test.TestCase):
       self.assertAllClose(
           actual_covariance_, sample_covariance_, atol=0., rtol=0.20)
 
+  @test_util.run_deprecated_v1
   def testSampleUnbiasedScalarBatch(self):
     with self.cached_session() as sess:
       dist = ds.DirichletMultinomial(

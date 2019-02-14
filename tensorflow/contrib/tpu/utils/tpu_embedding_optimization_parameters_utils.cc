@@ -134,12 +134,16 @@ Status GetGradientAccumulationSupport(OptimizationAlgorithm alg,
   }
 }
 namespace {
-// Make a normal state variable specification.
+// Make a normal state variable specification. Please refer to
+// //tensorflow/core/protobuf/tpu/optimization_parameters.proto
+// (StateVariableSpecification message) for instructions on how to set the
+// padding_initial_value field.
 StateVariableSpecification MakeStandardStateVariableSpecification(
-    const string& name) {
+    const string& name, double padding_initial_value) {
   StateVariableSpecification result;
   result.set_name(name);
-  result.mutable_user_defined();
+  result.mutable_user_defined()->set_padding_initial_value(
+      padding_initial_value);
   return result;
 }
 }  // namespace
@@ -149,14 +153,14 @@ Status GetOptimizationAlgorithmStateVariables(
     std::vector<StateVariableSpecification>* state_variables) {
   // The first parameter set is always the weights themselves.
   state_variables->push_back(
-      MakeStandardStateVariableSpecification("parameters"));
+      MakeStandardStateVariableSpecification("parameters", 0.0));
   // The order of the returned parameters needs to match the offsets used by
   // the algorithm implementations in test_util.cc and
   // address_handler_program_creator.cc.
   switch (alg) {
     case OptimizationAlgorithm::kAdagrad: {
       state_variables->push_back(
-          MakeStandardStateVariableSpecification("accumulators"));
+          MakeStandardStateVariableSpecification("accumulators", 0.1));
       break;
     }
     case OptimizationAlgorithm::kStochasticGradientDescent: {
@@ -165,53 +169,58 @@ Status GetOptimizationAlgorithmStateVariables(
     }
     case OptimizationAlgorithm::kFtrl: {
       state_variables->push_back(
-          MakeStandardStateVariableSpecification("accumulators"));
+          MakeStandardStateVariableSpecification("accumulators", 0.1));
       state_variables->push_back(
-          MakeStandardStateVariableSpecification("linears"));
+          MakeStandardStateVariableSpecification("linears", 0.0));
       break;
     }
     case OptimizationAlgorithm::kAdam: {
       state_variables->push_back(
-          MakeStandardStateVariableSpecification("momenta"));
+          MakeStandardStateVariableSpecification("momenta", 0.0));
       state_variables->push_back(
-          MakeStandardStateVariableSpecification("velocities"));
+          MakeStandardStateVariableSpecification("velocities", 0.0));
       break;
     }
     case OptimizationAlgorithm::kMomentum: {
       state_variables->push_back(
-          MakeStandardStateVariableSpecification("momenta"));
+          MakeStandardStateVariableSpecification("momenta", 0.0));
       break;
     }
     case OptimizationAlgorithm::kRmsProp: {
-      state_variables->push_back(MakeStandardStateVariableSpecification("ms"));
-      state_variables->push_back(MakeStandardStateVariableSpecification("mom"));
+      state_variables->push_back(
+          MakeStandardStateVariableSpecification("ms", 1.0));
+      state_variables->push_back(
+          MakeStandardStateVariableSpecification("mom", 0.0));
       break;
     }
     case OptimizationAlgorithm::kCenteredRmsProp: {
-      state_variables->push_back(MakeStandardStateVariableSpecification("ms"));
-      state_variables->push_back(MakeStandardStateVariableSpecification("mom"));
-      state_variables->push_back(MakeStandardStateVariableSpecification("mg"));
+      state_variables->push_back(
+          MakeStandardStateVariableSpecification("ms", 1.0));
+      state_variables->push_back(
+          MakeStandardStateVariableSpecification("mom", 0.0));
+      state_variables->push_back(
+          MakeStandardStateVariableSpecification("mg", 0.0));
       break;
     }
     case OptimizationAlgorithm::kMdlAdagradLight: {
       state_variables->push_back(
-          MakeStandardStateVariableSpecification("accumulators"));
+          MakeStandardStateVariableSpecification("accumulators", 0.1));
       state_variables->push_back(
-          MakeStandardStateVariableSpecification("weights"));
+          MakeStandardStateVariableSpecification("weights", 0.0));
       state_variables->push_back(
-          MakeStandardStateVariableSpecification("benefits"));
+          MakeStandardStateVariableSpecification("benefits", 0.0));
       break;
     }
     case OptimizationAlgorithm::kAdadelta: {
       state_variables->push_back(
-          MakeStandardStateVariableSpecification("accumulators"));
+          MakeStandardStateVariableSpecification("accumulators", 0.0));
       state_variables->push_back(
-          MakeStandardStateVariableSpecification("updates"));
+          MakeStandardStateVariableSpecification("updates", 0.0));
       break;
     }
     case OptimizationAlgorithm::kProximalAdagrad: {
       state_variables->push_back(
-          MakeStandardStateVariableSpecification("accumulators"));
+          MakeStandardStateVariableSpecification("accumulators", 0.1));
       break;
     }
     case OptimizationAlgorithm::PARAMETERS_NOT_SET: {

@@ -113,14 +113,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "CuDNNGRU"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "CuDNNLSTM"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "Dense"
     mtype: "<type \'type\'>"
   }
@@ -404,6 +396,10 @@ tf_module {
     name: "ZeroPadding3D"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "Input"
     argspec: "args=[\'shape\', \'batch_size\', \'name\', \'dtype\', \'sparse\', \'tensor\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\', \'None\'], "
@@ -421,6 +417,10 @@ tf_module {
     argspec: "args=[\'inputs\', \'axis\'], varargs=None, keywords=kwargs, defaults=[\'-1\'], "
   }
   member_method {
+    name: "deserialize"
+    argspec: "args=[\'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "dot"
     argspec: "args=[\'inputs\', \'axes\', \'normalize\'], varargs=None, keywords=kwargs, defaults=[\'False\'], "
   }
@@ -435,6 +435,10 @@ tf_module {
   member_method {
     name: "multiply"
     argspec: "args=[\'inputs\'], varargs=None, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "serialize"
+    argspec: "args=[\'layer\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "subtract"

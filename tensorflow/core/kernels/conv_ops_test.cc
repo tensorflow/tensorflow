@@ -16,6 +16,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
 #include "tensorflow/cc/ops/nn_ops.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -181,7 +183,7 @@ class FusedResizePadConvOpTest : public OpsTestBase {
                                bool resize_align_corners,
                                const string& pad_mode, int stride,
                                const string& padding, DataType dtype) {
-    auto root = tensorflow::Scope::NewRootScope();
+    Scope root = tensorflow::Scope::NewRootScope();
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
     Tensor input_data(DT_FLOAT,
@@ -242,7 +244,7 @@ class FusedResizePadConvOpTest : public OpsTestBase {
                                       int filter_count, const string& pad_mode,
                                       int stride, const string& padding,
                                       DataType dtype) {
-    auto root = tensorflow::Scope::NewRootScope();
+    Scope root = tensorflow::Scope::NewRootScope();
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
     Tensor input_data(DT_FLOAT,
@@ -543,14 +545,59 @@ class FusedConv2DOpTest : public OpsTestBase {
       const Tensor& mean_data, const Tensor& variance_data, Tensor* out)>;
 
   // Runs a Tensorflow graph defined by the root scope, and fetches the result
-  // of 'fetch' node into the output Tensor.
+  // of 'fetch' node into the output Tensor. Optional `fetch_node` parameter
+  // allows to define a fetch node directly using a NodeDef for the ops that are
+  // not supported by the C++ Api.
   void RunAndFetch(const tensorflow::Scope& root, const string& fetch,
-                   Tensor* output) {
+                   Tensor* output, bool allow_gpu_device,
+                   const NodeDef* fetch_node = nullptr) {
     tensorflow::GraphDef graph;
     TF_ASSERT_OK(root.ToGraphDef(&graph));
 
+    if (fetch_node) {
+      *graph.add_node() = *fetch_node;
+    }
+
+    // We really want to make sure that graph executed exactly as we passed it
+    // to the session, so we disable various optimizations.
+    tensorflow::SessionOptions session_options;
+
+    // Disable common runtime constant folding.
+    session_options.config.mutable_graph_options()
+        ->mutable_optimizer_options()
+        ->set_opt_level(OptimizerOptions::L0);
+
+    // Disable Grappler optimizations for tests.
+    tensorflow::RewriterConfig* cfg =
+        session_options.config.mutable_graph_options()
+            ->mutable_rewrite_options();
+    cfg->set_constant_folding(tensorflow::RewriterConfig::OFF);
+    cfg->set_layout_optimizer(tensorflow::RewriterConfig::OFF);
+    cfg->set_remapping(tensorflow::RewriterConfig::OFF);
+
     std::unique_ptr<tensorflow::Session> session(
-        tensorflow::NewSession(tensorflow::SessionOptions()));
+        tensorflow::NewSession(session_options));
+
+    std::vector<DeviceAttributes> available_devices;
+    TF_ASSERT_OK(session->ListDevices(&available_devices))
+        << "Failed to get available session devices";
+
+    // Check if session has an available GPU device.
+    const bool has_gpu_device =
+        absl::c_any_of(available_devices, [](const DeviceAttributes& device) {
+          return device.device_type() == DEVICE_GPU;
+        });
+
+    // Some of the `FusedConv2D` fusion types are implemented only for CPU, and
+    // in this test we don't want to compare GPU vs CPU numbers, so place all
+    // nodes on CPU in this case.
+    const bool place_all_on_gpu = allow_gpu_device && has_gpu_device;
+
+    const string device = place_all_on_gpu ? "/device:GPU:0" : "/device:CPU:0";
+    for (NodeDef& mutable_node : *graph.mutable_node()) {
+      mutable_node.set_device(device);
+    }
+
     TF_ASSERT_OK(session->Create(graph));
 
     std::vector<Tensor> unfused_tensors;
@@ -561,41 +608,41 @@ class FusedConv2DOpTest : public OpsTestBase {
 
   void RunConv2DWithBias(const Tensor& input_data, const Tensor& filter_data,
                          const Tensor& bias_data, Tensor* output,
-                         int stride = 1) {
-    auto root = tensorflow::Scope::NewRootScope();
+                         bool allow_gpu_device = false, int stride = 1) {
+    Scope root = tensorflow::Scope::NewRootScope();
 
-    auto conv = ops::Conv2D(
+    ops::Conv2D conv = ops::Conv2D(
         root.WithOpName("conv"),
         ops::Const(root.WithOpName("input"), Input::Initializer(input_data)),
         ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data)),
         {1, stride, stride, 1}, "SAME");
 
-    auto with_bias = ops::BiasAdd(
+    ops::BiasAdd with_bias = ops::BiasAdd(
         root.WithOpName("with_bias"), conv,
         ops::Const(root.WithOpName("bias"), Input::Initializer(bias_data)));
 
-    RunAndFetch(root, "with_bias", output);
+    RunAndFetch(root, "with_bias", output, allow_gpu_device);
   }
 
   void RunConv2DWithBiasAndRelu(const Tensor& input_data,
                                 const Tensor& filter_data,
                                 const Tensor& bias_data, Tensor* output,
-                                int stride = 1) {
-    auto root = tensorflow::Scope::NewRootScope();
+                                bool allow_gpu_device = false, int stride = 1) {
+    Scope root = tensorflow::Scope::NewRootScope();
 
-    auto conv = ops::Conv2D(
+    ops::Conv2D conv = ops::Conv2D(
         root.WithOpName("conv"),
         ops::Const(root.WithOpName("input"), Input::Initializer(input_data)),
         ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data)),
         {1, stride, stride, 1}, "SAME");
 
-    auto with_bias = ops::BiasAdd(
+    ops::BiasAdd with_bias = ops::BiasAdd(
         root.WithOpName("with_bias"), conv,
         ops::Const(root.WithOpName("bias"), Input::Initializer(bias_data)));
 
-    auto with_relu = ops::Relu(root.WithOpName("with_relu"), with_bias);
+    ops::Relu with_relu = ops::Relu(root.WithOpName("with_relu"), with_bias);
 
-    RunAndFetch(root, "with_relu", output);
+    RunAndFetch(root, "with_relu", output, allow_gpu_device);
   }
 
   void RunConv2DWithBatchNorm(const Tensor& input_data,
@@ -604,10 +651,10 @@ class FusedConv2DOpTest : public OpsTestBase {
                               const Tensor& offset_data,
                               const Tensor& mean_data,
                               const Tensor& variance_data, Tensor* output,
-                              int stride = 1) {
-    auto root = tensorflow::Scope::NewRootScope();
+                              bool allow_gpu_device = false, int stride = 1) {
+    Scope root = tensorflow::Scope::NewRootScope();
 
-    auto conv = ops::Conv2D(
+    ops::Conv2D conv = ops::Conv2D(
         root.WithOpName("conv"),
         ops::Const(root.WithOpName("input"), Input::Initializer(input_data)),
         ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data)),
@@ -616,7 +663,7 @@ class FusedConv2DOpTest : public OpsTestBase {
     ops::FusedBatchNorm::Attrs attr;
     attr = attr.IsTraining(false);
 
-    auto with_fused_batch_norm = ops::FusedBatchNorm(
+    ops::FusedBatchNorm with_fused_batch_norm = ops::FusedBatchNorm(
         root.WithOpName("with_fused_batch_norm"), conv,
         ops::Const(root.WithOpName("scale"), Input::Initializer(scale_data)),
         ops::Const(root.WithOpName("offset"), Input::Initializer(offset_data)),
@@ -624,19 +671,17 @@ class FusedConv2DOpTest : public OpsTestBase {
         ops::Const(root.WithOpName("var"), Input::Initializer(variance_data)),
         attr);
 
-    RunAndFetch(root, "with_fused_batch_norm", output);
+    RunAndFetch(root, "with_fused_batch_norm", output, allow_gpu_device);
   }
 
-  void RunConv2DWithBatchNormAndRelu(const Tensor& input_data,
-                                     const Tensor& filter_data,
-                                     const Tensor& scale_data,
-                                     const Tensor& offset_data,
-                                     const Tensor& mean_data,
-                                     const Tensor& variance_data,
-                                     Tensor* output, int stride = 1) {
-    auto root = tensorflow::Scope::NewRootScope();
+  void RunConv2DWithBatchNormAndRelu(
+      const Tensor& input_data, const Tensor& filter_data,
+      const Tensor& scale_data, const Tensor& offset_data,
+      const Tensor& mean_data, const Tensor& variance_data, Tensor* output,
+      bool allow_gpu_device = false, int stride = 1) {
+    Scope root = tensorflow::Scope::NewRootScope();
 
-    auto conv = ops::Conv2D(
+    ops::Conv2D conv = ops::Conv2D(
         root.WithOpName("conv"),
         ops::Const(root.WithOpName("input"), Input::Initializer(input_data)),
         ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data)),
@@ -645,7 +690,7 @@ class FusedConv2DOpTest : public OpsTestBase {
     ops::FusedBatchNorm::Attrs attr;
     attr = attr.IsTraining(false);
 
-    auto with_fused_batch_norm = ops::FusedBatchNorm(
+    ops::FusedBatchNorm with_fused_batch_norm = ops::FusedBatchNorm(
         root.WithOpName("with_fused_batch_norm"), conv,
         ops::Const(root.WithOpName("scale"), Input::Initializer(scale_data)),
         ops::Const(root.WithOpName("offset"), Input::Initializer(offset_data)),
@@ -653,39 +698,47 @@ class FusedConv2DOpTest : public OpsTestBase {
         ops::Const(root.WithOpName("var"), Input::Initializer(variance_data)),
         attr);
 
-    auto with_relu =
+    ops::Relu with_relu =
         ops::Relu(root.WithOpName("with_relu"), with_fused_batch_norm.y);
 
-    RunAndFetch(root, "with_relu", output);
+    RunAndFetch(root, "with_relu", output, allow_gpu_device);
   }
 
-  void RunFusedConv2DOp(const Tensor& image, const Tensor& filter,
-                        const std::vector<Tensor>& args,
+  void RunFusedConv2DOp(const Tensor& input_data, const Tensor& filter_data,
+                        const std::vector<Tensor>& args_data,
                         const std::vector<string>& fused_ops, Tensor* output,
-                        int stride = 1) {
-    DataType dtype = DataTypeToEnum<T>::v();
-    int num_args = static_cast<int>(args.size());
+                        bool allow_gpu_device = false, int stride = 1) {
+    Scope root = tensorflow::Scope::NewRootScope();
 
-    TF_EXPECT_OK(NodeDefBuilder("fused_conv_op", "_FusedConv2D")
-                     .Input(FakeInput(dtype))
-                     .Input(FakeInput(dtype))
+    DataType dtype = DataTypeToEnum<T>::v();
+    int num_args = static_cast<int>(args_data.size());
+
+    Output input =
+        ops::Const(root.WithOpName("input"), Input::Initializer(input_data));
+    Output filter =
+        ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data));
+
+    std::vector<NodeDefBuilder::NodeOut> args;
+    for (int i = 0; i < num_args; ++i) {
+      Output arg = ops::Const(root.WithOpName(absl::StrCat("arg", i)),
+                              Input::Initializer(args_data[i]));
+      args.emplace_back(arg.name(), 0, dtype);
+    }
+
+    NodeDef fused_conv2d;
+    TF_EXPECT_OK(NodeDefBuilder("fused_conv", "_FusedConv2D")
+                     .Input({input.name(), 0, dtype})
+                     .Input({filter.name(), 0, dtype})
+                     .Input(args)
                      .Attr("num_args", num_args)
-                     .Input(FakeInput(num_args, dtype))
                      .Attr("T", dtype)
                      .Attr("strides", {1, stride, stride, 1})
                      .Attr("padding", "SAME")
                      .Attr("fused_ops", fused_ops)
-                     .Finalize(node_def()));
+                     .Finalize(&fused_conv2d));
 
-    TF_EXPECT_OK(InitOp());
-
-    AddInputFromArray<T>(image.shape(), image.flat<T>());
-    AddInputFromArray<T>(filter.shape(), filter.flat<T>());
-    for (const Tensor& arg : args)
-      AddInputFromArray<T>(arg.shape(), arg.flat<T>());
-    TF_ASSERT_OK(RunOpKernel());
-
-    *output = *GetOutput(0);
+    RunAndFetch(root, fused_conv2d.name(), output, allow_gpu_device,
+                &fused_conv2d);
   }
 
   void VerifyBiasAddTensorsNear(int depth, int image_width, int image_height,
@@ -698,12 +751,15 @@ class FusedConv2DOpTest : public OpsTestBase {
     Tensor image(dtype, {image_batch_count, image_height, image_width, depth});
     image.flat<T>() = image.flat<T>().setRandom();
 
+    // Add some negative values to filter to properly test Relu.
     Tensor filter(dtype, {filter_size, filter_size, depth, filter_count});
     filter.flat<T>() = filter.flat<T>().setRandom();
+    filter.flat<T>() -= filter.flat<T>().constant(static_cast<T>(0.5f));
 
     const int bias_size = filter_count;
     Tensor bias(dtype, {bias_size});
     bias.flat<T>() = bias.flat<T>().setRandom();
+    bias.flat<T>() += bias.flat<T>().constant(static_cast<T>(0.5f));
 
     Tensor conv_2d;
     Tensor fused_conv_2d;
@@ -714,7 +770,15 @@ class FusedConv2DOpTest : public OpsTestBase {
     ASSERT_EQ(conv_2d.dtype(), fused_conv_2d.dtype());
     ASSERT_EQ(conv_2d.shape(), fused_conv_2d.shape());
 
-    test::ExpectTensorNear<T>(conv_2d, fused_conv_2d, 1e-5);
+    // NOTE(intel-tf): When filter_size is equal to the input image size,
+    // conv2d essentially is element-wise multiplication followed by
+    // a full sum reduction, which causes larger numerical error
+    // than usual cases.
+    if (image_width == filter_size && image_height == filter_size) {
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-4);
+    } else {
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
+    }
   }
 
   void VerifyFusedBatchNormTensorsNear(int depth, int image_width,
@@ -727,8 +791,10 @@ class FusedConv2DOpTest : public OpsTestBase {
     Tensor image(dtype, {image_batch_count, image_height, image_width, depth});
     image.flat<T>() = image.flat<T>().setRandom();
 
+    // Add some negative values to filter to properly test Relu.
     Tensor filter(dtype, {filter_size, filter_size, depth, filter_count});
     filter.flat<T>() = filter.flat<T>().setRandom();
+    filter.flat<T>() -= filter.flat<T>().constant(static_cast<T>(0.5f));
 
     const int scale_size = filter_count;
 
@@ -754,7 +820,15 @@ class FusedConv2DOpTest : public OpsTestBase {
     ASSERT_EQ(conv_2d.dtype(), fused_conv_2d.dtype());
     ASSERT_EQ(conv_2d.shape(), fused_conv_2d.shape());
 
-    test::ExpectTensorNear<T>(conv_2d, fused_conv_2d, 1e-3);
+    // NOTE(intel-tf): When filter_size is equal to the input image size,
+    // conv2d essentially is element-wise multiplication followed by
+    // a full sum reduction, which causes larger numerical error
+    // than usual cases.
+    if (image_width == filter_size && image_height == filter_size) {
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-4);
+    } else {
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
+    }
   }
 
   // Verifies that computing Conv2D+BiasAdd in a graph is identical to
@@ -791,14 +865,15 @@ class FusedConv2DOpTest : public OpsTestBase {
     const BiasAddGraphRunner run_default =
         [this](const Tensor& input_data, const Tensor& filter_data,
                const Tensor& bias_data, Tensor* out) {
-          RunConv2DWithBiasAndRelu(input_data, filter_data, bias_data, out);
+          RunConv2DWithBiasAndRelu(input_data, filter_data, bias_data, out,
+                                   /*allow_gpu_device=*/true);
         };
 
     const BiasAddGraphRunner run_fused =
         [this](const Tensor& input_data, const Tensor& filter_data,
                const Tensor& bias_data, Tensor* out) {
           RunFusedConv2DOp(input_data, filter_data, {bias_data},
-                           {"BiasAdd", "Relu"}, out);
+                           {"BiasAdd", "Relu"}, out, /*allow_gpu_device=*/true);
         };
 
     VerifyBiasAddTensorsNear(depth, image_width, image_height,
@@ -877,8 +952,8 @@ class FusedConv2DWithBiasOpTest : public FusedConv2DOpTest<T> {};
 template <typename T>
 class FusedConv2DWithBatchNormOpTest : public FusedConv2DOpTest<T> {};
 
-TYPED_TEST_CASE_P(FusedConv2DWithBiasOpTest);
-TYPED_TEST_CASE_P(FusedConv2DWithBatchNormOpTest);
+TYPED_TEST_SUITE_P(FusedConv2DWithBiasOpTest);
+TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest);
 
 // -------------------------------------------------------------------------- //
 // Conv2D + BiasAdd + {Relu}                                                  //
@@ -960,29 +1035,29 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, SpatialConvolutionAndRelu) {
   this->VerifyConv2DWithBatchNormAndRelu(filter_size, filter_count);
 }
 
-REGISTER_TYPED_TEST_CASE_P(FusedConv2DWithBiasOpTest,    //
-                           OneByOneConvolution,          //
-                           ImageSizeConvolution,         //
-                           SpatialConvolution,           //
-                           OneByOneConvolutionAndRelu,   //
-                           ImageSizeConvolutionAndRelu,  //
-                           SpatialConvolutionAndRelu);
+REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBiasOpTest,    //
+                            OneByOneConvolution,          //
+                            ImageSizeConvolution,         //
+                            SpatialConvolution,           //
+                            OneByOneConvolutionAndRelu,   //
+                            ImageSizeConvolutionAndRelu,  //
+                            SpatialConvolutionAndRelu);
 
-REGISTER_TYPED_TEST_CASE_P(FusedConv2DWithBatchNormOpTest,  //
-                           OneByOneConvolution,             //
-                           ImageSizeConvolution,            //
-                           SpatialConvolution,              //
-                           OneByOneConvolutionAndRelu,      //
-                           ImageSizeConvolutionAndRelu,     //
-                           SpatialConvolutionAndRelu);
+REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest,  //
+                            OneByOneConvolution,             //
+                            ImageSizeConvolution,            //
+                            SpatialConvolution,              //
+                            OneByOneConvolutionAndRelu,      //
+                            ImageSizeConvolutionAndRelu,     //
+                            SpatialConvolutionAndRelu);
 
 using FusedBiasAddDataTypes = ::testing::Types<float, double>;
-INSTANTIATE_TYPED_TEST_CASE_P(Test, FusedConv2DWithBiasOpTest,
-                              FusedBiasAddDataTypes);
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBiasOpTest,
+                               FusedBiasAddDataTypes);
 
 using FusedBatchNormDataTypes = ::testing::Types<float>;
-INSTANTIATE_TYPED_TEST_CASE_P(Test, FusedConv2DWithBatchNormOpTest,
-                              FusedBatchNormDataTypes);
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBatchNormOpTest,
+                               FusedBatchNormDataTypes);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Performance benchmarks for the FusedConv2DWithBiasOp.                      //
@@ -1420,5 +1495,39 @@ BM_FusedConv2DWithBatchNormAndRelu(16, 32, 32, 128, 3, 3, 1024, cpu,
                                    "3x3 /b 16");
 BM_FusedConv2DWithBatchNormAndRelu(32, 32, 32, 128, 3, 3, 1024, cpu,
                                    "3x3 /b 32");
+
+#if GOOGLE_CUDA
+// -------------------------------------------------------------------------- //
+// 1x1 Convolution
+// -------------------------------------------------------------------------- //
+
+BM_Conv2D(8, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 8");
+BM_Conv2D(16, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 16");
+BM_Conv2D(32, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 32");
+
+BM_Conv2DWithBiasAndRelu(8, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 8");
+BM_Conv2DWithBiasAndRelu(16, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 16");
+BM_Conv2DWithBiasAndRelu(32, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 32");
+
+BM_FusedConv2DWithBiasAndRelu(8, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 8");
+BM_FusedConv2DWithBiasAndRelu(16, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 16");
+BM_FusedConv2DWithBiasAndRelu(32, 32, 32, 128, 1, 1, 1024, gpu, "1x1 /b 32");
+
+// -------------------------------------------------------------------------- //
+// 3x3 Convolution
+// -------------------------------------------------------------------------- //
+
+BM_Conv2D(8, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 8");
+BM_Conv2D(16, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 16");
+BM_Conv2D(32, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 32");
+
+BM_Conv2DWithBiasAndRelu(8, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 8");
+BM_Conv2DWithBiasAndRelu(16, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 16");
+BM_Conv2DWithBiasAndRelu(32, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 32");
+
+BM_FusedConv2DWithBiasAndRelu(8, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 8");
+BM_FusedConv2DWithBiasAndRelu(16, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 16");
+BM_FusedConv2DWithBiasAndRelu(32, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 32");
+#endif
 
 }  // namespace tensorflow

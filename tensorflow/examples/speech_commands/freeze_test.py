@@ -19,11 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.examples.speech_commands import freeze
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
 class FreezeTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testCreateInferenceGraphWithMfcc(self):
     with self.cached_session() as sess:
       freeze.create_inference_graph(
@@ -43,6 +45,7 @@ class FreezeTest(test.TestCase):
       ops = [node.op for node in sess.graph_def.node]
       self.assertEqual(1, ops.count('Mfcc'))
 
+  @test_util.run_deprecated_v1
   def testCreateInferenceGraphWithoutMfcc(self):
     with self.cached_session() as sess:
       freeze.create_inference_graph(
@@ -62,6 +65,7 @@ class FreezeTest(test.TestCase):
       ops = [node.op for node in sess.graph_def.node]
       self.assertEqual(0, ops.count('Mfcc'))
 
+  @test_util.run_deprecated_v1
   def testFeatureBinCount(self):
     with self.cached_session() as sess:
       freeze.create_inference_graph(

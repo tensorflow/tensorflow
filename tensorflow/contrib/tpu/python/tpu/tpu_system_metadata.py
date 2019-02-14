@@ -52,6 +52,7 @@ def _query_tpu_system_metadata(master_address, cluster_def=None,
   devices = []
   device_dict = collections.defaultdict(list)
 
+  # TODO(b/120564445): Replace with standard library for retries.
   retry_count = 1
   while True:
     logging.info('Querying Tensorflow master (%s) for TPU system metadata.',

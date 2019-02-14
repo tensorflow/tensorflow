@@ -48,6 +48,7 @@ namespace internal {
 // evaluation disabled.
 TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model,
+                             uint64_t weights_min_num_elements,
                              bool use_hybrid_evaluation);
 }  // namespace internal
 

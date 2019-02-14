@@ -59,13 +59,12 @@ class LibHDFS {
   std::function<hdfsBuilder*()> hdfsNewBuilder;
   std::function<void(hdfsBuilder*, const char*)> hdfsBuilderSetNameNode;
   std::function<int(const char*, char**)> hdfsConfGetStr;
-  std::function<void(hdfsBuilder*, const char* kerbTicketCachePath)>
-      hdfsBuilderSetKerbTicketCachePath;
   std::function<int(hdfsFS, hdfsFile)> hdfsCloseFile;
   std::function<tSize(hdfsFS, hdfsFile, tOffset, void*, tSize)> hdfsPread;
   std::function<tSize(hdfsFS, hdfsFile, const void*, tSize)> hdfsWrite;
   std::function<int(hdfsFS, hdfsFile)> hdfsHFlush;
   std::function<int(hdfsFS, hdfsFile)> hdfsHSync;
+  std::function<tOffset(hdfsFS, hdfsFile)> hdfsTell;
   std::function<hdfsFile(hdfsFS, const char*, int, int, short, tSize)>
       hdfsOpenFile;
   std::function<int(hdfsFS, const char*)> hdfsExists;
@@ -87,11 +86,11 @@ class LibHDFS {
       BIND_HDFS_FUNC(hdfsNewBuilder);
       BIND_HDFS_FUNC(hdfsBuilderSetNameNode);
       BIND_HDFS_FUNC(hdfsConfGetStr);
-      BIND_HDFS_FUNC(hdfsBuilderSetKerbTicketCachePath);
       BIND_HDFS_FUNC(hdfsCloseFile);
       BIND_HDFS_FUNC(hdfsPread);
       BIND_HDFS_FUNC(hdfsWrite);
       BIND_HDFS_FUNC(hdfsHFlush);
+      BIND_HDFS_FUNC(hdfsTell);
       BIND_HDFS_FUNC(hdfsHSync);
       BIND_HDFS_FUNC(hdfsOpenFile);
       BIND_HDFS_FUNC(hdfsExists);
@@ -166,13 +165,6 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   } else {
     hdfs_->hdfsBuilderSetNameNode(builder, nn.c_str());
   }
-  // KERB_TICKET_CACHE_PATH will be deleted in the future, Because KRB5CCNAME is
-  // the build in environment variable of Kerberos, so KERB_TICKET_CACHE_PATH
-  // and related code are unnecessary.
-  char* ticket_cache_path = getenv("KERB_TICKET_CACHE_PATH");
-  if (ticket_cache_path != nullptr) {
-    hdfs_->hdfsBuilderSetKerbTicketCachePath(builder, ticket_cache_path);
-  }
   *fs = hdfs_->hdfsBuilderConnect(builder);
   if (*fs == nullptr) {
     return errors::NotFound(strerror(errno));
@@ -203,6 +195,11 @@ class HDFSRandomAccessFile : public RandomAccessFile {
     }
   }
 
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
+
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     Status s;
@@ -212,8 +209,12 @@ class HDFSRandomAccessFile : public RandomAccessFile {
       // We lock inside the loop rather than outside so we don't block other
       // concurrent readers.
       mutex_lock lock(mu_);
+      // Max read length is INT_MAX-2, for hdfsPread function take a parameter
+      // of int32. -2 offset can avoid JVM OutOfMemoryError.
+      size_t read_n =
+          std::min(n, static_cast<size_t>(std::numeric_limits<int>::max() - 2));
       tSize r = hdfs_->hdfsPread(fs_, file_, static_cast<tOffset>(offset), dst,
-                                 static_cast<tSize>(n));
+                                 static_cast<tSize>(read_n));
       if (r > 0) {
         dst += r;
         n -= r;
@@ -308,8 +309,21 @@ class HDFSWritableFile : public WritableFile {
     return Status::OK();
   }
 
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
+
   Status Sync() override {
     if (hdfs_->hdfsHSync(fs_, file_) != 0) {
+      return IOError(filename_, errno);
+    }
+    return Status::OK();
+  }
+
+  Status Tell(int64* position) override {
+    *position = hdfs_->hdfsTell(fs_, file_);
+    if (*position == -1) {
       return IOError(filename_, errno);
     }
     return Status::OK();

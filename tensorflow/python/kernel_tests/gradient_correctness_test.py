@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -29,6 +30,7 @@ from tensorflow.python.platform import test
 
 class GradientCorrectnessTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testMultipleOutputChainedGradients(self):
     with self.cached_session() as sess:
       x = constant_op.constant(1.0, dtype=dtypes.float32)
@@ -40,18 +42,21 @@ class GradientCorrectnessTest(test.TestCase):
       # [dexp(x)/dx + d(log(exp(x)))/dx] @ x=1 == exp(1) + 1
       self.assertAllClose(grad_vals[0], exp1_plus_one)
 
+  @test_util.run_deprecated_v1
   def testIdentityGradient(self):
     x = constant_op.constant(3.)
     dx_dx, = gradients_impl.gradients(x, x)
     with self.cached_session() as sess:
       self.assertAllClose(1., self.evaluate(dx_dx))
 
+  @test_util.run_deprecated_v1
   def testIntegerIdentityGradient(self):
     x = constant_op.constant(3)
     dx_dx, = gradients_impl.gradients(x, x)
     with self.cached_session() as sess:
       self.assertAllClose(1, self.evaluate(dx_dx))
 
+  @test_util.run_deprecated_v1
   def testGradientWithIntegerPath(self):
     x = constant_op.constant([3.9, 4.1])
     k = math_ops.to_float(math_ops.to_int32(x))
@@ -60,6 +65,7 @@ class GradientCorrectnessTest(test.TestCase):
     with self.cached_session() as sess:
       self.assertAllClose([3., 4.], self.evaluate(dy_dx))
 
+  @test_util.run_deprecated_v1
   def testNoIntegerGradient1(self):
     x = constant_op.constant([3.9, 4.1])
     k = math_ops.to_float(math_ops.to_int32(x))
@@ -67,6 +73,7 @@ class GradientCorrectnessTest(test.TestCase):
     dy_dx, = gradients_impl.gradients(y, x)
     self.assertIsNone(dy_dx)
 
+  @test_util.run_deprecated_v1
   def testNoIntegerGradient2(self):
     k = constant_op.constant([3, 4])
     x = math_ops.to_float(k)
@@ -74,18 +81,21 @@ class GradientCorrectnessTest(test.TestCase):
     dy_dk, = gradients_impl.gradients(y, k)
     self.assertIsNone(dy_dk)
 
+  @test_util.run_deprecated_v1
   def testNoIntegerGradient3(self):
     k = constant_op.constant([3, 4])
     m = k * k
     dm_dk, = gradients_impl.gradients(m, k)
     self.assertIsNone(dm_dk)
 
+  @test_util.run_deprecated_v1
   def testNoIntegerGradient4(self):
     k = constant_op.constant([3, 4])
     m = k * k * k
     dm_dk, = gradients_impl.gradients(m, k)
     self.assertIsNone(dm_dk)
 
+  @test_util.run_deprecated_v1
   def testNoIntegerGradient5(self):
     k = constant_op.constant([3, 4])
     m = k * k
@@ -93,6 +103,7 @@ class GradientCorrectnessTest(test.TestCase):
     dn_dk, = gradients_impl.gradients(n, k)
     self.assertIsNone(dn_dk)
 
+  @test_util.run_deprecated_v1
   def testNoIntegerGradient6(self):
     k = constant_op.constant(3)
     x = math_ops.to_float(k)

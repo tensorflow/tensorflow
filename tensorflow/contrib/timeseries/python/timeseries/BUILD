@@ -104,6 +104,7 @@ py_test(
     srcs = [
         "estimators_test.py",
     ],
+    shard_count = 3,
     srcs_version = "PY2AND3",
     tags = [
         "no_mac",
@@ -154,11 +155,11 @@ py_library(
 
 py_test(
     name = "head_test",
-    size = "large",
+    size = "medium",
     srcs = [
         "head_test.py",
     ],
-    shard_count = 4,
+    shard_count = 10,
     srcs_version = "PY2AND3",
     tags = ["no_pip_gpu"],  # b/63391119
     deps = [
@@ -280,6 +281,7 @@ py_library(
         "input_pipeline.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":feature_keys",
         ":model_utils",
@@ -360,9 +362,10 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":feature_keys",
+        ":math_utils",
         ":model",
         ":model_utils",
-        "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",

@@ -34,7 +34,7 @@ class TensorForestTreeResource : public ResourceBase {
  public:
   TensorForestTreeResource();
 
-  string DebugString() override {
+  string DebugString() const override {
     return strings::StrCat("TensorForestTree[size=", get_size(), "]");
   }
 

@@ -71,9 +71,9 @@ Status LocalExecutable::ValidateExecutionOptions(
           "parameter "
           "%d: want %s, got %s",
           i,
-          ShapeUtil::HumanString(
+          ShapeUtil::HumanStringWithLayout(
               computation_layout.parameter_layout(i).shape()),
-          ShapeUtil::HumanString(arguments[i]->on_host_shape()));
+          ShapeUtil::HumanStringWithLayout(arguments[i]->on_host_shape()));
     }
   }
 
@@ -164,9 +164,8 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
   //    ExecutableRunOptions.eigen_intra_op_thread_pool.
   // *) The thread pool used for XLA CPU ops is from
   //    backend_->eigen_intra_op_thread_pool().
-  ServiceExecutableRunOptions service_options(
-      run_options, backend_->StreamBorrower(),
-      backend_->eigen_intra_op_thread_pool());
+  ServiceExecutableRunOptions service_options(run_options,
+                                              backend_->StreamBorrower());
 
   if (executable_->dumping_snapshot()) {
     return ExecuteAndDump(&service_options, arguments);

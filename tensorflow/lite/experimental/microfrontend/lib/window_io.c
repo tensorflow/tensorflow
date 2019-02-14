@@ -16,7 +16,8 @@ limitations under the License.
 
 void WindowWriteMemmapPreamble(FILE* fp, const struct WindowState* state) {
   fprintf(fp, "static int16_t window_coefficients[] = {\n");
-  for (int i = 0; i < state->size; ++i) {
+  int i;
+  for (i = 0; i < state->size; ++i) {
     fprintf(fp, "%d", state->coefficients[i]);
     if (i < state->size - 1) {
       fprintf(fp, ", ");

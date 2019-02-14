@@ -105,11 +105,11 @@ class DecodeJpegBenchmark(test.Benchmark):
 
       for _ in xrange(3):
         # Skip warm up time.
-        sess.run(r)
+        self.evaluate(r)
 
       start_time = time.time()
       for _ in xrange(num_iters):
-        sess.run(r)
+        self.evaluate(r)
       end_time = time.time()
     return end_time - start_time
 

@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/graph_def_builder_util.h"
-#include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -386,7 +385,7 @@ TEST(PartiallyDeclusterPassTest, DontDeclusterXlaDeviceOps) {
   TF_ASSERT_OK(s.ToGraph(graph.get()));
 
   // This is needed to register the XLA_GPU device.
-  std::vector<Device*> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   TF_ASSERT_OK(DeviceFactory::AddDevices(
       SessionOptions(), "/job:localhost/replica:0/task:0", &devices));
 
@@ -400,10 +399,6 @@ TEST(PartiallyDeclusterPassTest, DontDeclusterXlaDeviceOps) {
   TF_ASSERT_OK(PartiallyDecluster(&graph));
 
   EXPECT_EQ(GetXlaClusterForNode(*n), "cluster_0");
-
-  for (Device* d : devices) {
-    delete d;
-  }
 }
 
 TEST(PartiallyDeclusterPassTest, DontDeclusterNonTensorFlowOps) {

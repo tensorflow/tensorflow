@@ -539,7 +539,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
 
     OP_REQUIRES(
         ctx, success == 0,
-        errors::Internal("CUB reduce error", cudaGetErrorString(success)));
+        errors::Internal("CUB reduce error ", cudaGetErrorString(success)));
   };
 
   reduce(nullptr);  // Get required amount of temp storage.

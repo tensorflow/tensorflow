@@ -1015,8 +1015,7 @@ class _OneHotColumn(
         dense_id_tensor, depth=self.length, on_value=1.0, off_value=0.0)
 
     # Reduce to get a multi-hot per example.
-    return math_ops.reduce_sum(
-        one_hot_id_tensor, reduction_indices=[output_rank - 1])
+    return math_ops.reduce_sum(one_hot_id_tensor, axis=[output_rank - 1])
 
   @property
   def _variable_shape(self):

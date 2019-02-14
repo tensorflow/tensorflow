@@ -35,6 +35,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training import saver
 
 
+@test_util.run_deprecated_v1
 class QuantileOpsTest(test_util.TensorFlowTestCase):
 
   def create_resource(self, name, eps, max_elements, num_streams=1):
@@ -132,8 +133,8 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
           quantile_accumulator_handle_1, num_features=1)
       quantiles = boosted_trees_ops.boosted_trees_bucketize(
           [self._feature_0, self._feature_1], bucket_0 + bucket_1)
-      sess.run([summary_op_0, summary_op_1])
-      sess.run([flush_op_0, flush_op_1])
+      self.evaluate([summary_op_0, summary_op_1])
+      self.evaluate([flush_op_0, flush_op_1])
       self.assertAllClose(self._feature_0_boundaries, bucket_0[0].eval())
       self.assertAllClose(self._feature_1_boundaries, bucket_1[0].eval())
 
@@ -144,7 +145,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accumulator = boosted_trees_ops.QuantileAccumulator(
           num_streams=2, num_quantiles=3, epsilon=self.eps, name="q0")
 
@@ -158,12 +159,12 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
                                             self._example_weights)
       with ops.control_dependencies([summaries]):
         flush = accumulator.flush()
-      sess.run(flush)
+      self.evaluate(flush)
       self.assertAllClose(self._feature_0_boundaries, buckets[0].eval())
       self.assertAllClose(self._feature_1_boundaries, buckets[1].eval())
       save.save(sess, save_path)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       accumulator = boosted_trees_ops.QuantileAccumulator(
           num_streams=2, num_quantiles=3, epsilon=self.eps, name="q0")
       save = saver.Saver()
@@ -176,7 +177,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accumulator = boosted_trees_ops.QuantileAccumulator(
           num_streams=2, num_quantiles=3, epsilon=self.eps, name="q0")
 
@@ -185,16 +186,16 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
 
       summaries = accumulator.add_summaries([self._feature_0, self._feature_1],
                                             self._example_weights)
-      sess.run(summaries)
+      self.evaluate(summaries)
       buckets = accumulator.get_bucket_boundaries()
       self.assertAllClose([], buckets[0].eval())
       self.assertAllClose([], buckets[1].eval())
       save.save(sess, save_path)
-      sess.run(accumulator.flush())
+      self.evaluate(accumulator.flush())
       self.assertAllClose(self._feature_0_boundaries, buckets[0].eval())
       self.assertAllClose(self._feature_1_boundaries, buckets[1].eval())
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       accumulator = boosted_trees_ops.QuantileAccumulator(
           num_streams=2, num_quantiles=3, epsilon=self.eps, name="q0")
       save = saver.Saver()

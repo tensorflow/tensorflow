@@ -20,11 +20,13 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
 class FunctionWrappingTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_function_scope_name(self):
     with function_wrapping.function_scope('test_name'):
       t = constant_op.constant(1)

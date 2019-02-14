@@ -22,7 +22,7 @@ ifeq ($(TARGET), ios)
 	TARGET_ARCH := x86_64
 	CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
-		-DTFLITE_USE_APPLE_ACCELERATE_FOR_CONV \
+		-DTF_LITE_USE_CBLAS \
 		-fembed-bitcode \
 		-Wno-c++11-narrowing \
 		-mno-thumb \

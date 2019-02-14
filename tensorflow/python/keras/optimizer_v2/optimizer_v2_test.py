@@ -20,28 +20,39 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
+from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.optimizer_v2 import adadelta
+from tensorflow.python.keras.optimizer_v2 import adagrad
 from tensorflow.python.keras.optimizer_v2 import adam
+from tensorflow.python.keras.optimizer_v2 import adamax
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
+from tensorflow.python.keras.optimizer_v2 import nadam
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
+from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import momentum
+from tensorflow.python.training import training_util
 
 
 class OptimizerTest(test.TestCase):
@@ -53,8 +64,6 @@ class OptimizerTest(test.TestCase):
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         loss = lambda: 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
-        if not context.executing_eagerly():
-          loss = loss()
         sgd = gradient_descent.SGD(3.0)
 
         self.evaluate(variables.global_variables_initializer())
@@ -105,32 +114,12 @@ class OptimizerTest(test.TestCase):
       # var1 = [0., 1.] - 0.5 * [3, 3]
       self.assertAllClose([-1.5, -0.5], self.evaluate(var1))
 
-  @test_util.run_in_graph_and_eager_modes
-  def testAggregationMethod(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
-        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
-        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
-        loss = lambda: 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
-        if not context.executing_eagerly():
-          loss = loss()
-        sgd = gradient_descent.SGD(3.0)
-
-        self.evaluate(variables.global_variables_initializer())
-        # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
-        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
-        # Run 1 step of sgd through optimizer
-        opt_op = sgd.minimize(
-            loss,
-            var_list=[var0, var1],
-            aggregation_method=gradients_impl.AggregationMethod
-            .EXPERIMENTAL_ACCUMULATE_N)
-        self.evaluate(variables.global_variables_initializer())
+      sgd.learning_rate = learning_rate_schedule.InverseTimeDecay(
+          0.5, decay_steps=1.0, decay_rate=0.5)
+      if context.executing_eagerly():
+        sgd.minimize(loss, [var0, var1])
+      else:
         self.evaluate(opt_op)
-        # Validate updated params
-        self.assertAllClose([-14., -13.], self.evaluate(var0))
-        self.assertAllClose([-6., -5.], self.evaluate(var1))
 
   @test_util.run_in_graph_and_eager_modes
   def testPrecomputedGradient(self):
@@ -139,8 +128,6 @@ class OptimizerTest(test.TestCase):
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         loss = lambda: 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
-        if not context.executing_eagerly():
-          loss = loss()
         grad_loss = constant_op.constant([42, -42], dtype=dtype)
         sgd = gradient_descent.SGD(3.0)
 
@@ -165,8 +152,6 @@ class OptimizerTest(test.TestCase):
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         loss = lambda: 5 * var0  # pylint: disable=cell-var-from-loop
-        if not context.executing_eagerly():
-          loss = loss()
         sgd_op = gradient_descent.SGD(3.0)
         with self.assertRaisesRegexp(ValueError, 'No gradients'):
           # var1 has no gradient
@@ -179,8 +164,6 @@ class OptimizerTest(test.TestCase):
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         loss = lambda: constant_op.constant(5.0)
-        if not context.executing_eagerly():
-          loss = loss()
 
         sgd_op = gradient_descent.SGD(3.0)
         with self.assertRaisesRegexp(ValueError,
@@ -205,11 +188,9 @@ class OptimizerTest(test.TestCase):
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         loss = lambda: 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
-        if not context.executing_eagerly():
-          loss = loss()
 
         sgd = gradient_descent.SGD(3.0)
-        grads_and_vars = sgd.compute_gradients(loss, [var0, var1])
+        grads_and_vars = sgd._compute_gradients(loss, [var0, var1])
         # Convert gradients to tf.Variables
         converted_grads = [
             resource_variable_ops.ResourceVariable(
@@ -248,7 +229,7 @@ class OptimizerTest(test.TestCase):
         return x * x
 
       sgd = gradient_descent.SGD(3.0)
-      grads_and_vars = sgd.compute_gradients(f, [x])
+      grads_and_vars = sgd._compute_gradients(f, [x])
       self.assertEqual(1, len(grads_and_vars))
       grad, x_as_var = grads_and_vars[0]
       self.assertIs(x, x_as_var)
@@ -267,8 +248,6 @@ class OptimizerTest(test.TestCase):
       var1 = variables.Variable([3.0, 4.0],
                                 constraint=constraint_0)
       loss = lambda: 5 * var0 + 3 * var1
-      if not context.executing_eagerly():  # pylint: disable=cell-var-from-loop
-        loss = loss()
       sgd = gradient_descent.SGD(3.0)
 
       self.evaluate(variables.global_variables_initializer())
@@ -291,31 +270,41 @@ class OptimizerTest(test.TestCase):
       self.assertEqual(0, self.evaluate(sgd.iterations))
 
   @test_util.run_in_graph_and_eager_modes
-  def testSerializationWithinDefun(self):
-    with self.cached_session():
-      sgd = gradient_descent.SGD(3.0)
-      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0],
-                                                    dtype=dtypes.float32)
-      loss = lambda: 3 * var0
-      sgd.minimize(loss, [var0])
-
-      def serialize():
-        config = sgd.get_config()
-        gradient_descent.SGD.from_config(config)
-
-      compiled_serialize = function.defun(serialize)
-      with self.assertRaisesRegexp(RuntimeError, 'inside Tensorflow graph'):
-        compiled_serialize()
-
-  @test_util.run_in_graph_and_eager_modes
   def testConfig(self):
     with self.cached_session():
       opt = gradient_descent.SGD(learning_rate=1.0)
       config = opt.get_config()
       opt2 = gradient_descent.SGD.from_config(config)
+      lr = opt._get_hyper('learning_rate')
+      lr2 = opt2._get_hyper('learning_rate')
+      self.evaluate(variables.global_variables_initializer())
       # assert both are equal float values.
-      self.assertEqual(
-          opt._get_hyper('learning_rate'), opt2._get_hyper('learning_rate'))
+      self.assertEqual(self.evaluate(lr), self.evaluate(lr2))
+      var0 = variables.Variable([[1.0], [2.0]], dtype=dtypes.float32)
+      loss = lambda: 3 * var0
+      # learning rate variable created when calling minimize.
+      opt.minimize(loss, [var0])
+      opt3 = gradient_descent.SGD.from_config(config)
+      lr3 = opt3._get_hyper('learning_rate')
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEqual(self.evaluate(lr), self.evaluate(lr3))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConfigWithLearningRateDecay(self):
+    with self.cached_session():
+      decay_schedule = learning_rate_schedule.InverseTimeDecay(
+          0.5, decay_steps=1.0, decay_rate=0.1)
+      step = 10
+      opt = gradient_descent.SGD(decay_schedule)
+      config = opt.get_config()
+      opt2 = gradient_descent.SGD.from_config(config)
+      # assert both are equal float values.
+      self.assertAllEqual(
+          decay_schedule(step),
+          opt._get_hyper('learning_rate')(step))
+      self.assertAllEqual(
+          decay_schedule(step),
+          opt2._get_hyper('learning_rate')(step))
       var0 = variables.Variable([[1.0], [2.0]], dtype=dtypes.float32)
       loss = lambda: 3 * var0
       # learning rate variable created when calling minimize.
@@ -323,9 +312,41 @@ class OptimizerTest(test.TestCase):
       self.evaluate(variables.global_variables_initializer())
       config = opt.get_config()
       opt3 = gradient_descent.SGD.from_config(config)
-      self.assertEqual(
-          self.evaluate(opt._get_hyper('learning_rate')),
-          opt3._get_hyper('learning_rate'))
+      self.assertAllEqual(
+          self.evaluate(opt._get_hyper('learning_rate')(step)),
+          opt3._get_hyper('learning_rate')(step))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGradClipValue(self):
+    with self.cached_session():
+      var = resource_variable_ops.ResourceVariable([1.0, 2.0])
+      loss = lambda: 3 * var
+      opt = gradient_descent.SGD(learning_rate=1.0, clipvalue=1.0)
+      opt_op = opt.minimize(loss, [var])
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate(opt_op)
+      self.assertAllClose([0., 1.], self.evaluate(var))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGradClipNorm(self):
+    with self.cached_session():
+      var = resource_variable_ops.ResourceVariable([1.0])
+      loss = lambda: 3 * var
+      opt = gradient_descent.SGD(learning_rate=1.0, clipnorm=1.0)
+      opt_op = opt.minimize(loss, [var])
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate(opt_op)
+      self.assertAllClose([0.], self.evaluate(var))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInvalidClipNorm(self):
+    with self.assertRaisesRegexp(ValueError, '>= 0'):
+      gradient_descent.SGD(learning_rate=1.0, clipnorm=-1.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInvalidKwargs(self):
+    with self.assertRaisesRegexp(TypeError, 'Unexpected keyword argument'):
+      gradient_descent.SGD(learning_rate=1.0, invalidkwargs=1.0)
 
   @test_util.run_in_graph_and_eager_modes
   def testWeights(self):
@@ -403,6 +424,31 @@ class OptimizerTest(test.TestCase):
       opt.not_an_attr += 3
 
   @test_util.run_in_graph_and_eager_modes
+  def testGettingHyperParametersWithLrInConstructor(self):
+    opt = gradient_descent.SGD(lr=3.0)
+    var = resource_variable_ops.ResourceVariable([1.0, 2.0],
+                                                 dtype=dtypes.float32)
+    loss = lambda: 3 * var
+    opt_op = opt.minimize(loss, [var])
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(opt_op)
+
+    self.assertTrue(isinstance(opt.lr, resource_variable_ops.ResourceVariable))
+    self.assertTrue(
+        isinstance(opt.learning_rate, resource_variable_ops.ResourceVariable))
+
+    lr = self.evaluate(opt.lr)
+    self.assertEqual(3.0, lr)
+
+    opt.lr = 2.0
+    lr = self.evaluate(opt.lr)
+    self.assertEqual(2.0, lr)
+
+    self.evaluate(opt.lr.assign(4.0))
+    lr = self.evaluate(opt.lr)
+    self.assertEqual(4.0, lr)
+
+  @test_util.run_in_graph_and_eager_modes
   def testOptimizerWithKerasModel(self):
     a = input_layer.Input(shape=(3,), name='input_a')
     b = input_layer.Input(shape=(3,), name='input_b')
@@ -475,6 +521,185 @@ class OptimizerTest(test.TestCase):
     self.assertAllClose(
         float(backend.get_value(model.optimizer.lr)), 0.01, atol=1e-4)
 
+  def testOptimizerSetIterations(self):
+    global_step = training_util.get_or_create_global_step()
+    opt = adam.Adam(learning_rate=1.0)
+    opt.iterations = global_step
+    var = resource_variable_ops.ResourceVariable([1.0, 2.0],
+                                                 dtype=dtypes.float32)
+    self.evaluate(variables.global_variables_initializer())
+    init_step_value = self.evaluate(global_step)
+    loss = lambda: 3 * var
+    opt_op = opt.minimize(loss, [var])
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(opt_op)
+    new_step_value = self.evaluate(global_step)
+    self.assertEqual(new_step_value, init_step_value + 1)
+
+  def testVarKey(self):
+    with context.graph_mode():
+      a = variables.Variable([1., 2.], name='var')
+      b = variables.Variable([1.], name='var')
+      self.assertTrue(a._in_graph_mode)
+      self.assertTrue(b._in_graph_mode)
+      var_key = optimizer_v2._var_key(a)
+      self.assertEqual('var', var_key)
+      var_key = optimizer_v2._var_key(b)
+      self.assertEqual('var_1', var_key)
+
+
+@keras_parameterized.run_with_all_model_types
+class OptimizersCompatibilityTest(keras_parameterized.TestCase):
+
+  def _testOptimizersCompatibility(self, opt_v1, opt_v2, test_weights=True):
+    np.random.seed(1331)
+    with self.cached_session():
+      train_samples = 20
+      input_dim = 3
+      num_classes = 2
+      (x, y), _ = testing_utils.get_test_data(
+          train_samples=train_samples,
+          test_samples=10,
+          input_shape=(input_dim,),
+          num_classes=num_classes)
+      y = keras.utils.to_categorical(y)
+
+      num_hidden = 5
+      model_v1 = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_v1.compile(opt_v1, loss='categorical_crossentropy', metrics=[])
+      model_v1.fit(x, y, batch_size=5, epochs=1)
+
+      model_v2 = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_v2.set_weights(model_v1.get_weights())
+      model_v2.compile(opt_v2, loss='categorical_crossentropy', metrics=[])
+      model_v2._make_train_function()
+      if test_weights:
+        opt_v2.set_weights(opt_v1.get_weights())
+
+      hist_1 = model_v1.fit(x, y, batch_size=5, epochs=1, shuffle=False)
+      hist_2 = model_v2.fit(x, y, batch_size=5, epochs=1, shuffle=False)
+      self.assertAllClose(model_v1.get_weights(), model_v2.get_weights(),
+                          rtol=1e-5, atol=1e-5)
+      self.assertAllClose(hist_1.history['loss'], hist_2.history['loss'],
+                          rtol=1e-5, atol=1e-5)
+
+  def testAdadeltaCompatibility(self):
+    opt_v1 = optimizers.Adadelta(lr=0.01)
+    opt_v2 = adadelta.Adadelta(learning_rate=0.01)
+    self._testOptimizersCompatibility(opt_v1, opt_v2)
+
+  def testAdagradCompatibility(self):
+    opt_v1 = optimizers.Adagrad(lr=0.01)
+    opt_v2 = adagrad.Adagrad(learning_rate=0.01)
+    self._testOptimizersCompatibility(opt_v1, opt_v2)
+
+  def testAdamCompatibility(self):
+    opt_v1 = optimizers.Adam()
+    opt_v2 = adam.Adam()
+    self._testOptimizersCompatibility(opt_v1, opt_v2)
+
+  def testAdamaxCompatibility(self):
+    opt_v1 = optimizers.Adamax(lr=0.01)
+    opt_v2 = adamax.Adamax(learning_rate=0.01)
+    self._testOptimizersCompatibility(opt_v1, opt_v2)
+
+  def testNadamCompatibility(self):
+    opt_v1 = optimizers.Nadam(lr=0.001)
+    opt_v2 = nadam.Nadam(learning_rate=0.001)
+    self._testOptimizersCompatibility(opt_v1, opt_v2)
+
+  def testMomentumCompatibility(self):
+    opt_v1 = optimizers.SGD(lr=0.01, momentum=0.9)
+    opt_v2 = gradient_descent.SGD(learning_rate=0.01, momentum=0.9)
+    self._testOptimizersCompatibility(opt_v1, opt_v2)
+
+  def testRMSpropCompatibility(self):
+    opt_v1 = optimizers.RMSprop()
+    opt_v2 = rmsprop.RMSprop()
+    self._testOptimizersCompatibility(opt_v1, opt_v2)
+
+  def testSGDCompatibility(self):
+    opt_v1 = optimizers.SGD(lr=0.01)
+    opt_v2 = gradient_descent.SGD(learning_rate=0.01)
+    self._testOptimizersCompatibility(opt_v1, opt_v2, False)
+
+  def testNumericEquivalenceForNesterovMomentum(self):
+    np.random.seed(1331)
+    with self.cached_session():
+      train_samples = 20
+      input_dim = 3
+      num_classes = 2
+      (x, y), _ = testing_utils.get_test_data(
+          train_samples=train_samples,
+          test_samples=10,
+          input_shape=(input_dim,),
+          num_classes=num_classes)
+      y = keras.utils.to_categorical(y)
+
+      num_hidden = 5
+      model_k_v1 = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_k_v2 = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_k_v2.set_weights(model_k_v1.get_weights())
+      model_tf = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_tf.set_weights(model_k_v2.get_weights())
+
+      opt_k_v1 = optimizers.SGD(lr=0.001, momentum=0.9, nesterov=True)
+      opt_k_v2 = gradient_descent.SGD(momentum=0.9, nesterov=True)
+      opt_tf = momentum.MomentumOptimizer(
+          learning_rate=0.001, momentum=0.9, use_nesterov=True)
+
+      model_k_v1.compile(opt_k_v1, loss='categorical_crossentropy', metrics=[])
+      model_k_v2.compile(opt_k_v2, loss='categorical_crossentropy', metrics=[])
+      model_tf.compile(opt_tf, loss='categorical_crossentropy', metrics=[])
+
+      hist_k_v1 = model_k_v1.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+      hist_k_v2 = model_k_v2.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+      hist_tf = model_tf.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+
+      self.assertAllClose(model_k_v1.get_weights(), model_tf.get_weights())
+      self.assertAllClose(model_k_v1.get_weights(), model_k_v2.get_weights())
+      self.assertAllClose(opt_k_v1.get_weights(), opt_k_v2.get_weights())
+      self.assertAllClose(hist_k_v1.history['loss'], hist_tf.history['loss'])
+      self.assertAllClose(hist_k_v1.history['loss'], hist_k_v2.history['loss'])
+
+  def testNumericEquivalenceForAmsgrad(self):
+    np.random.seed(1331)
+    with self.cached_session():
+      train_samples = 20
+      input_dim = 3
+      num_classes = 2
+      (x, y), _ = testing_utils.get_test_data(
+          train_samples=train_samples,
+          test_samples=10,
+          input_shape=(input_dim,),
+          num_classes=num_classes)
+      y = keras.utils.to_categorical(y)
+
+      num_hidden = 5
+      model_k_v1 = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_k_v2 = testing_utils.get_small_sequential_mlp(
+          num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
+      model_k_v2.set_weights(model_k_v1.get_weights())
+
+      opt_k_v1 = optimizers.Adam(amsgrad=True)
+      opt_k_v2 = adam.Adam(amsgrad=True)
+
+      model_k_v1.compile(opt_k_v1, loss='categorical_crossentropy', metrics=[])
+      model_k_v2.compile(opt_k_v2, loss='categorical_crossentropy', metrics=[])
+
+      hist_k_v1 = model_k_v1.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+      hist_k_v2 = model_k_v2.fit(x, y, batch_size=5, epochs=10, shuffle=False)
+
+      self.assertAllClose(model_k_v1.get_weights(), model_k_v2.get_weights())
+      self.assertAllClose(opt_k_v1.get_weights(), opt_k_v2.get_weights())
+      self.assertAllClose(hist_k_v1.history['loss'], hist_k_v2.history['loss'])
+
 
 # Note: These tests are kept in a separate class to avoid bugs in some
 # distributions of Python that break AutoGraph which is used by tf.function.
@@ -494,6 +719,23 @@ class OptimizerWithFunctionTest(test.TestCase):
 
       self.assertAllClose([0., 1.], fn(), atol=1e-4)
       self.assertAllClose([-1, 0.], fn(), atol=1e-4)
+
+  def testVarKeyWithVarCreatedInEager(self):
+    with context.eager_mode():
+      a = variables.Variable([1., 2.], name='var')
+      b = variables.Variable([1.], name='var')
+
+      @test_util.also_run_as_tf_function
+      def var_key_test():
+        self.assertFalse(a._in_graph_mode)
+        self.assertFalse(b._in_graph_mode)
+        var_key_a = optimizer_v2._var_key(a)
+        self.assertStartsWith(var_key_a, 'var_')
+        var_key_b = optimizer_v2._var_key(b)
+        self.assertStartsWith(var_key_b, 'var_')
+        self.assertNotEquals(var_key_a, var_key_b)
+
+      var_key_test()
 
 
 if __name__ == '__main__':

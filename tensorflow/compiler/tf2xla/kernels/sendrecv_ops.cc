@@ -42,7 +42,7 @@ SendOp::SendOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
 }
 
 void SendOp::Compile(XlaOpKernelContext* ctx) {
-  XlaCompiler* compiler = XlaContext::Get(ctx).compiler();
+  XlaCompiler* compiler = ctx->compiler();
   xla::ChannelHandle channel;
   OP_REQUIRES_OK(ctx, compiler->GetChannelHandle(tensor_name_, &channel));
   xla::Send(ctx->Input(0), channel);
@@ -73,7 +73,7 @@ RecvOp::RecvOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
 }
 
 void RecvOp::Compile(XlaOpKernelContext* ctx) {
-  XlaCompiler* compiler = XlaContext::Get(ctx).compiler();
+  XlaCompiler* compiler = ctx->compiler();
   xla::ChannelHandle channel;
   OP_REQUIRES_OK(ctx, compiler->GetChannelHandle(tensor_name_, &channel));
   ctx->SetOutput(0, xla::Recv(ctx->builder(), shape_, channel));

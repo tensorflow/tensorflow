@@ -124,6 +124,14 @@ class HloRunner {
                             bool run_hlo_passes = true,
                             ExecutionProfile* profile = nullptr);
 
+  StatusOr<Literal> Execute(std::unique_ptr<Executable> executable,
+                            const absl::Span<const Literal* const> arguments,
+                            ExecutionProfile* profile = nullptr);
+
+  StatusOr<Literal> Execute(std::unique_ptr<Executable> executable,
+                            const absl::Span<const Literal> arguments,
+                            ExecutionProfile* profile = nullptr);
+
   // As Execute(), but accepts and returns device buffers instead of host
   // buffers.
   StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
@@ -135,6 +143,21 @@ class HloRunner {
       std::unique_ptr<HloModule> module,
       const absl::Span<const ScopedShapedBuffer> arguments,
       bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
+
+  StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
+      std::unique_ptr<Executable> executable,
+      const absl::Span<const ShapedBuffer* const> arguments,
+      ExecutionProfile* profile = nullptr);
+
+  StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
+      std::unique_ptr<Executable> executable,
+      const absl::Span<const ScopedShapedBuffer> arguments,
+      ExecutionProfile* profile = nullptr);
+
+  // Creates an executable object given an HLO module. If run_hlo_passes is
+  // true, the HLO passes will be run as part of compilation.
+  StatusOr<std::unique_ptr<Executable>> CreateExecutable(
+      std::unique_ptr<HloModule> module, bool run_hlo_passes);
 
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as
@@ -152,11 +175,6 @@ class HloRunner {
   const Backend& backend() const;
 
  private:
-  // Creates an executable object given an HLO module. If run_hlo_passes is
-  // true, the HLO passes will be run before.
-  StatusOr<std::unique_ptr<Executable>> CreateExecutable(
-      std::unique_ptr<HloModule> module, bool run_hlo_passes);
-
   // Creates a ServiceExecutableRunOptions object to configure a run on device,
   // using the provided stream object. If device_assignment is not nullptr, it
   // will be used to configure the replication parameters. Replicated executions

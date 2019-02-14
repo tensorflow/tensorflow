@@ -24,10 +24,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -165,6 +167,7 @@ class ClipTest(test.TestCase):
     self.assertAllClose(np_ans, tf_ans)
     self.assertAllClose(np_ans, tf_ans_tensor)
 
+  @test_util.run_deprecated_v1
   def testClipByNormGradientZeros(self):
     with self.session(use_gpu=True):
       x = array_ops.zeros([3])
@@ -241,6 +244,7 @@ class ClipTest(test.TestCase):
     self.assertAllClose(np_ans, tf_ans)
 
   # ClipByGlobalNorm tests
+  @test_util.run_deprecated_v1
   def testClipByGlobalNormClipped(self):
     # Norm clipping when clip_norm < 5
     with self.session(use_gpu=True):
@@ -262,6 +266,7 @@ class ClipTest(test.TestCase):
     self.assertAllClose(np_ans_0, tf_ans_1)
     self.assertAllClose(np_ans_1, tf_ans_2)
 
+  @test_util.run_deprecated_v1
   def testClipByGlobalNormClippedTensor(self):
     # Norm clipping when clip_norm < 5
     with self.session(use_gpu=True):
@@ -283,6 +288,7 @@ class ClipTest(test.TestCase):
     self.assertAllClose(np_ans_0, tf_ans_1)
     self.assertAllClose(np_ans_1, tf_ans_2)
 
+  @test_util.run_deprecated_v1
   def testClipByGlobalNormSupportsNone(self):
     # Norm clipping when clip_norm < 5
     with self.session(use_gpu=True):
@@ -306,6 +312,7 @@ class ClipTest(test.TestCase):
     self.assertAllClose(np_ans_0, tf_ans_1)
     self.assertAllClose(np_ans_1, tf_ans_2)
 
+  @test_util.run_deprecated_v1
   def testClipByGlobalNormWithIndexedSlicesClipped(self):
     # Norm clipping when clip_norm < 5
     with self.session(use_gpu=True):
@@ -339,6 +346,7 @@ class ClipTest(test.TestCase):
     self.assertEqual(dense_shape, slices.dense_shape)
     self.assertEqual(dense_shape, modified_slices.dense_shape)
 
+  @test_util.run_deprecated_v1
   def testClipByGlobalNormNotClipped(self):
     # No norm clipping when clip_norm >= 5
     with self.session(use_gpu=True):
@@ -358,6 +366,7 @@ class ClipTest(test.TestCase):
     self.assertAllClose(np_ans_0, tf_ans_1)
     self.assertAllClose(np_ans_1, tf_ans_2)
 
+  @test_util.run_deprecated_v1
   def testClipByGlobalNormZero(self):
     # No norm clipping when norm = 0
     with self.session(use_gpu=True):
@@ -377,6 +386,7 @@ class ClipTest(test.TestCase):
     self.assertAllClose(np_ans_0, tf_ans_1)
     self.assertAllClose(np_ans_1, tf_ans_2)
 
+  @test_util.run_deprecated_v1
   def testClipByGlobalNormInf(self):
     with self.session(use_gpu=True):
       x0 = constant_op.constant([-2.0, 0.0, np.inf, 4.0, 0.0, 0.0],
@@ -440,6 +450,22 @@ class ClipTest(test.TestCase):
 
     self.assertAllClose(np_ans, tf_ans)
 
+  def testClipByAverageNormReplacedWithClipByNorm(self):
+    # Check clip_by_average_norm(t) is the same as
+    # clip_by_norm(t, clip_norm * tf.to_float(tf.size(t)))
+    with self.session(use_gpu=True):
+      x = constant_op.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
+      # Average norm of x = sqrt(3^2 + 4^2) / 6 = 0.83333333
+      # expected answer [[-2.88, 0.0, 0.0], [3.84, 0.0, 0.0]]
+      clip_norm = constant_op.constant(0.8)
+      with_norm = clip_ops.clip_by_average_norm(x, clip_norm)
+      without_norm = clip_ops.clip_by_norm(
+          x, clip_norm * math_ops.to_float(array_ops.size(x)))
+      clip_by_average_norm_ans = self.evaluate(with_norm)
+      clip_by_norm_ans = self.evaluate(without_norm)
+      self.assertAllClose(clip_by_average_norm_ans, clip_by_norm_ans)
+
+  @test_util.run_deprecated_v1
   def testClipByValueEmptyTensor(self):
     # Test case for GitHub issue 19337
     zero = array_ops.placeholder(dtype=dtypes.float32, shape=None)

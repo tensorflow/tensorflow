@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.contrib.tpu.proto import topology_pb2
+from tensorflow.core.protobuf.tpu import topology_pb2
 
 
 def _tpu_device_name(job, task, device):

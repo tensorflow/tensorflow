@@ -84,6 +84,14 @@ inline void SetTensorToDynamic(TfLiteTensor* tensor) {
   }
 }
 
+// Check dimensionality match and populate OpData for Conv and DepthwiseConv.
+TfLiteStatus PopulateConvolutionQuantizationParams(
+    TfLiteContext* context, const TfLiteTensor* input,
+    const TfLiteTensor* filter, const TfLiteTensor* bias, TfLiteTensor* output,
+    const TfLiteFusedActivation& activation, int32_t* multiplier, int* shift,
+    int32_t* output_activation_min, int32_t* output_activation_max,
+    int32_t* per_channel_multiplier, int* per_channel_shift);
+
 // Calculates the multiplication factor for a quantized convolution (or
 // quantized depthwise convolution) involving the given tensors. Returns an
 // error if the scales of the tensors are not compatible.
@@ -104,6 +112,9 @@ TfLiteStatus CalculateActivationRangeQuantized(TfLiteContext* context,
 void CalculateActivationRangeUint8(TfLiteFusedActivation activation,
                                    TfLiteTensor* output, int32_t* act_min,
                                    int32_t* act_max);
+void CalculateActivationRangeInt8(TfLiteFusedActivation activation,
+                                  TfLiteTensor* output, int32_t* act_min,
+                                  int32_t* act_max);
 // Calculates the useful range of an activation layer given its activation
 // tensor.a
 template <typename T>
