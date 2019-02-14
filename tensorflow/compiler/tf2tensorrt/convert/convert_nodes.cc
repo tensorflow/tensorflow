@@ -3521,14 +3521,12 @@ Status ConvertConcat(OpConverterParams* params) {
   auto dim = inputs.at(0).GetTrtDims();
   TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dim.nbDims,
                                  node_def.name(), &trt_axis));
-
-  std::vector<nvinfer1::ITensor const*> input_tensors;
   // Check that dimensions match on non-concatenate axis.
   for (int i = 0; i < num_inputs; i++) {
     auto dim_i = inputs.at(i).GetTrtDims();
     if (dim_i.nbDims != dim.nbDims) {
       return tensorflow::errors::InvalidArgument(
-          "ConcatV2 received inputs with inconsistent dimensions, at ",
+          "ConcatV2 received inputs with inconsistent rank, at ",
           node_def.name());
     }
     for (int j = 0; j < dim.nbDims; j++) {
@@ -3538,10 +3536,15 @@ Status ConvertConcat(OpConverterParams* params) {
             node_def.name());
       }
     }
-    input_tensors.push_back(params->converter->GetAsTensor(inputs.at(i)));
   }
   if (params->validation_only) return Status::OK();
 
+  // Gather inputs as tensors
+  std::vector<nvinfer1::ITensor const*> input_tensors;
+  for (int i = 0; i < num_inputs; i++) {
+    input_tensors.push_back(params->converter->GetAsTensor(inputs.at(i)));
+    TFTRT_RETURN_ERROR_IF_NULLPTR(input_tensors.back(), node_def.name());
+  }
   nvinfer1::IConcatenationLayer* layer =
       params->converter->network()->addConcatenation(
           const_cast<nvinfer1::ITensor* const*>(input_tensors.data()),
