@@ -3307,7 +3307,7 @@ def make_ceil_tests(zip_path):
 
   test_parameters = [{
       "input_dtype": [tf.float32],
-      "input_shape": [[1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+      "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
   }]
 
   def build_graph(parameters):
