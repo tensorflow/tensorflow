@@ -2753,8 +2753,9 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSort) {
   Shape keys_shape = ShapeUtil::MakeShape(F32, {1});
   auto keys = builder.AddInstruction(
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
-  TF_ASSERT_OK(
-      MakeSortHlo(keys_shape, {keys}, 0, &builder, module.get()).status());
+  TF_ASSERT_OK(MakeSortHlo(keys_shape, {keys}, 0, /*is_stable=*/false, &builder,
+                           module.get())
+                   .status());
   HloComputation* computation = module->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
@@ -2775,7 +2776,8 @@ TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
       HloInstruction::CreateParameter(2, values_shape, "values1"));
   TF_ASSERT_OK(MakeSortHlo(ShapeUtil::MakeTupleShape(
                                {keys_shape, values_shape, values_shape}),
-                           {keys, values0, values1}, 0, &builder, module.get())
+                           {keys, values0, values1}, 0, /*is_stable=*/false,
+                           &builder, module.get())
                    .status());
   HloComputation* computation = module->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);

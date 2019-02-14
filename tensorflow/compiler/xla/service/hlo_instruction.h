@@ -686,10 +686,11 @@ class HloInstruction {
   // comparisons in the sorting algorithm. 'compare' gets 2 * n parameters,
   // where parameters 2 * i and 2 * i + 1 are the values of the i-th operand at
   // specific index positions which should be compared, and should return a
-  // PRED.
+  // PRED. 'is_stable' specifies whether stable sorting is required.
   static std::unique_ptr<HloInstruction> CreateSort(
       const Shape& shape, int64 dimension,
-      absl::Span<HloInstruction* const> operands, HloComputation* compare);
+      absl::Span<HloInstruction* const> operands, HloComputation* compare,
+      bool is_stable);
 
   // Creates a while instruction, given a condition computation, a body
   // computation, and the initial value for the input of the computations. For
