@@ -1535,7 +1535,28 @@ HloParameterInstruction::HloParameterInstruction(int64 parameter_number,
 HloInstructionProto HloParameterInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   proto.set_parameter_number(parameter_number_);
+  if (parameter_replicated_at_leaf_buffers_) {
+    for (bool replicated : *parameter_replicated_at_leaf_buffers_) {
+      proto.mutable_parameter_replication()->add_replicated_at_leaf_buffers(
+          replicated);
+    }
+  }
   return proto;
+}
+
+std::vector<string> HloParameterInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& /*options*/) const {
+  std::vector<string> result;
+  if (!parameter_replicated_at_leaf_buffers_) {
+    return result;
+  }
+  std::vector<string> buffers_replicated_strs;
+  for (bool replicated : *parameter_replicated_at_leaf_buffers_) {
+    buffers_replicated_strs.push_back(replicated ? "true" : "false");
+  }
+  result.push_back(StrCat("parameter_replication={",
+                          StrJoin(buffers_replicated_strs, ","), "}"));
+  return result;
 }
 
 string HloParameterInstruction::OperandsToStringWithCanonicalNameMap(

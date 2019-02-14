@@ -82,6 +82,7 @@ class HloParser {
   // Stand alone parsing utils for various aggregate data types.
   StatusOr<Shape> ParseShapeOnly();
   StatusOr<HloSharding> ParseShardingOnly();
+  StatusOr<std::vector<bool>> ParseParameterReplicationOnly();
   StatusOr<Window> ParseWindowOnly();
   StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbersOnly();
   StatusOr<PaddingConfig> ParsePaddingConfigOnly();
@@ -183,6 +184,7 @@ class HloParser {
     kWindow,
     kConvolutionDimensionNumbers,
     kSharding,
+    kParameterReplication,
     kInstructionList,
     kSliceRanges,
     kPaddingConfig,
@@ -247,6 +249,7 @@ class HloParser {
   bool ParseMetadata(OpMetadata* metadata);
   bool ParseSharding(OpSharding* sharding);
   bool ParseSingleSharding(OpSharding* sharding, bool lbrace_pre_lexed);
+  bool ParseParameterReplication(ParameterReplication* parameter_replication);
 
   // Parses the metadata behind a kDOmain instruction.
   bool ParseDomain(DomainData* domain);
@@ -644,6 +647,10 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
   std::unordered_map<string, AttrConfig> attrs;
   optional<OpSharding> sharding;
   attrs["sharding"] = {/*required=*/false, AttrTy::kSharding, &sharding};
+  optional<ParameterReplication> parameter_replication;
+  attrs["parameter_replication"] = {/*required=*/false,
+                                    AttrTy::kParameterReplication,
+                                    &parameter_replication};
   optional<std::vector<HloInstruction*>> predecessors;
   attrs["control-predecessors"] = {/*required=*/false, AttrTy::kInstructionList,
                                    &predecessors};
@@ -1678,6 +1685,18 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     instruction->set_sharding(
         HloSharding::FromProto(sharding.value()).ValueOrDie());
   }
+  if (parameter_replication) {
+    int leaf_count = ShapeUtil::GetLeafCount(instruction->shape());
+    const auto& replicated =
+        parameter_replication->replicated_at_leaf_buffers();
+    if (leaf_count != replicated.size()) {
+      return Error(lexer_.GetLoc(),
+                   StrCat("parameter has ", leaf_count,
+                          " leaf buffers, but parameter_replication has ",
+                          replicated.size(), " elements."));
+    }
+    instruction->set_parameter_replicated_at_leaf_buffers(replicated);
+  }
   if (predecessors) {
     for (auto* pre : *predecessors) {
       Status status = pre->AddControlDependencyTo(instruction);
@@ -1835,6 +1854,32 @@ bool HloParser::ParseSingleSharding(OpSharding* sharding,
 
   lexer_.Lex();
   return true;
+}
+
+// parameter_replication ::=
+//   '{' ('true' | 'false')* (',' ('true' | 'false'))*  '}'
+bool HloParser::ParseParameterReplication(
+    ParameterReplication* parameter_replication) {
+  if (!ParseToken(TokKind::kLbrace,
+                  "expected '{' to start parameter_replication attribute")) {
+    return false;
+  }
+
+  if (lexer_.GetKind() != TokKind::kRbrace) {
+    do {
+      if (lexer_.GetKind() == TokKind::kw_true) {
+        parameter_replication->add_replicated_at_leaf_buffers(true);
+      } else if (lexer_.GetKind() == TokKind::kw_false) {
+        parameter_replication->add_replicated_at_leaf_buffers(false);
+      } else {
+        return false;
+      }
+      lexer_.Lex();
+    } while (EatIfPresent(TokKind::kComma));
+  }
+
+  return ParseToken(TokKind::kRbrace,
+                    "expected '}' to end parameter_replication attribute");
 }
 
 // domain ::= '{' 'kind=' domain_kind ',' 'entry=' entry_sharding ','
@@ -2685,6 +2730,15 @@ bool HloParser::ParseAttributeHelper(
           return false;
         }
         static_cast<optional<OpSharding>*>(attr_out_ptr)->emplace(sharding);
+        return true;
+      }
+      case AttrTy::kParameterReplication: {
+        ParameterReplication parameter_replication;
+        if (!ParseParameterReplication(&parameter_replication)) {
+          return false;
+        }
+        static_cast<optional<ParameterReplication>*>(attr_out_ptr)
+            ->emplace(parameter_replication);
         return true;
       }
       case AttrTy::kInstructionList: {
@@ -3788,6 +3842,21 @@ StatusOr<HloSharding> HloParser::ParseShardingOnly() {
   return HloSharding::FromProto(op_sharding);
 }
 
+StatusOr<std::vector<bool>> HloParser::ParseParameterReplicationOnly() {
+  lexer_.Lex();
+  ParameterReplication parameter_replication;
+  if (!ParseParameterReplication(&parameter_replication)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument(
+        "Syntax error:\nExtra content after parameter replication");
+  }
+  return std::vector<bool>(
+      parameter_replication.replicated_at_leaf_buffers().begin(),
+      parameter_replication.replicated_at_leaf_buffers().end());
+}
+
 StatusOr<Window> HloParser::ParseWindowOnly() {
   lexer_.Lex();
   Window window;
@@ -3901,6 +3970,11 @@ Status ParseHloString(absl::string_view str, HloModule* module) {
 StatusOr<HloSharding> ParseSharding(absl::string_view str) {
   HloParser parser(str);
   return parser.ParseShardingOnly();
+}
+
+StatusOr<std::vector<bool>> ParseParameterReplication(absl::string_view str) {
+  HloParser parser(str);
+  return parser.ParseParameterReplicationOnly();
 }
 
 StatusOr<Window> ParseWindow(absl::string_view str) {

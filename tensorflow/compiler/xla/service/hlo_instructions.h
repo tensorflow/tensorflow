@@ -817,10 +817,28 @@ class HloParameterInstruction : public HloInstruction {
   explicit HloParameterInstruction(int64 parameter_number, const Shape& shape,
                                    const string& name);
   int64 parameter_number() const { return parameter_number_; }
+
+  // Sets and gets the whether all replicas will receive the same parameter data
+  // for each leaf buffer in data parallelism.
+  void set_parameter_replicated_at_leaf_buffers(
+      absl::Span<const bool> parameter_replicated_at_leaf_buffers) {
+    CHECK_EQ(ShapeUtil::GetLeafCount(shape()),
+             parameter_replicated_at_leaf_buffers.size());
+    parameter_replicated_at_leaf_buffers_.emplace(
+        parameter_replicated_at_leaf_buffers.begin(),
+        parameter_replicated_at_leaf_buffers.end());
+  }
+  const absl::optional<std::vector<bool>>&
+  parameter_replicated_at_leaf_buffers() const {
+    return parameter_replicated_at_leaf_buffers_;
+  }
+
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
  private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
   bool IdenticalSlowPath(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
@@ -834,6 +852,10 @@ class HloParameterInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   int64 parameter_number_ = 0;
+
+  // Specifies whether each buffer has the same parameter value on all replicas
+  // in data parallelism.
+  absl::optional<std::vector<bool>> parameter_replicated_at_leaf_buffers_;
 };
 
 class HloGetTupleElementInstruction : public HloInstruction {
