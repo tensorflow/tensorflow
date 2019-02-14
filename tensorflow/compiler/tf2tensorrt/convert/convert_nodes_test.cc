@@ -2972,16 +2972,6 @@ TEST_F(OpConverterTest, ConvertSlice) {
   }
 
   struct TestParams {
-    TestParams(const std::vector<int>& input_dims,
-               const std::vector<int>& begin, const std::vector<int>& size,
-               const std::vector<int>& expected_output_dims,
-               const std::vector<int>& expected_output)
-        : input_dims(input_dims),
-          begin(begin),
-          size(size),
-          expected_output_dims(expected_output_dims),
-          expected_output(expected_output) {}
-
     std::vector<int> input_dims;
     std::vector<int> begin;
     std::vector<int> size;
