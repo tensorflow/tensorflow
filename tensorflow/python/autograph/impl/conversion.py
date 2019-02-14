@@ -219,7 +219,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
                 compiler.ast_to_source(node))
   if logging.has_verbosity(4):
     for n in node:
-      logging.log(4, 'Compiled AST of %s:\n\n%s\n', o, gast.dump(n))
+      logging.log(4, 'Compiled AST of %s:\n\n%s\n\n', o, gast.dump(n))
 
   if program_ctx.options.recursive:
     while True:
@@ -354,7 +354,7 @@ def function_to_graph(f,
   """Specialization of `entity_to_graph` for callable functions."""
 
   node, source = parser.parse_entity(f)
-  logging.log(3, 'Source code of %s:\n%s', f, source)
+  logging.log(3, 'Source code of %s:\n\n%s\n', f, source)
   node = node.body[0]
 
   # In general, the output of inspect.getsource is inexact for lambdas because

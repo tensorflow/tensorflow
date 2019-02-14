@@ -51,9 +51,27 @@ class ExportTest : public ::testing::Test {
         output_array.data_type = ArrayDataType::kFloat;
         input_model_.operators.emplace_back(op);
       } else if (name == "Add") {
-        input_model_.operators.emplace_back(new AddOperator);
+        auto* op = new AddOperator;
+        op->inputs = {"input1", "input2"};
+        op->outputs = {"output"};
+        Array& input1_array = input_model_.GetOrCreateArray(op->inputs[0]);
+        Array& input2_array = input_model_.GetOrCreateArray(op->inputs[1]);
+        Array& output_array = input_model_.GetOrCreateArray(op->outputs[0]);
+        input1_array.data_type = ArrayDataType::kFloat;
+        input2_array.data_type = ArrayDataType::kFloat;
+        output_array.data_type = ArrayDataType::kFloat;
+        input_model_.operators.emplace_back(op);
       } else if (name == "Sub") {
-        input_model_.operators.emplace_back(new SubOperator);
+        auto* op = new SubOperator;
+        op->inputs = {"input1", "input2"};
+        op->outputs = {"output"};
+        Array& input1_array = input_model_.GetOrCreateArray(op->inputs[0]);
+        Array& input2_array = input_model_.GetOrCreateArray(op->inputs[1]);
+        Array& output_array = input_model_.GetOrCreateArray(op->outputs[0]);
+        input1_array.data_type = ArrayDataType::kFloat;
+        input2_array.data_type = ArrayDataType::kFloat;
+        output_array.data_type = ArrayDataType::kFloat;
+        input_model_.operators.emplace_back(op);
       } else if (name == "Assert") {
         auto* op = new TensorFlowAssertOperator;
 
@@ -114,7 +132,18 @@ class ExportTest : public ::testing::Test {
       output_array.data_type = ArrayDataType::kFloat;
       input_model_.operators.emplace_back(op);
     }
-    input_model_.operators.emplace_back(new AddOperator);
+    {
+      auto* op = new AddOperator;
+      op->inputs = {"input1", "input2"};
+      op->outputs = {"output"};
+      Array& input1_array = input_model_.GetOrCreateArray(op->inputs[0]);
+      Array& input2_array = input_model_.GetOrCreateArray(op->inputs[1]);
+      Array& output_array = input_model_.GetOrCreateArray(op->outputs[0]);
+      input1_array.data_type = ArrayDataType::kFloat;
+      input2_array.data_type = ArrayDataType::kFloat;
+      output_array.data_type = ArrayDataType::kFloat;
+      input_model_.operators.emplace_back(op);
+    }
   }
 
   std::vector<string> ExportAndSummarizeOperators(const ExportParams& params) {

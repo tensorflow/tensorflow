@@ -32,7 +32,6 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
-from tensorflow.contrib.tpu.python.ops import tpu_ordinal_selector_op
 from tensorflow.contrib.tpu.python.tpu import _tpu_estimator_embedding
 from tensorflow.contrib.tpu.python.tpu import error_handling
 from tensorflow.contrib.tpu.python.tpu import functional as tpu_functional
@@ -1364,13 +1363,13 @@ def call_computation(computation,
     # TPU core with every `Session.run()` call. Note that the entire inference
     # graph executes on a single core, and that invocations of this graph
     # will round-robin among the cores attached to a host.
-    @function.Defun()
+    @function.Defun(capture_resource_var_by_value=False)
     def tpu_subgraph():
       return computation()
 
     return tpu_functional.TPUPartitionedCall(
         args=tpu_subgraph.captured_inputs,
-        device_ordinal=tpu_ordinal_selector_op.tpu_ordinal_selector(),
+        device_ordinal=tpu_ops.tpu_ordinal_selector(),
         Tout=[o.type for o in tpu_subgraph.definition.signature.output_arg],
         f=tpu_subgraph)
   else:
@@ -2465,8 +2464,14 @@ class TPUEstimator(estimator_lib.Estimator):
           device_assignment = ctx.device_assignment
       else:
         device_assignment = None
-      tensors_on_cpu = tpu.rewrite_for_inference(
-          tpu_computation, device_assignment=device_assignment)
+
+      if self._experimental_exported_model_uses_all_cores:
+        tensors_on_cpu = tpu.rewrite(
+            tpu_computation, device_assignment=device_assignment)
+      else:
+        tensors_on_cpu = tpu.rewrite_for_inference(
+            tpu_computation, device_assignment=device_assignment)
+
       (estimator_spec, export_outputs_dict, export_outputs_list,
        predictions_dict) = (
            tpu_capture.get())

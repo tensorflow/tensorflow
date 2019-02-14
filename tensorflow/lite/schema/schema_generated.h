@@ -139,6 +139,9 @@ struct TransposeOptionsT;
 struct ExpOptions;
 struct ExpOptionsT;
 
+struct CosOptions;
+struct CosOptionsT;
+
 struct ReducerOptions;
 struct ReducerOptionsT;
 
@@ -279,6 +282,9 @@ struct AddNOptionsT;
 
 struct GatherNdOptions;
 struct GatherNdOptionsT;
+
+struct WhereOptions;
+struct WhereOptionsT;
 
 struct OperatorCode;
 struct OperatorCodeT;
@@ -537,11 +543,13 @@ enum BuiltinOperator {
   BuiltinOperator_REVERSE_V2 = 105,
   BuiltinOperator_ADD_N = 106,
   BuiltinOperator_GATHER_ND = 107,
+  BuiltinOperator_COS = 108,
+  BuiltinOperator_WHERE = 109,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_GATHER_ND
+  BuiltinOperator_MAX = BuiltinOperator_WHERE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[107] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[109] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -649,7 +657,9 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[107] {
     BuiltinOperator_CEIL,
     BuiltinOperator_REVERSE_V2,
     BuiltinOperator_ADD_N,
-    BuiltinOperator_GATHER_ND
+    BuiltinOperator_GATHER_ND,
+    BuiltinOperator_COS,
+    BuiltinOperator_WHERE
   };
   return values;
 }
@@ -764,6 +774,8 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "REVERSE_V2",
     "ADD_N",
     "GATHER_ND",
+    "COS",
+    "WHERE",
     nullptr
   };
   return names;
@@ -859,11 +871,13 @@ enum BuiltinOptions {
   BuiltinOptions_ReverseV2Options = 81,
   BuiltinOptions_AddNOptions = 82,
   BuiltinOptions_GatherNdOptions = 83,
+  BuiltinOptions_CosOptions = 84,
+  BuiltinOptions_WhereOptions = 85,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_GatherNdOptions
+  BuiltinOptions_MAX = BuiltinOptions_WhereOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[84] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[86] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -948,7 +962,9 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[84] {
     BuiltinOptions_UniqueOptions,
     BuiltinOptions_ReverseV2Options,
     BuiltinOptions_AddNOptions,
-    BuiltinOptions_GatherNdOptions
+    BuiltinOptions_GatherNdOptions,
+    BuiltinOptions_CosOptions,
+    BuiltinOptions_WhereOptions
   };
   return values;
 }
@@ -1039,6 +1055,8 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "ReverseV2Options",
     "AddNOptions",
     "GatherNdOptions",
+    "CosOptions",
+    "WhereOptions",
     nullptr
   };
   return names;
@@ -1383,6 +1401,14 @@ template<> struct BuiltinOptionsTraits<AddNOptions> {
 
 template<> struct BuiltinOptionsTraits<GatherNdOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_GatherNdOptions;
+};
+
+template<> struct BuiltinOptionsTraits<CosOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_CosOptions;
+};
+
+template<> struct BuiltinOptionsTraits<WhereOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_WhereOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2079,6 +2105,22 @@ struct BuiltinOptionsUnion {
   const GatherNdOptionsT *AsGatherNdOptions() const {
     return type == BuiltinOptions_GatherNdOptions ?
       reinterpret_cast<const GatherNdOptionsT *>(value) : nullptr;
+  }
+  CosOptionsT *AsCosOptions() {
+    return type == BuiltinOptions_CosOptions ?
+      reinterpret_cast<CosOptionsT *>(value) : nullptr;
+  }
+  const CosOptionsT *AsCosOptions() const {
+    return type == BuiltinOptions_CosOptions ?
+      reinterpret_cast<const CosOptionsT *>(value) : nullptr;
+  }
+  WhereOptionsT *AsWhereOptions() {
+    return type == BuiltinOptions_WhereOptions ?
+      reinterpret_cast<WhereOptionsT *>(value) : nullptr;
+  }
+  const WhereOptionsT *AsWhereOptions() const {
+    return type == BuiltinOptions_WhereOptions ?
+      reinterpret_cast<const WhereOptionsT *>(value) : nullptr;
   }
 };
 
@@ -5012,6 +5054,46 @@ inline flatbuffers::Offset<ExpOptions> CreateExpOptions(
 
 flatbuffers::Offset<ExpOptions> CreateExpOptions(flatbuffers::FlatBufferBuilder &_fbb, const ExpOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct CosOptionsT : public flatbuffers::NativeTable {
+  typedef CosOptions TableType;
+  CosOptionsT() {
+  }
+};
+
+struct CosOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef CosOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  CosOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(CosOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<CosOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const CosOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct CosOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit CosOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  CosOptionsBuilder &operator=(const CosOptionsBuilder &);
+  flatbuffers::Offset<CosOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<CosOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<CosOptions> CreateCosOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  CosOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<CosOptions> CreateCosOptions(flatbuffers::FlatBufferBuilder &_fbb, const CosOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct ReducerOptionsT : public flatbuffers::NativeTable {
   typedef ReducerOptions TableType;
   bool keep_dims;
@@ -7296,6 +7378,46 @@ inline flatbuffers::Offset<GatherNdOptions> CreateGatherNdOptions(
 
 flatbuffers::Offset<GatherNdOptions> CreateGatherNdOptions(flatbuffers::FlatBufferBuilder &_fbb, const GatherNdOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct WhereOptionsT : public flatbuffers::NativeTable {
+  typedef WhereOptions TableType;
+  WhereOptionsT() {
+  }
+};
+
+struct WhereOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef WhereOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  WhereOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(WhereOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<WhereOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const WhereOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct WhereOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit WhereOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  WhereOptionsBuilder &operator=(const WhereOptionsBuilder &);
+  flatbuffers::Offset<WhereOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<WhereOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<WhereOptions> CreateWhereOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  WhereOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<WhereOptions> CreateWhereOptions(flatbuffers::FlatBufferBuilder &_fbb, const WhereOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -7678,6 +7800,12 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const GatherNdOptions *builtin_options_as_GatherNdOptions() const {
     return builtin_options_type() == BuiltinOptions_GatherNdOptions ? static_cast<const GatherNdOptions *>(builtin_options()) : nullptr;
   }
+  const CosOptions *builtin_options_as_CosOptions() const {
+    return builtin_options_type() == BuiltinOptions_CosOptions ? static_cast<const CosOptions *>(builtin_options()) : nullptr;
+  }
+  const WhereOptions *builtin_options_as_WhereOptions() const {
+    return builtin_options_type() == BuiltinOptions_WhereOptions ? static_cast<const WhereOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -8039,6 +8167,14 @@ template<> inline const AddNOptions *Operator::builtin_options_as<AddNOptions>()
 
 template<> inline const GatherNdOptions *Operator::builtin_options_as<GatherNdOptions>() const {
   return builtin_options_as_GatherNdOptions();
+}
+
+template<> inline const CosOptions *Operator::builtin_options_as<CosOptions>() const {
+  return builtin_options_as_CosOptions();
+}
+
+template<> inline const WhereOptions *Operator::builtin_options_as<WhereOptions>() const {
+  return builtin_options_as_WhereOptions();
 }
 
 struct OperatorBuilder {
@@ -9586,6 +9722,29 @@ inline flatbuffers::Offset<ExpOptions> CreateExpOptions(flatbuffers::FlatBufferB
       _fbb);
 }
 
+inline CosOptionsT *CosOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new CosOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void CosOptions::UnPackTo(CosOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<CosOptions> CosOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const CosOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateCosOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<CosOptions> CreateCosOptions(flatbuffers::FlatBufferBuilder &_fbb, const CosOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const CosOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateCosOptions(
+      _fbb);
+}
+
 inline ReducerOptionsT *ReducerOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new ReducerOptionsT();
   UnPackTo(_o, _resolver);
@@ -10757,6 +10916,29 @@ inline flatbuffers::Offset<GatherNdOptions> CreateGatherNdOptions(flatbuffers::F
       _fbb);
 }
 
+inline WhereOptionsT *WhereOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new WhereOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void WhereOptions::UnPackTo(WhereOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<WhereOptions> WhereOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const WhereOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateWhereOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<WhereOptions> CreateWhereOptions(flatbuffers::FlatBufferBuilder &_fbb, const WhereOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const WhereOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateWhereOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -11347,6 +11529,14 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const GatherNdOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_CosOptions: {
+      auto ptr = reinterpret_cast<const CosOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_WhereOptions: {
+      auto ptr = reinterpret_cast<const WhereOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -11697,6 +11887,14 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const GatherNdOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_CosOptions: {
+      auto ptr = reinterpret_cast<const CosOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_WhereOptions: {
+      auto ptr = reinterpret_cast<const WhereOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -12035,6 +12233,14 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const GatherNdOptionsT *>(value);
       return CreateGatherNdOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_CosOptions: {
+      auto ptr = reinterpret_cast<const CosOptionsT *>(value);
+      return CreateCosOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_WhereOptions: {
+      auto ptr = reinterpret_cast<const WhereOptionsT *>(value);
+      return CreateWhereOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -12371,6 +12577,14 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_GatherNdOptions: {
       value = new GatherNdOptionsT(*reinterpret_cast<GatherNdOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_CosOptions: {
+      value = new CosOptionsT(*reinterpret_cast<CosOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_WhereOptions: {
+      value = new WhereOptionsT(*reinterpret_cast<WhereOptionsT *>(u.value));
       break;
     }
     default:
@@ -12792,6 +13006,16 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_GatherNdOptions: {
       auto ptr = reinterpret_cast<GatherNdOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_CosOptions: {
+      auto ptr = reinterpret_cast<CosOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_WhereOptions: {
+      auto ptr = reinterpret_cast<WhereOptionsT *>(value);
       delete ptr;
       break;
     }

@@ -368,7 +368,7 @@ def experimental_tpu_fit_loop(model,
         steps_per_run.load(step_count, K.get_session())
         prev_step_count = step_count
       try:
-        _, outputs = K.get_session().run([train_op, output_tensors])
+        _, outputs = K.batch_get_value([train_op, output_tensors])
       except errors.OutOfRangeError:
         if use_steps:
           logging.warning('Your dataset iterator ran out of data; '
@@ -550,7 +550,7 @@ def experimental_tpu_test_loop(model,
     batch_logs = {'batch': current_step, 'size': 1}
     callbacks._call_batch_hook(mode, 'begin', current_step, batch_logs)
     try:
-      _, batch_outs = K.get_session().run([test_op, output_tensors])
+      _, batch_outs = K.batch_get_value([test_op, output_tensors])
     except errors.OutOfRangeError:
       if steps is not None:
         warning_msg = 'Make sure that your dataset can generate at least '
@@ -731,7 +731,7 @@ def experimental_tpu_predict_loop(model,
     batch_logs = {'batch': current_step, 'size': 1}
     callbacks._call_batch_hook(mode, 'begin', current_step, batch_logs)
     try:
-      _, batch_outs = K.get_session().run([predict_op, output_tensors])
+      _, batch_outs = K.batch_get_value([predict_op, output_tensors])
     except errors.OutOfRangeError:
       if steps is not None:
         warning_msg = 'Make sure that your dataset can generate at least '

@@ -264,7 +264,8 @@ bool ParseTypeValue(const string& key, PyObject* py_value, TF_Status* status,
 }
 
 bool SetOpAttrList(
-    TFE_Op* op, const char* key, PyObject* py_list, TF_AttrType type,
+    TFE_Context* ctx, TFE_Op* op, const char* key, PyObject* py_list,
+    TF_AttrType type,
     tensorflow::gtl::FlatMap<string, tensorflow::int64>* attr_list_sizes,
     TF_Status* status) {
   if (!PySequence_Check(py_list)) {
@@ -368,6 +369,40 @@ bool SetOpAttrList(
     }
     TFE_OpSetAttrShapeList(op, key, dims.get(), num_dims.get(), num_values,
                            status);
+    if (TF_GetCode(status) != TF_OK) return false;
+  } else if (type == TF_ATTR_FUNC) {
+    std::unique_ptr<const TFE_Op*[]> funcs(new const TFE_Op*[num_values]);
+    for (int i = 0; i < num_values; ++i) {
+      tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));
+      // Allow:
+      // (1) String function name, OR
+      // (2) A Python object with a .name attribute
+      //     (A crude test for being a
+      //     tensorflow.python.framework.function._DefinedFunction)
+      //     (which is what the various "defun" or "Defun" decorators do).
+      // And in the future also allow an object that can encapsulate
+      // the function name and its attribute values.
+      tensorflow::StringPiece func_name;
+      if (!ParseStringValue(key, py_value.get(), status, &func_name)) {
+        PyObject* name_attr = PyObject_GetAttrString(py_value.get(), "name");
+        if (name_attr == nullptr ||
+            !ParseStringValue(key, name_attr, status, &func_name)) {
+          TF_SetStatus(
+              status, TF_INVALID_ARGUMENT,
+              tensorflow::strings::StrCat(
+                  "unable to set function value attribute from a ",
+                  py_value.get()->ob_type->tp_name,
+                  " object. If you think this is an error, please file an "
+                  "issue at "
+                  "https://github.com/tensorflow/tensorflow/issues/new")
+                  .c_str());
+          return false;
+        }
+      }
+      funcs[i] = TFE_NewOp(ctx, func_name.data(), status);
+      if (TF_GetCode(status) != TF_OK) return false;
+    }
+    TFE_OpSetAttrFunctionList(op, key, funcs.get(), num_values);
     if (TF_GetCode(status) != TF_OK) return false;
   } else {
     TF_SetStatus(status, TF_UNIMPLEMENTED,
@@ -619,7 +654,8 @@ void SetOpAttrs(TFE_Context* ctx, TFE_Op* op, PyObject* attrs, int start_index,
     const TF_AttrType type = TFE_OpGetAttrType(op, key, &is_list, out_status);
     if (TF_GetCode(out_status) != TF_OK) return;
     if (is_list != 0) {
-      if (!SetOpAttrList(op, key, py_value, type, nullptr, out_status)) return;
+      if (!SetOpAttrList(ctx, op, key, py_value, type, nullptr, out_status))
+        return;
     } else {
       if (!SetOpAttrScalar(ctx, op, key, py_value, type, nullptr, out_status))
         return;
@@ -649,7 +685,8 @@ void SetOpAttrWithDefaults(
     }
   } else {
     if (is_list != 0) {
-      SetOpAttrList(op, attr_name, attr_value, type, attr_list_sizes, status);
+      SetOpAttrList(ctx, op, attr_name, attr_value, type, attr_list_sizes,
+                    status);
     } else {
       SetOpAttrScalar(ctx, op, attr_name, attr_value, type, attr_list_sizes,
                       status);

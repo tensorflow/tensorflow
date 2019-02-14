@@ -648,7 +648,8 @@ class OptimizerV2(checkpointable.Checkpointable):
     if callable(value):
       return value()
     if isinstance(value, (ops.Tensor, tf_variables.Variable,
-                          distributed_values.TPUMirroredVariable)):
+                          distributed_values.TPUMirroredVariable,
+                          distributed_values.DistributedVariable)):
       return backend.get_value(value)
     return value
 

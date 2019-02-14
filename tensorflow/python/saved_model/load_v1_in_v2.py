@@ -86,12 +86,6 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
   def load(self, tags):
     """Creates an object from the MetaGraph identified by `tags`."""
     meta_graph_def = self.get_meta_graph_def_from_tags(tags)
-    for node in meta_graph_def.graph_def.node:
-      if node.op == "VariableV2":
-        raise NotImplementedError(
-            "Importing a SavedModel which contains RefVariables. This is not "
-            "currently supported. Running tf.enable_resource_variables() "
-            "before creating exported variables will fix this.")
     load_graph_returns = [None]
     wrapped = wrap_function.wrap_function(
         functools.partial(self.load_graph, load_graph_returns, meta_graph_def),
@@ -101,9 +95,16 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     with wrapped.graph.as_default():
       init_op = loader_impl.get_init_op(meta_graph_def)
     if init_op is not None:
-      # TODO(allenl): Deal with assets
-      wrapped.prune(feeds=[],
-                    fetches=[wrapped.graph.as_graph_element(init_op)])()
+      asset_feed_tensors = []
+      asset_paths = []
+      for tensor_name, value in loader_impl.get_asset_tensors(
+          self._export_dir, meta_graph_def).items():
+        asset_feed_tensors.append(wrapped.graph.as_graph_element(tensor_name))
+        asset_paths.append(tracking.TrackableAsset(value))
+      init_fn = wrapped.prune(
+          feeds=asset_feed_tensors,
+          fetches=[wrapped.graph.as_graph_element(init_op)])
+      init_fn(*[path.asset_path for path in asset_paths])
     signature_functions = self._extract_signatures(wrapped, meta_graph_def)
     root = tracking.AutoCheckpointable()
     root.signatures = signature_serialization.create_signature_map(

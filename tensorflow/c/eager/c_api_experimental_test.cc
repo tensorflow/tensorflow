@@ -41,9 +41,12 @@ void ExecuteWithProfiling(bool async) {
   TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
   TFE_Context* ctx = TFE_NewContext(opts, status);
-  TFE_Profiler* profiler = TFE_NewProfiler(ctx);
+  TFE_ProfilerContext* profiler_context = TFE_NewProfilerContext();
+  TFE_ProfilerContextSetEagerContext(profiler_context, ctx);
+  TFE_Profiler* profiler = TFE_NewProfiler(profiler_context);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
+  TFE_DeleteProfilerContext(profiler_context);
 
   TFE_TensorHandle* m = TestMatrixTensorHandle();
   TFE_Op* matmul = MatMulOp(ctx, m, m);
@@ -108,14 +111,18 @@ TEST(CAPI, MultipleProfilerSession) {
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
 
-  TFE_Profiler* profiler1 = TFE_NewProfiler(ctx);
+  TFE_ProfilerContext* profiler_context = TFE_NewProfilerContext();
+  TFE_ProfilerContextSetEagerContext(profiler_context, ctx);
+
+  TFE_Profiler* profiler1 = TFE_NewProfiler(profiler_context);
   EXPECT_TRUE(TFE_ProfilerIsOk(profiler1));
 
-  TFE_Profiler* profiler2 = TFE_NewProfiler(ctx);
+  TFE_Profiler* profiler2 = TFE_NewProfiler(profiler_context);
   EXPECT_FALSE(TFE_ProfilerIsOk(profiler2));
 
   TFE_DeleteProfiler(profiler1);
   TFE_DeleteProfiler(profiler2);
+  TFE_DeleteProfilerContext(profiler_context);
 }
 
 }  // namespace

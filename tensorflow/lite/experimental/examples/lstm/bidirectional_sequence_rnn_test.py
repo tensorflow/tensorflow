@@ -22,7 +22,7 @@ import tensorflow as tf
 from tensorflow import flags
 
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.lite.experimental.examples.lstm.tflite_rnn import TfLiteRNNCell
+from tensorflow.lite.experimental.examples.lstm.rnn_cell import TfLiteRNNCell
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
 from tensorflow.python.framework import test_util

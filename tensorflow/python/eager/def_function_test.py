@@ -212,7 +212,8 @@ class DefFunctionTest(test.TestCase):
           state.append(variables.Variable(2.0 * x))
         return state[0] * x
 
-      with self.assertRaises(lift_to_graph.UnliftableError):
+      with self.assertRaisesRegexp(
+          lift_to_graph.UnliftableError, r'transitively.* mul .* x'):
         fn(constant_op.constant(3.0))
 
   def testMethod(self):
@@ -475,6 +476,7 @@ class DefFunctionTest(test.TestCase):
     msg = 'Functions cannot be decorated after they have been traced.'
     with self.assertRaisesRegexp(ValueError, msg):
       func._decorate(lambda f: f)
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

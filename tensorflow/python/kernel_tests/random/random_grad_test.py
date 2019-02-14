@@ -218,7 +218,8 @@ class RandomGammaGradTest(test.TestCase):
     self.assertAllClose(dsample_dalpha_val, [1.0] * 3, atol=1e-1, rtol=1e-1)
 
   @test_util.run_deprecated_v1
-  def testQuadraticLoss(self):
+  # TODO(b/124379202): Re-enable this test when not flaky.
+  def DISABLED_testQuadraticLoss(self):
     """Statistical test for the gradient.
 
     The equation (5) of https://arxiv.org/abs/1805.08498 says

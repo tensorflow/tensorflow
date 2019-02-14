@@ -49,6 +49,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import init_ops
@@ -528,6 +529,30 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
     self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
+  def testFuncListAttr(self):
+
+    @function.defun
+    def test_function(val):
+
+      def fn1():
+        return array_ops.ones([10])
+
+      fn2 = lambda: array_ops.ones([10]) * 2
+
+      def fn3(x=2):
+        return array_ops.ones([10]) * x
+      fn3 = functools.partial(fn3, x=3)
+
+      return gen_functional_ops.case(val, [], [dtypes.float32],
+                                     [function.defun(f).get_concrete_function()
+                                      for f in (fn1, fn2, fn3)])
+
+    ones = array_ops.ones([10])
+    self.assertAllEqual([ones], test_function(0))
+    self.assertAllEqual([ones * 2], test_function(1))
+    self.assertAllEqual([ones * 3], test_function(2))
+    self.assertAllEqual([ones * 3], test_function(22))  # default branch
+
   @test_util.enable_control_flow_v2
   def testVariableInLoopInFunction(self):
 
@@ -851,9 +876,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return None
 
     with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        'Cannot place the graph because a reference or resource edge connects '
-        'colocation groups with incompatible assigned devices'):
+        errors.InvalidArgumentError, 'Could not colocate node with its '
+        'resource and reference inputs.*'):
       if not context.executing_eagerly():
         self.evaluate(variables.global_variables_initializer())
       self.evaluate(resource_apply_adam())
@@ -1645,17 +1669,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # pylint: enable=protected-access
 
   def testFunctionWithInvalidAttribute(self):
-    @function.defun_with_attributes(attributes={'attr1': 'value1'})
-    def matmul(x, y):
-      return math_ops.matmul(x, y)
-
-    with self.assertRaisesRegexp(ValueError,
-                                 '.*Attribute name is not whitelisted.*'):
-      with context.graph_mode(), self.cached_session():
-        with ops.get_default_graph().as_default():
-          t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-          matmul(t, t)
-
     @function.defun_with_attributes(attributes={'experimental_1': ['value1']})
     def add(x, y):
       return math_ops.add(x, y)
@@ -1870,11 +1883,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     rewrites = rewriter_config_pb2.RewriterConfig()
     # function_optimizer has to be turn off, otherwise it will delete the
     # registered function if it does not get called.
-    # TODO(scottzhu): Move the ExperimentalImplementationSelector to be called
+    # TODO(scottzhu): Move the ImplementationSelector to be called
     # before function_optimizer in future.
     rewrites.function_optimization = rewriter_config_pb2.RewriterConfig.OFF
     customer_optimizer = rewrites.custom_optimizers.add()
-    customer_optimizer.name = 'ExperimentalImplementationSelector'
+    customer_optimizer.name = 'ImplementationSelector'
     rewrites.min_graph_nodes = -1
     graph_options = config_pb2.GraphOptions(
         rewrite_options=rewrites, build_cost_model=1)
@@ -1885,16 +1898,16 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       @function.defun_with_attributes(
           attributes={
-              'experimental_api_implements': 'random_boost',
-              'experimental_api_preferred_device': 'CPU'
+              'api_implements': 'random_boost',
+              'api_preferred_device': 'CPU'
           })
       def cpu_boost(x):
         return math_ops.add(x, 2.0)
 
       @function.defun_with_attributes(
           attributes={
-              'experimental_api_implements': 'random_boost',
-              'experimental_api_preferred_device': 'GPU'
+              'api_implements': 'random_boost',
+              'api_preferred_device': 'GPU'
           })
       def gpu_boost(x):
         return math_ops.add(x, 4.0)

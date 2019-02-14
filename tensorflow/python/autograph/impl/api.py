@@ -90,7 +90,7 @@ def convert(
               verbose=verbose,
               force_conversion=True,
               optional_features=optional_features,
-          ), *args, **kwargs)
+          ), args, kwargs)
 
     wrapper = tf_decorator.make_decorator(f, wrapper)
 
@@ -162,7 +162,7 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
   return decorator
 
 
-def converted_call(f, owner, options, *args, **kwargs):
+def converted_call(f, owner, options, args, kwargs):
   """Compiles a function call inline. For internal use only."""
   logging.log(1,
               'Converted call: %s; owner: %s\n    args: %s\n    kwargs: %s\n',

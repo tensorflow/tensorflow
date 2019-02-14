@@ -104,6 +104,7 @@ TfLiteRegistration* Register_REDUCE_ANY();
 TfLiteRegistration* Register_SELECT();
 TfLiteRegistration* Register_SLICE();
 TfLiteRegistration* Register_SIN();
+TfLiteRegistration* Register_COS();
 TfLiteRegistration* Register_TRANSPOSE_CONV();
 TfLiteRegistration* Register_EXPAND_DIMS();
 TfLiteRegistration* Register_SPARSE_TO_DENSE();
@@ -132,6 +133,7 @@ TfLiteRegistration* Register_MIRROR_PAD();
 TfLiteRegistration* Register_UNIQUE();
 TfLiteRegistration* Register_REVERSE_V2();
 TfLiteRegistration* Register_ADD_N();
+TfLiteRegistration* Register_GATHER_ND();
 
 TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
   context->ReportError(
@@ -211,11 +213,15 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version */ 1,
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_CONCATENATION, Register_CONCATENATION());
-  AddBuiltin(BuiltinOperator_ADD, Register_ADD());
+  AddBuiltin(BuiltinOperator_ADD, Register_ADD(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SPACE_TO_BATCH_ND, Register_SPACE_TO_BATCH_ND(),
              /* min_version */ 1,
              /* max_version */ 2);
-  AddBuiltin(BuiltinOperator_BATCH_TO_SPACE_ND, Register_BATCH_TO_SPACE_ND());
+  AddBuiltin(BuiltinOperator_BATCH_TO_SPACE_ND, Register_BATCH_TO_SPACE_ND(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_MUL, Register_MUL());
   AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2_NORMALIZATION());
   AddBuiltin(BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
@@ -228,8 +234,10 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
              Register_UNIDIRECTIONAL_SEQUENCE_LSTM(), /* min_version */ 1,
              /* max_version */ 2);
-  AddBuiltin(BuiltinOperator_PAD, Register_PAD());
-  AddBuiltin(BuiltinOperator_PADV2, Register_PADV2());
+  AddBuiltin(BuiltinOperator_PAD, Register_PAD(), /* min_version */ 1,
+             /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_PADV2, Register_PADV2(), /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_RESHAPE, Register_RESHAPE());
   AddBuiltin(BuiltinOperator_RESIZE_BILINEAR, Register_RESIZE_BILINEAR(),
              /* min_version */ 1,
@@ -239,7 +247,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version */ 1,
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SKIP_GRAM, Register_SKIP_GRAM());
-  AddBuiltin(BuiltinOperator_SPACE_TO_DEPTH, Register_SPACE_TO_DEPTH());
+  AddBuiltin(BuiltinOperator_SPACE_TO_DEPTH, Register_SPACE_TO_DEPTH(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_GATHER, Register_GATHER(),
              /* min_version */ 1,
              /* max_version */ 2);
@@ -248,7 +258,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN());
   AddBuiltin(BuiltinOperator_DIV, Register_DIV());
-  AddBuiltin(BuiltinOperator_SUB, Register_SUB());
+  AddBuiltin(BuiltinOperator_SUB, Register_SUB(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SPLIT, Register_SPLIT(), /* min_version */ 1,
              /* max_version */ 3);
   AddBuiltin(BuiltinOperator_SPLIT_V, Register_SPLIT_V());
@@ -297,8 +309,10 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SELECT, Register_SELECT(),
              /* min_version */ 1,
              /* max_version */ 2);
-  AddBuiltin(BuiltinOperator_SLICE, Register_SLICE());
+  AddBuiltin(BuiltinOperator_SLICE, Register_SLICE(), /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SIN, Register_SIN());
+  AddBuiltin(BuiltinOperator_COS, Register_COS());
   AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSE_CONV());
   AddBuiltin(BuiltinOperator_TILE, Register_TILE());
   AddBuiltin(BuiltinOperator_SUM, Register_SUM());
@@ -343,6 +357,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_UNIQUE, Register_UNIQUE());
   AddBuiltin(BuiltinOperator_REVERSE_V2, Register_REVERSE_V2());
   AddBuiltin(BuiltinOperator_ADD_N, Register_ADD_N());
+  AddBuiltin(BuiltinOperator_GATHER_ND, Register_GATHER_ND());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

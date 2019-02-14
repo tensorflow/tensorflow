@@ -928,16 +928,16 @@ def convolution_internal(
     name=None):
   """Internal function which performs rank agnostic convolution."""
   with ops.name_scope(name, "convolution", [input, filters]) as name:
-    if isinstance(input.shape, tensor_shape.TensorShapeV1) and \
+    if isinstance(input.shape, tensor_shape.TensorShape) and \
         input.shape.rank is not None:
       n = len(input.shape) - 2
-    elif not isinstance(input.shape, tensor_shape.TensorShapeV1) and \
+    elif not isinstance(input.shape, tensor_shape.TensorShape) and \
         input.shape is not None:
       n = len(input.shape) - 2
-    elif isinstance(filters.shape, tensor_shape.TensorShapeV1) and \
+    elif isinstance(filters.shape, tensor_shape.TensorShape) and \
         filters.shape.rank is not None:
       n = len(filters.shape) - 2
-    elif not isinstance(filters.shape, tensor_shape.TensorShapeV1) and \
+    elif not isinstance(filters.shape, tensor_shape.TensorShape) and \
         filters.shape is not None:
       n = len(filters.shape) - 2
     else:
@@ -1708,70 +1708,6 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
                            name=name)
 
 
-@tf_export("nn.conv2d_backprop_filter", v1=[])
-def conv2d_backprop_filter_v2(input,  # pylint: disable=redefined-builtin
-                              filter_sizes,
-                              out_backprop,
-                              strides,
-                              padding,
-                              data_format="NHWC",
-                              dilations=None,
-                              name=None):
-  r"""Computes the gradients of convolution with respect to the filter.
-
-  Args:
-    input: A `Tensor`. Must be one of the following types:
-      `half`, `bfloat16`, `float32`, `float64`.
-      4-D with shape `[batch, in_height, in_width, in_channels]`.
-    filter_sizes: A `Tensor` of type `int32`.
-      An integer vector representing the tensor shape of `filter`,
-      where `filter` is a 4-D
-      `[filter_height, filter_width, in_channels, out_channels]` tensor.
-    out_backprop: A `Tensor`. Must have the same type as `input`.
-      4-D with shape `[batch, out_height, out_width, out_channels]`.
-      Gradients w.r.t. the output of the convolution.
-    strides: A list of `ints`.
-      The stride of the sliding window for each dimension of the input
-      of the convolution. Must be in the same order as the dimension specified
-      with format.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
-      padding algorithm to use, or a list indicating the explicit paddings at
-      the start and end of each dimension. When explicit padding is used and
-      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
-      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
-      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
-      [pad_top, pad_bottom], [pad_left, pad_right]]`.
-    data_format: An optional `string` from: `"NHWC", "NCHW"`.
-      Defaults to `"NHWC"`.
-      Specify the data format of the input and output data. With the
-      default format "NHWC", the data is stored in the order of:
-          [batch, in_height, in_width, in_channels].
-      Alternatively, the format could be "NCHW", the data storage order of:
-          [batch, in_channels, in_height, in_width].
-    dilations: An optional list of `ints`. Defaults to `[1, 1, 1, 1]`.
-      1-D tensor of length 4.  The dilation factor for each dimension of
-      `input`. If set to k > 1, there will be k-1 skipped cells between each
-      filter element on that dimension. The dimension order is determined by
-      the value of `data_format`, see above for details. Dilations in the batch
-      and depth dimensions must be 1.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor`. Has the same type as `input`.
-  """
-  if dilations is None:
-    dilations = [1, 1, 1, 1]
-  return conv2d_backprop_filter(input,  # pylint: disable=redefined-builtin
-                                filter_sizes,
-                                out_backprop,
-                                strides,
-                                padding,
-                                use_cudnn_on_gpu=True,
-                                data_format=data_format,
-                                dilations=dilations,
-                                name=name)
-
-
 @tf_export(v1=["nn.conv2d_backprop_filter"])
 def conv2d_backprop_filter(  # pylint: disable=redefined-builtin,dangerous-default-value
     input,
@@ -1830,70 +1766,6 @@ def conv2d_backprop_filter(  # pylint: disable=redefined-builtin,dangerous-defau
   return gen_nn_ops.conv2d_backprop_filter(
       input, filter_sizes, out_backprop, strides, padding, use_cudnn_on_gpu,
       explicit_paddings, data_format, dilations, name)
-
-
-@tf_export("nn.conv2d_backprop_input", v1=[])
-def conv2d_backprop_input_v2(input_sizes,
-                             filters,
-                             out_backprop,
-                             strides,
-                             padding,
-                             data_format="NHWC",
-                             dilations=None,
-                             name=None):
-  r"""Computes the gradients of convolution with respect to the input.
-
-  Args:
-    input_sizes: A `Tensor` of type `int32`.
-      An integer vector representing the shape of `input`,
-      where `input` is a 4-D `[batch, height, width, channels]` tensor.
-    filters: A `Tensor`. Must be one of the following types:
-      `half`, `bfloat16`, `float32`, `float64`.
-      4-D with shape
-      `[filter_height, filter_width, in_channels, out_channels]`.
-    out_backprop: A `Tensor`. Must have the same type as `filters`.
-      4-D with shape `[batch, out_height, out_width, out_channels]`.
-      Gradients w.r.t. the output of the convolution.
-    strides: A list of `ints`.
-      The stride of the sliding window for each dimension of the input
-      of the convolution. Must be in the same order as the dimension specified
-      with format.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
-      padding algorithm to use, or a list indicating the explicit paddings at
-      the start and end of each dimension. When explicit padding is used and
-      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
-      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
-      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
-      [pad_top, pad_bottom], [pad_left, pad_right]]`.
-    data_format: An optional `string` from: `"NHWC", "NCHW"`.
-      Defaults to `"NHWC"`.
-      Specify the data format of the input and output data. With the
-      default format "NHWC", the data is stored in the order of:
-          [batch, in_height, in_width, in_channels].
-      Alternatively, the format could be "NCHW", the data storage order of:
-          [batch, in_channels, in_height, in_width].
-    dilations: An optional list of `ints`. Defaults to `[1, 1, 1, 1]`.
-      1-D tensor of length 4.  The dilation factor for each dimension of
-      `input`. If set to k > 1, there will be k-1 skipped cells between each
-      filter element on that dimension. The dimension order is determined by
-      the value of `data_format`, see above for details. Dilations in the batch
-      and depth dimensions must be 1.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor`. Has the same type as `filters`.
-  """
-  if dilations is None:
-    dilations = [1, 1, 1, 1]
-  return conv2d_backprop_input(input_sizes,
-                               filters,
-                               out_backprop,
-                               strides,
-                               padding,
-                               use_cudnn_on_gpu=True,
-                               data_format=data_format,
-                               dilations=dilations,
-                               name=name)
 
 
 @tf_export(v1=["nn.conv2d_backprop_input"])
@@ -2436,13 +2308,21 @@ def bias_add(value, bias, data_format=None, name=None):
     bias: A 1-D `Tensor` with size matching the last dimension of `value`.
       Must be the same type as `value` unless `value` is a quantized type,
       in which case a different quantized type may be used.
-    data_format: A string. 'NHWC' and 'NCHW' are supported.
+    data_format: A string. 'N...C' and 'NC...' are supported.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` with the same type as `value`.
   """
   with ops.name_scope(name, "BiasAdd", [value, bias]) as name:
+    if data_format is not None:
+      if data_format.startswith("NC"):
+        data_format = "NCHW"
+      elif data_format.startswith("N") and data_format.endswith("C"):
+        data_format = "NHWC"
+      else:
+        raise ValueError("data_format must be of the form `N...C` or `NC...`")
+
     if not context.executing_eagerly():
       value = ops.convert_to_tensor(value, name="input")
       bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
@@ -4330,6 +4210,7 @@ def conv1d_transpose(
 
     input = array_ops.expand_dims(input, spatial_start_dim)
     filters = array_ops.expand_dims(filters, 0)  # pylint: disable=redefined-builtin
+    output_shape = list(output_shape)
     output_shape = output_shape[: spatial_start_dim] + [1] + \
                    output_shape[spatial_start_dim:]
 

@@ -49,8 +49,8 @@ from tensorflow.python.util.tf_export import keras_export
 
 # The following string constants are used by Defun approach for unified backend
 # of LSTM and GRU.
-_DEFUN_API_NAME_ATTRIBUTE = 'experimental_api_implements'
-_DEFUN_DEVICE_ATTRIBUTE = 'experimental_api_preferred_device'
+_DEFUN_API_NAME_ATTRIBUTE = 'api_implements'
+_DEFUN_DEVICE_ATTRIBUTE = 'api_preferred_device'
 _CPU_DEVICE_NAME = 'CPU'
 _GPU_DEVICE_NAME = 'GPU'
 
@@ -2173,11 +2173,11 @@ class UnifiedGRU(GRU):
             recurrent_activation=self.recurrent_activation,
             time_major=self.time_major)
     else:
-      experimental_api_name = 'gru_' + str(uuid.uuid4())
+      api_name = 'gru_' + str(uuid.uuid4())
       defun_standard_gru = _generate_defun_backend(
-          experimental_api_name, _CPU_DEVICE_NAME, standard_gru)
+          api_name, _CPU_DEVICE_NAME, standard_gru)
       defun_cudnn_gru = _generate_defun_backend(
-          experimental_api_name, _GPU_DEVICE_NAME, cudnn_gru)
+          api_name, _GPU_DEVICE_NAME, cudnn_gru)
       # Call the normal GRU impl and register the CuDNN impl function. The
       # grappler will kick in during session execution to optimize the graph.
       last_output, outputs, new_h, runtime = defun_standard_gru(
@@ -3125,11 +3125,11 @@ class UnifiedLSTM(LSTM):
         # identifiable API name, so that Grappler won't get confused when it
         # sees multiple LSTM layers added into same graph, and it will be able
         # to pair up the different implementations across them.
-        experimental_api_name = 'lstm_' + str(uuid.uuid4())
+        api_name = 'lstm_' + str(uuid.uuid4())
         defun_standard_lstm = _generate_defun_backend(
-            experimental_api_name, _CPU_DEVICE_NAME, standard_lstm)
+            api_name, _CPU_DEVICE_NAME, standard_lstm)
         defun_cudnn_lstm = _generate_defun_backend(
-            experimental_api_name, _GPU_DEVICE_NAME, cudnn_lstm)
+            api_name, _GPU_DEVICE_NAME, cudnn_lstm)
 
         # Call the normal LSTM impl and register the CuDNN impl function. The
         # grappler will kick in during session execution to optimize the graph.

@@ -25,6 +25,7 @@ import numpy as np
 
 import tensorflow as tf
 # TODO(vbardiovsky): Remove when load is available.
+from tensorflow.examples.saved_model.integration_tests import util
 from tensorflow.python.saved_model.load import load
 
 tf.saved_model.load = load
@@ -32,27 +33,6 @@ tf.saved_model.load = load
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string("model_dir", None, "Directory to load SavedModel from.")
-
-
-# TODO(vbardiovsky): We should just reuse Keras's Lambda layer, when that
-# enables to get trainable variables.
-class LambdaLayer(tf.keras.layers.Layer):
-  """Lambda layer with output shape inference."""
-
-  def __init__(self, func, **kwargs):
-    self._func = func
-    super(LambdaLayer, self).__init__(**kwargs)
-
-  def call(self, x):
-    result = self._func(x)
-    # TODO(vbardiovsky): Polymorphic function should return shaped tensor.
-    result.set_shape(self.compute_output_shape(x.shape))
-    return result
-
-  def compute_output_shape(self, input_shape):
-    # TODO(vbardiovsky): We should be able to get the embedding dimension from
-    # the restored model.
-    return (input_shape[0], 10)
 
 
 def main(argv):
@@ -63,11 +43,12 @@ def main(argv):
 
   dataset = tf.data.Dataset.from_tensor_slices((features, labels))
 
-  embedding = tf.saved_model.load(FLAGS.model_dir)
+  embed = tf.saved_model.load(FLAGS.model_dir)
 
   # Create the sequential keras model.
   model = tf.keras.Sequential()
-  model.add(LambdaLayer(embedding, batch_input_shape=[None], dtype=tf.string))
+  model.add(util.CustomLayer(embed, batch_input_shape=[None],
+                             output_shape=[10], dtype=tf.string))
   model.add(tf.keras.layers.Dense(100, activation="relu"))
   model.add(tf.keras.layers.Dense(50, activation="relu"))
   model.add(tf.keras.layers.Dense(1, activation="sigmoid"))

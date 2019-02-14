@@ -538,6 +538,7 @@ py_library(
     srcs = [
         "keras_backward_compat_test.py",
         "keras_test.py",
+        "keras_utils_test.py",
     ],
     deps = [
         ":combinations",
@@ -566,6 +567,24 @@ distribute_py_test(
         "notsan",
     ],
     deps = [
+        ":keras_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_utils_test",
+    srcs = ["keras_utils_test.py"],
+    full_precision = True,
+    main = "keras_utils_test.py",
+    shard_count = 32,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_test",
         ":keras_test_lib",
     ],
 )

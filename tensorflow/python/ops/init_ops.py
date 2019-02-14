@@ -531,7 +531,7 @@ class VarianceScaling(Initializer):
     else:
       scale /= max(1., (fan_in + fan_out) / 2.)
     if self.distribution == "normal" or self.distribution == "truncated_normal":
-    # constant taken from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
+      # constant taken from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
       stddev = math.sqrt(scale) / .87962566103423978
       return random_ops.truncated_normal(
           shape, 0.0, stddev, dtype, seed=self.seed)
@@ -1263,9 +1263,10 @@ class GlorotNormal(VarianceScaling):
   """The Glorot normal initializer, also called Xavier normal initializer.
 
   It draws samples from a truncated normal distribution centered on 0
-  with `stddev = sqrt(2 / (fan_in + fan_out))`
-  where `fan_in` is the number of input units in the weight tensor
-  and `fan_out` is the number of output units in the weight tensor.
+  with standard deviation (after truncation) given by
+  `stddev = sqrt(2 / (fan_in + fan_out))` where `fan_in` is the number
+  of input units in the weight tensor and `fan_out` is the number of
+  output units in the weight tensor.
 
   Args:
     seed: A Python integer. Used to create random seeds. See
