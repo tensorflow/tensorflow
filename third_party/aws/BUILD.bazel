@@ -15,6 +15,9 @@ cc_library(
         "@org_tensorflow//tensorflow:linux_x86_64": glob([
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
         ]),
+        "@org_tensorflow//tensorflow:linux_aarch64": glob([
+            "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
+        ]),
         "@org_tensorflow//tensorflow:darwin": glob([
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
         ]),
@@ -61,6 +64,11 @@ cc_library(
     ],
     defines = select({
         "@org_tensorflow//tensorflow:linux_x86_64": [
+            "PLATFORM_LINUX",
+            "ENABLE_CURL_CLIENT",
+            "ENABLE_NO_ENCRYPTION",
+        ],
+        "@org_tensorflow//tensorflow:linux_aarch64": [
             "PLATFORM_LINUX",
             "ENABLE_CURL_CLIENT",
             "ENABLE_NO_ENCRYPTION",
