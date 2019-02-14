@@ -39,6 +39,14 @@ py_binary(
     srcs = ["tflite_convert.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
+    deps = [":tflite_convert_main_lib"],
+)
+
+py_library(
+    name = "tflite_convert_main_lib",
+    srcs = ["tflite_convert.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [":tflite_convert_lib"],
 )
 
