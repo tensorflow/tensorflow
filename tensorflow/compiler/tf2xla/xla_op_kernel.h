@@ -155,6 +155,11 @@ class XlaOpKernelContext {
     return context_->expected_output_dtype(index);
   }
 
+  // Returns the type of output `index` as an xla::PrimitiveType. If the type
+  // is not representable as an XLA type, sets an error status and returns
+  // xla::PRIMITIVE_TYPE_INVALID.
+  xla::PrimitiveType output_xla_type(int index);
+
   // Sets output `index` to the XlaOp `handle`.
   // All outputs should be set using SetOutput and SetConstantOutput, not
   // via the underlying OpKernelContext.

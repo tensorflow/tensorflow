@@ -48,7 +48,6 @@ except ImportError:
   requests = None
 
 
-# pylint: disable=protected-access
 def configure_callbacks(callbacks,
                         model,
                         do_validation=False,
@@ -87,19 +86,56 @@ def configure_callbacks(callbacks,
   # Add additional callbacks during training.
   if mode == ModeKeys.TRAIN:
     model.history = History()
-    stateful_metric_names = None
-    if hasattr(model, 'metrics_names'):
-      stateful_metric_names = model.metrics_names[1:]  # Exclude `loss`
-    callbacks = [BaseLogger(stateful_metrics=stateful_metric_names)
-                ] + (callbacks or []) + [model.history]
+    callbacks = [BaseLogger()] + (callbacks or []) + [model.history]
     if verbose:
-      callbacks.append(
-          ProgbarLogger(count_mode, stateful_metrics=stateful_metric_names))
+      callbacks.append(ProgbarLogger(count_mode))
   callback_list = CallbackList(callbacks)
 
   # Set callback model
-  callback_model = model._get_callback_model()
+  callback_model = model._get_callback_model()  # pylint: disable=protected-access
   callback_list.set_model(callback_model)
+
+  set_callback_parameters(
+      callback_list,
+      model,
+      do_validation=do_validation,
+      batch_size=batch_size,
+      epochs=epochs,
+      steps_per_epoch=steps_per_epoch,
+      samples=samples,
+      verbose=verbose,
+      mode=mode)
+
+  callback_list.model.stop_training = False
+  return callback_list
+
+
+def set_callback_parameters(callback_list,
+                            model,
+                            do_validation=False,
+                            batch_size=None,
+                            epochs=None,
+                            steps_per_epoch=None,
+                            samples=None,
+                            verbose=1,
+                            mode=ModeKeys.TRAIN):
+  """Sets callback parameters.
+
+  Arguments:
+      callback_list: CallbackList instance.
+      model: Model being trained.
+      do_validation: Whether or not validation loop will be run.
+      batch_size: Number of samples per batch.
+      epochs: Number of epoch to train.
+      steps_per_epoch: Number of batches to run per training epoch.
+      samples: Number of training samples.
+      verbose: int, 0 or 1. Keras logging verbosity to pass to ProgbarLogger.
+      mode: String. One of ModeKeys.TRAIN, ModeKeys.TEST, or ModeKeys.PREDICT.
+        Which loop mode to configure callbacks for.
+  """
+  for cbk in callback_list:
+    if isinstance(cbk, (BaseLogger, ProgbarLogger)):
+      cbk.stateful_metrics = model.metrics_names[1:]  # Exclude `loss`
 
   # Set callback parameters
   callback_metrics = []
@@ -119,9 +155,6 @@ def configure_callbacks(callbacks,
       'metrics': callback_metrics,
   }
   callback_list.set_params(callback_params)
-  callback_list.model.stop_training = False
-  return callback_list
-# pylint: enable=protected-access
 
 
 def _is_generator_like(data):

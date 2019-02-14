@@ -107,11 +107,13 @@ tf_kernel_library(
         "xla_pad_op.cc",
         "xla_reduce_op.cc",
         "xla_select_and_scatter_op.cc",
+        "xla_self_adjoint_eig_op.cc",
     ],
     hdrs = [
         "index_ops.h",
         "shape_util.h",
     ],
+    tags = ["optonly"],
     deps = [
         ":conv_op_helpers",
         ":if_op",
@@ -143,6 +145,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:prng",
         "//tensorflow/compiler/xla/client/lib:qr",
         "//tensorflow/compiler/xla/client/lib:quantize",
+        "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",
         "//tensorflow/compiler/xla/client/lib:sorting",
         "//tensorflow/core:bitwise_ops_op_lib",
         "//tensorflow/core:control_flow_ops_op_lib",

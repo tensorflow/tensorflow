@@ -1286,6 +1286,9 @@ class HloInstruction {
     backend_config_ = std::move(config_str);
   }
 
+  bool is_default_config() const { return is_default_config_; }
+  void set_default_config() { is_default_config_ = true; }
+
   // Returns a string representation of a proto in the format used by
   // raw_backend_config_string.
   //
@@ -1733,6 +1736,10 @@ class HloInstruction {
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
   string backend_config_;
+
+  // This field is assigned to true when backend_config_ is assigned to
+  // a default configuration.
+  bool is_default_config_ = false;
 
   // String identifier for instruction.
   string name_;

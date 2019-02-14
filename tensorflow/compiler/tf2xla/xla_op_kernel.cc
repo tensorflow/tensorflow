@@ -447,6 +447,16 @@ void XlaOpKernelContext::SetOutputExpression(int index,
   }
 }
 
+xla::PrimitiveType XlaOpKernelContext::output_xla_type(int index) {
+  xla::PrimitiveType type;
+  Status status = DataTypeToPrimitiveType(expected_output_dtype(index), &type);
+  if (!status.ok()) {
+    SetStatus(status);
+    return xla::PRIMITIVE_TYPE_INVALID;
+  }
+  return type;
+}
+
 void XlaOpKernelContext::SetOutput(int index, const xla::XlaOp& handle) {
   SetOutputExpression(
       index,
@@ -503,6 +513,7 @@ Status AssignVariableTensor(const Tensor& tensor, DataType type,
     handle = xla::Reshape(handle,
                           xla::AsInt64Slice(representation_shape.dimensions()));
   }
+  variable->SetRepresentationShape(representation_shape);
   return variable->SetValue(handle);
 }
 

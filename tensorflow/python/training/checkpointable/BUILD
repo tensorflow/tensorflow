@@ -247,5 +247,8 @@ tf_py_test(
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:layers",
     ],
-    tags = ["notsan"],  # b/74395663
+    tags = [
+        "no_windows",  # b/124401331
+        "notsan",  # b/74395663
+    ],
 )

@@ -23,14 +23,11 @@ import platform
 
 if platform.system() != "Windows":
   # pylint: disable=wildcard-import,unused-import,g-import-not-at-top
-  from tensorflow.contrib.tpu.ops.gen_tpu_ordinal_selector_op import *
+  from tensorflow.python.ops.gen_tpu_ops import tpu_ordinal_selector
 
   from tensorflow.contrib.util import loader
   from tensorflow.python.platform import resource_loader
   # pylint: enable=wildcard-import,unused-import,g-import-not-at-top
-
-  _tpu_ordinal_selector_op = loader.load_op_library(
-      resource_loader.get_path_to_datafile("_tpu_ordinal_selector_op.so"))
 
 else:
   # We have already built the appropriate libraries into the binary via CMake

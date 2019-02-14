@@ -23,6 +23,7 @@ import csv
 import os
 import re
 import shutil
+import sys
 import threading
 import unittest
 
@@ -30,9 +31,11 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -218,6 +221,48 @@ class CallbackCountsTest(keras_parameterized.TestCase):
 
 
 class KerasCallbacksTest(keras_parameterized.TestCase):
+
+  def _get_model(self, input_shape=None):
+    layers = [
+        keras.layers.Dense(3, activation='relu'),
+        keras.layers.Dense(2, activation='softmax')
+    ]
+    model = testing_utils.get_model_from_layers(layers, input_shape=input_shape)
+    model.compile(
+        loss='mse',
+        optimizer='rmsprop',
+        metrics=[keras.metrics.CategoricalAccuracy(name='my_acc')],
+        run_eagerly=testing_utils.should_run_eagerly())
+    return model
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_progbar_logging(self):
+    model = self._get_model(input_shape=(3,))
+
+    x = array_ops.ones((50, 3))
+    y = array_ops.zeros((50, 2))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(10)
+    expected_log = r'(.*- loss:.*- my_acc:.*)+'
+
+    with self.captureWritesToStream(sys.stdout) as printed:
+      model.fit(dataset, epochs=2, steps_per_epoch=10)
+      self.assertRegexpMatches(printed.contents(), expected_log)
+
+  @keras_parameterized.run_with_all_model_types(exclude_models='functional')
+  @keras_parameterized.run_all_keras_modes
+  def test_progbar_logging_deferred_model_build(self):
+    model = self._get_model()
+    self.assertFalse(model.built)
+
+    x = array_ops.ones((50, 3))
+    y = array_ops.zeros((50, 2))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(10)
+    expected_log = r'(.*- loss:.*- my_acc:.*)+'
+
+    with self.captureWritesToStream(sys.stdout) as printed:
+      model.fit(dataset, epochs=2, steps_per_epoch=10)
+      self.assertRegexpMatches(printed.contents(), expected_log)
 
   @keras_parameterized.run_with_all_model_types
   def test_ModelCheckpoint(self):

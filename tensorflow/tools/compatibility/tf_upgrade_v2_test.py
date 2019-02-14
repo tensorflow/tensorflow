@@ -818,6 +818,36 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
+  def testSoftMaxCrossEntropyWithLogitsDoesntNest(self):
+    text = ("tf.nn.softmax_cross_entropy_with_logits("
+            "labels=tf.stop_gradient(labels), logits=logits, dim=2)")
+    expected_text = (
+        "tf.nn.softmax_cross_entropy_with_logits("
+        "labels=tf.stop_gradient(labels), logits=logits, axis=2)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = ("tf.nn.softmax_cross_entropy_with_logits("
+            "labels=tf.stop_gradient(foo(bar)))")
+    expected_text = ("tf.nn.softmax_cross_entropy_with_logits("
+                     "labels=tf.stop_gradient(foo(bar)))")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = ("tf.nn.softmax_cross_entropy_with_logits("
+            "labels=foo())")
+    expected_text = ("tf.nn.softmax_cross_entropy_with_logits("
+                     "labels=tf.stop_gradient(foo()))")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = ("tf.nn.softmax_cross_entropy_with_logits("
+            "labels=foo().zz())")
+    expected_text = ("tf.nn.softmax_cross_entropy_with_logits("
+                     "labels=tf.stop_gradient(foo().zz()))")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
   def testSparseMatmul(self):
     text = ("tf.sparse_matmul(a, b, c, d, e, f, g)\n")
     expected_text = ("tf.linalg.matmul(a=a, b=b, transpose_a=c, transpose_b=d, "
@@ -1168,6 +1198,12 @@ def _log_prob(self, x):
     text = "tf.image.sample_distorted_bounding_box(a, b, c, d, e, f, g, h, i, j)"
     expected = "tf.image.sample_distorted_bounding_box(image_size=a, bounding_boxes=b, seed=c, min_object_covered=e, aspect_ratio_range=f, area_range=g, max_attempts=h, use_image_if_no_bounding_boxes=i, name=j)"
     # pylint: enable=line-too-long
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
+  def test_contrib_initialize(self):
+    text = "tf.contrib.summary.initialize"
+    expected = "tf.compat.v1.summary.initialize"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 

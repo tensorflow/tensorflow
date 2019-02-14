@@ -240,6 +240,13 @@ TEST_F(OperatorTest, BuiltinGather) {
   ASSERT_NE(nullptr, output_toco_op.get());
 }
 
+TEST_F(OperatorTest, BuiltinGatherNd) {
+  GatherNdOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("GATHER_ND", OperatorType::kGatherNd), op);
+  ASSERT_NE(output_toco_op.get(), nullptr);
+}
+
 TEST_F(OperatorTest, BuiltinL2Pool) {
   L2PoolOperator op;
   op.stride_width = 123;
@@ -824,6 +831,10 @@ TEST_F(OperatorTest, VersioningSpaceToDepthTest) {
 TEST_F(OperatorTest, VersioningSliceTest) {
   SimpleVersioningTest<SliceOperator>();
 }
+
+TEST_F(OperatorTest, VersioningAddTest) { SimpleVersioningTest<AddOperator>(); }
+
+TEST_F(OperatorTest, VersioningSubTest) { SimpleVersioningTest<SubOperator>(); }
 
 TEST_F(OperatorTest, VersioningSelectTest) {
   SelectOperator select_op;

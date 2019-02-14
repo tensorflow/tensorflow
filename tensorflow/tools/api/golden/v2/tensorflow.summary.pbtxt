@@ -17,6 +17,10 @@ tf_module {
     argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "record_if"
+    argspec: "args=[\'condition\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "summary_scope"
     argspec: "args=[\'name\', \'default_name\', \'values\'], varargs=None, keywords=None, defaults=[\'summary\', \'None\'], "
   }

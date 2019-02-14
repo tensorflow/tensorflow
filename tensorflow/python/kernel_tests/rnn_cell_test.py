@@ -1284,12 +1284,12 @@ class LSTMTest(test.TestCase):
 
     self.assertEqual(len(values_static), len(values_dynamic))
     for (value_static, value_dynamic) in zip(values_static, values_dynamic):
-      self.assertAllEqual(value_static, value_dynamic)
-    self.assertAllEqual(state_value_static, state_value_dynamic)
+      self.assertAllClose(value_static, value_dynamic)
+    self.assertAllClose(state_value_static, state_value_dynamic)
 
     if in_graph_mode:
 
-      self.assertAllEqual(static_grad_values, dynamic_grad_values)
+      self.assertAllClose(static_grad_values, dynamic_grad_values)
 
       self.assertEqual(
           len(static_individual_grad_values),
@@ -1301,14 +1301,14 @@ class LSTMTest(test.TestCase):
       for i, (a, b) in enumerate(
           zip(static_individual_grad_values, dynamic_individual_grad_values)):
         tf_logging.info("Comparing individual gradients iteration %d" % i)
-        self.assertAllEqual(a, b)
+        self.assertAllClose(a, b)
 
       for i, (a, b) in enumerate(
           zip(static_individual_var_grad_values,
               dynamic_individual_var_grad_values)):
         tf_logging.info(
             "Comparing individual variable gradients iteration %d" % i)
-        self.assertAllEqual(a, b)
+        self.assertAllClose(a, b)
 
   @test_util.run_in_graph_and_eager_modes
   def testDynamicEquivalentToStaticRNN(self):
@@ -1383,27 +1383,27 @@ class BidirectionalRNNTest(test.TestCase):
       #
       # First sequence in batch is length=2
       # Check that the time=0 forward output is equal to time=1 backward output
-      self.assertEqual(out[0][0][0], out[1][0][3])
-      self.assertEqual(out[0][0][1], out[1][0][4])
-      self.assertEqual(out[0][0][2], out[1][0][5])
+      self.assertAllClose(out[0][0][0], out[1][0][3])
+      self.assertAllClose(out[0][0][1], out[1][0][4])
+      self.assertAllClose(out[0][0][2], out[1][0][5])
       # Check that the time=1 forward output is equal to time=0 backward output
-      self.assertEqual(out[1][0][0], out[0][0][3])
-      self.assertEqual(out[1][0][1], out[0][0][4])
-      self.assertEqual(out[1][0][2], out[0][0][5])
+      self.assertAllClose(out[1][0][0], out[0][0][3])
+      self.assertAllClose(out[1][0][1], out[0][0][4])
+      self.assertAllClose(out[1][0][2], out[0][0][5])
 
       # Second sequence in batch is length=3
       # Check that the time=0 forward output is equal to time=2 backward output
-      self.assertEqual(out[0][1][0], out[2][1][3])
-      self.assertEqual(out[0][1][1], out[2][1][4])
-      self.assertEqual(out[0][1][2], out[2][1][5])
+      self.assertAllClose(out[0][1][0], out[2][1][3])
+      self.assertAllClose(out[0][1][1], out[2][1][4])
+      self.assertAllClose(out[0][1][2], out[2][1][5])
       # Check that the time=1 forward output is equal to time=1 backward output
-      self.assertEqual(out[1][1][0], out[1][1][3])
-      self.assertEqual(out[1][1][1], out[1][1][4])
-      self.assertEqual(out[1][1][2], out[1][1][5])
+      self.assertAllClose(out[1][1][0], out[1][1][3])
+      self.assertAllClose(out[1][1][1], out[1][1][4])
+      self.assertAllClose(out[1][1][2], out[1][1][5])
       # Check that the time=2 forward output is equal to time=0 backward output
-      self.assertEqual(out[2][1][0], out[0][1][3])
-      self.assertEqual(out[2][1][1], out[0][1][4])
-      self.assertEqual(out[2][1][2], out[0][1][5])
+      self.assertAllClose(out[2][1][0], out[0][1][3])
+      self.assertAllClose(out[2][1][1], out[0][1][4])
+      self.assertAllClose(out[2][1][2], out[0][1][5])
       # Via the reasoning above, the forward and backward final state should be
       # exactly the same
       self.assertAllClose(s_fw, s_bw)
