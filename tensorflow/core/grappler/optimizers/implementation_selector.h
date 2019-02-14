@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_EXPERIMENTAL_IMPLEMENTATION_SELECTOR_H_
-#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_EXPERIMENTAL_IMPLEMENTATION_SELECTOR_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_IMPLEMENTATION_SELECTOR_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_IMPLEMENTATION_SELECTOR_H_
 
 #include <string>
 
@@ -33,7 +33,6 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-// -- EXPERIMENTAL --
 // This transformation replaces function calls by the appropriate function
 // definition based on properties of the runtime system. For instance,
 // we may choose one implementation over another if we have a GPU with
@@ -45,12 +44,12 @@ namespace grappler {
 //
 // For instance, the python code might specify:
 // @Defun(tf.float32,
-//        experimental_api_implements='plus_one',
-//        experimental_api_preferred_device='GPU')
+//        api_implements='plus_one',
+//        api_preferred_device='GPU')
 // def plus_one_gpu(x): return x + 1.0
 //
 // @Defun(tf.float32,
-//        experimental_api_implements='plus_one')
+//        api_implements='plus_one')
 // def plus_one_reference_implementation(x): return x + 1.0
 // input = tf.constant(2.0, dtype=tf.float32)
 //
@@ -62,21 +61,21 @@ namespace grappler {
 // `plus_one_reference_implementation` based on the availability of the GPU.
 //
 // Available annotations:
-//  - experimental_api_implements(string): all functions mapping to the same
+//  - api_implements(string): all functions mapping to the same
 //    string can be interchanged. For now, all functions must have the same
 //    signature and overloads are not allowed. Defuns within defuns are
 //    allowed.
-//  - experimental_api_preferred_device(string): sets which device is preferred.
-class ExperimentalImplementationSelector : public CustomGraphOptimizer {
+//  - api_preferred_device(string): sets which device is preferred.
+class ImplementationSelector : public CustomGraphOptimizer {
  public:
-  ExperimentalImplementationSelector() = default;
-  ~ExperimentalImplementationSelector() override = default;
+  ImplementationSelector() = default;
+  ~ImplementationSelector() override = default;
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     return Status::OK();
   }
   string name() const override {
-    return "experimental_implementation_selector";
+    return "implementation_selector";
   }
 
   // This call is not thread-safe.
@@ -106,10 +105,10 @@ class ExperimentalImplementationSelector : public CustomGraphOptimizer {
 
   std::unique_ptr<FunctionLibraryApiInfo> lib_info_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExperimentalImplementationSelector);
+  TF_DISALLOW_COPY_AND_ASSIGN(ImplementationSelector);
 };
 
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_EXPERIMENTAL_IMPLEMENTATION_SELECTOR_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_IMPLEMENTATION_SELECTOR_H_

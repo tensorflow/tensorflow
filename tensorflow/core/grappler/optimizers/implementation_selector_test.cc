@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/grappler/optimizers/experimental_implementation_selector.h"
+#include "tensorflow/core/grappler/optimizers/implementation_selector.h"
 
 #include <algorithm>
 #include <memory>
@@ -38,15 +38,14 @@ namespace {
 constexpr char CpuDevice[] = "/device:CPU:0";
 constexpr char GpuDevice[] = "/device:GPU:0";
 
-class ExperimentalImplementationSelectorTest : public GrapplerTest {};
+class ImplementationSelectorTest : public GrapplerTest {};
 
-TEST_F(ExperimentalImplementationSelectorTest, NoUpdate) {
+TEST_F(ImplementationSelectorTest, NoUpdate) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {CpuDevice});
   GrapplerItem item;
   CHECK(fake_input.NextItem(&item));
 
-  std::unique_ptr<CustomGraphOptimizer> optimizer(
-      new ExperimentalImplementationSelector);
+  std::unique_ptr<CustomGraphOptimizer> optimizer(new ImplementationSelector);
   ASSERT_NE(nullptr, optimizer);
   TF_ASSERT_OK(optimizer->Init());
 
@@ -58,19 +57,19 @@ TEST_F(ExperimentalImplementationSelectorTest, NoUpdate) {
   EXPECT_EQ(item.graph.node_size(), output.node_size());
 }
 
-TEST_F(ExperimentalImplementationSelectorTest, SwapImplementation) {
+TEST_F(ImplementationSelectorTest, SwapImplementation) {
   using test::function::NDef;
   auto cpu_def = test::function::XTimesTwo();
   auto* func_attr = cpu_def.mutable_attr();
-  (*func_attr)["experimental_api_implements"].set_s("times_two");
-  (*func_attr)["experimental_api_preferred_device"].set_s("CPU");
+  (*func_attr)["api_implements"].set_s("times_two");
+  (*func_attr)["api_preferred_device"].set_s("CPU");
 
   auto gpu_def = test::function::XAddX();
   auto* func2_attr = gpu_def.mutable_attr();
-  (*func2_attr)["experimental_api_implements"].set_s("times_two");
-  (*func2_attr)["experimental_api_preferred_device"].set_s("GPU");
+  (*func2_attr)["api_implements"].set_s("times_two");
+  (*func2_attr)["api_preferred_device"].set_s("GPU");
 
-  ExperimentalImplementationSelector optimizer;
+  ImplementationSelector optimizer;
   GraphDef output;
   GrapplerItem item;
   item.graph = test::function::GDef(
@@ -96,19 +95,19 @@ TEST_F(ExperimentalImplementationSelectorTest, SwapImplementation) {
   }
 }
 
-TEST_F(ExperimentalImplementationSelectorTest, SwapImplementationEval) {
+TEST_F(ImplementationSelectorTest, SwapImplementationEval) {
   using test::function::NDef;
   auto cpu_def = test::function::XTimesTwo();
   auto* func_attr = cpu_def.mutable_attr();
-  (*func_attr)["experimental_api_implements"].set_s("random_boost");
-  (*func_attr)["experimental_api_preferred_device"].set_s("CPU");
+  (*func_attr)["api_implements"].set_s("random_boost");
+  (*func_attr)["api_preferred_device"].set_s("CPU");
 
   auto gpu_def = test::function::XTimesFour();
   auto* func2_attr = gpu_def.mutable_attr();
-  (*func2_attr)["experimental_api_implements"].set_s("random_boost");
-  (*func2_attr)["experimental_api_preferred_device"].set_s("GPU");
+  (*func2_attr)["api_implements"].set_s("random_boost");
+  (*func2_attr)["api_preferred_device"].set_s("GPU");
 
-  ExperimentalImplementationSelector optimizer;
+  ImplementationSelector optimizer;
   GraphDef output;
   GrapplerItem item;
   item.graph = test::function::GDef(
@@ -133,7 +132,7 @@ TEST_F(ExperimentalImplementationSelectorTest, SwapImplementationEval) {
                                  test::AsScalar<float>(2.0f));
 }
 
-TEST_F(ExperimentalImplementationSelectorTest, SwapImplementationWithGradient) {
+TEST_F(ImplementationSelectorTest, SwapImplementationWithGradient) {
   using test::function::NDef;
   using FDH = FunctionDefHelper;
   // boost_1 returns the doubled input and a const as the internal state, the
@@ -146,8 +145,8 @@ TEST_F(ExperimentalImplementationSelectorTest, SwapImplementationWithGradient) {
       /* Mapping between function returns and function node outputs. */
       {{"z", "boost:z:0"}, {"s", "one:output:0"}});
   auto* boost_1_attr = boost_1.mutable_attr();
-  (*boost_1_attr)["experimental_api_implements"].set_s("random_boost");
-  (*boost_1_attr)["experimental_api_preferred_device"].set_s("CPU");
+  (*boost_1_attr)["api_implements"].set_s("random_boost");
+  (*boost_1_attr)["api_preferred_device"].set_s("CPU");
   (*boost_1_attr)["backward_function_name"].set_s("BoostCpuGradient");
 
   FunctionDef boost_1_gradient = FDH::Create(
@@ -157,8 +156,8 @@ TEST_F(ExperimentalImplementationSelectorTest, SwapImplementationWithGradient) {
       /* Mapping between function returns and function node outputs. */
       {{"dx", "grad:z:0"}});
   auto* boost_1_grad_attr = boost_1_gradient.mutable_attr();
-  (*boost_1_grad_attr)["experimental_api_implements"].set_s("random_boost");
-  (*boost_1_grad_attr)["experimental_api_preferred_device"].set_s("CPU");
+  (*boost_1_grad_attr)["api_implements"].set_s("random_boost");
+  (*boost_1_grad_attr)["api_preferred_device"].set_s("CPU");
   (*boost_1_grad_attr)["forward_function_name"].set_s("BoostCpu");
 
   // boost_2 return the input * 4, and with two extra internal states.
@@ -171,8 +170,8 @@ TEST_F(ExperimentalImplementationSelectorTest, SwapImplementationWithGradient) {
       /* Mapping between function returns and function node outputs. */
       {{"z", "boost:z:0"}, {"s1", "one:output:0"}, {"s2", "two:output:0"}});
   auto* boost_2_attr = boost_2_func.mutable_attr();
-  (*boost_2_attr)["experimental_api_implements"].set_s("random_boost");
-  (*boost_2_attr)["experimental_api_preferred_device"].set_s("GPU");
+  (*boost_2_attr)["api_implements"].set_s("random_boost");
+  (*boost_2_attr)["api_preferred_device"].set_s("GPU");
   (*boost_2_attr)["backward_function_name"].set_s("BoostGpuGradient");
 
   FunctionDef boost_2_gradient = FDH::Create(
@@ -182,8 +181,8 @@ TEST_F(ExperimentalImplementationSelectorTest, SwapImplementationWithGradient) {
       /* Mapping between function returns and function node outputs. */
       {{"dx", "grad:z:0"}});
   auto* boost_2_grad_attr = boost_2_gradient.mutable_attr();
-  (*boost_2_grad_attr)["experimental_api_implements"].set_s("random_boost");
-  (*boost_2_grad_attr)["experimental_api_preferred_device"].set_s("GPU");
+  (*boost_2_grad_attr)["api_implements"].set_s("random_boost");
+  (*boost_2_grad_attr)["api_preferred_device"].set_s("GPU");
   (*boost_2_grad_attr)["forward_function_name"].set_s("BoostGpu");
 
   // Define the forward function with f = boost2 function but with CPU device.
@@ -203,7 +202,7 @@ TEST_F(ExperimentalImplementationSelectorTest, SwapImplementationWithGradient) {
             {"f", FDH::FunctionRef("Boost2Gradient")}},
            CpuDevice);
 
-  ExperimentalImplementationSelector optimizer;
+  ImplementationSelector optimizer;
   GraphDef output;
   GrapplerItem item;
   item.graph = test::function::GDef(

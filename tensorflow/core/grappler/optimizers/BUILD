@@ -521,9 +521,9 @@ cc_library(
         ":custom_graph_optimizer_registry",
         ":debug_stripper",
         ":dependency_optimizer",
-        ":experimental_implementation_selector",
         ":function_optimizer",
         ":graph_optimizer",
+        ":implementation_selector",
         ":layout_optimizer",
         ":loop_optimizer",
         ":memory_optimizer",
@@ -869,9 +869,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "experimental_implementation_selector",
-    srcs = ["experimental_implementation_selector.cc"],
-    hdrs = ["experimental_implementation_selector.h"],
+    name = "implementation_selector",
+    srcs = ["implementation_selector.cc"],
+    hdrs = ["implementation_selector.h"],
     deps = [
         ":custom_graph_optimizer",
         ":custom_graph_optimizer_registry",
@@ -887,14 +887,14 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "experimental_implementation_selector_test",
+    name = "implementation_selector_test",
     size = "small",
-    srcs = ["experimental_implementation_selector_test.cc"],
+    srcs = ["implementation_selector_test.cc"],
     deps = [
         ":custom_graph_optimizer",
         ":custom_graph_optimizer_registry",
-        ":experimental_implementation_selector",
         ":function_api_info",
+        ":implementation_selector",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
