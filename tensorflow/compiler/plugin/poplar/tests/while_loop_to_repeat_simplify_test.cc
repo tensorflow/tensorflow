@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/while_loop_to_repeat_simplify.h"
+#include "tensorflow/compiler/plugin/poplar/driver/backend_config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -69,10 +70,10 @@ ENTRY entry {
 
   // Get the trip count
   auto* root = module.get()->entry_computation()->root_instruction();
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
-  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
-                                               root->operand(0)->literal()));
-  EXPECT_EQ(trip_count, 10);
+  TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
+                          root->backend_config<PoplarBackendConfig>());
+  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
+  ASSERT_EQ(cfg.fusion_config().repeat_count(), 10);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalS32_Ge) {
@@ -111,10 +112,10 @@ ENTRY entry {
 
   // Get the trip count
   auto* root = module.get()->entry_computation()->root_instruction();
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
-  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
-                                               root->operand(0)->literal()));
-  EXPECT_EQ(trip_count, 1000);
+  TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
+                          root->backend_config<PoplarBackendConfig>());
+  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
+  ASSERT_EQ(cfg.fusion_config().repeat_count(), 1000);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalS32_Gt) {
@@ -153,10 +154,10 @@ ENTRY entry {
 
   // Get the trip count
   auto* root = module.get()->entry_computation()->root_instruction();
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
-  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
-                                               root->operand(0)->literal()));
-  EXPECT_EQ(trip_count, 1000);
+  TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
+                          root->backend_config<PoplarBackendConfig>());
+  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
+  ASSERT_EQ(cfg.fusion_config().repeat_count(), 1000);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalS32_Le) {
@@ -195,10 +196,10 @@ ENTRY entry {
 
   // Get the trip count
   auto* root = module.get()->entry_computation()->root_instruction();
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
-  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
-                                               root->operand(0)->literal()));
-  EXPECT_EQ(trip_count, 900);
+  TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
+                          root->backend_config<PoplarBackendConfig>());
+  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
+  ASSERT_EQ(cfg.fusion_config().repeat_count(), 900);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalS32_NonConstInit) {
@@ -306,11 +307,10 @@ ENTRY entry {
 
   // Get the trip count
   auto* root = module.get()->entry_computation()->root_instruction();
-  ;
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
-  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
-                                               root->operand(0)->literal()));
-  EXPECT_EQ(trip_count, 5);
+  TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
+                          root->backend_config<PoplarBackendConfig>());
+  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
+  ASSERT_EQ(cfg.fusion_config().repeat_count(), 5);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalHoistTheConstant) {
@@ -349,16 +349,15 @@ ENTRY entry {
 
   // Get the trip count
   auto* root = module.get()->entry_computation()->root_instruction();
-  ;
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
-  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
-                                               root->operand(0)->literal()));
-  EXPECT_EQ(trip_count, 10);
+  TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
+                          root->backend_config<PoplarBackendConfig>());
+  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
+  ASSERT_EQ(cfg.fusion_config().repeat_count(), 10);
 
   // Check the constant got hoisted out to input tuple.
   HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
-  EXPECT_TRUE(IsRepeatCall(repeat_inst));
-  const HloInstruction* repeat_init = repeat_inst->operand(1);
+  EXPECT_TRUE(IsRepeatLoop(repeat_inst));
+  const HloInstruction* repeat_init = repeat_inst->operand(0);
   const HloInstruction* counter = repeat_init->operand(0);
   EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
   int64 loop_counter =
@@ -404,16 +403,15 @@ ENTRY entry {
 
   // Get the trip count
   auto* root = module.get()->entry_computation()->root_instruction();
-  ;
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
-  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
-                                               root->operand(0)->literal()));
-  EXPECT_EQ(trip_count, 0);
+  TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
+                          root->backend_config<PoplarBackendConfig>());
+  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
+  ASSERT_EQ(cfg.fusion_config().repeat_count(), 0);
 
   // Check the constant got hoisted out.
   HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
-  EXPECT_TRUE(IsRepeatCall(repeat_inst));
-  const HloInstruction* repeat_init = repeat_inst->operand(1);
+  EXPECT_TRUE(IsRepeatLoop(repeat_inst));
+  const HloInstruction* repeat_init = repeat_inst->operand(0);
   const HloInstruction* counter = repeat_init->operand(0);
   EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
   int64 loop_counter =
@@ -459,16 +457,15 @@ ENTRY entry {
 
   // Get the trip count
   auto* root = module.get()->entry_computation()->root_instruction();
-  ;
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
-  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
-                                               root->operand(0)->literal()));
-  EXPECT_EQ(trip_count, 10);
+  TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
+                          root->backend_config<PoplarBackendConfig>());
+  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
+  ASSERT_EQ(cfg.fusion_config().repeat_count(), 10);
 
   // Check the constant got hoisted out.
   HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
-  EXPECT_TRUE(IsRepeatCall(repeat_inst));
-  const HloInstruction* repeat_init = repeat_inst->operand(1);
+  EXPECT_TRUE(IsRepeatLoop(repeat_inst));
+  const HloInstruction* repeat_init = repeat_inst->operand(0);
   const HloInstruction* counter = repeat_init->operand(0);
   EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
   int64 loop_counter =
@@ -516,16 +513,15 @@ ENTRY entry {
 
   // Get the trip count
   auto* root = module.get()->entry_computation()->root_instruction();
-  ;
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
-  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
-                                               root->operand(0)->literal()));
-  EXPECT_EQ(trip_count, 10);
+  TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
+                          root->backend_config<PoplarBackendConfig>());
+  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
+  ASSERT_EQ(cfg.fusion_config().repeat_count(), 10);
 
   // Check the constant got hoisted out.
   HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
-  EXPECT_TRUE(IsRepeatCall(repeat_inst));
-  const HloInstruction* repeat_init = repeat_inst->operand(1);
+  EXPECT_TRUE(IsRepeatLoop(repeat_inst));
+  const HloInstruction* repeat_init = repeat_inst->operand(0);
   const HloInstruction* counter = repeat_init->operand(0);
   const HloInstruction* unused_counter = repeat_init->operand(2);
   EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
@@ -581,16 +577,15 @@ ENTRY entry {
 
   // Get the trip count
   auto* root = module.get()->entry_computation()->root_instruction();
-  ;
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
-  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
-                                               root->operand(0)->literal()));
-  EXPECT_EQ(trip_count, 10);
+  TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
+                          root->backend_config<PoplarBackendConfig>());
+  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
+  ASSERT_EQ(cfg.fusion_config().repeat_count(), 10);
 
   // Check the constant got hoisted out.
   HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
-  EXPECT_TRUE(IsRepeatCall(repeat_inst));
-  const HloInstruction* repeat_init = repeat_inst->operand(1);
+  EXPECT_TRUE(IsRepeatLoop(repeat_inst));
+  const HloInstruction* repeat_init = repeat_inst->operand(0);
   const HloInstruction* counter = repeat_init->operand(0);
   const HloInstruction* unused_counter = repeat_init->operand(2);
   EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
@@ -730,6 +725,7 @@ ENTRY entry {
   int64 result = LiteralScalarToNativeType<int64>(root->literal()).ValueOrDie();
   EXPECT_EQ(result, 255);
 }
+
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalDontHoistTheConstant) {
   const char* const hlo_string = R"(
 HloModule ModuleWithWhile
@@ -767,16 +763,15 @@ ENTRY entry {
 
   // Get the trip count
   auto* root = module.get()->entry_computation()->root_instruction();
-  ;
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
-  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
-                                               root->operand(0)->literal()));
-  EXPECT_EQ(trip_count, 10);
+  TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
+                          root->backend_config<PoplarBackendConfig>());
+  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
+  ASSERT_EQ(cfg.fusion_config().repeat_count(), 10);
 
   // Check the constant got hoisted out.
   HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
-  EXPECT_TRUE(IsRepeatCall(repeat_inst));
-  const HloInstruction* repeat_init = repeat_inst->operand(1);
+  EXPECT_TRUE(IsRepeatLoop(repeat_inst));
+  const HloInstruction* repeat_init = repeat_inst->operand(0);
   const HloInstruction* counter = repeat_init->operand(0);
   EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
   int64 loop_start =
@@ -831,11 +826,10 @@ ENTRY entry {
 
   // Get the trip count
   auto* root = module.get()->entry_computation()->root_instruction();
-  ;
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
-  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
-                                               root->operand(0)->literal()));
-  EXPECT_EQ(trip_count, 10);
+  TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
+                          root->backend_config<PoplarBackendConfig>());
+  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
+  ASSERT_EQ(cfg.fusion_config().repeat_count(), 10);
 }
 
 }  // namespace

@@ -163,7 +163,7 @@ bool GetConstantOutput(const HloInstruction* root, const Shape& layout,
 
 bool AnyComputationHasSideEffects(const HloModule* module) {
   for (const auto& comp : module->computations()) {
-    if (IsRepeatCall(comp) || IsPopOpsFusion(comp)) {
+    if (IsPopOpsFusion(comp)) {
       continue;
     }
 

@@ -160,21 +160,13 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
         }
         case HloOpcode::kCall: {
           HloComputation* comp = user->to_apply();
-          if (IsRepeatCall(comp)) {
-            if (op_index == 1) {
-              HloComputation* comp = GetRepeatBody(user);
-              HloInstruction* param = comp->parameter_instruction(0);
-              FindConsumers(src, param, index);
-            }
-          } else {
-            HloInstruction* param = comp->parameter_instruction(op_index);
-            FindConsumers(src, param, index);
-          }
+          HloInstruction* param = comp->parameter_instruction(op_index);
+          FindConsumers(src, param, index);
           break;
         }
         case HloOpcode::kFusion: {
           HloComputation* comp = user->fused_instructions_computation();
-          if (IsPopOpsFusion(comp)) {
+          if (IsPopOpsFusion(user)) {
             auto end = comp->name().find('.');
             std::string name = comp->name().substr(8, end - 8);
             if (name == "depthwise_conv") {
@@ -185,6 +177,9 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
               }
               tensor_allocation_map.insert(std::make_pair(src, t));
             }
+          } else if (IsRepeatLoop(user)) {
+            HloInstruction* param = comp->parameter_instruction(op_index);
+            FindConsumers(src, param, index);
           }
           break;
         }
@@ -264,9 +259,6 @@ StatusOr<bool> AllocationFinder::Run(HloModule* module) {
   FindAllocatingInstructions finder;
 
   for (const auto& comp : module->computations()) {
-    if (IsRepeatCall(comp)) {
-      continue;
-    }
     TF_RETURN_IF_ERROR(comp->Accept(&finder));
   }
 

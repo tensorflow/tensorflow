@@ -549,7 +549,7 @@ StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
   }
 
   for (const auto& computation : module->computations()) {
-    if (IsPopOpsFusion(computation) || IsRepeatCall(computation)) {
+    if (IsPopOpsFusion(computation)) {
       continue;
     }
     TF_ASSIGN_OR_RETURN(bool found_target_in_computation,
