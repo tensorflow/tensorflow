@@ -395,6 +395,7 @@ StatusOr<bool> WhileLoopToRepeatSimplify::Run(HloModule* module) {
     }
   }
 
+  absl::flat_hash_set<HloInstruction*> while_insts_to_remove;
   for (auto* while_inst : while_insts) {
     // For each while loop, try and simplify the logic to convert the loop into
     // a repeat.
@@ -418,11 +419,15 @@ StatusOr<bool> WhileLoopToRepeatSimplify::Run(HloModule* module) {
       HloInstruction* repeat_call = ConvertToRepeat(while_inst, count);
       HloComputation* parent_computation = repeat_call->parent();
       while_inst->ReplaceAllUsesWith(repeat_call);
-      parent_computation->RemoveInstructionAndUnusedOperands(while_inst);
-      changed = true;
       VLOG(1) << "Simplified while loop " << while_inst->name()
               << " with a repeat of count " << count;
+      while_insts_to_remove.insert(while_inst);
+      changed = true;
     }
+  }
+
+  for (HloInstruction* while_inst : while_insts_to_remove) {
+    while_inst->parent()->RemoveInstructionAndUnusedOperands(while_inst);
   }
 
   return changed;
