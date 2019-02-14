@@ -820,6 +820,10 @@ TEST_F(OperatorTest, VersioningBatchToSpaceNDTest) {
   SimpleVersioningTest<BatchToSpaceNDOperator>();
 }
 
+TEST_F(OperatorTest, VersioningTanhTest) {
+  SimpleVersioningTest<TanhOperator>();
+}
+
 TEST_F(OperatorTest, VersioningStridedSliceTest) {
   SimpleVersioningTest<StridedSliceOperator>();
 }
