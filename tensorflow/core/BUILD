@@ -1168,6 +1168,29 @@ tf_gen_op_libs(
     deps = [":lib"],
 )
 
+tf_gen_op_libs(
+    op_lib_names = [
+        "tpu_configuration_ops",
+        "tpu_cross_replica_ops",
+        "tpu_embedding_ops",
+        "tpu_functional_ops",
+        "tpu_heartbeat_ops",
+        "tpu_host_compute_ops",
+        "tpu_infeed_ops",
+        "tpu_outfeed_ops",
+        "tpu_ordinal_selector_ops",
+        "tpu_replication_ops",
+    ],
+    deps = [
+        ":lib",
+        ":lib_proto_parsing",
+        ":protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/core/tpu:tpu_embedding_optimization_parameters_utils",
+        "//tensorflow/core/tpu:tpu_embedding_output_layout_utils",
+    ],
+)
+
 # And one for all user ops
 cc_library(
     name = "user_ops_op_lib",
@@ -1284,6 +1307,16 @@ cc_library(
         ":state_ops_op_lib",
         ":stateless_random_ops_op_lib",
         ":string_ops_op_lib",
+        ":tpu_configuration_ops_op_lib",
+        ":tpu_cross_replica_ops_op_lib",
+        ":tpu_embedding_ops_op_lib",
+        ":tpu_functional_ops_op_lib",
+        ":tpu_heartbeat_ops_op_lib",
+        ":tpu_host_compute_ops_op_lib",
+        ":tpu_infeed_ops_op_lib",
+        ":tpu_outfeed_ops_op_lib",
+        ":tpu_ordinal_selector_ops_op_lib",
+        ":tpu_replication_ops_op_lib",
         ":training_ops_op_lib",
         ":user_ops_op_lib",
         ":word2vec_ops",
@@ -1898,6 +1931,7 @@ filegroup(
             "**/*testutil*",
             "**/*testlib*",
             "**/*main.cc",
+            "**/tpu_*",
         ],
     ),
     visibility = ["//visibility:public"],
