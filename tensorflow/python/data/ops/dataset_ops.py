@@ -174,12 +174,12 @@ class DatasetV2(object):
     options = self.options()
     if options.experimental_threading is not None:
       t_options = options.experimental_threading
-      if t_options.private_threadpool_size is not None:
-        dataset = _PrivateThreadPoolDataset(dataset,
-                                            t_options.private_threadpool_size)
       if t_options.max_intra_op_parallelism is not None:
         dataset = _MaxIntraOpParallelismDataset(
             dataset, t_options.max_intra_op_parallelism)
+      if t_options.private_threadpool_size is not None:
+        dataset = _PrivateThreadPoolDataset(dataset,
+                                            t_options.private_threadpool_size)
     static_optimizations = options._static_optimizations()  # pylint: disable=protected-access
     if static_optimizations:
       if self._has_captured_ref():
