@@ -928,16 +928,16 @@ def convolution_internal(
     name=None):
   """Internal function which performs rank agnostic convolution."""
   with ops.name_scope(name, "convolution", [input, filters]) as name:
-    if isinstance(input.shape, tensor_shape.TensorShapeV1) and \
+    if isinstance(input.shape, tensor_shape.TensorShape) and \
         input.shape.rank is not None:
       n = len(input.shape) - 2
-    elif not isinstance(input.shape, tensor_shape.TensorShapeV1) and \
+    elif not isinstance(input.shape, tensor_shape.TensorShape) and \
         input.shape is not None:
       n = len(input.shape) - 2
-    elif isinstance(filters.shape, tensor_shape.TensorShapeV1) and \
+    elif isinstance(filters.shape, tensor_shape.TensorShape) and \
         filters.shape.rank is not None:
       n = len(filters.shape) - 2
-    elif not isinstance(filters.shape, tensor_shape.TensorShapeV1) and \
+    elif not isinstance(filters.shape, tensor_shape.TensorShape) and \
         filters.shape is not None:
       n = len(filters.shape) - 2
     else:
