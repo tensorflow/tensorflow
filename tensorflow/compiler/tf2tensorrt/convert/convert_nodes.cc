@@ -3087,7 +3087,11 @@ tensorflow::Status ConvertRsqrt(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
+  if (params->validation_only) return tensorflow::Status::OK();
 
+  // TODO(tmorris): params->converter is null during validation. Allow
+  // precision_mode and use_calibration to be accessed during validation and
+  // include this check in validation.
   // We will need a quantization range for intermediate tensor if not using
   // calibration.
   //
@@ -3102,24 +3106,17 @@ tensorflow::Status ConvertRsqrt(OpConverterParams* params) {
         "Sqrt -> FakeQuant -> Reciprocal ops, at ",
         node_def.name());
   }
-  if (params->validation_only) return tensorflow::Status::OK();
-
   // Start conversion.
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   // Sqrt
-  layer = params->converter->network()->addUnary(
-      *const_cast<nvinfer1::ITensor*>(tensor),
-      nvinfer1::UnaryOperation::kSQRT);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  tensor = layer->getOutput(0);
+  nvinfer1::IUnaryLayer* sqrt_layer = params->converter->network()->addUnary(
+      *const_cast<nvinfer1::ITensor*>(tensor), nvinfer1::UnaryOperation::kSQRT);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(sqrt_layer, node_def.name());
   // Recip
-  layer = params->converter->network()->addUnary(
-      *const_cast<nvinfer1::ITensor*>(tensor),
-      nvinfer1::UnaryOperation::kRECIP);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
-  params->outputs->push_back(
-      TRT_TensorOrWeights(const_cast<nvinfer1::ITensor*>(output_tensor)));
+  nvinfer1::IUnaryLayer* recip_layer = params->converter->network()->addUnary(
+      *sqrt_layer->getOutput(0), nvinfer1::UnaryOperation::kRECIP);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(recip_layer, node_def.name());
+  params->outputs->push_back(TRT_TensorOrWeights(recip_layer->getOutput(0)));
   return tensorflow::Status::OK();
 }
 
@@ -3127,27 +3124,27 @@ tensorflow::Status ConvertUnary(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
-  static const std::unordered_map<string, nvinfer1::UnaryOperation> ops{
-      {"Neg", nvinfer1::UnaryOperation::kNEG},
-      {"Exp", nvinfer1::UnaryOperation::kEXP},
-      {"Log", nvinfer1::UnaryOperation::kLOG},
-      {"Sqrt", nvinfer1::UnaryOperation::kSQRT},
-      {"Abs", nvinfer1::UnaryOperation::kABS},
-      {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
+  static const std::unordered_map<string, nvinfer1::UnaryOperation> ops = {
+    {"Neg", nvinfer1::UnaryOperation::kNEG},
+    {"Exp", nvinfer1::UnaryOperation::kEXP},
+    {"Log", nvinfer1::UnaryOperation::kLOG},
+    {"Sqrt", nvinfer1::UnaryOperation::kSQRT},
+    {"Abs", nvinfer1::UnaryOperation::kABS},
+    {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
 #if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
-      {"Sin", nvinfer1::UnaryOperation::kSIN},
-      {"Cos", nvinfer1::UnaryOperation::kCOS},
-      {"Tan", nvinfer1::UnaryOperation::kTAN},
-      {"Sinh", nvinfer1::UnaryOperation::kSINH},
-      {"Cosh", nvinfer1::UnaryOperation::kCOSH},
-      {"Asin", nvinfer1::UnaryOperation::kASIN},
-      {"Acos", nvinfer1::UnaryOperation::kACOS},
-      {"Atan", nvinfer1::UnaryOperation::kATAN},
-      {"Asinh", nvinfer1::UnaryOperation::kASINH},
-      {"Acosh", nvinfer1::UnaryOperation::kACOSH},
-      {"Atanh", nvinfer1::UnaryOperation::kATANH},
-      {"Ceil", nvinfer1::UnaryOperation::kCEIL},
-      {"Floor", nvinfer1::UnaryOperation::kFLOOR},
+    {"Sin", nvinfer1::UnaryOperation::kSIN},
+    {"Cos", nvinfer1::UnaryOperation::kCOS},
+    {"Tan", nvinfer1::UnaryOperation::kTAN},
+    {"Sinh", nvinfer1::UnaryOperation::kSINH},
+    {"Cosh", nvinfer1::UnaryOperation::kCOSH},
+    {"Asin", nvinfer1::UnaryOperation::kASIN},
+    {"Acos", nvinfer1::UnaryOperation::kACOS},
+    {"Atan", nvinfer1::UnaryOperation::kATAN},
+    {"Asinh", nvinfer1::UnaryOperation::kASINH},
+    {"Acosh", nvinfer1::UnaryOperation::kACOSH},
+    {"Atanh", nvinfer1::UnaryOperation::kATANH},
+    {"Ceil", nvinfer1::UnaryOperation::kCEIL},
+    {"Floor", nvinfer1::UnaryOperation::kFLOOR},
 #endif
   };
   auto op_pair = ops.find(node_def.op());
@@ -3160,9 +3157,24 @@ tensorflow::Status ConvertUnary(OpConverterParams* params) {
   // Start conversion.
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   nvinfer1::IUnaryLayer* layer = params->converter->network()->addUnary(
-        *const_cast<nvinfer1::ITensor*>(tensor), op_pair->second));
+      *const_cast<nvinfer1::ITensor*>(tensor), op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+
+  // Set quantization ranges.
+  if (node_def.op() == "Sin" || node_def.op() == "Cos") {
+    params->converter->ProvideQuantizationRange(output_tensor, -1.0f, 1.0f);
+  } else if (node_def.op() == "Asin" || node_def.op() == "Atan") {
+    params->converter->ProvideQuantizationRange(output_tensor, -M_PI_2, M_PI_2);
+  } else if (node_def.op() == "Acos") {
+    params->converter->ProvideQuantizationRange(output_tensor, 0.0f, M_PI);
+  } else if (node_def.op() == "Neg" || node_def.op() == "Abs") {
+    // Neg and Abs will have same range as output since TRT uses symmetric
+    // quantization.
+    // TODO(tmorris): Should we infer ranges for Ceil and Floor as well?
+    params->converter->MarkQuantizationRangesAsInferrable(
+        const_cast<nvinfer1::ITensor*>(tensor), output_tensor);
+  }
   params->outputs->push_back(
       TRT_TensorOrWeights(const_cast<nvinfer1::ITensor*>(output_tensor)));
   return tensorflow::Status::OK();
@@ -3864,7 +3876,9 @@ static void RegisterValidatableOpConverters(
     (*registration)[normalization_op_type] = ConvertFusedBatchNorm;
   }
   for (auto unary_op_type :
-       {"Abs", "Acos", "Acosh", "Asin", "Asinh", "Atan", "Atanh", "Ceil", "Cos", "Cosh", "Exp", "Floor", "Log", "Neg", "Reciprocal", "Sin",  "Sinh", "Sqrt", "Tan"}) {
+       {"Abs", "Acos", "Acosh", "Asin", "Asinh", "Atan", "Atanh", "Ceil", "Cos",
+        "Cosh", "Exp", "Floor", "Log", "Neg", "Reciprocal", "Sin", "Sinh",
+        "Sqrt", "Tan"}) {
     (*registration)[unary_op_type] = ConvertUnary;
   }
 }
