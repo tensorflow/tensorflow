@@ -110,14 +110,14 @@ class DatasetOpsTestBase : public ::testing::Test {
 
   // Creates a new TensorSliceDataset op kernel.
   Status CreateTensorSliceDatasetKernel(
-      const StringPiece& node_name, const DataTypeVector& dtypes,
+      StringPiece node_name, const DataTypeVector& dtypes,
       const std::vector<PartialTensorShape>& shapes,
-      std::unique_ptr<OpKernel>* tensor_dataset_kernel);
+      std::unique_ptr<OpKernel>* tensor_slice_dataset_kernel);
 
   // Creates a new TensorSliceDataset.
-  Status CreateTensorSliceDataset(const StringPiece& node_name,
-                                  std::vector<Tensor>& components,
-                                  DatasetBase** tensor_slice_data);
+  Status CreateTensorSliceDataset(StringPiece node_name,
+                                  std::vector<Tensor>* const components,
+                                  DatasetBase** tensor_slice_dataset);
 
   // Fetches the dataset from the operation context.
   Status GetDatasetFromContext(OpKernelContext* context, int output_index,

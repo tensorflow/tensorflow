@@ -30,9 +30,9 @@ struct RangeDatasetParam {
 
 class ZipDatasetOpTest : public DatasetOpsTestBase {
  protected:
-  // Creates RangeDatasets and save them as the variant tensors.
-  Status CreateRangeDatasetTensors(std::vector<RangeDatasetParam> params,
-                                   std::vector<Tensor> *dataset_tensors) {
+  // Creates `RangeDataset` variant tensors
+  Status CreateRangeDatasetTensors(const std::vector<RangeDatasetParam> &params,
+                                   std::vector<Tensor> *const dataset_tensors) {
     for (int i = 0; i < params.size(); ++i) {
       DatasetBase *range_dataset;
       TF_RETURN_IF_ERROR(CreateRangeDataset<int64>(
@@ -46,9 +46,10 @@ class ZipDatasetOpTest : public DatasetOpsTestBase {
   }
 
   // Creates a new ZipDataset op kernel.
-  Status CreateZipDatasetKernel(DataTypeVector dtypes,
-                                std::vector<PartialTensorShape> output_shapes,
-                                int n, std::unique_ptr<OpKernel> *op_kernel) {
+  Status CreateZipDatasetKernel(
+      const DataTypeVector &dtypes,
+      const std::vector<PartialTensorShape> &output_shapes, int n,
+      std::unique_ptr<OpKernel> *op_kernel) {
     std::vector<string> input_datasets;
     input_datasets.reserve(n);
     for (int i = 0; i < n; ++i) {
@@ -62,9 +63,10 @@ class ZipDatasetOpTest : public DatasetOpsTestBase {
   }
 
   // Creates a new ZipDataset op kernel context.
-  Status CreateZipDatasetContext(OpKernel *const op_kernel,
-                                 gtl::InlinedVector<TensorValue, 4> *inputs,
-                                 std::unique_ptr<OpKernelContext> *context) {
+  Status CreateZipDatasetContext(
+      OpKernel *const op_kernel,
+      gtl::InlinedVector<TensorValue, 4> *const inputs,
+      std::unique_ptr<OpKernelContext> *context) {
     TF_RETURN_IF_ERROR(CheckOpKernelInput(*op_kernel, *inputs));
     TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
     return Status::OK();
