@@ -20,6 +20,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import ops
+from tensorflow.python.platform import tf_logging as logging
 
 import json
 import re
@@ -281,8 +282,7 @@ def auto_select_ipus(opts, num_ipus, sharded=False):
   Args:
     :param opts: An IPUOptions session control protobuf.
     :param num_ipus: List of IPUs per Tensorflow device
-    :param sharded: Instead of many Tensorflow devices, represent the IPUs as
-                    one Tensorflow device, but with multiple shards.
+    :param sharded: Deprecated.
   Returns:
 
     :return: The IPUOptions configuration protobuf, configured for
@@ -294,7 +294,10 @@ def auto_select_ipus(opts, num_ipus, sharded=False):
   if not isinstance(num_ipus, (int, list, tuple)):
     raise Exception("`num_ipus` must be an integer, list or tuple.")
 
-  opts.enable_sharding = sharded
+  if sharded:
+    logging.warning("`sharded` has been deprecated.  Mark operations with a "
+                    "sharding attribute to enable sharding")
+
 
   if isinstance(num_ipus, int):
     dev = opts.device_config.add()
@@ -471,8 +474,7 @@ def select_ipus(opts, indices, sharded=False):
   Args:
     :param opts: An IPUOptions session control protobuf.
     :param indicies: List of IPU configuration indicies.
-    :param sharded: Instead of many Tensorflow devices, represent the IPUs as
-                    one Tensorflow device, but with multiple shards.
+    :param sharded: Deprecated.
   Returns:
 
     :return: The IPUOptions configuration protobuf, with a number of devices
@@ -485,7 +487,9 @@ def select_ipus(opts, indices, sharded=False):
   if not isinstance(indices, (list, tuple)):
     raise Exception("`indicies` must be a list or tuple.")
 
-  opts.enable_sharding = sharded
+  if sharded:
+    logging.warning("`sharded` has been deprecated.  Mark operations with a "
+                    "sharding attribute to enable sharding")
 
   for i in indices:
     dev = opts.device_config.add()

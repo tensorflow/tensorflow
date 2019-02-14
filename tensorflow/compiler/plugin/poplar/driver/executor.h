@@ -280,8 +280,6 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     return current_config_.disable_graph_convolution_caching();
   }
 
-  bool ShardingEnabled() const;
-
   poplar::OptionFlags GetConvolutionOptions() const { return conv_options_; }
 
   poplar::OptionFlags GetPoolingOptions() const { return pooling_options_; }

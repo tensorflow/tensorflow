@@ -174,6 +174,20 @@ bool AnyComputationHasSideEffects(const HloModule* module) {
   return false;
 }
 
+bool ShardingEnabled(const HloModule* module) {
+  std::vector<HloComputation*> comps = module->MakeNonfusionComputations();
+  for (const auto* c : comps) {
+    for (const auto* inst : c->instructions()) {
+      if (inst->has_sharding()) {
+        auto sharding = inst->sharding();
+        if (IsSupportedSharding(sharding)) {
+          return true;
+        }
+      }
+    }
+  }
+}
+
 bool AreAllOutputsParameters(
     HloInstruction* root,
     const std::set<const HloInstruction*>& non_standard_parameter_layout,
@@ -293,7 +307,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   popops::addCodelets(resources.main_graph);
   poprand::addCodelets(resources.main_graph);
 
-  if (poplarExecutor->ShardingEnabled()) {
+  if (ShardingEnabled(module.get())) {
     auto numIPUs = resources.main_graph.getTarget().getNumIPUs();
     auto tilesPerIPU = resources.main_graph.getTarget().getTilesPerIPU();
     for (unsigned ipu = 0; ipu < numIPUs; ++ipu) {

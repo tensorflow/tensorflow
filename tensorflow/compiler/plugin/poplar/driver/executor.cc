@@ -448,11 +448,6 @@ std::string PoplarExecutor::GetDeviceTargetName() const {
   return poplar::toString(poplar_device_.getTarget().getTargetType());
 }
 
-bool PoplarExecutor::ShardingEnabled() const {
-  return (current_config_.device_config_size() > 0 &&
-          current_config_.enable_sharding());
-}
-
 static bool DeviceConfigurationsEqual(const tensorflow::IPUOptions& a,
                                       const tensorflow::IPUOptions& b) {
   return google::protobuf::util::MessageDifferencer::Equivalent(a, b);
@@ -513,17 +508,13 @@ Status PoplarExecutor::ConfigurePoplarDevice(
           }
         } else {
           // User has specified a configuration
-          if (!current_config_.enable_sharding() &&
-              ordinal_ >= current_config_.device_config_size()) {
+          if (ordinal_ >= current_config_.device_config_size()) {
             return InternalError(
                 "Device ordinal %d not in device configuration list.",
                 ordinal_);
           }
 
-          auto device = current_config_.device_config(0);
-          if (!current_config_.enable_sharding()) {
-            device = current_config_.device_config(ordinal_);
-          }
+          auto device = current_config_.device_config(ordinal_);
 
           if (device.selection_case() ==
               tensorflow::IPUOptions::DeviceConfig::SelectionCase::kCfgIndex) {
@@ -573,10 +564,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(
 
           int num_ipus = 1;
           if (current_config_.device_config_size() > 0) {
-            auto device = current_config_.device_config(0);
-            if (!current_config_.enable_sharding()) {
-              device = current_config_.device_config(ordinal_);
-            }
+            auto device = current_config_.device_config(ordinal_);
 
             if (device.selection_case() ==
                 tensorflow::IPUOptions::DeviceConfig::SelectionCase::
