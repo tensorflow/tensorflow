@@ -34,9 +34,6 @@ namespace tensorflow {
 namespace profiler {
 namespace client {
 
-using ::tensorflow::grpc::TPUProfileAnalysis;
-using ::tensorflow::grpc::TPUProfiler;
-
 constexpr uint64 kMaxEvents = 1000000;
 
 string GetCurrentTimeStampAsString() {
