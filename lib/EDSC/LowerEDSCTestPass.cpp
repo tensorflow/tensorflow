@@ -51,9 +51,11 @@ PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
     FuncBuilder builder(&f->getBlocks().front(),
                         f->getBlocks().front().begin());
     assert(f->getNumArguments() == 2 && "dynamic_for expected 4 arguments");
-    for (const auto *arg : f->getArguments())
+    for (const auto *arg : f->getArguments()) {
+      (void)arg;
       assert(arg->getType().isIndex() &&
              "dynamic_for expected index arguments");
+    }
 
     edsc::ScopedEDSCContext context;
     edsc::Expr lb, ub, step;
@@ -73,9 +75,11 @@ PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
     FuncBuilder builder(&f->getBlocks().front(),
                         f->getBlocks().front().begin());
     assert(f->getNumArguments() == 4 && "dynamic_for expected 4 arguments");
-    for (const auto *arg : f->getArguments())
+    for (const auto *arg : f->getArguments()) {
+      (void)arg;
       assert(arg->getType().isIndex() &&
              "dynamic_for expected index arguments");
+    }
 
     edsc::ScopedEDSCContext context;
     edsc::Expr lb1, lb2, ub1, ub2, step;
