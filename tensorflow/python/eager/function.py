@@ -844,6 +844,10 @@ class FunctionSpec(object):
       python_function_to_inspect = python_function.func
       args_to_prepend = python_function.args or tuple()
       kwargs_to_include = python_function.keywords or {}
+      if input_signature is not None:
+        # TODO(b/124441704): Add support for input_signature + partial.
+        raise NotImplementedError(
+            "Missing support for input_signature when using partial functions.")
     else:
       python_function_to_inspect = python_function
       args_to_prepend = tuple()

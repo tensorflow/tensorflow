@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import functools
 import os
 
 from tensorflow.core.framework import versions_pb2
@@ -421,10 +420,13 @@ def _trace_resource_initializers(accessible_objects):
     obj.initialize()
     return constant_op.constant(1.)  # Dummy control output
 
+  def _wrap_obj_initializer(obj):
+    return lambda: _wrap_initializer(obj)
+
   for obj in accessible_objects:
     if isinstance(obj, tracking.TrackableResource):
       resource_initializers.append(def_function.function(
-          functools.partial(_wrap_initializer, obj),
+          _wrap_obj_initializer(obj),
           # All inputs are captures.
           input_signature=[]).get_concrete_function())
   return resource_initializers
