@@ -28,15 +28,9 @@ from tensorflow.python.platform import tf_logging as logging
 
 if platform.system() != "Windows":
   # pylint: disable=wildcard-import,unused-import,g-import-not-at-top
-  from tensorflow.contrib.tpu.ops import gen_tpu_ops
-  from tensorflow.contrib.tpu.ops.gen_tpu_ops import *
-
-  from tensorflow.contrib.util import loader
-  from tensorflow.python.platform import resource_loader
+  from tensorflow.python.ops import gen_tpu_ops
+  from tensorflow.python.ops.gen_tpu_ops import *
   # pylint: enable=wildcard-import,unused-import,g-import-not-at-top
-
-  _tpu_ops = loader.load_op_library(
-      resource_loader.get_path_to_datafile("_tpu_ops.so"))
 
   def _create_default_group_assignment():
     num_shards = tpu_function.get_tpu_context().number_of_shards
@@ -237,12 +231,12 @@ if platform.system() != "Windows":
     """
     if learning_rates is None:
       learning_rates = []
-    return gen_tpu_ops._send_tpu_embedding_gradients(
+    return gen_tpu_ops.send_tpu_embedding_gradients(
         inputs=inputs, learning_rates=learning_rates, config=config, name=name)
 
 
   send_tpu_embedding_gradients.__doc__ = (
-      gen_tpu_ops._send_tpu_embedding_gradients.__doc__)
+      gen_tpu_ops.send_tpu_embedding_gradients.__doc__)
 
   # pylint: disable=protected-access
   def enqueue_tpu_embedding_integer_batch(batch,
@@ -268,14 +262,14 @@ if platform.system() != "Windows":
     """
     if mode_override is None:
       mode_override = "unspecified"
-    return gen_tpu_ops._enqueue_tpu_embedding_integer_batch(
+    return gen_tpu_ops.enqueue_tpu_embedding_integer_batch(
         batch=batch,
         device_ordinal=device_ordinal,
         mode_override=mode_override,
         name=name)
 
   enqueue_tpu_embedding_integer_batch.__doc__ = (
-      gen_tpu_ops._enqueue_tpu_embedding_integer_batch.__doc__)
+      gen_tpu_ops.enqueue_tpu_embedding_integer_batch.__doc__)
 
   # pylint: disable=protected-access
   def enqueue_tpu_embedding_sparse_batch(sample_indices,
@@ -317,7 +311,7 @@ if platform.system() != "Windows":
     """
     if mode_override is None:
       mode_override = "unspecified"
-    return gen_tpu_ops._enqueue_tpu_embedding_sparse_batch(
+    return gen_tpu_ops.enqueue_tpu_embedding_sparse_batch(
         sample_indices=sample_indices,
         embedding_indices=embedding_indices,
         aggregation_weights=aggregation_weights,
@@ -327,7 +321,7 @@ if platform.system() != "Windows":
         name=name)
 
   enqueue_tpu_embedding_sparse_batch.__doc__ = (
-      gen_tpu_ops._enqueue_tpu_embedding_sparse_batch.__doc__)
+      gen_tpu_ops.enqueue_tpu_embedding_sparse_batch.__doc__)
 
   # pylint: disable=protected-access
   def enqueue_tpu_embedding_sparse_tensor_batch(sample_indices,
@@ -375,7 +369,7 @@ if platform.system() != "Windows":
     """
     if mode_override is None:
       mode_override = "unspecified"
-    return gen_tpu_ops._enqueue_tpu_embedding_sparse_tensor_batch(
+    return gen_tpu_ops.enqueue_tpu_embedding_sparse_tensor_batch(
         sample_indices=sample_indices,
         embedding_indices=embedding_indices,
         aggregation_weights=aggregation_weights,
@@ -386,7 +380,7 @@ if platform.system() != "Windows":
         name=name)
 
   enqueue_tpu_embedding_sparse_tensor_batch.__doc__ = (
-      gen_tpu_ops._enqueue_tpu_embedding_sparse_tensor_batch.__doc__)
+      gen_tpu_ops.enqueue_tpu_embedding_sparse_tensor_batch.__doc__)
 
 else:
   # We have already built the appropriate libraries into the binary via CMake
