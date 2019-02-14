@@ -133,7 +133,7 @@ class TensorHandle : public core::RefCounted {
 
  private:
   // If the contents of the Tensor pointed to by this handle is yet to be
-  // computed by a EagerNode, this function will block till that compuatation is
+  // computed by a EagerNode, this function will block till that computation is
   // done and the handle is "ready".
   Status WaitReady();
   Status WaitForNode(uint64 node_id, bool return_if_is_ready);
