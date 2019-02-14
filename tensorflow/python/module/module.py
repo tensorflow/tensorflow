@@ -55,7 +55,7 @@ class ModuleMetaclass(type):
             value.fdel if not value.fdel else with_name_scope(value.fdel),
             doc=value.__doc__)
 
-    return type.__new__(mcs, name, bases, clsdict)
+    return super(ModuleMetaclass, mcs).__new__(mcs, name, bases, clsdict)
 
   def __call__(cls, *args, **kwargs):
     # Call new such that we have an un-initialized module instance that we can
@@ -143,7 +143,7 @@ def with_name_scope(unbound_method):
                                        wrap_with_name_scope(unbound_method))
 
 
-@tf_export("experimental.Module")
+@tf_export("Module", "experimental.Module")
 class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
   """Base neural network module class.
 
@@ -256,9 +256,9 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
     Submodules are modules which are properties of this module, or found as
     properties of modules which are properties of this module (and so on).
 
-    >>> a = tf.experimental.Module()
-    >>> b = tf.experimental.Module()
-    >>> c = tf.experimental.Module()
+    >>> a = tf.Module()
+    >>> b = tf.Module()
+    >>> c = tf.Module()
     >>> a.b = b
     >>> b.c = c
     >>> assert list(a.submodules) == [b, c]
@@ -283,7 +283,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
     flattened to find leaves. Finally every leaf value is optionally tested
     against the given `predicate` and finally yielded.
 
-    >>> class Foo(tf.experimental.Module):
+    >>> class Foo(tf.Module):
     ...   def __init__(self):
     ...     super(Foo, self).__init__()
     ...     self.x = [tf.constant('a'), tf.constant('b')]

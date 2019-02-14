@@ -624,3 +624,15 @@ message PrecisionConfig {
 
   // Next: 2
 }
+
+// Describes whether all data-parallelism replicas will receive the same
+// parameter data at each buffer.
+message ParameterReplication {
+  // A list of boolean values for the flattened leaf buffers. Each value
+  // indicates whether the corresponding leaf buffer is replicated.
+  //
+  // If this field is empty, it means no buffer is replicated. Otherwise, the
+  // number of elements in this field must match the number of leaf buffers in
+  // the HLO instruction's shape.
+  repeated bool replicated_at_leaf_buffers = 1;
+}

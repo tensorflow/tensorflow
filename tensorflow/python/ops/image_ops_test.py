@@ -2399,6 +2399,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(img_shape, newshape)
         self.assertAllClose(resized, img_np, atol=1e-5)
 
+  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
   def testResizeDown(self):
     # This test is also conducted with int8, so 127 is the maximum
     # value that can be used.
@@ -2430,6 +2431,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
               resized = self.evaluate(y)
               self.assertAllClose(resized, expected, atol=1e-5)
 
+  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
   def testResizeUpAlignCornersFalse(self):
     img_shape = [1, 3, 2, 1]
     data = [64, 32, 32, 64, 50, 100]
@@ -2467,6 +2469,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
               [1, target_height, target_width, 1])
           self.assertAllClose(resized, expected, atol=1e-05)
 
+  @test_util.disable_xla("b/124291162")  # Incorrect literal type
   def testResizeUpAlignCornersTrue(self):
     img_shape = [1, 3, 2, 1]
     data = [6, 3, 3, 6, 6, 9]
@@ -2553,6 +2556,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
       resized = self.evaluate(y)
       self.assertAllClose(resized, expected, atol=1)
 
+  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
   def testCompareNearestNeighbor(self):
     if test.is_gpu_available():
       input_shape = [1, 5, 6, 3]

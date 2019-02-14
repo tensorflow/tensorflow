@@ -35,42 +35,42 @@ limitations under the License.
 namespace xla {
 namespace swig {
 
-// Initializes the number of replicas that XLA will be initialized with (when
-// first obtaining a handle to the local XLA service). If this is called after
-// the handle to the local XLA service has been established, then an error is
-// returned.
-Status InitializeReplicaCount(int replica_count);
-
-// Initializes the platform name that XLA will be initialized with (when
-// first obtaining a handle to the local XLA service). If this is called after
-// the handle to the local XLA service has been established, then an error is
-// returned.
-Status InitializePlatformName(const string& platform_name);
-
-// Returns the replica count that is currently set, regardless of whether the
-// local XLA service has been instantiated yet or not.
-int GetReplicaCount();
-
 // Registers a 'fn_capsule' as a CPU custom call target.
 // 'fn_capsule' is a void* pointer encapsulated in a PyCapsule object, with name
 // "xla._CPU_CUSTOM_CALL_TARGET".
 Status RegisterCpuCustomCallTarget(const string& name, PyObject* fn_capsule);
 
-// Wraps the local client's infeed-transfer function.
-//
-// The default device ordinal (0) is used.
-Status TransferToInfeedLocal(const Literal& literal);
+// Wrapper around an xla::LocalClient.
+class LocalClient {
+ public:
+  // Initializes a local XLA client for `platform_name`. Returns an error if no
+  /// such platform exists, or if the platform has no visible devices.
+  static StatusOr<LocalClient> Get(const string& platform_name);
 
-// Transfers the given literal to the infeed of the given replica.
-//
-// The replica number is resolved to an appropriate device ordinal.
-Status TransferToInfeedLocalReplica(const Literal& literal, int replica_number);
+  // Copyable and moveable; the class is just a wrapper around a
+  // xla::LocalClient pointer for convenient SWIG wrapping.
 
-// Transfers a literal of the given shape from the outfeed of the given replica.
-//
-// The replica number is resolved to an appropriate device ordinal.
-StatusOr<Literal> TransferFromOutfeedLocalReplica(const Shape& shape,
-                                                  int replica_number);
+  // Returns the number of devices known to the XLA client.
+  int DeviceCount() const;
+
+  // Wraps the local client's infeed-transfer function.
+  //
+  // The default device ordinal (0) is used.
+  Status TransferToInfeed(const Literal& literal, int device_ordinal);
+
+  // Transfers a literal of the given shape from the outfeed of the given
+  // replica.
+  StatusOr<Literal> TransferFromOutfeed(const Shape& shape, int device_ordinal);
+
+  xla::LocalClient* client() const { return client_; }
+
+ private:
+  LocalClient(xla::LocalClient* client);
+
+  xla::LocalClient* client_;
+};
+
+class LocalShapedBufferTuple;
 
 // Represents a reference to literals that live in a device-allocated buffer via
 // XLA. Specifically, wraps a ScopedShapedBuffer produced by transferring a
@@ -79,9 +79,9 @@ class LocalShapedBuffer {
  public:
   static StatusOr<LocalShapedBuffer*> FromLiteral(
       const Literal& argument, const absl::optional<Shape>& shape_with_layout,
-      int replica_number);
+      const LocalClient& client, int device_ordinal);
 
-  LocalShapedBuffer(ScopedShapedBuffer shaped_buffer);
+  LocalShapedBuffer(ScopedShapedBuffer shaped_buffer, xla::LocalClient* client);
   StatusOr<Literal> ToLiteral() const;
   const Shape& shape() const;
   const ScopedShapedBuffer* shaped_buffer() const;
@@ -90,8 +90,13 @@ class LocalShapedBuffer {
   // analogous to std::unique_ptr::release().
   ShapedBuffer Release();
 
+  // Destructures a tuple-valued LocalShapedBuffer into its constitutent
+  // elements in LocalShapedBufferTuple form.
+  StatusOr<LocalShapedBufferTuple*> DestructureTuple();
+
  private:
   ScopedShapedBuffer shaped_buffer_;
+  xla::LocalClient* client_;
 };
 
 // Result of a tuple destructuring operation on a LocalShapedBuffer -- this
@@ -116,11 +121,6 @@ class LocalShapedBufferTuple {
  private:
   std::vector<LocalShapedBuffer*> elements_;
 };
-
-// Destructures a tuple-valued LocalShapedBuffer into its constitutent elements
-// in LocalShapedBufferTuple form.
-StatusOr<LocalShapedBufferTuple*> DestructureLocalShapedBufferTuple(
-    LocalShapedBuffer* local_shaped_buffer);
 
 // Represents a reference to literals that live in a device-allocated buffer via
 // XRT. Specifically, wraps an int64 handle produced by running the allocation
@@ -178,11 +178,16 @@ StatusOr<XrtAllocationTuple*> DestructureXrtAllocationTuple(
 // device-allocated literals. Specifically, wraps an XLA LocalExecutable.
 class LocalExecutable {
  public:
-  LocalExecutable(std::unique_ptr<xla::LocalExecutable> executable);
+  LocalExecutable(std::unique_ptr<xla::LocalExecutable> executable,
+                  xla::DeviceAssignment device_assignment,
+                  xla::LocalClient* client);
 
   int num_replicas() const {
     return executable_->build_options().num_replicas();
   }
+
+  // Returns the device ordinals to which each replica is assigned.
+  std::vector<int> DeviceOrdinals() const;
 
   StatusOr<LocalShapedBuffer*> Execute(
       absl::Span<LocalShapedBuffer* const> argument_handles);
@@ -194,7 +199,9 @@ class LocalExecutable {
       absl::Span<const std::vector<LocalShapedBuffer*> > argument_handles);
 
  private:
-  std::unique_ptr<xla::LocalExecutable> executable_;
+  const std::unique_ptr<xla::LocalExecutable> executable_;
+  const xla::DeviceAssignment device_assignment_;
+  xla::LocalClient* const client_;
 };
 
 // Represents a compiled computation that can be executed given handles to
@@ -206,6 +213,8 @@ class XrtExecutable {
   XrtExecutable(const ProgramShape& program_shape, int64 handle,
                 const string& session_target);
   ~XrtExecutable();
+
+  std::vector<int> DeviceOrdinals() const { return {0}; }
 
   StatusOr<XrtAllocation*> Execute(
       absl::Span<XrtAllocation* const> argument_handles);
@@ -229,7 +238,7 @@ class Computation {
 
   StatusOr<LocalExecutable*> Compile(
       const std::vector<Shape>& argument_shapes,
-      const ExecutableBuildOptions* build_options);
+      const ExecutableBuildOptions* build_options, const LocalClient& client);
 
   // Accepts a `session_target` argument, used in constructing the
   // `tensorflow::ClientSession` instance in which the compilation graph is run.

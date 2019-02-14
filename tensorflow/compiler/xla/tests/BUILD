@@ -1146,7 +1146,7 @@ xla_test(
 xla_test(
     name = "reduce_test",
     srcs = ["reduce_test.cc"],
-    shard_count = 40,
+    shard_count = 31,
     tags = [
         "optonly",
     ],

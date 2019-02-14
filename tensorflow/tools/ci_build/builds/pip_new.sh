@@ -439,16 +439,31 @@ install_tensorflow_pip() {
 
   TF_WHEEL_PATH="${1}"
 
+  # Set path to pip.
+  PIP_BIN_PATH="$(which pip${PYTHON_VER_CFG})"
+
+  # Store the original values for the global vars.
+  PYTHON_BIN_PATH_TMP=${PYTHON_BIN_PATH}
+  PIP_BIN_PATH_TMP=${PIP_BIN_PATH}
+
+  # If in virtualenv, use default python and pip set up for the venv.
+  IN_VENV=$(python -c 'import sys; print("1" if hasattr(sys, "real_prefix") else "0")')
+  if [[ $IN_VENV == "1" ]]; then
+    PYTHON_BIN_PATH=$(which python)
+    PIP_BIN_PATH=$(which pip)
+  fi
+
+  # Print python and pip bin paths
+  echo "PYTHON_BIN_PATH to be used to install the .whl: ${PYTHON_BIN_PATH}"
+  echo "PIP_BIN_PATH to be used to install the .whl: ${PIP_BIN_PATH}"
+
   # Upgrade pip so it supports tags such as cp27mu, manylinux1 etc.
   echo "Upgrade pip in virtualenv"
 
   # NOTE: pip install --upgrade pip leads to a documented TLS issue for
   # some versions in python
-  curl https://bootstrap.pypa.io/get-pip.py | ${PYTHON_BIN_PATH}
-
-  # Configure matching pip version with python.
-  PIP_BIN_PATH="$(which pip${PYTHON_VER_CFG})"
-  echo "PIP_BIN_PATH: ${PIP_BIN_PATH}"
+  curl https://bootstrap.pypa.io/get-pip.py | ${PYTHON_BIN_PATH} || \
+    die "Error: pip install (get-pip.py) FAILED"
 
   # Check that requested python version matches configured one.
   check_python_pip_version
@@ -457,7 +472,8 @@ install_tensorflow_pip() {
   # WHL_PATH, which pulls in absl-py, which uses install_requires notation
   # introduced in setuptools >=20.5. The default version of setuptools is 5.5.1,
   # which is too old for absl-py.
-  ${PIP_BIN_PATH} install --upgrade setuptools==39.1.0
+  ${PIP_BIN_PATH} install --upgrade setuptools==39.1.0 || \
+    die "Error: setuptools install, upgrade FAILED"
 
   # Force tensorflow reinstallation. Otherwise it may not get installed from
   # last build if it had the same version number as previous build.
@@ -470,7 +486,18 @@ install_tensorflow_pip() {
   # WHL_PATH, which ends up upgrading to the latest version of setuptools.
   # Versions of setuptools >= 39.1.0 will cause tests to fail like this:
   #   ImportError: cannot import name py31compat
-  ${PIP_BIN_PATH} install --upgrade setuptools==39.1.0
+  ${PIP_BIN_PATH} install --upgrade setuptools==39.1.0 || \
+    die "Error: setuptools install, upgrade FAILED"
+
+  # Set python and pip bin paths to original.
+  if [[ $IN_VENV == "1" ]]; then
+    PYTHON_BIN_PATH=${PYTHON_BIN_PATH_TMP}
+    PIP_BIN_PATH=${PIP_BIN_PATH_TMP}
+  fi
+
+  # Print the outgoing python and pip bin paths.
+  echo "PYTHON_BIN_PATH: ${PYTHON_BIN_PATH}"
+  echo "PIP_BIN_PATH: ${PIP_BIN_PATH}"
 }
 
 run_test_with_bazel() {

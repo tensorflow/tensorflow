@@ -32,6 +32,7 @@ import os
 import re
 import sys
 
+import six
 import tensorflow as tf
 
 from google.protobuf import message
@@ -132,6 +133,29 @@ def _FilterNonCoreGoldenFiles(golden_file_list):
       continue
     filtered_file_list.append(f)
   return filtered_file_list
+
+
+def _FilterGoldenProtoDict(golden_proto_dict, omit_golden_symbols_map):
+  """Filter out golden proto dict symbols that should be omitted."""
+  if not omit_golden_symbols_map:
+    return golden_proto_dict
+  filtered_proto_dict = dict(golden_proto_dict)
+  for key, symbol_list in six.iteritems(omit_golden_symbols_map):
+    api_object = api_objects_pb2.TFAPIObject()
+    api_object.CopyFrom(filtered_proto_dict[key])
+    filtered_proto_dict[key] = api_object
+    module_or_class = None
+    if api_object.HasField('tf_module'):
+      module_or_class = api_object.tf_module
+    elif api_object.HasField('tf_class'):
+      module_or_class = api_object.tf_class
+    if module_or_class is not None:
+      for members in (module_or_class.member, module_or_class.member_method):
+        filtered_members = [m for m in members if m.name not in symbol_list]
+        # Two steps because protobuf repeated fields disallow slice assignment.
+        del members[:]
+        members.extend(filtered_members)
+  return filtered_proto_dict
 
 
 class ApiCompatibilityTest(test.TestCase):
@@ -270,7 +294,8 @@ class ApiCompatibilityTest(test.TestCase):
                                    root,
                                    golden_file_pattern,
                                    api_version,
-                                   additional_private_map=None):
+                                   additional_private_map=None,
+                                   omit_golden_symbols_map=None):
     # Extract all API stuff.
     visitor = python_object_to_proto_visitor.PythonObjectToProtoVisitor()
 
@@ -303,6 +328,8 @@ class ApiCompatibilityTest(test.TestCase):
         _FileNameToKey(filename): _ReadFileToProto(filename)
         for filename in golden_file_list
     }
+    golden_proto_dict = _FilterGoldenProtoDict(golden_proto_dict,
+                                               omit_golden_symbols_map)
 
     # Diff them. Do not fail if called with update.
     # If the test is run to update goldens, only report diffs but do not fail.
@@ -346,11 +373,17 @@ class ApiCompatibilityTest(test.TestCase):
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
+    omit_golden_symbols_map = {}
+    if FLAGS.only_test_core_api:
+      # In TF 2.0 these summary symbols are imported from TensorBoard.
+      omit_golden_symbols_map['tensorflow.summary'] = [
+          'audio', 'histogram', 'image', 'scalar', 'text']
     self._checkBackwardsCompatibility(
         tf.compat.v2,
         golden_file_pattern,
         api_version,
-        additional_private_map={'tf.compat': ['v1', 'v2']})
+        additional_private_map={'tf.compat': ['v1', 'v2']},
+        omit_golden_symbols_map=omit_golden_symbols_map)
 
 
 if __name__ == '__main__':

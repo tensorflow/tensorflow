@@ -138,6 +138,10 @@ class XlaOpKernelContext {
   // Converts a constant 1D int32 or int64 tensor into a TensorShape.
   Status ConstantInputAsShape(int index, TensorShape* shape);
 
+  // Converts a constant 1D int32 or int64 tensor, or a scalar with value -1
+  // into a PartialTensorShape.
+  Status ConstantInputAsPartialShape(int index, PartialTensorShape* shape);
+
   // Returns the named list-valued immutable input in "list", as
   // defined in the OpDef.  If the named output is not list-valued,
   // returns a one-element list.
