@@ -966,6 +966,8 @@ struct TensorFlowIdentityOperator : Operator {
 // TensorFlow equivalent: MatMul
 struct BatchMatMulOperator : Operator {
   BatchMatMulOperator() : Operator(OperatorType::kBatchMatMul) {}
+  bool adj_x = false;
+  bool adj_y = false;
 };
 
 // General matrix multiplication operator. We don't want to support general
