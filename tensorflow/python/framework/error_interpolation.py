@@ -41,6 +41,8 @@ _ParseTag = collections.namedtuple("_ParseTag", ["type", "name"])
 _BAD_FILE_SUBSTRINGS = [
     os.path.join("tensorflow", "python"),
     os.path.join("tensorflow", "contrib"),
+    os.path.join("tensorflow_estimator", "python"),
+    os.path.join("tensorflow_estimator", "contrib"),
     "<embedded",
 ]
 
@@ -321,21 +323,18 @@ def traceback_files_common_prefix(all_ops):
   return os.path.split(os.path.commonprefix(list(files)))[0]
 
 
-def _sources_for_node(name, graph):
-  """Gets the top-level root input nodes for 'name' node.
-
-  We recursively traverse the graph from 'name' node to its inputs and collect
-  all the nodes which don't have any inputs.
+def _sources_for_node(node, graph):
+  """Gets the input op nodes for 'node'.
 
   Args:
-    name: The name of the node.
+    node: The node.
     graph: The graph containing the node.
 
   Returns:
-    The unique top-level root input nodes.
+    The unique input nodes.
   """
-  def _helper(name, graph, seen_names, inputs):
-    """Recursive helper. 'seen_names' and 'inputs' are mutated."""
+  inputs = set()
+  for name in node.node_def.input:
     if name.startswith("^"):
       name = name[1:]
     try:
@@ -345,20 +344,9 @@ def _sources_for_node(name, graph):
       try:
         op = graph.get_operation_by_name(name)
       except KeyError:
-        return
-    name = op.name
-    if name in seen_names:
-      return
-    seen_names.add(name)
-    if not op.node_def.input:
-      inputs.add(op)
-      return
-    for n in op.node_def.input:
-      _helper(n, graph, seen_names, inputs)
+        continue
+    inputs.add(op)
 
-  names = set()
-  inputs = set()
-  _helper(name, graph, names, inputs)
   return list(inputs)
 
 
@@ -422,7 +410,7 @@ def interpolate(error_message, graph):
     if op is None:
       tagged_ops.append(None)
     else:
-      tagged_ops.append([op] + _sources_for_node(op.name, graph))
+      tagged_ops.append([op] + _sources_for_node(op, graph))
 
   common_prefix = traceback_files_common_prefix(tagged_ops)
   for tag, ops in zip(tags, tagged_ops):
