@@ -667,6 +667,7 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_REVERSE_V2:
       case tflite::BuiltinOperator_ADD_N:
       case tflite::BuiltinOperator_GATHER_ND:
+      case tflite::BuiltinOperator_WHERE:
         logError("Op code %d is currently not delegated to NNAPI", builtin);
         return kTfLiteError;
         break;
