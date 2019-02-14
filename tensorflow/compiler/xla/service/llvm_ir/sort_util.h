@@ -44,6 +44,7 @@ Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
                        absl::Span<const int64> xor_masks, llvm::IRBuilder<>* b,
                        const gpu::LaunchDimensions& launch_dimensions,
                        int64 num_iterations_in_sort_dim, int64 tile_size,
+                       const EmitCallToNestedComputationCallback& emit_compare_callback,
                        LLVMTargetFeatures& llvm_target_features);
 }  // namespace llvm_ir
 }  // namespace xla

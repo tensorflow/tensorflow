@@ -298,6 +298,7 @@ Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
                        absl::Span<const int64> xor_masks, llvm::IRBuilder<>* b,
                        const gpu::LaunchDimensions& launch_dimensions,
                        int64 num_iterations_in_sort_dim, const int64 tile_size,
+                       const EmitCallToNestedComputationCallback& emit_compare_callback,
                        LLVMTargetFeatures& llvm_target_features) {
   // Iterate through the keys shape in physical order, but skip the dimension to
   // sort and make it the innermost loop which is the loop where the comparisons
@@ -361,10 +362,10 @@ Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
       keys_index[iteration_order_to_logical_order[i]] = tiles_index[i];
     }
     if (xor_masks.size() > 1) {
-      EmitTiledCompareLoop(
-          keys_index, dimension_to_sort, dimension_to_sort_bound,
-          keys_shape.element_type(), xor_masks, params, param_shmem_buffers,
-          iota_values_parameter_index, tile_size, b, llvm_target_features);
+      TF_RETURN_IF_ERROR(EmitTiledCompareLoop(
+          keys_index, dimension_to_sort, dimension_to_sort_bound, xor_masks,
+          values_arrays, param_shmem_buffers, tile_size, emit_compare_callback,
+          b, llvm_target_features));
     } else {
       auto element_address = [&](int64 operand, llvm::Value* index) {
         keys_index[dimension_to_sort] = index;
