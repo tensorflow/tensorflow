@@ -1267,11 +1267,11 @@ ENTRY %test {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, CachingBug) {
+XLA_TEST_F(DotOperationTextTest, CpuTiledDotEmitterCachingBug_1) {
   // Tests for a caching bug in the XLA CPU backend.
   absl::string_view hlo_string =
       R"(
-HloModule CachingBug
+HloModule CpuTiledDotEmitterCachingBug
 
 ENTRY main {
   lhs = f32[20,40] parameter(0)
@@ -1282,6 +1282,31 @@ ENTRY main {
   dot_1 = f32[20,1] dot(lhs, rhs_1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
 
   ROOT result = f32[20,1] divide(dot_0, dot_1)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
+XLA_TEST_F(DotOperationTextTest, CpuTiledDotEmitterCachingBug_2) {
+  // Tests for a caching bug in the XLA CPU backend.
+  absl::string_view hlo_string =
+      R"(
+HloModule CpuTiledDotEmitterCachingBug
+
+ENTRY main {
+  lhs_0 = f32[20,40] parameter(0)
+  rhs_0 = f32[40,1] parameter(1)
+  lhs_1 = f32[1,40] parameter(2)
+  rhs_1 = f32[20,40] parameter(3)
+
+  dot_0 = f32[20,1] dot(lhs_0, rhs_0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_1 = f32[1,20] dot(lhs_1, rhs_1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+
+  dot_0_reshaped = f32[20] reshape(dot_0)
+  dot_1_reshaped = f32[20] reshape(dot_1)
+
+  ROOT result = f32[20] divide(dot_0_reshaped, dot_1_reshaped)
 }
 )";
 
