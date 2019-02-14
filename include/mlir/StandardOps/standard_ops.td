@@ -39,13 +39,6 @@ class ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
 
   let opName = mnemonic;
 
-  let builder = [{
-    static void build(Builder *builder, OperationState *result, Value *lhs,
-                      Value *rhs) {
-      impl::buildBinaryOp(builder, result, lhs, rhs);
-    }
-  }];
-
   let parser = [{
     return impl::parseBinaryOp(parser, result);
   }];

@@ -453,8 +453,13 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
   // TODO: this is a hack to support various constant ops. We are assuming
   // all of them have no operands and one attribute here. Figure out a better
   // way to do this.
-  if (resultOp.getNumOperands() == 0 &&
-      resultOp.getNumNativeAttributes() == 1) {
+  bool isConstOp =
+      resultOp.getNumOperands() == 0 && resultOp.getNumNativeAttributes() == 1;
+
+  bool isSameValueType = resultOp.hasTrait("SameOperandsAndResultType");
+  bool isBroadcastable = resultOp.hasTrait("BroadcastableTwoOperandsOneResult");
+
+  if (isConstOp || isSameValueType || isBroadcastable) {
     os.indent(4) << formatv("auto {0} = rewriter.create<{1}>(loc", resultValue,
                             resultOp.getQualCppClassName());
   } else {

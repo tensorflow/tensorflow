@@ -93,6 +93,13 @@ StringRef tblgen::Operator::getArgName(int index) const {
   return argumentValues->getArgName(index)->getValue();
 }
 
+bool tblgen::Operator::hasTrait(StringRef trait) const {
+  auto traits = def.getValueAsListOfStrings("traits");
+  if (std::find(traits.begin(), traits.end(), trait) != traits.end())
+    return true;
+  return false;
+}
+
 auto tblgen::Operator::attribute_begin() const -> attribute_iterator {
   return attributes.begin();
 }

@@ -106,6 +106,11 @@ public:
   // Returns the total number of arguments.
   int getNumArgs() const { return getNumOperands() + getNumNativeAttributes(); }
 
+  // Returns true if this op has the given MLIR C++ `trait`.
+  // TODO: We should add a C++ wrapper class for TableGen OpTrait instead of
+  // requiring the raw MLIR trait here.
+  bool hasTrait(llvm::StringRef trait) const;
+
   ArrayRef<llvm::SMLoc> getLoc() const;
 
   // Query functions for the documentation of the operator.

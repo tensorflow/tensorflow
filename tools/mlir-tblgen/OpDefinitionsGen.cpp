@@ -125,6 +125,11 @@ private:
   // Invokes the given function over all the namespaces of the class.
   void mapOverClassNamespaces(function_ref<void(StringRef)> fn);
 
+  // Emits the build() method that takes each result-type/operand/attribute as
+  // a stand-alone parameter. Using the first operand's type as all result
+  // types if `hasResultType` is false.
+  void emitStandaloneParamBuilder(bool isAllSameType);
+
   // The record corresponding to the op.
   const Record &def;
 
@@ -233,31 +238,15 @@ void OpEmitter::emitNamedOperands() {
   }
 }
 
-void OpEmitter::emitBuilder() {
-  if (hasStringAttribute(def, "builder")) {
-    // If a custom builder is given then print that out instead.
-    auto builder = def.getValueAsString("builder");
-    if (!builder.empty())
-      os << builder << '\n';
-  }
-
-  // Generate default builders that requires all result type, operands, and
-  // attributes as parameters.
-
-  // We generate two builders here, one having a stand-alone parameter for
-  // each result type / operand / attribute, the other having an aggregated
-  // parameter for all result types / operands / attributes, to facilitate
-  // different call patterns.
-
-  // 1. Stand-alone parameters
-
+void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
   OUT(2) << "static void build(Builder* builder, OperationState* result";
 
   auto numResults = op.getNumResults();
 
   // Emit parameters for all return types
-  for (unsigned i = 0, e = numResults; i != e; ++i)
-    os << ", Type returnType" << i;
+  if (isAllSameType)
+    for (unsigned i = 0, e = numResults; i != e; ++i)
+      os << ", Type returnType" << i;
 
   // Emit parameters for all operands
   for (int i = 0, e = op.getNumOperands(); i != e; ++i) {
@@ -279,9 +268,17 @@ void OpEmitter::emitBuilder() {
 
   // Push all result types to the result
   if (numResults > 0) {
-    OUT(4) << "result->addTypes({returnType0";
-    for (unsigned i = 1; i != numResults; ++i)
-      os << ", returnType" << i;
+    OUT(4) << "result->addTypes({";
+    if (isAllSameType) {
+      os << "returnType0";
+      for (unsigned i = 1; i != numResults; ++i)
+        os << ", returnType" << i;
+    } else {
+      auto resultType = formatv("{0}->getType()", getArgumentName(op, 0)).str();
+      os << resultType;
+      for (unsigned i = 1; i != numResults; ++i)
+        os << resultType;
+    }
     os << "});\n\n";
   }
 
@@ -307,6 +304,37 @@ void OpEmitter::emitBuilder() {
       OUT(4) << formatv("result->addAttribute(\"{0}\", {0});\n",
                         namedAttr.getName());
   OUT(2) << "}\n";
+}
+
+void OpEmitter::emitBuilder() {
+  if (hasStringAttribute(def, "builder")) {
+    // If a custom builder is given then print that out.
+    auto builder = def.getValueAsString("builder");
+    if (!builder.empty())
+      os << builder << '\n';
+  }
+
+  auto numResults = op.getNumResults();
+
+  auto numOperands = op.getNumOperands();
+  bool hasVariadicOperand = op.hasVariadicOperand();
+  int numNonVariadicOperands = numOperands - int(hasVariadicOperand);
+
+  // Generate default builders that requires all result type, operands, and
+  // attributes as parameters.
+
+  // We generate three builders here:
+  // 1. one having a stand-alone parameter for each result type / operand /
+  //    attribute, and
+  // 2. one having an aggregated parameter for all result types / operands /
+  //    attributes, and
+  // 3. one having a stand-alone prameter for each operand and attribute,
+  //    use the first operand's type as all result types
+  // to facilitate different call patterns.
+
+  // 1. Stand-alone parameters
+
+  emitStandaloneParamBuilder(/*isAllSameType=*/true);
 
   // 2. Aggregated parameters
 
@@ -336,6 +364,11 @@ void OpEmitter::emitBuilder() {
            << "      result->addAttribute(pair.first, pair.second);\n"
            << "  }\n";
   }
+
+  // 3. Deduced result types
+
+  if (op.hasTrait("SameOperandsAndResultType"))
+    emitStandaloneParamBuilder(/*isAllSameType=*/false);
 }
 
 void OpEmitter::emitCanonicalizationPatterns() {
