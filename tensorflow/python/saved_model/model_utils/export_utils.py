@@ -280,7 +280,7 @@ def export_outputs_for_mode(
   signature_key = SIGNATURE_KEY_MAP[mode]
   if mode_keys.is_predict(mode):
     return get_export_outputs(serving_export_outputs, predictions)
-  elif mode_keys.is_eval(mode):
+  elif mode_keys.is_train(mode):
     return {signature_key: export_output_lib.TrainOutput(
         loss=loss, predictions=predictions, metrics=metrics)}
   else:
