@@ -63,12 +63,12 @@ bool IsControlFlowOp(const string& tensorflow_op) {
   return false;
 }
 
-// Check if a TensorFlow Op is unsupportred by the Flex runtime.
+// Check if a TensorFlow Op is unsupported by the Flex runtime.
 bool IsUnsupportedFlexOp(const string& tensorflow_op) {
   if (IsControlFlowOp(tensorflow_op)) {
     return true;
   }
-  // `HashTableV2` isn't supported for now since it requires an additinonal
+  // `HashTableV2` isn't supported for now since it requires an additional
   // initialization step.
   // TODO(b/117651199): Support `HashTableV2` with Flex runtime.
   if (tensorflow_op == "HashTableV2") {
@@ -157,7 +157,7 @@ OperatorKey::OperatorKey(
         string(::tflite::kFlexCustomCodePrefix) + flex_tensorflow_op_;
   } else {
     // If Flex is disabled or the original TensorFlow NodeDef isn't available,
-    // we produce a custom op. This gives developers a chance to implemenr
+    // we produce a custom op. This gives developers a chance to implement
     // custom ops.
     custom_code_ = name;
   }
