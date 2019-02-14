@@ -22,7 +22,6 @@ import os as _os
 import sys as _sys
 
 # pylint: disable=g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 
 # API IMPORTS PLACEHOLDER
 
