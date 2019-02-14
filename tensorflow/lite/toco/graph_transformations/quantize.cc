@@ -64,8 +64,10 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kRelu1 || type == OperatorType::kRelu6 ||
          type == OperatorType::kShape || type == OperatorType::kExpandDims ||
          type == OperatorType::kPack || type == OperatorType::kTopK_V2 ||
+         type == OperatorType::kRandomUniform ||
          type == OperatorType::kResizeNearestNeighbor ||
-         type == OperatorType::kPRelu;
+         type == OperatorType::kPRelu || type == OperatorType::kReduceMax ||
+         type == OperatorType::kReduceMin;
 }
 
 // The quantized op allows output arrays of type float using
@@ -487,12 +489,12 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
     }
   }
   if (!SupportsQuantization(op)) {
-    LOG(FATAL) << "Unimplemented: this graph contains an operator of type "
-               << HelpfulOperatorTypeName(op)
-               << " for which the quantized form is not yet implemented. "
-                  "Sorry, and patches welcome (that's a relatively fun patch "
-                  "to write, mostly providing the actual quantized arithmetic "
-                  "code for this op).";
+    return tensorflow::errors::InvalidArgument(
+        "Unimplemented: this graph contains an operator of type ",
+        HelpfulOperatorTypeName(op),
+        " for which the quantized form is not yet implemented. Sorry, and "
+        "patches welcome (that's a relatively fun patch to write, mostly "
+        "providing the actual quantized arithmetic code for this op).");
   }
 
   for (const auto& input : op.inputs) {

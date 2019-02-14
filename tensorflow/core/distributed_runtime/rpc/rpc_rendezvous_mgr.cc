@@ -244,6 +244,15 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
   // Record "call" in active_ so that it can be aborted cleanly.
   RegisterCall(call);
 
+  // RendezvousMgr already aborted, shouldn't send RPC call any more
+  if (!call->status().ok()) {
+    call->done()(call->status(), Args(), Args(), Tensor(), false);
+    session()->worker_cache->ReleaseWorker(call->src_worker_, call->wi_);
+    call->wi_ = nullptr;
+    get_call_freelist()->Release(call, session()->worker_cache.get());
+    return;
+  }
+
   // Start "call".
   Ref();
   call->Start([this, call]() {

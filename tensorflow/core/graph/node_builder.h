@@ -77,7 +77,8 @@ class NodeBuilder {
   // specified by calling the methods below.
   // REQUIRES: The OpDef must satisfy ValidateOpDef().
   NodeBuilder(StringPiece name, StringPiece op_name,
-              const OpRegistryInterface* op_registry = OpRegistry::Global());
+              const OpRegistryInterface* op_registry = OpRegistry::Global(),
+              const NodeDebugInfo* debug = nullptr);
   NodeBuilder(StringPiece name, const OpDef* op_def);
 
   // Create a NodeBuilder from an existing NodeDefBuilder.

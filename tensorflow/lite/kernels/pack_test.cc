@@ -82,6 +82,19 @@ TEST(PackOpTest, FloatMultilDimensions) {
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
 }
 
+TEST(PackOpTest, FloatFiveDimensions) {
+  PackOpModel<float> model({TensorType_FLOAT32, {2, 2, 2, 2}}, 1, 2);
+  model.SetInput(0, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  model.SetInput(
+      1, {17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 2, 2, 2));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray({1,  2,  3,  4,  5,  6,  7,  8,  17, 18, 19,
+                                20, 21, 22, 23, 24, 9,  10, 11, 12, 13, 14,
+                                15, 16, 25, 26, 27, 28, 29, 30, 31, 32}));
+}
+
 // int32 tests.
 TEST(PackOpTest, Int32ThreeInputs) {
   PackOpModel<int32_t> model({TensorType_INT32, {2}}, 0, 3);
@@ -170,6 +183,37 @@ TEST(PackOpTest, Uint8ThreeInputsDifferentAxis) {
 
 TEST(PackOpTest, Uint8MultilDimensions) {
   PackOpModel<uint8_t> model({TensorType_UINT8, {2, 3}}, 1, 2);
+  model.SetInput(0, {1, 2, 3, 4, 5, 6});
+  model.SetInput(1, {7, 8, 9, 10, 11, 12});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 3));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
+}
+
+// int8
+TEST(PackOpTest, Int8ThreeInputs) {
+  PackOpModel<int8_t> model({TensorType_INT8, {2}}, 0, 3);
+  model.SetInput(0, {1, 4});
+  model.SetInput(1, {2, 5});
+  model.SetInput(2, {3, 6});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 2));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 4, 2, 5, 3, 6}));
+}
+
+TEST(PackOpTest, Int8ThreeInputsDifferentAxis) {
+  PackOpModel<int8_t> model({TensorType_INT8, {2}}, 1, 3);
+  model.SetInput(0, {1, 4});
+  model.SetInput(1, {2, 5});
+  model.SetInput(2, {3, 6});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+}
+
+TEST(PackOpTest, Int8MultilDimensions) {
+  PackOpModel<int8_t> model({TensorType_INT8, {2, 3}}, 1, 2);
   model.SetInput(0, {1, 2, 3, 4, 5, 6});
   model.SetInput(1, {7, 8, 9, 10, 11, 12});
   model.Invoke();

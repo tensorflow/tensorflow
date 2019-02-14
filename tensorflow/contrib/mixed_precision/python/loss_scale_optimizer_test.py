@@ -132,7 +132,7 @@ class LossScaleOptimizerTest(test.TestCase):
 
     x = variable_scope.get_variable("x", initializer=1., dtype=dtypes.float32)
     dataset = dataset_ops.Dataset.from_tensor_slices([np.nan, np.inf, 0.1])
-    itr = dataset.make_one_shot_iterator()
+    itr = dataset_ops.make_one_shot_iterator(dataset)
 
     lr = 1
     opt = gd.GradientDescentOptimizer(lr)
@@ -182,7 +182,7 @@ class LossScaleOptimizerTest(test.TestCase):
 
     x = variable_scope.get_variable("x", initializer=1., dtype=dtypes.float32)
     dataset = dataset_ops.Dataset.from_tensor_slices([np.nan, np.inf, 0.1])
-    itr = dataset.make_one_shot_iterator()
+    itr = dataset_ops.make_one_shot_iterator(dataset)
 
     lr = 1
     init_loss_scale = 8

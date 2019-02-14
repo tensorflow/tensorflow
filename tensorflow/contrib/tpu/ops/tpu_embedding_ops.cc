@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tpu/proto/tpu_embedding_configuration.pb.h"
 #include "tensorflow/contrib/tpu/utils/tpu_embedding_optimization_parameters_utils.h"
 #include "tensorflow/contrib/tpu/utils/tpu_embedding_output_layout_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -23,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 
 namespace tensorflow {
 
@@ -37,18 +37,18 @@ namespace tensorflow {
 //    pieces of the TF Graph.
 // 1. Pass this TPUEmbeddingConfiguration to tpu.initialize_system() as the
 //    tpu_embedding_config parameter.
-// 2. Use the TPUEmbeddingLoad Op to initialize the embedding tables in TPU
+// 2. Use the LoadTPUEmbedding Ops to initialize the embedding tables in TPU
 //    memories, sharded across the memories attached to each Host.
-// 3. Use TPUEmbeddingEnqueueSparseBatch to provide the TPU with embedding
+// 3. Use EnqueueTPUEmbeddingSparseBatch to provide the TPU with embedding
 //    indices and aggregation weights.
-// 4. TPUEmbeddingReceiveActivations returns a list of Tensors, containing the
+// 4. RecvTPUEmbeddingActivations returns a list of Tensors, containing the
 //    activations from each table specified in the configuration.
 // 5. TPUEmbeddingActivations, when used with appropriate Python libraries,
 //    enables the automatic differentiation of models that use embeddings.
-// 6. TPUEmbeddingSendGradients takes a list of Tensors (of the same shapes
+// 6. SendTPUEmbeddingGradients takes a list of Tensors (of the same shapes
 //    as those returned by TPUEmbeddingReceiveActivations) containing gradients
 //    to use in updating the embedding tables.
-// 7. Before saving a checkpoint, use the TPUEmbeddingRetrieve Op to update
+// 7. Before saving a checkpoint, use the RetrieveTPUEmbedding Ops to update
 //    the Graph's embedding table Variables from the updated tables in the
 //    TPU memories.
 //
@@ -455,20 +455,21 @@ REGISTER_OP("SendTPUEmbeddingGradients")
       return Status::OK();
     })
     .Doc(R"doc(
-An op that performs gradient updates of embedding tables.
-
-The TensorList argument has the same length and shapes as the return value of
-TPUEmbeddingReceiveActivations, but contains gradients of the model's loss
-with respect to the embedding activations. The embedding tables are updated
-from these gradients via the optimizer specified in the configuration given
-to tpu.initialize_system.
+An op that performs gradient updates of embedding tables using the specified
+learning rates.
 
 inputs: A TensorList of gradients with which to update embedding tables.
-    It contains one tensor per embedding table in the model.
-learning_rates: A list of float32 scalars, one for each embedding table,
-    containing the learning rates for each table when dynamic learning rate is
-    enabled through the OptimizationParameters in TPUEmbeddingConfiguration.
-    When the learning rate is constant, the list should be empty.
+    This argument has the same length and shapes as the return value of
+    RecvTPUEmbeddingActivations, but contains gradients of the model's loss
+    with respect to the embedding activations. The embedding tables are updated
+    from these gradients via the optimizer specified in the TPU embedding
+    configuration given to tpu.initialize_system.
+learning_rates: A TensorList of float32 scalars, one for each dynamic learning
+    rate tag: see the comments in
+    //third_party/tensorflow/core/protobuf/tpu/optimization_parameters.proto.
+    Multiple tables can share the same dynamic learning rate tag as specified
+    in the configuration. If the learning rates for all tables are constant,
+    this list should be empty.
 config: Serialized TPUEmbeddingConfiguration proto.
 )doc");
 

@@ -23,6 +23,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import item as gitem
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
@@ -34,6 +35,7 @@ from tensorflow.python.platform import test
 
 class PyWrapOptimizeGraphTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     """Make sure arguments can be passed correctly."""
     a = constant_op.constant(10, name='a')
@@ -55,6 +57,7 @@ class PyWrapOptimizeGraphTest(test.TestCase):
     self.assertEqual(len(graph.node), 1)
     self.assertItemsEqual([node.name for node in graph.node], ['d'])
 
+  @test_util.run_v1_only('b/120545219')
   def testKeepNodes(self):
     g = ops.Graph()
     with g.as_default():
@@ -83,6 +86,7 @@ class PyWrapOptimizeGraphTest(test.TestCase):
     self.assertEqual(len(optimized_graph_nodes), len(expected_nodes))
     self.assertAllInSet(optimized_graph_nodes, expected_nodes)
 
+  @test_util.run_v1_only('b/120545219')
   def testLoops(self):
     g = ops.Graph()
     with g.as_default():

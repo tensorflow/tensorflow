@@ -32,23 +32,23 @@ from tensorflow.python.autograph.core import errors
 from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.platform import test
 
-
-def imported_decorator(f):
-  return lambda a: f(a) + 1
+RESULT_OF_MOCK_CONVERTED_CALL = 7
 
 
-# TODO(mdan): We might be able to use the real namer here.
+# TODO(mdan): We should use the real namer here.
 class FakeNamer(object):
   """A fake namer that uses a global counter to generate unique names."""
 
   def __init__(self):
     self.i = 0
+    self.partial_types = ()
 
   def new_symbol(self, name_root, used):
     while True:
@@ -61,7 +61,8 @@ class FakeNamer(object):
                              original_fqn,
                              live_entity=None,
                              owner_type=None):
-    del live_entity
+    if inspect_utils.islambda(live_entity):
+      return None, False
     if owner_type is not None:
       return None, False
     return ('renamed_%s' % '_'.join(original_fqn)), True
@@ -93,8 +94,8 @@ class TestCase(test.TestCase):
     self.dynamic_calls = []
     def converted_call(*args):
       """Mock version of api.converted_call."""
-      self.dynamic_calls.append(args)
-      return 7
+      self.dynamic_calls.append(args[3:])  # args only; see api.converted_call
+      return RESULT_OF_MOCK_CONVERTED_CALL
 
     try:
       result, source = compiler.ast_to_object(node, include_source_map=True)
@@ -105,11 +106,13 @@ class TestCase(test.TestCase):
                                    converter.ConversionOptions)
       fake_ag.__dict__.update(operators.__dict__)
       fake_ag.__dict__.update(special_functions.__dict__)
-      fake_ag.__dict__['utils'] = utils
-      fake_ag.__dict__['rewrite_graph_construction_error'] = (
+      fake_ag.ConversionOptions = converter.ConversionOptions
+      fake_ag.Feature = converter.Feature
+      fake_ag.utils = utils
+      fake_ag.rewrite_graph_construction_error = (
           errors.rewrite_graph_construction_error)
-      fake_ag.__dict__['function_scope'] = function_wrapping.function_scope
-      result.__dict__['ag__'] = fake_ag
+      fake_ag.function_scope = function_wrapping.function_scope
+      result.ag__ = fake_ag
       for k, v in namespace.items():
         result.__dict__[k] = v
       yield result

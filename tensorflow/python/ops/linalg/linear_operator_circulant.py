@@ -418,15 +418,13 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     return math_ops.cast(y, self.dtype)
 
   def _determinant(self):
-    reduction_indices = [-(i + 1) for i in range(self.block_depth)]
-    det = math_ops.reduce_prod(
-        self.spectrum, reduction_indices=reduction_indices)
+    axis = [-(i + 1) for i in range(self.block_depth)]
+    det = math_ops.reduce_prod(self.spectrum, axis=axis)
     return math_ops.cast(det, self.dtype)
 
   def _log_abs_determinant(self):
-    reduction_indices = [-(i + 1) for i in range(self.block_depth)]
-    lad = math_ops.reduce_sum(
-        math_ops.log(self._abs_spectrum), reduction_indices=reduction_indices)
+    axis = [-(i + 1) for i in range(self.block_depth)]
+    lad = math_ops.reduce_sum(math_ops.log(self._abs_spectrum), axis=axis)
     return math_ops.cast(lad, self.dtype)
 
   def _solve(self, rhs, adjoint=False, adjoint_arg=False):

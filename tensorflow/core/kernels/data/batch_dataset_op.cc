@@ -79,8 +79,8 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          Iterator::Params{this, strings::StrCat(prefix, "::Batch")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Batch")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -93,6 +93,15 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override {
       return strings::StrCat("BatchDatasetOp(", batch_size_, ")::Dataset");
+    }
+
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+        return n;
+      }
+      return n / batch_size_ +
+             (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
     }
 
    protected:

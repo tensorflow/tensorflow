@@ -31,6 +31,8 @@ limitations under the License.
 
 #include <cmath>
 
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/model_settings.h"
+
 namespace {
 
 // q format notation: qx.y => 1 sign bit, x-1 integer bits, y fraction bits.
@@ -65,13 +67,6 @@ inline int32_t Q10_22_FixedMultiply_Q10_22(int32_t a, int32_t b) {
 inline int32_t FloatToFixed_Q2_30(float input) {
   return static_cast<int32_t>(roundf(input * (1 << 30)));
 }
-
-// These constants allow us to allocate fixed-sized arrays on the stack for our
-// working memory.
-constexpr int kInputSize = 512;
-constexpr int kAverageWindowSize = 6;
-constexpr int kOutputSize =
-    ((kInputSize / 2) + (kAverageWindowSize - 1)) / kAverageWindowSize;
 
 // Performs a discrete Fourier transform on the real inputs. This corresponds to
 // rdft() in the FFT package at http://www.kurims.kyoto-u.ac.jp/~ooura/fft.html,
@@ -127,14 +122,14 @@ TfLiteStatus Preprocess(tflite::ErrorReporter* error_reporter,
                         const int16_t* input, int input_size, int output_size,
                         uint8_t* output) {
   // Ensure our input and output data arrays are valid.
-  if (input_size > kInputSize) {
+  if (input_size > kMaxAudioSampleSize) {
     error_reporter->Report("Input size %d larger than %d", input_size,
-                           kInputSize);
+                           kMaxAudioSampleSize);
     return kTfLiteError;
   }
-  if (output_size != kOutputSize) {
+  if (output_size != kFeatureSliceSize) {
     error_reporter->Report("Requested output size %d doesn't match %d",
-                           output_size, kOutputSize);
+                           output_size, kFeatureSliceSize);
     return kTfLiteError;
   }
 
@@ -142,18 +137,17 @@ TfLiteStatus Preprocess(tflite::ErrorReporter* error_reporter,
   // In a real application, we'd calculate this table once in an initialization
   // function and store it for repeated reuse.
   // q1.15 format.
-  int16_t window_function[kInputSize];
+  int16_t window_function[kMaxAudioSampleSize];
   CalculatePeriodicHann(input_size, window_function);
 
   // Apply the window function to our time series input, and pad it with zeroes
   // to the next power of two.
-  int32_t fixed_input[kInputSize];
-  for (int i = 0; i < kInputSize; ++i) {
+  int32_t fixed_input[kMaxAudioSampleSize];
+  for (int i = 0; i < kMaxAudioSampleSize; ++i) {
     if (i < input_size) {
       // input is int16_t.  Treat as q1.15 fixed point value in range [-1,1)
       // window_function is also q1.15 fixed point number
-      fixed_input[i] =
-          Q1_15_FixedMultiply_Q2_30(input[i], window_function[i]);
+      fixed_input[i] = Q1_15_FixedMultiply_Q2_30(input[i], window_function[i]);
     } else {
       fixed_input[i] = 0;
     }
@@ -161,31 +155,31 @@ TfLiteStatus Preprocess(tflite::ErrorReporter* error_reporter,
 
   // Pull the frequency data from the time series sample.
   // Calculated in q10.22 format from q2.30 inputs.
-  int32_t fourier_values[kInputSize];
-  CalculateDiscreteFourierTransform(fixed_input, kInputSize, fourier_values);
+  int32_t fourier_values[kMaxAudioSampleSize];
+  CalculateDiscreteFourierTransform(fixed_input, kMaxAudioSampleSize,
+                                    fourier_values);
 
   // We have the complex numbers giving us information about each frequency
   // band, but all we want to know is how strong each frequency is, so calculate
   // the squared magnitude by adding together the squares of each component.
-  int32_t power_spectrum[kInputSize / 2];
-  for (int i = 0; i < (kInputSize / 2); ++i) {
+  int32_t power_spectrum[kMaxAudioSampleSize / 2];
+  for (int i = 0; i < (kMaxAudioSampleSize / 2); ++i) {
     const int32_t real = fourier_values[(i * 2) + 0];
     const int32_t imaginary = fourier_values[(i * 2) + 1];
     // q10.22 results
-    power_spectrum[i] =
-        Q10_22_FixedMultiply_Q10_22(real, real) +
-        Q10_22_FixedMultiply_Q10_22(imaginary, imaginary);
+    power_spectrum[i] = Q10_22_FixedMultiply_Q10_22(real, real) +
+                        Q10_22_FixedMultiply_Q10_22(imaginary, imaginary);
   }
 
   // Finally, reduce the size of the output by averaging together six adjacent
   // frequencies into each slot, producing an array of 43 values.
   // Power_spectrum numbers are q10.22.  Divide by kAverageWindowSize inside
   // loop to prevent overflow.
-  for (int i = 0; i < kOutputSize; ++i) {
+  for (int i = 0; i < kFeatureSliceSize; ++i) {
     int32_t average = 0;
     for (int j = 0; j < kAverageWindowSize; ++j) {
       const int index = (i * kAverageWindowSize) + j;
-      if (index < (kInputSize / 2)) {
+      if (index < (kMaxAudioSampleSize / 2)) {
         average += power_spectrum[index] / kAverageWindowSize;
       }
     }

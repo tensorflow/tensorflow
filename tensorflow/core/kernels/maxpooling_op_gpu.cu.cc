@@ -384,12 +384,12 @@ bool MaxPoolForwardNoMask_NCHW_VECT_C::operator()(
     int32* top_data, const Eigen::GpuDevice& d) {
   const int kThreadsPerBlock = 1024;
   const int output_size = batch * channels * pooled_height * pooled_width;
+  if (output_size == 0) return true;
   MaxPoolForwardNoMaskKernel_NCHW_VECT_C<<<
       (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock, kThreadsPerBlock,
       0, d.stream()>>>(output_size, bottom_data, height, width, channels,
                        pooled_height, pooled_width, kernel_h, kernel_w,
                        stride_h, stride_w, pad_t, pad_l, top_data);
-  d.synchronize();
   return d.ok();
 }
 
@@ -402,6 +402,7 @@ bool MaxPoolForwardWithOptionalArgmax<T>::operator()(
     int64* mask, const Eigen::GpuDevice& d, bool propagate_nans) {
   const int kThreadsPerBlock = 1024;
   const int output_size = batch * channels * pooled_height * pooled_width;
+  if (output_size == 0) return true;
   if (propagate_nans) {
     MaxPoolForwardNHWC<true>
         <<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
@@ -430,6 +431,7 @@ bool MaxPoolBackwardNoMask<T>::operator()(
   const int kThreadsPerBlock = 1024;
 
   const int bottom_size = batch * channels * height * width;
+  if (bottom_size == 0) return true;
   SetZero<<<(bottom_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
             kThreadsPerBlock, 0, d.stream()>>>(bottom_size, bottom_diff);
 
@@ -449,6 +451,7 @@ bool MaxPoolBackwardWithArgmax<T>::operator()(
     const int64* mask, const int top_offset, const int bottom_offset,
     T* bottom_diff, const Eigen::GpuDevice& d) {
   const int kThreadsPerBlock = 1024;
+  if (input_size == 0) return true;
   SetZero<<<(input_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
             kThreadsPerBlock, 0, d.stream()>>>(input_size, bottom_diff);
   MaxPoolBackward<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
@@ -466,6 +469,7 @@ bool MaxPoolGradBackwardNoMask<T>::operator()(
     const int pad_l, const T* top_diff, T* bottom_diff,
     const Eigen::GpuDevice& d) {
   const int num_kernels = batch * channels * pooled_height * pooled_width;
+  if (num_kernels == 0) return true;
   CudaLaunchConfig config = GetCudaLaunchConfig(num_kernels, d);
 
   if (data_format == FORMAT_NHWC) {
@@ -489,6 +493,7 @@ bool MaxPoolGradBackwardWithArgmax<T>::operator()(
     const int output_size, const int input_size, const T* top_diff,
     const int64* mask, const int top_offset, const int bottom_offset,
     T* bottom_diff, const Eigen::GpuDevice& d) {
+  if (input_size == 0) return true;
   CudaLaunchConfig config = GetCudaLaunchConfig(output_size, d);
   MaxPoolGradBackward<<<config.block_count, config.thread_per_block, 0,
                         d.stream()>>>(output_size, top_diff, mask, top_offset,

@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import base_layer as keras_base_layer
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.layers import base as base_layers
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
@@ -142,6 +143,7 @@ class BaseLayerTest(test.TestCase):
           synchronization=variable_scope.VariableSynchronization.ON_READ,
           trainable=True)
 
+  @test_util.run_deprecated_v1
   def testReusePartitionedVaraiblesAndRegularizers(self):
     regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
     partitioner = partitioned_variables.fixed_size_partitioner(3)
@@ -251,7 +253,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(ndim=2)
+        self.input_spec = input_spec.InputSpec(ndim=2)
 
       def call(self, inputs):
         return inputs
@@ -278,7 +280,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(min_ndim=2)
+        self.input_spec = input_spec.InputSpec(min_ndim=2)
 
       def call(self, inputs):
         return inputs
@@ -306,7 +308,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(max_ndim=2)
+        self.input_spec = input_spec.InputSpec(max_ndim=2)
 
       def call(self, inputs):
         return inputs
@@ -334,7 +336,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(dtype='float32')
+        self.input_spec = input_spec.InputSpec(dtype='float32')
 
       def call(self, inputs):
         return inputs
@@ -354,7 +356,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(axes={-1: 2})
+        self.input_spec = input_spec.InputSpec(axes={-1: 2})
 
       def call(self, inputs):
         return inputs
@@ -376,7 +378,7 @@ class BaseLayerTest(test.TestCase):
 
       def __init__(self):
         super(CustomerLayer, self).__init__()
-        self.input_spec = base_layers.InputSpec(shape=(None, 3))
+        self.input_spec = input_spec.InputSpec(shape=(None, 3))
 
       def call(self, inputs):
         return inputs
@@ -444,6 +446,7 @@ class BaseLayerTest(test.TestCase):
       self.assertTrue(isinstance(result, dict))
       self.assertEqual(set(['label', 'logits']), set(result.keys()))
 
+  @test_util.run_deprecated_v1
   def testActivityRegularizer(self):
     regularizer = math_ops.reduce_sum
     layer = base_layers.Layer(activity_regularizer=regularizer)
@@ -532,6 +535,7 @@ class BaseLayerTest(test.TestCase):
         self.assertEqual(len(layer.trainable_variables), 1)
         self.assertEqual(layer.variables[0].graph, outer_graph)
 
+  @test_util.run_deprecated_v1
   def testGetUpdateFor(self):
 
     class MyLayer(base_layers.Layer):
@@ -576,6 +580,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(len(layer.get_updates_for([intermediate_inputs])), 1)
     self.assertEqual(len(layer.get_updates_for([outputs])), 0)
 
+  @test_util.run_deprecated_v1
   def testGetLossesFor(self):
 
     class MyLayer(base_layers.Layer):

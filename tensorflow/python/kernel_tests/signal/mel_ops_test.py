@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.kernel_tests.signal import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.signal import mel_ops
@@ -143,12 +144,14 @@ class LinearToMelTest(test.TestCase):
         mel_matrix = mel_ops.linear_to_mel_weight_matrix(*config)
         self.assertAllClose(mel_matrix_np, self.evaluate(mel_matrix), atol=3e-6)
 
+  @tf_test_util.run_deprecated_v1
   def test_dtypes(self):
     # LinSpace is not supported for tf.float16.
     for dtype in (dtypes.bfloat16, dtypes.float32, dtypes.float64):
       self.assertEqual(dtype,
                        mel_ops.linear_to_mel_weight_matrix(dtype=dtype).dtype)
 
+  @tf_test_util.run_deprecated_v1
   def test_error(self):
     with self.assertRaises(ValueError):
       mel_ops.linear_to_mel_weight_matrix(num_mel_bins=0)
@@ -177,6 +180,7 @@ class LinearToMelTest(test.TestCase):
         rewritten_graph = test_util.grappler_optimize(g, [mel_matrix])
         self.assertEqual(1, len(rewritten_graph.node))
 
+  @tf_test_util.run_deprecated_v1
   def test_num_spectrogram_bins_dynamic(self):
     with self.session(use_gpu=True):
       num_spectrogram_bins = array_ops.placeholder(shape=(),

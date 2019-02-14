@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -110,12 +111,14 @@ class ArgMaxTest(test.TestCase):
             r"Reduction axis 0 is empty in shape \[0\]"):
           op([], 0).eval()
 
+  @test_util.run_deprecated_v1
   def testDefaultAxis(self):
     with self.cached_session():
       for op in math_ops.argmin, math_ops.argmax:
         ans = op([1]).eval()
         self.assertAllEqual(ans, 0)
 
+  @test_util.run_deprecated_v1
   def testOutputEmpty(self):
     with self.cached_session():
       for op in math_ops.argmin, math_ops.argmax:

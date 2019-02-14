@@ -628,8 +628,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionDUS) {
       p.1 = s32[1]{0} parameter(1)
       p.2 = f16[1,96,1024]{2,1,0} parameter(2)
       c.0 = s32[] constant(0)
-      pad = s32[3]{0} pad(p.1, c.0), padding=0_2
-      ROOT %dynamic-update-slice = f16[50,96,1024]{2,1,0} dynamic-update-slice(p.0, p.2, pad)
+      ROOT %dynamic-update-slice = f16[50,96,1024]{2,1,0} dynamic-update-slice(p.0, p.2, p.1, c.0, c.0)
     }
 
     fusion.2 {
@@ -638,7 +637,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionDUS) {
       p.2 = f16[1,96,1024]{2,1,0} parameter(2)
       c.0 = s32[] constant(0)
       pad = s32[3]{0} pad(p.1, c.0), padding=0_2
-      ROOT %dynamic-update-slice = f16[50,96,1024]{2,1,0} dynamic-update-slice(p.0, p.2, pad)
+      ROOT %dynamic-update-slice = f16[50,96,1024]{2,1,0} dynamic-update-slice(p.0, p.2, p.1, c.0, c.0)
     }
 
     ENTRY entry {

@@ -48,7 +48,7 @@ StatusOr<bool> RunFileCheck(const string& input, const string& pattern) {
 
   tensorflow::SubProcess file_check_process;
   file_check_process.SetProgram(file_check_path,
-                                {file_check_path, pattern_path});
+                                {file_check_path, "-v", pattern_path});
   file_check_process.SetChannelAction(tensorflow::CHAN_STDIN,
                                       tensorflow::ACTION_PIPE);
   file_check_process.SetChannelAction(tensorflow::CHAN_STDERR,
@@ -71,9 +71,7 @@ StatusOr<bool> RunFileCheck(const string& input, const string& pattern) {
       LOG(WARNING) << "NOTE: FileCheck binary does not exist!";
     }
 
-    LOG(WARNING) << "FileCheck error: " << standard_error;
-    LOG(WARNING) << "FileCheck input was:";
-    XLA_LOG_LINES(tensorflow::WARNING, input);
+    LOG(WARNING) << "FileCheck error:\n" << standard_error;
     LOG(WARNING) << "FileCheck pattern was:";
     XLA_LOG_LINES(tensorflow::WARNING, pattern);
   } else if (!standard_error.empty()) {

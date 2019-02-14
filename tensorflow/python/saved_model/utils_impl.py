@@ -22,6 +22,7 @@ import os
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -53,7 +54,17 @@ def build_tensor_info(tensor):
 
   Returns:
     A TensorInfo protocol buffer constructed based on the supplied argument.
+
+  Raises:
+    RuntimeError: If eager execution is enabled.
   """
+  if context.executing_eagerly():
+    raise RuntimeError("build_tensor_info is not supported in Eager mode.")
+  return build_tensor_info_internal(tensor)
+
+
+def build_tensor_info_internal(tensor):
+  """Utility function to build TensorInfo proto from a Tensor."""
   tensor_info = meta_graph_pb2.TensorInfo(
       dtype=dtypes.as_dtype(tensor.dtype).as_datatype_enum,
       tensor_shape=tensor.get_shape().as_proto())
@@ -139,6 +150,27 @@ def get_tensor_from_tensor_info(tensor_info, graph=None, import_scope=None):
         _get_tensor(tensor_info.coo_sparse.dense_shape_tensor_name))
   else:
     raise ValueError("Invalid TensorInfo.encoding: %s" % encoding)
+
+
+def get_element_from_tensor_info(tensor_info, graph=None, import_scope=None):
+  """Returns the element in the graph described by a TensorInfo proto.
+
+  Args:
+    tensor_info: A TensorInfo proto describing an Op or Tensor by name.
+    graph: The tf.Graph in which tensors are looked up. If None, the current
+      default graph is used.
+    import_scope: If not None, names in `tensor_info` are prefixed with this
+      string before lookup.
+
+  Returns:
+    Op or tensor in `graph` described by `tensor_info`.
+
+  Raises:
+    KeyError: If `tensor_info` does not correspond to an op or tensor in `graph`
+  """
+  graph = graph or ops.get_default_graph()
+  return graph.as_graph_element(
+      ops.prepend_name_scope(tensor_info.name, import_scope=import_scope))
 
 
 # Path helpers.

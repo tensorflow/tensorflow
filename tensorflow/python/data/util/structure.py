@@ -28,11 +28,13 @@ from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 _STRUCTURE_CONVERSION_FUNCTION_REGISTRY = {}
 
 
+@tf_export("data.experimental.Structure")
 @six.add_metaclass(abc.ABCMeta)
 class Structure(object):
   """Represents structural information, such as type and shape, about a value.
@@ -112,6 +114,26 @@ class Structure(object):
     raise NotImplementedError("Structure._to_tensor_list()")
 
   @abc.abstractmethod
+  def _to_batched_tensor_list(self, value):
+    """Returns a flat list of rank >= 1 `tf.Tensor` representing `value`.
+
+    This method can be used, along with `self._flat_shapes` and
+    `self._flat_types` to represent structured values in lower level APIs
+    (such as plain TensorFlow operations) that do not understand structure,
+    *and* that require that the plain tensors have a rank of at least one
+    (e.g. for the purpose of slicing the tensors).
+
+    Requires: `self.is_compatible_with(Structure.from_value(value))`.
+
+    Args:
+      value: A value with compatible structure.
+
+    Returns:
+      A flat list of `tf.Tensor` representing `value`.
+    """
+    raise NotImplementedError("Structure._to_batched_tensor_list()")
+
+  @abc.abstractmethod
   def _from_tensor_list(self, flat_value):
     """Builds a flat list of `tf.Tensor` into a value matching this structure.
 
@@ -143,6 +165,23 @@ class Structure(object):
       A structured object matching this structure.
     """
     return self._from_tensor_list(flat_value)
+
+  @abc.abstractmethod
+  def _batch(self, batch_size):
+    """Returns a structure representing a batch of objects with this structure.
+
+    Args:
+      batch_size: An `int` representing the number of elements in a batch,
+        or `None` if the batch size may vary.
+
+    Returns:
+      A `Structure` representing a batch of objects with this structure.
+    """
+    raise NotImplementedError("Structure._batch()")
+
+  @abc.abstractmethod
+  def _unbatch(self):
+    raise NotImplementedError("Structure._unbatch()")
 
   @staticmethod
   def from_value(value):
@@ -178,54 +217,6 @@ class Structure(object):
       return TensorStructure.from_value(tensor)
 
   @staticmethod
-  def _from_legacy_structure(output_types, output_shapes, output_classes):
-    """Returns a `Structure` that represents the given legacy structure.
-
-    This method provides a way to convert from the existing `Dataset` and
-    `Iterator` structure-related properties to a `Structure` object.
-
-    TODO(b/110122868): Remove this method once `Structure` is used throughout
-    `tf.data`.
-
-    Args:
-      output_types: A nested structure of `tf.DType` objects corresponding to
-        each component of a structured value.
-      output_shapes: A nested structure of `tf.TensorShape` objects
-        corresponding to each component a structured value.
-      output_classes: A nested structure of Python `type` objects corresponding
-        to each component of a structured value.
-
-    Returns:
-      A `Structure`.
-
-    Raises:
-      TypeError: If a structure cannot be built the arguments, because one of
-        the component classes in `output_classes` is not supported.
-    """
-    flat_types = nest.flatten(output_types)
-    flat_shapes = nest.flatten(output_shapes)
-    flat_classes = nest.flatten(output_classes)
-    flat_ret = []
-    for flat_type, flat_shape, flat_class in zip(flat_types, flat_shapes,
-                                                 flat_classes):
-      if issubclass(flat_class, sparse_tensor_lib.SparseTensor):
-        flat_ret.append(SparseTensorStructure(flat_type, flat_shape))
-      elif issubclass(flat_class, ops.Tensor):
-        flat_ret.append(TensorStructure(flat_type, flat_shape))
-      else:
-        # NOTE(mrry): Since legacy structures produced by iterators only
-        # comprise Tensors, SparseTensors, and nests, we do not need to support
-        # all structure types here.
-        raise TypeError(
-            "Could not build a structure for output class %r" % flat_type)
-
-    ret = nest.pack_sequence_as(output_classes, flat_ret)
-    if isinstance(ret, Structure):
-      return ret
-    else:
-      return NestedStructure(ret)
-
-  @staticmethod
   def _register_custom_converter(type_object, converter_fn):
     """Registers `converter_fn` for converting values of the given type.
 
@@ -250,9 +241,63 @@ class Structure(object):
     raise NotImplementedError("Structure._to_legacy_output_classes()")
 
 
+def convert_legacy_structure(output_types, output_shapes, output_classes):
+  """Returns a `Structure` that represents the given legacy structure.
+
+  This method provides a way to convert from the existing `Dataset` and
+  `Iterator` structure-related properties to a `Structure` object. A "legacy"
+  structure is represented by the `tf.data.Dataset.output_types`,
+  `tf.data.Dataset.output_shapes`, and `tf.data.Dataset.output_classes`
+  properties.
+
+  TODO(b/110122868): Remove this function once `Structure` is used throughout
+  `tf.data`.
+
+  Args:
+    output_types: A nested structure of `tf.DType` objects corresponding to
+      each component of a structured value.
+    output_shapes: A nested structure of `tf.TensorShape` objects
+      corresponding to each component a structured value.
+    output_classes: A nested structure of Python `type` objects corresponding
+      to each component of a structured value.
+
+  Returns:
+    A `Structure`.
+
+  Raises:
+    TypeError: If a structure cannot be built from the arguments, because one of
+      the component classes in `output_classes` is not supported.
+  """
+  flat_types = nest.flatten(output_types)
+  flat_shapes = nest.flatten(output_shapes)
+  flat_classes = nest.flatten(output_classes)
+  flat_ret = []
+  for flat_type, flat_shape, flat_class in zip(flat_types, flat_shapes,
+                                               flat_classes):
+    if isinstance(flat_class, Structure):
+      flat_ret.append(flat_class)
+    elif issubclass(flat_class, sparse_tensor_lib.SparseTensor):
+      flat_ret.append(SparseTensorStructure(flat_type, flat_shape))
+    elif issubclass(flat_class, ops.Tensor):
+      flat_ret.append(TensorStructure(flat_type, flat_shape))
+    else:
+      # NOTE(mrry): Since legacy structures produced by iterators only
+      # comprise Tensors, SparseTensors, and nests, we do not need to
+      # support all structure types here.
+      raise TypeError(
+          "Could not build a structure for output class %r" % flat_type)
+
+  ret = nest.pack_sequence_as(output_classes, flat_ret)
+  if isinstance(ret, Structure):
+    return ret
+  else:
+    return NestedStructure(ret)
+
+
 # NOTE(mrry): The following classes make extensive use of non-public methods of
 # their base class, so we disable the protected-access lint warning once here.
 # pylint: disable=protected-access
+@tf_export("data.experimental.NestedStructure")
 class NestedStructure(Structure):
   """Represents a nested structure in which each leaf is a `Structure`."""
 
@@ -308,21 +353,45 @@ class NestedStructure(Structure):
       ret.extend(structure._to_tensor_list(sub_value))
     return ret
 
+  def _to_batched_tensor_list(self, value):
+    ret = []
+
+    try:
+      flat_value = nest.flatten_up_to(self._nested_structure, value)
+    except (ValueError, TypeError):
+      raise ValueError("The value %r is not compatible with the nested "
+                       "structure %r." % (value, self._nested_structure))
+
+    for sub_value, structure in zip(flat_value, self._flat_nested_structure):
+      if not structure.is_compatible_with(Structure.from_value(sub_value)):
+        raise ValueError("Component value %r is not compatible with the nested "
+                         "structure %r." % (sub_value, structure))
+      ret.extend(structure._to_batched_tensor_list(sub_value))
+    return ret
+
   def _from_tensor_list(self, flat_value):
     if len(flat_value) != len(self._flat_types):
       raise ValueError("Expected %d flat values in NestedStructure but got %d."
                        % (len(self._flat_types), len(flat_value)))
 
     flat_ret = []
-    for sub_value, structure in zip(flat_value, self._flat_nested_structure):
-      flat_ret.append(structure._from_tensor_list([sub_value]))
+    i = 0
+    for structure in self._flat_nested_structure:
+      num_flat_values = len(structure._flat_types)
+      sub_value = flat_value[i:i + num_flat_values]
+      flat_ret.append(structure._from_tensor_list(sub_value))
+      i += num_flat_values
 
     return nest.pack_sequence_as(self._nested_structure, flat_ret)
 
   def _from_compatible_tensor_list(self, flat_value):
     flat_ret = []
-    for sub_value, structure in zip(flat_value, self._flat_nested_structure):
-      flat_ret.append(structure._from_compatible_tensor_list([sub_value]))
+    i = 0
+    for structure in self._flat_nested_structure:
+      num_flat_values = len(structure._flat_types)
+      sub_value = flat_value[i:i + num_flat_values]
+      flat_ret.append(structure._from_compatible_tensor_list(sub_value))
+      i += num_flat_values
 
     return nest.pack_sequence_as(self._nested_structure, flat_ret)
 
@@ -345,7 +414,16 @@ class NestedStructure(Structure):
     return nest.map_structure(
         lambda s: s._to_legacy_output_classes(), self._nested_structure)
 
+  def _batch(self, batch_size):
+    return NestedStructure(nest.map_structure(
+        lambda s: s._batch(batch_size), self._nested_structure))
 
+  def _unbatch(self):
+    return NestedStructure(nest.map_structure(
+        lambda s: s._unbatch(), self._nested_structure))
+
+
+@tf_export("data.experimental.TensorStructure")
 class TensorStructure(Structure):
   """Represents structural information about a `tf.Tensor`."""
 
@@ -372,6 +450,11 @@ class TensorStructure(Structure):
                        "and shape %s." % (value, self._dtype, self._shape))
     return [value]
 
+  def _to_batched_tensor_list(self, value):
+    if self._shape.merge_with(value.shape).ndims == 0:
+      raise ValueError("Unbatching a tensor is only supported for rank >= 1")
+    return [value]
+
   def _from_tensor_list(self, flat_value):
     if len(flat_value) != 1:
       raise ValueError("TensorStructure corresponds to a single tf.Tensor.")
@@ -381,6 +464,13 @@ class TensorStructure(Structure):
     return self._from_compatible_tensor_list(flat_value)
 
   def _from_compatible_tensor_list(self, flat_value):
+    # TODO(b/112266545): It would be cleaner to create a new `ensure_shape()`
+    # op here and return that, instead of mutating the input's shape using
+    # `Tensor.set_shape()`. However, that would add extra ops on the arguments
+    # of each `tf.data` function, which could impact performance. When this
+    # bug is resolved, we should be able to add the `ensure_shape()` ops and
+    # optimize them away using contextual shape information.
+    flat_value[0].set_shape(self._shape)
     return flat_value[0]
 
   @staticmethod
@@ -396,7 +486,18 @@ class TensorStructure(Structure):
   def _to_legacy_output_classes(self):
     return ops.Tensor
 
+  def _batch(self, batch_size):
+    return TensorStructure(
+        self._dtype,
+        tensor_shape.TensorShape([batch_size]).concatenate(self._shape))
 
+  def _unbatch(self):
+    if self._shape.ndims == 0:
+      raise ValueError("Unbatching a tensor is only supported for rank >= 1")
+    return TensorStructure(self._dtype, self._shape[1:])
+
+
+@tf_export("data.experimental.SparseTensorStructure")
 class SparseTensorStructure(Structure):
   """Represents structural information about a `tf.SparseTensor`."""
 
@@ -406,7 +507,11 @@ class SparseTensorStructure(Structure):
 
   @property
   def _flat_shapes(self):
-    return [tensor_shape.vector(3)]
+    # NOTE(mrry): The default flat shape of a boxed `SparseTensor` is `(3,)`,
+    # but a `SparseTensorStructure` can also represent a batch of boxed
+    # `SparseTensor` objects with shape `(?, 3)` (and batches of batches, etc.),
+    # so the flat shape must be unknown.
+    return [tensor_shape.unknown_shape(None)]
 
   @property
   def _flat_types(self):
@@ -420,6 +525,13 @@ class SparseTensorStructure(Structure):
   def _to_tensor_list(self, value):
     return [sparse_ops.serialize_sparse(value, out_type=dtypes.variant)]
 
+  def _to_batched_tensor_list(self, value):
+    if self._dense_shape.merge_with(
+        tensor_util.constant_value_as_shape(value.dense_shape)).ndims == 0:
+      raise ValueError(
+          "Unbatching a sparse tensor is only supported for rank >= 1")
+    return [sparse_ops.serialize_many_sparse(value, out_type=dtypes.variant)]
+
   def _from_tensor_list(self, flat_value):
     if (len(flat_value) != 1 or flat_value[0].dtype != dtypes.variant or
         not flat_value[0].shape.is_compatible_with(tensor_shape.vector(3))):
@@ -428,8 +540,11 @@ class SparseTensorStructure(Structure):
     return self._from_compatible_tensor_list(flat_value)
 
   def _from_compatible_tensor_list(self, flat_value):
-    return sparse_ops.deserialize_sparse(
+    ret = sparse_ops.deserialize_sparse(
         flat_value[0], dtype=self._dtype, rank=self._dense_shape.ndims)
+    ret.indices.set_shape([None, self._dense_shape.ndims])
+    ret.dense_shape.set_shape([self._dense_shape.ndims])
+    return ret
 
   @staticmethod
   def from_value(value):
@@ -446,3 +561,13 @@ class SparseTensorStructure(Structure):
 
   def _to_legacy_output_classes(self):
     return sparse_tensor_lib.SparseTensor
+
+  def _batch(self, batch_size):
+    return SparseTensorStructure(
+        self._dtype,
+        tensor_shape.TensorShape([batch_size]).concatenate(self._dense_shape))
+
+  def _unbatch(self):
+    if self._dense_shape.ndims == 0:
+      raise ValueError("Unbatching a tensor is only supported for rank >= 1")
+    return SparseTensorStructure(self._dtype, self._dense_shape[1:])

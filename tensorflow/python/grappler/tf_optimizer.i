@@ -74,13 +74,13 @@ limitations under the License.
 
 void DetectDevices(std::unordered_map<string, tensorflow::DeviceProperties>* device_map) {
   tensorflow::SessionOptions options;
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<tensorflow::Device>> devices;
   tensorflow::Status status = tensorflow::DeviceFactory::AddDevices(options, "", &devices);
   if (!status.ok()) {
     return;
   }
 
-  for (const tensorflow::Device* device : devices) {
+  for (const std::unique_ptr<tensorflow::Device>& device : devices) {
     tensorflow::DeviceProperties& prop = (*device_map)[device->name()];
     prop = tensorflow::grappler::GetDeviceInfo(device->parsed_name());
 
@@ -88,7 +88,6 @@ void DetectDevices(std::unordered_map<string, tensorflow::DeviceProperties>* dev
     // available device memory.
     const tensorflow::DeviceAttributes& attr = device->attributes();
     prop.set_memory_size(attr.memory_limit());
-    delete device;
   }
 }
 

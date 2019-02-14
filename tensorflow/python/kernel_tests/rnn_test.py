@@ -173,6 +173,26 @@ class RNNTest(test.TestCase):
           sequence_length=[[4]])
 
   @test_util.run_in_graph_and_eager_modes
+  def testInvalidDtype(self):
+    if context.executing_eagerly():
+      inputs = np.zeros((3, 4, 5), dtype=np.int32)
+    else:
+      inputs = array_ops.placeholder(dtypes.int32, shape=(3, 4, 5))
+
+    cells = [
+        rnn_cell_impl.BasicRNNCell,
+        rnn_cell_impl.GRUCell,
+        rnn_cell_impl.BasicLSTMCell,
+        rnn_cell_impl.LSTMCell,
+    ]
+    for cell_cls in cells:
+      with self.cached_session():
+        with self.assertRaisesRegexp(
+            ValueError, "RNN cell only supports floating"):
+          cell = cell_cls(2, dtype=dtypes.int32)
+          rnn.dynamic_rnn(cell, inputs, dtype=dtypes.int32)
+
+  @test_util.run_in_graph_and_eager_modes
   def testBatchSizeFromInput(self):
     cell = Plus1RNNCell()
     in_eager_mode = context.executing_eagerly()
@@ -262,6 +282,7 @@ class RNNTest(test.TestCase):
       rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32, sequence_length=[4])
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only("b/120545219")
   def testTensorArrayStateIsAccepted(self):
     cell = TensorArrayStateRNNCell()
     in_eager_mode = context.executing_eagerly()
@@ -285,6 +306,7 @@ class RNNTest(test.TestCase):
     self.assertAllEqual(4, state[0])
     self.assertAllEqual([[[1]], [[2]], [[3]], [[4]]], state[1])
 
+  @test_util.run_deprecated_v1
   def testCellGetInitialState(self):
     cell = rnn_cell_impl.BasicRNNCell(5)
     with self.assertRaisesRegexp(
@@ -345,6 +367,7 @@ class RNNTest(test.TestCase):
     self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f32, 5, 7, 3)
     self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f64, 5, 7, 3)
 
+  @test_util.run_deprecated_v1
   def testRNNWithKerasSimpleRNNCell(self):
     with self.cached_session() as sess:
       input_shape = 10
@@ -378,6 +401,7 @@ class RNNTest(test.TestCase):
       self.assertEqual(len(outputs), batch)
       self.assertEqual(len(state), batch)
 
+  @test_util.run_deprecated_v1
   def testRNNWithKerasGRUCell(self):
     with self.cached_session() as sess:
       input_shape = 10
@@ -411,6 +435,7 @@ class RNNTest(test.TestCase):
       self.assertEqual(len(outputs), batch)
       self.assertEqual(len(state), batch)
 
+  @test_util.run_deprecated_v1
   def testRNNWithKerasLSTMCell(self):
     with self.cached_session() as sess:
       input_shape = 10
@@ -448,6 +473,7 @@ class RNNTest(test.TestCase):
       self.assertEqual(len(state[0]), batch)
       self.assertEqual(len(state[1]), batch)
 
+  @test_util.run_deprecated_v1
   def testRNNWithStackKerasCell(self):
     with self.cached_session() as sess:
       input_shape = 10
@@ -491,6 +517,7 @@ class RNNTest(test.TestCase):
       for s in state:
         self.assertEqual(len(s), batch)
 
+  @test_util.run_deprecated_v1
   def testStaticRNNWithKerasSimpleRNNCell(self):
     with self.cached_session() as sess:
       input_shape = 10
@@ -529,6 +556,7 @@ class RNNTest(test.TestCase):
       self.assertEqual(len(outputs[0]), batch)
       self.assertEqual(len(state), batch)
 
+  @test_util.run_deprecated_v1
   def testKerasAndTFRNNLayerOutputComparison(self):
     input_shape = 10
     output_shape = 5
@@ -562,6 +590,7 @@ class RNNTest(test.TestCase):
     self.assertAllClose(tf_out, k_out)
     self.assertAllClose(tf_state, k_state)
 
+  @test_util.run_deprecated_v1
   def testSimpleRNNCellAndBasicRNNCellComparison(self):
     input_shape = 10
     output_shape = 5
@@ -601,6 +630,7 @@ class RNNTest(test.TestCase):
     self.assertAllClose(tf_out, k_out, atol=1e-5)
     self.assertAllClose(tf_state, k_state, atol=1e-5)
 
+  @test_util.run_deprecated_v1
   def testBasicLSTMCellInterchangeWithLSTMCell(self):
     with self.session(graph=ops_lib.Graph()) as sess:
       basic_cell = rnn_cell_impl.BasicLSTMCell(1)

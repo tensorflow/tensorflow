@@ -31,11 +31,17 @@ class AssertNextDatasetTest(test_base.DatasetTestBase):
   def testAssertNext(self):
     dataset = dataset_ops.Dataset.from_tensors(0).apply(
         optimization.assert_next(["Map"])).map(lambda x: x)
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[0])
 
   def testAssertNextInvalid(self):
     dataset = dataset_ops.Dataset.from_tensors(0).apply(
         optimization.assert_next(["Whoops"])).map(lambda x: x)
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
     self.assertDatasetProduces(
         dataset,
         expected_error=(
@@ -48,6 +54,7 @@ class AssertNextDatasetTest(test_base.DatasetTestBase):
         optimization.assert_next(["Map", "Whoops"])).map(lambda x: x)
     options = dataset_ops.Options()
     options.experimental_autotune = False
+    options.experimental_optimization.apply_default_optimizations = False
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(
         dataset,

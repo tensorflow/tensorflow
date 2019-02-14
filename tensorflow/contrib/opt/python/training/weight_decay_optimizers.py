@@ -59,6 +59,23 @@ class DecoupledWeightDecayExtension(object):
   Note that this extension decays weights BEFORE applying the update based
   on the gradient, i.e. this extension only has the desired behaviour for
   optimizers which do not depend on the value of'var' in the update step!
+  
+  Note: when applying a decay to the learning rate, be sure to manually apply
+  the decay to the `weight_decay` as well. For example:
+
+  ```python
+    schedule = tf.train.piecewise_constant(tf.train.get_global_step(), 
+                                           [10000, 15000], [1e-0, 1e-1, 1e-2])
+    lr = 1e-1 * schedule()
+    wd = lambda: 1e-4 * schedule()
+
+    # ...
+
+    optimizer = tf.contrib.opt.MomentumWOptimizer(learning_rate=lr,
+                                                  weight_decay=wd,
+                                                  momentum=0.9,
+                                                  use_nesterov=True)
+  ```
   """
 
   def __init__(self, weight_decay, **kwargs):

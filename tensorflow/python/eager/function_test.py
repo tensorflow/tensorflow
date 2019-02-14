@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import itertools
 from multiprocessing.pool import ThreadPool
 import sys
 import weakref
@@ -45,8 +46,12 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_functional_ops
+from tensorflow.python.ops import gen_random_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
@@ -86,7 +91,8 @@ class DefunnedMiniModel(MiniModel):
 class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testBasic(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
     t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     sq = matmul(t, t, transpose_a=True)
     sq2 = matmul(sq, t, transpose_a=True)
@@ -107,6 +113,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       t = constant_op.constant(1.0)
       self.assertAllEqual(add(t, t).numpy(), 2.0)
 
+  def testNoHash(self):
+
+    @def_function.function()
+    def f(_):
+      return 1.0
+
+    with self.assertRaisesRegexp(TypeError, 'set'):
+      f(set([]))
+
   def testFuncName(self):
 
     @function.defun_with_attributes(attributes={'func_name': 'multiply'})
@@ -123,7 +138,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(add_2._name, 'add_2')
 
   def testBasicGraphMode(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     @def_function.function
     def sq(a):
@@ -134,7 +150,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testNestedInputsGraphMode(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
@@ -146,6 +163,24 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     out = a_times_b(pair({'a': t}, {'b': t}))
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
+
+  def testNestedOutputsGraphMode(self):
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
+
+    pair = collections.namedtuple('pair', ['a', 'b'])
+
+    @def_function.function()
+    def pairs_mul(pair_a, pair_b):
+      return pair(matmul(pair_a.a, pair_b.a), matmul(pair_a.b, pair_b.b))
+
+    a = constant_op.constant([[1.0, 2.0], [1.0, 2.0]])
+    b = constant_op.constant([[3.0, 4.0], [3.0, 4.0]])
+
+    out = pairs_mul(pair(a, b), pair(b, a))
+    expected = pair(math_ops.matmul(a, b).numpy(),
+                    math_ops.matmul(b, a).numpy())
+    self.assertAllClose(out, expected)
 
   def testGraphEagerIsolation(self):
 
@@ -160,7 +195,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(f().shape, ())
 
   def testBasicGraphFunction(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     @def_function.function
     def sq(a):
@@ -174,7 +210,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testInputSpecGraphFunction(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     @def_function.function
     def sq(a):
@@ -193,7 +230,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out2, math_ops.matmul(t2, t2).numpy())
 
   def testNestedInputSpecGraphFunction(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     @def_function.function
     def sq(mats):
@@ -287,7 +325,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(f(), x)
 
   def testNestedInputsGraphFunction(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
@@ -304,7 +343,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testNestedOutputGraphFunction(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     @def_function.function
     def sq(a):
@@ -342,13 +382,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     x = random_ops.random_uniform([2, 2]).numpy()
     defined = function.defun(f)
     defined(x)
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
 
     x = random_ops.random_uniform([2, 2]).numpy()
     defined(x)
     # A NumPy array with different values but the same shape and dtype
     # shouldn't trigger another function definition.
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
 
     # Test that the numpy array is properly an argument to the graph function.
     self.assertEqual(1., defined(numpy.ones([])).numpy())
@@ -411,20 +451,65 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.evaluate(variables.global_variables_initializer())
     self.assertEqual(self.evaluate(value), 2.0)
 
-  @test_util.run_in_graph_and_eager_modes
+  @test_util.also_run_as_tf_function
   def testInitScopeTensorInitializationInFunction(self):
 
     @def_function.function
     def tensor_init():
       with ops.init_scope():
         const = constant_op.constant(2.0)
+      # Note: this variable bypasses tf.function's variable creation
+      # requirements by bypassing variable_creator_scope by using
+      # ResourceVariable instead of Variable.
       self.v = resource_variable_ops.ResourceVariable(const)
       return self.v.read_value()
 
     value = tensor_init()
-    if not context.executing_eagerly():
-      self.evaluate(variables.global_variables_initializer())
-    self.assertEqual(self.evaluate(value), 2.0)
+    self.assertAllEqual(value, 2.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGetConcreteFunctionCreatesVariables(self):
+
+    v_holder = []
+
+    @def_function.function
+    def tensor_init():
+      if not v_holder:
+        v_holder.append(variables.Variable(5.))
+      return v_holder[0].read_value()
+
+    concrete = tensor_init.get_concrete_function()
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(5., self.evaluate(concrete()))
+    self.assertAllEqual(5., self.evaluate(tensor_init()))
+
+  def testFuncGraphCaptureByValue(self):
+    v = variables.Variable(1.0)
+
+    def trivial_function():
+      return v.read_value()
+
+    graph_function = function.Function(
+        trivial_function, 'test', capture_by_value=True)
+
+    self.assertAllEqual(graph_function(), 1.0)
+    v.assign(2.0)
+    self.assertAllEqual(graph_function(), 1.0)
+
+  def testFuncGraphCaptureByValueNested(self):
+    v = variables.Variable(1.0)
+
+    def trivial_function():
+      return control_flow_ops.cond(
+          array_ops.placeholder_with_default(True, ()),
+          v.read_value, v.read_value)
+
+    graph_function = function.Function(
+        trivial_function, 'test', capture_by_value=True)
+
+    self.assertAllEqual(graph_function(), 1.0)
+    v.assign(2.0)
+    self.assertAllEqual(graph_function(), 1.0)
 
   def testDefunShapeInferenceWithCapturedResourceVariable(self):
     v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
@@ -444,6 +529,31 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
     self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
+  def testFuncListAttr(self):
+
+    @function.defun
+    def test_function(val):
+
+      def fn1():
+        return array_ops.ones([10])
+
+      fn2 = lambda: array_ops.ones([10]) * 2
+
+      def fn3(x=2):
+        return array_ops.ones([10]) * x
+      fn3 = functools.partial(fn3, x=3)
+
+      return gen_functional_ops.case(val, [], [dtypes.float32],
+                                     [function.defun(f).get_concrete_function()
+                                      for f in (fn1, fn2, fn3)])
+
+    ones = array_ops.ones([10])
+    self.assertAllEqual([ones], test_function(0))
+    self.assertAllEqual([ones * 2], test_function(1))
+    self.assertAllEqual([ones * 3], test_function(2))
+    self.assertAllEqual([ones * 3], test_function(22))  # default branch
+
+  @test_util.enable_control_flow_v2
   def testVariableInLoopInFunction(self):
 
     @function.defun
@@ -526,7 +636,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(
         self.v, resource_variable_ops.ResourceVariable)
 
-  def disabled_testRunMetadata(self):
+  def testRunMetadata(self):
 
     @def_function.function
     def f(x):
@@ -538,7 +648,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     run_metadata = context.export_run_metadata()
     context.disable_run_metadata()
     step_stats = run_metadata.step_stats
-    self.assertGreater(len(step_stats.dev_stats), 0)
+    self.assertNotEmpty(step_stats.dev_stats)
     cpu_stats = step_stats.dev_stats[0]
     self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
                      cpu_stats.device)
@@ -547,10 +657,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # arbitrarily many (placeholders, return identities, etc, might be included
     # or not in the future, so shouldn't be tested for exactly.
     self.assertGreaterEqual(len(cpu_stats.node_stats), 2)
-    self.assertEqual(len(run_metadata.partition_graphs), 1)
+    self.assertLen(run_metadata.partition_graphs, 1)
 
   def testGraphModeCaptureVariable(self):
-    with context.graph_mode(), self.cached_session() as sess:
+    with context.graph_mode(), self.cached_session():
 
       class HasAVar(object):
 
@@ -561,7 +671,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           return self.v * 2
 
       o = HasAVar()
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       call = def_function.function(o.call)
       op = call()
       self.assertAllEqual(self.evaluate(op), 2.0)
@@ -707,7 +817,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.skipTest('No GPUs found')
 
     x = constant_op.constant([1.]).gpu()
-    f = def_function.function(math_ops.add)
+    # TODO(b/121134877): Remove the autograph override.
+    f = def_function.function(math_ops.add, autograph=False)
     y = f(x, x).cpu()
     self.assertAllEqual(y, [2.])
 
@@ -776,7 +887,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.skipTest('No GPUs found')
 
     # The Reshape op requires the shape tensor to be placed in host memory.
-    reshape = def_function.function(array_ops.reshape)
+    # TODO(b/121134877): Remove the autograph override.
+    reshape = def_function.function(array_ops.reshape, autograph=False)
     value = constant_op.constant([1., 2.]).gpu()
     shape = constant_op.constant([2, 1])
     reshaped = reshape(value, shape).cpu()
@@ -787,7 +899,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.skipTest('No GPUs found')
 
     # The Reshape op requires the shape tensor to be placed in host memory.
-    reshape = def_function.function(array_ops.reshape)
+    # TODO(b/121134877): Remove the autograph override.
+    reshape = def_function.function(array_ops.reshape, autograph=False)
     value = constant_op.constant([1., 2.])
     shape = constant_op.constant([2, 1]).gpu()
     reshape(value, shape)  # No error is raised
@@ -846,7 +959,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(1, int(self.evaluate(read())))
 
   def testSequenceInputs(self):
-    clip_by_global_norm = def_function.function(clip_ops.clip_by_global_norm)
+    # TODO(b/121134877): Remove the autograph override.
+    clip_by_global_norm = def_function.function(
+        clip_ops.clip_by_global_norm, autograph=False)
     t_list = [constant_op.constant(1.0), constant_op.constant(2.0)]
     clipped_list, global_norm = clip_by_global_norm(t_list,
                                                     constant_op.constant(.2))
@@ -869,7 +984,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                                   constant_op.constant(4)],
         constant_op.constant(5)
     ])
-    self.assertEqual(len(ret), 2)
+    self.assertLen(ret, 2)
     self.assertAllEqual(ret[0][0], 2)
     self.assertAllEqual(ret[0][1][0][0], 8)
     self.assertAllEqual(ret[0][1][0][1], 4)
@@ -918,8 +1033,31 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose([[[[4.0]]]], self.evaluate(y))
 
-    # Remove reference cycles in model
-    test_util.dismantle_polymorphic_function(model)
+  # Variable lifting is somewhat different between defun/tf.function, so testing
+  # device placement on both makes sense.
+  @parameterized.named_parameters(
+      dict(testcase_name='Defun',
+           function_decorator=function.defun),
+      dict(testcase_name='DefFunction',
+           function_decorator=def_function.function))
+  @test_util.run_in_graph_and_eager_modes
+  def testVariablesPlacedOnOutsideDevice(self, function_decorator):
+
+    class _Obj(object):
+
+      def __init__(self):
+        self.v = None
+
+      @function_decorator
+      def f(self):
+        if self.v is None:
+          self.v = variables.Variable(1.)
+        return self.v + 1.
+
+    has_device = _Obj()
+    with ops.device('cpu:0'):
+      has_device.f()
+    self.assertIn('CPU', has_device.v.device)
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testDefunKerasModelCall(self):
@@ -934,17 +1072,16 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual([[3.0]], self.evaluate(y))
 
-    # Remove reference cycles in defun.
-    test_util.dismantle_polymorphic_function(model.call)
     # Break the reference cycle between the MiniModel and the defun:
-    # MiniModel --(through its `call` method)--> PolymorphicFunction
-    # PolymorphicFunction --(instancemethod on MiniModel)--> MiniModel
+    # `MiniModel` --(through its `call` method)--> `Function`
+    # `Function` --(instancemethod on `MiniModel`)--> `MiniModel`
     del model.call
 
   # Note: The ConfigProto below unfortunately only configures graph
   # construction. Eager's configuration is controlled in `__main__`.
   @test_util.run_in_graph_and_eager_modes(
       config=config_pb2.ConfigProto(device_count={'CPU': 4}))
+  @test_util.run_v1_only('b/120545219')
   def testDeviceAnnotationsRespected(self):
 
     def multi_device_fn():
@@ -959,7 +1096,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined = function.defun(multi_device_fn)
     outputs = self.evaluate(defined())
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
     self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
     self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
     self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
@@ -967,7 +1104,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with ops.device('/cpu:3'):
       outputs = self.evaluate(defined())
     # All function definitions are agnostic to call site devices.
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
     self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
     self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
     self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
@@ -975,7 +1112,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     with ops.device('/cpu:0'):
       outputs = self.evaluate(defined())
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
     self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
     self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
     self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
@@ -983,12 +1120,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(
       config=config_pb2.ConfigProto(device_count={'CPU': 2}))
+  @test_util.run_v1_only('b/120545219')
   def testCallingGraphFunctionOnDifferentDevice(self):
 
     def func():
       return constant_op.constant(0)
 
-    defined = function.defun(func)
+    defined = def_function.function(func)
     with ops.device('cpu:0'):
       cpu_graph_function = defined.get_concrete_function()
 
@@ -1059,10 +1197,38 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined = function.defun(func)
     defined(Foo())
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
 
     defined(Foo())
-    self.assertEqual(len(defined._function_cache), 2)
+    self.assertLen(defined._function_cache, 2)
+
+  def testCacheTensorDtypeCollision(self):
+
+    def func(t):
+      return t + t
+
+    defined = function.defun(func)
+    t = constant_op.constant([[1.0]], dtype=dtypes.complex64)
+    defined(t)
+    self.assertLen(defined._function_cache, 1)
+
+    t = constant_op.constant([[1.0]], dtype=dtypes.complex128)
+    defined(t)
+    self.assertLen(defined._function_cache, 2)
+
+  def testCacheTensorShapeCollision(self):
+
+    def func(t):
+      return t + t
+
+    defined = function.defun(func)
+    t = constant_op.constant([[1.0]], dtype=dtypes.complex64)
+    defined(t)
+    self.assertLen(defined._function_cache, 1)
+
+    t = constant_op.constant([1.0], dtype=dtypes.complex64)
+    defined(t)
+    self.assertLen(defined._function_cache, 2)
 
   def testCacheTensorShapeDtypeCollision(self):
 
@@ -1072,11 +1238,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined = function.defun(func)
     t = constant_op.constant([[1.0]], dtype=dtypes.complex64)
     defined(t)
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
 
     t = constant_op.constant([1.0], dtype=dtypes.complex128)
     defined(t)
-    self.assertEqual(len(defined._function_cache), 2)
+    self.assertLen(defined._function_cache, 2)
 
   def testCacheTensorUnknownShapesCollision(self):
 
@@ -1088,19 +1254,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       p = array_ops.placeholder(dtype=dtypes.float32, shape=None)
       defined(p)
-      self.assertEqual(len(defined._function_cache), 1)
+      self.assertLen(defined._function_cache, 1)
 
       p = array_ops.placeholder(dtype=dtypes.float32, shape=[None])
       defined(p)
-      self.assertEqual(len(defined._function_cache), 2)
+      self.assertLen(defined._function_cache, 2)
 
       p = array_ops.placeholder(dtype=dtypes.float32, shape=[None, None])
       defined(p)
-      self.assertEqual(len(defined._function_cache), 3)
+      self.assertLen(defined._function_cache, 3)
 
       t = constant_op.constant(1.0, dtype=dtypes.float32)
       defined(t)
-      self.assertEqual(len(defined._function_cache), 4)
+      self.assertLen(defined._function_cache, 4)
 
   def testPythonFunctionWithDefaultArgs(self):
 
@@ -1118,32 +1284,33 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return tuple(key[0] for key in defined._function_cache)
 
     # `True` corresponds to the fact that we're executing eagerly
-    self.assertIn(('URRR', (0, 1, 20)), cache_keys())
+    self.assertIn(('URRRu', (0, 1, 20)), cache_keys())
 
     defined(1)  # bar=1, baz=2
-    self.assertIn(('URRR', (1, 1, 2)), cache_keys())
+    self.assertIn(('URRRu', (1, 1, 2)), cache_keys())
 
     # This matches the previous call.
     defined(foo=1)
-    self.assertEqual(len(defined._function_cache), 2)
+    self.assertLen(defined._function_cache, 2)
 
     defined(1, 2, 3)
-    self.assertIn(('URRR', (1, 2, 3)), cache_keys())
+    self.assertLen(defined._function_cache, 3)
+    self.assertIn(('URRRu', (1, 2, 3)), cache_keys())
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)
-    self.assertEqual(len(defined._function_cache), 3)
+    self.assertLen(defined._function_cache, 3)
 
     # This matches the previous call.
     defined(1, baz=3, bar=2)
-    self.assertEqual(len(defined._function_cache), 3)
+    self.assertLen(defined._function_cache, 3)
 
   def testFunctoolsPartialUnwrappedCorrectly(self):
 
     def full_function(a, b, c=3):
       return a, b, c
 
-    partial = functools.partial(full_function, 1, c=3)
+    partial = functools.partial(full_function, 1, c=4)
     a, b, c = partial(2)
 
     defined = function.defun(partial)
@@ -1162,12 +1329,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined = function.defun(foo, input_signature=signature)
     a = array_ops.ones([2])
     self.assertAllEqual(a, defined(a))
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
     self.assertAllEqual(a, defined.get_concrete_function()(a))
     self.assertAllEqual(a, defined.get_concrete_function(a)(a))
     self.assertAllEqual(a, defined.get_concrete_function(
         tensor_spec.TensorSpec((2,), dtype=dtypes.float32))(a))
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
 
     def bar(a):
       self.assertEqual(a._shape_tuple(), (2, None))
@@ -1177,13 +1344,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined = function.defun(bar, input_signature=signature)
     a = array_ops.ones([2, 1])
     out = defined(a)
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
     self.assertAllEqual(out, a)
 
     # Changing the second dimension shouldn't create a new function.
     b = array_ops.ones([2, 3])
     out = defined(b)
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
     self.assertAllEqual(out, b)
 
   def testNestedInputSignatures(self):
@@ -1200,7 +1367,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     a = array_ops.ones([2, 1])
     b = array_ops.ones([1])
     out = defined([a, a], b)
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
     nest.assert_same_structure(out, [[a, a], b])
     self.assertAllEqual(out[0][0], a)
     self.assertAllEqual(out[0][1], a)
@@ -1211,7 +1378,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     b = array_ops.ones([2, 5])
     c = array_ops.ones([1])
     out = defined([a, b], c)
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
     nest.assert_same_structure(out, [[a, b], c])
     self.assertAllEqual(out[0][0], a)
     self.assertAllEqual(out[0][1], b)
@@ -1255,6 +1422,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                                  'tuple or a list.*'):
       function.defun(foo, input_signature=signature)
 
+  @test_util.run_in_graph_and_eager_modes
   def testInputsIncompatibleWithSignatureRaisesError(self):
 
     def foo(a):
@@ -1271,8 +1439,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined(array_ops.ones([2, 1]))
 
     # Wrong number of arguments.
-    with self.assertRaisesRegexp(ValueError,
-                                 'Structure of Python function inputs.*'):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Arguments and signature arguments do not match.*'):
       defined(array_ops.ones([2]), array_ops.ones([2]))
     with self.assertRaisesRegexp(ValueError,
                                  'Structure of Python function inputs.*'):
@@ -1283,6 +1452,25 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
 
+  def testInputsIncompatibleWithNestedSignatureRaisesError(self):
+
+    def foo(a, b):
+      return [a, b]
+
+    signature = [[tensor_spec.TensorSpec((1,), dtypes.float32)] * 2,
+                 [tensor_spec.TensorSpec((1,), dtypes.float32)] * 2]
+    defined = function.defun(foo, input_signature=signature)
+    a = array_ops.ones([1])
+
+    with self.assertRaisesRegexp(ValueError,
+                                 'Structure of Python function inputs.*'):
+      defined([a, a, a], [a])
+
+    with self.assertRaisesRegexp(ValueError,
+                                 'Structure of Python function inputs.*'):
+      defined([a], [a, a, a])
+    defined([a, a], [a, a])
+
   def testInputSignatureForFunctionWithNonTensorInputsNotAllowed(self):
 
     def foo(a, training=True):
@@ -1291,10 +1479,16 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       else:
         return -1.0 * a
 
-    signature = [tensor_spec.TensorSpec([], dtypes.float32)] * 2
+    signature = [
+        tensor_spec.TensorSpec([], dtypes.float32),
+        tensor_spec.TensorSpec([], dtypes.bool),
+    ]
     defined = def_function.function(foo, input_signature=signature)
     a = constant_op.constant(1.0)
-    with self.assertRaises(TypeError):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'When input_signature is provided, all inputs to '
+        'the Python function must be Tensors.'):
       defined(a, training=True)
 
   def testInputSignatureWithKeywordPositionalArgs(self):
@@ -1310,22 +1504,22 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     integer = constant_op.constant(2, dtypes.int64)
 
     out1, out2 = foo(flt, integer)
-    self.assertEqual(len(foo._function_cache), 1)
+    self.assertLen(foo._function_cache, 1)
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
     out1, out2 = foo(flt=flt, integer=integer)
-    self.assertEqual(len(foo._function_cache), 1)
+    self.assertLen(foo._function_cache, 1)
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
     out1, out2 = foo(integer=integer, flt=flt)
-    self.assertEqual(len(foo._function_cache), 1)
+    self.assertLen(foo._function_cache, 1)
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
     out1, out2 = foo(flt, integer=integer)
-    self.assertEqual(len(foo._function_cache), 1)
+    self.assertLen(foo._function_cache, 1)
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
@@ -1355,27 +1549,27 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     a = constant_op.constant(2.0)
     b = constant_op.constant([1.0, 2.0])
     one = defined(a, b)
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
 
     two = defined(a=a, b=b)
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
 
     three = defined(b=b, a=a)
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
 
     four = defined(a, b=b)
-    self.assertEqual(len(defined._function_cache), 1)
+    self.assertLen(defined._function_cache, 1)
 
     # The next call corresponds to a new input signature, hence
     # we expect another function to be defined.
     five = defined(b, a)
-    self.assertEqual(len(defined._function_cache), 2)
+    self.assertLen(defined._function_cache, 2)
 
     six = defined(a=b, b=a)
-    self.assertEqual(len(defined._function_cache), 2)
+    self.assertLen(defined._function_cache, 2)
 
     seven = defined(b=a, a=b)
-    self.assertEqual(len(defined._function_cache), 2)
+    self.assertLen(defined._function_cache, 2)
 
     self.assertAllEqual(one, [1.0, 2.0])
     self.assertAllEqual(two, [1.0, 2.0])
@@ -1457,19 +1651,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
         graph = ops.get_default_graph()
         # pylint: disable=protected-access
-        self.assertEqual(len(graph._functions), 2)
+        self.assertLen(graph._functions, 2)
         functions = list(graph._functions.values())
         self.assertRegexpMatches(
             functions[0].definition.signature.name, '.*matmul.*')
         attrs = functions[0].definition.attr
-        self.assertEqual(len(attrs), 2)
+        self.assertLen(attrs, 2)
         self.assertEqual(attrs['experimental_1'].s, b'value1')
         self.assertEqual(attrs['experimental_2'].i, 2)
 
         self.assertRegexpMatches(
             functions[1].definition.signature.name, '.*add.*')
         attrs = functions[1].definition.attr
-        self.assertEqual(len(attrs), 2)
+        self.assertLen(attrs, 2)
         self.assertEqual(attrs['experimental_3'].b, True)
         self.assertEqual(attrs['experimental_4'].f, 1.0)
         # pylint: enable=protected-access
@@ -1497,7 +1691,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
           add(t, t)
 
-  def testRegisterPolymorphicFunction(self):
+  def testRegisterFunction(self):
+
     @function.defun
     def add(x, y):
       return math_ops.add(x, y)
@@ -1514,7 +1709,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
         graph = ops.get_default_graph()
         # pylint: disable=protected-access
-        self.assertEqual(len(graph._functions), 6)
+        self.assertLen(graph._functions, 6)
         # two sets of functions, each of them are (inference, forward, backward)
         functions = list(graph._functions.values())
         captured_function_names = [
@@ -1553,7 +1748,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(double.eval().reshape(-1), [2, 4, 6, 8])
         # Make sure the pre registered function is used, and no other function
         # is added.
-        self.assertEqual(len(graph._functions), 6)
+        self.assertLen(graph._functions, 6)
         functions = list(graph._functions.values())
         for i in range(len(functions)):
           self.assertEqual(captured_function_names[i],
@@ -1590,7 +1785,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
         graph = ops.get_default_graph()
         # pylint: disable=protected-access
-        self.assertEqual(len(graph._functions), 6)
+        self.assertLen(graph._functions, 6)
         # two sets of functions, each of them are (inference, forward, backward)
         functions = list(graph._functions.values())
         captured_function_names = [
@@ -1616,7 +1811,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual([[1, 2], [3, 4]], self.evaluate(composite_t))
         # Make sure the pre registered function is used, and no other function
         # is added.
-        self.assertEqual(len(graph._functions), 6)
+        self.assertLen(graph._functions, 6)
 
   def testRegisterFunctionWithInputSignature(self):
     def matmul(x, y):
@@ -1634,12 +1829,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
         graph = ops.get_default_graph()
         # pylint: disable=protected-access
-        self.assertEqual(len(graph._functions), 3)
+        self.assertLen(graph._functions, 3)
 
         # Test register function with cache, note inputs are ignored.
         function.register(defun_matmul)
         graph = ops.get_default_graph()
-        self.assertEqual(len(graph._functions), 3)
+        self.assertLen(graph._functions, 3)
 
   def testRegisterFunctionWithCache(self):
     def matmul(x, y):
@@ -1656,7 +1851,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         graph = ops.get_default_graph()
         # Only one function is registered since the input param are in same type
         # pylint: disable=protected-access
-        self.assertEqual(len(graph._functions), 3)
+        self.assertLen(graph._functions, 3)
 
   def testCallingFunctionWithDifferentVariables(self):
 
@@ -1667,8 +1862,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     v = resource_variable_ops.ResourceVariable(0.0)
     graph_function = foo.get_concrete_function(v)
-    self.assertEqual(len(graph_function.inputs), 1)
-    self.assertEqual(len(graph_function.captured_inputs), 0)
+    self.assertLen(graph_function.inputs, 1)
+    self.assertEmpty(graph_function.captured_inputs)
 
     self.assertEqual(float(graph_function(v)), 1.0)
     self.assertEqual(float(graph_function(v)), 2.0)
@@ -1691,8 +1886,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return x
 
     graph_function = foo.get_concrete_function(constant_op.constant(1.0))
-    with self.assertRaisesRegexp(ValueError, 'All inputs to `Function`s must '
-                                 'be Tensors;.*'):
+    with self.assertRaisesRegexp(
+        ValueError, 'All inputs to `ConcreteFunction`s must be Tensors;.*'):
       graph_function('Not a Tensor.')
 
   def testSwapImplementationWithGrapplerPlugin(self):
@@ -1710,7 +1905,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     config = config_pb2.ConfigProto(graph_options=graph_options)
 
     with context.graph_mode(), self.cached_session(
-        config=config, graph=ops.Graph(), use_gpu=True) as sess:
+        config=config, graph=ops.Graph(), use_gpu=True):
 
       @function.defun_with_attributes(
           attributes={
@@ -1757,18 +1952,43 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       with ops.Graph().as_default():
         x = constant_op.constant(11)
         maybe_add(x, True)
-        self.assertEqual(len(maybe_add._function_cache), 1)
-        self.assertEqual(len(add._function_cache), 1)
+        self.assertLen(maybe_add._function_cache, 1)
+        self.assertLen(add._function_cache, 1)
 
         maybe_add(x, False)
-        self.assertEqual(len(maybe_add._function_cache), 2)
-        self.assertEqual(len(add._function_cache), 1)
+        self.assertLen(maybe_add._function_cache, 2)
+        self.assertLen(add._function_cache, 1)
 
       with ops.Graph().as_default():
         x = constant_op.constant(11)
         maybe_add(x, True)
-        self.assertEqual(len(maybe_add._function_cache), 3)
-        self.assertEqual(len(add._function_cache), 2)
+        self.assertLen(maybe_add._function_cache, 3)
+        self.assertLen(add._function_cache, 2)
+
+  def testCacheKeyOverlappingShapes(self):
+    @function.defun
+    def defined(t):
+      return t
+
+    defined(array_ops.zeros([12, 1]))
+    self.assertLen(defined._function_cache, 1)
+
+    defined(array_ops.zeros([1, 21]))
+    self.assertLen(defined._function_cache, 2)
+
+  def testCacheKeyNestedLists(self):
+    @function.defun
+    def defined(l):
+      return l
+
+    a = constant_op.constant(1.)
+    b = constant_op.constant(2.)
+    c = constant_op.constant(3.)
+    defined([[a], b, c])
+    self.assertLen(defined._function_cache, 1)
+
+    defined([[a, b], c])
+    self.assertLen(defined._function_cache, 2)
 
   def testDecoratedMethod(self):
     m = DefunnedMiniModel()
@@ -1780,7 +2000,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(instance_call_one, instance_call_two)
     self.assertAllEqual(instance_call_one, class_call)
 
-  def testDecoratedMethodUniquePolymorphicFuncPerInstance(self):
+  def testDecoratedMethodUniqueFunctionPerInstance(self):
     m = DefunnedMiniModel()
     n = DefunnedMiniModel()
 
@@ -1990,7 +2210,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     m = DefunnedMiniModel()
     m(array_ops.ones([1, 2]))
     weak_variables = weakref.WeakSet(m.variables)
-    self.assertEqual(2, len(weak_variables))
+    self.assertLen(weak_variables, 2)
     del m
     self.assertEqual([], list(weak_variables))
 
@@ -2013,6 +2233,322 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
             5,
             add_five(constant_op.constant(0, dtype=dtypes.int32)).numpy())
 
+  @test_util.assert_no_garbage_created
+  def testReferenceCycles(self):
+
+    fn = function.defun(lambda x: 2. * x)
+
+    fn(constant_op.constant(4.0))
+    weak_fn = weakref.ref(fn)
+    del fn
+    # Tests that the weak reference we made to the function is now dead, which
+    # means the object has been deleted. This should be true as long as the
+    # function itself is not involved in a reference cycle.
+    self.assertIs(None, weak_fn())
+
+  def testFunctionStackInErrorMessage(self):
+    if context.executing_eagerly():
+      # TODO(b/122736651): Remove this skipTest once fixed.
+      self.skipTest('Error interpolation is not working when function is '
+                    'invoked without PartitionedCallOp.')
+
+    @def_function.function()
+    def fn3(x):
+      return x + 2
+
+    @def_function.function()
+    def fn2(x):
+      check_ops.assert_equal(fn3(x), 3)
+      return 2
+
+    @def_function.function()
+    def fn(x):
+      return fn2(x)
+
+    with self.assertRaises(errors.InvalidArgumentError) as cm:
+      fn(2)
+    e = cm.exception
+    self.assertIn('fn -> fn2', e.message)
+    self.assertIn('node assert_equal/Assert/Assert (defined at', e.message)
+    self.assertNotIn('fn3', e.message)
+
+  def testFunctionIsNotPinned(self):
+    """Tests that functions aren't pinned to the CPU by the eager runtime."""
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+    seed1, seed2 = 79, 25
+    shape = constant_op.constant([4, 7])
+    dtype = dtypes.float32
+
+    @def_function.function
+    def func():
+      with ops.device('GPU:0'):
+        return gen_random_ops.random_standard_normal(
+            shape, dtype=dtype, seed=seed1, seed2=seed2)
+
+    with ops.device('GPU:0'):
+      x = func()
+      self.assertRegexpMatches(x.device, 'GPU')
+
+
+class MultiDeviceTest(test.TestCase, parameterized.TestCase):
+
+  def testMultiDeviceOutput(self):
+    """Tests that functions can produce outputs on multiple devices."""
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    @function.defun
+    def func(a, b, transpose_a):
+      with ops.device('/device:CPU:0'):
+        m1 = math_ops.matmul(a, b, transpose_a=transpose_a)
+      with ops.device('/device:GPU:0'):
+        m2 = math_ops.matmul(a, b, transpose_a=transpose_a)
+      return m1, m2
+
+    t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+    m1, m2 = func(t, t, transpose_a=True)
+    self.assertAllEqual(m1.numpy(), [[10, 14], [14, 20]])
+    self.assertRegexpMatches(m1.backing_device, 'CPU')
+    self.assertAllEqual(m2.numpy(), [[10, 14], [14, 20]])
+    self.assertRegexpMatches(m2.backing_device, 'GPU')
+
+  def testEmptyBody(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    @function.defun
+    def func(a, b):
+      return b, a
+
+    with ops.device('/device:CPU:0'):
+      a = constant_op.constant(3.0)
+    with ops.device('/device:GPU:0'):
+      b = constant_op.constant(5.0)
+
+    m1, m2 = func(a, b)
+    self.assertAllEqual(m1.numpy(), 5.0)
+    self.assertRegexpMatches(m1.backing_device, 'GPU')
+    self.assertAllEqual(m2.numpy(), 3.0)
+    self.assertRegexpMatches(m2.backing_device, 'CPU')
+
+  def testMultiDeviceInt32(self):
+    """Tests that multi-device functions can take and output INT32s.
+
+    When an INT32 device tensor is fed into a function, it is copied to CPU
+    by the eager runtime. The function sees all INT32 inputs on CPU.
+
+    We set allocator attribute 'on_host' for INT32 outputs. They can be
+    partitioned into the GPU component function, but will be allocated on
+    CPU nevertheless.
+
+    There is experimental support for `ints_on_device` in
+    FunctionLibraryRuntime now. We can try that.
+
+    """
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    with ops.device('/device:CPU:0'):
+      int_cpu = constant_op.constant(3, dtype=dtypes.int32)
+      resource = resource_variable_ops.ResourceVariable(5, dtype=dtypes.int32)
+    with ops.device('/device:GPU:0'):
+      int_gpu = constant_op.constant(7, dtype=dtypes.int32)
+
+    @function.defun
+    def func(int_cpu, resource, int_gpu):
+      with ops.device('/device:CPU:0'):
+        m1 = int_cpu * resource + int_gpu
+      with ops.device('/device:GPU:0'):
+        # This computation will happen on GPU but m2 will be copied to CPU.
+        m2 = int_gpu * resource + int_cpu + 1
+      return m1, m2
+
+    m1, m2 = func(int_cpu, resource, int_gpu)
+    self.assertAllEqual(m1.numpy(), 22)
+    self.assertRegexpMatches(m1.backing_device, 'CPU')
+    self.assertAllEqual(m2.numpy(), 39)
+    self.assertRegexpMatches(m2.backing_device, 'CPU')
+
+    # flip arguments
+    m1, m2 = func(int_gpu, resource, int_cpu)
+    self.assertAllEqual(m1.numpy(), 38)
+    self.assertRegexpMatches(m1.backing_device, 'CPU')
+    self.assertAllEqual(m2.numpy(), 23)
+    self.assertRegexpMatches(m2.backing_device, 'CPU')
+
+  def testMultiDeviceColocateWith(self):
+    """Tests that function's outputs respect colocation constraints."""
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    @function.defun
+    def func(a, b):
+      with ops.colocate_with(a):
+        ra = 2 * a
+      with ops.colocate_with(b):
+        rb = 3 * b
+      return ra, rb
+
+    devices = ['/device:CPU:0', '/device:GPU:0']
+    for dev1, dev2 in itertools.product(devices, devices):
+      with ops.device(dev1):
+        a = constant_op.constant(1.0)
+      with ops.device(dev2):
+        b = constant_op.constant(10.0)
+
+      ra, rb = func(a, b)
+      self.assertEqual(ra.numpy(), 2.0)
+      self.assertRegexpMatches(ra.backing_device, dev1)
+      self.assertEqual(rb.numpy(), 30.0)
+      self.assertRegexpMatches(rb.backing_device, dev2)
+
+  def testMultiDeviceResources(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    with ops.device('/device:CPU:0'):
+      c1 = resource_variable_ops.ResourceVariable(2.0)
+      c2 = resource_variable_ops.ResourceVariable(7.0)
+    with ops.device('/device:GPU:0'):
+      g1 = resource_variable_ops.ResourceVariable(3.0)
+      g2 = resource_variable_ops.ResourceVariable(5.0)
+
+    @function.defun
+    def func(resource1, resource2):
+      with ops.device('/device:CPU:0'):
+        result1 = resource1 * g2
+      with ops.device('/device:GPU:0'):
+        result2 = resource2 * c2
+      return result1, result2
+
+    r1, r2 = func(c1, g1)
+    self.assertEqual(r1.numpy(), 10.0)
+    self.assertRegexpMatches(r1.backing_device, 'CPU')
+    self.assertEqual(r2.numpy(), 21.0)
+    self.assertRegexpMatches(r2.backing_device, 'GPU')
+
+    # Call with flipped inputs. Check that we look at resource's
+    # device and reinstantiates the function when inputs' devices change.
+    r1, r2 = func(g1, c1)
+    self.assertEqual(r1.numpy(), 15.0)
+    self.assertRegexpMatches(r1.backing_device, 'CPU')
+    self.assertEqual(r2.numpy(), 14.0)
+    self.assertRegexpMatches(r2.backing_device, 'GPU')
+
+  def testOutputResources(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    with ops.device('/device:CPU:0'):
+      c1 = resource_variable_ops.ResourceVariable(2.0)
+    with ops.device('/device:GPU:0'):
+      g1 = resource_variable_ops.ResourceVariable(3.0)
+
+    @function.defun
+    def func(resource1, resource2):
+      with ops.device('/device:CPU:0'):
+        result1 = resource1 * 5
+      with ops.device('/device:GPU:0'):
+        result2 = resource2 * 7
+      return result1, resource1.handle, result2, resource2.handle
+
+    r1, res1, r2, res2 = func(c1, g1)
+    self.assertEqual(r1.numpy(), 10.0)
+    self.assertRegexpMatches(r1.backing_device, 'CPU')
+    self.assertEqual(r2.numpy(), 21.0)
+    self.assertRegexpMatches(r2.backing_device, 'GPU')
+
+    def check_handle(handle, expected_value):
+      self.assertRegexpMatches(handle.backing_device, 'CPU')
+      tensor = gen_resource_variable_ops.read_variable_op(
+          handle, dtypes.float32)
+      self.assertEqual(tensor.numpy(), expected_value)
+
+    # Check that handles returned from functions are on CPU and an op using
+    # the resource handle is correctly placed on the device backing the
+    # resource.
+    check_handle(res1, 2.0)
+    check_handle(res2, 3.0)
+
+    # Call with flipped inputs to make sure the same the function is
+    # reinstantiated and eager runtime does not mess up the device assignment
+    # for ops consuming handles returned from defuns.
+    r1, res1, r2, res2 = func(g1, c1)
+    self.assertEqual(r1.numpy(), 15.0)
+    self.assertRegexpMatches(r1.backing_device, 'CPU')
+    self.assertEqual(r2.numpy(), 14.0)
+    self.assertRegexpMatches(r2.backing_device, 'GPU')
+    check_handle(res1, 3.0)
+    check_handle(res2, 2.0)
+
+  def testComplexInputOutputDevicePattern(self):
+    """Tests input/output mapping logic in partitioning."""
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    with ops.device('/device:CPU:0'):
+      rc0 = resource_variable_ops.ResourceVariable(2.0)
+      rc1 = resource_variable_ops.ResourceVariable(3.0)
+      cc0 = constant_op.constant(5.0)
+      cc1 = constant_op.constant(7.0)
+    with ops.device('/device:GPU:0'):
+      rg0 = resource_variable_ops.ResourceVariable(11.0)
+      rg1 = resource_variable_ops.ResourceVariable(13.0)
+      cg0 = constant_op.constant(17.0)
+      cg1 = constant_op.constant(19.0)
+
+    # Make sure tensors are on expected devices.
+    for tensor in [cc0, cc1]:
+      self.assertRegexpMatches(tensor.backing_device, 'CPU:0')
+    for tensor in [cg0, cg1]:
+      self.assertRegexpMatches(tensor.backing_device, 'GPU:0')
+
+    @function.defun
+    def func(rc0, cc0, cg0, rc1, cg1, rg0, rg1, cc1):
+      with ops.device('/device:CPU:0'):
+        m1 = rc0 * cg0
+      with ops.device('/device:GPU:0'):
+        m2 = rg0 * cc0
+
+      with ops.device('/device:CPU:0'):
+        r1 = 1000.0 * m2 + rc1 * cg1
+      with ops.device('/device:GPU:0'):
+        r2 = 1000.0 * m1 + rg1 * cc1
+
+      return r1, r2, m2, m1
+
+    r1, r2, m2, m1 = func(rc0, cc0, cg0, rc1, cg1, rg0, rg1, cc1)
+    self.assertRegexpMatches(m1.backing_device, 'CPU')
+    self.assertRegexpMatches(r1.backing_device, 'CPU')
+    self.assertRegexpMatches(m2.backing_device, 'GPU')
+    self.assertRegexpMatches(r2.backing_device, 'GPU')
+    self.assertEqual(m1.numpy(), 34.0)
+    self.assertEqual(r1.numpy(), 55000.0 + 3.0 * 19.0)
+    self.assertEqual(m2.numpy(), 55.0)
+    self.assertEqual(r2.numpy(), 34000.0 + 13.0 * 7.0)
+
+  def testArgumentPrunning(self):
+    """Tests functions taking unnecessary arguments."""
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    with ops.device('/device:CPU:0'):
+      c1 = constant_op.constant(5.0)
+      c2 = constant_op.constant(7.0)
+
+    with ops.device('/device:GPU:0'):
+      g1 = constant_op.constant(11.0)
+      g2 = constant_op.constant(13.0)
+      g3 = constant_op.constant(17.0)
+
+    @function.defun
+    def func(g1, g2, c1, g3, c2):  # pylint: disable=unused-argument
+      # arguments g1 and g2 are unused and can be pruned by grappler.
+      return c1 * g3 * c2
+
+    result = func(g1, g2, c1, g3, c2)
+    self.assertEqual(result.numpy(), 5.0 * 7.0 * 17.0)
 
 if __name__ == '__main__':
   ops.enable_eager_execution(

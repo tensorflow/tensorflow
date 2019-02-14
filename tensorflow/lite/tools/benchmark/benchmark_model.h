@@ -150,7 +150,8 @@ class BenchmarkModel {
   bool ParseFlags(int argc, char** argv);
   virtual std::vector<Flag> GetFlags();
   virtual uint64_t ComputeInputBytes() = 0;
-  virtual tensorflow::Stat<int64_t> Run(int num_times, RunType run_type);
+  virtual tensorflow::Stat<int64_t> Run(int min_num_times, float min_secs,
+                                        RunType run_type);
   virtual void PrepareInputsAndOutputs();
   virtual void RunImpl() = 0;
   BenchmarkParams params_;

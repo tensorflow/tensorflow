@@ -63,6 +63,7 @@ TEST(IntArray, CanCompileStructs) {
   TfLiteTransposeParams transpose_params;
   TfLiteReducerParams reducer_params;
   TfLiteSplitParams split_params;
+  TfLiteSplitVParams split_v_params;
   TfLiteSqueezeParams squeeze_params;
   TfLiteStridedSliceParams strided_slice_params;
   TfLiteArgMaxParams arg_max_params;

@@ -89,6 +89,7 @@ class CondBuilder {
   const FunctionLibraryDefinition& flib_;
   string name_;
 
+  NodeDebugInfo debug_info_;
   NodeBuilder then_call_builder_;
   NodeBuilder else_call_builder_;
 };
@@ -100,8 +101,11 @@ CondBuilder::CondBuilder(Node* if_op, const string& then_fn_name,
       graph_(graph),
       flib_(flib),
       name_(if_op->name()),
-      then_call_builder_(NewName("then"), then_fn_name, graph->op_registry()),
-      else_call_builder_(NewName("else"), else_fn_name, graph->op_registry()) {
+      debug_info_(*if_op_),
+      then_call_builder_(NewName("then"), then_fn_name, graph->op_registry(),
+                         &debug_info_),
+      else_call_builder_(NewName("else"), else_fn_name, graph->op_registry(),
+                         &debug_info_) {
   TF_CHECK_OK(if_op_->input_tensor(0, &pred_));
   then_call_builder_.Device(if_op_->requested_device());
   else_call_builder_.Device(if_op_->requested_device());
@@ -111,23 +115,23 @@ Status CondBuilder::CreatePivotNodes() {
   // Construct the basic cond body (consisting of feeding in the predicate to
   // create pivot nodes).
   Node* switch_pred;
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(NewName("switch_pred"), "Switch", graph_->op_registry())
-          .Input(NodeOut(pred_))
-          .Input(NodeOut(pred_))
-          .Device(if_op_->requested_device())
-          .Finalize(graph_, &switch_pred));
+  TF_RETURN_IF_ERROR(NodeBuilder(NewName("switch_pred"), "Switch",
+                                 graph_->op_registry(), &debug_info_)
+                         .Input(NodeOut(pred_))
+                         .Input(NodeOut(pred_))
+                         .Device(if_op_->requested_device())
+                         .Finalize(graph_, &switch_pred));
   control_predecessor_ = switch_pred;
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(NewName("pivot_f"), "Identity", graph_->op_registry())
-          .Input(switch_pred, kElseBranch)
-          .Device(if_op_->requested_device())
-          .Finalize(graph_, &pivot_f_));
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(NewName("pivot_t"), "Identity", graph_->op_registry())
-          .Input(switch_pred, kThenBranch)
-          .Device(if_op_->requested_device())
-          .Finalize(graph_, &pivot_t_));
+  TF_RETURN_IF_ERROR(NodeBuilder(NewName("pivot_f"), "Identity",
+                                 graph_->op_registry(), &debug_info_)
+                         .Input(switch_pred, kElseBranch)
+                         .Device(if_op_->requested_device())
+                         .Finalize(graph_, &pivot_f_));
+  TF_RETURN_IF_ERROR(NodeBuilder(NewName("pivot_t"), "Identity",
+                                 graph_->op_registry(), &debug_info_)
+                         .Input(switch_pred, kThenBranch)
+                         .Device(if_op_->requested_device())
+                         .Finalize(graph_, &pivot_t_));
   return Status::OK();
 }
 
@@ -137,12 +141,13 @@ string CondBuilder::NewName(const string& infix) {
 
 Status CondBuilder::AddInput(Node* src, int src_output) {
   Node* input;
-  TF_RETURN_IF_ERROR(
-      NodeBuilder(NewName(src->name()), "Switch", graph_->op_registry())
-          .Input(src, src_output)
-          .Input(pred_)
-          .Device(if_op_->requested_device())
-          .Finalize(graph_, &input));
+  NodeDebugInfo debug_info(*src);
+  TF_RETURN_IF_ERROR(NodeBuilder(NewName(src->name()), "Switch",
+                                 graph_->op_registry(), &debug_info)
+                         .Input(src, src_output)
+                         .Input(pred_)
+                         .Device(if_op_->requested_device())
+                         .Finalize(graph_, &input));
   then_call_builder_.Input(input, kThenBranch);
   else_call_builder_.Input(input, kElseBranch);
   return Status::OK();
@@ -178,7 +183,8 @@ Status CondBuilder::AddOutputs() {
   outputs_.resize(merges.size());
   for (int i = 0; i < then_call_node_->num_outputs(); ++i) {
     TF_RETURN_IF_ERROR(
-        NodeBuilder(graph_->NewName("merge"), "Merge", graph_->op_registry())
+        NodeBuilder(graph_->NewName("merge"), "Merge", graph_->op_registry(),
+                    &debug_info_)
             .Input({NodeOut(then_call_node_, i), NodeOut(else_call_node_, i)})
             .Device(if_op_->requested_device())
             .Finalize(graph_, &merges[i]));

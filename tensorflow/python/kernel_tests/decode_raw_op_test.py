@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
@@ -28,6 +29,7 @@ from tensorflow.python.platform import test
 
 class DecodeRawOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testToUint8(self):
     with self.cached_session():
       in_bytes = array_ops.placeholder(dtypes.string, shape=[2])
@@ -46,6 +48,7 @@ class DecodeRawOpTest(test.TestCase):
           "element 1 has size 5 != 6"):
         decode.eval(feed_dict={in_bytes: ["short", "longer"]})
 
+  @test_util.run_deprecated_v1
   def testToInt16(self):
     with self.cached_session():
       in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
@@ -61,6 +64,7 @@ class DecodeRawOpTest(test.TestCase):
           "size of int16"):
         decode.eval(feed_dict={in_bytes: ["123", "456"]})
 
+  @test_util.run_deprecated_v1
   def testEndianness(self):
     with self.cached_session():
       in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
@@ -73,6 +77,7 @@ class DecodeRawOpTest(test.TestCase):
       result = decode_be.eval(feed_dict={in_bytes: ["\x01\x02\x03\x04"]})
       self.assertAllEqual([[0x01020304]], result)
 
+  @test_util.run_deprecated_v1
   def testToFloat16(self):
     with self.cached_session():
       in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
@@ -84,6 +89,7 @@ class DecodeRawOpTest(test.TestCase):
 
       self.assertAllEqual(expected_result, result)
 
+  @test_util.run_deprecated_v1
   def testEmptyStringInput(self):
     with self.cached_session():
       in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
@@ -93,6 +99,7 @@ class DecodeRawOpTest(test.TestCase):
         result = decode.eval(feed_dict={in_bytes: [""] * num_inputs})
         self.assertEqual((num_inputs, 0), result.shape)
 
+  @test_util.run_deprecated_v1
   def testToUInt16(self):
     with self.cached_session():
       in_bytes = array_ops.placeholder(dtypes.string, shape=[None])

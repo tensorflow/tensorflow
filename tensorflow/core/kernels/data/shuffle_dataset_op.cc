@@ -18,17 +18,19 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
 const int64 kLogIntervalMicros = 10 * 1000000;  // 10 seconds.
+
+const int64 kMaxEpochsInBuffer = 3;
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
@@ -61,6 +63,8 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
+    int64 Cardinality() const override { return input_->Cardinality(); }
+
    protected:
     template <class T>
     class Iterator : public DatasetIterator<T> {
@@ -68,15 +72,16 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
       explicit Iterator(const typename DatasetIterator<T>::Params& params,
                         int64 seed, int64 seed2)
           : DatasetIterator<T>(params),
-            input_impl_(nullptr),
             seed_(seed),
             seed2_(seed2),
+            input_impl_(nullptr),
             epoch_(0),
             num_elements_(0),
             parent_generator_(seed, seed2),
             generator_(&parent_generator_) {
-        buffer_.reset(new std::vector<Tensor>[params.dataset->buffer_size_]);
-        slices_.push_back(MakeUnique<Slice>(0, 0));
+        buffer_ = absl::make_unique<std::vector<Tensor>[]>(
+            params.dataset->buffer_size_);
+        slices_.push_back(absl::make_unique<Slice>(0, 0));
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -119,17 +124,26 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
             }
             epoch_++;
             int64 n = slices_.back()->end;
-            slices_.push_back(MakeUnique<Slice>(n, n));
+            slices_.push_back(absl::make_unique<Slice>(n, n));
             TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
                 ctx, this->prefix(), &input_impl_));
           }
           if (!end_of_input_sequence) {
+            this->RecordBufferEnqueue(ctx, input_element);
             buffer_[slices_.back()->end % this->dataset()->buffer_size_] =
                 std::move(input_element);
             num_elements_++;
             slices_.back()->end++;
           } else {
             input_impl_.reset();
+          }
+          if (slices_.size() > kMaxEpochsInBuffer) {
+            // When the elements stored in `buffer_` span more than
+            // `kMaxEpochsInBuffer` epochs, we do not fill the buffer further to
+            // conserve memory. This means that the upper bound on the size of
+            // `buffer_` is `kMaxEpochsInBuffer * cardinality(input_dataset) +
+            // 1`.
+            break;
           }
         }
         if (num_log_entries > 0) {
@@ -151,6 +165,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
           int64 index =
               (slices_.front()->start + offset) % this->dataset()->buffer_size_;
           *out_tensors = std::move(buffer_[index]);
+          this->RecordBufferDequeue(ctx, *out_tensors);
           std::swap(
               buffer_[index],
               buffer_[slices_.front()->start % this->dataset()->buffer_size_]);
@@ -168,6 +183,14 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
           IteratorContext* ctx, model::Node::Args args) const override {
         return model::MakeKnownRatioNode(std::move(args),
                                          /*ratio=*/1);
+      }
+
+      void ResetRngs() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        // Reset the generators based on the current iterator seeds.
+        parent_generator_ = random::PhiloxRandom(seed_, seed2_);
+        generator_ = random::SingleSampleAdapter<random::PhiloxRandom>(
+            &parent_generator_);
+        generator_.Skip(num_random_samples_);
       }
 
       Status SaveInternal(IteratorStateWriter* writer) override {
@@ -250,7 +273,8 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
               reader->ReadScalar(this->full_name("slices_size"), &temp));
           slices_size = static_cast<size_t>(temp);
         }
-        buffer_.reset(new std::vector<Tensor>[this->dataset()->buffer_size_]);
+        buffer_ = absl::make_unique<std::vector<Tensor>[]>(
+            this->dataset()->buffer_size_);
         for (size_t i = 0; i < slices_size; ++i) {
           int64 start;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
@@ -258,7 +282,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
           int64 end;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
               this->full_name(strings::StrCat("slices_end_", i)), &end));
-          slices_.push_back(MakeUnique<Slice>(start, end));
+          slices_.push_back(absl::make_unique<Slice>(start, end));
           for (size_t j = start; j < end; ++j) {
             size_t index = j % this->dataset()->buffer_size_;
             int64 list_size;
@@ -276,6 +300,10 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
 
         return Status::OK();
       }
+
+      mutex mu_;
+      int64 seed_ GUARDED_BY(mu_);
+      int64 seed2_ GUARDED_BY(mu_);
 
      private:
       // Used to represent slices of `buffer_` that belong to different epochs.
@@ -297,19 +325,8 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
         return out;
       }
 
-      void ResetRngs() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        // Reset the generators based on the current iterator seeds.
-        parent_generator_ = random::PhiloxRandom(seed_, seed2_);
-        generator_ = random::SingleSampleAdapter<random::PhiloxRandom>(
-            &parent_generator_);
-        generator_.Skip(num_random_samples_);
-      }
-
-      mutex mu_;
       std::unique_ptr<std::vector<Tensor>[]> buffer_ GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-      int64 seed_ GUARDED_BY(mu_);
-      int64 seed2_ GUARDED_BY(mu_);
       int64 epoch_ GUARDED_BY(mu_);
       int64 num_elements_ GUARDED_BY(mu_);
       std::deque<std::unique_ptr<Slice>> slices_ GUARDED_BY(mu_);
@@ -366,7 +383,7 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
   }
 
  private:
-  // A dataset that uses a pseduorandom sequence of seeds for the iterators
+  // A dataset that uses a pseudorandom sequence of seeds for the iterators
   // created from it. Used when `reshuffle_each_iteration` is true.
   class ReshufflingDataset : public ShuffleDatasetBase {
    public:
@@ -374,36 +391,114 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
                        int64 buffer_size, int64 seed, int64 seed2, int64 count)
         : ShuffleDatasetBase(ctx, input, buffer_size, count),
           seed_(seed),
-          seed2_(seed2),
-          parent_generator_(seed, seed2),
-          generator_(&parent_generator_) {}
+          seed2_(seed2) {}
 
     string DebugString() const override {
-      mutex_lock l(mu_);
       return strings::StrCat("ShuffleDatasetOp(", buffer_size_, ", ", seed_,
                              ", ", seed2_, ")::ReshufflingDataset");
     }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      int64 iterator_seed;
-      int64 iterator_seed2;
-      {
-        mutex_lock l(mu_);
-        iterator_seed = Random();
-        iterator_seed2 = Random();
-      }
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Shuffle")},
-                       iterator_seed, iterator_seed2));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Shuffle")}, seed_,
+          seed2_);
     }
 
    protected:
+    class RandomSeedGenerator : public ResourceBase {
+     public:
+      RandomSeedGenerator(int64 seed, int64 seed2)
+          : seed_(seed),
+            seed2_(seed2),
+            parent_generator_(seed, seed2),
+            generator_(&parent_generator_) {}
+
+      string DebugString() const override {
+        return "ReshufflingDataset::RandomSeedGenerator";
+      }
+
+      void GenerateRandomSeeds(int64* seed1, int64* seed2) {
+        mutex_lock l(mu_);
+        num_random_samples_++;
+        *seed1 = generator_();
+        num_random_samples_++;
+        *seed2 = generator_();
+      }
+
+      int64 num_random_samples() {
+        tf_shared_lock l(mu_);
+        return num_random_samples_;
+      }
+
+      void set_num_random_samples(int64 num_random_samples) {
+        mutex_lock l(mu_);
+        num_random_samples_ = num_random_samples;
+      }
+
+      void Reset() {
+        mutex_lock l(mu_);
+        // Reset the generators based on the current seeds.
+        parent_generator_ = random::PhiloxRandom(seed_, seed2_);
+        generator_ = random::SingleSampleAdapter<random::PhiloxRandom>(
+            &parent_generator_);
+        generator_.Skip(num_random_samples_);
+      }
+
+     private:
+      const int64 seed_;
+      const int64 seed2_;
+      mutex mu_;
+      random::PhiloxRandom parent_generator_ GUARDED_BY(mu_);
+      random::SingleSampleAdapter<random::PhiloxRandom> generator_
+          GUARDED_BY(mu_);
+      int64 num_random_samples_ GUARDED_BY(mu_) = 0;
+    };
+
     class Iterator : public ShuffleDatasetBase::Iterator<ReshufflingDataset> {
      public:
       explicit Iterator(const Params& params, int64 seed, int64 seed2)
           : ShuffleDatasetBase::Iterator<ReshufflingDataset>(params, seed,
                                                              seed2) {}
+
+      ~Iterator() override { seed_generator_->Unref(); }
+
+      Status Initialize(IteratorContext* ctx) override {
+        // Firstly, lookup or create a seed generator from the IteratorResource
+        // resource_mgr.
+        ResourceMgr* mgr = ctx->resource_mgr();
+        RandomSeedGenerator* seed_generator;
+        const string name = strings::StrCat(prefix(), "::", dataset()->name(),
+                                            "::RandomSeedGenerator");
+
+        int64 dataset_seed, dataset_seed2;
+        {
+          tf_shared_lock l(mu_);
+          // Ideally we'd like to hold this lock in the LookupOrCreate method,
+          // but that trips up our Deadlock detection code.
+          dataset_seed = seed_;
+          dataset_seed2 = seed2_;
+        }
+        TF_RETURN_IF_ERROR(mgr->LookupOrCreate<RandomSeedGenerator>(
+            "tf_data", name, &seed_generator,
+            [dataset_seed,
+             dataset_seed2](RandomSeedGenerator** seed_generator) {
+              // On the first iterator creation, use the original seeds from the
+              // dataset to seed a `RandomSeedGenerator` that will provide seeds
+              // for subsequent repetitions of the same dataset.
+              *seed_generator =
+                  new RandomSeedGenerator(dataset_seed, dataset_seed2);
+              return Status::OK();
+            }));
+        // Now use the seed generator to update the base class Iterator seeds
+        // and random number generator with generated seeds for the current
+        // repetition.
+        mutex_lock l(mu_);
+        seed_generator->GenerateRandomSeeds(&seed_, &seed2_);
+        ResetRngs();
+        seed_generator_ = seed_generator;
+        return Status::OK();
+      }
 
      protected:
       std::shared_ptr<model::Node> CreateNode(
@@ -413,12 +508,10 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
       }
 
       Status SaveInternal(IteratorStateWriter* writer) override {
-        mutex_lock l(dataset()->mu_);
-
         // Save RNG state of Dataset.
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name("ds_num_random_samples"),
-                                dataset()->num_random_samples_));
+                                seed_generator_->num_random_samples()));
 
         // Save the Iterator.
         return ShuffleDatasetBase::Iterator<ReshufflingDataset>::SaveInternal(
@@ -427,24 +520,25 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
-        mutex_lock l(dataset()->mu_);
-
         // Restore RNG state of Dataset.
-        TF_RETURN_IF_ERROR(
-            reader->ReadScalar(full_name("ds_num_random_samples"),
-                               &dataset()->num_random_samples_));
-        dataset()->ResetRngs();
+        int64 num_random_samples;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(
+            full_name("ds_num_random_samples"), &num_random_samples));
+        seed_generator_->set_num_random_samples(num_random_samples);
+        seed_generator_->Reset();
 
         // Restore the Iterator.
         return ShuffleDatasetBase::Iterator<
             ReshufflingDataset>::RestoreInternal(ctx, reader);
       }
+
+     private:
+      RandomSeedGenerator* seed_generator_;
     };
 
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      mutex_lock l(mu_);
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* buffer_size = nullptr;
@@ -465,28 +559,8 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
     }
 
    private:
-    random::SingleSampleAdapter<random::PhiloxRandom>::ResultType Random() const
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      num_random_samples_++;
-      auto out = generator_();
-      return out;
-    }
-
-    void ResetRngs() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      // Reset the generators based on the current seeds.
-      parent_generator_ = random::PhiloxRandom(seed_, seed2_);
-      generator_ =
-          random::SingleSampleAdapter<random::PhiloxRandom>(&parent_generator_);
-      generator_.Skip(num_random_samples_);
-    }
-
-    mutable int64 seed_ GUARDED_BY(mu_);
-    mutable int64 seed2_ GUARDED_BY(mu_);
-    mutable mutex mu_;
-    mutable random::PhiloxRandom parent_generator_ GUARDED_BY(mu_);
-    mutable random::SingleSampleAdapter<random::PhiloxRandom> generator_
-        GUARDED_BY(mu_);
-    mutable int64 num_random_samples_ GUARDED_BY(mu_) = 0;
+    const int64 seed_;
+    const int64 seed2_;
   };
 
   // A dataset that uses the same fixed seed for all iterators created from it.
@@ -506,9 +580,11 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new ShuffleDatasetBase::Iterator<ShuffleDatasetBase>(
-              {this, strings::StrCat(prefix, "::Shuffle")}, seed_, seed2_));
+      return absl::make_unique<
+          ShuffleDatasetBase::Iterator<ShuffleDatasetBase>>(
+          ShuffleDatasetBase::Iterator<ShuffleDatasetBase>::Params{
+              this, strings::StrCat(prefix, "::Shuffle")},
+          seed_, seed2_);
     }
 
    protected:
@@ -591,10 +667,11 @@ class ShuffleAndRepeatDatasetOp : public ShuffleDatasetOpBase {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new ShuffleDatasetBase::Iterator<ShuffleDatasetBase>(
-              {this, strings::StrCat(prefix, "::ShuffleAndRepeat")}, seed_,
-              seed2_));
+      return absl::make_unique<
+          ShuffleDatasetBase::Iterator<ShuffleDatasetBase>>(
+          ShuffleDatasetBase::Iterator<ShuffleDatasetBase>::Params{
+              this, strings::StrCat(prefix, "::ShuffleAndRepeat")},
+          seed_, seed2_);
     }
 
    protected:

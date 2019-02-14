@@ -29,6 +29,9 @@ tf_export(
         "saved_model.ASSETS_DIRECTORY", "saved_model.constants.ASSETS_DIRECTORY"
     ]).export_constant(__name__, "ASSETS_DIRECTORY")
 
+# Subdirectory name containing unmanaged files from higher-level APIs.
+EXTRA_ASSETS_DIRECTORY = "assets.extra"
+
 # CollectionDef key containing SavedModel assets.
 ASSETS_KEY = "saved_model_assets"
 tf_export(
@@ -48,13 +51,12 @@ tf_export(
 # CollectionDef key for the SavedModel main op.
 MAIN_OP_KEY = "saved_model_main_op"
 tf_export(
-    "saved_model.MAIN_OP_KEY",
     v1=["saved_model.MAIN_OP_KEY",
         "saved_model.constants.MAIN_OP_KEY"]).export_constant(
             __name__, "MAIN_OP_KEY")
 
 # CollectionDef key for the SavedModel train op.
-# Not exported while export_all_saved_models is in contrib.
+# Not exported while export_all_saved_models is experimental.
 TRAIN_OP_KEY = "saved_model_train_op"
 
 # Schema version for SavedModel.
@@ -105,3 +107,8 @@ tf_export(
         "saved_model.VARIABLES_FILENAME",
         "saved_model.constants.VARIABLES_FILENAME"
     ]).export_constant(__name__, "VARIABLES_FILENAME")
+
+# The initialization and train ops for a MetaGraph are stored in the
+# signature def map. The ops are added to the map with the following keys.
+INIT_OP_SIGNATURE_KEY = "__saved_model_init_op"
+TRAIN_OP_SIGNATURE_KEY = "__saved_model_train_op"

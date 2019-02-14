@@ -19,6 +19,7 @@ limitations under the License.
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
+#include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -1499,22 +1500,26 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
     int out_x_loop_end_unclampled = 0;
     if (kAllowStrided) {
       if (stride == 2) {
-        out_x_loop_start_unclampled = (pad_width - filter_x + 1) / 2;
+        out_x_loop_start_unclampled =
+            (pad_width - dilation_factor * filter_x + 1) / 2;
         out_x_loop_end_unclampled =
-            (pad_width + input_width - filter_x + 1) / 2;
+            (pad_width + input_width - dilation_factor * filter_x + 1) / 2;
       } else if (stride == 4) {
-        out_x_loop_start_unclampled = (pad_width - filter_x + 3) / 4;
+        out_x_loop_start_unclampled =
+            (pad_width - dilation_factor * filter_x + 3) / 4;
         out_x_loop_end_unclampled =
-            (pad_width + input_width - filter_x + 3) / 4;
+            (pad_width + input_width - dilation_factor * filter_x + 3) / 4;
       } else {
         out_x_loop_start_unclampled =
-            (pad_width - filter_x + stride - 1) / stride;
-        out_x_loop_end_unclampled =
-            (pad_width + input_width - filter_x + stride - 1) / stride;
+            (pad_width - dilation_factor * filter_x + stride - 1) / stride;
+        out_x_loop_end_unclampled = (pad_width + input_width -
+                                     dilation_factor * filter_x + stride - 1) /
+                                    stride;
       }
     } else {
-      out_x_loop_start_unclampled = pad_width - filter_x;
-      out_x_loop_end_unclampled = pad_width + input_width - filter_x;
+      out_x_loop_start_unclampled = pad_width - dilation_factor * filter_x;
+      out_x_loop_end_unclampled =
+          pad_width + input_width - dilation_factor * filter_x;
     }
     // The kernel will have to iterate on the segment of the
     // output row that starts at out_x_loop_start and out_x_loop_end.
@@ -1525,7 +1530,8 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
 
     int32* acc_buffer_ptr =
         acc_buffer + (out_x_loop_start - out_x_buffer_start) * output_depth;
-    const int in_x_origin = (out_x_loop_start * stride) - pad_width + filter_x;
+    const int in_x_origin =
+        (out_x_loop_start * stride) - pad_width + dilation_factor * filter_x;
     const uint8* input_ptr = input_data + in_x_origin * input_depth;
     const int num_output_pixels = out_x_loop_end - out_x_loop_start;
     QuantizedDepthwiseConvKernel<
@@ -1703,8 +1709,7 @@ inline void DepthwiseConvGeneral(
                                         FIXED_DEPTH_MULTIPLIER)           \
   if (!row_accum_func && (stride_width == 1 || ALLOW_STRIDED) &&          \
       (input_depth == FIXED_INPUT_DEPTH || FIXED_INPUT_DEPTH == 0) &&     \
-      depth_multiplier == FIXED_DEPTH_MULTIPLIER &&                       \
-      dilation_width_factor == 1 && dilation_height_factor == 1) {        \
+      depth_multiplier == FIXED_DEPTH_MULTIPLIER) {                       \
     row_accum_func =                                                      \
         QuantizedDepthwiseConvAccumRow<ALLOW_STRIDED, FIXED_INPUT_DEPTH,  \
                                        FIXED_DEPTH_MULTIPLIER>;           \
@@ -1979,6 +1984,7 @@ inline void DepthwiseConv(
           input_shape, filter_shape, stride_width, stride_height,
           dilation_width_factor, dilation_height_factor, pad_width, pad_height,
           depth_multiplier, output_shape, output_shift)) {
+    gemmlowp::ScopedProfilingLabel specialized_label("DepthwiseConv/8bit/3x3");
     DepthwiseConv3x3Filter(params, input_shape, input_data, filter_shape,
                            filter_data, bias_shape, bias_data, output_shape,
                            output_data);
@@ -1986,6 +1992,8 @@ inline void DepthwiseConv(
   }
 #endif
 
+  gemmlowp::ScopedProfilingLabel specialized_label(
+      "DepthwiseConv/8bit/General");
   DepthwiseConvGeneral(params, input_shape, input_data, filter_shape,
                        filter_data, bias_shape, bias_data, output_shape,
                        output_data);

@@ -32,7 +32,8 @@ class ShuffleAndRepeatFusionTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.range(10).apply(
         optimization.assert_next(["ShuffleAndRepeat"])).shuffle(10).repeat(2)
     options = dataset_ops.Options()
-    options.experimental_shuffle_and_repeat_fusion = True
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.shuffle_and_repeat_fusion = True
     dataset = dataset.with_options(options)
     get_next = self.getNext(dataset)
 

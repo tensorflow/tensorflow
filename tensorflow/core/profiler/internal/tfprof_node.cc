@@ -151,7 +151,7 @@ void ExecStep::AddMemoryStats(const string& dev,
   }
 
   // TODO(xpan): Make this more accurate:
-  // High level: Memory tracking is suspicous and requires large scale
+  // High level: Memory tracking is suspicious and requires large scale
   // clean up.
   // Investigte the memory usage difference between CPU/GPU with OpViewTest.
   //

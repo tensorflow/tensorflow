@@ -28,21 +28,16 @@ PYTHON_LITERALS = {
     'float': float,
 }
 
-DEFAULT_UNCOMPILED_MODULES = set((
-    ('tensorflow',),
-    (utils.__name__,),
 
-    # All of tensorflow's subpackages. Unlike the root tf module, they don't
-    # have well-known names. Not referring to the module directly to avoid
-    # circular imports.
-    (
-        utils.__name__[:-len('.python.autograph.utils')],),
-))
+def internal_module_name(name):
+  full_name = utils.__name__
+  name_start = full_name.find(name)
+  name_end = name_start + len(name) + 1
+  return full_name[:name_end]
 
-NO_SIDE_EFFECT_CONSTRUCTORS = set(('tensorflow',))
 
-# TODO(mdan): Also allow controlling the generated names.
-# TODO(mdan); Consolidate all internal imports into a single __ag module.
+DEFAULT_UNCOMPILED_MODULES = set(((internal_module_name('tensorflow'),),))
+
 COMPILED_IMPORT_STATEMENTS = (
     'from __future__ import print_function',
 )

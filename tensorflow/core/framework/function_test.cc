@@ -505,7 +505,8 @@ TEST(TFunc, IntsOnDeviceArgNotSet) {
 
 TEST(TFunc, IntsOnDeviceArgSet) {
   auto fdef = test::function::XTimesTwoInt32();
-  (*fdef.mutable_attr())["experimental_ints_on_device"].set_b(true);
+  (*fdef.mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr].set_b(
+      true);
   InstantiationResult result;
   TF_ASSERT_OK(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result));
   EXPECT_EQ(5, result.nodes.size());
@@ -1211,6 +1212,17 @@ TEST(FunctionLibraryDefinitionTest, ToProto) {
   TF_EXPECT_OK(lib_def1.LookUpOpDef("WXPlusB", &f3));
   TF_EXPECT_OK(lib_def2.LookUpOpDef("WXPlusB", &f4));
   EXPECT_EQ(f3->DebugString(), f4->DebugString());
+}
+
+TEST(FunctionLibraryDefinitionTest, FunctionNames) {
+  FunctionDefLibrary proto;
+  *proto.add_function() = test::function::XTimesTwo();
+  *proto.add_function() = test::function::WXPlusB();
+  const FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
+
+  const std::vector<string> function_names = lib_def.ListFunctionNames();
+  const std::vector<string> expected = {"XTimesTwo", "WXPlusB"};
+  EXPECT_EQ(function_names, expected);
 }
 
 TEST(FunctionLibraryDefinitionTest, GetAttr_FuncNoAttr) {

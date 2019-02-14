@@ -30,9 +30,8 @@ import sys
 import warnings
 
 import numpy as np
-
 from six import integer_types
-from tensorflow.contrib.saved_model.python.saved_model import reader
+
 from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
@@ -56,7 +55,7 @@ def _show_tag_sets(saved_model_dir):
   Args:
     saved_model_dir: Directory containing the SavedModel to inspect.
   """
-  tag_sets = reader.get_saved_model_tag_sets(saved_model_dir)
+  tag_sets = saved_model_utils.get_saved_model_tag_sets(saved_model_dir)
   print('The given SavedModel contains the following tag-sets:')
   for tag_set in sorted(tag_sets):
     print(', '.join(sorted(tag_set)))
@@ -190,7 +189,7 @@ def _show_all(saved_model_dir):
   Args:
     saved_model_dir: Directory containing the SavedModel to inspect.
   """
-  tag_sets = reader.get_saved_model_tag_sets(saved_model_dir)
+  tag_sets = saved_model_utils.get_saved_model_tag_sets(saved_model_dir)
   for tag_set in sorted(tag_sets):
     print("\nMetaGraphDef with tag-set: '%s' "
           "contains the following SignatureDefs:" % ', '.join(tag_set))
@@ -654,9 +653,31 @@ def scan(args):
     scan_meta_graph_def(
         saved_model_utils.get_meta_graph_def(args.dir, args.tag_set))
   else:
-    saved_model = reader.read_saved_model(args.dir)
+    saved_model = saved_model_utils.read_saved_model(args.dir)
     for meta_graph_def in saved_model.meta_graphs:
       scan_meta_graph_def(meta_graph_def)
+
+
+def convert_with_tensorrt(args):
+  """Function triggered by 'convert tensorrt' command.
+
+  Args:
+    args: A namespace parsed from command line.
+  """
+  # Import here instead of at top, because this will crash if TensorRT is
+  # not installed
+  from tensorflow.contrib import tensorrt  # pylint: disable=g-import-not-at-top
+  tensorrt.create_inference_graph(
+      None,
+      None,
+      max_batch_size=args.max_batch_size,
+      max_workspace_size_bytes=args.max_workspace_size_bytes,
+      precision_mode=args.precision_mode,
+      minimum_segment_size=args.minimum_segment_size,
+      is_dynamic_op=args.is_dynamic_op,
+      input_saved_model_dir=args.dir,
+      input_saved_model_tags=args.tag_set.split(','),
+      output_saved_model_dir=args.output_dir)
 
 
 def create_parser():
@@ -811,6 +832,71 @@ def create_parser():
       type=str,
       help='tag-set of graph in SavedModel to scan, separated by \',\'')
   parser_scan.set_defaults(func=scan)
+
+  # convert command
+  convert_msg = ('Usage example:\n'
+                 'To convert the SavedModel to one that have TensorRT ops:\n'
+                 '$saved_model_cli convert \\\n'
+                 '   --dir /tmp/saved_model \\\n'
+                 '   --tag_set serve \\\n'
+                 '   --output_dir /tmp/saved_model_trt \\\n'
+                 '   tensorrt \n')
+  parser_convert = subparsers.add_parser(
+      'convert',
+      description=convert_msg,
+      formatter_class=argparse.RawTextHelpFormatter)
+  parser_convert.add_argument(
+      '--dir',
+      type=str,
+      required=True,
+      help='directory containing the SavedModel to convert')
+  parser_convert.add_argument(
+      '--output_dir',
+      type=str,
+      required=True,
+      help='output directory for the converted SavedModel')
+  parser_convert.add_argument(
+      '--tag_set',
+      type=str,
+      required=True,
+      help='tag-set of graph in SavedModel to convert, separated by \',\'')
+  convert_subparsers = parser_convert.add_subparsers(
+      title='conversion methods',
+      description='valid conversion methods',
+      help='the conversion to run with the SavedModel')
+  parser_convert_with_tensorrt = convert_subparsers.add_parser(
+      'tensorrt',
+      description='Convert the SavedModel with Tensorflow-TensorRT integration',
+      formatter_class=argparse.RawTextHelpFormatter)
+  parser_convert_with_tensorrt.add_argument(
+      '--max_batch_size',
+      type=int,
+      default=1,
+      help='max size for the input batch')
+  parser_convert_with_tensorrt.add_argument(
+      '--max_workspace_size_bytes',
+      type=int,
+      default=2 << 20,
+      help=('the maximum GPU temporary memory which the TRT engine can use at '
+            'execution time'))
+  parser_convert_with_tensorrt.add_argument(
+      '--precision_mode',
+      type=str,
+      default='FP32',
+      help='one of FP32, FP16 and INT8')
+  parser_convert_with_tensorrt.add_argument(
+      '--minimum_segment_size',
+      type=int,
+      default=3,
+      help=('the minimum number of nodes required for a subgraph to be replaced'
+            'in a TensorRT node'))
+  parser_convert_with_tensorrt.add_argument(
+      '--is_dynamic_op',
+      type=bool,
+      default=False,
+      help=('whether to generate dynamic TRT ops which will build the TRT '
+            'network and engine at run time'))
+  parser_convert_with_tensorrt.set_defaults(func=convert_with_tensorrt)
 
   return parser
 

@@ -33,6 +33,14 @@ tf_module {
     argspec: "args=[\'bytes_or_text\', \'encoding\'], varargs=None, keywords=None, defaults=[\'utf-8\'], "
   }
   member_method {
+    name: "dimension_at_index"
+    argspec: "args=[\'shape\', \'index\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "dimension_value"
+    argspec: "args=[\'dimension\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "forward_compatibility_horizon"
     argspec: "args=[\'year\', \'month\', \'day\'], varargs=None, keywords=None, defaults=None"
   }

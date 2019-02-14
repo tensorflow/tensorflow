@@ -22,13 +22,13 @@ from absl.testing import parameterized
 
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.python.distribute import cross_device_utils
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training import device_util
 
 
 class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
@@ -103,7 +103,8 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
         constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
     t1 = math_ops._as_indexed_slices(
         constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
-    per_replica = value_lib.PerReplica({"/gpu:0": t0, "/cpu:0": t1})
+    device_map = value_lib.ReplicaDeviceMap(("/gpu:0", "/cpu:0"))
+    per_replica = value_lib.PerReplica(device_map, (t0, t1))
     self.assertTrue(cross_device_utils.contains_indexed_slices(per_replica))
 
   @combinations.generate(combinations.combine(

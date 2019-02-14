@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import session_ops
@@ -30,6 +31,7 @@ from tensorflow.python.platform import test
 
 class SessionOpsTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testHandleBasic(self):
     with self.cached_session() as sess:
       # Return a handle.
@@ -44,6 +46,7 @@ class SessionOpsTest(test.TestCase):
       y = math_ops.multiply(x, 10)
       self.assertEqual(500, sess.run(y, feed_dict={f: h.handle}))
 
+  @test_util.run_deprecated_v1
   def testHandleEval(self):
     with self.cached_session() as sess:
       # Return a handle.
@@ -56,6 +59,7 @@ class SessionOpsTest(test.TestCase):
       # Get the tensor from its handle.
       self.assertEqual(50, h.eval())
 
+  @test_util.run_deprecated_v1
   def testHandleAndValue(self):
     with self.cached_session() as sess:
       # Return a handle and a value.
@@ -64,11 +68,12 @@ class SessionOpsTest(test.TestCase):
       c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
       v = math_ops.multiply(a, c)
-      h, v = sess.run([h, v])
+      h, v = self.evaluate([h, v])
 
       self.assertEqual(50, h.eval())
       self.assertEqual(500, v)
 
+  @test_util.run_deprecated_v1
   def testHandleCond(self):
     with self.cached_session() as sess:
       # Return a handle and a value
@@ -77,7 +82,7 @@ class SessionOpsTest(test.TestCase):
       p = math_ops.less(a, b)
       c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
-      p, h = sess.run([p, h])
+      p, h = self.evaluate([p, h])
 
       # Run by feeding a tensor handle.
       f, x = session_ops.get_session_tensor(h.handle, dtypes.int32)
@@ -89,6 +94,7 @@ class SessionOpsTest(test.TestCase):
 
       self.assertEqual(5000, result)
 
+  @test_util.run_deprecated_v1
   def testHandleForLoop(self):
     with self.cached_session() as sess:
       # Initialize a handle.
@@ -106,6 +112,7 @@ class SessionOpsTest(test.TestCase):
 
       self.assertEqual(100, h.eval())
 
+  @test_util.run_deprecated_v1
   def testHandleWhileLoop(self):
     with self.cached_session() as sess:
       # Initialize a handle.
@@ -126,6 +133,7 @@ class SessionOpsTest(test.TestCase):
 
       self.assertEqual(101, h.eval())
 
+  @test_util.run_deprecated_v1
   def testHandleMover(self):
     with self.cached_session() as sess:
       # Return a handle.
@@ -147,6 +155,7 @@ class SessionOpsTest(test.TestCase):
         h = self.evaluate(h)
         self.assertEqual(100, sess.run(y, feed_dict={f: h.handle}))
 
+  @test_util.run_deprecated_v1
   def testHandleDelete(self):
     with self.cached_session() as sess:
       # Return a handle.
@@ -154,8 +163,9 @@ class SessionOpsTest(test.TestCase):
       b = constant_op.constant(5)
       c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
-      sess.run(h).delete()
+      self.evaluate(h).delete()
 
+  @test_util.run_deprecated_v1
   def testHandleDeleteRaw(self):
     with self.cached_session() as sess:
       # Return a handle.
@@ -170,14 +180,15 @@ class SessionOpsTest(test.TestCase):
       f, x = session_ops.delete_session_tensor(raw_h)
       sess.run(x, feed_dict={f: raw_h})
 
+  @test_util.run_deprecated_v1
   def testMultiDevices(self):
     with self.cached_session() as sess:
       with ops.device(test.gpu_device_name()):
         a = constant_op.constant(1.0)
-        a_handle = sess.run(session_ops.get_session_handle(a))
+        a_handle = self.evaluate(session_ops.get_session_handle(a))
       with ops.device("/cpu:0"):
         b = constant_op.constant(2.0)
-        b_handle = sess.run(session_ops.get_session_handle(b))
+        b_handle = self.evaluate(session_ops.get_session_handle(b))
 
       a_p, a_t = session_ops.get_session_tensor(a_handle.handle, dtypes.float32)
       b_p, b_t = session_ops.get_session_tensor(b_handle.handle, dtypes.float32)
@@ -188,13 +199,14 @@ class SessionOpsTest(test.TestCase):
                      b_p: b_handle.handle})
       self.assertEqual(3.0, c_handle.eval())
 
+  @test_util.run_deprecated_v1
   def testHandleGC(self):
     with self.cached_session() as sess:
       # initial values live on CPU
       with ops.device("/cpu:0"):
         one = constant_op.constant(1, dtype=dtypes.float32)
-        one_handle = sess.run(session_ops.get_session_handle(one))
-        x_handle = sess.run(session_ops.get_session_handle(one))
+        one_handle = self.evaluate(session_ops.get_session_handle(one))
+        x_handle = self.evaluate(session_ops.get_session_handle(one))
 
       # addition lives on GPU
       with ops.device(test.gpu_device_name()):
@@ -212,6 +224,7 @@ class SessionOpsTest(test.TestCase):
             feed_dict={add_h1: one_handle.handle,
                        add_h2: x_handle.handle})
 
+  @test_util.run_deprecated_v1
   def testHandlePlacement(self):
     with self.cached_session() as sess:
       a = constant_op.constant(1.0)
@@ -232,6 +245,7 @@ class SessionOpsTest(test.TestCase):
                      b_p: b_handle.handle})
       self.assertEqual(3.0, c_handle.eval())
 
+  @test_util.run_deprecated_v1
   def testFeedOneHandleDirectly(self):
     with self.cached_session() as sess:
       a = constant_op.constant(10.0)
@@ -239,16 +253,17 @@ class SessionOpsTest(test.TestCase):
       c = math_ops.multiply(a, b)
       d = math_ops.multiply(c, c)
 
-      h_c = sess.run(session_ops.get_session_handle(c))
+      h_c = self.evaluate(session_ops.get_session_handle(c))
 
       self.assertAllClose(2500.0, sess.run(d, feed_dict={c: h_c}))
 
+  @test_util.run_deprecated_v1
   def testDirectHandleFeedOverlappingWithFetches(self):
     with self.cached_session() as sess:
       a = constant_op.constant(10.0)
       b = constant_op.constant(5.0)
       c = math_ops.multiply(a, b)
-      h_c = sess.run(session_ops.get_session_handle(c))
+      h_c = self.evaluate(session_ops.get_session_handle(c))
       d = array_ops.identity(c)
 
       c_val = sess.run(c, feed_dict={c: h_c})
@@ -269,6 +284,7 @@ class SessionOpsTest(test.TestCase):
       self.assertAllClose(50.0, c_val)
       self.assertAllClose(50.0, d_val)
 
+  @test_util.run_deprecated_v1
   def testFeedTwoHandlesDirectly(self):
     with self.cached_session() as sess:
       a = constant_op.constant(10.0)
@@ -277,12 +293,13 @@ class SessionOpsTest(test.TestCase):
       d = math_ops.div(a, b)
       e = math_ops.subtract(c, d)
 
-      h_c = sess.run(session_ops.get_session_handle(c))
-      h_d = sess.run(session_ops.get_session_handle(d))
+      h_c = self.evaluate(session_ops.get_session_handle(c))
+      h_d = self.evaluate(session_ops.get_session_handle(d))
 
       self.assertAllClose(48.0, sess.run(e, feed_dict={c: h_c, d: h_d}))
       self.assertAllClose(-48.0, sess.run(e, feed_dict={c: h_d, d: h_c}))
 
+  @test_util.run_deprecated_v1
   def testFeedHandleToVariableDirectly(self):
     with self.cached_session() as sess:
       a = variables.Variable(12.0)
@@ -294,7 +311,7 @@ class SessionOpsTest(test.TestCase):
       self.assertAllClose(12.0, self.evaluate(a))
 
       self.assertAllClose(17.0, sess.run(b, feed_dict={a: h_a_read}))
-      sess.run(inc_a)
+      self.evaluate(inc_a)
       self.assertAllClose(19.0, sess.run(b, feed_dict={a: h_a_read}))
 
 

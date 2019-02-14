@@ -25,6 +25,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
@@ -230,6 +231,7 @@ class ReduceJoinTest(UnicodeTestCase):
         axis=1,
         separator="  ")
 
+  @test_util.run_deprecated_v1
   def testUnknownShape(self):
     input_array = [["a"], ["b"]]
     truth = ["ab"]
@@ -241,6 +243,7 @@ class ReduceJoinTest(UnicodeTestCase):
       self.assertAllEqualUnicode(truth, output_array)
       self.assertAllEqual(truth_shape, reduced.get_shape())
 
+  @test_util.run_deprecated_v1
   def testUnknownIndices(self):
     input_array = [["this", "is", "a", "test"],
                    ["please", "do", "not", "panic"]]
@@ -297,6 +300,7 @@ class ReduceJoinTest(UnicodeTestCase):
       for permutation in itertools.permutations(xrange(num_dims), i):
         self._testMultipleReduceJoin(input_array, axis=permutation)
 
+  @test_util.run_deprecated_v1
   def testInvalidReductionIndices(self):
     with self.cached_session():
       with self.assertRaisesRegexp(ValueError, "Invalid reduction dim"):
@@ -325,6 +329,7 @@ class ReduceJoinTest(UnicodeTestCase):
       output_shape = self.evaluate(output).shape
       self.assertAllEqual([0], output_shape)
 
+  @test_util.run_deprecated_v1
   def testInvalidArgsUnknownShape(self):
     with self.cached_session():
       placeholder = array_ops.placeholder(dtypes.string, name="placeholder")
@@ -335,6 +340,7 @@ class ReduceJoinTest(UnicodeTestCase):
       with self.assertRaisesOpError("Duplicate reduction dimension 1"):
         duplicate_index.eval(feed_dict={placeholder.name: [[""]]})
 
+  @test_util.run_deprecated_v1
   def testInvalidArgsUnknownIndices(self):
     with self.cached_session():
       placeholder = array_ops.placeholder(dtypes.int32, name="placeholder")

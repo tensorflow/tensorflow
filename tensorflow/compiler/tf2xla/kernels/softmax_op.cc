@@ -71,7 +71,7 @@ class SoftmaxOp : public XlaOpKernel {
     auto reduce =
         xla::Reduce(converted, xla::Zero(b, xla_accumulation_type),
                     *ctx->GetOrCreateAdd(accumulation_type), {kClassDim});
-    auto sum = XlaHelpers::ConvertElementType(b, reduce, type);
+    auto sum = XlaHelpers::ConvertElementType(reduce, type);
     auto softmax =
         log_
             // softmax = shifted_logits - log(sum(exp(shifted_logits)))
@@ -111,11 +111,11 @@ std::pair<xla::XlaOp, xla::XlaOp> CrossEntropyWithLogits(
   // sum_{class} (exp(logits - max_logits))
   const DataType accumulation_type = XlaHelpers::SumAccumulationType(type);
   auto converted =
-      XlaHelpers::ConvertElementType(b, exp_shifted_logits, accumulation_type);
+      XlaHelpers::ConvertElementType(exp_shifted_logits, accumulation_type);
   auto reduce =
       xla::Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
                   *ctx->GetOrCreateAdd(accumulation_type), {kClassDim});
-  auto sum_exp = XlaHelpers::ConvertElementType(b, reduce, type);
+  auto sum_exp = XlaHelpers::ConvertElementType(reduce, type);
 
   // log(sum(exp(logits - max_logits)))
   auto log_sum_exp = xla::Log(sum_exp);
@@ -126,11 +126,10 @@ std::pair<xla::XlaOp, xla::XlaOp> CrossEntropyWithLogits(
   // (The subtraction broadcasts along the batch dimension.)
   auto sub = xla::Sub(shifted_logits, log_sum_exp, {kBatchDim});
   auto mul = xla::Mul(xla::Neg(labels), sub);
-  auto sum =
-      xla::Reduce(XlaHelpers::ConvertElementType(b, mul, accumulation_type),
-                  XlaHelpers::Zero(b, accumulation_type),
-                  *ctx->GetOrCreateAdd(accumulation_type), {kClassDim});
-  auto loss = XlaHelpers::ConvertElementType(b, sum, type);
+  auto sum = xla::Reduce(XlaHelpers::ConvertElementType(mul, accumulation_type),
+                         XlaHelpers::Zero(b, accumulation_type),
+                         *ctx->GetOrCreateAdd(accumulation_type), {kClassDim});
+  auto loss = XlaHelpers::ConvertElementType(sum, type);
 
   // backprop: prob - labels, where
   //   prob = exp(logits - max_logits) / sum(exp(logits - max_logits))

@@ -151,20 +151,12 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
 
   // Erase the subgraph that is now replaced by L2Normalization
   model->operators.erase(FindOperator(model, square_op));
-  model->EraseArray(sum_op->inputs[0]);
-  if (sum_op->inputs.size() > 1) {
-    model->EraseArray(sum_op->inputs[1]);
-  }
-  model->operators.erase(FindOperator(model, sum_op));
+  DeleteOpAndArraysIfUnused(model, sum_op);
   if (add_op) {
-    model->EraseArray(add_op->inputs[0]);
-    model->EraseArray(add_op->inputs[1]);
-    model->operators.erase(FindOperator(model, add_op));
+    DeleteOpAndArraysIfUnused(model, add_op);
   }
-  model->EraseArray(sqrt_or_rsqrt_op->inputs[0]);
-  model->operators.erase(FindOperator(model, sqrt_or_rsqrt_op));
-  model->EraseArray(div_or_mul_op->inputs[1]);
-  model->operators.erase(FindOperator(model, div_or_mul_op));
+  DeleteOpAndArraysIfUnused(model, sqrt_or_rsqrt_op);
+  DeleteOpAndArraysIfUnused(model, div_or_mul_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

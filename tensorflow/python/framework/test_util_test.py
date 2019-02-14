@@ -49,6 +49,7 @@ from tensorflow.python.platform import googletest
 
 class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_assert_ops_in_graph(self):
     with self.test_session():
       constant_op.constant(["hello", "taffy"], name="hello")
@@ -60,6 +61,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertRaises(ValueError, test_util.assert_ops_in_graph,
                       {"hello": "Variable"}, ops.get_default_graph())
 
+  @test_util.run_deprecated_v1
   def test_session_functions(self):
     with self.test_session() as sess:
       sess_ref = weakref.ref(sess)
@@ -551,6 +553,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaises(AssertionError):
       self.assertAllLessEqual(x, 95.0)
 
+  @test_util.run_deprecated_v1
   def testAssertAllInRangeWithNonNumericValuesFails(self):
     s1 = constant_op.constant("Hello, ", name="s1")
     c = constant_op.constant([1 + 2j, -3 + 5j], name="c")
@@ -614,6 +617,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaises(AssertionError):
       self.assertAllInSet(x, (42,))
 
+  @test_util.run_deprecated_v1
   def testRandomSeed(self):
     # Call setUp again for WithCApi case (since it makes a new defeault graph
     # after setup).
@@ -681,7 +685,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertIsNone(test_util.get_node_def_from_graph("bar", graph_def))
 
   def test_run_in_eager_and_graph_modes_test_class(self):
-    msg = "`run_test_in_graph_and_eager_modes` only supports test methods.*"
+    msg = "`run_in_graph_and_eager_modes` only supports test methods.*"
     with self.assertRaisesRegexp(ValueError, msg):
       @test_util.run_in_graph_and_eager_modes()
       class Foo(object):
@@ -706,6 +710,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     test_util.run_in_graph_and_eager_modes(_test)(self)
     self.assertEqual(modes, ["graph"])
 
+  @test_util.run_deprecated_v1
   def test_run_in_graph_and_eager_modes_setup_in_same_mode(self):
     modes = []
     mode_name = lambda: "eager" if context.executing_eagerly() else "graph"

@@ -102,7 +102,7 @@ class NcclTestCase(test.TestCase):
             continue
 
           # Test execution and results.
-          for t in sess.run(result_tensors):
+          for t in self.evaluate(result_tensors):
             self.assertAllClose(t, np_ans)
 
   def _TestGradient(self, nccl_reduce, numpy_fn):

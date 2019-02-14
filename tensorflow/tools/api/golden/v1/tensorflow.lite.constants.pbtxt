@@ -2,7 +2,7 @@ path: "tensorflow.lite.constants"
 tf_module {
   member {
     name: "FLOAT"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
     name: "GRAPHVIZ_DOT"
@@ -10,19 +10,19 @@ tf_module {
   }
   member {
     name: "INT32"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
     name: "INT64"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
     name: "QUANTIZED_UINT8"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
     name: "STRING"
-    mtype: "<type \'int\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
     name: "TFLITE"

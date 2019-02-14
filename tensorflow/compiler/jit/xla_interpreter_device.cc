@@ -26,19 +26,19 @@ namespace tensorflow {
 const char* const DEVICE_XLA_INTERPRETER = "XLA_INTERPRETER";
 const char* const DEVICE_INTERPRETER_XLA_JIT = "XLA_INTERPRETER_JIT";
 
-constexpr std::array<DataType, 9> kExecAllTypes = {
+constexpr std::array<DataType, 10> kExecAllTypes = {
     {DT_INT8, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64,
-     DT_BOOL, DT_BFLOAT16}};
+     DT_COMPLEX128, DT_BOOL, DT_BFLOAT16}};
 
 class XlaInterpreterDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override;
+                       std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
 Status XlaInterpreterDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const string& name_prefix,
-    std::vector<Device*>* devices) {
+    std::vector<std::unique_ptr<Device>>* devices) {
   static XlaDeviceOpRegistrations* registrations = RegisterXlaDeviceKernels(
       DEVICE_XLA_INTERPRETER, DEVICE_INTERPRETER_XLA_JIT);
   (void)registrations;
@@ -61,8 +61,7 @@ Status XlaInterpreterDeviceFactory::CreateDevices(
   options.device_ordinal = 0;
   options.compilation_device_name = DEVICE_INTERPRETER_XLA_JIT;
   options.use_multiple_streams = false;
-  auto device = absl::make_unique<XlaDevice>(session_options, options);
-  devices->push_back(device.release());
+  devices->push_back(absl::make_unique<XlaDevice>(session_options, options));
 
   return Status::OK();
 }

@@ -462,6 +462,7 @@ class Conv3DTest(test.TestCase):
       self._ConstructAndTestGradientForConfig(data_format=data_format,
                                               use_gpu=use_gpu, **kwargs)
 
+  @test_util.run_deprecated_v1
   def testInputGradientValidPaddingStrideOne(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -473,6 +474,7 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         test_input=True)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientValidPaddingStrideOne(self):
     self.ConstructAndTestGradient(
         batch=4,
@@ -484,6 +486,7 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         test_input=False)
 
+  @test_util.run_deprecated_v1
   def testInputGradientValidPaddingStrideTwo(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -495,6 +498,7 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         test_input=True)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientValidPaddingStrideTwo(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -506,6 +510,7 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         test_input=False)
 
+  @test_util.run_deprecated_v1
   def testInputGradientValidPaddingStrideThree(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -517,6 +522,7 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         test_input=True)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientValidPaddingStrideThree(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -528,6 +534,7 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         test_input=False)
 
+  @test_util.run_deprecated_v1
   def testInputGradientSamePaddingStrideOne(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -539,6 +546,7 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=True)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientSamePaddingStrideOne(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -550,6 +558,7 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=False)
 
+  @test_util.run_deprecated_v1
   def testInputGradientSamePaddingStrideTwo(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -561,6 +570,7 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=True)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientSamePaddingStrideTwo(self):
     self.ConstructAndTestGradient(
         batch=4,
@@ -572,6 +582,7 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=False)
 
+  @test_util.run_deprecated_v1
   def testInputGradientSamePaddingStrideThree(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -583,6 +594,7 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=True)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientSamePaddingStrideThree(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -594,6 +606,7 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=False)
 
+  @test_util.run_deprecated_v1
   def testInputGradientSamePaddingDifferentStrides(self):
     self.ConstructAndTestGradient(
         batch=1,
@@ -605,6 +618,7 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=True)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientKernelSizeMatchesInputSize(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -616,6 +630,7 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         test_input=False)
 
+  @test_util.run_deprecated_v1
   def testInputGradientKernelSizeMatchesInputSize(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -640,6 +655,7 @@ class Conv3DTest(test.TestCase):
 
   # Test the fast path in gemm_pack_rhs/mkldnn_gemm_pack, when channel
   # dimension is a multiple of packet size.
+  @test_util.run_deprecated_v1
   def testInputGradientValidPaddingStrideOneFastPath(self):
     self.ConstructAndTestGradient(
         batch=2,
@@ -651,6 +667,7 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         test_input=True)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientValidPaddingStrideOneFastPath(self):
     self.ConstructAndTestGradient(
         batch=2,

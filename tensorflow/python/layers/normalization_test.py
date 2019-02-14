@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional as conv_layers
 from tensorflow.python.layers import normalization as normalization_layers
 from tensorflow.python.ops import array_ops
@@ -37,6 +38,7 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import saver as saver_lib
 
 
+@test_util.run_v1_only('b/120545219')
 class BNTest(test.TestCase):
 
   def _simple_model(self, image, fused, freeze_mode):
@@ -323,7 +325,7 @@ class BNTest(test.TestCase):
       # Test training with placeholder learning phase.
       self.evaluate(variables.global_variables_initializer())
 
-      np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
+      np_gamma, np_beta = self.evaluate([bn.gamma, bn.beta])
       np_gamma = np.reshape(np_gamma, (1, 4, 1))
       np_beta = np.reshape(np_beta, (1, 4, 1))
 
@@ -336,7 +338,8 @@ class BNTest(test.TestCase):
         self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
       # Verify that the statistics are updated during training.
-      moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
+      moving_mean, moving_var = self.evaluate(
+          [bn.moving_mean, bn.moving_variance])
       np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=(0, 2))
       std = np.std(np_inputs, axis=(0, 2))
@@ -364,7 +367,7 @@ class BNTest(test.TestCase):
     with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       self.evaluate(variables.global_variables_initializer())
-      np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
+      np_gamma, np_beta = self.evaluate([bn.gamma, bn.beta])
       np_gamma = np.reshape(np_gamma, (1, 1, 3))
       np_beta = np.reshape(np_beta, (1, 1, 3))
       for _ in range(100):
@@ -376,7 +379,8 @@ class BNTest(test.TestCase):
         self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
       # Verify that the statistics are updated during training.
-      moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
+      moving_mean, moving_var = self.evaluate(
+          [bn.moving_mean, bn.moving_variance])
       np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=(0, 1))
       std = np.std(np_inputs, axis=(0, 1))
@@ -405,7 +409,7 @@ class BNTest(test.TestCase):
       with self.session(use_gpu=True) as sess:
         # Test training with placeholder learning phase.
         self.evaluate(variables.global_variables_initializer())
-        np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
+        np_gamma, np_beta = self.evaluate([bn.gamma, bn.beta])
         np_gamma = np.reshape(np_gamma, (1, 4, 1, 1))
         np_beta = np.reshape(np_beta, (1, 4, 1, 1))
         for _ in range(100):
@@ -417,7 +421,8 @@ class BNTest(test.TestCase):
           self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
         # Verify that the statistics are updated during training.
-        moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
+        moving_mean, moving_var = self.evaluate(
+            [bn.moving_mean, bn.moving_variance])
         np_inputs = self.evaluate(inputs)
         mean = np.mean(np_inputs, axis=(0, 2, 3))
         std = np.std(np_inputs, axis=(0, 2, 3))
@@ -445,7 +450,7 @@ class BNTest(test.TestCase):
     with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       self.evaluate(variables.global_variables_initializer())
-      np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
+      np_gamma, np_beta = self.evaluate([bn.gamma, bn.beta])
       np_gamma = np.reshape(np_gamma, (1, 1, 3, 1))
       np_beta = np.reshape(np_beta, (1, 1, 3, 1))
       for _ in range(100):
@@ -457,7 +462,8 @@ class BNTest(test.TestCase):
         self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
       # Verify that the statistics are updated during training.
-      moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
+      moving_mean, moving_var = self.evaluate(
+          [bn.moving_mean, bn.moving_variance])
       np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=(0, 1, 3))
       std = np.std(np_inputs, axis=(0, 1, 3))
@@ -485,7 +491,7 @@ class BNTest(test.TestCase):
     with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       self.evaluate(variables.global_variables_initializer())
-      np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
+      np_gamma, np_beta = self.evaluate([bn.gamma, bn.beta])
       np_gamma = np.reshape(np_gamma, (1, 1, 1, 6))
       np_beta = np.reshape(np_beta, (1, 1, 1, 6))
       for _ in range(100):
@@ -497,7 +503,8 @@ class BNTest(test.TestCase):
         self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
       # Verify that the statistics are updated during training.
-      moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
+      moving_mean, moving_var = self.evaluate(
+          [bn.moving_mean, bn.moving_variance])
       np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=(0, 1, 2))
       std = np.std(np_inputs, axis=(0, 1, 2))
@@ -525,7 +532,7 @@ class BNTest(test.TestCase):
     with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       self.evaluate(variables.global_variables_initializer())
-      np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
+      np_gamma, np_beta = self.evaluate([bn.gamma, bn.beta])
       np_gamma = np.reshape(np_gamma, (1, 1, 1, 6))
       np_beta = np.reshape(np_beta, (1, 1, 1, 6))
       for _ in range(100):
@@ -537,7 +544,8 @@ class BNTest(test.TestCase):
         self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
       # Verify that the statistics are updated during training.
-      moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
+      moving_mean, moving_var = self.evaluate(
+          [bn.moving_mean, bn.moving_variance])
       np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=(0, 1, 2))
       std = np.std(np_inputs, axis=(0, 1, 2))
@@ -566,7 +574,7 @@ class BNTest(test.TestCase):
       with self.cached_session() as sess:
         # Test training with placeholder learning phase.
         self.evaluate(variables.global_variables_initializer())
-        np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
+        np_gamma, np_beta = self.evaluate([bn.gamma, bn.beta])
         np_gamma = np.reshape(np_gamma, (1, 4, 1, 1))
         np_beta = np.reshape(np_beta, (1, 4, 1, 1))
         for _ in range(100):
@@ -578,7 +586,8 @@ class BNTest(test.TestCase):
           self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
         # Verify that the statistics are updated during training.
-        moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
+        moving_mean, moving_var = self.evaluate(
+            [bn.moving_mean, bn.moving_variance])
         np_inputs = self.evaluate(inputs)
         mean = np.mean(np_inputs, axis=(0, 2, 3))
         std = np.std(np_inputs, axis=(0, 2, 3))
@@ -606,7 +615,7 @@ class BNTest(test.TestCase):
     with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       self.evaluate(variables.global_variables_initializer())
-      np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
+      np_gamma, np_beta = self.evaluate([bn.gamma, bn.beta])
       np_gamma = np.reshape(np_gamma, (1, 1, 1, 6))
       np_beta = np.reshape(np_beta, (1, 1, 1, 6))
       for _ in range(100):
@@ -619,7 +628,8 @@ class BNTest(test.TestCase):
         self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
       # Verify that the statistics are updated during training.
-      moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
+      moving_mean, moving_var = self.evaluate(
+          [bn.moving_mean, bn.moving_variance])
       np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=(0, 1, 2))
       std = np.std(np_inputs, axis=(0, 1, 2))
@@ -647,7 +657,7 @@ class BNTest(test.TestCase):
     with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       self.evaluate(variables.global_variables_initializer())
-      np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
+      np_gamma, np_beta = self.evaluate([bn.gamma, bn.beta])
       np_gamma = np.reshape(np_gamma, (1, 1, 1, 6))
       np_beta = np.reshape(np_beta, (1, 1, 1, 6))
       for _ in range(100):
@@ -658,7 +668,8 @@ class BNTest(test.TestCase):
         self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
       # Verify that the statistics are updated during training.
-      moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
+      moving_mean, moving_var = self.evaluate(
+          [bn.moving_mean, bn.moving_variance])
       np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=(0, 1, 2))
       std = np.std(np_inputs, axis=(0, 1, 2))
@@ -697,7 +708,7 @@ class BNTest(test.TestCase):
     with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       self.evaluate(variables.global_variables_initializer())
-      np_gamma, np_beta = sess.run([gamma, beta])
+      np_gamma, np_beta = self.evaluate([gamma, beta])
       np_gamma = np.reshape(np_gamma, (1, 1, 1, 6))
       np_beta = np.reshape(np_beta, (1, 1, 1, 6))
       for _ in range(100):
@@ -709,7 +720,8 @@ class BNTest(test.TestCase):
         self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
       # Verify that the statistics are updated during training.
-      np_moving_mean, np_moving_var = sess.run([moving_mean, moving_variance])
+      np_moving_mean, np_moving_var = self.evaluate(
+          [moving_mean, moving_variance])
       np_inputs = self.evaluate(inputs)
       np_mean = np.mean(np_inputs, axis=(0, 1, 2))
       np_std = np.std(np_inputs, axis=(0, 1, 2))
@@ -764,7 +776,8 @@ class BNTest(test.TestCase):
                                    feed_dict={training: True})
 
       # Verify that the statistics are updated during training.
-      np_moving_mean, np_moving_var = sess.run([moving_mean, moving_variance])
+      np_moving_mean, np_moving_var = self.evaluate(
+          [moving_mean, moving_variance])
       np_inputs = self.evaluate(inputs2)
       np_mean = np.mean(np_inputs, axis=(0, 1, 2))
       np_std = np.std(np_inputs, axis=(0, 1, 2))
@@ -773,7 +786,7 @@ class BNTest(test.TestCase):
       self.assertAllClose(np_variance, np_moving_var, atol=1e-2)
 
       # Verify that the axis is normalized during training.
-      np_gamma, np_beta = sess.run([gamma, beta])
+      np_gamma, np_beta = self.evaluate([gamma, beta])
       np_gamma = np.reshape(np_gamma, (1, 1, 1, 6))
       np_beta = np.reshape(np_beta, (1, 1, 1, 6))
       normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
@@ -1258,7 +1271,7 @@ class BNTest(test.TestCase):
       # Test training with placeholder learning phase.
       self.evaluate(variables.global_variables_initializer())
 
-      np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
+      np_gamma, np_beta = self.evaluate([bn.gamma, bn.beta])
 
       for _ in range(100):
         np_output, _, _ = sess.run([outputs] + bn.updates,
@@ -1269,7 +1282,8 @@ class BNTest(test.TestCase):
         self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
       # Verify that the statistics are updated during training.
-      moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
+      moving_mean, moving_var = self.evaluate(
+          [bn.moving_mean, bn.moving_variance])
       np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=0, keepdims=True)
       std = np.std(np_inputs, axis=0, keepdims=True)
@@ -1298,7 +1312,7 @@ class BNTest(test.TestCase):
       # Test training with placeholder learning phase.
       self.evaluate(variables.global_variables_initializer())
 
-      np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
+      np_gamma, np_beta = self.evaluate([bn.gamma, bn.beta])
 
       for _ in range(100):
         np_output, _, _ = sess.run([outputs] + bn.updates,
@@ -1309,7 +1323,8 @@ class BNTest(test.TestCase):
         self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
       # Verify that the statistics are updated during training.
-      moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
+      moving_mean, moving_var = self.evaluate(
+          [bn.moving_mean, bn.moving_variance])
       np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=(0, 4), keepdims=True)
       std = np.std(np_inputs, axis=(0, 4), keepdims=True)

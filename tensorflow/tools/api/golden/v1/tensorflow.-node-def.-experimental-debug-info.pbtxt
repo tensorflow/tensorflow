@@ -1,0 +1,12 @@
+path: "tensorflow.NodeDef.ExperimentalDebugInfo"
+tf_proto {
+  descriptor {
+    name: "ExperimentalDebugInfo"
+    field {
+      name: "original_node_names"
+      number: 1
+      label: LABEL_REPEATED
+      type: TYPE_STRING
+    }
+  }
+}

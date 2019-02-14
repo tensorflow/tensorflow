@@ -48,7 +48,7 @@ class BoostedTreesEnsembleResource : public StampedResource {
  public:
   BoostedTreesEnsembleResource();
 
-  string DebugString() override;
+  string DebugString() const override;
 
   bool InitFromSerialized(const string& serialized, const int64 stamp_token);
 

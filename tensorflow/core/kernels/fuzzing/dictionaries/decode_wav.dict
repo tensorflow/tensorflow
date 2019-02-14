@@ -1,0 +1,4 @@
+header_RIFF="RIFF"
+header_WAVE="WAVE"
+section_fmt="fmt "
+section_data="data"

@@ -279,7 +279,7 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
   EXPECT_EQ("^swap_out_e_0", new_c.input(1));
 
   // Run the optimizer a second time to ensure it's idempotent.
-  GrapplerItem item_copy(item, std::move(output));
+  GrapplerItem item_copy = item.WithGraph(std::move(output));
   status = optimizer.Optimize(cluster.get(), item_copy, &output);
   TF_EXPECT_OK(status);
 
@@ -287,7 +287,7 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
   item.fetch = {"e"};
   item.init_ops = {init.name()};
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 #endif
@@ -337,7 +337,7 @@ TEST_F(MemoryOptimizerTest, SwappingHeuristics) {
 
 #if GOOGLE_CUDA
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   for (int i = 0; i < item.fetch.size(); ++i) {
     test::ExpectTensorEqual<float>(tensors_expected[i], tensors[i]);
@@ -386,7 +386,7 @@ TEST_F(MemoryOptimizerTest, UnswappableInputs) {
 
 #if GOOGLE_CUDA
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 #endif
@@ -474,7 +474,7 @@ TEST_F(RelaxAllocatorConstraintsTest, SameDevice) {
   item.fetch = {"exp"};
   item.init_ops = {"variable"};
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
@@ -505,7 +505,7 @@ TEST_F(RelaxAllocatorConstraintsTest, DifferentDevice) {
   item.fetch = {"exp"};
   item.init_ops = {"variable"};
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 #endif
@@ -598,7 +598,7 @@ TEST_F(RelaxAllocatorConstraintsTest, AssignNodeInFanout) {
   item.fetch = {"assign0", "assign1"};
   item.init_ops = {"exp1", "variable1"};
   auto tensors_expected = EvaluateFetchNodes(item);
-  GrapplerItem optimized(item, std::move(output));
+  GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   for (int i = 0; i < tensors_expected.size(); ++i) {
     test::ExpectTensorEqual<float>(tensors_expected[i], tensors[i]);

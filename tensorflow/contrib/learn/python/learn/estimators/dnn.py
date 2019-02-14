@@ -150,10 +150,10 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
         "input_from_feature_columns",
         values=tuple(six.itervalues(features)),
         partitioner=input_layer_partitioner) as input_layer_scope:
-      if all([
+      if all(
           isinstance(fc, feature_column._FeatureColumn)  # pylint: disable=protected-access
           for fc in feature_columns
-      ]):
+      ):
         net = layers.input_from_feature_columns(
             columns_to_tensors=features,
             feature_columns=feature_columns,

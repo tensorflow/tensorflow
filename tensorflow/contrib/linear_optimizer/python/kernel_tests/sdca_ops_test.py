@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for SdcaModel."""
+"""Tests for SdcaModel (deprecated).
+
+This module and all its submodules are deprecated. To UPDATE or USE linear
+optimizers, please check its latest version in core:
+tensorflow_estimator/python/estimator/canned/linear_optimizer/.
+"""
 
 from __future__ import absolute_import
 from __future__ import division

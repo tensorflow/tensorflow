@@ -236,10 +236,10 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
           "input_from_feature_columns",
           values=tuple(six.itervalues(features)),
           partitioner=input_layer_partitioner) as dnn_input_scope:
-        if all([
+        if all(
             isinstance(fc, feature_column_lib._FeatureColumn)  # pylint: disable=protected-access
             for fc in dnn_feature_columns
-        ]):
+        ):
           net = layers.input_from_feature_columns(
               columns_to_tensors=features,
               feature_columns=dnn_feature_columns,
@@ -292,8 +292,8 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
         linear_parent_scope,
         values=tuple(six.itervalues(features)),
         partitioner=linear_partitioner) as scope:
-      if all([isinstance(fc, feature_column_lib._FeatureColumn)  # pylint: disable=protected-access
-              for fc in linear_feature_columns]):
+      if all(isinstance(fc, feature_column_lib._FeatureColumn)  # pylint: disable=protected-access
+             for fc in linear_feature_columns):
         if joint_linear_weights:
           linear_logits, _, _ = layers.joint_weighted_sum_from_feature_columns(
               columns_to_tensors=features,

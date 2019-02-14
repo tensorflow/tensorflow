@@ -25,7 +25,6 @@ import weakref
 
 import six
 
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -34,7 +33,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import saveable_object
+from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_decorator
@@ -143,9 +142,14 @@ class PythonStringStateSaveable(PythonStateSaveable):
       state_callback: A function taking no arguments which returns a
         string. This function is run every time a checkpoint is written.
       restore_callback: A function taking a Python string, used to restore
-        state. Optional; defaults to doing nothing.
+        state. Optional; defaults to doing nothing, in which case it is ignored
+        by status assertions such as assert_consumed().
     """
-    self._state_callback = state_callback
+    self._has_trivial_state_callback = (restore_callback is None)
+    def _state_callback_wrapper():
+      with ops.init_scope():
+        return state_callback()
+    self._state_callback = _state_callback_wrapper
     self._restore_callback = restore_callback
     with ops.device("/cpu:0"):
       self._save_string = constant_op.constant("", dtype=dtypes.string)
@@ -154,14 +158,21 @@ class PythonStringStateSaveable(PythonStateSaveable):
     super(PythonStringStateSaveable, self).__init__(
         self._save_string, [spec], name)
 
+  @property
+  def optional_restore(self):
+    """For values with no restore, relaxes assert_consumed()."""
+    return self._has_trivial_state_callback
+
   def feed_dict_additions(self):
     """When running a graph, indicates fresh state to feed."""
     return {self._save_string: self._state_callback()}
 
   def freeze(self):
     """Create a frozen `SaveableObject` which saves the current state."""
+    def _constant_state():
+      return constant_op.constant(self._state_callback(), dtype=dtypes.string)
     return NoRestoreSaveable(
-        tensor=self._state_callback,
+        tensor=_constant_state,
         dtype=dtypes.string,
         name=self.name)
 
@@ -176,14 +187,14 @@ class PythonStringStateSaveable(PythonStateSaveable):
     return control_flow_ops.no_op()
 
 
-class _CheckpointPosition(object):
-  """Indicates a position within a `_Checkpoint`."""
+class CheckpointPosition(object):
+  """Indicates a position within a `_CheckpointRestoreCoordinator`."""
 
   def __init__(self, checkpoint, proto_id):
     """Specify an object within a checkpoint.
 
     Args:
-      checkpoint: A _Checkpoint object.
+      checkpoint: A _CheckpointRestoreCoordinator object.
       proto_id: The index of this object in CheckpointableObjectGraph.nodes.
     """
     self._checkpoint = checkpoint
@@ -218,7 +229,7 @@ class _CheckpointPosition(object):
       for deferred_slot_restoration in (
           checkpoint.deferred_slot_restorations.pop(self._proto_id, ())):
         checkpointable._create_or_restore_slot_variable(  # pylint: disable=protected-access
-            slot_variable_position=_CheckpointPosition(
+            slot_variable_position=CheckpointPosition(
                 checkpoint=checkpoint,
                 proto_id=deferred_slot_restoration.slot_variable_id),
             variable=deferred_slot_restoration.original_variable,
@@ -238,7 +249,7 @@ class _CheckpointPosition(object):
                       slot_name=slot_restoration.slot_name))
         else:
           optimizer_object._create_or_restore_slot_variable(  # pylint: disable=protected-access
-              slot_variable_position=_CheckpointPosition(
+              slot_variable_position=CheckpointPosition(
                   checkpoint=checkpoint,
                   proto_id=slot_restoration.slot_variable_id),
               variable=checkpointable,
@@ -314,14 +325,15 @@ class _CheckpointPosition(object):
       # the SaveableObject itself has been cached. If not, we'll make it, and
       # either way we'll extract new ops from it (or if it has Python state to
       # restore, we'll run that).
-      if self._checkpoint.saveable_object_cache is None:
+      saveables_cache = self._checkpoint.graph_view.saveables_cache
+      if saveables_cache is None:
         # No SaveableObject caching when executing eagerly.
         saveable = None
       else:
         # If we've already created and cached a SaveableObject for this
         # attribute, we can re-use it to avoid re-creating some ops when graph
         # building.
-        saveable_list = self._checkpoint.saveable_object_cache.get(
+        saveable_list = saveables_cache.get(
             self.checkpointable, {}).get(serialized_tensor.name, (None,))
         if len(saveable_list) == 1:
           # Almost every attribute will have exactly one SaveableObject.
@@ -336,7 +348,7 @@ class _CheckpointPosition(object):
         # the SaveableObject.
         if serialized_tensor.checkpoint_key not in saveable.name:
           saveable = None
-          del self._checkpoint.saveable_object_cache[self.checkpointable]
+          del saveables_cache[self.checkpointable]
           break
       if saveable is None:
         # If there was no cached SaveableObject, we should check if the Python
@@ -347,15 +359,16 @@ class _CheckpointPosition(object):
           # added or deleted. Stores unused attributes so an exception can be
           # raised if the user decides to check that everything in the
           # checkpoint was loaded.
-          self._checkpoint.unused_attributes.setdefault(
-              self.checkpointable, []).append(serialized_tensor.name)
+          if not serialized_tensor.optional_restore:
+            self._checkpoint.unused_attributes.setdefault(
+                self.checkpointable, []).append(serialized_tensor.name)
           continue
         if callable(saveable_factory):
           saveable = saveable_factory(name=serialized_tensor.checkpoint_key)
         else:
           saveable = saveable_factory
-        if self._checkpoint.saveable_object_cache is not None:
-          self._checkpoint.saveable_object_cache.setdefault(
+        if saveables_cache is not None:
+          saveables_cache.setdefault(
               self.checkpointable, {})[serialized_tensor.name] = [saveable]
       if isinstance(saveable, PythonStateSaveable):
         python_saveables.append(saveable)
@@ -374,41 +387,10 @@ class _CheckpointPosition(object):
       eagerly.
     """
     (restore_ops,
-     named_saveables,
+     tensor_saveables,
      python_saveables) = self._gather_ops_or_named_saveables()
-
-    # Eagerly run restorations for Python state.
-    reader = pywrap_tensorflow.NewCheckpointReader(
-        self._checkpoint.save_path_string)
-    for saveable in python_saveables:
-      spec_names = [spec.name for spec in saveable.specs]
-      saveable.python_restore(
-          [reader.get_tensor(name) for name in spec_names])
-
-    # If we have new SaveableObjects, extract and cache restore ops.
-    if named_saveables:
-      validated_saveables = (
-          self._checkpoint.builder._ValidateAndSliceInputs(named_saveables))  # pylint: disable=protected-access
-      validated_names = set(saveable.name for saveable in validated_saveables)
-      if set(named_saveables.keys()) != validated_names:
-        raise AssertionError(
-            ("Saveable keys changed when validating. Got back %s, was "
-             "expecting %s") % (named_saveables.keys(), validated_names))
-      all_tensors = self._checkpoint.builder.bulk_restore(
-          filename_tensor=self._checkpoint.save_path_tensor,
-          saveables=validated_saveables, preferred_shard=-1,
-          restore_sequentially=False)
-      saveable_index = 0
-      for saveable in validated_saveables:
-        num_specs = len(saveable.specs)
-        saveable_tensors = all_tensors[
-            saveable_index:saveable_index + num_specs]
-        saveable_index += num_specs
-        restore_op = saveable.restore(saveable_tensors, restored_shapes=None)
-        if not context.executing_eagerly():
-          assert saveable.name not in self._checkpoint.restore_ops_by_name
-          self._checkpoint.restore_ops_by_name[saveable.name] = restore_op
-          restore_ops.append(restore_op)
+    restore_ops.extend(self._checkpoint.restore_saveables(
+        tensor_saveables, python_saveables))
     return restore_ops
 
   @property
@@ -479,16 +461,16 @@ def no_automatic_dependency_tracking(method):
       target=method, decorator_func=_method_wrapper)
 
 
-class CheckpointableBase(object):
+class Checkpointable(object):
   """Base class for `Checkpointable` objects without automatic dependencies.
 
   This class has no __setattr__ override for performance reasons. Dependencies
   must be added explicitly. Unless attribute assignment is performance-critical,
-  use `Checkpointable` instead. Use `CheckpointableBase` for `isinstance`
+  use `AutoCheckpointable` instead. Use `Checkpointable` for `isinstance`
   checks.
   """
 
-  # CheckpointableBase does not do automatic dependency tracking, but uses the
+  # Checkpointable does not do automatic dependency tracking, but uses the
   # no_automatic_dependency_tracking decorator so it can avoid adding
   # dependencies if a subclass is Checkpointable / inherits from Model (both of
   # which have __setattr__ overrides).
@@ -510,7 +492,7 @@ class CheckpointableBase(object):
     # Maps names -> Checkpointable objects
     self._unconditional_dependency_names = {}
     # Restorations for other Checkpointable objects on which this object may
-    # eventually depend. Maps local name -> _CheckpointPosition list. Optimizers
+    # eventually depend. Maps local name -> CheckpointPosition list. Optimizers
     # tack on conditional dependencies, and so need separate management of
     # deferred dependencies too.
     self._unconditional_deferred_dependencies = {}
@@ -564,7 +546,7 @@ class CheckpointableBase(object):
     management of deferred dependencies too).
 
     Returns:
-      A dictionary mapping from local name to a list of _CheckpointPosition
+      A dictionary mapping from local name to a list of CheckpointPosition
       objects.
     """
     return self._unconditional_deferred_dependencies
@@ -642,7 +624,7 @@ class CheckpointableBase(object):
     # assign again. It will add this variable to our dependencies, and if there
     # is a non-trivial restoration queued, it will handle that. This also
     # handles slot variables.
-    if not overwrite or isinstance(new_variable, CheckpointableBase):
+    if not overwrite or isinstance(new_variable, Checkpointable):
       return self._track_checkpointable(new_variable, name=name,
                                         overwrite=overwrite)
     else:
@@ -714,7 +696,7 @@ class CheckpointableBase(object):
       ValueError: If another object is already tracked by this name.
     """
     self._maybe_initialize_checkpointable()
-    if not isinstance(checkpointable, CheckpointableBase):
+    if not isinstance(checkpointable, Checkpointable):
       raise TypeError(
           ("Checkpointable._track_checkpointable() passed type %s, not a "
            "Checkpointable.") % (type(checkpointable),))
@@ -761,7 +743,7 @@ class CheckpointableBase(object):
       name: The name of the dependency within this object (`self`), used to
         match `checkpointable` with values saved in a checkpoint.
       checkpointable: The Checkpointable object to restore (inheriting from
-        `CheckpointableBase`).
+        `Checkpointable`).
     """
     self._maybe_initialize_checkpointable()
     checkpointable._maybe_initialize_checkpointable()  # pylint: disable=protected-access
@@ -810,7 +792,7 @@ class CheckpointableBase(object):
     else:
       restore_ops = ()
     for child in checkpoint_position.object_proto.children:
-      child_position = _CheckpointPosition(
+      child_position = CheckpointPosition(
           checkpoint=checkpoint,
           proto_id=child.node_id)
       local_object = self._lookup_dependency(child.local_name)
@@ -865,13 +847,28 @@ class CheckpointableBase(object):
       return {}
     weak_self = weakref.ref(self)
     def _state_callback():
+      """Serializes `self.get_config()` for saving."""
       dereferenced_self = weak_self()
       if dereferenced_self:
-        return json.dumps(dereferenced_self,
-                          default=serialization.get_json_type,
-                          sort_keys=True).encode("utf8")
+        return json.dumps(
+            dereferenced_self,
+            default=serialization.get_json_type,
+            sort_keys=True).encode("utf8")
       else:
         return ""
     return {OBJECT_CONFIG_JSON_KEY: functools.partial(
         PythonStringStateSaveable,
         state_callback=_state_callback)}
+
+  def _list_functions_for_serialization(self):
+    """Lists the functions of this checkpointable to serialize.
+
+    Internal sub-classes can override this with specific logic. E.g.
+    `AutoCheckpointable` provides an implementation that returns the `attr`
+    that return functions.
+
+    Returns:
+        A dictionary mapping attribute names to `Function` or
+        `ConcreteFunction`.
+    """
+    return dict()

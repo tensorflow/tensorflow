@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Imports unittest as a replacement for testing.pybase.googletest."""
+"""Imports absltest as a replacement for testing.pybase.googletest."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,7 +26,7 @@ import tempfile
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
-from unittest import *
+from absl.testing.absltest import *
 # pylint: enable=wildcard-import
 
 from tensorflow.python.framework import errors
@@ -41,7 +41,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 Benchmark = benchmark.TensorFlowBenchmark  # pylint: disable=invalid-name
 
-unittest_main = main
+absltest_main = main
 
 # We keep a global variable in this module to make sure we create the temporary
 # directory only once per test binary invocation.
@@ -51,7 +51,7 @@ _googletest_temp_dir = ''
 # pylint: disable=invalid-name
 # pylint: disable=undefined-variable
 def g_main(argv):
-  """Delegate to unittest.main after redefining testLoader."""
+  """Delegate to absltest.main after redefining testLoader."""
   if 'TEST_SHARD_STATUS_FILE' in os.environ:
     try:
       f = None
@@ -67,7 +67,7 @@ def g_main(argv):
 
   if ('TEST_TOTAL_SHARDS' not in os.environ or
       'TEST_SHARD_INDEX' not in os.environ):
-    return unittest_main(argv=argv)
+    return absltest_main(argv=argv)
 
   total_shards = int(os.environ['TEST_TOTAL_SHARDS'])
   shard_index = int(os.environ['TEST_SHARD_INDEX'])
@@ -87,7 +87,7 @@ def g_main(argv):
   # Override getTestCaseNames
   base_loader.getTestCaseNames = getShardedTestCaseNames
 
-  unittest_main(argv=argv, testLoader=base_loader)
+  absltest_main(argv=argv, testLoader=base_loader)
 
 
 # Redefine main to allow running benchmarks
@@ -104,10 +104,16 @@ def GetTempDir():
   """Return a temporary directory for tests to use."""
   global _googletest_temp_dir
   if not _googletest_temp_dir:
-    first_frame = tf_inspect.stack()[-1][0]
-    temp_dir = os.path.join(tempfile.gettempdir(),
-                            os.path.basename(tf_inspect.getfile(first_frame)))
-    temp_dir = tempfile.mkdtemp(prefix=temp_dir.rstrip('.py'))
+    if os.environ.get('TEST_TMPDIR'):
+      temp_dir = tempfile.mkdtemp(prefix=os.environ['TEST_TMPDIR'])
+    else:
+      first_frame = tf_inspect.stack()[-1][0]
+      temp_dir = os.path.join(tempfile.gettempdir(),
+                              os.path.basename(tf_inspect.getfile(first_frame)))
+      temp_dir = tempfile.mkdtemp(prefix=temp_dir.rstrip('.py'))
+
+    # Make sure we have the correct path separators.
+    temp_dir = temp_dir.replace('/', os.sep)
 
     def delete_temp_dir(dirname=temp_dir):
       try:
@@ -116,6 +122,7 @@ def GetTempDir():
         logging.error('Error removing %s: %s', dirname, e)
 
     atexit.register(delete_temp_dir)
+
     _googletest_temp_dir = temp_dir
 
   return _googletest_temp_dir
@@ -139,7 +146,7 @@ def StatefulSessionAvailable():
   return False
 
 
-@tf_export('test.StubOutForTesting')
+@tf_export(v1=['test.StubOutForTesting'])
 class StubOutForTesting(object):
   """Support class for stubbing methods out for unit testing.
 

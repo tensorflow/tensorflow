@@ -42,7 +42,7 @@ def GetRunMetadataLabels(run_metadata):
 
 def InLabels(labels, substr):
   """Returns true iff one of the labels contains substr."""
-  return any([substr in x for x in labels])
+  return any(substr in x for x in labels)
 
 
 class DenseLayerTest(test.TestCase):
@@ -72,7 +72,7 @@ class DenseLayerTest(test.TestCase):
       x = array_ops.placeholder(shape=[None, None, 3], dtype=np.float32)
       y = layers.dense(x, 3)
 
-      sess.run(variables.initialize_all_variables())
+      self.evaluate(variables.global_variables_initializer())
       run_metadata = config_pb2.RunMetadata()
       test_utils.RunWithWarmup(
           sess,
@@ -97,7 +97,7 @@ class DenseLayerTest(test.TestCase):
       with jit_scope():
         y = layers.dense(x, 3)
 
-      sess.run(variables.initialize_all_variables())
+      self.evaluate(variables.global_variables_initializer())
       run_metadata = config_pb2.RunMetadata()
       test_utils.RunWithWarmup(
           sess,
@@ -126,7 +126,7 @@ class DenseLayerTest(test.TestCase):
       with jit_scope():
         y = layers.dense(x, 3)
 
-      sess.run(variables.initialize_all_variables())
+      self.evaluate(variables.global_variables_initializer())
       run_metadata = config_pb2.RunMetadata()
       test_utils.RunWithWarmup(
           sess,

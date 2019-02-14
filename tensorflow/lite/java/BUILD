@@ -90,6 +90,9 @@ java_test(
     size = "small",
     srcs = ["src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java"],
     javacopts = JAVACOPTS,
+    tags = [
+        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+    ],
     test_class = "org.tensorflow.lite.TensorFlowLiteTest",
     deps = [
         ":tensorflowlitelib",
@@ -103,6 +106,9 @@ java_test(
     size = "small",
     srcs = ["src/test/java/org/tensorflow/lite/DataTypeTest.java"],
     javacopts = JAVACOPTS,
+    tags = [
+        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+    ],
     test_class = "org.tensorflow.lite.DataTypeTest",
     deps = [
         ":tensorflowlitelib",
@@ -121,10 +127,14 @@ java_test(
         "src/testdata/int64.bin",
         "src/testdata/invalid_model.bin",
         "src/testdata/quantized.bin",
+        "src/testdata/string.bin",
         "src/testdata/uint8.bin",
         "src/testdata/with_custom_op.lite",
     ],
     javacopts = JAVACOPTS,
+    tags = [
+        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+    ],
     test_class = "org.tensorflow.lite.NativeInterpreterWrapperTest",
     deps = [
         ":tensorflowlitelib",
@@ -144,6 +154,9 @@ java_test(
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
     javacopts = JAVACOPTS,
+    tags = [
+        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+    ],
     test_class = "org.tensorflow.lite.InterpreterTest",
     visibility = ["//visibility:private"],
     deps = [
@@ -162,6 +175,9 @@ java_test(
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
     javacopts = JAVACOPTS,
+    tags = [
+        "no_oss",  # Currently requires --config=monolithic, b/118895218.
+    ],
     test_class = "org.tensorflow.lite.InterpreterFlexTest",
     visibility = ["//visibility:private"],
     deps = [
@@ -179,6 +195,9 @@ java_test(
         "src/testdata/add.bin",
     ],
     javacopts = JAVACOPTS,
+    tags = [
+        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+    ],
     test_class = "org.tensorflow.lite.TensorTest",
     deps = [
         ":tensorflowlitelib",
@@ -192,6 +211,9 @@ filegroup(
     srcs = select({
         "//conditions:default": [":libtensorflowlite_jni.so"],
     }),
+    tags = [
+        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+    ],
     visibility = ["//visibility:public"],
 )
 

@@ -76,12 +76,12 @@ def main(unused_argv):
   classifier = tf.estimator.Estimator(model_fn=my_model)
 
   # Train.
-  train_input_fn = tf.estimator.inputs.numpy_input_fn(
+  train_input_fn = tf.compat.v1.estimator.inputs.numpy_input_fn(
       x={X_FEATURE: x_train}, y=y_train, num_epochs=None, shuffle=True)
   classifier.train(input_fn=train_input_fn, steps=1000)
 
   # Predict.
-  test_input_fn = tf.estimator.inputs.numpy_input_fn(
+  test_input_fn = tf.compat.v1.estimator.inputs.numpy_input_fn(
       x={X_FEATURE: x_test}, y=y_test, num_epochs=1, shuffle=False)
   predictions = classifier.predict(input_fn=test_input_fn)
   y_predicted = np.array(list(p['class'] for p in predictions))

@@ -27,12 +27,14 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
+@test_util.run_v1_only("PriorityQueue removed from v2")
 class PriorityQueueTest(test.TestCase):
 
   def testRoundTripInsertReadOnceSorts(self):
@@ -215,7 +217,7 @@ class PriorityQueueTest(test.TestCase):
 
       # We can't guarantee full sorting because we can't guarantee
       # that the dequeued.extend() call runs immediately after the
-      # sess.run() call.  Here we're just happy everything came out.
+      # self.evaluate() call.  Here we're just happy everything came out.
       self.assertAllEqual(set(dequeued), set(all_enqueued_values))
 
   def testRoundTripInsertManyMultiThreadedReadOnceSorts(self):

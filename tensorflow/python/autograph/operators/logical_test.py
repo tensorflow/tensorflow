@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.operators import logical
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
@@ -42,6 +43,7 @@ class LogicalOperatorsTest(test.TestCase):
     self.assertFalse(logical.and_(lambda: False, lambda: True))
     self.assertFalse(logical.and_(lambda: False, self.assertNotCalled))
 
+  @test_util.run_deprecated_v1
   def test_and_tf(self):
     with self.cached_session() as sess:
       t = logical.and_(self._tf_true, self._tf_true)
@@ -60,6 +62,7 @@ class LogicalOperatorsTest(test.TestCase):
     self.assertTrue(logical.or_(lambda: False, lambda: True))
     self.assertTrue(logical.or_(lambda: True, self.assertNotCalled))
 
+  @test_util.run_deprecated_v1
   def test_or_tf(self):
     with self.cached_session() as sess:
       t = logical.or_(self._tf_false, self._tf_true)

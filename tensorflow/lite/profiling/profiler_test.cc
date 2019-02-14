@@ -27,11 +27,8 @@ namespace tflite {
 namespace profiling {
 namespace {
 
-void AssertDurationOfEventAroundMs(const ProfileEvent* event,
-                                   double expected_ms, double eps_ms) {
-  double duration_ms =
-      (event->end_timestamp_us - event->begin_timestamp_us) / 1e3;
-  EXPECT_NEAR(expected_ms, duration_ms, eps_ms);
+double GetDurationOfEventMs(const ProfileEvent* event) {
+  return (event->end_timestamp_us - event->begin_timestamp_us) / 1e3;
 }
 
 void SleepForQuarterSecond(Profiler* profiler) {
@@ -84,12 +81,17 @@ TEST(ProfilingTest, ProfilesAreCollected) {
 
 #ifndef ADDRESS_SANITIZER
   // ASAN build is sometimes very slow. Set a large epsilon to avoid flakiness.
+  // Due to flakiness, just verify relative values match.
   const int eps_ms = 50;
-  AssertDurationOfEventAroundMs(profile_events[0], /*expected_ms*/ 500, eps_ms);
-  AssertDurationOfEventAroundMs(profile_events[1], /*expected_ms*/ 250, eps_ms);
-  AssertDurationOfEventAroundMs(profile_events[2], /*expected_ms*/ 250, eps_ms);
-  AssertDurationOfEventAroundMs(profile_events[3], /*expected_ms*/ 250, eps_ms);
-  AssertDurationOfEventAroundMs(profile_events[4], /*expected_ms*/ 250, eps_ms);
+  auto parent_ms = GetDurationOfEventMs(profile_events[0]);
+  double child_ms[2], sleep_for_quarter_ms[2];
+  child_ms[0] = GetDurationOfEventMs(profile_events[1]);
+  child_ms[1] = GetDurationOfEventMs(profile_events[3]);
+  sleep_for_quarter_ms[0] = GetDurationOfEventMs(profile_events[2]);
+  sleep_for_quarter_ms[1] = GetDurationOfEventMs(profile_events[4]);
+  EXPECT_NEAR(parent_ms, child_ms[0] + child_ms[1], eps_ms);
+  EXPECT_NEAR(child_ms[0], sleep_for_quarter_ms[0], eps_ms);
+  EXPECT_NEAR(child_ms[1], sleep_for_quarter_ms[1], eps_ms);
 #endif
 }
 

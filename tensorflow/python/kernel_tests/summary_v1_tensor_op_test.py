@@ -50,7 +50,7 @@ class SummaryV1TensorOpTest(test.TestCase):
         with ops.name_scope("zod"):
           s3 = summary_lib.tensor_summary("s3", c)
           s4 = summary_lib.tensor_summary("TensorSummary", c)
-      summ1, summ2, summ3, summ4 = sess.run([s1, s2, s3, s4])
+      summ1, summ2, summ3, summ4 = self.evaluate([s1, s2, s3, s4])
 
     v1 = self._SummarySingleValue(summ1)
     self.assertEqual(v1.tag, "s1")

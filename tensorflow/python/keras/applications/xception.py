@@ -22,23 +22,23 @@ from __future__ import print_function
 from keras_applications import xception
 
 from tensorflow.python.keras.applications import keras_modules_injection
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.applications.xception.Xception',
-           'keras.applications.Xception')
+@keras_export('keras.applications.xception.Xception',
+              'keras.applications.Xception')
 @keras_modules_injection
 def Xception(*args, **kwargs):
   return xception.Xception(*args, **kwargs)
 
 
-@tf_export('keras.applications.xception.decode_predictions')
+@keras_export('keras.applications.xception.decode_predictions')
 @keras_modules_injection
 def decode_predictions(*args, **kwargs):
   return xception.decode_predictions(*args, **kwargs)
 
 
-@tf_export('keras.applications.xception.preprocess_input')
+@keras_export('keras.applications.xception.preprocess_input')
 @keras_modules_injection
 def preprocess_input(*args, **kwargs):
   return xception.preprocess_input(*args, **kwargs)

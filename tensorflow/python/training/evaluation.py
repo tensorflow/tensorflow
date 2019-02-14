@@ -230,7 +230,7 @@ def _evaluate_once(checkpoint_path,
   hooks = list(hooks or [])
 
   if eval_ops is not None:
-    if any([isinstance(h, _MultiStepStopAfterNEvalsHook) for h in hooks]):
+    if any(isinstance(h, _MultiStepStopAfterNEvalsHook) for h in hooks):
       steps_per_run_variable = \
           basic_session_run_hooks.get_or_create_steps_per_run_variable()
       update_eval_step = state_ops.assign_add(
@@ -253,7 +253,7 @@ def _evaluate_once(checkpoint_path,
       if isinstance(h, (_StopAfterNEvalsHook, _MultiStepStopAfterNEvalsHook)):
         h._set_evals_completed_tensor(eval_step_value)  # pylint: disable=protected-access
 
-  logging.info('Starting evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
+  logging.info('Starting evaluation at ' + time.strftime('%Y-%m-%dT%H:%M:%SZ',
                                                          time.gmtime()))
 
   # Prepare the session creator.

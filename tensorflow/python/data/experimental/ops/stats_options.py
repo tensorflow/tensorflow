@@ -20,84 +20,50 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.experimental.ops import stats_aggregator
+from tensorflow.python.data.util import options
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("data.experimental.StatsOptions")
-class StatsOptions(object):
+class StatsOptions(options.OptionsBase):
   """Represents options for collecting dataset stats using `StatsAggregator`.
 
-  To apply `StatsOptions` with a `tf.data.Dataset` object, use the following
-  pattern:
+  You can set the stats options of a dataset through the `experimental_stats`
+  property of `tf.data.Options`; the property is an instance of
+  `tf.data.experimental.StatsOptions`. For example, to collect latency stats
+  on all dataset edges, use the following pattern:
 
   ```python
-  aggretator = tf.data.experimental.StatsAggregator()
+  aggregator = tf.data.experimental.StatsAggregator()
 
-  options = dataset_ops.Options()
-  options.experimental_stats = tf.data.experimental.StatsOptions()
+  options = tf.data.Options()
   options.experimental_stats.aggregator = aggregator
+  options.experimental_stats.latency_all_edges = True
   dataset = dataset.with_options(options)
-
-  iterator = dataset.make_one_shot_iterator()
-  ```
-
-  Note: a `StatsAggregator` object can be attached either duing construction or
-  can be provided later like in above example.
-
-  ```python
-  aggretator = tf.data.experimental.StatsAggregator()
-  # attach aggregator during construction
-  options.experimental_stats = tf.data.experimental.StatsOptions(aggregator)
-  .....
   ```
   """
 
-  for _name, _ty, _default, _docstring in [
-      ("aggregator", stats_aggregator.StatsAggregator, None,
-       "Associate the given statistics options with the dataset pipeline."),
-      ("prefix", str, "",
-       "Prefix to prepend all statistics recorded for the input `dataset` with."
-      ),
-      ("counter_prefix", str, "",
-       "Prefix for the statistics recorded as counter."),
-      ("latency_all_edges", bool, True,
-       "Whether to add latency measurements on all edges."),
-  ]:
+  aggregator = options.create_option(
+      name="aggregator",
+      ty=stats_aggregator.StatsAggregator,
+      docstring=
+      "Associates the given statistics aggregator with the dataset pipeline.")
 
-    def _make_getter(name):  # pylint: disable=no-self-argument
+  prefix = options.create_option(
+      name="prefix",
+      ty=str,
+      docstring=
+      "Prefix to prepend all statistics recorded for the input `dataset` with.",
+      default_factory=lambda: "")
 
-      def getter(self):
-        return getattr(self, "_" + name)
+  counter_prefix = options.create_option(
+      name="counter_prefix",
+      ty=str,
+      docstring="Prefix for the statistics recorded as counter.",
+      default_factory=lambda: "")
 
-      return getter
-
-    def _make_setter(name, ty):  # pylint: disable=no-self-argument
-
-      def setter(self, value):
-        if not isinstance(value, ty):
-          raise TypeError(
-              "Attempting to set the option %s to incompatible value: %r when "
-              "it expects  %r" % (name, value, ty))
-        setattr(self, "_" + name, value)
-
-      return setter
-
-    vars()["_" + _name] = _default
-    vars()[_name] = property(
-        _make_getter(_name), _make_setter(_name, _ty), _default, _docstring)
-
-  def __init__(self, aggregator=None):
-    if aggregator:
-      self.aggregator = aggregator
-
-  def __eq__(self, other):
-    if isinstance(other, self.__class__):
-      return self.__dict__ == other.__dict__
-    else:
-      return False
-
-  def __ne__(self, other):
-    return not self.__eq__(other)
-
-  def __str__(self):
-    return str(self.__dict__)
+  latency_all_edges = options.create_option(
+      name="latency_all_edges",
+      ty=bool,
+      docstring=
+      "Whether to add latency measurements on all edges. Defaults to False.")

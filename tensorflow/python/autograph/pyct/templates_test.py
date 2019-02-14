@@ -134,19 +134,18 @@ class TemplatesTest(test.TestCase):
 
   def test_replace_expression_context(self):
     template = """
-      def test_fn(foo):
+      def test_fn():
         foo
     """
 
     node = templates.replace(
         template, foo=parser.parse_expression('a + 2 * b / -c'))[0]
-    self.assertIsInstance(node.body[0].ctx, gast.Load)
     self.assertIsInstance(node.body[0].left.ctx, gast.Load)
     self.assertIsInstance(node.body[0].right.left.right.ctx, gast.Load)
 
   def test_replace_complex_context(self):
     template = """
-      def test_fn(foo):
+      def test_fn():
         foo = 0
     """
 
@@ -160,7 +159,7 @@ class TemplatesTest(test.TestCase):
 
   def test_replace_index(self):
     template = """
-      def test_fn(foo):
+      def test_fn():
         foo = 0
     """
 
@@ -238,6 +237,16 @@ class TemplatesTest(test.TestCase):
     """
     source = parser.parse_expression('[a(b(1))]')
     templates.replace_as_expression(template, bar=source)
+
+  def test_star_comprehension_in_function_call(self):
+    template = """
+      a = foo(func, args)
+    """
+    source = parser.parse_expression('bar(*[i for i in range(j)])')
+    node = templates.replace(template, func=source.func, args=source.args)
+    arg_node = node[0].value.args[1].value
+    self.assertIsInstance(arg_node.generators[0].target.ctx, gast.Store)
+    self.assertIsInstance(arg_node.elt.ctx, gast.Load)
 
 
 if __name__ == '__main__':

@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -141,7 +140,7 @@ namespace xla {
 
 /* static */ bool IndexUtil::IndexInBounds(const Shape& shape,
                                            absl::Span<const int64> index) {
-  int64 rank = ShapeUtil::Rank(shape);
+  int64 rank = shape.rank();
   if (rank != index.size()) {
     return false;
   }

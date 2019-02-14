@@ -43,12 +43,13 @@ StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
 
 // Returns the shapes of the parameters of the entry computation. Shape pointers
 // refer to shapes inside of the given HloProto.
-StatusOr<std::vector<const Shape*>> EntryComputationParameterShapes(
+StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
     const HloProto& hlo_proto);
 
 // Returns the shape of the output of the entry computation. The shape pointer
 // refers to the output shape inside of the given HloProto.
-StatusOr<const Shape*> EntryComputationOutputShape(const HloProto& hlo_proto);
+StatusOr<const ShapeProto*> EntryComputationOutputShape(
+    const HloProto& hlo_proto);
 
 }  // namespace xla
 

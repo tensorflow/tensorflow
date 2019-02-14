@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -35,7 +36,7 @@ class VerifyTensorAllFiniteTest(test.TestCase):
   def testVerifyTensorAllFiniteSucceeds(self):
     x_shape = [5, 4]
     x = np.random.random_sample(x_shape).astype(np.float32)
-    with self.session(use_gpu=True):
+    with test_util.use_gpu():
       t = constant_op.constant(x, shape=x_shape, dtype=dtypes.float32)
       t_verified = numerics.verify_tensor_all_finite(t,
                                                      "Input is not a number.")
@@ -48,7 +49,7 @@ class VerifyTensorAllFiniteTest(test.TestCase):
 
     # Test NaN.
     x[0] = np.nan
-    with self.session(use_gpu=True):
+    with test_util.use_gpu():
       with self.assertRaisesOpError(my_msg):
         t = constant_op.constant(x, shape=x_shape, dtype=dtypes.float32)
         t_verified = numerics.verify_tensor_all_finite(t, my_msg)
@@ -56,13 +57,14 @@ class VerifyTensorAllFiniteTest(test.TestCase):
 
     # Test Inf.
     x[0] = np.inf
-    with self.session(use_gpu=True):
+    with test_util.use_gpu():
       with self.assertRaisesOpError(my_msg):
         t = constant_op.constant(x, shape=x_shape, dtype=dtypes.float32)
         t_verified = numerics.verify_tensor_all_finite(t, my_msg)
         self.evaluate(t_verified)
 
 
+@test_util.run_v1_only("b/120545219")
 class NumericsTest(test.TestCase):
 
   def testInf(self):

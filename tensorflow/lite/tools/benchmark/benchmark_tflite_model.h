@@ -70,6 +70,9 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   uint64_t ComputeInputBytes() override;
   void Init() override;
   void RunImpl() override;
+  void SetDelegates(std::vector<std::unique_ptr<TfLiteDelegate>> delegates) {
+    delegates_ = std::move(delegates);
+  }
 
   struct InputLayerInfo {
     std::string name;
@@ -77,14 +80,20 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   };
 
  protected:
+  static BenchmarkParams DefaultParams();
   void PrepareInputsAndOutputs() override;
 
- private:
+  // Allows installation of custom delegates during initialization
+  virtual void ApplyDelegates();
+
   std::unique_ptr<tflite::FlatBufferModel> model;
   std::unique_ptr<tflite::Interpreter> interpreter;
+
+ private:
   std::vector<InputLayerInfo> inputs;
   ProfilingListener profiling_listener_;
   GemmlowpProfilingListener gemmlowp_profiling_listener_;
+  std::vector<std::unique_ptr<TfLiteDelegate>> delegates_;
 };
 
 }  // namespace benchmark
