@@ -1293,6 +1293,8 @@ def set_tf_cuda_compute_capabilities(environ_cp):
         ask_cuda_compute_capabilities, default_cuda_compute_capabilities)
     # Check whether all capabilities from the input is valid
     all_valid = True
+    # Provide a warning for capabilities less than 3.5
+    warning_flag = False
     # Remove all whitespace characters before splitting the string
     # that users may insert by accident, as this will result in error
     tf_cuda_compute_capabilities = ''.join(tf_cuda_compute_capabilities.split())
@@ -1306,6 +1308,14 @@ def set_tf_cuda_compute_capabilities(environ_cp):
         if ver < 3:
           print('Only compute capabilities 3.0 or higher are supported.')
           all_valid = False
+        elif float(compute_capability) < 3.5:
+          warning_flag = True
+
+    if warning_flag:
+      print('Warning: TensorFlow can be build with CUDA compute capabilities ' \
+            'higher than 3.0 but it works with compute capabilities >= 3.5 ' \
+            'only. You may remove all compute capabilities lesser than 3.5 ' \
+            'to reduce the build time.')
 
     if all_valid:
       break
