@@ -17,38 +17,10 @@ limitations under the License.
 %{
 #define SWIG_FILE_WITH_INIT
 %}
-%include "std_pair.i"
+%include "std_string.i"
 %include "tensorflow/python/platform/base.i"
 
 %{
-PyObject* pair_helper(std::pair<string, string>* in) {
-  PyObject *first(nullptr), *second(nullptr), *tuple(nullptr);
-  first = PyBytes_FromStringAndSize(in->first.data(), in->first.length());
-  if (!first) {
-    if (!PyErr_Occurred()) {
-      PyErr_SetString(PyExc_TypeError, "Pair conversion first argument failed");
-    }
-    return NULL;
-  }
-  second = PyBytes_FromStringAndSize(in->second.data(), in->second.length());
-  if (!second) {
-    if (!PyErr_Occurred()) {
-      PyErr_SetString(PyExc_TypeError,
-                      "Pair conversion second argument failed");
-    }
-    return NULL;
-  }
-  tuple = Py_BuildValue("(OO)", first, second);
-  if (!tuple) {
-    if (!PyErr_Occurred()) {
-      PyErr_SetString(PyExc_TypeError,
-                      "Tuple creation from pair<string,string> failed!");
-    }
-    return NULL;
-  }
-  return tuple;
-}
-
 struct version_struct{
   int vmajor;
   int vminor;
@@ -67,6 +39,7 @@ PyObject* version_helper(version_struct* in) {
   }
   return tuple;
 }
+
 /* Define converters for vector<int> */
 template<>
 bool _PyObjAs(PyObject *pyobj, int* dest) {
@@ -83,12 +56,6 @@ PyObject *_PyObjFrom(const int& src) {
 
 _LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 
-%typemap(out) std::pair<string, string> {
-  PyObject *tuple = pair_helper(&$1);
-  if (!tuple) SWIG_fail;
-  $result = tuple;
-}
-
 %typemap(out) version_struct {
   PyObject *tuple = version_helper(&$1);
   if (!tuple) SWIG_fail;
@@ -96,9 +63,6 @@ _LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 }
 
 %{
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/util/stat_summarizer.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/test_utils.h"
@@ -106,7 +70,6 @@ _LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 
 %ignoreall
 %unignore tensorflow;
-%unignore calib_convert;
 %unignore get_linked_tensorrt_version;
 %unignore get_loaded_tensorrt_version;
 %unignore is_tensorrt_enabled;
@@ -116,52 +79,6 @@ _LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 %unignore get_test_value;
 
 %{
-
-std::pair<string, string> calib_convert(
-    string graph_def_string, bool is_dyn_op
-    // unfortunately we can't use TF_Status here since it
-    // is in c/c_api and brings in a lot of other libraries
-    // which in turn declare ops. These ops are included
-    // statically in our library and cause an abort when
-    // module is loaded due to double registration
-    // until Tensorflow properly exposes these headers
-    // we have to work around this by returning a string
-    // and converting it to exception on python side.
-    //,TF_Status* out_status) {
-) {
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-  string out_status;
-
-  tensorflow::GraphDef graph_def;
-  if (!graph_def.ParseFromString(graph_def_string)) {
-    out_status = "InvalidArgument;Couldn't interpret input as a GraphDef";
-    return std::pair<string, string>{out_status, ""};
-  }
-  graph_def_string.resize(0);
-  tensorflow::GraphDef out_graph;
-  tensorflow::Status conversion_status =
-      tensorflow::tensorrt::convert::ConvertCalibGraphToInferGraph(
-          graph_def, &out_graph, is_dyn_op);
-  if (!conversion_status.ok()) {
-    auto retCode = (int)conversion_status.code();
-    char buff[2000];
-    snprintf(buff, 2000, "%d;%s", retCode,
-             conversion_status.error_message().c_str());
-    out_status = buff;
-    return std::pair<string, string>{out_status, ""};
-  }
-  string result;
-  if (!out_graph.SerializeToString(&result)) {
-    out_status = "InvalidArgument;Couldn't serialize output as a GraphDef";
-    return std::pair<string, string>{out_status, ""};
-  }
-  out_status = "OK;All good!";
-  return std::pair<string, string>{out_status, result};
-#else
-  // Returns FAILED_PRECONDITION.
-  return std::pair<string, string>{"9;TensorRT is not enabled!", ""};
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
-}
 
 version_struct get_linked_tensorrt_version() {
   // Return the version at the link time.
@@ -221,8 +138,6 @@ PyObject* get_test_value(PyObject* label) {
 
 %}
 
-std::pair<string, string> calib_convert(
-    string graph_def_string, bool is_dyn_op);
 version_struct get_linked_tensorrt_version();
 version_struct get_loaded_tensorrt_version();
 bool is_tensorrt_enabled();

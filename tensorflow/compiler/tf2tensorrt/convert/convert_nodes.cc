@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resource_manager.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/node_def_builder.h"
