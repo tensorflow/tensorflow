@@ -1796,6 +1796,9 @@ def initialize_platform_name(platform_name):
   global _default_platform_name
   _default_platform_name = platform_name
 
+  # Make sure the platform is valid by trying to instantiate it.
+  _get_default_local_backend()
+
 
 def register_cpu_custom_call_target(name, fn):
   """Registers a CPU custom call target.
