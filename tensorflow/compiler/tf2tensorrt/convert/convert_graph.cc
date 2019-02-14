@@ -128,6 +128,7 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
       "Rsqrt",
       "Rsqrt",
       "Sigmoid",
+      "Slice",
       "Snapshot",
       "Softmax",
       "Sqrt",
