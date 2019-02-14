@@ -609,7 +609,7 @@ private:
   /// Returns the constant lower bound bound if isLower is true, and the upper
   /// bound if isLower is false.
   template <bool isLower>
-  Optional<int64_t> getConstantLowerOrUpperBound(unsigned pos) const;
+  Optional<int64_t> computeConstantLowerOrUpperBound(unsigned pos);
 
   // Eliminates a single identifier at 'position' from equality and inequality
   // constraints. Returns 'true' if the identifier was eliminated, and false

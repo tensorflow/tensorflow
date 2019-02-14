@@ -662,56 +662,16 @@ static void computeDirectionVector(
   // Eliminate all variables other than the direction variables just added.
   dependenceDomain->projectOut(numCommonLoops, numIdsToEliminate);
 
-  // Scan each common loop variable column and add direction vectors based
+  // Scan each common loop variable column and set direction vectors based
   // on eliminated constraint system.
-  unsigned numCols = dependenceDomain->getNumCols();
-  dependenceComponents->reserve(numCommonLoops);
+  dependenceComponents->resize(numCommonLoops);
   for (unsigned j = 0; j < numCommonLoops; ++j) {
-    DependenceComponent depComp;
-    for (unsigned i = 0, e = dependenceDomain->getNumEqualities(); i < e; ++i) {
-      // Check for equality constraint with single non-zero in column 'j'.
-      if (!hasSingleNonZeroAt(j, i, /*isEq=*/true, dependenceDomain))
-        continue;
-      // Get direction variable coefficient at (i, j).
-      int64_t d = dependenceDomain->atEq(i, j);
-      // Get constant coefficient at (i, numCols - 1).
-      int64_t c = -dependenceDomain->atEq(i, numCols - 1);
-      assert(c % d == 0 && "No dependence should have existed");
-      depComp.lb = depComp.ub = c / d;
-      dependenceComponents->push_back(depComp);
-      break;
-    }
-    // Skip checking inequalities if we set 'depComp' based on equalities.
-    if (depComp.lb.hasValue() || depComp.ub.hasValue())
-      continue;
-    // TODO(andydavis) Call FlatAffineConstraints::getConstantLower/UpperBound
-    // Check inequalities to track direction range for each 'j'.
-    for (unsigned i = 0, e = dependenceDomain->getNumInequalities(); i < e;
-         ++i) {
-      // Check for inequality constraint with single non-zero in column 'j'.
-      if (!hasSingleNonZeroAt(j, i, /*isEq=*/false, dependenceDomain))
-        continue;
-      // Get direction variable coefficient at (i, j).
-      int64_t d = dependenceDomain->atIneq(i, j);
-      // Get constant coefficient at (i, numCols - 1).
-      int64_t c = dependenceDomain->atIneq(i, numCols - 1);
-      if (d < 0) {
-        // Upper bound: add tightest upper bound.
-        auto ub = mlir::floorDiv(c, -d);
-        if (!depComp.ub.hasValue() || ub < depComp.ub.getValue())
-          depComp.ub = ub;
-      } else {
-        // Lower bound: add tightest lower bound.
-        auto lb = mlir::ceilDiv(-c, d);
-        if (!depComp.lb.hasValue() || lb > depComp.lb.getValue())
-          depComp.lb = lb;
-      }
-    }
-    if (depComp.lb.hasValue() || depComp.ub.hasValue()) {
-      if (depComp.lb.hasValue() && depComp.ub.hasValue())
-        assert(depComp.lb.getValue() <= depComp.ub.getValue());
-      dependenceComponents->push_back(depComp);
-    }
+    auto lbConst = dependenceDomain->getConstantLowerBound(j);
+    (*dependenceComponents)[j].lb =
+        lbConst.getValueOr(std::numeric_limits<int64_t>::min());
+    auto ubConst = dependenceDomain->getConstantUpperBound(j);
+    (*dependenceComponents)[j].ub =
+        ubConst.getValueOr(std::numeric_limits<int64_t>::max());
   }
 }
 

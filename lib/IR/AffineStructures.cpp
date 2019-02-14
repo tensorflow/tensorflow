@@ -1512,18 +1512,21 @@ Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
 
 template <bool isLower>
 Optional<int64_t>
-FlatAffineConstraints::getConstantLowerOrUpperBound(unsigned pos) const {
-  // Check if there's an equality equating the 'pos'^th identifier to a
-  // constant.
-  int eqRowIdx = findEqualityToConstant(*this, pos, /*symbolic=*/false);
+FlatAffineConstraints::computeConstantLowerOrUpperBound(unsigned pos) {
+  assert(pos < getNumIds() && "invalid position");
+  // Project to 'pos'.
+  projectOut(0, pos);
+  projectOut(1, getNumIds() - 1);
+  // Check if there's an equality equating the '0'^th identifier to a constant.
+  int eqRowIdx = findEqualityToConstant(*this, 0, /*symbolic=*/false);
   if (eqRowIdx != -1)
-    // atEq(rowIdx, pos) is either -1 or 1.
-    return -atEq(eqRowIdx, getNumCols() - 1) / atEq(eqRowIdx, pos);
+    // atEq(rowIdx, 0) is either -1 or 1.
+    return -atEq(eqRowIdx, getNumCols() - 1) / atEq(eqRowIdx, 0);
 
   // Check if the identifier appears at all in any of the inequalities.
   unsigned r, e;
   for (r = 0, e = getNumInequalities(); r < e; r++) {
-    if (atIneq(r, pos) != 0)
+    if (atIneq(r, 0) != 0)
       break;
   }
   if (r == e)
@@ -1536,24 +1539,24 @@ FlatAffineConstraints::getConstantLowerOrUpperBound(unsigned pos) const {
   // upper bounds).
   for (unsigned r = 0, e = getNumInequalities(); r < e; r++) {
     if (isLower) {
-      if (atIneq(r, pos) <= 0)
+      if (atIneq(r, 0) <= 0)
         // Not a lower bound.
         continue;
-    } else if (atIneq(r, pos) >= 0) {
+    } else if (atIneq(r, 0) >= 0) {
       // Not an upper bound.
       continue;
     }
     unsigned c, f;
     for (c = 0, f = getNumCols() - 1; c < f; c++)
-      if (c != pos && atIneq(r, c) != 0)
+      if (c != 0 && atIneq(r, c) != 0)
         break;
     if (c < getNumCols() - 1)
       // Not a constant bound.
       continue;
 
     int64_t boundConst =
-        isLower ? mlir::ceilDiv(-atIneq(r, getNumCols() - 1), atIneq(r, pos))
-                : mlir::floorDiv(atIneq(r, getNumCols() - 1), -atIneq(r, pos));
+        isLower ? mlir::ceilDiv(-atIneq(r, getNumCols() - 1), atIneq(r, 0))
+                : mlir::floorDiv(atIneq(r, getNumCols() - 1), -atIneq(r, 0));
     if (isLower) {
       if (minOrMaxConst == None || boundConst > minOrMaxConst)
         minOrMaxConst = boundConst;
@@ -1567,12 +1570,14 @@ FlatAffineConstraints::getConstantLowerOrUpperBound(unsigned pos) const {
 
 Optional<int64_t>
 FlatAffineConstraints::getConstantLowerBound(unsigned pos) const {
-  return getConstantLowerOrUpperBound</*isLower=*/true>(pos);
+  FlatAffineConstraints tmpCst(*this);
+  return tmpCst.computeConstantLowerOrUpperBound</*isLower=*/true>(pos);
 }
 
 Optional<int64_t>
 FlatAffineConstraints::getConstantUpperBound(unsigned pos) const {
-  return getConstantLowerOrUpperBound</*isLower=*/false>(pos);
+  FlatAffineConstraints tmpCst(*this);
+  return tmpCst.computeConstantLowerOrUpperBound</*isLower=*/false>(pos);
 }
 
 // A simple (naive and conservative) check for hyper-rectangularlity.

@@ -66,12 +66,18 @@ getDirectionVectorStr(bool ret, unsigned numCommonLoops, unsigned loopNestDepth,
     return "true";
   string result;
   for (unsigned i = 0, e = dependenceComponents.size(); i < e; ++i) {
-    string lbStr = dependenceComponents[i].lb.hasValue()
-                       ? std::to_string(dependenceComponents[i].lb.getValue())
-                       : "-inf";
-    string ubStr = dependenceComponents[i].ub.hasValue()
-                       ? std::to_string(dependenceComponents[i].ub.getValue())
-                       : "+inf";
+    string lbStr = "-inf";
+    if (dependenceComponents[i].lb.hasValue() &&
+        dependenceComponents[i].lb.getValue() !=
+            std::numeric_limits<int64_t>::min())
+      lbStr = std::to_string(dependenceComponents[i].lb.getValue());
+
+    string ubStr = "+inf";
+    if (dependenceComponents[i].ub.hasValue() &&
+        dependenceComponents[i].ub.getValue() !=
+            std::numeric_limits<int64_t>::max())
+      ubStr = std::to_string(dependenceComponents[i].ub.getValue());
+
     result += "[" + lbStr + ", " + ubStr + "]";
   }
   return result;

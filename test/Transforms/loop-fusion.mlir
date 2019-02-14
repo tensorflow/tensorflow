@@ -923,7 +923,6 @@ func @should_fuse_src_depth1_at_dst_depth2() {
 }
 
 // -----
-// CHECK: [[MAP0:#map[0-9]+]] = ()[s0] -> (s0)
 
 // CHECK-LABEL: func @fusion_at_depth0_not_currently_supported
 func @fusion_at_depth0_not_currently_supported() {
@@ -940,9 +939,8 @@ func @fusion_at_depth0_not_currently_supported() {
   // nest, and make the store in the slice store to the same element.
   // CHECK-DAG:   %0 = alloc() : memref<1xf32>
   // CHECK:       for    %i0 = 0 to 10 {
-  // CHECK-NEXT:    %1 = affine.apply [[MAP0]]()[%c0]
-  // CHECK-NEXT:    store %cst, %0[%1] : memref<1xf32>
-  // CHECK-NEXT:    %2 = load %0[%c0] : memref<1xf32>
+  // CHECK-NEXT:    store %cst, %0[%c0] : memref<1xf32>
+  // CHECK-NEXT:    %1 = load %0[%c0_0] : memref<1xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  return
   return
@@ -1323,7 +1321,6 @@ func @R3_to_R2_reshape() {
   return
 }
 // CHECK:      [[MAP0:#map[0-9]+]] = (d0, d1) -> ((d0 * 3 + d1) floordiv 48)
-// CHECK-NEXT: [[MAP1:#map[0-9]+]] = ()[s0] -> (s0)
 // CHECK-NEXT: [[MAP2:#map[0-9]+]] = (d0, d1, d2, d3, d4) -> (d2 - (d0 * 25 + d1 * 24) floordiv 24)
 // CHECK-NEXT: [[MAP3:#map[0-9]+]] = (d0, d1, d2, d3, d4) -> (-d1 + d3)
 // CHECK-NEXT: [[MAP4:#map[0-9]+]] = (d0, d1, d2, d3, d4) -> (d4)
@@ -1335,18 +1332,17 @@ func @R3_to_R2_reshape() {
 // CHECK:        for %i0 = 0 to 32 {
 // CHECK-NEXT:     for %i1 = 0 to 3 {
 // CHECK-NEXT:      %1 = affine.apply [[MAP0]](%i0, %i1)
-// CHECK-NEXT:      %2 = affine.apply [[MAP1]]()[%c0]
-// CHECK-NEXT:      %3 = "foo"(%1, %i1, %2) : (index, index, index) -> i32
-// CHECK-NEXT:      %4 = affine.apply [[MAP2]](%i0, %i1, %1, %i1, %2)
-// CHECK-NEXT:      %5 = affine.apply [[MAP3]](%i0, %i1, %1, %i1, %2)
-// CHECK-NEXT:      %6 = affine.apply [[MAP4]](%i0, %i1, %1, %i1, %2)
-// CHECK-NEXT:      store %3, %0[%4, %5, %6] : memref<1x1x1xi32>
-// CHECK-NEXT:      %7 = affine.apply [[MAP5]](%i0, %i1)
-// CHECK-NEXT:      %8 = affine.apply [[MAP6]](%7)
-// CHECK-NEXT:      %9 = affine.apply [[MAP2]](%i0, %i1, %8, %i1, %c0)
-// CHECK-NEXT:      %10 = affine.apply [[MAP3]](%i0, %i1, %8, %i1, %c0)
-// CHECK-NEXT:      %11 = affine.apply [[MAP4]](%i0, %i1, %8, %i1, %c0)
-// CHECK-NEXT:      %12 = load %0[%9, %10, %11] : memref<1x1x1xi32>
+// CHECK-NEXT:      %2 = "foo"(%1, %i1, %c0) : (index, index, index) -> i32
+// CHECK-NEXT:      %3 = affine.apply [[MAP2]](%i0, %i1, %1, %i1, %c0)
+// CHECK-NEXT:      %4 = affine.apply [[MAP3]](%i0, %i1, %1, %i1, %c0)
+// CHECK-NEXT:      %5 = affine.apply [[MAP4]](%i0, %i1, %1, %i1, %c0)
+// CHECK-NEXT:      store %2, %0[%3, %4, %5] : memref<1x1x1xi32>
+// CHECK-NEXT:      %6 = affine.apply [[MAP5]](%i0, %i1)
+// CHECK-NEXT:      %7 = affine.apply [[MAP6]](%6)
+// CHECK-NEXT:      %8 = affine.apply [[MAP2]](%i0, %i1, %7, %i1, %c0_0)
+// CHECK-NEXT:      %9 = affine.apply [[MAP3]](%i0, %i1, %7, %i1, %c0_0)
+// CHECK-NEXT:      %10 = affine.apply [[MAP4]](%i0, %i1, %7, %i1, %c0_0)
+// CHECK-NEXT:      %11 = load %0[%8, %9, %10] : memref<1x1x1xi32>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return
