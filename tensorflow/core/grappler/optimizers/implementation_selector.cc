@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/grappler/optimizers/experimental_implementation_selector.h"
+#include "tensorflow/core/grappler/optimizers/implementation_selector.h"
 
 #include <string>
 
@@ -101,14 +101,14 @@ Status UpdateNodeDef(NodeDef* node_def, const string& funcName,
   return Status::OK();
 }
 
-Status ExperimentalImplementationSelector::LoadFunctions(
+Status ImplementationSelector::LoadFunctions(
     const GraphDef& graph) {
   lib_info_.reset(new FunctionLibraryApiInfo);
   TF_RETURN_IF_ERROR(lib_info_->Init(graph.library()));
   return Status::OK();
 }
 
-Status ExperimentalImplementationSelector::MaybeOptimizeFunctionCall(
+Status ImplementationSelector::MaybeOptimizeFunctionCall(
     NodeDef* node_def) const {
   // There are two ways of calling functions:
   //  1. By specifying an op name as a function name, or
@@ -170,7 +170,7 @@ Status ExperimentalImplementationSelector::MaybeOptimizeFunctionCall(
   return Status::OK();
 }
 
-Status ExperimentalImplementationSelector::SelectImplementation(
+Status ImplementationSelector::SelectImplementation(
     GraphDef* graph) const {
   if (!graph->has_library()) {
     VLOG(2) << "Skipping graph since it does not have function def";
@@ -183,7 +183,7 @@ Status ExperimentalImplementationSelector::SelectImplementation(
   return Status::OK();
 }
 
-Status ExperimentalImplementationSelector::Optimize(Cluster* cluster,
+Status ImplementationSelector::Optimize(Cluster* cluster,
                                                     const GrapplerItem& item,
                                                     GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
