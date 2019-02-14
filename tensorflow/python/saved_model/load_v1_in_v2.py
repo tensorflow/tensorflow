@@ -22,10 +22,39 @@ import functools
 
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training.checkpointable import tracking
+
+
+class _Initializer(tracking.TrackableResource):
+  """Represents an initialization operation restored from a SavedModel.
+
+  Without this object re-export of imported 1.x SavedModels would omit the
+  original SavedModel's initialization procedure.
+
+  Created when `tf.saved_model.load` loads a TF 1.x-style SavedModel with an
+  initialization op. This object holds a function which runs the
+  initialization. It does not require any manual user intervention;
+  `tf.saved_model.save` will see this object and automatically add it to the
+  exported SavedModel, and `tf.saved_model.load` runs the initialization
+  function automatically.
+  """
+
+  def __init__(self, init_fn, asset_paths):
+    super(_Initializer, self).__init__()
+    self._asset_paths = asset_paths
+    self._init_fn = init_fn
+
+  def create_resource(self):
+    return array_ops.placeholder(
+        dtype=dtypes.resource, shape=[], name="unused_resource")
+
+  def initialize(self):
+    self._init_fn(*[path.asset_path for path in self._asset_paths])
 
 
 class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
@@ -94,6 +123,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     self.restore_variables(wrapped, saver)
     with wrapped.graph.as_default():
       init_op = loader_impl.get_init_op(meta_graph_def)
+    root = tracking.AutoCheckpointable()
     if init_op is not None:
       asset_feed_tensors = []
       asset_paths = []
@@ -104,9 +134,13 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
       init_fn = wrapped.prune(
           feeds=asset_feed_tensors,
           fetches=[wrapped.graph.as_graph_element(init_op)])
-      init_fn(*[path.asset_path for path in asset_paths])
+      initializer = _Initializer(init_fn, asset_paths)
+      initializer.initialize()
+      root.initializer = initializer
+      root.asset_paths = asset_paths
+    else:
+      root.asset_paths = []
     signature_functions = self._extract_signatures(wrapped, meta_graph_def)
-    root = tracking.AutoCheckpointable()
     root.signatures = signature_serialization.create_signature_map(
         signature_functions)
     root.variables = list(wrapped.graph.variables)

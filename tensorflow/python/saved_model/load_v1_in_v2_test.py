@@ -192,14 +192,19 @@ class LoadTest(test.TestCase):
                                str(ops.uid()))
     save.save(imported, second_path, signatures=imported.signatures)
     shutil.rmtree(first_path)
-    self.skipTest(
-        "TODO(b/124321570): save TrackableAssets and make re-saving initialize "
-        "correctly")
     second_import = load.load(second_path)
     fn = second_import.signatures["serving_default"]
     self.assertAllClose({"output": [2, 0]},
                         fn(start=constant_op.constant(["gamma", "alpha"])))
 
+    third_path = os.path.join(self.get_temp_dir(), "saved_model",
+                              str(ops.uid()))
+    save.save(second_import, third_path, signatures=second_import.signatures)
+    shutil.rmtree(second_path)
+    third_import = load.load(third_path)
+    fn = third_import.signatures["serving_default"]
+    self.assertAllClose({"output": [2, 0]},
+                        fn(start=constant_op.constant(["gamma", "alpha"])))
 
 if __name__ == "__main__":
   test.main()
