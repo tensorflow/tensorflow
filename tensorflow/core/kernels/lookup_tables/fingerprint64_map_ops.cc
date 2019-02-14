@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/kernels/lookup_tables/lookup_table_interface.h"
 #include "tensorflow/core/kernels/lookup_tables/table_op_utils.h"
-#include "tensorflow/core/kernels/lookup_tables/table_resource_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/macros.h"
@@ -27,73 +27,48 @@ namespace tables {
 // Map x -> (Fingerprint64(x) % num_oov_buckets) + offset.
 // num_oov_buckets and offset are node attributes provided at construction
 // time.
-template <class HeterogeneousKeyType, class ValueType>
+template <typename KeyType, typename ValueType>
 class Fingerprint64Map final
-    : public LookupTableInterface<HeterogeneousKeyType, ValueType> {
+    : public virtual LookupInterface<ValueType*, const KeyType&>,
+      public virtual LookupWithPrefetchInterface<absl::Span<ValueType>,
+                                                 absl::Span<const KeyType>> {
  public:
+  using key_type = KeyType;
+
   Fingerprint64Map(int64 num_oov_buckets, int64 offset)
       : num_oov_buckets_(num_oov_buckets), offset_(offset) {}
 
-  mutex* GetMutex() const override { return nullptr; }
-
-  bool UnsafeInsertOrAssign(const HeterogeneousKeyType& key,
-                            const ValueType& value) override {
-    return true;
+  Status Lookup(const KeyType& key_to_find, ValueType* value) const override {
+    *value = LookupHelper(key_to_find);
+    return Status::OK();
   }
 
-  Status TableUnbatchedInsertStatus() const override {
-    return errors::Unimplemented("Fingerprint64Map does not support inserts.");
-  }
-
-  Status BatchInsertOrAssign(absl::Span<const HeterogeneousKeyType> keys,
-                             absl::Span<const ValueType> values) override {
-    return errors::Unimplemented("Fingerprint64Map does not support inserts.");
-  }
-
-  ValueType UnsafeLookupKey(
-      const HeterogeneousKeyType& key_to_find) const override {
-    // This can cause a downcast.
-    return static_cast<ValueType>(Fingerprint64(key_to_find) %
-                                  num_oov_buckets_) +
-           offset_;
-  }
-
-  Status TableUnbatchedLookupStatus() const override { return Status::OK(); }
-
-  Status BatchLookup(absl::Span<const HeterogeneousKeyType> keys,
-                     absl::Span<ValueType> values,
-                     int64 prefetch_lookahead) const override {
+  Status Lookup(absl::Span<const KeyType> keys, absl::Span<ValueType> values,
+                int64 prefetch_lookahead) const override {
     if (ABSL_PREDICT_FALSE(keys.size() != values.size())) {
       return errors::InvalidArgument(
           "keys and values do not have the same number of elements (found ",
           keys.size(), " vs ", values.size(), ").");
     }
     for (size_t i = 0; i < keys.size(); ++i) {
-      values[i] = Fingerprint64Map::UnsafeLookupKey(keys[i]);
+      values[i] = LookupHelper(keys[i]);
     }
     return Status::OK();
   }
 
-  const absl::optional<const ValueType> DefaultValue() const override {
-    return {};
-  }
+  mutex* GetMutex() const override { return nullptr; }
 
-  void UnsafePrefetchKey(
-      const HeterogeneousKeyType& key_to_find) const override {}
-
-  size_t UnsafeSize() const override { return 0; }
-
-  Status SizeStatus() const override {
-    return errors::Unimplemented(
-        "Fingerprint64Map does not have a concept of size.");
-  }
-
-  bool UnsafeContainsKey(
-      const HeterogeneousKeyType& key_to_find) const override {
-    return true;
-  }
+  string DebugString() const override { return __PRETTY_FUNCTION__; }
 
  private:
+  ABSL_ATTRIBUTE_ALWAYS_INLINE ValueType
+  LookupHelper(const KeyType& key_to_find) const {
+    // This can cause a downcast.
+    return static_cast<ValueType>(Fingerprint64(key_to_find) %
+                                  num_oov_buckets_) +
+           offset_;
+  }
+
   const int64 num_oov_buckets_;
   const int64 offset_;
   TF_DISALLOW_COPY_AND_ASSIGN(Fingerprint64Map);
@@ -102,9 +77,10 @@ class Fingerprint64Map final
 template <typename Fingerprint64Map>
 struct Fingerprint64MapFactory {
   struct Functor {
-    template <typename ContainerBase>
+    using resource_type = Fingerprint64Map;
+
     static Status AllocateContainer(OpKernelContext* ctx, OpKernel* kernel,
-                                    ContainerBase** container) {
+                                    Fingerprint64Map** container) {
       int64 num_oov_buckets;
       int64 offset;
       TF_RETURN_IF_ERROR(
@@ -116,24 +92,28 @@ struct Fingerprint64MapFactory {
   };
 };
 
-#define REGISTER_STRING_KERNEL(table_value_dtype)                             \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("Fingerprint64Map")                                                \
-          .Device(DEVICE_CPU)                                                 \
-          .TypeConstraint<Variant>("heterogeneous_key_dtype")                 \
-          .TypeConstraint<table_value_dtype>("table_value_dtype"),            \
-      ResourceConstructionOp<                                                 \
-          LookupTableInterface<absl::string_view, table_value_dtype>,         \
-          Fingerprint64MapFactory<Fingerprint64Map<                           \
-              absl::string_view, table_value_dtype>>::Functor>);              \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("Fingerprint64Map")                                                \
-          .Device(DEVICE_CPU)                                                 \
-          .TypeConstraint<string>("heterogeneous_key_dtype")                  \
-          .TypeConstraint<table_value_dtype>("table_value_dtype"),            \
-      ResourceConstructionOp<LookupTableInterface<string, table_value_dtype>, \
-                             Fingerprint64MapFactory<Fingerprint64Map<        \
-                                 string, table_value_dtype>>::Functor>);
+template <typename KeyType, typename ValueType>
+using ResourceOp = ResourceConstructionOp<
+    typename Fingerprint64MapFactory<
+        Fingerprint64Map<KeyType, ValueType>>::Functor,
+    // These are the aliases.
+    LookupInterface<ValueType*, const KeyType&>,
+    LookupWithPrefetchInterface<absl::Span<ValueType>,
+                                absl::Span<const KeyType>>>;
+
+#define REGISTER_STRING_KERNEL(ValueType)                     \
+  REGISTER_KERNEL_BUILDER(                                    \
+      Name("Fingerprint64Map")                                \
+          .Device(DEVICE_CPU)                                 \
+          .TypeConstraint<Variant>("heterogeneous_key_dtype") \
+          .TypeConstraint<ValueType>("table_value_dtype"),    \
+      ResourceOp<absl::string_view, ValueType>);              \
+  REGISTER_KERNEL_BUILDER(                                    \
+      Name("Fingerprint64Map")                                \
+          .Device(DEVICE_CPU)                                 \
+          .TypeConstraint<string>("heterogeneous_key_dtype")  \
+          .TypeConstraint<ValueType>("table_value_dtype"),    \
+      ResourceOp<string, ValueType>);
 
 REGISTER_STRING_KERNEL(int32);
 REGISTER_STRING_KERNEL(int64);

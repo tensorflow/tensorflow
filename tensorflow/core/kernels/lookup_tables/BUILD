@@ -19,18 +19,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "table_resource_utils",
-    hdrs = ["table_resource_utils.h"],
-    deps = [
-        ":lookup_table_interface",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
     ],
 )
 
@@ -57,8 +45,8 @@ tf_kernel_library(
         "fingerprint64_map_ops.cc",
     ],
     deps = [
+        ":lookup_table_interface",
         ":table_op_utils",
-        ":table_resource_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",

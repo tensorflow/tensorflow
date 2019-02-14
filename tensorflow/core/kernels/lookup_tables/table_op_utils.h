@@ -44,11 +44,11 @@ limitations under the License.
 namespace tensorflow {
 namespace tables {
 
-// Create resources of type ContainerBase using the static method
+// Create resources of type ResourceType and AliasesToRegister using
 // Functor::AllocateContainer(OpKernelConstruction*, OpKernel*,
-// ContainerBase**)
-// If the resource has already been created it will be looked up.
-template <class ContainerBase, typename Functor>
+// ResourceType**). ResourceType = Functor::resource_type.
+// No-op for resources which have already been created.
+template <typename Functor, typename... AliasesToRegister>
 class ResourceConstructionOp : public OpKernel {
  public:
   explicit ResourceConstructionOp(OpKernelConstruction* ctx)
@@ -66,46 +66,86 @@ class ResourceConstructionOp : public OpKernel {
     }
 
     auto creator = [ctx,
-                    this](ContainerBase** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      ContainerBase* container;
-      auto status = Functor::AllocateContainer(ctx, this, &container);
+                    this](ResourceType** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      ResourceType* resource = nullptr;
+      auto status = Functor::AllocateContainer(ctx, this, &resource);
       if (ABSL_PREDICT_FALSE(!status.ok())) {
-        container->Unref();
+        // Ideally resource is non-null only if status is OK but we try
+        // to compensate here.
+        if (resource != nullptr) {
+          resource->Unref();
+        }
         return status;
       }
       if (ctx->track_allocations()) {
-        ctx->record_persistent_memory_allocation(container->MemoryUsed());
+        ctx->record_persistent_memory_allocation(resource->MemoryUsed());
       }
-      *ret = container;
+      *ret = resource;
       return Status::OK();
     };
 
-    ContainerBase* container_base = nullptr;
+    // Register the ResourceType alias.
+    ResourceType* resource = nullptr;
+    core::ScopedUnref unref_me(resource);
     OP_REQUIRES_OK(
-        ctx, cinfo_.resource_manager()->template LookupOrCreate<ContainerBase>(
-                 cinfo_.container(), cinfo_.name(), &container_base, creator));
-    core::ScopedUnref unref_me(container_base);
+        ctx,
+        cinfo_.resource_manager()->template LookupOrCreate<ResourceType, true>(
+            cinfo_.container(), cinfo_.name(), &resource, creator));
 
+    // Put a handle to resource in the output tensor (the other aliases will
+    // have the same handle).
     Tensor* handle;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &handle));
-    handle->scalar<ResourceHandle>()() = MakeResourceHandle<ContainerBase>(
+    handle->scalar<ResourceHandle>()() = MakeResourceHandle<ResourceType>(
         ctx, cinfo_.container(), cinfo_.name());
     table_handle_set_ = true;
+
+    // Create other alias resources.
+    Status status;
+    char dummy[sizeof...(AliasesToRegister)] = {
+        (status.Update(RegisterAlias<AliasesToRegister>(resource)), 0)...};
+    (void)dummy;
+    OP_REQUIRES_OK(ctx, status);
   }
 
   ~ResourceConstructionOp() override {
     // If the table object was not shared, delete it.
     if (table_handle_set_ && cinfo_.resource_is_private_to_kernel()) {
       if (!cinfo_.resource_manager()
-               ->template Delete<ContainerBase>(cinfo_.container(),
-                                                cinfo_.name())
+               ->template Delete<ResourceType>(cinfo_.container(),
+                                               cinfo_.name())
                .ok()) {
         // Do nothing; the resource may have been deleted by session resets.
       }
+      // Attempt to delete other resource aliases.
+      Status dummy_status;
+      char dummy[sizeof...(AliasesToRegister)] = {
+          (dummy_status.Update(DeleteAlias<AliasesToRegister>()), 0)...};
+      (void)dummy;
     }
   }
 
  private:
+  using ResourceType = typename Functor::resource_type;
+  template <typename T>
+  Status RegisterAlias(ResourceType* resource) {
+    auto creator = [resource](T** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      *ret = resource;
+      return Status::OK();
+    };
+
+    T* alias_resource = nullptr;
+    core::ScopedUnref unref_me(alias_resource);
+    return cinfo_.resource_manager()->template LookupOrCreate<T, true>(
+        cinfo_.container(), cinfo_.name(), &alias_resource, creator);
+  }
+
+  template <typename T>
+  Status DeleteAlias() {
+    return cinfo_.resource_manager()->template Delete<T>(cinfo_.container(),
+                                                         cinfo_.name());
+  }
+
   mutex mu_;
   bool table_handle_set_ GUARDED_BY(mu_);
   ContainerInfo cinfo_;
@@ -120,8 +160,7 @@ class ResourceConstructionOp : public OpKernel {
 // If the resource has already been created it will be looked up.
 // Container must decrease the reference count of the FallbackTableBaseType*
 // constructor argument before its destructor completes.
-template <class ContainerBase, class Functor,
-          class FallbackTableBaseType = ContainerBase>
+template <typename Functor, typename... AliasesToRegister>
 class TableWithFallbackConstructionOp : public OpKernel {
  public:
   explicit TableWithFallbackConstructionOp(OpKernelConstruction* ctx)
@@ -140,13 +179,14 @@ class TableWithFallbackConstructionOp : public OpKernel {
       return;
     }
 
+    // Look up the fallback table.
     FallbackTableBaseType* fallback_table = nullptr;
     {
       const Tensor& table_handle = ctx->input(table_int64_args.size());
       ResourceHandle handle(table_handle.scalar<ResourceHandle>()());
       OP_REQUIRES_OK(
-          ctx, ctx->resource_manager()->Lookup(handle.container(),
-                                               handle.name(), &fallback_table));
+          ctx, ctx->resource_manager()->Lookup<FallbackTableBaseType, true>(
+                   handle.container(), handle.name(), &fallback_table));
     }
     mutex_lock l(mu_);
 
@@ -156,51 +196,93 @@ class TableWithFallbackConstructionOp : public OpKernel {
     }
 
     auto creator = [ctx, this, fallback_table](
-                       ContainerBase** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                       ResourceType** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       // container construction logic can't be merged with
       // ResourceConstructionOp because Container constructor requires an
       // input which can only be constructed if the resource manager
       // internal lock is not already held.
-      ContainerBase* container;
+      ResourceType* resource = nullptr;
       auto status =
-          Functor::AllocateContainer(ctx, this, fallback_table, &container);
+          Functor::AllocateContainer(ctx, this, fallback_table, &resource);
       if (ABSL_PREDICT_FALSE(!status.ok())) {
-        container->Unref();
+        // Ideally resource is non-null only if status is OK but we try
+        // to compensate here.
+        if (resource != nullptr) {
+          resource->Unref();
+        }
         return status;
       }
       if (ctx->track_allocations()) {
-        ctx->record_persistent_memory_allocation(container->MemoryUsed());
+        ctx->record_persistent_memory_allocation(resource->MemoryUsed());
       }
-      *ret = container;
+      *ret = resource;
       return Status::OK();
     };
 
-    ContainerBase* table = nullptr;
-    OP_REQUIRES_OK(
-        ctx, cinfo_.resource_manager()->template LookupOrCreate<ContainerBase>(
-                 cinfo_.container(), cinfo_.name(), &table, creator));
+    // Register the ResourceType alias.
+    ResourceType* table = nullptr;
     core::ScopedUnref unref_me(table);
+    OP_REQUIRES_OK(
+        ctx,
+        cinfo_.resource_manager()->template LookupOrCreate<ResourceType, true>(
+            cinfo_.container(), cinfo_.name(), &table, creator));
 
+    // Put a handle to resource in the output tensor (the other aliases will
+    // have the same handle).
     Tensor* handle;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &handle));
-    handle->scalar<ResourceHandle>()() = MakeResourceHandle<ContainerBase>(
+    handle->scalar<ResourceHandle>()() = MakeResourceHandle<ResourceType>(
         ctx, cinfo_.container(), cinfo_.name());
     table_handle_set_ = true;
+
+    // Create other alias resources.
+    Status status;
+    char dummy[sizeof...(AliasesToRegister)] = {
+        (status.Update(RegisterAlias<AliasesToRegister>(table)), 0)...};
+    (void)dummy;
+    OP_REQUIRES_OK(ctx, status);
   }
 
   ~TableWithFallbackConstructionOp() override {
     // If the table object was not shared, delete it.
     if (table_handle_set_ && cinfo_.resource_is_private_to_kernel()) {
       if (!cinfo_.resource_manager()
-               ->template Delete<ContainerBase>(cinfo_.container(),
-                                                cinfo_.name())
+               ->template Delete<ResourceType>(cinfo_.container(),
+                                               cinfo_.name())
                .ok()) {
         // Do nothing; the resource may have been deleted by session resets.
       }
+      // Attempt to delete other resource aliases.
+      Status dummy_status;
+      char dummy[sizeof...(AliasesToRegister)] = {
+          (dummy_status.Update(DeleteAlias<AliasesToRegister>()), 0)...};
+      (void)dummy;
     }
   }
 
  private:
+  using ResourceType = typename Functor::resource_type;
+  using FallbackTableBaseType = typename Functor::fallback_table_type;
+
+  template <typename T>
+  Status RegisterAlias(ResourceType* resource) {
+    auto creator = [resource](T** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      *ret = resource;
+      return Status::OK();
+    };
+
+    T* alias_resource = nullptr;
+    core::ScopedUnref unref_me(alias_resource);
+    return cinfo_.resource_manager()->template LookupOrCreate<T, true>(
+        cinfo_.container(), cinfo_.name(), &alias_resource, creator);
+  }
+
+  template <typename T>
+  Status DeleteAlias() {
+    return cinfo_.resource_manager()->template Delete<T>(cinfo_.container(),
+                                                         cinfo_.name());
+  }
+
   mutex mu_;
   bool table_handle_set_ GUARDED_BY(mu_);
   ContainerInfo cinfo_;
@@ -209,33 +291,29 @@ class TableWithFallbackConstructionOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(TableWithFallbackConstructionOp);
 };
 
-// Used to insert tensors into a container.
-template <class Container, class InsertKeyTensorType,
-          class InsertValueTensorType>
-class HeterogeneousLookupTableInsertOrAssignOp : public OpKernel {
+// Lookup a table of type ResourceAlias and insert the passed in keys and
+// values tensors using Functor::TensorInsert(keys, values, table).
+template <typename Functor,
+          typename ResourceAlias = typename Functor::resource_type>
+class LookupTableInsertOp : public OpKernel {
  public:
-  explicit HeterogeneousLookupTableInsertOrAssignOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {}
+  explicit LookupTableInsertOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     OpInputList table_int64_args;
     OP_REQUIRES_OK(ctx, ctx->input_list("table_int64_args", &table_int64_args));
     const size_t tensor_index_offset = table_int64_args.size();
+    // Business logic for checking tensor shapes, etc, is delegated to the
+    // Functor.
     const Tensor& keys = ctx->input(tensor_index_offset + 1);
     const Tensor& values = ctx->input(tensor_index_offset + 2);
-    if (ABSL_PREDICT_FALSE(keys.NumElements() != values.NumElements())) {
-      ctx->SetStatus(errors::InvalidArgument(
-          "keys and values do not have the same number of elements: ",
-          keys.NumElements(), " vs ", values.NumElements()));
-      return;
-    }
 
     const Tensor& table_handle = ctx->input(tensor_index_offset);
     ResourceHandle handle(table_handle.scalar<ResourceHandle>()());
-    Container* table;
-    OP_REQUIRES_OK(ctx, ctx->resource_manager()->Lookup(handle.container(),
-                                                        handle.name(), &table));
+    ResourceAlias* table;
     core::ScopedUnref unref_me(table);
+    OP_REQUIRES_OK(ctx, ctx->resource_manager()->Lookup<ResourceAlias, true>(
+                            handle.container(), handle.name(), &table));
 
     int memory_used_before = 0;
     if (ctx->track_allocations()) {
@@ -244,9 +322,9 @@ class HeterogeneousLookupTableInsertOrAssignOp : public OpKernel {
     auto* mutex = table->GetMutex();
     if (mutex != nullptr) {
       mutex_lock lock(*mutex);
-      OP_REQUIRES_OK(ctx, TensorInsert(keys, values, table));
+      OP_REQUIRES_OK(ctx, Functor::TensorInsert(keys, values, table));
     } else {
-      OP_REQUIRES_OK(ctx, TensorInsert(keys, values, table));
+      OP_REQUIRES_OK(ctx, Functor::TensorInsert(keys, values, table));
     }
     if (ctx->track_allocations()) {
       ctx->record_persistent_memory_allocation(table->MemoryUsed() -
@@ -255,74 +333,17 @@ class HeterogeneousLookupTableInsertOrAssignOp : public OpKernel {
   }
 
  private:
-  // Non-variant InsertKeyTensorType which is the same as Container::key_type.
-  // No need to static_cast.
-  template <typename SfinaeArg = InsertKeyTensorType>
-  absl::enable_if_t<
-      IsValidDataType<SfinaeArg>::value &&
-          std::is_same<SfinaeArg, typename Container::key_type>::value,
-      Status>
-  TensorInsert(const Tensor& keys, const Tensor& values,
-               Container* table) const {
-    const auto keys_flat = keys.flat<SfinaeArg>();
-    const auto values_flat = values.flat<InsertValueTensorType>();
-    return table->BatchInsertOrAssign(
-        absl::MakeSpan(keys_flat.data(), keys_flat.size()),
-        absl::MakeSpan(values_flat.data(), values_flat.size()));
-  }
-
-  // Non-variant InsertKeyTensorType which is otherwise convertible to
-  // Container::key_type.
-  template <typename SfinaeArg = InsertKeyTensorType>
-  absl::enable_if_t<
-      IsValidDataType<SfinaeArg>::value &&
-          !std::is_same<SfinaeArg, typename Container::key_type>::value &&
-          std::is_convertible<SfinaeArg, typename Container::key_type>::value,
-      Status>
-  TensorInsert(const Tensor& keys, const Tensor& values,
-               Container* table) const {
-    const auto keys_flat = keys.flat<InsertKeyTensorType>();
-    std::vector<typename Container::key_type> keys_vec;
-    const auto keys_size = keys_flat.size();
-    keys_vec.reserve(keys_size);
-    for (size_t i = 0; i < keys_size; ++i) {
-      keys_vec.push_back(
-          static_cast<typename Container::key_type>(keys_flat(i)));
-    }
-    const auto values_flat = values.flat<InsertValueTensorType>();
-    return table->BatchInsertOrAssign(
-        keys_vec, absl::MakeSpan(values_flat.data(), values_flat.size()));
-  }
-
-  // Variant InsertKeyTensorType; the wrapped type is convertible to
-  // Container::key_type.
-  template <typename SfinaeArg = InsertKeyTensorType>
-  absl::enable_if_t<
-      !IsValidDataType<SfinaeArg>::value &&
-          std::is_convertible<typename SfinaeArg::value_type,
-                              typename Container::key_type>::value,
-      Status>
-  TensorInsert(const Tensor& keys, const Tensor& values,
-               Container* table) const {
-    const auto keys_flat = keys.flat<Variant>();
-    std::vector<typename Container::key_type> keys_vec;
-    keys_vec.reserve(keys_flat.size());
-    for (size_t i = 0; i < keys_flat.size(); ++i) {
-      keys_vec.emplace_back(
-          *keys_flat(i).get<typename SfinaeArg::value_type>());
-    }
-    const auto values_flat = values.flat<InsertValueTensorType>();
-    return table->BatchInsertOrAssign(
-        keys_vec, absl::MakeSpan(values_flat.data(), values_flat.size()));
-  }
+  TF_DISALLOW_COPY_AND_ASSIGN(LookupTableInsertOp);
 };
 
-// Used for tensor lookups.
-template <class Container, class LookupKeyTensorType, class ValueTensorType>
-class HeterogeneousLookupTableFindOp : public OpKernel {
+// Lookup a table of type ResourceAlias and look up the passed in keys using
+// Functor::TensorLookup(
+//     table, keys, prefetch_lookahead, num_keys_per_thread, threadpool, out).
+template <typename Functor,
+          typename ResourceAlias = typename Functor::resource_type>
+class LookupTableFindOp : public OpKernel {
  public:
-  explicit HeterogeneousLookupTableFindOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {}
+  explicit LookupTableFindOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     OpInputList table_int64_args;
@@ -370,10 +391,10 @@ class HeterogeneousLookupTableFindOp : public OpKernel {
 
     const Tensor& table_handle = ctx->input(tensor_index_offset);
     ResourceHandle handle(table_handle.scalar<ResourceHandle>()());
-    Container* table;
-    OP_REQUIRES_OK(ctx, ctx->resource_manager()->Lookup(handle.container(),
-                                                        handle.name(), &table));
+    ResourceAlias* table;
     core::ScopedUnref unref_me(table);
+    OP_REQUIRES_OK(ctx, ctx->resource_manager()->Lookup<ResourceAlias, true>(
+                            handle.container(), handle.name(), &table));
 
     auto* mutex = table->GetMutex();
     auto* threadpool = ctx->device()->tensorflow_cpu_worker_threads()->workers;
@@ -382,112 +403,20 @@ class HeterogeneousLookupTableFindOp : public OpKernel {
       // writer lock here.
       mutex_lock lock(*mutex);
       OP_REQUIRES_OK(
-          ctx, TensorLookup(*table, prefetch_lookahead, num_keys_per_thread,
-                            keys, out, threadpool));
+          ctx, Functor::TensorLookup(*table, keys, prefetch_lookahead,
+                                     num_keys_per_thread, threadpool, out));
     } else {
       OP_REQUIRES_OK(
-          ctx, TensorLookup(*table, prefetch_lookahead, num_keys_per_thread,
-                            keys, out, threadpool));
+          ctx, Functor::TensorLookup(*table, keys, prefetch_lookahead,
+                                     num_keys_per_thread, threadpool, out));
     }
-  }
-
- private:
-  // keys and *values arguments to TensorLookup must have the same number of
-  // elements. This is guaranteed above.
-
-  // 'Simple' types below are types which are not natively supported in TF.
-  // Simple LookupKeyTensorType which is the same as Container::key_type.
-  template <typename SfinaeArg = LookupKeyTensorType>
-  absl::enable_if_t<
-      IsValidDataType<SfinaeArg>::value &&
-          std::is_same<SfinaeArg, typename Container::key_type>::value,
-      Status>
-  TensorLookup(Container& table, int64 prefetch_lookahead,
-               int64 num_keys_per_thread, const Tensor& keys, Tensor* values,
-               thread::ThreadPool* threadpool) const {
-    const auto keys_flat = keys.flat<LookupKeyTensorType>();
-    const auto keys_size = keys_flat.size();
-    auto key_span = absl::MakeSpan(keys_flat.data(), keys_size);
-    auto value_span = absl::MakeSpan(values->flat<ValueTensorType>().data(),
-                                     values->NumElements());
-    return MultithreadedTensorLookup(table, prefetch_lookahead,
-                                     num_keys_per_thread, key_span, value_span,
-                                     threadpool);
-  }
-
-  // Try to implicitly convert all other simple LookupKeyTensorTypes to
-  // Container::key_type.
-  template <typename SfinaeArg = LookupKeyTensorType>
-  absl::enable_if_t<
-      IsValidDataType<SfinaeArg>::value &&
-          !std::is_same<SfinaeArg, typename Container::key_type>::value,
-      Status>
-  TensorLookup(Container& table, int64 prefetch_lookahead,
-               int64 num_keys_per_thread, const Tensor& keys, Tensor* values,
-               thread::ThreadPool* threadpool) const {
-    const auto keys_flat = keys.flat<LookupKeyTensorType>();
-    std::vector<typename Container::key_type> keys_vec;
-    const auto keys_size = keys_flat.size();
-    keys_vec.reserve(keys_size);
-    for (size_t i = 0; i < keys_size; ++i) {
-      keys_vec.emplace_back(keys_flat(i));
-    }
-    absl::Span<typename Container::key_type> key_span(keys_vec);
-    auto value_span = absl::MakeSpan(values->flat<ValueTensorType>().data(),
-                                     values->NumElements());
-    return MultithreadedTensorLookup(table, prefetch_lookahead,
-                                     num_keys_per_thread, key_span, value_span,
-                                     threadpool);
-  }
-
-  // Non-simple LookupKeyTensorType. We'll try an implicit conversion to
-  // Container::key_type.
-  template <typename VariantSubType = LookupKeyTensorType>
-  absl::enable_if_t<!IsValidDataType<VariantSubType>::value, Status>
-  TensorLookup(Container& table, int64 prefetch_lookahead,
-               int64 num_keys_per_thread, const Tensor& keys, Tensor* values,
-               thread::ThreadPool* threadpool) const {
-    const auto keys_flat = keys.flat<Variant>();
-    std::vector<typename Container::key_type> keys_vec;
-    const auto keys_size = keys_flat.size();
-    keys_vec.reserve(keys_size);
-    for (size_t i = 0; i < keys_size; ++i) {
-      keys_vec.emplace_back(
-          *keys_flat(i).get<typename VariantSubType::value_type>());
-    }
-    absl::Span<typename Container::key_type> key_span(keys_vec);
-    auto value_span = absl::MakeSpan(values->flat<ValueTensorType>().data(),
-                                     values->NumElements());
-    return MultithreadedTensorLookup(table, prefetch_lookahead,
-                                     num_keys_per_thread, key_span, value_span,
-                                     threadpool);
-  }
-
-  // Wrapper around table.BatchLookup which permits sharding across cores.
-  template <typename K, typename V>
-  Status MultithreadedTensorLookup(Container& table, int64 prefetch_lookahead,
-                                   int64 num_keys_per_thread,
-                                   absl::Span<K> keys, absl::Span<V> values,
-                                   thread::ThreadPool* threadpool) const {
-    mutex temp_mutex;  // Protect status.
-    Status status;
-    auto lookup_keys = [&, this](int64 begin, int64 end) {
-      auto temp_status = table.BatchLookup(keys.subspan(begin, end - begin),
-                                           values.subspan(begin, end - begin),
-                                           prefetch_lookahead);
-      if (ABSL_PREDICT_FALSE(!temp_status.ok())) {
-        mutex_lock lock(temp_mutex);
-        status.Update(temp_status);
-      }
-    };
-    threadpool->TransformRangeConcurrently(num_keys_per_thread /* block_size */,
-                                           keys.size(), lookup_keys);
-    return status;
   }
 };
 
-// Op that returns the size of a container.
-template <class Container>
+// Lookup a container of type ResourceAlias and return its size using
+// Functor::Size(container, &size).
+template <typename Functor,
+          typename ResourceAlias = typename Functor::resource_type>
 class ContainerSizeOp : public OpKernel {
  public:
   explicit ContainerSizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
@@ -495,11 +424,10 @@ class ContainerSizeOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& container_handle = ctx->input(0);
     ResourceHandle handle(container_handle.scalar<ResourceHandle>()());
-    Container* container;
-    OP_REQUIRES_OK(ctx, ctx->resource_manager()->Lookup(
-                            handle.container(), handle.name(), &container));
+    ResourceAlias* container;
     core::ScopedUnref unref_me(container);
-    OP_REQUIRES_OK(ctx, container->SizeStatus());
+    OP_REQUIRES_OK(ctx, ctx->resource_manager()->Lookup<ResourceAlias, true>(
+                            handle.container(), handle.name(), &container));
 
     Tensor* out;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
@@ -507,9 +435,9 @@ class ContainerSizeOp : public OpKernel {
     auto* mutex = container->GetMutex();
     if (mutex != nullptr) {
       tf_shared_lock lock(*mutex);
-      out->scalar<int64>()() = container->UnsafeSize();
+      OP_REQUIRES_OK(ctx, Functor::Size(*container, &out->scalar<uint64>()()));
     } else {
-      out->scalar<int64>()() = container->UnsafeSize();
+      OP_REQUIRES_OK(ctx, Functor::Size(*container, &out->scalar<uint64>()()));
     }
   }
 };
