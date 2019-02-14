@@ -25,6 +25,7 @@ import math
 import numpy as np
 
 from tensorflow.contrib.framework.python.framework import tensor_util
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -1919,7 +1920,15 @@ class AttentionWrapperState(
     def with_same_shape(old, new):
       """Check and set new tensor's shape."""
       if isinstance(old, ops.Tensor) and isinstance(new, ops.Tensor):
-        return tensor_util.with_same_shape(old, new)
+        if not context.executing_eagerly():
+          return tensor_util.with_same_shape(old, new)
+        else:
+          if old.shape.as_list() != new.shape.as_list():
+            raise ValueError("The shape of the AttentionWrapperState is "
+                             "expected to be same as the one to clone. "
+                             "self.shape: %s, input.shape: %s" %
+                             (old.shape, new.shape))
+          return new
       return new
 
     return nest.map_structure(
@@ -2048,13 +2057,13 @@ def _compute_attention(attention_mechanism, cell_output, attention_state,
   # the batched matmul is over memory_time, so the output shape is
   #   [batch_size, 1, memory_size].
   # we then squeeze out the singleton dim.
-  context = math_ops.matmul(expanded_alignments, attention_mechanism.values)
-  context = array_ops.squeeze(context, [1])
+  context_ = math_ops.matmul(expanded_alignments, attention_mechanism.values)
+  context_ = array_ops.squeeze(context_, [1])
 
   if attention_layer is not None:
-    attention = attention_layer(array_ops.concat([cell_output, context], 1))
+    attention = attention_layer(array_ops.concat([cell_output, context_], 1))
   else:
-    attention = context
+    attention = context_
 
   return attention, alignments, next_attention_state
 
