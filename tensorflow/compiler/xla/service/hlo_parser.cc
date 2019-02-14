@@ -895,6 +895,8 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<int64>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
+      optional<bool> is_stable = false;
+      attrs["is_stable"] = {/*required=*/false, AttrTy::kBool, &is_stable};
       optional<HloComputation*> to_apply;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
@@ -902,8 +904,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
           dimensions->size() != 1) {
         return false;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateSort(
-          shape, dimensions->at(0), operands, to_apply.value()));
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateSort(shape, dimensions->at(0), operands,
+                                     to_apply.value(), is_stable.value()));
       break;
     }
     case HloOpcode::kTuple: {

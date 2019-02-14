@@ -286,7 +286,8 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSort) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto* sort,
       MakeSortHlo(ShapeUtil::MakeTupleShape({bf16_shape, s32_shape}),
-                  {key, value}, 0, &builder, module.get()));
+                  {key, value}, 0, /*is_stable=*/false, &builder,
+                  module.get()));
   HloInstruction* gte = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(bf16_shape, sort, 0));
 
@@ -314,7 +315,8 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSortRoot) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto* sort,
       MakeSortHlo(ShapeUtil::MakeTupleShape({bf16_shape, f32_shape}),
-                  {key, value}, 0, &builder, module.get()));
+                  {key, value}, 0, /*is_stable=*/false, &builder,
+                  module.get()));
 
   auto computation = module->AddEntryComputation(builder.Build());
 
