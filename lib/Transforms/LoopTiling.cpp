@@ -36,11 +36,13 @@ using namespace mlir;
 
 static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
 
-// Tile size for all loops.
-static llvm::cl::opt<unsigned>
-    clTileSize("tile-size", llvm::cl::Hidden,
-               llvm::cl::desc("Use this tile size for all loops"),
-               llvm::cl::cat(clOptionsCategory));
+// List of tile sizes. If any of them aren't provided, they are filled with
+// clTileSize.
+static llvm::cl::list<unsigned> clTileSizes(
+    "tile-sizes",
+    llvm::cl::desc(
+        "List of tile sizes for each perfect nest (overrides -tile-size)"),
+    llvm::cl::ZeroOrMore, llvm::cl::cat(clOptionsCategory));
 
 namespace {
 
@@ -56,6 +58,12 @@ struct LoopTiling : public FunctionPass {
 } // end anonymous namespace
 
 char LoopTiling::passID = 0;
+
+// Tile size to use for all loops (overridden by -tile-sizes if provided).
+static llvm::cl::opt<unsigned>
+    clTileSize("tile-size", llvm::cl::init(LoopTiling::kDefaultTileSize),
+               llvm::cl::desc("Use this tile size for all loops"),
+               llvm::cl::cat(clOptionsCategory));
 
 /// Creates a pass to perform loop tiling on all suitable loop nests of an
 /// Function.
@@ -252,12 +260,14 @@ PassResult LoopTiling::runOnFunction(Function *f) {
   std::vector<SmallVector<OpPointer<AffineForOp>, 6>> bands;
   getTileableBands(f, &bands);
 
-  // Temporary tile sizes.
-  unsigned tileSize =
-      clTileSize.getNumOccurrences() > 0 ? clTileSize : kDefaultTileSize;
-
   for (auto &band : bands) {
-    SmallVector<unsigned, 6> tileSizes(band.size(), tileSize);
+    // Set up tile sizes; fill missing tile sizes at the end with default tile
+    // size or clTileSize if one was provided.
+    SmallVector<unsigned, 6> tileSizes(band.size(), clTileSize);
+    std::copy(clTileSizes.begin(),
+              clTileSizes.begin() + std::min(clTileSizes.size(), band.size()),
+              tileSizes.begin());
+
     if (tileCodeGen(band, tileSizes)) {
       return failure();
     }
