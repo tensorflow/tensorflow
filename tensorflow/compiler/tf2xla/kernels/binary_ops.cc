@@ -79,10 +79,7 @@ static xla::XlaOp DivNoNanImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
 XLA_MAKE_BINARY(DivNoNan,
                 DivNoNanImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 
-// Implementation of FloorDiv.
-//
-// For floating-point values, simply returns floor(x / y).  For integers, does:
-//
+// Implementation of FloorDiv. Pseudo-code:
 // if ((x < 0) != (y < 0)) {
 //   T abs_x = std::abs(x);
 //   T abs_y = std::abs(y);
@@ -93,9 +90,6 @@ XLA_MAKE_BINARY(DivNoNan,
 static xla::XlaOp FloorDivImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                                xla::XlaOp y, const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
-  if (DataTypeIsFloating(dtype)) {
-    return xla::Floor(xla::Div(x, y));
-  }
   if (DataTypeIsUnsigned(dtype)) {
     return xla::Div(x, y);
   }
@@ -105,7 +99,11 @@ static xla::XlaOp FloorDivImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
   auto abs_x = xla::Abs(x);
   auto abs_y = xla::Abs(y);
   auto t = xla::Neg(xla::Sub(xla::Add(abs_x, abs_y), one));
-  return xla::Select(different_sign, xla::Div(t, abs_y), xla::Div(x, y));
+  auto result = xla::Select(different_sign, xla::Div(t, abs_y), xla::Div(x, y));
+  if (DataTypeIsFloating(dtype)) {
+    result = xla::Floor(result);
+  }
+  return result;
 }
 XLA_MAKE_BINARY(FloorDiv,
                 FloorDivImpl(b, input_type(0), lhs, rhs, broadcast_helper));
