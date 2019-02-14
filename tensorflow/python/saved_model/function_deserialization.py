@@ -212,8 +212,9 @@ def load_function_def_library(library):
   """
   functions = {}
 
+  load_shared_name_suffix = "_load_{}".format(ops.uid())
   for fdef in _sort_function_defs(library):
-    copy = _fix_fdef(fdef, functions)
+    copy = _fix_fdef(fdef, functions, load_shared_name_suffix)
 
     func_graph = function_def_lib.function_def_to_graph(copy)
     for dep in _list_function_deps(fdef):
@@ -263,7 +264,7 @@ def _sort_function_defs(library):
   return [reverse[x] for x in output]
 
 
-def _fix_fdef(orig_fdef, functions):
+def _fix_fdef(orig_fdef, functions, shared_name_suffix):
   """Fixes a FunctionDef proto to be loaded in current context.
 
   In particular, when loading a function library into an eager context, one
@@ -272,6 +273,10 @@ def _fix_fdef(orig_fdef, functions):
   Args:
     orig_fdef: FunctionDef proto to fix. It is not modified.
     functions: map from function name to a ConcreteFunction instance.
+    shared_name_suffix: A unique string for this load which helps to avoid
+      `shared_name` collisions across loads. Two functions from the same load
+      using the same `shared_name` still need to share, but functions from
+      different loads with the same `shared_name` should not.
 
   Returns:
     A fixed copy of the original FunctionDef.
@@ -296,10 +301,10 @@ def _fix_fdef(orig_fdef, functions):
         attr_value.func.name = functions[attr_value.func.name].name
 
     # TODO(b/124205571): Avoid accidental sharing and destruction of restored
-    # resources. For now drop "shared_name" when loading functions to avoid
+    # resources. For now uniquify "shared_name" when loading functions to avoid
     # sharing.
     if "shared_name" in node_def.attr:
-      del node_def.attr["shared_name"]
+      node_def.attr["shared_name"].s += compat.as_bytes(shared_name_suffix)
 
   fdef.signature.name = _clean_function_name(fdef.signature.name)
   return fdef
