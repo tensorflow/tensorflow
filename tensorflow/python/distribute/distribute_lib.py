@@ -37,7 +37,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -79,14 +78,14 @@ class UpdateContext(object):
 # Public utility functions.
 
 
-@tf_export("distribute.get_loss_reduction")
+@tf_export(v1=["distribute.get_loss_reduction"])
 def get_loss_reduction():
-  """`tf.distribute.ReduceOp` corresponding to the last loss reduction."""
-  loss_reduction = ops.get_default_graph()._last_loss_reduction  # pylint: disable=protected-access
-  if (loss_reduction == losses_impl.Reduction.SUM or
-      loss_reduction == losses_impl.ReductionV2.SUM):
-    return reduce_util.ReduceOp.SUM
-  return reduce_util.ReduceOp.MEAN
+  """DEPRECATED: Now always returns `tf.distribute.ReduceOp.SUM`.
+
+  We now always make the complete adjustment when computing the loss, so
+  code should always add gradients/losses across replicas, never average.
+  """
+  return reduce_util.ReduceOp.SUM
 
 
 # ------------------------------------------------------------------------------

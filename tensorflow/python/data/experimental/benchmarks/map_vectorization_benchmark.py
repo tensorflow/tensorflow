@@ -159,7 +159,7 @@ class MapVectorizationBenchmark(test.Benchmark):
 
   def benchmarkCast(self):
     self._benchmark_helper(
-        lambda *args: [math_ops.cast(x, dtypes.float64) for x in args], "cast")
+        lambda *args: [math_ops.cast(x, dtypes.float32) for x in args], "cast")
 
   def benchmarkReshape(self):
     self._benchmark_helper(

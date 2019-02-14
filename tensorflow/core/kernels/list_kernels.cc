@@ -79,12 +79,10 @@ static Status TensorListDeviceCopy(
   to->max_num_elements = from.max_num_elements;
   to->tensors.reserve(from.tensors.size());
   for (const Tensor& t : from.tensors) {
-    Tensor tmp(t.dtype());
-    // Do not copy uninitialized tensors.
+    to->tensors.emplace_back(t.dtype());
     if (t.dtype() != DT_INVALID) {
-      TF_RETURN_IF_ERROR(copy(t, &tmp));
+      TF_RETURN_IF_ERROR(copy(t, &to->tensors.back()));
     }
-    to->tensors.push_back(tmp);
   }
   return Status::OK();
 }
@@ -148,6 +146,7 @@ Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
   if (t.shape() == TensorShape({})) {
     if ((t.dtype() == DT_INT32 && t.scalar<int32>()() == -1) ||
         (t.dtype() == DT_INT64 && t.scalar<int64>()() == -1)) {
+      *out = PartialTensorShape();
       return Status::OK();
     }
     return errors::InvalidArgument(
@@ -633,6 +632,10 @@ REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_GPU),
                               .Device(DEVICE_CPU),                \
                           TensorListGather<CPUDevice, T>)         \
   REGISTER_KERNEL_BUILDER(Name("TensorListConcat")                \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_CPU),                \
+                          TensorListConcat<CPUDevice, T>)         \
+  REGISTER_KERNEL_BUILDER(Name("TensorListConcatV2")              \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_CPU),                \
                           TensorListConcat<CPUDevice, T>)         \

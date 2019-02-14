@@ -489,12 +489,12 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
     }
   }
   if (!SupportsQuantization(op)) {
-    LOG(FATAL) << "Unimplemented: this graph contains an operator of type "
-               << HelpfulOperatorTypeName(op)
-               << " for which the quantized form is not yet implemented. "
-                  "Sorry, and patches welcome (that's a relatively fun patch "
-                  "to write, mostly providing the actual quantized arithmetic "
-                  "code for this op).";
+    return tensorflow::errors::InvalidArgument(
+        "Unimplemented: this graph contains an operator of type ",
+        HelpfulOperatorTypeName(op),
+        " for which the quantized form is not yet implemented. Sorry, and "
+        "patches welcome (that's a relatively fun patch to write, mostly "
+        "providing the actual quantized arithmetic code for this op).");
   }
 
   for (const auto& input : op.inputs) {

@@ -428,7 +428,7 @@ void XlaDevice::Sync(const DoneCallback& done) {
   // moment--when ThenEnqueueOnBackgroundThread is called--will have finished.
   // This achieves a device-wide sync.
   stream->ThenEnqueueOnBackgroundThread(
-      [this, stream, done](se::StreamExecutor*) {
+      [stream, done](se::StreamExecutor*) {
         tracing::ScopedActivity activity("XlaDevice::Sync::Callback",
                                          /*is_expensive=*/true);
         done(stream->ok() ? Status::OK()
@@ -479,7 +479,7 @@ bool XlaDevice::AllowsSyncOnCompletion() const {
   return sync_on_completion_;
 }
 
-Status XlaDevice::CurrentStatus() {
+Status XlaDevice::RefreshStatus() {
   std::shared_ptr<se::Stream> stream;
   {
     mutex_lock lock(mu_);
@@ -488,7 +488,8 @@ Status XlaDevice::CurrentStatus() {
   if (!stream) {
     return Status::OK();
   }
-  return stream->ok() ? Status::OK() : errors::Internal("XlaDevice is not OK.");
+  // Stream status is XlaDevice status, no extra operations needed.
+  return stream->RefreshStatus();
 }
 
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,

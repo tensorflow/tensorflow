@@ -124,6 +124,14 @@ class HloRunner {
                             bool run_hlo_passes = true,
                             ExecutionProfile* profile = nullptr);
 
+  StatusOr<Literal> Execute(std::unique_ptr<Executable> executable,
+                            const absl::Span<const Literal* const> arguments,
+                            ExecutionProfile* profile = nullptr);
+
+  StatusOr<Literal> Execute(std::unique_ptr<Executable> executable,
+                            const absl::Span<const Literal> arguments,
+                            ExecutionProfile* profile = nullptr);
+
   // As Execute(), but accepts and returns device buffers instead of host
   // buffers.
   StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
@@ -136,13 +144,16 @@ class HloRunner {
       const absl::Span<const ScopedShapedBuffer> arguments,
       bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
 
+  // In the following two calls, "executable" is not a unique_ptr to allow
+  // reuse of the Executable.  This call may update the profile information in
+  // *executable.
   StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
-      std::unique_ptr<Executable> executable,
+      Executable* executable,
       const absl::Span<const ShapedBuffer* const> arguments,
       ExecutionProfile* profile = nullptr);
 
   StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
-      std::unique_ptr<Executable> executable,
+      Executable* executable,
       const absl::Span<const ScopedShapedBuffer> arguments,
       ExecutionProfile* profile = nullptr);
 

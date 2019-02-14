@@ -191,6 +191,7 @@ Status GatherComputationsByAllocationType(
           case HloOpcode::kReduceWindow:
           case HloOpcode::kScatter:
           case HloOpcode::kSelectAndScatter:
+          case HloOpcode::kSort:
           case HloOpcode::kFusion:
             // Map/reduce etc computations are always thread-local.
             worklist.push_back(std::make_pair(subcomputation,

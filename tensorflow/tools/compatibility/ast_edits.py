@@ -116,8 +116,8 @@ class APIChangeSpec(object):
   * `function_warnings`: maps full names of functions to warnings that will be
     printed out if the function is used. (e.g. tf.nn.convolution())
   * `function_transformers`: maps function names to custom handlers
-  * `leftover_warnings`: These warnings are printed if a matching Attribute
-    still exists after all other transformations have run.
+  * `module_deprecations`: maps module names to warnings that will be printed
+    if the module is still used after all other transformations have run
 
   For an example, see `TFAPIChangeSpec`.
   """
@@ -286,7 +286,7 @@ class _PastaEditVisitor(ast.NodeVisitor):
     arg_warnings = self._get_applicable_dict("function_arg_warnings",
                                              full_name, name)
 
-    for (kwarg, arg), (level, warning) in arg_warnings.items():
+    for (kwarg, arg), (level, warning) in sorted(arg_warnings.items()):
       present, _ = get_arg_value(node, kwarg, arg)
       if present:
         warned = True
@@ -525,7 +525,7 @@ class ASTCodeUpgrader(object):
     text += "Processing file %r\n outputting to %r\n" % (in_filename,
                                                          out_filename)
     text += "-" * 80 + "\n\n"
-    text += "\n".join(log)
+    text += "\n".join(log) + "\n"
     text += "-" * 80 + "\n\n"
     return text
 
@@ -568,7 +568,7 @@ class ASTCodeUpgrader(object):
       in_place: Allow the conversion of an entire directory in place.
 
     Returns:
-      A tuple of files processed, the report string ofr all files, and a dict
+      A tuple of files processed, the report string for all files, and a dict
         mapping filenames to errors encountered in that file.
     """
 

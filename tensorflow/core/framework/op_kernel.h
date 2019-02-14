@@ -525,11 +525,42 @@ struct TensorValue {
 // Used to store partitioned graphs from function-calling ops.
 struct GraphCollector {
   mutex mu;
-  std::vector<GraphDef> graphs GUARDED_BY(mu);
+  std::vector<GraphDef> partitioned_graphs GUARDED_BY(mu);
+  GraphDef raw_graph GUARDED_BY(mu);
+  GraphDef optimized_graph GUARDED_BY(mu);
 
-  void CollectGraph(const GraphDef& graph) {
+  bool dirty GUARDED_BY(mu);
+
+  GraphCollector() : dirty(false) {}
+
+  void CollectRawGraph(const GraphDef& graph) {
     mutex_lock ml(mu);
-    graphs.push_back(graph);
+    raw_graph.MergeFrom(graph);
+    dirty = true;
+  }
+
+  void CollectOptimizedGraph(const GraphDef& graph) {
+    mutex_lock ml(mu);
+    optimized_graph.MergeFrom(graph);
+    dirty = true;
+  }
+
+  void CollectPartitionedGraph(const GraphDef& graph) {
+    mutex_lock ml(mu);
+    partitioned_graphs.push_back(graph);
+    dirty = true;
+  }
+
+  void ClearGraphs() EXCLUSIVE_LOCKS_REQUIRED(mu) {
+    raw_graph.Clear();
+    optimized_graph.Clear();
+    partitioned_graphs.clear();
+    dirty = false;
+  }
+
+  bool HasUpdatedGraphs() {
+    mutex_lock ml(mu);
+    return dirty;
   }
 };
 

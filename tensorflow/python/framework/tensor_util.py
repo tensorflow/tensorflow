@@ -22,6 +22,7 @@ import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
@@ -932,13 +933,15 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   return ret
 
 
+@tf_export("is_tensor")
 def is_tensor(x):  # pylint: disable=invalid-name
   """Check whether `x` is of tensor type.
 
-  Check whether an object is a tensor. This check is equivalent to calling
-  `isinstance(x, (tf.Tensor, tf.SparseTensor, tf.Variable))` and also checks
-  if all the component variables of a MirroredVariable or a ReplicaLocalVariable
-  are tensors.
+  Check whether an object is a tensor or a composite tensor. This check is
+  equivalent to calling
+  `isinstance(x, (tf.Tensor, tf.SparseTensor, tf.RaggedTensor, tf.Variable))`
+  and also checks if all the component variables of a MirroredVariable or a
+  ReplicaLocalVariable are tensors.
 
   Args:
     x: A python object to check.
@@ -947,4 +950,5 @@ def is_tensor(x):  # pylint: disable=invalid-name
     `True` if `x` is a tensor, `False` if not.
   """
   return (isinstance(x, ops._TensorLike) or ops.is_dense_tensor_like(x) or  # pylint: disable=protected-access
+          isinstance(x, composite_tensor.CompositeTensor) or
           (hasattr(x, "is_tensor_like") and x.is_tensor_like))

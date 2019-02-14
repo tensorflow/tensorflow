@@ -17,10 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training.checkpointable import base
 from tensorflow.python.training.checkpointable import data_structures
 from tensorflow.python.util import tf_contextlib
@@ -76,9 +76,35 @@ class AutoCheckpointable(base.Checkpointable):
           checkpointable=self, value=value, name=name)
     super(AutoCheckpointable, self).__setattr__(name, value)
 
+  def __delattr__(self, name):
+    self._maybe_initialize_checkpointable()
+    if name in self._unconditional_dependency_names:
+      del self._unconditional_dependency_names[name]
+      for index, (dep_name, _) in enumerate(
+          self._unconditional_checkpoint_dependencies):
+        if dep_name == name:
+          del self._unconditional_checkpoint_dependencies[index]
+          break
+    super(AutoCheckpointable, self).__delattr__(name)
+
   def _no_dependency(self, value):
     """Override to allow CheckpointableBase to disable dependency tracking."""
     return data_structures.NoDependency(value)
+
+  def _list_functions_for_serialization(self):
+    """Return a dict of `Function`s of a checkpointable."""
+    functions = dict()
+    for attribute_name in dir(self):
+      try:
+        attribute_value = getattr(self, attribute_name, None)
+      except Exception:  # pylint: disable=broad-except
+        # We really don't want to throw an exception just because some object's
+        # attribute accessor is broken.
+        attribute_value = None
+      if isinstance(attribute_value, (def_function.Function,
+                                      defun.ConcreteFunction)):
+        functions[attribute_name] = attribute_value
+    return functions
 
 
 class ResourceTracker(object):
@@ -150,29 +176,34 @@ class TrackableResource(base.Checkpointable):
       self._resource_handle = self.create_resource()
     return self._resource_handle
 
+  def _list_functions_for_serialization(self):
+    @def_function.function(input_signature=[], autograph=False)
+    def _creator():
+      resource = self.create_resource()
+      return resource
+
+    @def_function.function(input_signature=[], autograph=False)
+    def _initializer():
+      self.initialize()
+      return 1  # Dummy return
+
+    return {
+        "create_resource": _creator,
+        "initialize": _initializer,
+    }
+
 
 class TrackableAsset(base.Checkpointable):
   """Base class for asset files which need to be tracked."""
 
   def __init__(self, path):
     """Record the full path to the asset."""
-    # We use a variable here so that @tf.functions do not capture a literal
-    # value. The init_scope prevents functions from capturing `path` in an
+    # The init_scope prevents functions from capturing `path` in an
     # initialization graph, since it is transient and should not end up in a
-    # serialized function body. When serialized in a SavedModel, the variable
-    # will be set during the loading process to its location in the assets/
-    # directory.
+    # serialized function body.
     with ops.init_scope():
-      if context.executing_eagerly():
-        self._path = self._no_dependency(
-            resource_variable_ops.ResourceVariable(
-                path, dtype=dtypes.string,
-                name="asset_path"))
-      else:
-        # Adding a variable is too disruptive when v1-style graph building,
-        # since things may get fed and local variable initializers would then
-        # need to be run.
-        self._path = path
+      self._path = ops.internal_convert_to_tensor(path, dtype=dtypes.string,
+                                                  name="asset_path")
 
   @property
   def asset_path(self):

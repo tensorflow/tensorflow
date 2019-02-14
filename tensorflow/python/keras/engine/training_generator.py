@@ -33,8 +33,8 @@ from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
 
 
@@ -149,12 +149,14 @@ def model_iteration(model,
       model, mode, class_weight=class_weight)
 
   # Create the queue for the generator.
-  output_generator, enqueuer = _make_enqueued_generator(
-      generator,
-      workers=workers,
-      use_multiprocessing=use_multiprocessing,
-      max_queue_size=max_queue_size,
-      shuffle=shuffle)
+  enqueuer = None
+  if not is_dataset:
+    generator, enqueuer = _make_enqueued_generator(
+        generator,
+        workers=workers,
+        use_multiprocessing=use_multiprocessing,
+        max_queue_size=max_queue_size,
+        shuffle=shuffle)
 
   num_samples_or_steps, use_steps = _get_num_samples_or_steps(
       data, steps_per_epoch)
@@ -208,7 +210,7 @@ def model_iteration(model,
 
     step = 0
     while step < target_steps:
-      batch_data = _get_next_batch(output_generator, mode)
+      batch_data = _get_next_batch(generator, mode)
       if batch_data is None:
         if not is_dataset:
           # We ran out of batches while the user passed an iterator (legacy).
@@ -240,13 +242,32 @@ def model_iteration(model,
       callbacks._call_batch_hook(mode, 'begin', step, batch_logs)
       progbar.on_batch_begin(step, batch_logs)
 
+      is_deferred = not model._is_compiled
       batch_outs = batch_function(*batch_data)
       if not isinstance(batch_outs, list):
         batch_outs = [batch_outs]
 
-      # Aggregate results.
       if step == 0:
         aggregator.create(batch_outs)
+
+        if is_deferred:
+          # Set callbacks params. We do this here when model is compiled only
+          # in the first iteration of this loop (deferred build scenario).
+          cbks.set_callback_parameters(
+              callbacks,
+              model,
+              do_validation=do_validation,
+              batch_size=batch_size,
+              epochs=epochs,
+              steps_per_epoch=steps_per_epoch,
+              samples=num_samples_or_steps,
+              verbose=verbose,
+              mode=mode)
+
+          progbar.params = callbacks.params
+          progbar.params['verbose'] = verbose
+
+      # Aggregate results.
       aggregator.aggregate(batch_outs)
 
       # Callbacks batch end.
@@ -317,10 +338,10 @@ predict_generator = functools.partial(
     model_iteration, mode=ModeKeys.PREDICT, shuffle=False)
 
 
-def _get_next_batch(output_generator, mode):
+def _get_next_batch(generator, mode):
   """Retrieves the next batch of input data."""
   try:
-    generator_output = next(output_generator)
+    generator_output = next(generator)
   except (StopIteration, errors.OutOfRangeError):
     return None
   if not isinstance(generator_output, tuple):

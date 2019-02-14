@@ -1339,7 +1339,7 @@ GET_ATTR(bool)
 
 namespace {
 
-constexpr char kExperimentalApiImplements[] = "experimental_api_implements";
+constexpr char kApiImplements[] = "api_implements";
 
 absl::flat_hash_set<string> ReachableFunctions(
     const FunctionLibraryDefinition& flib,
@@ -1347,10 +1347,10 @@ absl::flat_hash_set<string> ReachableFunctions(
   // Functions that are reachable from the graph.
   absl::flat_hash_set<string> reachable_funcs;
 
-  // For any functions, if it has attribute "experimental_api_implements" =
+  // For any functions, if it has attribute "api_implements" =
   // "some_interface" and it is reachable, then it means any other
   // function with same attribute name and value could also be potentially
-  // reachable, eg via experimental_implementation_selector swapping the
+  // reachable, eg via implementation_selector swapping the
   // nodedef.
   absl::flat_hash_set<string> reachable_api_interface;
 
@@ -1400,7 +1400,7 @@ absl::flat_hash_set<string> ReachableFunctions(
     const string& func_name = func->signature().name();
     reachable_funcs.insert(func_name);
 
-    const auto attr_it = func->attr().find(kExperimentalApiImplements);
+    const auto attr_it = func->attr().find(kApiImplements);
     if (attr_it != func->attr().end()) {
       reachable_api_interface.insert(attr_it->second.s());
     }
@@ -1416,7 +1416,7 @@ absl::flat_hash_set<string> ReachableFunctions(
 
   for (const auto& func_name : flib.ListFunctionNames()) {
     const auto& func_def = flib.Find(func_name);
-    const auto attr_it = func_def->attr().find(kExperimentalApiImplements);
+    const auto attr_it = func_def->attr().find(kApiImplements);
     if (attr_it != func_def->attr().end()) {
       if (reachable_api_interface.contains(attr_it->second.s())) {
         reachable_funcs.insert(func_name);

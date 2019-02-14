@@ -129,6 +129,7 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python/eager:backprop",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -143,6 +144,7 @@ cuda_py_test(
         "//tensorflow/python:util",
     ],
     tags = ["optonly"],  # Too slow in non-opt mode
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(

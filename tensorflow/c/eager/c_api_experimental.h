@@ -25,6 +25,8 @@ extern "C" {
 TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
                                               TF_Status* status);
 
+typedef struct TFE_ProfilerContext TFE_ProfilerContext;
+
 // A profiler which will start profiling when creating the object and will stop
 // when the object is destroyed. It will profile all operations run under the
 // given TFE_Context. Multiple instance of it can be created, but at most one
@@ -32,7 +34,8 @@ TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
 // Thread-safety: TFE_Profiler is thread-safe.
 typedef struct TFE_Profiler TFE_Profiler;
 
-TF_CAPI_EXPORT extern TFE_Profiler* TFE_NewProfiler(TFE_Context* ctx);
+TF_CAPI_EXPORT extern TFE_Profiler* TFE_NewProfiler(TFE_ProfilerContext* ctx);
+TF_CAPI_EXPORT extern bool TFE_ProfilerIsOk(TFE_Profiler* profiler);
 TF_CAPI_EXPORT extern void TFE_DeleteProfiler(TFE_Profiler* profiler);
 
 // The output string is a binary string of tensorflow.tpu.Trace. User can write
@@ -42,14 +45,27 @@ TF_CAPI_EXPORT extern void TFE_ProfilerSerializeToString(TFE_Context* ctx,
                                                          TF_Buffer* buf,
                                                          TF_Status* status);
 
+// Return a new profiler context object.
+TF_CAPI_EXPORT extern TFE_ProfilerContext* TFE_NewProfilerContext(void);
+
+// Set the eager context in TFE_ProfilerServerOptions
+TF_CAPI_EXPORT extern void TFE_ProfilerContextSetEagerContext(
+    TFE_ProfilerContext* profiler_context, TFE_Context* eager_context);
+
+// Destroy a profiler context object.
+TF_CAPI_EXPORT extern void TFE_DeleteProfilerContext(
+    TFE_ProfilerContext* profiler_context);
+
 // Start a profiler grpc server which listens to specified port. It will start
-// the server on its own thread. It can be shutdown by destructing TFE_Context.
-// Creating multiple profiler server is allowed. The service defined in
+// the server on its own thread. It can be shutdown by terminating tensorflow.
+// It can be used in both Eager mode and graph mode. Creating multiple profiler
+// server is allowed. The service defined in
 // tensorflow/contrib/tpu/profiler/tpu_profiler.proto. Please use
 // tensorflow/contrib/tpu/profiler/capture_tpu_profile to capture tracable
 // file following
 // https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
-TF_CAPI_EXPORT extern void TFE_StartProfilerServer(TFE_Context* ctx, int port);
+TF_CAPI_EXPORT extern void TFE_StartProfilerServer(TFE_ProfilerContext* context,
+                                                   int port);
 
 #ifdef __cplusplus
 } /* end extern "C" */

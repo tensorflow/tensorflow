@@ -32,6 +32,8 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 
 def _is_tensor(t):
@@ -64,7 +66,15 @@ def _inputs_compatible(args, stored_inputs):
 
 def _deserialize_function_spec(function_spec_proto, coder):
   """Deserialize a FunctionSpec object from its proto representation."""
-  fullargspec = coder.decode_proto(function_spec_proto.fullargspec)
+  typeless_fullargspec = coder.decode_proto(function_spec_proto.fullargspec)
+  fullargspec = tf_inspect.FullArgSpec(
+      args=typeless_fullargspec.args,
+      varargs=typeless_fullargspec.varargs,
+      varkw=typeless_fullargspec.varkw,
+      defaults=typeless_fullargspec.defaults,
+      kwonlyargs=typeless_fullargspec.kwonlyargs,
+      kwonlydefaults=typeless_fullargspec.kwonlydefaults,
+      annotations=typeless_fullargspec.annotations)
   is_method = function_spec_proto.is_method
   args_to_prepend = coder.decode_proto(function_spec_proto.args_to_prepend)
   kwargs_to_include = coder.decode_proto(function_spec_proto.kwargs_to_include)
@@ -105,17 +115,14 @@ class RestoredFunction(def_function.Function):
     super(RestoredFunction, self).__init__(
         python_function, name, autograph=False)
     self._concrete_functions = concrete_functions
-    # TODO(vbardiovsky): This does not propagate to stateful and stateless
-    # functions of the RestoredFunction, which will have seen only defunned
-    # restored_function_body(*args, **kwargs). Therefore get_concrete_function()
-    # called on RestoredFunction will not work properly.
+    # This does not propagate to stateful and stateless functions of the
+    # RestoredFunction, which will have seen only defunned
+    # restored_function_body(*args, **kwargs). That's why we have to
+    # canonicalize inputs inside restored_function_body.
     self._function_spec = function_spec
 
   def _list_all_concrete_functions_for_serialization(self):
     return self._concrete_functions
-
-  def get_concrete_function(self, *args, **kwargs):
-    raise NotImplementedError()
 
 
 def recreate_function(saved_function, concrete_functions):
@@ -175,10 +182,16 @@ def recreate_function(saved_function, concrete_functions):
   for concrete_function_name in saved_function.concrete_functions:
     concrete_function_objects.append(concrete_functions[concrete_function_name])
 
-  return RestoredFunction(restored_function_body,
-                          restored_function_body.__name__,
-                          function_spec,
-                          concrete_function_objects)
+  restored_function = RestoredFunction(
+      restored_function_body,
+      restored_function_body.__name__,
+      function_spec,
+      concrete_function_objects)
+
+  return tf_decorator.make_decorator(
+      restored_function_body,
+      restored_function,
+      decorator_argspec=function_spec.fullargspec)
 
 
 def load_function_def_library(library):
@@ -281,6 +294,12 @@ def _fix_fdef(orig_fdef, functions):
     for _, attr_value in node_def.attr.items():
       if attr_value.func.name:
         attr_value.func.name = functions[attr_value.func.name].name
+
+    # TODO(b/124205571): Avoid accidental sharing and destruction of restored
+    # resources. For now drop "shared_name" when loading functions to avoid
+    # sharing.
+    if "shared_name" in node_def.attr:
+      del node_def.attr["shared_name"]
 
   fdef.signature.name = _clean_function_name(fdef.signature.name)
   return fdef

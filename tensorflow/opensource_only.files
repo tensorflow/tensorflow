@@ -120,8 +120,8 @@ tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/src/FixedPoint/MatMatProdu
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool
 tensorflow/third_party/eigen3/unsupported/Eigen/SpecialFunctions
 tensorflow/third_party/eigen3/unsupported/Eigen/MatrixFunctions
+tensorflow/third_party/eigen3/gpu_packet_math.patch
 tensorflow/third_party/eigen3/LICENSE
-tensorflow/third_party/eigen3/gebp_neon.patch
 tensorflow/third_party/eigen3/BUILD
 tensorflow/third_party/systemlibs/build_defs.bzl.tpl
 tensorflow/third_party/systemlibs/absl_py.BUILD

@@ -33,7 +33,7 @@ Like `SparseSegmentSqrtN`, but allows missing ids in `segment_ids`. If an id is
 misisng, the `output` tensor at that position will be zeroed.
 
 Read
-[the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 for an explanation of segments.
 END
 }

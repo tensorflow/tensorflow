@@ -471,6 +471,21 @@ py_library(
 )
 
 py_test(
+    name = "rebatch_dataset_test",
+    size = "small",
+    srcs = ["rebatch_dataset_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
     name = "rejection_resample_test",
     size = "medium",
     srcs = ["rejection_resample_test.py"],
@@ -589,7 +604,7 @@ py_library(
 
 py_test(
     name = "sql_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["sql_dataset_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],

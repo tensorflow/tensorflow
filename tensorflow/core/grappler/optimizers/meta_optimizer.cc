@@ -26,8 +26,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/debug_stripper.h"
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
-#include "tensorflow/core/grappler/optimizers/experimental_implementation_selector.h"
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/implementation_selector.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
@@ -241,14 +241,14 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
         pre_initialized_optimizers.end()) {
       continue;
     }
-    // Initialize the ExperimentalImplementationSelector here instead of
+    // Initialize the ImplementationSelector here instead of
     // CustomizeOptimizer registry, due the static link issue in TensorRT for
     // double registry.
     // TODO(laigd): Remove this hack and change it back to use the registry once
     // the duplicate static import issue is fixed.
     std::unique_ptr<CustomGraphOptimizer> custom_optimizer;
-    if (optimizer_config.name() == "ExperimentalImplementationSelector") {
-      custom_optimizer.reset(new ExperimentalImplementationSelector());
+    if (optimizer_config.name() == "ImplementationSelector") {
+      custom_optimizer.reset(new ImplementationSelector());
     } else {
       custom_optimizer = CustomGraphOptimizerRegistry::CreateByNameOrNull(
           optimizer_config.name());
@@ -553,7 +553,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Optimize each function only once.
   absl::flat_hash_set<string> optimized_funcs;
-  bool optimize_function_library = true;
+  bool optimize_function_library =
+      item.optimization_options().optimize_function_library;
 
   while (optimize_function_library) {
     optimize_function_library = false;
@@ -605,7 +606,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // instantiated by the function definition, because we must guarantee
       // function execution semantics wrt side effects (see
       // function_optimizer.cc).
-      func_item.optimization_options().is_function_instantiation = true;
+      func_item.optimization_options().allow_pruning_stateful_and_dataset_ops =
+          false;
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;
@@ -701,7 +703,7 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
 Status OptimizeGraph(
     std::vector<string> ret_node_names, FunctionLibraryDefinition* flib,
     const DeviceSet& device_set, Device* cpu_device,
-    const ConfigProto& config_proto,
+    const ConfigProto& config_proto, const string& grappler_item_id,
     const GrapplerItem::OptimizationOptions& optimization_options,
     std::unique_ptr<tensorflow::Graph>* g) {
   if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto)) {
@@ -709,6 +711,7 @@ Status OptimizeGraph(
   }
 
   tensorflow::grappler::GrapplerItem item;
+  item.id = grappler_item_id;
   item.optimization_options() = optimization_options;
 
   // Add all available devices so that inlined function can be placed.

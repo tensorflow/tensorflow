@@ -66,7 +66,7 @@ tensorflow::Status TRTOptimizationPass::Init(
     max_workspace_size_bytes_ = params.at("max_workspace_size_bytes").i();
   }
   if (params.count("precision_mode")) {
-    TF_RETURN_IF_ERROR(GetPrecisionMode(
+    TF_RETURN_IF_ERROR(TrtPrecisionModeFromName(
         Uppercase(params.at("precision_mode").s()), &precision_mode_));
   }
   if (params.count("use_calibration")) {
@@ -87,7 +87,7 @@ void TRTOptimizationPass::PrintDebugInfo(
     LOG(INFO) << offset << "type             = " << cluster->type();
     LOG(INFO) << offset << "num warmup steps = " << cluster->NumWarmupSteps();
     const auto dev_names = cluster->GetDeviceNames();
-    if (dev_names.size()) {
+    if (!dev_names.empty()) {
       LOG(INFO) << offset << " Device names:";
       for (const auto s : dev_names) {
         LOG(INFO) << offset2 << s;
@@ -103,7 +103,7 @@ void TRTOptimizationPass::PrintDebugInfo(
     }
 
     const auto dev_props = cluster->GetDevices();
-    if (dev_props.size()) {
+    if (!dev_props.empty()) {
       LOG(INFO) << offset << "Device properties:";
       for (auto k : dev_props) {
         LOG(INFO) << offset2 << k.first;
@@ -131,7 +131,7 @@ void TRTOptimizationPass::PrintDebugInfo(
     }
   }
   LOG(INFO) << "item: " << item.id;
-  if (item.feed.size()) {
+  if (!item.feed.empty()) {
     LOG(INFO) << offset << "Feeds  :";
     for (const auto& f : item.feed) {
       const auto& shape = f.second.shape();
@@ -140,7 +140,7 @@ void TRTOptimizationPass::PrintDebugInfo(
   } else {
     LOG(INFO) << offset << "No Feeds";
   }
-  if (item.fetch.size()) {
+  if (!item.fetch.empty()) {
     LOG(INFO) << offset << "Fetches  :";
     for (const auto& f : item.fetch) {
       LOG(INFO) << offset2 << f;
@@ -149,7 +149,7 @@ void TRTOptimizationPass::PrintDebugInfo(
     LOG(INFO) << offset << "No Fetches";
   }
 
-  if (item.init_ops.size()) {
+  if (!item.init_ops.empty()) {
     LOG(INFO) << offset << "init ops  :";
     for (const auto& f : item.init_ops) {
       LOG(INFO) << offset2 << f;
@@ -160,7 +160,7 @@ void TRTOptimizationPass::PrintDebugInfo(
   LOG(INFO) << "Save Op = " << item.save_op;
   LOG(INFO) << "Restore Op = " << item.restore_op;
   LOG(INFO) << "save_restore_loc_tensor = " << item.save_restore_loc_tensor;
-  if (item.keep_ops.size()) {
+  if (!item.keep_ops.empty()) {
     LOG(INFO) << offset << "keep ops  :";
     for (const auto& f : item.keep_ops) {
       LOG(INFO) << offset2 << f;
@@ -197,7 +197,7 @@ tensorflow::Status TRTOptimizationPass::Optimize(
     PrintDebugInfo(cluster, item);
   }
   int max_dim = -1;
-  if (item.feed.size()) {
+  if (!item.feed.empty()) {
     for (const auto& f : item.feed) {
       const auto& shape = f.second.shape();
       if (shape.dims() > 0) {
@@ -227,7 +227,7 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
   tensorflow::tensorrt::convert::ConversionParams cp;
 
-  if (use_calibration_ && precision_mode_ != INT8MODE) {
+  if (use_calibration_ && precision_mode_ != TrtPrecisionMode::INT8) {
     VLOG(1) << "Calibration with FP32 or FP16 is not implemented. "
             << "Falling back to use_calibration = False."
             << "Note that the default value of use_calibration is True.";

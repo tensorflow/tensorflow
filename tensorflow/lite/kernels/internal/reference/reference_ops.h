@@ -543,16 +543,17 @@ inline void Relu6(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
+template <typename T>
 inline void ReluX(const tflite::ActivationParams& params,
-                  const RuntimeShape& input_shape, const uint8* input_data,
-                  const RuntimeShape& output_shape, uint8* output_data) {
+                  const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
   gemmlowp::ScopedProfilingLabel label("Quantized ReluX (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  const uint8 max_value = params.quantized_activation_max;
-  const uint8 min_value = params.quantized_activation_min;
+  const T max_value = params.quantized_activation_max;
+  const T min_value = params.quantized_activation_min;
   for (int i = 0; i < flat_size; ++i) {
-    const uint8 val = input_data[i];
-    const uint8 clamped =
+    const T val = input_data[i];
+    const T clamped =
         val > max_value ? max_value : val < min_value ? min_value : val;
     output_data[i] = clamped;
   }
@@ -699,6 +700,22 @@ inline void Add(const ArithmeticParams& params,
     auto x = input1_data[i] + input2_data[i];
     output_data[i] = ActivationFunctionWithMinMax(
         x, params.float_activation_min, params.float_activation_max);
+  }
+}
+
+// T is expected to be either float or int.
+template <typename T>
+inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
+                 T* const* input_data, T* output_data) {
+  // All inputs and output should have the same shape, this is checked during
+  // Prepare stage.
+  const size_t size = input_shape.FlatSize();
+  for (int i = 0; i < size; ++i) {
+    T x = 0;
+    for (int j = 0; j < num_inputs; ++j) {
+      x += input_data[j][i];
+    }
+    output_data[i] = x;
   }
 }
 
@@ -3214,6 +3231,43 @@ inline void Gather(const tflite::GatherParams& op_params,
           input_data + (outer * axis_size + coords_data[i]) * inner_size,
           sizeof(T) * inner_size);
     }
+  }
+}
+
+template <typename ParamsT, typename IndicesT = int32>
+inline void GatherNd(const RuntimeShape& params_shape,
+                     const ParamsT* params_data,
+                     const RuntimeShape& indices_shape,
+                     const IndicesT* indices_data,
+                     const RuntimeShape& output_shape, ParamsT* output_data) {
+  gemmlowp::ScopedProfilingLabel label("GatherNd");
+
+  int n_slices = 1;
+  int slice_size = 1;
+  const int indices_dims = indices_shape.DimensionsCount();
+  const int indices_nd = indices_shape.Dims(indices_dims - 1);
+  const int params_dims = params_shape.DimensionsCount();
+  for (int i = 0; i < indices_dims - 1; ++i) {
+    n_slices *= indices_shape.Dims(i);
+  }
+  for (int i = indices_nd; i < params_dims; ++i) {
+    slice_size *= params_shape.Dims(i);
+  }
+
+  int remain_flat_size = params_shape.FlatSize();
+  std::vector<int> dims_to_count(indices_nd, 0);
+  for (int i = 0; i < indices_nd; ++i) {
+    dims_to_count[i] = remain_flat_size / params_shape.Dims(i);
+    remain_flat_size = dims_to_count[i];
+  }
+
+  for (int i = 0; i < n_slices; ++i) {
+    int from_pos = 0;
+    for (int j = 0; j < indices_nd; ++j) {
+      from_pos += indices_data[i * indices_nd + j] * dims_to_count[j];
+    }
+    std::memcpy(output_data + i * slice_size, params_data + from_pos,
+                sizeof(ParamsT) * slice_size);
   }
 }
 

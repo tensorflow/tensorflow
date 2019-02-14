@@ -17,7 +17,6 @@ filegroup(
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 # For platform specific build config
@@ -298,6 +297,7 @@ cc_library(
     deps = [
         ":call_options",
         ":message_wrappers",
+        ":request_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:master_proto_cc",
     ],
@@ -311,6 +311,7 @@ cc_library(
         ":call_options",
         ":master_env",
         ":master_session",
+        ":recent_request_ids",
         ":remote_device",
         ":worker_cache",
         ":worker_interface",
@@ -591,7 +592,9 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:no_op_op_lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:sendrecv_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -658,6 +661,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:state_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -762,6 +766,7 @@ cc_library(
     srcs = ["recent_request_ids.cc"],
     hdrs = ["recent_request_ids.h"],
     deps = [
+        ":message_wrappers",
         "//tensorflow/core:lib",
         "//tensorflow/core:worker_proto_cc",
     ],

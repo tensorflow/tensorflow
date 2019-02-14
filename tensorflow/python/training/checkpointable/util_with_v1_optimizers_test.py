@@ -43,6 +43,7 @@ from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
+from tensorflow.python.training.checkpointable import graph_view
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
@@ -100,9 +101,8 @@ class CheckpointingTests(test.TestCase):
       self.evaluate(checkpointable_utils.gather_initializers(
           root_checkpointable))
       self.evaluate(train_op)
-    named_variables, serialized_graph, _ = (
-        checkpointable_utils._serialize_object_graph(
-            root_checkpointable, saveables_cache=None))
+    named_variables, serialized_graph, _ = graph_view.ObjectGraphView(
+        root_checkpointable).serialize_object_graph()
     expected_checkpoint_names = (
         # Created in the root node, so no prefix.
         "optimizer_step",
@@ -503,7 +503,7 @@ class CheckpointingTests(test.TestCase):
   def testDeferredSlotRestoration(self):
     checkpoint_directory = self.get_temp_dir()
 
-    root = tracking.AutoCheckpointable()
+    root = checkpointable_utils.Checkpoint()
     root.var = checkpointable_utils.add_variable(
         root, name="var", initializer=0.)
     optimizer = adam.AdamOptimizer(0.1)
@@ -518,21 +518,17 @@ class CheckpointingTests(test.TestCase):
           checkpointable_utils.Checkpoint(root=root, optimizer=optimizer)))
       self.evaluate(train_op)
     self.evaluate(state_ops.assign(root.var, 12.))
-    no_slots_path = checkpointable_utils.CheckpointableSaver(root).save(
-        os.path.join(checkpoint_directory, "no_slots"))
+    no_slots_path = root.save(os.path.join(checkpoint_directory, "no_slots"))
     root.optimizer = optimizer
     self.evaluate(state_ops.assign(root.var, 13.))
     self.evaluate(state_ops.assign(optimizer.get_slot(name="m", var=root.var),
                                    14.))
-    slots_path = checkpointable_utils.CheckpointableSaver(root).save(
-        os.path.join(checkpoint_directory, "with_slots"))
-    new_root = tracking.AutoCheckpointable()
+    slots_path = root.save(os.path.join(checkpoint_directory, "with_slots"))
+    new_root = checkpointable_utils.Checkpoint()
     # Load the slot-containing checkpoint (deferred), then immediately overwrite
     # the non-slot variable (also deferred).
-    slot_status = checkpointable_utils.CheckpointableSaver(
-        new_root).restore(slots_path)
-    no_slot_status = checkpointable_utils.CheckpointableSaver(
-        new_root).restore(no_slots_path)
+    slot_status = new_root.restore(slots_path)
+    no_slot_status = new_root.restore(no_slots_path)
     with self.assertRaises(AssertionError):
       no_slot_status.assert_consumed()
     new_root.var = checkpointable_utils.add_variable(
@@ -572,15 +568,14 @@ class CheckpointingTests(test.TestCase):
       with graph.as_default(), self.session(graph):
         checkpoint_directory = self.get_temp_dir()
         checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-        obj = tracking.AutoCheckpointable()
+        obj = checkpointable_utils.Checkpoint()
         obj.var = variable_scope.get_variable(name="v", initializer=0.)
         obj.opt = adam.AdamOptimizer(0.1)
         obj.opt.minimize(obj.var.read_value())
         self.evaluate(checkpointable_utils.gather_initializers(obj))
-        saver = checkpointable_utils.CheckpointableSaver(obj)
-        saver.save(checkpoint_prefix)
+        obj.save(checkpoint_prefix)
         before_ops = graph.get_operations()
-        saver.save(checkpoint_prefix)
+        obj.save(checkpoint_prefix)
         self.assertEqual(before_ops, graph.get_operations())
 
   def testManyRestoresGraph(self):
@@ -590,16 +585,15 @@ class CheckpointingTests(test.TestCase):
       with graph.as_default(), self.session(graph):
         checkpoint_directory = self.get_temp_dir()
         checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-        obj = tracking.AutoCheckpointable()
+        obj = checkpointable_utils.Checkpoint()
         obj.var = variable_scope.get_variable(name="v", initializer=0.)
         obj.opt = adam.AdamOptimizer(0.1)
         obj.opt.minimize(obj.var.read_value())
         self.evaluate(checkpointable_utils.gather_initializers(obj))
-        saver = checkpointable_utils.CheckpointableSaver(obj)
-        save_path = saver.save(checkpoint_prefix)
-        saver.restore(save_path)
+        save_path = obj.save(checkpoint_prefix)
+        obj.restore(save_path)
         before_ops = graph.get_operations()
-        saver.restore(save_path)
+        obj.restore(save_path)
         self.assertEqual(before_ops, graph.get_operations())
 
   def testMultipleGraphsNonSlotVariables(self):
@@ -869,7 +863,8 @@ class CheckpointCompatibilityTests(test.TestCase):
       self._set_sentinels(root)
       with self.assertRaises(AssertionError):
         self._check_sentinels(root)
-      object_saver = checkpointable_utils.CheckpointableSaver(root)
+      object_saver = checkpointable_utils.CheckpointableSaver(
+          graph_view.ObjectGraphView(root))
       self._set_sentinels(root)
       status = object_saver.restore(save_path)
       if context.executing_eagerly():

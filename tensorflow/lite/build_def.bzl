@@ -2,6 +2,7 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_binary_additional_srcs",
     "tf_cc_shared_object",
     "tf_cc_test",
 )
@@ -157,7 +158,7 @@ def tf_to_tflite(name, src, options, out):
     """
 
     toco_cmdline = " ".join([
-        "//tensorflow/lite/toco:toco",
+        "$(location //tensorflow/lite/toco:toco)",
         "--input_format=TENSORFLOW_GRAPHDEF",
         "--output_format=TFLITE",
         ("--input_file=$(location %s)" % src),
@@ -168,7 +169,7 @@ def tf_to_tflite(name, src, options, out):
         srcs = [src],
         outs = [out],
         cmd = toco_cmdline,
-        tools = ["//tensorflow/lite/toco:toco"],
+        tools = ["//tensorflow/lite/toco:toco"] + tf_binary_additional_srcs(),
     )
 
 def tflite_to_json(name, src, out):
@@ -225,6 +226,7 @@ def generated_test_models():
     return [
         "abs",
         "add",
+        "add_n",
         "arg_min_max",
         "avg_pool",
         "batch_to_space_nd",
@@ -236,6 +238,7 @@ def generated_test_models():
         "conv2d_transpose",
         "conv_with_shared_weights",
         "conv_to_depthwiseconv_with_shared_weights",
+        "cos",
         "depthwiseconv",
         "div",
         "equal",
@@ -248,6 +251,7 @@ def generated_test_models():
         "fully_connected",
         "fused_batch_norm",
         "gather",
+        "gather_nd",
         "gather_with_constant",
         "global_batch_norm",
         "greater",

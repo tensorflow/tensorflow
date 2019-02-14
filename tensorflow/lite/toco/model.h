@@ -45,6 +45,7 @@ enum class OperatorType : uint8 {
   kCeil,
   kConv,
   kConcatenation,
+  kCos,
   kDepthwiseConv,
   kDepthToSpace,
   kSpaceToDepth,
@@ -163,7 +164,8 @@ enum class OperatorType : uint8 {
   kUnidirectionalSequenceRnn,
   kBidirectionalSequenceLstm,
   kReverseV2,
-  kBidirectionalSequenceRnn
+  kBidirectionalSequenceRnn,
+  kGatherNd
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -964,6 +966,8 @@ struct TensorFlowIdentityOperator : Operator {
 // TensorFlow equivalent: MatMul
 struct BatchMatMulOperator : Operator {
   BatchMatMulOperator() : Operator(OperatorType::kBatchMatMul) {}
+  bool adj_x = false;
+  bool adj_y = false;
 };
 
 // General matrix multiplication operator. We don't want to support general
@@ -1164,6 +1168,17 @@ struct TransposeConvOperator : Operator {
 // TensorFlow equivalent: Exp
 struct ExpOperator : Operator {
   ExpOperator() : Operator(OperatorType::kExp) {}
+};
+
+// Given a tensor input, this operation calculates element-wise exponential
+// (y = cos(x)).
+//
+// Inputs:
+//   inputs[0]: required: input tensor
+//
+// TensorFlow equivalent: Cos
+struct CosOperator : Operator {
+  CosOperator() : Operator(OperatorType::kCos) {}
 };
 
 // Given a tensor input, this operation inserts a dimension of 1 at the
@@ -1705,6 +1720,17 @@ struct GatherOperator : Operator {
   // This field is not used by the standard TF Lite export but it is still need
   // for legacy Gather implementations.
   int input_rank = 0;
+};
+
+// GatherNd operator. It gathers slices from params according to indices.
+//
+// Inputs:
+//   inputs[0]: required: the params array
+//   inputs[1]: required: the indices to gather
+//
+// TensorFlow equivalent: GatherNd
+struct GatherNdOperator : Operator {
+  GatherNdOperator() : Operator(OperatorType::kGatherNd) {}
 };
 
 // ArgMax operator. It returns the index of the maximum value along axis.

@@ -119,6 +119,7 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<LogisticOperator>("LOGISTIC", OperatorType::kLogistic);
   CheckSimpleOperator<TanhOperator>("TANH", OperatorType::kTanh);
   CheckSimpleOperator<ExpOperator>("EXP", OperatorType::kExp);
+  CheckSimpleOperator<CosOperator>("COS", OperatorType::kCos);
   CheckSimpleOperator<LogSoftmaxOperator>("LOG_SOFTMAX",
                                           OperatorType::kLogSoftmax);
   CheckSimpleOperator<TensorFlowMaximumOperator>(
@@ -162,6 +163,13 @@ TEST_F(OperatorTest, BuiltinAdd) {
       SerializeAndDeserialize(GetOperator("ADD", OperatorType::kAdd), op);
   EXPECT_EQ(op.fused_activation_function,
             output_toco_op->fused_activation_function);
+}
+
+TEST_F(OperatorTest, BuiltinAddN) {
+  AddNOperator op;
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("ADD_N", OperatorType::kAddN), op);
+  ASSERT_NE(output_toco_op.get(), nullptr);
 }
 
 TEST_F(OperatorTest, BuiltinReducerOps) {
@@ -232,6 +240,13 @@ TEST_F(OperatorTest, BuiltinGather) {
   ASSERT_NE(nullptr, output_toco_op.get());
 }
 
+TEST_F(OperatorTest, BuiltinGatherNd) {
+  GatherNdOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("GATHER_ND", OperatorType::kGatherNd), op);
+  ASSERT_NE(output_toco_op.get(), nullptr);
+}
+
 TEST_F(OperatorTest, BuiltinL2Pool) {
   L2PoolOperator op;
   op.stride_width = 123;
@@ -278,6 +293,44 @@ TEST_F(OperatorTest, BuiltinMaxPool) {
   EXPECT_EQ(op.padding.type, output_toco_op->padding.type);
   EXPECT_EQ(op.kwidth, output_toco_op->kwidth);
   EXPECT_EQ(op.kheight, output_toco_op->kheight);
+}
+
+TEST_F(OperatorTest, VersioningMaxTest) {
+  TensorFlowMaximumOperator max_op;
+  max_op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* op = operator_by_type_map.at(max_op.type).get();
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(max_op.inputs[0]);
+  uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.model = &uint8_model, .op = &max_op};
+  EXPECT_EQ(op->GetVersion(uint8_signature), 1);
+
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(max_op.inputs[0]);
+  int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.model = &int8_model, .op = &max_op};
+  EXPECT_EQ(op->GetVersion(int8_signature), 2);
+}
+
+TEST_F(OperatorTest, VersioningMinTest) {
+  TensorFlowMinimumOperator min_op;
+  min_op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* op = operator_by_type_map.at(min_op.type).get();
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(min_op.inputs[0]);
+  uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.model = &uint8_model, .op = &min_op};
+  EXPECT_EQ(op->GetVersion(uint8_signature), 1);
+
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(min_op.inputs[0]);
+  int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.model = &int8_model, .op = &min_op};
+  EXPECT_EQ(op->GetVersion(int8_signature), 2);
 }
 
 TEST_F(OperatorTest, BuiltinReshape) {
@@ -523,6 +576,25 @@ TEST_F(OperatorTest, BuiltinOneHot) {
   EXPECT_EQ(op.axis, output_toco_op->axis);
 }
 
+TEST_F(OperatorTest, VersioningRelu6Test) {
+  Relu6Operator relu6_op;
+  relu6_op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* op = operator_by_type_map.at(relu6_op.type).get();
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(relu6_op.inputs[0]);
+  uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.model = &uint8_model, .op = &relu6_op};
+  EXPECT_EQ(op->GetVersion(uint8_signature), 1);
+
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(relu6_op.inputs[0]);
+  int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.model = &int8_model, .op = &relu6_op};
+  EXPECT_EQ(op->GetVersion(int8_signature), 2);
+}
+
 TEST_F(OperatorTest, BuiltinUnpack) {
   UnpackOperator op;
   op.num = 5;
@@ -539,6 +611,26 @@ TEST_F(OperatorTest, BuiltinLeakyRelu) {
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("LEAKY_RELU", OperatorType::kLeakyRelu), op);
   EXPECT_EQ(op.alpha, output_toco_op->alpha);
+}
+
+TEST_F(OperatorTest, VersioningLogisticTest) {
+  LogisticOperator logistic_op;
+  logistic_op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* op = operator_by_type_map.at(logistic_op.type).get();
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(logistic_op.inputs[0]);
+  uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.model = &uint8_model,
+                                       .op = &logistic_op};
+  EXPECT_EQ(op->GetVersion(uint8_signature), 1);
+
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(logistic_op.inputs[0]);
+  int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.model = &int8_model, .op = &logistic_op};
+  EXPECT_EQ(op->GetVersion(int8_signature), 2);
 }
 
 TEST_F(OperatorTest, BuiltinSquaredDifference) {
@@ -668,6 +760,105 @@ TEST_F(OperatorTest, BuiltinUnique) {
       SerializeAndDeserialize(GetOperator("UNIQUE", OperatorType::kUnique), op);
   ASSERT_NE(nullptr, output_toco_op.get());
   EXPECT_EQ(output_toco_op->idx_out_type, op.idx_out_type);
+}
+
+// Test version for a simple Op with 2 versions and the input type controls the
+// version.
+template <typename Op>
+void SimpleVersioningTest() {
+  Op op;
+  op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(op.inputs[0]);
+  uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.model = &uint8_model, .op = &op};
+  EXPECT_EQ(base_op->GetVersion(uint8_signature), 1);
+
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(op.inputs[0]);
+  int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.model = &int8_model, .op = &op};
+  EXPECT_EQ(base_op->GetVersion(int8_signature), 2);
+}
+
+TEST_F(OperatorTest, VersioningEqualTest) {
+  SimpleVersioningTest<TensorFlowEqualOperator>();
+}
+
+TEST_F(OperatorTest, VersioningNotEqualTest) {
+  SimpleVersioningTest<TensorFlowNotEqualOperator>();
+}
+
+TEST_F(OperatorTest, VersioningLessTest) {
+  SimpleVersioningTest<TensorFlowLessOperator>();
+}
+
+TEST_F(OperatorTest, VersioningLessEqualTest) {
+  SimpleVersioningTest<TensorFlowLessEqualOperator>();
+}
+
+TEST_F(OperatorTest, VersioningGreaterTest) {
+  SimpleVersioningTest<TensorFlowGreaterOperator>();
+}
+
+TEST_F(OperatorTest, VersioningGreaterEqualTest) {
+  SimpleVersioningTest<TensorFlowGreaterEqualOperator>();
+}
+
+TEST_F(OperatorTest, VersioningSpaceToBatchNDTest) {
+  SimpleVersioningTest<SpaceToBatchNDOperator>();
+}
+
+TEST_F(OperatorTest, VersioningPackTest) {
+  SimpleVersioningTest<PackOperator>();
+}
+
+TEST_F(OperatorTest, VersioningBatchToSpaceNDTest) {
+  SimpleVersioningTest<BatchToSpaceNDOperator>();
+}
+
+TEST_F(OperatorTest, VersioningStridedSliceTest) {
+  SimpleVersioningTest<StridedSliceOperator>();
+}
+
+TEST_F(OperatorTest, VersioningSpaceToDepthTest) {
+  SimpleVersioningTest<SpaceToDepthOperator>();
+}
+
+TEST_F(OperatorTest, VersioningSliceTest) {
+  SimpleVersioningTest<SliceOperator>();
+}
+
+TEST_F(OperatorTest, VersioningAddTest) { SimpleVersioningTest<AddOperator>(); }
+
+TEST_F(OperatorTest, VersioningSubTest) { SimpleVersioningTest<SubOperator>(); }
+
+TEST_F(OperatorTest, VersioningPadTest) { SimpleVersioningTest<PadOperator>(); }
+
+TEST_F(OperatorTest, VersioningPadV2Test) {
+  SimpleVersioningTest<PadV2Operator>();
+}
+
+TEST_F(OperatorTest, VersioningSelectTest) {
+  SelectOperator select_op;
+  select_op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* op = operator_by_type_map.at(select_op.type).get();
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(select_op.inputs[0]);
+  uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.model = &uint8_model, .op = &select_op};
+  EXPECT_EQ(op->GetVersion(uint8_signature), 1);
+
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(select_op.inputs[0]);
+  int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.model = &int8_model, .op = &select_op};
+  EXPECT_EQ(op->GetVersion(int8_signature), 2);
 }
 
 }  // namespace

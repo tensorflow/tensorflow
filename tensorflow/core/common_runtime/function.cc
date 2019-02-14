@@ -818,7 +818,7 @@ void PruneFunctionBody(Graph* g) {
     // TODO(mrry): Investigate whether the `n->IsControlFlow()` test is
     // still needed. It would be preferable to prune entire loops and/or
     // conditionals if they are not used in the graph.
-    if (n->IsControlFlow() || n->IsDataset() ||
+    if (n->IsControlFlow() ||
         (n->op_def().is_stateful() && n->type_string() != kArgOp)) {
       nodes.insert(n);
     }
@@ -1424,6 +1424,7 @@ void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     if (e->IsControlEdge()) {
       if (input_control_node == nullptr) {
         input_control_node = AddNoOp(g);
+        input_control_node->set_requested_device(caller->def().device());
       }
       g->AddControlEdge(e->src(), input_control_node);
     } else {

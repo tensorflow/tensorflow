@@ -24,7 +24,6 @@ import abc
 
 import six
 
-from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
@@ -461,12 +460,6 @@ class Optimizer(
           tape.watch(var_list)
         loss_value = loss()
 
-        # Scale loss if using a "mean" loss reduction and multiple replicas.
-        # Have to be careful to call distribute_lib.get_loss_reduction()
-        # *after* loss() is evaluated, so we know what loss reduction it uses.
-        # TODO(josh11b): Test that we handle weight decay in a reasonable way.
-        loss_value = self._scale_loss(loss_value)
-
       if var_list is None:
         var_list = tape.watched_variables()
       # TODO(jhseu): Figure out why GradientTape's gradients don't require loss
@@ -480,9 +473,6 @@ class Optimizer(
       raise RuntimeError(
           "`loss` passed to Optimizer.compute_gradients should "
           "be a function when eager execution is enabled.")
-
-    # Scale loss if using a "mean" loss reduction and multiple replicas.
-    loss = self._scale_loss(loss)
 
     if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
                               Optimizer.GATE_GRAPH]:
@@ -517,14 +507,6 @@ class Optimizer(
         [v for g, v in grads_and_vars
          if g is not None and v.dtype != dtypes.resource])
     return grads_and_vars
-
-  @staticmethod
-  def _scale_loss(loss_value):
-    if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
-      num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
-      if num_replicas > 1:
-        loss_value *= (1. / num_replicas)
-    return loss_value
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to variables.

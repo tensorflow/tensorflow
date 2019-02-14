@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import data_flow_ops
@@ -35,7 +36,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-# TODO(b/117581999): add eager coverage.
+@test_util.run_v1_only("b/123903858: Add eager and V2 test coverage")
 class MapDefunTest(test_base.DatasetTestBase):
 
   def testMapDefunSimple(self):

@@ -72,7 +72,8 @@ class TfLiteFlatbufferModelBuilder {
   }
 
   void AddTensor(const std::vector<int>& shape, tflite::TensorType type,
-                 const std::vector<uint8_t>& buffer, const char* name) {
+                 const std::vector<uint8_t>& buffer, const char* name,
+                 const bool is_variable = false) {
     int buffer_index = 0;
     if (!buffer.empty()) {
       buffer_index = buffers_.size();
@@ -81,11 +82,12 @@ class TfLiteFlatbufferModelBuilder {
     if (shape.empty()) {
       tensors_.push_back(CreateTensorDirect(builder_, /*shape=*/nullptr, type,
                                             buffer_index, name,
-                                            /*quantization=*/0));
+                                            /*quantization=*/0, is_variable));
       return;
     }
     tensors_.push_back(CreateTensorDirect(builder_, &shape, type, buffer_index,
-                                          name, /*quantization=*/0));
+                                          name, /*quantization=*/0,
+                                          is_variable));
   }
 
   void AddOperator(const std::vector<int32_t>& inputs,
@@ -148,7 +150,7 @@ TEST(VerifyModel, TestEmptyModel) {
 
 TEST(VerifyModel, TestEmptyShape) {
   TfLiteFlatbufferModelBuilder builder({}, {"test"});
-  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "test");
+  builder.AddOperator({0, 1}, {3}, BuiltinOperator_CUSTOM, "test");
   builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4, 5, 6}, "input");
   builder.AddTensor({}, TensorType_UINT8, {1, 2, 3, 4, 5, 6}, "inputtwo");
   builder.AddTensor(
@@ -156,10 +158,10 @@ TEST(VerifyModel, TestEmptyShape) {
       {2, 0, 0, 0, 16, 0, 0, 0, 17, 0, 0, 0, 19, 0, 0, 0, 'A', 'B', 'C'},
       "data");
   builder.AddTensor({2, 3}, TensorType_INT32, {}, "output");
-  builder.FinishModel({0, 1}, {2});
+  builder.FinishModel({0, 1}, {3});
   ASSERT_FALSE(builder.Verify());
   EXPECT_THAT(builder.GetErrorString(),
-              ::testing::ContainsRegex("Tensor shape is empty"));
+              ::testing::ContainsRegex("Tensor inputtwo shape is empty"));
 }
 
 TEST(VerifyModel, TestSimpleModel) {
@@ -219,10 +221,9 @@ TEST(VerifyModel, TestIntTensorShapeIsGreaterThanBuffer) {
   builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4}, "input");
   builder.FinishModel({}, {});
   ASSERT_FALSE(builder.Verify());
-  EXPECT_THAT(
-      builder.GetErrorString(),
-      ::testing::ContainsRegex(
-          "Tensor requires 6 bytes, but is allocated with 4 bytes buffer"));
+  EXPECT_THAT(builder.GetErrorString(),
+              ::testing::ContainsRegex("Tensor input requires 6 bytes, but is "
+                                       "allocated with 4 bytes buffer"));
 }
 
 TEST(VerifyModel, TestIntTensorShapeIsSmallerThanBuffer) {
@@ -230,10 +231,9 @@ TEST(VerifyModel, TestIntTensorShapeIsSmallerThanBuffer) {
   builder.AddTensor({2, 1}, TensorType_UINT8, {1, 2, 3, 4}, "input");
   builder.FinishModel({}, {});
   ASSERT_FALSE(builder.Verify());
-  EXPECT_THAT(
-      builder.GetErrorString(),
-      ::testing::ContainsRegex(
-          "Tensor requires 2 bytes, but is allocated with 4 bytes buffer"));
+  EXPECT_THAT(builder.GetErrorString(),
+              ::testing::ContainsRegex("Tensor input requires 2 bytes, but is "
+                                       "allocated with 4 bytes buffer"));
 }
 
 TEST(VerifyModel, TestIntTensorShapeOverflow) {
@@ -243,7 +243,7 @@ TEST(VerifyModel, TestIntTensorShapeOverflow) {
   builder.FinishModel({}, {});
   ASSERT_FALSE(builder.Verify());
   EXPECT_THAT(builder.GetErrorString(),
-              ::testing::ContainsRegex("Tensor dimension overflow"));
+              ::testing::ContainsRegex("Tensor input dimension overflow"));
 }
 
 TEST(VerifyModel, TensorBufferIsNotValid) {
@@ -282,10 +282,11 @@ TEST(VerifyModel, StringTensorHasInvalidNumString) {
       "input");
   builder.FinishModel({}, {});
   ASSERT_FALSE(builder.Verify());
-  EXPECT_THAT(builder.GetErrorString(),
-              ::testing::ContainsRegex(
-                  "String tensor buffer requires at least -2147483640 bytes, "
-                  "but is allocated with 18 bytes"));
+  EXPECT_THAT(
+      builder.GetErrorString(),
+      ::testing::ContainsRegex(
+          "String tensor input buffer requires at least -2147483640 bytes, "
+          "but is allocated with 18 bytes"));
 }
 
 TEST(VerifyModel, StringTensorOffsetTooSmall) {
@@ -297,7 +298,7 @@ TEST(VerifyModel, StringTensorOffsetTooSmall) {
   ASSERT_FALSE(builder.Verify());
   EXPECT_THAT(builder.GetErrorString(),
               ::testing::ContainsRegex(
-                  "String tensor buffer initial offset must be: 16"));
+                  "String tensor input buffer initial offset must be: 16"));
 }
 
 TEST(VerifyModel, StringTensorOffsetOutOfRange) {
@@ -307,9 +308,9 @@ TEST(VerifyModel, StringTensorOffsetOutOfRange) {
       {2, 0, 0, 0, 16, 0, 0, 0, 17, 0, 0, 0, 22, 0, 0, 0, 'A', 'B'}, "input");
   builder.FinishModel({}, {});
   ASSERT_FALSE(builder.Verify());
-  EXPECT_THAT(
-      builder.GetErrorString(),
-      ::testing::ContainsRegex("String tensor buffer is invalid: index 2"));
+  EXPECT_THAT(builder.GetErrorString(),
+              ::testing::ContainsRegex(
+                  "String tensor input buffer is invalid: index 2"));
 }
 
 TEST(VerifyModel, StringTensorIsLargerThanRequired) {
@@ -320,18 +321,19 @@ TEST(VerifyModel, StringTensorIsLargerThanRequired) {
       "input");
   builder.FinishModel({}, {});
   ASSERT_FALSE(builder.Verify());
-  EXPECT_THAT(
-      builder.GetErrorString(),
-      ::testing::ContainsRegex("String tensor buffer last offset must be 19"));
+  EXPECT_THAT(builder.GetErrorString(),
+              ::testing::ContainsRegex(
+                  "String tensor input buffer last offset must be 19"));
 }
 
 TEST(VerifyModel, AllOpsAreSupported) {
   TfLiteFlatbufferModelBuilder builder({BuiltinOperator_ADD}, {"CustomOp"});
   builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input1");
   builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input2");
-  builder.AddTensor({2, 2}, TensorType_UINT8, {}, "output");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {}, "output1");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {}, "output2");
   builder.AddOperator({0, 1}, {2}, BuiltinOperator_ADD, nullptr);
-  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "CustomOp");
+  builder.AddOperator({0, 1}, {3}, BuiltinOperator_CUSTOM, "CustomOp");
   builder.FinishModel({}, {});
   ASSERT_TRUE(builder.Verify());
   EXPECT_EQ("", builder.GetErrorString());
@@ -361,6 +363,87 @@ TEST(VerifyModel, UseUnsupportedCustomOps) {
   EXPECT_THAT(builder.GetErrorString(),
               ::testing::ContainsRegex(
                   "Unsupported custom op: Not supported, version: 1"));
+}
+
+TEST(VerifyModel, UnpopulatedInputToOp) {
+  TfLiteFlatbufferModelBuilder builder({}, {"test"});
+  builder.AddOperator({1, 2}, {3}, BuiltinOperator_CUSTOM, "test");
+  builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4, 5, 6}, "input");
+  // This tensor will never be populated.
+  builder.AddTensor({2, 3}, TensorType_UINT8, {}, "invalid_input");
+  builder.AddTensor(
+      {2}, TensorType_STRING,
+      {2, 0, 0, 0, 16, 0, 0, 0, 17, 0, 0, 0, 19, 0, 0, 0, 'A', 'B', 'C'},
+      "data");
+  builder.AddTensor({2, 3}, TensorType_INT32, {}, "output");
+  builder.FinishModel({0, 2}, {3});
+  ASSERT_FALSE(builder.Verify());
+  EXPECT_EQ("Input tensor 1 to op 0 (CUSTOM) is not produced",
+            builder.GetErrorString());
+}
+
+TEST(VerifyModel, MultipleOpsOutputToSameTensor) {
+  TfLiteFlatbufferModelBuilder builder({BuiltinOperator_ADD}, {"CustomOp"});
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input1");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input2");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {}, "output1");
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_ADD, nullptr);
+  // This can't output to "output1", since the first operator does that.
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "CustomOp");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+  EXPECT_EQ(
+      "Output tensor 2 to op 1 (CUSTOM) is an output from another op. "
+      "There is a cycle in the graph",
+      builder.GetErrorString());
+}
+
+TEST(VerifyModel, OutputIsAConstantTensor) {
+  TfLiteFlatbufferModelBuilder builder({}, {"test"});
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "test");
+  builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4, 5, 6}, "input");
+  builder.AddTensor(
+      {2}, TensorType_STRING,
+      {2, 0, 0, 0, 16, 0, 0, 0, 17, 0, 0, 0, 19, 0, 0, 0, 'A', 'B', 'C'},
+      "data");
+  // Output shouldn't be populated with constant value.
+  builder.AddTensor({2, 3}, TensorType_INT32, {1, 2, 3, 4, 5, 6}, "output");
+  builder.FinishModel({0, 1}, {2});
+  ASSERT_FALSE(builder.Verify());
+  EXPECT_EQ("Output tensor 2 to op 0 (CUSTOM) is a constant",
+            builder.GetErrorString());
+}
+
+TEST(VerifyModel, OutputIsSubgraphInput) {
+  TfLiteFlatbufferModelBuilder builder({}, {"test"});
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "test");
+  builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4, 5, 6}, "input");
+  builder.AddTensor(
+      {2}, TensorType_STRING,
+      {2, 0, 0, 0, 16, 0, 0, 0, 17, 0, 0, 0, 19, 0, 0, 0, 'A', 'B', 'C'},
+      "data");
+  builder.AddTensor({2, 3}, TensorType_INT32, {}, "output");
+  // Output shouldn't be a subgraph input.
+  builder.FinishModel({0, 1, 2}, {2});
+  ASSERT_FALSE(builder.Verify());
+  EXPECT_EQ("Output tensor 2 to op 0 (CUSTOM) is a subgraph input",
+            builder.GetErrorString());
+}
+
+TEST(VerifyModel, OutputIsAVariable) {
+  TfLiteFlatbufferModelBuilder builder({}, {"test"});
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "test");
+  builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4, 5, 6}, "input");
+  builder.AddTensor(
+      {2}, TensorType_STRING,
+      {2, 0, 0, 0, 16, 0, 0, 0, 17, 0, 0, 0, 19, 0, 0, 0, 'A', 'B', 'C'},
+      "data");
+  // Output shouldn't be a variable.
+  builder.AddTensor({2, 3}, TensorType_INT32, {}, "output", /*variable*/ true);
+  builder.FinishModel({0, 1}, {2});
+  ASSERT_FALSE(builder.Verify());
+  EXPECT_EQ("Output tensor 2 to op 0 (CUSTOM) is a variable",
+            builder.GetErrorString());
 }
 
 // TODO(yichengfan): make up malicious files to test with.

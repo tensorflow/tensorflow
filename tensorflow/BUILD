@@ -95,6 +95,12 @@ config_setting(
 )
 
 config_setting(
+    name = "emscripten",
+    values = {"crosstool_top": "//external:android/emscripten"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "raspberry_pi_armeabi",
     values = {
         "crosstool_top": "@local_config_arm_compiler//:toolchain",
@@ -392,17 +398,7 @@ config_setting(
 
 package_group(
     name = "internal",
-    packages = [
-        "-//third_party/tensorflow/python/estimator",
-        "//learning/deepmind/...",
-        "//learning/meta_rank/...",
-        "//platforms/performance/autograppler/...",
-        "//tensorflow/...",
-        "//tensorflow_estimator/contrib/...",
-        "//tensorflow_fold/llgtm/...",
-        "//tensorflow_text/...",
-        "//third_party/py/tensor2tensor/...",
-    ],
+    packages = ["//tensorflow/..."],
 )
 
 load(

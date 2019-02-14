@@ -142,7 +142,7 @@ tf_module {
   }
   member_method {
     name: "make_csv_dataset"
-    argspec: "args=[\'file_pattern\', \'batch_size\', \'column_names\', \'column_defaults\', \'label_name\', \'select_columns\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'header\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'num_parallel_reads\', \'sloppy\', \'num_rows_for_inference\', \'compression_type\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \',\', \'True\', \'\', \'True\', \'None\', \'True\', \'10000\', \'None\', \'-1\', \'1\', \'False\', \'100\', \'None\'], "
+    argspec: "args=[\'file_pattern\', \'batch_size\', \'column_names\', \'column_defaults\', \'label_name\', \'select_columns\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'header\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'num_parallel_reads\', \'sloppy\', \'num_rows_for_inference\', \'compression_type\', \'ignore_errors\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \',\', \'True\', \'\', \'True\', \'None\', \'True\', \'10000\', \'None\', \'-1\', \'1\', \'False\', \'100\', \'None\', \'False\'], "
   }
   member_method {
     name: "make_saveable_from_iterator"
@@ -150,6 +150,10 @@ tf_module {
   }
   member_method {
     name: "map_and_batch"
+    argspec: "args=[\'map_func\', \'batch_size\', \'num_parallel_batches\', \'drop_remainder\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "map_and_batch_with_legacy_function"
     argspec: "args=[\'map_func\', \'batch_size\', \'num_parallel_batches\', \'drop_remainder\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
   member_method {

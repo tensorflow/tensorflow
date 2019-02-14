@@ -165,6 +165,17 @@ Options {
 }
 ```
 
+**ADD_N**
+
+```
+Inputs {
+  0-N: any number of tensors (must have same size and shape)
+}
+Outputs {
+  0: elementwise sum of the input tensors
+}
+```
+
 **ARG_MAX**
 
 ```
@@ -397,6 +408,18 @@ Inputs {
   0: params tensor
   1: indices tensor
   2: axis tensor (optional)
+}
+Outputs {
+  0: a tensor with same type as the params tensor.
+}
+```
+
+**GATHER_ND**
+
+```
+Inputs {
+  0: params tensor
+  1: indices tensor
 }
 Outputs {
   0: a tensor with same type as the params tensor.

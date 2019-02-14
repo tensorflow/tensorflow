@@ -33,13 +33,12 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.saving import saved_model as keras_saved_model
+from tensorflow.python.keras.utils import mode_keys
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import model_utils
-from tensorflow.python.saved_model import signature_constants
-from tensorflow.python.training import mode_keys
 from tensorflow.python.training import training as training_module
 
 
@@ -264,10 +263,7 @@ def subclassed_model():
 
 def load_model(sess, path, mode):
   tags = model_utils.EXPORT_TAG_MAP[mode]
-  if mode == mode_keys.ModeKeys.PREDICT:
-    sig_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-  else:
-    sig_def_key = mode
+  sig_def_key = model_utils.SIGNATURE_KEY_MAP[mode]
 
   meta_graph_def = loader_impl.load(sess, tags, path)
   inputs = {

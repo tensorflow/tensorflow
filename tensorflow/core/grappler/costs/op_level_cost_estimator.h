@@ -193,6 +193,7 @@ class OpLevelCostEstimator {
   // If true, assume compute and memory overlap; hence, the op cost is max of
   // compute_time and memory_time, insteaf of sum of those two.
   bool compute_memory_overlap_;
+  std::set<string> persistent_ops_;
 
  private:
   friend class OpLevelCostEstimatorTest;

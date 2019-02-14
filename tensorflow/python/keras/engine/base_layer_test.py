@@ -225,6 +225,28 @@ class BaseLayerTest(keras_parameterized.TestCase):
     model(np.zeros((2, 4), dtype='float32'))
     self.assertTrue(model.built)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_default_add_weight(self):
+
+    class TestLayer(keras.layers.Layer):
+
+      def __init__(self):
+        super(TestLayer, self).__init__()
+        self.default_weight = self.add_weight()
+        self.weight_without_name = self.add_weight(shape=(3, 4))
+        self.regularized_weight_without_name = self.add_weight(
+            shape=(3, 4), regularizer='l2')
+
+    layer = TestLayer()
+    self.assertEqual(layer.default_weight.shape.as_list(), [])
+    self.assertEqual(layer.weight_without_name.shape.as_list(), [3, 4])
+    self.assertEqual(layer.default_weight.dtype.name, 'float32')
+    self.assertEqual(layer.weight_without_name.dtype.name, 'float32')
+    self.assertEqual(len(layer.losses), 1)
+    if not context.executing_eagerly():
+      # Cannot access tensor.name in eager execution.
+      self.assertTrue('Variable_2/Regularizer' in layer.losses[0].name)
+
   def test_learning_phase_freezing_for_layers(self):
     # This test is only meant to run in graph functions mode (ambient eager).
     # In forced eager, `model.predict` ignores the global learning phase
@@ -347,6 +369,27 @@ class BaseLayerTest(keras_parameterized.TestCase):
       function_name = last_entry[2]
       self.assertEqual(function_name, 'easily_identifiable_name')
 
+  # Cannot be enabled with `run_eagerly=True`, see b/123904578
+  @test_util.run_all_in_graph_and_eager_modes
+  def test_layer_can_return_variable(self):
+
+    class ComputeSum(keras.layers.Layer):
+
+      def __init__(self):
+        super(ComputeSum, self).__init__()
+        self.total = variables.Variable(
+            initial_value=array_ops.zeros((1, 1)), trainable=False)
+        if not context.executing_eagerly():
+          keras.backend.get_session().run(self.total.initializer)
+
+      def call(self, inputs):
+        self.total.assign_add(inputs)
+        return self.total
+
+    inputs = keras.Input(shape=(1,))
+    model = keras.Model(inputs, ComputeSum()(inputs))
+    model.predict(np.ones((1, 1)))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class NestedTrackingTest(test.TestCase):
@@ -432,6 +475,34 @@ class NestedTrackingTest(test.TestCase):
       _ = layer(inputs)
       self.assertEqual(len(layer.losses), 3)
       self.assertEqual(len(layer.updates), 3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class NameScopingTest(keras_parameterized.TestCase):
+
+  def test_name_scope_layer(self):
+    x = keras.backend.placeholder(shape=(10, 10))
+    layer = keras.layers.Dense(10, name='MyName')
+    layer(x)
+    self.assertEqual(layer.bias.name, 'MyName/bias:0')
+    self.assertEqual(layer.kernel.name, 'MyName/kernel:0')
+
+  def test_name_scope_sublayer(self):
+    x = keras.backend.placeholder(shape=(10, 10))
+    layer = keras.layers.Dense(
+        10, activation=keras.layers.ReLU(name='MyAct'), name='MyName2')
+    y = layer(x)
+    self.assertEqual(layer.bias.name, 'MyName2/bias:0')
+    self.assertEqual(layer.kernel.name, 'MyName2/kernel:0')
+    self.assertEqual(y.name, 'MyName2/MyAct/Relu:0')
+
+  def test_name_scope_tf_tensor(self):
+    x = ops.convert_to_tensor(np.ones((10, 10)))
+    layer = keras.layers.Dense(
+        10, activation=keras.layers.ReLU(name='MyAct'), name='MyName3')
+    layer(x)
+    self.assertEqual(layer.bias.name, 'MyName3/bias:0')
+    self.assertEqual(layer.kernel.name, 'MyName3/kernel:0')
 
 
 if __name__ == '__main__':

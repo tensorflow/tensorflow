@@ -25,6 +25,7 @@ py_library(
     deps = [
         ":ragged_array_ops",
         ":ragged_batch_gather_ops",
+        ":ragged_batch_gather_with_default_op",
         ":ragged_concat_ops",
         ":ragged_conversion_ops",
         ":ragged_dispatch",
@@ -85,6 +86,29 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+    ],
+)
+
+py_library(
+    name = "ragged_batch_gather_with_default_op",
+    srcs = [
+        "ragged_batch_gather_with_default_op.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_array_ops",
+        ":ragged_batch_gather_ops",
+        ":ragged_concat_ops",
+        ":ragged_dispatch",
+        ":ragged_operators",
+        ":ragged_tensor",
+        ":ragged_tensor_shape",
+        ":ragged_where_op",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
     ],
@@ -365,11 +389,13 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":ragged_array_ops",
+        ":ragged_batch_gather_ops",
         ":ragged_math_ops",
         ":ragged_tensor",
         ":ragged_tensor_shape",
         ":ragged_util",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:bitwise_ops",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
@@ -509,6 +535,7 @@ py_test(
     deps = [
         ":ragged_array_ops",
         ":ragged_batch_gather_ops",
+        ":ragged_batch_gather_with_default_op",
         ":ragged_factory_ops",
         ":ragged_tensor",
         ":ragged_test_util",

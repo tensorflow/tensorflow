@@ -119,7 +119,6 @@ class LBetaTest(test.TestCase):
           special_math_ops.lbeta(x).get_shape())
 
   @test_util.run_in_graph_and_eager_modes
-  @test_util.disable_xla('This test never passed for XLA')
   def test_length_1_last_dimension_results_in_one(self):
     # If there is only one coefficient, the formula still works, and we get one
     # as the answer, always.
@@ -127,7 +126,9 @@ class LBetaTest(test.TestCase):
     x_b = [0.1]
     with self.session(use_gpu=True):
       self.assertAllClose(
-          1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_a))))
+          1,
+          self.evaluate(math_ops.exp(special_math_ops.lbeta(x_a))),
+          rtol=3e-6)
       self.assertAllClose(
           1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_b))))
       self.assertEqual((), special_math_ops.lbeta(x_a).get_shape())

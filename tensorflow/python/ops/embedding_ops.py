@@ -558,7 +558,7 @@ def embedding_lookup_sparse_v2(params,
                                combiner=None,
                                max_norm=None,
                                name=None):
-  return embedding_lookup_sparse_v2(
+  return embedding_lookup_sparse(
       params, sp_ids, sp_weights, partition_strategy, name, combiner, max_norm)
 
 

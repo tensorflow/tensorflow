@@ -94,8 +94,6 @@
 @@smart_constant_value
 @@smart_case
 
-@@CriticalSection
-
 @@BoundedTensorSpec
 @@TensorSpec
 
@@ -139,6 +137,7 @@ _nest_allowed_symbols = [
     'map_structure_with_tuple_paths',
     'assert_shallow_structure',
     'flatten_up_to',
+    'flatten_with_tuple_paths_up_to',
     'map_structure_up_to',
     'map_structure_with_tuple_paths_up_to',
     'get_traverse_shallow_structure',

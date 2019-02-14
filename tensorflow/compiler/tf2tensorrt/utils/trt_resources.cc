@@ -48,7 +48,7 @@ Status TRTCalibrationResource::SerializeToString(string* serialized) {
   calibrator_->waitAndSetDone();
   thr_->join();
   *serialized = calibrator_->getCalibrationTableAsString();
-  if (!serialized->size()) {
+  if (serialized->empty()) {
     return tensorflow::errors::Unknown("Calibration table is empty.");
   }
   return Status::OK();

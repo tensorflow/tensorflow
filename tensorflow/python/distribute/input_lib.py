@@ -246,7 +246,7 @@ class DatasetIterator(InputIteratorImpl):
     """
     assert isinstance(input_workers, InputWorkers)
     if split_batch_by:
-      dataset = _split_dataset_batch(dataset, split_batch_by)
+      dataset = batching._RebatchDataset(dataset, split_batch_by)  # pylint: disable=protected-access
 
     iterators = []
     for i, worker in enumerate(input_workers.worker_devices):
@@ -255,6 +255,7 @@ class DatasetIterator(InputIteratorImpl):
         cloned_dataset = dataset
         if not context.executing_eagerly():
           cloned_dataset = input_ops._clone_dataset(dataset)  # pylint: disable=protected-access
+          cloned_dataset = cloned_dataset.with_options(dataset.options())
         iterator = _SingleWorkerDatasetIterator(cloned_dataset, worker,
                                                 worker_devices)
         iterators.append(iterator)
@@ -345,14 +346,15 @@ class _SingleWorkerCallableIterator(object):
 
 # TODO(sourabhbajaj): Remove this in lieu of distributed datasets
 def _get_batched_dataset(d):
-  """Get the underlying batch dataset from the dataset object."""
+  """Get the batched dataset from `d`."""
   # pylint: disable=protected-access
   if isinstance(d, dataset_ops.DatasetV1Adapter):
     d = d._dataset
 
   if isinstance(d, (dataset_ops.BatchDataset, batching._MapAndBatchDataset)):
     return d
-  elif isinstance(d, dataset_ops.PrefetchDataset):
+  elif isinstance(d, (dataset_ops.PrefetchDataset,
+                      dataset_ops._OptionsDataset)):
     return _get_batched_dataset(d._input_dataset)
 
   raise ValueError(
@@ -361,24 +363,17 @@ def _get_batched_dataset(d):
       "The batch operations can be followed by a prefetch.")
 
 
-def _get_batched_dataset_attributes(dataset):
-  """Get `batch_size`, `drop_remainder`, and `prefetch_buffer` of dataset."""
+def _get_batched_dataset_attributes(d):
+  """Get `batch_size`, `drop_remainder` of dataset."""
   # pylint: disable=protected-access
-  assert isinstance(dataset,
+  assert isinstance(d,
                     (dataset_ops.BatchDataset, batching._MapAndBatchDataset))
-  if isinstance(dataset, dataset_ops.BatchDataset):
-    batch_size = dataset._batch_size
-    drop_remainder = dataset._drop_remainder
-  elif isinstance(dataset, batching._MapAndBatchDataset):
-    batch_size = dataset._batch_size_t
-    drop_remainder = dataset._drop_remainder_t
-
-  prefetch_buffer = None
-  if isinstance(dataset, dataset_ops.PrefetchDataset):
-    prefetch_buffer = dataset._buffer_size
-  elif (isinstance(dataset, dataset_ops.DatasetV1Adapter)
-        and isinstance(dataset._dataset, dataset_ops.PrefetchDataset)):
-    prefetch_buffer = dataset._dataset._buffer_size
+  if isinstance(d, dataset_ops.BatchDataset):
+    batch_size = d._batch_size
+    drop_remainder = d._drop_remainder
+  elif isinstance(d, batching._MapAndBatchDataset):
+    batch_size = d._batch_size_t
+    drop_remainder = d._drop_remainder_t
   # pylint: enable=protected-access
 
   if tensor_util.is_tensor(batch_size):
@@ -387,26 +382,29 @@ def _get_batched_dataset_attributes(dataset):
   if tensor_util.is_tensor(drop_remainder):
     drop_remainder = tensor_util.constant_value(drop_remainder)
 
-  return batch_size, drop_remainder, prefetch_buffer
+  return batch_size, drop_remainder
 
 
-def _split_dataset_batch(dataset, split_batch_by):
-  """Divide a batch-ed dataset's batches into smaller batches."""
+# TODO(sourabhbajaj): Remove this in lieu of distributed datasets
+def _get_dataset_attributes(dataset):
+  """Get the underlying attributes from the dataset object."""
+  # pylint: disable=protected-access
+
+  # First, get batch_size and drop_remainder from the dataset. We need
+  # to walk back the dataset creation process and find the batched version in
+  # order to get the attributes.
   batched_dataset = _get_batched_dataset(dataset)
-  batch_size, drop_remainder, prefetch_buffer = (
-      _get_batched_dataset_attributes(batched_dataset))
+  batch_size, drop_remainder = _get_batched_dataset_attributes(batched_dataset)
 
-  if batch_size % split_batch_by:
-    raise ValueError(
-        "Batch size %s cannot be sharded evenly across replicas %s" % (
-            batch_size, split_batch_by))
-  new_batch_size = batch_size // split_batch_by
+  # Second, prefetch buffer should be get from the original dataset.
+  prefetch_buffer = None
+  if isinstance(dataset, dataset_ops.PrefetchDataset):
+    prefetch_buffer = dataset._buffer_size
+  elif (isinstance(dataset, dataset_ops.DatasetV1Adapter)
+        and isinstance(dataset._dataset, dataset_ops.PrefetchDataset)):
+    prefetch_buffer = dataset._dataset._buffer_size
 
-  dataset = dataset.apply(batching.unbatch())
-  dataset = dataset.batch(new_batch_size, drop_remainder=drop_remainder)
-  if prefetch_buffer is not None:
-    dataset = dataset.prefetch(prefetch_buffer)
-  return dataset
+  return batch_size, drop_remainder, prefetch_buffer
 
 
 class MultiStepContext(object):

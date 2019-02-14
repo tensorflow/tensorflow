@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/segment/segment.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/test_utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resource_manager.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
@@ -83,7 +82,8 @@ std::vector<int> GetLoadedTensorRTVersion() {
 }
 
 TrtCandidateSelector::TrtCandidateSelector(
-    const grappler::GraphProperties& graph_properties, int precision_mode)
+    const grappler::GraphProperties& graph_properties,
+    TrtPrecisionMode precision_mode)
     : graph_properties_(graph_properties), precision_mode_(precision_mode) {}
 
 Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
@@ -98,13 +98,16 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
       "ConcatV2",
       "Const",
       "Conv2D",
+      "Conv2DBackpropInput",
       "DepthwiseConv2dNative",
       "Div",
       "Exp",
       "ExpandDims",
       "FusedBatchNorm",
       "FusedBatchNormV2",
+      "GatherV2",
       "Identity",
+      "LeakyRelu",
       "Log",
       "MatMul",
       "Max",
@@ -149,7 +152,8 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
   // In INT8 mode, we will always apply the quantization ranges provided by
   // these ops to the relevant tensors. This happens regardless of the value of
   // use_calibration.
-  if (precision_mode_ == INT8MODE && quantize_ops.count(node->type_string())) {
+  if (precision_mode_ == TrtPrecisionMode::INT8 &&
+      quantize_ops.count(node->type_string())) {
     is_supported_op_type = true;
   }
   // LINT.ThenChange(//tensorflow/compiler/tf2tensorrt/convert/convert_nodes.cc)
@@ -186,60 +190,11 @@ tensorflow::Status BuildNodeMap(
 
 }  // namespace
 
-// Function to get calibration from ResourceMgr and put them into nodedef.
-tensorflow::Status ConvertCalibGraphToInferGraph(
-    const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* infer_graph,
-    bool is_dyn_op) {
-  LOG(INFO) << "Starting Calib Conversion";
-  infer_graph->CopyFrom(graph_def);
-  auto trt_rm = TRTResourceManager::instance();
-  auto calib_rm = trt_rm->getManager("TRTCalibration");
-  int num_nodes = infer_graph->node_size();
-  if (!is_dyn_op) {
-    LOG(WARNING) << "Construction of static int8 engine is not implemented "
-                    "yet!. Dynamic engine will be constructed";
-  }
-  for (int i = 0; i < num_nodes; ++i) {
-    auto n = infer_graph->mutable_node(i);
-    if (n->op() == "TRTEngineOp") {
-      VLOG(1) << "Processing " << n->name();
-      const string& container_name = n->attr().at("segment_funcdef_name").s();
-      TRTCalibrationResource* cres = nullptr;
-      auto status = calib_rm->Lookup(container_name, "Calibrator", &cres);
-      if (!status.ok()) {
-        LOG(ERROR) << "Could not get Calibration information. Did you run with "
-                      "calibration data?";
-        return tensorflow::errors::FailedPrecondition(
-            "Need to run graph with calibration data first!");
-      }
-      tensorflow::core::ScopedUnref calib_sc(cres);
-      if (cres->calibrator_) {
-        cres->calibrator_->waitAndSetDone();
-        cres->thr_->join();
-        const auto& calibration_table =
-            cres->calibrator_->getCalibrationTableAsString();
-        if (!calibration_table.size()) {
-          LOG(ERROR) << "Calibration table is empty";
-          return tensorflow::errors::Unknown(
-              "Calibration table is missing. This shouldn't have happened!");
-        }
-        n->mutable_attr()->at("calibration_data").set_s(calibration_table);
-      } else {
-        LOG(ERROR) << "Can't get TRTCalibrator from resource manager!";
-        return tensorflow::errors::Unknown(
-            "Can't get TRTCalibrator from resource manager!");
-      }
-      TF_RETURN_IF_ERROR(calib_rm->Cleanup(container_name));
-    }
-  }
-  return tensorflow::Status::OK();
-}
-
 tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
     const std::vector<string>& output_names, size_t max_batch_size,
     size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
-    int precision_mode, int minimum_segment_size, bool is_dyn_op,
+    TrtPrecisionMode precision_mode, int minimum_segment_size, bool is_dyn_op,
     int max_cached_engines, std::vector<int> cached_engine_batches,
     bool use_calibration) {
   // Create GrapplerItem.
@@ -299,7 +254,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   parameters["max_batch_size"].set_i(max_batch_size);
   parameters["is_dynamic_op"].set_b(is_dyn_op);
   parameters["max_workspace_size_bytes"].set_i(max_workspace_size_bytes);
-  TF_RETURN_IF_ERROR(GetPrecisionModeName(
+  TF_RETURN_IF_ERROR(TrtPrecisionModeToName(
       precision_mode, parameters["precision_mode"].mutable_s()));
   parameters["maximum_cached_engines"].set_i(max_cached_engines);
   if (!cached_engine_batches.empty()) {
@@ -638,7 +593,7 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
   }
 
   const bool calibrate_int8 =
-      (info.precision_mode == INT8MODE && info.use_calibration);
+      (info.precision_mode == TrtPrecisionMode::INT8 && info.use_calibration);
   // Build the engine and get its serialized representation.
   string segment_string;
   if (info.engine_type == EngineInfo::EngineType::TRTStatic || calibrate_int8) {
@@ -651,14 +606,15 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     // TODO(sami): What happens if 1st dim is not batch?
     TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
-        info.segment_graph_def, calibrate_int8 ? FP32MODE : info.precision_mode,
+        info.segment_graph_def,
+        calibrate_int8 ? TrtPrecisionMode::FP32 : info.precision_mode,
         max_batch_size, info.max_workspace_size_bytes, input_shapes,
         &trt_logger, alloc, /*calibrator=*/nullptr, &engine,
         info.use_calibration,
         /*convert_successfully=*/nullptr));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
-    segment_string =
-        string((const char*)engine_data->data(), engine_data->size());
+    segment_string = string(static_cast<const char*>(engine_data->data()),
+                            engine_data->size());
     if (calibrate_int8) {
       // See above comment about why not putting this inside the 'else' branch.
       segment_string = info.segment_graph_def.SerializeAsString();
@@ -668,7 +624,7 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
   }
 
   string prec_string;
-  TF_RETURN_IF_ERROR(GetPrecisionModeName(info.precision_mode, &prec_string));
+  TF_RETURN_IF_ERROR(TrtPrecisionModeToName(info.precision_mode, &prec_string));
   tensorflow::NodeDefBuilder node_builder(info.engine_name, "TRTEngineOp");
   if (!info.device.empty()) node_builder.Device(info.device);
   if (VLOG_IS_ON(1)) {
@@ -976,7 +932,8 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
       continue;
     }
     curr_engine.precision_mode = params.precision_mode;
-    if (params.use_calibration && params.precision_mode != INT8MODE) {
+    if (params.use_calibration &&
+        params.precision_mode != TrtPrecisionMode::INT8) {
       return errors::InvalidArgument(
           "Calibration with FP32 or FP16 is not supported.");
     }

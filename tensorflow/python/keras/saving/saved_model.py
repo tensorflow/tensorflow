@@ -27,6 +27,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.saving import model_from_json
 from tensorflow.python.keras.saving import saving_utils
+from tensorflow.python.keras.utils import mode_keys
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -35,9 +36,8 @@ from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import model_utils
 from tensorflow.python.saved_model import save as save_lib
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
-from tensorflow.python.training import mode_keys
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.checkpointable import graph_view
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
@@ -52,7 +52,7 @@ def export(
   `save_model` generates new files/folders under the `saved_model_path` folder:
   1) a checkpoint containing the model weights.
   2) a saved_model.pb file containing the model's MetaGraphs. The prediction
-     graph is always exported. The evaluaton and training graphs are exported
+     graph is always exported. The evaluation and training graphs are exported
      if the following conditions are met:
      - Evaluation: model loss is defined.
      - Training: model is compiled with an optimizer defined under `tf.train`.
@@ -220,7 +220,8 @@ def _save_v1_format(model, path, custom_objects, as_text, input_signature):
 
 def _get_var_list(model):
   """Returns list of all checkpointed saveable objects in the model."""
-  return checkpointable_utils.named_saveables(model)
+  var_list, _, _ = graph_view.ObjectGraphView(model).serialize_object_graph()
+  return var_list
 
 
 def create_placeholder(spec):
@@ -287,7 +288,7 @@ def _export_mode(
       clone._make_predict_function()
     g.get_collection_ref(ops.GraphKeys.UPDATE_OPS).extend(clone.state_updates)
 
-    clone_var_list = checkpointable_utils.named_saveables(clone)
+    clone_var_list = _get_var_list(clone)
 
     with session.Session().as_default():
       if has_saved_vars:
@@ -367,7 +368,7 @@ def _assert_same_non_optimizer_objects(model, model_graph, clone, clone_graph): 
 
 
 @keras_export('keras.experimental.load_from_saved_model')
-def load_from_saved_model(saved_model_path):
+def load_from_saved_model(saved_model_path, custom_objects=None):
   """Loads a keras.Model from a SavedModel created by keras export().
 
   This function reinstantiates model state by:
@@ -396,6 +397,9 @@ def load_from_saved_model(saved_model_path):
 
   Args:
     saved_model_path: a string specifying the path to an existing SavedModel.
+    custom_objects: Optional dictionary mapping names
+        (strings) to custom classes or functions to be
+        considered during deserialization.
 
   Returns:
     a keras.Model instance.
@@ -406,7 +410,7 @@ def load_from_saved_model(saved_model_path):
       compat.as_bytes(constants.ASSETS_DIRECTORY),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_JSON))
   model_json = file_io.read_file_to_string(model_json_filepath)
-  model = model_from_json(model_json)
+  model = model_from_json(model_json, custom_objects=custom_objects)
 
   # restore model weights
   checkpoint_prefix = os.path.join(

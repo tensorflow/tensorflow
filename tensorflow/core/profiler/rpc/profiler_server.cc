@@ -23,13 +23,16 @@ limitations under the License.
 
 namespace tensorflow {
 
-std::unique_ptr<Thread> StartProfilerServer(EagerContext* const eager_context,
-                                            int32 port) {
-  return WrapUnique(eager_context->TFEnv()->StartThread(
-      {}, "profiler server", [eager_context, port]() {
+std::unique_ptr<Thread> StartProfilerServer(
+    ProfilerContext* const profiler_context, int32 port) {
+  Env* env = profiler_context->eager_context != nullptr
+                 ? profiler_context->eager_context->TFEnv()
+                 : Env::Default();
+  return WrapUnique(
+      env->StartThread({}, "profiler server", [profiler_context, port]() {
         string server_address = strings::StrCat("0.0.0.0:", port);
         std::unique_ptr<TPUProfiler::Service> service =
-            CreateProfilerService(eager_context);
+            CreateProfilerService(profiler_context);
         ::grpc::ServerBuilder builder;
         builder.AddListeningPort(server_address,
                                  ::grpc::InsecureServerCredentials());

@@ -65,7 +65,6 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/client/lib:slicing",
-        "//tensorflow/compiler/xla/client/lib:triangular_solve",
         "//tensorflow/core:lib",
     ],
 )
@@ -231,6 +230,7 @@ cc_library(
     deps = [
         ":arithmetic",
         ":constants",
+        ":slicing",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
@@ -376,6 +376,7 @@ cc_library(
     srcs = ["sorting.cc"],
     hdrs = ["sorting.h"],
     deps = [
+        ":comparators",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -451,42 +452,48 @@ cc_library(
 )
 
 cc_library(
-    name = "triangular_solve",
-    srcs = ["triangular_solve.cc"],
-    hdrs = ["triangular_solve.h"],
+    name = "self_adjoint_eig",
+    srcs = ["self_adjoint_eig.cc"],
+    hdrs = ["self_adjoint_eig.h"],
     deps = [
-        "//tensorflow/compiler/xla:literal",
+        ":arithmetic",
+        ":comparators",
+        ":constants",
+        ":loops",
+        ":math",
+        ":matrix",
+        ":slicing",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/client/lib:constants",
-        "//tensorflow/compiler/xla/client/lib:math",
-        "//tensorflow/compiler/xla/client/lib:matrix",
-        "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/core:lib",
     ],
 )
 
 xla_test(
-    name = "triangular_solve_test",
-    srcs = ["triangular_solve_test.cc"],
-    tags = [
-        "enable_for_xla_interpreter",
-        "noasan",  # sometimes times out, http://b/78650012
+    name = "self_adjoint_eig_test",
+    srcs = ["self_adjoint_eig_test.cc"],
+    blacklisted_backends = [
+        "cpu",
+        "gpu",
     ],
+    real_hardware_only = True,
+    shard_count = 10,
+    tags = ["optonly"],
     deps = [
-        ":math",
+        ":arithmetic",
+        ":constants",
         ":matrix",
-        ":triangular_solve",
+        ":self_adjoint_eig",
         "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",

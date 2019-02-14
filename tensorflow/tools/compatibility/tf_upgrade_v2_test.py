@@ -343,6 +343,8 @@ class TestUpgrade(test_util.TensorFlowTestCase):
         tf_upgrade_v2.TFAPIChangeSpec().reordered_function_names)
     function_reorders = (
         tf_upgrade_v2.TFAPIChangeSpec().function_reorders)
+    manual_function_reorders = (
+        tf_upgrade_v2.TFAPIChangeSpec().manual_function_reorders)
 
     added_names_message = """Some function names in
 self.reordered_function_names are not in reorders_v2.py.
@@ -362,6 +364,8 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     # function_reorders should contain reordered_function_names
     # and their TensorFlow V1 aliases.
     for name in function_reorders:
+      if name in manual_function_reorders:
+        continue
       # get other names for this function
       attr = get_symbol_for_name(tf.compat.v1, name)
       _, attr = tf_decorator.unwrap(attr)
@@ -409,7 +413,8 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
 
       text = "%s(a, b)\n" % decay
       _, report, unused_errors, _ = self._upgrade(text)
-      self.assertIn("%s has been changed to return a callable" % decay, report)
+      self.assertIn("switch to the schedules in "
+                    "`tf.keras.optimizers.schedules`", report)
 
   def testMetrics(self):
     metrics = [
@@ -817,6 +822,36 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
+  def testSoftMaxCrossEntropyWithLogitsDoesntNest(self):
+    text = ("tf.nn.softmax_cross_entropy_with_logits("
+            "labels=tf.stop_gradient(labels), logits=logits, dim=2)")
+    expected_text = (
+        "tf.nn.softmax_cross_entropy_with_logits("
+        "labels=tf.stop_gradient(labels), logits=logits, axis=2)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = ("tf.nn.softmax_cross_entropy_with_logits("
+            "labels=tf.stop_gradient(foo(bar)))")
+    expected_text = ("tf.nn.softmax_cross_entropy_with_logits("
+                     "labels=tf.stop_gradient(foo(bar)))")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = ("tf.nn.softmax_cross_entropy_with_logits("
+            "labels=foo())")
+    expected_text = ("tf.nn.softmax_cross_entropy_with_logits("
+                     "labels=tf.stop_gradient(foo()))")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = ("tf.nn.softmax_cross_entropy_with_logits("
+            "labels=foo().zz())")
+    expected_text = ("tf.nn.softmax_cross_entropy_with_logits("
+                     "labels=tf.stop_gradient(foo().zz()))")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
   def testSparseMatmul(self):
     text = ("tf.sparse_matmul(a, b, c, d, e, f, g)\n")
     expected_text = ("tf.linalg.matmul(a=a, b=b, transpose_a=c, transpose_b=d, "
@@ -993,19 +1028,6 @@ tf.print('abc')
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
-  def testBatchGather(self):
-    text = "tf.batch_gather(foo, bar)"
-    expected_text1 = "tf.gather(params=foo, indices=bar, batch_dims=-1)"
-    expected_text2 = "tf.gather(batch_dims=-1, params=foo, indices=bar)"
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertIn(new_text, [expected_text1, expected_text2])
-
-    text = "tf.batch_gather(params=foo, indices=bar)"
-    expected_text1 = "tf.gather(params=foo, indices=bar, batch_dims=-1)"
-    expected_text2 = "tf.gather(batch_dims=-1, params=foo, indices=bar)"
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertIn(new_text, [expected_text1, expected_text2])
-
   def testIterators(self):
     for (text, expected) in [
         ("(expr + yielding(data)).make_one_shot_iterator()",
@@ -1048,6 +1070,13 @@ tf.print('abc')
          "tf.compat.v1.data.make_initializable_iterator(dataset, x, y, z)")]:
       _, unused_report, unused_errors, actual = self._upgrade(text)
       self.assertEqual(actual, expected)
+
+  def testMapAndBatch(self):
+    suffix = ".data.experimental.map_and_batch_with_legacy_function(args)"
+    text = "tf" + suffix
+    expected = "tf.compat.v1" + suffix
+    _, unused_report, unused_errors, actual = self._upgrade(text)
+    self.assertEqual(actual, expected)
 
   def testCast(self):
     for (name, dtype) in [("int32", "int32"),
@@ -1156,11 +1185,29 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
+  def test_is_tensor_upgrade(self):
+    text = "tf.contrib.framework.is_tensor(x)"
+    expected = "tf.is_tensor(x)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
+  def test_CriticalSection_upgrade(self):
+    text = "tf.contrib.framework.CriticalSection(shared_name='blah')"
+    expected = "tf.CriticalSection(shared_name='blah')"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
   def test_sample_distorted_bounding_box(self):
     # pylint: disable=line-too-long
     text = "tf.image.sample_distorted_bounding_box(a, b, c, d, e, f, g, h, i, j)"
     expected = "tf.image.sample_distorted_bounding_box(image_size=a, bounding_boxes=b, seed=c, min_object_covered=e, aspect_ratio_range=f, area_range=g, max_attempts=h, use_image_if_no_bounding_boxes=i, name=j)"
     # pylint: enable=line-too-long
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
+  def test_contrib_initialize(self):
+    text = "tf.contrib.summary.initialize"
+    expected = "tf.compat.v1.summary.initialize"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
@@ -1170,6 +1217,53 @@ def _log_prob(self, x):
     # pylint: enable=line-too-long
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
+
+  def test_flags_bare(self):
+    _, _, errors, _ = self._upgrade("tf.flags")
+    self.assertIn("tf.flags has been removed", errors[0])
+
+  def test_flags_flags(self):
+    _, _, errors, _ = self._upgrade("tf.flags.FLAGS")
+    self.assertIn("tf.flags has been removed", errors[0])
+
+  def test_max_pool_2d(self):
+    text = "tf.nn.max_pool(value=4)"
+    expected_text = "tf.nn.max_pool2d(input=4)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+  def test_contrib_summary_audio(self):
+    text = "tf.contrib.summary.audio('foo', myval, 44100, 3, 'fam', 42)"
+    expected = ("tf.compat.v2.summary.audio(name='foo', tensor=myval, "
+                "sample_rate=44100, max_outputs=3, step=42)")
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    self.assertIn("'family' argument", errors[0])
+
+  def test_contrib_summary_histogram(self):
+    text = "tf.contrib.summary.histogram('foo', myval, 'fam', 42)"
+    expected = ("tf.compat.v2.summary.histogram(name='foo', tensor=myval, "
+                "step=42)")
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    self.assertIn("'family' argument", errors[0])
+
+  def test_contrib_summary_image(self):
+    text = "tf.contrib.summary.image('foo', myval, red, 3, 'fam', 42)"
+    expected = ("tf.compat.v2.summary.image(name='foo', tensor=myval, "
+                "max_outputs=3, step=42)")
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    self.assertIn("'bad_color' argument", errors[0])
+    self.assertIn("'family' argument", errors[1])
+
+  def test_contrib_summary_scalar(self):
+    text = "tf.contrib.summary.scalar('foo', myval, 'fam', 42)"
+    expected = ("tf.compat.v2.summary.scalar(name='foo', tensor=myval, "
+                "step=42)")
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    self.assertIn("'family' argument", errors[0])
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

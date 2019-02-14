@@ -60,6 +60,7 @@ message SavedObject {
     SavedVariable variable = 7;
     SavedBareConcreteFunction bare_concrete_function = 8;
     SavedConstant constant = 9;
+    SavedResource resource = 10;
   }
 }
 
@@ -78,9 +79,9 @@ message SavedUserObject {
 
 // A SavedAsset represents a file in a SavedModel.
 //
-// When bound to a function this object evaluates to a Variable from which the
-// absolute filename can be read. Users should not expect the filename to be
-// maintained.
+// When bound to a function this object evaluates to a tensor with the absolute
+// filename. Users should not depend on a particular part of the filename to
+// remain stable (e.g. basename could be changed).
 message SavedAsset {
   // Index into `MetaGraphDef.asset_file_def[]` that describes the Asset.
   //
@@ -152,4 +153,10 @@ message FunctionSpec {
   StructuredValue kwargs_to_include = 4;
   // The input signature, if specified.
   StructuredValue input_signature = 5;
+}
+
+// A SavedResource represents a TF object that holds state during its lifetime.
+message SavedResource {
+  // An object of this type can have a reference to a:
+  // create_resource() and an initialize() function.
 }

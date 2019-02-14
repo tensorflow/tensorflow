@@ -1123,22 +1123,24 @@ class InitializeTableFromFileOpTest(test.TestCase):
 
       # Invalid data type
       other_type = constant_op.constant(1)
-      with self.assertRaises(ValueError):
+      with self.assertRaises(Exception) as cm:
         lookup_ops.HashTable(
             lookup_ops.TextFileInitializer(
                 other_type, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
                 dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER),
             default_value)
+      self.assertTrue(isinstance(cm.exception, (ValueError, TypeError)))
 
       # Non-scalar filename
       filenames = constant_op.constant([vocabulary_file, vocabulary_file])
       if not context.executing_eagerly():
-        with self.assertRaises(ValueError):
+        with self.assertRaises(Exception) as cm:
           lookup_ops.HashTable(
               lookup_ops.TextFileInitializer(
                   filenames, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
                   dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER),
               default_value)
+        self.assertTrue(isinstance(cm.exception, (ValueError, TypeError)))
       else:
         with self.assertRaises(errors_impl.InvalidArgumentError):
           lookup_ops.HashTable(
@@ -1788,9 +1790,10 @@ class MutableHashTableOpTest(test.TestCase):
       exported_keys, exported_values = table.export()
       # exported data is in the order of the internal map, i.e. undefined
       sorted_keys = np.sort(self.evaluate(exported_keys))
-      sorted_values = np.sort(self.evaluate(exported_values))
+      sorted_values = np.sort(self.evaluate(exported_values), axis=0)
       self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
-      self.assertAllEqual([[4, 5], [2, 3], [0, 1]], sorted_values)
+      sorted_expected_values = np.sort([[4, 5], [2, 3], [0, 1]], axis=0)
+      self.assertAllEqual(sorted_expected_values, sorted_values)
 
   def testMutableHashTableExportInsert(self):
     with self.cached_session():

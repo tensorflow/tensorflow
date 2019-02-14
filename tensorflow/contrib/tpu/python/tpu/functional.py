@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.tpu.python.tpu import gen_functional_ops
+from tensorflow.contrib.tpu.python.ops import tpu_ops
 
-
-TPUPartitionedCall = gen_functional_ops._tpu_partitioned_call  # pylint: disable=invalid-name,protected-access
-
+TPUPartitionedCall = tpu_ops.tpu_partitioned_call  # pylint: disable=invalid-name

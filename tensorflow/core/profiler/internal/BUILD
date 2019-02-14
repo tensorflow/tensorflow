@@ -373,7 +373,10 @@ tf_cuda_library(
     srcs = ["traceme_recorder.cc"],
     hdrs = ["traceme_recorder.h"],
     visibility = [
+        "//learning/brain/runtime:__pkg__",  # xprof_bridge
         "//perftools/accelerators/xprof/xprofilez:__pkg__",  # alias xprof::TraceMeRecorder
+        "//tensorflow/core/profiler/internal/cpu:__pkg__",  # host_tracer
+        "//tensorflow/core/profiler/lib:__pkg__",  # traceme
     ],
     deps = [
         "//tensorflow/core:lib",
@@ -390,7 +393,17 @@ tf_cuda_cc_test(
         ":traceme_recorder",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cuda_library(
+    name = "profiler_interface",
+    hdrs = [
+        "profiler_interface.h",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )

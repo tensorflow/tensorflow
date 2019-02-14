@@ -23,7 +23,6 @@ import functools
 import sys
 
 import pasta
-import six
 
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import renames_v2
@@ -223,6 +222,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.max_pool_with_argmax": {
             "Targmax": "output_dtype",
         },
+        "tf.nn.max_pool": {
+            "value": "input"
+        },
         "tf.multinomial": {
             "output_dtype": "dtype",
         },
@@ -409,6 +411,20 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "filter": "filters",
             "use_cudnn_on_gpu": None,
         },
+        "tf.contrib.summary.audio": {
+            "family": None,
+        },
+        "tf.contrib.summary.histogram": {
+            "family": None,
+        },
+        "tf.contrib.summary.image": {
+            "bad_color": None,
+            "max_images": "max_outputs",
+            "family": None,
+        },
+        "tf.contrib.summary.scalar": {
+            "family": None,
+        },
     }
 
     # pylint: disable=line-too-long
@@ -420,7 +436,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.batch_to_space_nd":
             "tf.batch_to_space",
         "tf.batch_gather":
-            "tf.gather",
+            "tf.compat.v1.batch_gather",
         "tf.space_to_batch_nd":
             "tf.space_to_batch",
         "tf.nn.space_to_batch":
@@ -437,6 +453,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.io.gfile.exists",
         "tf.gfile.Glob":
             "tf.io.gfile.glob",
+        "tf.gfile.GFile":
+            "tf.io.gfile.GFile",
         "tf.gfile.IsDirectory":
             "tf.io.gfile.isdir",
         "tf.gfile.ListDirectory":
@@ -445,6 +463,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.io.gfile.makedirs",
         "tf.gfile.MkDir":
             "tf.io.gfile.mkdir",
+        "tf.gfile.Open":
+            "tf.io.gfile.GFile",
         "tf.gfile.Remove":
             "tf.io.gfile.remove",
         "tf.gfile.Rename":
@@ -537,6 +557,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.unbatch",
         "tf.contrib.data.unique":
             "tf.data.experimental.unique",
+        "tf.contrib.framework.CriticalSection":
+            "tf.CriticalSection",
+        "tf.contrib.framework.is_tensor":
+            "tf.is_tensor",
         "tf.contrib.framework.nest.assert_same_structure":
             "tf.nest.assert_same_structure",
         "tf.contrib.framework.nest.flatten":
@@ -545,7 +569,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.nest.map_structure",
         "tf.contrib.framework.nest.pack_sequence_as":
             "tf.nest.pack_sequence_as",
-        "tf.contrib.framework.constant_value":
+        "tf.contrib.util.constant_value":
             "tf.get_static_value",
         "tf.contrib.saved_model.load_keras_model":
             "tf.keras.experimental.load_from_saved_model",
@@ -559,6 +583,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.sort",
         "tf.contrib.framework.argsort":
             "tf.argsort",
+        "tf.contrib.summary.audio":
+            "tf.compat.v2.summary.audio",
+        "tf.contrib.summary.histogram":
+            "tf.compat.v2.summary.histogram",
+        "tf.contrib.summary.image":
+            "tf.compat.v2.summary.image",
+        "tf.contrib.summary.initialize":
+            "tf.compat.v1.summary.initialize",
+        "tf.contrib.summary.scalar":
+            "tf.compat.v2.summary.scalar",
         "tf.count_nonzero":
             "tf.math.count_nonzero",
         "tf.manip.batch_to_space_nd":
@@ -697,6 +731,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.assert_rank",
         "tf.contrib.framework.argsort":
             "tf.argsort",
+        "tf.nn.max_pool":
+            "tf.nn.max_pool2d",
+        'tf.keras.initializers.zeros':
+            'tf.compat.v1.keras.initializers.zeros',
+        'tf.keras.initializers.ones':
+            'tf.compat.v1.keras.initializers.ones',
+        'tf.keras.initializers.constant':
+            'tf.compat.v1.keras.initializers.constant',
+        "tf.data.experimental.map_and_batch_with_legacy_function":
+            "tf.compat.v1.data.experimental.map_and_batch_with_legacy_function",
     }
     # pylint: enable=line-too-long
 
@@ -723,7 +767,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.io.serialize_many_sparse",
         "tf.argmax",
         "tf.argmin",
-        "tf.batch_gather",
         "tf.batch_to_space",
         "tf.cond",
         "tf.nn.space_to_batch",
@@ -810,12 +853,27 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.image.sample_distorted_bounding_box",
         "tf.gradients",
         "tf.hessians",
+        "tf.nn.max_pool",
     }
 
+    # Manual mapping of function names to be reordered to their list of argument
+    # names, in order. Only use this if argument names cannot be autodetected,
+    # e.g. if the functions are in contrib.
+    self.manual_function_reorders = {
+        "tf.contrib.summary.audio": [
+            "name", "tensor", "sample_rate", "max_outputs", "family", "step"],
+        "tf.contrib.summary.histogram": [
+            "name", "tensor", "family", "step"],
+        "tf.contrib.summary.image": [
+            "name", "tensor", "bad_color", "max_images", "family", "step"],
+        "tf.contrib.summary.scalar": [
+            "name", "tensor", "family", "step"],
+    }
     # Functions that were reordered should be changed to the new keyword args
     # for safety, if positional arguments are used. If you have reversed the
     # positional arguments yourself, this could do the wrong thing.
-    self.function_reorders = reorders_v2.reorders
+    self.function_reorders = dict(reorders_v2.reorders)
+    self.function_reorders.update(self.manual_function_reorders)
 
     contrib_warning = (
         ast_edits.ERROR,
@@ -825,14 +883,15 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "the required code."
     )
 
+    flags_warning = (
+        ast_edits.ERROR,
+        "tf.flags has been removed, please use the argparse or absl"
+        " modules if you need command line parsing.")
+
     decay_function_comment = (
         ast_edits.INFO,
-        "<function name> has been changed to return a callable instead "
-        "of a tensor when graph building, but its functionality remains "
-        "unchanged during eager execution (returns a callable like "
-        "before). The converter cannot detect and fix this reliably, so "
-        "this usage has been converted to compat.v1 (even though it may already"
-        " be correct).\n"
+        "To use learning rate decay schedules with TensorFlow 2.0, switch to "
+        "the schedules in `tf.keras.optimizers.schedules`.\n"
     )
 
     assert_return_type_comment = (
@@ -978,10 +1037,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             assert_rank_comment,
         "tf.debugging.assert_rank_in":
             assert_rank_comment,
-        "tf.flags": (
-            ast_edits.ERROR,
-            "tf.flags has been removed, please use the argparse or absl"
-            " modules if you need command line parsing."),
         "tf.train.exponential_decay":
             decay_function_comment,
         "tf.train.piecewise_constant_decay":
@@ -1247,6 +1302,40 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
                 "tf.cond no longer takes 'strict' argument, it behaves as "
                 "if was set to True.")
         },
+        "tf.contrib.summary.audio": {
+            ("family", 4): (
+                ast_edits.WARNING,
+                "tf.contrib.summary.* functions no longer take the 'family' "
+                "argument; instead name scoping should be used. This call site "
+                "specifies a family argument so it cannot be converted safely.")
+        },
+        "tf.contrib.summary.histogram": {
+            ("family", 2): (
+                ast_edits.WARNING,
+                "tf.contrib.summary.* functions no longer take the 'family' "
+                "argument; instead name scoping should be used. This call site "
+                "specifies a family argument so it cannot be converted safely.")
+        },
+        "tf.contrib.summary.image": {
+            ("bad_color", 2): (
+                ast_edits.WARNING,
+                "tf.contrib.summary.image no longer takes the 'bad_color' "
+                "argument; caller must now preprocess if needed. This call "
+                "site specifies a bad_color argument so it cannot be converted "
+                "safely."),
+            ("family", 4): (
+                ast_edits.WARNING,
+                "tf.contrib.summary.* functions no longer take the 'family' "
+                "argument; instead name scoping should be used. This call site "
+                "specifies a family argument so it cannot be converted safely.")
+        },
+        "tf.contrib.summary.scalar": {
+            ("family", 2): (
+                ast_edits.WARNING,
+                "tf.contrib.summary.* functions no longer take the 'family' "
+                "argument; instead name scoping should be used. This call site "
+                "specifies a family argument so it cannot be converted safely.")
+        },
     }
 
     # Specially handled functions
@@ -1268,7 +1357,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "*.make_initializable_iterator": _iterator_transformer,
         "*.make_one_shot_iterator": _iterator_transformer,
         "tf.nn.dropout": _dropout_transformer,
-        "tf.batch_gather": _batch_gather_transformer,
         "tf.to_bfloat16": _cast_transformer,
         "tf.to_complex128": _cast_transformer,
         "tf.to_complex64": _cast_transformer,
@@ -1327,6 +1415,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     self.module_deprecations = {
         "tf.contrib": contrib_warning,
+        "tf.flags": flags_warning,
     }
 
 
@@ -1552,11 +1641,18 @@ def _softmax_cross_entropy_with_logits_transformer(
   """Wrap labels argument with stop_gradients."""
   def _wrap_label(parent, old_value):
     """Wrap labels with tf.stop_gradient."""
-    if six.PY3:
+    already_stop_grad = (isinstance(old_value, ast.Call) and
+                         isinstance(old_value.func, ast.Attribute) and
+                         old_value.func.attr == "stop_gradient" and
+                         isinstance(old_value.func.value, ast.Name) and
+                         old_value.func.value.id == "tf")
+    if already_stop_grad:
+      return False
+    try:
       new_value = ast.Call(
           ast.Name(id="tf.stop_gradient", ctx=ast.Load()),
           [old_value], [])
-    else:
+    except TypeError:
       new_value = ast.Call(
           ast.Name(id="tf.stop_gradient", ctx=ast.Load()),
           [old_value], [], None, None)
@@ -1564,35 +1660,18 @@ def _softmax_cross_entropy_with_logits_transformer(
     # This copies the prefix and suffix on old_value to new_value.
     pasta.ast_utils.replace_child(parent, old_value, new_value)
     ast.copy_location(new_value, old_value)
+    return True
 
   # Check if we have a labels keyword arg
   for karg in node.keywords:
     if karg.arg == "labels":
-      logs.append((ast_edits.INFO, node.lineno, node.col_offset,
-                   "Changing labels arg of "
-                   "tf.nn.softmax_cross_entropy_with_logits to "
-                   "tf.stop_gradient(labels). Please check this "
-                   "transformation.\n"))
-      _wrap_label(karg, karg.value)
+      if _wrap_label(karg, karg.value):
+        logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                     "Changing labels arg of "
+                     "tf.nn.softmax_cross_entropy_with_logits to "
+                     "tf.stop_gradient(labels). Please check this "
+                     "transformation.\n"))
       return node
-  return node
-
-
-def _batch_gather_transformer(parent, node, full_name, name, logs):
-  """Add batch_dims argument for gather calls."""
-  # Check if the call already has a batch_dims argument
-  if any([kw.arg == "batch_dims" for kw in node.keywords]):
-    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
-                 "tf.batch_gather already has batch_dims argument. Neat."))
-    return None
-
-  minus_one = ast.Num(n=-1)
-  minus_one.lineno = 0
-  minus_one.col_offset = 0
-  new_arg = ast.keyword("batch_dims", minus_one)
-  node.keywords.append(new_arg)
-  logs.append((ast_edits.INFO, node.lineno, node.col_offset,
-               "Added keyword argument batch_dims=-1 to tf.batch_gather."))
   return node
 
 

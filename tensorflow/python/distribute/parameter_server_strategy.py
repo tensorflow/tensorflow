@@ -101,8 +101,7 @@ class ParameterServerStrategyExtended(
 
     # We typically don't need to do all-reduce in this strategy.
     self._cross_device_ops = (
-        cross_device_ops_lib.ReductionToOneDeviceCrossDeviceOps(
-            reduce_to_device=_LOCAL_CPU))
+        cross_device_ops_lib.ReductionToOneDevice(reduce_to_device=_LOCAL_CPU))
 
   def _initialize_strategy(self, cluster_resolver):
     if cluster_resolver.cluster_spec().as_dict():

@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CriticalSection"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DType"
     mtype: "<type \'type\'>"
   }
@@ -209,6 +213,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "metrics"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "name_scope"
     mtype: "<type \'type\'>"
   }
@@ -227,6 +235,10 @@ tf_module {
   member {
     name: "ones_initializer"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "optimizers"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "qint16"
@@ -271,6 +283,10 @@ tf_module {
   member {
     name: "random_uniform_initializer"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "raw_ops"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "resource"
@@ -665,6 +681,10 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "is_tensor"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "less"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -755,6 +775,10 @@ tf_module {
   member_method {
     name: "not_equal"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "numpy_function"
+    argspec: "args=[\'func\', \'inp\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "one_hot"

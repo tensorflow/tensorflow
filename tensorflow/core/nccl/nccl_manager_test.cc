@@ -73,9 +73,9 @@ class NcclManagerTest : public ::testing::Test {
 
   static void TearDownTestCase() { delete devices_; }
 
-  TestCase* MakeTestCase(int num_nodes, int num_ranks_per_node,
-                         ncclRedOp_t reduction_op, TensorShape shape,
-                         float value_offset) {
+  TestCase* MakeReductionTestCase(int num_nodes, int num_ranks_per_node,
+                                  ncclRedOp_t reduction_op, TensorShape shape,
+                                  float value_offset) {
     TestCase* test_case = new TestCase();
     test_case->expected = Tensor(data_type_, shape);
     if (reduction_op == ncclProd) {
@@ -134,6 +134,47 @@ class NcclManagerTest : public ::testing::Test {
     return test_case;
   }
 
+  TestCase* MakeGatherTestCase(int num_nodes, int num_ranks_per_node,
+                               TensorShape in_shape, TensorShape out_shape) {
+    TestCase* test_case = new TestCase();
+    test_case->expected = Tensor(data_type_, out_shape);
+    test::FillFn<Scalar>(&test_case->expected,
+                         [](int) { return static_cast<Scalar>(0); });
+
+    float value_scale = 0.01;  // Small scale to avoid fp16 overflow.
+    for (int node = 0; node < num_nodes; ++node) {
+      for (int i = 0; i < num_ranks_per_node; ++i) {
+        auto* device = GetDevice(i);
+        auto* stream = device->tensorflow_gpu_device_info()->stream;
+
+        Tensor in_cpu(data_type_, in_shape);
+        test::FillFn<Scalar>(&in_cpu, [&](int index) {
+          return static_cast<Scalar>((index + 1) * value_scale);
+        });
+        // Starting index for this rank's tensor in the all-gathered output.
+        int32 gather_idx =
+            (node * num_ranks_per_node + i) * in_shape.num_elements();
+        for (int j = 0; j < in_shape.num_elements(); ++j) {
+          auto in_val = in_cpu.flat<Scalar>()(j);
+          auto out_expr = test_case->expected.template flat<Scalar>();
+          out_expr(gather_idx + j) = in_val;
+        }
+
+        value_scale *= 10;
+        test_case->ins.emplace_back(GpuAllocator(device), data_type_, in_shape);
+        test_case->outs.emplace_back(GpuAllocator(device), data_type_,
+                                     out_shape);
+
+        const Tensor& in_gpu = test_case->ins.back();
+        auto in_gpu_mem = AsDeviceMemory(in_gpu.flat<Scalar>().data());
+        stream->ThenMemcpy(&in_gpu_mem, in_cpu.flat<Scalar>().data(),
+                           in_cpu.TotalBytes());
+      }
+    }
+
+    return test_case;
+  }
+
   // Waits for the done callback to be called for each participant.
   void WaitForTestCompletion(TestCase* test_case) {
     test_case->mu.lock();
@@ -158,6 +199,9 @@ class NcclManagerTest : public ::testing::Test {
       stream->ThenMemcpy(out_cpu.flat<Scalar>().data(), out_gpu_mem,
                          out_cpu.TotalBytes());
       SE_ASSERT_OK(stream->BlockHostUntilDone());
+      VLOG(1) << "Verifying rank " << rank << " expected shape "
+              << test_case->expected.shape() << " out shape "
+              << out_cpu.shape();
       test::ExpectClose(test_case->expected, out_cpu);
     }
   }
@@ -218,8 +262,8 @@ TYPED_TEST(NcclManagerTest, BasicSumReduction) {
   for (int op = 0; op < 4; ++op) {
     ncclRedOp_t reduction_op = static_cast<ncclRedOp_t>(op);
     std::unique_ptr<typename TestFixture::TestCase> test_case(
-        this->MakeTestCase(/*num_nodes=*/1, num_ranks, reduction_op,
-                           TensorShape({2, 3}), 0.0f));
+        this->MakeReductionTestCase(/*num_nodes=*/1, num_ranks, reduction_op,
+                                    TensorShape({2, 3}), 0.0f));
     for (int rank = 0; rank < num_ranks; ++rank) {
       auto* device = this->GetDevice(rank);
       VLOG(2) << "rank " << rank << " device " << device->name();
@@ -259,7 +303,7 @@ TYPED_TEST(NcclManagerTest, MultipleCallers) {
     std::vector<std::pair<int, int>> case_and_rank;
     std::vector<std::unique_ptr<typename TestFixture::TestCase>> test_cases;
     for (int i = 0; i < num_collectives_per_iteration; ++i) {
-      test_cases.emplace_back(this->MakeTestCase(
+      test_cases.emplace_back(this->MakeReductionTestCase(
           /*num_nodes=*/1, num_ranks, ncclSum,
           TensorShape({100, i % 5 + 1, i % 3 + 1}), 1.1f * i));
       for (int j = 0; j < num_ranks; ++j) {
@@ -324,6 +368,34 @@ TYPED_TEST(NcclManagerTest, MultipleCallers) {
   }
 }
 
+// Test basic all-gather.
+TYPED_TEST(NcclManagerTest, BasicAllGather) {
+  const int num_ranks = 4;
+  for (int i = 0; i < num_ranks; ++i) {
+    std::unique_ptr<typename TestFixture::TestCase> test_case(
+        this->MakeGatherTestCase(/*num_nodes=*/1, num_ranks,
+                                 TensorShape({2, 3}),
+                                 TensorShape({2 * num_ranks, 3})));
+    for (int rank = 0; rank < num_ranks; ++rank) {
+      auto* device = this->GetDevice(rank);
+      VLOG(2) << "rank " << rank << " device " << device->name();
+      auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
+      auto* stream = device->tensorflow_gpu_device_info()->stream;
+      auto participant = absl::make_unique<NcclManager::Participant>(
+          device->executor(), stream, event_mgr, device->gpu_id(),
+          &test_case->ins[rank], &test_case->outs[rank], rank,
+          this->CreateDoneCallback(test_case.get()));
+      NcclManager::instance()->AddToAllGather(
+          std::move(participant),
+          {"allgather", /*num_local_devices=*/num_ranks,
+           /*num_global_devices=*/num_ranks, /*communicator_key=*/""});
+    }
+
+    LOG(INFO) << "Verifying results";
+    this->VerifyResults(test_case.get());
+  }
+}
+
 // Multi-node NCCL tests.
 
 TEST(NcclManagerTest, CommunicatorKey) {
@@ -353,8 +425,8 @@ TYPED_TEST(NcclManagerTest, MultiNode) {
   for (int op = 0; op < 4; ++op) {
     ncclRedOp_t reduction_op = static_cast<ncclRedOp_t>(op);
     std::unique_ptr<typename TestFixture::TestCase> test_case(
-        this->MakeTestCase(num_nodes, num_ranks_per_node, reduction_op,
-                           TensorShape({2, 3}), 0.0f));
+        this->MakeReductionTestCase(num_nodes, num_ranks_per_node, reduction_op,
+                                    TensorShape({2, 3}), 0.0f));
     for (int node = 0; node < num_nodes; ++node) {
       auto node_fn = [this, node, &nccl_managers, &communicator_key,
                       &collective_key, reduction_op, &test_case] {
@@ -393,8 +465,9 @@ TYPED_TEST(NcclManagerTest, MultiNode) {
 TYPED_TEST(NcclManagerTest, ConsistentCollectiveType) {
   const int num_ranks = 2;
 
-  std::unique_ptr<typename TestFixture::TestCase> test_case(this->MakeTestCase(
-      1 /* num_nodes */, num_ranks, ncclSum, TensorShape({2, 3}), 0.0f));
+  std::unique_ptr<typename TestFixture::TestCase> test_case(
+      this->MakeReductionTestCase(1 /* num_nodes */, num_ranks, ncclSum,
+                                  TensorShape({2, 3}), 0.0f));
   for (int rank = 0; rank < num_ranks; ++rank) {
     auto* device = this->GetDevice(rank);
     auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
@@ -427,8 +500,9 @@ TYPED_TEST(NcclManagerTest, ConsistentCollectiveType) {
 TYPED_TEST(NcclManagerTest, ConsistentCommunicatorKey) {
   const int num_ranks = 2;
 
-  std::unique_ptr<typename TestFixture::TestCase> test_case(this->MakeTestCase(
-      1 /* num_nodes */, num_ranks, ncclSum, TensorShape({2, 3}), 0.0f));
+  std::unique_ptr<typename TestFixture::TestCase> test_case(
+      this->MakeReductionTestCase(1 /* num_nodes */, num_ranks, ncclSum,
+                                  TensorShape({2, 3}), 0.0f));
   for (int rank = 0; rank < num_ranks; ++rank) {
     auto* device = this->GetDevice(rank);
     auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
@@ -454,8 +528,9 @@ TYPED_TEST(NcclManagerTest, ConsistentCommunicatorKey) {
 TYPED_TEST(NcclManagerTest, ConsistentNumberOfDevices) {
   const int num_ranks = 2;
 
-  std::unique_ptr<typename TestFixture::TestCase> test_case(this->MakeTestCase(
-      1 /* num_nodes */, num_ranks, ncclSum, TensorShape({2, 3}), 0.0f));
+  std::unique_ptr<typename TestFixture::TestCase> test_case(
+      this->MakeReductionTestCase(1 /* num_nodes */, num_ranks, ncclSum,
+                                  TensorShape({2, 3}), 0.0f));
   for (int rank = 0; rank < num_ranks; ++rank) {
     auto* device = this->GetDevice(rank);
     auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;

@@ -13,6 +13,7 @@ tensorflow/core/lib
 tensorflow/core/lib/core
 tensorflow/core/profiler
 tensorflow/core/protobuf
+tensorflow/core/protobuf/tpu
 tensorflow/core/util
 tensorflow/examples
 tensorflow/examples/tutorials
@@ -437,7 +438,6 @@ tensorflow/contrib/timeseries/python/timeseries/state_space_models
 tensorflow/contrib/tpu
 tensorflow/contrib/tpu/ops
 tensorflow/contrib/tpu/profiler
-tensorflow/contrib/tpu/proto
 tensorflow/contrib/tpu/python
 tensorflow/contrib/tpu/python/ops
 tensorflow/contrib/tpu/python/profiler

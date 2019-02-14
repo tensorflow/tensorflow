@@ -262,6 +262,24 @@ tf_py_test(
 )
 
 py_library(
+    name = "signature_serialization",
+    srcs = [
+        "signature_serialization.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":revived_types",
+        ":signature_constants",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/training/checkpointable:base",
+    ],
+)
+
+py_library(
     name = "save",
     srcs = [
         "save.py",
@@ -271,10 +289,12 @@ py_library(
         ":builder",
         ":constants",
         ":function_serialization",
+        ":nested_structure_coder",
         ":revived_types",
         ":saved_object_graph_py",
         ":signature_constants",
         ":signature_def_utils",
+        ":signature_serialization",
         ":tag_constants",
         ":utils",
         "//tensorflow/core:protos_all_py",
@@ -286,14 +306,16 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lib",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:tensor_spec",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/checkpointable:graph_view",
+        "//tensorflow/python/training/checkpointable:object_identity",
         "//tensorflow/python/training/checkpointable:tracking",
         "//tensorflow/python/training/checkpointable:util",
+        "//tensorflow/python/training/saving:functional_saver",
     ],
 )
 
@@ -320,13 +342,39 @@ py_library(
     deps = [
         ":constants",
         ":function_deserialization",
+        ":load_v1_in_v2",
         ":loader",
+        ":nested_structure_coder",
         ":revived_types",
         ":saved_object_graph_py",
         ":utils",
-        "//tensorflow/python:function",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:lib",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/checkpointable:graph_view",
+        "//tensorflow/python/training/checkpointable:tracking",
+        "//tensorflow/python/training/checkpointable:util",
+    ],
+)
+
+py_library(
+    name = "load_v1_in_v2",
+    srcs = [
+        "load_v1_in_v2.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":loader",
+        ":signature_serialization",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:saver",
+        "//tensorflow/python/eager:wrap_function",
         "//tensorflow/python/training/checkpointable:tracking",
     ],
 )
@@ -345,6 +393,32 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/training/checkpointable:tracking",
+    ],
+)
+
+tf_py_test(
+    name = "load_v1_in_v2_test",
+    srcs = ["load_v1_in_v2_test.py"],
+    additional_deps = [
+        ":builder",
+        ":load",
+        ":save",
+        ":signature_def_utils",
+        ":simple_save",
+        ":utils",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/training/checkpointable:tracking",
+        "//tensorflow/python:variables",
     ],
 )
 
