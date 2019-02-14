@@ -913,9 +913,8 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         "tf.nn.conv2d_backprop_filter(input, filter_sizes, out_backprop, "
         "strides, padding, use_cudnn_on_gpu, data_format)")
     expected_text = (
-        "tf.nn.conv2d_backprop_filter(input=input, filter_sizes=filter_sizes, "
-        "out_backprop=out_backprop, strides=strides, padding=padding, "
-        "data_format=data_format)")
+        "tf.compat.v1.nn.conv2d_backprop_filter(input, filter_sizes, "
+        "out_backprop, strides, padding, use_cudnn_on_gpu, data_format)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
@@ -924,8 +923,8 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         "tf.nn.conv2d_backprop_input(input_sizes, filter, out_backprop, "
         "strides, padding, use_cudnn_on_gpu, data_format)")
     expected_text = (
-        "tf.nn.conv2d_backprop_input(input_sizes=input_sizes, filters=filter, "
-        "out_backprop=out_backprop, strides=strides, padding=padding, "
+        "tf.nn.conv2d_transpose(output_shape=input_sizes, filters=filter, "
+        "input=out_backprop, strides=strides, padding=padding, "
         "data_format=data_format)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)

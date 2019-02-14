@@ -404,12 +404,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "filter": "filters",
             "use_cudnn_on_gpu": None,
         },
-        "tf.nn.conv2d_backprop_filter": {
-            "use_cudnn_on_gpu": None,
-        },
         "tf.nn.conv2d_backprop_input": {
-            "filter": "filters",
             "use_cudnn_on_gpu": None,
+            "input_sizes": "output_shape",
+            "out_backprop": "input",
+            "filter": "filters",
         },
         "tf.contrib.summary.audio": {
             "family": None,
@@ -729,18 +728,18 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.debugging.assert_rank_in",
         "tf.assert_rank":
             "tf.compat.v1.assert_rank",
-        "tf.contrib.framework.argsort":
-            "tf.argsort",
         "tf.nn.max_pool":
             "tf.nn.max_pool2d",
-        'tf.keras.initializers.zeros':
-            'tf.compat.v1.keras.initializers.zeros',
-        'tf.keras.initializers.ones':
-            'tf.compat.v1.keras.initializers.ones',
-        'tf.keras.initializers.constant':
-            'tf.compat.v1.keras.initializers.constant',
+        "tf.keras.initializers.zeros":
+            "tf.compat.v1.keras.initializers.zeros",
+        "tf.keras.initializers.ones":
+            "tf.compat.v1.keras.initializers.ones",
+        "tf.keras.initializers.constant":
+            "tf.compat.v1.keras.initializers.constant",
         "tf.data.experimental.map_and_batch_with_legacy_function":
             "tf.compat.v1.data.experimental.map_and_batch_with_legacy_function",
+        "tf.nn.conv2d_backprop_input":
+            "tf.nn.conv2d_transpose"
     }
     # pylint: enable=line-too-long
 
@@ -774,7 +773,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.convert_to_tensor",
         "tf.nn.conv1d",
         "tf.nn.conv2d",
-        "tf.nn.conv2d_backprop_filter",
         "tf.nn.conv2d_backprop_input",
         "tf.nn.ctc_beam_search_decoder",
         "tf.nn.moments",
