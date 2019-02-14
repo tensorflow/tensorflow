@@ -3083,9 +3083,50 @@ Status ConvertBinary(OpConverterParams* params) {
   return status;
 }
 
+tensorflow::Status ConvertRsqrt(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
+
+  // We will need a quantization range for intermediate tensor if not using
+  // calibration.
+  //
+  //   x -> [Sqrt] -> sqrt(x) -> [Recip] -> 1/sqrt(x)
+  //                     ^
+  //               need range here
+  if (params->converter->precision_mode() == TrtPrecisionMode::INT8 &&
+      !params->converter->use_calibration()) {
+    return errors::Unimplemented(
+        "Intermediate quantization range cannot be determined without"
+        " calibration for Rsqrt, consider replacing with "
+        "Sqrt -> FakeQuant -> Reciprocal ops, at ",
+        node_def.name());
+  }
+  if (params->validation_only) return tensorflow::Status::OK();
+
+  // Start conversion.
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
+  // Sqrt
+  layer = params->converter->network()->addUnary(
+      *const_cast<nvinfer1::ITensor*>(tensor),
+      nvinfer1::UnaryOperation::kSQRT);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  tensor = layer->getOutput(0);
+  // Recip
+  layer = params->converter->network()->addUnary(
+      *const_cast<nvinfer1::ITensor*>(tensor),
+      nvinfer1::UnaryOperation::kRECIP);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  params->outputs->push_back(
+      TRT_TensorOrWeights(const_cast<nvinfer1::ITensor*>(output_tensor)));
+  return tensorflow::Status::OK();
+}
+
 tensorflow::Status ConvertUnary(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
   static const std::unordered_map<string, nvinfer1::UnaryOperation> ops{
       {"Neg", nvinfer1::UnaryOperation::kNEG},
       {"Exp", nvinfer1::UnaryOperation::kEXP},
@@ -3093,46 +3134,33 @@ tensorflow::Status ConvertUnary(OpConverterParams* params) {
       {"Sqrt", nvinfer1::UnaryOperation::kSQRT},
       {"Abs", nvinfer1::UnaryOperation::kABS},
       {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+      {"Sin", nvinfer1::UnaryOperation::kSIN},
+      {"Cos", nvinfer1::UnaryOperation::kCOS},
+      {"Tan", nvinfer1::UnaryOperation::kTAN},
+      {"Sinh", nvinfer1::UnaryOperation::kSINH},
+      {"Cosh", nvinfer1::UnaryOperation::kCOSH},
+      {"Asin", nvinfer1::UnaryOperation::kASIN},
+      {"Acos", nvinfer1::UnaryOperation::kACOS},
+      {"Atan", nvinfer1::UnaryOperation::kATAN},
+      {"Asinh", nvinfer1::UnaryOperation::kASINH},
+      {"Acosh", nvinfer1::UnaryOperation::kACOSH},
+      {"Atanh", nvinfer1::UnaryOperation::kATANH},
+      {"Ceil", nvinfer1::UnaryOperation::kCEIL},
+      {"Floor", nvinfer1::UnaryOperation::kFLOOR},
+#endif
   };
-  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
-
-  // TODO(jie): check type
-  const nvinfer1::ITensor* tensor = nullptr;
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      inputs.at(0), inputs.at(0).GetTrtDims(), &tensor));
-
-  nvinfer1::IUnaryLayer* layer;
-  if (node_def.op() == "Rsqrt") {
-    // We will need a quantization range for intermediate tensor if not using
-    // calibration.
-    //
-    //   x -> [Sqrt] -> sqrt(x) -> [Recip] -> 1/sqrt(x)
-    //                     ^
-    //               need range here
-    if (params->converter->precision_mode() == TrtPrecisionMode::INT8 &&
-        !params->converter->use_calibration()) {
-      return errors::Unimplemented(
-          "Intermediate quantization range cannot be determined without"
-          " calibration for Rsqrt, consider replacing with "
-          "Sqrt -> FakeQuant -> Reciprocal ops, at ",
-          node_def.name());
-    }
-    layer = params->converter->network()->addUnary(
-        *const_cast<nvinfer1::ITensor*>(tensor),
-        nvinfer1::UnaryOperation::kSQRT);
-    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-    tensor = layer->getOutput(0);
-    layer = params->converter->network()->addUnary(
-        *const_cast<nvinfer1::ITensor*>(tensor),
-        nvinfer1::UnaryOperation::kRECIP);
-  } else if (ops.count(node_def.op()) != 0) {
-    layer = params->converter->network()->addUnary(
-        *const_cast<nvinfer1::ITensor*>(tensor), ops.at(node_def.op()));
-  } else {
-    return tensorflow::errors::InvalidArgument(
-        "Binary op: ", node_def.op(), " not supported, at ", node_def.name());
+  auto op_pair = ops.find(node_def.op());
+  if (op_pair == ops.end()) {
+    return tensorflow::errors::Unimplemented(
+        "Unary op: ", node_def.op(), " not supported at: ", node_def.name());
   }
+  if (params->validation_only) return tensorflow::Status::OK();
 
+  // Start conversion.
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
+  nvinfer1::IUnaryLayer* layer = params->converter->network()->addUnary(
+        *const_cast<nvinfer1::ITensor*>(tensor), op_pair->second));
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->outputs->push_back(
@@ -3809,6 +3837,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["Pad"] = ConvertPad;
   (*registration)["Relu6"] = ConvertRelu6;
   (*registration)["Reshape"] = ConvertReshape;
+  (*registration)["Rsqrt"] = ConvertRsqrt;
   (*registration)["Slice"] = ConvertSlice;
   (*registration)["Square"] = ConvertSquare;
   (*registration)["Squeeze"] = ConvertSqueeze;
@@ -3834,6 +3863,10 @@ static void RegisterValidatableOpConverters(
   for (auto normalization_op_type : {"FusedBatchNorm", "FusedBatchNormV2"}) {
     (*registration)[normalization_op_type] = ConvertFusedBatchNorm;
   }
+  for (auto unary_op_type :
+       {"Abs", "Acos", "Acosh", "Asin", "Asinh", "Atan", "Atanh", "Ceil", "Cos", "Cosh", "Exp", "Floor", "Log", "Neg", "Reciprocal", "Sin",  "Sinh", "Sqrt", "Tan"}) {
+    (*registration)[unary_op_type] = ConvertUnary;
+  }
 }
 
 void TrtNodeValidator::RegisterOpValidators() {
@@ -3845,14 +3878,6 @@ void Converter::RegisterOpConverters() {
   // TODO(ben,jie): this is a temp hack.
   op_registry_["Identity"] = ConvertIdentity;  // Identity should be removed
   op_registry_["Snapshot"] = ConvertIdentity;  // Snapshot should be removed
-
-  op_registry_["Rsqrt"] = ConvertUnary;
-  op_registry_["Reciprocal"] = ConvertUnary;
-  op_registry_["Exp"] = ConvertUnary;
-  op_registry_["Log"] = ConvertUnary;
-  op_registry_["Sqrt"] = ConvertUnary;
-  op_registry_["Abs"] = ConvertUnary;
-  op_registry_["Neg"] = ConvertUnary;
 
   op_registry_["Sum"] = ConvertReduce;
   op_registry_["Prod"] = ConvertReduce;
