@@ -565,6 +565,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.nn.rnn_cell.RNNCell",
         "tf.contrib.rnn.LSTMStateTuple":
             "tf.nn.rnn_cell.LSTMStateTuple",
+        "tf.contrib.summary.initialize":
+            "tf.compat.v1.summary.initialize",
         "tf.contrib.framework.sort":
             "tf.sort",
         "tf.contrib.framework.argsort":

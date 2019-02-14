@@ -622,6 +622,7 @@ renames = {
     'tf.summary.get_summary_description': 'tf.compat.v1.summary.get_summary_description',
     'tf.summary.histogram': 'tf.compat.v1.summary.histogram',
     'tf.summary.image': 'tf.compat.v1.summary.image',
+    'tf.summary.initialize': 'tf.compat.v1.summary.initialize',
     'tf.summary.merge': 'tf.compat.v1.summary.merge',
     'tf.summary.merge_all': 'tf.compat.v1.summary.merge_all',
     'tf.summary.scalar': 'tf.compat.v1.summary.scalar',
