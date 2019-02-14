@@ -971,6 +971,7 @@ tf_py_test(
     additional_deps = [
         ":auto_control_deps",
         ":client_testlib",
+        "//tensorflow/python/keras",
     ],
 )
 

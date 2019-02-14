@@ -48,6 +48,41 @@ def _constant_inputs(op_or_tensor):
              for i in _graph_inputs(_as_operation(op_or_tensor)))
 
 
+def _path_from(from_op, tensor, sources):
+  """Find one path from `from_op` to `tensor`, ignoring `sources`.
+
+  Args:
+    from_op: A `tf.Operation`.
+    tensor: A `tf.Operation` or `tf.Tensor`.
+    sources: A list of `tf.Tensor`.
+
+  Returns:
+    A python string containing the path, or "??" if none is found.
+  """
+  visited_ops = set([x.op for x in sources])
+  ops_to_visit = [_as_operation(tensor)]
+  some_op_output = {}
+  while ops_to_visit:
+    op = ops_to_visit.pop()
+    if op in visited_ops:
+      continue
+    visited_ops.add(op)
+    if op == from_op:
+      path_op = op
+      path = [path_op]
+      final_op = _as_operation(tensor)
+      while path_op != final_op:
+        path_op = some_op_output[path_op]
+        path.append(path_op)
+      return " <- ".join(["%s (%s)" % (x.name, x.type) for x in reversed(path)])
+    else:
+      for inp in _graph_inputs(op):
+        if inp not in visited_ops and inp not in sources:
+          some_op_output[inp] = op
+          ops_to_visit.append(inp)
+  return "??"
+
+
 def _map_subgraph(init_tensor, sources, disallowed_placeholders, visited_ops,
                   op_outputs, add_sources):
   """Walk a Graph and capture the subgraph between init_tensor and sources.
@@ -91,9 +126,9 @@ def _map_subgraph(init_tensor, sources, disallowed_placeholders, visited_ops,
 
     if should_raise:
       raise UnliftableError(
-          "Unable to lift tensor", init_tensor,
-          "because it depends transitively on placeholder ", op)
-
+          "Unable to lift tensor %s because it depends transitively on "
+          "placeholder %s via at least one path, e.g.: %s"
+          % (repr(init_tensor), repr(op), _path_from(op, init_tensor, sources)))
     for inp in _graph_inputs(op):
       op_outputs[inp].add(op)
       if inp not in visited_ops and inp not in (sources or extra_sources):
