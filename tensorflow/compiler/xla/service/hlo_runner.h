@@ -60,7 +60,7 @@ class HloRunner {
     // The number of times the infeed literal should be fed to the HLO module.
     // For a clean exit, this should match the iterations-per-loop parameter
     // used when generating the HLO module proto (that is usually the main
-    // while bounary counter). A value higher then iterations-per-loop would
+    // while boundary counter). A value higher then iterations-per-loop would
     // lead to infeed threads feeding to a gone computation, while a lower
     // value would trigger a stuck ExecuteReplicated() call (the computation
     // will be trying to infeed data which will never come).
