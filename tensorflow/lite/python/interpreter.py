@@ -292,3 +292,6 @@ class Interpreter(object):
 
   def reset_all_variables(self):
     return self._interpreter.ResetVariableTensors()
+
+  def set_num_threads(self, i):
+    return self._interpreter.SetNumThreads(i)

@@ -436,5 +436,10 @@ PyObject* InterpreterWrapper::ResetVariableTensors() {
   Py_RETURN_NONE;
 }
 
+PyObject* InterpreterWrapper::SetNumThreads(int i) {
+  interpreter_->SetNumThreads(i);
+  Py_RETURN_NONE;
+}
+
 }  // namespace interpreter_wrapper
 }  // namespace tflite
