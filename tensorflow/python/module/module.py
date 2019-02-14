@@ -55,7 +55,7 @@ class ModuleMetaclass(type):
             value.fdel if not value.fdel else with_name_scope(value.fdel),
             doc=value.__doc__)
 
-    return type.__new__(mcs, name, bases, clsdict)
+    return super(ModuleMetaclass, mcs).__new__(mcs, name, bases, clsdict)
 
   def __call__(cls, *args, **kwargs):
     # Call new such that we have an un-initialized module instance that we can
