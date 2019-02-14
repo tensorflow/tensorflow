@@ -1367,26 +1367,69 @@ StatusOr<llvm::Value*> ElementalIrEmitter::ConvertValueForDistribution(
       llvm_ir::PrimitiveTypeToIrType(elem_prim_ty, module_);
   llvm::Type* raw_value_ty = raw_value->getType();
 
-  // Convert raw integer to float in range [0, 1) if the element is a float.
+  // If we're generating a floating-point value, convert the raw integer R (i.e.
+  // `raw_value`) to a float in the range [0, 1).
+  //
+  // The basic approach is to choose a significand and exponent such that the
+  // significand is uniformly distributed and the exponent is distributed, well,
+  // exponentially (it's more likely to be close to 0 than far from 0).
+  //
+  // An easy way to do this is to say that the significand is the first S bits
+  // of R, and the exponent is determined by the number of trailing zeroes in R,
+  // exp = 2^-(cttz(R) + 1).  (+1 because the largest exponent should be -1;
+  // this way the largest value we can return is 1.999... * 2^-1 = 1-ε.)
+  //
+  // This results in a small bias.  Namely, if R has enough trailing zeroes, the
+  // significand and exponent will "overlap".  As a concrete example, consider
+  //
+  //         20 X's                 12 zeroes
+  //   R = 0bXXXXXXXXXXXXXXXXXXXX000000000000
+  //
+  // Here the exponent is 2^-13 because R has 12 trailing zeroes.  The
+  // significand is made up of the first 23 most-significant bits of R, which we
+  // observe contain 3 zeroes.  This is biased because any random value with
+  // exponent 2^-12 will have a significand which ends in `000`.
+  //
+  // For f32s, this problem occurs only when there are more than 32-23 = 9
+  // trailing zeros, which happens with probability 0.5^10 = ~0.1%. Moreover the
+  // probability of a large bias (i.e. many trailing 0s in the significand) is
+  // exponentially low.  So we deem this acceptable.
   llvm::Value* elem_value = raw_value;
   if (elem_ir_ty->isFloatingPointTy()) {
-    unsigned raw_value_size_in_bits = raw_value_ty->getPrimitiveSizeInBits();
-    CHECK(raw_value_size_in_bits == 32 || raw_value_size_in_bits == 64);
-    // Perform the division using the float type with the same number of bits
-    // as the raw value to avoid overflow.
-    if (raw_value_size_in_bits == 32) {
-      elem_value = UIToFP(elem_value, b_->getFloatTy());
-      elem_value = FDiv(elem_value,
-                        llvm::ConstantFP::get(b_->getFloatTy(), std::exp2(32)));
-    } else {
-      elem_value = UIToFP(elem_value, b_->getDoubleTy());
-      elem_value = FDiv(
-          elem_value, llvm::ConstantFP::get(b_->getDoubleTy(), std::exp2(64)));
-    }
+    const auto& dest_flt_semantics = elem_ir_ty->getFltSemantics();
+    const int bits = raw_value_ty->getPrimitiveSizeInBits();
+    CHECK_GE(bits, llvm::APFloat::semanticsSizeInBits(dest_flt_semantics));
 
-    if (elem_ir_ty != elem_value->getType()) {
-      elem_value = FPTrunc(elem_value, elem_ir_ty);
-    }
+    // Subtract 1 because semanticsPrecision includes the "hidden bit", i.e. the
+    // implicit "1." at the beginning of the significand.
+    const int significand_bits =
+        llvm::APFloat::semanticsPrecision(dest_flt_semantics) - 1;
+
+    llvm::Value* cttz = llvm_ir::EmitCallToIntrinsic(
+        llvm::Intrinsic::cttz, {raw_value, /*is_zero_undef=*/b_->getFalse()},
+        {raw_value->getType()}, b_);
+    llvm::Value* significand = LShr(raw_value, bits - significand_bits);
+
+    // Exponent bias is -127 for f32, meaning that if the exponent is E and the
+    // significand is S, then the value of the number is 2^(E - 127) * (1.S).
+    //
+    // We want cttz == 0 to correspond to 2^-1, so our exponent is computed as
+    // E = 126 - cttz.
+    //
+    // For f64, this is all the same, except the bias is -1023.
+    //
+    // In IEEE floating point, the absolute value of the exponent bias equals
+    // the value of the largest possible exponent.
+    const int bias = -llvm::APFloat::semanticsMaxExponent(dest_flt_semantics);
+    llvm::Value* exponent =
+        Sub(llvm::ConstantInt::get(cttz->getType(), -bias - 1), cttz);
+
+    // Now just slot everything into place!  The `Trunc` is here because
+    // raw_value may be larger than our float destination.
+    elem_value =
+        BitCast(Trunc(Or(Shl(exponent, significand_bits), significand),
+                      b_->getIntNTy(elem_ir_ty->getPrimitiveSizeInBits())),
+                elem_ir_ty);
   }
 
   // Convert the value for the requested distribution.

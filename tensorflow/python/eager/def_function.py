@@ -162,7 +162,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
         placeholder_ops = set(
             [tensor.op for tensor in function_placeholders])
         lifted_initializer = lift_to_graph.lift_to_graph(
-            initial_value, outer_graph,
+            [initial_value], outer_graph,
             disallowed_placeholders=placeholder_ops)[initial_value]
         with ops.init_scope():
           self._initial_value = lifted_initializer
@@ -497,7 +497,7 @@ class Function(object):
             # Ignore variables which are already initialized at trace time.
             continue
         v.assign(lift_to_graph.lift_to_graph(
-            init, ops.get_default_graph())[init])
+            [init], ops.get_default_graph())[init])
 
     with ops.init_scope():
       return initialize_variables.get_concrete_function()()
@@ -538,7 +538,7 @@ class Function(object):
     def initialize_variables():
       for v, init in initializer_map.items():
         v.assign(lift_to_graph.lift_to_graph(
-            init, ops.get_default_graph())[init])
+            [init], ops.get_default_graph())[init])
 
     return initialize_variables.get_concrete_function()
 

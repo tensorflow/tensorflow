@@ -31,88 +31,30 @@ limitations under the License.
 namespace stream_executor {
 namespace internal {
 
-// Permits StreamExecutor code to dynamically load a pre-determined set of
-// relevant DSOs via dlopen.
-//
-// Thread-safe.
-class DsoLoader {
- public:
-  // The following methods either load the DSO of interest and return a dlopen
-  // handle or error status in the canonical namespace.
-
-  static port::Status GetCublasDsoHandle(void** dso_handle);
-  static port::Status GetCudnnDsoHandle(void** dso_handle);
-  static port::Status GetCufftDsoHandle(void** dso_handle);
-  static port::Status GetCurandDsoHandle(void** dso_handle);
-  static port::Status GetLibcudaDsoHandle(void** dso_handle);
-  static port::Status GetLibcuptiDsoHandle(void** dso_handle);
-  static port::Status GetLibcudartDsoHandle(void** dso_handle);
-
-  // Registers a new binary-relative path to use as a dlopen search path.
-  static void RegisterRpath(absl::string_view path);
-
- private:
-  // Registered rpaths (singleton vector) and a mutex that guards it.
-  static std::vector<string>* GetRpaths();
-
-  // Descriptive boolean wrapper to indicate whether symbols are made available
-  // to resolve in later-loaded libraries.
-  enum class LoadKind { kLocal, kGlobal };
-
-  // Loads a DSO from the given "path" (which can technically be any dlopen-able
-  // name). If the load kind is global, the symbols in the loaded DSO are
-  // visible to subsequent DSO loading operations.
-  static port::Status GetDsoHandle(absl::string_view path, void** dso_handle,
-                                   LoadKind load_kind = LoadKind::kLocal);
-
-  // Returns the binary directory (or binary path) associated with the currently
-  // executing program. If strip_executable_name is true, the executable file is
-  // stripped off of the path.
-  static string GetBinaryDirectory(bool strip_executable_name);
-
-  // Invokes realpath on the original path; updates candidate and returns true
-  // if it succeeds (i.e. a file exists at the path); otherwise, returns false.
-  static bool TrySymbolicDereference(string* candidate);
-
-  // Attempts to find a path to the DSO of interest, otherwise returns the
-  // bare library name:
-  // Arguments:
-  //   library_name: the filename in tree; e.g. libOpenCL.so.1.0.0
-  //   runfiles_relpath: where to look for the library relative to the runfiles
-  //      root; e.g. third_party/gpus/cuda/lib64
-  static string FindDsoPath(absl::string_view library_name,
-                            absl::string_view runfiles_relpath);
-
-  // Return platform dependent paths for DSOs
-  static string GetCudaLibraryDirPath();
-  static string GetCudaDriverLibraryPath();
-  static string GetCudaCuptiLibraryPath();
-
-  SE_DISALLOW_COPY_AND_ASSIGN(DsoLoader);
-};
+namespace DsoLoader {
+// The following methods either load the DSO of interest and return a dlopen
+// handle or error status.
+port::StatusOr<void*> GetCudaDriverDsoHandle();
+port::StatusOr<void*> GetCudaRuntimeDsoHandle();
+port::StatusOr<void*> GetCublasDsoHandle();
+port::StatusOr<void*> GetCufftDsoHandle();
+port::StatusOr<void*> GetCurandDsoHandle();
+port::StatusOr<void*> GetCuptiDsoHandle();
+port::StatusOr<void*> GetCudnnDsoHandle();
+}  // namespace DsoLoader
 
 // Wrapper around the DsoLoader that prevents us from dlopen'ing any of the DSOs
 // more than once.
-class CachedDsoLoader {
- public:
-  // Cached versions of the corresponding DsoLoader methods above.
-  static port::StatusOr<void*> GetCublasDsoHandle();
-  static port::StatusOr<void*> GetCudnnDsoHandle();
-  static port::StatusOr<void*> GetCufftDsoHandle();
-  static port::StatusOr<void*> GetCurandDsoHandle();
-  static port::StatusOr<void*> GetLibcudaDsoHandle();
-  static port::StatusOr<void*> GetLibcuptiDsoHandle();
-  static port::StatusOr<void*> GetLibcudartDsoHandle();
-
- private:
-  // Fetches a DSO handle via "load_dso" and returns the StatusOr form of the
-  // result.
-  static port::StatusOr<void*> FetchHandleResult(
-      std::function<port::Status(void**)> load_dso);
-
-  SE_DISALLOW_COPY_AND_ASSIGN(CachedDsoLoader);
-};
-
+namespace CachedDsoLoader {
+// Cached versions of the corresponding DsoLoader methods above.
+port::StatusOr<void*> GetCudaDriverDsoHandle();
+port::StatusOr<void*> GetCudaRuntimeDsoHandle();
+port::StatusOr<void*> GetCublasDsoHandle();
+port::StatusOr<void*> GetCufftDsoHandle();
+port::StatusOr<void*> GetCurandDsoHandle();
+port::StatusOr<void*> GetCuptiDsoHandle();
+port::StatusOr<void*> GetCudnnDsoHandle();
+}  // namespace CachedDsoLoader
 }  // namespace internal
 }  // namespace stream_executor
 

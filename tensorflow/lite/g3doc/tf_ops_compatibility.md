@@ -414,6 +414,18 @@ Outputs {
 }
 ```
 
+**GATHER_ND**
+
+```
+Inputs {
+  0: params tensor
+  1: indices tensor
+}
+Outputs {
+  0: a tensor with same type as the params tensor.
+}
+```
+
 **GREATER**
 
 ```

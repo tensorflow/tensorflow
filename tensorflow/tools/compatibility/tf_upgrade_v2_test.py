@@ -343,6 +343,8 @@ class TestUpgrade(test_util.TensorFlowTestCase):
         tf_upgrade_v2.TFAPIChangeSpec().reordered_function_names)
     function_reorders = (
         tf_upgrade_v2.TFAPIChangeSpec().function_reorders)
+    manual_function_reorders = (
+        tf_upgrade_v2.TFAPIChangeSpec().manual_function_reorders)
 
     added_names_message = """Some function names in
 self.reordered_function_names are not in reorders_v2.py.
@@ -362,6 +364,8 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     # function_reorders should contain reordered_function_names
     # and their TensorFlow V1 aliases.
     for name in function_reorders:
+      if name in manual_function_reorders:
+        continue
       # get other names for this function
       attr = get_symbol_for_name(tf.compat.v1, name)
       _, attr = tf_decorator.unwrap(attr)
@@ -818,6 +822,36 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
+  def testSoftMaxCrossEntropyWithLogitsDoesntNest(self):
+    text = ("tf.nn.softmax_cross_entropy_with_logits("
+            "labels=tf.stop_gradient(labels), logits=logits, dim=2)")
+    expected_text = (
+        "tf.nn.softmax_cross_entropy_with_logits("
+        "labels=tf.stop_gradient(labels), logits=logits, axis=2)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = ("tf.nn.softmax_cross_entropy_with_logits("
+            "labels=tf.stop_gradient(foo(bar)))")
+    expected_text = ("tf.nn.softmax_cross_entropy_with_logits("
+                     "labels=tf.stop_gradient(foo(bar)))")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = ("tf.nn.softmax_cross_entropy_with_logits("
+            "labels=foo())")
+    expected_text = ("tf.nn.softmax_cross_entropy_with_logits("
+                     "labels=tf.stop_gradient(foo()))")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = ("tf.nn.softmax_cross_entropy_with_logits("
+            "labels=foo().zz())")
+    expected_text = ("tf.nn.softmax_cross_entropy_with_logits("
+                     "labels=tf.stop_gradient(foo().zz()))")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
   def testSparseMatmul(self):
     text = ("tf.sparse_matmul(a, b, c, d, e, f, g)\n")
     expected_text = ("tf.linalg.matmul(a=a, b=b, transpose_a=c, transpose_b=d, "
@@ -879,9 +913,8 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         "tf.nn.conv2d_backprop_filter(input, filter_sizes, out_backprop, "
         "strides, padding, use_cudnn_on_gpu, data_format)")
     expected_text = (
-        "tf.nn.conv2d_backprop_filter(input=input, filter_sizes=filter_sizes, "
-        "out_backprop=out_backprop, strides=strides, padding=padding, "
-        "data_format=data_format)")
+        "tf.compat.v1.nn.conv2d_backprop_filter(input, filter_sizes, "
+        "out_backprop, strides, padding, use_cudnn_on_gpu, data_format)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
@@ -890,8 +923,8 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         "tf.nn.conv2d_backprop_input(input_sizes, filter, out_backprop, "
         "strides, padding, use_cudnn_on_gpu, data_format)")
     expected_text = (
-        "tf.nn.conv2d_backprop_input(input_sizes=input_sizes, filters=filter, "
-        "out_backprop=out_backprop, strides=strides, padding=padding, "
+        "tf.nn.conv2d_transpose(output_shape=input_sizes, filters=filter, "
+        "input=out_backprop, strides=strides, padding=padding, "
         "data_format=data_format)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
@@ -1171,6 +1204,12 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
+  def test_contrib_initialize(self):
+    text = "tf.contrib.summary.initialize"
+    expected = "tf.compat.v1.summary.initialize"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
   def test_contrib_framework_argsort(self):
     text = "tf.contrib.framework.argsort"
     expected = "tf.argsort"
@@ -1191,6 +1230,39 @@ def _log_prob(self, x):
     expected_text = "tf.nn.max_pool2d(input=4)"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
+
+  def test_contrib_summary_audio(self):
+    text = "tf.contrib.summary.audio('foo', myval, 44100, 3, 'fam', 42)"
+    expected = ("tf.compat.v2.summary.audio(name='foo', tensor=myval, "
+                "sample_rate=44100, max_outputs=3, step=42)")
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    self.assertIn("'family' argument", errors[0])
+
+  def test_contrib_summary_histogram(self):
+    text = "tf.contrib.summary.histogram('foo', myval, 'fam', 42)"
+    expected = ("tf.compat.v2.summary.histogram(name='foo', tensor=myval, "
+                "step=42)")
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    self.assertIn("'family' argument", errors[0])
+
+  def test_contrib_summary_image(self):
+    text = "tf.contrib.summary.image('foo', myval, red, 3, 'fam', 42)"
+    expected = ("tf.compat.v2.summary.image(name='foo', tensor=myval, "
+                "max_outputs=3, step=42)")
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    self.assertIn("'bad_color' argument", errors[0])
+    self.assertIn("'family' argument", errors[1])
+
+  def test_contrib_summary_scalar(self):
+    text = "tf.contrib.summary.scalar('foo', myval, 'fam', 42)"
+    expected = ("tf.compat.v2.summary.scalar(name='foo', tensor=myval, "
+                "step=42)")
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    self.assertIn("'family' argument", errors[0])
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

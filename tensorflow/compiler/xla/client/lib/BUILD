@@ -452,11 +452,12 @@ cc_library(
 )
 
 cc_library(
-    name = "self_adjoint_eigen",
-    srcs = ["self_adjoint_eigen.cc"],
-    hdrs = ["self_adjoint_eigen.h"],
+    name = "self_adjoint_eig",
+    srcs = ["self_adjoint_eig.cc"],
+    hdrs = ["self_adjoint_eig.h"],
     deps = [
         ":arithmetic",
+        ":comparators",
         ":constants",
         ":loops",
         ":math",
@@ -473,9 +474,12 @@ cc_library(
 )
 
 xla_test(
-    name = "self_adjoint_eigen_test",
-    size = "medium",
-    srcs = ["self_adjoint_eigen_test.cc"],
+    name = "self_adjoint_eig_test",
+    srcs = ["self_adjoint_eig_test.cc"],
+    blacklisted_backends = [
+        "cpu",
+        "gpu",
+    ],
     real_hardware_only = True,
     shard_count = 10,
     tags = ["optonly"],
@@ -483,7 +487,7 @@ xla_test(
         ":arithmetic",
         ":constants",
         ":matrix",
-        ":self_adjoint_eigen",
+        ":self_adjoint_eig",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:literal",

@@ -269,6 +269,8 @@ class CrossDeviceOps(object):
       ValueError: if `value_destination_pairs` is not a list or a tuple of
         tuples of PerReplica objects and destinations
     """
+    # TODO(yuefengz): if destinations are different, split into several
+    # `_batch_reduce` invocations.
     if not _validate_value_destination_pairs(value_destination_pairs):
       # If the first element of each pair is a tensor, we try to turn it into a
       # PerReplica object.
@@ -374,8 +376,10 @@ class ReductionToOneDevice(CrossDeviceOps):
     super(ReductionToOneDevice, self).__init__()
 
   def reduce_implementation(self, reduce_op, per_replica_value, destinations):
-    assert check_destinations(destinations)
-    devices = get_devices_from(destinations)
+    if check_destinations(destinations):
+      devices = get_devices_from(destinations)
+    else:
+      devices = get_devices_from(per_replica_value)
     reduce_to_device = self.reduce_to_device or devices[0]
     logging.log_first_n(
         logging.INFO,
@@ -653,29 +657,15 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
     self._num_packs = num_packs
     self._agg_small_grads_max_bytes = agg_small_grads_max_bytes
     self._agg_small_grads_max_group = agg_small_grads_max_group
+    self._simple_cross_replica_ops = ReductionToOneDevice()
     super(AllReduceCrossDeviceOps, self).__init__()
 
   def reduce_implementation(self, reduce_op, per_replica_value, destinations):
-    contains_indexed_slices = cross_device_utils.contains_indexed_slices(
-        per_replica_value)
-    if (_devices_match(per_replica_value, destinations)
-        and not context.executing_eagerly()
-        and not contains_indexed_slices):
+    if _devices_match(per_replica_value, destinations):
       return self._batch_all_reduce(reduce_op, [per_replica_value])[0]
     else:
-      if contains_indexed_slices:
-        logging.log_first_n(
-            logging.WARN,
-            "Efficient allreduce is not supported for IndexedSlices.", 10)
-
-      if check_destinations(destinations):
-        devices = get_devices_from(destinations)
-      else:
-        devices = get_devices_from(per_replica_value)
-      reduce_to_device = devices[0]
-      reduced = _simple_reduce(per_replica_value, reduce_to_device,
-                               math_ops.add_n, reduce_op)
-      return self.broadcast(reduced, destinations)
+      return self._simple_cross_replica_ops.reduce(reduce_op, per_replica_value,
+                                                   destinations)
 
   def batch_reduce_implementation(self, reduce_op, value_destination_pairs):
     all_devices_match = _all_devices_match(value_destination_pairs)
@@ -699,14 +689,31 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
 
   def _batch_all_reduce(self, reduce_op, per_replica_values):
     """All-reduce algorithm in a batch."""
+    dense_values, dense_indices, sparse_values, sparse_indices = (
+        cross_device_utils.split_by_sparsity(per_replica_values))
+    if dense_values:
+      dense_results = self._do_batch_all_reduce(reduce_op, dense_values)
+    else:
+      dense_results = []
+    if sparse_values:
+      sparse_results = self._do_batch_all_reduce_sparse(reduce_op,
+                                                        sparse_values)
+    else:
+      sparse_results = []
+    return cross_device_utils.stitch_values(((dense_results, dense_indices),
+                                             (sparse_results, sparse_indices)))
+
+  def _do_batch_all_reduce(self, reduce_op, dense_values):
+    """Run batch all-reduces."""
     logging.log_first_n(
         logging.INFO, "batch_all_reduce invoked for batches size = %d with "
         "algorithm = %s, num_packs = %d, agg_small_grads_max_bytes = %d and "
         "agg_small_grads_max_group = %d" %
-        (len(per_replica_values), self._all_reduce_alg, self._num_packs,
+        (len(dense_values), self._all_reduce_alg, self._num_packs,
          self._agg_small_grads_max_bytes, self._agg_small_grads_max_group), 10)
-    destinations = per_replica_values[0].devices
-    grouped = _group_value_by_device(per_replica_values)
+
+    destinations = dense_values[0].devices
+    grouped = _group_value_by_device(dense_values)
 
     device_grad_packs, tensor_packer = _pack_tensors(
         grouped, self._num_packs, self._agg_small_grads_max_bytes,
@@ -727,7 +734,18 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
               destinations, device_grad_packs))
 
     reduced = _unpack_tensors(reduced, tensor_packer)
-    return _ungroup_and_make_mirrored(reduced, per_replica_values[0], reduce_op)
+    return _ungroup_and_make_mirrored(reduced, dense_values[0], reduce_op)
+
+  def _do_batch_all_reduce_sparse(self, reduce_op, sparse_values):
+    """Run batch all-reduce for sparse values."""
+    logging.log_first_n(
+        logging.WARN,
+        "Efficient allreduce is not supported for %d IndexedSlices" %
+        len(sparse_values), 10)
+    # Use `sparse_values` as destinations to do all-reduces. It is effectively
+    # an allgather under the hood but not an efficient one.
+    return self._simple_cross_replica_ops.batch_reduce(
+        reduce_op, zip(sparse_values, sparse_values))
 
 
 # For compatibility with code using the old name of `AllReduceCrossDeviceOps`.

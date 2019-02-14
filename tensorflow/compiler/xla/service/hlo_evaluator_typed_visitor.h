@@ -2670,12 +2670,25 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         const Literal& high =
             parent_->GetEvaluatedLiteralFor(random->operand(1));
 
-        std::uniform_real_distribution<NativeT> generator(
-            low.Get<NativeT>({}), high.Get<NativeT>({}));
-
+        // std::uniform_real_distribution(a, b) can sometimes return a value
+        // equal to b.  Unclear if this is a spec bug or an implementation bug
+        // or WAI [0] [1] [2].  Anyway for our purposes we want a half-open
+        // interval, so we have to re-sample if we get `b` out.
+        //
+        // [0] https://gcc.gnu.org/bugzilla/show_bug.cgi?id=63176
+        // [1] https://bugs.llvm.org/show_bug.cgi?id=18767
+        // [2] http://open-std.org/JTC1/SC22/WG21/docs/lwg-active.html#2524
+        auto low_val = low.Get<NativeT>({});
+        auto high_val = high.Get<NativeT>({});
+        std::uniform_real_distribution<NativeT> generator(low_val, high_val);
         TF_RETURN_IF_ERROR(
             result.Populate<NativeT>([&](absl::Span<const int64> /*indexes*/) {
-              return generator(parent_->engine_);
+              while (true) {
+                NativeT v = generator(parent_->engine_);
+                if (v != high_val) {
+                  return v;
+                }
+              }
             }));
         break;
       }

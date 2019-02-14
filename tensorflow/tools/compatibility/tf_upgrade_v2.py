@@ -23,7 +23,6 @@ import functools
 import sys
 
 import pasta
-import six
 
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import renames_v2
@@ -405,12 +404,25 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "filter": "filters",
             "use_cudnn_on_gpu": None,
         },
-        "tf.nn.conv2d_backprop_filter": {
-            "use_cudnn_on_gpu": None,
-        },
         "tf.nn.conv2d_backprop_input": {
-            "filter": "filters",
             "use_cudnn_on_gpu": None,
+            "input_sizes": "output_shape",
+            "out_backprop": "input",
+            "filter": "filters",
+        },
+        "tf.contrib.summary.audio": {
+            "family": None,
+        },
+        "tf.contrib.summary.histogram": {
+            "family": None,
+        },
+        "tf.contrib.summary.image": {
+            "bad_color": None,
+            "max_images": "max_outputs",
+            "family": None,
+        },
+        "tf.contrib.summary.scalar": {
+            "family": None,
         },
     }
 
@@ -570,6 +582,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.sort",
         "tf.contrib.framework.argsort":
             "tf.argsort",
+        "tf.contrib.summary.audio":
+            "tf.compat.v2.summary.audio",
+        "tf.contrib.summary.histogram":
+            "tf.compat.v2.summary.histogram",
+        "tf.contrib.summary.image":
+            "tf.compat.v2.summary.image",
+        "tf.contrib.summary.initialize":
+            "tf.compat.v1.summary.initialize",
+        "tf.contrib.summary.scalar":
+            "tf.compat.v2.summary.scalar",
         "tf.count_nonzero":
             "tf.math.count_nonzero",
         "tf.manip.batch_to_space_nd":
@@ -706,18 +728,18 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.debugging.assert_rank_in",
         "tf.assert_rank":
             "tf.compat.v1.assert_rank",
-        "tf.contrib.framework.argsort":
-            "tf.argsort",
         "tf.nn.max_pool":
             "tf.nn.max_pool2d",
-        'tf.keras.initializers.zeros':
-            'tf.compat.v1.keras.initializers.zeros',
-        'tf.keras.initializers.ones':
-            'tf.compat.v1.keras.initializers.ones',
-        'tf.keras.initializers.constant':
-            'tf.compat.v1.keras.initializers.constant',
+        "tf.keras.initializers.zeros":
+            "tf.compat.v1.keras.initializers.zeros",
+        "tf.keras.initializers.ones":
+            "tf.compat.v1.keras.initializers.ones",
+        "tf.keras.initializers.constant":
+            "tf.compat.v1.keras.initializers.constant",
         "tf.data.experimental.map_and_batch_with_legacy_function":
             "tf.compat.v1.data.experimental.map_and_batch_with_legacy_function",
+        "tf.nn.conv2d_backprop_input":
+            "tf.nn.conv2d_transpose"
     }
     # pylint: enable=line-too-long
 
@@ -751,7 +773,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.convert_to_tensor",
         "tf.nn.conv1d",
         "tf.nn.conv2d",
-        "tf.nn.conv2d_backprop_filter",
         "tf.nn.conv2d_backprop_input",
         "tf.nn.ctc_beam_search_decoder",
         "tf.nn.moments",
@@ -833,10 +854,24 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.max_pool",
     }
 
+    # Manual mapping of function names to be reordered to their list of argument
+    # names, in order. Only use this if argument names cannot be autodetected,
+    # e.g. if the functions are in contrib.
+    self.manual_function_reorders = {
+        "tf.contrib.summary.audio": [
+            "name", "tensor", "sample_rate", "max_outputs", "family", "step"],
+        "tf.contrib.summary.histogram": [
+            "name", "tensor", "family", "step"],
+        "tf.contrib.summary.image": [
+            "name", "tensor", "bad_color", "max_images", "family", "step"],
+        "tf.contrib.summary.scalar": [
+            "name", "tensor", "family", "step"],
+    }
     # Functions that were reordered should be changed to the new keyword args
     # for safety, if positional arguments are used. If you have reversed the
     # positional arguments yourself, this could do the wrong thing.
-    self.function_reorders = reorders_v2.reorders
+    self.function_reorders = dict(reorders_v2.reorders)
+    self.function_reorders.update(self.manual_function_reorders)
 
     contrib_warning = (
         ast_edits.ERROR,
@@ -1265,6 +1300,40 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
                 "tf.cond no longer takes 'strict' argument, it behaves as "
                 "if was set to True.")
         },
+        "tf.contrib.summary.audio": {
+            ("family", 4): (
+                ast_edits.WARNING,
+                "tf.contrib.summary.* functions no longer take the 'family' "
+                "argument; instead name scoping should be used. This call site "
+                "specifies a family argument so it cannot be converted safely.")
+        },
+        "tf.contrib.summary.histogram": {
+            ("family", 2): (
+                ast_edits.WARNING,
+                "tf.contrib.summary.* functions no longer take the 'family' "
+                "argument; instead name scoping should be used. This call site "
+                "specifies a family argument so it cannot be converted safely.")
+        },
+        "tf.contrib.summary.image": {
+            ("bad_color", 2): (
+                ast_edits.WARNING,
+                "tf.contrib.summary.image no longer takes the 'bad_color' "
+                "argument; caller must now preprocess if needed. This call "
+                "site specifies a bad_color argument so it cannot be converted "
+                "safely."),
+            ("family", 4): (
+                ast_edits.WARNING,
+                "tf.contrib.summary.* functions no longer take the 'family' "
+                "argument; instead name scoping should be used. This call site "
+                "specifies a family argument so it cannot be converted safely.")
+        },
+        "tf.contrib.summary.scalar": {
+            ("family", 2): (
+                ast_edits.WARNING,
+                "tf.contrib.summary.* functions no longer take the 'family' "
+                "argument; instead name scoping should be used. This call site "
+                "specifies a family argument so it cannot be converted safely.")
+        },
     }
 
     # Specially handled functions
@@ -1570,11 +1639,18 @@ def _softmax_cross_entropy_with_logits_transformer(
   """Wrap labels argument with stop_gradients."""
   def _wrap_label(parent, old_value):
     """Wrap labels with tf.stop_gradient."""
-    if six.PY3:
+    already_stop_grad = (isinstance(old_value, ast.Call) and
+                         isinstance(old_value.func, ast.Attribute) and
+                         old_value.func.attr == "stop_gradient" and
+                         isinstance(old_value.func.value, ast.Name) and
+                         old_value.func.value.id == "tf")
+    if already_stop_grad:
+      return False
+    try:
       new_value = ast.Call(
           ast.Name(id="tf.stop_gradient", ctx=ast.Load()),
           [old_value], [])
-    else:
+    except TypeError:
       new_value = ast.Call(
           ast.Name(id="tf.stop_gradient", ctx=ast.Load()),
           [old_value], [], None, None)
@@ -1582,16 +1658,17 @@ def _softmax_cross_entropy_with_logits_transformer(
     # This copies the prefix and suffix on old_value to new_value.
     pasta.ast_utils.replace_child(parent, old_value, new_value)
     ast.copy_location(new_value, old_value)
+    return True
 
   # Check if we have a labels keyword arg
   for karg in node.keywords:
     if karg.arg == "labels":
-      logs.append((ast_edits.INFO, node.lineno, node.col_offset,
-                   "Changing labels arg of "
-                   "tf.nn.softmax_cross_entropy_with_logits to "
-                   "tf.stop_gradient(labels). Please check this "
-                   "transformation.\n"))
-      _wrap_label(karg, karg.value)
+      if _wrap_label(karg, karg.value):
+        logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                     "Changing labels arg of "
+                     "tf.nn.softmax_cross_entropy_with_logits to "
+                     "tf.stop_gradient(labels). Please check this "
+                     "transformation.\n"))
       return node
   return node
 

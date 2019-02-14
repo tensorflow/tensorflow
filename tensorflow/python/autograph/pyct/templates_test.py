@@ -248,6 +248,16 @@ class TemplatesTest(test.TestCase):
     self.assertIsInstance(arg_node.generators[0].target.ctx, gast.Store)
     self.assertIsInstance(arg_node.elt.ctx, gast.Load)
 
+  def test_lambda_in_function_call(self):
+    template = """
+      a = foo(arg)
+    """
+    source = parser.parse_expression('[lambda i: i]')
+    node = templates.replace(template, arg=source)
+    lambda_arg = node[0].value.args[0].elts[0]
+    self.assertIsInstance(lambda_arg.args.args[0].ctx, gast.Param)
+    self.assertIsInstance(lambda_arg.body.ctx, gast.Load)
+
 
 if __name__ == '__main__':
   test.main()

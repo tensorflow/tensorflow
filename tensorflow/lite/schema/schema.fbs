@@ -222,6 +222,7 @@ enum BuiltinOperator : byte {
   ADD_N = 106,
   GATHER_ND = 107,
   COS = 108,
+  WHERE = 109,
 }
 
 // Options for the builtin operators.
@@ -310,6 +311,7 @@ union BuiltinOptions {
   AddNOptions,
   GatherNdOptions,
   CosOptions,
+  WhereOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -737,6 +739,9 @@ table AddNOptions {
 }
 
 table GatherNdOptions {
+}
+
+table WhereOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

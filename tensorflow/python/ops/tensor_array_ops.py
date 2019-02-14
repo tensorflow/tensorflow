@@ -575,18 +575,29 @@ class _GraphTensorArrayV2(object):
   def stack(self, name=None):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArrayV2Stack", [self._flow]):
+      if self._element_shape:
+        element_shape = self._element_shape[0]
+      else:
+        element_shape = tensor_shape.TensorShape(None)
       value = list_ops.tensor_list_stack(
-          input_handle=self._flow, element_dtype=self._dtype)
+          input_handle=self._flow,
+          element_dtype=self._dtype,
+          element_shape=element_shape)
       if self._element_shape and self._element_shape[0].dims is not None:
         value.set_shape([None] + self._element_shape[0].dims)
       return value
 
   def gather(self, indices, name=None):
     """See TensorArray."""
+    if self._element_shape:
+      element_shape = self._element_shape[0]
+    else:
+      element_shape = tensor_shape.TensorShape(None)
     value = list_ops.tensor_list_gather(
         input_handle=self._flow,
         indices=indices,
         element_dtype=self._dtype,
+        element_shape=element_shape,
         name=name)
     if self._element_shape and self._element_shape[0].dims is not None:
       value.set_shape([None] + self._element_shape[0].dims)

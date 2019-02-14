@@ -127,28 +127,42 @@ bool NumpyTypeIsValid(int np_type) {
   }
 }
 
-PyObject* PyShapeInfoFromXlaShape(const Shape& shape) {
+Safe_PyObjectPtr PyShapeInfoFromXlaShape(const Shape& shape) {
   int np_typenum = PrimitiveTypeToNumpyType(shape.element_type());
   PyArray_Descr* np_dtype = PyArray_DescrFromType(np_typenum);
 
-  PyObject* dimensions;
+  Safe_PyObjectPtr dimensions;
   if (shape.IsTuple()) {
     int num_elements = ShapeUtil::TupleElementCount(shape);
-    dimensions = PyTuple_New(ShapeUtil::TupleElementCount(shape));
+    dimensions = make_safe(PyTuple_New(ShapeUtil::TupleElementCount(shape)));
     for (int i = 0; i < num_elements; ++i) {
       PyTuple_SET_ITEM(
-          dimensions, i,
-          PyShapeInfoFromXlaShape(ShapeUtil::GetTupleElementShape(shape, i)));
+          dimensions.get(), i,
+          PyShapeInfoFromXlaShape(ShapeUtil::GetTupleElementShape(shape, i))
+              .release());
     }
   } else {
     int rank = shape.rank();
-    dimensions = PyTuple_New(rank);
+    dimensions = make_safe(PyTuple_New(rank));
     for (int i = 0; i < rank; ++i) {
-      PyTuple_SET_ITEM(dimensions, i,
+      PyTuple_SET_ITEM(dimensions.get(), i,
                        LongToPyIntOrPyLong(ShapeUtil::GetDimension(shape, i)));
     }
   }
-  return PyTuple_Pack(2, np_dtype, dimensions);
+  return make_safe(PyTuple_Pack(2, np_dtype, dimensions.release()));
+}
+
+Safe_PyObjectPtr PyProgramShapeInfoFromXlaProgramShape(
+    const ProgramShape& shape) {
+  Safe_PyObjectPtr arg_shapes = make_safe(PyTuple_New(shape.parameters_size()));
+  for (int i = 0; i < shape.parameters_size(); ++i) {
+    PyTuple_SET_ITEM(arg_shapes.get(), i,
+                     PyShapeInfoFromXlaShape(shape.parameters(i)).release());
+  }
+
+  Safe_PyObjectPtr result_shape = PyShapeInfoFromXlaShape(shape.result());
+  return make_safe(
+      PyTuple_Pack(2, arg_shapes.release(), result_shape.release()));
 }
 
 // Precondition: o->ob_type == &PyArrayDescr_Type

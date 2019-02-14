@@ -214,7 +214,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << proto.called_computation_ids_size();
       auto sort_operands = all_operands();
       instruction = CreateSort(shape, proto.dimensions(0), all_operands(),
-                               computations(0));
+                               computations(0), proto.is_stable());
       break;
     }
     case HloOpcode::kTranspose:
@@ -1170,9 +1170,10 @@ HloInstruction::CreateBroadcastSequence(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSort(
     const Shape& shape, int64 dimension,
-    absl::Span<HloInstruction* const> operands, HloComputation* compare) {
+    absl::Span<HloInstruction* const> operands, HloComputation* compare,
+    bool is_stable) {
   return absl::make_unique<HloSortInstruction>(shape, dimension, operands,
-                                               compare);
+                                               compare, is_stable);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(

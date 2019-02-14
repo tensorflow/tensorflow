@@ -876,9 +876,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return None
 
     with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        'Cannot place the graph because a reference or resource edge connects '
-        'colocation groups with incompatible assigned devices'):
+        errors.InvalidArgumentError, 'Could not colocate node with its '
+        'resource and reference inputs.*'):
       if not context.executing_eagerly():
         self.evaluate(variables.global_variables_initializer())
       self.evaluate(resource_apply_adam())
@@ -1472,6 +1471,21 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined([a], [a, a, a])
     defined([a, a], [a, a])
 
+  def testInputSignatureWithPartialFunction(self):
+    self.skipTest('b/124441704')
+    def full_function(a, b, c=3.0):
+      return a, b, c
+
+    partial = functools.partial(full_function, 1, c=4)
+    a, b, c = partial(2.0)
+    signature = [tensor_spec.TensorSpec([], dtypes.float32)]
+    defined = function.defun(partial, input_signature=signature)
+    x = constant_op.constant(2.0)
+    func_a, func_b, func_c = defined(x)
+    self.assertEqual(func_a.numpy(), a)
+    self.assertEqual(func_b.numpy(), b)
+    self.assertEqual(func_c.numpy(), c)
+
   def testInputSignatureForFunctionWithNonTensorInputsNotAllowed(self):
 
     def foo(a, training=True):
@@ -1670,17 +1684,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # pylint: enable=protected-access
 
   def testFunctionWithInvalidAttribute(self):
-    @function.defun_with_attributes(attributes={'attr1': 'value1'})
-    def matmul(x, y):
-      return math_ops.matmul(x, y)
-
-    with self.assertRaisesRegexp(ValueError,
-                                 '.*Attribute name is not whitelisted.*'):
-      with context.graph_mode(), self.cached_session():
-        with ops.get_default_graph().as_default():
-          t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-          matmul(t, t)
-
     @function.defun_with_attributes(attributes={'experimental_1': ['value1']})
     def add(x, y):
       return math_ops.add(x, y)
@@ -1895,11 +1898,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     rewrites = rewriter_config_pb2.RewriterConfig()
     # function_optimizer has to be turn off, otherwise it will delete the
     # registered function if it does not get called.
-    # TODO(scottzhu): Move the ExperimentalImplementationSelector to be called
+    # TODO(scottzhu): Move the ImplementationSelector to be called
     # before function_optimizer in future.
     rewrites.function_optimization = rewriter_config_pb2.RewriterConfig.OFF
     customer_optimizer = rewrites.custom_optimizers.add()
-    customer_optimizer.name = 'ExperimentalImplementationSelector'
+    customer_optimizer.name = 'ImplementationSelector'
     rewrites.min_graph_nodes = -1
     graph_options = config_pb2.GraphOptions(
         rewrite_options=rewrites, build_cost_model=1)
@@ -1910,16 +1913,16 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       @function.defun_with_attributes(
           attributes={
-              'experimental_api_implements': 'random_boost',
-              'experimental_api_preferred_device': 'CPU'
+              'api_implements': 'random_boost',
+              'api_preferred_device': 'CPU'
           })
       def cpu_boost(x):
         return math_ops.add(x, 2.0)
 
       @function.defun_with_attributes(
           attributes={
-              'experimental_api_implements': 'random_boost',
-              'experimental_api_preferred_device': 'GPU'
+              'api_implements': 'random_boost',
+              'api_preferred_device': 'GPU'
           })
       def gpu_boost(x):
         return math_ops.add(x, 4.0)
