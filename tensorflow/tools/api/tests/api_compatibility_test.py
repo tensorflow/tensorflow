@@ -33,7 +33,6 @@ import re
 import sys
 
 import tensorflow as tf
-from tensorflow._api.v2 import v2 as tf_v2
 
 from google.protobuf import message
 from google.protobuf import text_format
@@ -256,7 +255,7 @@ class ApiCompatibilityTest(test.TestCase):
     visitor.do_not_descend_map['tf'].append('contrib')
     if FLAGS.only_test_core_api:
       visitor.do_not_descend_map['tf'].extend(_NON_CORE_PACKAGES)
-    traverse.traverse(tf_v2.compat.v1, visitor)
+    traverse.traverse(tf.compat.v1, visitor)
 
   def testNoSubclassOfMessageV2(self):
     if not hasattr(tf.compat, 'v2'):
@@ -316,7 +315,7 @@ class ApiCompatibilityTest(test.TestCase):
 
   @test_util.run_v1_only('b/120545219')
   def testAPIBackwardsCompatibility(self):
-    api_version = 1
+    api_version = 2 if '_api.v2' in tf.__name__ else 1
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
@@ -339,7 +338,7 @@ class ApiCompatibilityTest(test.TestCase):
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
-    self._checkBackwardsCompatibility(tf_v2.compat.v1, golden_file_pattern,
+    self._checkBackwardsCompatibility(tf.compat.v1, golden_file_pattern,
                                       api_version)
 
   def testAPIBackwardsCompatibilityV2(self):
@@ -348,7 +347,7 @@ class ApiCompatibilityTest(test.TestCase):
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
     self._checkBackwardsCompatibility(
-        tf_v2,
+        tf.compat.v2,
         golden_file_pattern,
         api_version,
         additional_private_map={'tf.compat': ['v1', 'v2']})
