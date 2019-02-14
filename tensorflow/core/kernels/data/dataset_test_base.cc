@@ -36,28 +36,30 @@ Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
 }
 
 Status DatasetOpsTestBase::CreateTensorSliceDatasetKernel(
-    const StringPiece& node_name, const DataTypeVector& dtypes,
+    StringPiece node_name, const DataTypeVector& dtypes,
     const std::vector<PartialTensorShape>& shapes,
-    std::unique_ptr<OpKernel>* tensor_dataset_kernel) {
+    std::unique_ptr<OpKernel>* tensor_slice_dataset_kernel) {
   std::vector<string> components;
   components.reserve(dtypes.size());
   for (int i = 0; i < dtypes.size(); ++i) {
+    // Create the placeholder names for the input components of
+    // `TensorSliceDataset`.
     components.emplace_back(strings::StrCat("component_", i));
   }
   NodeDef node_def = test::function::NDef(
       node_name, "TensorSliceDataset", components,
       {{"Toutput_types", dtypes}, {"output_shapes", shapes}});
-  TF_RETURN_IF_ERROR(CreateOpKernel(node_def, tensor_dataset_kernel));
+  TF_RETURN_IF_ERROR(CreateOpKernel(node_def, tensor_slice_dataset_kernel));
   return Status::OK();
 }
 
 Status DatasetOpsTestBase::CreateTensorSliceDataset(
-    const StringPiece& node_name, std::vector<Tensor>& components,
-    DatasetBase** tensor_slice_data) {
+    StringPiece node_name, std::vector<Tensor>* const components,
+    DatasetBase** tensor_slice_dataset) {
   std::unique_ptr<OpKernel> tensor_slice_dataset_kernel;
   DataTypeVector dtypes;
   std::vector<PartialTensorShape> shapes;
-  for (const auto& t : components) {
+  for (const auto& t : *components) {
     dtypes.push_back(t.dtype());
     gtl::InlinedVector<int64, 4> partial_dim_sizes;
     for (int i = 1; i < t.dims(); ++i) {
@@ -68,7 +70,7 @@ Status DatasetOpsTestBase::CreateTensorSliceDataset(
   TF_RETURN_IF_ERROR(CreateTensorSliceDatasetKernel(
       node_name, dtypes, shapes, &tensor_slice_dataset_kernel));
   gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto& tensor : components) {
+  for (auto& tensor : *components) {
     inputs.emplace_back(&tensor);
   }
   TF_RETURN_IF_ERROR(CheckOpKernelInput(*tensor_slice_dataset_kernel, inputs));
@@ -78,7 +80,7 @@ Status DatasetOpsTestBase::CreateTensorSliceDataset(
   TF_RETURN_IF_ERROR(
       RunOpKernel(tensor_slice_dataset_kernel.get(), context.get()));
   TF_RETURN_IF_ERROR(
-      GetDatasetFromContext(context.get(), 0, tensor_slice_data));
+      GetDatasetFromContext(context.get(), 0, tensor_slice_dataset));
   return Status::OK();
 }
 

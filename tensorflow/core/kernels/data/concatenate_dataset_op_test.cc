@@ -24,16 +24,17 @@ constexpr char kOpName[] = "ConcatenateDataset";
 
 class ConcatenateDatasetOpTest : public DatasetOpsTestBase {
  protected:
-  // Creates TensorSliceDatasets and save them as the variant tensors.
+  // Creates `TensorSliceDataset` variant tensors from the input vector of
+  // tensor vectors.
   Status CreateTensorSliceDatasetTensors(
-      std::vector<std::vector<Tensor>> tensor_vectors,
-      std::vector<Tensor> *dataset_tensors) {
+      const std::vector<std::vector<Tensor>> &tensor_vectors,
+      std::vector<Tensor> *const dataset_tensors) {
     for (int i = 0; i < tensor_vectors.size(); ++i) {
       std::vector<Tensor> tensors = tensor_vectors[i];
       DatasetBase *tensor_slice_dataset;
       TF_RETURN_IF_ERROR(
           CreateTensorSliceDataset(strings::StrCat("tensor_slice_node_", i),
-                                   tensors, &tensor_slice_dataset));
+                                   &tensors, &tensor_slice_dataset));
       Tensor dataset_tensor(DT_VARIANT, TensorShape({}));
       TF_RETURN_IF_ERROR(
           StoreDatasetInVariantTensor(tensor_slice_dataset, &dataset_tensor));
@@ -44,8 +45,8 @@ class ConcatenateDatasetOpTest : public DatasetOpsTestBase {
 
   // Creates a new ConcatenateDataset op kernel.
   Status CreateConcatenateDatasetKernel(
-      DataTypeVector output_tyeps,
-      std::vector<PartialTensorShape> output_shapes,
+      const DataTypeVector &output_tyeps,
+      const std::vector<PartialTensorShape> &output_shapes,
       std::unique_ptr<OpKernel> *op_kernel) {
     node_def_ = test::function::NDef(
         kNodeName, kOpName, {"input_dataset", "another_dataset"},
@@ -56,7 +57,8 @@ class ConcatenateDatasetOpTest : public DatasetOpsTestBase {
 
   // Creates a new ConcatenateDataset op kernel context.
   Status CreateConcatenateDatasetContext(
-      OpKernel *const op_kernel, gtl::InlinedVector<TensorValue, 4> *inputs,
+      OpKernel *const op_kernel,
+      gtl::InlinedVector<TensorValue, 4> *const inputs,
       std::unique_ptr<OpKernelContext> *context) {
     TF_RETURN_IF_ERROR(CheckOpKernelInput(*op_kernel, *inputs));
     TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
