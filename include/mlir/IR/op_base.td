@@ -315,11 +315,13 @@ def ArrayAttr : Attr<CPred<"true">, "array"> {
   let returnType = [{ ArrayAttr }];
   code convertFromStorage = "{0}";
 }
-def ElementsAttr : Attr<CPred<"true">, "constant vector/tensor"> {
+class ElementsAttrBase<Pred condition, string description> :
+    Attr<condition, description> {
   let storageType = [{ ElementsAttr }];
   let returnType = [{ ElementsAttr }];
   let convertFromStorage = "{0}";
 }
+def ElementsAttr: ElementsAttrBase<CPred<"true">, "constant vector/tensor">;
 def F32Attr : FloatAttrBase<F32, "32-bit float"> {
   let returnType = [{ APFloat }];
 }

@@ -346,11 +346,6 @@ void PatternEmitter::emitRewriteMethod() {
 
   DagNode resultTree = pattern.getResultPattern(0);
 
-  // TODO(jpienaar): Expand to multiple results.
-  for (unsigned i = 0, e = resultTree.getNumArgs(); i != e; ++i)
-    if (resultTree.getArgAsNestedDag(i))
-      PrintFatalError(loc, "only single op result supported");
-
   os << R"(
   void rewrite(Instruction *op, std::unique_ptr<PatternState> state,
                PatternRewriter &rewriter) const override {
