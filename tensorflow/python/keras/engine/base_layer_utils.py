@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections as collections_lib
+import threading
 import enum
 
 from tensorflow.python.framework import dtypes
@@ -28,6 +29,9 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_contextlib
+
+_call_context = threading.local()
 
 
 class CallConvention(enum.Enum):
@@ -292,6 +296,11 @@ def _create_keras_history_helper(tensors, processed_ops=None):
 def needs_keras_history(tensors):
   """Check if any Tensors need to be wrapped in TensorFlowOpLayers.
 
+  This will never return True inside a sublayer, because sublayers
+  do not need to create Keras History. Otherwise, this returns True
+  if one or more of `tensors` originates from a `keras.Input` and
+  does not have `_keras_history` set.
+
   Arguments:
     tensors: An arbitrary nested structure of Tensors.
 
@@ -299,7 +308,7 @@ def needs_keras_history(tensors):
     Bool, whether at least one Tensor needs to be wrapped.
   """
   input_tensors = nest.flatten(tensors)
-  if all(
+  if getattr(_call_context, 'in_call', False) or all(
       getattr(tensor, '_keras_history', None) is not None
       for tensor in input_tensors):
     # KerasHistory already set.
@@ -362,3 +371,14 @@ def mark_checked(tensors):
     tensor._keras_history_checked = True  # pylint: disable=protected-access
 
   nest.map_structure(_mark_checked, tensors)
+
+
+@tf_contextlib.contextmanager
+def call_context():
+  """Scope that marks when we are currently inside a Layer/Model's `call`."""
+  was_in_call = getattr(_call_context, 'in_call', False)
+  _call_context.in_call = True
+  try:
+    yield
+  finally:
+    _call_context.in_call = was_in_call
