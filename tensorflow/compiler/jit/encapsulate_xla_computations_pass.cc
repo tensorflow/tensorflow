@@ -200,7 +200,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   auto serialized = absl::make_unique<char[]>(size);
   TF_RET_CHECK(SerializeToBufferDeterministic(gdef, serialized.get(), size));
   uint64 fingerprint = Fingerprint64(absl::string_view(serialized.get(), size));
-  LOG(INFO) << "Subgraph fingerprint:" << fingerprint;
+  VLOG(1) << "Subgraph fingerprint:" << fingerprint;
   call_def->set_op(absl::StrCat(call_def->op(), "_", fingerprint));
   return Status::OK();
 }
