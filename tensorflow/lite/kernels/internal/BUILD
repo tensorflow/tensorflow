@@ -70,6 +70,13 @@ config_setting(
 )
 
 config_setting(
+    name = "aarch64",
+    values = {
+        "cpu": "aarch64",
+    },
+)
+
+config_setting(
     name = "arm64-v8a",
     values = {
         "cpu": "arm64-v8a",
@@ -494,6 +501,9 @@ cc_library(
         "//tensorflow/lite/kernels:op_macros",
         "@gemmlowp",
     ] + select({
+        ":aarch64": [
+            ":neon_tensor_utils",
+        ],
         ":arm": [
             ":neon_tensor_utils",
         ],
