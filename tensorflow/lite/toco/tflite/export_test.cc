@@ -474,7 +474,7 @@ TEST_F(VersionedOpExportTest, Export) {
   auto* model = ::tflite::GetModel(result.data());
   auto operator_codes = model->operator_codes();
 
-  // Verify that 2 operator codes are populdated. Both are CONV_2D but with
+  // Verify that 2 operator codes are populated. Both are CONV_2D but with
   // different versions.
   EXPECT_EQ(2, operator_codes->size());
   EXPECT_EQ(::tflite::BuiltinOperator_CONV_2D,
