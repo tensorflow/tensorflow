@@ -313,6 +313,7 @@ cc_library(
         "reference/integer_ops/logistic.h",
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/softmax.h",
+        "reference/integer_ops/tanh.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
     ],

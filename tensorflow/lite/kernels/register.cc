@@ -168,7 +168,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU_N1_TO_1, Register_RELU_N1_TO_1());
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6(), /* min_version */ 1,
              /* max_version */ 2);
-  AddBuiltin(BuiltinOperator_TANH, Register_TANH());
+  AddBuiltin(BuiltinOperator_TANH, Register_TANH(), /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_LOGISTIC, Register_LOGISTIC(),
              /* min_version */ 1,
              /* max_version */ 2);
