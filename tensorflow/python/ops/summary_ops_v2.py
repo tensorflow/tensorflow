@@ -184,16 +184,19 @@ class SummaryWriter(object):
       return self._close()
 
 
+@tf_export(v1=["summary.initialize"])
 def initialize(
     graph=None,  # pylint: disable=redefined-outer-name
     session=None):
   """Initializes summary writing for graph execution mode.
 
+  This operation is a no-op when executing eagerly.
+
   This helper method provides a higher-level alternative to using
   `tf.contrib.summary.summary_writer_initializer_op` and
   `tf.contrib.summary.graph`.
 
-  Most users will also want to call `tf.train.create_global_step`
+  Most users will also want to call `tf.compat.v1.train.create_global_step`
   which can happen before or after this function is called.
 
   Args:

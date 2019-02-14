@@ -1201,6 +1201,12 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
+  def test_contrib_initialize(self):
+    text = "tf.contrib.summary.initialize"
+    expected = "tf.compat.v1.summary.initialize"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
   def test_contrib_framework_argsort(self):
     text = "tf.contrib.framework.argsort"
     expected = "tf.argsort"
