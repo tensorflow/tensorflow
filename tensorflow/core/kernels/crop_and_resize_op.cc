@@ -484,11 +484,6 @@ struct CropAndResizeBackpropImage<CPUDevice, T, isBilinear> {
           if (in_y < 0 || in_y > image_height - 1) {
             continue;
           }
-          const int closest_y_index = roundf(in_y);
-          const int top_y_index = floorf(in_y);
-          const int bottom_y_index = ceilf(in_y);
-          const float y_lerp = in_y - top_y_index;
-          const float one_y_lerp = 1 - y_lerp;
 
           for (int x = 0; x < crop_width; ++x) {
             const float in_x = (crop_width > 1)
@@ -497,9 +492,13 @@ struct CropAndResizeBackpropImage<CPUDevice, T, isBilinear> {
             if (in_x < 0 || in_x > image_width - 1) {
               continue;
             }
-            const int closest_x_index = roundf(in_x);
 
             if (isBilinear) {
+              const int top_y_index = floorf(in_y);
+              const int bottom_y_index = ceilf(in_y);
+              const float y_lerp = in_y - top_y_index;
+              const float one_y_lerp = 1 - y_lerp;
+
               const int left_x_index = floorf(in_x);
               const int right_x_index = ceilf(in_x);
               const float x_lerp = in_x - left_x_index;
@@ -518,6 +517,9 @@ struct CropAndResizeBackpropImage<CPUDevice, T, isBilinear> {
                     static_cast<T>(x_lerp * dbottom);
               }
             } else {  // method_name == "nearest"
+              const int closest_x_index = roundf(in_x);
+              const int closest_y_index = roundf(in_y);
+
               for (int d = 0; d < depth; ++d) {
                 grads_image(b_in, closest_y_index, closest_x_index, d) +=
                     static_cast<T>(grads(b, y, x, d));
@@ -533,7 +535,7 @@ struct CropAndResizeBackpropImage<CPUDevice, T, isBilinear> {
     const double cost_per_pixel =
         (isBilinear
              ? depth * (Eigen::TensorOpCost::AddCost<float>() * 4 +
-                        Eigen::TensorOpCost::MulCost<float>() * 4 +
+                        Eigen::TensorOpCost::MulCost<float>() * 6 +
                         Eigen::TensorOpCost::CastCost<T, float>() * 4)
              : depth * (Eigen::TensorOpCost::AddCost<float>() +
                         Eigen::TensorOpCost::CastCost<T, float>())) +
