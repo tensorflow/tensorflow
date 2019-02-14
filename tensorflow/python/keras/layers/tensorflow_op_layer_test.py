@@ -41,6 +41,14 @@ def _single_op_at_end():
   return inputs, outputs
 
 
+def _single_identity_op_at_end():
+  inputs = keras.Input(shape=(10,))
+  x = keras.layers.Dense(10)(inputs)
+  outputs = array_ops.identity(x)
+  assert 'Identity' in outputs.name
+  return inputs, outputs
+
+
 def _multiple_ops_at_end():
   inputs = keras.Input(shape=(10,))
   x = keras.layers.Dense(10)(inputs)
@@ -136,6 +144,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(
       ('single_op_at_end', _single_op_at_end),
+      ('single_identity_op_at_end', _single_identity_op_at_end),
       ('multiple_ops_at_end', _multiple_ops_at_end),
       ('single_op_in_middle', _single_op_in_middle),
       ('multiple_ops_in_middle', _multiple_ops_in_middle),

@@ -67,7 +67,7 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `Tensor`. Has the same type as `input`.
   """
-  if context.executing_eagerly():
+  if context.executing_eagerly() and not hasattr(input, "graph"):
     input = ops.convert_to_tensor(input)
     in_device = input.device
     # TODO(ashankar): Does 'identity' need to invoke execution callbacks?
