@@ -25,7 +25,6 @@ import re
 import six
 
 from tensorflow.contrib.framework.python.framework import experimental
-from tensorflow.contrib.tpu.ops import gen_tpu_ops
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
@@ -35,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_tpu_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables

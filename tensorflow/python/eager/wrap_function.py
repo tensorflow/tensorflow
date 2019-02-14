@@ -156,8 +156,7 @@ class WrappedFunction(function.ConcreteFunction):
           identity_fetches = []
           sink_tensor = array_ops.zeros([])
     lift_map = lift_to_graph.lift_to_graph(
-        sink_tensor, pruned_graph,
-        sources=flat_feeds + internal_captures)
+        [sink_tensor], pruned_graph, sources=flat_feeds + internal_captures)
     for original_fetch, identity_fetch in zip(
         tensor_fetches, identity_fetches):
       lift_map[original_fetch] = lift_map[identity_fetch]

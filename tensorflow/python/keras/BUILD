@@ -582,6 +582,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(

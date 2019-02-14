@@ -18,6 +18,9 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -142,6 +145,68 @@ TEST(TensorUtil, DeepCopySlice) {
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(2, y.unaligned_flat<int32>()(i));
     EXPECT_EQ(1, z.flat<int32>()(i));
+  }
+}
+
+TEST(TensorUtil, DeepCopySliceString) {
+  Tensor x(DT_STRING, TensorShape({10}));
+  x.flat<string>().setConstant("hello");
+
+  // Slice 'x' -- y still refers to the same buffer.
+  Tensor y = x.Slice(3, 7);
+
+  // Do a deep copy of y, which is a slice.
+  Tensor z = tensor::DeepCopy(y);
+
+  // Set x to be different.
+  x.flat<string>().setConstant("goodbye");
+
+  EXPECT_EQ(TensorShape({10}), x.shape());
+  EXPECT_EQ(TensorShape({4}), y.shape());
+  EXPECT_EQ(TensorShape({4}), z.shape());
+  EXPECT_EQ(DT_STRING, x.dtype());
+  EXPECT_EQ(DT_STRING, y.dtype());
+  EXPECT_EQ(DT_STRING, z.dtype());
+
+  // x and y should now all be 'goodbye', but z should be 'hello'.
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_EQ("goodbye", x.flat<string>()(i));
+  }
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ("goodbye", y.unaligned_flat<string>()(i));
+    EXPECT_EQ("hello", z.flat<string>()(i));
+  }
+}
+
+TEST(TensorUtil, DeepCopySliceVariant) {
+  Tensor x(DT_VARIANT, TensorShape({10}));
+  x.flat<Variant>().setConstant(Tensor(42.0f));
+
+  // Slice 'x' -- y still refers to the same buffer.
+  Tensor y = x.Slice(3, 7);
+
+  // Do a deep copy of y, which is a slice.
+  Tensor z = tensor::DeepCopy(y);
+
+  // Set x to be different.
+  x.flat<Variant>().setConstant(Tensor("foo"));
+
+  EXPECT_EQ(TensorShape({10}), x.shape());
+  EXPECT_EQ(TensorShape({4}), y.shape());
+  EXPECT_EQ(TensorShape({4}), z.shape());
+  EXPECT_EQ(DT_VARIANT, x.dtype());
+  EXPECT_EQ(DT_VARIANT, y.dtype());
+  EXPECT_EQ(DT_VARIANT, z.dtype());
+
+  // Each element of x and y should now be a DT_STRING Tensor containing "foo",
+  // but each element of z should be a DT_FLOAT tensor containing 42.0.
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_EQ("foo", x.flat<Variant>()(i).get<Tensor>()->scalar<string>()());
+  }
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ("foo",
+              y.unaligned_flat<Variant>()(i).get<Tensor>()->scalar<string>()());
+    EXPECT_EQ(42.0, z.flat<Variant>()(i).get<Tensor>()->scalar<float>()());
   }
 }
 

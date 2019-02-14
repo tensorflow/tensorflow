@@ -2952,6 +2952,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 10,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -3295,7 +3296,7 @@ cuda_py_test(
         "no_rocm", # flaky test
         "no_windows",
     ],
-    xla_enable_strict_auto_jit = True,
+    # TODO(kuny): Add xla_enable_strict_auto_jit = True after b/124377352 is fixed.
 )
 
 cuda_py_test(

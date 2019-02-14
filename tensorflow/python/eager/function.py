@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import collections
 import functools
-import re
 import threading
 import types as types_lib
 import weakref
@@ -60,13 +59,6 @@ from tensorflow.python.util import tf_inspect
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
-
-# TODO(scottzhu): Update this to allow arbitrary attribute names in future.
-WHITELIST_FUNCTION_ATTRIBUTE_REGEX = [
-    "experimental_.*",
-    FORWARD_FUNCTION_ATTRIBUTE_NAME,
-    BACKWARD_FUNCTION_ATTRIBUTE_NAME
-]
 
 CacheKey = collections.namedtuple("CacheKey", [
     "input_signature", "parent_graph", "device_functions", "colocation_stack",
@@ -108,12 +100,6 @@ def _parse_func_attrs(attributes):
   """
   attrs = {}
   for key, value in attributes.items():
-    if not any(re.match(reg, key)
-               for reg in WHITELIST_FUNCTION_ATTRIBUTE_REGEX):
-      raise ValueError("Attribute name is not whitelisted. "
-                       "Whitelisted: prefix %s, got: %s" %
-                       (WHITELIST_FUNCTION_ATTRIBUTE_REGEX, key))
-
     if isinstance(value, attr_value_pb2.AttrValue):
       attrs[key] = value
     # bool type check has to happen before int since bool is a subclass of int.
@@ -858,6 +844,10 @@ class FunctionSpec(object):
       python_function_to_inspect = python_function.func
       args_to_prepend = python_function.args or tuple()
       kwargs_to_include = python_function.keywords or {}
+      if input_signature is not None:
+        # TODO(b/124441704): Add support for input_signature + partial.
+        raise NotImplementedError(
+            "Missing support for input_signature when using partial functions.")
     else:
       python_function_to_inspect = python_function
       args_to_prepend = tuple()

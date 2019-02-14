@@ -447,7 +447,7 @@ class HloSortInstruction : public HloInstruction {
  public:
   explicit HloSortInstruction(const Shape& shape, int64 dimension,
                               absl::Span<HloInstruction* const> operands,
-                              HloComputation* compare);
+                              HloComputation* compare, bool is_stable);
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
@@ -460,6 +460,7 @@ class HloSortInstruction : public HloInstruction {
   HloInstruction* mutable_keys() { return mutable_operand(0); }
   // Returns the number of value operands.
   int64 values_count() const { return operand_count() - 1; }
+  bool is_stable() const { return is_stable_; }
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(
@@ -474,6 +475,7 @@ class HloSortInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   std::vector<int64> dimensions_;
+  bool is_stable_;
 };
 
 class HloTransposeInstruction : public HloInstruction {

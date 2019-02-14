@@ -3129,6 +3129,126 @@ TEST_F(OpConverterTest, ConvertTopK) {
   }
 }
 
+template <DataType dtype>
+void TestConvertGather(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+
+  // Get the NodeDef for GatherV2.
+  Scope s = Scope::NewRootScope();
+  auto params = ops::Placeholder(s.WithOpName("params"), dtype);
+  auto indices = ops::Placeholder(s.WithOpName("indices"), DT_INT32);
+  auto axis = ops::Placeholder(s.WithOpName("axis"), DT_INT32);
+  auto gather = ops::GatherV2(s.WithOpName("my_gather"), params, indices, axis);
+  const NodeDef& node_def = gather.operation.node()->def();
+
+  struct TestParams {
+    std::vector<int> params_dims;
+    std::vector<int> indices_dims;
+    std::vector<int> indices;
+    int axis;
+    std::vector<int> expected_output_dims;
+    std::vector<int> expected_output;
+  };
+
+  // Input is the same {1, 2, 3, 4, 5, 6} for all cases.
+  const int kGatherOKCases = 5;
+  TestParams ok_params[kGatherOKCases] = {
+      // Vector indices (output is rank(params)).
+      TestParams{{1, 2, 3}, {1}, {0}, 3, {1, 2, 1}, {1, 4}},
+      TestParams{{1, 2, 3}, {1}, {1}, 3, {1, 2, 1}, {2, 5}},
+      TestParams{{1, 2, 3}, {1}, {2}, -1, {1, 2, 1}, {3, 6}},
+      TestParams{{1, 2, 3}, {3}, {2, 0, 1}, 3, {1, 2, 3}, {3, 1, 2, 6, 4, 5}},
+      // Higher rank indices (output is rank(params) + rank(indices) - 1).
+      TestParams{{1, 2, 3}, {1, 1}, {0}, 2, {1, 1, 1, 3}, {1, 2, 3}},
+  };
+
+  // Ok.
+  for (int i = 0; i < kGatherOKCases; i++) {
+    test->Reset();
+    test->AddTestTensor("params", ok_params[i].params_dims, 1,
+                        TfDataTypeToTrt(dtype));
+    test->AddTestTensor("indices", ok_params[i].indices_dims, 1,
+                        nvinfer1::DataType::kINT32);
+    test->AddTestWeights<int32>("axis", {1}, {ok_params[i].axis});
+    test->RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_gather", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+
+    // Create input in CType and convert expected output to CType.
+    std::vector<CType> inputs = {CType(1), CType(2), CType(3),
+                                 CType(4), CType(5), CType(6)};
+    std::vector<CType> converted_expected_output(
+        ok_params[i].expected_output.begin(),
+        ok_params[i].expected_output.end());
+
+    const DataVec input_data{
+        {"params", test::AsTensor<CType>(inputs)},
+        {"indices", test::AsTensor<int32>(ok_params[i].indices)}};
+    DataVec output_data{
+        {"my_gather",
+         ConstructTensor<CType>(ok_params[i].expected_output.size())}};
+    test->BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                ElementsAreArray(converted_expected_output));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertGather) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_gather", "GatherV2", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "GatherV2 got 0 inputs but expected 3, at my_gather");
+  }
+
+  // Get the NodeDef for GatherV2.
+  Scope s = Scope::NewRootScope();
+  auto params = ops::Placeholder(s.WithOpName("params"), DT_FLOAT);
+  auto indices = ops::Placeholder(s.WithOpName("indices"), DT_INT32);
+  auto axis = ops::Placeholder(s.WithOpName("axis"), DT_INT32);
+  auto gather = ops::GatherV2(s.WithOpName("my_gather"), params, indices, axis);
+  const NodeDef& node_def = gather.operation.node()->def();
+  {
+    // Axis is a tensor, should fail.
+    Reset();
+    AddTestTensor("params", {1, 2, 3});
+    AddTestTensor("indices", {2});
+    AddTestTensor("axis", {1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"axis\" for GatherV2 must be a constant, at my_gather");
+  }
+  {
+    // Axis is out of bounds, should fail.
+    Reset();
+    AddTestTensor("params", {1, 2, 3});
+    AddTestTensor("indices", {2});
+    AddTestWeights<int32>("axis", {1}, {4});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Axis value of 4 is out of bounds, must be in "
+                               "range [-4, 4), at my_gather");
+  }
+  {
+    // Axis is batch dimension, should fail.
+    Reset();
+    AddTestTensor("params", {1, 2, 3});
+    AddTestTensor("indices", {2});
+    AddTestWeights<int32>("axis", {1}, {0});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "TensorRT does not allow manipulation of the "
+                               "batch dimension, at my_gather");
+  }
+
+  Reset();
+  TestConvertGather<DT_FLOAT>(this);
+  TestConvertGather<DT_HALF>(this);
+  TestConvertGather<DT_INT32>(this);
+}
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

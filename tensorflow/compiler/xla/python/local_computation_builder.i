@@ -23,11 +23,13 @@ limitations under the License.
 //    C++                                  Python
 // -------------------------------------+---------------------------------------
 //  Span<int64>                        <-  sequence of int
+//  vector<int>                        ->  sequence of int
 //  Span<LocalOp>                      <-  sequence of LocalOp
 //  Literal                            <-> (nested tuple of) numpy ndarray
 //  std::vector<Literal>               <-  sequence of (nested tuple of) ndarray
 //  Shape                               -> pair holding (dtype, dimensions)
 //                                     <-  object duck-typed as xla_client.Shape
+//  ProgramShape                       ->  pair of ([arg_shapes], ret_shape)
 //  std::vector<Shape>                 <-  sequence of xla_client.Shape objects
 //  PrimitiveType                      <-  int
 //  Span<pair<int64, in64>>            <-  sequence of int pairs
@@ -97,7 +99,7 @@ limitations under the License.
 // wrapped in a Python class (xla_client.Shape) so as not to expose
 // the raw pair externally.
 //
-// Other SWIG object wrappers (e.g. of LocalComputation) are further
+// Other SWIG object wrappers (e.g. of Computation) are further
 // wrapped by xla_client in order to set up a custom destructor that
 // triggers memory deallocation on the C++ side.
 
@@ -214,6 +216,15 @@ tensorflow::ImportNumpy();
 
 // Basic types
 
+
+%typemap(out) std::vector<int> {
+  PyObject* out = PyList_New($1.size());
+  for (int i = 0; i < $1.size(); ++i) {
+    PyList_SET_ITEM(out, i, PyInt_FromLong($1[i]));
+  }
+  $result = out;
+}
+
 %typemap(out) StatusOr<bool> {
   if ($1.ok()) {
     $result = PyBool_FromLong($1.ConsumeValueOrDie());
@@ -287,12 +298,12 @@ tensorflow::ImportNumpy();
 
 // Computation and buffer/allocation types
 
-%typemap(out) StatusOr<xla::swig::CompiledLocalComputation*> {
+%typemap(out) StatusOr<xla::swig::LocalClient> {
   if ($1.ok()) {
-    auto* value = $1.ValueOrDie();
+    xla::swig::LocalClient value = $1.ValueOrDie();
     {
-      auto* $1 = value;
-      $typemap(out, xla::swig::CompiledLocalComputation*)
+      auto $1 = value;
+      $typemap(out, xla::swig::LocalClient)
     }
   } else {
     PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
@@ -300,12 +311,25 @@ tensorflow::ImportNumpy();
   }
 }
 
-%typemap(out) StatusOr<xla::swig::CompiledXrtComputation*> {
+%typemap(out) StatusOr<xla::swig::LocalExecutable*> {
   if ($1.ok()) {
     auto* value = $1.ValueOrDie();
     {
       auto* $1 = value;
-      $typemap(out, xla::swig::CompiledXrtComputation*)
+      $typemap(out, xla::swig::LocalExecutable*)
+    }
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    SWIG_fail;
+  }
+}
+
+%typemap(out) StatusOr<xla::swig::XrtExecutable*> {
+  if ($1.ok()) {
+    auto* value = $1.ValueOrDie();
+    {
+      auto* $1 = value;
+      $typemap(out, xla::swig::XrtExecutable*)
     }
   } else {
     PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
@@ -365,12 +389,12 @@ tensorflow::ImportNumpy();
   }
 }
 
-%typemap(out) StatusOr<xla::swig::LocalComputation*> {
+%typemap(out) StatusOr<xla::swig::Computation*> {
   if ($1.ok()) {
     auto* value = $1.ValueOrDie();
     {
       auto* $1 = value;
-      $typemap(out, xla::swig::LocalComputation*)
+      $typemap(out, xla::swig::Computation*)
     }
   } else {
     PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
@@ -519,17 +543,29 @@ tensorflow::ImportNumpy();
 // Shape
 
 %typemap(out) const Shape& {
-  $result = numpy::PyShapeInfoFromXlaShape(*$1);
+  $result = numpy::PyShapeInfoFromXlaShape(*$1).release();
 }
 
 %typemap(out) StatusOr<Shape> {
   if ($1.ok()) {
-    $result = numpy::PyShapeInfoFromXlaShape($1.ConsumeValueOrDie());
+    $result = numpy::PyShapeInfoFromXlaShape($1.ConsumeValueOrDie()).release();
   } else {
     PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
     SWIG_fail;
   }
 }
+
+
+%typemap(out) StatusOr<ProgramShape> {
+  if ($1.ok()) {
+    $result = numpy::PyProgramShapeInfoFromXlaProgramShape(
+        $1.ConsumeValueOrDie()).release();
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    SWIG_fail;
+  }
+}
+
 
 %typemap(in) const Shape& (Shape temp) {
   StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape($input);
@@ -558,7 +594,7 @@ tensorflow::ImportNumpy();
 }
 
 %typemap(out) std::unique_ptr<Shape> {
-  $result = numpy::PyShapeInfoFromXlaShape(*$1);
+  $result = numpy::PyShapeInfoFromXlaShape(*$1).release();
 }
 
 %typemap(in) const std::vector<Shape>& (std::vector<Shape> temps) {
@@ -966,17 +1002,17 @@ tensorflow::ImportNumpy();
 %ignoreall
 %unignore xla;
 %unignore xla::swig;
-%unignore xla::swig::InitializeReplicaCount;
-%unignore xla::swig::InitializePlatformName;
-%unignore xla::swig::GetReplicaCount;
 %unignore xla::swig::RegisterCpuCustomCallTarget;
-%unignore xla::swig::TransferToInfeedLocal;
-%unignore xla::swig::TransferToInfeedLocalReplica;
-%unignore xla::swig::TransferFromOutfeedLocalReplica;
+%unignore xla::swig::LocalClient;
+%unignore xla::swig::LocalClient::Get;
+%unignore xla::swig::LocalClient::DeviceCount;
+%unignore xla::swig::LocalClient::TransferToInfeed;
+%unignore xla::swig::LocalClient::TransferFromOutfeed;
 %unignore xla::swig::LocalShapedBuffer;
 %unignore xla::swig::LocalShapedBuffer::FromLiteral;
 %unignore xla::swig::LocalShapedBuffer::ToLiteral;
 %unignore xla::swig::LocalShapedBuffer::shape;
+%unignore xla::swig::LocalShapedBuffer::DestructureTuple;
 %unignore xla::swig::LocalShapedBufferTuple;
 %unignore xla::swig::LocalShapedBufferTuple::Release;
 %unignore xla::swig::LocalShapedBufferTuple::size;
@@ -987,139 +1023,141 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::XrtAllocationTuple;
 %unignore xla::swig::XrtAllocationTuple::Release;
 %unignore xla::swig::XrtAllocationTuple::size;
-%unignore xla::swig::CompiledLocalComputation;
-%unignore xla::swig::CompiledLocalComputation::Execute;
-%unignore xla::swig::CompiledLocalComputation::ExecutePerReplica;
-%unignore xla::swig::CompiledXrtComputation;
-%unignore xla::swig::CompiledXrtComputation::Execute;
-%unignore xla::swig::LocalComputation;
-%unignore xla::swig::LocalComputation::Compile;
-%unignore xla::swig::LocalComputation::CompileForXrt;
-%unignore xla::swig::LocalComputation::GetReturnValueShape;
-%unignore xla::swig::LocalComputation::GetSerializedProto;
+%unignore xla::swig::LocalExecutable;
+%unignore xla::swig::LocalExecutable::DeviceOrdinals;
+%unignore xla::swig::LocalExecutable::Execute;
+%unignore xla::swig::LocalExecutable::ExecutePerReplica;
+%unignore xla::swig::XrtExecutable;
+%unignore xla::swig::XrtExecutable::DeviceOrdinals;
+%unignore xla::swig::XrtExecutable::Execute;
+%unignore xla::swig::Computation;
+%unignore xla::swig::Computation::Compile;
+%unignore xla::swig::Computation::CompileForXrt;
+%unignore xla::swig::Computation::GetProgramShape;
+%unignore xla::swig::Computation::GetReturnValueShape;
+%unignore xla::swig::Computation::GetSerializedProto;
 %unignore xla::swig::LocalOp;
-%unignore xla::swig::LocalComputationBuilder;
-%unignore xla::swig::LocalComputationBuilder::LocalComputationBuilder;
-%unignore xla::swig::LocalComputationBuilder::Build;
-%unignore xla::swig::LocalComputationBuilder::BuildWithRoot;
-%unignore xla::swig::LocalComputationBuilder::SetOpMetadata;
-%unignore xla::swig::LocalComputationBuilder::ClearOpMetadata;
-%unignore xla::swig::LocalComputationBuilder::Parameter;
-%unignore xla::swig::LocalComputationBuilder::GetShape;
-%unignore xla::swig::LocalComputationBuilder::GetReturnValueShape;
-%unignore xla::swig::LocalComputationBuilder::Infeed;
-%unignore xla::swig::LocalComputationBuilder::Outfeed;
-%unignore xla::swig::LocalComputationBuilder::ConstantLiteral;
-%unignore xla::swig::LocalComputationBuilder::ConstantR0;
-%unignore xla::swig::LocalComputationBuilder::Iota;
-%unignore xla::swig::LocalComputationBuilder::BroadcastedIota;
-%unignore xla::swig::LocalComputationBuilder::Broadcast;
-%unignore xla::swig::LocalComputationBuilder::BroadcastInDim;
-%unignore xla::swig::LocalComputationBuilder::Pad;
-%unignore xla::swig::LocalComputationBuilder::Reshape;
-%unignore xla::swig::LocalComputationBuilder::Collapse;
-%unignore xla::swig::LocalComputationBuilder::AllToAll;
-%unignore xla::swig::LocalComputationBuilder::CrossReplicaSum;
-%unignore xla::swig::LocalComputationBuilder::Slice;
-%unignore xla::swig::LocalComputationBuilder::SliceInDim;
-%unignore xla::swig::LocalComputationBuilder::DynamicSlice;
-%unignore xla::swig::LocalComputationBuilder::DynamicUpdateSlice;
-%unignore xla::swig::LocalComputationBuilder::ConcatInDim;
-%unignore xla::swig::LocalComputationBuilder::SelectAndScatterWithGeneralPadding;
-%unignore xla::swig::LocalComputationBuilder::Select;
-%unignore xla::swig::LocalComputationBuilder::Tuple;
-%unignore xla::swig::LocalComputationBuilder::GetTupleElement;
-%unignore xla::swig::LocalComputationBuilder::ConvertElementType;
-%unignore xla::swig::LocalComputationBuilder::BitcastConvertType;
-%unignore xla::swig::LocalComputationBuilder::Call;
-%unignore xla::swig::LocalComputationBuilder::Transpose;
-%unignore xla::swig::LocalComputationBuilder::Rev;
-%unignore xla::swig::LocalComputationBuilder::Clamp;
-%unignore xla::swig::LocalComputationBuilder::Map;
-%unignore xla::swig::LocalComputationBuilder::Reduce;
-%unignore xla::swig::LocalComputationBuilder::ReduceWindowWithGeneralPadding;
-%unignore xla::swig::LocalComputationBuilder::RngNormal;
-%unignore xla::swig::LocalComputationBuilder::RngUniform;
-%unignore xla::swig::LocalComputationBuilder::RngBernoulli;
-%unignore xla::swig::LocalComputationBuilder::While;
-%unignore xla::swig::LocalComputationBuilder::Conditional;
-%unignore xla::swig::LocalComputationBuilder::IsConstant;
-%unignore xla::swig::LocalComputationBuilder::Eq;
-%unignore xla::swig::LocalComputationBuilder::Ne;
-%unignore xla::swig::LocalComputationBuilder::Ge;
-%unignore xla::swig::LocalComputationBuilder::Gt;
-%unignore xla::swig::LocalComputationBuilder::Lt;
-%unignore xla::swig::LocalComputationBuilder::Le;
-%unignore xla::swig::LocalComputationBuilder::Dot;
-%unignore xla::swig::LocalComputationBuilder::DotGeneral;
-%unignore xla::swig::LocalComputationBuilder::ConvGeneralDilated;
-%unignore xla::swig::LocalComputationBuilder::Add;
-%unignore xla::swig::LocalComputationBuilder::Sub;
-%unignore xla::swig::LocalComputationBuilder::Mul;
-%unignore xla::swig::LocalComputationBuilder::Div;
-%unignore xla::swig::LocalComputationBuilder::Rem;
-%unignore xla::swig::LocalComputationBuilder::Max;
-%unignore xla::swig::LocalComputationBuilder::Min;
-%unignore xla::swig::LocalComputationBuilder::And;
-%unignore xla::swig::LocalComputationBuilder::Or;
-%unignore xla::swig::LocalComputationBuilder::Xor;
-%unignore xla::swig::LocalComputationBuilder::ShiftLeft;
-%unignore xla::swig::LocalComputationBuilder::ShiftRightArithmetic;
-%unignore xla::swig::LocalComputationBuilder::ShiftRightLogical;
-%unignore xla::swig::LocalComputationBuilder::Not;
-%unignore xla::swig::LocalComputationBuilder::Abs;
-%unignore xla::swig::LocalComputationBuilder::Exp;
-%unignore xla::swig::LocalComputationBuilder::Expm1;
-%unignore xla::swig::LocalComputationBuilder::Floor;
-%unignore xla::swig::LocalComputationBuilder::Ceil;
-%unignore xla::swig::LocalComputationBuilder::Round;
-%unignore xla::swig::LocalComputationBuilder::Log;
-%unignore xla::swig::LocalComputationBuilder::Log1p;
-%unignore xla::swig::LocalComputationBuilder::Sign;
-%unignore xla::swig::LocalComputationBuilder::Cos;
-%unignore xla::swig::LocalComputationBuilder::Sin;
-%unignore xla::swig::LocalComputationBuilder::Tanh;
-%unignore xla::swig::LocalComputationBuilder::Atan2;
-%unignore xla::swig::LocalComputationBuilder::IsFinite;
-%unignore xla::swig::LocalComputationBuilder::Pow;
-%unignore xla::swig::LocalComputationBuilder::Neg;
-%unignore xla::swig::LocalComputationBuilder::Sort;
-%unignore xla::swig::LocalComputationBuilder::SortKeyVal;
-%unignore xla::swig::LocalComputationBuilder::Sqrt;
-%unignore xla::swig::LocalComputationBuilder::Rsqrt;
-%unignore xla::swig::LocalComputationBuilder::Square;
-%unignore xla::swig::LocalComputationBuilder::Reciprocal;
-%unignore xla::swig::LocalComputationBuilder::Erfc;
-%unignore xla::swig::LocalComputationBuilder::Erf;
-%unignore xla::swig::LocalComputationBuilder::ErfInv;
-%unignore xla::swig::LocalComputationBuilder::Lgamma;
-%unignore xla::swig::LocalComputationBuilder::Digamma;
-%unignore xla::swig::LocalComputationBuilder::Acos;
-%unignore xla::swig::LocalComputationBuilder::Asin;
-%unignore xla::swig::LocalComputationBuilder::Atan;
-%unignore xla::swig::LocalComputationBuilder::Tan;
-%unignore xla::swig::LocalComputationBuilder::Acosh;
-%unignore xla::swig::LocalComputationBuilder::Asinh;
-%unignore xla::swig::LocalComputationBuilder::Atanh;
-%unignore xla::swig::LocalComputationBuilder::Cosh;
-%unignore xla::swig::LocalComputationBuilder::Sinh;
-%unignore xla::swig::LocalComputationBuilder::Real;
-%unignore xla::swig::LocalComputationBuilder::Imag;
-%unignore xla::swig::LocalComputationBuilder::Conj;
-%unignore xla::swig::LocalComputationBuilder::Complex;
-%unignore xla::swig::LocalComputationBuilder::Cholesky;
-%unignore xla::swig::LocalComputationBuilder::QR;
-%unignore xla::swig::LocalComputationBuilder::TriangularSolve;
-%unignore xla::swig::LocalComputationBuilder::CustomCall;
-%unignore xla::swig::LocalComputationBuilder::Gather;
-%unignore xla::swig::LocalComputationBuilder::Scatter;
-%unignore xla::swig::DeleteLocalComputation;
-%unignore xla::swig::DestructureLocalShapedBufferTuple;
+%unignore xla::swig::ComputationBuilder;
+%unignore xla::swig::ComputationBuilder::ComputationBuilder;
+%unignore xla::swig::ComputationBuilder::Build;
+%unignore xla::swig::ComputationBuilder::BuildWithRoot;
+%unignore xla::swig::ComputationBuilder::SetOpMetadata;
+%unignore xla::swig::ComputationBuilder::ClearOpMetadata;
+%unignore xla::swig::ComputationBuilder::Parameter;
+%unignore xla::swig::ComputationBuilder::GetShape;
+%unignore xla::swig::ComputationBuilder::GetReturnValueShape;
+%unignore xla::swig::ComputationBuilder::Infeed;
+%unignore xla::swig::ComputationBuilder::Outfeed;
+%unignore xla::swig::ComputationBuilder::ConstantLiteral;
+%unignore xla::swig::ComputationBuilder::ConstantR0;
+%unignore xla::swig::ComputationBuilder::Iota;
+%unignore xla::swig::ComputationBuilder::BroadcastedIota;
+%unignore xla::swig::ComputationBuilder::Broadcast;
+%unignore xla::swig::ComputationBuilder::BroadcastInDim;
+%unignore xla::swig::ComputationBuilder::Pad;
+%unignore xla::swig::ComputationBuilder::Reshape;
+%unignore xla::swig::ComputationBuilder::Collapse;
+%unignore xla::swig::ComputationBuilder::AllToAll;
+%unignore xla::swig::ComputationBuilder::CrossReplicaSum;
+%unignore xla::swig::ComputationBuilder::Slice;
+%unignore xla::swig::ComputationBuilder::SliceInDim;
+%unignore xla::swig::ComputationBuilder::DynamicSlice;
+%unignore xla::swig::ComputationBuilder::DynamicUpdateSlice;
+%unignore xla::swig::ComputationBuilder::ConcatInDim;
+%unignore xla::swig::ComputationBuilder::SelectAndScatterWithGeneralPadding;
+%unignore xla::swig::ComputationBuilder::Select;
+%unignore xla::swig::ComputationBuilder::Tuple;
+%unignore xla::swig::ComputationBuilder::GetTupleElement;
+%unignore xla::swig::ComputationBuilder::ConvertElementType;
+%unignore xla::swig::ComputationBuilder::BitcastConvertType;
+%unignore xla::swig::ComputationBuilder::Call;
+%unignore xla::swig::ComputationBuilder::Transpose;
+%unignore xla::swig::ComputationBuilder::Rev;
+%unignore xla::swig::ComputationBuilder::Clamp;
+%unignore xla::swig::ComputationBuilder::Map;
+%unignore xla::swig::ComputationBuilder::Reduce;
+%unignore xla::swig::ComputationBuilder::ReduceWindowWithGeneralPadding;
+%unignore xla::swig::ComputationBuilder::RngNormal;
+%unignore xla::swig::ComputationBuilder::RngUniform;
+%unignore xla::swig::ComputationBuilder::RngBernoulli;
+%unignore xla::swig::ComputationBuilder::While;
+%unignore xla::swig::ComputationBuilder::Conditional;
+%unignore xla::swig::ComputationBuilder::IsConstant;
+%unignore xla::swig::ComputationBuilder::Eq;
+%unignore xla::swig::ComputationBuilder::Ne;
+%unignore xla::swig::ComputationBuilder::Ge;
+%unignore xla::swig::ComputationBuilder::Gt;
+%unignore xla::swig::ComputationBuilder::Lt;
+%unignore xla::swig::ComputationBuilder::Le;
+%unignore xla::swig::ComputationBuilder::Dot;
+%unignore xla::swig::ComputationBuilder::DotGeneral;
+%unignore xla::swig::ComputationBuilder::ConvGeneralDilated;
+%unignore xla::swig::ComputationBuilder::Add;
+%unignore xla::swig::ComputationBuilder::Sub;
+%unignore xla::swig::ComputationBuilder::Mul;
+%unignore xla::swig::ComputationBuilder::Div;
+%unignore xla::swig::ComputationBuilder::Rem;
+%unignore xla::swig::ComputationBuilder::Max;
+%unignore xla::swig::ComputationBuilder::Min;
+%unignore xla::swig::ComputationBuilder::And;
+%unignore xla::swig::ComputationBuilder::Or;
+%unignore xla::swig::ComputationBuilder::Xor;
+%unignore xla::swig::ComputationBuilder::ShiftLeft;
+%unignore xla::swig::ComputationBuilder::ShiftRightArithmetic;
+%unignore xla::swig::ComputationBuilder::ShiftRightLogical;
+%unignore xla::swig::ComputationBuilder::Not;
+%unignore xla::swig::ComputationBuilder::Abs;
+%unignore xla::swig::ComputationBuilder::Exp;
+%unignore xla::swig::ComputationBuilder::Expm1;
+%unignore xla::swig::ComputationBuilder::Floor;
+%unignore xla::swig::ComputationBuilder::Ceil;
+%unignore xla::swig::ComputationBuilder::Round;
+%unignore xla::swig::ComputationBuilder::Log;
+%unignore xla::swig::ComputationBuilder::Log1p;
+%unignore xla::swig::ComputationBuilder::Sign;
+%unignore xla::swig::ComputationBuilder::Cos;
+%unignore xla::swig::ComputationBuilder::Sin;
+%unignore xla::swig::ComputationBuilder::Tanh;
+%unignore xla::swig::ComputationBuilder::Atan2;
+%unignore xla::swig::ComputationBuilder::IsFinite;
+%unignore xla::swig::ComputationBuilder::Pow;
+%unignore xla::swig::ComputationBuilder::Neg;
+%unignore xla::swig::ComputationBuilder::Sort;
+%unignore xla::swig::ComputationBuilder::SortKeyVal;
+%unignore xla::swig::ComputationBuilder::Sqrt;
+%unignore xla::swig::ComputationBuilder::Rsqrt;
+%unignore xla::swig::ComputationBuilder::Square;
+%unignore xla::swig::ComputationBuilder::Reciprocal;
+%unignore xla::swig::ComputationBuilder::Erfc;
+%unignore xla::swig::ComputationBuilder::Erf;
+%unignore xla::swig::ComputationBuilder::ErfInv;
+%unignore xla::swig::ComputationBuilder::Lgamma;
+%unignore xla::swig::ComputationBuilder::Digamma;
+%unignore xla::swig::ComputationBuilder::Acos;
+%unignore xla::swig::ComputationBuilder::Asin;
+%unignore xla::swig::ComputationBuilder::Atan;
+%unignore xla::swig::ComputationBuilder::Tan;
+%unignore xla::swig::ComputationBuilder::Acosh;
+%unignore xla::swig::ComputationBuilder::Asinh;
+%unignore xla::swig::ComputationBuilder::Atanh;
+%unignore xla::swig::ComputationBuilder::Cosh;
+%unignore xla::swig::ComputationBuilder::Sinh;
+%unignore xla::swig::ComputationBuilder::Real;
+%unignore xla::swig::ComputationBuilder::Imag;
+%unignore xla::swig::ComputationBuilder::Conj;
+%unignore xla::swig::ComputationBuilder::Complex;
+%unignore xla::swig::ComputationBuilder::Cholesky;
+%unignore xla::swig::ComputationBuilder::QR;
+%unignore xla::swig::ComputationBuilder::TriangularSolve;
+%unignore xla::swig::ComputationBuilder::CustomCall;
+%unignore xla::swig::ComputationBuilder::Gather;
+%unignore xla::swig::ComputationBuilder::Scatter;
+%unignore xla::swig::DeleteComputation;
 %unignore xla::swig::DestructureXrtAllocationTuple;
 %unignore xla::swig::DeleteLocalShapedBuffer;
 %unignore xla::swig::DeleteXrtAllocation;
-%unignore xla::swig::DeleteCompiledLocalComputation;
-%unignore xla::swig::DeleteCompiledXrtComputation;
+%unignore xla::swig::DeleteLocalExecutable;
+%unignore xla::swig::DeleteXrtExecutable;
 
 %thread;
 %include "tensorflow/compiler/xla/python/local_computation_builder.h"
