@@ -384,6 +384,14 @@ class HloInstruction {
 
   // Creates a random number generation instruction that fills a shape with
   // random numbers from a given distribution.
+  //
+  // The parameters to the instruction are interpreted as follows:
+  //
+  //  - If `distribution` is RNG_UNIFORM, generates a number in range
+  //    [param0, param1).
+  //
+  //  - If `distribution` is RNG_NORMAL, generates a normally-distributed value
+  //    with mean `param0` and standard deviation `param1`.
   static std::unique_ptr<HloInstruction> CreateRng(
       const Shape& shape, RandomDistribution distribution,
       absl::Span<HloInstruction* const> parameters);
