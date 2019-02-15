@@ -949,6 +949,21 @@ class FunctionSpec(object):
         argument when an input signature is specified, or when the inputs
         do not conform to the input signature.
     """
+    if self._input_signature is not None:
+      if len(args) > len(self._input_signature):
+        raise TypeError(
+            "When input_signature is provided, only pass arguments "
+            "covered by it. Received %d argument(s)." % len(args))
+      for arg in six.iterkeys(kwargs):
+        index = self._args_to_indices.get(arg, None)
+        if index is None:
+          raise TypeError(
+              "Function got an unexpected keyword argument %s" % arg)
+        if index >= len(self._input_signature):
+          raise TypeError(
+              "When input_signature is provided, only pass arguments "
+              "covered by it. Received argument %s." % arg)
+
     args = self._args_to_prepend + args
     kwargs = dict(kwargs, **self._kwargs_to_include)
     if not kwargs:
