@@ -462,7 +462,8 @@ class TFLiteConverter(object):
   def __setattr__(self, name, value):
     if name == "post_training_quantize":
       warnings.warn("Property %s is deprecated, "
-                    "please use set_converter_mode instead." % name)
+                    "please use optimizations=[Optimize.OPTIMIZE_FOR_SIZE]"
+                    " instead." % name)
       if value:
         # Use OPTIMIZE_FOR_SIZE for post training for now.
         self.optimizations = [Optimize.OPTIMIZE_FOR_SIZE]
@@ -474,7 +475,8 @@ class TFLiteConverter(object):
   def __getattribute__(self, name):
     if name == "post_training_quantize":
       warnings.warn("Property %s is deprecated, "
-                    "please use get_converter_mode instead." % name)
+                    "please use optimizations=[Optimize.OPTIMIZE_FOR_SIZE]"
+                    " instead." % name)
       return Optimize.OPTIMIZE_FOR_SIZE in set(self.optimizations)
     return object.__getattribute__(self, name)
 
