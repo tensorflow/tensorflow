@@ -1233,36 +1233,77 @@ def _log_prob(self, x):
 
   def test_contrib_summary_audio(self):
     text = "tf.contrib.summary.audio('foo', myval, 44100, 3, 'fam', 42)"
-    expected = ("tf.compat.v2.summary.audio(name='foo', tensor=myval, "
+    expected = ("tf.compat.v2.summary.audio(name='foo', data=myval, "
                 "sample_rate=44100, max_outputs=3, step=42)")
     _, _, errors, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
     self.assertIn("'family' argument", errors[0])
+    self.assertIn("Manual check required", errors[1])
 
   def test_contrib_summary_histogram(self):
     text = "tf.contrib.summary.histogram('foo', myval, 'fam', 42)"
-    expected = ("tf.compat.v2.summary.histogram(name='foo', tensor=myval, "
+    expected = ("tf.compat.v2.summary.histogram(name='foo', data=myval, "
                 "step=42)")
     _, _, errors, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
     self.assertIn("'family' argument", errors[0])
+    self.assertIn("Manual check required", errors[1])
 
   def test_contrib_summary_image(self):
     text = "tf.contrib.summary.image('foo', myval, red, 3, 'fam', 42)"
-    expected = ("tf.compat.v2.summary.image(name='foo', tensor=myval, "
+    expected = ("tf.compat.v2.summary.image(name='foo', data=myval, "
                 "max_outputs=3, step=42)")
     _, _, errors, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
     self.assertIn("'bad_color' argument", errors[0])
     self.assertIn("'family' argument", errors[1])
+    self.assertIn("Manual check required", errors[2])
 
   def test_contrib_summary_scalar(self):
     text = "tf.contrib.summary.scalar('foo', myval, 'fam', 42)"
-    expected = ("tf.compat.v2.summary.scalar(name='foo', tensor=myval, "
+    expected = ("tf.compat.v2.summary.scalar(name='foo', data=myval, "
                 "step=42)")
     _, _, errors, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
     self.assertIn("'family' argument", errors[0])
+    self.assertIn("Manual check required", errors[1])
+
+  def test_contrib_summary_audio_nostep(self):
+    text = "tf.contrib.summary.audio('foo', myval, 44100)"
+    expected = ("tf.compat.v2.summary.audio(name='foo', data=myval, "
+                "sample_rate=44100, "
+                "step=tf.compat.v1.train.get_or_create_global_step())")
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    self.assertIn("'step' argument", errors[0])
+    self.assertIn("Manual check required", errors[1])
+
+  def test_contrib_summary_histogram_nostep(self):
+    text = "tf.contrib.summary.histogram('foo', myval)"
+    expected = ("tf.compat.v2.summary.histogram(name='foo', data=myval, "
+                "step=tf.compat.v1.train.get_or_create_global_step())")
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    self.assertIn("'step' argument", errors[0])
+    self.assertIn("Manual check required", errors[1])
+
+  def test_contrib_summary_image_nostep(self):
+    text = "tf.contrib.summary.image('foo', myval)"
+    expected = ("tf.compat.v2.summary.image(name='foo', data=myval, "
+                "step=tf.compat.v1.train.get_or_create_global_step())")
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    self.assertIn("'step' argument", errors[0])
+    self.assertIn("Manual check required", errors[1])
+
+  def test_contrib_summary_scalar_nostep(self):
+    text = "tf.contrib.summary.scalar('foo', myval)"
+    expected = ("tf.compat.v2.summary.scalar(name='foo', data=myval, "
+                "step=tf.compat.v1.train.get_or_create_global_step())")
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    self.assertIn("'step' argument", errors[0])
+    self.assertIn("Manual check required", errors[1])
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
