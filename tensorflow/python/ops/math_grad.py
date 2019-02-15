@@ -47,6 +47,10 @@ def _ArgMinGrad(op, grad):
   return [None, None]
 
 
+# TODO(rmlarsen): Implement gradient.
+ops.NotDifferentiable("EuclideanNorm")
+
+
 @ops.RegisterGradient("Sum")
 def _SumGrad(op, grad):
   """Gradient for Sum."""
