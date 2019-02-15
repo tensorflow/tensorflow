@@ -237,6 +237,7 @@ def einsum(equation, *inputs, **kwargs):
 
       output_axis_labels = ''.join(
           sorted(ax for ax in indices if counts[ax] == 1))
+    print('TEST: ',axis_labels,input_axis_labels,inputs,equation)
     for a in axis_labels:
       for input_labels in input_axis_labels:
         if (len(input_axis_labels) == 1 and input_labels.count(a) == 2
