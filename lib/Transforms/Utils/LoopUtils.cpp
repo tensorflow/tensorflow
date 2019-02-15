@@ -22,9 +22,11 @@
 #include "mlir/Transforms/LoopUtils.h"
 
 #include "mlir/AffineOps/AffineOps.h"
+#include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/AffineStructures.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -451,4 +453,36 @@ bool mlir::loopUnrollByFactor(OpPointer<AffineForOp> forOp,
   promoteIfSingleIteration(forOp);
 
   return true;
+}
+
+/// Performs loop interchange on 'forOpA' and 'forOpB', where 'forOpB' is
+/// nested within 'forOpA' as the only instruction in its block.
+void mlir::interchangeLoops(OpPointer<AffineForOp> forOpA,
+                            OpPointer<AffineForOp> forOpB) {
+  auto *forOpAInst = forOpA->getInstruction();
+  // 1) Slice forOpA's instruction list (which is just forOpB) just before
+  // forOpA (in forOpA's parent's block) this should leave 'forOpA's
+  // instruction list empty (because its perfectly nested).
+  assert(&*forOpA->getBody()->begin() == forOpB->getInstruction());
+  forOpAInst->getBlock()->getInstructions().splice(
+      Block::iterator(forOpAInst), forOpA->getBody()->getInstructions());
+  // 2) Slice forOpB's instruction list into forOpA's instruction list (this
+  // leaves forOpB's instruction list empty).
+  forOpA->getBody()->getInstructions().splice(
+      forOpA->getBody()->begin(), forOpB->getBody()->getInstructions());
+  // 3) Slice forOpA into forOpB's instruction list.
+  forOpB->getBody()->getInstructions().splice(
+      forOpB->getBody()->begin(), forOpAInst->getBlock()->getInstructions(),
+      Block::iterator(forOpAInst));
+}
+
+/// Performs a series of loop interchanges to sink 'forOp' 'loopDepth' levels
+/// deeper in the loop nest.
+void mlir::sinkLoop(OpPointer<AffineForOp> forOp, unsigned loopDepth) {
+  for (unsigned i = 0; i < loopDepth; ++i) {
+    assert(forOp->getBody()->front().isa<AffineForOp>());
+    OpPointer<AffineForOp> nextForOp =
+        forOp->getBody()->front().cast<AffineForOp>();
+    interchangeLoops(forOp, nextForOp);
+  }
 }

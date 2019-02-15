@@ -94,6 +94,16 @@ UtilResult instBodySkew(OpPointer<AffineForOp> forOp, ArrayRef<uint64_t> shifts,
 UtilResult tileCodeGen(MutableArrayRef<OpPointer<AffineForOp>> band,
                        ArrayRef<unsigned> tileSizes);
 
+/// Performs loop interchange on 'forOpA' and 'forOpB'. Requires that 'forOpA'
+/// and 'forOpB' are part of a perfectly nested sequence of loops.
+void interchangeLoops(OpPointer<AffineForOp> forOpA,
+                      OpPointer<AffineForOp> forOpB);
+
+/// Sinks 'forOp' by 'loopDepth' levels by performing a series of loop
+/// interchanges. Requires that 'forOp' is part of a perfect nest with
+/// 'loopDepth' AffineForOps consecutively nested under it.
+void sinkLoop(OpPointer<AffineForOp> forOp, unsigned loopDepth);
+
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_LOOP_UTILS_H

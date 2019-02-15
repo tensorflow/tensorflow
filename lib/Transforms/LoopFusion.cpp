@@ -827,6 +827,142 @@ static unsigned getMaxLoopDepth(ArrayRef<Instruction *> loadOpInsts,
   return loopDepth;
 }
 
+// Compute loop interchange permutation:
+// *) Computes dependence components between all op pairs in 'ops' for loop
+//    depths in range [1, 'maxLoopDepth'].
+// *) Classifies the outermost 'maxLoopDepth' loops surrounding 'ops' as either
+//    parallel or sequential.
+// *) Computes the loop permutation which sinks sequential loops deeper into
+//    the loop nest, while preserving the relative order between other loops.
+// *) Checks each dependence component against the permutation to see if the
+//    desired loop interchange would violated dependences by making the a
+//    dependence componenent lexicographically negative.
+// TODO(andydavis) Move this function to LoopUtils.
+static bool
+computeLoopInterchangePermutation(ArrayRef<Instruction *> ops,
+                                  unsigned maxLoopDepth,
+                                  SmallVectorImpl<unsigned> *loopPermMap) {
+  // Gather dependence components for dependences between all ops in 'ops'
+  // at loop depths in range [1, maxLoopDepth].
+  // TODO(andydavis) Refactor this loop into a LoopUtil utility function:
+  // mlir::getDependenceComponents().
+  // TODO(andydavis) Split this loop into two: first check all dependences,
+  // and construct dep vectors. Then, scan through them to detect the parallel
+  // ones.
+  std::vector<llvm::SmallVector<DependenceComponent, 2>> depCompsVec;
+  llvm::SmallVector<bool, 8> isParallelLoop(maxLoopDepth, true);
+  unsigned numOps = ops.size();
+  for (unsigned d = 1; d <= maxLoopDepth; ++d) {
+    for (unsigned i = 0; i < numOps; ++i) {
+      auto *srcOpInst = ops[i];
+      MemRefAccess srcAccess(srcOpInst);
+      for (unsigned j = 0; j < numOps; ++j) {
+        auto *dstOpInst = ops[j];
+        MemRefAccess dstAccess(dstOpInst);
+
+        FlatAffineConstraints dependenceConstraints;
+        llvm::SmallVector<DependenceComponent, 2> depComps;
+        // TODO(andydavis,bondhugula) Explore whether it would be profitable
+        // to pre-compute and store deps instead of repeatidly checking.
+        if (checkMemrefAccessDependence(srcAccess, dstAccess, d,
+                                        &dependenceConstraints, &depComps)) {
+          isParallelLoop[d - 1] = false;
+          depCompsVec.push_back(depComps);
+        }
+      }
+    }
+  }
+  // Count the number of parallel loops.
+  unsigned numParallelLoops = 0;
+  for (unsigned i = 0, e = isParallelLoop.size(); i < e; ++i)
+    if (isParallelLoop[i])
+      ++numParallelLoops;
+
+  // Compute permutation of loops that sinks sequential loops (and thus raises
+  // parallel loops) while preserving relative order.
+  llvm::SmallVector<unsigned, 4> loopPermMapInv;
+  loopPermMapInv.resize(maxLoopDepth);
+  loopPermMap->resize(maxLoopDepth);
+  unsigned nextSequentialLoop = numParallelLoops;
+  unsigned nextParallelLoop = 0;
+  for (unsigned i = 0; i < maxLoopDepth; ++i) {
+    if (isParallelLoop[i]) {
+      (*loopPermMap)[i] = nextParallelLoop;
+      loopPermMapInv[nextParallelLoop++] = i;
+    } else {
+      (*loopPermMap)[i] = nextSequentialLoop;
+      loopPermMapInv[nextSequentialLoop++] = i;
+    }
+  }
+
+  // Check each dependence component against the permutation to see if the
+  // desired loop interchange permutation would make the dependence vectors
+  // lexicographically negative.
+  // Example 1: [-1, 1][0, 0]
+  // Example 2: [0, 0][-1, 1]
+  for (unsigned i = 0, e = depCompsVec.size(); i < e; ++i) {
+    llvm::SmallVector<DependenceComponent, 2> &depComps = depCompsVec[i];
+    assert(depComps.size() >= maxLoopDepth);
+    // Check if the first non-zero dependence component is positive.
+    for (unsigned j = 0; j < maxLoopDepth; ++j) {
+      unsigned permIndex = loopPermMapInv[j];
+      assert(depComps[permIndex].lb.hasValue());
+      int64_t depCompLb = depComps[permIndex].lb.getValue();
+      if (depCompLb > 0)
+        break;
+      if (depCompLb < 0)
+        return false;
+    }
+  }
+  return true;
+}
+
+// Sinks all sequential loops to the innermost levels (while preserving
+// relative order among them) and moves all parallel loops to the
+// outermost (while again preserving relative order among them).
+// This can increase the loop depth at which we can fuse a slice, since we are
+// pushing loop carried dependence to a greater depth in the loop nest.
+static void sinkSequentialLoops(MemRefDependenceGraph::Node *node) {
+  assert(node->inst->isa<AffineForOp>());
+  // Get perfectly nested sequence of loops starting at root of loop nest.
+  // TODO(andydavis,bondhugula) Share this with similar code in loop tiling.
+  SmallVector<OpPointer<AffineForOp>, 4> loops;
+  OpPointer<AffineForOp> curr = node->inst->cast<AffineForOp>();
+  loops.push_back(curr);
+  auto *currBody = curr->getBody();
+  while (!currBody->empty() &&
+         std::next(currBody->begin()) == currBody->end() &&
+         (curr = curr->getBody()->front().dyn_cast<AffineForOp>())) {
+    loops.push_back(curr);
+    currBody = curr->getBody();
+  }
+  if (loops.size() < 2)
+    return;
+
+  // Merge loads and stores into the same array.
+  SmallVector<Instruction *, 2> memOps(node->loads.begin(), node->loads.end());
+  memOps.append(node->stores.begin(), node->stores.end());
+
+  // Compute loop permutation in 'loopPermMap'.
+  llvm::SmallVector<unsigned, 4> loopPermMap;
+  if (!computeLoopInterchangePermutation(memOps, loops.size(), &loopPermMap))
+    return;
+
+  int loopNestRootIndex = -1;
+  for (int i = loops.size() - 1; i >= 0; --i) {
+    int permIndex = static_cast<int>(loopPermMap[i]);
+    // Store the index of the for loop which will be the new loop nest root.
+    if (permIndex == 0)
+      loopNestRootIndex = i;
+    if (permIndex > i) {
+      // Sink loop 'i' by 'permIndex - i' levels deeper into the loop nest.
+      sinkLoop(loops[i], permIndex - i);
+    }
+  }
+  assert(loopNestRootIndex != -1 && "invalid root index");
+  node->inst = loops[loopNestRootIndex]->getInstruction();
+}
+
 // Returns the slice union of 'sliceStateA' and 'sliceStateB' in 'sliceStateB'
 // using a rectangular bounding box.
 // TODO(andydavis) This function assumes that lower bounds for 'sliceStateA'
@@ -1407,6 +1543,11 @@ public:
       // Skip if 'dstNode' is not a loop nest.
       if (!dstNode->inst->isa<AffineForOp>())
         continue;
+      // Sink sequential loops in 'dstNode' (and thus raise parallel loops)
+      // while preserving relative order. This can increase the maximum loop
+      // depth at which we can fuse a slice of a producer loop nest into a
+      // consumer loop nest.
+      sinkSequentialLoops(dstNode);
 
       SmallVector<Instruction *, 4> loads = dstNode->loads;
       SmallVector<Instruction *, 4> dstLoadOpInsts;

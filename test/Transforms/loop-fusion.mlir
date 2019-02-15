@@ -938,7 +938,7 @@ func @fusion_at_depth0_not_currently_supported() {
   // NOTE: Should shrink memref size to 1 element access by load in dst loop
   // nest, and make the store in the slice store to the same element.
   // CHECK-DAG:   %0 = alloc() : memref<1xf32>
-  // CHECK:       for    %i0 = 0 to 10 {
+  // CHECK:       for %i0 = 0 to 10 {
   // CHECK-NEXT:    store %cst, %0[%c0] : memref<1xf32>
   // CHECK-NEXT:    %1 = load %0[%c0_0] : memref<1xf32>
   // CHECK-NEXT:  }
@@ -1689,5 +1689,102 @@ func @should_fuse_after_private_memref_creation() {
   // CHECK-NEXT:    store %8, %2[%i1] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:   return
+  return
+}
+
+// -----
+
+// CHECK: [[MAP0:#map[0-9]+]] = (d0, d1) -> (-d0 + d1)
+
+// CHECK-LABEL: func @should_fuse_after_one_loop_interchange() {
+func @should_fuse_after_one_loop_interchange() {
+  %a = alloc() : memref<10xf32>
+
+  %cf0 = constant 0.0 : f32
+  for %i0 = 0 to 10 {
+    store %cf0, %a[%i0] : memref<10xf32>
+  }
+
+  for %i1 = 0 to 5 {
+    for %i2 = 0 to 10 {
+      %v0 = load %a[%i2] : memref<10xf32>
+      store %v0, %a[%i2] : memref<10xf32>
+    }
+  }
+
+  // The dependence between the load and store is carried on loop '%i1', and
+  // cannot be fused with loop '%i0' without violating this dependence.
+  // Once loops '%i1' and %i2' are interchanged, loop '%i0' can be fused
+  // at loop depth 1, because the loop carrying the dependence has been
+  // interchanged and is now at depth 2.
+
+  // CHECK:       for %i0 = 0 to 10 {
+  // CHECK-NEXT:    %1 = affine.apply [[MAP0]](%i0, %i0)
+  // CHECK-NEXT:    store %cst, %0[%1] : memref<1xf32>
+  // CHECK-NEXT:    for %i1 = 0 to 5 {
+  // CHECK-NEXT:      %2 = affine.apply [[MAP0]](%i0, %i0)
+  // CHECK-NEXT:      %3 = load %0[%2] : memref<1xf32>
+  // CHECK-NEXT:      %4 = affine.apply [[MAP0]](%i0, %i0)
+  // CHECK-NEXT:      store %3, %0[%4] : memref<1xf32>
+  // CHECK-NEXT:    }
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:  return
+  return
+}
+
+// -----
+
+// CHECK: [[MAP0:#map[0-9]+]] = (d0, d1, d2, d3) -> (-d0 + d2)
+// CHECK: [[MAP1:#map[0-9]+]] = (d0, d1, d2, d3) -> (-d1 + d3)
+
+// CHECK-LABEL: func @should_fuse_after_two_loop_interchanges() {
+func @should_fuse_after_two_loop_interchanges() {
+  %a = alloc() : memref<6x8xf32>
+
+  %cf0 = constant 0.0 : f32
+  for %i0 = 0 to 6 {
+    for %i1 = 0 to 8 {
+      store %cf0, %a[%i0, %i1] : memref<6x8xf32>
+    }
+  }
+
+  for %i2 = 0 to 4 {
+    for %i3 = 0 to 6 {
+      for %i4 = 0 to 2 {
+        for %i5 = 0 to 8 {
+          %v0 = load %a[%i3, %i5] : memref<6x8xf32>
+          %v1 = addf %v0, %v0 : f32
+          store %v1, %a[%i3, %i5] : memref<6x8xf32>
+        }
+      }
+    }
+  }
+
+  // The dependence between the load and store is carried on loops '%i2' and
+  // '%i4', and cannot be fused with loop '%i0' without violating this
+  // dependence.
+  // Once loop '%i2' is interchanged with loop '%i3', and again with loop
+  // '%i5', then loop '%i0' can be fused at loop depth 2, because the loop
+  // carring the dependences have been interchanged with loops at depth > 2.
+
+  // CHECK:       for %i0 = 0 to 6 {
+  // CHECK-NEXT:    for %i1 = 0 to 8 {
+  // CHECK-NEXT:      %1 = affine.apply [[MAP0]](%i0, %i1, %i0, %i1)
+  // CHECK-NEXT:      %2 = affine.apply [[MAP1]](%i0, %i1, %i0, %i1)
+  // CHECK-NEXT:      store %cst, %0[%1, %2] : memref<1x1xf32>
+  // CHECK-NEXT:      for %i2 = 0 to 4 {
+  // CHECK-NEXT:        for %i3 = 0 to 2 {
+  // CHECK-NEXT:          %3 = affine.apply [[MAP0]](%i0, %i1, %i0, %i1)
+  // CHECK-NEXT:          %4 = affine.apply [[MAP1]](%i0, %i1, %i0, %i1)
+  // CHECK-NEXT:          %5 = load %0[%3, %4] : memref<1x1xf32>
+  // CHECK-NEXT:          %6 = addf %5, %5 : f32
+  // CHECK-NEXT:          %7 = affine.apply [[MAP0]](%i0, %i1, %i0, %i1)
+  // CHECK-NEXT:          %8 = affine.apply [[MAP1]](%i0, %i1, %i0, %i1)
+  // CHECK-NEXT:          store %6, %0[%7, %8] : memref<1x1xf32>
+  // CHECK-NEXT:        }
+  // CHECK-NEXT:      }
+  // CHECK-NEXT:    }
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:  return
   return
 }
