@@ -39409,6 +39409,13 @@ op {
       }
     }
   }
+  attr {
+    name: "step_marker_location"
+    type: "string"
+    default_value {
+      s: "STEP_MARK_AT_ENTRY"
+    }
+  }
   is_stateful: true
 }
 op {
@@ -39469,6 +39476,13 @@ op {
     default_value {
       list {
       }
+    }
+  }
+  attr {
+    name: "step_marker_location"
+    type: "string"
+    default_value {
+      s: "STEP_MARK_AT_ENTRY"
     }
   }
 }
