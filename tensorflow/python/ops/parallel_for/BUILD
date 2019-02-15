@@ -115,6 +115,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:util",
     ],
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(

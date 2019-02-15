@@ -151,6 +151,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:training",
     ],
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -530,6 +531,7 @@ tf_xla_py_test(
     srcs = ["def_function_xla_test.py"],
     tags = [
         "no_pip",
+        "no_rocm",
         "nomac",
     ],
     deps = [
