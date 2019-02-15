@@ -3960,7 +3960,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadMidNonScalar) {
       param = f32[3,4] parameter(0)
       constant = f32[] constant(0.0)
       pad = f32[8,10] pad(f32[3,4] param, f32[] constant), padding=3_2x1_5
-      ROOT slice = f32[1,1] slice(f32[8,10] pad), slice={[5:6],[9:10]}
+      ROOT slice = f32[1,1] slice(f32[8,10] pad), slice={[5:6],[4:5]}
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -3969,6 +3969,27 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadMidNonScalar) {
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
   EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceOfPadMidScalarConstant) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      param = f32[3,4] parameter(0)
+      constant = f32[] constant(0.0)
+      pad = f32[8,10] pad(f32[3,4] param, f32[] constant), padding=3_2x1_5
+      ROOT slice = f32[1,1] slice(f32[8,10] pad), slice={[5:6],[9:10]}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Reshape(m::Constant())));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfPadMidScalar) {
@@ -3990,6 +4011,29 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadMidScalar) {
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Parameter()));
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceOfPadSomeDimsInPadding) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY entry () -> f32[1]{0} {
+      constant.val = f32[] constant(4)
+      constant.pad = f32[] constant(-7)
+      reshape.1 = f32[1,1,1]{2,1,0} reshape(f32[] constant.val)
+      pad = f32[3,3,3]{2,1,0} pad(f32[1,1,1]{2,1,0} reshape.1, f32[] constant.pad), padding=0_2x0_2x2_0
+      slice = f32[1,1,1]{2,1,0} slice(f32[3,3,3]{2,1,0} pad), slice={[0:1], [0:1], [0:1]}
+      ROOT reshape.2 = f32[1]{0} reshape(f32[1,1,1]{2,1,0} slice)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Reshape(m::ConstantScalar(-7.0))));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfConcatScalarInput) {
