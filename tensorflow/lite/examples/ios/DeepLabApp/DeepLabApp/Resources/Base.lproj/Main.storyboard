@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="14460.31" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="BYZ-38-t0r">
+    <device id="retina4_7" orientation="portrait">
+        <adaptation id="fullscreen"/>
+    </device>
+    <dependencies>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="14460.20"/>
+        <capability name="Safe area layout guides" minToolsVersion="9.0"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <scenes>
+        <!--View Controller-->
+        <scene sceneID="tne-QT-ifu">
+            <objects>
+                <viewController id="BYZ-38-t0r" customClass="ViewController" customModule="DeepLabApp" customModuleProvider="target" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="8bC-Xf-vdC">
+                        <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <view contentMode="scaleToFill" translatesAutoresizingMaskIntoConstraints="NO" id="Vn5-fi-XeU">
+                                <rect key="frame" x="0.0" y="0.0" width="375" height="580"/>
+                                <color key="backgroundColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                            </view>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="XSM-Pk-x6N">
+                                <rect key="frame" x="157.5" y="597" width="60" height="50"/>
+                                <constraints>
+                                    <constraint firstAttribute="height" constant="50" id="4Vs-Pp-6Ym"/>
+                                    <constraint firstAttribute="width" constant="60" id="agA-Z2-wMe"/>
+                                </constraints>
+                                <state key="normal" image="flip-camera"/>
+                                <connections>
+                                    <action selector="toggleCameraWithSender:" destination="BYZ-38-t0r" eventType="touchUpInside" id="E3p-x0-DNw"/>
+                                </connections>
+                            </button>
+                        </subviews>
+                        <color key="backgroundColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <constraints>
+                            <constraint firstItem="XSM-Pk-x6N" firstAttribute="centerX" secondItem="6Tk-OE-BBY" secondAttribute="centerX" id="0Vz-wq-yhD"/>
+                            <constraint firstItem="XSM-Pk-x6N" firstAttribute="top" secondItem="Vn5-fi-XeU" secondAttribute="bottom" constant="17" id="9Y8-b0-igT"/>
+                            <constraint firstItem="Vn5-fi-XeU" firstAttribute="top" secondItem="8bC-Xf-vdC" secondAttribute="top" id="alN-eC-xjc"/>
+                            <constraint firstItem="Vn5-fi-XeU" firstAttribute="leading" secondItem="6Tk-OE-BBY" secondAttribute="leading" id="dfp-D5-KuZ"/>
+                            <constraint firstItem="6Tk-OE-BBY" firstAttribute="bottom" secondItem="XSM-Pk-x6N" secondAttribute="bottom" constant="20" id="iVF-4O-2Ng"/>
+                            <constraint firstItem="Vn5-fi-XeU" firstAttribute="trailing" secondItem="6Tk-OE-BBY" secondAttribute="trailing" id="pvH-bw-JmN"/>
+                        </constraints>
+                        <viewLayoutGuide key="safeArea" id="6Tk-OE-BBY"/>
+                    </view>
+                    <connections>
+                        <outlet property="preView" destination="Vn5-fi-XeU" id="ZS1-t1-k3y"/>
+                    </connections>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="dkx-z0-nzr" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="136.80000000000001" y="133.5832083958021"/>
+        </scene>
+    </scenes>
+    <resources>
+        <image name="flip-camera" width="60" height="50"/>
+    </resources>
+</document>
