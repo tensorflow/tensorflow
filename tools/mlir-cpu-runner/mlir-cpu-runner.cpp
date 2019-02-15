@@ -22,6 +22,7 @@
 
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
 #include "mlir/ExecutionEngine/MemRefUtils.h"
+#include "mlir/ExecutionEngine/OptUtils.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StandardTypes.h"
@@ -52,6 +53,23 @@ static llvm::cl::opt<std::string>
     mainFuncName("e", llvm::cl::desc("The function to be called"),
                  llvm::cl::value_desc("<function name>"),
                  llvm::cl::init("main"));
+
+static llvm::cl::opt<std::string> llvmPasses(
+    "llvm-opts",
+    llvm::cl::desc("LLVM passes to run, syntax same as the opt tool"));
+
+static llvm::cl::opt<bool>
+    llvmO0("O0",
+           llvm::cl::desc("Optimization level 0, similar to LLVM opt -O0"));
+static llvm::cl::opt<bool>
+    llvmO1("O1",
+           llvm::cl::desc("Optimization level 1, similar to LLVM opt -O1"));
+static llvm::cl::opt<bool>
+    llvmO2("O2",
+           llvm::cl::desc("Optimization level 2, similar to LLVM opt -O2"));
+static llvm::cl::opt<bool>
+    llvmO3("O3",
+           llvm::cl::desc("Optimization level 3, similar to LLVM opt -O3"));
 
 static std::unique_ptr<Module> parseMLIRInput(StringRef inputFilename,
                                               MLIRContext *context) {
@@ -108,7 +126,9 @@ static void printMemRefArguments(ArrayRef<Type> argTypes,
   }
 }
 
-static Error compileAndExecute(Module *module, StringRef entryPoint) {
+static Error
+compileAndExecute(Module *module, StringRef entryPoint,
+                  std::function<llvm::Error(llvm::Module *)> transformer) {
   Function *mainFunction = module->getNamedFunction(entryPoint);
   if (!mainFunction || mainFunction->getBlocks().empty()) {
     return make_string_error("entry point not found");
@@ -128,7 +148,7 @@ static Error compileAndExecute(Module *module, StringRef entryPoint) {
   if (!expectedArguments)
     return expectedArguments.takeError();
 
-  auto expectedEngine = mlir::ExecutionEngine::create(module);
+  auto expectedEngine = mlir::ExecutionEngine::create(module, transformer);
   if (!expectedEngine)
     return expectedEngine.takeError();
 
@@ -150,7 +170,14 @@ int main(int argc, char **argv) {
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "MLIR CPU execution driver\n");
 
+  if ((llvmO0 || llvmO1 || llvmO2 || llvmO3) &&
+      !llvmPasses.getValue().empty()) {
+    llvm::errs() << "cannot use -O? together with -llvm-passes\n";
+    return EXIT_FAILURE;
+  }
+
   initializeLLVM();
+  mlir::initializeLLVMPasses();
 
   MLIRContext context;
   auto m = parseMLIRInput(inputFilename, &context);
@@ -158,7 +185,22 @@ int main(int argc, char **argv) {
     llvm::errs() << "could not parse the input IR\n";
     return 1;
   }
-  auto error = compileAndExecute(m.get(), mainFuncName.getValue());
+
+  unsigned optLevel = 0;
+  if (llvmO1)
+    optLevel = 1;
+  if (llvmO2)
+    optLevel = 2;
+  if (llvmO3)
+    optLevel = 3;
+
+  std::function<llvm::Error(llvm::Module *)> transformer;
+  if (llvmPasses.getValue().empty())
+    transformer = mlir::makeOptimizingTransformer(optLevel, /*sizeLevel=*/0);
+  else
+    transformer = mlir::makeLLVMPassesTransformer(llvmPasses.getValue());
+
+  auto error = compileAndExecute(m.get(), mainFuncName.getValue(), transformer);
   int exitCode = EXIT_SUCCESS;
   llvm::handleAllErrors(std::move(error),
                         [&exitCode](const llvm::ErrorInfoBase &info) {
