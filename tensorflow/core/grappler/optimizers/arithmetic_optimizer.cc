@@ -1774,6 +1774,35 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
   }
 };
 
+// Performs the conversion:
+// Square(Sub(x, y)) => Identity(SquaredDifference(x, y))
+class FuseSquaredDiffStage : public ArithmeticOptimizerStage {
+ public:
+  explicit FuseSquaredDiffStage(const GraphOptimizerContext& ctx,
+                                const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("FuseSquaredDiffStage", ctx, ctx_ext) {}
+  ~FuseSquaredDiffStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsSquare(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* b;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &b));
+    // Optimize only if base is a Sub whose output is not being consumed
+    // elsewhere.
+    if (IsSub(*b) && !IsInPreserveSet(*b) &&
+        (NumNonControlOutputs(*b, *ctx().node_map) == 1)) {
+      node->set_op("Identity");
+      b->set_op("SquaredDifference");
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(b);
+    }
+    return Status::OK();
+  }
+};
+
 // Bypass redundant reshape nodes:
 //
 //   Reshape                    Reshape  <-+
@@ -3513,6 +3542,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<UnaryOpsComposition>(ctx, ctx_ext);
   if (options_.remove_stack_strided_slice_same_axis)
     pipeline.AddStage<RemoveStackStridedSliceSameAxis>(ctx, ctx_ext);
+  if (options_.fuse_squared_diff)
+    pipeline.AddStage<FuseSquaredDiffStage>(ctx, ctx_ext);
 
   VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
           << str_util::Join(pipeline.StageNames(), ", ");
