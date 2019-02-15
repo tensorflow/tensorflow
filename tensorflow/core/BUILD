@@ -128,7 +128,6 @@ load(
     "tf_additional_libdevice_srcs",
     "tf_additional_minimal_lib_srcs",
     "tf_additional_mpi_lib_defines",
-    "tf_additional_proto_compiler_hdrs",
     "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
     "tf_additional_test_deps",
@@ -418,9 +417,8 @@ cc_library(
     name = "platform_protobuf",
     srcs = tf_platform_hdrs([
         "protobuf.h",
-    ]) + tf_platform_srcs([
-        "protobuf.cc",
     ]) + [
+        "platform/protobuf.cc",
         "platform/protobuf_util.cc",
         "lib/core/status.h",
     ],
@@ -664,7 +662,7 @@ cc_library(
     name = "lib_proto_compiler",
     hdrs = [
         "platform/protobuf_compiler.h",
-    ] + tf_additional_proto_compiler_hdrs(),
+    ],
     copts = tf_copts(),
     deps = tf_lib_proto_compiler_deps() + [
         ":lib_proto_parsing",
@@ -1049,13 +1047,13 @@ cc_library(
         "platform/default/integral_types.h",
         "platform/default/logging.h",
         "platform/default/mutex.h",
-        "platform/default/protobuf.h",
         "platform/default/thread_annotations.h",
         "platform/dynamic_annotations.h",
         "platform/macros.h",
         "platform/mutex.h",
         "platform/platform.h",
         "platform/prefetch.h",
+        "platform/protobuf.h",
         "platform/thread_annotations.h",
         "platform/types.h",
         "platform/cpu_info.h",
@@ -2317,6 +2315,7 @@ cc_library(
             "platform/**/logging.cc",
             "platform/**/human_readable_json.cc",
             "platform/abi.cc",
+            "platform/protobuf.cc",
         ],
     ) + tf_additional_lib_srcs(
         exclude = [
