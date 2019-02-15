@@ -35,11 +35,11 @@ string Tile::ToString() const {
     if (dim >= 0) {
       elements.push_back(std::to_string(dim));
     } else {
-      CHECK_EQ(dim, kCombineDimension)
-          << "Tile dimension size needs to be mininum int64 value if it's "
-             "negative. Value is "
-          << dim;
-      elements.push_back("*");
+      if (dim == kCombineDimension) {
+        elements.push_back("*");
+      } else {
+        elements.push_back(absl::StrCat("Invalid value ", dim));
+      }
     }
   }
   return absl::StrCat("(", absl::StrJoin(elements, ","), ")");
