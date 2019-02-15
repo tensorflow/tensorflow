@@ -634,7 +634,7 @@ mlir_type_t makeFunctionType(mlir_context_t context, mlir_type_list_t inputs,
     ins[i] = mlir::Type::getFromOpaquePointer(inputs.types[i]);
   }
   for (unsigned i = 0; i < outputs.n; ++i) {
-    ins[i] = mlir::Type::getFromOpaquePointer(outputs.types[i]);
+    outs[i] = mlir::Type::getFromOpaquePointer(outputs.types[i]);
   }
   auto ft = mlir::FunctionType::get(
       ins, outs, reinterpret_cast<mlir::MLIRContext *>(context));

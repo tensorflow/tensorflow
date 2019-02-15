@@ -147,6 +147,9 @@ class EdscTest(unittest.TestCase):
         "func @copy(%arg0: memref<3x4x?x5xf32>, %arg1: memref<3x4x?x5xf32>) {",
         f.__str__())
 
+    f = module.make_function("sqrtf", [t], [t])
+    self.assertIn("func @sqrtf(%arg0: f32) -> f32", f.__str__())
+
   def testMLIRConstantEmission(self):
     module = E.MLIRModule()
     f = module.make_function("constants", [], [])
