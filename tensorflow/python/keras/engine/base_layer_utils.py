@@ -382,3 +382,11 @@ def call_context():
     yield
   finally:
     _call_context.in_call = was_in_call
+
+
+def training_arg_passed_to_call(argspec, args, kwargs):
+  """Returns whether a user passed the `training` argument in `__call__`."""
+  # `argspec.args` starts with ['self', 'inputs']
+  full_args = dict(zip(argspec.args[2:], args))
+  full_args.update(kwargs)
+  return 'training' in full_args
