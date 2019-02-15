@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_LOOKUP_TABLES_LOOKUP_TABLE_INTERFACE_H_
-#define TENSORFLOW_CORE_KERNELS_LOOKUP_TABLES_LOOKUP_TABLE_INTERFACE_H_
+#ifndef TENSORFLOW_CORE_KERNELS_LOOKUP_TABLES_RESOURCE_INTERFACE_TEMPLATES_H_
+#define TENSORFLOW_CORE_KERNELS_LOOKUP_TABLES_RESOURCE_INTERFACE_TEMPLATES_H_
 
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -96,4 +96,4 @@ class KeyValueTableInitializerInterface : public virtual SynchronizedInterface {
 }  // namespace tables
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_LOOKUP_TABLES_LOOKUP_TABLE_INTERFACE_H_
+#endif  // TENSORFLOW_CORE_KERNELS_LOOKUP_TABLES_RESOURCE_INTERFACE_TEMPLATES_H_

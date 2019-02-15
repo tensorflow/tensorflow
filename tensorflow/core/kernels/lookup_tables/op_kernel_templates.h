@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_LOOKUP_TABLES_TABLE_OP_UTILS_H_
-#define TENSORFLOW_CORE_KERNELS_LOOKUP_TABLES_TABLE_OP_UTILS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_LOOKUP_TABLES_OP_KERNEL_TEMPLATES_H_
+#define TENSORFLOW_CORE_KERNELS_LOOKUP_TABLES_OP_KERNEL_TEMPLATES_H_
 
 #include <cstddef>
 #include <string>
@@ -445,4 +445,4 @@ class ContainerSizeOp : public OpKernel {
 }  // namespace tables
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_LOOKUP_TABLES_TABLE_OP_UTILS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_LOOKUP_TABLES_OP_KERNEL_TEMPLATES_H_

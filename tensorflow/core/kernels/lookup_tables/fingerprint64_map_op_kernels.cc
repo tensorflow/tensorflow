@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/kernels/lookup_tables/lookup_table_interface.h"
-#include "tensorflow/core/kernels/lookup_tables/table_op_utils.h"
+#include "tensorflow/core/kernels/lookup_tables/op_kernel_templates.h"
+#include "tensorflow/core/kernels/lookup_tables/resource_interface_templates.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/macros.h"
