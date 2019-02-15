@@ -81,16 +81,6 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
   return Status::OK();
 }
 
-template <typename T>
-static Tensor MakeLinspaceTensor(const TensorShape& shape, int64 depth) {
-  Tensor linspace(DataTypeToEnum<T>::v(), shape);
-  auto linspace_flat = linspace.flat<T>();
-  for (int64 i = 0; i < depth; ++i) {
-    linspace_flat(i) = i;
-  }
-  return linspace;
-}
-
 Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64 depth, int axis,
                           DataType index_type, const TensorShape& indices_shape,
                           const xla::XlaOp& indices, const xla::XlaOp& on_value,
