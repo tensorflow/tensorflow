@@ -391,6 +391,7 @@ void BFCAllocator::SplitChunk(BFCAllocator::ChunkHandle h, size_t num_bytes) {
 }
 
 void BFCAllocator::DeallocateRaw(void* ptr) {
+  VLOG(1) << "DeallocateRaw " << Name() << " " << RequestedSize(ptr);
   DeallocateRawInternal(ptr);
   retry_helper_.NotifyDealloc();
 }
