@@ -165,12 +165,14 @@ class Model(Network):
             passing a dictionary or a list of losses. The loss value that will
             be minimized by the model will then be the sum of all individual
             losses.
-        metrics: List of metrics to be evaluated by the model
-            during training and testing.
-            Typically you will use `metrics=['accuracy']`.
+        metrics: List of metrics to be evaluated by the model during training
+            and testing. Typically you will use `metrics=['accuracy']`.
             To specify different metrics for different outputs of a
-            multi-output model, you could also pass a dictionary,
-            such as `metrics={'output_a': 'accuracy'}`.
+            multi-output model, you could also pass a dictionary, such as
+            `metrics={'output_a': 'accuracy', 'output_b': ['accuracy', 'mse']}`.
+            You can also pass a list (len = len(outputs)) of lists of metrics
+            such as `metrics=[['accuracy'], ['accuracy', 'mse']]` or
+            `metrics=['accuracy', ['accuracy', 'mse']]`.
         loss_weights: Optional list or dictionary specifying scalar
             coefficients (Python floats) to weight the loss contributions
             of different model outputs.
