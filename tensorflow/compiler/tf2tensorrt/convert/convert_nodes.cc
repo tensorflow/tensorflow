@@ -563,6 +563,20 @@ class TRT_TensorOrWeights::SimpleITensor : public nvinfer1::ITensor {
   float getDynamicRange() const override { return 0; }
 #endif
 
+// TensorRT 5.1.2 introduces new functions in ITensor.
+// First case is for 6+.X.X.X
+// Second case is for 5.2+.X.X
+// Last case is for 5.1.2+.X
+#if (NV_TENSORRT_MAJOR > 5) || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR > 1) || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR == 1 && NV_TENSORRT_PATCH >= 2)
+  bool dynamicRangeIsSet() const override { return true; }
+
+  void resetDynamicRange() override { }
+
+  float getDynamicRangeMin() const override { return 0.f; }
+
+  float getDynamicRangeMax() const override { return 0.f; }
+#endif
+
  private:
   nvinfer1::DataType trt_dtype_;
   nvinfer1::Dims trt_dims_;
