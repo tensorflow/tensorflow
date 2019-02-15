@@ -871,77 +871,134 @@ inline void FullyConnectedAsGEMV(
 
   for (int out = 0; out < output_size; out += kPeel) {
     out = std::min(out, output_size - kPeel);
-    int32x4_t acc[kPeel];
-    for (int k = 0; k < kPeel; k++) {
-      acc[k] = vdupq_n_s32(0);
-    }
+    int32x4_t acc0 = vdupq_n_s32(0);
+    int32x4_t acc1 = acc0;
+    int32x4_t acc2 = acc0;
+    int32x4_t acc3 = acc0;
     const int16x8_t input_offset_vec = vdupq_n_s16(input_offset);
     const int16x8_t filter_offset_vec = vdupq_n_s16(filter_offset);
     int in = 0;
     for (; in <= input_size - 16; in += 16) {
       const uint8x16_t input_val_u8 = vld1q_u8(input_data + in);
-      uint8x16_t filter_val_u8[kPeel];
-      for (int k = 0; k < kPeel; k++) {
-        const uint8* filter_ptr = filter_data + in + (out + k) * input_size;
-        filter_val_u8[k] = vld1q_u8(filter_ptr);
-        optimized_ops_preload_l1_stream(filter_ptr + 64);
-      }
-      int16x8_t input_val[2];
-      const uint8x8_t low = vget_low_u8(input_val_u8);
-      const uint8x8_t high = vget_high_u8(input_val_u8);
-      input_val[0] = vreinterpretq_s16_u16(vmovl_u8(low));
-      input_val[1] = vreinterpretq_s16_u16(vmovl_u8(high));
-      input_val[0] = vaddq_s16(input_val[0], input_offset_vec);
-      input_val[1] = vaddq_s16(input_val[1], input_offset_vec);
-      int16x8_t filter_val[kPeel][2];
-      for (int k = 0; k < kPeel; k++) {
-        const uint8x8_t low = vget_low_u8(filter_val_u8[k]);
-        const uint8x8_t high = vget_high_u8(filter_val_u8[k]);
-        filter_val[k][0] = vreinterpretq_s16_u16(vmovl_u8(low));
-        filter_val[k][1] = vreinterpretq_s16_u16(vmovl_u8(high));
-        filter_val[k][0] = vaddq_s16(filter_val[k][0], filter_offset_vec);
-        filter_val[k][1] = vaddq_s16(filter_val[k][1], filter_offset_vec);
-      }
-      for (int p = 0; p < 2; p++) {
-        for (int k = 0; k < kPeel; k++) {
-          acc[k] = vmlal_s16(acc[k], vget_low_s16(filter_val[k][p]),
-                             vget_low_s16(input_val[p]));
-        }
-        for (int k = 0; k < kPeel; k++) {
-          acc[k] = vmlal_s16(acc[k], vget_high_s16(filter_val[k][p]),
-                             vget_high_s16(input_val[p]));
-        }
-      }
+      const uint8* filter_ptr = filter_data + in + out * input_size;
+      uint8x16_t filter_val_u8_0 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      filter_ptr += input_size;
+      uint8x16_t filter_val_u8_1 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      filter_ptr += input_size;
+      uint8x16_t filter_val_u8_2 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      filter_ptr += input_size;
+      uint8x16_t filter_val_u8_3 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      int16x8_t input_val_0, input_val_1;
+      uint8x8_t low = vget_low_u8(input_val_u8);
+      uint8x8_t high = vget_high_u8(input_val_u8);
+      input_val_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      input_val_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      input_val_0 = vaddq_s16(input_val_0, input_offset_vec);
+      input_val_1 = vaddq_s16(input_val_1, input_offset_vec);
+      low = vget_low_u8(filter_val_u8_0);
+      high = vget_high_u8(filter_val_u8_0);
+      int16x8_t filter_val_0_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_0_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_0_0 = vaddq_s16(filter_val_0_0, filter_offset_vec);
+      filter_val_0_1 = vaddq_s16(filter_val_0_1, filter_offset_vec);
+      low = vget_low_u8(filter_val_u8_1);
+      high = vget_high_u8(filter_val_u8_1);
+      int16x8_t filter_val_1_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_1_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_1_0 = vaddq_s16(filter_val_1_0, filter_offset_vec);
+      filter_val_1_1 = vaddq_s16(filter_val_1_1, filter_offset_vec);
+      low = vget_low_u8(filter_val_u8_2);
+      high = vget_high_u8(filter_val_u8_2);
+      int16x8_t filter_val_2_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_2_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_2_0 = vaddq_s16(filter_val_2_0, filter_offset_vec);
+      filter_val_2_1 = vaddq_s16(filter_val_2_1, filter_offset_vec);
+      low = vget_low_u8(filter_val_u8_3);
+      high = vget_high_u8(filter_val_u8_3);
+      int16x8_t filter_val_3_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_3_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_3_0 = vaddq_s16(filter_val_3_0, filter_offset_vec);
+      filter_val_3_1 = vaddq_s16(filter_val_3_1, filter_offset_vec);
+      acc0 = vmlal_s16(acc0, vget_low_s16(filter_val_0_0),
+                       vget_low_s16(input_val_0));
+      acc1 = vmlal_s16(acc1, vget_low_s16(filter_val_1_0),
+                       vget_low_s16(input_val_0));
+      acc2 = vmlal_s16(acc2, vget_low_s16(filter_val_2_0),
+                       vget_low_s16(input_val_0));
+      acc3 = vmlal_s16(acc3, vget_low_s16(filter_val_3_0),
+                       vget_low_s16(input_val_0));
+      acc0 = vmlal_s16(acc0, vget_low_s16(filter_val_0_1),
+                       vget_low_s16(input_val_1));
+      acc1 = vmlal_s16(acc1, vget_low_s16(filter_val_1_1),
+                       vget_low_s16(input_val_1));
+      acc2 = vmlal_s16(acc2, vget_low_s16(filter_val_2_1),
+                       vget_low_s16(input_val_1));
+      acc3 = vmlal_s16(acc3, vget_low_s16(filter_val_3_1),
+                       vget_low_s16(input_val_1));
+      acc0 = vmlal_s16(acc0, vget_high_s16(filter_val_0_0),
+                       vget_high_s16(input_val_0));
+      acc1 = vmlal_s16(acc1, vget_high_s16(filter_val_1_0),
+                       vget_high_s16(input_val_0));
+      acc2 = vmlal_s16(acc2, vget_high_s16(filter_val_2_0),
+                       vget_high_s16(input_val_0));
+      acc3 = vmlal_s16(acc3, vget_high_s16(filter_val_3_0),
+                       vget_high_s16(input_val_0));
+      acc0 = vmlal_s16(acc0, vget_high_s16(filter_val_0_1),
+                       vget_high_s16(input_val_1));
+      acc1 = vmlal_s16(acc1, vget_high_s16(filter_val_1_1),
+                       vget_high_s16(input_val_1));
+      acc2 = vmlal_s16(acc2, vget_high_s16(filter_val_2_1),
+                       vget_high_s16(input_val_1));
+      acc3 = vmlal_s16(acc3, vget_high_s16(filter_val_3_1),
+                       vget_high_s16(input_val_1));
     }
     for (; in <= input_size - 8; in += 8) {
       const uint8x8_t input_val_u8 = vld1_u8(input_data + in);
-      uint8x8_t filter_val_u8[kPeel];
-      for (int k = 0; k < kPeel; k++) {
-        const uint8* filter_ptr = filter_data + in + (out + k) * input_size;
-        filter_val_u8[k] = vld1_u8(filter_ptr);
-      }
-      int16x8_t input_val;
-      input_val = vreinterpretq_s16_u16(vmovl_u8(input_val_u8));
+      const uint8* filter_ptr = filter_data + in + out * input_size;
+      uint8x8_t filter_val_u8_0 = vld1_u8(filter_ptr);
+      filter_ptr += input_size;
+      uint8x8_t filter_val_u8_1 = vld1_u8(filter_ptr);
+      filter_ptr += input_size;
+      uint8x8_t filter_val_u8_2 = vld1_u8(filter_ptr);
+      filter_ptr += input_size;
+      uint8x8_t filter_val_u8_3 = vld1_u8(filter_ptr);
+      int16x8_t input_val = vreinterpretq_s16_u16(vmovl_u8(input_val_u8));
       input_val = vaddq_s16(input_val, input_offset_vec);
-      int16x8_t filter_val[kPeel];
-      for (int k = 0; k < kPeel; k++) {
-        filter_val[k] = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8[k]));
-        filter_val[k] = vaddq_s16(filter_val[k], filter_offset_vec);
-      }
-      for (int k = 0; k < kPeel; k++) {
-        acc[k] = vmlal_s16(acc[k], vget_low_s16(filter_val[k]),
-                           vget_low_s16(input_val));
-      }
-      for (int k = 0; k < kPeel; k++) {
-        acc[k] = vmlal_s16(acc[k], vget_high_s16(filter_val[k]),
-                           vget_high_s16(input_val));
-      }
+      int16x8_t filter_val_0 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_0));
+      filter_val_0 = vaddq_s16(filter_val_0, filter_offset_vec);
+      int16x8_t filter_val_1 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_1));
+      filter_val_1 = vaddq_s16(filter_val_1, filter_offset_vec);
+      int16x8_t filter_val_2 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_2));
+      filter_val_2 = vaddq_s16(filter_val_2, filter_offset_vec);
+      int16x8_t filter_val_3 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_3));
+      filter_val_3 = vaddq_s16(filter_val_3, filter_offset_vec);
+      acc0 =
+          vmlal_s16(acc0, vget_low_s16(filter_val_0), vget_low_s16(input_val));
+      acc1 =
+          vmlal_s16(acc1, vget_low_s16(filter_val_1), vget_low_s16(input_val));
+      acc2 =
+          vmlal_s16(acc2, vget_low_s16(filter_val_2), vget_low_s16(input_val));
+      acc3 =
+          vmlal_s16(acc3, vget_low_s16(filter_val_3), vget_low_s16(input_val));
+      acc0 = vmlal_s16(acc0, vget_high_s16(filter_val_0),
+                       vget_high_s16(input_val));
+      acc1 = vmlal_s16(acc1, vget_high_s16(filter_val_1),
+                       vget_high_s16(input_val));
+      acc2 = vmlal_s16(acc2, vget_high_s16(filter_val_2),
+                       vget_high_s16(input_val));
+      acc3 = vmlal_s16(acc3, vget_high_s16(filter_val_3),
+                       vget_high_s16(input_val));
     }
     if (in < input_size) {
-      int32 buf[4 * kPeel];
-      for (int k = 0; k < 4; k++) {
-        vst1q_s32(buf + 4 * k, acc[k]);
-      }
+      int32 buf[16];
+      vst1q_s32(buf + 0, acc0);
+      vst1q_s32(buf + 4, acc1);
+      vst1q_s32(buf + 8, acc2);
+      vst1q_s32(buf + 12, acc3);
       for (; in < input_size; in++) {
         int lane = (in + 8 - input_size) % 4;
         const int32 input_val = input_data[in] + input_offset;
@@ -951,22 +1008,25 @@ inline void FullyConnectedAsGEMV(
           buf[lane + 4 * k] += filter_val * input_val;
         }
       }
-      for (int k = 0; k < 4; k++) {
-        acc[k] = vld1q_s32(buf + 4 * k);
-      }
+      acc0 = vld1q_s32(buf + 0);
+      acc1 = vld1q_s32(buf + 4);
+      acc2 = vld1q_s32(buf + 8);
+      acc3 = vld1q_s32(buf + 12);
     }
 
     // Horizontally reduce accumulators
-    int32x2_t pairwise_reduced_acc[kPeel];
-    for (int k = 0; k < kPeel; k++) {
-      pairwise_reduced_acc[k] =
-          vpadd_s32(vget_low_s32(acc[k]), vget_high_s32(acc[k]));
-    }
-    static_assert(kPeel == 4, "the code below currently assumes kPeel = 4");
+    int32x2_t pairwise_reduced_acc_0 =
+        vpadd_s32(vget_low_s32(acc0), vget_high_s32(acc0));
+    int32x2_t pairwise_reduced_acc_1 =
+        vpadd_s32(vget_low_s32(acc1), vget_high_s32(acc1));
+    int32x2_t pairwise_reduced_acc_2 =
+        vpadd_s32(vget_low_s32(acc2), vget_high_s32(acc2));
+    int32x2_t pairwise_reduced_acc_3 =
+        vpadd_s32(vget_low_s32(acc3), vget_high_s32(acc3));
     const int32x2_t reduced_lo =
-        vpadd_s32(pairwise_reduced_acc[0], pairwise_reduced_acc[1]);
+        vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
     const int32x2_t reduced_hi =
-        vpadd_s32(pairwise_reduced_acc[2], pairwise_reduced_acc[3]);
+        vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
     int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
     // Add bias values.
     int32x4_t bias_vec = vld1q_s32(bias_data + out);
