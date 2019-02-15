@@ -553,7 +553,7 @@ run_test_with_bazel() {
   fi
 
   # Run the test.
-  bazel test ${BAZEL_BUILD_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} --test_tag_filters=${BAZEL_TEST_FILTER_TAGS} -- ${BAZEL_TEST_TARGETS}
+  bazel test --build_tests_only ${BAZEL_BUILD_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} --test_tag_filters=${BAZEL_TEST_FILTER_TAGS} -- ${BAZEL_TEST_TARGETS}
 }
 
 run_all_tests() {
